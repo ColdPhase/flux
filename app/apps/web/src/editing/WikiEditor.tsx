@@ -69,7 +69,7 @@ function marks(client: SharedWiki) {
 }
 
 interface EditorHandle { insert(text: string): void; focus(): void }
-function CollaborativeText({ client, handle }: { client: SharedWiki; handle: React.RefObject<EditorHandle | null> }) {
+function CollaborativeText({ client, handleRef }: { client: SharedWiki; handleRef: React.RefObject<EditorHandle | null> }) {
   const parent = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!client.text || !parent.current) return;
@@ -112,7 +112,7 @@ function CollaborativeText({ client, handle }: { client: SharedWiki; handle: Rea
         EditorView.theme({ '&': { minHeight: '260px', height: '100%', fontSize: '13px' }, '.cm-scroller': { fontFamily: 'var(--font-mono, monospace)', lineHeight: '1.65', overflow: 'auto' }, '.cm-content': { padding: '12px' }, '&.cm-focused': { outline: '2px solid var(--accent)', outlineOffset: '-2px' } }),
       ],
     }) });
-    handle.current = { insert: (text) => { if (!client.editable || view.state.doc.length + text.length > DOC_LIMITS.body) return; const selection = view.state.selection.main; view.dispatch({ changes: { from: selection.from, to: selection.to, insert: text }, selection: { anchor: selection.from + text.length }, userEvent: 'input' }); view.focus(); }, focus: () => view.focus() };
+    handleRef.current = { insert: (text) => { if (!client.editable || view.state.doc.length + text.length > DOC_LIMITS.body) return; const selection = view.state.selection.main; view.dispatch({ changes: { from: selection.from, to: selection.to, insert: text }, selection: { anchor: selection.from + text.length }, userEvent: 'input' }); view.focus(); }, focus: () => view.focus() };
     let scheduled = false, destroyed = false;
     const update = () => {
       if (scheduled) return;
@@ -122,8 +122,8 @@ function CollaborativeText({ client, handle }: { client: SharedWiki; handle: Rea
       queueMicrotask(() => { scheduled = false; if (!destroyed) view.dispatch({ effects: [writable.of(client.editable), remoteMarks.of(marks(client))] }); });
     };
     const unsubscribe = client.subscribe(update); update();
-    return () => { destroyed = true; unsubscribe(); handle.current = null; view.destroy(); };
-  }, [client, client.text, handle]);
+    return () => { destroyed = true; unsubscribe(); handleRef.current = null; view.destroy(); };
+  }, [client, client.text, handleRef]);
   return <div className="editing-code" ref={parent} data-live-wiki-editor data-live-generation={client.head.generation} data-live-sequence={client.head.sequence} data-live-command={client.lastLocalCommand ?? undefined} data-live-input-revision={client.inputRevision} data-live-command-revision={client.sealedRevision} data-live-command-batches={JSON.stringify(client.sealedBatches)} />;
 }
 
@@ -150,7 +150,7 @@ export function LiveDocEditor({ doc, project, userId, fallback }: { doc: Doc; pr
   const [picker, setPicker] = useState(false);
   const [compare, setCompare] = useState(false);
   const [saved, setSaved] = useState<number | null>(null);
-  const handle = useRef<EditorHandle | null>(null);
+  const handleRef = useRef<EditorHandle | null>(null);
   const comparison = useRef<HTMLTextAreaElement>(null);
   const [legacy] = useState(() => { try { const value = JSON.parse(sessionStorage.getItem(`flux:doc-edit:${userId}:${doc.id}`) ?? 'null') as { body?: string } | null; return typeof value?.body === 'string' && value.body.length <= DOC_LIMITS.body ? value.body : null; } catch { return null; } });
   if (client?.status === 'unavailable') return fallback;
@@ -175,7 +175,7 @@ export function LiveDocEditor({ doc, project, userId, fallback }: { doc: Doc; pr
     }
     finally { setBusy(false); }
   };
-  const insert = (ref: PickedRef) => { handle.current?.insert(`[${ref.title.replace(/[\\\[\]]/g, '\\$&')}](${docRef(ref.type, ref.id)})`); setPicker(false); };
+  const insert = (ref: PickedRef) => { handleRef.current?.insert(`[${ref.title.replace(/[\\[\]]/g, '\\$&')}](${docRef(ref.type, ref.id)})`); setPicker(false); };
   return <div className="pane-scroll"><form className="pane-in doc doc-edit" data-shift onSubmit={(event) => void save(event)} onKeyDown={(event) => {
     if ((event.ctrlKey || event.metaKey) && (event.key.toLowerCase() === 's' || event.key === 'Enter')) { event.preventDefault(); void save(); }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setPicker(true); }
@@ -186,11 +186,11 @@ export function LiveDocEditor({ doc, project, userId, fallback }: { doc: Doc; pr
     {client?.problem || error ? <p className="doc-notice" role="alert">{error ?? client?.problem}</p> : null}
     {metadataConflict ? <section className="doc-notice"><p>Version {metadataConflict.version} now uses “{metadataConflict.title}” · {STATE_LABEL[metadataConflict.state]}. Review it before saving your metadata.</p><Button type="button" variant="secondary" onClick={() => { setTitle(metadataConflict.title); setState(metadataConflict.state); setMetadataBase({ title: metadataConflict.title, state: metadataConflict.state, version: metadataConflict.version }); setMetadataConflict(null); }}>Use their metadata</Button><Button type="button" variant="quiet" onClick={() => { setMetadataBase({ title: metadataConflict.title, state: metadataConflict.state, version: metadataConflict.version }); setMetadataConflict(null); }}>Keep my metadata on version {metadataConflict.version}</Button></section> : null}
     {saved ? <p className="doc-notice" role="status">Version {saved} saved. Later typing stays in the shared working copy.</p> : null}
-    {privateText ? <section className="doc-notice"><span>A private copy from an earlier session is available.</span><Button type="button" variant="secondary" onClick={() => setCompare(!compare)}>{compare ? 'Close comparison' : 'Compare private text'}</Button>{compare ? <><textarea ref={comparison} aria-label="Earlier private text" readOnly value={privateText} /><p>Select the text you want to bring into the working copy, then place its cursor.</p><Button type="button" disabled={!client?.editable} onClick={() => { const area = comparison.current; if (!area || area.selectionStart === area.selectionEnd) { setError('Select text in the private copy before importing.'); return; } handle.current?.insert(privateText.slice(area.selectionStart, area.selectionEnd)); }}>Insert selected text</Button>{client?.hasPrivateArchive ? <Button type="button" variant="quiet" onClick={() => client.discardPrivateArchive()}>Discard earlier private copy</Button> : null}</> : null}</section> : null}
+    {privateText ? <section className="doc-notice"><span>A private copy from an earlier session is available.</span><Button type="button" variant="secondary" onClick={() => setCompare(!compare)}>{compare ? 'Close comparison' : 'Compare private text'}</Button>{compare ? <><textarea ref={comparison} aria-label="Earlier private text" readOnly value={privateText} /><p>Select the text you want to bring into the working copy, then place its cursor.</p><Button type="button" disabled={!client?.editable} onClick={() => { const area = comparison.current; if (!area || area.selectionStart === area.selectionEnd) { setError('Select text in the private copy before importing.'); return; } handleRef.current?.insert(privateText.slice(area.selectionStart, area.selectionEnd)); }}>Insert selected text</Button>{client?.hasPrivateArchive ? <Button type="button" variant="quiet" onClick={() => client.discardPrivateArchive()}>Discard earlier private copy</Button> : null}</> : null}</section> : null}
     <label className="doc-field">Title<input value={client?.pendingSave?.title ?? title} maxLength={DOC_LIMITS.title} disabled={busy || !!client?.pendingSave || !client?.editable} onChange={(event) => setTitle(event.target.value)} required /></label>
     <div className="doc-edit__bar"><div className="doc-seg" role="group" aria-label="Editor view">{(['write', 'preview', ...(wide ? ['both'] : [])] as ('write' | 'preview' | 'both')[]).map((value) => <button type="button" key={value} aria-pressed={displayedMode === value} onClick={() => setMode(value)}>{value[0]!.toUpperCase() + value.slice(1)}</button>)}</div><Button type="button" variant="quiet" disabled={!client?.editable} onClick={() => setPicker(true)}><Icon name="link" />Link</Button></div>
     <div className={`doc-edit__panes editing-panes--${displayedMode}`}>
-      {client?.text ? <div hidden={displayedMode === 'preview'}><CollaborativeText client={client} handle={handle} /></div> : <p aria-busy="true">Opening text…</p>}
+      {client?.text ? <div hidden={displayedMode === 'preview'}><CollaborativeText client={client} handleRef={handleRef} /></div> : <p aria-busy="true">Opening text…</p>}
       {displayedMode !== 'write' ? <div className="doc-prose doc-edit__preview" aria-label="Shared preview" data-live-sequence={client?.head?.sequence} dangerouslySetInnerHTML={{ __html: client?.html ?? doc.html }} /> : null}
     </div>
     <label className="doc-field">Reason for this version<input value={client?.pendingSave?.reason ?? reason} maxLength={DOC_LIMITS.reason} onChange={(event) => setReason(event.target.value)} disabled={busy || !!client?.pendingSave} /></label>
