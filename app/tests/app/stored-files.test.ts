@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { request as httpRequest } from 'node:http';
+import { connect } from 'node:net';
 import { test } from 'node:test';
 import { gunzipSync } from 'node:zlib';
 import { and, eq, sql } from 'drizzle-orm';
@@ -379,4 +380,39 @@ test('stalled raw HTTP uploads and ready-UUID verification close the socket afte
     assert.equal((JSON.parse(body) as { code: string }).code, 'UPLOAD_TIMEOUT');
   }
   await Promise.all([stalled(randomUUID(), 'stalled.bin'), stalled(ready.uploadId, ready.name)]);
+});
+
+test('message file reads and export do not bind one parameter per message, whatever the project size', async () => {
+  const f = await scene();
+  const staged = (await upload(f.writer, f.place.id, Buffer.from('kept'))).body;
+  const started = expectStatus(await f.writer.browser.request('POST', `/api/v1/projects/${f.place.id}/conversations`,
+    { body: { body: '', attachmentIds: [staged.id], clientMessageId: randomUUID() } }), 201) as Conversation;
+  const messageId = started.messages[0]!.id;
+  const expected = [{ id: staged.id, name: staged.name, size: staged.size }];
+  // More ids than PostgreSQL's 65,535 bind parameters in one statement.
+  const many = [...Array.from({ length: 70_000 }, () => randomUUID()), messageId];
+  assert.deepEqual((await fileRows(db).messageFiles(many)).get(messageId), expected);
+  const byProject = await fileRows(db).projectMessageFiles(f.place.id);
+  assert.deepEqual([...byProject.keys()], [messageId]);
+  assert.deepEqual(byProject.get(messageId), expected);
+});
+
+test('an upload without Content-Length or Transfer-Encoding is an empty file, not a server error', async () => {
+  const f = await scene();
+  const base = new URL(f.writer.browser.base);
+  const path = `/api/v1/projects/${f.place.id}/files?uploadId=${randomUUID()}&name=empty.txt`;
+  // A raw request: fetch and http.request would add a Content-Length or chunked encoding.
+  const raw = await new Promise<string>((resolve, reject) => {
+    const socket = connect(Number(base.port || 80), base.hostname, () => {
+      socket.write(`POST ${path} HTTP/1.1\r\nHost: ${base.host}\r\nContent-Type: application/octet-stream\r\n`
+        + `Cookie: ${f.writer.browser.cookieHeader()}\r\nOrigin: ${f.writer.browser.defaultOrigin}\r\nConnection: close\r\n\r\n`);
+    });
+    let response = '';
+    socket.setEncoding('utf8');
+    socket.on('data', (chunk: string) => { response += chunk; });
+    socket.on('end', () => resolve(response));
+    socket.on('error', reject);
+  });
+  assert.match(raw, /^HTTP\/1\.1 400 /);
+  assert.equal((JSON.parse(raw.slice(raw.indexOf('\r\n\r\n') + 4)) as { code: string }).code, 'EMPTY_FILE');
 });

@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import type { Readable } from 'node:stream';
+import { Readable } from 'node:stream';
 import { FILE_LIMITS } from '@flux/contracts';
 import { type Database, type FileStorage, InvalidInputError, PayloadTooLargeError } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
@@ -11,7 +11,7 @@ export async function fileRoutes(app: FastifyInstance, { db, sessions, storage }
   useDomainErrors(app);
   const files = fileUseCases(db, storage);
   app.addContentTypeParser('application/octet-stream', (_request, stream, done) => done(null, stream));
-  app.post<{ Params: { projectId: string }; Querystring: { uploadId: string; name: string }; Body: Readable }>(
+  app.post<{ Params: { projectId: string }; Querystring: { uploadId: string; name: string }; Body: Readable | undefined }>(
     '/api/v1/projects/:projectId/files', { bodyLimit: FILE_LIMITS.fileBytes,
       schema: { querystring: { type: 'object', required: ['uploadId', 'name'], additionalProperties: false,
         properties: { uploadId: { type: 'string' }, name: { type: 'string' } } } },
@@ -32,7 +32,8 @@ export async function fileRoutes(app: FastifyInstance, { db, sessions, storage }
       } }, async (request, reply) => {
       const principal = (await sessions.requirePrincipal(request)).principal;
       const size = request.headers['content-length'];
-      const staged = await files.stage(principal, request.params.projectId, request.query, request.body,
+      // Without Content-Length or Transfer-Encoding Fastify parses no body: that is an empty file.
+      const staged = await files.stage(principal, request.params.projectId, request.query, request.body ?? Readable.from([]),
         size === undefined ? undefined : Number(size));
       return reply.code(201).send(staged);
     });

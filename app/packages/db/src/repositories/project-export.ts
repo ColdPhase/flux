@@ -83,7 +83,7 @@ export function projectExportRows(db: DbExecutor) {
     async conversations(projectId: string) {
       const conversations = await db.select().from(c).where(eq(c.projectId, projectId)).orderBy(asc(c.createdAt), asc(c.id));
       const messages = groupBy(await db.select().from(msg).where(eq(msg.projectId, projectId)).orderBy(asc(msg.conversationId), asc(msg.sequence)), (row) => row.conversationId);
-      const files = await fileRows(db).messageFiles([...messages.values()].flat().map((message) => message.id));
+      const files = await fileRows(db).projectMessageFiles(projectId);
       return conversations.map((row) => ({
         id: row.id, createdBy: creator(row.createdBy, row.createdByAgentId), createdAt: iso(row.createdAt),
         messages: (messages.get(row.id) ?? []).map((message) => ({

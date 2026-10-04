@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 type ActorRef = { kind: 'human' | 'agent'; id: string };
 import type { MessageFile } from '@flux/contracts';
 import * as schema from '../schema.js';
@@ -67,14 +67,28 @@ export function fileRows(db: DbExecutor) {
     },
     async messageFiles(ids: readonly string[]) {
       const grouped = new Map<string, MessageFile[]>();
-      if (!ids.length) return grouped;
-      const rows = await db.select().from(f).where(inArray(f.messageId, [...ids])).orderBy(asc(f.messageId), asc(f.position));
-      for (const row of rows) {
-        const list = grouped.get(row.messageId!) ?? [];
-        list.push({ id: row.id, name: row.name, size: row.size! });
-        grouped.set(row.messageId!, list);
+      // Bounded batches: PostgreSQL accepts at most 65,535 bind parameters in one statement.
+      for (let start = 0; start < ids.length; start += MESSAGE_ID_BATCH) {
+        groupMessageFiles(grouped, await db.select().from(f).where(inArray(f.messageId, ids.slice(start, start + MESSAGE_ID_BATCH)))
+          .orderBy(asc(f.messageId), asc(f.position)));
       }
       return grouped;
     },
+    /** Every published file of a project's messages, for export: one query whatever the message count. */
+    async projectMessageFiles(projectId: string) {
+      return groupMessageFiles(new Map(), await db.select().from(f).where(and(eq(f.projectId, projectId), isNotNull(f.messageId)))
+        .orderBy(asc(f.messageId), asc(f.position)));
+    },
   };
+}
+
+const MESSAGE_ID_BATCH = 10_000;
+
+function groupMessageFiles(grouped: Map<string, MessageFile[]>, rows: readonly (typeof f.$inferSelect)[]) {
+  for (const row of rows) {
+    const list = grouped.get(row.messageId!) ?? [];
+    list.push({ id: row.id, name: row.name, size: row.size! });
+    grouped.set(row.messageId!, list);
+  }
+  return grouped;
 }
