@@ -12,6 +12,7 @@ import {
   parsePage, recordEvent, type Database, type Principal, type Transaction,
 } from '@flux/core';
 import type { ConversationPort } from '@flux/core';
+import { eventPorts } from '../events.js';
 import type { TransactionEventSession } from '../work/transaction-events.js';
 
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -165,7 +166,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
       .map((row) => ({ id: row.id, name: row.name, size: row.size! }));
   };
   const eventLog = (tx: Tx): ConversationEventLog => options.events ?? { record: async (principal, workspaceId, kind, projectId, data) => {
-    await recordEvent(tx, principal, workspaceId, kind, projectId, data);
+    await recordEvent(eventPorts(tx), principal, workspaceId, kind, projectId, data);
   } };
   return {
     async listConversations(principal: Principal, projectId: string, query: PageQuery = {}): Promise<Page<ConversationSummary>> {
@@ -404,7 +405,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
           title: input.title, body: input.body, url: input.url, authorId,
           sourceDraftId: input.sourceDraftId, sourceDraftVersion: input.sourceDraftVersion,
         }).returning();
-        await recordEvent(tx, principal, project.workspaceId, 'project.material_created.v1', projectId, { materialId: id, version: 1 });
+        await recordEvent(eventPorts(tx), principal, project.workspaceId, 'project.material_created.v1', projectId, { materialId: id, version: 1 });
         return material(created, first!, principal);
       });
     },
@@ -436,7 +437,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
           version: updated!.currentVersion, ...next, authorId,
           clientMutationId: input.clientMutationId, requestFingerprint: input.fingerprint,
         }).returning();
-        await recordEvent(tx, principal, row.workspaceId, 'project.material_updated.v1', row.projectId, { materialId: row.id, version: updated!.currentVersion });
+        await recordEvent(eventPorts(tx), principal, row.workspaceId, 'project.material_updated.v1', row.projectId, { materialId: row.id, version: updated!.currentVersion });
         return material(updated!, snapshot!, principal);
       });
     },

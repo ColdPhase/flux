@@ -44,10 +44,16 @@ function when(iso: string) {
   return date.toDateString() === new Date().toDateString() ? time.format(date) : dayTime.format(date);
 }
 
+/** A session past its end is offline now, even before the next read says so. */
+function shownState(connection: ProjectAgentConnection, now: number): ProjectAgentConnection['state'] {
+  return connection.state === 'session_open' && connection.session && Date.parse(connection.session.expiresAt) <= now ? 'offline' : connection.state;
+}
+
 /** What Flux can prove about a connection; a configured or offline one never looks busy. */
-function stateLine(connection: ProjectAgentConnection) {
-  if (connection.state === 'session_open') return `Session open since ${when(connection.session!.startedAt)}`;
-  if (connection.state === 'offline') return 'Offline';
+function stateLine(connection: ProjectAgentConnection, now: number) {
+  const state = shownState(connection, now);
+  if (state === 'session_open') return `Session open since ${when(connection.session!.startedAt)}`;
+  if (state === 'offline') return 'Offline';
   if (connection.state === 'unavailable') return connection.own ? 'Can’t act here now: check this agent’s project access' : 'Can’t act here now';
   return connection.own ? 'Not signed in from your client yet' : 'Not signed in yet';
 }
@@ -59,10 +65,10 @@ function activityLine(connection: ProjectAgentConnection) {
   return `Last: ${label} · ${when(last.at)}`;
 }
 
-function Connection({ connection }: { connection: ProjectAgentConnection }) {
+function Connection({ connection, now }: { connection: ProjectAgentConnection; now: number }) {
   const activity = activityLine(connection);
   return (
-    <li className="agents-conn" data-state={connection.state}>
+    <li className="agents-conn" data-state={shownState(connection, now)}>
       <span className="agents-conn__icon" aria-hidden="true"><Icon name="terminal" size={16} /></span>
       <span className="agents-conn__body">
         <span className="agents-conn__who">
@@ -70,7 +76,7 @@ function Connection({ connection }: { connection: ProjectAgentConnection }) {
           <span> · {connection.owner.name}{connection.own ? ' (you)' : ''}</span>
         </span>
         <span className="agents-conn__name">{connection.name}</span>
-        <span className="agents-conn__state"><span className="agents-conn__dot" aria-hidden="true" />{stateLine(connection)}</span>
+        <span className="agents-conn__state"><span className="agents-conn__dot" aria-hidden="true" />{stateLine(connection, now)}</span>
         {activity ? <span className="agents-conn__activity">{activity}</span> : null}
       </span>
     </li>
@@ -281,6 +287,49 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
   );
 }
 
+/** Events that change who can act here: a grant, the project's agent policy, an agent created or revoked. */
+const CONNECTION_EVENTS = new Set(['project.grant_set.v1', 'project.grant_revoked.v1', 'project.agent_policy_published.v1', 'agent.created.v1', 'agent.revoked.v1']);
+
+/**
+ * The connections stay current while the view is open (#183 N1), by the same no-reload standard as
+ * the thread: a revocation, a session opening or closing or a narrowed grant shows without a reload.
+ * Grant, policy and agent events and a resync refetch at once (not every message, which would refetch
+ * on each line of a busy thread). A revoked connection and a session opening or closing record no
+ * event, so focus, a visible tab and a 15 s poll while the tab is visible also refetch; the poll moves
+ * `now` too, so a session past its end reads as offline, and keeps "Last: …" current.
+ */
+function useConnections(projectId: string, meId: string, initial: ProjectAgentConnection[]) {
+  // A newer read replaces the loader's list until the loader itself reads again.
+  const [fetched, setFetched] = useState<{ base: ProjectAgentConnection[]; list: ProjectAgentConnection[] } | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const reload = useRef<() => void>(() => { /* not mounted */ });
+  useEffect(() => {
+    let controller: AbortController | null = null;
+    reload.current = () => {
+      controller?.abort();
+      const current = new AbortController();
+      controller = current;
+      getProjectAgents(projectId, current.signal)
+        .then((next) => { if (!current.signal.aborted) { setFetched({ base: initial, list: next.connections }); setNow(Date.now()); } })
+        .catch(() => { /* keep the last known list; the next trigger retries */ });
+    };
+    return () => { controller?.abort(); reload.current = () => { /* unmounted */ }; };
+  }, [projectId, initial]);
+  useStreamEvents(meId, (event) => {
+    if (CONNECTION_EVENTS.has(event.kind) && (event.objectType === 'agent' || event.objectId === projectId)) reload.current();
+  }, () => reload.current());
+  useEffect(() => {
+    const onFocus = () => reload.current();
+    const onVisible = () => { if (document.visibilityState === 'visible') reload.current(); };
+    const tick = () => { setNow(Date.now()); onVisible(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisible);
+    const interval = window.setInterval(tick, 15_000);
+    return () => { window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onVisible); window.clearInterval(interval); };
+  }, []);
+  return { list: fetched && fetched.base === initial ? fetched.list : initial, now };
+}
+
 export function ProjectAgents() {
   const data = useLoaderData() as ProjectAgentsData;
   const shell = useProjectShell();
@@ -300,6 +349,7 @@ export function ProjectAgents() {
   // Flush the pending navigation guard before a fast next input can reach the old keyed thread.
   const select = (id: string) => setSearch((current) => { const next = new URLSearchParams(current); next.set('task', id); return next; }, { replace: true, flushSync: true });
   const projectId = shell?.project.id ?? data.projectId;
+  const connections = useConnections(projectId, me.user.id, data.connections);
 
   // The view scrolls in its own pane like every other view, so a long thread stays reachable
   // above the sticky composer on any screen.
@@ -310,9 +360,9 @@ export function ProjectAgents() {
         <h1 className="agents__title">Working together</h1>
         <Link className="ui-link agents__connect" to="/connect-agent"><Icon name="plus" size={14} />Connect my agent</Link>
       </header>
-      {data.connections.length ? (
+      {connections.list.length ? (
         <ul className="agents__connections" aria-label="Agent connections in this project">
-          {data.connections.map((connection) => <Connection key={connection.id} connection={connection} />)}
+          {connections.list.map((connection) => <Connection key={connection.id} connection={connection} now={connections.now} />)}
         </ul>
       ) : (
         <p className="agents__no-connections">No agents connected. You can still discuss tasks here.</p>

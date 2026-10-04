@@ -58,8 +58,24 @@ services:
       MP_SMTP_TLS_CERT: /tls/cert.pem
       MP_SMTP_TLS_KEY: /tls/key.pem
       MP_SMTP_REQUIRE_TLS: "true"
+  # TEST ONLY (#179, F-020 PROV-6): both AI wire formats for the adapter contract suite
+  # (app/tests/app/support/provider-mock.ts). Never a provider; nothing here is a provider pass.
+  providermock:
+    profiles: ["test"]
+    image: flux-test-tools:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
+    command: ["node_modules/.bin/tsx", "tests/app/support/provider-mock.ts"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8095/__health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  api:
+    environment:
+      # The operator allowlist lets owner endpoints reach the local provider mock only.
+      FLUX_AI_PRIVATE_TARGETS: providermock
   worker:
     environment:
+      FLUX_AI_PRIVATE_TARGETS: providermock
       FLUX_PUSH_ALLOW_PRIVATE_NETWORK: "true"
       NODE_EXTRA_CA_CERTS: /tls/cert.pem
     volumes:
@@ -77,6 +93,7 @@ services:
       FLUX_PUSHMOCK_URL: http://pushmock:8081
       FLUX_MAILPIT_STARTTLS_URL: http://mailpit-starttls:8025
       FLUX_MAILPIT_SMTPS_URL: http://mailpit-smtps:8025
+      FLUX_PROVIDER_MOCK_URL: http://providermock:8095
       NODE_EXTRA_CA_CERTS: /tls/cert.pem
     volumes:
       - pushtls:/tls:ro
@@ -89,6 +106,8 @@ services:
       mailpit-starttls:
         condition: service_healthy
       mailpit-smtps:
+        condition: service_healthy
+      providermock:
         condition: service_healthy
   e2e:
     profiles: ["test"]

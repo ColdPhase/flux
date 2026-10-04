@@ -414,6 +414,65 @@ class AgentsViewJourney(unittest.TestCase):
         self.assertLess(composer["y"] - (last["y"] + last["height"]), 120, "the composer follows the last message")
         shot(tall, "agents-tall-1080x1920")
 
+    def test_08_revoked_connection_leaves_the_open_view(self) -> None:
+        # #183 N1: another person revokes their connection while Hubert has the view open. A
+        # revocation publishes no stream event, so returning to the tab refetches the list.
+        page = self.open_agents("hubert")
+        connections = page.get_by_role("list", name="Agent connections in this project").get_by_role("listitem")
+        expect(connections).to_have_count(3)
+        page.evaluate("() => { window.__fluxSameDocument = true; }")
+        marek = self.page("marek")
+        mine = self.api(marek, "GET", "/api/v1/agent-connections", status=200)
+        items = mine["connections"] if isinstance(mine, dict) and "connections" in mine else mine
+        active = [c for c in items if not c.get("revokedAt")]
+        self.assertEqual(len(active), 1, "Marek has one current connection")
+        # A DELETE has no body, so it carries no JSON content type.
+        response = marek.request.fetch(f"{ORIGIN}/api/v1/agent-connections/{active[0]['id']}", method="DELETE", headers={"origin": ORIGIN})
+        self.assertEqual(response.status, 204, response.text())
+        page.evaluate("() => window.dispatchEvent(new Event('focus'))")
+        expect(connections).to_have_count(2, timeout=20000)
+        self.assertFalse(any("Workshop PC" in text for text in connections.all_inner_texts()), "Marek's revoked connection is gone")
+        self.assertTrue(page.evaluate("() => window.__fluxSameDocument === true"), "the list changed without a reload")
+
+    def test_09_an_expired_session_reads_offline_without_a_reload(self) -> None:
+        # The server lists only unexpired sessions, so a session_open entry can only be stale in an
+        # open view. The UI suite cannot open a real client session (no OAuth client or database
+        # access here), so every read of the list, the loader's and each refetch, is answered with
+        # one connection in a session that ends a few seconds from now. The server never says
+        # offline: "Offline" can only come from the client comparing expiresAt with its clock on
+        # the 15 s tick. No focus or reload is triggered.
+        page = self.page("hubert")
+        reads: list[str] = []
+
+        def session_ending_soon(route) -> None:
+            if route.request.method != "GET":
+                route.continue_()
+                return
+            response = route.fetch()
+            body = response.json()
+            target = next(item for item in body["connections"] if item["name"] == "Desk laptop")
+            target["state"] = "session_open"
+            target["session"] = {"startedAt": started, "expiresAt": expires}
+            reads.append(route.request.url)
+            route.fulfill(response=response, json=body)
+
+        # The browser runs in this container, so it shares this clock.
+        now = time.time()
+        started = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now - 60))
+        expires = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now + 6))
+        page.route(f"**/api/v1/projects/{self.ids['project']}/agents", session_ending_soon)
+        page.goto(f"/projects/{self.ids['project']}/agents")
+        expect(page.get_by_role("heading", level=1, name="Working together")).to_be_visible()
+        page.evaluate("() => { window.__fluxSameDocument = true; }")
+        desk = page.get_by_role("list", name="Agent connections in this project").get_by_role("listitem").filter(has_text="Desk laptop")
+        expect(desk).to_contain_text("Session open since")
+        expect(desk).to_have_attribute("data-state", "session_open")
+        expect(desk).to_contain_text("Offline", timeout=25000)
+        expect(desk).to_have_attribute("data-state", "offline")
+        expect(desk).not_to_contain_text("Session open since")
+        self.assertTrue(page.evaluate("() => window.__fluxSameDocument === true"), "no reload")
+        self.assertGreaterEqual(len(reads), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -5,7 +5,7 @@ import { ApiError } from '../api/client';
 import { useComposerDraft, useComposerScope } from '../composer/draft';
 import { ComposerFiles, MessageFiles } from '../composer/Files';
 import { contributeToTask } from '../composer/api';
-import { Avatar, Button, Icon, Input } from '../ui';
+import { Avatar, Button, Icon, Input, MEDIA, sendsOnEnter, useMediaQuery } from '../ui';
 import { getConversation, getMaterialVersion, getProject, listConversationRoots, listDrafts, listMaterials, listTaskNotices, listWorkspaceMembers, olderMessages, publishMaterial, reply, startConversation } from './conversation-api';
 import { pageBackTo } from './seekMessage';
 import { useShellData } from './data';
@@ -79,6 +79,8 @@ export function ProjectConversation() {
  * beside it, the replies with their own composer, assistant and sources.
  */
 function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessageId = null, onPosted, onThreadSize, focusComposer = false }: PaneProps) {
+  // Touch devices add a line with Enter and send with the button (#189).
+  const touch = useMediaQuery(MEDIA.touch);
   const { project, materials, members } = data;
   const conversation = variant === 'thread' ? data.conversation : null;
   const shell = useProjectShell();
@@ -87,7 +89,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const { me } = useShellData();
   const navigate = useNavigate();
   const revalidator = useRevalidator();
-  const audience = audienceLine(people, me.user.id);
+  const audience = audienceLine(people, me.user.id, project.visibility === 'workspace');
   const audienceShort = audience.replace(/ · only you two$/, '');
   // The stream's composer keeps the former new-conversation draft; each thread keeps its own reply draft.
   const materialFormKey = `flux.project-material.${me.user.id}.${project.id}${conversation ? '.thread' : ''}`;
@@ -229,6 +231,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     return openOnWholeMessages(feed, column, '.project-convo__message');
   }, [conversation?.id, arrived, arrivedLoaded]);
 
+  // The stream has no assistant: `/ai …` there would post the prompt for the whole project.
+  const assistantInStream = !conversation && /^\/ai(\s|$)/.test(draft.trimStart());
   function changeDraft(input: string) {
     // Private prompts keep their own draft; invoking /ai never overwrites a public task draft.
     if (!asking && conversation && writable && /^\/ai(\s|$)/.test(input)) {
@@ -257,7 +261,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   }
   async function send() {
     if (asking) { await sendToAssistant(); return; }
-    if (!writable) return;
+    // A private helper prompt is never published as a root (UI116-3); it stays in the private draft.
+    if (!writable || assistantInStream) return;
     const command = publicComposer.begin();
     if (!command) return;
     const active = captureScope();
@@ -279,7 +284,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   }
   function onComposerKey(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (asking && (event.key === 'Escape' || (event.key === 'Backspace' && !draft))) { event.preventDefault(); event.stopPropagation(); exitAsk(); return; }
-    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); }
+    if (sendsOnEnter(event, touch)) { event.preventDefault(); void send(); }
   }
   async function loadOlder() {
     if (!conversation || !olderCursor || olderBusy) return;
@@ -409,7 +414,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
       </div>}
       {writable && !asking ? <ComposerFiles state={publicComposer} /> : null}
       <div className="composer__box"><button type="button" className="composer__ask project-convo__sources-btn" aria-expanded={trayOpen} aria-controls={trayOpen ? `${conversation ? 'thread' : 'project'}-sources` : undefined} aria-label={`Sources${materialTotal ? `, ${materialTotal} saved` : ''}`} data-tip={writable ? 'Sources to cite' : 'Saved sources to read'} data-tip-align="start" onClick={() => { if (trayOpen) { setSourcesOpen(false); if (writable) setShowMaterialForm(false); } else setSourcesOpen(true); }}><Icon name="doc" /><span className="project-convo__sources-t" aria-hidden="true">Sources</span>{materialTotal ? <span className="project-convo__sources-n" aria-hidden="true">{materialTotal > 99 ? '99+' : materialTotal}</span> : null}</button>{conversation && writable ? <button type="button" className="composer__ask" aria-pressed={asking} aria-label="Ask my assistant" aria-controls={asking ? 'project-ask' : undefined} data-tip="Ask my assistant · /ai" data-tip-align="start"
-        onClick={() => { if (asking) exitAsk(); else { setAsking(true); document.getElementById(composerId)?.focus(); } }}><Icon name="spark" /></button> : null}{writable ? <><label className="ui-vh" htmlFor={composerId}>{asking ? 'Ask your assistant' : conversation ? 'Reply' : 'Write a message'}</label><textarea id={composerId} value={draft} onChange={(event) => changeDraft(event.target.value)} onKeyDown={onComposerKey} disabled={!writable || busy || askBusy} aria-describedby={asking ? 'project-ask' : undefined} placeholder={asking ? 'Ask your assistant…' : conversation ? replyHint : 'Write a message…'} rows={1} /><button className="composer__send" aria-label={asking ? 'Send to your assistant' : conversation ? 'Send reply' : 'Send message'} aria-disabled={!composer.canSend || !writable || busy || askBusy || (asking && ask.kind !== 'ready')} type="button" onClick={() => void send()}><Icon name="send" /></button></> : <p className="project-convo__read-only">Read-only · <span>You have read access to this project.</span></p>}</div>
+        onClick={() => { if (asking) exitAsk(); else { setAsking(true); document.getElementById(composerId)?.focus(); } }}><Icon name="spark" /></button> : null}{writable ? <><label className="ui-vh" htmlFor={composerId}>{asking ? 'Ask your assistant' : conversation ? 'Reply' : 'Write a message'}</label><textarea id={composerId} value={draft} onChange={(event) => changeDraft(event.target.value)} onKeyDown={onComposerKey} disabled={!writable || busy || askBusy} aria-describedby={asking ? 'project-ask' : assistantInStream ? `${composerId}-ai-hint` : undefined} placeholder={asking ? 'Ask your assistant…' : conversation ? replyHint : 'Write a message…'} rows={1} /><button className="composer__send" aria-label={asking ? 'Send to your assistant' : conversation ? 'Send reply' : 'Send message'} aria-disabled={!composer.canSend || !writable || busy || askBusy || assistantInStream || (asking && ask.kind !== 'ready')} type="button" onClick={() => void send()}><Icon name="send" /></button></> : <p className="project-convo__read-only">Read-only · <span>You have read access to this project.</span></p>}</div>
+      {writable && assistantInStream ? <p id={`${composerId}-ai-hint`} className="project-convo__hint" role="status">Your assistant answers inside a conversation. Open one and type /ai there. This text is not posted.</p> : null}
       {readFailure ? <p className="project-convo__error" role="alert">{readFailure.message} <button type="button" onClick={readFailure.retry}>Retry read</button></p> : null}
       {writable && error && !asking ? <p className="project-convo__error"><button type="button" onClick={() => void send()}>Retry send</button></p> : null}
     </div></div>

@@ -265,7 +265,7 @@ class TaskAnnouncements(unittest.TestCase):
         before = self.counts(page)
         later = page.locator(f"#message-{self.ids['later']}")
         later.hover()
-        later.get_by_role("button", name="Create work").click()
+        later.get_by_role("button", name="Task", exact=True).click()
         details = page.locator("#details")
         expect(details.get_by_role("heading", name=LATER)).to_be_visible()
         work = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/work?limit=100", status=200)
@@ -281,7 +281,7 @@ class TaskAnnouncements(unittest.TestCase):
         expect(made.locator(".convo-notice__meta")).to_have_text("New task · Ada Kowalska")
         made.get_by_role("button", name=f"Open task: {MEASURE}").click()
         expect(page.locator("#details").get_by_role("heading", name=MEASURE)).to_be_visible()
-        expect(page.get_by_role("button", name="Create work")).to_have_count(0)
+        expect(page.get_by_role("button", name="Task", exact=True)).to_have_count(0)
 
     def test_08_phone_keeps_the_announcement_one_line_and_readable(self) -> None:
         for viewport, dark in (({"width": 390, "height": 844}, True), ({"width": 320, "height": 640}, False)):

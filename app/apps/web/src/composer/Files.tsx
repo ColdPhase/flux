@@ -10,11 +10,11 @@ const fileStatus = (file: DraftFile, unconfirmed: boolean) => file.state === 'up
     : unconfirmed ? 'Send unconfirmed; retry checks availability'
       : Date.parse(file.staged!.expiresAt) <= Date.now() ? 'Staging expired; select this file again' : 'Ready, private';
 
-/** Ordered stored-file links shared by roots, replies, Details and Agents. */
+/** Ordered stored-file links shared by roots, replies, Details and Agents; each one downloads under its name. */
 export function MessageFiles({ files }: { files?: MessageFile[] }) {
   if (!files?.length) return null;
-  return <ol className="message-files" aria-label="Attached files">{files.map((file) => <li key={file.id}>
-    <a href={filePath(file.id)}><Icon name="doc" size={14} /><span>{file.name}</span><small>{fileSize(file.size)}</small></a>
+  return <ol className="message-files" aria-label={files.length === 1 ? '1 attached file' : `${files.length} attached files`}>{files.map((file) => <li key={file.id}>
+    <a href={filePath(file.id)} download={file.name}><Icon name="doc" size={14} /><span>{file.name}</span><small>{fileSize(file.size)}</small></a>
   </li>)}</ol>;
 }
 

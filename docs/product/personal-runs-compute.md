@@ -93,7 +93,9 @@ O-005 Claude Code path and this key path. Human work never needs either.
    - Before dispatch, the run atomically reserves its ceiling against the daily
      cap. If the cap cannot cover it, the run fails closed as `cap_reached`. It
      then reconciles against the response `usage`. A lost response keeps its
-     reservation as `unknown`.
+     reservation as `unknown`, and so does a response whose usage exceeds the
+     run's token limits or whose cost exceeds its reservation (F-020 PROV-3):
+     the charge never exceeds the reservation and that answer is not posted.
    - A run stops before its next read, dispatch or commit when the owner pauses,
      disconnects or loses access, when the agent grant is revoked, or when the
      cap is reached. A stop before dispatch costs zero and releases the

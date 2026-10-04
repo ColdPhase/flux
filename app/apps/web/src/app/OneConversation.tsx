@@ -120,7 +120,7 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
     (target?.querySelector<HTMLElement>('.convo-replies button') ?? target)?.focus({ preventScroll: true });
   }, [thread]);
 
-  const audience = audienceLine(people, me.user.id);
+  const audience = audienceLine(people, me.user.id, project.visibility === 'workspace');
   const work = shell?.work ?? { work: [], decisions: [], results: [] };
   const stream = (
     <ConversationStream project={project} meId={me.user.id} roots={roots} notices={notices} work={work} author={author}

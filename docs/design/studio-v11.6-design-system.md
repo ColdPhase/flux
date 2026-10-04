@@ -157,6 +157,9 @@ There is no web font. The root is 14px/1.55 with no body tracking, and headings 
    - Board: three columns, cards with radius 8 and padding 16.
    - Cards show the ID, title at 14px weight 500, context, owner and agent state.
    - Drop feedback highlights only the card list (UI116-4).
+   - Placement (#194): blocked work stays in In progress, first in the column, labelled
+     "Blocked" with what it waits for; not pursued sits in Done; work a pivot parked
+     appears only in the List.
 7. **Wiki.**
    - Two panes: a 212px page index and the document.
    - The active page has a 4% text tint, a 3px dot and `aria-current`.
@@ -180,7 +183,9 @@ There is no web font. The root is 14px/1.55 with no body tracking, and headings 
     - Header padding is 18px 17px and the title is 18px.
     - Tabs scroll horizontally.
     - Avatars are hidden in the conversation.
-    - Board columns scroll-snap.
+    - The board shows a status overview with counts (blocked included) and one column at a
+      time instead of scroll-snapped columns (#194); after a keyboard or menu move the
+      visible column follows the card.
 
 ## Verification
 

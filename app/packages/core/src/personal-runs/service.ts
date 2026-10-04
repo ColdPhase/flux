@@ -21,10 +21,10 @@ import {
 import type { Principal } from '../principal.js';
 import { expectedVersion, id, isId, page } from '../work/validation.js';
 import type {
-  EnablementRecord, PersonalConnectionLookup, PersonalRunPorts, PersonalRunUnitOfWork, RunRecord,
+  EnablementRecord, PersonalConnection, PersonalConnectionLookup, PersonalRunPorts, PersonalRunUnitOfWork, RunRecord,
 } from './ports.js';
 import { announce, updateAndAnnounce } from './progress.js';
-import { centsToMicros, normalizeEnable, normalizeInvoke, normalizeUpdate, retryRequest, type NormalizedInvoke } from './validation.js';
+import { centsToMicros, normalizeEnable, normalizeInvoke, normalizeUpdate, retryRequest, runReservationMicros, type NormalizedInvoke } from './validation.js';
 
 // Personal assistant runs (issue #68, decision O-008): the owner's enablement, invoke, stop,
 // retry and the reads. Everything resolves the owner from the authenticated principal; a body
@@ -78,7 +78,7 @@ export async function answerView(ports: PersonalRunPorts, record: RunRecord): Pr
     assistant: { ownerUserId: record.ownerUserId, label: assistantLabel(name) },
     askedBy: { id: record.ownerUserId, name },
     request: { kind: record.kind, prompt: record.prompt }, body: record.answerBody, truncated: record.answerTruncated,
-    provenance: { provider: 'anthropic', model: record.model }, sources: record.answerSources.map((source) => ({ ...source })),
+    provenance: { provider: record.provider, model: record.model }, sources: record.answerSources.map((source) => ({ ...source })),
     proposalId: proposal?.id ?? null, committedAt: iso(record.committedAt),
   };
 }
@@ -97,13 +97,31 @@ export async function runView(ports: PersonalRunPorts, record: RunRecord): Promi
   };
 }
 
+/**
+ * The owner's usable connection and what one run on it reserves (F-020 PROV-3), or why it cannot
+ * be used now: no price means nothing can be reserved, and a model whose largest request costs more
+ * than the owner's per-run ceiling is never started. There is never another connection to fall back to.
+ */
+export async function usableConnection(connections: PersonalConnectionLookup, providerEnabled: boolean, enablement: EnablementRecord):
+  Promise<{ problem: PersonalAssistantUnavailableReason } | { problem: null; connection: PersonalConnection; reservedMicros: number }> {
+  if (!providerEnabled) return { problem: 'provider_off' };
+  // The connection the consent names, and no other (PROV-1): removing it stops the assistant.
+  const connection = enablement.connectionId ? await connections.resolve(enablement.ownerUserId, enablement.connectionId) : null;
+  if (!connection || connection.status !== 'active' || connection.ownerUserId !== enablement.ownerUserId || connection.id !== enablement.connectionId) {
+    // The consent was given for one connection. When it is gone but the owner has another, say so:
+    // that one needs its own consent, so the assistant is enabled again on it.
+    const other = await connections.resolve(enablement.ownerUserId);
+    return { problem: other && other.status === 'active' && other.ownerUserId === enablement.ownerUserId ? 'connection_changed' : 'no_connection' };
+  }
+  const reservedMicros = runReservationMicros(connection.price);
+  if (reservedMicros === null) return { problem: 'price_unknown' };
+  if (reservedMicros > centsToMicros(enablement.perRunCents)) return { problem: 'run_cost_over_limit' };
+  return { problem: null, connection, reservedMicros };
+}
+
 /** Why the owner's connection cannot be used now, or null when it can. */
 export async function connectionProblem(connections: PersonalConnectionLookup, providerEnabled: boolean, enablement: EnablementRecord): Promise<PersonalAssistantUnavailableReason | null> {
-  if (!providerEnabled) return 'provider_off';
-  const connection = await connections.resolve(enablement.ownerUserId);
-  if (!connection || connection.status !== 'active' || connection.ownerUserId !== enablement.ownerUserId) return 'no_connection';
-  // The consent was given for one connection; a replaced key needs a new consent.
-  return connection.id === enablement.connectionId ? null : 'connection_changed';
+  return (await usableConnection(connections, providerEnabled, enablement)).problem;
 }
 
 function unavailable(reason: PersonalAssistantUnavailableReason) {
@@ -136,15 +154,23 @@ export interface PersonalRunDeps {
 
 export function createPersonalRunUseCases({ uow, connections, providerEnabled }: PersonalRunDeps) {
   async function status(ports: PersonalRunPorts, owner: string): Promise<PersonalAssistantStatus> {
+    const named = await ports.runs.enablement(owner);
+    const connection = providerEnabled ? await connections.resolve(owner, named?.connectionId ?? undefined) : null;
+    const usable = connection && connection.status === 'active' && connection.ownerUserId === owner ? connection : null;
+    // The disclosure names the caller's own connection: its provider, model and price (F-020).
     const disclosure = {
-      consentVersion: PERSONAL_RUN_CONSENT_VERSION, provider: PERSONAL_RUN_LIMITS.provider, model: PERSONAL_RUN_LIMITS.model,
+      consentVersion: PERSONAL_RUN_CONSENT_VERSION, provider: usable?.provider ?? null, model: usable?.model ?? null,
+      price: usable?.price ? { ...usable.price } : null, maxRunMicros: usable ? runReservationMicros(usable.price) : null,
       maxInputTokens: PERSONAL_RUN_LIMITS.maxInputTokens, maxOutputTokens: PERSONAL_RUN_LIMITS.maxOutputTokens,
-      priceCheckedOn: PERSONAL_RUN_LIMITS.price.checkedOn, dataSent: 'project_place_excerpts',
+      dataSent: 'project_place_excerpts',
     } as const;
-    const connection = providerEnabled ? await connections.resolve(owner) : null;
+    // Whether the owner has any active connection: with `connection_changed` the consented one is
+    // gone but another exists, so setup must not also say that no key is connected.
+    const other = !usable && providerEnabled && named ? await connections.resolve(owner) : null;
+    const owns = Boolean(usable) || (other?.status === 'active' && other.ownerUserId === owner);
     const setup = {
       provider: providerEnabled ? 'on' as const : 'off' as const,
-      connection: connection && connection.status === 'active' && connection.ownerUserId === owner ? 'active' as const : 'none' as const,
+      connection: owns ? 'active' as const : 'none' as const,
     };
     const enablement = await ports.runs.enablement(owner);
     if (!enablement) return { state: 'not_enabled', unavailableReason: null, enablement: null, setup, today: null, disclosure };
@@ -152,9 +178,9 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled }:
     const today = { chargedMicros: spend.chargedMicros, reservedMicros: spend.reservedMicros, capCents: enablement.dailyCapCents, resetsAt: iso(spend.resetsAt) };
     const view = enablementView(enablement);
     if (enablement.status === 'paused') return { state: 'paused', unavailableReason: null, enablement: view, setup, today, disclosure };
-    const problem = await connectionProblem(connections, providerEnabled, enablement);
-    if (problem) return { state: 'unavailable', unavailableReason: problem, enablement: view, setup, today, disclosure };
-    const capped = spend.chargedMicros + spend.reservedMicros + centsToMicros(enablement.perRunCents) > centsToMicros(enablement.dailyCapCents);
+    const usableNow = await usableConnection(connections, providerEnabled, enablement);
+    if (usableNow.problem) return { state: 'unavailable', unavailableReason: usableNow.problem, enablement: view, setup, today, disclosure };
+    const capped = spend.chargedMicros + spend.reservedMicros + usableNow.reservedMicros > centsToMicros(enablement.dailyCapCents);
     return { state: capped ? 'capped' : 'ready', unavailableReason: null, enablement: view, setup, today, disclosure };
   }
 
@@ -198,8 +224,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled }:
     if (request.target && !(await ports.access.canReadSketch(principal, request.target.sketchId))) throw new NotFoundError('Thought', 'THOUGHT_NOT_FOUND');
     if (!enablement) throw new ConflictError('Your assistant is not enabled', 'PERSONAL_RUN_NOT_ENABLED');
     if (enablement.status === 'paused') throw new ConflictError('Your assistant is paused', 'PERSONAL_RUN_PAUSED');
-    const problem = await connectionProblem(connections, providerEnabled, enablement);
-    if (problem) throw unavailable(problem);
+    const usableNow = await usableConnection(connections, providerEnabled, enablement);
+    if (usableNow.problem) throw unavailable(usableNow.problem);
     const agentId = enablement.agents.find((agent) => agent.workspaceId === place.workspaceId)?.agentId;
     if (!agentId || !(await ports.access.canInvoke(principal, agentId, { lock: true })))
       throw new ConflictError('Choose your assistant for this workspace first', 'PERSONAL_RUN_NO_AGENT');
@@ -210,14 +236,15 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled }:
     for (const ended of await ports.runs.endStale(owner, STALE_AFTER_SECONDS)) await announce(ports, ended);
     if (await ports.runs.hasRunInFlight(owner)) throw new ConflictError('Your assistant is already working on a request', 'PERSONAL_RUN_IN_FLIGHT');
     const spend = await ports.runs.spendToday(owner, enablement.timeZone);
-    const reservedMicros = centsToMicros(enablement.perRunCents);
+    // PROV-3: the run reserves its largest possible cost at the connection's price.
+    const { reservedMicros, connection } = usableNow;
     if (spend.chargedMicros + spend.reservedMicros + reservedMicros > centsToMicros(enablement.dailyCapCents)) throw new PersonalRunCappedError();
     const run = await ports.runs.insertRun({
       id: randomUUID(), workspaceId: place.workspaceId, projectId: place.projectId, conversationId: conversationId.toLowerCase(),
       ownerUserId: owner, agentId, connectionId: enablement.connectionId, clientRunId: request.clientRunId,
       requestFingerprint: request.fingerprint, kind: request.kind, prompt: request.prompt,
       targetSketchId: request.target?.sketchId ?? null, targetThoughtId: request.target?.thoughtId ?? null,
-      continuesRunId: request.continuesRunId, retryOfRunId, reservedMicros, model: PERSONAL_RUN_LIMITS.model,
+      continuesRunId: request.continuesRunId, retryOfRunId, reservedMicros, provider: connection.provider, model: connection.model,
     });
     await ports.queue.enqueue(run.id);
     // Only the owner learns that the run exists (O-008 §4 "Progress").
@@ -243,12 +270,19 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled }:
       return uow.run(async (ports) => {
         const { workspaceId } = await ports.access.requireInvoke(principal, input.agentId, { lock: true });
         if (await ports.runs.enablement(owner, { lock: true })) throw new ConflictError('Your assistant is already enabled', 'PERSONAL_RUN_ALREADY_ENABLED');
-        const connection = await connections.resolve(owner);
+        // The owner chooses which of their connections the assistant uses; without a choice, their newest.
+        const connection = await connections.resolve(owner, input.connectionId ?? undefined);
         if (!connection || connection.status !== 'active' || connection.ownerUserId !== owner)
           throw new ConflictError('Connect your own AI key before enabling your assistant', 'PERSONAL_RUN_CONNECTION_REQUIRED');
+        // PROV-3: a connection without a known price cannot be enabled; a model whose largest
+        // request exceeds the chosen per-run ceiling would never run.
+        const reservation = runReservationMicros(connection.price);
+        if (reservation === null) throw new ConflictError('Your AI connection has no known price', 'PERSONAL_RUN_PRICE_UNKNOWN');
+        if (reservation > centsToMicros(input.perRunCents))
+          throw new ConflictError('One request to this model can cost more than your per-request limit', 'PERSONAL_RUN_COST_OVER_LIMIT');
         const created = await ports.runs.insertEnablement({
           ownerUserId: owner, connectionId: connection.id, consentVersion: PERSONAL_RUN_CONSENT_VERSION,
-          consentProvider: 'anthropic', consentModel: PERSONAL_RUN_LIMITS.model,
+          consentProvider: connection.provider, consentModel: connection.model,
           consentPayerOrganization: connection.payer.organization, consentPayerWorkspace: connection.payer.workspace,
           perRunCents: input.perRunCents, dailyCapCents: input.dailyCapCents, timeZone: input.timeZone,
         });
