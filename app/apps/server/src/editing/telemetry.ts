@@ -103,7 +103,7 @@ export class EditingQueueTelemetry {
     if(this.transportFailed||this.output.destroyed||this.output.writableEnded||!this.output.writable||this.output.writableNeedDrain||this.output.writableLength>0||this.output.writableHighWaterMark<=LINE+EDITING_QUEUE_PREFIX.length) {
       this.attempted++;this.dropped++;this.backpressured ||=this.output.writableNeedDrain;this.finished=true;this.output.off('error',this.transportError);return false;
     }
-    let settle=(_success:boolean)=>{};const completion=new Promise<boolean>(resolve=>{settle=resolve;});
+    let settle:(success:boolean)=>void=()=>{};const completion=new Promise<boolean>(resolve=>{settle=resolve;});
     const accepted=this.append('final',null,drained,settle);this.finished=true;
     if(!accepted){this.output.off('error',this.transportError);return false;}
     const flushed=await Promise.race([completion,delay(Math.max(0,deadline-Date.now())).then(()=>false)]);
