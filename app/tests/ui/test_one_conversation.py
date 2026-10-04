@@ -364,6 +364,28 @@ class OneConversationJourney(unittest.TestCase):
         page.reload()
         expect(page.get_by_label("Write a message", exact=True)).to_have_value("")
 
+    def test_05b_an_assistant_prompt_in_the_stream_composer_is_never_posted(self) -> None:
+        # UI116-3: a private helper prompt does not become a public root.
+        page = self.page("ada")
+        page.goto(self.project_url())
+        before = len(self.all_roots(page))
+        composer = page.get_by_label("Write a message", exact=True)
+        composer.fill("/ai summarize the plan")
+        hint = page.get_by_role("status").filter(has_text="Your assistant answers inside a conversation")
+        expect(hint).to_be_visible()
+        expect(composer).to_have_attribute("aria-describedby", re.compile("ai-hint"))
+        expect(page.get_by_role("button", name="Send message")).to_have_attribute("aria-disabled", "true")
+        composer.press("Enter")
+        page.get_by_role("button", name="Send message").click(force=True)
+        expect(composer).to_have_value("/ai summarize the plan")
+        page.wait_for_timeout(500)
+        self.assertEqual(len(self.all_roots(page)), before, "no root is created from an assistant prompt")
+        # The text stays a private draft; another member sees no new root.
+        other = self.page("jonas")
+        self.assertFalse(any(root["message"]["body"].startswith("/ai") for root in self.all_roots(other)))
+        composer.fill("")
+        expect(hint).to_have_count(0)
+
     def test_06_a_reader_reads_the_stream_and_threads_without_a_composer(self) -> None:
         page = self.page("lee")
         page.goto(self.project_url())
