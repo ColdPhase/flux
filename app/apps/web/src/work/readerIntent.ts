@@ -1,6 +1,6 @@
 /**
  * Genuine reader input on a scroll container (#155): wheel, touch, scroll keys outside
- * editable fields, a pointer pressed in the container, or focus moved into it. Layout (late
+ * editable fields, a pointer moved or pressed in the container, or focus moved into it. Layout (late
  * previews, scroll anchoring, a resized composer) and the app's own scroll writes are not
  * input, so they must never be mistaken for the reader moving the view.
  *
@@ -29,6 +29,9 @@ function attach(element: HTMLElement): Tracker {
   element.addEventListener('touchstart', input, { passive: true });
   element.addEventListener('touchmove', input, { passive: true });
   element.addEventListener('pointerdown', input, { passive: true });
+  // A pointer moving over the feed is the reader aiming at something; a parked pointer sends
+  // nothing, and the app's own scrolls never do. Content must not be moved out from under it.
+  element.addEventListener('pointermove', input, { passive: true });
   element.addEventListener('keydown', key);
   element.addEventListener('focusin', focus);
   return tracker;

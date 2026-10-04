@@ -91,7 +91,9 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
     // The reader moved the view: input within READER_INPUT_MS, or input since the position was
     // last recorded (its scroll event may still be on its way).
     const byReader = () => readerActive(pane) || lastReaderInput(pane) > lastSeenAt.current;
-    const release = watchReaderInput(pane, () => { readerMoved.current = true; });
+    // Input away from the end means the reader is with earlier messages: stop following the end,
+    // so growth below does not pull what they are reading or pointing at out from under them.
+    const release = watchReaderInput(pane, () => { readerMoved.current = true; if (!atEnd()) following.current = false; });
     // Scroll events arrive with the next rendered frame. A reader's scroll that has happened but
     // whose event has not arrived yet (input, then scrollIntoView or focus) is still the
     // reader's position: record it instead of restoring an anchor saved before it. The same
