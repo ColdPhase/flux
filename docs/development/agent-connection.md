@@ -294,17 +294,18 @@ before agent decomposition counts as delivered.
 ## Built-in co-work playbook (#160)
 
 The server ships one versioned instruction bundle, `COWORK_PLAYBOOK`
-(`flux.cowork` 1.0.0, in `app/packages/core/src/agent-connection/playbook.ts`). It
+(`flux.cowork` 1.1.0, in `app/packages/core/src/agent-connection/playbook.ts`). It
 has a core part and five role modules: start/resume, orient/plan,
 execute/checkpoint, request/review/fix and block/transfer/stop. Each module
 declares the MCP tools and server providers it needs. The bundle names only tools
 the MCP server registers, and a test pins this. Where a provider does not exist
-yet (coordination, approved policy, verified repository context), the text tells
-the agent to treat that step as unavailable rather than simulate it.
+yet (coordination, verified repository context), the text tells the agent to treat
+that step as unavailable rather than simulate it. Since 1.1.0 the orient/plan module
+tells the agent to read the approved project policy (below) before planning.
 
 Every authenticated MCP connection delivers it in three ways:
 
-- **Resource:** `flux://playbook/flux.cowork/1.0.0` (Markdown) returns the
+- **Resource:** `flux://playbook/flux.cowork/1.1.0` (Markdown) returns the
   rendered bundle with its digest.
 - **Prompts:** `start_work` and `resume_work` are the host-invoked Start and
   Resume actions. Claude Code, for example, lists MCP prompts as slash commands.
@@ -341,11 +342,33 @@ digest })`. The record belongs to that client session's server-issued runtime
 
 The record grants nothing. It is the client's statement, not an observation by the
 server, and `modelObedience` stays `unverified`. `readiness` stays `pending` while
-the policy, coordination and repository providers are missing. Still required:
+the coordination and repository providers are missing. Still required:
 
-- approved project policy;
 - #153 coordination;
 - tested Codex and Claude activation with pinned versions.
+
+## Approved project policy (#160, CW-1)
+
+A project manager publishes the policy that connected agents work under: four bounded plain-text
+fields (scope, priorities, review criteria, allowed work; each at most 4,000 characters, at least
+one non-empty). It narrows what an agent takes on inside its owner's grants and never grants
+anything; only this publish writes it, never message, PR, wiki or tool text.
+
+- `GET /api/v1/projects/:projectId/agent-policy` returns `{ policy }` (null before the first
+  publish) to anyone who can read the project.
+- `PUT …/agent-policy` `{ scope, priorities, reviewCriteria, allowedWork, expectedRevision }`
+  publishes the next revision from the one the manager saw (`0` for none): `project.manage`, a
+  person only (`POLICY_NEEDS_PERSON`), `409 VERSION_CONFLICT` with `currentVersion` on a stale
+  revision, `Idempotency-Key` accepted. Every revision is kept unchanged (migration 0044,
+  `agent_project_policies`), and `project.agent_policy_published.v1` carries only the revision.
+- Bootstrap's `trusted.approvedPolicy` names the newest revision with its `sha256:` digest and
+  `retrievalReference` `flux://policy/<projectId>/<revision>`, and drops
+  `approved_policy_unavailable` from `gaps`. That MCP resource returns any stored revision as
+  Markdown through the connection's current project read access, so a resumed agent can compare.
+  A connection reads only projects it selected and can still read; it lists no policies.
+- The narrowing is guidance the agent follows, not a server rule: every command is still decided by
+  the owner's grants and current project access alone, whatever the policy says. Policy text is
+  counted in characters (code points); the publisher's name in the resource is quoted as data.
 
 ## Verification boundary
 
