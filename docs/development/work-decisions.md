@@ -84,7 +84,7 @@ project readers and the client refetches. Idempotent replays and failed changes 
 - `app/apps/server/src/work/`: adapters (`evaluateProject`/`authorize`/`visibleFilter`, `recordEvent`)
   and routes. No architecture allowlist entries were added.
 - `app/apps/web/src/work/`: loads every page of work, decisions and results (100 per request until `total`), so the state line, Tasks and inline objects are complete; the Tasks tab (`/projects/:id/tasks`), the state line, message actions
-  (Create work, Propose decision, Attach result), inline objects under their source message and
+  (Task, Decision, Result, plus Details; #189), inline objects under their source message and
   the Details panel views and forms.
 
 ## Not yet
