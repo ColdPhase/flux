@@ -12,7 +12,7 @@ test('actual pre-notice human rows and search provenance survive notice and agen
   url.pathname = `/${name}`;
   let history: ReturnType<typeof createDatabase>['pool'] | undefined;
   try {
-    const createFixture = { text: `CREATE DATABASE "${name}"`, query_timeout: 10_000 };
+    const createFixture = { text: `CREATE DATABASE "${name}"`, query_timeout: 60_000 };
     await admin.query(createFixture);
     history = createDatabase(url.toString()).pool;
     const dir = 'packages/db/migrations';
@@ -63,9 +63,10 @@ test('actual pre-notice human rows and search provenance survive notice and agen
     assert.deepEqual(await snapshot(), before);
   } finally {
     await history?.end();
-    // Database administration/fsync can outlast the API's2s read deadline.
-    // All history/migration assertions retain the ordinary runtime pool deadlines.
-    const cleanup = { text: `DROP DATABASE IF EXISTS "${name}"`, query_timeout: 10_000 };
+    // Database administration/fsync can outlast the API's 2 s read deadline, and on a busy host even
+    // 10 s (twice observed, 2026-10-03); the assertions above keep the ordinary runtime deadlines.
+    // FORCE ends a lingering session instead of waiting for it, as in contribution-effects-migration.
+    const cleanup = { text: `DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`, query_timeout: 60_000 };
     await admin.query(cleanup).finally(() => admin.end());
   }
 });
