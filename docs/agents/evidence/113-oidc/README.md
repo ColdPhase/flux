@@ -7,7 +7,7 @@ macOS). Owner: Zamojski5. These are the author's raw logs for the independent re
 approval. [Binding amendment](https://github.com/ColdPhase/flux/issues/113#issuecomment-5975870796),
 [operations guide](../../../operations/single-sign-on.md).
 
-The only commit after the tested one adds this folder (documentation, no code).
+The only commits after the tested one add this folder (documentation, no code).
 
 ## Executed checks
 
@@ -18,9 +18,12 @@ The only commit after the tested one adds this folder (documentation, no code).
 | `python3 scripts/check_agent_setup.py`, `python3 -m unittest discover -s tests -p 'test_*.py'`, `git diff --check origin/main...HEAD` | exit 0; 67/67 standard-library tests. | [foundation.log](foundation.log) |
 | `docker ps -a`, `docker volume ls`, `docker network ls`, `docker images` filtered on both run projects (named in the logs: oidc run 1791114824-93108, test run 1791114985-94045) | nothing left. Each script also prints its own `down -v` and "Removed N per-run image(s)". | [cleanup.log](cleanup.log) |
 
-`targeted.sh` is the reviewer helper that runs the named files in the Compose `test` container
-against the full test stack (the same setup as `scripts/check_application.sh`, without the other
-suites). Both runs used their own Compose project, volumes and loopback ports.
+`targeted.sh` is a local reviewer helper, not in the repository. It sets the same environment as
+`scripts/check_application.sh` (per-run secrets, VAPID keys, `FLUX_TEST_FAILURE_INJECTION=true`,
+`FLUX_AUTH_RATE_LIMIT=false`, `FLUX_STREAM_HEARTBEAT_MS=1000`), builds and starts the
+`docker/compose.source.yaml` + `docker/compose.test.yaml` `--profile test` stack, runs
+`files-init`, then `run --rm test node_modules/.bin/tsx --test --test-concurrency=1` with the
+seven files above, and finally `down -v` and removes the run's images. Both runs used their own Compose project, volumes and loopback ports.
 
 Pinned images: Keycloak `quay.io/keycloak/keycloak:26.7.5@sha256:37dbaf6f0722c9ec246335f36e1ef8b2e6cb960f7c27e0d8c615121a3d475a85`, Mailpit
 `axllent/mailpit:v1.31.2@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d`, Playwright
