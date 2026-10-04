@@ -139,7 +139,8 @@ test('mail goes to the chosen mailboxes of a single sign-on person', async () =>
   state.workspace = (await api<{ id: string }>(aliceContext, 'POST', '/api/v1/workspaces', { name: 'Acme lab' })).id;
   bobContext = await fresh();
   await sso(bobContext, 'bob');
-  await api(aliceContext, 'POST', `/api/v1/workspaces/${state.workspace}/members`, { email: 'bob@acme.test', role: 'member' });
+  // Bob creates the projects that mention Alice; only workspace admins create projects.
+  await api(aliceContext, 'POST', `/api/v1/workspaces/${state.workspace}/members`, { email: 'bob@acme.test', role: 'admin' });
   state.extra = `alice.private-${randomUUID()}@gmail.test`;
   await verifyExtra(aliceContext, state.extra);
   await api(aliceContext, 'PATCH', '/api/v1/notification-preferences', { emailDestination: 'both' });
