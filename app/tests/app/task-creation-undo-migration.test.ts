@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { Pool } from 'pg';
 import { assertExactMigrationLedger, createDatabase, readAppliedMigrationVersions, readTaskCreationReversalManifest, reverseUnusedTaskCreation } from '@flux/db';
 
 const directory = 'packages/db/migrations';
@@ -15,10 +14,9 @@ test('actual sparse0048 upgrade preserves old history; atomic reversal and guard
   assert.equal(manifest.prior.at(-1)?.version, 47); assert.ok(manifest.prior.some(file => file.version === 46));
   assert.ok(!manifest.prior.some(file => file.version === 42), 'reserved gap is preserved rather than invented');
   const name = `flux_undo_history_${randomUUID().replaceAll('-', '')}`;
-  // The public pg PoolConfig owns the administrative deadline; QueryConfig's
-  // declared shape does not contain query_timeout. Feature clients keep their
-  // production two-second timeout through createDatabase.
-  const admin = new Pool({ connectionString: process.env.DATABASE_URL!, connectionTimeoutMillis: 1500, query_timeout: 60_000, max: 1 });
+  // Use the admitted workspace DB dependency. Its public factory gives both
+  // administrative and feature queries the production two-second deadline.
+  const admin = createDatabase(process.env.DATABASE_URL!).pool;
   const url = new URL(process.env.DATABASE_URL!); url.pathname = `/${name}`;
   let history: ReturnType<typeof createDatabase>['pool'] | undefined;
   const [user, workspace, project, work, notice, agent, connection, grant] = Array.from({ length: 8 }, () => randomUUID());

@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { Pool } from 'pg';
 import { assertExactMigrationLedger, createDatabase, readAppliedMigrationVersions, readTaskCreationReversalManifest, reverseUnusedTaskCreation } from '@flux/db';
 const directory='packages/db/migrations';
 async function replacement(pool: ReturnType<typeof createDatabase>['pool'], old: number) {
@@ -36,7 +35,7 @@ test('actual pg advisory query_timeout preserves the original rejection and dest
 
 test('actual pg COMMIT response timeout reports unknown reversal with original cause; replacement inspects the committed exact prior ledger', {timeout:120_000},async()=>{
   const manifest=await readTaskCreationReversalManifest(directory);const name=`flux_undo_control_${randomUUID().replaceAll('-','')}`;
-  const admin=new Pool({connectionString:process.env.DATABASE_URL!,connectionTimeoutMillis:1500,query_timeout:60000,max:1});
+  const admin=createDatabase(process.env.DATABASE_URL!).pool;
   const url=new URL(process.env.DATABASE_URL!);url.pathname=`/${name}`;let history:ReturnType<typeof createDatabase>['pool']|undefined;
   let original:unknown;let backend=0;
   try {

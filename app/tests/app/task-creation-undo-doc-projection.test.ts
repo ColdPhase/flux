@@ -28,11 +28,11 @@ async function ownership() {
 // Bulk SQL creates historical projection data only, not production writer proof.
 test('unchanged native doc update counts all incoming and outgoing links before allocation and refuses without any document/use change', { timeout: 60_000 }, async () => {
   const { f, owner, doc } = await scene();
-  await pool.query(`INSERT INTO project_work_items(workspace_id,project_id,title,created_by_kind,created_by_id)
-    SELECT $1,$2,'Counted historical row '||n,'human',$3 FROM generate_series(1,5000) n`, [f.workspaceId, f.projectId, owner]);
-  await pool.query(`INSERT INTO project_object_links(workspace_id,project_id,role,from_type,from_id,to_type,to_id,created_by_kind,created_by_id)
-    SELECT $1,$2,'related','work',id,'doc',$3,'human',$4 FROM project_work_items WHERE project_id=$2
-    UNION ALL SELECT $1,$2,'related','doc',$3,'work',id,'human',$4 FROM project_work_items WHERE project_id=$2`, [f.workspaceId, f.projectId, doc.id, owner]);
+  await pool.query(`INSERT INTO project_work_items(id,workspace_id,project_id,title,created_by_kind,created_by_id)
+    SELECT gen_random_uuid(),$1::uuid,$2::uuid,'Counted historical row '||n,'human',$3::text FROM generate_series(1,5000) n`, [f.workspaceId, f.projectId, owner]);
+  await pool.query(`INSERT INTO project_object_links(id,workspace_id,project_id,role,from_type,from_id,to_type,to_id,created_by_kind,created_by_id)
+    SELECT gen_random_uuid(),$1::uuid,$2::uuid,'related','work',id,'doc',$3::uuid,'human',$4::text FROM project_work_items WHERE project_id=$2
+    UNION ALL SELECT gen_random_uuid(),$1::uuid,$2::uuid,'related','doc',$3::uuid,'work',id,'human',$4::text FROM project_work_items WHERE project_id=$2`, [f.workspaceId, f.projectId, doc.id, owner]);
   const state = async () => ({ material: (await pool.query('SELECT * FROM project_materials WHERE id=$1', [doc.id])).rows,
     versions: (await pool.query('SELECT * FROM project_material_versions WHERE material_id=$1 ORDER BY version', [doc.id])).rows,
     used: (await pool.query('SELECT count(*)::int AS n FROM project_work_items WHERE project_id=$1 AND first_persisted_use_at IS NOT NULL', [f.projectId])).rows });
@@ -61,8 +61,8 @@ test('actual unchanged REST doc update returns complete incoming/outgoing links 
   const { f, owner, doc } = await scene(); const workId = randomUUID();
   await pool.query(`INSERT INTO project_work_items(id,workspace_id,project_id,title,created_by_kind,created_by_id)
     VALUES($1,$2,$3,'Visible historical title','human',$4)`, [workId, f.workspaceId, f.projectId, owner]);
-  const inserted = await pool.query(`INSERT INTO project_object_links(workspace_id,project_id,role,from_type,from_id,to_type,to_id,created_by_kind,created_by_id)
-    VALUES($1,$2,'related','work',$3,'doc',$4,'human',$5),($1,$2,'related','doc',$4,'work',$3,'human',$5) RETURNING id`, [f.workspaceId, f.projectId, workId, doc.id, owner]);
+  const inserted = await pool.query(`INSERT INTO project_object_links(id,workspace_id,project_id,role,from_type,from_id,to_type,to_id,created_by_kind,created_by_id)
+    VALUES(gen_random_uuid(),$1,$2,'related','work',$3,'doc',$4,'human',$5),(gen_random_uuid(),$1,$2,'related','doc',$4,'work',$3,'human',$5) RETURNING id`, [f.workspaceId, f.projectId, workId, doc.id, owner]);
   const response = expect(await f.owner.request('PATCH', `/api/v1/docs/${doc.id}`, { headers: { 'idempotency-key': randomUUID() },
     body: { expectedVersion: 1, body: doc.body } }), 200) as unknown as Doc;
   assert.equal(response.version, 1); assert.deepEqual(response.links.map(link => link.id).sort(), inserted.rows.map(row => String(row.id)).sort());
@@ -83,8 +83,8 @@ test('concurrent incoming-link growth is refused inside the complete projection 
       if (text.includes('work_projection') && text.includes('project_object_links')) {
         if (!text.includes('work_projection_size') && !grown) {
           grown = true;
-          await pool.query(`INSERT INTO project_object_links(workspace_id,project_id,role,from_type,from_id,to_type,to_id,created_by_kind,created_by_id)
-            VALUES($1,$2,'related','work',$3,'doc',$4,'human',$5)`, [f.workspaceId, f.projectId, workId, doc.id, owner]);
+          await pool.query(`INSERT INTO project_object_links(id,workspace_id,project_id,role,from_type,from_id,to_type,to_id,created_by_kind,created_by_id)
+            VALUES(gen_random_uuid(),$1,$2,'related','work',$3,'doc',$4,'human',$5)`, [f.workspaceId, f.projectId, workId, doc.id, owner]);
         } else if (text.includes('work_projection_size')) returned = result.rows;
       }
       return result;
@@ -158,10 +158,10 @@ test('a legally padded historical title repeated on1000 incoming links is charge
     SELECT material_id,workspace_id,project_id,2,$2,body,author_id,author_agent_id,reason,state
     FROM project_material_versions WHERE material_id=$1 AND version=1`, [doc.id, padded]);
   await pool.query('UPDATE project_materials SET current_version=2 WHERE id=$1', [doc.id]);
-  await pool.query(`INSERT INTO project_work_items(workspace_id,project_id,title,created_by_kind,created_by_id)
-    SELECT $1,$2,'Multiplicity fixture '||n,'human',$3 FROM generate_series(1,1000) n`, [f.workspaceId, f.projectId, owner]);
-  await pool.query(`INSERT INTO project_object_links(workspace_id,project_id,role,from_type,from_id,to_type,to_id,created_by_kind,created_by_id)
-    SELECT $1,$2,'related','work',id,'doc',$3,'human',$4 FROM project_work_items WHERE project_id=$2 AND title LIKE 'Multiplicity fixture %'`,
+  await pool.query(`INSERT INTO project_work_items(id,workspace_id,project_id,title,created_by_kind,created_by_id)
+    SELECT gen_random_uuid(),$1::uuid,$2::uuid,'Multiplicity fixture '||n,'human',$3::text FROM generate_series(1,1000) n`, [f.workspaceId, f.projectId, owner]);
+  await pool.query(`INSERT INTO project_object_links(id,workspace_id,project_id,role,from_type,from_id,to_type,to_id,created_by_kind,created_by_id)
+    SELECT gen_random_uuid(),$1::uuid,$2::uuid,'related','work',id,'doc',$3::uuid,'human',$4::text FROM project_work_items WHERE project_id=$2 AND title LIKE 'Multiplicity fixture %'`,
   [f.workspaceId, f.projectId, doc.id, owner]);
   const state = async () => ({ material: (await pool.query('SELECT * FROM project_materials WHERE id=$1', [doc.id])).rows,
     versions: (await pool.query('SELECT * FROM project_material_versions WHERE material_id=$1 ORDER BY version', [doc.id])).rows,

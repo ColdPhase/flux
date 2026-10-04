@@ -21,10 +21,10 @@ import { expect, toolValue } from './support/mcp.js';
 test('native snapshot Save counts full canonical fan-out before UUID loading; capacity refusal leaves every document row/version/latch unchanged', {timeout:60_000},async()=>{
   const f=await actionScene(pool);const owner=String((await pool.query('SELECT owner_user_id FROM agents WHERE id=$1',[f.agentId])).rows[0].owner_user_id);
   const result=expect(await f.owner.request('POST',`/api/v1/projects/${f.projectId}/results`,{body:{title:'Large canonical association fixture',finding:'positive'}}),201);
-  await pool.query(`INSERT INTO project_work_items(workspace_id,project_id,title,created_by_kind,created_by_id)
-    SELECT $1,$2,'Historical fan-out '||n,'human',$3 FROM generate_series(1,10000) n`,[f.workspaceId,f.projectId,owner]);
-  await pool.query(`INSERT INTO project_object_links(workspace_id,project_id,role,from_type,from_id,to_type,to_id,created_by_kind,created_by_id)
-    SELECT $1,$2,'about','result',$3,'work',id,'human',$4 FROM project_work_items WHERE project_id=$2 AND title LIKE 'Historical fan-out %'`,[f.workspaceId,f.projectId,result.id,owner]);
+  await pool.query(`INSERT INTO project_work_items(id,workspace_id,project_id,title,created_by_kind,created_by_id)
+    SELECT gen_random_uuid(),$1::uuid,$2::uuid,'Historical fan-out '||n,'human',$3::text FROM generate_series(1,10000) n`,[f.workspaceId,f.projectId,owner]);
+  await pool.query(`INSERT INTO project_object_links(id,workspace_id,project_id,role,from_type,from_id,to_type,to_id,created_by_kind,created_by_id)
+    SELECT gen_random_uuid(),$1::uuid,$2::uuid,'about','result',$3::uuid,'work',id,'human',$4::text FROM project_work_items WHERE project_id=$2 AND title LIKE 'Historical fan-out %'`,[f.workspaceId,f.projectId,result.id,owner]);
   const doc=expect(await f.owner.request('POST',`/api/v1/projects/${f.projectId}/docs`,{body:{title:'Counted Save owner',body:'Saved.'}}),201) as unknown as Doc;
   const body=`Shared [result](flux:result/${result.id})`;const generation=randomUUID();const hash=createHash('sha256').update(body).digest('hex');
   await pool.query(`INSERT INTO doc_live_heads(doc_id,workspace_id,project_id,generation,sequence,body,hash,saved_version,saved_sequence,codec_state)
