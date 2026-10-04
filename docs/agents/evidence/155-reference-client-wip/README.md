@@ -143,10 +143,12 @@ Main was checked out detached at `d94f70e4` (the merged main) and run with the s
 
 ## Open
 
-- Failing before this work too (also at `35910762`): `test_project_surface.test_02` (a message is
-  clipped at the top of the opening screen) and `test_work_details.test_08` (looks for a project
-  link under the sidebar's "Places" navigation, which holds Home/Inbox only).
-  `test_project_surface.test_05` is intermittent (the message row intercepts the click on
-  "Details of this message"; it failed at `35910762` and `642738dc`, passed at `379ce0c6`).
-- Not run: full `check_application.sh`/`check_ui.sh`, original #155 motion/typing acceptance,
-  performance budgets (the board makes four bounded reads), devices.
+- Branch-only UI failures (main passes the same test bodies): `test_project_surface.test_02`
+  (every run since ≤`35910762`), intermittent `test_project_surface.test_05`/`test_07` and
+  `test_work_decisions.test_04`/`test_06` (hover toolbar of a message row not clickable). See the
+  `e359bd47` failure notes for the unverified opening-settle hypothesis.
+- `test_work_details.test_08` (branch-only test) still expects a project link under the sidebar's
+  "Places" navigation, which main's #184 sidebar no longer has.
+- Lint warning in `WorkReadContext.tsx:12` (unnecessary memo dependencies).
+- Not run: original #155 motion/typing acceptance, performance budgets (the board makes four
+  bounded reads), devices.
