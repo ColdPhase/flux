@@ -48,8 +48,8 @@ test('real committed wiki intent with a lost COMMIT response reconciles its immu
     assert.equal(returned,false,'Lost COMMIT response cannot manufacture an ACK');assert.equal(realLostCommits,1);assert.equal(releases.at(-1),true,'The ambiguous response discards that pooled backend');
     const persisted=(await pool.query('SELECT receipt FROM live_editing_intents WHERE actor_id=$1 AND command_id=$2',[owner.id,envelope.uuid])).rows[0]?.receipt as LiveReceipt|undefined;
     assert.ok(persisted);assert.equal(persisted.sequence,1);assert.equal(persisted.changed,true);
-    const durable=(await pool.query('SELECT sequence,body FROM doc_live_heads WHERE doc_id=$1',[doc.id])).rows[0];
-    assert.equal(Number(durable.sequence),1);assert.equal(durable.body,local.getText('body').toString());
+    const durable=(await pool.query('SELECT sequence,body,hash FROM doc_live_heads WHERE doc_id=$1',[doc.id])).rows[0];
+    assert.equal(Number(durable.sequence),1);assert.equal(durable.body,local.getText('body').toString());assert.equal(durable.hash,persisted.hash);
     assert.equal((expectStatus(await owner.browser.request('GET',`/api/v1/docs/${doc.id}`),200) as Doc).body,doc.body,'Confirmed live characters do not rewrite saved material');
     await authority.close();reconstructed=wikiAuthority({pool:database.pool});
     assert.deepEqual(await reconstructed.receipt(who,doc.id,envelope.uuid),persisted,'Reconciliation reads the durable original receipt under current authority');
@@ -61,7 +61,9 @@ test('real committed wiki intent with a lost COMMIT response reconciles its immu
     assert.equal(Number((await pool.query('SELECT count(*)::int n FROM events WHERE workspace_id=$1',[ws.id])).rows[0].n),events,'Character/reconciliation work produces no project notifications or AI trigger events');
     local.getText('body').insert(local.getText('body').length,'Changed sealed intent');const different=Y.encodeStateAsUpdate(local);
     await assert.rejects(reconstructed.submit(who,doc.id,envelope,different,reconstructed.reserve(different)),error=>error instanceof Error&&'code' in error&&error.code==='EDITING_IDEMPOTENCY_CONFLICT');
-    assert.equal((await reconstructed.bootstrap(who,doc.id)).sequence,1);assert.deepEqual(await reconstructed.receipt(who,doc.id,envelope.uuid),persisted);
+    const afterRefusal=await reconstructed.bootstrap(who,doc.id);
+    assert.equal(afterRefusal.sequence,Number(durable.sequence));assert.equal(afterRefusal.body,durable.body);assert.equal(afterRefusal.hash,durable.hash,'Changed UUID payload cannot poison the acknowledged confirmed head');
+    assert.deepEqual(await reconstructed.receipt(who,doc.id,envelope.uuid),persisted);
     await pool.query('DELETE FROM auth_sessions WHERE id=$1',[who.sessionId]);
     await assert.rejects(reconstructed.receipt(who,doc.id,envelope.uuid),error=>error instanceof Error&&'code' in error&&error.code==='UNAUTHENTICATED');
   } finally {local.destroy();await authority.close();await reconstructed?.close();await database.pool.end();}

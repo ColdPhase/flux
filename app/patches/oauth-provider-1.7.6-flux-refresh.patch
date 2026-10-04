@@ -1,7 +1,20 @@
 diff --git a/dist/introspect-CbYi2MJT.mjs b/dist/introspect-CbYi2MJT.mjs
 --- a/dist/introspect-CbYi2MJT.mjs
 +++ b/dist/introspect-CbYi2MJT.mjs
-@@ -1495,7 +1495,13 @@
+@@ -804,0 +805,9 @@
++// Flux #228: Drizzle wraps the PostgreSQL error in a public Error.cause.
++// Only this precise competing seed insert is an initialization no-op.
++function isConcurrentResourceIdentifierInsert(error) {
++	for (let depth = 0; depth < 4 && error && typeof error === "object"; depth++) {
++		if (error.code === "23505" && error.constraint === "oauth_resource_identifier_unique") return true;
++		error = error.cause;
++	}
++	return false;
++}
+@@ -848 +857 @@
+-				if (/unique|duplicate|UNIQUE/i.test(message)) {
++				if (isConcurrentResourceIdentifierInsert(err) || /unique|duplicate|UNIQUE/i.test(message)) {
+@@ -1495,7 +1504,13 @@
  *
  * @internal
  */
@@ -16,7 +29,7 @@ diff --git a/dist/introspect-CbYi2MJT.mjs b/dist/introspect-CbYi2MJT.mjs
  	const refreshTokens = await ctx.context.adapter.findMany({
  		model: "oauthRefreshToken",
  		where: [{
-@@ -1504,7 +1510,7 @@
+@@ -1504,7 +1519,7 @@
  		}, {
  			field: "userId",
  			value: userId
@@ -25,7 +38,7 @@ diff --git a/dist/introspect-CbYi2MJT.mjs b/dist/introspect-CbYi2MJT.mjs
  	});
  	if (refreshTokens.length) await ctx.context.adapter.deleteMany({
  		model: "oauthAccessToken",
-@@ -1522,7 +1528,7 @@
+@@ -1522,7 +1537,7 @@
  		}, {
  			field: "userId",
  			value: userId
@@ -34,7 +47,7 @@ diff --git a/dist/introspect-CbYi2MJT.mjs b/dist/introspect-CbYi2MJT.mjs
  	});
  }
  async function revokeTokensIssuedForAuthorizationCode(ctx, authorizationCodeId) {
-@@ -2145,6 +2151,13 @@
+@@ -2145,6 +2160,13 @@
  	const client = await validateClientCredentials(ctx, opts, client_id, client_secret, requestedScopes ?? scopes, preVerified, "refresh_token", authMethod);
  	if (refreshToken.revoked) {
  		if (isWithinRefreshTokenReuseInterval(refreshToken)) {
@@ -48,7 +61,7 @@ diff --git a/dist/introspect-CbYi2MJT.mjs b/dist/introspect-CbYi2MJT.mjs
  			const replay = await getRefreshTokenRotationReplay(ctx, refreshToken, await resolveRefreshTokenRotationReplayRequest(ctx, opts, {
  				client,
  				refreshToken,
-@@ -2157,7 +2170,7 @@
+@@ -2157,7 +2179,7 @@
  				error: "invalid_grant"
  			});
  		}
