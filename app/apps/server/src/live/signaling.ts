@@ -5,7 +5,7 @@ import type { SessionResolver } from '../identity/index.js';
 import { admissionRevocation, LIVE_ADMISSIONS_CHANNEL, type AdmissionRevocation } from './admission-revocation.js';
 import { liveAdmissionStore } from './admissions.js';
 import type { LiveMediaAdapter, LiveMediaConfig } from './media.js';
-import { liveSignalGate, type SignalGate } from './signal-gate.js';
+import { liveSignalGate, registerSignalGateShutdown, type SignalGate } from './signal-gate.js';
 
 /** Reconciliation and retention run on this interval; the gate and trigger are the boundary. */
 export const ADMISSION_RECONCILE_MS = 30_000;
@@ -45,6 +45,7 @@ export function registerLiveSignaling(app: FastifyInstance, options: LiveSignali
   });
   const revocation = admissionRevocation({ store, media: options.media, sockets: gate, log });
   gate.routes(app);
+  registerSignalGateShutdown(app, gate);
 
   let reconciling = false;
   const reconcile = async () => {
@@ -67,7 +68,6 @@ export function registerLiveSignaling(app: FastifyInstance, options: LiveSignali
   app.addHook('onClose', async () => {
     clearInterval(timer);
     await listener.close();
-    gate.close();
   });
   return { gate, revocation };
 }

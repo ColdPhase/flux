@@ -13,7 +13,7 @@ import { editingGate } from '../../apps/server/src/editing/gate.js';
 import { EditingOutput, EditingOutputBudget } from '../../apps/server/src/editing/output.js';
 import { registerUpgradeDispatcher } from '../../apps/server/src/http/upgrades.js';
 import type { SessionContext } from '../../apps/server/src/identity/session.js';
-import { liveSignalGate } from '../../apps/server/src/live/signal-gate.js';
+import { liveSignalGate, registerSignalGateShutdown } from '../../apps/server/src/live/signal-gate.js';
 import { createLiveMedia } from '../../apps/server/src/live/media.js';
 
 const origin = 'http://editing-shutdown.test';
@@ -79,9 +79,9 @@ for (const enabled of [false, true]) test(`shutdown itself closes active editing
     admissions: { find: async id => id === admissionId ? { id, userId: session.principal.id,
       authSessionId: session.sessionId, liveSessionId: randomUUID(), revokedAt: null } : null },
     signalRoom: async () => roomId, onLateRevocation: () => {}, log: app.log }) : null;
-  // Match the production composition: editing.close before Fastify.close; media closes
-  // in Fastify's onClose hook and stream/typing use the real plugin's shutdown hook.
-  app.addHook('onClose', async () => { media?.close(); });
+  // Exercise the production registrar, rather than mirroring a hook in this test:
+  // detached media closes before HTTP drain; stream/typing use the plugin's hook.
+  if (media) registerSignalGateShutdown(app, media);
   const remove = registerUpgradeDispatcher(app.server, fallback, [media, gate]);
   await app.listen({ host: '127.0.0.1', port: 0 });
   const port = (app.server.address() as AddressInfo).port;
