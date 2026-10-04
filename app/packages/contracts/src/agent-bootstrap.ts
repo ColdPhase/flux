@@ -86,3 +86,39 @@ export interface AgentBootstrap {
     /** `client_acknowledged`: the client reported loading the current bundle; the server cannot observe loading itself. */
     instructionLoading: 'unverified' | 'client_acknowledged'; modelObedience: 'unverified' };
 }
+
+/** Bounds of an approved project policy (#160, CW-1): four plain-text fields, each at most this long. */
+export const AGENT_POLICY_LIMITS = { fieldCharacters: 4000 } as const;
+/** `GET` the current policy (project readers), `PUT` a new revision (project managers). */
+export const agentProjectPolicyPath = (projectId: string) => `/api/v1/projects/${projectId}/agent-policy`;
+/** The MCP resource of one stored revision; bootstrap's `approvedPolicy.retrievalReference`. */
+export const agentProjectPolicyUri = (projectId: string, revision: number) => `flux://policy/${projectId}/${revision}`;
+
+/**
+ * The approved project policy for connected agents (#160, F-018 CW-1). Only a project manager's
+ * publish changes it. It narrows work inside each owner's grants and never grants anything.
+ */
+export interface AgentProjectPolicy {
+  projectId: string;
+  revision: number;
+  /** What agents may work on in this project. */
+  scope: string;
+  priorities: string;
+  /** What a review of an agent's work checks. */
+  reviewCriteria: string;
+  /** Kinds of work agents may take on (and, by omission, may not). */
+  allowedWork: string;
+  /** `sha256:` of the canonical policy content; bootstrap returns the same digest. */
+  digest: string;
+  publishedAt: string;
+  publishedBy: { id: string; name: string | null };
+}
+
+/** Publishes the next revision; `expectedRevision` is the revision the manager saw (0 when none). */
+export interface PublishAgentProjectPolicyCommand {
+  scope: string;
+  priorities: string;
+  reviewCriteria: string;
+  allowedWork: string;
+  expectedRevision: number;
+}

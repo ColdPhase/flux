@@ -122,7 +122,6 @@ recorded in the allowlist and tracked by [#46](https://github.com/ColdPhase/flux
 | `app/packages/core/src/index.ts` | `drizzle-orm`, `pg-boss`, `@flux/db` | Move the integration-fixture sample use case behind a transaction/outbox port or out of core; leave `index.ts` as exports only. |
 | `app/packages/core/src/types.ts` | `@flux/db` | Replace the Drizzle-derived `Database`/`Executor` types with a core-owned transaction port. |
 | `app/packages/core/src/events.ts` | `drizzle-orm`, `@flux/db` | Merged in #47 before this rule. Move event recording to a `@flux/db` repository behind an `EventRepository` port. The per-recipient audience reads already sit behind `StreamAudienceRepository` ([#80](https://github.com/ColdPhase/flux/issues/80)). |
-| `app/packages/core/src/idempotency.ts` | `drizzle-orm`, `@flux/db` | Merged in #47. Put key storage and replay behind an `IdempotencyStore` port. |
 | `app/packages/core/src/jobs/draft-summary.ts` | `drizzle-orm`, `pg-boss`, `@flux/db` | Merged in #47. Split it into a pure use case plus repository and `JobQueue` ports. |
 | `app/packages/core/package.json` | `@flux/db`, `drizzle-orm`, `pg-boss` | Remove each dependency when no core file uses it. |
 
@@ -147,3 +146,9 @@ only (environment, pool, pg-boss, signals). Each job registers itself from
 queries live in `app/packages/db/src/repositories/sample.ts`, and the VAPID JWT cache is an
 authorizer the composition root creates and passes in, not module state
 ([#82](https://github.com/ColdPhase/flux/issues/82)).
+
+Resolved from the allowlist: `app/packages/core/src/idempotency.ts` keeps key parsing, request
+hashing, the expiry decision, the reuse error and replay authorization; key storage (the
+transaction-scoped advisory lock, lookup, save for 2xx only and expired-key cleanup) sits behind
+its `IdempotencyStore` port with the adapter `app/packages/db/src/repositories/idempotency.ts`
+([#86](https://github.com/ColdPhase/flux/issues/86)).

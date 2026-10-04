@@ -214,6 +214,11 @@ class DmSketchJourney(unittest.TestCase):
         page.get_by_role("button", name="Make it a project…").click()
         panel = page.locator("#details")
         expect(panel.get_by_role("heading", name="Make a project from this sketch")).to_be_visible()
+        # Nobody from the conversation joins unless Jo chooses it (#188): the preview names who would.
+        expect(panel.locator(".promote__aud b")).to_have_text("Ada and you — only you two")
+        grant = panel.get_by_role("checkbox", name="Also give Kai access")
+        expect(grant).not_to_be_checked()
+        grant.check()
         expect(panel.locator(".promote__aud b")).to_have_text("You, Kai and Ada")
         expect(panel.locator(".promote__aud")).to_contain_text("Ada manages every project in this workspace")
         expect(panel).to_contain_text("3 thoughts, with their 1 link")
