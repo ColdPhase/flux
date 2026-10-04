@@ -9,6 +9,7 @@ import { useShellData } from './data';
 import { MessageActions, MessageObjects, useCreateWorkFromMessage } from '../work/inline';
 import { useMessageWork } from '../work/useMessageWork';
 import { readerActive, watchReaderInput } from '../work/readerIntent';
+import { useProjectWorkSummary } from '../work/WorkReadContext';
 import { useReferenceWork } from '../work/useReferenceWork';
 import { MessageWorkPages } from '../work/MessageWorkPages';
 import { audienceLine, replyTo, useProjectShell } from '../project/data';
@@ -22,6 +23,9 @@ import { grantAgentProject } from '../agent-connection/api';
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
 import './project-conversation.css';
+
+/** Longest the feed waits for its first chips, references and state line before it shows. */
+const OPENING_REVEAL_MS = 1000;
 
 export interface ProjectData { project: Project; conversations: ConversationSummary[]; conversationTotal: number; materials: Material[]; materialTotal: number; members: WorkspaceMember[]; conversation: Conversation | null }
 export async function projectConversationLoader({ params, request }: LoaderFunctionArgs): Promise<ProjectData> {
@@ -158,6 +162,15 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
   }))].sort(), [assistant.answers, assistant.proposals]);
   const referenceWork = useReferenceWork(me.user.id, project.id, referenceIds, feedNode, !accessLost);
   const messageWork = useMessageWork(me.user.id, project.id, accessLost ? null : conversation?.id ?? null, sourceIds, scrollRef, feedNode, referenceWork.readingRevision);
+  // Opening (#155): the messages, their task chips, referenced rows and the header's state line
+  // come from separate bounded reads. Show the feed once the first of each has settled (at most
+  // OPENING_REVEAL_MS), so nothing shifts under the reader's eyes or pointer as they arrive.
+  const workSummary = useProjectWorkSummary();
+  const openingSettled = messageWork.state.phase !== 'loading' && referenceWork.state.phase !== 'loading' && workSummary.phase !== 'loading';
+  const [openingTimedOut, setOpeningTimedOut] = useState(false);
+  useEffect(() => { const timer = window.setTimeout(() => setOpeningTimedOut(true), OPENING_REVEAL_MS); return () => window.clearTimeout(timer); }, []);
+  const [revealed, setRevealed] = useState(false);
+  if (!revealed && (openingSettled || openingTimedOut)) setRevealed(true);
   const { openDetails } = useShellActions();
   const [asking, setAsking] = useState(false);
   const typing = useTyping(me.user.id, conversation && !accessLost ? { kind: 'conversation', id: conversation.id } : null, writable && !asking && !busy);
@@ -407,7 +420,7 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
   const title = conversation ? conversation.firstMessageBody.split('\n')[0] || 'Conversation' : writable ? 'New conversation' : 'Project conversations';
   let lastDay = '';
   return <div className="project-convo" data-project-id={project.id} data-associations-observed-at={messageWork.page?.observedAt} data-associations-phase={messageWork.state.phase} data-references-observed-at={referenceWork.observation?.observedAt} data-references-phase={referenceWork.state.phase}>
-    <div className="project-convo__feed" ref={attachFeed}>
+    <div className={`project-convo__feed${revealed ? '' : ' is-opening'}`} ref={attachFeed} aria-busy={revealed ? undefined : true}>
       <div className="project-convo__in" data-shift>
         <div className="project-convo__head">
           <h2 title={title}>{title}</h2>

@@ -193,6 +193,8 @@ export function useMessageWork(accountId: string, projectId: string, conversatio
   };
   return {
     state, page, previews,
+    /** The reader has moved off the first object or link page. */
+    paged: !!(position.cursor || position.edgeCursor),
     busy: state.phase !== 'ready' && state.phase !== 'unavailable' || revalidator.state !== 'idle',
     moveObjects: (cursor: string) => move(cursor, null),
     moveEdges: (edgeCursor: string) => move(position.cursor, edgeCursor),

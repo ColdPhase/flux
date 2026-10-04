@@ -5,6 +5,9 @@ export function MessageWorkPages({ read }: { read: ReturnType<typeof useMessageW
   if (read.state.phase === 'idle') return null;
   if (read.state.phase === 'unavailable') return <div className="ws-message-pages" role="alert">Linked work could not be loaded. Your reply is kept. <button type="button" className="ws-none__b" onClick={read.refreshObjects}>Refresh linked work</button></div>;
   const page = read.page;
+  // Before the first page there is nothing to page through: a placeholder bar would only appear
+  // and vanish under the feed. While moving between pages the controls stay (busy).
+  if (!page && !read.paged) return null;
   if (page && !page.nextCursor && !page.previousCursor && !page.edges.nextCursor && !page.edges.previousCursor && page.items.length) return null;
   if (page && !page.total && !page.previousCursor && !page.nextCursor) return null;
   return <div className="ws-message-pages" data-associations-observed-at={page?.observedAt}>
