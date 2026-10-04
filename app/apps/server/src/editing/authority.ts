@@ -8,6 +8,7 @@ import type { CodecState } from './codec/types.js';
 import { editingContextCharge } from './context-charge.js';
 import { editingRuntime, NATIVE_CHECKPOINT_BYTES } from './runtime.js';
 import { apiEditingOutputBudget,type EditingOutputBudget } from './output.js';
+import { editingResourcesChanged } from './resource-observation.js';
 
 const EMPTY = new Uint8Array(0);
 /** Production composition. The caller receives data only through the held current authority fence. */
@@ -38,8 +39,8 @@ export function wikiAuthority(database: { pool: Pick<ReturnType<typeof createDat
         await adapters.session.assertCurrent(identity(session));
         return result;
       });
-      active.add(work);
-      try { return await work; } finally { active.delete(work); }
+      active.add(work);editingResourcesChanged();
+      try { return await work; } finally { active.delete(work);editingResourcesChanged(); }
     } finally { runtime.release(admission); }
   }
   async function admitted<T>(session:SessionContext,context:unknown,action:Parameters<typeof run<T>>[2],maximumInputBytes?:number) {
@@ -51,6 +52,7 @@ export function wikiAuthority(database: { pool: Pick<ReturnType<typeof createDat
   }
   return {
     identity, runtime,
+    get sqlActive(){return active.size;},
     async bootstrap(session: SessionContext, docId: string) {
       // Initialization reserves the proved one-string encoded baseline BEFORE loading a body or waiting for SQL.
       return admitted(session,{session,docId},(wiki,_finalFence,admission)=>wiki.bootstrap(identity(session),docId,admission),NATIVE_CHECKPOINT_BYTES);

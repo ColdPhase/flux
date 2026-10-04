@@ -10,6 +10,8 @@ import { EditingOutput, EditingOutputBudget } from './output.js';
 import type { WikiAuthority } from './authority.js';
 import { EditingHTTPAdmission } from './http-admission.js';
 import { editingJSONSize } from './json-size.js';
+import { editingResourcesChanged } from './resource-observation.js';
+import type { EditingQueueTelemetry } from './telemetry.js';
 
 interface Connection {
   socket: WebSocket; context: EditingContext; output: EditingOutput; generation: string | null;
@@ -21,11 +23,13 @@ const errorCode = (error: unknown) => error instanceof DomainError ? error.code
   : error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : 'EDITING_UNAVAILABLE';
 const busy = (error: unknown) => ['EXTERNAL_BUFFER_LIMIT', 'WORK_QUEUE_LIMIT', 'POOL_CLOSED', 'EDITING_OUTPUT_CAPACITY', 'EDITING_PRESENCE_CAPACITY'].includes(errorCode(error));
 /** Message listeners are installed synchronously by the one upgrade dispatcher; all protected send paths use SQL authority. */
-export function wikiController(authority: WikiAuthority, outputBudget: EditingOutputBudget) {
-  const connections = new Map<string, Connection>(); const assemblies = new Assemblies();
-  const preparation=new EditingHTTPAdmission(outputBudget);
+export function wikiController(authority: WikiAuthority, outputBudget: EditingOutputBudget,telemetry?:()=>EditingQueueTelemetry|null) {
+  const connections = new Map<string, Connection>(); const assemblies = new Assemblies(editingResourcesChanged);
+  const preparation=new EditingHTTPAdmission(outputBudget,10_000,'wiki');
+  const operations=new Set<Promise<void>>();let reading=0,writing=0,cursorActive=0;
+  function operation(){let finish=()=>{};const done=new Promise<void>(resolve=>{finish=resolve;});operations.add(done);return()=>{operations.delete(done);finish();};}
   let closing = false;
-  function close(c: Connection) { if (c.closed) return; c.closed = true; c.releaseBase(); for (const entry of c.presence.values()) entry.release(); c.presence.clear(); c.output.close(); assemblies.remove(c.context.connectionId); c.assembly = null; connections.delete(c.context.connectionId); }
+  function close(c: Connection) { if (c.closed) return; c.closed = true; c.releaseBase(); for (const entry of c.presence.values()) entry.release(); c.presence.clear(); c.output.close(); assemblies.remove(c.context.connectionId); c.assembly = null; connections.delete(c.context.connectionId);editingResourcesChanged(); }
   function fail(c: Connection, error: unknown, commandId?: string) {
     if (c.closed) return;
     if (errorCode(error) === 'UNAUTHENTICATED' || error instanceof DomainError && (error.status === 403 || error.status === 404)) {
@@ -38,7 +42,7 @@ export function wikiController(authority: WikiAuthority, outputBudget: EditingOu
   async function catchup(c: Connection) {
     if (c.closed || !c.subscribed || !c.generation) return;
     if (c.reading) { c.pendingRead = true; return; }
-    c.reading = true;
+    c.reading = true;reading++;editingResourcesChanged();const completed=operation();
     try {
       do {
         c.pendingRead = false;
@@ -97,7 +101,7 @@ export function wikiController(authority: WikiAuthority, outputBudget: EditingOu
     } catch (error) {
       if (!busy(error)) fail(c, error);
       // Periodic catch-up retries bounded capacity; it holds no additional input or promise queue.
-    } finally { c.reading = false; }
+    } finally { c.reading = false;reading--;editingResourcesChanged();completed(); }
   }
   function pump(c: Connection) {
     if (c.closed || c.running || !c.assembly) return;
@@ -105,17 +109,18 @@ export function wikiController(authority: WikiAuthority, outputBudget: EditingOu
     try { admission = authority.reserve(c.assembly); }
     catch (error) { if (!busy(error)) { fail(c, error, c.assembly.intent.uuid); assemblies.remove(c.context.connectionId); c.assembly = null; } return; }
     let bytes:CompletedAssembly|null=c.assembly;const commandId=bytes.intent.uuid;c.assembly = null;
-    assemblies.remove(c.context.connectionId); c.assemblyCommand = null; c.running = true;
+    assemblies.remove(c.context.connectionId); c.assemblyCommand = null; c.running = true;writing++;editingResourcesChanged();const completed=operation();
     void (async () => {
       try {
         await authority.submit(c.context.session, c.context.target.id, bytes!.intent, bytes!, admission);bytes=null;
         // Re-read the immutable original receipt under CURRENT authority AFTER the commit.
         await authority.deliverReceipt(c.context.session, c.context.target.id, commandId, (receipt) => {
           if (!c.closed && receipt) c.output.sendJSON({ type: 'ack', ...receipt });
+          if(receipt)telemetry?.()?.schedule('wiki',{resourceId:c.context.target.id,generation:receipt.generation,commandId:receipt.commandId,confirmedSequence:receipt.sequence});
         });
         for (const other of connections.values()) if (other.context.target.id === c.context.target.id) void catchup(other);
       } catch (error) { fail(c, error, commandId); }
-      finally { bytes=null;c.running = false; pump(c); }
+      finally { bytes=null;c.running = false;writing--;editingResourcesChanged();completed(); pump(c); }
     })();
   }
   const unsubscribeCapacity = authority.runtime.onCapacity(() => { if (!closing) for (const c of connections.values()) pump(c); });
@@ -131,7 +136,7 @@ export function wikiController(authority: WikiAuthority, outputBudget: EditingOu
       if (closing || context.target.kind !== 'wiki') { socket.close(1008, 'Unavailable'); return; }
       const c: Connection = { socket, context, output: new EditingOutput(socket, outputBudget), generation: null,
         sequence: 0, previewSequence: -1, assemblyCommand: null, assembly: null, running: false, reading: false, pendingRead: false, closed: false, subscribed: false, lastHead: '', lastSaved: '', presence: new Map(), cursorBusy: false, releaseBase: outputBudget.reserve(2048 + editingContextCharge(context)) };
-      connections.set(context.connectionId, c);
+      connections.set(context.connectionId, c);editingResourcesChanged();
       socket.once('close', () => close(c));
       socket.on('message', (data: RawData, binary) => {
         if (c.closed) return;
@@ -156,17 +161,18 @@ export function wikiController(authority: WikiAuthority, outputBudget: EditingOu
           } else if (message.type === 'cursor') {
             if (!c.subscribed || message.generation !== c.generation || Object.keys(message).some((key) => !['type','generation','cursor'].includes(key))) throw new DomainError(400, 'INVALID_CURSOR', 'Invalid cursor');
             if (c.cursorBusy) throw new ServiceUnavailableError('The bounded cursor admission is busy', 'EDITING_PRESENCE_CAPACITY');
-            c.cursorBusy = true;
+            c.cursorBusy = true;cursorActive++;editingResourcesChanged();const completed=operation();
             void authority.cursor(context.session, context.target.id, message.generation, context.connectionId, message.cursor)
               .then(() => { for (const other of connections.values()) if (other.context.target.id === context.target.id) void catchup(other); })
-              .catch((error) => fail(c, error)).finally(() => { c.cursorBusy = false; });
+              .catch((error) => fail(c, error)).finally(() => { c.cursorBusy = false;cursorActive--;editingResourcesChanged();completed(); });
           } else throw new DomainError(400, 'EDITING_MESSAGE_INVALID', 'Invalid wiki message');
         } catch (error) { fail(c, error, assemblies.intent(context.connectionId)?.uuid); }
       });
     },
     notifyAll() { for (const c of connections.values()) void catchup(c); },
     notify(docId: string) { for (const c of connections.values()) if (c.context.target.id === docId) void catchup(c); },
-    async close() { closing = true; clearInterval(timer); unsubscribeCapacity(); preparation.close(); for (const c of [...connections.values()]) { c.socket.terminate(); close(c); } await authority.close(); },
+    async close() { closing = true; clearInterval(timer); unsubscribeCapacity(); preparation.close(); for (const c of [...connections.values()]) { c.socket.terminate(); close(c); } await authority.close();await Promise.allSettled([...operations]); },
     get externalOutputBytes() { return outputBudget.bytes; }, get assemblyBytes() { return assemblies.bytes; },
+    get resources(){return{wikiConnections:connections.size,wikiReading:reading,wikiWriting:writing,wikiCursorActive:cursorActive,assemblyCount:assemblies.pending.size,assemblyBytes:assemblies.bytes};},
   };
 }

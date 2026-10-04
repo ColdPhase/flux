@@ -66,3 +66,14 @@ remains unchanged. The new regressions, including two simultaneous real 100k
 joins, current-clock handoff expiry, public cursor validation and protected output
 pressure, are prepared and unexecuted. Earlier 2bf build/type/lint and sixteen
 transport/native/deferred cases do not certify this later source slice.
+
+
+The next source candidate adds optional public constructor callbacks to the production
+AdmissionBudget, Assemblies and CodecPool only. Their algorithms/caps remain unchanged;
+each actual bytes/lease/queue/active mutation synchronously observes its primitive
+resource peaks. The runtime supplies that callback only through the server measurement
+composition. It never writes telemetry or awaits inside a codec mutation. The current
+source manifest records these explicit observer-only differences; historical tooling,
+initial-copy manifest and earlier pass/failure logs remain unchanged. These new bytes
+require fresh canonical codec regressions and independent assessment. Prepared primitive
+observer tests do not certify production queues, graceful shutdown or full-path latency.

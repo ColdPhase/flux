@@ -6,13 +6,14 @@ import { CodecPool } from './codec/worker-pool.mjs';
 import type { CodecEnvelope, CodecState } from './codec/types.js';
 import { EditingAdmission } from './admission.js';
 import type { AdmissionLease } from './codec/admission-budget.mjs';
+import { editingResourcesChanged } from './resource-observation.js';
 
 // A fresh one-root/one-string update: UTF-8 is at most four bytes per UTF-16 unit, plus a conservative public framing bound.
 export const NATIVE_CHECKPOINT_BYTES = 400_256;
 
 /** Only the typed server composition may call this codec; no model registry or client state enters SQL authority. */
 export function editingRuntime() {
-  const pool = new CodecPool(); const admissionQueue = new EditingAdmission(pool.budget);
+  const pool = new CodecPool(editingResourcesChanged); const admissionQueue = new EditingAdmission(pool.budget);
   return {
     fingerprint,
     get externalInputBytes(){return pool.budget.bytes;},

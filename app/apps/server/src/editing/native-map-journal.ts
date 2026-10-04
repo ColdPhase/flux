@@ -7,7 +7,8 @@ import { decodeMapChange } from './map-state.js';
 import { apiEditingOutputBudget } from './output.js';
 import { EditingHTTPAdmission } from './http-admission.js';
 import { editingMapContextCharge } from './context-charge.js';
-const admissions=new EditingHTTPAdmission(apiEditingOutputBudget);
+const admissions=new EditingHTTPAdmission(apiEditingOutputBudget,10_000,'native');
+export const closeNativeMapAdmission=()=>admissions.close();
 
 /** Native validated copies and their exact raw/context retainers are charged before SQL admission. */
 export async function prepareNativeMap(context:unknown) {

@@ -26,21 +26,22 @@ function response(worker, kind, milliseconds, timeoutCode, signal) {
 
 /** Isolated calibration pool; module bootstrap has its own finite readiness deadline. */
 export class CodecPool {
-  constructor() {
-    this.active = 0; this.waiting = []; this.budget = new AdmissionBudget();
+  constructor(changed = () => {}) {
+    this.changed = changed; this.active = 0; this.waiting = []; this.budget = new AdmissionBudget(changed);
     this.closed = false; this.running = new Set();
   }
   get externalBytes() { return this.budget.bytes; }
   acquire() {
     if (this.closed) return Promise.reject(new Refusal('POOL_CLOSED'));
-    if (this.active < CAPS.workers) { this.active++; return Promise.resolve(); }
+    if (this.active < CAPS.workers) { this.active++; this.changed(); return Promise.resolve(); }
     if (this.waiting.length >= CAPS.waitingTasks) return Promise.reject(new Refusal('WORK_QUEUE_LIMIT'));
-    return new Promise((resolve, reject) => this.waiting.push({ resolve, reject }));
+    return new Promise((resolve, reject) => { this.waiting.push({ resolve, reject }); this.changed(); });
   }
   release() {
     const next = this.waiting.shift();
     if (next) next.resolve(); // Transfer the held slot without an asynchronous acquisition gap.
     else this.active--;
+    this.changed();
   }
   async run(state, envelope, bytes, { stall = false, canWrite = true, control = 'codec', admission, signal } = {}) {
     if (this.closed) throw new Refusal('POOL_CLOSED');
@@ -76,7 +77,8 @@ export class CodecPool {
   async close() {
     this.closed = true;
     this.budget.closed = true;
-    for (const item of this.waiting.splice(0)) item.reject(new Refusal('POOL_CLOSED'));
+    const waiting=this.waiting.splice(0);this.changed();
+    for (const item of waiting) item.reject(new Refusal('POOL_CLOSED'));
     await Promise.all([...this.running].map((worker) => worker.terminate()));
   }
 }

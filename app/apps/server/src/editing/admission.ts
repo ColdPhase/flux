@@ -1,5 +1,6 @@
 import { Refusal } from './codec/codec.mjs';
 import type { AdmissionBudget, AdmissionLease } from './codec/admission-budget.mjs';
+import { editingResourcesChanged } from './resource-observation.js';
 
 interface Waiting { lease: AdmissionLease; resolve: (lease: AdmissionLease) => void; reject: (error: unknown) => void; timer: NodeJS.Timeout }
 /** FIFO contains only leases whose full input/metadata are already charged; no SQL/hash can precede promotion. */
@@ -17,9 +18,9 @@ export class EditingAdmission {
       const item: Waiting = { lease, resolve, reject, timer: setTimeout(() => {
         const index = this.waiting.indexOf(item);
         if (index < 0) return;
-        this.waiting.splice(index, 1); this.budget.release(item.lease); item.reject(new Refusal('ADMISSION_TIMEOUT')); this.pump();
+        this.waiting.splice(index, 1);editingResourcesChanged(); this.budget.release(item.lease); item.reject(new Refusal('ADMISSION_TIMEOUT')); this.pump();
       }, this.timeoutMs) };
-      item.timer.unref(); this.waiting.push(item); this.pump();
+      item.timer.unref(); this.waiting.push(item);editingResourcesChanged(); this.pump();
     });
   }
   private pump() {
@@ -31,15 +32,16 @@ export class EditingAdmission {
         try { this.budget.promote(item.lease); }
         catch (error) {
           if (error instanceof Refusal && error.code === 'EXTERNAL_BUFFER_LIMIT') break;
-          this.waiting.shift(); clearTimeout(item.timer); this.budget.release(item.lease); item.reject(error); continue;
+          this.waiting.shift();editingResourcesChanged(); clearTimeout(item.timer); this.budget.release(item.lease); item.reject(error); continue;
         }
-        this.waiting.shift(); clearTimeout(item.timer); item.resolve(item.lease);
+        this.waiting.shift();editingResourcesChanged(); clearTimeout(item.timer); item.resolve(item.lease);
       }
     } finally { this.pumping = false; }
   }
   close() {
     this.closing = true; this.unsubscribe();
-    for (const item of this.waiting.splice(0)) { clearTimeout(item.timer); this.budget.release(item.lease); item.reject(new Refusal('POOL_CLOSED')); }
+    const waiting=this.waiting.splice(0);editingResourcesChanged();
+    for (const item of waiting) { clearTimeout(item.timer); this.budget.release(item.lease); item.reject(new Refusal('POOL_CLOSED')); }
   }
   get queued() { return this.waiting.length; }
 }

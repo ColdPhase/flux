@@ -23,11 +23,11 @@ function decode(frame) {
   return { header, chunk, intent: persistentEnvelope(header, true) };
 }
 export class Assemblies {
-  constructor() { this.pending = new Map(); this.bytes = 0; }
+  constructor(changed = () => {}) { this.pending = new Map(); this.bytes = 0; this.changed = changed; }
   intent(connection) { return this.pending.get(connection)?.intent ?? null; }
   remove(connection) {
     const old = this.pending.get(connection);
-    if (old) { this.bytes -= old.size + (old.complete?.byteLength ?? 0); this.pending.delete(connection); }
+    if (old) { this.bytes -= old.size + (old.complete?.byteLength ?? 0); this.pending.delete(connection); this.changed(); }
   }
   expire(now) {
     for (const [connection, assembly] of this.pending) {
@@ -49,7 +49,7 @@ export class Assemblies {
     if (!assembly) {
       if (this.pending.size >= CAPS.assembliesPerApi) throw new Refusal('ASSEMBLY_SERVER_LIMIT');
       assembly = { key, intent, count: header.count, started: now, size: 0, parts: new Map() };
-      this.pending.set(connection, assembly);
+      this.pending.set(connection, assembly); this.changed();
     }
     if (assembly.count !== header.count) throw new Refusal('ASSEMBLY_ALTERED_COUNT');
     const previous = assembly.parts.get(header.index);
@@ -60,7 +60,7 @@ export class Assemblies {
       || this.bytes + chunk.length > CAPS.assembliesBytesPerApi) throw new Refusal('ASSEMBLY_BYTE_LIMIT');
       // Exact backing stores: pooled tiny Buffers would pin a larger uncharged slab.
       const owned = Buffer.allocUnsafeSlow(chunk.length); owned.set(chunk);
-      assembly.parts.set(header.index, owned); assembly.size += chunk.length; this.bytes += chunk.length;
+      assembly.parts.set(header.index, owned); assembly.size += chunk.length; this.bytes += chunk.length; this.changed();
     }
     if (assembly.parts.size !== assembly.count) return null;
     if (assembly.complete) return assembly.complete;
@@ -74,6 +74,6 @@ export class Assemblies {
     Object.defineProperty(result, 'intent', { value: assembly.intent, enumerable: false });
     // The controller retains this charged assembly until the common job budget
     // accepts it. Capacity waits never retain an uncharged promise-tail input.
-    assembly.complete = result; this.bytes += result.byteLength; return result;
+    assembly.complete = result; this.bytes += result.byteLength; this.changed(); return result;
   }
 }

@@ -3,6 +3,7 @@ import type { Duplex } from 'node:stream';
 import WebSocket, { WebSocketServer } from 'ws';
 import type { SessionContext, SessionResolver } from '../identity/session.js';
 import type { UpgradeGate } from '../http/upgrades.js';
+import { editingResourcesChanged } from './resource-observation.js';
 
 export const EDITING_PATH = '/api/v1/editing';
 export const EDITING_FRAME_BYTES = 65_536;
@@ -51,6 +52,7 @@ export function editingGate(options: EditingGateOptions): EditingGate {
   const server = new WebSocketServer(serverOptions);
   const reservations = new Set<Duplex>();
   const clients = new Set<WebSocket>();
+  const work = new Set<Promise<void>>();
   let closing = false;
 
   return {
@@ -76,11 +78,11 @@ export function editingGate(options: EditingGateOptions): EditingGate {
       }
       // Count authentication/access work before its first await, including aborted requests
       // until that finite database work settles. A new socket cannot bypass this admission cap.
-      reservations.add(socket); socket.pause();
+      reservations.add(socket);editingResourcesChanged(); socket.pause();
       let expired = false;
       const timer = setTimeout(() => { expired = true; refuse(socket, 503, 'Unavailable'); }, ADMISSION_TIMEOUT_MS);
       timer.unref();
-      void (async () => {
+      const pending=(async () => {
         try {
           const session = await options.sessions.resolveSession(request.headers);
           if (!session || session.expiresAt.getTime() <= Date.now()) { refuse(socket, 401, 'Authentication required'); return; }
@@ -91,17 +93,18 @@ export function editingGate(options: EditingGateOptions): EditingGate {
           if (session.expiresAt.getTime() <= Date.now()) { refuse(socket, 401, 'Authentication required'); return; }
           if (closing || expired || socket.destroyed) return;
           server.handleUpgrade(request, socket, head, (client) => {
-            clients.add(client);
+            clients.add(client);editingResourcesChanged();
             client.on('error', () => client.terminate());
-            client.once('close', () => clients.delete(client));
+            client.once('close', () => {clients.delete(client);editingResourcesChanged();});
             try { options.accept(client, context); }
             catch { client.terminate(); }
             // Explicitly resume only after synchronous listener installation; test initial head frames.
             socket.resume();
           });
         } catch { refuse(socket, 503, 'Unavailable'); }
-        finally { clearTimeout(timer); reservations.delete(socket); }
+        finally { clearTimeout(timer); reservations.delete(socket);editingResourcesChanged(); }
       })();
+      work.add(pending);void pending.finally(()=>work.delete(pending));
       return true;
     },
     async close() {
@@ -109,6 +112,7 @@ export function editingGate(options: EditingGateOptions): EditingGate {
       for (const socket of reservations) socket.destroy();
       for (const client of clients) client.terminate();
       await new Promise<void>((resolve) => server.close(() => resolve()));
+      await Promise.allSettled([...work]);
     },
   };
 }

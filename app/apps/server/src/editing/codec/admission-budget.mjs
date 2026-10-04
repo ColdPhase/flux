@@ -3,7 +3,7 @@ import { Refusal, stateCharge } from './codec.mjs';
 
 /** One budget shared by registry waiters and codec tasks; a lease is charged once. */
 export class AdmissionBudget {
-  constructor() { this.bytes = 0; this.leases = new Set(); this.closed = false; this.capacity = new Set(); }
+  constructor(changed = () => {}) { this.bytes = 0; this.leases = new Set(); this.closed = false; this.capacity = new Set(); this.changed = changed; }
   allocate(state, reservedCharge, bytes, maximumInputBytes = null, metadataBytes = 0, queued = false) {
     if (this.closed) throw new Refusal('POOL_CLOSED');
     if (!(bytes instanceof Uint8Array) || bytes.byteLength > CAPS.assemblyBytes) throw new Refusal('EXTERNAL_BUFFER_LIMIT');
@@ -20,7 +20,7 @@ export class AdmissionBudget {
     if (this.bytes + amount > CAPS.assembliesBytesPerApi) throw new Refusal('EXTERNAL_BUFFER_LIMIT');
     if (this.leases.size >= CAPS.workers + CAPS.waitingTasks) throw new Refusal('WORK_QUEUE_LIMIT');
     const lease = { budget: this, state, input: bytes, amount, inputCapacity, charge: queued ? 0 : charge, metadataBytes, queued };
-    this.leases.add(lease); this.bytes += amount; return lease;
+    this.leases.add(lease); this.bytes += amount; this.changed(); return lease;
   }
   reserve(state, bytes) { return this.allocate(state, null, bytes); }
   // Current SQL state is not loaded yet. Charge its maximum before any protected
@@ -35,7 +35,7 @@ export class AdmissionBudget {
     if (!this.leases.has(lease) || !lease.queued || lease.state !== null) throw new Refusal('INVALID_ADMISSION_LEASE');
     const addition = 2 * CAPS.roomCacheBytes;
     if (this.bytes + addition > CAPS.assembliesBytesPerApi) throw new Refusal('EXTERNAL_BUFFER_LIMIT');
-    this.bytes += addition; lease.amount += addition; lease.charge = CAPS.roomCacheBytes; lease.queued = false;
+    this.bytes += addition; lease.amount += addition; lease.charge = CAPS.roomCacheBytes; lease.queued = false; this.changed();
   }
   replaceInput(lease, bytes) {
     if (!this.leases.has(lease) || lease.queued || lease.state !== null) throw new Refusal('INVALID_ADMISSION_LEASE');
@@ -51,12 +51,12 @@ export class AdmissionBudget {
     const amount = backing + lease.input.byteLength + charge + CAPS.roomCacheBytes + lease.metadataBytes;
     this.bytes -= lease.amount - amount;
     lease.state = state; lease.charge = charge; lease.amount = amount;
-    this.notify();
+    this.changed(); this.notify();
   }
   onCapacity(callback) { this.capacity.add(callback); return () => this.capacity.delete(callback); }
   notify() { for (const callback of this.capacity) callback(); }
   owns(lease, state, bytes) { return this.leases.has(lease) && !lease.queued && lease.state === state && lease.input === bytes; }
   release(lease) {
-    if (this.leases.delete(lease)) { this.bytes -= lease.amount; this.notify(); }
+    if (this.leases.delete(lease)) { this.bytes -= lease.amount; this.changed(); this.notify(); }
   }
 }

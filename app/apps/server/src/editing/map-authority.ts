@@ -3,6 +3,7 @@ import { ServiceUnavailableError, type LiveMapBackend, type MapCancel, type MapC
 import type { SessionContext } from '../identity/session.js';
 import { editingMapContextCharge, editingMapResultCharge } from './context-charge.js';
 import { EditingOutputBudget, EditingOutputError } from './output.js';
+import { editingResourcesChanged } from './resource-observation.js';
 
 type Reservation = ReturnType<EditingOutputBudget['lease']>;
 interface Waiter { lease: Reservation; inputBytes: number; worstResult: number; timer: NodeJS.Timeout; grant: () => void; reject: (error: unknown) => void }
@@ -71,9 +72,9 @@ export function mapAuthority(backend: LiveMapBackend, outputBudget: EditingOutpu
         try { item.lease.resize(item.inputBytes + item.worstResult); }
         catch (error) {
           if (error instanceof EditingOutputError && error.code === 'EDITING_OUTPUT_CAPACITY') break;
-          waiting.shift(); clearTimeout(item.timer); item.lease.release(); item.reject(error); continue;
+          waiting.shift();editingResourcesChanged(); clearTimeout(item.timer); item.lease.release(); item.reject(error); continue;
         }
-        waiting.shift(); clearTimeout(item.timer); running++; item.grant();
+        waiting.shift(); clearTimeout(item.timer); running++;editingResourcesChanged(); item.grant();
       }
     } finally { pumping = false; }
   }
@@ -86,9 +87,9 @@ export function mapAuthority(backend: LiveMapBackend, outputBudget: EditingOutpu
     return { lease, inputBytes, ready: new Promise<void>((grant, reject) => {
       const item: Waiter = { lease, inputBytes, worstResult, grant, reject, timer: setTimeout(() => {
         const index = waiting.indexOf(item); if (index < 0) return;
-        waiting.splice(index, 1); lease.release(); reject(capacity()); pump();
+        waiting.splice(index, 1);editingResourcesChanged(); lease.release(); reject(capacity()); pump();
       }, 10_000) };
-      item.timer.unref(); waiting.push(item); pump();
+      item.timer.unref(); waiting.push(item);editingResourcesChanged(); pump();
     }) };
   }
   async function run<T>(context: unknown, rawBytes: number, worstResult: number, action: (lease: Reservation, inputBytes: number) => Promise<T>): Promise<T> {
@@ -102,7 +103,7 @@ export function mapAuthority(backend: LiveMapBackend, outputBudget: EditingOutpu
       const work = action(admission.lease, admission.inputBytes); active.add(work);
       try { return await work; } finally { active.delete(work); }
     } finally {
-      if (acquired) running--;
+      if (acquired) {running--;editingResourcesChanged();}
       try { admission.lease.release(); pump(); }
       finally { operations.delete(operation); finish(); }
     }
@@ -173,7 +174,8 @@ export function mapAuthority(backend: LiveMapBackend, outputBudget: EditingOutpu
     },
     async close() {
       closing = true; unsubscribe();
-      for (const item of waiting.splice(0)) { clearTimeout(item.timer); item.lease.release(); item.reject(capacity()); }
+      const pending=waiting.splice(0);editingResourcesChanged();
+      for (const item of pending) { clearTimeout(item.timer); item.lease.release(); item.reject(capacity()); }
       // Includes granted continuations which have not resumed their microtask,
       // without polling/spinning while bounded SQL work is still settling.
       await Promise.allSettled([...operations]); await Promise.allSettled([...active]); await backend.close();

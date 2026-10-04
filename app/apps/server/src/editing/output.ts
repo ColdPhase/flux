@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import WebSocket from 'ws';
 import { EDITING_LIMITS, type LiveMapDeltaChunk, type LivePreviewChunk, type LiveUpdateChunk } from '@flux/contracts';
+import { editingResourcesChanged } from './resource-observation.js';
 
 export class EditingOutputError extends Error {
   constructor(readonly code: 'EDITING_OUTPUT_CAPACITY' | 'EDITING_OUTPUT_CLOSED' | 'EDITING_OUTPUT_FRAME_LIMIT' | 'INVALID_DELIVERY_ACK') { super(code); }
@@ -13,16 +14,16 @@ export class EditingOutputBudget {
   onCapacity(callback: () => void) { this.capacity.add(callback); return () => { this.capacity.delete(callback); }; }
   lease(bytes: number) {
     if (!Number.isSafeInteger(bytes) || bytes < 0 || this.bytes + bytes > 32 * 1024 * 1024) throw new EditingOutputError('EDITING_OUTPUT_CAPACITY');
-    this.bytes += bytes; let amount = bytes; let released = false;
+    this.bytes += bytes; let amount = bytes; let released = false;editingResourcesChanged();
     return {
       get bytes() { return amount; },
       resize: (next: number) => {
         if (released) throw new EditingOutputError('EDITING_OUTPUT_CLOSED');
         if (!Number.isSafeInteger(next) || next < 0 || this.bytes + next - amount > 32 * 1024 * 1024) throw new EditingOutputError('EDITING_OUTPUT_CAPACITY');
-        const difference = next - amount; this.bytes += difference; amount = next;
+        const difference = next - amount; this.bytes += difference; amount = next;editingResourcesChanged();
         if (difference < 0) for (const callback of this.capacity) callback();
       },
-      release: () => { if (!released) { released = true; this.bytes -= amount; amount = 0; for (const callback of this.capacity) callback(); } },
+      release: () => { if (!released) { released = true; this.bytes -= amount; amount = 0;editingResourcesChanged(); for (const callback of this.capacity) callback(); } },
     };
   }
   reserve(bytes: number) { return this.lease(bytes).release; }

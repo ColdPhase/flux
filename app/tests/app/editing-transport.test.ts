@@ -175,6 +175,7 @@ test('pending identity work consumes the connection bound and late resolution ca
   while (f.gate.pending < 32 && Date.now() < until) await delay(5);
   assert.equal(f.gate.pending, 32);
   assert.equal(await refused(f.port, path, { origin }), 503);
-  await f.gate.close(); release(session); await delay(10);
+  const closing=f.gate.close();await delay(10);assert.equal(f.gate.pending,32,'Closing retains actual pending identity work until its finite settlement');
+  release(session);await closing; await delay(10);
   assert.equal(f.contexts.length, 0); assert.equal(f.gate.connected, 0); assert.equal(f.gate.pending, 0);
 });

@@ -1,6 +1,7 @@
 import type { CodecEnvelope, CodecResult, CodecState } from './types.js';
 import type { AdmissionBudget, AdmissionLease } from './admission-budget.mjs';
 export class CodecPool {
+  constructor(changed?: () => void);
   readonly budget: AdmissionBudget;
   readonly externalBytes: number;
   /** Actual public CodecPool constructor/acquire/release state; observed without mutating the queue. */

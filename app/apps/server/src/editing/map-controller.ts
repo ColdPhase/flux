@@ -7,6 +7,8 @@ import type { EditingContext } from './gate.js';
 import { editingMapContextCharge } from './context-charge.js';
 import { EditingOutput, EditingOutputBudget } from './output.js';
 import type { MapAuthority } from './map-authority.js';
+import { editingResourcesChanged } from './resource-observation.js';
+import type { EditingQueueTelemetry } from './telemetry.js';
 
 type Command = { type: 'map-move'; command: MapMove } | { type: 'map-cancel'; command: MapCancel } | { type: 'map-presence'; command: MapPresence };
 interface Retained { value: Command; release: () => void; expiresAt: number; rawBytes: number }
@@ -47,14 +49,16 @@ function presence(value: Record<string, unknown>): MapPresence {
 const transientKey = (value: MapTransient) => value.type === 'map-presence' ? `presence:${value.connectionId}` : `lease:${value.leaseId}`;
 
 /** Every protected frame uses the current SQL fence; only replaceable transient intents coalesce. */
-export function mapController(authority: MapAuthority, outputBudget: EditingOutputBudget) {
+export function mapController(authority: MapAuthority, outputBudget: EditingOutputBudget,telemetry?:()=>EditingQueueTelemetry|null) {
   const connections = new Map<string, Connection>();
+  const operations=new Set<Promise<void>>();let pendingMovement=0,pendingPresence=0;
+  function operation(){let finish=()=>{};const done=new Promise<void>(resolve=>{finish=resolve;});operations.add(done);editingResourcesChanged();return()=>{operations.delete(done);editingResourcesChanged();finish();};}
   let closing = false;
   function close(c: Connection) {
     if (c.closed) return;
-    c.closed = true; c.releaseBase(); c.movement?.release(); c.presence?.release(); c.movement = null; c.presence = null;
-    for (const entry of c.transient.values()) entry.release(); c.transient.clear(); c.output.close(); connections.delete(c.context.connectionId);
-    void authority.disconnect(c.context.session, c.context.target.id, c.context.connectionId).catch(() => { /* SQL expiry independently removes abandoned previews. */ });
+    c.closed = true; c.releaseBase(); c.movement?.release(); c.presence?.release();if(c.movement)pendingMovement--;if(c.presence)pendingPresence--; c.movement = null; c.presence = null;
+    for (const entry of c.transient.values()) entry.release(); c.transient.clear(); c.output.close(); connections.delete(c.context.connectionId);editingResourcesChanged();
+    const completed=operation();void authority.disconnect(c.context.session, c.context.target.id, c.context.connectionId).catch(() => { /* SQL expiry independently removes abandoned previews. */ }).finally(completed);
   }
   function fail(c: Connection, error: unknown) {
     if (c.closed) return;
@@ -70,7 +74,7 @@ export function mapController(authority: MapAuthority, outputBudget: EditingOutp
   async function catchup(c: Connection) {
     if (c.closed || !c.subscribed || !c.generation) return;
     if (c.reading) { c.pendingRead = true; return; }
-    c.reading = true;
+    c.reading = true;const completed=operation();
     try {
       do {
         c.pendingRead = false;
@@ -93,6 +97,7 @@ export function mapController(authority: MapAuthority, outputBudget: EditingOutp
           if (result.delta) {
             if (result.delta.sequence !== c.sequence + 1) throw new DomainError(409, 'EDITING_SEQUENCE_GAP', 'A current map snapshot is required');
             const sequence = result.delta.sequence;
+            telemetry?.()?.schedule('map',{resourceId:result.resourceId,generation:result.generation,commandId:result.delta.commandId,confirmedSequence:sequence});
             const payload = preparation.encode(result.delta);
             c.output.sendJSONPayload({ type: 'map-delta', generation: result.generation, sequence, commandId: result.delta.commandId }, payload,
               () => { c.sequence = sequence; void catchup(c); });
@@ -124,22 +129,25 @@ export function mapController(authority: MapAuthority, outputBudget: EditingOutp
         c.socket.close(1008, 'Snapshot required'); close(c);
       } else if (!capacity(error)) fail(c, error);
       // Capacity retries hold no extra prepared result or unbounded catch-up promises.
-    } finally { c.reading = false; }
+    } finally { c.reading = false;completed(); }
   }
   function work(c: Connection) {
     if (c.closed || c.working) return;
     const retained = c.movement ?? c.presence;
     if (!retained) return;
-    if (retained === c.movement) c.movement = null; else c.presence = null;
+    if (retained === c.movement) {c.movement = null;pendingMovement--;} else {c.presence = null;pendingPresence--;}editingResourcesChanged();
     if (retained.expiresAt <= Date.now()) { retained.release(); fail(c, new ServiceUnavailableError('The transient input expired before admission', 'EDITING_MAP_CAPACITY')); work(c); return; }
-    c.working = true;
+    c.working = true;const completed=operation();
     const command = retained.value;
     const action = command.type === 'map-move' ? authority.move(c.context.session, c.context.target.id, c.context.connectionId, command.command, retained.rawBytes)
       : command.type === 'map-cancel' ? authority.cancel(c.context.session, c.context.target.id, c.context.connectionId, command.command, retained.rawBytes)
       : authority.presence(c.context.session, c.context.target.id, c.context.connectionId, command.command, retained.rawBytes);
     // The authority synchronously reserves its own operation before its first await.
     retained.release();
-    void action.then(() => notify(c.context.target.id), (error: unknown) => fail(c, error)).finally(() => { c.working = false; work(c); });
+    void action.then(() => {
+      if(command.type==='map-move')telemetry?.()?.schedule('map',{resourceId:c.context.target.id,generation:command.command.generation,interactionId:command.command.gestureId,inputSequence:command.command.sequence});
+      notify(c.context.target.id);
+    }, (error: unknown) => fail(c, error)).finally(() => { c.working = false;completed(); work(c); });
   }
   function enqueue(c: Connection, value: Command, rawBytes: number) {
     const slot = value.type === 'map-presence' ? 'presence' : 'movement';
@@ -148,6 +156,7 @@ export function mapController(authority: MapAuthority, outputBudget: EditingOutp
     if (old && value.type === 'map-cancel' && old.value.type !== 'map-presence' && (old.value.command.leaseId !== value.command.leaseId || old.value.command.gestureId !== value.command.gestureId || old.value.command.generation !== value.command.generation)) throw invalid('Cancellation must match the queued lease');
     const release = outputBudget.reserve(rawBytes + editingMapContextCharge({ context: c.context, value }));
     c[slot] = { value, release, expiresAt: Date.now() + 5000, rawBytes };
+    if(!old){if(slot==='movement')pendingMovement++;else pendingPresence++;}editingResourcesChanged();
     old?.release(); work(c);
   }
   const timer = setInterval(() => {
@@ -159,7 +168,7 @@ export function mapController(authority: MapAuthority, outputBudget: EditingOutp
       const c: Connection = { context, socket, output: new EditingOutput(socket, outputBudget), generation: null, sequence: 0,
         subscribed: false, closed: false, reading: false, pendingRead: false, working: false, movement: null, presence: null,
         releaseBase: outputBudget.reserve(2048 + editingMapContextCharge(context)), lastHead: '', transient: new Map() };
-      connections.set(context.connectionId, c); socket.once('close', () => close(c));
+      connections.set(context.connectionId, c);editingResourcesChanged(); socket.once('close', () => close(c));
       socket.on('message', (data: RawData, binary) => {
         if (c.closed) return;
         try {
@@ -191,7 +200,8 @@ export function mapController(authority: MapAuthority, outputBudget: EditingOutp
       });
     },
     notify, notifyAll() { for (const c of connections.values()) void catchup(c); },
-    async close() { closing = true; clearInterval(timer); for (const c of [...connections.values()]) { c.socket.terminate(); close(c); } await authority.close(); },
+    async close() { closing = true; clearInterval(timer); for (const c of [...connections.values()]) { c.socket.terminate(); close(c); } await authority.close();await Promise.allSettled([...operations]); },
     get externalOutputBytes() { return outputBudget.bytes; },
+    get resources(){return{mapConnections:connections.size,mapOperations:operations.size,mapPendingMovement:pendingMovement,mapPendingPresence:pendingPresence};},
   };
 }

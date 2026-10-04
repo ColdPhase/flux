@@ -204,3 +204,18 @@ app.setNotFoundHandler(async (request, reply) => {
 });
 await app.listen({ host: '0.0.0.0', port: Number(process.env.PORT ?? 8080) });
 app.log.info({ queue: SAMPLE_JOB }, 'Flux API ready');
+
+let shuttingDown=false;
+async function gracefulShutdown(){
+  if(shuttingDown)return;shuttingDown=true;
+  // Leaves room inside the runner's eight-second Docker stop deadline. Failure is
+  // a nonzero actual process outcome; it never invents a terminal drained record.
+  const deadline=setTimeout(()=>{process.stderr.write('Flux API graceful shutdown deadline expired\n');process.exit(1);},7000);
+  try {
+    await editing?.close();await app.close();
+    if(editing&&!await editing.finishTelemetry())process.exitCode=1;
+  }catch(error){process.exitCode=1;app.log.error({error},'Flux API graceful shutdown failed');}
+  finally{clearTimeout(deadline);}
+}
+process.once('SIGTERM',()=>{void gracefulShutdown();});
+process.once('SIGINT',()=>{void gracefulShutdown();});

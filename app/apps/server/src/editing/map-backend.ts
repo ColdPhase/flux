@@ -7,6 +7,7 @@ import { sketchPorts,sketchRepository } from '../sketches/adapters.js';
 import { UnauthenticatedError } from '../identity/session.js';
 import { decodeMapChange,mapHash } from './map-state.js';
 import { undoMap } from './map-undo.js';
+import { editingResourcesChanged } from './resource-observation.js';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const id=(value:unknown)=>{if(typeof value!=='string'||!UUID.test(value))throw new InvalidInputError('A UUID is required');return value.toLowerCase();};
 const sequence=(value:unknown)=>{if(!Number.isSafeInteger(value)||Number(value)<0)throw new InvalidInputError('A finite sequence is required');return Number(value);};
@@ -22,7 +23,7 @@ function positions(value:LiveMapPosition[],allowed:string[]) {
     return {id:thought,x:p.x,y:p.y,...(p.width===undefined?{}:{width:p.width}),...(p.height===undefined?{}:{height:p.height})};
   });
 }
-export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>['pool'],'connect'>},boundary:{beforeHandoff?:()=>Promise<void>}={}):LiveMapBackend {
+export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>['pool'],'connect'>},boundary:{beforeHandoff?:()=>Promise<void>}={}):LiveMapBackend&{readonly sqlActive:number} {
   const transactions=editingTransactions(database.pool);const active=new Set<Promise<unknown>>();let closing=false;
   type Db=Parameters<Parameters<typeof transactions.run>[0]>[0];
   async function run<T>(who:MapIdentity,sketchId:string,write:boolean,action:(c:{db:Db;actor:NamedPrincipal;principal:{kind:'human';id:string};room:NonNullable<Awaited<ReturnType<ReturnType<typeof liveMapRows<MapNativeChange>>['head']>>>;sketch:NonNullable<Awaited<ReturnType<ReturnType<typeof sketchRepository>['findSketch']>>>;access:'read'|'write';finalFence:()=>Promise<void>})=>Promise<T>) {
@@ -34,7 +35,7 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
       const room=await liveMapRows(db,decodeMapChange).ensureHead(sketchId,sketch.workspaceId);
       const finalFence=async()=>{if(!await sessions.current(who))throw new UnauthenticatedError();};
       const result=await action({db,actor,principal,room,sketch,access,finalFence});await finalFence();return result;
-    });active.add(work);try{return await work;}finally{active.delete(work);}
+    });active.add(work);editingResourcesChanged();try{return await work;}finally{active.delete(work);editingResourcesChanged();}
   }
   async function delta(db:Db,principal:{kind:'human';id:string},room:{generation:string;workspaceId:string},record:NonNullable<Awaited<ReturnType<ReturnType<typeof liveMapRows<MapNativeChange>>['after']>>>,access:'read'|'write'):Promise<LiveMapDelta> {
     const change=record.change;const accessPort=policySketchAccess(db);
@@ -55,6 +56,7 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
     return found;
   }
   return {
+    get sqlActive(){return active.size;},
     bootstrap(who,sketchId,handoff){return run(who,sketchId,false,async c=>{
       const rows=liveMapRows(c.db,decodeMapChange);await rows.snapshotCapacity(sketchId);
       const sketch=await createSketchUseCases({run:action=>action(sketchPorts(c.db))}).get(c.principal,sketchId);
