@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import type { Draft, VersionConflict, Workspace } from '@flux/contracts';
+import { idempotencyRepository } from '@flux/db';
 import { deleteExpiredIdempotencyKeys } from '@flux/core';
 import { db, pool } from './support/db.js';
 import { addMember, draft, expectStatus, grant, person, project, type Person } from './support/people.js';
@@ -214,7 +215,7 @@ describe('idempotency keys', () => {
     const retention = await pool.query("SELECT extract(epoch FROM expires_at - created_at)::int AS seconds FROM idempotency_keys WHERE key = $1", [expiring]);
     assert.deepEqual(retention.rows, [{ seconds: 24 * 3600 }], 'the replacement is retained for 24 hours');
     await pool.query("UPDATE idempotency_keys SET expires_at = now() - interval '1 second' WHERE key = $1", [expiring]);
-    assert.ok(await deleteExpiredIdempotencyKeys(db) >= 1);
+    assert.ok(await deleteExpiredIdempotencyKeys(idempotencyRepository(db)) >= 1);
     const left = await pool.query('SELECT count(*)::int AS n FROM idempotency_keys WHERE key = $1', [expiring]);
     assert.equal(left.rows[0].n, 0);
   });
