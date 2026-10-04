@@ -32,8 +32,9 @@ and the [contract section](../../../development/cowork-coordination.md#live-requ
   readability of references at exact versions, and the canonical reads for
   the post-state hook.
 - `app/packages/db/src/repositories/cowork-recovery.ts` — the reference rule is
-  parameterized as `readableReferenceSet`. The recovery SQL is unchanged, and
-  the existing recovery tests pass unmodified.
+  parameterized as `readableReferenceSet`. The recovery query is parameterized
+  with the same column fragments, and the existing recovery tests pass unmodified.
+  The generated SQL text was not diffed.
 - `app/apps/server/src/co-work/graph.ts` — the production #171 lock provider
   (`lockProjectTaskGraphs` + `taskPrerequisiteIds`). It is shared by admission,
   and the claim policy can use it.
@@ -45,7 +46,7 @@ and the [contract section](../../../development/cowork-coordination.md#live-requ
 - **Image build, typecheck and lint** (`pnpm build && pnpm typecheck && pnpm lint` inside the
   image) pass. One pre-existing warning remains: `react-hooks/exhaustive-deps` in
   `apps/web/src/work/ProjectTasks.tsx`. That file is untouched; the warning is not an error.
-- **New admission tests** at `67872d8d`: `cowork-admission.test.ts`, **6/6**.
+- **New admission tests** at `1cf46f52` (run before an amend that changed only the commit message; identical tree `9ea4d9987a1489b83c48fb748244f3a415e3f14a`): `cowork-admission.test.ts`, **6/6**.
 - **Affected set** at `72367b38`: 13 files, **102/102**, with 0 skipped, cancelled or todo.
   - The files are `cowork-admission`, `cowork-claims-core`, `cowork-execution`,
     `cowork-migration-arrival`, `cowork-recovery`, `cowork-requests-storage`,
@@ -66,7 +67,7 @@ and the [contract section](../../../development/cowork-coordination.md#live-requ
 
 ## Negative controls proven by mutation
 
-A detached copy of `67872d8d` + the strengthened F2 test (`w153-mut`) removed three guards:
+A detached copy of `1cf46f52`'s tree (`9ea4d998`) plus the strengthened F2 test (`w153-mut`) removed three guards:
 
 - **M1:** only the sender slot is locked.
 - **M2:** the lineage check is removed.
@@ -102,4 +103,6 @@ Not covered by this slice:
 - The Agents UI, device evidence and release evidence.
 
 Units are still inserted by fixtures; no authorized unit creation command
-exists yet. Trusted bearer fixtures are not proof of client integration.
+exists yet. Re-issuing an existing intent under a new command ID returns the
+existing request and delivery intent, but spends one grant use, as the contract states.
+Trusted bearer fixtures are not proof of client integration.
