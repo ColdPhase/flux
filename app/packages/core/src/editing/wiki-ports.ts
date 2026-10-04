@@ -29,10 +29,13 @@ export interface WikiUpdate {
 }
 export interface WikiPresence { connectionId: string; actor: NamedPrincipal; cursor: LiveCursor; expiresAt: string }
 export interface WikiRows<State extends WikiCodecState> {
+  /** Preparation reads do not acquire live-head/replica rows before task-use fencing. */
+  peekHead(docId: string): Promise<WikiHead<State> | null>;
   lockHead(docId: string): Promise<WikiHead<State> | null>;
   insertHead(doc: DocWithCurrent, generation: string, state: State): Promise<WikiHead<State>>;
   replaceState(head: WikiHead<State>, state: State, hash: string): Promise<void>;
   replica(docId: string, generation: string, replicaId: number): Promise<WikiReplica | null>;
+  peekReplica(docId: string, generation: string, replicaId: number): Promise<WikiReplica | null>;
   insertReplica(docId: string, generation: string, replicaId: number, actorId: string | null, instanceId: string, ownerKind: 'human' | 'server'): Promise<EnrolledLiveDoc>;
   renewReplica(docId: string, generation: string, replicaId: number, instanceId: string): Promise<EnrolledLiveDoc>;
   /** Advisory actor/UUID lock, shared across every room and operation; held until transaction end. */

@@ -9,6 +9,7 @@ import { editingContextCharge } from './context-charge.js';
 import { editingRuntime, NATIVE_CHECKPOINT_BYTES } from './runtime.js';
 import { apiEditingOutputBudget,type EditingOutputBudget } from './output.js';
 import { editingResourcesChanged } from './resource-observation.js';
+import { withTaskUseErrors } from '../work/task-use-errors.js';
 
 const EMPTY = new Uint8Array(0);
 /** Production composition. The caller receives data only through the held current authority fence. */
@@ -34,11 +35,11 @@ export function wikiAuthority(database: { pool: Pick<ReturnType<typeof createDat
   }
   async function run<T>(session: SessionContext, admission: AdmissionLease, action: (wiki: ReturnType<typeof liveWiki<CodecState, AdmissionLease>>, finalFence: () => Promise<void>,admission:AdmissionLease) => Promise<T>) {
     try {
-      const work = transactions.run(async (db) => {
+      const work = withTaskUseErrors(() => transactions.run(async (db) => {
         const adapters = ports(db); const result = await action(liveWiki(adapters), () => adapters.session.assertCurrent(identity(session)),admission);
         await adapters.session.assertCurrent(identity(session));
         return result;
-      });
+      }));
       active.add(work);editingResourcesChanged();
       try { return await work; } finally { active.delete(work);editingResourcesChanged(); }
     } finally { runtime.release(admission); }

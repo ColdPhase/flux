@@ -12,6 +12,8 @@ export interface LiveDocHead {
 
 /** Mandatory same-transaction boundary for every native doc writer, including standing-grant adapters. */
 export interface DocLiveVersions {
+  /** Read-only preparation while the native doc/material lock is retained. */
+  peek(docId: string): Promise<LiveDocHead | null>;
   lock(docId: string): Promise<LiveDocHead | null>;
   /** A clean legacy write retires the old generation atomically; retained receipts/ownership survive. */
   rebindSaved(row: DocWithCurrent, generation: string): Promise<void>;

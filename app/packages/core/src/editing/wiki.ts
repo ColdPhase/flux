@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { EnrollLiveDoc, EnrolledLiveDoc, LiveDocBootstrap, LiveCursor, LiveReceipt, SaveSharedDoc, WikiTextEnvelope } from '@flux/contracts';
 import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, RuleViolationError } from '../access/errors.js';
-import { createDocUseCases } from '../docs/service.js';
+import { createDocUseCases, prepareDocBodyTaskUse } from '../docs/service.js';
 import { isId } from '../work/validation.js';
 import type { WikiCodecState, WikiHead, WikiIdentity, WikiIntent, WikiPorts } from './wiki-ports.js';
 
@@ -112,22 +112,29 @@ export function liveWiki<State extends WikiCodecState, Lease>(ports: WikiPorts<S
       if (envelope.kind !== 'wiki' || envelope.operation !== 'text' || envelope.parameters !== null
         || envelope.room !== docId || envelope.actor !== identity.actorId || !isId(envelope.generation)) throw new InvalidInputError('The text intent has another scope', 'EDITING_SCOPE_MISMATCH');
       const { doc } = await authorized(identity, docId, 'write', envelope.uuid);
-      const current = await ports.rows.lockHead(docId);
+      const current = await ports.rows.peekHead(docId);
       if (!current) throw generationChanged();
       if (envelope.workspace !== doc.doc.workspaceId) throw new InvalidInputError('The text intent has another scope', 'EDITING_SCOPE_MISMATCH');
       const fingerprint = ports.codec.fingerprint(envelope, bytes);
       const original = await replay(identity, envelope.uuid, current, 'text', fingerprint, bytes.byteLength);
       if (original) return original;
       if (current.generation !== envelope.generation || !current.codecState) throw generationChanged();
-      const owner = await ports.rows.replica(docId, current.generation, envelope.replica);
+      const owner = await ports.rows.peekReplica(docId, current.generation, envelope.replica);
       // A new session may first-admit exact old pending bytes owned by its actor. It cannot claim they were already confirmed.
       if (!owner || owner.ownerKind !== 'human' || owner.actorId !== identity.actorId) throw new ConflictError('The replica is not enrolled for this person and generation', 'EDITING_REPLICA_REQUIRED');
       const validated = await ports.codec.validate(current.codecState!, envelope, bytes, lease);
       if (!validated.ok) throw new RuleViolationError('The candidate text was refused before sharing', validated.code);
       const next = { ...current, codecState: validated.state, sequence: validated.state.sequence, body: validated.state.body, hash: hash(validated.state.body) };
-      await ports.rows.replaceState(current, validated.state, next.hash);
       const changed = !validated.receipt.semanticNoop;
-      if (changed) await ports.rows.appendUpdate(next, envelope, bytes, fingerprint);
+      const taskFence = changed ? await prepareDocBodyTaskUse(ports.native, doc, [current.body, next.body]) : null;
+      const retained = await ports.rows.lockHead(docId);
+      if (!retained || retained.generation !== current.generation || retained.sequence !== current.sequence
+        || retained.hash !== current.hash || retained.body !== current.body) throw generationChanged();
+      const retainedOwner = await ports.rows.replica(docId, current.generation, envelope.replica);
+      if (!retainedOwner || retainedOwner.ownerKind !== owner.ownerKind || retainedOwner.actorId !== owner.actorId
+        || retainedOwner.instanceId !== owner.instanceId) throw new ConflictError('The replica changed before commit', 'EDITING_REPLICA_REQUIRED');
+      await ports.rows.replaceState(current, validated.state, next.hash);
+      if (changed) { await ports.rows.appendUpdate(next, envelope, bytes, fingerprint); await taskFence!.mark(); }
       return record(identity, next, receipt(next, envelope.uuid, 'text', fingerprint, changed), bytes.byteLength);
     },
     async cursor(identity: WikiIdentity, docId: string, generation: string, connectionId: string, cursor: LiveCursor | null) {
@@ -140,7 +147,7 @@ export function liveWiki<State extends WikiCodecState, Lease>(ports: WikiPorts<S
     async save(identity: WikiIdentity, docId: string, command: SaveSharedDoc): Promise<LiveReceipt> {
       if (!command || Object.keys(command).some((key) => !['clientCommandId','expectedVersion','generation','headSequence','headHash','title','state','reason'].includes(key))) throw new InvalidInputError('Unknown snapshot parameter');
       const { principal } = await authorized(identity, docId, 'write', command.clientCommandId);
-      const current = await ports.rows.lockHead(docId);
+      const current = await ports.rows.peekHead(docId);
       if (!current) throw generationChanged();
       const parameters = { expectedVersion: command.expectedVersion, generation: command.generation, headSequence: command.headSequence,
         headHash: command.headHash, title: command.title ?? null, state: command.state ?? null, reason: command.reason ?? null };

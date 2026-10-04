@@ -72,6 +72,14 @@ export function docRows(db: DbExecutor) {
     return row ? map([row])[0]! : null;
   }
 
+  async function assertTaskUse(docId: string, refs: readonly Ref[], retained: Pick<TaskUseFence, 'ids'>) {
+    const previous = await db.select({ type: l.toType, id: l.toId }).from(l)
+      .where(and(eq(l.fromId, docId), eq(l.fromType, 'doc'), eq(l.role, 'mentions')));
+    const actual = await referencedTaskIds(db, [...previous, ...refs]);
+    const held = new Set(retained.ids);
+    if (actual.some((id) => !held.has(id))) throw new TaskUseRefusal('TASK_TARGET_SET_CHANGED');
+  }
+
   return {
     async locate(id: string) {
       const [row] = await db.select({ projectId: m.projectId }).from(m).where(and(eq(m.id, id), eq(m.kind, 'doc')));
@@ -120,6 +128,8 @@ export function docRows(db: DbExecutor) {
       return prepareReferencedTaskUse(db, scope.projectId, [...previous, ...refs]);
     },
 
+    assertTaskUse,
+
     async replaceMentions(scope: { workspaceId: string; projectId: string }, docId: string, targets: Ref[], by: Actor, retained?: Pick<TaskUseFence, 'ids' | 'mark'>) {
       // The doc/material row is already retained by the caller. Include removed targets
       // before replacing links, so a later removal cannot erase evidence of use.
@@ -128,9 +138,7 @@ export function docRows(db: DbExecutor) {
       const fence = retained ?? await prepareReferencedTaskUse(db, scope.projectId, [...previous, ...targets]);
       // Body resolution can change while preparation waits for a graph. Verify the
       // final saved targets without extending the already retained graph/task set.
-      const actual = await referencedTaskIds(db, [...previous, ...targets]);
-      const held = new Set(fence.ids);
-      if (actual.some((id) => !held.has(id))) throw new TaskUseRefusal('TASK_TARGET_SET_CHANGED');
+      await assertTaskUse(docId, targets, fence);
       await db.delete(l).where(and(eq(l.fromId, docId), eq(l.fromType, 'doc'), eq(l.role, 'mentions')));
       if (targets.length) await db.insert(l).values(targets.map((to) => ({
         id: randomUUID(), workspaceId: scope.workspaceId, projectId: scope.projectId, role: 'mentions' as const, fromType: 'doc' as const, fromId: docId,

@@ -20,6 +20,11 @@ export function docLiveVersions(db: DbExecutor) {
     return head ?? null;
   }
   return {
+    async peek(docId: string) {
+      const [head] = await db.select().from(heads).where(eq(heads.docId, docId));
+      return head ? { generation: head.generation, sequence: head.sequence, body: head.body, hash: head.hash,
+        savedVersion: head.savedVersion, savedSequence: head.savedSequence } : null;
+    },
     async lock(docId: string) {
       const head = await locked(docId);
       return head ? { generation: head.generation, sequence: head.sequence, body: head.body, hash: head.hash,

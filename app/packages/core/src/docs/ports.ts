@@ -50,6 +50,8 @@ export type NewDocVersion = Pick<DocVersionRecord, 'title' | 'body' | 'state' | 
 export interface DocTaskUseFence { readonly ids: readonly string[]; mark(ids?: readonly string[]): Promise<void> }
 export interface DocRepository {
   prepareTaskUse(scope: { workspaceId: string; projectId: string }, docId: string, refs: readonly ObjectRef[]): Promise<DocTaskUseFence>;
+  /** Read-only target-set validation under an already retained complete graph/task fence. */
+  assertTaskUse(docId: string, refs: readonly ObjectRef[], retained: DocTaskUseFence): Promise<void>;
   /** The project of a doc, whoever may read it; callers must authorize before using it. */
   locate(id: string): Promise<{ projectId: string } | null>;
   /** Docs of a project, the most recently changed first. */

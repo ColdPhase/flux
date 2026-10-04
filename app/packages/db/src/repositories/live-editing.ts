@@ -25,6 +25,7 @@ export function liveEditingRows<Codec extends State>(db: DbExecutor, decodeState
     generation: row.generation, sequence: row.sequence, body: row.body, hash: row.hash,
     savedVersion: row.savedVersion, savedSequence: row.savedSequence, codecState: row.codecState ? decodeState(row.codecState) : null });
   return {
+    async peekHead(docId: string) { const [row] = await db.select().from(h).where(eq(h.docId, docId)); return row ? present(row) : null; },
     async lockHead(docId: string) { const [row] = await db.select().from(h).where(eq(h.docId, docId)).for('update'); return row ? present(row) : null; },
     async insertHead(doc: SavedDoc, generation: string, state: Codec) {
       const [row] = await db.insert(h).values({ docId: doc.doc.id, workspaceId: doc.doc.workspaceId, projectId: doc.doc.projectId,
@@ -39,6 +40,10 @@ export function liveEditingRows<Codec extends State>(db: DbExecutor, decodeState
     },
     async replica(docId: string, generation: string, replicaId: number) {
       const [row] = await db.select().from(r).where(and(eq(r.docId, docId), eq(r.generation, generation), eq(r.replicaId, replicaId))).for('update');
+      return row ?? null;
+    },
+    async peekReplica(docId: string, generation: string, replicaId: number) {
+      const [row] = await db.select().from(r).where(and(eq(r.docId, docId), eq(r.generation, generation), eq(r.replicaId, replicaId)));
       return row ?? null;
     },
     async insertReplica(docId: string, generation: string, replicaId: number, actorId: string | null, instanceId: string, ownerKind: 'human' | 'server') {
