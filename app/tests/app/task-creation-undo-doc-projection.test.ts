@@ -149,3 +149,33 @@ test('protected material title lookup counts and returns only the exact requeste
     assert.equal(found.get(`material:${doc.id}:1`)?.title, doc.title); assert.equal(found.has(`material:${doc.id}:2`), false);
   } finally { owned.release(); }
 });
+
+test('a legally padded historical title repeated on1000 incoming links is charged for every display copy before the complete no-op response is constructed', { timeout: 60_000 }, async () => {
+  const { f, owner, doc } = await scene(); const padded = `${' '.repeat(40960)}X`;
+  // Retained SQL history can satisfy length(btrim(title))<=200 without a raw
+  // title-length bound. Add a genuine immutable fixture version, never UPDATE it.
+  await pool.query(`INSERT INTO project_material_versions(material_id,workspace_id,project_id,version,title,body,author_id,author_agent_id,reason,state)
+    SELECT material_id,workspace_id,project_id,2,$2,body,author_id,author_agent_id,reason,state
+    FROM project_material_versions WHERE material_id=$1 AND version=1`, [doc.id, padded]);
+  await pool.query('UPDATE project_materials SET current_version=2 WHERE id=$1', [doc.id]);
+  await pool.query(`INSERT INTO project_work_items(workspace_id,project_id,title,created_by_kind,created_by_id)
+    SELECT $1,$2,'Multiplicity fixture '||n,'human',$3 FROM generate_series(1,1000) n`, [f.workspaceId, f.projectId, owner]);
+  await pool.query(`INSERT INTO project_object_links(workspace_id,project_id,role,from_type,from_id,to_type,to_id,created_by_kind,created_by_id)
+    SELECT $1,$2,'related','work',id,'doc',$3,'human',$4 FROM project_work_items WHERE project_id=$2 AND title LIKE 'Multiplicity fixture %'`,
+  [f.workspaceId, f.projectId, doc.id, owner]);
+  const state = async () => ({ material: (await pool.query('SELECT * FROM project_materials WHERE id=$1', [doc.id])).rows,
+    versions: (await pool.query('SELECT * FROM project_material_versions WHERE material_id=$1 ORDER BY version', [doc.id])).rows,
+    links: (await pool.query('SELECT count(*)::int AS n FROM project_object_links WHERE to_id=$1', [doc.id])).rows,
+    used: (await pool.query('SELECT count(*)::int AS n FROM project_work_items WHERE project_id=$1 AND first_persisted_use_at IS NOT NULL', [f.projectId])).rows });
+  const before = await state(); const owned = await ownership(); let multiplicity = false;
+  const memory = { temporary: owned.memory.temporary, reserve(bytes: number) {
+    if (bytes > 1000 * padded.length * 48) multiplicity = true;
+    owned.memory.reserve(bytes);
+  } };
+  try {
+    await assert.rejects(docUseCases(db, memory).updateDoc({ kind: 'human', id: owner }, doc.id, { body: doc.body }, 2),
+      error => error instanceof Error && 'code' in error && error.code === 'EDITING_OUTPUT_CAPACITY');
+    assert.equal(multiplicity, true, 'Source rows and titles fit; the actual repeated display allowance refuses before array/wire construction');
+    assert.deepEqual(await state(), before);
+  } finally { owned.release(); }
+});

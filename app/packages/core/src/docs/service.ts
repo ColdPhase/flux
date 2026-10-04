@@ -125,8 +125,11 @@ function render(ports: DocPorts, body: string, mentions: Map<string, DocMention>
 async function names(ports: DocPorts, actors: ActorRef[]) {
   const unique = [...new Map(actors.map((actor) => [`${actor.kind}:${actor.id}`, actor])).values()];
   const found = await ports.work.names(unique);
-  return (actor: ActorRef): NamedPrincipal => ({ kind: actor.kind, id: actor.id,
-    name: found.get(`${actor.kind}:${actor.id}`) ?? (actor.kind === 'agent' ? 'Agent' : 'Former member') });
+  return (actor: ActorRef): NamedPrincipal => {
+    const name = found.get(`${actor.kind}:${actor.id}`) ?? (actor.kind === 'agent' ? 'Agent' : 'Former member');
+    ports.work.reservePresentation?.(1024 + 3 * (name.length + actor.id.length) * 48);
+    return { kind: actor.kind, id: actor.id, name };
+  };
 }
 
 function summaryOf(version: DocVersionRecord, named: (actor: ActorRef) => NamedPrincipal): DocVersionSummary {

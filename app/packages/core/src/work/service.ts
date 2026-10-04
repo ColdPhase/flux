@@ -84,15 +84,27 @@ export async function linkReader(repo: WorkRepository, ids: string[]): Promise<(
   }
   const titles = new Map<string, { title: string; conversationId?: string; sketchId?: string }>();
   for (const [projectId, refs] of byProject) for (const [ref, title] of await repo.titles(projectId, refs)) titles.set(ref, title);
-  return (id: string): ObjectLink[] => links.filter((link) => link.fromId === id || link.toId === id).map((link) => {
-    const to = target(link);
-    const toTitle = titles.get(valid.refKey(to));
-    return {
-      id: link.id, projectId: link.projectId, role: link.role, from: { type: link.fromType, id: link.fromId }, to,
-      fromTitle: titles.get(`${link.fromType}:${link.fromId}`)?.title ?? '', toTitle: toTitle?.title ?? '',
-      conversationId: toTitle?.conversationId ?? null, sketchId: toTitle?.sketchId ?? null, createdAt: iso(link.createdAt),
-    };
-  });
+  return (id: string): ObjectLink[] => {
+    let displayBytes = 0; let displayed = 0;
+    for (const link of links) if (link.fromId === id || link.toId === id) {
+      displayed++;
+      // Each endpoint title is serialized for EVERY displayed link, even when
+      // one source string/Map entry is shared by hundreds of incoming links.
+      // Three bytes per UTF-16 unit bounds UTF-8 without allocating a copy.
+      displayBytes += 3 * ((titles.get(`${link.fromType}:${link.fromId}`)?.title.length ?? 0)
+        + (titles.get(valid.refKey(target(link)))?.title.length ?? 0));
+    }
+    repo.reservePresentation?.(4096 + displayed * 1024 + displayBytes * 48);
+    return links.filter((link) => link.fromId === id || link.toId === id).map((link) => {
+      const to = target(link);
+      const toTitle = titles.get(valid.refKey(to));
+      return {
+        id: link.id, projectId: link.projectId, role: link.role, from: { type: link.fromType, id: link.fromId }, to,
+        fromTitle: titles.get(`${link.fromType}:${link.fromId}`)?.title ?? '', toTitle: toTitle?.title ?? '',
+        conversationId: toTitle?.conversationId ?? null, sketchId: toTitle?.sketchId ?? null, createdAt: iso(link.createdAt),
+      };
+    });
+  };
 }
 
 const NO_PLAN: TaskPlanRecord = { prerequisites: [], planIntent: null };

@@ -123,12 +123,13 @@ export function workRows(db: DbExecutor, memory?: TaskUseMemory) {
     const titles = new Map<string, { title: string; conversationId?: string; sketchId?: string }>();
     if (!projections.length) return titles;
     const rows = await workProjection<{ key: string; title: string; excerpt: boolean; conversationId: string | null; sketchId: string | null }>(
-      db, memory, sql.join(projections, sql` UNION ALL `));
+      db, memory!, sql.join(projections, sql` UNION ALL `));
     for (const row of rows) titles.set(row.key, { title: row.excerpt ? excerpt(row.title) : row.title,
       ...(row.conversationId ? { conversationId: row.conversationId } : {}), ...(row.sketchId ? { sketchId: row.sketchId } : {}) });
     return titles;
   }
   return {
+    reservePresentation(bytes: number) { memory?.reserve(bytes); },
     ...taskGraphRows(db),
     taskUseTargets: (refs: readonly { type: string; id: string }[]) => referencedTaskIds(db, refs),
     prepareTaskUse: taskUseRows(db).prepare,

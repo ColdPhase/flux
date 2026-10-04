@@ -147,6 +147,8 @@ export interface WorkAccess {
 
 /** Rows only; the repository makes no access decisions (the use cases ask {@link WorkAccess}). */
 export interface WorkRepository extends TaskGraphReader {
+  /** Optional command owner; reserve every repeated display/string copy before constructing it. */
+  reservePresentation?(bytes: number): void;
   /** The project of an object, whoever may read it; callers must authorize before using it. */
   locate(type: 'work' | 'decision' | 'result', id: string): Promise<{ projectId: string } | null>;
   listWork(projectId: string, page: PageWindow): Promise<Paged<WorkRecord>>;

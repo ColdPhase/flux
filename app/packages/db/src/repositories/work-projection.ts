@@ -8,11 +8,7 @@ import { TaskUseRefusal, type TaskUseMemory } from './task-use.js';
  * escaped JSON and response copies until its transaction/response has settled.
  * Nothing here locks a task, resolves authority, or marks a persisted use.
  */
-export async function workProjection<Row>(db: DbExecutor, memory: TaskUseMemory | undefined, projection: SQL, order?: SQL): Promise<Row[]> {
-  if (!memory) {
-    const loaded = await db.execute<Row & Record<string, unknown>>(projection);
-    return loaded.rows;
-  }
+export async function workProjection<Row>(db: DbExecutor, memory: TaskUseMemory, projection: SQL, order?: SQL): Promise<Row[]> {
   const countProjection = sql`SELECT count(*)::text AS count,
     COALESCE(sum("_chargeBytes"), 0)::text AS bytes FROM (${projection}) work_projection`;
   const measured = (await db.execute<{ count: string; bytes: string }>(countProjection)).rows[0]!;
