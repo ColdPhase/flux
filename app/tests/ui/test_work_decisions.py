@@ -359,6 +359,9 @@ class WorkDecisionsJourney(unittest.TestCase):
         # The Tasks tab itself also returns to the chosen view.
         page.get_by_role("navigation", name="Project views").get_by_role("link", name="Conversation").tap()
         page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks")).tap()
+        # The outgoing Tasks DOM can remain while the requested route loads.
+        # Check the completed destination before treating its retained controls as proof.
+        expect(page).to_have_url(re.compile(r"/tasks\?(?=[^#]*status=blocked)(?=[^#]*show=mine)"))
         expect(page.get_by_role("navigation", name="Task views").get_by_role("button", name=re.compile("^Blocked"))).to_have_attribute("aria-pressed", "true")
         self.assertIn("show=mine", page.url)
 

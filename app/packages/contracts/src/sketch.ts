@@ -270,7 +270,16 @@ export interface PromoteSketchCommand {
   target: PromotionTarget;
   /** The `token` of the preview the person saw. */
   token: string;
+  /**
+   * A new project only (#188): `grant` (the default, #96) gives the DM's other participants access
+   * as contributors; `none` gives nobody but the workspace's owners and admins access. Send the same
+   * value as the preview's `participants` query, since the token names the readers.
+   */
+  participants?: PromotionParticipants;
 }
+
+/** Whether a new project from a DM sketch is granted to the DM's other participants (#188). */
+export type PromotionParticipants = 'grant' | 'none';
 
 export interface PromotedSketch {
   sketch: Sketch;
