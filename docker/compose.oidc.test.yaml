@@ -1,6 +1,9 @@
 # Test only (#113): a disposable, pinned Keycloak as the operator's OpenID Connect provider for the
 # real browser authorization-code flow. scripts/check_oidc.sh generates the realm with this run's
 # public origin, client secret and passwords; nothing here is used by a normal deployment.
+# A deterministic mock provider (oidc-mock, from the existing e2e image) with a second API
+# replica (api-mock) checks that ID tokens with a bad nonce, signature, issuer or audience are
+# refused on the real callback, which Keycloak cannot be made to issue.
 services:
   keycloak:
     profiles: ["oidc"]
@@ -19,6 +22,38 @@ services:
       interval: 3s
       timeout: 3s
       retries: 60
+  oidc-mock:
+    profiles: ["oidc"]
+    image: flux-e2e:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
+    command: ["node_modules/.bin/tsx", "tests/app/support/oidc-mock.ts"]
+    environment:
+      FLUX_PUBLIC_ORIGIN: ${FLUX_PUBLIC_ORIGIN:?Set FLUX_PUBLIC_ORIGIN}
+      FLUX_OIDC_MOCK_ISSUER: http://oidc-mock:9400
+    volumes:
+      - ${FLUX_OIDC_CLIENT_SECRET_HOST_FILE:?Set FLUX_OIDC_CLIENT_SECRET_HOST_FILE}:/run/secrets/flux_oidc_client_secret:ro,z
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:9400/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  # A second API replica on the same database whose provider is the mock (no host port: the e2e
+  # browser reaches it through its in-container proxy with FLUX_API_URL=http://api-mock:8080).
+  api-mock:
+    profiles: ["oidc"]
+    extends:
+      file: compose.source.yaml
+      service: api
+    ports: !reset []
+    environment:
+      FLUX_OIDC_ISSUER: http://oidc-mock:9400
+      FLUX_OIDC_CLIENT_ID: flux
+      FLUX_OIDC_ALLOW_HTTP_ISSUER: "true"
+      FLUX_OIDC_LABEL: Mock IdP
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      oidc-mock:
+        condition: service_healthy
   api:
     environment:
       FLUX_OIDC_ISSUER: http://keycloak:8080/realms/flux

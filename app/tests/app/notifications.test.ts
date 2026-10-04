@@ -519,6 +519,134 @@ describe('recipient matrix and operator TLS (#113)', () => {
     assert.equal((await mailsTo(extra)).length, before + 1, 'exactly one message reaches the shared mailbox');
   });
 
+  /** One notification with both copies queued and held by quiet hours (real generator rows and pg-boss jobs). */
+  async function heldCopies(lead: Person, space: string, someone: Person, displayName: string, name: string) {
+    await prefs(someone, { quietHours: quietNow() });
+    const room = (await project(lead, space, name, 'workspace')).id;
+    const thread = await conversation(lead, room, `@${displayName} the ${name.toLowerCase()} numbers are in`);
+    const notificationId = (await waitForItem(someone, (item) => item.url?.endsWith(thread.messages[0]!.id) === true, 'the in-app record')).id;
+    const rows = await waitFor(async () => {
+      const found = (await emailRows(someone.id)).filter((row) => row.notification_id === notificationId);
+      return found.length === 2 ? found : null;
+    }, 'both copies queued');
+    assert.deepEqual(rows.map((row) => [row.address_kind, row.status, row.address]).sort(), [['account', 'queued', null], ['extra', 'queued', null]]);
+    const jobs = await pool.query(`SELECT data->>'emailId' AS id, start_after FROM pgboss.job WHERE name = $1 AND data->>'emailId' = ANY($2)`, [NOTIFICATION_EMAIL_JOB, rows.map((row) => row.id)]);
+    assert.equal(jobs.rows.length, 2, 'both copies were actually enqueued');
+    for (const job of jobs.rows) assert.ok(new Date(job.start_after).getTime() > Date.now() + 60_000, 'and are held by quiet hours');
+    const byKind = Object.fromEntries(rows.map((row) => [row.address_kind, row])) as Record<'account' | 'extra', (typeof rows)[number]>;
+    return { notificationId, account: byKind.account, extra: byKind.extra };
+  }
+
+  /** Messages Mailpit accepted for this mailbox, whatever the letter case of the recipient. */
+  async function mailboxCount(address: string) {
+    const ids = new Set<string>();
+    for (const variant of [address.toLowerCase(), address.toUpperCase()]) {
+      for (const mail of await mailsTo(variant)) if (mail.To.some((to) => to.Address.toLowerCase() === address.toLowerCase())) ids.add(mail.ID);
+    }
+    return ids.size;
+  }
+
+  /** Real SMTP: Mailpit accepts; each acceptance is counted by recipient. */
+  function countingSmtp() {
+    const accepted: string[] = [];
+    const mailer: NotificationMailer = { async send(mail) { const result = await smtp.send(mail); if (result.kind === 'accepted') accepted.push(mail.to.toLowerCase()); return result; } };
+    return { accepted, mailer };
+  }
+
+  /** A real SMTP refusal: this catcher requires STARTTLS and the transport will not use it. */
+  function refusingSmtp() {
+    const config = loadNotificationMailConfig({ FLUX_SMTP_URL: 'smtp://mailpit-starttls:1025?ignoreTLS=true', FLUX_MAIL_FROM: 'Flux <flux@example.test>', FLUX_PUBLIC_ORIGIN: origin });
+    return smtpNotificationMailer(config as Extract<typeof config, { status: 'available' }>);
+  }
+
+  test('addresses that become one mailbox after enqueue: a failed send is retried and racing copies send exactly once (#113)', async () => {
+    const lead = await person('Vera Holm');
+    const someone = await named('Nils Wren', `nils.${randomUUID().slice(0, 8)}@nebula.homes`);
+    const space = (await workspace(lead, 'Enqueue then merge')).id;
+    await addMember(lead, space, someone, 'member');
+    const extra = `nils.private-${randomUUID()}@gmail.test`;
+    await verifyExtra(someone, extra);
+    await prefs(someone, { emailDestination: 'both' });
+    const copies = await heldCopies(lead, space, someone, 'Nils Wren', 'Meter');
+    // After both copies were queued, the identity provider reports the private address as the
+    // sign-in email: the two copies now go to one mailbox.
+    await pool.query('UPDATE auth_users SET email = $1 WHERE id = $2', [extra.toUpperCase(), someone.id]);
+    await prefs(someone, { quietHours: { enabled: false } });
+    const before = await mailboxCount(extra);
+    const options = { available: true, origin, uow: emailUnitOfWork(db) };
+    const { accepted, mailer } = countingSmtp();
+    const refusing = refusingSmtp();
+    try {
+      // The SMTP server refuses the account copy: it goes back to queued for its retry.
+      await assert.rejects(deliverNotificationEmail({ ...options, mailer: refusing }, { emailId: copies.account.id }), /SMTP did not accept/);
+      assert.deepEqual((await emailRows(someone.id)).filter((row) => row.notification_id === copies.notificationId).map((row) => row.status), ['queued', 'queued']);
+    } finally { refusing.close(); }
+    // Its retry and the extra copy run at the same time: they serialize on the notification's
+    // rows, one is sent and the other is skipped as the same mailbox.
+    const results = await Promise.all([copies.account, copies.extra].map((row) => deliverNotificationEmail({ ...options, mailer }, { emailId: row.id })));
+    assert.deepEqual(results.map((result) => result.outcome).sort(), ['sent', 'skipped']);
+    assert.deepEqual(results.find((result) => result.outcome === 'skipped'), { outcome: 'skipped', reason: 'this mailbox already gets this notification' });
+    // Later retries of either copy (pg-boss redelivery) change nothing.
+    for (const row of [copies.account, copies.extra]) {
+      const again = await deliverNotificationEmail({ ...options, mailer }, { emailId: row.id });
+      assert.equal(again.outcome, 'skipped');
+      assert.match((again as { reason: string }).reason, /^already (sent|skipped)$/);
+    }
+    assert.deepEqual(accepted, [extra.toLowerCase()], 'exactly one SMTP acceptance for the mailbox');
+    await waitFor(async () => (await mailboxCount(extra)) === before + 1, 'the one message');
+    await sleep(800);
+    assert.equal(await mailboxCount(extra), before + 1, 'Mailpit holds exactly one message for the mailbox');
+  });
+
+  test('one mailbox, copies in flight: a sibling skips while a send is pending, a failed one retries, an uncertain one is never repeated (#113)', async () => {
+    const lead = await person('Ines Kahl');
+    const someone = await named('Otto Brin', `otto.${randomUUID().slice(0, 8)}@nebula.homes`);
+    const space = (await workspace(lead, 'Copies in flight')).id;
+    await addMember(lead, space, someone, 'member');
+    const extra = `otto.private-${randomUUID()}@gmail.test`;
+    await verifyExtra(someone, extra);
+    await prefs(someone, { emailDestination: 'both' });
+    const options = { available: true, origin, uow: emailUnitOfWork(db) };
+
+    // 1. The account copy is at the SMTP server when the extra copy is claimed; the server then refuses.
+    const pending = await heldCopies(lead, space, someone, 'Otto Brin', 'Boiler');
+    await pool.query('UPDATE auth_users SET email = $1 WHERE id = $2', [extra.toUpperCase(), someone.id]);
+    await prefs(someone, { quietHours: { enabled: false } });
+    const before = await mailboxCount(extra);
+    const { accepted, mailer } = countingSmtp();
+    const refusing = refusingSmtp();
+    let release!: () => void;
+    const siblingDone = new Promise<void>((resolve) => { release = resolve; });
+    const slowRefusal: NotificationMailer = { async send(mail) { await Promise.race([siblingDone, sleep(10_000)]); return refusing.send(mail); } };
+    try {
+      const first = deliverNotificationEmail({ ...options, mailer: slowRefusal }, { emailId: pending.account.id });
+      await waitFor(async () => (await emailRows(someone.id)).find((row) => row.id === pending.account.id)?.status === 'sending', 'the account copy to be sending');
+      const sibling = await deliverNotificationEmail({ ...options, mailer }, { emailId: pending.extra.id });
+      release();
+      assert.deepEqual(sibling, { outcome: 'skipped', reason: 'this mailbox already gets this notification' });
+      await assert.rejects(first, /SMTP did not accept/);
+    } finally { release(); refusing.close(); }
+    assert.equal((await emailRows(someone.id)).find((row) => row.id === pending.account.id)?.status, 'queued', 'the refused copy waits for its retry');
+    // Its retry delivers the one message for the mailbox.
+    assert.deepEqual(await deliverNotificationEmail({ ...options, mailer }, { emailId: pending.account.id }), { outcome: 'sent', addressKind: 'account' });
+    assert.deepEqual(accepted, [extra.toLowerCase()]);
+    await waitFor(async () => (await mailboxCount(extra)) === before + 1, 'the retried message');
+
+    // 2. Uncertain: SMTP accepted the extra copy, then the worker died before recording it.
+    const uncertain = await heldCopies(lead, space, someone, 'Otto Brin', 'Gutter');
+    await prefs(someone, { quietHours: { enabled: false } });
+    const crashing: NotificationMailer = { async send(mail) { await mailer.send(mail); throw new Error('worker died after SMTP accepted'); } };
+    await assert.rejects(deliverNotificationEmail({ ...options, mailer: crashing }, { emailId: uncertain.extra.id }), /worker died/);
+    assert.equal((await emailRows(someone.id)).find((row) => row.id === uncertain.extra.id)?.status, 'sending', 'left uncertain');
+    // Neither the sibling nor a retry of the uncertain copy sends again.
+    assert.deepEqual(await deliverNotificationEmail({ ...options, mailer }, { emailId: uncertain.account.id }), { outcome: 'skipped', reason: 'this mailbox already gets this notification' });
+    assert.deepEqual(await deliverNotificationEmail({ ...options, mailer }, { emailId: uncertain.extra.id }), { outcome: 'skipped', reason: 'already sending' });
+    assert.deepEqual(accepted, [extra.toLowerCase(), extra.toLowerCase()], 'one acceptance per notification');
+    await waitFor(async () => (await mailboxCount(extra)) === before + 2, 'the uncertain message');
+    await sleep(800);
+    assert.equal(await mailboxCount(extra), before + 2, 'one message per notification for the mailbox');
+  });
+
   for (const [label, url, api] of [
     ['STARTTLS (required)', 'smtp://flux:secret@mailpit-starttls:1025?requireTLS=true', process.env.FLUX_MAILPIT_STARTTLS_URL],
     ['implicit TLS (smtps)', 'smtps://flux:secret@mailpit-smtps:1025', process.env.FLUX_MAILPIT_SMTPS_URL],

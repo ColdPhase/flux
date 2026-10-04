@@ -2,8 +2,11 @@
 # Human single sign-on (#113) in Docker: a pinned, disposable Keycloak (docker/compose.oidc.test.yaml)
 # is the operator's OpenID Connect provider; a real browser runs the authorization-code flow against
 # the Compose API. Covers sign-in, the same subject across an email change, refused unverified and
-# colliding identities, a replayed or forged callback, a session across an API restart and one
-# message per actual mailbox. Own Compose project, loopback ports (FLUX_OIDC_TEST_PORT, default
+# colliding identities, a replayed or forged callback, a session across an API restart, session
+# revocation, mail to each chosen mailbox, links that open only while authorized, and one
+# message per actual mailbox. A deterministic mock provider with a second API replica checks that
+# ID tokens with a bad nonce, signature, issuer or audience are refused on the real callback.
+# Own Compose project, loopback ports (FLUX_OIDC_TEST_PORT, default
 # 18095, and the next one for Mailpit), per-run secrets; it removes its containers, volumes and images.
 set -eu
 
@@ -35,6 +38,9 @@ export FLUX_BACKGROUND_KEY_HOST_FILE="$background_secret_dir/background_key"
 issuer="http://keycloak:8080/realms/flux"
 if command -v sha256sum >/dev/null 2>&1; then digest=$(printf '%s' "$issuer" | sha256sum); else digest=$(printf '%s' "$issuer" | shasum -a 256); fi
 provider_id="oidc-$(printf '%s' "$digest" | cut -c1-12)"
+mock_issuer="http://oidc-mock:9400"
+if command -v sha256sum >/dev/null 2>&1; then mock_digest=$(printf '%s' "$mock_issuer" | sha256sum); else mock_digest=$(printf '%s' "$mock_issuer" | shasum -a 256); fi
+mock_provider_id="oidc-$(printf '%s' "$mock_digest" | cut -c1-12)"
 client_secret="oidc-client-$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
 export FLUX_OIDC_TEST_PASSWORD="user-$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')"
 export FLUX_OIDC_TEST_ADMIN_PASSWORD="admin-$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')"
@@ -53,7 +59,7 @@ compose="docker compose -p $project -f docker/compose.source.yaml -f docker/comp
 cleanup() {
   status=$?
   if [ "$status" -ne 0 ]; then
-    $compose logs --no-color keycloak migrate api worker mailpit || true
+    $compose logs --no-color keycloak oidc-mock migrate api api-mock worker mailpit || true
   fi
   $compose down -v || true
   remove_project_images
@@ -67,11 +73,14 @@ trap 'exit 143' TERM
 $compose build migrate e2e
 $compose up -d db migrate
 $compose --profile setup run --rm files-init
-$compose up -d --wait keycloak mailpit api worker
+$compose up -d --wait keycloak oidc-mock mailpit api api-mock worker
 
 e2e() { $compose run --rm -e FLUX_OIDC_PROVIDER_ID="$provider_id" e2e node_modules/.bin/tsx --test --test-concurrency=1 "$@"; }
 
 e2e tests/app/e2e/oidc.e2e.ts
+# Bad ID tokens on the real callback, through the replica whose provider is the mock.
+$compose run --rm -e FLUX_API_URL=http://api-mock:8080 -e FLUX_OIDC_MOCK_PROVIDER_ID="$mock_provider_id" e2e \
+  node_modules/.bin/tsx --test --test-concurrency=1 tests/app/e2e/oidc-bad-token.e2e.ts
 # A single sign-on session survives an API restart (prepare saves the browser state in /state).
 e2e --test-name-pattern prepare tests/app/e2e/oidc-restart.e2e.ts
 $compose restart api

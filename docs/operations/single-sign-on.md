@@ -75,9 +75,20 @@ until the next restart; password sign-in is unaffected.
 `./scripts/check_oidc.sh` runs a pinned, disposable Keycloak in Docker as the provider and drives
 the real browser flow against Flux: sign-in, the same subject keeping the person, grants and
 verified address across an email change, refused unverified and colliding identities, a replayed
-or forged callback, a session across an API restart, and one message per actual mailbox through
-Mailpit. It uses its own Compose project and ports (`FLUX_OIDC_TEST_PORT`, default 18095, and the
-next port for Mailpit) and removes everything afterwards.
+or forged callback, a session across an API restart, revoking and signing out a single sign-on
+session, mail to exactly the chosen mailboxes (account only, private address only, both, in-app
+only) for two people whose private addresses stay their own, email links that open only while
+the reader may see the source, and one message per actual mailbox through Mailpit.
+
+Keycloak never issues a bad ID token, so the same script also starts a small deterministic mock
+provider (`app/tests/app/support/oidc-mock.ts`, from the test image) and a second API replica
+configured with it. Through the same browser flow and callback it returns ID tokens with a wrong
+nonce, a signature by another key, another issuer or another audience; each is refused with no
+session, no linked or changed account, no grants and no notification address, and a valid
+token from the same mock still signs in.
+
+It uses its own Compose project and ports (`FLUX_OIDC_TEST_PORT`, default 18095, and the next port
+for Mailpit) and removes everything afterwards.
 
 Not covered: SAML, SCIM provisioning, several providers at once, and a production provider's
 own policies (MFA, conditional access), which stay the provider's responsibility.
