@@ -40,4 +40,3 @@ export function editingJSONSize(value: unknown) {
   }
   visit(value); return { bytes, textBytes: units * 2 };
 }
-

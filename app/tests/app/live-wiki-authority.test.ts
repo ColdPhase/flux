@@ -154,7 +154,7 @@ test('fresh public one-root update encoding stays within its pre-SQL initializat
 test('real current routes queue two 100k joins and stale Save errors reveal no rolled-back current document', { timeout: 15_000 }, async () => {
   const f = await scene(); const marker = 'Protected stale material';
   const body = '😀'.repeat(50_000);
-  expectStatus(await f.owner.browser.request('PATCH', `/api/v1/docs/${f.doc.id}`, { body: { body, title: marker }, headers: { 'if-match': '\"1\"' } }),200);
+  expectStatus(await f.owner.browser.request('PATCH', `/api/v1/docs/${f.doc.id}`, { body: { body, title: marker }, headers: { 'if-match': '"1"' } }),200);
   const owner = await context(f.owner); const peer = await context(f.peer); const authority = wikiAuthority({ pool });
   const identities = new Map([[owner.principal.id,owner],[peer.principal.id,peer]]); const app = Fastify(); const outputBudget = new EditingOutputBudget();
   // Only this fixture resolver selects a pre-created identity. Production still uses current cookie auth;
@@ -170,7 +170,7 @@ test('real current routes queue two 100k joins and stale Save errors reveal no r
     ]);
     assert.equal(a.statusCode,200,a.body); assert.equal(b.statusCode,200,b.body);
     const head = a.json(); assert.equal(head.body,body); assert.equal(b.json().body,body); assert.equal(head.generation,b.json().generation);
-    const stale = await app.inject({ method: 'POST', url: `/api/v1/docs/${f.doc.id}/live/save`, headers: { 'x-fixture-actor': owner.principal.id, 'if-match': '\"1\"' },
+    const stale = await app.inject({ method: 'POST', url: `/api/v1/docs/${f.doc.id}/live/save`, headers: { 'x-fixture-actor': owner.principal.id, 'if-match': '"1"' },
       payload: { clientCommandId: randomUUID(), expectedVersion:1, generation:head.generation, headSequence:head.sequence, headHash:head.hash } });
     assert.equal(stale.statusCode,409,stale.body); assert.equal(stale.json().code,'VERSION_CONFLICT');
     assert.deepEqual(Object.keys(stale.json()).sort(),['code','error','outcome']);
