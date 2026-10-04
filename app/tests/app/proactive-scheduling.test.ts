@@ -11,6 +11,7 @@ import { proactiveReservation } from '../../apps/worker/src/proactive-comparison
 import { proactiveComparisonOutcomePath } from '@flux/contracts';
 import { expectStatus, person, project, workspace } from './support/people.js';
 import { comparisonDispatchFixtureDue } from './support/comparison-dispatch-fixture.js';
+import { eventPorts } from '../../apps/server/src/events.js';
 import { db, pool } from './support/db.js';
 
 const start = new Date('2030-01-01T00:00:00Z');
@@ -183,9 +184,9 @@ test('draft save/edit, private sketches, layout and agent events do not dirty pr
     { body: { title: 'Private thought', scope: 'private' } }), 201) as { id: string };
   expectStatus(await f.owner.browser.request('POST', `/api/v1/sketches/${sketch.id}/thoughts`,
     { body: { text: 'Private evidence is excluded.', x: 0, y: 0 } }), 201);
-  await db.transaction((tx) => recordEvent(tx, { kind: 'agent', id: f.agent.id }, f.ws.id,
+  await db.transaction((tx) => recordEvent(eventPorts(tx), { kind: 'agent', id: f.agent.id }, f.ws.id,
     'project.material_updated.v1', f.prj.id, { materialId: doc.id, version: 1 }));
-  await db.transaction((tx) => recordEvent(tx, { kind: 'human', id: f.owner.id }, f.ws.id,
+  await db.transaction((tx) => recordEvent(eventPorts(tx), { kind: 'human', id: f.owner.id }, f.ws.id,
     'sketch.changed.v1', sketch.id, { op: 'thoughts_moved', thoughtIds: [], linkIds: [] }));
   await collect(start); assert.equal(await f.window(), undefined);
   expectStatus(await f.owner.browser.request('PATCH', `/api/v1/docs/${doc.id}`,

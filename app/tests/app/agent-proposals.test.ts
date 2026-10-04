@@ -4,6 +4,7 @@ import { before, describe, test } from 'node:test';
 import { agentProposalRepository } from '@flux/db';
 import { agentProposalUseCases, enforce, evaluateProject, recordEvent, validateProposalCommand } from '@flux/core';
 import type { AgentProposal, Material, Project, Workspace } from '@flux/contracts';
+import { eventPorts } from '../../apps/server/src/events.js';
 import { db, pool } from './support/db.js';
 import { expectStatus, person } from './support/people.js';
 
@@ -16,7 +17,7 @@ const store = agentProposalUseCases(agentProposalRepository(db, {
     enforce(await evaluateProject(principal, 'project.read', projectId, tx, { lock: true }), 'project');
   },
   async recordCreated(principal, workspaceId, projectId, tx) {
-    await recordEvent(tx, principal, workspaceId, 'project.proposal_created.v1', projectId, {});
+    await recordEvent(eventPorts(tx), principal, workspaceId, 'project.proposal_created.v1', projectId, {});
   },
 }));
 
