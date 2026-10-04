@@ -280,21 +280,6 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
     feed.addEventListener('scroll', moved, { passive: true });
     return () => { stop(); window.clearTimeout(timer); for (const type of ['wheel', 'touchstart', 'keydown', 'pointerdown', 'focusin'] as const) feed.removeEventListener(type, stop); feed.removeEventListener('scroll', moved); };
   }, [conversation?.id, arrived, arrivedLoaded, feedNode]);
-  useEffect(() => {
-    // A reader at the end follows what arrives there (a reply, their assistant's answer and its
-    // proposal); a reader who scrolled up stays exactly where they are (#155 AC-1).
-    const feed = feedNode;
-    const column = feed?.firstElementChild;
-    if (!feed || !column) return;
-    const end = () => feed.scrollHeight - feed.clientHeight - feed.scrollTop <= 8;
-    let atEnd = end();
-    const scrolled = () => { atEnd = end(); };
-    const grew = () => { if (atEnd && !end()) feed.scrollTop = feed.scrollHeight; };
-    const observer = new ResizeObserver(grew);
-    observer.observe(column);
-    feed.addEventListener('scroll', scrolled, { passive: true });
-    return () => { observer.disconnect(); feed.removeEventListener('scroll', scrolled); };
-  }, [feedNode]);
 
   function changeDraft(input: string) {
     typing.input(Boolean(input.trim()) && !asking && !/^\/ai(\s|$)/.test(input));

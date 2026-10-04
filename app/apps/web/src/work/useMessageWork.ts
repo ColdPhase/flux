@@ -58,25 +58,30 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
   // The scrollTop this hook last wrote. Any other scroll (wheel, keys, scrollIntoView, focus,
   // find-in-page) is the reader's position and is kept even while a new message batch loads.
   const ownScroll = useRef<number | null>(null);
+  // A reader at the end follows what arrives there; reaching the end starts following and only
+  // scrolling up leaves it. Layout shifts (scroll anchoring, a resized composer) keep the intent.
+  const following = useRef(false);
+  const lastTop = useRef(0);
   const save = useCallback((intent = false) => {
     const pane = ref.current;
     if (!pane || !ready && !readerMoved.current && !intent) return;
     const top = pane.getBoundingClientRect().top;
     const message = [...pane.querySelectorAll<HTMLElement>('[data-message-id],[data-answer-run]')].find((row) => row.getBoundingClientRect().bottom > top);
-    // A reader at the end keeps following new content; anyone else keeps their row.
-    const atEnd = pane.scrollHeight - pane.clientHeight - pane.scrollTop <= 8;
-    if (message) anchor.current = { id: message.id, offset: message.getBoundingClientRect().top - top, top: pane.scrollTop, atEnd };
+    if (message) anchor.current = { id: message.id, offset: message.getBoundingClientRect().top - top, top: pane.scrollTop, atEnd: following.current };
   }, [ref, ready]);
   useLayoutEffect(() => {
     const pane = ref.current;
     if (!pane || pane !== node) return;
+    const atEnd = () => pane.scrollHeight - pane.clientHeight - pane.scrollTop <= 8;
+    const toEnd = () => { pane.scrollTop = pane.scrollHeight; ownScroll.current = pane.scrollTop; lastTop.current = pane.scrollTop; };
     const stored = anchor.current;
-    if (stored && (ready || !readerMoved.current)) {
+    if (following.current) { if (!atEnd()) toEnd(); }
+    else if (stored && (ready || !readerMoved.current)) {
       const message = [...pane.querySelectorAll<HTMLElement>('[data-message-id],[data-answer-run]')].find((row) => row.id === stored.id);
       const target = stored.atEnd ? pane.scrollHeight - pane.clientHeight
         : message ? pane.scrollTop + message.getBoundingClientRect().top - pane.getBoundingClientRect().top - stored.offset : stored.top;
       // Even a no-op scrollTop assignment interrupts native smooth key/touch scrolling.
-      if (Math.abs(target - pane.scrollTop) > 0.5) { pane.scrollTop = target; ownScroll.current = pane.scrollTop; }
+      if (Math.abs(target - pane.scrollTop) > 0.5) { pane.scrollTop = target; ownScroll.current = pane.scrollTop; lastTop.current = pane.scrollTop; }
     }
     // Intent survives intermediate observations in the same native gesture.
     // During an active gesture let native scroll anchoring preserve the message;
@@ -92,12 +97,21 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
     const scrolled = () => {
       const own = ownScroll.current;
       ownScroll.current = null;
-      save(own === null || Math.abs(pane.scrollTop - own) > 1);
+      const reader = own === null || Math.abs(pane.scrollTop - own) > 1;
+      if (atEnd()) following.current = true;
+      else if (reader && pane.scrollTop < lastTop.current - 1) following.current = false;
+      lastTop.current = pane.scrollTop;
+      save(reader);
     };
+    const grew = () => { if (following.current && !atEnd()) toEnd(); };
+    const resize = new ResizeObserver(grew);
+    resize.observe(pane);
+    if (pane.firstElementChild) resize.observe(pane.firstElementChild);
     pane.addEventListener('scroll', scrolled, { passive: true });
     pane.addEventListener('wheel', wheel, { passive: true }); pane.addEventListener('touchstart', touch, { passive: true });
     pane.addEventListener('keydown', key); pane.addEventListener('pointerdown', pointer);
     return () => {
+      resize.disconnect();
       pane.removeEventListener('scroll', scrolled); pane.removeEventListener('wheel', wheel); pane.removeEventListener('touchstart', touch);
       pane.removeEventListener('keydown', key); pane.removeEventListener('pointerdown', pointer);
     };
