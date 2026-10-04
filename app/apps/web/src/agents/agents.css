@@ -55,6 +55,8 @@
    scrolls in its own pane (.agents-scroll) under the sticky composer. */
 .agents-thread { display: flex; flex-direction: column; gap: var(--s-3); flex: 1 0 auto; }
 .agents-thread > :first-child { margin-top: auto; }
+/* Starting a thread keeps its first-message box beside the task picker. */
+.agents-thread[data-empty="true"] > :first-child { margin-top: 0; }
 .agents-thread__top { margin: 0; font-size: var(--fs-xs); color: var(--text-3); }
 .agents-thread__empty { margin: 0; color: var(--text-3); font-size: var(--fs-sm); }
 .agents-thread__error { margin: 0; color: var(--danger); font-size: var(--fs-sm); }

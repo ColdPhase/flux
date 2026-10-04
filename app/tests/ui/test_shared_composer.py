@@ -369,6 +369,11 @@ class SharedComposerJourney(unittest.TestCase):
                 self.open_agents(page, project, a)
                 box = page.get_by_label("Write to this task")
                 box.fill("The phone keeps this careful night measurement")
+                if width < 681:
+                    picker, field = page.get_by_label('Task', exact=True).bounding_box(), box.bounding_box()
+                    assert picker and field
+                    self.assertLessEqual(field['y'] - picker['y'] - picker['height'], 180,
+                                         'the empty human thread starts near its task, without onboarding or a blank spacer')
                 box.press("Shift+Enter")
                 self.assertIn("\n", box.input_value())
                 self.choose(page, [self.file("a-very-long-readable-measurement-name-after-the-sensor-failed-in-the-dark.bin")])
