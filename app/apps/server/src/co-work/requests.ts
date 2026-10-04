@@ -1,5 +1,5 @@
 import type { AgentExecutionCommand, AgentJsonValue, AgentPostcondition, CoWorkRequestLimits, CoWorkRequestState } from '@flux/contracts';
-import { coworkAdmissionRows, coworkRequestRows } from '@flux/db';
+import { coworkAdmissionRows, coworkRequestRows, coworkResponseRows } from '@flux/db';
 import { coWorkRequestFingerprint, ConflictError, InvalidInputError, normalizeAgentExecution, normalizeCoWorkAdmission,
   NotFoundError, requireCoWorkAdmission, validateCoWorkRequestLimits, type CoWorkContext, type CoWorkReviewSeparation,
   type Transaction } from '@flux/core';
@@ -19,6 +19,8 @@ export interface CoWorkRequestAdmission {
   deliveryIntentId: string;
   version: number;
   state: CoWorkRequestState;
+  /** Earlier unclaimed requests of the same lineage, sender, recipient unit and kind that this creation replaced. */
+  supersededRequestIds: string[];
 }
 type RequestPostcondition = Extract<AgentPostcondition, { kind: 'cowork.request_state' }>;
 const REFUSED = { conflict: () => new ConflictError('This intent key was used for another request', 'COWORK_REQUEST_CONFLICT'),
@@ -29,7 +31,8 @@ function sourceUnavailable() { return new NotFoundError('Request source', 'COWOR
 function restored(value: AgentJsonValue): CoWorkRequestAdmission {
   const v = value as unknown as CoWorkRequestAdmission;
   if (!v || typeof v !== 'object' || Array.isArray(v) || !['created', 'existing'].includes(v.status)
-    || typeof v.requestId !== 'string' || typeof v.deliveryIntentId !== 'string') throw new Error('Invalid persisted request outcome');
+    || typeof v.requestId !== 'string' || typeof v.deliveryIntentId !== 'string' || !Array.isArray(v.supersededRequestIds))
+    throw new Error('Invalid persisted request outcome');
   return v;
 }
 
@@ -92,11 +95,14 @@ export async function coWorkRequestInTransaction(tx: Transaction, claims: FluxMc
     connectionId: context.connectionId }, input.request, coWorkRequestFingerprint(input.request, context.connectionId), policy.limits);
   if (result.status !== 'created' && result.status !== 'existing') throw REFUSED[result.status]();
   if (result.request.senderConnectionId !== context.connectionId) throw new Error('Persistence returned another sender');
+  // Only a newly created request supersedes; a re-issued intent replaces nothing. Claimed requests keep their history.
+  const supersededRequestIds = result.status === 'created' ? await coworkResponseRows(tx).supersede(result.request.id) : [];
   const admission: CoWorkRequestAdmission = { status: result.status, requestId: result.request.id,
-    deliveryIntentId: result.deliveryIntentId, version: result.request.version, state: result.request.state };
+    deliveryIntentId: result.deliveryIntentId, version: result.request.version, state: result.request.state, supersededRequestIds };
   const postcondition: RequestPostcondition = { kind: 'cowork.request_state', workspaceId: context.workspaceId,
     projectId: context.projectId, connectionId: context.connectionId, unitId: facts.sender.id, requestId: admission.requestId,
     role: facts.sender.role, version: admission.version, state: admission.state };
-  await execution.complete(prepared, { value: { ...admission } as unknown as AgentJsonValue, postconditions: [postcondition] });
+  await execution.complete(prepared, { value: { ...admission, supersededRequestIds: [...supersededRequestIds] } as unknown as AgentJsonValue,
+    postconditions: [postcondition] });
   return admission;
 }

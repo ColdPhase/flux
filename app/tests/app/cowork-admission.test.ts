@@ -239,11 +239,12 @@ test('recipient slot is held through commit: a late committer cannot fall behind
   const sa = await sender(w, codex, await w.unit(a.id, runA, 'execute', codex.connection.id));
   const sb = await sender(w, claude, await w.unit(b.id, runB, 'execute', claude.connection.id));
   const reviewA = await w.unit(a.id, runA, 'review', marekClaude.connection.id), reviewB = await w.unit(b.id, runB, 'review', marekClaude.connection.id);
-  const ask = (task: WorkItem, unitId: string, intentKey: string) => ({ unitId, expectedUnitVersion: 1, recipientConnectionId: marekClaude.connection.id,
-    intentKey, parentRequestId: null, kind: 'review', target: { type: 'work', id: task.id, version: task.version },
+  const ask = (task: WorkItem, unitId: string, intentKey: string, kind = 'review') => ({ unitId, expectedUnitVersion: 1, recipientConnectionId: marekClaude.connection.id,
+    intentKey, parentRequestId: null, kind, target: { type: 'work', id: task.id, version: task.version },
     sourceRefs: [{ type: 'work', id: task.id, version: task.version }], criteriaRefs: [{ type: 'work', id: task.id, version: task.version }],
     priority: 1, peerUnblocking: false, lifetimeSeconds: 3600 });
-  const old = await sa.admit(sa.command(ask(a, reviewA, 'old')));
+  // A help request: a later review to the same unit must not supersede this committed older row.
+  const old = await sa.admit(sa.command(ask(a, reviewA, 'old', 'help')));
   const recipient = { workspaceId: w.ws.id, projectId: w.p.id, connectionId: marekClaude.connection.id };
 
   const readyA = barrier<number>(), releaseA = barrier(), readyB = barrier<number>(), releaseB = barrier();
