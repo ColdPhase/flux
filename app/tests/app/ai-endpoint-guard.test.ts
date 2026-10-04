@@ -194,6 +194,11 @@ describe('connection rules (F-020 PROV-1/PROV-3)', () => {
       // A deliberately generous upper bound of real tokenizers: about one token per 3 characters of prose, one per CJK character.
       assert.ok(estimate >= Math.ceil(text.length / (text === cjk ? 1 : 3)), 'above common tokenizer counts');
     }
+    // #192 B1: the estimate is a true upper bound. Byte-level BPE and SentencePiece with byte
+    // fallback emit at least one byte per token, so one token per UTF-8 byte bounds any text,
+    // including CJK, emoji and digit runs (which byte fallback or single-digit splitting reach).
+    for (const text of [english, polish, cjk, '📷🔦💡🌙'.repeat(100), '3141592653589793'.repeat(60), '\u0000\u0001 \t'.repeat(50)])
+      assert.ok(conservativeTokenEstimate([text]) >= Buffer.byteLength(text, 'utf8'), 'at least one token per UTF-8 byte');
     assert.ok(conservativeTokenEstimate(['a', 'b']) > conservativeTokenEstimate(['ab']), 'each part has framing');
     assert.equal(boundedInputTokens(500, null), 500);
     assert.equal(boundedInputTokens(500, 300), 500, 'a lower count never loosens the bound');
