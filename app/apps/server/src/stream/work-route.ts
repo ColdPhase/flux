@@ -5,7 +5,7 @@ import type { SessionResolver } from '../identity/index.js';
 import type { StreamWork } from './delivery.js';
 
 /**
- * Test only (`exposeWork`, enabled with FLUX_TEST_FAILURE_INJECTION): `GET /api/v1/stream/work`
+ * Test only (`exposeWork`, enabled by the fixture module: a fixture token and FLUX_TEST_FAILURE_INJECTION): `GET /api/v1/stream/work`
  * returns the caller's last open→ready work counters, so the suite can show they do not
  * depend on events the caller cannot see.
  */
