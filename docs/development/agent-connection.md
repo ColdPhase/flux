@@ -293,25 +293,45 @@ Not yet agent tools:
 
 The built-in playbook 1.0.0 does not name these tools yet; its revision belongs to #160.
 
-Co-work operations remain registry entries without tools. #153's claim adapter,
-the #160 playbook and real Codex/Claude model-driven activation are still required
-before agent decomposition counts as delivered.
+### Co-work tools (#153)
+
+Three co-work compositions are MCP tools (2026-10-05). Each call is one
+transaction that runs the composition unchanged; the composition does its own
+#152 `prepare`/`complete`, so these tools do not use `nativeActionExecutor`.
+
+| Tool | Operation | Classes | Change |
+| --- | --- | --- | --- |
+| `flux_create_unit` | `cowork.unit.create` | execute, review, plan | One co-work unit on a task. A root unit is the atomic way to take a task, or to be its sole plan writer |
+| `flux_claim_request` | `cowork.request.claim` | execute, review, plan | Pick up a request addressed to the caller's unit, under its live unit claim |
+| `flux_decline_request` | `cowork.request.respond` | execute, review, plan | Decline a picked-up request with a bounded reason; resolving with a response is not exposed |
+
+Unit claim/renew/release, request admission, the inbox, completion and transfer
+are not tools yet, so an MCP client cannot obtain a live unit claim on this
+server. Until it can, the two request tools refuse with `COWORK_CLAIM_LOST`, and
+bootstrap keeps reporting `coordination_unavailable`. The contract and the
+reasons are in [co-work coordination](cowork-coordination.md#mcp-exposure-2026-10-05-proposed-amendment-peer-review-required).
+Real Codex/Claude model-driven activation is still required before agent
+decomposition counts as delivered.
 
 ## Built-in co-work playbook (#160)
 
 The server ships one versioned instruction bundle, `COWORK_PLAYBOOK`
-(`flux.cowork` 1.1.0, in `app/packages/core/src/agent-connection/playbook.ts`). It
+(`flux.cowork` 1.2.0, in `app/packages/core/src/agent-connection/playbook.ts`). It
 has a core part and five role modules: start/resume, orient/plan,
 execute/checkpoint, request/review/fix and block/transfer/stop. Each module
 declares the MCP tools and server providers it needs. The bundle names only tools
 the MCP server registers, and a test pins this. Where a provider does not exist
 yet (coordination, verified repository context), the text tells the agent to treat
 that step as unavailable rather than simulate it. Since 1.1.0 the orient/plan module
-tells the agent to read the approved project policy (below) before planning.
+tells the agent to read the approved project policy (below) before planning. Since 1.2.0
+(2026-10-05) the execute/checkpoint module takes a task with `flux_create_unit`
+and the request/review/fix module names `flux_claim_request` and
+`flux_decline_request`, while saying that a live unit claim, the inbox and
+resolving with a response are not available yet.
 
 Every authenticated MCP connection delivers it in three ways:
 
-- **Resource:** `flux://playbook/flux.cowork/1.1.0` (Markdown) returns the
+- **Resource:** `flux://playbook/flux.cowork/1.2.0` (Markdown) returns the
   rendered bundle with its digest.
 - **Prompts:** `start_work` and `resume_work` are the host-invoked Start and
   Resume actions. Claude Code, for example, lists MCP prompts as slash commands.

@@ -448,7 +448,10 @@ for why).
   `outcome_ref`; the lease is cleared, and the generation and version increase.
   The checkpoint reference is unchanged.
   - Completion is terminal. A completed unit cannot be claimed
-    (`COWORK_UNIT_CLOSED`), transferred or completed again.
+    (`COWORK_UNIT_CLOSED`), transferred or completed again. Admission
+    therefore refuses a request to a completed or stopped recipient unit with
+    the content-free `COWORK_REQUEST_UNAVAILABLE`, since nobody could ever
+    answer it. An admission waiting on the holder's slot sees the completion.
   - It does not change the task row, its status or its human assignee. It
     resolves no request, approves nothing and satisfies no current-version
     gate.

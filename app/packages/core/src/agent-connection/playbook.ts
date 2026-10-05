@@ -6,7 +6,8 @@ import type { AgentInstructionReference } from '@flux/contracts';
  * content: the MCP prompts and resource render it, and bootstrap returns its version and digest.
  * It names only tools that the MCP server actually registers. A provider that does not exist yet
  * (coordination, verified repository context) is declared as a requirement, never described as working;
- * bootstrap's gaps say which ones this server lacks. The approved project policy exists since 1.1.0 (#160).
+ * bootstrap's gaps say which ones this server lacks. The approved project policy exists since 1.1.0 (#160); unit
+ * creation and request claim/decline tools exist since 1.2.0 (#153), while the rest of coordination is still a gap.
  */
 export type CoworkProvider = 'coordination' | 'approved_policy' | 'repository_references';
 export interface CoworkPlaybookModule {
@@ -30,7 +31,7 @@ export interface CoworkPlaybook {
 
 const playbook: CoworkPlaybook = {
   bundleId: 'flux.cowork',
-  version: '1.1.0',
+  version: '1.2.0',
   toolContractVersion: 1,
   startPayload: `Start my authorized Flux work in the bound project. Load this playbook and the authenticated bootstrap first. \
 Understand the project's current plan, wiki, relevant conversations, decisions and existing tasks before planning or creating more \
@@ -92,6 +93,9 @@ clear done-when criteria, the prerequisite task IDs, the plan material revision 
 revision and a stable key for each planned unit (for example "release-step-2"). The same intent then returns the existing task, \
 so a repeated or concurrent planning run cannot create duplicates; a different task for the same intent is refused. If the plan \
 changes, its new revision needs new intents; do not rewrite existing tasks to match without reading their current version. \
+When the planning itself is a task and you hold a cowork.unit.create grant of class plan, take it first with flux_create_unit \
+(class plan, parent null, assigned to yourself): COWORK_UNIT_TAKEN means another planner is writing that plan, so do not \
+decompose it in parallel. \
 Where a choice needs a project decision and you hold a decision.propose grant, propose it with flux_propose_decision, with its \
 rationale and the tasks it affects; it stays proposed until a person accepts or rejects it, and you never decide it yourself. \
 When bootstrap's trusted.approvedPolicy names a revision, read it from its retrievalReference (the flux://policy resource) \
@@ -102,8 +106,13 @@ approved_policy_unavailable, no policy is published: follow your owner's directi
     },
     {
       id: 'execute_checkpoint', title: 'Execute and checkpoint',
-      tools: ['flux_get_work', 'flux_update_task', 'flux_record_result'], providers: ['coordination'],
+      tools: ['flux_get_work', 'flux_create_unit', 'flux_update_task', 'flux_record_result'], providers: ['coordination'],
       text: `Work on one task at a time. Read it with flux_get_work: its outcome, criteria, prerequisites and current version. \
+With a live cowork.unit.create grant of class execute, take the task before you start: call flux_create_unit with the task's \
+current version, parent null, your own connection as assignee and a stable unitKey such as "take". COWORK_UNIT_TAKEN means \
+another connection already has the task: choose other work instead of working on it in parallel. Repeating the same unitKey \
+returns your existing unit. Opening a unit is not a lease or a claim: claiming, renewing and checkpointing it need the \
+coordination provider. \
 Starting (in_progress) or finishing (done) requires every prerequisite to be done; otherwise finish or report the prerequisite \
 first. With a live work.update grant, keep the task current with flux_update_task at the version you last read: status, \
 criteria, blocker. After a version conflict, read the task again and reapply only your own change. Work locally with the \
@@ -115,11 +124,16 @@ coordination provider; while it is unavailable, keep that record on the task and
     },
     {
       id: 'request_review_fix', title: 'Request help, review and fixes',
-      tools: [], providers: ['coordination', 'repository_references'],
-      text: `Addressed requests to another connection (help, review, fix, handoff) and verified links from tasks to pull requests \
-need the coordination and repository providers. While bootstrap lists coordination_unavailable or \
-verified_repository_context_unavailable, they do not exist on this server: ask your owner instead, and do not broadcast \
-requests or repeat coordination comments across Flux and GitHub. When available, a request names the same task, the exact \
+      tools: ['flux_claim_request', 'flux_decline_request'], providers: ['coordination', 'repository_references'],
+      text: `Sending addressed requests to another connection (help, review, fix, handoff), the inbox of requests addressed to \
+you and verified links from tasks to pull requests need the coordination and repository providers. While bootstrap lists \
+coordination_unavailable or verified_repository_context_unavailable, those parts do not exist on this server: ask your owner \
+instead, and do not broadcast requests or repeat coordination comments across Flux and GitHub. flux_claim_request picks up a \
+request addressed to your own unit and flux_decline_request declines one you picked up, with the reason that applies \
+(capability, policy, scope or source_changed); a decline is a visible outcome for the sender, not a silent drop. Both need \
+your live claim on that unit (its generation and lease ID), which comes from the coordination provider: while bootstrap lists \
+coordination_unavailable they are refused with COWORK_CLAIM_LOST, so do not retry them. Resolving a request with your \
+response is not available on this server yet. When available, a request names the same task, the exact \
 artifact version (commit SHA or result version), the criteria and the expected response; a review is of that exact version \
 only, and a fix asks for one fresh review of the new version. A Flux review never replaces a required GitHub approval or check.`,
     },
