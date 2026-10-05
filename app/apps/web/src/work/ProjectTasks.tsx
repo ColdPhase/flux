@@ -8,7 +8,8 @@ import { useShellData } from '../app/data';
 import { remember } from '../app/remembered';
 import { NewWorkComposer } from './NewWorkComposer';
 import { STATUS_LABEL, isFinished, shortDate } from './format';
-import { getProjectWorkView, workViewReadUrl } from './read-api';
+import { getProjectWorkView, getWorkReferenceRows, workReferenceReadUrl, workViewReadUrl } from './read-api';
+import { useWorkRead } from './useWorkRead';
 import { useProjectWorkPage } from './WorkReadContext';
 import { WorkPagination } from './WorkPagination';
 import { useWorkReadingPosition } from './useWorkReadingPosition';
@@ -242,6 +243,13 @@ export function ProjectTasks() {
   const viewKey = taskViewKey(me.user.id, project.id, status, mine);
   const readingKey = mode === 'list' ? `${viewKey}:reading:${cursor ?? 'first'}` : `${taskViewKey(me.user.id, project.id, null, mine)}:board:reading`;
   const saveReading = useWorkReadingPosition(scroller, readingKey, data !== null, data?.summary.observedAt);
+  // The results that proposals and outcomes name (#155): their current titles come from one bounded
+  // reference read (at most 100), not from whichever page of results the List has loaded.
+  const outcomeResults = useMemo(() => [...new Set(outcomes.map((outcome) => outcome.kind === 'comparison' ? outcome.proposal.resultId : outcome.resultId))]
+    .sort().slice(0, 100).map((id) => `result:${id}`).join(','), [outcomes]);
+  const outcomeScope = useMemo(() => outcomeResults ? { accountId: me.user.id, projectId: project.id, selector: workReferenceReadUrl(project.id, outcomeResults) } : null, [me.user.id, project.id, outcomeResults]);
+  const loadOutcomeResults = useCallback((signal: AbortSignal) => getWorkReferenceRows(project.id, outcomeResults, signal), [project.id, outcomeResults]);
+  const outcomeRead = useWorkRead(outcomeScope, loadOutcomeResults, outcomes.length, revalidator.state === 'idle');
   const jump = useRef<{ routeKey: string; id: string; group: GroupId } | null>(null);
   // Outcome links refer to the whole project's work/results in the List. Restore All before
   // scrolling, since a saved status/mine filter or a search can hide their destination.
@@ -357,9 +365,12 @@ export function ProjectTasks() {
     && !outcomes.some((outcome) => outcome.kind === 'comparison' ? outcome.proposal.status === 'proposed' : outcome.status === 'open');
   const emptyContinuation = data !== null && cursor !== null && !data.items.length;
 
+  const resultTitles = new Map<string, string>();
+  if (outcomeRead.phase === 'ready' || outcomeRead.phase === 'refreshing') for (const row of outcomeRead.value.items) if (row.kind === 'result') resultTitles.set(row.id, row.title);
+  for (const result of results) resultTitles.set(result.id, result.title);
   const proposals = (
     <ProjectProposals outcomes={outcomes} people={shell?.people ?? null} projectName={project.name}
-      resultTitles={new Map(results.map((result) => [result.id, result.title]))}
+      resultTitles={resultTitles}
       workCount={data?.summary.workTotal ?? 0} resultCount={data?.summary.all.results ?? 0}
       workJumpId={data?.summary.all.in_progress ? 'g-progress' : data?.summary.all.blocked ? 'g-blocked' : data?.summary.all.open ? 'g-open' : data?.summary.all.parked ? 'g-parked' : 'g-finished'}
       jumpToSection={jumpToSection} writable={writable} refresh={() => { if (mode === 'list') refresh(); else refreshBoard(); revalidator.revalidate(); }}
