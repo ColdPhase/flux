@@ -86,7 +86,8 @@ const POSTCONDITIONS: Record<AgentExecutionCommand['operation'], readonly AgentP
   'map.positions.update': ['thought', 'map_checkpoint'], 'map.link.create': ['map_checkpoint'], 'map.link.delete': ['map_checkpoint'],
   'doc.create': ['doc'], 'doc.update': ['doc'], 'conversation.create': ['message'], 'conversation.reply': ['message'],
   'cowork.claim': ['cowork.claim_state'], 'cowork.renew': ['cowork.claim_state'], 'cowork.release': ['cowork.claim_state'],
-  'cowork.request': ['cowork.request_state'],
+  'cowork.request': ['cowork.request_state'], 'cowork.request.claim': ['cowork.request_state'],
+  'cowork.request.respond': ['cowork.request_state'],
 };
 function postconditionInvalid(): never {
   throw new DomainError(409, 'COMMAND_POSTSTATE_INVALID', 'A command needs its exact canonical produced post-state');

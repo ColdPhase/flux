@@ -40,6 +40,7 @@ const OPERATION_LABEL: Record<AgentOperation, string> = {
   'doc.create': 'created a doc', 'doc.update': 'edited a doc',
   'conversation.create': 'started a conversation', 'conversation.reply': 'replied in a conversation',
   'cowork.claim': 'took a task', 'cowork.renew': 'is still on a task', 'cowork.release': 'released a task', 'cowork.request': 'asked for help',
+  'cowork.request.claim': 'picked up a request', 'cowork.request.respond': 'answered a request',
 };
 
 const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
