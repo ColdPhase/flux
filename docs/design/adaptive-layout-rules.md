@@ -101,9 +101,11 @@ remain reachable. Own messages stay on the right and other people's on the left.
 ## Transitions
 
 - **Map camera** (T151-E): each projection keeps its own camera and zoom.
-  - The plane keeps its scroll position. On the phone, the thought at the top keeps its offset.
+  - The plane keeps its scroll position. On the phone, the thought at the top keeps its offset,
+    and a zoomed-in phone map also keeps its sideways scroll.
   - When a layout change clamps the scroll position, the camera is put back. Only a scroll the
     layout did not cause moves it: a person, a pan, or a moved thought scrolled into view.
+  - While a person drags or resizes a thought, the view stays still.
   - On a first visit to a projection, the selected thought, or else the first one in view, stays
     where the person saw it.
   - Nothing auto-fits on a resize.
