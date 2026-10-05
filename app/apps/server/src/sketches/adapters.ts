@@ -1,10 +1,11 @@
-import { sketchRows, type DbExecutor } from '@flux/db';
+import { fileRows, sketchRows, type DbExecutor } from '@flux/db';
 import type { PromotionPerson } from '@flux/contracts';
 import {
   authorize,
   createProject,
   createSketchUseCases,
   ForbiddenError,
+  placeThoughtImage,
   getProject,
   grantProject,
   listMembers,
@@ -15,7 +16,9 @@ import {
   RuleViolationError,
   visibleFilter,
   type Database,
+  type FileStorage,
   type Principal,
+  type SketchFiles,
   type SketchPorts,
   type SketchPromotion,
   type SketchRepository,
@@ -99,10 +102,25 @@ export function sketchPromotion(tx: Database): SketchPromotion {
   };
 }
 
+/**
+ * Map thought images (#252) over the stored-files rows of the same transaction. Without the files volume (compositions
+ * that only read maps, such as agent reads) placing an image is refused; agents are refused by the files rule anyway.
+ */
+export function sketchFiles(tx: Database, storage?: FileStorage): SketchFiles {
+  const files = fileRows(tx as DbExecutor);
+  return {
+    ofThoughts: (projectId, thoughtIds) => files.thoughtFiles(projectId, thoughtIds),
+    place: (principal, input) => placeThoughtImage(files, storage ?? { read: async () => {
+      throw new ForbiddenError('Images cannot be placed on a map here', 'FILE_PLACEMENT_UNAVAILABLE');
+    } }, principal, input),
+  };
+}
+
 /** The ports of one unit of work (exported for the concurrency tests). */
-export function sketchPorts(tx: Database): SketchPorts {
+export function sketchPorts(tx: Database, storage?: FileStorage): SketchPorts {
   return {
     access: policySketchAccess(tx),
+    files: sketchFiles(tx, storage),
     sketches: sketchRepository(tx as DbExecutor),
     promotion: sketchPromotion(tx),
     events: { record: async (principal, workspaceId, kind, sketchId, data) => { await recordEvent(eventPorts(tx), principal, workspaceId, kind, sketchId, data); } },
@@ -110,12 +128,12 @@ export function sketchPorts(tx: Database): SketchPorts {
 }
 
 /** One transaction per use case; on an open transaction (an idempotency scope) it nests as a savepoint. */
-export function sketchUnitOfWork(db: Database): SketchUnitOfWork {
-  return { run: (work) => db.transaction((tx) => work(sketchPorts(tx))) };
+export function sketchUnitOfWork(db: Database, storage?: FileStorage): SketchUnitOfWork {
+  return { run: (work) => db.transaction((tx) => work(sketchPorts(tx, storage))) };
 }
 
-/** The sketch use cases bound to a connection or transaction. */
-export const sketchUseCases = (db: Database) => createSketchUseCases(sketchUnitOfWork(db));
+/** The sketch use cases bound to a connection or transaction; `storage` lets a thought take a staged image (#252). */
+export const sketchUseCases = (db: Database, storage?: FileStorage) => createSketchUseCases(sketchUnitOfWork(db, storage));
 
 /** Sketch commands sharing a composing caller's transaction and single final event batch (#152 map actions). */
 export function nativeSketchInEventSession(tx: Transaction, session: TransactionEventSession) {

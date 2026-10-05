@@ -48,6 +48,20 @@ export function agentStandingGrants(db: Database, domain: AgentGrantDomainChecks
           throw new DomainError(404, 'GRANT_NOT_FOUND', 'Grant not found');
       });
     },
+    narrow(ownerUserId, connectionId, id, command) {
+      return db.transaction(async (tx) => {
+        const rows = agentExecutionRows(tx);
+        const grant = await rows.lockOwnedGrant(ownerUserId, connectionId, id);
+        const now = await rows.now(); // after the row lock, the same wall clock an execution uses
+        // A revoked or expired grant has nothing left to narrow; it reads like a missing one.
+        if (!grant || grant.revokedAt || grant.expiresAt <= now) throw new DomainError(404, 'GRANT_NOT_FOUND', 'Grant not found');
+        const maximumUses = command.maximumUses ?? grant.maximumUses;
+        const expiresAt = command.expiresAt ? new Date(command.expiresAt) : grant.expiresAt;
+        if (maximumUses > grant.maximumUses || maximumUses < Math.max(grant.used, 1) || expiresAt > grant.expiresAt || expiresAt <= now)
+          throw new DomainError(400, 'GRANT_NOT_NARROWER', 'A grant can only be narrowed: fewer uses, but not fewer than already used, or an earlier expiry that is still in the future');
+        return rows.narrowGrant(grant.id, { maximumUses, expiresAt });
+      });
+    },
   };
   return agentStandingGrantUseCases(port);
 }

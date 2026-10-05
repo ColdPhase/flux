@@ -80,6 +80,8 @@ names.
 - private notes (drafts), including the private note a material was published from: the
   material's text is exported, its source note and the note's id are not;
 - private sketches, and the placement of a note on any sketch;
+- images placed on map thoughts (#252): the thought and its caption are exported, the image
+  is not in format version 1; a full backup keeps it;
 - accounts, e-mail addresses, sessions, push subscriptions and notifications;
 - approved project policies for agents (#160): a full backup keeps them, a project export does not;
 - agent connections, OAuth clients, access and refresh tokens and signing keys (secrets of this
@@ -98,6 +100,11 @@ id appears.
 
 ## Compatibility
 
-A later format version may add fields; readers should ignore unknown ones. Removing or changing
-the meaning of a field needs a new `formatVersion`. The JSON Schema rejects unknown top-level
-keys so that a change to the format cannot go unnoticed in the tests.
+Format 1 is a public extension contract of v0.1 ([O-010 EXT-2](../product/extension-contracts.md#ext-2--project-export-format-1)).
+Within one `formatVersion`, a release may add fields (even required ones) and enum values; readers
+ignore unknown fields and treat an unknown enum value as unknown. Removing, renaming or making a
+field optional, changing its type or meaning, removing an enum value, removing or renaming a bundle
+file, or changing the manifest identification needs a new `formatVersion`. The JSON Schema rejects unknown top-level
+keys so that a change to the format cannot go unnoticed in the tests, and
+`app/tests/app/extension-contracts.test.ts` pins the schema and bundle layout to
+`app/tests/app/contracts/project-export.v1.json`. See [integrations](../integrations/README.md#ext-2-read-a-project-export).

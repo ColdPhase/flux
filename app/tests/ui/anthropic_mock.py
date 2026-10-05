@@ -30,7 +30,7 @@ requests: list[dict] = []
 
 def labels(text: str) -> dict[str, str]:
     """Source labels of the adapter's input, e.g. `[S3] Message 2 by …` or `[S5] Open work item …`."""
-    found = {"first": "", "second": "", "message": "", "work": ""}
+    found = {"first": "", "second": "", "message": "", "work": "", "works": ""}
     messages = 0
     for label, rest in re.findall(r"^\[(S\d+)\] (.*)$", text, flags=re.M):
         found["first"] = found["first"] or f"[{label}]"
@@ -39,8 +39,10 @@ def labels(text: str) -> dict[str, str]:
             messages += 1
             if messages == 2:
                 found["second"] = f"[{label}]"
-        if rest.startswith("Open work item") and not found["work"]:
-            found["work"] = label
+        if rest.startswith("Open work item"):
+            found["works"] += f"[{label}] "
+            if not found["work"]:
+                found["work"] = label
     return found
 
 

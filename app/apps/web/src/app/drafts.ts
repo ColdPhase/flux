@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useSyncExternalStore, type RefObject } from 'react';
 
 /**
  * Unfinished work survives a view switch and a reload (#40): the text in a composer before it
@@ -8,40 +8,89 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObje
  */
 export type DraftStorage = 'device' | 'visit';
 
-const memory = new Map<string, string>();
+interface DraftState { text: string; storage: DraftStorage; revision: number }
+interface DraftEntry { state: DraftState; listeners: Set<() => void>; local: boolean }
+// One visit-local store for the existing per-account/context browser state. Every edit,
+// even A→B→A, advances revision; a failed empty clear is retained as a tombstone.
+// `local`: this tab has edited the value. Its own text then stays what this tab shows; another
+// tab's write only advances the fence (two tabs typing at once each keep their own draft, #211).
+const memory = new Map<string, DraftEntry>();
+
+function retain(key: string, text: string, storage: DraftStorage, edit = false, local = false): DraftEntry {
+  const previous = memory.get(key);
+  if (previous && !edit && previous.state.text === text && previous.state.storage === storage) return previous;
+  const entry = { state: { text, storage, revision: (previous?.state.revision ?? 0) + 1 }, listeners: previous?.listeners ?? new Set<() => void>(), local: local || !!previous?.local };
+  memory.set(key, entry);
+  return entry;
+}
 
 export const draftKey = (userId: string, context: string) => `flux:draft:${userId}:${context}`;
 export const scrollKey = (userId: string, context: string) => `flux:scroll:${userId}:${context}`;
 
-function read(key: string): string {
+function read(key: string): DraftState {
+  // A failed write (including an empty clear) is newer than the value still on disk.
+  // Keep that override until a successful write; a value this tab has not edited stays
+  // cross-tab readable, and one it has edited is this tab's own.
+  const previous = memory.get(key);
+  if (previous?.state.storage === 'visit' || previous?.local) return previous.state;
   try {
     const stored = localStorage.getItem(key);
-    if (stored !== null) return stored;
-  } catch { /* storage refused: fall back to memory */ }
-  return memory.get(key) ?? '';
+    return retain(key, stored ?? '', 'device').state;
+  } catch { return retain(key, previous?.state.text ?? '', 'visit').state; }
 }
 
 /** Writes or removes a value; returns where it now lives. */
-function write(key: string, value: string): DraftStorage {
-  if (value) memory.set(key, value); else memory.delete(key);
+function write(key: string, value: string): DraftState {
+  let storage: DraftStorage = 'device';
   try {
     if (value) localStorage.setItem(key, value); else localStorage.removeItem(key);
-    return 'device';
-  } catch {
-    return 'visit';
-  }
+  } catch { storage = 'visit'; }
+  const entry = retain(key, value, storage, true, true);
+  for (const listener of entry.listeners) listener();
+  return entry.state;
 }
+
+// A relevant external edit advances the fence even if queued B→A events both read final A.
+// Observe retained keys while their composer is unmounted, because an earlier command may
+// still complete. This store holds only private browser drafts/reading positions, not policy.
+if (typeof window !== 'undefined') window.addEventListener('storage', (event) => {
+  try { if (event.storageArea !== localStorage) return; } catch { /* Conservatively fence a known key. */ }
+  const keys = event.key === null ? [...memory.keys()] : memory.has(event.key) ? [event.key] : [];
+  for (const key of keys) {
+    const current = read(key);
+    const entry = retain(key, current.text, current.storage, true);
+    for (const listener of entry.listeners) listener();
+  }
+});
 
 /**
  * The pending composer text for one account and context; `clear` is called after Send.
- * A composer for another account or context is a new mount (give it a React `key`).
+ * Account/context changes select the current snapshot immediately. A composer with additional
+ * command state must still remount with a React `key` so its busy/error/pending work cannot cross.
  */
 export function useDraft(userId: string, context: string) {
   const key = draftKey(userId, context);
-  const [state, setState] = useState(() => ({ text: read(key), storage: 'device' as DraftStorage }));
-  const setText = useCallback((text: string) => setState({ text, storage: write(key, text) }), [key]);
+  const subscribe = useCallback((listener: () => void) => {
+    read(key);
+    const entry = memory.get(key)!;
+    entry.listeners.add(listener);
+    return () => { entry.listeners.delete(listener); };
+  }, [key]);
+  const getSnapshot = useCallback(() => read(key), [key]);
+  const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const setText = useCallback((text: string) => {
+    const next = write(key, text);
+    return next.revision;
+  }, [key]);
   const clear = useCallback(() => setText(''), [setText]);
-  return { text: state.text, storage: state.storage, setText, clear };
+  // A command can finish after navigation. Never clear a newer draft from a later mount.
+  const clearIfMatches = useCallback((expected: string, revision: number): DraftStorage | null => {
+    const current = read(key);
+    if (current.text !== expected || current.revision !== revision) return null;
+    setText('');
+    return read(key).storage;
+  }, [key, setText]);
+  return { text: state.text, storage: state.storage, revision: state.revision, setText, clear, clearIfMatches };
 }
 
 /**
@@ -94,7 +143,7 @@ export function useReadingPosition(ref: RefObject<HTMLElement | null>, userId: s
     if (!el || restored.current === key) return;
     restored.current = key;
     settling.current?.();
-    const place = parsePlace(read(key));
+    const place = parsePlace(read(key).text);
     if (!place || (place.top <= 0 && !place.anchor)) return;
     applyPlace(el, place);
     // Content that arrives after the restore (drafts, offers, more items) keeps the same item in view,
