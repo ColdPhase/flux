@@ -1,6 +1,7 @@
 import type { DecisionStatus, LinkOwnerType, LinkRole, ObjectRef, ResultFinding, TaskPlanIntent, WorkStatus } from '@flux/contracts';
 import type { Principal } from '../principal.js';
 import type { PlanIntentRecord, TaskGraphReader } from './task-graph.js';
+import type { GithubRuleRecord } from '../github/rules.js';
 
 /**
  * Ports of the work, decision and result use cases (issues #101, #46). Core states what it
@@ -173,6 +174,8 @@ export interface WorkRepository extends TaskGraphReader {
   replaceDependencies(scope: { workspaceId: string; projectId: string }, taskId: string, prerequisiteIds: readonly string[]): Promise<void>;
   /** Prerequisites with their state and the plan intent of each task; tasks with neither are absent. */
   taskPlans(taskIds: readonly string[]): Promise<Map<string, TaskPlanRecord>>;
+  /** "Let linked PRs move this task" rules of these tasks (#74 G-1a); tasks without one are absent. */
+  githubRules(taskIds: readonly string[]): Promise<Map<string, GithubRuleRecord>>;
   /** Share-locks the plan material of the project and returns its current version, or null when it is not there. */
   lockPlanSource(workspaceId: string, projectId: string, materialId: string): Promise<{ currentVersion: number } | null>;
   findPlanIntent(projectId: string, intent: TaskPlanIntent): Promise<PlanIntentRecord | null>;

@@ -4,6 +4,7 @@ import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, Servic
 import type { Principal } from '../principal.js';
 import { id } from '../work/validation.js';
 import type { GithubBindingRecord, GithubDelivery, GithubLinkRecord, GithubPorts, GithubUnitOfWork } from './ports.js';
+import { adoptGithubRuleOnLink, applyGithubRules, githubRuleAuthority } from './rule-service.js';
 export function githubId(value: unknown): string {
   if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return String(value);
   if (typeof value === 'string' && /^[1-9]\d{0,24}$/.test(value)) return value;
@@ -75,6 +76,8 @@ export function githubUseCases(uow: GithubUnitOfWork) {
         if (facts.repositoryId !== binding.repositoryId || facts.number !== input.number) throw new NotFoundError('Pull request');
         const record = await ports.rows.link({ ...work, id: randomUUID(), taskId: work.id, bindingId: target,
           role: input.role, facts, state: 'current', verifiedAt: new Date() });
+        // A new required output reaches the task's rule (or the project default) through a reconciliation.
+        if (input.role === 'required_output') await adoptGithubRuleOnLink(ports, principal, work.id, binding, repository);
         return linkView(record);
       });
     },
@@ -149,6 +152,8 @@ export function githubUseCases(uow: GithubUnitOfWork) {
         await ports.access.requireProject(principal, 'read', located.projectId);
         const binding = await ports.rows.binding(bindingId);
         if (!binding) throw new NotFoundError('Binding');
+        // Standing task rules act on their authors' current authority, checked before the binding lock (#74 G-1a).
+        const authority = await githubRuleAuthority(ports, binding);
         const proof = await current(ports, principal, binding);
         const pending = await ports.rows.processing(deliveryId, bindingId);
         if (pending !== 'pending') return 'already_completed';
@@ -156,6 +161,7 @@ export function githubUseCases(uow: GithubUnitOfWork) {
           throw new ServiceUnavailableError('Reauthorize this binding before background reconciliation', 'GITHUB_AUTHORIZATION_CHANGED');
         const delivery = await ports.rows.delivery(deliveryId);
         if (!delivery) throw new NotFoundError('Delivery');
+        const refreshed = new Set<string>();
         for (const link of await ports.rows.linkedPulls(bindingId)) {
           // An unrelated external comment cannot generate requests for all linked work.
           const pull = delivery.payload.pull_request as { id?: unknown } | undefined;
@@ -170,7 +176,9 @@ export function githubUseCases(uow: GithubUnitOfWork) {
           if (facts.repositoryId !== binding.repositoryId || facts.pullId !== link.facts.pullId) throw new NotFoundError('Pull request');
           await ports.rows.saveFacts(link.id, facts);
           await ports.rows.bridge(delivery, binding, link, facts);
+          refreshed.add(link.taskId);
         }
+        await applyGithubRules(ports, { delivery, binding, taskIds: [...refreshed], authority });
         await ports.rows.complete(deliveryId, bindingId);
         return 'completed';
       });
