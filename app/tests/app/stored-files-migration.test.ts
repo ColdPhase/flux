@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { createDatabase, FLUX_SCHEMA_VERSION, readMigrationManifest } from '@flux/db';
+import { guardFixturePool } from './support/fixture-database.js';
 
 test('0045 preserves historical text and search, reverses before use and refuses real staged files', async () => {
   const dir = 'packages/db/migrations';
@@ -15,10 +16,12 @@ test('0045 preserves historical text and search, reverses before use and refuses
   const url = new URL(process.env.DATABASE_URL!);
   url.pathname = `/${name}`;
   let history: ReturnType<typeof createDatabase>['pool'] | undefined;
+  let guard: ReturnType<typeof guardFixturePool> | undefined;
   try {
     const createFixture = { text: `CREATE DATABASE "${name}"`, query_timeout: 60_000 };
     await admin.query(createFixture);
     history = createDatabase(url.toString()).pool;
+    guard = guardFixturePool(history);
     for (const file of manifest.filter((entry) => entry.version < 45)) await history.query(await readFile(join(dir, file.name), 'utf8'));
     const [ws, project, conversation, message, command, file] = Array.from({ length: 6 }, () => randomUUID());
     const user = 'file-history-person';
@@ -48,9 +51,11 @@ test('0045 preserves historical text and search, reverses before use and refuses
     assert.deepEqual(await snapshot(), before);
     await assert.rejects(history.query("UPDATE project_messages SET body='' WHERE id=$1", [message]), /check constraint/);
   } finally {
+    guard?.cleanup();
     await history?.end();
     const dropFixture = { text: `DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`, query_timeout: 60_000 };
     await admin.query(dropFixture);
     await admin.end();
   }
+  guard?.assertNoEarlyErrors();
 });
