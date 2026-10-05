@@ -19,6 +19,9 @@ export interface StoredFileRow {
   expiresAt: Date | null;
   messageId: string | null;
   position: number | null;
+  /** #252: the map thought this file is the image of. A file is published to a message or a thought, never both. */
+  thoughtId: string | null;
+  publishedAt: Date | null;
 }
 
 /** Rows only; the use cases decide. Every method runs in the caller's transaction. */
@@ -45,6 +48,8 @@ export interface FileRepository {
   pendingGarbage(limit: number): Promise<string[]>;
   forgetGarbage(ids: readonly string[]): Promise<void>;
   messageFiles(messageIds: readonly string[]): Promise<Map<string, MessageFile[]>>;
+  /** #252: publishes a ready, unpublished file as the image of one map thought; false when it is not both. */
+  publishToThought(id: string, thoughtId: string, publishedAt: Date): Promise<boolean>;
 }
 
 /** Bytes received into owned private scratch, measured and hashed, not yet durable under a final id. */

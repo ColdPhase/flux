@@ -12,7 +12,7 @@ import {
   type UpdateSketchCommand,
   type UpdateThoughtCommand,
 } from '@flux/contracts';
-import type { Database, ResourceRef } from '@flux/core';
+import type { Database, FileStorage, ResourceRef } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { bodyId, commandRunner, expectedVersion, requires, useDomainErrors, versionEtag } from '../http/commands.js';
 import { sketchUseCases } from './adapters.js';
@@ -20,6 +20,8 @@ import { sketchUseCases } from './adapters.js';
 export interface SketchRouteOptions {
   db: Database;
   sessions: SessionResolver;
+  /** The files volume: a new thought may take the caller's staged image (#252). */
+  storage: FileStorage;
 }
 
 const id = { type: 'string', minLength: 1, maxLength: 64 } as const;
@@ -36,7 +38,7 @@ const SKETCH = `${SKETCHES_PATH}/:sketchId`;
  * `Idempotency-Key`; renaming, editing, moving and removing thoughts need their version
  * (`If-Match` or `expectedVersion`; batch moves carry one per thought).
  */
-export async function sketchRoutes(app: FastifyInstance, { db, sessions }: SketchRouteOptions) {
+export async function sketchRoutes(app: FastifyInstance, { db, sessions, storage }: SketchRouteOptions) {
   useDomainErrors(app);
   const { principal, command } = commandRunner(db, sessions);
   const sketches = sketchUseCases(db);
@@ -85,13 +87,13 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions }: Sketc
           id, text: { type: 'string', maxLength: 2000 }, x: number, y: number, width: number, height: number, shape,
           placement: { type: 'object', required: ['type', 'id'], additionalProperties: false, properties: { type: { type: 'string', enum: ['draft'] }, id } },
           linkFrom: { type: 'object', required: ['thoughtId'], additionalProperties: false, properties: { thoughtId: id, label, linkId: id } },
-          sourceMessageId: id,
+          sourceMessageId: id, fileId: id,
         },
       },
     },
   }, async (request, reply) => command(request, reply, {
     operation: `POST ${SKETCH}/thoughts`, scope: sketchScope(request.params.sketchId), status: 201, etag: thoughtEtag,
-    run: (actor, conn) => sketchUseCases(conn).addThought(actor, request.params.sketchId, request.body),
+    run: (actor, conn) => sketchUseCases(conn, storage).addThought(actor, request.params.sketchId, request.body),
     replay: readSketch(request.params.sketchId),
   }));
 
