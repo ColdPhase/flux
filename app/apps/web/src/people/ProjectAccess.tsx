@@ -146,7 +146,7 @@ export function ProjectAccess({ project, people, focusToken }: { project: Projec
       <p className="access__mode"><Icon name={project.visibility === 'restricted' ? 'lock' : 'people'} size={13} />
         {project.visibility === 'restricted'
           ? <span><b>Restricted.</b> Only the people listed here can open it; others in {workspaceName} don’t see it at all.</span>
-          : <span><b>Open to {workspaceName}.</b> Every member can write here; guests only with access given here.</span>}
+          : <span><b>Open to {workspaceName}.</b> Members can write here unless listed below with less access; guests only with access given here.</span>}
       </p>
       {people ? (
         <ul className="people__list" aria-label={`People who can see ${project.name}`}>
