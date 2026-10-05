@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import { describe, test } from 'node:test';
 import { apiUrl } from './support/http.js';
 
@@ -89,5 +90,55 @@ describe('service worker delivery', () => {
     const script = html.bytes.toString('utf8').match(/src="(\/assets\/[^"]+\.js)"/)?.[1];
     assert.ok(script);
     assert.equal((await get(script)).response.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+  });
+});
+
+// Precompressed app files (#266 item 9): a phone downloads about a quarter of the bytes.
+describe('compressed app files', () => {
+  async function fetchEncoded(path: string, encoding: string) {
+    const response = await fetch(new URL(path, apiUrl), { headers: { 'accept-encoding': encoding } });
+    return { response, bytes: Buffer.from(await response.arrayBuffer()) };
+  }
+  async function raw(path: string, encoding: string) {
+    // undici decodes bodies itself; node:http shows the bytes as sent.
+    const { request } = await import('node:http');
+    return new Promise<{ headers: Record<string, string | string[] | undefined>; bytes: Buffer }>((resolve, reject) => {
+      request(new URL(path, apiUrl), { headers: { 'accept-encoding': encoding } }, (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () => resolve({ headers: res.headers, bytes: Buffer.concat(chunks) }));
+      }).on('error', reject).end();
+    });
+  }
+
+  test('the main script and style are sent as Brotli or gzip with their own type and cache policy', async () => {
+    const html = (await get('/', 'text/html')).bytes.toString('utf8');
+    const assets = [...html.matchAll(/(?:src|href)="(\/assets\/[^"]+\.(?:js|css))"/g)].map((match) => match[1]!);
+    assert.ok(assets.length >= 2, `assets in index.html: ${assets.join(', ')}`);
+    for (const asset of assets) {
+      const plain = await raw(asset, 'identity');
+      assert.equal(plain.headers['content-encoding'], undefined, asset);
+      const br = await raw(asset, 'br');
+      assert.equal(br.headers['content-encoding'], 'br', asset);
+      assert.equal(br.headers['content-type'], plain.headers['content-type'], asset);
+      assert.equal(br.headers['cache-control'], 'public, max-age=31536000, immutable', asset);
+      assert.deepEqual(brotliDecompressSync(br.bytes), plain.bytes, `${asset} decodes to the same bytes`);
+      assert.ok(br.bytes.length < plain.bytes.length / 2, `${asset}: ${br.bytes.length} of ${plain.bytes.length} bytes`);
+      const gz = await raw(asset, 'gzip');
+      assert.equal(gz.headers['content-encoding'], 'gzip', asset);
+      assert.deepEqual(gunzipSync(gz.bytes), plain.bytes);
+    }
+    // fetch decodes transparently, as browsers do.
+    const decoded = await fetchEncoded(assets[0]!, 'br');
+    assert.equal(decoded.response.status, 200);
+  });
+
+  test('a compressed service worker keeps its scope header and no-cache policy', async () => {
+    const plain = await raw('/sw.js', 'identity');
+    const br = await raw('/sw.js', 'br');
+    assert.equal(br.headers['service-worker-allowed'], '/');
+    assert.equal(br.headers['cache-control'], 'no-cache');
+    assert.match(String(br.headers['content-type']), /javascript/);
+    if (br.headers['content-encoding'] === 'br') assert.deepEqual(brotliDecompressSync(br.bytes), plain.bytes);
   });
 });
