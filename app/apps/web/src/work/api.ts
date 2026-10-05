@@ -9,23 +9,6 @@ import { readAssignedAcross } from './assigned';
 /** Work, decisions and results of one project (#101); the project's audience is theirs. */
 export interface ProjectWork { work: WorkItem[]; decisions: Decision[]; results: WorkResult[] }
 
-const LIMIT = 100;
-
-/**
- * Every record of a list, page by page until `total`. The state line, the Tasks tab and the
- * objects under each message need the whole set; a record added while paging shifts the pages,
- * so items are de-duplicated by id and paging stops at the server's offset limit.
- */
-async function everything<T extends { id: string }>(path: string, signal?: AbortSignal): Promise<T[]> {
-  const byId = new Map<string, T>();
-  for (let offset = 0; offset <= 10_000; offset += LIMIT) {
-    const page = await request<Page<T>>(`${path}?limit=${LIMIT}&offset=${offset}`, { signal });
-    for (const item of page.items) if (!byId.has(item.id)) byId.set(item.id, item);
-    if (!page.items.length || offset + page.items.length >= page.total) break;
-  }
-  return [...byId.values()];
-}
-
 /**
  * Work the caller owns across these workspaces (#190 HOME-2): up to `cap` items in all, with the sum
  * of every workspace's total so a capped list can say how many it leaves out.
@@ -33,15 +16,6 @@ async function everything<T extends { id: string }>(path: string, signal?: Abort
 export const listAssignedWork = (workspaceIds: string[], cap: number, signal?: AbortSignal) =>
   readAssignedAcross(workspaceIds, (workspaceId, limit, offset) =>
     request<Page<WorkItem>>(`${workspaceAssignedWorkPath(workspaceId)}?limit=${limit}&offset=${offset}`, { signal }), cap, signal);
-
-export async function loadProjectWork(projectId: string, signal?: AbortSignal): Promise<ProjectWork> {
-  const [work, decisions, results] = await Promise.all([
-    everything<WorkItem>(projectWorkPath(projectId), signal),
-    everything<Decision>(projectDecisionsPath(projectId), signal),
-    everything<WorkResult>(projectResultsPath(projectId), signal),
-  ]);
-  return { work, decisions, results };
-}
 
 const key = (idempotencyKey: string) => ({ 'idempotency-key': idempotencyKey });
 const ifMatch = (version: number) => ({ 'if-match': `"${version}"` });
@@ -53,11 +27,11 @@ export const getResult = (id: string, signal?: AbortSignal) => request<WorkResul
 export const createWork = (projectId: string, command: CreateWorkCommand, idempotencyKey: string) =>
   request<WorkItem>(projectWorkPath(projectId), { method: 'POST', body: { ...command, clientCommandId: command.clientCommandId ?? idempotencyKey }, headers: key(idempotencyKey) });
 /** A change carries a stable command UUID that the caller reuses when it retries the same change (#154). */
-export const updateWork = (item: WorkItem, command: UpdateWorkCommand, clientCommandId: string) =>
+export const updateWork = (item: Pick<WorkItem, 'id' | 'version'>, command: UpdateWorkCommand, clientCommandId: string) =>
   request<WorkItem>(workItemPath(item.id), { method: 'PATCH', body: { ...command, clientCommandId }, headers: ifMatch(item.version) });
 export const proposeDecision = (projectId: string, command: ProposeDecisionCommand, idempotencyKey: string) =>
   request<Decision>(projectDecisionsPath(projectId), { method: 'POST', body: command, headers: key(idempotencyKey) });
-export const acceptDecision = (decision: Decision, command: AcceptDecisionCommand, idempotencyKey: string) =>
+export const acceptDecision = (decision: Pick<Decision, 'id' | 'version'>, command: AcceptDecisionCommand, idempotencyKey: string) =>
   request<Decision>(decisionAcceptPath(decision.id), { method: 'POST', body: command, headers: { ...ifMatch(decision.version), ...key(idempotencyKey) } });
 export const createResult = (projectId: string, command: CreateResultCommand, idempotencyKey: string) =>
   request<WorkResult>(projectResultsPath(projectId), { method: 'POST', body: { ...command, clientCommandId: command.clientCommandId ?? idempotencyKey }, headers: key(idempotencyKey) });
