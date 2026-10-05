@@ -362,6 +362,25 @@ test('the holder transfers its unit; the assignee claims it with its own grant; 
   assert.deepEqual([done.state, done.assignmentConnectionId], ['completed', f.marekClaude.connection.id]);
 });
 
+test('a transfer receipt stays stale after the unit returns to the same assignee and state through a full cycle', async () => {
+  const f = await setup();
+  const { w } = f;
+  const claude = await w.connect(w.hubert, 'Hubert Claude');
+  const first = f.own.handOver({ ...f.fence, assignmentConnectionId: f.marekClaude.connection.id });
+  const moved = await f.own.run(first);
+  // Marek claims and hands it to Claude; Claude claims and hands it back: pending, assigned to Marek, as in the receipt.
+  const marekClaim = await claimUnit(w, f.marekClaude, f.root.unitId, 'execute', moved.version);
+  const marek = await holder(w, f.marekClaude, f.root.unitId, 'execute');
+  const toClaude = await marek.run(marek.handOver({ ...fenceOf(marekClaim), assignmentConnectionId: claude.connection.id }));
+  const claudeClaim = await claimUnit(w, claude, f.root.unitId, 'execute', toClaude.version);
+  const claudeHolder = await holder(w, claude, f.root.unitId, 'execute');
+  const back = await claudeHolder.run(claudeHolder.handOver({ ...fenceOf(claudeClaim), assignmentConnectionId: f.marekClaude.connection.id }));
+  assert.deepEqual([back.state, back.assignmentConnectionId, back.taskId, back.role], [moved.state, moved.assignmentConnectionId, moved.taskId, moved.role]);
+  assert.equal(back.version, moved.version + 4, 'only the version tells the two states apart');
+  await rejects(f.own.run(first), 'COMMAND_POSTSTATE_STALE');
+  assert.equal(await usedOf(f.own.transfer.id), 1);
+});
+
 test('transfer negative controls: an ineligible, revoked or self assignee and separation within the run refuse without effects', async () => {
   const f = await reviewScene();
   const { w } = f;
