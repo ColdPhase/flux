@@ -385,6 +385,20 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(jo.locator(".assistant-answer").first).to_be_visible()
         self.ask(jo, "Compare the two sensors once more")
         working = jo.locator(".assistant-working")
+        try:
+            self.check_working_motion(jo, working)
+        finally:
+            # Never leave a run executing for the next journey.
+            stop = working.get_by_role("button", name="Stop")
+            if stop.count():
+                stop.click()
+                expect(working).to_contain_text("Stopped. Nothing was posted.", timeout=20000)
+            dismiss = working.get_by_role("button", name="Dismiss")
+            if dismiss.count():
+                dismiss.click()
+            expect(working).to_have_count(0)
+
+    def check_working_motion(self, jo: Page, working) -> None:
         expect(working).to_contain_text("Your assistant is writing an answer…", timeout=15000)
         expect(working).to_have_class(re.compile(r"\bis-working\b"))
         pulse = working.locator(".assistant-working__pulse")
@@ -397,13 +411,17 @@ class PersonalAssistantJourney(unittest.TestCase):
         jo.keyboard.press("Escape")
         expect(jo.locator('[aria-modal="true"]')).to_have_count(0)
         expect(working).not_to_have_attribute("data-motion-paused", "")
-        # Off screen it pauses too: a short window, the thread read from its top.
+        # Off screen it pauses too: in a short window the reader scrolls (a real wheel; the thread keeps a
+        # reader's own position) to the top of the thread, then back down to the line.
         jo.set_viewport_size({"width": 1440, "height": 640})
-        jo.locator(".thread__feed").evaluate("el => { el.scrollTop = 0; }")
+        feed = jo.locator(".thread__feed")
+        feed.hover()
+        jo.mouse.wheel(0, -100000)
+        jo.wait_for_function("() => document.querySelector('.thread__feed').scrollTop === 0")
         self.assertTrue(working.evaluate("el => { const f = el.closest('.thread__feed').getBoundingClientRect(), r = el.getBoundingClientRect(); return r.top >= f.bottom || r.bottom <= f.top; }"),
                         "the working line is outside the visible part of the thread")
         expect(working).to_have_attribute("data-motion-paused", "")
-        jo.locator(".thread__feed").evaluate("el => { el.scrollTop = el.scrollHeight; }")
+        jo.mouse.wheel(0, 100000)
         expect(working).to_be_in_viewport()
         expect(working).not_to_have_attribute("data-motion-paused", "")
         jo.set_viewport_size({"width": 1440, "height": 900})
@@ -413,8 +431,6 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(working).not_to_have_class(re.compile(r"\bis-working\b"))
         expect(working.locator(".assistant-working__pulse")).to_have_count(0)
         expect(working).to_contain_text("Stopped. Nothing was posted.", timeout=15000)
-        working.get_by_role("button", name="Dismiss").click()
-        expect(working).to_have_count(0)
 
     # ---------------------------------------------------------------- the proposal: only authority accepts
 
