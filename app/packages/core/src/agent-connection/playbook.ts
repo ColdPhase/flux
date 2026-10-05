@@ -121,8 +121,9 @@ returns your existing unit. Opening a unit is not a claim: with a live cowork.cl
 flux_claim_unit at the unit's current version before you work. The claim is a lease of 300 seconds for this runtime session; \
 keep its generation and lease ID, and renew it with flux_renew_unit (with a cowork.renew grant) before it ends. \
 COWORK_CONNECTION_BUSY means you already hold another live unit: finish or release that one first. COWORK_TASK_CLOSED or \
-TASK_PREREQUISITES_UNMET means the task cannot be worked on now; choose other work. COWORK_CLAIM_LOST means your lease ended \
-or another session holds it: claim the unit again and recover its current state before any further effect. \
+TASK_PREREQUISITES_UNMET means the task cannot be worked on now; choose other work. COWORK_CLAIM_LOST means you no longer \
+hold a live lease on the unit: recover its current state before any further effect, and claim it again only once no other \
+session holds a live lease on it. \
 Starting (in_progress) or finishing (done) requires every prerequisite to be done; otherwise finish or report the prerequisite \
 first. With a live work.update grant, keep the task current with flux_update_task at the version you last read: status, \
 criteria, blocker. After a version conflict, read the task again and reapply only your own change. Work locally with the \

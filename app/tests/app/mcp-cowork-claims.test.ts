@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import type { Agent, AgentStandingGrant, WorkItem } from '@flux/contracts';
-import { pool } from './support/db.js';
+import type { Agent, AgentExecutionCommand, AgentStandingGrant, WorkItem } from '@flux/contracts';
+import { coworkUnitRows } from '@flux/db';
+import { DomainError } from '@flux/core';
+import { coWorkClaimInTransaction } from '../../apps/server/src/co-work/claims.js';
+import { COWORK_CLAIM_POLICY } from '../../apps/server/src/co-work/policy.js';
+import { db, pool } from './support/db.js';
 import { agentConnection, toolFailure } from './support/mcp-actions.js';
 import { toolValue } from './support/mcp.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
@@ -31,6 +35,10 @@ async function scene() {
     expectStatus(await hubert.browser.request('POST', `/api/v1/projects/${p.id}/grants`,
       { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
     const connected = await agentConnection(pool, who.browser, String(agent.id), [p.id], SCOPES);
+    const [binding] = (await pool.query('SELECT id, client_id FROM agent_oauth_bindings WHERE connection_id=$1', [connected.connectionId])).rows;
+    /** The bearer's verified claims, for the one internal-only payload form (a release naming an existing checkpoint). */
+    const claims = { ownerUserId: who.id, connectionId: connected.connectionId, clientId: String(binding.client_id),
+      grantReferenceId: `flux-grant:${binding.id}`, scopes: [...SCOPES, 'offline_access'] };
     const grantRequest = (operation: string, objectId: string | null, role: Role, maximumUses = 10) =>
       who.browser.request('POST', `/api/v1/agent-connections/${connected.connectionId}/action-grants`, { body: {
         clientCommandId: randomUUID(), projectId: p.id, operation, peerRequestClass: role, maximumUses, ...(objectId ? { objectId } : {}),
@@ -50,7 +58,7 @@ async function scene() {
       return toolValue(await connected.tool('flux_create_unit', { ...base(create.id, role), taskId: task.id, unitKey,
         expectedTaskVersion: task.version, assignmentConnectionId: connected.connectionId, parent: null })) as { unitId: string; state: string; version: number };
     };
-    return { ...connected, grantRequest, standing, revoke, base, session, take };
+    return { ...connected, claims, grantRequest, standing, revoke, base, session, take };
   };
   const task = async (title: string) => expectStatus(await hubert.browser.request('POST', `/api/v1/projects/${p.id}/work`,
     { body: { title } }), 201) as WorkItem;
@@ -317,4 +325,41 @@ test('release writes a typed checkpoint under the live fence; the next holder, e
   const paused = await f.unit(root.unitId);
   assert.equal(toolFailure(await claimTool(marek, marekGrant.id, root.unitId, parked.version)).code, 'COWORK_CHECKPOINT_NOT_FOUND');
   assert.deepEqual([await f.unit(root.unitId), await f.used(marekGrant.id)], [paused, 1]);
+});
+
+test('production checkpoint rules on the internal checkpointId form: a release needs exact coverage, an untyped checkpoint is never used', async () => {
+  const f = await scene();
+  const codex = await f.connect(f.hubert, 'Hubert Codex');
+  const source = await f.material('Working plan');
+  const root = await codex.take(await f.task('Native outcome A'));
+  const claimGrant = await codex.standing('cowork.claim', root.unitId, 'execute');
+  const releaseGrant = await codex.standing('cowork.release', root.unitId, 'execute');
+  const claimed = toolValue(await claimTool(codex, claimGrant.id, root.unitId, 1)) as Claim;
+  // Two checkpoints written under the live fence, as only a release does in production: one typed, one not.
+  const insert = (progress: Record<string, unknown>) => db.transaction(async (tx) => {
+    const locked = await coworkUnitRows(tx).lock({ workspaceId: f.ws.id, projectId: f.p.id, connectionId: codex.connectionId, unitId: root.unitId });
+    const id = randomUUID();
+    assert.equal(await locked!.insertCheckpoint({ id, generation: claimed.generation, leaseId: claimed.lease!.id,
+      runtimeSessionId: codex.runtimeSessionId, progress }), id);
+    return id;
+  });
+  const typed = await insert({ schema: 'flux.cowork.checkpoint/1', summary: 'Measured the baseline.', nextAction: 'Compare.', blocker: null,
+    sources: [source] });
+  const untyped = await insert({ sources: [source], nextAction: 'An untyped note' });
+  const release = (checkpointId: string, sources: { materialId: string; version: number }[]) => db.transaction((tx) =>
+    coWorkClaimInTransaction(tx, codex.claims, { runtimeSessionId: codex.runtimeSessionId, grantId: releaseGrant.id, clientCommandId: randomUUID(),
+      projectId: f.p.id, operation: 'cowork.release', peerRequestClass: 'execute', audience: { kind: 'project', projectId: f.p.id },
+      objectId: root.unitId, sources, payload: { expectedVersion: claimed.version, generation: claimed.generation, leaseId: claimed.lease!.id,
+        checkpointId } } satisfies AgentExecutionCommand,
+    COWORK_CLAIM_POLICY));
+  const rejects = (promise: Promise<unknown>, code: string) =>
+    assert.rejects(promise, (error: unknown) => error instanceof DomainError && error.code === code, code);
+  const held = await f.unit(root.unitId);
+  await rejects(release(typed, []), 'COWORK_CHECKPOINT_SOURCES_REQUIRED');
+  await rejects(release(untyped, [source]), 'COWORK_CHECKPOINT_NOT_FOUND');
+  assert.deepEqual([await f.unit(root.unitId), await f.used(releaseGrant.id)], [held, 0]);
+  const paused = await release(typed, [source]);
+  assert.deepEqual([paused.state, paused.checkpointId], ['paused', typed]);
+  const resumed = toolValue(await claimTool(codex, claimGrant.id, root.unitId, paused.version)) as Claim;
+  assert.deepEqual([resumed.checkpoint!.id, resumed.checkpoint!.summary, resumed.checkpoint!.sources], [typed, 'Measured the baseline.', [source]]);
 });
