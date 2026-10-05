@@ -752,7 +752,7 @@ The accepted reservations are #58 `0026–0032`, #154 `0033`, #152 `0034`,
 #153 `0035`, #74 `0036`, and #154's actor extension `0037`. #153 proposes
 `0049` for the request claim/respond grant operations and `0050` for the unit
 creation grant operation. Both must be reserved on #153 before their branches
-are pushed. `0054` (proposed 2026-10-05; 0051–0053 are reserved elsewhere) adds
+are pushed. `0054` (proposed 2026-10-05; 0051 is on main for #257 and 0052–0053 are reserved elsewhere) adds
 the unit completion/transfer grant operations and `cowork_units.outcome_ref`;
 it too must be reserved on #153 before its PR is opened.
 The human-only `0033` checkpoint is frozen; it does not supply agent authors.
