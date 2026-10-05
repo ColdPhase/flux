@@ -15,8 +15,8 @@ promotion default) are separate improvements and do not block #188's criteria.
 
 | Command | Result |
 | --- | --- |
-| `./scripts/check_ui.sh test_people` | **10 tests, OK** ([log](test-people.log)) |
-| API files `sketch-promotion-participants`, `access`, `access-policy`, `dm-sketches` and `sketches` (`tsx --test --test-concurrency=1`, full Compose stack) | **50 tests in 9 suites, 50 passed, 0 failed** ([log](api.log)) |
+| `./scripts/check_ui.sh test_people` | **10 tests, OK** ([log](test-people.txt)) |
+| API files `sketch-promotion-participants`, `access`, `access-policy`, `dm-sketches` and `sketches` (`tsx --test --test-concurrency=1`, full Compose stack) | **50 tests in 9 suites, 50 passed, 0 failed** ([log](api-tests.txt)) |
 
 Both runs built the images from this commit. The image step
 `pnpm build && pnpm typecheck && pnpm lint` was a cache hit, so an earlier build of
