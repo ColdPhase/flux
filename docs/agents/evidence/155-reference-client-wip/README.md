@@ -1,16 +1,119 @@
-# #155 reference client — state on 2026-10-04 (claude-maurycy / Zamojski5)
+# #155 reference client — state on 2026-10-05 (claude-maurycy / Zamojski5)
 
-> **Checkpoint 2026-10-05 (branch `claude-maurycy/155-next`, worktree `.worktrees/155-next`).**
-> `a81dd748` merges `origin/main` `fdb70955` (#195 one conversation stream etc.) into `0951b341`;
-> `fcf4a772` fixes the thread's starved 15 s refresh. Step 2 (navigation feedback, arrival motion,
-> loop pauses, task-view typing, motion tests, `motion_performance.py`) is in progress in the
-> worktree. Final heads, commands and counts are recorded below when the runs finish.
+## 2026-10-05: main merged, navigation feedback and motion (branch `claude-maurycy/155-next`)
 
-Branch `claude-maurycy/155-truthful-typing` (draft PR #170). Replaces the previous note at
-`35910762`; the archived v2 runner, overlay and raw log stay in this folder (their `sha256.json`
-is archival and does not cover this note). Latest tested heads: `26d638de` (full application,
-full UI) and `6765a745` (doc reference tests after a test-only change); see "Branch-only UI
-failures fixed" below. Earlier: `e359bd47`/`f70686bb`. This note is a later doc-only commit.
+Pushed head **`216bea2f`** (`origin/claude-maurycy/155-next`), from `0951b341` (#170's head). Docker
+only, isolated Compose projects, ports 19160–19169, every run through the shared slot runner. Raw
+logs stay outside the repository; their sha256 is listed so a copy can be matched.
+
+### Merge of `origin/main` `fdb70955` (`a81dd748`, merge-base `7a683420`)
+
+Main through #195 (one conversation stream + reply drawer), #225, #246, #233, #212, #213/#209/#208/
+#205 and #211/#190. Twelve conflicted files; resolutions are in the `a81dd748` message. Main code
+that read the removed project work collection now uses bounded reads: the stream's root chips
+(`useMessageWorkRead`, read only: the stream keeps #195's own position owner), announcement titles
+and discussed tasks (one reference-row read of the visible `data-native-ref` rows), the thread root
+(shown whole with what was made from it, in the thread's one association read), and proposal result
+titles in Tasks (`5a739ac2`, by identity, ≤100; shown once read, `1e7d7ae0`). Contract text:
+`bounded-native-work.md` ("One project conversation", 2026-10-05).
+
+Integration fixes found by the full runs (each commit names the failing run):
+- `fcf4a772` the thread's 15 s fallback refresh was restarted by every stream revalidation and never
+  fired (test_typing.test_02 at `a81dd748`).
+- `a03a2d26` a tab's own edited draft is no longer replaced by another tab's write (main's
+  test_home_notes.test_01 at `17357b4a`; the branch's revisioned store adopted the other tab's text,
+  so two tabs saving Home notes at once lost one; it is the branch's change, not a main flake and
+  not intermittent: the cause is in `drafts.ts`, unchanged from `a81dd748` to `17357b4a`); the
+  branch-only proposal-pagination seed in `check_application.sh` uses `node_modules/.bin/tsx` like
+  main (`pnpm exec` made corepack fetch pnpm 12.6 and fail).
+- `a3d16726` the reference-rows e2e enables the assistant with main's current disclosure (#192).
+- Tests retargeted to the thread (`#thread`, `.thread__feed`, `.thread__pane`, `#thread-composer`,
+  main's composer storage); no assertion removed. test_09 of test_typing now expects main's #195
+  behaviour (the private prompt keeps its own draft) while still asserting no typing pulse.
+
+### Remaining #155 acceptance implemented (`b4eb9d51`..`216bea2f`)
+
+Design record: `studio-v11.6.md` UI116-5 "Implementation record". Pure rules in
+`app/apps/web/src/ui/motion-rules.ts` (unit tests `tests/app/motion-rules.test.ts`).
+- **AC-1** One traveling highlight for the project row and the work-tab mark: it moves from the
+  trusted click (before the router renders), the item becomes current when its content shows; a
+  newer choice retargets, a choice that does not happen returns it; transform only, `--dur-2`
+  160 ms. Drafts, focus and the sidebar scroll are untouched. Arrivals: only entries newer than the
+  newest one shown rise in (opacity + 4 px), only when visible and not under a modal; restored
+  history, earlier pages and refreshes never move; a reader with earlier content keeps their place
+  and gets one static "N new messages · N new tasks" line. Tests: `test_motion` 01–05, 07, 09.
+- **AC-2** Typing in the Agents task thread (same canonical conversation as the task's thread in
+  Conversation: one presence per person across both views, nothing created for it). Tests:
+  `test_typing` 01–11 (new 10: task views dedupe, no stored message; new 11: phone keyboard height).
+- **AC-3** The assistant's working mark moves only while the run executes (not queued/stopping);
+  its text always says the state. Board placement/cancel/rollback/keyboard/menu/touch: main's
+  `test_tasks_board` 03–09 (unchanged). Agents connection states have no motion.
+- **AC-4** Loops pause while hidden, off screen or under a modal (`useLoopPause`; assistant and live
+  marks); reduced motion = 0 ms tokens, nothing animates (`test_motion.test_05`); the typing line and
+  the new-below line are static live regions announced once per change. Durations against the #151
+  budgets: below.
+- **AC-5** Navigation interruption (`test_motion` 01–03), reading anchors (07; the branch's
+  association/reference journeys), keyboard (04), 200 % zoom emulated as 720×450 CSS px at DPR 2 and
+  the phone drawer (06), virtual keyboard emulated by viewport height (`test_typing.test_11`),
+  reduced motion (05), modal (08). Video: `motion/*.webm` (Chromium, recorded by the journeys at
+  `216bea2f`; sha256 `03b0f4dc…` project interruption, `d0b27524…` tab interruption, `e89a8c99…`
+  arrivals/new-below, `b7ecdff2…` two-user typing receiver) and the five `motion/*.png`.
+
+### Measurements (`motion_performance.py`, opt-in, Docker)
+
+`./scripts/check_ui.sh motion_performance` (FLUX_UI_PORT 19164) at **`60399670`** (motion code is
+unchanged to `216bea2f`; later commits touch Tasks proposals and one test). Chromium 151.0.7922.34,
+Python Playwright, 3 projects × 60 roots/40 tasks, a 40-reply thread, two people. Per distribution
+30 warm-ups, ≥200 measured trusted actions over ≥60 s; page clock from the event's timeStamp to a
+double-rAF paint proxy (not a raster claim). The phone profile is 390×844 with CDP 4× CPU
+throttling: emulation, not a device. Report: `motion-performance-60399670.json`
+(sha256 `15014d65…`). All within budget:
+
+| p95 (ms) | budget | desktop | desktop, reduced motion | phone CPU4× |
+| --- | ---: | ---: | ---: | ---: |
+| Tab click → mark on the chosen tab | 150 / 300 | 55.4 | 58.2 | 62.2 |
+| Tab click → motion ended | 370 / 520 | 187.7 | 58.2 | 229.6 |
+| Tab click → view current (committed paint) | 2000 / 4000 | 119.3 | 89.2 | 241.6 |
+| Tab journey longest frame | 50 / 100 | 16.8 | 16.8 | 66.7 |
+| Project click → highlight on the chosen row | 150 | 67.0 | 66.8 | – |
+| Project click → motion ended | 370 | 186.1 | 66.8 | – |
+| Project click → project current | 2000 | 100.9 | 103.3 | – |
+| Project journey longest frame | 50 | 16.8 | 16.8 | – |
+| Reply keydown → input paint, typing live (n≈387) | 100 / 200 | 37.7 | – | 40.9 |
+
+Earlier runs, kept because they drove the changes: at `17357b4a` the project highlight's feedback
+p95 was 274.1 ms (the mark waited for the router) → `a03a2d26` moves it from the click; at
+`a3d16726` its height transition laid out the sidebar every frame (committed p95 813.2 ms with
+motion vs 105.0 ms reduced, longest frame 200 ms) → `60399670` moves it by transform only.
+
+### Verification at the pushed head `216bea2f`
+
+- Build, typecheck, lint (`docker build --target build`, `pnpm build && pnpm typecheck && pnpm lint`):
+  pass, `eslint .` 0 problems (at `1e7d7ae0`; `216bea2f` changes one Python test only).
+- Full `./scripts/check_ui.sh` (FLUX_UI_PORT 19162/19163): **364 run, OK, 4 skipped** (live media
+  needs `check_live_ui.sh`). Log sha256 `077b9bce4b7d267c44fce61a46805bb9aba794c4fca8c80d5f850fcbf2f3d9e1`.
+- Full `./scripts/check_application.sh` (FLUX_TEST_PORT 19160/19161): **exit 0**; main suite 915/915,
+  then every later step (PWA 3/3, access stream, task actors, contributions, GitHub, proactive 6/6,
+  proposal pagination, task plan, agent connections, session restart, background comparisons
+  switched on, push/email unavailable). Log sha256 `423111f72a818c027dfb34cff9f49528a1577ab74b50321993a6e8e0e701f22f`.
+  The first run at this head failed one main API test (`search.test.ts`, HTTP 500 "timeout exceeded
+  when trying to connect", log `f5e494a6…`): the same pool-connect timeout (main's 1.5 s
+  `connectionTimeoutMillis`) hit a different concurrency-heavy test in 3 of 7 runs (`stream.test`
+  at `a81dd748`, `work-thought-tasks-native` at `5a739ac2`, `search` here) and passed in the others;
+  recorded as a load-dependent flake, not fixed here.
+- `assistant-reference-rows.e2e.ts` **7/7** and `github.e2e.ts` 1/1 at `a3d16726` (own overlay,
+  ports 19168/19169; log sha256 `80a22738…`); the thread code is unchanged since.
+- Unit: `motion-rules`, `message-associations`, `work-reference-window`, `architecture`, `stream`
+  27/27 at `da0b2d89`.
+- Intermittent once, then passing in 3 full runs: `test_work_associations.test_08` (one PageDown
+  across a held batch, at `fcf4a772`).
+
+### Not done here
+
+- Real Android/iPhone/iPad, real 4K/ultrawide, real browser zoom and on-screen keyboards: emulated
+  only. Independent visual and interaction review on this head (AC-5) and Hubert's evaluation.
+- "Small panel/save/reconnect effects do not alter focus order" has no new dedicated test.
+- The 128-socket typing transport budget stays the earlier separate measurement.
 
 ## Peer findings at `35910762` and what changed
 
