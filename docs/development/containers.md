@@ -190,7 +190,7 @@ choice activates it. Placeholder icons are regenerated with
 | --- | --- | --- |
 | `FLUX_VAPID_PUBLIC_KEY` | API, worker | Base64url P-256 public key given to browsers as `applicationServerKey`. Empty on the API means `GET /api/v1/push/public-key` and `POST /api/v1/push/subscriptions` answer `503 PUSH_UNAVAILABLE`. |
 | `FLUX_VAPID_PRIVATE_KEY` | worker only | Signs the VAPID JWT. Keep it secret; it never reaches the API container. |
-| `FLUX_VAPID_SUBJECT` | worker only | Operator contact for push services, `mailto:` or `https:`. |
+| `FLUX_VAPID_SUBJECT` | worker only | Operator contact for push services, `mailto:` or `https:`. Use a contact Apple can reach, such as `mailto:` at your own domain or your public https origin. Apple's push service refuses `localhost`, `.local`, `.test` and similar contacts with 403, so iPhone and iPad notifications fail. The worker warns at startup (#20). `./flux` writes `mailto:admin@localhost.localdomain`; replace it before you serve phones over HTTPS. |
 | `FLUX_PUSH_ALLOW_PRIVATE_NETWORK` | worker | `false` by default: the worker refuses push endpoints that resolve to private, loopback or link-local addresses at connect time. Only the test override sets `true` for its local push mock. |
 
 The worker requires all three VAPID values together, checks that the public key
