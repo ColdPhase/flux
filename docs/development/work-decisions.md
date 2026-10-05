@@ -123,4 +123,5 @@ and the database invariant), the "#250 AC-3" case in `app/tests/app/personal-run
 path), `app/tests/ui/test_decision_authority.py` (#250: a viewer sees who decides, a contributor accepts)
 and `app/tests/ui/test_work_decisions.py` (Playwright: create from a message, keyboard
 propose/accept, negative result by the second person, pivot with parking, phone). Screenshots:
-`docs/design/work-decisions/`.
+`docs/design/work-decisions/` (the viewer's **Who decides** note: `decision-desktop-1440-viewer.png`,
+`decision-phone-390-viewer.png`).
