@@ -1,0 +1,38 @@
+ Container flux155browser-anthropic-mock-1  Stopping
+ Container flux155browser-worker-1  Stopping
+ Container flux155browser-mailpit-1  Stopping
+ Container flux155browser-api-1  Stopping
+ Container flux155browser-worker-1  Stopped
+ Container flux155browser-worker-1  Removing
+ Container flux155browser-worker-1  Removed
+ Container flux155browser-mailpit-1  Stopped
+ Container flux155browser-mailpit-1  Removing
+ Container flux155browser-mailpit-1  Removed
+ Container flux155browser-anthropic-mock-1  Stopped
+ Container flux155browser-anthropic-mock-1  Removing
+ Container flux155browser-anthropic-mock-1  Removed
+ Container flux155browser-api-1  Stopped
+ Container flux155browser-api-1  Removing
+ Container flux155browser-api-1  Removed
+ Container flux155browser-migrate-1  Stopping
+ Container flux155browser-migrate-1  Stopped
+ Container flux155browser-migrate-1  Removing
+ Container flux155browser-migrate-1  Removed
+ Container flux155browser-db-1  Stopping
+ Container flux155browser-db-1  Stopped
+ Container flux155browser-db-1  Removing
+ Container flux155browser-db-1  Removed
+ Volume flux155browser_pgdata  Removing
+ Volume flux155browser_teststate  Removing
+ Network flux155browser_default  Removing
+ Volume flux155browser_files  Removing
+ Volume flux155browser_teststate  Removed
+ Volume flux155browser_pgdata  Removed
+ Volume flux155browser_files  Removed
+ Network flux155browser_default  Removed
+Untagged: flux-foundation:flux155browser
+Deleted: sha256:c1c9059ff0eaa997286855e6c43ec7188c41ada9a5793aa5faa34f09b5adf68c
+Untagged: flux-test-tools:flux155browser
+Deleted: sha256:d8cb44d170ea6cb4a4afc737f8eaee0b92a2dc5d5aae952f13236b64ce52cbe9
+Untagged: flux-ui-tests:flux155browser
+Deleted: sha256:ecac8d016e2bd99e65a724f453adbcd0d197e2c997da01b0c0446360fb9e7353

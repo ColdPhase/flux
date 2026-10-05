@@ -1,0 +1,357 @@
+ Container flux155browser-mailpit-1  Running
+ Container flux155browser-db-1  Running
+ Container flux155browser-anthropic-mock-1  Recreate
+ Container flux155browser-api-1  Running
+ Container flux155browser-worker-1  Running
+ Container flux155browser-anthropic-mock-1  Recreated
+ Container flux155browser-anthropic-mock-1  Starting
+ Container flux155browser-db-1  Waiting
+ Container flux155browser-anthropic-mock-1  Started
+ Container flux155browser-db-1  Healthy
+ Container flux155browser-migrate-1  Starting
+ Container flux155browser-migrate-1  Started
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Exited
+ Container flux155browser-migrate-1  Exited
+test_01_complete_native_relations_own_fields_and_other_destinations_on_desktop_and_phone (test_work_details.NativeDetailsJourney.test_01_complete_native_relations_own_fields_and_other_destinations_on_desktop_and_phone) ... ok
+test_02_required_relation_failure_retains_blocker_draft_and_has_no_false_empty (test_work_details.NativeDetailsJourney.test_02_required_relation_failure_retains_blocker_draft_and_has_no_false_empty) ... ok
+test_03_finished_deep_selection_survives_all_result_choice_pages_and_failure (test_work_details.NativeDetailsJourney.test_03_finished_deep_selection_survives_all_result_choice_pages_and_failure) ... ok
+test_04_all_current_rules_reachable_and_selected_rule_persists_on_another_page (test_work_details.NativeDetailsJourney.test_04_all_current_rules_reachable_and_selected_rule_persists_on_another_page) ... FAIL
+test_05_native_pivot_keeps_off_page_choices_and_earlier_full_reason (test_work_details.NativeDetailsJourney.test_05_native_pivot_keeps_off_page_choices_and_earlier_full_reason) ... ERROR
+test_06_native_version_conflict_retains_result_text_and_requires_explicit_finish_change (test_work_details.NativeDetailsJourney.test_06_native_version_conflict_retains_result_text_and_requires_explicit_finish_change) ... ok
+test_07_held_native_result_cannot_replace_fresh_draft_after_a_b_a (test_work_details.NativeDetailsJourney.test_07_held_native_result_cannot_replace_fresh_draft_after_a_b_a) ... ok
+test_08_docked_object_links_keep_their_own_project_after_route_navigation (test_work_details.NativeDetailsJourney.test_08_docked_object_links_keep_their_own_project_after_route_navigation) ... FAIL
+test_09_doc_source_link_does_not_promise_a_missing_section_or_new_version (test_work_details.NativeDetailsJourney.test_09_doc_source_link_does_not_promise_a_missing_section_or_new_version) ... ERROR
+
+======================================================================
+ERROR: test_05_native_pivot_keeps_off_page_choices_and_earlier_full_reason (test_work_details.NativeDetailsJourney.test_05_native_pivot_keeps_off_page_choices_and_earlier_full_reason)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/work/tests/ui/test_work_details.py", line 149, in test_05_native_pivot_keeps_off_page_choices_and_earlier_full_reason
+    page=self.page();panel=self.open(page,"decision",self.pivot["id"])
+                                                     ^^^^^^^^^^
+AttributeError: 'NativeDetailsJourney' object has no attribute 'pivot'
+
+======================================================================
+ERROR: test_09_doc_source_link_does_not_promise_a_missing_section_or_new_version (test_work_details.NativeDetailsJourney.test_09_doc_source_link_does_not_promise_a_missing_section_or_new_version)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/work/tests/ui/test_work_details.py", line 228, in test_09_doc_source_link_does_not_promise_a_missing_section_or_new_version
+    panel.get_by_label("Doc",exact=True).select_option(doc["id"])
+  File "/usr/local/lib/python3.12/dist-packages/playwright/sync_api/_generated.py", line 20069, in select_option
+    self._sync(
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_sync_base.py", line 115, in _sync
+    return task.result()
+           ^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_locator.py", line 633, in select_option
+    return await self._frame.select_option(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_frame.py", line 814, in select_option
+    return await self._channel.send("selectOption", self._timeout, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_connection.py", line 76, in send
+    return await self._connection.wrap_api_call(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_connection.py", line 632, in wrap_api_call
+    raise rewrite_error(error, f"{parsed_st['apiName']}: {error}") from None
+playwright._impl._errors.TimeoutError: Locator.select_option: Timeout 30000ms exceeded.
+Call log:
+  - waiting for locator(".wd[data-detail-kind='result'][data-detail-id='a7145063-3711-466e-814c-82bb1dd92214']").get_by_label("Doc", exact=True)
+
+
+======================================================================
+FAIL: test_04_all_current_rules_reachable_and_selected_rule_persists_on_another_page (test_work_details.NativeDetailsJourney.test_04_all_current_rules_reachable_and_selected_rule_persists_on_another_page)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/work/tests/ui/test_work_details.py", line 137, in test_04_all_current_rules_reachable_and_selected_rule_persists_on_another_page
+    seen.update(select.locator("option").evaluate_all("els=>els.map(el=>el.value).filter(Boolean)"));self.assertEqual(seen,{item["id"] for item in self.rules})
+                                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Items in the second set but not the first:
+'9694be4d-3b87-4b06-8c34-b7a8d691fd9e'
+'a5b354e8-2bf0-424d-a1cf-a80efb156014'
+'c0648c27-72cf-44e4-9e5a-031fb7f56679'
+'e78d7c0f-1226-43ac-97d1-67d73e29e5a8'
+'d846fce9-3fa1-4c9a-9eb1-18fe22b18582'
+'a0672417-6c8c-4053-bc4f-018cace06cc0'
+'eac89cf9-bf92-4fa4-ad50-3562178eac1d'
+'b58e57d2-dc17-475a-84c1-e5fffef55c39'
+'053dd756-db53-4cd6-a1cc-feb316a20eee'
+'5abd5549-4162-4488-bfc0-55790c854a68'
+'2de15a3a-0485-41d2-a925-f3220d90f560'
+'6dca2fd7-4540-456d-8078-8698c9ffa64f'
+'39eb9dd3-064d-4eb5-8daf-1f09dabcd4c9'
+'7b56bbba-8c3b-41d5-bad9-2bf25773c456'
+'4ad453d7-a562-48c2-81b7-cbb3410b04b7'
+'18aecd4e-663f-4cd2-acdb-21d838e3ffe8'
+'4a12b6b3-e83b-40d4-bea9-80b9ac9926af'
+'466623c7-eba8-4426-85ef-bf7e88daa532'
+'8e5ca33c-97ff-46be-9fb8-b32a4b58bf51'
+'ed11e470-b595-4316-84b8-d15cbfe70c46'
+'dfc08a17-d57f-4619-a55e-49f865506d6c'
+'85e43157-c45e-4f2c-91a4-813298679b40'
+'fd8edfe5-c529-47ce-93c9-19d7b642a08a'
+'1119c07e-a8c9-4fec-b20d-7c9800f70f7d'
+'083ad902-2bb0-480b-b89b-7a65d32fb992'
+'5fc4bad1-89ca-4784-8719-2232fa12c320'
+'2f95d402-ab9a-4e71-aee4-b481032a1f21'
+'69f04585-0364-480a-9137-68b3f5f12e9d'
+'2f81c3cc-4c43-4f25-b0f5-2de5aaee8dda'
+'d2716faa-267c-4abc-a679-2abbbbfd2098'
+'b32ef0a5-4df5-4ff6-8459-f922e68d7807'
+'a5d5d0d1-139f-47f9-bd99-9d176ecfa6c8'
+'9a6740ab-538d-43e6-a8f3-c72a91c653fb'
+'025e92f5-ed0a-4118-9e5e-8ad31b4cd99d'
+'9be1b373-9432-4ddb-8d5d-b419e7d92b7c'
+'c3445d80-2c0a-4432-b61d-3d3ebc558a01'
+'902ceba4-43f6-4cd1-9d66-62ecd7f63603'
+'3741dfd2-d12a-4fae-adc5-3204a8ef004d'
+'14700e77-3b49-447d-bc51-368e9fc27692'
+'37797d41-ab88-43e9-aa07-1aff0b45ac98'
+'4de8eef3-b657-4dcd-86a9-6ac8c6c23552'
+'016fad0a-ac5a-4664-88d0-5d0832075f88'
+'f186bb64-a55a-4c44-9397-c7196a6b3824'
+'504eef91-6b8b-4e82-8b68-bbe6fd0cae71'
+'023328e8-c4b3-4102-a198-3eef9c6ba0d9'
+'5f3e2bf1-e658-46eb-b069-9182d609f57c'
+'ef45c03f-5a80-4649-b981-d1eb00d5876f'
+'145c7f6f-7ea5-47c7-b4c1-f76105eaa8e2'
+'58e99c94-96f1-4e9b-bd2d-239e7672b791'
+'b2cca918-3d8b-4d1f-a14f-e9210043aeab'
+
+======================================================================
+FAIL: test_08_docked_object_links_keep_their_own_project_after_route_navigation (test_work_details.NativeDetailsJourney.test_08_docked_object_links_keep_their_own_project_after_route_navigation)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/work/tests/ui/test_work_details.py", line 217, in test_08_docked_object_links_keep_their_own_project_after_route_navigation
+    expect(panel).to_have_attribute("data-detail-id",self.target["id"]);self.ready(panel)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/playwright/sync_api/_generated.py", line 22107, in to_have_attribute
+    self._sync(
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_sync_base.py", line 115, in _sync
+    return task.result()
+           ^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_assertions.py", line 349, in to_have_attribute
+    await self._expect_impl(
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_assertions.py", line 128, in _expect_impl
+    _record_soft_or_raise(
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_assertions.py", line 60, in _record_soft_or_raise
+    raise error
+AssertionError: Locator expected to have attribute 'd7a21d9f-9ca2-4be5-90eb-fd0367399e6e'
+Actual value: None
+Error: element(s) not found
+Call log:
+  - Expect "to_have_attribute" with timeout 10000ms
+  - waiting for locator(".wd[data-detail-kind='result'][data-detail-id='21b2da10-f5f3-4ff9-945b-ccc8ab70e7ce']")
+
+Aria snapshot:
+- link "Skip to content":
+  - /url: "#content"
+- complementary "Sidebar":
+  - navigation "Places":
+    - img "Flux"
+    - link "Home":
+      - /url: /
+    - link "Inbox":
+      - /url: /inbox
+    - link "Direct messages":
+      - /url: /dm
+    - link "Library lighting measurements":
+      - /url: /projects/77c46a4e-e80d-483b-b704-e41cc07cfac0
+    - link "Neighbouring workshop":
+      - /url: /projects/9d27e7ee-96e9-4727-852f-e1f1acc72ea4
+  - text: Neighbouring workshop Only you
+  - button "Jump to…"
+  - navigation "Neighbouring workshop":
+    - button "New thought Private"
+    - region "Conversations":
+      - heading "Conversations" [level=2]
+      - link "New conversation":
+        - /url: /projects/9d27e7ee-96e9-4727-852f-e1f1acc72ea4?new=1
+      - list
+  - button "Ada Kowalska details-afbe2754-ea76-4235-8994-409ea23cfd37@example.test , account and sign out"
+- banner:
+  - heading "Neighbouring workshop" [level=1]
+  - button "Only you , who can see this project"
+  - paragraph: No decisions or work yet. Anything said here can become work.
+  - button "Together"
+  - button "Details" [expanded]
+- navigation "Project views":
+  - link "Conversation":
+    - /url: /projects/9d27e7ee-96e9-4727-852f-e1f1acc72ea4
+  - link "Tasks":
+    - /url: /projects/9d27e7ee-96e9-4727-852f-e1f1acc72ea4/tasks
+  - link "Map":
+    - /url: /projects/9d27e7ee-96e9-4727-852f-e1f1acc72ea4/map
+  - link "Docs":
+    - /url: /projects/9d27e7ee-96e9-4727-852f-e1f1acc72ea4/docs
+- button "What matters"
+- heading "New conversation" [level=2]
+- region "Messages":
+  - heading "Start a conversation" [level=2]
+  - paragraph: "Share a thought with yourself for now; people you add to the project will see it. No form is needed: anything said here can later become work, a decision or a sketch."
+- paragraph: Only you · saved to Neighbouring workshop
+- button "Sources"
+- text: Start a conversation
+- textbox "Start a conversation":
+  - /placeholder: Share a thought…
+- button "Start conversation" [disabled]
+- complementary "Details":
+  - heading "Details" [level=2]
+  - button "Close details"
+  - paragraph: Blocked
+  - heading "Compare both shielded sensor runs" [level=3]
+  - paragraph: A measured comparison of both low-light shielded runs, with original evidence.
+  - paragraph: "Blocked: Waiting for the same camera firmware"
+  - paragraph: Live sessions are not set up on this Flux server. Text work here is unaffected.
+  - group "Change this work":
+    - text: Change this work Status
+    - combobox "Status":
+      - option "Open"
+      - option "In progress"
+      - option "Blocked" [selected]
+      - option "Done"
+      - option "Not pursued"
+    - text: Owner
+    - combobox "Owner":
+      - option "Nobody yet"
+    - text: What is it waiting for?
+    - textbox "What is it waiting for?": Waiting for the same camera firmware
+    - button "Save"
+  - navigation "Object relationship pages":
+    - status: 1–50 of 70 links
+    - button "Previous" [disabled]
+    - button "Next"
+    - button "Refresh"
+  - paragraph: Linked sections show this page of relationships. Browse all pages to explore every link.
+  - region "Came from":
+    - heading "Came from" [level=4]
+    - list:
+      - listitem:
+        - 'link "Material v1: Shield measurement notes"':
+          - /url: /materials/6597434a-cbdd-4b12-88dd-957f047a5830/versions/1
+      - listitem:
+        - 'link "Material v2: Shield measurement notes, revised"':
+          - /url: /materials/6597434a-cbdd-4b12-88dd-957f047a5830/versions/2
+      - listitem:
+        - 'link "Thought: Try the same shield with both low-light runs"':
+          - /url: /projects/77c46a4e-e80d-483b-b704-e41cc07cfac0/map/66bbafb6-7d3d-4548-a546-a0e8b206d14c#thought-1807c39b-6499-4f21-890b-c0c67824d561
+      - listitem:
+        - 'link "Message: Compare the earliest measurements before ordering another sensor."':
+          - /url: /projects/77c46a4e-e80d-483b-b704-e41cc07cfac0/conversations/c285350e-3ae5-47aa-9e2c-2ebc62f59919#message-d472cb8d-9513-4fda-811a-db1dfe0fe23c
+  - region "Decisions":
+    - heading "Decisions" [level=4]
+    - list:
+      - listitem:
+        - button "Use the measured shield and cable · 001"
+      - listitem:
+        - button "Use the measured shield and cable · 002"
+      - listitem:
+        - button "Use the measured shield and cable · 003"
+      - listitem:
+        - button "Use the measured shield and cable · 004"
+      - listitem:
+        - button "Use the measured shield and cable · 005"
+      - listitem:
+        - button "Use the measured shield and cable · 006"
+      - listitem:
+        - button "Use the measured shield and cable · 007"
+      - listitem:
+        - button "Use the measured shield and cable · 008"
+      - listitem:
+        - button "Use the measured shield and cable · 009"
+      - listitem:
+        - button "Use the measured shield and cable · 010"
+      - listitem:
+        - button "Use the measured shield and cable · 011"
+      - listitem:
+        - button "Use the measured shield and cable · 012"
+      - listitem:
+        - button "Use the measured shield and cable · 013"
+      - listitem:
+        - button "Use the measured shield and cable · 014"
+      - listitem:
+        - button "Use the measured shield and cable · 015"
+      - listitem:
+        - button "Use the measured shield and cable · 016"
+      - listitem:
+        - button "Use the measured shield and cable · 017"
+      - listitem:
+        - button "Use the measured shield and cable · 018"
+      - listitem:
+        - button "Use the measured shield and cable · 019"
+      - listitem:
+        - button "Use the measured shield and cable · 020"
+      - listitem:
+        - button "Use the measured shield and cable · 021"
+      - listitem:
+        - button "Use the measured shield and cable · 022"
+      - listitem:
+        - button "Use the measured shield and cable · 023"
+      - listitem:
+        - button "Use the measured shield and cable · 024"
+      - listitem:
+        - button "Use the measured shield and cable · 025"
+      - listitem:
+        - button "Use the measured shield and cable · 026"
+      - listitem:
+        - button "Use the measured shield and cable · 027"
+      - listitem:
+        - button "Use the measured shield and cable · 028"
+      - listitem:
+        - button "Use the measured shield and cable · 029"
+      - listitem:
+        - button "Use the measured shield and cable · 030"
+      - listitem:
+        - button "Use the measured shield and cable · 031"
+      - listitem:
+        - button "Use the measured shield and cable · 032"
+      - listitem:
+        - button "Use the measured shield and cable · 033"
+      - listitem:
+        - button "Use the measured shield and cable · 034"
+      - listitem:
+        - button "Use the measured shield and cable · 035"
+      - listitem:
+        - button "Use the measured shield and cable · 036"
+      - listitem:
+        - button "Use the measured shield and cable · 037"
+      - listitem:
+        - button "Use the measured shield and cable · 038"
+      - listitem:
+        - button "Use the measured shield and cable · 039"
+      - listitem:
+        - button "Use the measured shield and cable · 040"
+      - listitem:
+        - button "Use the measured shield and cable · 041"
+      - listitem:
+        - button "Use the measured shield and cable · 042"
+      - listitem:
+        - button "Use the measured shield and cable · 043"
+      - listitem:
+        - button "Use the measured shield and cable · 044"
+      - listitem:
+        - button "Use the measured shield and cable · 045"
+  - region "Results":
+    - heading "Results" [level=4]
+    - paragraph: No matching links on this page.
+    - button "Attach a result"
+  - region "Other relationships":
+    - heading "Other relationships on this page" [level=4]
+    - list:
+      - listitem:
+        - 'link "message: Compare the earliest measurements before ordering another sensor. related"':
+          - /url: /projects/77c46a4e-e80d-483b-b704-e41cc07cfac0/conversations/c285350e-3ae5-47aa-9e2c-2ebc62f59919#message-d472cb8d-9513-4fda-811a-db1dfe0fe23c
+  - region "In docs":
+    - heading "In docs" [level=4]
+    - paragraph: No matching links on this page.
+  - region "Who can see this":
+    - heading "Who can see this" [level=4]
+    - paragraph: Everyone with access to Library lighting measurements
+  - paragraph: Added by Ada Kowalska · 1 Oct · version 2
+- status
+
+----------------------------------------------------------------------
+Ran 9 tests in 52.489s
+
+FAILED (failures=2, errors=2)

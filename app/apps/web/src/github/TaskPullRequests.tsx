@@ -39,7 +39,9 @@ function failure(cause: unknown) {
   return 'Could not save. Try again.';
 }
 
-export function TaskPullRequests({ item, project, writable, reload }: { item: WorkItem; project: Project; writable: boolean; reload: () => void }) {
+type RuleTask = Pick<WorkItem, 'id' | 'version' | 'status' | 'criteria' | 'githubRule'>;
+
+export function TaskPullRequests({ item, project, writable, reload }: { item: RuleTask; project: Project; writable: boolean; reload: () => void }) {
   const [links, setLinks] = useState<GithubTaskLink[]>([]);
   const [view, setView] = useState<GithubTaskRuleView | null>(null);
   const [busy, setBusy] = useState(false);
@@ -138,7 +140,7 @@ export function TaskPullRequests({ item, project, writable, reload }: { item: Wo
 }
 
 /** One tap finishes a task whose required PRs are all merged; it is an ordinary, versioned status change by this person. */
-export function ReadyToClose({ item, writable, busy, done }: { item: WorkItem; writable: boolean; busy: boolean; done: () => void }) {
+export function ReadyToClose({ item, writable, busy, done }: { item: Pick<WorkItem, 'githubRule'>; writable: boolean; busy: boolean; done: () => void }) {
   if (!item.githubRule?.readyToClose) return null;
   return (
     <div className="wd-gh-ready" role="status">

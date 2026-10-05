@@ -1,15 +1,19 @@
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigation, useRevalidator } from 'react-router';
 import { githubRuleDefaultPath, type GithubBinding, type GithubCapabilities, type GithubRepository, type GithubRuleDefault, type GithubTaskLink } from '@flux/contracts';
 import { ApiError, request } from '../api/client';
 import { useProjectShell, type ProjectShell } from '../project/data';
 import { Button, Spinner } from '../ui';
+import { useShellData } from '../app/data';
+import { useWorkChoices } from '../work/useDetailReads';
+import { WorkPagination } from '../work/WorkPagination';
 import './github.css';
 const failure = (cause: unknown) => cause instanceof ApiError && cause.status < 500 ? cause.message : 'GitHub is unavailable. Your work is saved; try again when the connection returns.';
 export function GithubSettings() {
   const shell = useProjectShell();
+  const { me } = useShellData();
   // A different project gets a fresh private projection, including its pending requests.
-  return shell ? <GithubProjectSettings key={shell.project.id} shell={shell} /> : null;
+  return shell ? <GithubProjectSettings key={`${me.user.id}:${shell.project.id}`} shell={shell} /> : null;
 }
 function GithubProjectSettings({ shell }: { shell: ProjectShell }) {
   const projectId = shell.project.id; const prefix = `/api/v1/projects/${projectId}/github`;
@@ -58,7 +62,7 @@ function GithubProjectSettings({ shell }: { shell: ProjectShell }) {
             {shell.project.access === 'manager' ? <Button variant="secondary" disabled={busy} onClick={() => void disconnect(binding.id)}>Disconnect</Button> : null}</li>)}</ul> : <p>{error ? 'Repository access could not be verified. Refresh access or reconnect your account.' : 'No repositories connected to this project yet.'}</p>}</section>
           {shell.project.access === 'manager' ? <RepositoryPicker prefix={prefix} onBound={refresh} /> : null}
           {shell.project.access === 'manager' && bindings.length ? <RuleDefault projectId={projectId} current={capabilities.ruleDefault} /> : null}
-          {bindings.length ? <PullReferences bindings={bindings} tasks={shell.work.work} canLink={shell.project.access !== 'viewer'} /> : null}
+          {bindings.length ? <PullReferences projectId={projectId} bindings={bindings} canLink={shell.project.access !== 'viewer'} /> : null}
         </>}
     <p className="github-settings__note">Linked PRs move a task only after someone who can edit it turns that on in the task’s Details. A merge never checks off written criteria. Agent event delivery is not available yet.</p>
   </div></div>;
@@ -104,15 +108,28 @@ function RepositoryPicker({ prefix, onBound }: { prefix: string; onBound: () => 
     </form> : null}{error ? <p role="alert" className="github-settings__error">{error}</p> : null}
   </section>;
 }
-function PullReferences({ bindings, tasks, canLink }: { bindings: GithubBinding[]; tasks: { id: string; title: string }[]; canLink: boolean }) {
+function PullReferences({ projectId, bindings, canLink }: { projectId: string; bindings: GithubBinding[]; canLink: boolean }) {
+  const { me } = useShellData();
+  const [search, setSearch] = useState('');
+  const navigation = useNavigation();
+  const revalidator = useRevalidator();
+  const identityReady = navigation.state === 'idle' && revalidator.state === 'idle';
+  const choices = useWorkChoices(me.user.id, projectId, identityReady ? { purpose: 'choices', choice: 'doc_refs', kind: 'work', q: search.trim() || undefined } : null);
+  const canCommit = identityReady && choices.read.phase === 'ready' && choices.page?.summary.access !== 'viewer';
+  const tasks = choices.page?.items ?? [];
+  // One explicitly chosen identity is private form state, never a growing page cache.
+  const [chosen, setChosen] = useState<{ id: string; title: string } | null>(null);
   const id = useId(); const [task, setTask] = useState(''); const [binding, setBinding] = useState(''); const [number, setNumber] = useState('');
   const [role, setRole] = useState<'required_output' | 'related'>('required_output'); const [links, setLinks] = useState<GithubTaskLink[]>([]); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
-  async function openTask(value: string) { setTask(value); setLinks([]); setError(''); if (!value) return; setBusy(true);
+  async function openTask(value: string) { setTask(value); setChosen(tasks.find((row) => row.id === value) ?? (chosen?.id === value ? chosen : null)); setLinks([]); setError(''); if (!value) return; setBusy(true);
     try { setLinks(await request(`/api/v1/work/${value}/github-links`)); } catch (cause) { setError(failure(cause)); } finally { setBusy(false); } }
   async function link(event: FormEvent) { event.preventDefault(); setError(''); setBusy(true); try {
     await request(`/api/v1/work/${task}/github-links`, { method: 'POST', body: { bindingId: binding, number: Number(number), role } }); setLinks(await request(`/api/v1/work/${task}/github-links`));
   } catch (cause) { setError(failure(cause)); } finally { setBusy(false); } }
-  const taskPicker = <><label htmlFor={`${id}-task`}>Task</label><select id={`${id}-task`} value={task} disabled={busy} onChange={(event) => void openTask(event.target.value)}><option value="">Choose task…</option>{tasks.map((row) => <option key={row.id} value={row.id}>{row.title}</option>)}</select></>;
+  const taskPicker = <><label htmlFor={`${id}-search`}>Find task</label><input id={`${id}-search`} type="search" value={search} onChange={(event) => setSearch(event.target.value)} />
+    <label htmlFor={`${id}-task`}>Task</label><select id={`${id}-task`} value={task} disabled={busy || choices.busy || !choices.page} onChange={(event) => void openTask(event.target.value)}><option value="">Choose task…</option>{chosen && !tasks.some((row) => row.id === chosen.id) ? <option value={chosen.id}>{chosen.title}</option> : null}{tasks.map((row) => <option key={row.id} value={row.id}>{row.title}</option>)}</select>
+    <WorkPagination {...choices} label="GitHub task choices" noun="tasks" />
+    {choices.read.phase === 'unavailable' ? <p role="alert">Tasks could not be loaded. Your selection is kept. <button type="button" className="ui-link" onClick={choices.onRefresh}>Refresh task choices</button></p> : null}</>;
   return <section><h3>{canLink ? 'Link an existing pull request' : 'Linked pull requests'}</h3><p>{canLink ? 'Select the task, repository and exact PR number. Flux verifies the original PR; your existing tasks remain authoritative.' : 'Choose an existing task to read its verified pull requests under your own current repository access.'}</p>
     {canLink ?
     <form onSubmit={(event) => void link(event)} className="github-settings__form">
@@ -120,7 +137,7 @@ function PullReferences({ bindings, tasks, canLink }: { bindings: GithubBinding[
       <label htmlFor={`${id}-binding`}>Repository</label><select id={`${id}-binding`} value={binding} disabled={busy} onChange={(event) => setBinding(event.target.value)}><option value="">Choose repository…</option>{bindings.map((row) => <option key={row.id} value={row.id}>{row.owner}/{row.name}</option>)}</select>
       <label htmlFor={`${id}-number`}>Pull request number</label><input id={`${id}-number`} type="number" min="1" required disabled={busy} value={number} onChange={(event) => setNumber(event.target.value)} />
       <label htmlFor={`${id}-role`}>Relationship</label><select id={`${id}-role`} value={role} disabled={busy} onChange={(event) => setRole(event.target.value as typeof role)}><option value="required_output">Required output</option><option value="related">Related context</option></select>
-      <Button type="submit" busy={busy} disabled={!task || !binding || !number}>Verify and link PR</Button>
+      <Button type="submit" busy={busy} disabled={!task || !binding || !number || !canCommit}>Verify and link PR</Button>
     </form> : <div className="github-settings__form">{taskPicker}</div>}{error ? <p role="alert" className="github-settings__error">{error}</p> : null}
     {links.length ? <ul className="github-settings__pulls">{links.map((row) => <li key={row.id}><a href={row.facts.url} target="_blank" rel="noreferrer">#{row.facts.number} · {row.facts.title}</a>
       <span>{row.role === 'required_output' ? 'Required output' : 'Related'} · {row.facts.execution.replaceAll('_', ' ')} · {row.state}</span>

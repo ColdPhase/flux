@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import type { ConversationMessage } from '@flux/contracts';
 import { Icon } from '../ui';
 import { getMaterialVersion } from './conversation-api';
+import { readerActive, watchReaderInput } from '../work/readerIntent';
 
 // Pieces of a project message shared by the stream of roots and the thread beside it (UI116-1).
 
@@ -15,35 +16,44 @@ export function day(iso: string) {
   return new Date().toDateString() === date.toDateString() ? 'Today' : dayFormat.format(date);
 }
 
+/** Longest a feed waits for its first chips, references and state line before it shows (#155). */
+export const OPENING_REVEAL_MS = 1000;
+
 /**
  * Opens a feed on whole messages at its latest: when the latest screen would start mid-message, it begins at
  * the next message instead, with a little room below the last one (direction C "return anchor"). Layout
- * settles as lines and fonts arrive, so this repeats until the reader acts. Returns the cleanup.
+ * settles as lines, fonts and late message previews arrive, so this repeats until the reader acts. Only
+ * genuine reader input ends it (readerIntent.ts, #155), or a scroll settle() did not write that follows such
+ * input; layout growth, scroll anchoring and other writers never end it. Returns the cleanup.
  */
 export function openOnWholeMessages(feed: HTMLElement, column: HTMLElement, selector: string): () => void {
+  let written = -1;
   const settle = () => {
     column.style.paddingBottom = '';
     feed.scrollTop = feed.scrollHeight;
+    written = feed.scrollTop;
     const top = feed.getBoundingClientRect().top;
     const list = [...feed.querySelectorAll<HTMLElement>(selector)];
     const index = list.findIndex((item) => { const box = item.getBoundingClientRect(); return box.top < top - 1 && box.bottom > top + 1; });
     if (index < 0) return;
     const next = list[index + 1];
-    if (!next) { list[index]!.scrollIntoView({ block: 'start' }); return; }
+    if (!next) { list[index]!.scrollIntoView({ block: 'start' }); written = feed.scrollTop; return; }
     const delta = next.getBoundingClientRect().top - top;
     if (delta <= 0) return;
     column.style.paddingBottom = `${parseFloat(getComputedStyle(column).paddingBottom) + delta}px`;
     feed.scrollTop = feed.scrollHeight;
+    written = feed.scrollTop;
   };
   settle();
   const observer = new ResizeObserver(() => settle());
   observer.observe(feed);
   observer.observe(column.firstElementChild ?? column);
   const stop = () => observer.disconnect();
+  const release = watchReaderInput(feed, stop);
+  const moved = () => { if (Math.abs(feed.scrollTop - written) > 1 && readerActive(feed)) stop(); };
   const timer = window.setTimeout(stop, 2000);
-  const events = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const;
-  for (const type of events) feed.addEventListener(type, stop, { once: true, passive: true });
-  return () => { stop(); window.clearTimeout(timer); for (const type of events) feed.removeEventListener(type, stop); };
+  feed.addEventListener('scroll', moved, { passive: true });
+  return () => { stop(); release(); window.clearTimeout(timer); feed.removeEventListener('scroll', moved); };
 }
 
 /**
