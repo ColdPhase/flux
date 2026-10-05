@@ -1,0 +1,267 @@
+#1 [internal] load local bake definitions
+#1 reading from stdin 1.78kB done
+#1 DONE 0.0s
+
+#2 [ui-test internal] load build definition from ui-tests.Dockerfile
+#2 transferring dockerfile: 941B 0.0s done
+#2 DONE 0.0s
+
+#3 [test internal] load build definition from Dockerfile
+#3 transferring dockerfile: 2.99kB 0.0s done
+#3 DONE 0.0s
+
+#4 [test internal] load metadata for docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#4 DONE 0.0s
+
+#5 [ui-test internal] load metadata for mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d
+#5 DONE 0.0s
+
+#6 [test internal] load .dockerignore
+#6 transferring context: 33B 0.0s
+#6 transferring context: 191B 0.1s done
+#6 DONE 0.1s
+
+#7 [migrate internal] load build context
+#7 DONE 0.0s
+
+#8 [ui-test 1/5] FROM mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d
+#8 resolve mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d 0.0s done
+#8 DONE 0.0s
+
+#9 [ui-test internal] load build context
+#9 transferring context: 883B 0.1s done
+#9 DONE 0.1s
+
+#10 [migrate build 1/8] FROM docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#10 resolve docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 0.0s done
+#10 DONE 0.0s
+
+#11 [ui-test 3/5] RUN pip install --no-cache-dir --break-system-packages --only-binary=:all: --require-hashes -r /tmp/ui-requirements.txt
+#11 CACHED
+
+#12 [ui-test 4/5] WORKDIR /work
+#12 CACHED
+
+#13 [ui-test 2/5] COPY tests/ui/requirements.txt /tmp/ui-requirements.txt
+#13 CACHED
+
+#14 [ui-test 5/5] COPY tests/ui tests/ui
+#14 CACHED
+
+#15 [ui-test] exporting to image
+#15 exporting layers done
+#15 exporting manifest sha256:0b1571107b632dc49c92c3096f012adb4d01c34c4ff5f794f84fb982606a6f2e done
+#15 exporting config sha256:ab240f75a3cfb7727ff89a3431be35a6d8fa279f900483cdaf0e3eba928a6d8b done
+#15 exporting attestation manifest sha256:695f28383c49e0cdf93c094a544d27c4a81c820e67e5a0fd89c39ace61cf928c
+#15 exporting attestation manifest sha256:695f28383c49e0cdf93c094a544d27c4a81c820e67e5a0fd89c39ace61cf928c 0.0s done
+#15 exporting manifest list sha256:cab7078ea8d80e03330e9337fb0ee68b395ed7325486421fdf2a7a9dd8e05cbf done
+#15 naming to docker.io/library/flux-ui-tests:flux155browser done
+#15 unpacking to docker.io/library/flux-ui-tests:flux155browser
+#15 ...
+
+#7 [test internal] load build context
+#7 transferring context: 3.50MB 0.3s done
+#7 DONE 0.3s
+
+#16 [test build 7/8] RUN pnpm install --offline --frozen-lockfile
+#16 CACHED
+
+#17 [test build 2/8] WORKDIR /app
+#17 CACHED
+
+#18 [test build 3/8] RUN corepack enable && corepack install -g pnpm@12.6.0
+#18 CACHED
+
+#19 [test build 5/8] RUN pnpm fetch
+#19 CACHED
+
+#20 [test build 6/8] COPY . .
+#20 CACHED
+
+#21 [test build 4/8] COPY pnpm-lock.yaml pnpm-workspace.yaml ./
+#21 CACHED
+
+#20 [migrate build 6/8] COPY . .
+#20 CACHED
+
+#21 [migrate build 4/8] COPY pnpm-lock.yaml pnpm-workspace.yaml ./
+#21 CACHED
+
+#16 [migrate build 7/8] RUN pnpm install --offline --frozen-lockfile
+#16 CACHED
+
+#17 [migrate build 2/8] WORKDIR /app
+#17 CACHED
+
+#18 [migrate build 3/8] RUN corepack enable && corepack install -g pnpm@12.6.0
+#18 CACHED
+
+#19 [migrate build 5/8] RUN pnpm fetch
+#19 CACHED
+
+#22 [migrate build 8/8] RUN pnpm build && pnpm typecheck && pnpm lint
+#22 CACHED
+
+#23 [test] exporting to image
+#23 exporting layers done
+#23 exporting manifest sha256:a5bd8ac0b153257c9d72847f04ec1df963d8dd11abc8b86c6c05a42b47f3290f 0.0s done
+#23 exporting config sha256:c047e99ce48d054cead2bc47d28ca2e89962bbba421c22504c36af2bbeebf78f 0.0s done
+#23 exporting attestation manifest sha256:6a030f7771fca693c343cfae9abcd7949b81af7f2f2e87050a0eccd3b218a49b 0.0s done
+#23 exporting manifest list sha256:07f51e4d0b0d9c58e0892994a003557bc1dee50e1210a5cae2415b9d4706ae97 0.0s done
+#23 naming to docker.io/library/flux-test-tools:flux155browser
+#23 naming to docker.io/library/flux-test-tools:flux155browser done
+#23 unpacking to docker.io/library/flux-test-tools:flux155browser 0.0s done
+#23 DONE 0.2s
+
+#24 [migrate runtime 22/25] COPY --from=build /app/packages/agent-runtime/dist ./packages/agent-runtime/dist
+#24 CACHED
+
+#25 [migrate runtime 23/25] COPY --from=build /app/packages/db/migrations ./packages/db/migrations
+#25 CACHED
+
+#26 [migrate runtime 14/25] COPY --from=build /app/packages/db/package.json ./packages/db/package.json
+#26 CACHED
+
+#27 [migrate runtime 15/25] COPY --from=build /app/packages/agent-runtime/package.json ./packages/agent-runtime/package.json
+#27 CACHED
+
+#28 [migrate runtime  8/25] COPY --from=production-dependencies /app/packages/agent-runtime/node_modules ./packages/agent-runtime/node_modules
+#28 CACHED
+
+#29 [migrate runtime 11/25] COPY --from=build /app/apps/worker/package.json ./apps/worker/package.json
+#29 CACHED
+
+#30 [migrate runtime 13/25] COPY --from=build /app/packages/core/package.json ./packages/core/package.json
+#30 CACHED
+
+#31 [migrate runtime 19/25] COPY --from=build /app/packages/contracts/dist ./packages/contracts/dist
+#31 CACHED
+
+#32 [migrate runtime  3/25] COPY --from=production-dependencies /app/node_modules ./node_modules
+#32 CACHED
+
+#33 [migrate runtime  6/25] COPY --from=production-dependencies /app/packages/core/node_modules ./packages/core/node_modules
+#33 CACHED
+
+#34 [migrate runtime 20/25] COPY --from=build /app/packages/core/dist ./packages/core/dist
+#34 CACHED
+
+#35 [migrate runtime 24/25] COPY --from=build /app/tooling/dist ./tooling/dist
+#35 CACHED
+
+#36 [migrate runtime 12/25] COPY --from=build /app/packages/contracts/package.json ./packages/contracts/package.json
+#36 CACHED
+
+#37 [migrate runtime  4/25] COPY --from=production-dependencies /app/apps/server/node_modules ./apps/server/node_modules
+#37 CACHED
+
+#38 [migrate runtime  5/25] COPY --from=production-dependencies /app/apps/worker/node_modules ./apps/worker/node_modules
+#38 CACHED
+
+#39 [migrate runtime 21/25] COPY --from=build /app/packages/db/dist ./packages/db/dist
+#39 CACHED
+
+#40 [migrate runtime 16/25] COPY --from=build /app/apps/server/dist ./apps/server/dist
+#40 CACHED
+
+#41 [migrate runtime 17/25] COPY --from=build /app/apps/worker/dist ./apps/worker/dist
+#41 CACHED
+
+#42 [migrate production-dependencies 1/1] RUN pnpm install --prod --offline --frozen-lockfile
+#42 CACHED
+
+#43 [migrate runtime  7/25] COPY --from=production-dependencies /app/packages/db/node_modules ./packages/db/node_modules
+#43 CACHED
+
+#44 [migrate runtime 10/25] COPY --from=build /app/apps/server/package.json ./apps/server/package.json
+#44 CACHED
+
+#45 [migrate runtime  9/25] COPY --from=build /app/package.json ./package.json
+#45 CACHED
+
+#46 [migrate runtime 18/25] COPY --from=build /app/apps/web/dist ./apps/web/dist
+#46 CACHED
+
+#47 [migrate runtime 25/25] RUN mkdir -p /data/files && chown -R node:node /data
+#47 CACHED
+
+#48 [migrate] exporting to image
+#48 exporting layers 0.0s done
+#48 exporting manifest sha256:1740ed7cc5250f100196ae223ea57891ebef38613e973d91ab35b7afcf73e006 0.0s done
+#48 exporting config sha256:dab920eeea5f73d106b13ac1cd59b7b34fa4ef8c121c7ad3b9ec08cb24c7d10d 0.0s done
+#48 exporting attestation manifest sha256:ee425e6abcabcaed9a930264b904541b77bdeeee6d687dc53c647b90bb15c61b 0.0s done
+#48 exporting manifest list sha256:845212132997cd6e03de68e401bda1af4ef14ab2344cec8132ee769fbefd3785
+#48 exporting manifest list sha256:845212132997cd6e03de68e401bda1af4ef14ab2344cec8132ee769fbefd3785 0.0s done
+#48 naming to docker.io/library/flux-foundation:flux155browser done
+#48 unpacking to docker.io/library/flux-foundation:flux155browser 0.1s done
+#48 DONE 0.4s
+
+#49 [test] resolving provenance for metadata file
+#49 DONE 0.1s
+
+#15 [ui-test] exporting to image
+#15 unpacking to docker.io/library/flux-ui-tests:flux155browser 1.2s done
+#15 DONE 1.3s
+
+#50 [ui-test] resolving provenance for metadata file
+#50 DONE 0.0s
+
+#51 [migrate] resolving provenance for metadata file
+#51 DONE 0.1s
+ flux-ui-tests:flux155browser  Built
+ flux-test-tools:flux155browser  Built
+ flux-foundation:flux155browser  Built
+ Network flux155browser_default  Creating
+ Network flux155browser_default  Created
+ Volume flux155browser_pgdata  Creating
+ Volume flux155browser_pgdata  Created
+ Container flux155browser-mailpit-1  Creating
+ Container flux155browser-db-1  Creating
+ Container flux155browser-db-1  Created
+ Container flux155browser-mailpit-1  Created
+ Container flux155browser-migrate-1  Creating
+ Container flux155browser-migrate-1  Created
+ Container flux155browser-db-1  Starting
+ Container flux155browser-mailpit-1  Starting
+ Container flux155browser-mailpit-1  Started
+ Container flux155browser-db-1  Started
+ Container flux155browser-db-1  Waiting
+ Container flux155browser-db-1  Healthy
+ Container flux155browser-migrate-1  Starting
+ Container flux155browser-migrate-1  Started
+ Volume flux155browser_files  Creating
+ Volume flux155browser_files  Created
+time="2026-10-01T06:50:11+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux155browser-anthropic-mock-1  Creating
+ Container flux155browser-db-1  Running
+ Container flux155browser-worker-1  Creating
+ Container flux155browser-api-1  Creating
+time="2026-10-01T06:50:13+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+time="2026-10-01T06:50:13+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux155browser-anthropic-mock-1  Created
+ Container flux155browser-api-1  Created
+ Container flux155browser-worker-1  Created
+ Container flux155browser-db-1  Waiting
+ Container flux155browser-anthropic-mock-1  Starting
+ Container flux155browser-anthropic-mock-1  Started
+ Container flux155browser-db-1  Healthy
+ Container flux155browser-migrate-1  Starting
+ Container flux155browser-migrate-1  Started
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Exited
+ Container flux155browser-api-1  Starting
+ Container flux155browser-migrate-1  Exited
+ Container flux155browser-worker-1  Starting
+ Container flux155browser-api-1  Started
+ Container flux155browser-worker-1  Started
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-worker-1  Waiting
+ Container flux155browser-anthropic-mock-1  Waiting
+ Container flux155browser-db-1  Waiting
+ Container flux155browser-api-1  Waiting
+ Container flux155browser-migrate-1  Exited
+ Container flux155browser-db-1  Healthy
+ Container flux155browser-worker-1  Healthy
+ Container flux155browser-anthropic-mock-1  Healthy
+ Container flux155browser-api-1  Healthy

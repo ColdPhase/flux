@@ -1,17 +1,26 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { Link } from 'react-router';
-import type { Project, WorkItem, WorkStatus } from '@flux/contracts';
+import { Link, useRevalidator } from 'react-router';
+import type { ObjectLink, Project, ProjectWorkView, WorkGroup, WorkItem, WorkRelations, WorkRowProjection, WorkStatus } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { Button, Icon, IconButton, initials, type IconName } from '../ui';
-import { createWork, updateWork, type ProjectWork } from './api';
-import { isFinished, linked } from './format';
+import { createWork, updateWork } from './api';
+import { isFinished } from './format';
+import { getProjectWorkView, getWorkRelations, workRelationReadUrl, workViewReadUrl } from './read-api';
+import type { ReadState } from './read-state';
+import { useWorkRead } from './useWorkRead';
 import { AGENT_SUFFIX } from '../docs/format';
 import './board.css';
 
 // The Tasks board (#136, UI116-4): three columns over the existing statuses, no new status and no
 // card order. A card moves by dragging with a mouse or pen, by keyboard (Space, arrows, Space) or
 // with its "Move to…" menu on any device; every move is the existing versioned status command.
+//
+// Cards are bounded native rows (#155), never a full project work collection: each column is the
+// first page (at most 50, newest first) of its native Tasks group, read for this account and
+// project, and a column that holds more says so and opens that group in the List, which pages
+// through all of it. Where a card came from is one bounded source-relation read for the loaded
+// cards. See docs/development/performance/2026-10-04-native-task-board-integration.md.
 
 export type ColumnId = 'open' | 'in_progress' | 'done';
 
@@ -31,17 +40,25 @@ export const columnOf = (status: WorkStatus): ColumnId =>
 /** A short, stable label of the task's own id; the full id is its title and in Details. */
 export const shortId = (id: string) => id.replace(/-/g, '').slice(0, 8).toUpperCase();
 
-/** The board's search: the title, owner, what it waits for, or its id. */
-export function matchesTask(item: WorkItem, query: string) {
+/** One card: a bounded native task row, not a full WorkItem. */
+type BoardTask = WorkRowProjection;
+
+/** The board's search over its loaded cards: the title, owner, what it waits for, or its id. */
+export function matchesTask(item: Pick<BoardTask, 'id' | 'title' | 'owner' | 'blocker'>, query: string) {
   if (!query) return true;
   const q = query.toLowerCase();
   return [item.title, item.owner?.name ?? '', item.blocker ?? '', shortId(item.id), item.id].some((text) => text.toLowerCase().includes(q));
 }
 
-/** Where the task came from: its source message, thought or material version, else its plan revision. */
-function origin(item: WorkItem, projectId: string): { to: string; kind: string; icon: IconName; title: string } | null {
-  for (const link of item.links) {
-    if (link.from.id !== item.id || link.role !== 'source') continue;
+interface Origin { to: string; kind: string; icon: IconName; title: string }
+
+/**
+ * Where the task came from: its first source message, thought or material version, from the
+ * board's bounded source-relation read. A plan revision is shown in the task's Details.
+ */
+function origin(itemId: string, links: ObjectLink[], projectId: string): Origin | null {
+  for (const link of links) {
+    if (link.from.type !== 'work' || link.from.id !== itemId || link.role !== 'source') continue;
     if (link.to.type === 'message' && link.conversationId)
       return { to: `/projects/${projectId}/conversations/${link.conversationId}#message-${link.to.id}`, kind: 'From a message', icon: 'chat', title: link.toTitle };
     if (link.to.type === 'thought' && link.sketchId)
@@ -49,8 +66,6 @@ function origin(item: WorkItem, projectId: string): { to: string; kind: string; 
     if (link.to.type === 'material')
       return { to: `/materials/${link.to.id}/versions/${link.to.version}`, kind: `From material version ${link.to.version}`, icon: 'doc', title: link.toTitle };
   }
-  if (item.planIntent)
-    return { to: `/materials/${item.planIntent.materialId}/versions/${item.planIntent.version}`, kind: 'Planned in', icon: 'doc', title: `plan revision ${item.planIntent.version}` };
   return null;
 }
 
@@ -83,7 +98,7 @@ interface Notice { tone: 'ok' | 'error'; text: string }
 
 /** One card's "Move to…" menu: the three columns, the current one checked, then Details. */
 function MoveMenu({ item, column, busy, buttonRef, onMove, onOpen, onClose }: {
-  item: WorkItem; column: ColumnId; busy: boolean; buttonRef: RefObject<HTMLButtonElement | null>;
+  item: BoardTask; column: ColumnId; busy: boolean; buttonRef: RefObject<HTMLButtonElement | null>;
   onMove: (to: ColumnId) => void; onOpen: () => void; onClose: (restore: boolean) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -128,7 +143,7 @@ function MoveMenu({ item, column, busy, buttonRef, onMove, onOpen, onClose }: {
 }
 
 interface CardProps {
-  item: WorkItem; column: ColumnId; projectId: string; meId: string; writable: boolean; hintId: string;
+  item: BoardTask; from: Origin | null; column: ColumnId; meId: string; writable: boolean; hintId: string;
   saving: boolean; dragged: boolean; lifted: boolean; arrived: boolean; menuOpen: boolean;
   onPointerDown: (event: ReactPointerEvent<HTMLLIElement>) => void;
   onClickCapture: (event: ReactMouseEvent) => void;
@@ -140,12 +155,11 @@ interface CardProps {
   onMove: (to: ColumnId) => void;
 }
 
-function Card({ item, column, projectId, meId, writable, hintId, saving, dragged, lifted, arrived, menuOpen, onPointerDown, onClickCapture, onKeyDown, onKeyUp, onBlur, onOpen, onMenu, onMove }: CardProps) {
+function Card({ item, from, column, meId, writable, hintId, saving, dragged, lifted, arrived, menuOpen, onPointerDown, onClickCapture, onKeyDown, onKeyUp, onBlur, onOpen, onMenu, onMove }: CardProps) {
   const menuButton = useRef<HTMLButtonElement>(null);
-  const from = origin(item, projectId);
   const blocked = item.status === 'blocked';
-  const waiting = isFinished(item) ? 0 : item.prerequisites.filter((prerequisite) => !prerequisite.met).length;
-  const results = linked(item.links, item.id, 'result').length;
+  const waiting = isFinished(item) ? 0 : item.prerequisiteCounts.unmet;
+  const results = item.relations.results;
   const owner = item.owner;
   const state = saving ? 'Saving…' : blocked ? 'Blocked' : item.status === 'not_pursued' ? 'Not pursued' : null;
   const classes = ['tb-card', blocked && 'tb-card--blocked', item.status === 'not_pursued' && 'tb-card--set-aside',
@@ -238,25 +252,44 @@ function NewTask({ projectId, column, onDone, onCancel }: { projectId: string; c
 
 export interface TaskBoardProps {
   project: Project;
-  lists: ProjectWork;
+  /** The Tasks tab's bounded read of the open group (it also carries the shared project summary). */
+  openRead: ReadState<ProjectWorkView>;
   meId: string;
   mine: boolean;
-  /** Lowercased search text; empty shows everything. */
+  /** Lowercased search text; empty shows everything loaded. */
   query: string;
   writable: boolean;
+  /** Changes when the Tasks tab asks every board read to refresh. */
+  revision: number;
   adding: ColumnId | null;
   onAdding: (column: ColumnId | null) => void;
   openWork: (id: string) => void;
   refresh: () => void;
+  /** Opens one native group in the List, which pages through all of it. */
+  showInList: (group: WorkGroup) => void;
   clearFilters: () => void;
 }
 
-export function TaskBoard({ project, lists, meId, mine, query, writable, adding, onAdding, openWork, refresh, clearFilters }: TaskBoardProps) {
+/** The first bounded page (newest 50) of one native Tasks group, for this account and project. */
+function useGroupRead(accountId: string, projectId: string, group: WorkGroup, mine: boolean, revision: number, idle: boolean) {
+  const selector = workViewReadUrl(projectId, { purpose: 'tasks', group, mine });
+  const scope = useMemo(() => ({ accountId, projectId, selector }), [accountId, projectId, selector]);
+  const load = useCallback((signal: AbortSignal) => getProjectWorkView(projectId, { purpose: 'tasks', group, mine }, signal), [projectId, group, mine]);
+  return useWorkRead(scope, load, revision, idle);
+}
+
+const loaded = (read: ReadState<ProjectWorkView>) => read.phase === 'ready' || read.phase === 'refreshing' ? read.value : null;
+const rowsOf = (page: ProjectWorkView | null) => page?.items.filter((item): item is BoardTask => item.kind === 'work') ?? [];
+/** Tasks of this group that the bounded first page does not show. */
+const beyond = (page: ProjectWorkView | null) => page ? Math.max(0, page.total - page.items.length) : 0;
+const SOURCE_EDGES = 100;
+
+export function TaskBoard({ project, openRead, meId, mine, query, writable, revision, adding, onAdding, openWork, refresh, showInList, clearFilters }: TaskBoardProps) {
   const hintId = useId();
   const boardRef = useRef<HTMLDivElement>(null);
   const ghostRef = useRef<HTMLDivElement>(null);
   // Moves in flight (shown in their target column) and the stored result of each finished move
-  // until the project's own data catches up with that version.
+  // until the board's own reads catch up with that version.
   const [pending, setPending] = useState<Record<string, ColumnId>>({});
   const [confirmed, setConfirmed] = useState<Record<string, WorkItem>>({});
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -273,7 +306,55 @@ export function TaskBoard({ project, lists, meId, mine, query, writable, adding,
   const focusCard = useRef<{ id: string; until: number } | null>(null);
   const attempts = useRef(new Map<string, string>());
   const timers = useRef<{ notice?: number; arrived?: number }>({});
-  const latest = useRef<WorkItem[]>([]);
+  const latest = useRef<BoardTask[]>([]);
+
+  // The Open column is the Tasks tab's own read; the other groups are read here, each a bounded
+  // first page that re-reads with the tab's refreshes and the router's revalidation.
+  const idle = useRevalidator().state === 'idle';
+  const progressRead = useGroupRead(meId, project.id, 'in_progress', mine, revision, idle);
+  const blockedRead = useGroupRead(meId, project.id, 'blocked', mine, revision, idle);
+  const finishedRead = useGroupRead(meId, project.id, 'finished', mine, revision, idle);
+  const reads = [openRead, progressRead, blockedRead, finishedRead];
+  const openPage = loaded(openRead);
+  const progressPage = loaded(progressRead);
+  const blockedPage = loaded(blockedRead);
+  const finishedPage = loaded(finishedRead);
+  const unavailable = reads.some((read) => read.phase === 'unavailable');
+  const waitingFor: Record<ColumnId, boolean> = { open: !openPage, in_progress: !progressPage || !blockedPage, done: !finishedPage };
+
+  // One row per task across the column reads (each its own observation); the newest version wins.
+  const rows = new Map<string, BoardTask>();
+  for (const row of [...rowsOf(openPage), ...rowsOf(progressPage), ...rowsOf(blockedPage), ...rowsOf(finishedPage)]) {
+    const seen = rows.get(row.id);
+    if (!seen || row.version > seen.version) rows.set(row.id, row);
+  }
+  const items = [...rows.values()]
+    .map((item) => {
+      const saved = confirmed[item.id];
+      return saved && saved.version > item.version
+        ? { ...item, status: saved.status, version: saved.version, owner: saved.owner, blocker: saved.blocker, updatedAt: saved.updatedAt }
+        : item;
+    })
+    // Work a pivot parked is set aside, not part of the plan: the List shows it.
+    .filter((item) => !item.parked || isFinished(item));
+
+  // Where each loaded card came from: one bounded source-relation read per 100 loaded tasks.
+  const ids = [...rows.keys()].sort();
+  const chunks: string[] = [];
+  for (let start = 0; start < ids.length; start += 100) chunks.push(ids.slice(start, start + 100).map((id) => `work:${id}`).join(','));
+  const relationSelector = chunks.map((objects) => workRelationReadUrl(project.id, { objects, role: 'source', limit: SOURCE_EDGES })).join(' ');
+  const relationScope = useMemo(() => relationSelector ? { accountId: meId, projectId: project.id, selector: relationSelector } : null, [meId, project.id, relationSelector]);
+  const loadRelations = useCallback((signal: AbortSignal) => {
+    const objects = relationSelector ? relationSelector.split(' ').map((url) => new URL(url, window.location.origin).searchParams.get('objects')!) : [];
+    return Promise.all(objects.map((set) => getWorkRelations(project.id, { objects: set, role: 'source', limit: SOURCE_EDGES }, signal)));
+  }, [project.id, relationSelector]);
+  const relationRead = useWorkRead<WorkRelations[]>(relationScope, loadRelations, revision, idle);
+  const sourceLinks = relationRead.phase === 'ready' || relationRead.phase === 'refreshing' ? relationRead.value.flatMap((page) => page.items) : [];
+  const origins = new Map<string, Origin | null>();
+  const originOf = (id: string) => {
+    if (!origins.has(id)) origins.set(id, origin(id, sourceLinks, project.id));
+    return origins.get(id)!;
+  };
 
   useEffect(() => {
     const pending = timers.current;
@@ -294,18 +375,16 @@ export function TaskBoard({ project, lists, meId, mine, query, writable, adding,
     if (button && active !== button) button.focus();
   });
 
-  const items = lists.work
-    .map((item) => { const saved = confirmed[item.id]; return saved && saved.version > item.version ? saved : item; })
-    // Work a pivot parked is set aside, not part of the plan: the List shows it.
-    .filter((item) => !item.parked || isFinished(item));
   useEffect(() => { latest.current = items; });
   const shown = items.filter((item) => (!mine || item.owner?.id === meId) && matchesTask(item, query));
-  const columnFor = (item: WorkItem) => pending[item.id] ?? columnOf(item.status);
-  const cards: Record<ColumnId, WorkItem[]> = { open: [], in_progress: [], done: [] };
+  const columnFor = (item: BoardTask) => pending[item.id] ?? columnOf(item.status);
+  const cards: Record<ColumnId, BoardTask[]> = { open: [], in_progress: [], done: [] };
   for (const item of shown) cards[columnFor(item)].push(item);
   // Blocked work leads its column so it is never lost below the rest; otherwise the stored order.
   cards.in_progress.sort((a, b) => Number(b.status === 'blocked' && !(b.id in pending)) - Number(a.status === 'blocked' && !(a.id in pending)));
-  const blocked = cards.in_progress.filter((item) => item.status === 'blocked' && !(item.id in pending)).length;
+  // Tasks of each column beyond its bounded first page(s); the List shows them.
+  const hidden: Record<ColumnId, number> = { open: beyond(openPage), in_progress: beyond(progressPage) + beyond(blockedPage), done: beyond(finishedPage) };
+  const blocked = cards.in_progress.filter((item) => item.status === 'blocked' && !(item.id in pending)).length + beyond(blockedPage);
   // On a narrow board one column shows at a time: the one chosen, else active work, else what is open.
   const current: ColumnId = adding ?? picked ?? (cards.in_progress.length ? 'in_progress' : cards.open.length ? 'open' : 'in_progress');
   const highlight = dragging ? over : lifted && lifted.to !== lifted.from ? lifted.to : null;
@@ -318,7 +397,7 @@ export function TaskBoard({ project, lists, meId, mine, query, writable, adding,
     if (next?.tone === 'ok') timers.current.notice = window.setTimeout(() => setNotice((now) => now === next ? null : now), 6000);
   };
 
-  async function move(item: WorkItem, to: ColumnId, keepFocus: boolean) {
+  async function move(item: BoardTask, to: ColumnId, keepFocus: boolean) {
     const from = columnOf(item.status);
     if (from === to || item.id in pending) return;
     const status = COLUMNS.find((column) => column.id === to)!.status;
@@ -362,7 +441,7 @@ export function TaskBoard({ project, lists, meId, mine, query, writable, adding,
     return column && boardRef.current?.contains(column) ? column.dataset.column as ColumnId : null;
   };
 
-  const startDrag = (event: ReactPointerEvent<HTMLLIElement>, item: WorkItem, from: ColumnId) => {
+  const startDrag = (event: ReactPointerEvent<HTMLLIElement>, item: BoardTask, from: ColumnId) => {
     // Touch scrolls the board; touch moves use "Move to…". Links and the menu keep their own actions.
     if (!writable || event.button !== 0 || event.pointerType === 'touch' || item.id in pending || drag.current) return;
     if ((event.target as Element).closest('a, .tb-card__menu, .tb-menu')) return;
@@ -450,7 +529,7 @@ export function TaskBoard({ project, lists, meId, mine, query, writable, adding,
 
   // ---------------------------------------------------------------- keyboard: Space, arrows, Space
 
-  const onCardKey = (event: ReactKeyboardEvent<HTMLButtonElement>, item: WorkItem, from: ColumnId) => {
+  const onCardKey = (event: ReactKeyboardEvent<HTMLButtonElement>, item: BoardTask, from: ColumnId) => {
     if (!writable) return;
     if (!lifted || lifted.id !== item.id) {
       if (event.key !== ' ' || event.repeat || item.id in pending) return;
@@ -488,7 +567,19 @@ export function TaskBoard({ project, lists, meId, mine, query, writable, adding,
   };
 
   const dismissAdding = () => onAdding(null);
-  const totals: Record<ColumnId, number> = { open: cards.open.length, in_progress: cards.in_progress.length, done: cards.done.length };
+  // Without a search a column counts every task of its groups (exact native totals); a search
+  // counts the loaded cards it matches.
+  const totals: Record<ColumnId, number> = {
+    open: cards.open.length + (query ? 0 : hidden.open),
+    in_progress: cards.in_progress.length + (query ? 0 : hidden.in_progress),
+    done: cards.done.length + (query ? 0 : hidden.done),
+  };
+  const truncated = hidden.open + hidden.in_progress + hidden.done > 0;
+  const more = (column: ColumnId): { group: WorkGroup; count: number; label: string }[] => column === 'open'
+    ? [{ group: 'open', count: hidden.open, label: 'open' }]
+    : column === 'in_progress'
+      ? [{ group: 'blocked', count: beyond(blockedPage), label: 'blocked' }, { group: 'in_progress', count: beyond(progressPage), label: 'in progress' }]
+      : [{ group: 'finished', count: hidden.done, label: 'finished' }];
 
   return (
     <div className="tb-wrap">
@@ -523,7 +614,16 @@ export function TaskBoard({ project, lists, meId, mine, query, writable, adding,
           <button type="button" className="tb-note__x" onClick={() => show(null)}>Dismiss</button>
         </div>
       ) : null}
-      {filtered && !shown.length ? (
+      {unavailable ? (
+        <div className="tb-note tb-note--error" role="alert">
+          <Icon name="alert" size={14} /><span>Some of the board could not be loaded. The columns shown are current; the others are empty until they load.</span>
+          <button type="button" className="tb-note__x" onClick={refresh}>Refresh</button>
+        </div>
+      ) : null}
+      {query && truncated ? (
+        <p className="tb-note" role="note"><Icon name="search" size={14} /><span>The search looks through the tasks loaded on the board, the newest 50 of each status. The List shows every task, page by page.</span></p>
+      ) : null}
+      {filtered && !shown.length && !Object.values(waitingFor).some(Boolean) ? (
         <p className="tb-none" role="status">
           {query ? `No task${mine ? ' of yours' : ''} matches “${query}”.` : 'Nothing of yours on the board.'}{' '}
           <button type="button" className="ws-none__b" onClick={clearFilters}>Show every task</button>
@@ -538,7 +638,7 @@ export function TaskBoard({ project, lists, meId, mine, query, writable, adding,
               <div className="tb-col__head">
                 <span className={`tb-ring tb-ring--${column.id}`} aria-hidden="true" />
                 <h2 className="tb-col__h" id={headingId}>{column.label}</h2>
-                <span className="tb-col__n">{list.length}<span className="ui-vh"> {list.length === 1 ? 'task' : 'tasks'}</span></span>
+                <span className="tb-col__n">{totals[column.id]}<span className="ui-vh"> {totals[column.id] === 1 ? 'task' : 'tasks'}</span></span>
                 {column.id === 'in_progress' && blocked ? <span className="tb-col__b"><Icon name="alert" size={12} />{blocked} blocked</span> : null}
                 {writable && column.id !== 'done' ? (
                   <IconButton icon="plus" size={15} label={`New task in ${column.label}`} className="tb-col__add" onClick={() => onAdding(column.id)} />
@@ -552,7 +652,7 @@ export function TaskBoard({ project, lists, meId, mine, query, writable, adding,
                 {list.length ? (
                   <ol className="tb-col__list">
                     {list.map((item) => (
-                      <Card key={item.id} item={item} column={column.id} projectId={project.id} meId={meId} writable={writable} hintId={hintId}
+                      <Card key={item.id} item={item} from={originOf(item.id)} column={column.id} meId={meId} writable={writable} hintId={hintId}
                         saving={item.id in pending} dragged={dragging?.id === item.id} lifted={lifted?.id === item.id}
                         arrived={arrived === item.id} menuOpen={menuFor === item.id}
                         onPointerDown={(event) => startDrag(event, item, column.id)}
@@ -564,7 +664,12 @@ export function TaskBoard({ project, lists, meId, mine, query, writable, adding,
                         onMove={(to) => void move(item, to, true)} />
                     ))}
                   </ol>
-                ) : adding === column.id ? null : <p className="tb-col__empty">{filtered ? 'Nothing here matches.' : 'Nothing here yet.'}</p>}
+                ) : adding === column.id ? null : <p className="tb-col__empty">{waitingFor[column.id] ? 'Loading…' : filtered ? 'Nothing here matches.' : 'Nothing here yet.'}</p>}
+                {more(column.id).filter((entry) => entry.count > 0).map((entry) => (
+                  <button key={entry.group} type="button" className="ws-none__b tb-col__more" onClick={() => showInList(entry.group)}>
+                    {entry.count} more {entry.label} in the List
+                  </button>
+                ))}
               </div>
             </section>
           );
