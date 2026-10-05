@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { Link, useLoaderData, useLocation, useNavigate, useRevalidator, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from 'react-router';
-import type { AssistantAnswer, ConversationMessage, MessageFile, Conversation, ConversationRootWindow, Draft, Material, Page, Project, SendMessageCommand, TaskCreationNotice, WorkspaceMember } from '@flux/contracts';
+import type { AssistantAnswer, ConversationMessage, Conversation, ConversationRootWindow, Draft, Material, Page, Project, TaskCreationNotice, WorkspaceMember } from '@flux/contracts';
 import { ApiError } from '../api/client';
+import { useComposerDraft, useComposerScope } from '../composer/draft';
+import { ComposerFiles, MessageFiles } from '../composer/Files';
+import { contributeToTask } from '../composer/api';
 import { Avatar, Button, Icon, Input, MEDIA, sendsOnEnter, useMediaQuery } from '../ui';
 import { getConversation, getMaterialVersion, getProject, listConversationRoots, listDrafts, listMaterials, listTaskNotices, listWorkspaceMembers, olderMessages, publishMaterial, reply, startConversation } from './conversation-api';
 import { pageBackTo } from './seekMessage';
@@ -51,21 +54,6 @@ function readableError(error: unknown) {
   if (error instanceof ApiError && error.status === 403) return 'You can read this project, but cannot post here.';
   return error instanceof Error ? error.message : 'Could not save. Try again.';
 }
-function savedDraft(key: string) { try { return sessionStorage.getItem(key) ?? ''; } catch { return ''; } }
-function putDraft(key: string, value: string) { try { if (value) sessionStorage.setItem(key, value); else sessionStorage.removeItem(key); } catch { /* private mode */ } }
-interface PendingSend { command: SendMessageCommand; citation: { title: string; materialId: string; version: number } | null }
-function savedPending(key: string, draft: string): PendingSend | null {
-  try {
-    const saved = JSON.parse(sessionStorage.getItem(key) ?? 'null') as PendingSend | null;
-    if (!saved?.command || saved.command.body !== draft.trim() || typeof saved.command.clientMessageId !== 'string') return null;
-    if (saved.command.source && (!saved.citation || saved.command.source.materialId !== saved.citation.materialId || saved.command.source.version !== saved.citation.version)) return null;
-    return saved;
-  } catch { return null; }
-}
-function putPending(key: string, value: PendingSend | null) {
-  try { if (value) sessionStorage.setItem(key, JSON.stringify(value)); else sessionStorage.removeItem(key); }
-  catch { /* private mode: same-page retry still works */ }
-}
 interface MaterialFormSnapshot { open: boolean; title: string; body: string; url: string; sourceDraft: Draft | null; mutationId: string }
 function savedMaterialForm(key: string): MaterialFormSnapshot {
   try {
@@ -106,14 +94,16 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   // The stream's composer keeps the former new-conversation draft; each thread keeps its own reply draft.
   const materialFormKey = `flux.project-material.${me.user.id}.${project.id}${conversation ? '.thread' : ''}`;
   const composerId = conversation ? 'thread-composer' : 'project-composer';
-  const draftKey = `flux.project-composer.${me.user.id}.${project.id}.${conversation?.id ?? 'new'}`;
-  const pendingKey = `${draftKey}.pending`;
+  const [asking, setAsking] = useState(false);
+  const publicComposer = useComposerDraft(me.user.id, project.id, conversation?.task ? `task:${conversation.task.workId}` : conversation ? `conversation:${conversation.id}` : 'new');
+  const helperComposer = useComposerDraft(me.user.id, project.id, `helper:${conversation?.id ?? 'new'}`);
+  const composer = asking ? helperComposer : publicComposer;
+  const draft = composer.draft.body;
+  const captureScope = useComposerScope(publicComposer.key);
+  const captureHelperScope = useComposerScope(helperComposer.key);
   const savedMaterial = useMemo(() => savedMaterialForm(materialFormKey), [materialFormKey]);
-  const [draft, setDraft] = useState(() => savedDraft(draftKey));
-  const restoredPending = useMemo(() => savedPending(pendingKey, savedDraft(draftKey)), [pendingKey, draftKey]);
-  const [pending, setPending] = useState<SendMessageCommand | null>(restoredPending?.command ?? null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const busy = publicComposer.sending;
+  const error = publicComposer.error;
   const [readFailure, setReadFailure] = useState<{ message: string; retry: () => void } | null>(null);
   const [accessLost, setAccessLost] = useState(false);
   const [messages, setMessages] = useState<Conversation['messages']>(conversation?.messages ?? []);
@@ -135,7 +125,6 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const [materialMutationId, setMaterialMutationId] = useState(savedMaterial.mutationId);
   const [privateDrafts, setPrivateDrafts] = useState<Draft[]>([]);
   const [sourceDraft, setSourceDraft] = useState<Draft | null>(savedMaterial.sourceDraft);
-  const [citation, setCitation] = useState<{ title: string; materialId: string; version: number } | null>(restoredPending?.citation ?? null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const writable = project.access !== 'viewer';
   const makeWork = useCreateWorkFromMessage(project);
@@ -148,11 +137,9 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   // The signed-in person's own assistant (#68): ask mode, their working line, shared answers.
   const assistant = useConversationAssistant({ meId: me.user.id, projectId: project.id, conversationId: conversation?.id ?? null });
   const { openDetails } = useShellActions();
-  const [asking, setAsking] = useState(false);
-  const [askBusy, setAskBusy] = useState(false);
+  const askBusy = helperComposer.sending;
   const [askFailure, setAskFailure] = useState('');
   const [askFailureCode, setAskFailureCode] = useState<string | null>(null);
-  const askPending = useRef<{ prompt: string; clientRunId: string } | null>(null);
   const hideIfDenied = useCallback((cause: unknown) => {
     if (!(cause instanceof ApiError)) return;
     if (cause.status === 403) { revalidator.revalidate(); return; }
@@ -247,48 +234,53 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   // The stream has no assistant: `/ai …` there would post the prompt for the whole project.
   const assistantInStream = !conversation && /^\/ai(\s|$)/.test(draft.trimStart());
   function changeDraft(input: string) {
-    let value = input;
-    // `/ai <prompt>` at the start of the box turns on ask mode (#57 design).
-    if (!asking && conversation && writable && /^\/ai(\s|$)/.test(value)) { setAsking(true); value = value.replace(/^\/ai\s?/, ''); }
-    setAskFailure('');
-    setDraft(value); putDraft(draftKey, value);
-    if (pending && pending.body !== value.trim()) { setPending(null); putPending(pendingKey, null); }
-    setError('');
+    // Private prompts keep their own draft; invoking /ai never overwrites a public task draft.
+    if (!asking && conversation && writable && /^\/ai(\s|$)/.test(input)) {
+      helperComposer.setBody(input.replace(/^\/ai\s?/, '')); setAsking(true); setAskFailure(''); return;
+    }
+    setAskFailure(''); composer.setBody(input);
   }
   function exitAsk() { setAsking(false); setAskFailure(''); document.getElementById(composerId)?.focus(); }
   async function sendToAssistant() {
-    const prompt = draft.trim();
-    if (!conversation || !writable || askBusy || !prompt || askState(assistant.status, audience).kind !== 'ready') return;
-    // The same request retried after a lost response reuses its key: it never charges twice.
-    if (askPending.current?.prompt !== prompt) askPending.current = { prompt, clientRunId: crypto.randomUUID() };
-    setAskBusy(true); setAskFailure('');
+    if (!conversation || !writable || askBusy || askState(assistant.status, audience).kind !== 'ready') return;
+    const command = helperComposer.begin();
+    if (!command) return;
+    const active = captureHelperScope();
+    setAskFailure('');
     try {
-      await assistant.ask(prompt, { clientRunId: askPending.current.clientRunId });
-      askPending.current = null;
-      // One request, then the composer is a plain reply again.
-      setDraft(''); putDraft(draftKey, ''); setAsking(false);
+      await assistant.ask(command.body, { clientRunId: command.clientMessageId });
+      helperComposer.finish(command.clientMessageId);
+      if (active()) setAsking(false);
     } catch (cause) {
+      helperComposer.finish(command.clientMessageId, cause);
+      if (!active()) return;
       setAskFailure(askErrorText(cause));
       setAskFailureCode(cause instanceof ApiError ? cause.code : null);
       assistant.refreshStatus();
-    } finally { setAskBusy(false); }
+    }
   }
   async function send() {
     if (asking) { await sendToAssistant(); return; }
     // A private helper prompt is never published as a root (UI116-3); it stays in the private draft.
-    if (!writable || busy || !draft.trim() || assistantInStream) return;
-    const command = pending ?? { body: draft.trim(), clientMessageId: crypto.randomUUID(), ...(citation ? { source: { materialId: citation.materialId, version: citation.version } } : {}) };
-    setPending(command); putPending(pendingKey, { command, citation }); setBusy(true); setError('');
+    if (!writable || assistantInStream) return;
+    const command = publicComposer.begin();
+    if (!command) return;
+    const active = captureScope();
     try {
-      const result = conversation ? await reply(conversation.id, command) : await startConversation(project.id, command);
-      setPending(null); putPending(pendingKey, null); setDraft(''); putDraft(draftKey, ''); setCitation(null);
-      // A new root joins the stream where it was written; the thread stays closed (UI116-1).
+      const result = conversation?.task ? await contributeToTask(conversation.task.workId, { ...command, kind: 'text' })
+        : conversation ? await reply(conversation.id, command) : await startConversation(project.id, command);
+      publicComposer.finish(command.clientMessageId);
+      if (!active()) return;
       if (!conversation) onPosted?.(result as Conversation);
       void refresh();
     } catch (cause) {
-      setError(readableError(cause));
-      hideIfDenied(cause);
-    } finally { setBusy(false); }
+      publicComposer.finish(command.clientMessageId, cause);
+      // A send's 404 also protects an unavailable file/source. Confirm scope loss through
+      // the ordinary project read before hiding the composer needed to recover that draft.
+      if (active() && cause instanceof ApiError && [401, 403, 404].includes(cause.status)) {
+        void getProject(project.id).catch((accessCause: unknown) => { if (active()) hideIfDenied(accessCause); });
+      }
+    }
   }
   function onComposerKey(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (asking && (event.key === 'Escape' || (event.key === 'Backspace' && !draft))) { event.preventDefault(); event.stopPropagation(); exitAsk(); return; }
@@ -328,10 +320,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     try {
       const snapshot = await getMaterialVersion(material.materialId, material.version);
       const selected = { title: snapshot.title, materialId: material.materialId, version: snapshot.version };
-      if (!pending?.source || pending.source.materialId !== selected.materialId || pending.source.version !== selected.version) {
-        setPending(null); putPending(pendingKey, null);
-      }
-      setCitation(selected); setError(''); setSourcesOpen(false);
+      publicComposer.setReference(selected); setSourcesOpen(false);
       document.getElementById(composerId)?.focus();
     } catch (cause) { hideIfDenied(cause); setReadFailure({ message: readableError(cause), retry: () => void cite(material) }); }
   }
@@ -388,7 +377,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
                 <Avatar name={messageAuthor(message)} size="md" tone={mine ? 'me' : 'neutral'} />
                 <div className="project-convo__message-meta"><strong>{mine ? `${messageAuthor(message)} · you` : message.authorId === null ? messageAuthor(message) : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${messageAuthor(message)} directly`}>{messageAuthor(message)}</Link>}</strong><time dateTime={message.createdAt} title={when(message.createdAt)}>{clock(message.createdAt)}</time><span>#{message.sequence}</span></div>
                 {message.body ? <p>{message.body}</p> : null}
-                {message.files?.length ? <MessageFiles files={message.files} /> : null}
+                <MessageFiles files={message.files} />
                 {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={(resultId) => openDetails({ kind: 'result', id: resultId })} /> : null}
                 {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={hideIfDenied} /> : null}
                 <MessageObjects messageId={message.id} lists={work} />
@@ -423,12 +412,12 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
         {conversation ? <p className="project-convo__current-thread" title={title}>{writable ? 'Replying to' : 'Conversation'} · {title}</p> : null}
         <p className="composer__audience"><Icon name="lock" size={13} /><span>{audience}</span><span className="composer__where"> · saved to {project.name}</span></p>
       </div>}
-      {citation && writable ? <div className="project-convo__citation">Discussing “{citation.title}” v{citation.version}<button type="button" disabled={busy} onClick={() => { setCitation(null); setPending(null); putPending(pendingKey, null); setError(''); }} aria-label="Remove material citation">×</button></div> : null}
+      {writable && !asking ? <ComposerFiles state={publicComposer} /> : null}
       <div className="composer__box"><button type="button" className="composer__ask project-convo__sources-btn" aria-expanded={trayOpen} aria-controls={trayOpen ? `${conversation ? 'thread' : 'project'}-sources` : undefined} aria-label={`Sources${materialTotal ? `, ${materialTotal} saved` : ''}`} data-tip={writable ? 'Sources to cite' : 'Saved sources to read'} data-tip-align="start" onClick={() => { if (trayOpen) { setSourcesOpen(false); if (writable) setShowMaterialForm(false); } else setSourcesOpen(true); }}><Icon name="doc" /><span className="project-convo__sources-t" aria-hidden="true">Sources</span>{materialTotal ? <span className="project-convo__sources-n" aria-hidden="true">{materialTotal > 99 ? '99+' : materialTotal}</span> : null}</button>{conversation && writable ? <button type="button" className="composer__ask" aria-pressed={asking} aria-label="Ask my assistant" aria-controls={asking ? 'project-ask' : undefined} data-tip="Ask my assistant · /ai" data-tip-align="start"
-        onClick={() => { if (asking) exitAsk(); else { setAsking(true); document.getElementById(composerId)?.focus(); } }}><Icon name="spark" /></button> : null}{writable ? <><label className="ui-vh" htmlFor={composerId}>{asking ? 'Ask your assistant' : conversation ? 'Reply' : 'Write a message'}</label><textarea id={composerId} value={draft} onChange={(event) => changeDraft(event.target.value)} onKeyDown={onComposerKey} disabled={!writable || busy || askBusy} aria-describedby={asking ? 'project-ask' : assistantInStream ? `${composerId}-ai-hint` : undefined} placeholder={asking ? 'Ask your assistant…' : conversation ? replyHint : 'Write a message…'} rows={1} /><button className="composer__send" aria-label={asking ? 'Send to your assistant' : conversation ? 'Send reply' : 'Send message'} aria-disabled={!draft.trim() || !writable || busy || askBusy || assistantInStream || (asking && ask.kind !== 'ready')} type="button" onClick={() => void send()}><Icon name="send" /></button></> : <p className="project-convo__read-only">Read-only · <span>You have read access to this project.</span></p>}</div>
+        onClick={() => { if (asking) exitAsk(); else { setAsking(true); document.getElementById(composerId)?.focus(); } }}><Icon name="spark" /></button> : null}{writable ? <><label className="ui-vh" htmlFor={composerId}>{asking ? 'Ask your assistant' : conversation ? 'Reply' : 'Write a message'}</label><textarea id={composerId} value={draft} onChange={(event) => changeDraft(event.target.value)} onKeyDown={onComposerKey} disabled={!writable || busy || askBusy} aria-describedby={asking ? 'project-ask' : assistantInStream ? `${composerId}-ai-hint` : undefined} placeholder={asking ? 'Ask your assistant…' : conversation ? replyHint : 'Write a message…'} rows={1} /><button className="composer__send" aria-label={asking ? 'Send to your assistant' : conversation ? 'Send reply' : 'Send message'} aria-disabled={!composer.canSend || !writable || busy || askBusy || assistantInStream || (asking && ask.kind !== 'ready')} type="button" onClick={() => void send()}><Icon name="send" /></button></> : <p className="project-convo__read-only">Read-only · <span>You have read access to this project.</span></p>}</div>
       {writable && assistantInStream ? <p id={`${composerId}-ai-hint`} className="project-convo__hint" role="status">Your assistant answers inside a conversation. Open one and type /ai there. This text is not posted.</p> : null}
       {readFailure ? <p className="project-convo__error" role="alert">{readFailure.message} <button type="button" onClick={readFailure.retry}>Retry read</button></p> : null}
-      {writable && error ? <p className="project-convo__error" role="alert">{error} <button type="button" onClick={() => void send()}>Retry send</button></p> : null}
+      {writable && error && !asking ? <p className="project-convo__error"><button type="button" onClick={() => void send()}>Retry send</button></p> : null}
     </div></div>
   </div>;
 }
@@ -449,15 +438,4 @@ function feedEntries(messages: Conversation['messages'], answers: AssistantAnswe
       .map((answer) => ({ type: 'answer' as const, key: `answer-${answer.runId}`, at: answer.committedAt, answer })),
   ];
   return entries.sort((a, b) => a.at.localeCompare(b.at) || (a.type === b.type ? 0 : a.type === 'message' ? -1 : 1));
-}
-
-/** A message's published files, each a download (#154; the full file list and composer come next). */
-function MessageFiles({ files }: { files: readonly MessageFile[] }) {
-  return <ul className="project-convo__files" aria-label={files.length === 1 ? '1 attached file' : `${files.length} attached files`}>
-    {files.map((file) => <li key={file.id}><a href={`/api/v1/files/${file.id}`} download={file.name}>{file.name}</a> <span>{fileSize(file.size)}</span></li>)}
-  </ul>;
-}
-
-function fileSize(bytes: number) {
-  return bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }

@@ -12,6 +12,7 @@
 .agents__head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-4); flex-wrap: wrap; }
 .agents__title { margin: 0; font-size: var(--fs-2xl); font-weight: 600; letter-spacing: -0.025em; }
 .agents__connect { display: inline-flex; align-items: center; gap: var(--s-1); font-size: var(--fs-sm); }
+.agents__no-connections { margin: 0; color: var(--text-3); font-size: var(--fs-sm); line-height: 1.5; }
 
 /* Every connection is its own entry, so one person's second agent is never hidden. */
 .agents__connections {
@@ -54,6 +55,8 @@
    scrolls in its own pane (.agents-scroll) under the sticky composer. */
 .agents-thread { display: flex; flex-direction: column; gap: var(--s-3); flex: 1 0 auto; }
 .agents-thread > :first-child { margin-top: auto; }
+/* Starting a thread keeps its first-message box beside the task picker. */
+.agents-thread[data-empty="true"] > :first-child { margin-top: 0; }
 .agents-thread__top { margin: 0; font-size: var(--fs-xs); color: var(--text-3); }
 .agents-thread__empty { margin: 0; color: var(--text-3); font-size: var(--fs-sm); }
 .agents-thread__error { margin: 0; color: var(--danger); font-size: var(--fs-sm); }

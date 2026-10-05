@@ -7,6 +7,7 @@ import type { ProjectWork } from '../work/api';
 import { useShellActions } from './shellContext';
 import { listConversationRoots, listTaskNotices } from './conversation-api';
 import { ContributionMark, SourceCitation, clock, day, openOnWholeMessages, when } from './messageParts';
+import { MessageFiles } from '../composer/Files';
 
 // One project conversation (UI116-1, 2026-10-02): a chronological stream of roots. Each root is the
 // opening message of a stored conversation; its replies open beside it in a one-level thread.
@@ -488,7 +489,8 @@ function RootItem({ root, project, meId, author, work, open, arrived, makeWork, 
         <strong>{mine ? `${name} · you` : message.authorId === null ? name : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</Link>}</strong>
         <time dateTime={message.createdAt} title={when(message.createdAt)}>{clock(message.createdAt)}</time>
       </div>
-      <p>{message.body}</p>
+      {message.body ? <p>{message.body}</p> : null}
+      <MessageFiles files={message.files} />
       {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={onOpenResult} /> : null}
       {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
       <MessageObjects messageId={message.id} lists={work} thread={root.task ?? null} />

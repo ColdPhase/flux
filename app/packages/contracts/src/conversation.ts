@@ -55,6 +55,8 @@ export interface ConversationFields {
   createdAt: string;
   /** Stable discussion label from the opening message. */
   firstMessageBody: string;
+  /** The current canonical task binding, including windows that do not contain its root (#154). */
+  task?: { workId: string; title: string };
   messages: ConversationMessage[];
   messagePage: {
     /** True when messages with a lower sequence can be fetched. */

@@ -1,7 +1,7 @@
 import {
-  decisionAcceptPath, decisionPath, projectDecisionsPath, projectResultsPath, projectWorkPath, resultPath, taskDiscussionPath, workItemPath, workspaceAssignedWorkPath,
-  type AcceptDecisionCommand, type ConversationMessage, type CreateResultCommand, type CreateWorkCommand, type Decision, type Page, type ProposeDecisionCommand,
-  type TaskContributionCommand, type TaskDiscussion, type UpdateWorkCommand, type WorkItem, type WorkResult, type Agent,
+  decisionAcceptPath, decisionPath, projectDecisionsPath, projectResultsPath, projectWorkPath, resultPath, workItemPath, workspaceAssignedWorkPath,
+  type AcceptDecisionCommand, type CreateResultCommand, type CreateWorkCommand, type Decision, type Page, type ProposeDecisionCommand,
+  type UpdateWorkCommand, type WorkItem, type WorkResult, type Agent,
 } from '@flux/contracts';
 import { request } from '../api/client';
 import { readAssignedAcross } from './assigned';
@@ -62,10 +62,3 @@ export const acceptDecision = (decision: Decision, command: AcceptDecisionComman
 export const createResult = (projectId: string, command: CreateResultCommand, idempotencyKey: string) =>
   request<WorkResult>(projectResultsPath(projectId), { method: 'POST', body: { ...command, clientCommandId: command.clientCommandId ?? idempotencyKey }, headers: key(idempotencyKey) });
 export const listAgents = (workspaceId: string, signal?: AbortSignal) => request<Agent[]>(`/api/v1/workspaces/${workspaceId}/agents`, { signal });
-
-/** A task's discussion (#154): its root and its newest messages, newest last. */
-export const getTaskDiscussion = (workId: string, limit = 50, signal?: AbortSignal) =>
-  request<TaskDiscussion>(`${taskDiscussionPath(workId)}?limit=${limit}`, { signal });
-/** A genuine contribution to a task's discussion; the first one becomes its root. */
-export const contributeToTask = (workId: string, command: TaskContributionCommand) =>
-  request<ConversationMessage>(taskDiscussionPath(workId), { method: 'POST', body: command });

@@ -231,7 +231,7 @@ function WorkPanel({ item, context, reload }: { item: WorkItem; context: Context
         ) : null}
       </section>
 
-      <TaskDiscussionSection workId={item.id} project={context.project} members={context.members} me={{ id: me.user.id, name: me.user.name }} />
+      <TaskDiscussionSection key={`${me.user.id}:${context.project.id}:${item.id}`} workId={item.id} project={context.project} members={context.members} me={{ id: me.user.id, name: me.user.name }} />
 
       <section className="details__sec" aria-labelledby="wd-decisions">
         <h4 id="wd-decisions">Decisions</h4>
