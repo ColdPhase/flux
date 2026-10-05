@@ -21,7 +21,7 @@ function world(options: { writable?: boolean; taskIds?: string[]; hook?: boolean
   const log: string[] = [];
   const tasks = new Map<string, WorkRecord>();
   const taskIds = options.taskIds ?? [randomUUID(), randomUUID(), randomUUID()];
-  for (const id of taskIds) tasks.set(id, { id, workspaceId, projectId, title: `Task ${id.slice(0, 4)}`, outcome: '', criteria: [], status: 'open', blocker: null,
+  for (const [index, id] of taskIds.entries()) tasks.set(id, { id, workspaceId, projectId, number: index + 1, title: `Task ${id.slice(0, 4)}`, outcome: '', criteria: [], status: 'open', blocker: null,
     owner: null, parked: null, createdBy: { kind: 'human', id: 'creator' }, version: 1, createdAt: at, updatedAt: at });
   const messages: DiscussionMessage[] = [];
   const conversations = new Map<string, { id: string; workspaceId: string; projectId: string; createdBy: ActorRef; createdAt: Date }>();

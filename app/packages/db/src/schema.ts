@@ -325,6 +325,8 @@ export const projects = pgTable('projects', {
   workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   visibility: text('visibility', { enum: ['workspace', 'restricted'] }).notNull().default('workspace'),
+  /** The last task number given out in this project (#276); only the task-number trigger moves it. */
+  taskNumberSeq: integer('task_number_seq').notNull().default(0),
   createdBy: text('created_by').notNull(),
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -848,6 +850,11 @@ export const projectWorkItems = pgTable('project_work_items', {
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull(),
   projectId: uuid('project_id').notNull(),
+  /**
+   * The task's number in its project, shown as "#12" (#276, migration 0055). A trigger assigns it on every
+   * insert and refuses changes; the default only lets inserts leave it out.
+   */
+  number: integer('number').notNull().default(0),
   title: text('title').notNull(),
   outcome: text('outcome').notNull().default(''),
   status: text('status', { enum: ['open', 'in_progress', 'blocked', 'done', 'not_pursued'] }).notNull().default('open'),

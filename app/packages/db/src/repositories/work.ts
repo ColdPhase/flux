@@ -27,7 +27,7 @@ const l = schema.projectObjectLinks;
 
 export function toWorkRecord(row: WorkRow) {
   return {
-    id: row.id, workspaceId: row.workspaceId, projectId: row.projectId, title: row.title, outcome: row.outcome,
+    id: row.id, workspaceId: row.workspaceId, projectId: row.projectId, number: row.number, title: row.title, outcome: row.outcome,
     status: row.status, blocker: row.blocker,
     owner: row.ownerUserId ? { kind: 'human' as const, id: row.ownerUserId } : row.ownerAgentId ? { kind: 'agent' as const, id: row.ownerAgentId } : null,
     parked: row.parkedByDecisionId && row.parkedAt ? { decisionId: row.parkedByDecisionId, at: row.parkedAt } : null,

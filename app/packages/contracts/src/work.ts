@@ -130,6 +130,8 @@ export interface TaskPrerequisite {
 }
 
 export interface WorkItem extends ProjectObject {
+  /** The task's number in its project, shown as "#12" (#276): given at creation, never reused or changed. */
+  number: number;
   title: string;
   /** What finishing it should achieve; may be empty for small tasks. */
   outcome: string;

@@ -202,8 +202,9 @@ class TasksBoardJourney(unittest.TestCase):
         expect(blocked).to_contain_text(f"Waiting for {BLOCKER}")
         # The ID, the title, where it came from, the owner and the agent that owns a task.
         order = self.card(open_, ORDER)
-        expect(order.locator(".tb-card__id")).to_contain_text(self.ids["order"].replace("-", "")[:8].upper())
-        expect(order.locator(".tb-card__id")).to_have_attribute("title", f"Task {self.ids['order']}")
+        # A task is named by its number in the project, "#12" (#276); the id stays in the tooltip.
+        expect(order.locator(".tb-card__id")).to_have_text(re.compile(r"^Task #\d+$"))
+        expect(order.locator(".tb-card__id")).to_have_attribute("title", re.compile(rf"^Task #\d+ · {self.ids['order']}$"))
         expect(order.get_by_role("button", name=ORDER, exact=True)).to_be_visible()
         source = order.get_by_role("link", name=re.compile("^From a message: If we agree on the ToF route"))
         expect(source).to_have_attribute("href", f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}#message-{self.ids['message']}")
