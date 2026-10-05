@@ -33,6 +33,7 @@ test('fresh credentials and valid VAPID keys stay in private state; fixture init
   assert.equal((await readJson(directory, 'boundary.json')).enabled, false);
   const env = await readFile(join(directory, 'fixture.env'), 'utf8');
   assert.match(env, /^MOBILE_PROJECT=flux-mobile-/m); assert.doesNotMatch(env, /FLUX_TEST|ALLOW_PRIVATE|NODE_EXTRA_CA/);
+  assert.match(env, /^MOBILE_VAPID_SUBJECT=mailto:mobile-fixture@example\.test$/m);
   await assert.rejects(initialize(directory, candidate), /already exists/);
 }));
 test('private state refuses public permissions, symlinks and expired leases', () => temporary(async directory => {
@@ -118,6 +119,8 @@ test('opening HTTPS requires exact reviewed source and fresh fixture; close work
   await assert.rejects(main(['boundary', 'https', 'https://fixture.trycloudflare.com', 'c'.repeat(40)], directory), /review/);
   const result = await main(['boundary', 'https', 'https://fixture.trycloudflare.com', candidate], directory);
   assert.equal(result.prepared, true); assert.equal((await readJson(directory, 'boundary.json')).enabled, false);
+  // Apple refuses an unreachable VAPID contact (#20): the public session signs with its https origin.
+  assert.match(await readFile(join(directory, 'fixture.env'), 'utf8'), /^MOBILE_VAPID_SUBJECT=https:\/\/fixture\.trycloudflare\.com$/m);
   await main(['enable', result.origin], directory);
   assert.equal((await readJson(directory, 'boundary.json')).enabled, true);
   state.expiresAt = Date.now() - 1; await writeJson(directory, 'state.json', state);

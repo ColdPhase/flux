@@ -1,0 +1,55 @@
+ Container flux155browser-mailpit-1  Running
+ Container flux155browser-db-1  Running
+ Container flux155browser-worker-1  Running
+ Container flux155browser-api-1  Running
+ Container flux155browser-db-1  Waiting
+ Container flux155browser-db-1  Healthy
+ Container flux155browser-migrate-1  Starting
+ Container flux155browser-migrate-1  Started
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Exited
+ Container flux155browser-migrate-1  Exited
+▶ architecture boundaries
+  ✔ the repository has no dependency violation outside the recorded allowlist (51.660709ms)
+  ✔ every allowlist entry names its tracking issue and a reason (0.639417ms)
+  ✔ the push use cases in core stay free of adapters, including through helpers (0.759375ms)
+  ✔ the sketch use cases in core stay free of adapters, including through helpers (#69) (0.599125ms)
+  ✔ the direct-message use cases in core stay free of adapters, including through helpers (#107) (0.32825ms)
+  ✔ the bounded work read use cases stay free of persistence and transport adapters (#155) (0.407542ms)
+  ✔ the rules reject each kind of boundary violation (self-test) (0.502542ms)
+  ✔ the allowlist comparison reports new and fixed violations (0.27025ms)
+✔ architecture boundaries (56.337584ms)
+▶ bounded native PostgreSQL work key selection
+  ✔ all native bands remain reachable through bounded forward and direct previous pages (33.696125ms)
+  ✔ mine uses native owner/result creator while keeping proposals and excluding rules (4.0965ms)
+  ✔ choice predicates retain parked result choices, full native kinds and literal wildcard search (7.493166ms)
+  ✔ a surviving boundary alone yields no false strict escape; an older/newer scope retains its actual opposite (7.114375ms)
+  ✔ held actual SQL keeps its original cursor for empty-page counts despite caller mutation (4.410791ms)
+✔ bounded native PostgreSQL work key selection (493.292042ms)
+✔ task URL fields default explicitly and reject duplicates/unknown/coerced selectors (1.700167ms)
+✔ native choices stay disjoint; parked result choices keep a separate deep selection (0.550875ms)
+✔ source batch bounds apply before deduplication and conversation/source cursors are exclusive (0.910292ms)
+✔ relationship batches retain kind identities and reject malformed/oversized selectors (0.330083ms)
+✔ cursor survives direct reload/previous direction with all PostgreSQL microseconds (0.627875ms)
+✔ cursor cannot transfer between account/project/endpoint/selector/limit/object window (0.351667ms)
+✔ normalized 100-source selector produces a fixed-size scoped cursor without source identities (0.266875ms)
+✔ unknown/noncanonical/duplicate cursor JSON cannot bypass the closed envelope (0.32025ms)
+✔ page metadata emits both native directions and keeps an empty changed-page escape (1.145ms)
+✔ combined view and summary share one observation and use access checked after its transaction (2.442833ms)
+✔ caller and query are captured before asynchronous work; result deep selection never changes its eligible page (0.69025ms)
+✔ invalid requests and scope-mismatched cursors do no policy or repository work (1.045584ms)
+✔ project denial precedes reads; failed required data becomes unavailable, never zero or a partial result (0.58625ms)
+✔ revocation at the final fence suppresses the whole assembled response (0.379083ms)
+✔ every required message is validated even when it has no edges, before association counts and hydration (1.214584ms)
+✔ required final-fence failures become unavailable; native session and scope rejection stay exact (0.594875ms)
+✔ association rows, all-source counts and global edges keep independent bounded scopes (0.625459ms)
+✔ an edge continuation fails on a changed object window before any edge or source hydration (1.806958ms)
+ℹ tests 31
+ℹ suites 2
+ℹ pass 31
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1464.784542

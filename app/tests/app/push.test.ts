@@ -10,6 +10,7 @@ import {
   loadPushSenderConfig,
   loadPushServerConfig,
   pushEndpointViolation,
+  vapidSubjectWarning,
   type PushSendJob,
 } from '@flux/core';
 import type { PushPayload, PushSubscriptionSummary } from '@flux/contracts';
@@ -44,6 +45,15 @@ describe('push configuration', () => {
     const { publicKey, privateKey, subject } = sender;
     assert.throws(() => loadPushSenderConfig({ FLUX_VAPID_PUBLIC_KEY: publicKey }), /must be set together/);
     assert.throws(() => loadPushSenderConfig({ FLUX_VAPID_PUBLIC_KEY: publicKey, FLUX_VAPID_PRIVATE_KEY: privateKey, FLUX_VAPID_SUBJECT: 'ops@example.test' }), /mailto: address or an https: URL/);
+    // Apple refuses a contact it cannot reach (#20): those load, with a warning naming iPhone and iPad.
+    for (const unreachable of ['mailto:mobile-fixture@example.test', 'mailto:admin@localhost.localdomain', 'mailto:ops@localhost', 'https://localhost',
+      'mailto:me@flux.local', 'https://flux.internal', 'mailto:me@host', 'https://192.168.1.4', 'https://flux.example', 'mailto:ops@flux.invalid']) {
+      assert.match(vapidSubjectWarning(unreachable) ?? '', /iPhone and iPad/, unreachable);
+    }
+    for (const reachable of ['mailto:ops@flux.company.com', 'https://flux.company.com', 'https://cbs-focusing-constraint.trycloudflare.com', 'mailto:Ops@Example.org']) {
+      assert.equal(vapidSubjectWarning(reachable), null, reachable);
+    }
+    assert.equal(loadPushSenderConfig({ FLUX_VAPID_PUBLIC_KEY: publicKey, FLUX_VAPID_PRIVATE_KEY: privateKey, FLUX_VAPID_SUBJECT: 'mailto:admin@localhost.localdomain' }).status, 'available');
     const other = testSubscription().keys.p256dh;
     assert.throws(() => loadPushSenderConfig({ FLUX_VAPID_PUBLIC_KEY: other, FLUX_VAPID_PRIVATE_KEY: privateKey, FLUX_VAPID_SUBJECT: subject }), /does not belong/);
     assert.throws(() => loadPushServerConfig({ FLUX_VAPID_PUBLIC_KEY: 'not-a-key' }), /P-256 public key/);

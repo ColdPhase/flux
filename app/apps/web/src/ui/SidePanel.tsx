@@ -11,6 +11,8 @@ export interface SidePanelProps {
   title: string;
   /** Optional header content before the title, e.g. a Back button when drilling down. */
   headerStart?: ReactNode;
+  /** Persistent context below the heading, outside the scrolling panel body. */
+  context?: ReactNode;
   id?: string;
   children: ReactNode;
 }
@@ -22,7 +24,7 @@ export function useSidePanelMode(): SidePanelMode {
   return phone ? 'sheet' : overlay ? 'overlay' : 'docked';
 }
 
-function PanelContent({ title, titleId, headerStart, onClose, bodyRef, children }: { title: string; titleId: string; headerStart?: ReactNode; onClose: () => void; bodyRef?: Ref<HTMLDivElement>; children: ReactNode }) {
+function PanelContent({ title, titleId, headerStart, context, onClose, bodyRef, children }: { title: string; titleId: string; headerStart?: ReactNode; context?: ReactNode; onClose: () => void; bodyRef?: Ref<HTMLDivElement>; children: ReactNode }) {
   return (
     <>
       <div className="ui-panel__head">
@@ -30,13 +32,14 @@ function PanelContent({ title, titleId, headerStart, onClose, bodyRef, children 
         <h2 className="ui-panel__title" id={titleId}>{title}</h2>
         <IconButton icon="x" label={`Close ${title.toLowerCase()}`} onClick={onClose} className="ui-panel__close" />
       </div>
+      {context}
       <div className="ui-panel__body" ref={bodyRef} tabIndex={-1}>{children}</div>
     </>
   );
 }
 
 /** Non-modal panel docked at the right edge of the app frame. Esc inside it closes it. */
-function DockedPanel({ open, onClose, title, headerStart, id, children }: SidePanelProps) {
+function DockedPanel({ open, onClose, title, headerStart, context, id, children }: SidePanelProps) {
   const { mounted, unmount } = usePresence(open);
   const ref = useRef<HTMLElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -72,7 +75,7 @@ function DockedPanel({ open, onClose, title, headerStart, id, children }: SidePa
   };
   return (
     <aside ref={ref} id={id} className="ui-panel ui-panel--docked" aria-labelledby={titleId} onKeyDown={onKeyDown} inert={!open}>
-      <PanelContent title={title} titleId={titleId} headerStart={headerStart} onClose={onClose} bodyRef={bodyRef}>{children}</PanelContent>
+      <PanelContent title={title} titleId={titleId} headerStart={headerStart} context={context} onClose={onClose} bodyRef={bodyRef}>{children}</PanelContent>
     </aside>
   );
 }
@@ -82,7 +85,7 @@ export function SidePanel(props: SidePanelProps) {
   const titleId = useId();
   const bodyRef = useRef<HTMLDivElement>(null);
   if (mode === 'docked') return <DockedPanel {...props} />;
-  const content = <PanelContent title={props.title} titleId={titleId} headerStart={props.headerStart} onClose={props.onClose} bodyRef={bodyRef}>{props.children}</PanelContent>;
+  const content = <PanelContent title={props.title} titleId={titleId} headerStart={props.headerStart} context={props.context} onClose={props.onClose} bodyRef={bodyRef}>{props.children}</PanelContent>;
   if (mode === 'sheet') {
     return <Sheet open={props.open} onClose={props.onClose} labelledBy={titleId} id={props.id} initialFocus={bodyRef} className="ui-panel">{content}</Sheet>;
   }

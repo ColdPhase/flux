@@ -1,0 +1,300 @@
+ Container flux155browser-anthropic-mock-1  Running
+ Container flux155browser-db-1  Running
+ Container flux155browser-mailpit-1  Running
+ Container flux155browser-api-1  Running
+ Container flux155browser-worker-1  Running
+ Container flux155browser-db-1  Waiting
+ Container flux155browser-db-1  Healthy
+ Container flux155browser-migrate-1  Starting
+ Container flux155browser-migrate-1  Started
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Exited
+ Container flux155browser-migrate-1  Exited
+test_01_global_object_and_edge_pages_keep_native_ids_counts_and_reply (test_work_associations.MessageWorkJourney.test_01_global_object_and_edge_pages_keep_native_ids_counts_and_reply) ... ok
+test_02_held_next_page_respects_new_wheel_reading_position_and_private_selection (test_work_associations.MessageWorkJourney.test_02_held_next_page_respects_new_wheel_reading_position_and_private_selection) ... ok
+test_03_old_page_and_required_failure_do_not_revive_chips_or_clear_reply (test_work_associations.MessageWorkJourney.test_03_old_page_and_required_failure_do_not_revive_chips_or_clear_reply) ... ok
+test_04_cookie_account_change_retires_held_old_page_and_isolates_reply (test_work_associations.MessageWorkJourney.test_04_cookie_account_change_retires_held_old_page_and_isolates_reply) ... ok
+test_05_older_visible_messages_use_one_bounded_batch_and_native_source (test_work_associations.MessageWorkJourney.test_05_older_visible_messages_use_one_bounded_batch_and_native_source) ... ok
+test_06_paused_router_revalidation_retires_viewport_selector_aba (test_work_associations.MessageWorkJourney.test_06_paused_router_revalidation_retires_viewport_selector_aba) ... ok
+test_07_restored_feed_observes_older_and_newer_native_batches (test_work_associations.MessageWorkJourney.test_07_restored_feed_observes_older_and_newer_native_batches) ... FAIL
+test_08_one_pagedown_gesture_keeps_scrolling_across_a_held_batch (test_work_associations.MessageWorkJourney.test_08_one_pagedown_gesture_keeps_scrolling_across_a_held_batch) ... Task was destroyed but it is pending!
+task: <Task pending name='Task-963' coro=<Page._on_route() running at /usr/local/lib/python3.12/dist-packages/playwright/_impl/_page.py:308> wait_for=<Future pending cb=[Task.task_wakeup()]> cb=[Connection.dispatch.<locals>._done_callback() at /usr/local/lib/python3.12/dist-packages/playwright/_impl/_connection.py:539]>
+ok
+test_01_three_people_share_a_project (test_project_surface.ProjectSurfaceJourney.test_01_three_people_share_a_project) ... ok
+test_02_header_names_the_project_and_its_exact_audience (test_project_surface.ProjectSurfaceJourney.test_02_header_names_the_project_and_its_exact_audience) ... ok
+test_03_each_state_segment_opens_its_object (test_project_surface.ProjectSurfaceJourney.test_03_each_state_segment_opens_its_object) ... ok
+test_04_view_tabs_switch_between_the_project_surfaces (test_project_surface.ProjectSurfaceJourney.test_04_view_tabs_switch_between_the_project_surfaces) ... ok
+test_05_details_overview_links_everything_one_step_away (test_project_surface.ProjectSurfaceJourney.test_05_details_overview_links_everything_one_step_away) ... ok
+test_06_map_tab_creates_a_project_sketch (test_project_surface.ProjectSurfaceJourney.test_06_map_tab_creates_a_project_sketch) ... ok
+test_07_phone_collapses_the_state_line_and_keeps_the_audience (test_project_surface.ProjectSurfaceJourney.test_07_phone_collapses_the_state_line_and_keeps_the_audience) ... ok
+test_08_a_sketch_never_shows_under_another_projects_frame (test_project_surface.ProjectSurfaceJourney.test_08_a_sketch_never_shows_under_another_projects_frame) ... ok
+test_09_new_work_survives_native_source_back_views_resize_and_reload (test_project_surface.ProjectSurfaceJourney.test_09_new_work_survives_native_source_back_views_resize_and_reload) ... ok
+test_10_newest_failed_storage_write_and_clear_win_on_spa_remount (test_project_surface.ProjectSurfaceJourney.test_10_newest_failed_storage_write_and_clear_win_on_spa_remount) ... ok
+test_11_uncertain_native_creation_reuses_the_key_after_source_back (test_project_surface.ProjectSurfaceJourney.test_11_uncertain_native_creation_reuses_the_key_after_source_back) ... ok
+test_12_late_native_success_does_not_clear_a_new_draft_or_open_old_details (test_project_surface.ProjectSurfaceJourney.test_12_late_native_success_does_not_clear_a_new_draft_or_open_old_details) ... ok
+test_13_private_work_drafts_are_isolated_by_account_and_project (test_project_surface.ProjectSurfaceJourney.test_13_private_work_drafts_are_isolated_by_account_and_project) ... ok
+test_14_denied_clear_keeps_disclosure_and_native_replay_key_across_reload (test_project_surface.ProjectSurfaceJourney.test_14_denied_clear_keeps_disclosure_and_native_replay_key_across_reload) ... ok
+test_15_untouched_remount_observes_a_confirmed_native_clear (test_project_surface.ProjectSurfaceJourney.test_15_untouched_remount_observes_a_confirmed_native_clear) ... ok
+test_16_external_tab_aba_edits_fence_late_success_even_when_unmounted (test_project_surface.ProjectSurfaceJourney.test_16_external_tab_aba_edits_fence_late_success_even_when_unmounted) ... ok
+test_17_home_draft_changes_account_on_current_loader_revalidation (test_project_surface.ProjectSurfaceJourney.test_17_home_draft_changes_account_on_current_loader_revalidation) ... ok
+test_01_two_people_share_a_project (test_work_decisions.WorkDecisionsJourney.test_01_two_people_share_a_project) ... ok
+test_02_create_work_from_a_message_in_one_action (test_work_decisions.WorkDecisionsJourney.test_02_create_work_from_a_message_in_one_action) ... ok
+test_03_propose_and_accept_a_decision_with_the_keyboard (test_work_decisions.WorkDecisionsJourney.test_03_propose_and_accept_a_decision_with_the_keyboard) ... ok
+test_04_attach_a_negative_result_that_finishes_the_experiment (test_work_decisions.WorkDecisionsJourney.test_04_attach_a_negative_result_that_finishes_the_experiment) ... ok
+test_05_pivot_keeps_history_and_parks_obsolete_work (test_work_decisions.WorkDecisionsJourney.test_05_pivot_keeps_history_and_parks_obsolete_work) ... ok
+test_06_phone_creates_work_and_reads_the_tasks_tab (test_work_decisions.WorkDecisionsJourney.test_06_phone_creates_work_and_reads_the_tasks_tab) ... ok
+test_07_more_than_a_hundred_records_are_all_shown (test_work_decisions.WorkDecisionsJourney.test_07_more_than_a_hundred_records_are_all_shown) ... FAIL
+test_08_phone_finds_own_blocked_work_and_returns_to_the_same_view (test_work_decisions.WorkDecisionsJourney.test_08_phone_finds_own_blocked_work_and_returns_to_the_same_view) ... ok
+test_09_own_messages_sit_right_and_others_left (test_work_decisions.WorkDecisionsJourney.test_09_own_messages_sit_right_and_others_left) ... ok
+test_10_each_task_view_keeps_its_reading_position (test_work_decisions.WorkDecisionsJourney.test_10_each_task_view_keeps_its_reading_position) ... ok
+test_01_three_people_share_a_project (test_personal_assistant.PersonalAssistantJourney.test_01_three_people_share_a_project) ... ok
+test_02_not_set_up_says_so_and_human_work_continues (test_personal_assistant.PersonalAssistantJourney.test_02_not_set_up_says_so_and_human_work_continues) ... ok
+test_03_production_states_are_worded_truthfully (test_personal_assistant.PersonalAssistantJourney.test_03_production_states_are_worded_truthfully)
+Rendering only: the stub stands in for the production composition's real status. ... ok
+test_04_owner_turns_it_on_from_the_account_menu (test_personal_assistant.PersonalAssistantJourney.test_04_owner_turns_it_on_from_the_account_menu) ... ok
+test_05_a_manager_lets_their_assistant_read_the_project (test_personal_assistant.PersonalAssistantJourney.test_05_a_manager_lets_their_assistant_read_the_project) ... ok
+test_06_owner_sees_the_working_line_and_everyone_reads_the_attributed_answer (test_personal_assistant.PersonalAssistantJourney.test_06_owner_sees_the_working_line_and_everyone_reads_the_attributed_answer) ... ok
+test_07_stop_posts_nothing_and_a_failed_provider_says_so (test_personal_assistant.PersonalAssistantJourney.test_07_stop_posts_nothing_and_a_failed_provider_says_so) ... ok
+test_08_a_proposal_waits_for_someone_with_authority (test_personal_assistant.PersonalAssistantJourney.test_08_a_proposal_waits_for_someone_with_authority) ... ok
+test_09_paused_and_capped_are_explicit (test_personal_assistant.PersonalAssistantJourney.test_09_paused_and_capped_are_explicit) ... ok
+test_10_phone_reads_the_answer_and_proposal_without_overflow (test_personal_assistant.PersonalAssistantJourney.test_10_phone_reads_the_answer_and_proposal_without_overflow) ... ok
+
+======================================================================
+FAIL: test_07_restored_feed_observes_older_and_newer_native_batches (test_work_associations.MessageWorkJourney.test_07_restored_feed_observes_older_and_newer_native_batches)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/work/tests/ui/test_work_associations.py", line 269, in test_07_restored_feed_observes_older_and_newer_native_batches
+    self.ready(page)
+  File "/work/tests/ui/test_work_associations.py", line 81, in ready
+    expect(page.locator(".project-convo")).to_have_attribute("data-associations-phase", "ready")
+  File "/usr/local/lib/python3.12/dist-packages/playwright/sync_api/_generated.py", line 22107, in to_have_attribute
+    self._sync(
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_sync_base.py", line 115, in _sync
+    return task.result()
+           ^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_assertions.py", line 349, in to_have_attribute
+    await self._expect_impl(
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_assertions.py", line 128, in _expect_impl
+    _record_soft_or_raise(
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_assertions.py", line 60, in _record_soft_or_raise
+    raise error
+AssertionError: Locator expected to have attribute 'ready'
+Actual value: loading
+Call log:
+  - Expect "to_have_attribute" with timeout 10000ms
+  - waiting for locator(".project-convo")
+    23 × locator resolved to <div class="project-convo" data-associations-phase="loading" data-project-id="c83be61c-51fa-42bd-a265-f035892fcdec">…</div>
+       - unexpected value "loading"
+
+Aria snapshot:
+- heading "Library installation notes from the first measurement" [level=2]
+- paragraph: 141 messages · started Today
+- region "Messages":
+  - list
+- navigation "Linked object pages":
+  - status: Objects · Loading work…
+  - button "Previous" [disabled]
+  - button "Next" [disabled]
+  - button "Refresh"
+- paragraph: Ada and you · only you two · saved to Lamp measurements
+- button "Sources, 1 saved"
+- button "Ask my assistant"
+- text: Reply
+- textbox "Reply":
+  - /placeholder: Reply to Ada…
+- button "Send reply" [disabled]
+- status
+
+======================================================================
+FAIL: test_07_more_than_a_hundred_records_are_all_shown (test_work_decisions.WorkDecisionsJourney.test_07_more_than_a_hundred_records_are_all_shown)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/work/tests/ui/test_work_decisions.py", line 297, in test_07_more_than_a_hundred_records_are_all_shown
+    expect(page.get_by_role("region", name=re.compile("^Open")).get_by_role("button", name=re.compile("^Work item 001"))).to_be_visible()
+  File "/usr/local/lib/python3.12/dist-packages/playwright/sync_api/_generated.py", line 23332, in to_be_visible
+    self._sync(
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_sync_base.py", line 115, in _sync
+    return task.result()
+           ^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_assertions.py", line 852, in to_be_visible
+    await self._expect_impl(
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_assertions.py", line 128, in _expect_impl
+    _record_soft_or_raise(
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_assertions.py", line 60, in _record_soft_or_raise
+    raise error
+AssertionError: Locator expected to be visible
+Actual value: None
+Error: element(s) not found
+Call log:
+  - Expect "to_be_visible" with timeout 8000ms
+  - waiting for get_by_role("region", name=re.compile(r"^Open")).get_by_role("button", name=re.compile(r"^Work item 001"))
+
+Aria snapshot:
+- link "Skip to content":
+  - /url: "#content"
+- complementary "Sidebar":
+  - navigation "Places":
+    - img "Flux"
+    - link "Home":
+      - /url: /
+    - link "Inbox, something new":
+      - /url: /inbox
+    - link "Direct messages":
+      - /url: /dm
+    - link "Gesture lamp":
+      - /url: /projects/51acabd8-6a29-4c01-b7cf-c31b457821f2
+    - link "Big lamp":
+      - /url: /projects/c5553817-818a-4d5e-9de7-60c1279abb05
+  - text: Big lamp Only you
+  - button "Jump to…"
+  - navigation "Big lamp":
+    - button "New thought Private"
+    - region "Conversations":
+      - heading "Conversations" [level=2]
+      - link "New conversation":
+        - /url: /projects/c5553817-818a-4d5e-9de7-60c1279abb05?new=1
+      - list
+  - button "Ada Lind ada.lind+1790853122882@example.test , account and sign out"
+- banner:
+  - heading "Big lamp" [level=1]
+  - button "Only you , who can see this project"
+  - paragraph:
+    - 'button "Needs you: a proposed decision"'
+    - 'button "Current rule: Oldest rule: battery powered"'
+  - button "Details"
+- navigation "Project views":
+  - link "Conversation":
+    - /url: /projects/c5553817-818a-4d5e-9de7-60c1279abb05
+  - link "Tasks , 101 unfinished work items":
+    - /url: /projects/c5553817-818a-4d5e-9de7-60c1279abb05/tasks
+  - link "Map":
+    - /url: /projects/c5553817-818a-4d5e-9de7-60c1279abb05/map
+  - link "Docs":
+    - /url: /projects/c5553817-818a-4d5e-9de7-60c1279abb05/docs
+- button "What matters"
+- text: New work
+- textbox "New work":
+  - /placeholder: Add work, e.g. Order a ToF sensor
+- button "Add work" [disabled]
+- navigation "Task views":
+  - button "All" [pressed]
+  - button "Needs you 101"
+  - button "Open 101"
+  - button "Decisions 1"
+  - checkbox "Only mine"
+  - text: Only mine
+- navigation "Work pages":
+  - status: 1–50 of 203 objects
+  - button "Previous" [disabled]
+  - button "Next"
+  - button "Refresh"
+- region "Needs you 101":
+  - heading "Needs you 101" [level=2]
+  - list:
+    - listitem:
+      - button "Idea 101 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 100 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 099 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 098 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 097 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 096 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 095 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 094 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 093 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 092 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 091 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 090 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 089 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 088 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 087 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 086 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 085 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 084 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 083 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 082 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 081 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 080 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 079 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 078 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 077 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 076 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 075 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 074 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 073 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 072 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 071 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 070 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 069 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 068 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 067 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 066 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 065 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 064 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 063 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 062 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 061 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 060 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 059 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 058 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 057 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 056 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 055 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 054 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 053 Proposed by Ada Lind · you can accept it 1 Oct"
+    - listitem:
+      - button "Idea 052 Proposed by Ada Lind · you can accept it 1 Oct"
+- status
+
+----------------------------------------------------------------------
+Ran 45 tests in 103.937s
+
+FAILED (failures=2)

@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import { useLocation, useNavigate, useRevalidator } from 'react-router';
-import type { Conversation, ConversationMessage, ConversationRoot } from '@flux/contracts';
+import type { Conversation, ConversationMessage, ConversationRoot, NativeWorkRow } from '@flux/contracts';
+import type { MessageWorkPreview } from '../work/message-associations';
 import { ApiError } from '../api/client';
 import { MEDIA, useMediaQuery } from '../ui';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import { excerpt } from '../live/anchors';
 import { audienceLine, useProjectShell } from '../project/data';
 import { useShellData } from './data';
+import { agentAuthorLabel } from '../docs/format';
 import { ConversationStream, useConversationRoots, useTaskNotices } from './ConversationStream';
 import { ThreadDrawer, ThreadRoot, type ThreadMode } from './ThreadDrawer';
 import type { ProjectData } from './ProjectConversation';
@@ -18,8 +20,11 @@ export interface PaneProps {
   variant: 'stream' | 'thread';
   /** stream: the stream of roots, in place of one conversation's feed. */
   feed?: ReactNode;
-  /** thread: the message the replies answer, at the top of the thread. */
-  rootHeader?: ReactNode;
+  /**
+   * thread: the message the replies answer, at the top of the thread. The pane gives it what was made from
+   * the root and the discussed task's row, from its own bounded reads (#155), never a project collection.
+   */
+  rootHeader?: (objects: { preview: MessageWorkPreview | null; taskRow: NativeWorkRow | null }) => ReactNode;
   /** thread: the root's message id, which the stream shows and arrives at. */
   rootMessageId?: string | null;
   /** stream: a root the person just started. */
@@ -67,7 +72,7 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   const [endToken, setEndToken] = useState(0);
 
   const author = useCallback((message: ConversationMessage) => {
-    if (message.authorId === null) return `${message.author.name ?? 'Agent'} · agent`;
+    if (message.authorId === null) return agentAuthorLabel(message.author);
     if (message.authorId === me.user.id) return me.user.name;
     return members.find((member) => member.userId === message.authorId)?.name
       ?? people?.find((person) => person.kind === 'human' && person.id === message.authorId)?.name ?? 'Member';
@@ -121,9 +126,8 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   }, [thread]);
 
   const audience = audienceLine(people, me.user.id, project.visibility === 'workspace');
-  const work = shell?.work ?? { work: [], decisions: [], results: [] };
   const stream = (
-    <ConversationStream project={project} meId={me.user.id} roots={roots} notices={notices} work={work} author={author}
+    <ConversationStream project={project} meId={me.user.id} roots={roots} notices={notices} author={author}
       audience={audience} openId={thread?.id ?? null} reveal={reveal} arrived={arrived} endToken={endToken} onOpen={open} onDenied={onDenied} />
   );
   const rootMessage = root?.message ?? thread?.messages.find((message) => message.sequence === 1) ?? null;
@@ -139,8 +143,8 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
         <ThreadDrawer key={thread.id} mode={mode} count={replies} focusOnOpen={!!state?.fromStream && !state.focusComposer} onClose={close}>
           <Pane key={thread.id} data={data} variant="thread" rootMessageId={rootMessage?.id ?? null}
             focusComposer={!!state?.focusComposer} onThreadSize={roots.threadSize}
-            rootHeader={<ThreadRoot message={rootMessage} body={rootMessage?.body ?? thread.firstMessageBody} author={rootMessage ? author(rootMessage) : null}
-              meId={me.user.id} writable={writable} replies={replies} task={root?.task ?? null} work={work} onDenied={onDenied} />} />
+            rootHeader={({ preview, taskRow }) => <ThreadRoot message={rootMessage} projectId={project.id} body={rootMessage?.body ?? thread.firstMessageBody} author={rootMessage ? author(rootMessage) : null}
+              meId={me.user.id} writable={writable} replies={replies} task={root?.task ?? null} taskRow={taskRow} preview={preview} onDenied={onDenied} />} />
         </ThreadDrawer>
       ) : null}
     </div>

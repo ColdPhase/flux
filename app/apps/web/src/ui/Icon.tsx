@@ -32,6 +32,8 @@ const paths = {
   minus: <path d="M3 8h10" />,
   edit: <><path d="M10.5 3.25l2.25 2.25L6 12.25H3.75V10z" /><path d="M9 4.75l2.25 2.25" /></>,
   /** Sketches (#69): connect two thoughts, undo, remove a thought from the map, change its shape. */
+  image: <><rect x="2.25" y="3" width="11.5" height="10" rx="1.75" /><circle cx="6" cy="6.5" r="1.1" /><path d="M2.75 11.5l3.25-3 2.5 2.25 1.75-1.5 3 2.5" /></>,
+  paste: <><rect x="3.5" y="3" width="9" height="11" rx="1.5" /><path d="M6 3V2.25h4V3M6 7.5h4M6 10h3" /></>,
   link: <><path d="M6.75 9.25l2.5-2.5" /><path d="M7.5 4.75l1.1-1.1a2.5 2.5 0 013.54 3.54l-1.1 1.1M8.5 11.25l-1.1 1.1a2.5 2.5 0 01-3.54-3.54l1.1-1.1" /></>,
   undo: <><path d="M5.5 3.5L2.75 6.25 5.5 9" /><path d="M3 6.25h6.25a3.75 3.75 0 010 7.5H7" /></>,
   trash: <><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.25a1 1 0 001 .75h3.8a1 1 0 001-.75l.6-8.25" /></>,

@@ -1,0 +1,82 @@
+ Container flux155browser-mailpit-1  Running
+ Container flux155browser-anthropic-mock-1  Running
+ Container flux155browser-db-1  Running
+ Container flux155browser-worker-1  Running
+ Container flux155browser-api-1  Running
+ Container flux155browser-db-1  Waiting
+ Container flux155browser-db-1  Healthy
+ Container flux155browser-migrate-1  Starting
+ Container flux155browser-migrate-1  Started
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Exited
+ Container flux155browser-migrate-1  Exited
+test_01_all_native_object_and_relation_pages_are_reachable_on_desktop_and_phone (test_work_overview.OverviewWorkJourney.test_01_all_native_object_and_relation_pages_are_reachable_on_desktop_and_phone) ... ok
+test_02_required_relation_failure_is_unavailable_then_retries_without_touching_private_reply (test_work_overview.OverviewWorkJourney.test_02_required_relation_failure_is_unavailable_then_retries_without_touching_private_reply) ... ok
+test_03_held_old_relations_cannot_replace_a_new_object_window_or_erase_selection (test_work_overview.OverviewWorkJourney.test_03_held_old_relations_cannot_replace_a_new_object_window_or_erase_selection) ... ok
+test_04_details_of_an_older_loaded_message_keeps_exact_source_scope_and_pinned_citation (test_work_overview.OverviewWorkJourney.test_04_details_of_an_older_loaded_message_keeps_exact_source_scope_and_pinned_citation) ... ok
+test_05_refresh_preserves_native_row_reading_focus_and_private_selection_then_failure_clears_rows (test_work_overview.OverviewWorkJourney.test_05_refresh_preserves_native_row_reading_focus_and_private_selection_then_failure_clears_rows) ... FAIL
+test_06_keyboard_exposes_each_focused_native_row_inside_the_overview_list (test_work_overview.OverviewWorkJourney.test_06_keyboard_exposes_each_focused_native_row_inside_the_overview_list) ... ok
+test_07_passive_refresh_resets_relations_for_a_changed_actual_native_row_window (test_work_overview.OverviewWorkJourney.test_07_passive_refresh_resets_relations_for_a_changed_actual_native_row_window) ... ok
+test_08_thought_source_opens_the_exact_native_thought_selected_on_its_sketch (test_work_overview.OverviewWorkJourney.test_08_thought_source_opens_the_exact_native_thought_selected_on_its_sketch) ... ok
+test_01_three_people_share_a_project (test_project_surface.ProjectSurfaceJourney.test_01_three_people_share_a_project) ... ok
+test_02_header_names_the_project_and_its_exact_audience (test_project_surface.ProjectSurfaceJourney.test_02_header_names_the_project_and_its_exact_audience) ... ok
+test_03_each_state_segment_opens_its_object (test_project_surface.ProjectSurfaceJourney.test_03_each_state_segment_opens_its_object) ... ok
+test_04_view_tabs_switch_between_the_project_surfaces (test_project_surface.ProjectSurfaceJourney.test_04_view_tabs_switch_between_the_project_surfaces) ... ok
+test_05_details_overview_links_everything_one_step_away (test_project_surface.ProjectSurfaceJourney.test_05_details_overview_links_everything_one_step_away) ... ok
+test_06_map_tab_creates_a_project_sketch (test_project_surface.ProjectSurfaceJourney.test_06_map_tab_creates_a_project_sketch) ... ok
+test_07_phone_collapses_the_state_line_and_keeps_the_audience (test_project_surface.ProjectSurfaceJourney.test_07_phone_collapses_the_state_line_and_keeps_the_audience) ... ok
+test_08_a_sketch_never_shows_under_another_projects_frame (test_project_surface.ProjectSurfaceJourney.test_08_a_sketch_never_shows_under_another_projects_frame) ... ok
+test_09_new_work_survives_native_source_back_views_resize_and_reload (test_project_surface.ProjectSurfaceJourney.test_09_new_work_survives_native_source_back_views_resize_and_reload) ... ok
+test_10_newest_failed_storage_write_and_clear_win_on_spa_remount (test_project_surface.ProjectSurfaceJourney.test_10_newest_failed_storage_write_and_clear_win_on_spa_remount) ... ok
+test_11_uncertain_native_creation_reuses_the_key_after_source_back (test_project_surface.ProjectSurfaceJourney.test_11_uncertain_native_creation_reuses_the_key_after_source_back) ... ok
+test_12_late_native_success_does_not_clear_a_new_draft_or_open_old_details (test_project_surface.ProjectSurfaceJourney.test_12_late_native_success_does_not_clear_a_new_draft_or_open_old_details) ... ok
+test_13_private_work_drafts_are_isolated_by_account_and_project (test_project_surface.ProjectSurfaceJourney.test_13_private_work_drafts_are_isolated_by_account_and_project) ... ok
+test_14_denied_clear_keeps_disclosure_and_native_replay_key_across_reload (test_project_surface.ProjectSurfaceJourney.test_14_denied_clear_keeps_disclosure_and_native_replay_key_across_reload) ... ok
+test_15_untouched_remount_observes_a_confirmed_native_clear (test_project_surface.ProjectSurfaceJourney.test_15_untouched_remount_observes_a_confirmed_native_clear) ... ok
+test_16_external_tab_aba_edits_fence_late_success_even_when_unmounted (test_project_surface.ProjectSurfaceJourney.test_16_external_tab_aba_edits_fence_late_success_even_when_unmounted) ... ok
+test_17_home_draft_changes_account_on_current_loader_revalidation (test_project_surface.ProjectSurfaceJourney.test_17_home_draft_changes_account_on_current_loader_revalidation) ... ok
+test_01_global_object_and_edge_pages_keep_native_ids_counts_and_reply (test_work_associations.MessageWorkJourney.test_01_global_object_and_edge_pages_keep_native_ids_counts_and_reply) ... ok
+test_02_held_next_page_respects_new_wheel_reading_position_and_private_selection (test_work_associations.MessageWorkJourney.test_02_held_next_page_respects_new_wheel_reading_position_and_private_selection) ... ok
+test_03_old_page_and_required_failure_do_not_revive_chips_or_clear_reply (test_work_associations.MessageWorkJourney.test_03_old_page_and_required_failure_do_not_revive_chips_or_clear_reply) ... ok
+test_04_cookie_account_change_retires_held_old_page_and_isolates_reply (test_work_associations.MessageWorkJourney.test_04_cookie_account_change_retires_held_old_page_and_isolates_reply) ... ok
+test_05_older_visible_messages_use_one_bounded_batch_and_native_source (test_work_associations.MessageWorkJourney.test_05_older_visible_messages_use_one_bounded_batch_and_native_source) ... ok
+test_06_paused_router_revalidation_retires_viewport_selector_aba (test_work_associations.MessageWorkJourney.test_06_paused_router_revalidation_retires_viewport_selector_aba) ... ok
+test_07_restored_feed_observes_older_and_newer_native_batches (test_work_associations.MessageWorkJourney.test_07_restored_feed_observes_older_and_newer_native_batches) ... ok
+test_08_one_pagedown_gesture_keeps_scrolling_across_a_held_batch (test_work_associations.MessageWorkJourney.test_08_one_pagedown_gesture_keeps_scrolling_across_a_held_batch) ... Task was destroyed but it is pending!
+task: <Task pending name='Task-2839' coro=<Page._on_route() running at /usr/local/lib/python3.12/dist-packages/playwright/_impl/_page.py:308> wait_for=<Future pending cb=[Task.task_wakeup()]> cb=[Connection.dispatch.<locals>._done_callback() at /usr/local/lib/python3.12/dist-packages/playwright/_impl/_connection.py:539]>
+ok
+test_01_two_people_share_a_project (test_work_decisions.WorkDecisionsJourney.test_01_two_people_share_a_project) ... ok
+test_02_create_work_from_a_message_in_one_action (test_work_decisions.WorkDecisionsJourney.test_02_create_work_from_a_message_in_one_action) ... ok
+test_03_propose_and_accept_a_decision_with_the_keyboard (test_work_decisions.WorkDecisionsJourney.test_03_propose_and_accept_a_decision_with_the_keyboard) ... ok
+test_04_attach_a_negative_result_that_finishes_the_experiment (test_work_decisions.WorkDecisionsJourney.test_04_attach_a_negative_result_that_finishes_the_experiment) ... ok
+test_05_pivot_keeps_history_and_parks_obsolete_work (test_work_decisions.WorkDecisionsJourney.test_05_pivot_keeps_history_and_parks_obsolete_work) ... ok
+test_06_phone_creates_work_and_reads_the_tasks_tab (test_work_decisions.WorkDecisionsJourney.test_06_phone_creates_work_and_reads_the_tasks_tab) ... ok
+test_07_more_than_a_hundred_records_remain_reachable_through_native_pages (test_work_decisions.WorkDecisionsJourney.test_07_more_than_a_hundred_records_remain_reachable_through_native_pages) ... ok
+test_08_phone_finds_own_blocked_work_and_returns_to_the_same_view (test_work_decisions.WorkDecisionsJourney.test_08_phone_finds_own_blocked_work_and_returns_to_the_same_view) ... ok
+test_09_own_messages_sit_right_and_others_left (test_work_decisions.WorkDecisionsJourney.test_09_own_messages_sit_right_and_others_left) ... ok
+test_10_each_task_view_keeps_its_reading_position (test_work_decisions.WorkDecisionsJourney.test_10_each_task_view_keeps_its_reading_position) ... ok
+test_01_three_people_share_a_project (test_personal_assistant.PersonalAssistantJourney.test_01_three_people_share_a_project) ... ok
+test_02_not_set_up_says_so_and_human_work_continues (test_personal_assistant.PersonalAssistantJourney.test_02_not_set_up_says_so_and_human_work_continues) ... ok
+test_03_production_states_are_worded_truthfully (test_personal_assistant.PersonalAssistantJourney.test_03_production_states_are_worded_truthfully)
+Rendering only: the stub stands in for the production composition's real status. ... ok
+test_04_owner_turns_it_on_from_the_account_menu (test_personal_assistant.PersonalAssistantJourney.test_04_owner_turns_it_on_from_the_account_menu) ... ok
+test_05_a_manager_lets_their_assistant_read_the_project (test_personal_assistant.PersonalAssistantJourney.test_05_a_manager_lets_their_assistant_read_the_project) ... ok
+test_06_owner_sees_the_working_line_and_everyone_reads_the_attributed_answer (test_personal_assistant.PersonalAssistantJourney.test_06_owner_sees_the_working_line_and_everyone_reads_the_attributed_answer) ... ok
+test_07_stop_posts_nothing_and_a_failed_provider_says_so (test_personal_assistant.PersonalAssistantJourney.test_07_stop_posts_nothing_and_a_failed_provider_says_so) ... ok
+test_08_a_proposal_waits_for_someone_with_authority (test_personal_assistant.PersonalAssistantJourney.test_08_a_proposal_waits_for_someone_with_authority) ... ok
+test_09_paused_and_capped_are_explicit (test_personal_assistant.PersonalAssistantJourney.test_09_paused_and_capped_are_explicit) ... ok
+test_10_phone_reads_the_answer_and_proposal_without_overflow (test_personal_assistant.PersonalAssistantJourney.test_10_phone_reads_the_answer_and_proposal_without_overflow) ... ok
+
+======================================================================
+FAIL: test_05_refresh_preserves_native_row_reading_focus_and_private_selection_then_failure_clears_rows (test_work_overview.OverviewWorkJourney.test_05_refresh_preserves_native_row_reading_focus_and_private_selection_then_failure_clears_rows)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/work/tests/ui/test_work_overview.py", line 220, in test_05_refresh_preserves_native_row_reading_focus_and_private_selection_then_failure_clears_rows
+    self.assertLess(abs(offset-anchor["offset"]),3)
+AssertionError: 450 not less than 3
+
+----------------------------------------------------------------------
+Ran 53 tests in 104.390s
+
+FAILED (failures=1)
