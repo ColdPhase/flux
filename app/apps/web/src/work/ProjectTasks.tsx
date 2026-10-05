@@ -204,7 +204,7 @@ export function ProjectTasks() {
   const shell = useProjectShell();
   const { openDetails } = useShellActions();
   const revalidator = useRevalidator();
-  const [search, setSearch] = useSearchParams();
+  const [search] = useSearchParams();
   const { me } = useShellData();
   const scroller = useRef<HTMLDivElement>(null);
   const location = useLocation();
@@ -326,16 +326,6 @@ export function ProjectTasks() {
     if (mode === 'list') document.getElementById('ws-add')?.focus();
     else setAdding('open');
   };
-
-  const open = search.get('open');
-  useEffect(() => {
-    const match = /^(work|decision|result):([0-9a-f-]{36})$/i.exec(open ?? '');
-    if (!match) return;
-    openDetails({ kind: match[1] as WorkObjectType, id: match[2]! });
-    const current = new URLSearchParams(window.location.search);
-    current.delete('open');
-    setSearch(current, { replace: true });
-  }, [open, openDetails, setSearch]);
 
   useEffect(() => {
     const refresh = () => { if (document.visibilityState === 'visible') revalidator.revalidate(); };

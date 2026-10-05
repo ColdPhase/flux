@@ -62,6 +62,7 @@ export interface ReturnResult {
   id: string; projectId: string; title: string; finding: 'positive' | 'negative'; evidence: string; createdByKey: string;
 }
 export interface ReturnMessage {
+  attachmentCount?: number;
   id: string; projectId: string; conversationId: string; author: ActorRef; body: string; sequence: number; createdAt: Date;
 }
 export interface ReturnConversation { id: string; projectId: string; createdBy: ActorRef; opening: string }

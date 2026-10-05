@@ -39,11 +39,6 @@
   .top--project .top__head { padding-left: 2px; gap: 2px; }
 }
 
-/* ---------- Sidebar: the open project's conversations ---------- */
-.side__thread { align-items: center; }
-.side__when { font-variant-numeric: tabular-nums; }
-.project-convo__thread.is-current { background: var(--bg-active); color: var(--text); font-weight: 500; }
-
 /* ---------- Details overview ---------- */
 .ov-audience { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--text-2); }
 .ov-quote { white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: 8px; padding-left: 10px; box-shadow: inset 2px 0 0 var(--line-strong); }

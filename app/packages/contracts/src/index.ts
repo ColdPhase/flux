@@ -41,6 +41,7 @@ export interface SessionSummary {
 export * from './access.js';
 export * from './push.js';
 export * from './conversation.js';
+export * from './files.js';
 export * from './sketch.js';
 export * from './work.js';
 export * from './work-read.js';
@@ -50,6 +51,7 @@ export * from './returns.js';
 export * from './direct-message.js';
 export * from './docs.js';
 export * from './proactive-comparison.js';
+export * from './ai-providers.js';
 export * from './background-compute.js';
 export * from './proactive-outcomes.js';
 export * from './notifications.js';

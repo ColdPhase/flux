@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Link, useMatches } from 'react-router';
-import type { Conversation, DecisionRowProjection, Material, NativeWorkRow, WorkRowProjection, ResultRowProjection } from '@flux/contracts';
+import type { Conversation, ConversationRootWindow, DecisionRowProjection, Material, NativeWorkRow, WorkRowProjection, ResultRowProjection } from '@flux/contracts';
 import { Icon, type IconName } from '../ui';
 import { useShellData } from '../app/data';
 import { useShellActions, type DetailsView, type OverviewView } from '../app/shellContext';
@@ -14,10 +14,10 @@ import { ProjectAccess } from '../people/ProjectAccess';
 import { docUrl } from '../docs/api';
 import { authorLabel } from '../docs/format';
 
-/** The open conversation's loader data, when the Conversation tab is showing one. */
-function useOpenConversation(): { conversation: Conversation | null; materials: Material[] } | null {
+/** The Conversation tab's loader data: the open thread, if any, and the stream's newest roots (UI116-1). */
+function useOpenConversation(): { conversation: Conversation | null; materials: Material[]; roots?: ConversationRootWindow } | null {
   const match = useMatches().find((entry) => entry.loaderData && typeof entry.loaderData === 'object' && 'conversation' in entry.loaderData);
-  return (match?.loaderData as { conversation: Conversation | null; materials: Material[] } | undefined) ?? null;
+  return (match?.loaderData as { conversation: Conversation | null; materials: Material[]; roots?: ConversationRootWindow } | undefined) ?? null;
 }
 
 /** The owning context stays visible when a phone reader scrolls down to sources. */
@@ -107,10 +107,13 @@ export function ProjectOverview({ messageId, selection, focusPeople = null, onBa
   // Older messages loaded by the feed are absent from the route's latest-message window.
   // Keep exactly the selected native message, scoped to its reader/project/conversation,
   // and expose it only after the current native association read verifies that source.
+  // A root's Details also work from the stream (UI116-1), while no thread or another thread is open:
+  // roots are the stream's own messages (sequence 1) of this project.
   const selected = selection?.accountId === me.user.id && selection.projectId === project.id
-    && selection.message.id === messageId && selection.message.conversationId === conversation?.id
+    && selection.message.id === messageId && (selection.message.conversationId === conversation?.id || selection.message.sequence === 1)
     ? selection.message : null;
-  const message = messageId && read.page ? conversation?.messages.find((item) => item.id === messageId) ?? selected : null;
+  const message = messageId && read.page ? conversation?.messages.find((item) => item.id === messageId)
+    ?? open?.roots?.roots.find((root) => root.message.id === messageId)?.message ?? selected : null;
   const messageMode = !!messageId;
   const base = `/projects/${project.id}`;
 

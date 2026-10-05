@@ -1,7 +1,8 @@
-import { eq, isNull, ne, sql } from 'drizzle-orm';
+import { eq, ne, sql } from 'drizzle-orm';
 import type { InspectedComparisonSource } from '@flux/contracts';
-import { pgTable, text, timestamp, uuid, integer, jsonb, boolean, bigserial, bigint, index, uniqueIndex, primaryKey, foreignKey, unique, check, type AnyPgColumn, type PgTableExtraConfigValue } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, date, uuid, integer, smallint, jsonb, boolean, bigserial, bigint, index, uniqueIndex, primaryKey, foreignKey, unique, check, type AnyPgColumn, type PgTableExtraConfigValue } from 'drizzle-orm/pg-core';
 import { AGENT_OPERATIONS, AGENT_PEER_REQUEST_CLASSES, type AgentJsonValue, type AgentPostcondition, type CoWorkSourceRef } from '@flux/contracts';
+import { AI_PROVIDER_KINDS, BACKGROUND_CONSENT_VERSIONS, type AiProviderKind, type PersonalRunConsentVersion } from '@flux/contracts';
 
 export const samples = pgTable('samples', {
   id: uuid('id').primaryKey(),
@@ -541,9 +542,12 @@ export const projectMessages = pgTable('project_messages', {
   /** Plain text unless an explicit native effect (#154, migration 0040) says otherwise. */
   contributionKind: text('contribution_kind', { enum: ['text', 'blocker', 'result', 'handoff'] }).notNull().default('text'),
   resultId: uuid('result_id'),
+  /** How many published files belong to this message (#154, migration 0045); text or at least one file. */
+  attachmentCount: smallint('attachment_count').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   unique().on(table.conversationId, table.sequence),
+  unique('project_messages_file_identity').on(table.workspaceId, table.projectId, table.id),
   unique('project_messages_root_identity').on(table.conversationId, table.id, table.sequence),
   unique().on(table.projectId, table.authorId, table.clientMessageId),
   unique().on(table.projectId, table.authorAgentId, table.clientMessageId),
@@ -554,6 +558,47 @@ export const projectMessages = pgTable('project_messages', {
   foreignKey({ columns: [table.workspaceId, table.projectId, table.resultId], foreignColumns: [projectResults.workspaceId, projectResults.projectId, projectResults.id] }),
   check('project_message_contribution_kind', sql`${table.contributionKind} IN ('text', 'blocker', 'result', 'handoff')`),
   check('project_message_result_reference', sql`(${table.contributionKind} = 'result') = (${table.resultId} IS NOT NULL)`),
+  check('project_message_attachment_count', sql`${table.attachmentCount} BETWEEN 0 AND 10`),
+  check('project_message_body_or_attachments', sql`length(btrim(${table.body})) <= 100000 AND (length(btrim(${table.body})) >= 1 OR ${table.attachmentCount} > 0)`),
+]);
+
+/**
+ * A stored file (#154, migration 0045): staged privately by its uploader, then published once as an
+ * attachment of exactly one message. Its bytes are in the files volume under this server-selected id.
+ */
+export const fileGarbage = pgTable('file_garbage', {
+  id: uuid('id').primaryKey(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const projectFiles = pgTable('project_files', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  uploaderId: text('uploader_id').references(() => authUsers.id),
+  uploaderAgentId: uuid('uploader_agent_id'),
+  uploadId: uuid('upload_id').notNull(),
+  replayOf: uuid('replay_of'),
+  name: text('name').notNull(),
+  state: text('state', { enum: ['receiving', 'ready'] }).notNull(),
+  reservedBytes: integer('reserved_bytes').notNull(),
+  size: integer('size'),
+  sha256: text('sha256'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  readyAt: timestamp('ready_at', { withTimezone: true }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  messageId: uuid('message_id'),
+  position: smallint('position'),
+  publishedAt: timestamp('published_at', { withTimezone: true }),
+}, (table) => [
+  unique().on(table.messageId, table.position),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.messageId], foreignColumns: [projectMessages.workspaceId, projectMessages.projectId, projectMessages.id] }),
+  uniqueIndex('project_files_human_upload_idx').on(table.projectId, table.uploaderId, table.uploadId).where(sql`${table.uploaderId} IS NOT NULL`),
+  uniqueIndex('project_files_agent_upload_idx').on(table.projectId, table.uploaderAgentId, table.uploadId).where(sql`${table.uploaderAgentId} IS NOT NULL`),
+  index('project_files_expiry_idx').on(table.expiresAt).where(sql`${table.messageId} IS NULL`),
+  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.uploaderAgentId], foreignColumns: [agents.workspaceId, agents.id] }),
+  check('project_file_exact_uploader', sql`num_nonnulls(${table.uploaderId}, ${table.uploaderAgentId}) = 1`),
 ]);
 
 // One person's selected agent, scopes and project ceiling for an external MCP client (#52).
@@ -983,8 +1028,20 @@ export const agentProposals = pgTable('agent_proposals', {
 export const backgroundComputeConnections = pgTable('background_compute_connections', {
   id: uuid('id').primaryKey(),
   ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
-  provider: text('provider', { enum: ['anthropic'] }).notNull(),
-  model: text('model', { enum: ['claude-sonnet-5'] }).notNull(),
+  // F-020 (#179, migration 0042): any supported provider and a bounded model id.
+  provider: text('provider', { enum: AI_PROVIDER_KINDS }).notNull(),
+  model: text('model').notNull(),
+  /** `openai_compatible` only. */
+  baseUrl: text('base_url'),
+  /** The owner's label, e.g. "Work OpenRouter" (PROV-1: an owner may keep several connections). */
+  name: text('name').notNull(),
+  /** The one connection background comparisons use; at most one active per owner. */
+  usedForBackground: boolean('used_for_background').notNull().default(false),
+  /** Micro-dollars per 1M tokens; all null when no price is known. */
+  inputPriceMicrosPerMTok: integer('input_price_micros_per_mtok'),
+  outputPriceMicrosPerMTok: integer('output_price_micros_per_mtok'),
+  priceSource: text('price_source', { enum: ['table', 'owner'] }),
+  priceCheckedOn: date('price_checked_on', { mode: 'string' }),
   payerOrganization: text('payer_organization').notNull(),
   providerWorkspace: text('provider_workspace').notNull(),
   encryptedKey: text('encrypted_key'),
@@ -994,12 +1051,12 @@ export const backgroundComputeConnections = pgTable('background_compute_connecti
   periodDays: integer('period_days').notNull(),
   periodBudgetCents: integer('period_budget_cents').notNull(),
   perRunCents: integer('per_run_cents').notNull(),
-  consentVersion: text('consent_version', { enum: ['o-007-2026-09-28'] }).notNull(),
+  consentVersion: text('consent_version', { enum: BACKGROUND_CONSENT_VERSIONS }).notNull(),
   consentedAt: timestamp('consented_at', { withTimezone: true }).notNull().defaultNow(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
 }, (table) => [
-  uniqueIndex('background_compute_connections_active_owner_idx').on(table.ownerUserId).where(isNull(table.revokedAt)),
+  uniqueIndex('background_compute_connections_background_owner_idx').on(table.ownerUserId).where(sql`${table.usedForBackground}`),
   index('background_compute_connections_owner_idx').on(table.ownerUserId, table.createdAt, table.id),
 ]);
 
@@ -1239,6 +1296,9 @@ export const proactiveComparisonProposals = pgTable('proactive_comparison_propos
   fact: text('fact').notNull(),
   interpretation: text('interpretation').notNull(),
   suggestedAction: text('suggested_action').notNull(),
+  /** The connection's provider and model the proposal ran on (0042, F-020). */
+  provider: text('provider', { enum: AI_PROVIDER_KINDS }).notNull(),
+  model: text('model').notNull(),
   status: text('status', { enum: ['proposed', 'dismissed', 'used'] }).notNull().default('proposed'),
   version: integer('version').notNull().default(1),
   editedByUserId: text('edited_by_user_id').references(() => authUsers.id),
@@ -1331,9 +1391,9 @@ export const personalRunEnablements = pgTable('personal_run_enablements', {
   ownerUserId: text('owner_user_id').primaryKey().references(() => authUsers.id, { onDelete: 'cascade' }),
   // References #124's key connection once that table lands; a compared snapshot until then.
   connectionId: uuid('connection_id'),
-  consentVersion: text('consent_version').$type<'o-008-2026-09-28'>().notNull(),
+  consentVersion: text('consent_version').$type<PersonalRunConsentVersion>().notNull(),
   consentedAt: timestamp('consented_at', { withTimezone: true }).notNull().defaultNow(),
-  consentProvider: text('consent_provider').$type<'anthropic'>().notNull(),
+  consentProvider: text('consent_provider').$type<AiProviderKind>().notNull(),
   consentModel: text('consent_model').notNull(),
   consentPayerOrganization: text('consent_payer_organization').notNull(),
   consentPayerWorkspace: text('consent_payer_workspace').notNull(),
@@ -1381,6 +1441,8 @@ export const personalRuns = pgTable('personal_runs', {
   chargedMicros: integer('charged_micros').notNull().default(0),
   inputTokens: integer('input_tokens'),
   outputTokens: integer('output_tokens'),
+  /** The connection's provider the run was sent to (0042, F-020). */
+  provider: text('provider', { enum: AI_PROVIDER_KINDS }).notNull(),
   model: text('model').notNull(),
   answerBody: text('answer_body'),
   answerTruncated: boolean('answer_truncated').notNull().default(false),

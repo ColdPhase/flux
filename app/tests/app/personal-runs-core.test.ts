@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { describe, test } from 'node:test';
-import { costMicros, parseOutput, type SuppliedSource } from '@flux/core';
+import { tablePrice } from '@flux/contracts';
+import { costMicros, parseOutput, runReservationMicros, type SuppliedSource } from '@flux/core';
 
 // Pure output and cost rules of personal runs (#68, O-008 §3/§5). No database, no provider.
 
@@ -35,8 +36,18 @@ describe('personal run output rules', () => {
     assert.equal(parseOutput(block(valid), sources, false).proposal, null, 'a truncated answer never proposes');
   });
 
-  test('cost uses the O-008 rate and the nominal maximum stays under the default reservation', () => {
-    assert.equal(costMicros({ inputTokens: 16_000, outputTokens: 1_500 }), 47_000);
-    assert.ok(costMicros({ inputTokens: 16_000, outputTokens: 1_500 }) < 60_000);
+  test('cost uses the connection price, and a run reserves its largest request (F-020 PROV-3)', () => {
+    const sonnet = tablePrice('anthropic', 'claude-sonnet-5')!;
+    assert.deepEqual([sonnet.inputMicrosPerMTok, sonnet.outputMicrosPerMTok, sonnet.checkedOn], [2_000_000, 10_000_000, '2026-10-02']);
+    assert.equal(costMicros({ inputTokens: 16_000, outputTokens: 1_500 }, sonnet), 47_000);
+    assert.equal(runReservationMicros(sonnet), 47_000, 'max input × input price + max output × output price');
+    assert.ok(runReservationMicros(sonnet)! < 60_000, 'it fits the default $0.06 per-run ceiling');
+    // Rounded up, never down; a provider-reported cost replaces the token estimate when present.
+    assert.equal(costMicros({ inputTokens: 1, outputTokens: 0 }, { inputMicrosPerMTok: 400_000, outputMicrosPerMTok: 1_600_000 }), 1);
+    assert.equal(costMicros({ inputTokens: 1_000, outputTokens: 100, reportedCostMicros: 7 }, sonnet), 7);
+    assert.equal(costMicros({ inputTokens: 1_000, outputTokens: 100, reportedCostMicros: null }, sonnet), 3_000);
+    // A self-hosted endpoint may cost nothing; an unknown price cannot reserve anything.
+    assert.equal(runReservationMicros({ inputMicrosPerMTok: 0, outputMicrosPerMTok: 0 }), 0);
+    assert.equal(runReservationMicros(null), null);
   });
 });

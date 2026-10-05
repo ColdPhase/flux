@@ -4,8 +4,6 @@ import { type DirectMessageSummary, type ProjectSummary, type WorkspaceSummary }
 import { placeOf } from './place';
 import { startCapture } from './views';
 import { UserMenu } from './UserMenu';
-import { ProjectThreads } from '../project/ProjectThreads';
-import { useProjectShell } from '../project/data';
 import { useShellActions } from './shellContext';
 
 export interface SidebarProps {
@@ -22,9 +20,9 @@ export interface SidebarProps {
 
 /**
  * Studio 11.6 sidebar (#136): one list on the chrome beside the sheet. Places (Home, Inbox,
- * Direct messages and the private sketchbook), then Projects and Messages. The open project
- * lists its conversations under its own row, so no thread is lost when the rail is gone.
- * A project never reveals another project's contents.
+ * Direct messages and the private sketchbook), then Projects and Messages. A project has one
+ * conversation (UI116-1): its roots and their threads live in the project's Conversation tab, not
+ * in this list. A project never reveals another project's contents.
  */
 export function Sidebar({ projects, directMessages, user, session, onClose, titleId, inboxUnread = false }: SidebarProps) {
   const go = useNavigate();
@@ -34,7 +32,6 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
   const place = placeOf(location.pathname);
   const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const navigate = onClose ? () => onClose() : undefined;
-  const shell = useProjectShell();
   const sketchbook = place === 'home' && /^\/map(\/|$)/.test(location.pathname);
   // Home is current where the header says Home: not in My sketchbook, Search or personal settings.
   const home = place === 'home' && !sketchbook && !/^\/(search|settings)(\/|$)/.test(location.pathname);
@@ -103,7 +100,6 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
                       ) : <span className="side__label">{project.name}</span>}
                       {project.hasNew ? <span className="side__dot" aria-hidden="true" /> : null}
                     </NavLink>
-                    {open ? <ProjectThreads key={project.id} projectId={project.id} canStart={shell?.project.id === project.id && shell?.project.access !== 'viewer'} onNavigate={navigate} /> : null}
                   </li>
                 );
               })}

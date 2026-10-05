@@ -173,30 +173,31 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
   return save;
 }
 
-/** One batch for the actual message window; object and matched-edge pages stay independent. */
-export function useMessageWork(accountId: string, projectId: string, conversationId: string | null, messageIds: string[], ref: RefObject<HTMLElement | null>, node: HTMLElement | null, referenceRevision = '') {
+/**
+ * One bounded association read (#155) for the messages around the viewport (at most 100): their
+ * object chips and matched-edge pages. It reads, it never positions the feed. `scopeKey` names where
+ * the batch belongs (a conversation id, or the project's stream of roots); null reads nothing.
+ */
+export function useMessageWorkRead(accountId: string, projectId: string, scopeKey: string | null, messageIds: string[], ref: RefObject<HTMLElement | null>, node: HTMLElement | null) {
   const selected = useMessageBatch(ref, messageIds, node).slice().sort().join(',');
-  const base = `flux:message-work:${JSON.stringify([accountId, projectId, conversationId, selected])}`;
+  const base = `flux:message-work:${JSON.stringify([accountId, projectId, scopeKey, selected])}`;
   const [stored, setPosition] = useState(() => ({ base, ...remembered(base) }));
   const position = stored.base === base ? stored : { base, ...remembered(base) };
   const [revision, setRevision] = useState(0);
   const revalidator = useRevalidator();
   const query = useMemo<WorkAssociationQuery>(() => ({ messageIds: selected, relation: 'source', ...(position.cursor ? { cursor: position.cursor } : {}), ...(position.edgeCursor ? { edgeCursor: position.edgeCursor } : {}) }), [selected, position.cursor, position.edgeCursor]);
-  const selector = selected && conversationId ? workAssociationReadUrl(projectId, query) : null;
+  const selector = selected && scopeKey ? workAssociationReadUrl(projectId, query) : null;
   const scope = useMemo(() => selector ? { accountId, projectId, selector } : null, [accountId, projectId, selector]);
   const load = useCallback((signal: AbortSignal) => getWorkAssociations(projectId, query, signal), [projectId, query]);
   const state = useWorkRead(scope, load, revision, revalidator.state === 'idle');
   const page = state.phase === 'ready' || state.phase === 'refreshing' ? state.value : null;
   const previews = useMemo(() => page ? messageWorkPreviews(page) : null, [page]);
-  const saveReading = useMessageReadingPosition(ref, node, page !== null, `${page?.observedAt ?? ''}:${referenceRevision}`);
   useEffect(() => {
     const value = { cursor: position.cursor, edgeCursor: position.edgeCursor };
     positions.set(base, value);
     try { sessionStorage.setItem(base, JSON.stringify(value)); } catch { /* Keep this visit's page. */ }
   }, [base, position.cursor, position.edgeCursor]);
-  const move = (cursor: string | null, edgeCursor: string | null) => {
-    saveReading(); setPosition({ base, cursor, edgeCursor });
-  };
+  const move = (cursor: string | null, edgeCursor: string | null) => setPosition({ base, cursor, edgeCursor });
   return {
     state, page, previews,
     /** The reader has moved off the first object or link page. */
@@ -206,5 +207,22 @@ export function useMessageWork(accountId: string, projectId: string, conversatio
     moveEdges: (edgeCursor: string) => move(position.cursor, edgeCursor),
     refreshObjects: () => { move(null, null); setRevision((value) => value + 1); },
     refreshEdges: () => { move(position.cursor, null); setRevision((value) => value + 1); },
+  };
+}
+export type MessageWorkRead = ReturnType<typeof useMessageWorkRead>;
+
+/**
+ * The read above for one conversation's feed, which this hook also positions: it is that feed's one
+ * reading-position owner. A feed with its own owner (the project's stream, #195) uses the read alone.
+ */
+export function useMessageWork(accountId: string, projectId: string, conversationId: string | null, messageIds: string[], ref: RefObject<HTMLElement | null>, node: HTMLElement | null, referenceRevision = ''): MessageWorkRead {
+  const read = useMessageWorkRead(accountId, projectId, conversationId, messageIds, ref, node);
+  const saveReading = useMessageReadingPosition(ref, node, read.page !== null, `${read.page?.observedAt ?? ''}:${referenceRevision}`);
+  return {
+    ...read,
+    moveObjects: (cursor: string) => { saveReading(); read.moveObjects(cursor); },
+    moveEdges: (edgeCursor: string) => { saveReading(); read.moveEdges(edgeCursor); },
+    refreshObjects: () => { saveReading(); read.refreshObjects(); },
+    refreshEdges: () => { saveReading(); read.refreshEdges(); },
   };
 }

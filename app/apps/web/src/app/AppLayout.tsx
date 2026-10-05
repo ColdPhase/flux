@@ -122,6 +122,7 @@ function AppLayoutContent() {
       toggleDetails(true);
     },
     openSearch() { setNavOpen(false); setJumpOpen(true); },
+    openNavigation() { setDetailsOpen(false); setNavOpen(true); },
     actionSlot,
   }), [toggleDetails, actionSlot, projectId, detailsOwner]);
 
@@ -131,20 +132,26 @@ function AppLayoutContent() {
     setShownPath(location.pathname);
     if ((panelMode !== 'docked' || backgroundSettings) && detailsOpen) setDetailsOpen(false);
   }
-  // `?open=work:<id>` (a notification's link, #116) opens that object in Details on its project;
-  // `?open=people` (a new project, #188) opens its "Who can see this".
+  // `?open=work:<id>` (a notification's link, #116, a search result, #114, or a doc reference, #112)
+  // opens that object in Details on its project; `?open=people` (a new project, #188) opens its
+  // "Who can see this". Each address is handled once, and the flag leaves it without reloading the
+  // page's data: that navigation finishes at once, so no load of this page is left running that
+  // could land after the person has moved on or signed out.
   const navigate = useNavigate();
+  const openedAt = useRef<string | null>(null);
   useEffect(() => {
+    if (openedAt.current === location.key) return;
     const params = new URLSearchParams(location.search);
     const open = params.get('open') ?? '';
     const match = /^(work|decision|result):([0-9a-f-]{36})$/i.exec(open);
     const people = open === 'people' && /^\/projects\/[^/]+/.test(location.pathname);
     if (!match && !people) return;
+    openedAt.current = location.key;
     params.delete('open');
     const search = params.toString();
-    navigate({ pathname: location.pathname, search: search ? `?${search}` : '', hash: location.hash }, { replace: true });
+    navigate({ pathname: location.pathname, search: search ? `?${search}` : '', hash: location.hash }, { replace: true, defaultShouldRevalidate: false });
     shell.openDetails(match ? { kind: match[1]!.toLowerCase() as 'work' | 'decision' | 'result', id: match[2]!.toLowerCase() } : { kind: 'overview', focus: 'people' });
-  }, [location.search, location.pathname, location.hash, navigate, shell]);
+  }, [location.key, location.search, location.pathname, location.hash, navigate, shell]);
   // ⌘K / Ctrl+K opens Jump to… from anywhere, also while typing, as the sidebar hint says.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -252,7 +259,8 @@ function AppLayoutContent() {
         : dmId === 'new'
           ? { crumb: null, title: 'New message', topic: 'Only the people you choose can read it', views: false, noDetails: true }
           : { crumb: null, title: 'Direct messages', topic: 'Conversations with people, outside any project', views: false, noDetails: true }
-      : { crumb: workspace?.name ?? null, title: 'Home', topic: 'Your private notes and where you left off', views: true };
+      // Home's Tasks span every workspace, so no single workspace is named above them (#190).
+      : { crumb: location.pathname.startsWith('/tasks') ? null : workspace?.name ?? null, title: 'Home', topic: 'Your private notes and where you left off', views: true };
   // A place without its own Details (Search, Inbox, the DM list) never keeps the generic panel open.
   if ('noDetails' in place && detailsOpen && detailsView === 'place') setDetailsOpen(false);
 
@@ -312,7 +320,7 @@ function AppLayoutContent() {
         {/* On a phone the tab row has no room: the entry joins the one-line project state row. */}
         {project && phone ? <div className="state-row"><ProjectStateRow summary={workSummary.summary} phase={workSummary.phase} />{recapEntry}</div> : null}
         {place.views
-          ? <Tabs className="views" label="Views" items={VIEWS.map((view) => ({ id: view.id, label: view.label, to: view.path }))} />
+          ? <Tabs className="views" label="Views" items={VIEWS.map((view) => ({ id: view.id, label: view.label, to: view.path, end: view.path === '/' }))} />
           : activeProject && projectViews
             ? <div className="views views--project"><Tabs className="views__tabs" label="Project views" items={projectViews} />{phone ? null : recapEntry}</div>
             : dmViews

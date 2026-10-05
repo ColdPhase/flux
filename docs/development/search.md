@@ -118,7 +118,7 @@ needs a live session and answers `Cache-Control: no-store`.
   and filters. It works only for that person and that exact search; anything else is
   `400 CURSOR_INVALID`. Pages follow keyset order (rank, time, row), so none repeat. After a
   revocation, the next page is computed with the new access.
-- With `FLUX_TEST_FAILURE_INJECTION=true` only, `GET /api/v1/search/explain` returns the rows
+- Only with the integration fixture token set and `FLUX_TEST_FAILURE_INJECTION=true` (#88), `GET /api/v1/search/explain` returns the rows
   examined by the same statements (`EXPLAIN ANALYZE`), for the regression test below.
 
 ## Adding a source

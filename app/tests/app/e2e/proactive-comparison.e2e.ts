@@ -270,6 +270,11 @@ test('owner-only background setup persists consent, clears keys and preserves an
   page.on('request', (request) => {
     if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/v1/background-compute-connections') writes++;
   });
+  // F-020: no provider is preselected; the owner chooses one and its model.
+  assert.equal(await page.getByLabel('Provider', { exact: true }).inputValue(), '');
+  await page.getByLabel('Provider', { exact: true }).selectOption({ label: 'Anthropic' });
+  await page.getByLabel('Model', { exact: true }).fill('claude-sonnet-5');
+  await page.getByText('Flux price table, checked 2026-10-02', { exact: false }).waitFor();
   await page.getByLabel('Background API key', { exact: true }).fill('sk-ant-fixture-background-setup-key-ABCD');
   await page.getByLabel('Provider organization', { exact: true }).fill('Fixture Sensor Research');
   await page.getByLabel('Provider workspace', { exact: true }).fill('Fixture Only');
@@ -281,14 +286,15 @@ test('owner-only background setup persists consent, clears keys and preserves an
   assert.equal(writes, 0, 'missing consent cannot send a credential request');
   for (const check of await page.locator('.background-settings__check input').all()) await check.check();
   await page.getByRole('button', { name: 'Save connection and consent', exact: true }).click();
-  await page.getByRole('heading', { name: 'Your saved connection', exact: true }).waitFor();
+  // F-020: connections are listed; the first one is used for background suggestions.
+  await page.getByRole('heading', { name: 'Your AI connections', exact: true }).waitFor();
   assert.equal(writes, 1);
   assert.equal(await page.locator('input[name="apiKey"]').count(), 0, 'saved keys leave no editable input');
   await page.waitForFunction(() => document.querySelector('.background-settings__saved') === document.activeElement);
   assert.equal(await page.locator('.background-settings__saved').evaluate((element) => element === document.activeElement), true,
     'save completion restores keyboard focus to its status');
   const first = (await api('GET', '/api/v1/background-compute-connections/current')).data as {
-    id: string; ownerUserId: string; keyLastFour: string; periodBudgetCents: number; maxRunsPerDay: number; perRunCents: number;
+    id: string; name: string; ownerUserId: string; keyLastFour: string; periodBudgetCents: number; maxRunsPerDay: number; perRunCents: number;
   };
   assert.equal(first.keyLastFour, 'ABCD'); assert.equal(first.periodBudgetCents, 25);
   assert.equal(first.maxRunsPerDay, 2); assert.equal(first.perRunCents, 5);
@@ -315,7 +321,7 @@ test('owner-only background setup persists consent, clears keys and preserves an
     assert.equal((await api('POST', '/api/auth/sign-in/email', { email: fixture.peerEmail, password: fixture.password })).status, 200);
     await page.goto(`${origin.origin}/settings/background-compute`);
     await page.getByRole('heading', { name: 'Connect your background source', exact: true }).waitFor();
-    assert.equal(await page.getByRole('heading', { name: 'Your saved connection', exact: true }).count(), 0);
+    assert.equal(await page.getByRole('heading', { name: 'Your AI connections', exact: true }).count(), 0);
     assert.ok(!(await page.locator('.background-settings').innerText()).includes('Fixture Sensor Research'));
     assert.equal((await api('GET', '/api/v1/background-compute-connections/current')).data, null);
     assert.equal((await api('DELETE', `/api/v1/background-compute-connections/${first.id}`)).status, 404);
@@ -332,16 +338,16 @@ test('owner-only background setup persists consent, clears keys and preserves an
   page.on('pageerror', (error) => errors.push(error.message));
   try {
     await page.goto(`${origin.origin}/settings/background-compute`);
-    await page.getByRole('heading', { name: 'Your saved connection', exact: true }).waitFor();
+    await page.getByRole('heading', { name: 'Your AI connections', exact: true }).waitFor();
     await page.locator('.background-settings__help').first().tap();
     await page.screenshot({ path: `/state/background-setup-${viewport.width}-saved.png`, fullPage: true });
-    await page.getByRole('button', { name: 'Replace connection', exact: true }).tap();
+    await page.getByRole('button', { name: 'Add a connection', exact: true }).tap();
     const key = page.getByLabel('Background API key', { exact: true });
-    const cancel = page.getByRole('button', { name: 'Cancel replacement', exact: true });
+    const cancel = page.getByRole('button', { name: 'Cancel adding', exact: true });
     const openingCancelBounds = await cancel.boundingBox();
     assert.ok(openingCancelBounds && openingCancelBounds.y >= 0 &&
       openingCancelBounds.y + openingCancelBounds.height <= viewport.height,
-    'replacement cancellation is visible beside the opening fields');
+    'cancelling is visible beside the opening fields');
     assert.equal(await key.inputValue(), '');
     assert.ok(await key.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize) >= 16));
     for (const check of await page.locator('.background-settings__check').all()) {
@@ -349,45 +355,55 @@ test('owner-only background setup persists consent, clears keys and preserves an
       assert.ok(bounds && bounds.height >= 44 && bounds.width >= 44);
     }
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-    await page.screenshot({ path: `/state/background-setup-${viewport.width}-replace.png`, fullPage: true });
+    await page.screenshot({ path: `/state/background-setup-${viewport.width}-add.png`, fullPage: true });
     await page.locator('input[name="providerBilling"]').scrollIntoViewIfNeeded();
     await page.screenshot({ path: `/state/background-setup-${viewport.width}-consent.png`, fullPage: true });
     await key.fill('sk-ant-fixture-unsaved-touch-key-ABCD');
-    await page.getByRole('heading', { name: 'Replace your connection', exact: true }).scrollIntoViewIfNeeded();
+    await page.getByRole('heading', { name: 'Add a connection', exact: true }).scrollIntoViewIfNeeded();
     await cancel.tap();
-    await page.waitForFunction(() => document.querySelector('.background-settings__actions button') === document.activeElement);
+    // Focus returns to the button that opened the form.
+    await page.waitForFunction(() => document.activeElement?.textContent?.trim() === 'Add a connection');
     assert.equal(await key.count(), 0);
     assert.equal(((await api('GET', '/api/v1/background-compute-connections/current')).data as { id: string }).id, first.id);
   } finally { page = ownerPage; await touchContext.close(); }
   }
 
   await page.evaluate(() => { document.documentElement.style.zoom = '2'; });
-  await page.getByRole('button', { name: 'Replace connection', exact: true }).click();
+  await page.getByRole('button', { name: 'Add a connection', exact: true }).click();
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   await page.getByRole('button', { name: 'Cancel', exact: true }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: '/state/background-setup-1440-zoom2.png', fullPage: true });
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await page.evaluate(() => { document.documentElement.style.zoom = ''; });
-  await page.getByRole('button', { name: 'Replace connection', exact: true }).click();
+  await page.getByRole('button', { name: 'Add a connection', exact: true }).click();
   for (const check of await page.locator('.background-settings__check input').all()) assert.equal(await check.isChecked(), false,
-    'replacement requires fresh consent');
+    'another connection requires fresh consent, and is not chosen for background use by default');
+  await page.getByLabel('Provider', { exact: true }).selectOption({ label: 'Anthropic' });
+  await page.getByLabel('Model', { exact: true }).fill('claude-sonnet-5');
+  await page.getByLabel('Provider organization', { exact: true }).fill('Fixture Sensor Research');
+  await page.getByLabel('Provider workspace', { exact: true }).fill('Fixture Only');
   await page.getByLabel('Background API key', { exact: true }).fill('invalid-fixture-key');
   for (const check of await page.locator('.background-settings__check input').all()) await check.check();
   // Native minimum-length validation would stop this fixture; a syntactically long invalid key reaches server validation.
   await page.getByLabel('Background API key', { exact: true }).fill('invalid-fixture-key-with-enough-characters');
-  await page.getByRole('button', { name: 'Replace and save consent', exact: true }).click();
+  await page.getByRole('button', { name: 'Save connection and consent', exact: true }).click();
   await page.getByRole('alert').waitFor();
   await page.waitForFunction(() => document.querySelector('.background-settings__error') === document.activeElement);
   await page.screenshot({ path: '/state/background-setup-1440-error.png', fullPage: true });
   assert.equal(await page.getByLabel('Background API key', { exact: true }).inputValue(), '', 'failed requests also clear the key');
   assert.equal(((await api('GET', '/api/v1/background-compute-connections/current')).data as { id: string }).id, first.id,
-    'a failed replacement preserves the earlier connection');
+    'a failed addition keeps the earlier connection in use');
   await page.getByLabel('Background API key', { exact: true }).fill('sk-ant-fixture-background-setup-key-WXYZ');
-  await page.getByRole('button', { name: 'Replace and save consent', exact: true }).click();
-  await page.getByRole('heading', { name: 'Replace your connection', exact: true }).waitFor({ state: 'hidden' });
-  const replacement = (await api('GET', '/api/v1/background-compute-connections/current')).data as { id: string; keyLastFour: string };
-  assert.notEqual(replacement.id, first.id); assert.equal(replacement.keyLastFour, 'WXYZ');
-  await page.getByRole('button', { name: 'Disconnect', exact: true }).click();
+  await page.getByRole('button', { name: 'Save connection and consent', exact: true }).click();
+  await page.getByRole('heading', { name: 'Add a connection', exact: true }).waitFor({ state: 'hidden' });
+  const replacement = (await api('GET', '/api/v1/background-compute-connections/current')).data as { id: string; keyLastFour: string; name: string };
+  assert.notEqual(replacement.id, first.id, 'the chosen new connection is now used'); assert.equal(replacement.keyLastFour, 'WXYZ');
+  // Each connection's button names it and its key (F-020): two connections can share a provider and model.
+  await page.getByRole('button', { name: `Disconnect ${replacement.name}, key ending ${replacement.keyLastFour}`, exact: true }).click();
+  await page.locator('.background-settings__saved', { hasText: 'none takes over by itself' }).waitFor();
+  assert.equal((await api('GET', '/api/v1/background-compute-connections/current')).data, null,
+    'the remaining connection does not take over');
+  await page.getByRole('button', { name: `Disconnect ${first.name}, key ending ${first.keyLastFour}`, exact: true }).click();
   await page.getByRole('heading', { name: 'Connect your background source', exact: true }).waitFor();
   assert.equal((await api('GET', '/api/v1/background-compute-connections/current')).data, null);
   await page.reload();

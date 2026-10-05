@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import type { CreateProactiveComparisonRule, ProactiveComparisonRule } from '@flux/contracts';
+import type { AiPrice, CreateProactiveComparisonRule, ProactiveComparisonRule } from '@flux/contracts';
 import { ConflictError, InvalidInputError, NotFoundError, VersionConflictError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
+import { comparisonReservationCents } from './reservation.js';
 
 export interface RuleAccess {
   requireProject(principal: Principal, projectId: string, action: 'read' | 'write'): Promise<{ workspaceId: string }>;
@@ -9,7 +10,8 @@ export interface RuleAccess {
 export interface RuleRows {
   /** The agent is personal to the caller and currently has a contributor grant here. */
   agentMayPropose(ownerId: string, projectId: string, agentId: string): Promise<boolean>;
-  backgroundBudget(ownerId: string): Promise<{ maxRunsPerDay: number; periodDays: number; periodBudgetCents: number; perRunCents: number } | null>;
+  backgroundBudget(ownerId: string): Promise<{ maxRunsPerDay: number; periodDays: number; periodBudgetCents: number; perRunCents: number;
+    price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'> | null } | null>;
   create(input: { id: string; workspaceId: string; projectId: string; ownerUserId: string; command: CreateProactiveComparisonRule }): Promise<ProactiveComparisonRule | 'EXISTS'>;
   list(ownerId: string, projectId: string): Promise<ProactiveComparisonRule[]>;
   find(ownerId: string, ruleId: string): Promise<ProactiveComparisonRule | null>;
@@ -26,7 +28,12 @@ function owner(principal: Principal): string {
 function uuid(id: string): boolean { return typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id); }
 function bounded(n: number, lo: number, hi: number): boolean { return Number.isInteger(n) && n >= lo && n <= hi; }
 
-export function proactiveRuleUseCases(unit: RuleUnitOfWork) {
+/**
+ * `runtimeAvailable` is true only when the operator switched background comparisons on
+ * (`backgroundComparisonsEnabled`), so a worker with reservation, interruption and current-access
+ * checks runs them; otherwise enabling fails closed with BACKGROUND_RUNTIME_UNAVAILABLE.
+ */
+export function proactiveRuleUseCases(unit: RuleUnitOfWork, { runtimeAvailable = false }: { runtimeAvailable?: boolean } = {}) {
   return {
     async create(principal: Principal, projectId: string, command: CreateProactiveComparisonRule): Promise<ProactiveComparisonRule> {
       const ownerUserId = owner(principal);
@@ -69,12 +76,15 @@ export function proactiveRuleUseCases(unit: RuleUnitOfWork) {
             throw new NotFoundError('Personal project agent', 'AGENT_NOT_FOUND');
           const budget = await rules.backgroundBudget(ownerUserId);
           if (!budget) throw new ConflictError('Connect an authorized background compute source before enabling', 'BACKGROUND_CONNECTION_REQUIRED');
+          // PROV-3: without a known price nothing can be reserved, so the connection cannot be enabled.
+          if (!budget.price) throw new ConflictError('The connection has no known price', 'BACKGROUND_PRICE_UNKNOWN');
           if (budget.periodDays !== 30 || current.maxRunsPerDay > budget.maxRunsPerDay
-            || current.periodBudgetCents > budget.periodBudgetCents || current.perRunCents > budget.perRunCents)
+            || current.periodBudgetCents > budget.periodBudgetCents || current.perRunCents > budget.perRunCents
+            || comparisonReservationCents(budget.price) > Math.min(current.perRunCents, budget.perRunCents))
             throw new ConflictError('The rule exceeds the owner-approved background budget', 'BACKGROUND_BUDGET_TOO_LOW');
           // Key custody and consent are necessary, but a worker with reservation,
-          // interruption and current-access checks must exist before activation.
-          throw new ConflictError('Background execution is not available yet', 'BACKGROUND_RUNTIME_UNAVAILABLE');
+          // interruption and current-access checks must run before activation (#58).
+          if (!runtimeAvailable) throw new ConflictError('Background execution is not available yet', 'BACKGROUND_RUNTIME_UNAVAILABLE');
         }
         return (await rules.change(ownerUserId, ruleId, expectedVersion, status))!;
       });

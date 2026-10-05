@@ -90,7 +90,7 @@ const conversationPath = () => `/projects/${place.id}/conversations/${thread.id}
 async function open(who: Person, width = 1440, height = 900) {
   const page = await signedIn(who, width, height);
   await page.goto(conversationPath());
-  await expect(page.locator('.project-convo')).toBeVisible();
+  await expect(page.locator('.thread__pane')).toBeVisible();
   return page;
 }
 async function capture(page: Page, name: string) {
@@ -165,7 +165,7 @@ test('genuinely missing historical citation is isolated from valid rows; phone l
   const result=await pool.query('DELETE FROM project_work_items WHERE id=$1',[missing.id]);
   assert.equal(result.rowCount,1);
   const page=await open(owner,390,844);
-  await page.locator('#project-composer').fill('Private draft beside native citations');
+  await page.locator('#thread-composer').fill('Private draft beside native citations');
   const missingLink=page.locator(`.assistant-cite[data-native-ref="work:${missing.id}"]`);
   const validLink=page.locator(`.assistant-cite[data-native-ref="work:${valid.id}"]`);
   await missingLink.scrollIntoViewIfNeeded();await missingLink.focus();
@@ -175,7 +175,7 @@ test('genuinely missing historical citation is isolated from valid rows; phone l
   assert.deepEqual(selected.items.map((row)=>row.id),[valid.id]);assert.deepEqual(selected.unavailable.map((row)=>row.id),[missing.id]);
   await validLink.click();await expect(page.getByRole('dialog',{name:'Details'})).toContainText(valid.title);
   await page.getByRole('button',{name:'Close details'}).click();
-  await expect(page.locator('#project-composer')).toHaveValue('Private draft beside native citations');
+  await expect(page.locator('#thread-composer')).toHaveValue('Private draft beside native citations');
   // Every part of a >100-source history stays reachable at the real phone layout.
   for (const index of [0,60,119]) {
     const current=expectStatus(await owner.browser.request('GET',`/api/v1/work/${tasks[index]!.id}`),200) as WorkItem;
@@ -184,7 +184,7 @@ test('genuinely missing historical citation is isolated from valid rows; phone l
     await expect(link).toHaveAttribute('aria-label',new RegExp(current.title));
     await link.click();await expect(page.getByRole('dialog',{name:'Details'})).toContainText(current.title);
     await page.getByRole('button',{name:'Close details'}).click();
-    await expect(page.locator('#project-composer')).toHaveValue('Private draft beside native citations');
+    await expect(page.locator('#thread-composer')).toHaveValue('Private draft beside native citations');
   }
 
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
@@ -205,13 +205,13 @@ test('proposal authority distinguishes loading, failed read, owned, manager, vie
   const readonly=await open(viewer);const readonlyCard=readonly.locator('.assistant-proposal').last();await readonlyCard.scrollIntoViewIfNeeded();
   await expect(readonlyCard).toContainText('waits for someone who can decide it');await expect(readonlyCard.getByRole('button',{name:'Accept',exact:true})).toHaveCount(0);
   const mine=await open(owner);const mineCard=mine.locator('.assistant-proposal').last();await mineCard.scrollIntoViewIfNeeded();await expect(mineCard.getByRole('button',{name:'Accept',exact:true})).toBeVisible();
-  await mine.locator('#project-composer').fill('Keep the private reply during a required read failure');
+  await mine.locator('#thread-composer').fill('Keep the private reply during a required read failure');
   await mine.route(referencePattern,(route)=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({code:'WORK_READ_UNAVAILABLE',error:'Injected required read failure'})}));
   await mine.evaluate(()=>window.dispatchEvent(new Event('focus')));
   await expect(mineCard).toContainText('Couldn’t check the linked task');
   await expect(mineCard.getByRole('button',{name:'Accept',exact:true})).toHaveCount(0);
   await expect(mineCard.getByRole('button',{name:'Dismiss',exact:true})).toHaveCount(0);
-  await expect(mine.locator('#project-composer')).toHaveValue('Keep the private reply during a required read failure');
+  await expect(mine.locator('#thread-composer')).toHaveValue('Keep the private reply during a required read failure');
   await capture(mine,'references-proposal-read-failed');
   await mine.unroute(referencePattern);await mine.getByRole('button',{name:'Refresh task references',exact:true}).click();
   await expect(mineCard.getByRole('button',{name:'Accept',exact:true})).toBeVisible();
@@ -250,11 +250,12 @@ test('required metadata retry preserves lost-response command UUID, native reply
     sends.push(route.request().postDataJSON().clientMessageId as string);
     if(first){first=false;const response=await route.fetch();assert.equal(response.status(),201);await route.abort('failed');}else await route.continue();
   });
-  await page.locator('#project-composer').fill(replyText);await page.getByRole('button',{name:'Send reply',exact:true}).click();
+  await page.locator('#thread-composer').fill(replyText);await page.getByRole('button',{name:'Send reply',exact:true}).click();
   await expect(page.getByRole('button',{name:'Retry send',exact:true})).toBeVisible();
-  const storageKey=`flux.project-composer.${owner.id}.${place.id}.${thread.id}.pending`;
-  const pending=await page.evaluate((key)=>JSON.parse(sessionStorage.getItem(key)!),storageKey);
-  assert.equal(pending.command.clientMessageId,sends[0]);
+  // The thread's reply draft (#195 shared composer) keeps the unconfirmed command's one UUID.
+  const storageKey=`flux:composer:${owner.id}:${place.id}:conversation:${thread.id}`;
+  const pending=await page.evaluate((key)=>JSON.parse(localStorage.getItem(key)!),storageKey);
+  assert.equal(pending.commandId,sends[0]);assert.equal(pending.unconfirmed,true);
   await page.route(referencePattern,(route)=>route.fulfill({status:503,contentType:'application/json',body:'{"code":"WORK_READ_UNAVAILABLE","error":"Injected required read failure"}'}));
   // The committed reply may arrive over WS after its response was lost. Keep a
   // real citation focused so that arrival/viewport movement cannot retire the
@@ -266,17 +267,17 @@ test('required metadata retry preserves lost-response command UUID, native reply
   await page.waitForTimeout(250);
   const before=await anchor.evaluate((row)=>row.getBoundingClientRect().top);
   // The reply that arrives and the failure notice must not pull the reader away from the answer.
-  const view=await page.locator('.project-convo__feed').evaluate((pane)=>{const box=pane.getBoundingClientRect();return {top:box.top,bottom:box.bottom};});
+  const view=await page.locator('.thread__feed').evaluate((pane)=>{const box=pane.getBoundingClientRect();return {top:box.top,bottom:box.bottom};});
   assert.ok(before>=view.top-2&&before<view.bottom,`reader still sees the answer before refresh: ${before} not in ${view.top}–${view.bottom}`);
   await page.unroute(referencePattern);await page.getByRole('button',{name:'Refresh task references',exact:true}).click();
-  await expect(page.locator('.project-convo')).toHaveAttribute('data-references-phase','ready');
-  await expect(page.locator('#project-composer')).toHaveValue(replyText);
+  await expect(page.locator('.thread__pane')).toHaveAttribute('data-references-phase','ready');
+  await expect(page.locator('#thread-composer')).toHaveValue(replyText);
   const after=await anchor.evaluate((row)=>row.getBoundingClientRect().top);
   assert.ok(Math.abs(after-before)<=2,`reader retains answer anchor:${before}→${after}`);
-  const retained=await page.evaluate((key)=>JSON.parse(sessionStorage.getItem(key)!),storageKey);
-  assert.equal(retained.command.clientMessageId,pending.command.clientMessageId);
-  await page.getByRole('button',{name:'Retry send',exact:true}).click();await expect(page.locator('#project-composer')).toHaveValue('');
-  assert.deepEqual(sends,[pending.command.clientMessageId,pending.command.clientMessageId]);
+  const retained=await page.evaluate((key)=>JSON.parse(localStorage.getItem(key)!),storageKey);
+  assert.equal(retained.commandId,pending.commandId);
+  await page.getByRole('button',{name:'Retry send',exact:true}).click();await expect(page.locator('#thread-composer')).toHaveValue('');
+  assert.deepEqual(sends,[pending.commandId,pending.commandId]);
   const canonical=expectStatus(await owner.browser.request('GET',`/api/v1/conversations/${thread.id}`),200) as Conversation;
   const matches=canonical.messages.filter((message)=>message.body===replyText);assert.equal(matches.length,1);assert.equal(matches[0]!.authorId,owner.id);
   await capture(page,'references-phone-retry-reader');
@@ -289,13 +290,13 @@ test('a reader scroll whose event has not arrived yet is kept when message work 
   // Scroll events arrive with a later frame. Model a frame that has not come yet: the feed's
   // scroll events are held while the reader moves to an earlier answer and work refreshes.
   const page=await open(owner,390,844);
-  const convo=page.locator('.project-convo');
+  const convo=page.locator('.thread__pane');
   await expect(convo).toHaveAttribute('data-references-phase','ready');await expect(convo).toHaveAttribute('data-associations-phase','ready');
   const anchor=page.locator(`[data-answer-run="${answers[2]!.runId}"]`);
   const observed=await convo.getAttribute('data-references-observed-at');
   const before=await anchor.evaluate((row)=>{
     const w=window as unknown as {__heldScroll:boolean};w.__heldScroll=true;
-    window.addEventListener('scroll',(event)=>{if(w.__heldScroll&&event.target instanceof Element&&event.target.classList.contains('project-convo__feed'))event.stopImmediatePropagation();},true);
+    window.addEventListener('scroll',(event)=>{if(w.__heldScroll&&event.target instanceof Element&&event.target.classList.contains('thread__feed'))event.stopImmediatePropagation();},true);
     row.scrollIntoView({block:'center'});(row.querySelector('[data-native-ref]') as HTMLElement).focus({preventScroll:true});
     window.dispatchEvent(new Event('focus'));
     return row.getBoundingClientRect().top;
@@ -332,14 +333,14 @@ test('late authorized metadata cannot resurrect manager actions across real acco
   await expect(page.locator('.assistant-answer__asked').last()).toHaveText('asked by Reference manager');
   await expect(page.getByRole('button',{name:'Refresh task references',exact:true})).toBeVisible();
   await expect(card.getByRole('button',{name:'Accept',exact:true})).toHaveCount(0);
-  await page.locator('#project-composer').fill('Only the second account owns this private draft');
+  await page.locator('#thread-composer').fill('Only the second account owns this private draft');
   await switchAccount(manager);
   await expect(page.locator('.assistant-answer__asked').last()).toHaveText('asked by you');
   await expect(page.getByRole('button',{name:'Refresh task references',exact:true})).toBeVisible();
   await held[0]!.route.fulfill({response:held[0]!.response});
   await page.waitForTimeout(500);
   await expect(card.getByRole('button',{name:'Accept',exact:true})).toHaveCount(0);
-  await expect(page.locator('#project-composer')).toHaveValue('');
+  await expect(page.locator('#thread-composer')).toHaveValue('');
   await page.unroute(referencePattern);await page.getByRole('button',{name:'Refresh task references',exact:true}).click();
   await expect(card.getByRole('button',{name:'Accept',exact:true})).toBeVisible();
   await capture(page,'references-account-aba-recovered');
@@ -351,7 +352,7 @@ test('a held old metadata selector cannot refill a newer failed focused-referenc
   const page=await open(owner,390,844);
   const first=page.locator(`.assistant-cite[data-native-ref="work:${tasks[0]!.id}"]`);
   await first.scrollIntoViewIfNeeded();await first.focus();await expect(first).toHaveAttribute('aria-label',/Native citation001 refreshed/);
-  await page.locator('#project-composer').fill('Private owner draft during selector replacement');
+  await page.locator('#thread-composer').fill('Private owner draft during selector replacement');
   const held:{route:Route,response:Awaited<ReturnType<Route['fetch']>>}[]=[];
   let captureNext=true;
   await page.route(referencePattern,async(route)=>{
@@ -364,9 +365,9 @@ test('a held old metadata selector cannot refill a newer failed focused-referenc
   await expect(page.getByRole('button',{name:'Refresh task references',exact:true})).toBeVisible();
   const old=await held[0]!.response.json() as {items:{id:string}[]};assert.ok(old.items.some((row)=>row.id===tasks[0]!.id));
   await held[0]!.route.fulfill({response:held[0]!.response});await page.waitForTimeout(250);
-  await expect(page.locator('.project-convo')).toHaveAttribute('data-references-phase','unavailable');
+  await expect(page.locator('.thread__pane')).toHaveAttribute('data-references-phase','unavailable');
   await expect(first).toHaveAttribute('aria-label',/in this project/);
-  await expect(page.locator('#project-composer')).toHaveValue('Private owner draft during selector replacement');
+  await expect(page.locator('#thread-composer')).toHaveValue('Private owner draft during selector replacement');
   await page.unroute(referencePattern);await page.getByRole('button',{name:'Refresh task references',exact:true}).click();
   await expect(last).toHaveAttribute('aria-label',/Native citation 120/);
   await capture(page,'references-phone-held-selector-recovered');

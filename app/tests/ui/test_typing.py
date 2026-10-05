@@ -107,7 +107,18 @@ class TypingJourney(unittest.TestCase):
         return page
 
     def composer(self, page, *, dm=False):
-        return page.locator("#dm-composer" if dm else "#project-composer")
+        # A conversation URL opens the project's stream with that conversation's thread beside it (#195,
+        # UI116-1); typing belongs to the thread's reply composer, not the stream's new-message composer.
+        return page.locator("#dm-composer" if dm else "#thread-composer")
+
+    def thread(self, page):
+        return page.locator("#thread")
+
+    def open_thread(self, page, index):
+        """Opens another conversation's thread from its root in the stream (its reply count, or Reply)."""
+        root = page.locator(f'li[data-conversation-id="{self.conversations[index]}"]')
+        replies = root.locator(".convo-replies__open")
+        (replies if replies.count() else root.locator(".convo-replies__reply")).click()
 
     def measure(self, name, action, assertion, maximum):
         start = time.monotonic()
@@ -135,21 +146,21 @@ class TypingJourney(unittest.TestCase):
         alice = self.open("alice", video=True)
         bob = self.open("bob")
         # The receiver keeps its draft, selected source, keyboard focus and scroll.
-        bob.get_by_role("button", name=re.compile(r"^Sources")).click()
-        bob.get_by_role("button", name="Discuss this version").click()
-        expect(bob.locator(".project-convo__citation")).to_contain_text("Low-light observations")
+        self.thread(bob).get_by_role("button", name=re.compile(r"^Sources")).click()
+        self.thread(bob).get_by_role("button", name="Discuss this version").click()
+        expect(self.thread(bob).locator(".composer-files__ref")).to_contain_text("Low-light observations")
         self.composer(bob).fill("PRIVATE-DRAFT receiver notes")
         self.composer(bob).focus()
-        bob.locator(".project-convo__feed").evaluate("el => { el.scrollTop = 120; }")
-        before = bob.locator(".project-convo__feed").evaluate("el => ({top:el.scrollTop,height:el.clientHeight,count:el.querySelectorAll('.project-convo__message').length})")
+        bob.locator(".thread__feed").evaluate("el => { el.scrollTop = 120; }")
+        before = bob.locator(".thread__feed").evaluate("el => ({top:el.scrollTop,height:el.clientHeight,count:el.querySelectorAll('.project-convo__message').length})")
         original = alice.request.get(f"/api/v1/conversations/{self.conversations[0]}").json()
         notice = bob.locator(".typing-notice")
         self.measure("project-input-visible", lambda: self.composer(alice).fill("PRIVATE-DRAFT author notes"), lambda: expect(notice).to_have_text("Alice Rivera is typing…", timeout=2000), 2000)
         expect(alice.locator(".typing-notice")).not_to_contain_text("Alice Rivera")
         expect(self.composer(bob)).to_be_focused()
         expect(self.composer(bob)).to_have_value("PRIVATE-DRAFT receiver notes")
-        expect(bob.locator(".project-convo__citation")).to_contain_text("Low-light observations")
-        after = bob.locator(".project-convo__feed").evaluate("el => ({top:el.scrollTop,height:el.clientHeight,count:el.querySelectorAll('.project-convo__message').length})")
+        expect(self.thread(bob).locator(".composer-files__ref")).to_contain_text("Low-light observations")
+        after = bob.locator(".thread__feed").evaluate("el => ({top:el.scrollTop,height:el.clientHeight,count:el.querySelectorAll('.project-convo__message').length})")
         self.assertEqual(before, after)
         bob.evaluate("""() => { window.typingChanges = 0; window.typingObserver = new MutationObserver(() => window.typingChanges++); window.typingObserver.observe(document.querySelector('.typing-notice'), {childList:true,characterData:true,subtree:true}); }""")
         bob.wait_for_timeout(2100)
@@ -169,21 +180,21 @@ class TypingJourney(unittest.TestCase):
         bob = self.open("bob")
         self.composer(alice).fill("PRIVATE-DRAFT preserved between conversations")
         expect(bob.locator(".typing-notice")).to_contain_text("Alice Rivera", timeout=2000)
-        self.measure("navigation-stop", lambda: alice.get_by_role("link", name=re.compile("^Where should the manual switch go")).click(), lambda: expect(bob.locator(".typing-notice")).not_to_contain_text("Alice Rivera", timeout=750), 750)
+        self.measure("navigation-stop", lambda: self.open_thread(alice, 1), lambda: expect(bob.locator(".typing-notice")).not_to_contain_text("Alice Rivera", timeout=750), 750)
         expect(alice).to_have_url(f"{ORIGIN}{self.path(1)}")
-        alice.get_by_role("link", name=re.compile("^How should the lamp behave")).click()
+        self.open_thread(alice, 0)
         expect(self.composer(alice)).to_have_value("PRIVATE-DRAFT preserved between conversations")
         alice.wait_for_timeout(1800)
         expect(bob.locator(".typing-notice")).not_to_contain_text("Alice Rivera")
         self.composer(alice).fill("A manual switch still works when the sensor is unavailable.")
         expect(bob.locator(".typing-notice")).to_contain_text("Alice Rivera", timeout=2000)
         self.measure("native-send-stop", lambda: self.composer(alice).press("Enter"), lambda: expect(bob.locator(".typing-notice")).not_to_contain_text("Alice Rivera", timeout=750), 750)
-        expect(alice.locator(".project-convo__message", has_text="A manual switch still works when the sensor is unavailable.")).to_have_count(1)
+        expect(self.thread(alice).locator(".project-convo__message", has_text="A manual switch still works when the sensor is unavailable.")).to_have_count(1)
         native = alice.request.get(f"/api/v1/conversations/{self.conversations[0]}").json()
         self.assertEqual(sum(message["body"] == "A manual switch still works when the sensor is unavailable." for message in native["messages"]), 1)
         # The existing project feed refetches on focus and its 15-second fallback.
         # Presence remains independent of that durable history refresh.
-        expect(bob.locator(".project-convo__message", has_text="A manual switch still works when the sensor is unavailable.")).to_have_count(1, timeout=20000)
+        expect(self.thread(bob).locator(".project-convo__message", has_text="A manual switch still works when the sensor is unavailable.")).to_have_count(1, timeout=20000)
         expect(self.composer(alice)).to_have_value("")
 
     def test_03_dm_is_exact_scope_and_send_is_durable_once(self):
@@ -201,7 +212,7 @@ class TypingJourney(unittest.TestCase):
         alice = self.open("alice")
         viewer = self.open("viewer")
         expect(self.composer(viewer)).to_have_count(0)
-        expect(viewer.locator(".project-convo__read-only")).to_be_visible()
+        expect(self.thread(viewer).locator(".project-convo__read-only")).to_be_visible()
         self.composer(alice).fill("PRIVATE-DRAFT current reader test")
         expect(viewer.locator(".typing-notice")).to_contain_text("Alice Rivera", timeout=2000)
         self.assertFalse(any(frame.get("type") == "active" for frame in viewer.typing_sent))
@@ -359,7 +370,8 @@ class TypingJourney(unittest.TestCase):
         self.assertEqual(sum(frame.get("active") is True for frame in alice.typing_sent), pulses)
         expect(bob.locator(".typing-notice")).not_to_contain_text("Alice Rivera")
         self.composer(alice).press("Escape")
-        expect(alice.get_by_label("Reply", exact=True)).to_have_value("PRIVATE-DRAFT private assistant instructions")
+        # Since #195 the private prompt keeps its own draft: leaving ask mode restores the public reply draft.
+        expect(alice.get_by_label("Reply", exact=True)).to_have_value("PRIVATE-DRAFT ordinary reply before asking")
         alice.wait_for_timeout(1800)
         self.assertEqual(sum(frame.get("active") is True for frame in alice.typing_sent), pulses, "leaving ask mode does not advertise its restored text")
         self.composer(alice).fill("/ai PRIVATE-DRAFT command-mode prompt")

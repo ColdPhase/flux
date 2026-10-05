@@ -1,7 +1,7 @@
 import { WorkPagination } from './WorkPagination';
-import type { useMessageWork } from './useMessageWork';
+import type { MessageWorkRead } from './useMessageWork';
 
-export function MessageWorkPages({ read }: { read: ReturnType<typeof useMessageWork> }) {
+export function MessageWorkPages({ read }: { read: MessageWorkRead }) {
   if (read.state.phase === 'idle') return null;
   if (read.state.phase === 'unavailable') return <div className="ws-message-pages" role="alert">Linked work could not be loaded. Your reply is kept. <button type="button" className="ws-none__b" onClick={read.refreshObjects}>Refresh linked work</button></div>;
   const page = read.page;

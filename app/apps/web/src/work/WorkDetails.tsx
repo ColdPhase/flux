@@ -16,6 +16,7 @@ import { useProjectShell } from '../project/data';
 import { useWorkRead } from './useWorkRead';
 import { useNativeOwn, useWorkChoices, useDetailRelations, type DetailRelations, type DetailChoices } from './useDetailReads';
 import { WorkPagination } from './WorkPagination';
+import { TaskDiscussionSection } from './TaskDiscussion';
 
 // The Details panel for work items, decisions and results, and the two forms that start from a
 // message (#101). Everything shown here is visible to the people with access to the project;
@@ -298,6 +299,8 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
             {' '}as <code>{item.planIntent.intentKey}</code>. This task stays tied to that revision.</p>
         ) : null}
       </section>
+
+      <TaskDiscussionSection key={`${me.user.id}:${context.project.id}:${item.id}`} workId={item.id} project={context.project} members={context.members} me={{ id: me.user.id, name: me.user.name }} />
 
       <section className="details__sec" aria-labelledby="wd-decisions">
         <h4 id="wd-decisions">Decisions</h4>

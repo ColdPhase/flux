@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { useRevalidator } from 'react-router';
-import type { ConversationMessage, Project, ProjectWorkSummary } from '@flux/contracts';
+import { messagePreview, type ConversationMessage, type NativeWorkRow, type Project, type ProjectWorkSummary } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { Icon, useMediaQuery } from '../ui';
 import { useShellActions } from '../app/shellContext';
@@ -99,10 +99,22 @@ export function ProjectStateRow({ summary, phase }: { summary: ProjectWorkSummar
   );
 }
 
+/**
+ * The task a thread discusses (UI116-3), with its current title and state from the visible reference
+ * read (#155: never the whole project's work); it opens the task in Details. Until that read answers,
+ * the title stored with the thread is shown.
+ */
+export function DiscussedTask({ task, row }: { task: { workId: string; title: string }; row: NativeWorkRow | null }) {
+  const { openDetails } = useShellActions();
+  const item = row?.kind === 'work' && row.id === task.workId ? row : null;
+  return <ObjectChip icon="tasks" kind={item ? rest(workLine(item)) : 'Task'} title={item?.title ?? task.title} label="Discussion of task"
+    objectKind="work" objectId={task.workId} nativeRef={`work:${task.workId}`} onOpen={() => openDetails({ kind: 'work', id: task.workId })} />;
+}
+
 /** A calm chip under a message for an object made from it: icon, title and a quiet state. */
-function ObjectChip({ icon, kind, title, need, onOpen, label, objectKind, objectId }: { icon: 'tasks' | 'rule' | 'result'; kind: string; title: string; need?: boolean; onOpen: () => void; label: string; objectKind: string; objectId: string }) {
+function ObjectChip({ icon, kind, title, need, onOpen, label, objectKind, objectId, nativeRef }: { icon: 'tasks' | 'rule' | 'result'; kind: string; title: string; need?: boolean; onOpen: () => void; label: string; objectKind: string; objectId: string; nativeRef?: string }) {
   return (
-    <button type="button" data-work-kind={objectKind} data-work-id={objectId} className={`ws-chip${need ? ' ws-chip--need' : ''}`} onClick={onOpen} aria-label={`${label}: ${title}`}>
+    <button type="button" data-work-kind={objectKind} data-work-id={objectId} data-native-ref={nativeRef} className={`ws-chip${need ? ' ws-chip--need' : ''}`} onClick={onOpen} aria-label={`${label}: ${title}`}>
       <Icon name={icon} size={14} />
       <span className="ws-chip__t">{title}</span>
       <span className="ws-chip__k">{kind}</span>
@@ -114,15 +126,22 @@ function ObjectChip({ icon, kind, title, need, onOpen, label, objectKind, object
 const rest = (line: string) => line.replace(/^Work · /, '');
 
 /** Objects made from this message. The message itself is unchanged; these link back to it. */
-export function MessageObjects({ message, projectId, preview }: { message: ConversationMessage; projectId: string; preview: MessageWorkPreview | null }) {
+export function MessageObjects({ message, projectId, preview, thread = null, threadRow = null }: {
+  message: ConversationMessage; projectId: string; preview: MessageWorkPreview | null;
+  /** The task whose discussion this message opened (UI116-3), and its row from the visible reference read. */
+  thread?: { workId: string; title: string } | null; threadRow?: NativeWorkRow | null;
+}) {
   const { openDetails } = useShellActions();
   const { me } = useShellData();
-  if (!preview) return null;
-  const { counts, items } = preview;
+  const counts = preview?.counts ?? { work: 0, decisions: 0, results: 0 };
+  const items = preview?.items ?? [];
   const total = counts.work + counts.decisions + counts.results;
-  if (!total) return null;
+  // The discussed task, unless the task was also made from this message (then its own chip shows it).
+  const discussed = thread && !items.some((item) => item.kind === 'work' && item.id === thread.workId) ? thread : null;
+  if (!discussed && !total) return null;
   return (
     <div className="ws-attach">
+      {discussed ? <DiscussedTask task={discussed} row={threadRow} /> : null}
       {items.map((item) => <ObjectChip key={`${item.kind}:${item.id}`} objectKind={item.kind} objectId={item.id} icon={item.kind === 'work' ? 'tasks' : item.kind === 'decision' ? 'rule' : 'result'} kind={item.kind === 'work' ? rest(workLine(item)) : item.kind === 'decision' ? decisionLine(item) : resultLine(item)} title={item.title} need={item.kind === 'decision' && item.status === 'proposed'} label={item.kind === 'work' ? 'Work' : item.kind === 'decision' ? 'Decision' : 'Result'} onOpen={() => openDetails({ kind: item.kind, id: item.id })} />)}
       {items.length < total ? <button type="button" className="ws-attach__more" onClick={() => openDetails({ kind: 'overview', messageId: message.id, selection: { accountId: me.user.id, projectId, message } })}>{[counts.work ? `${counts.work} work` : null, counts.decisions ? `${counts.decisions} ${counts.decisions === 1 ? 'decision' : 'decisions'}` : null, counts.results ? `${counts.results} ${counts.results === 1 ? 'result' : 'results'}` : null].filter(Boolean).join(' · ')} · view linked objects</button> : null}
     </div>
@@ -144,7 +163,7 @@ export function useCreateWorkFromMessage(project: Project) {
     keys.current.set(message.id, key);
     setBusy(message.id); setFailed(null);
     try {
-      const item = await createWork(project.id, { title: firstLine(message.body), sources: [{ type: 'message', id: message.id }] }, key);
+      const item = await createWork(project.id, { title: firstLine(messagePreview(message.body, message.files?.length)), sources: [{ type: 'message', id: message.id }] }, key);
       keys.current.delete(message.id);
       revalidator.revalidate();
       openDetails({ kind: 'work', id: item.id });

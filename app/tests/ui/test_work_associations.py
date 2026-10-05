@@ -79,18 +79,23 @@ class MessageWorkJourney(unittest.TestCase):
         self.addCleanup(lambda: page.unroute_all(behavior="ignoreErrors"))
         return page
 
+    def thread_read(self, url):
+        """The open thread's association reads. Since #195 the project's stream reads its own roots
+        (this project's two conversation roots) separately; that read is not the thread's batch."""
+        return "/work-associations?" in url and set(parse_qs(urlsplit(url).query)["messageIds"][0].split(",")) != {self.m0, self.long_messages[0]}
+
     def ready(self, page):
-        expect(page.locator(".project-convo")).to_have_attribute("data-associations-phase", "ready")
-        expect(page.locator(".project-convo")).to_have_attribute("data-associations-observed-at", re.compile(r"^\d{4}-\d{2}-\d{2}T"))
+        expect(page.locator(".thread__pane")).to_have_attribute("data-associations-phase", "ready")
+        expect(page.locator(".thread__pane")).to_have_attribute("data-associations-observed-at", re.compile(r"^\d{4}-\d{2}-\d{2}T"))
 
     def chips(self, page):
-        return page.locator(".project-convo__feed .ws-chip").evaluate_all("els=>els.map(el=>({kind:el.dataset.workKind,id:el.dataset.workId,message:el.closest('[data-message-id]').dataset.messageId}))")
+        return page.locator(".thread__feed .ws-chip").evaluate_all("els=>els.map(el=>({kind:el.dataset.workKind,id:el.dataset.workId,message:el.closest('[data-message-id]').dataset.messageId}))")
 
     def anchor(self, page):
-        return page.locator(".project-convo__feed").evaluate("el=>{const top=el.getBoundingClientRect().top;const row=[...el.querySelectorAll('[data-message-id]')].find(row=>row.getBoundingClientRect().bottom>top);return {id:row.dataset.messageId,offset:row.getBoundingClientRect().top-top};}")
+        return page.locator(".thread__feed").evaluate("el=>{const top=el.getBoundingClientRect().top;const row=[...el.querySelectorAll('[data-message-id]')].find(row=>row.getBoundingClientRect().bottom>top);return {id:row.dataset.messageId,offset:row.getBoundingClientRect().top-top};}")
 
     def assert_anchor(self, page, anchor):
-        offset = page.locator(f"[data-message-id='{anchor['id']}']").evaluate("el=>el.getBoundingClientRect().top-el.closest('.project-convo__feed').getBoundingClientRect().top")
+        offset = page.locator(f"#thread [data-message-id='{anchor['id']}']").evaluate("el=>el.getBoundingClientRect().top-el.closest('.thread__feed').getBoundingClientRect().top")
         self.assertLess(abs(offset - anchor["offset"]), 3)
 
     def test_01_global_object_and_edge_pages_keep_native_ids_counts_and_reply(self):
@@ -98,15 +103,15 @@ class MessageWorkJourney(unittest.TestCase):
             with self.subTest(phone=phone):
                 page = self.page(phone)
                 reads = []
-                page.on("request", lambda request: reads.append(request.url) if "/work-associations?" in request.url else None)
+                page.on("request", lambda request: reads.append(request.url) if self.thread_read(request.url) else None)
                 page.goto(f"/projects/{self.project}/conversations/{self.conversation}"); self.ready(page)
                 self.assertEqual(len(reads), 1)
                 self.assertEqual(set(parse_qs(urlsplit(reads[0]).query)["messageIds"][0].split(',')), {self.m0, self.m1})
-                objects = page.get_by_role("navigation", name="Linked object pages")
-                edges = page.get_by_role("navigation", name="Message link pages")
+                objects = page.locator("#thread").get_by_role("navigation", name="Linked object pages")
+                edges = page.locator("#thread").get_by_role("navigation", name="Message link pages")
                 expect(objects).to_contain_text("1–50 of 68 objects")
                 expect(edges).to_contain_text("1–50 of 100 links")
-                expect(page.locator(f"[data-message-id='{self.m0}'] .ws-attach__more")).to_contain_text("64 work · 3 decisions · 1 result")
+                expect(page.locator(f"#thread [data-message-id='{self.m0}'] .ws-attach__more")).to_contain_text("64 work · 3 decisions · 1 result")
                 expect(page.get_by_role("button", name="Work: Related only; not made from either message", exact=True)).to_have_count(0)
                 field = page.get_by_label("Reply", exact=True); field.fill("Keep this reply while checking the older measurement links")
                 first = self.chips(page); self.assertEqual(len(first), 50)
@@ -124,13 +129,13 @@ class MessageWorkJourney(unittest.TestCase):
                 self.assertEqual({(chip["kind"], chip["id"]) for chip in first + second_edges + last}, self.expected)
                 self.assertLessEqual(len(self.chips(page)), 50)
                 expect(field).to_have_value("Keep this reply while checking the older measurement links")
-                page.locator(".project-convo__feed").get_by_role("button",name="Result: The shield reduced noise",exact=True).scroll_into_view_if_needed()
+                page.locator(".thread__feed").get_by_role("button",name="Result: The shield reduced noise",exact=True).scroll_into_view_if_needed()
                 shot(page, f"bounded-message-objects-mixed-{'phone' if phone else 'desktop'}")
                 if phone:
-                    self.assertTrue(page.locator(".project-convo__feed .ws-chip__t").evaluate_all("els=>els.every(el=>el.scrollWidth<=el.clientWidth+1 && el.scrollHeight<=el.clientHeight+1 && getComputedStyle(el).whiteSpace==='normal')"),"every distinguishing native title is fully visible on the phone")
+                    self.assertTrue(page.locator(".thread__feed .ws-chip__t").evaluate_all("els=>els.every(el=>el.scrollWidth<=el.clientWidth+1 && el.scrollHeight<=el.clientHeight+1 && getComputedStyle(el).whiteSpace==='normal')"),"every distinguishing native title is fully visible on the phone")
                 expect(edges.get_by_role("button")).to_have_count(0)
-                pane=page.locator(".project-convo__feed");pane.hover();page.mouse.wheel(0,100000)
-                page.wait_for_function("()=>new Promise(resolve=>{let last=-1,stable=0;const check=()=>{const p=document.querySelector('.project-convo__feed');stable=p.scrollTop===last?stable+1:0;last=p.scrollTop;if(stable>8)resolve(true);else requestAnimationFrame(check);};requestAnimationFrame(check);})")
+                pane=page.locator(".thread__feed");pane.hover();page.mouse.wheel(0,100000)
+                page.wait_for_function("()=>new Promise(resolve=>{let last=-1,stable=0;const check=()=>{const p=document.querySelector('.thread__feed');stable=p.scrollTop===last?stable+1:0;last=p.scrollTop;if(stable>8)resolve(true);else requestAnimationFrame(check);};requestAnimationFrame(check);})")
                 shot(page, f"bounded-message-objects-{'phone' if phone else 'desktop'}")
                 page.reload(); self.ready(page)
                 expect(objects).to_contain_text("51–68 of 68 objects")
@@ -147,12 +152,12 @@ class MessageWorkJourney(unittest.TestCase):
                 response = route.fetch(); self.assertEqual(response.status, 200); held.append((route,response)); page.evaluate("window.__associationHeld = true")
             else: route.continue_()
         page.route("**/work-associations?**", hold)
-        page.get_by_role("navigation", name="Linked object pages").get_by_role("button", name="Next", exact=True).click()
+        page.locator("#thread").get_by_role("navigation", name="Linked object pages").get_by_role("button", name="Next", exact=True).click()
         page.wait_for_function("window.__associationHeld === true")
-        pane = page.locator(".project-convo__feed")
+        pane = page.locator(".thread__feed")
         self.assertGreater(pane.evaluate("el=>el.scrollTop"),0,"loading still has scrollable native message text")
         pane.hover(); page.mouse.wheel(0, -100000)
-        page.wait_for_function("document.querySelector('.project-convo__feed').scrollTop === 0")
+        page.wait_for_function("document.querySelector('.thread__feed').scrollTop === 0")
         current = self.anchor(page)
         field = page.get_by_label("Reply", exact=True); field.fill("Keep the reader's newer position and this reply")
         field.evaluate("el=>{el.focus();el.setSelectionRange(5,17);}")
@@ -169,7 +174,7 @@ class MessageWorkJourney(unittest.TestCase):
                 response=route.fetch();self.assertEqual(response.status,200);held.append((route,response));page.evaluate("window.__associationHeld=true")
             else: route.continue_()
         page.route("**/work-associations?**",hold)
-        pages=page.get_by_role("navigation",name="Linked object pages")
+        pages=page.locator("#thread").get_by_role("navigation",name="Linked object pages")
         pages.get_by_role("button",name="Next",exact=True).click();page.wait_for_function("window.__associationHeld===true")
         pages.get_by_role("button",name="Refresh",exact=True).click();self.ready(page)
         route,response=held.pop();route.fulfill(response=response)
@@ -177,10 +182,10 @@ class MessageWorkJourney(unittest.TestCase):
         field=page.get_by_label("Reply",exact=True);field.fill("Reply stays private during an unavailable association read")
         page.route("**/work-associations?**",lambda route:route.fulfill(status=503,json={"code":"WORK_READ_UNAVAILABLE","error":"Fixture unavailable read"}))
         pages.get_by_role("button",name="Refresh",exact=True).click()
-        expect(page.get_by_role("alert").filter(has_text="Linked work could not be loaded")).to_be_visible()
+        expect(page.locator("#thread").get_by_role("alert").filter(has_text="Linked work could not be loaded")).to_be_visible()
         self.assertEqual(self.chips(page),[]);expect(field).to_have_value("Reply stays private during an unavailable association read")
         page.unroute("**/work-associations?**")
-        page.get_by_role("button",name="Refresh linked work",exact=True).click();self.ready(page);self.assertEqual(self.chips(page),first)
+        page.locator("#thread").get_by_role("button",name="Refresh linked work",exact=True).click();self.ready(page);self.assertEqual(self.chips(page),first)
 
     def test_04_cookie_account_change_retires_held_old_page_and_isolates_reply(self):
         page=self.page();page.goto(f"/projects/{self.project}/conversations/{self.conversation}");self.ready(page)
@@ -191,25 +196,25 @@ class MessageWorkJourney(unittest.TestCase):
                 response=route.fetch();self.assertEqual(response.status,200);held.append((route,response));page.evaluate("window.__associationHeld=true")
             else:route.continue_()
         page.route("**/work-associations?**",hold)
-        page.get_by_role("navigation",name="Linked object pages").get_by_role("button",name="Next",exact=True).click();page.wait_for_function("window.__associationHeld===true")
+        page.locator("#thread").get_by_role("navigation",name="Linked object pages").get_by_role("button",name="Next",exact=True).click();page.wait_for_function("window.__associationHeld===true")
         page.context.clear_cookies();page.context.add_cookies(self.states[1]["cookies"]);page.evaluate("window.dispatchEvent(new Event('focus'))")
         expect(field).to_have_value("");self.ready(page)
         field.fill("Ada Nowak's separate private reply")
         route,response=held.pop();route.fulfill(response=response);self.ready(page)
         self.assertEqual(self.chips(page),first);expect(field).to_have_value("Ada Nowak's separate private reply")
-        expect(page.get_by_role("navigation",name="Linked object pages")).to_contain_text("1–50 of 68 objects")
+        expect(page.locator("#thread").get_by_role("navigation",name="Linked object pages")).to_contain_text("1–50 of 68 objects")
         page.unroute("**/work-associations?**",hold)
 
     def test_05_older_visible_messages_use_one_bounded_batch_and_native_source(self):
         page=self.page();reads=[]
-        page.on("request",lambda request:reads.append(parse_qs(urlsplit(request.url).query)) if "/work-associations?" in request.url else None)
-        page.goto(f"/projects/{self.project}/conversations/{self.long_conversation}#message-{self.long_messages[0]}")
-        expect(page.locator(f"[data-message-id='{self.long_messages[0]}']")).to_be_visible();self.ready(page)
-        expect(page.get_by_role("button",name="Work: Revisit the first measurement",exact=True)).to_be_visible()
-        self.assertGreater(page.locator("[data-message-id]").count(),100)
-        pane=page.locator(".project-convo__feed");pane.hover();page.mouse.wheel(0,100000)
-        expect(page.locator(f"[data-message-id='{self.long_messages[-1]}']")).to_be_visible();self.ready(page)
-        expect(page.get_by_role("button",name="Work: Revisit the latest measurement",exact=True)).to_be_visible()
+        page.on("request",lambda request:reads.append(parse_qs(urlsplit(request.url).query)) if self.thread_read(request.url) else None)
+        page.goto(f"/projects/{self.project}/conversations/{self.long_conversation}#message-{self.long_messages[1]}")
+        expect(page.locator(f"#thread [data-message-id='{self.long_messages[0]}']")).to_be_visible();self.ready(page)
+        expect(page.locator("#thread").get_by_role("button",name="Work: Revisit the first measurement",exact=True)).to_be_visible()
+        self.assertGreater(page.locator("#thread [data-message-id]").count(),100)
+        pane=page.locator(".thread__feed");pane.hover();page.mouse.wheel(0,100000)
+        expect(page.locator(f"#thread [data-message-id='{self.long_messages[-1]}']")).to_be_visible();self.ready(page)
+        expect(page.locator("#thread").get_by_role("button",name="Work: Revisit the latest measurement",exact=True)).to_be_visible()
         for query in reads:
             self.assertEqual(query["relation"],["source"])
             self.assertLessEqual(len(query["messageIds"][0].split(',')),100)
@@ -217,9 +222,9 @@ class MessageWorkJourney(unittest.TestCase):
 
     def test_06_paused_router_revalidation_retires_viewport_selector_aba(self):
         page=self.page();reads=[]
-        page.on("request",lambda request:reads.append(parse_qs(urlsplit(request.url).query)["messageIds"][0]) if "/work-associations?" in request.url else None)
-        page.goto(f"/projects/{self.project}/conversations/{self.long_conversation}#message-{self.long_messages[0]}")
-        expect(page.get_by_role("button",name="Work: Revisit the first measurement",exact=True)).to_be_visible();self.ready(page)
+        page.on("request",lambda request:reads.append(parse_qs(urlsplit(request.url).query)["messageIds"][0]) if self.thread_read(request.url) else None)
+        page.goto(f"/projects/{self.project}/conversations/{self.long_conversation}#message-{self.long_messages[1]}")
+        expect(page.locator("#thread").get_by_role("button",name="Work: Revisit the first measurement",exact=True)).to_be_visible();self.ready(page)
         original_selector=reads[-1];held=[];paused=[]
         def hold_scope(route):
             if parse_qs(urlsplit(route.request.url).query)["messageIds"][0]==original_selector and not held:
@@ -231,17 +236,17 @@ class MessageWorkJourney(unittest.TestCase):
             response=route.fetch();self.assertEqual(response.status,200);paused.append((route,response));page.evaluate("window.__authHeld=true")
         page.route("**/api/v1/me",pause_auth)
         page.evaluate("window.dispatchEvent(new Event('focus'))");page.wait_for_function("window.__authHeld===true")
-        pane=page.locator(".project-convo__feed");pane.hover();page.mouse.wheel(0,100000)
-        page.wait_for_function("el=>{const row=document.querySelector('[data-message-id=\"'+el+'\"]');const pane=row.closest('.project-convo__feed');return row.getBoundingClientRect().top<pane.getBoundingClientRect().bottom;}",arg=self.long_messages[-1])
-        expect(page.locator(".project-convo")).to_have_attribute("data-associations-phase","loading")
-        page.mouse.wheel(0,-100000);page.wait_for_function("document.querySelector('.project-convo__feed').scrollTop===0")
-        expect(page.locator(".project-convo")).to_have_attribute("data-associations-phase","loading")
+        pane=page.locator(".thread__feed");pane.hover();page.mouse.wheel(0,100000)
+        page.wait_for_function("el=>{const row=document.querySelector('[data-message-id=\"'+el+'\"]');const pane=row.closest('.thread__feed');return row.getBoundingClientRect().top<pane.getBoundingClientRect().bottom;}",arg=self.long_messages[-1])
+        expect(page.locator(".thread__pane")).to_have_attribute("data-associations-phase","loading")
+        page.mouse.wheel(0,-100000);page.wait_for_function("document.querySelector('.thread__feed').scrollTop===0")
+        expect(page.locator(".thread__pane")).to_have_attribute("data-associations-phase","loading")
         route,response=held.pop();route.fulfill(response=response)
-        expect(page.locator(".project-convo")).to_have_attribute("data-associations-phase","loading")
+        expect(page.locator(".thread__pane")).to_have_attribute("data-associations-phase","loading")
         page.unroute("**/work-associations?**",hold_scope)
         self.assertEqual(len(paused),1)
         route,response=paused.pop();route.fulfill(response=response);page.unroute("**/api/v1/me",pause_auth)
-        self.ready(page);expect(page.get_by_role("button",name="Work: Revisit the first measurement",exact=True)).to_be_visible()
+        self.ready(page);expect(page.locator("#thread").get_by_role("button",name="Work: Revisit the first measurement",exact=True)).to_be_visible()
 
     def test_07_restored_feed_observes_older_and_newer_native_batches(self):
         page=self.page();material_reads=[];native_recoveries=[];holding=[True]
@@ -253,50 +258,50 @@ class MessageWorkJourney(unittest.TestCase):
             else:route.fulfill(response=response)
         page.route(material_path,hold_material)
         page.on("response",lambda response:native_recoveries.append(response.status) if urlsplit(response.url).path==self.root else None)
-        page.goto(f"/projects/{self.project}/conversations/{self.long_conversation}#message-{self.long_messages[0]}")
-        self.ready(page);expect(page.get_by_role("button",name="Work: Revisit the first measurement",exact=True)).to_be_visible()
+        page.goto(f"/projects/{self.project}/conversations/{self.long_conversation}#message-{self.long_messages[1]}")
+        self.ready(page);expect(page.locator("#thread").get_by_role("button",name="Work: Revisit the first measurement",exact=True)).to_be_visible()
         page.wait_for_function("window.__materialReadHeld===true")
         before=len(native_recoveries)
-        page.evaluate("()=>{window.__originalFeedColumn=document.querySelector('.project-convo__feed').firstElementChild;window.__feedRemovalObserver=new MutationObserver(()=>{if(!window.__originalFeedColumn.isConnected)window.__feedWasRemoved=true;});window.__feedRemovalObserver.observe(document.body,{childList:true,subtree:true});}")
+        page.evaluate("()=>{window.__originalFeedColumn=document.querySelector('.thread__feed').firstElementChild;window.__feedRemovalObserver=new MutationObserver(()=>{if(!window.__originalFeedColumn.isConnected)window.__feedWasRemoved=true;});window.__feedRemovalObserver.observe(document.body,{childList:true,subtree:true});}")
         # Only the citation failure is injected; recovery uses all real native responses.
         holding[0]=False
         material_reads.pop().fulfill(status=404,json={"code":"NOT_FOUND","error":"Fixture transient unavailable citation"})
         page.wait_for_function("window.__feedWasRemoved===true")
         self.ready(page)
-        self.assertTrue(page.locator(".project-convo__feed").evaluate("el=>el.firstElementChild!==window.__originalFeedColumn"),"the observed message subtree was actually replaced")
+        self.assertTrue(page.locator(".thread__feed").evaluate("el=>el.firstElementChild!==window.__originalFeedColumn"),"the observed message subtree was actually replaced")
         self.assertGreater(len(native_recoveries),before)
         self.assertTrue(all(status==200 for status in native_recoveries[before:]),"native project checks restore the mounted reader")
-        expect(page.get_by_role("button",name="Work: Revisit the first measurement",exact=True)).to_be_visible()
-        pane=page.locator(".project-convo__feed");pane.hover();page.mouse.wheel(0,100000)
-        expect(page.get_by_role("button",name="Work: Revisit the latest measurement",exact=True)).to_be_visible();self.ready(page)
+        expect(page.locator("#thread").get_by_role("button",name="Work: Revisit the first measurement",exact=True)).to_be_visible()
+        pane=page.locator(".thread__feed");pane.hover();page.mouse.wheel(0,100000)
+        expect(page.locator("#thread").get_by_role("button",name="Work: Revisit the latest measurement",exact=True)).to_be_visible();self.ready(page)
         page.mouse.wheel(0,-100000)
-        expect(page.get_by_role("button",name="Work: Revisit the first measurement",exact=True)).to_be_visible();self.ready(page)
+        expect(page.locator("#thread").get_by_role("button",name="Work: Revisit the first measurement",exact=True)).to_be_visible();self.ready(page)
         page.evaluate("window.__feedRemovalObserver.disconnect()")
         page.unroute_all(behavior="ignoreErrors")
 
     def test_08_one_pagedown_gesture_keeps_scrolling_across_a_held_batch(self):
         page=self.page();reads=[]
-        page.on("request",lambda request:reads.append(parse_qs(urlsplit(request.url).query)["messageIds"][0]) if "/work-associations?" in request.url else None)
-        page.goto(f"/projects/{self.project}/conversations/{self.long_conversation}#message-{self.long_messages[0]}")
-        expect(page.get_by_role("button",name="Work: Revisit the first measurement",exact=True)).to_be_visible();self.ready(page)
-        original=reads[-1];pane=page.locator(".project-convo__feed")
-        page.locator(f"[data-message-id='{self.long_messages[100]}']").evaluate("row=>{const p=row.closest('.project-convo__feed');p.scrollTop+=row.getBoundingClientRect().top-p.getBoundingClientRect().bottom-20;}")
-        page.wait_for_function("()=>new Promise(resolve=>{let last=-1,stable=0;const check=()=>{const p=document.querySelector('.project-convo__feed');stable=p.scrollTop===last?stable+1:0;last=p.scrollTop;if(stable>8)resolve(true);else requestAnimationFrame(check);};requestAnimationFrame(check);})")
+        page.on("request",lambda request:reads.append(parse_qs(urlsplit(request.url).query)["messageIds"][0]) if self.thread_read(request.url) else None)
+        page.goto(f"/projects/{self.project}/conversations/{self.long_conversation}#message-{self.long_messages[1]}")
+        expect(page.locator("#thread").get_by_role("button",name="Work: Revisit the first measurement",exact=True)).to_be_visible();self.ready(page)
+        original=reads[-1];pane=page.locator(".thread__feed")
+        page.locator(f"#thread [data-message-id='{self.long_messages[100]}']").evaluate("row=>{const p=row.closest('.thread__feed');p.scrollTop+=row.getBoundingClientRect().top-p.getBoundingClientRect().bottom-20;}")
+        page.wait_for_function("()=>new Promise(resolve=>{let last=-1,stable=0;const check=()=>{const p=document.querySelector('.thread__feed');stable=p.scrollTop===last?stable+1:0;last=p.scrollTop;if(stable>8)resolve(true);else requestAnimationFrame(check);};requestAnimationFrame(check);})")
         self.ready(page);self.assertEqual(reads[-1],original)
         held=[];holding=[True]
         def hold(route):
-            if holding[0] and parse_qs(urlsplit(route.request.url).query)["messageIds"][0]!=original:
+            if holding[0] and self.thread_read(route.request.url) and parse_qs(urlsplit(route.request.url).query)["messageIds"][0]!=original:
                 top=pane.evaluate("el=>el.scrollTop")
                 response=route.fetch();self.assertEqual(response.status,200)
                 if holding[0]:held.append((route,response,top));page.evaluate("window.__gestureBatchHeld=true")
                 else:route.fulfill(response=response)
             else:route.continue_()
         page.route("**/work-associations?**",hold)
-        page.locator(f"[data-message-id='{self.long_messages[98]}']").evaluate("el=>el.focus({preventScroll:true})")
+        page.locator(f"#thread [data-message-id='{self.long_messages[98]}']").evaluate("el=>el.focus({preventScroll:true})")
         page.keyboard.press("PageDown")
         page.wait_for_function("window.__gestureBatchHeld===true")
-        expect(page.locator(".project-convo")).to_have_attribute("data-associations-phase","loading")
-        page.wait_for_function("()=>new Promise(resolve=>{let last=-1,stable=0;const check=()=>{const p=document.querySelector('.project-convo__feed');stable=p.scrollTop===last?stable+1:0;last=p.scrollTop;if(stable>8)resolve(true);else requestAnimationFrame(check);};requestAnimationFrame(check);})")
+        expect(page.locator(".thread__pane")).to_have_attribute("data-associations-phase","loading")
+        page.wait_for_function("()=>new Promise(resolve=>{let last=-1,stable=0;const check=()=>{const p=document.querySelector('.thread__feed');stable=p.scrollTop===last?stable+1:0;last=p.scrollTop;if(stable>8)resolve(true);else requestAnimationFrame(check);};requestAnimationFrame(check);})")
         self.assertEqual(len(held),1)
         route,response,when_held=held.pop()
         self.assertGreater(pane.evaluate("el=>el.scrollTop"),when_held+3,"one native smooth PageDown continues after the batch response is held")

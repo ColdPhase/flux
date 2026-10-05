@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { flushSync } from 'react-dom';
-import { Link, useLoaderData, useSearchParams, type LoaderFunctionArgs } from 'react-router';
+import { Link, useLoaderData, useLocation, useNavigation, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { AgentOperation, ConversationMessage, ProjectAgentConnection, ProjectAgents as ProjectAgentsData, TaskDiscussion, WorkStatus } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
-import { useDraft } from '../app/drafts';
+import { useComposerDraft, useComposerScope } from '../composer/draft';
+import { ComposerFiles, MessageFiles } from '../composer/Files';
+import { contributeToTask, getTaskDiscussion } from '../composer/api';
 import { useProjectShell } from '../project/data';
-import { Button, EmptyState, Icon } from '../ui';
+import { Button, Icon } from '../ui';
 import { STATUS_LABEL } from '../work/format';
 import { useNativeOwn, useWorkChoices } from '../work/useDetailReads';
 import { WorkPagination } from '../work/WorkPagination';
-import { contributeToTask, getProjectAgents, getTaskDiscussion } from './api';
+import { getProjectAgents } from './api';
 import './agents.css';
 
 /**
@@ -88,14 +90,6 @@ function authorName(message: ConversationMessage, names: Map<string, string>) {
   return names.get(message.authorId) ?? 'Someone';
 }
 
-/** A sent-but-unconfirmed contribution: its text and the one client id every retry reuses. */
-function parsePending(raw: string): { body: string; id: string } | null {
-  try {
-    const value = JSON.parse(raw) as { body?: unknown; id?: unknown };
-    return typeof value.body === 'string' && typeof value.id === 'string' ? { body: value.body, id: value.id } : null;
-  } catch { return null; }
-}
-
 /**
  * Scrolls the view's pane to its end, so the newest message sits above the sticky composer
  * (scrollIntoView would ignore the composer and leave the message under it).
@@ -117,13 +111,13 @@ function mergeMessages(current: ConversationMessage[], incoming: ConversationMes
  * leaves no gap), merged into what is shown. Earlier messages already on the page stay.
  */
 async function latestThread(workId: string, shown: TaskDiscussion, signal: AbortSignal): Promise<TaskDiscussion> {
-  const latest = await getTaskDiscussion(workId, signal);
+  const latest = await getTaskDiscussion(workId, { signal });
   const newestSeen = Math.max(shown.root?.sequence ?? 0, ...shown.messages.map((message) => message.sequence));
   let incoming = latest.messages;
   let page = latest;
   while (newestSeen > 0 && page.messagePage.hasMoreBefore && (page.messages[0]?.sequence ?? 0) > newestSeen + 1) {
     const before = page.messages[0]!.sequence;
-    page = await getTaskDiscussion(workId, signal, before);
+    page = await getTaskDiscussion(workId, { signal, beforeSequence: before });
     if (!page.messages.length || page.messages[0]!.sequence >= before) throw new Error('Could not load the replies in between');
     incoming = mergeMessages(page.messages, incoming);
   }
@@ -140,7 +134,7 @@ function paneAtEnd(marker: HTMLElement | null) {
 /** The task a thread belongs to: its identity and title, from a bounded native read. */
 interface ThreadTask { id: string; title: string; status: WorkStatus }
 
-function TaskThread({ task, projectId, meId, names, canWrite }: { task: ThreadTask; projectId: string; meId: string; names: Map<string, string>; canWrite: boolean }) {
+function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: { task: ThreadTask; projectId: string; meId: string; names: Map<string, string>; canWrite: boolean; changingScope: boolean }) {
   const [discussion, setDiscussion] = useState<TaskDiscussion | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [accessLost, setAccessLost] = useState(false);
@@ -152,10 +146,10 @@ function TaskThread({ task, projectId, meId, names, canWrite }: { task: ThreadTa
   }, []);
   const reload = useRef(() => { /* set while mounted */ });
   // Per account and task, kept across views and reloads like every other composer (#40).
-  const draft = useDraft(meId, `task:${task.id}`);
-  const pendingStore = useDraft(meId, `task:${task.id}:pending`);
-  const [sending, setSending] = useState(false);
-  const [sendError, setSendError] = useState<string | null>(null);
+  const composer = useComposerDraft(meId, projectId, `task:${task.id}`);
+  const captureScope = useComposerScope(composer.key);
+  const sending = composer.sending;
+  const blocked = changingScope || !discussion || !canWrite || accessLost;
   const box = useRef<HTMLTextAreaElement>(null);
   const end = useRef<HTMLDivElement>(null);
 
@@ -174,7 +168,7 @@ function TaskThread({ task, projectId, meId, names, canWrite }: { task: ThreadTa
           again = false;
           const before = shown.current;
           try {
-            const next = before ? await latestThread(task.id, before, controller.signal) : await getTaskDiscussion(task.id, controller.signal);
+            const next = before ? await latestThread(task.id, before, controller.signal) : await getTaskDiscussion(task.id, { signal: controller.signal });
             if (controller.signal.aborted) return;
             // New messages follow a reader who is at the end; anyone reading earlier stays in place.
             const follow = !!before && paneAtEnd(end.current);
@@ -234,18 +228,14 @@ function TaskThread({ task, projectId, meId, names, canWrite }: { task: ThreadTa
 
   const send = async (event?: FormEvent) => {
     event?.preventDefault();
-    const body = draft.text.trim();
-    if (!body || sending || !canWrite || accessLost) return;
-    // One client message id per text, persisted before sending: a retry after a lost response or a
-    // reload reuses it, so the server stores the contribution once.
-    const stored = parsePending(pendingStore.text);
-    const pending = stored && stored.body === body ? stored : { body, id: crypto.randomUUID() };
-    pendingStore.setText(JSON.stringify(pending));
-    setSending(true); setSendError(null);
+    if (blocked) return;
+    const command = composer.begin();
+    if (!command) return;
+    const active = captureScope();
     try {
-      const message = await contributeToTask(task.id, { body, clientMessageId: pending.id, kind: 'text' });
-      pendingStore.clear();
-      draft.clear();
+      const message = await contributeToTask(task.id, { ...command, kind: 'text' });
+      composer.finish(command.clientMessageId);
+      if (!active()) return;
       // The sent message is on the page before the pane scrolls to it.
       flushSync(() => show((current) => current && !current.messages.some((item) => item.id === message.id) && current.root?.id !== message.id
         ? { ...current, conversationId: current.conversationId ?? message.conversationId, rootMessageId: current.rootMessageId ?? message.id,
@@ -253,12 +243,7 @@ function TaskThread({ task, projectId, meId, names, canWrite }: { task: ThreadTa
         : current));
       scrollPaneToEnd(end.current);
       box.current?.focus({ preventScroll: true });
-    } catch (cause) {
-      setSendError(cause instanceof ApiError && (cause.status === 404 || cause.status === 403) ? 'Not sent: you can no longer write to this task.'
-        : cause instanceof NetworkError ? 'Not sent: Flux is unreachable. Your text is kept; send again.' : 'Not sent. Your text is kept; send again.');
-    } finally {
-      setSending(false);
-    }
+    } catch (cause) { composer.finish(command.clientMessageId, cause); }
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -266,7 +251,7 @@ function TaskThread({ task, projectId, meId, names, canWrite }: { task: ThreadTa
   };
 
   return (
-    <section className="agents-thread" aria-label={`Thread of ${task.title}`}>
+    <section className="agents-thread" data-empty={discussion && !messages.length && !accessLost ? 'true' : undefined} aria-label={`Thread of ${task.title}`}>
       <p className="agents-thread__top">Thread of this task · the same one shown in Conversation{inConversation ? <> · <Link className="ui-link" to={inConversation}>Open in Conversation</Link></> : null}</p>
       {loadError ? <p className="agents-thread__error" role="alert">{loadError} <button type="button" className="ui-link" onClick={() => reload.current()}>Try again</button></p> : null}
       {accessLost ? <p className="agents-thread__error" role="alert">You can no longer read this task. Your unsent text is kept on this device.</p> : null}
@@ -283,7 +268,8 @@ function TaskThread({ task, projectId, meId, names, canWrite }: { task: ThreadTa
                 <time dateTime={message.createdAt}>{when(message.createdAt)}</time>
                 {message.contribution ? <span className="agents-msg__kind"> · {message.contribution.kind}</span> : null}
               </span>
-              <p className="agents-msg__body">{message.body}</p>
+              {message.body ? <p className="agents-msg__body">{message.body}</p> : null}
+              <MessageFiles files={message.files} />
             </li>
           );
         })}
@@ -292,13 +278,14 @@ function TaskThread({ task, projectId, meId, names, canWrite }: { task: ThreadTa
       <div ref={end} />
       <form className="agents-composer" onSubmit={(event) => { void send(event); }}>
         <label className="ui-vh" htmlFor="agents-draft">Write to this task</label>
-        <textarea id="agents-draft" ref={box} value={draft.text} rows={2} readOnly={sending} aria-busy={sending}
-          placeholder={canWrite ? 'Add to this work…' : 'You can read this task but not write to it.'} disabled={!discussion || !canWrite || accessLost}
-          onChange={(event) => draft.setText(event.target.value)} onKeyDown={onKeyDown} />
-        {sendError ? <p className="agents-composer__error" role="alert">{sendError}</p> : null}
+        <textarea id="agents-draft" ref={box} value={composer.draft.body} rows={2} readOnly={sending || changingScope} aria-busy={sending || changingScope}
+          placeholder={canWrite ? 'Add to this work…' : 'You can read this task but not write to it.'} disabled={blocked}
+          onChange={(event) => { if (!blocked) composer.setBody(event.target.value); }} onKeyDown={onKeyDown} />
+        <ComposerFiles state={composer} disabled={blocked} />
+        {changingScope ? <p className="agents-composer__hint" role="status">Opening your selection… Your current draft is kept.</p> : null}
         <div className="agents-composer__row">
           <span className="agents-composer__hint">Goes to the task thread · Enter sends, Shift+Enter new line</span>
-          <Button type="submit" variant="primary" icon="send" busy={sending} disabled={!draft.text.trim() || !discussion || !canWrite || accessLost} aria-label="Send to task">Send</Button>
+          <Button type="submit" variant="primary" icon="send" busy={sending} disabled={!composer.canSend || blocked} aria-label="Send to task">Send</Button>
         </div>
       </form>
     </section>
@@ -352,6 +339,8 @@ export function ProjectAgents() {
   const data = useLoaderData() as ProjectAgentsData;
   const shell = useProjectShell();
   const { me } = useShellData();
+  const location = useLocation();
+  const navigation = useNavigation();
   const [search, setSearch] = useSearchParams();
   const projectId = shell?.project.id ?? data.projectId;
   // Open, unparked tasks come one bounded native page at a time (#155), never the whole project.
@@ -369,7 +358,13 @@ export function ProjectAgents() {
   const settling = (!!wanted && !onPage && (own.read.phase === 'loading' || !choices.page)) || (!wanted && !choices.page);
   const task = settling ? null : onPage ?? ownTask ?? tasks[0] ?? null;
   const names = useMemo(() => new Map((shell?.people ?? []).map((person) => [person.id, person.name])), [shell]);
-  const select = (id: string) => setSearch((current) => { const next = new URLSearchParams(current); next.set('task', id); return next; }, { replace: true });
+  const changingScope = navigation.state !== 'idle' && !!navigation.location
+    && (navigation.location.pathname !== location.pathname || navigation.location.search !== location.search);
+  // The task a pending `?task=` change selects, among the choices shown (the select offers only those).
+  const pendingId = changingScope && navigation.location?.pathname === location.pathname ? new URLSearchParams(navigation.location!.search).get('task') : null;
+  const pendingTask = pendingId ? tasks.find((item) => item.id === pendingId) ?? (task?.id === pendingId ? task : null) : null;
+  // Flush the pending navigation guard before a fast next input can reach the old keyed thread.
+  const select = (id: string) => setSearch((current) => { const next = new URLSearchParams(current); next.set('task', id); return next; }, { replace: true, flushSync: true });
   const connections = useConnections(projectId, me.user.id, data.connections);
 
   // The view scrolls in its own pane like every other view, so a long thread stays reachable
@@ -386,22 +381,20 @@ export function ProjectAgents() {
           {connections.list.map((connection) => <Connection key={connection.id} connection={connection} now={connections.now} />)}
         </ul>
       ) : (
-        <EmptyState icon="terminal" title="No agents connected to this project">
-          Each person can connect their own clients, such as Codex or Claude Code, and choose this project. They work on the same tasks and threads you see here.
-        </EmptyState>
+        <p className="agents__no-connections">No agents connected. You can still discuss tasks here.</p>
       )}
       {task ? (
         <>
           <div className="agents__task">
             <label className="agents__task-label" htmlFor="agents-task">Task</label>
-            <select id="agents-task" value={task.id} onChange={(event) => select(event.target.value)}>
+            <select id="agents-task" value={pendingTask?.id ?? task.id} onChange={(event) => select(event.target.value)}>
               {!tasks.some((item) => item.id === task.id) ? <option value={task.id}>{task.title} · {STATUS_LABEL[task.status]}</option> : null}
               {tasks.map((item) => <option key={item.id} value={item.id}>{item.title} · {STATUS_LABEL[item.status]}</option>)}
             </select>
             <Link className="ui-link agents__open" to={`/projects/${projectId}/tasks?open=work:${task.id}`}>Open task<Icon name="chevron-right" size={12} /></Link>
           </div>
           {choices.page && (choices.page.previousCursor || choices.page.nextCursor) ? <WorkPagination {...choices} label="Open task choices" noun="open tasks" /> : null}
-          <TaskThread key={task.id} task={task} projectId={projectId} meId={me.user.id} names={names} canWrite={shell?.project.access !== 'viewer'} />
+          <TaskThread key={`${me.user.id}:${projectId}:${task.id}`} task={task} projectId={projectId} meId={me.user.id} names={names} canWrite={shell?.project.access !== 'viewer'} changingScope={changingScope} />
         </>
       ) : choices.read.phase === 'unavailable' ? (
         <p className="agents__no-tasks" role="alert">Open tasks could not be loaded. <button type="button" className="ui-link" onClick={choices.onRefresh}>Refresh tasks</button></p>

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, test } from 'node:test';
-import { anthropicComparisonProvider } from '../../apps/worker/src/proactive-comparison/anthropic-provider.js';
+import { anthropicComparisonProvider, parsePrivateTargets } from '../../packages/agent-runtime/src/index.js';
 import { comparisonSourceHref } from '../../apps/web/src/project/proposals.js';
 
 const source = { type: 'result' as const, id: 'result-1', version: 1, text: 'Camera A missed gestures at 5 lux.' };
@@ -36,14 +36,15 @@ const server = createServer(async (request, response) => {
 let provider: ReturnType<typeof anthropicComparisonProvider>;
 before(async () => {
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  provider = anthropicComparisonProvider(`http://127.0.0.1:${(server.address() as AddressInfo).port}`);
+  // The loopback fixture is reachable only because this test's endpoint policy allows 127.0.0.1.
+  provider = anthropicComparisonProvider({ baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, policy: parsePrivateTargets('127.0.0.1') });
 });
 after(async () => { await new Promise<void>((resolve) => server.close(() => resolve())); });
 
 test('real HTTP adapter sends a fixed no-tool structured request and parses a text block after thinking', async () => {
   const signal = AbortSignal.timeout(2000);
-  const input = { apiKey: key, model: 'claude-sonnet-5' as const, sources: [source], signal };
-  assert.equal(await provider.countInputTokens(input), 111);
+  const input = { apiKey: key, provider: 'anthropic' as const, model: 'claude-sonnet-5', baseUrl: null, sources: [source], signal };
+  assert.equal(await provider.countInputTokens!(input), 111);
   const message = await provider.createMessage({ ...input, maxTokens: 1200, effort: 'low' });
   assert.equal(message.stopReason, 'end_turn');
   assert.deepEqual(message.usage, { inputTokens: 112, outputTokens: 78 });
@@ -65,7 +66,7 @@ test('real HTTP adapter sends a fixed no-tool structured request and parses a te
 });
 
 test('HTTP adapter retains observed usage for insufficient and malformed structured answers without raw output', async () => {
-  const input = { apiKey: key, model: 'claude-sonnet-5' as const, sources: [source],
+  const input = { apiKey: key, provider: 'anthropic' as const, model: 'claude-sonnet-5', baseUrl: null, sources: [source],
     maxTokens: 1200 as const, effort: 'low' as const, signal: AbortSignal.timeout(2000) };
   messageMode = 'insufficient';
   const insufficient = await provider.createMessage(input);
@@ -83,7 +84,7 @@ test('HTTP adapter retains observed usage for insufficient and malformed structu
 test('provider 503 has no automatic retry and does not reveal its error body', async () => {
   failMessage = true;
   const beforeFailure = requests.length;
-  await assert.rejects(provider.createMessage({ apiKey: key, model: 'claude-sonnet-5', sources: [source],
+  await assert.rejects(provider.createMessage({ apiKey: key, provider: 'anthropic', model: 'claude-sonnet-5', baseUrl: null, sources: [source],
     maxTokens: 1200, effort: 'low', signal: AbortSignal.timeout(2000) }), (error: Error) => {
     assert.ok(!error.message.includes(key));
     return true;

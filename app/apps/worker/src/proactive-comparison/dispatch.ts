@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { COMPARISON_CONTEXT_LIMITS, openBackgroundKey, proactiveOutboxRows } from '@flux/db';
-import { BACKGROUND_COMPARISON_MAX_INPUT_TOKENS, BACKGROUND_COMPARISON_MAX_OUTPUT_TOKENS,
-  BACKGROUND_COMPARISON_MODEL, comparisonObservedUsage, insufficientComparisonReason, validateComparisonResponse,
+import { BACKGROUND_COMPARISON_MAX_INPUT_TOKENS, BACKGROUND_COMPARISON_MAX_OUTPUT_TOKENS, boundedInputTokens,
+  comparisonInputEstimate, ComparisonNotSentError, comparisonObservedUsage, insufficientComparisonReason, validateComparisonResponse,
   type ComparisonProvider, type ComparisonSource, type Database } from '@flux/core';
 import { proactiveReservation } from './reservation-adapter.js';
 import { abortableComparisonCall, authorizedComparison, ComparisonStopped as Stop, watchComparisonAuthorization,
@@ -15,9 +15,11 @@ type Outcome =
   | { status: 'unknown'; reason: string };
 
 /**
- * Explicitly invoked, bounded dispatch slice for a controlled provider. It is not registered
- * as a scheduled worker: production rule activation stays unavailable until the real provider,
- * source set and UI pass the full #58 contract. Provider calls do not hold SQL locks.
+ * Bounded dispatch of one ready candidate, called by the comparison worker's tick when the
+ * operator switched background comparisons on (#58), and by tests. Provider calls do not hold SQL
+ * locks. The request
+ * goes to the owner's connection, whatever its provider (F-020): `provider` is the adapter registry
+ * (`providerComparison` of `@flux/agent-runtime`) or a test double.
  */
 export async function dispatchProactiveComparison(input: { db: Database; candidateId: string;
   masterKey: Buffer | null; provider: ComparisonProvider }): Promise<Outcome> {
@@ -64,6 +66,7 @@ export async function dispatchProactiveComparison(input: { db: Database; candida
       const sources = [...new Map(selected.map((source) => [`${source.type}:${source.id}:${source.version}`, source])).values()];
       const connection = await rows.connection(candidate.ownerUserId);
       if (connection?.id !== reservation.connectionId || !connection.encryptedKey) throw new Stop('AUTHORIZATION_CHANGED');
+      if (connection.inputPriceMicrosPerMTok === null || connection.outputPriceMicrosPerMTok === null) throw new Stop('CONNECTION_PRICE_UNKNOWN');
       await rows.saveInspected(candidate.id, sources.map((source) => ({ type: source.type, id: source.id,
         version: source.version, title: source.title ?? '', ...(source.conversationId ? { conversationId: source.conversationId } : {}),
         ...(source.sketchId ? { sketchId: source.sketchId } : {}), ...(source.excerpted
@@ -71,15 +74,21 @@ export async function dispatchProactiveComparison(input: { db: Database; candida
       let apiKey: string;
       try { apiKey = openBackgroundKey(connection.encryptedKey, candidate.ownerUserId, connection.id, input.masterKey!); }
       catch { throw new Stop('KEY_UNAVAILABLE'); }
-      return { apiKey, sources, ruleVersion: rule.version };
+      return { apiKey, sources, ruleVersion: rule.version,
+        target: { provider: connection.provider, model: connection.model, baseUrl: connection.baseUrl },
+        price: { inputMicrosPerMTok: connection.inputPriceMicrosPerMTok, outputMicrosPerMTok: connection.outputPriceMicrosPerMTok } };
     });
     watch = watchComparisonAuthorization(input.db, input.candidateId, reservation.connectionId, prepared.ruleVersion);
     const signal = AbortSignal.any([watch.signal, AbortSignal.timeout(20_000)]);
-    const providerInput = { apiKey: prepared.apiKey, model: BACKGROUND_COMPARISON_MODEL, sources: prepared.sources, signal } as const;
+    const providerInput = { apiKey: prepared.apiKey, ...prepared.target, sources: prepared.sources, signal } as const;
     await watch.check();
-    const counted = await abortableComparisonCall(signal, () => input.provider.countInputTokens(providerInput));
-    if (!Number.isInteger(counted) || counted < 0 || counted > BACKGROUND_COMPARISON_MAX_INPUT_TOKENS)
-      throw new Stop('INPUT_TOKEN_LIMIT');
+    // The same conservative Flux estimate bounds every provider; a provider count may only raise it (PROV-3).
+    const estimate = comparisonInputEstimate(prepared.sources);
+    if (estimate > BACKGROUND_COMPARISON_MAX_INPUT_TOKENS) throw new Stop('INPUT_TOKEN_LIMIT');
+    const counted = input.provider.countInputTokens
+      ? await abortableComparisonCall(signal, () => input.provider.countInputTokens!(providerInput)) : null;
+    if (counted !== null && (!Number.isInteger(counted) || counted < 0)) throw new Stop('INPUT_TOKEN_LIMIT');
+    if (boundedInputTokens(estimate, counted) > BACKGROUND_COMPARISON_MAX_INPUT_TOKENS) throw new Stop('INPUT_TOKEN_LIMIT');
     // A pause during token counting must not start a paid message request.
     await watch.check();
     await input.db.transaction(async (tx) => {
@@ -94,7 +103,7 @@ export async function dispatchProactiveComparison(input: { db: Database; candida
       return input.provider.createMessage({ ...providerInput,
         maxTokens: BACKGROUND_COMPARISON_MAX_OUTPUT_TOKENS, effort: 'low' });
     });
-    usage = comparisonObservedUsage(response) ?? undefined;
+    usage = comparisonObservedUsage(response, prepared.price) ?? undefined;
     const answer = validateComparisonResponse(response, prepared.sources);
     if (!usage) throw new Stop('INVALID_OBSERVED_USAGE');
     const observed = usage;
@@ -121,14 +130,17 @@ export async function dispatchProactiveComparison(input: { db: Database; candida
       const created = await rows.complete({ candidateId: candidate.id, id: randomUUID(), ownerUserId: candidate.ownerUserId,
         agentId: rule.agentId, projectId: candidate.projectId, resultId: candidate.resultId,
         sourceFingerprint: candidate.sourceFingerprint, sources: cited,
+        provider: prepared.target.provider, model: prepared.target.model,
         fact: answer.fact, interpretation: answer.interpretation, suggestedAction: answer.suggestedAction,
         inputTokens: observed.inputTokens, outputTokens: observed.outputTokens, estimatedCents: observed.estimatedCents });
       if (!created) throw new Stop('RESERVATION_CHANGED', observed);
       return { status: 'proposal', proposalId: created.id };
     });
   } catch (error) {
-    const stopped = error instanceof Stop ? error : new Stop('PROVIDER_OR_STORAGE_FAILURE');
-    if (!paidRequestStarted) {
+    const stopped = error instanceof Stop ? error : error instanceof ComparisonNotSentError ? new Stop(error.code)
+      : new Stop('PROVIDER_OR_STORAGE_FAILURE');
+    // An adapter that refused before sending (an endpoint the policy no longer allows) made no request.
+    if (!paidRequestStarted || error instanceof ComparisonNotSentError) {
       await proactiveOutboxRows(input.db).markNotRun(input.candidateId, stopped.code);
       return { status: 'not_run', reason: stopped.code };
     }

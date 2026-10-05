@@ -5,7 +5,7 @@
 export class DomainError extends Error {
   /** Extra safe fields merged into the error body, e.g. the latest authorized version. */
   details?: Record<string, unknown>;
-  constructor(readonly status: 400 | 401 | 403 | 404 | 409 | 422 | 428 | 429 | 503, readonly code: string, message: string) {
+  constructor(readonly status: 400 | 401 | 403 | 404 | 409 | 413 | 422 | 428 | 429 | 503, readonly code: string, message: string) {
     super(message);
     this.name = new.target.name;
   }
@@ -41,6 +41,13 @@ export class RuleViolationError extends DomainError {
 export class ConflictError extends DomainError {
   constructor(message: string, code = 'CONFLICT') {
     super(409, code, message);
+  }
+}
+
+/** The request's content is larger than the limit (e.g. a staged file over 5 MiB). */
+export class PayloadTooLargeError extends DomainError {
+  constructor(message: string, code = 'PAYLOAD_TOO_LARGE') {
+    super(413, code, message);
   }
 }
 

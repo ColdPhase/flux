@@ -68,8 +68,9 @@ if [ -z "$FLUX_VAPID_PUBLIC_KEY" ] || [ -z "$FLUX_VAPID_PRIVATE_KEY" ]; then
 fi
 
 $compose run --rm test
-if $compose logs --no-color api | grep -F 'owner-budget-key-' >/dev/null; then
-  echo 'Background provider key appeared in API logs' >&2
+# Every seeded provider key (each adapter's, #179) carries this marker; none may reach a log.
+if $compose logs --no-color api worker providermock | grep -F 'owner-budget-key-' >/dev/null; then
+  echo 'Background provider key appeared in API, worker or provider-mock logs' >&2
   exit 1
 fi
 
@@ -90,9 +91,10 @@ run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/task-contribution-eff
 $compose run --rm e2e node_modules/.bin/tsx --test tests/app/e2e/github.e2e.ts
 
 # A seeded project proposal must remain editable, dismissible and usable through the actual UI.
-# The fixture bypasses rule activation, which stays unavailable until #58 runtime gates pass.
-$compose run --rm test pnpm exec tsx tests/app/seed-proactive-ui.ts
-$compose run --rm test pnpm exec tsx tests/app/seed-proactive-outcomes-ui.ts
+# The fixture bypasses rule activation: this stack leaves FLUX_BACKGROUND_COMPARISONS empty, so
+# enabling stays unavailable here (the switched-on check is the last step below).
+$compose run --rm test node_modules/.bin/tsx tests/app/seed-proactive-ui.ts
+$compose run --rm test node_modules/.bin/tsx tests/app/seed-proactive-outcomes-ui.ts
 $compose run --rm e2e node_modules/.bin/tsx --test --test-concurrency=1 tests/app/e2e/proactive-comparison.e2e.ts tests/app/e2e/proactive-outcomes.e2e.ts
 
 # Fresh controlled outcomes: >50 native work/results verify bounded group jumps below sticky controls.
@@ -106,15 +108,31 @@ run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/task-plan.e2e.ts
 $compose run --rm e2e node_modules/.bin/tsx --test tests/app/e2e/agent-connections.e2e.ts
 
 # A session created before an API container restart must still be valid afterwards.
-$compose run --rm test pnpm exec tsx tests/app/session-restart.ts prepare
+$compose run --rm test node_modules/.bin/tsx tests/app/session-restart.ts prepare
 $compose restart api
 $compose up -d --wait api
-$compose run --rm test pnpm exec tsx tests/app/session-restart.ts verify
+$compose run --rm test node_modules/.bin/tsx tests/app/session-restart.ts verify
 
 # Without VAPID keys the API must report push unavailable rather than fail silently.
 FLUX_VAPID_PUBLIC_KEY= $compose up -d --wait api
-$compose run --rm --no-deps test pnpm exec tsx --test tests/app/push-unavailable.check.ts
+$compose run --rm --no-deps test node_modules/.bin/tsx --test tests/app/push-unavailable.check.ts
 
 # Without SMTP, notification email is reported unavailable and the inbox keeps working (#116, #113).
 FLUX_SMTP_URL= FLUX_MAIL_FROM= $compose up -d --wait api worker
-$compose run --rm --no-deps test pnpm exec tsx --test tests/app/email-unavailable.check.ts
+$compose run --rm --no-deps test node_modules/.bin/tsx --test tests/app/email-unavailable.check.ts
+
+# The background comparison operator switch in the running app (#58). Off (the default): nothing is
+# scheduled and enabling is refused. On for the API and the worker: the owner enables the rule in
+# settings and the worker's own scheduled tick pays the provider mock once for a contributor's
+# negative result, which shows as a quiet proposal. Off again: the jobs are unscheduled and the same
+# enabled rule with a ready candidate spends nothing. `prepare` pauses rules earlier suites left on.
+$compose up -d --wait api worker
+$compose run --rm --no-deps test node_modules/.bin/tsx tests/app/background-comparisons-switch.ts prepare
+FLUX_BACKGROUND_COMPARISONS=on $compose up -d --wait api worker
+run_browser --no-deps e2e node_modules/.bin/tsx --test tests/app/e2e/background-comparisons.e2e.ts
+$compose up -d --wait api worker
+$compose run --rm --no-deps test node_modules/.bin/tsx tests/app/background-comparisons-switch.ts off
+if $compose logs --no-color api worker providermock | grep -F 'owner-budget-key-' >/dev/null; then
+  echo 'Background provider key appeared in API, worker or provider-mock logs' >&2
+  exit 1
+fi

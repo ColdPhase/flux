@@ -185,6 +185,8 @@ class WorkDecisionsJourney(unittest.TestCase):
         page = self.open_conversation("partner")
         message = page.locator(f"#message-{self.messages['finding']}")
         message.hover()
+        # A reply sits in the thread beside the stream (UI116-1); its actions open from one ⋯ in its corner.
+        message.get_by_role("button", name="Make from this message").click()
         message.get_by_role("button", name="Result", exact=True).click()
         panel = self.details(page)
         expect(panel.get_by_role("heading", name="Attach a result")).to_be_visible()
@@ -229,6 +231,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         page.goto(f"/projects/{self.project_id}/conversations/{self.conversation_id}")
         message = page.locator(f"#message-{self.messages['pivot']}")
         message.hover()
+        message.get_by_role("button", name="Make from this message").click()
         message.get_by_role("button", name="Decision", exact=True).click()
         panel.get_by_label("Why").fill("The camera failed in low light; a ToF sensor works in the dark and stores no images")
         panel.get_by_label("Replaces").select_option(label="Use a camera for gesture control")
@@ -400,14 +403,19 @@ class WorkDecisionsJourney(unittest.TestCase):
     def assert_sides(self, page: Page, label: str) -> None:
         # Opening Details slides the pane; measure once it has settled.
         page.wait_for_function("""() => new Promise((resolve) => {
-          const el = document.querySelector('.project-convo__in');
+          const el = document.querySelector('.thread__in');
           const first = el.getBoundingClientRect().x;
           setTimeout(() => resolve(el.getBoundingClientRect().x === first), 250);
         })""")
-        feed = page.locator(".project-convo__in").bounding_box()
+        # One project conversation (UI116-1): the root is in the stream and its replies in the thread
+        # beside it (over it on a phone). Sides hold in each column: Kai's reply right, Ada's left.
+        feed = page.locator(".thread__in").bounding_box()
         mine = page.locator(f"#message-{self.messages['finding']} > p").bounding_box()
-        theirs = page.locator(f"#message-{self.messages['idea']} > p").bounding_box()
-        assert feed and mine and theirs
+        theirs = page.locator(f"#message-{self.messages['pivot']} > p").bounding_box()
+        stream = page.locator(".project-convo__in").bounding_box()
+        root = page.locator(f"#message-{self.messages['idea']} > p").bounding_box()
+        assert feed and mine and theirs and stream and root
+        self.assertLess(root["x"] - stream["x"], 80, f"{label}: another person's root starts at the stream's left edge (beside its avatar)")
         middle = feed["x"] + feed["width"] / 2
         self.assertGreater(mine["x"] + mine["width"], middle, f"{label}: own message ends on the right")
         self.assertLess(theirs["x"], middle, f"{label}: another person's message starts on the left")
@@ -417,19 +425,21 @@ class WorkDecisionsJourney(unittest.TestCase):
         self.assertLess(theirs["x"] - feed["x"], 80, f"{label}: another person's bubble starts at the left edge (beside its avatar)")
         self.assertLessEqual(mine["x"] + mine["width"], feed["x"] + feed["width"] + 1, f"{label}: inside the pane")
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.viewport_size["width"], f"{label}: no sideways scroll")
-        # Linked work, decisions and results stay inside the pane and the viewport on both sides.
-        chips = page.locator(".project-convo__message .ws-chip")
-        self.assertGreater(chips.count(), 0, f"{label}: the thread has linked objects")
-        for index in range(chips.count()):
-            box = chips.nth(index).bounding_box()
-            assert box
-            self.assertGreaterEqual(box["x"], feed["x"] - 1, f"{label}: linked object {index} starts inside the pane")
-            self.assertLessEqual(box["x"] + box["width"], feed["x"] + feed["width"] + 1, f"{label}: linked object {index} ends inside the pane")
-            self.assertLessEqual(box["x"] + box["width"], page.viewport_size["width"], f"{label}: linked object {index} is not cut off")
+        # Linked work, decisions and results stay inside their column and the viewport on both sides.
+        for column, pane in ((".project-convo__in", stream), (".thread__in", feed)):
+            chips = page.locator(f"{column} .project-convo__message .ws-chip")
+            self.assertGreater(chips.count(), 0, f"{label}: {column} has linked objects")
+            for index in range(chips.count()):
+                box = chips.nth(index).bounding_box()
+                assert box
+                self.assertGreaterEqual(box["x"], pane["x"] - 1, f"{label}: linked object {index} starts inside {column}")
+                self.assertLessEqual(box["x"] + box["width"], pane["x"] + pane["width"] + 1, f"{label}: linked object {index} ends inside {column}")
+                self.assertLessEqual(box["x"] + box["width"], page.viewport_size["width"], f"{label}: linked object {index} is not cut off")
 
     def test_09_own_messages_sit_right_and_others_left(self) -> None:
         page = self.open_conversation("partner")
         expect(page.locator(f"#message-{self.messages['finding']}")).to_have_class(re.compile("is-mine"))
+        expect(page.locator(f"#message-{self.messages['pivot']}")).not_to_have_class(re.compile("is-mine"))
         expect(page.locator(f"#message-{self.messages['idea']}")).not_to_have_class(re.compile("is-mine"))
         # Authors stay visible on both sides.
         expect(page.locator(f"#message-{self.messages['finding']}")).to_contain_text("Kai Berg · you")
