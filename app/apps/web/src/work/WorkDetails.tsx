@@ -12,6 +12,7 @@ import { useShellActions, type ObjectView, type WorkFormView } from '../app/shel
 import { acceptDecision, createResult, getDecision, getResult, getWork, listAgents, loadProjectWork, proposeDecision, updateWork, type ProjectWork } from './api';
 import { STATUS_LABEL, decisionLine, firstLine, isFinished, linked, resultLine, shortDate } from './format';
 import { docsLinking } from '../docs/AddToDoc';
+import { TaskDiscussionSection } from './TaskDiscussion';
 
 // The Details panel for work items, decisions and results, and the two forms that start from a
 // message (#101). Everything shown here is visible to the people with access to the project;
@@ -230,6 +231,8 @@ function WorkPanel({ item, context, reload }: { item: WorkItem; context: Context
         ) : null}
       </section>
 
+      <TaskDiscussionSection key={`${me.user.id}:${context.project.id}:${item.id}`} workId={item.id} project={context.project} members={context.members} me={{ id: me.user.id, name: me.user.name }} />
+
       <section className="details__sec" aria-labelledby="wd-decisions">
         <h4 id="wd-decisions">Decisions</h4>
         <Linked empty="No decision refers to this work yet." items={decisions.map((entry) => ({ key: entry.link.id, label: entry.title, hint: entry.link.role === 'still_applies' ? 'still applies' : undefined, open: () => openDetails({ kind: 'decision', id: entry.id }) }))} />
@@ -350,6 +353,13 @@ function DecisionPanel({ decision, context, reload }: { decision: Decision; cont
         </section>
       ) : null}
 
+      {decision.status === 'proposed' && !writable ? (
+        // O-009 (#250): a reader without write access sees that the proposal is not binding and who decides it.
+        <section className="details__sec" aria-labelledby="wd-who-decides">
+          <h4 id="wd-who-decides">Who decides</h4>
+          <p>Not accepted yet. A person who can edit {context.project.name} accepts it; agents and assistants can only propose.</p>
+        </section>
+      ) : null}
       {decision.status === 'proposed' && writable ? (
         <form className="details__sec wd-accept" onSubmit={(event) => void accept(event)}>
           <h4>{pivot ? 'Accept as a pivot' : 'Accept'}</h4>

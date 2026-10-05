@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { FILE_LIMITS, type MessageFile, type StagedFile } from '@flux/contracts';
+import { FILE_LIMITS, imageTypeOf, type MessageFile, type StagedFile, type ThoughtFile } from '@flux/contracts';
 import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, PayloadTooLargeError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
 import type { ActorRef } from '../work/ports.js';
@@ -31,6 +31,8 @@ function uploaderOf(principal: Principal): ActorRef {
   throw new ForbiddenError('Agents cannot stage or attach files yet', 'AGENT_FILES_UNAVAILABLE');
 }
 const same = (a: ActorRef, b: ActorRef) => a.kind === b.kind && a.id === b.id;
+/** Published to a message or (#252) to a map thought; unpublished files are their uploader's private staging. */
+export const isPublished = (row: Pick<StoredFileRow, 'messageId' | 'thoughtId'>) => row.messageId !== null || row.thoughtId !== null;
 const unavailable = () => new NotFoundError('File', 'FILE_UNAVAILABLE');
 const attachmentUnavailable = () => new NotFoundError('Attachment', 'ATTACHMENT_UNAVAILABLE');
 
@@ -84,13 +86,38 @@ export async function lockAttachments(files: FileRepository, storage: Pick<FileS
     // Another person's file, another project's, a reservation or a guessed id are all the same unknown file.
     if (!row || row.projectId !== projectId || !same(row.uploader, author) || row.state !== 'ready' || row.size === null)
       throw attachmentUnavailable();
-    if (row.messageId !== null) throw new ConflictError('A file is already attached to another message', 'ATTACHMENT_ALREADY_PUBLISHED');
+    if (isPublished(row)) throw new ConflictError(row.messageId !== null ? 'A file is already attached to another message'
+      : 'A file is already the image of a map thought', 'ATTACHMENT_ALREADY_PUBLISHED');
     if (!row.expiresAt || row.expiresAt <= now || !row.sha256 || !await storage.has(row.id, row.size, row.sha256)) throw attachmentUnavailable();
     total += row.size;
     ordered.push(row);
   }
   if (total > FILE_LIMITS.messageBytes) throw new InvalidInputError('The files of one message are at most 20 MiB together', 'ATTACHMENTS_TOO_LARGE');
   return ordered;
+}
+
+/**
+ * #252: makes `fileId` the image of the map thought `thoughtId` of a project sketch, inside the thought's transaction
+ * (after the sketch lock). The file must be the caller's own ready, unexpired, unpublished file of `projectId`, with its
+ * exact stored bytes, which must be a PNG, JPEG, GIF or WebP image by signature. A file already published to this same
+ * thought id (Undo re-creating a removed thought) is accepted as it is; any other published file is refused.
+ */
+export async function placeThoughtImage(files: FileRepository, storage: Pick<FileStorage, 'read'>, principal: Principal,
+  input: { projectId: string; fileId: string; thoughtId: string }, clock: () => Date = () => new Date()): Promise<ThoughtFile> {
+  const author = uploaderOf(principal);
+  const fileId = id(input.fileId, 'fileId').toLowerCase();
+  const [row] = await files.lockFiles([fileId]);
+  // Another project's file, a reservation or a guessed id are all the same unknown file.
+  if (!row || row.projectId !== input.projectId || row.state !== 'ready' || row.size === null || row.sha256 === null) throw attachmentUnavailable();
+  if (row.thoughtId === input.thoughtId) return { id: row.id, name: row.name, size: row.size };
+  if (isPublished(row)) throw new ConflictError(row.messageId !== null ? 'A file is already attached to a message'
+    : 'A file is already the image of another map thought', 'ATTACHMENT_ALREADY_PUBLISHED');
+  if (!same(row.uploader, author) || !row.expiresAt || row.expiresAt <= clock()) throw attachmentUnavailable();
+  const bytes = await storage.read(row.id);
+  if (!bytes || bytes.byteLength !== row.size || createHash('sha256').update(bytes).digest('hex') !== row.sha256) throw attachmentUnavailable();
+  if (!imageTypeOf(bytes)) throw new InvalidInputError('Only a PNG, JPEG, GIF or WebP image can be placed on a map', 'UNSUPPORTED_IMAGE');
+  if (!await files.publishToThought(row.id, input.thoughtId, clock())) throw attachmentUnavailable();
+  return { id: row.id, name: row.name, size: row.size };
 }
 
 /** The current file list of each message, for read projections. */
@@ -133,7 +160,7 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
         await ports.files.lockUploader(projectId, uploader);
         const now = clock();
         const existing = await ports.files.findUpload(projectId, uploader, uploadId);
-        if (existing?.state === 'ready' && (existing.messageId !== null || (existing.expiresAt && existing.expiresAt > now))) {
+        if (existing?.state === 'ready' && (isPublished(existing) || (existing.expiresAt && existing.expiresAt > now))) {
           if (await ports.files.activeReplay(existing.id, now))
             throw new ConflictError('This upload is being verified', 'UPLOAD_IN_PROGRESS');
           const verification = await ports.files.reserve({ id: randomUUID(), workspaceId: project.workspaceId, projectId, uploader,
@@ -176,7 +203,7 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
             await ports.files.lockUploader(projectId, uploader);
             const current = await ports.files.findUpload(projectId, uploader, uploadId);
             if (!current || current.id !== original.id || current.state !== 'ready'
-              || (current.messageId === null && (!current.expiresAt || current.expiresAt <= clock()))
+              || (!isPublished(current) && (!current.expiresAt || current.expiresAt <= clock()))
               || !await storage.has(current.id, current.size!, current.sha256!)) throw unavailable();
             if (original.size !== received.size || original.sha256 !== received.sha256 || original.name !== name)
               throw new ConflictError('This uploadId was used for another file', 'UPLOAD_CONFLICT');
@@ -229,7 +256,7 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
         if (!file || file.state !== 'ready' || file.size === null) throw unavailable();
         try { await ports.access.requireProject(principal, 'read', file.projectId); }
         catch (error) { if (error instanceof NotFoundError || error instanceof ForbiddenError) throw unavailable(); throw error; }
-        if (file.messageId === null) {
+        if (!isPublished(file)) {
           const mine = principal.kind === 'human' && file.uploader.kind === 'human' && file.uploader.id === principal.id;
           if (!mine || !file.expiresAt || file.expiresAt <= clock()) throw unavailable();
         }
@@ -254,7 +281,7 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
         for (const row of uploaders) await ports.files.lockUploader(row.projectId, row.uploader);
         const gone: StoredFileRow[] = [];
         for (const row of await ports.files.lockFiles(candidates.map((candidate) => candidate.id))) {
-          if (row.messageId !== null || !row.expiresAt || row.expiresAt > now) continue;
+          if (isPublished(row) || !row.expiresAt || row.expiresAt > now) continue;
           if (await ports.files.removeUnpublished(row.id)) gone.push(row);
         }
         return gone;

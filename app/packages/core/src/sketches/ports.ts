@@ -1,4 +1,4 @@
-import type { PageQuery, PersonRef, PromotionPerson, SketchCopy, SketchScope, ThoughtShape } from '@flux/contracts';
+import type { PageQuery, PersonRef, PromotionPerson, SketchCopy, SketchScope, ThoughtFile, ThoughtShape } from '@flux/contracts';
 import type { Principal } from '../principal.js';
 
 /**
@@ -219,8 +219,23 @@ export interface SketchPromotion {
   createProject(principal: Principal, workspaceId: string, name: string, participantIds: string[]): Promise<{ id: string; name: string }>;
 }
 
+/**
+ * Stored files as the images of project map thoughts (#252). The server implements it over the stored-files rows,
+ * storage and use-case rules (docs/development/task-discussions.md, "Map thought images"), in the same transaction.
+ */
+export interface SketchFiles {
+  /** The images of these thoughts of one project sketch, by thought id. */
+  ofThoughts(projectId: string, thoughtIds: readonly string[]): Promise<Map<string, ThoughtFile>>;
+  /**
+   * Publishes the caller's own staged image of `projectId` as the image of `thoughtId`, or accepts a file already
+   * published to that same thought (Undo). Call it after the sketch's write lock; it throws the stored-files errors.
+   */
+  place(principal: Principal, input: { projectId: string; fileId: string; thoughtId: string }): Promise<ThoughtFile>;
+}
+
 export interface SketchPorts {
   access: SketchAccess;
+  files: SketchFiles;
   sketches: SketchRepository;
   events: SketchEventLog;
   promotion: SketchPromotion;

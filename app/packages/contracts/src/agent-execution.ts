@@ -58,6 +58,17 @@ export interface CreateAgentStandingGrantCommand {
   expiresAt: string;
 }
 
+/**
+ * Narrow one live standing grant in place (#152, 2026-10-05): fewer uses and/or an earlier expiry, never more.
+ * Values are absolute, so a retry is idempotent. Operation, class, project and target never change.
+ */
+export interface NarrowAgentStandingGrantCommand {
+  /** At least the uses already made (and at least 1), at most the current limit. */
+  maximumUses?: number;
+  /** In the future and no later than the current expiry. */
+  expiresAt?: string;
+}
+
 export const agentActionGrantsPath = (connectionId: string) => `/api/v1/agent-connections/${connectionId}/action-grants`;
 export const agentActionGrantPath = (connectionId: string, grantId: string) => `${agentActionGrantsPath(connectionId)}/${grantId}`;
 export interface AuthenticatedAgentRuntime {

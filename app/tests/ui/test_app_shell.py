@@ -85,12 +85,21 @@ def start_forwarder(origin: str, upstream: str) -> None:
     threading.Thread(target=accept, daemon=True).start()
 
 
-def open_sources(page: Page) -> None:
-    """Opens the project's sources above the composer (#117), where materials are saved and cited."""
-    button = page.get_by_role("button", name=re.compile("^Sources"))
+def open_sources(page: Page, scope=None) -> None:
+    """Opens the project's sources above a composer (#117), where materials are saved and cited.
+
+    With a thread open (UI116-1) both the stream's and the thread's composer have Sources: pass the
+    thread as `scope` to use its composer."""
+    within = scope or page
+    button = within.get_by_role("button", name=re.compile("^Sources"))
     if button.get_attribute("aria-expanded") != "true":
         button.click()
-    expect(page.get_by_role("region", name="Project materials")).to_be_visible()
+    expect(within.get_by_role("region", name="Project materials")).to_be_visible()
+
+
+def thread_of(page: Page):
+    """The open root's thread beside the stream (UI116-1)."""
+    return page.get_by_role("complementary", name="Replies")
 
 
 def shot(page: Page, name: str) -> None:
@@ -123,6 +132,75 @@ def box(page: Page, locator) -> dict:
     result = locator.bounding_box()
     assert result, "element is rendered"
     return result
+
+
+# TEST ONLY: a slow network in one tab, so that signing out happens while the tab still waits.
+# GET answers from /api/v1 are held back at two gates and arrive when the test releases them:
+#  A: everything the tab asks for once an address with `?open=` has been written (a search result
+#     or link that opens an object in Details) or `arm()` was called, until sign-out starts;
+#  B: the sign-in page's own session check (`/api/v1/me`), made while its one-time notice is in
+#     the address.
+# Each request is really sent at once, with whatever session the tab had; only its answer waits.
+SLOW_ANSWERS = """
+(() => {
+  const realFetch = window.fetch.bind(window);
+  const gates = {};
+  for (const name of ['A', 'B']) {
+    let open;
+    gates[name] = { opened: new Promise((resolve) => { open = resolve; }), open, held: 0, waiting: 0 };
+  }
+  const slow = window.__slow = {
+    armed: false, signingOut: false, inflight: 0,
+    arm() { slow.armed = true; },
+    release(name) { gates[name].open(); },
+    held(name) { return gates[name].held; },
+    // Resolves once nothing but gate B's held answers has been in flight for `ms` milliseconds.
+    quiet(ms) {
+      return new Promise((resolve) => {
+        let since = null;
+        const tick = () => {
+          const now = performance.now();
+          if (slow.inflight === gates.B.waiting) { since ??= now; if (now - since >= ms) { resolve(true); return; } } else since = null;
+          setTimeout(tick, 20);
+        };
+        tick();
+      });
+    },
+  };
+  for (const method of ['pushState', 'replaceState']) {
+    const write = history[method].bind(history);
+    history[method] = (state, unused, url) => {
+      if (url != null && new URL(String(url), location.href).searchParams.has('open')) slow.armed = true;
+      return write(state, unused, url);
+    };
+  }
+  window.fetch = (input, init = {}) => {
+    const url = new URL(input instanceof Request ? input.url : String(input), location.href);
+    const method = String(init.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase();
+    if (method === 'POST' && url.pathname === '/api/auth/sign-out') slow.signingOut = true;
+    const api = method === 'GET' && url.pathname.startsWith('/api/v1/');
+    const gate = !api ? null
+      : slow.armed && !slow.signingOut ? gates.A
+      : url.pathname === '/api/v1/me' && new URLSearchParams(location.search).get('notice') === 'signed-out' ? gates.B : null;
+    slow.inflight += 1;
+    let answer = realFetch(input, init);
+    if (gate) {
+      gate.held += 1;
+      const signal = init.signal ?? (input instanceof Request ? input.signal : null);
+      answer = answer.then((response) => new Promise((resolve, reject) => {
+        let settled = false;
+        gate.waiting += 1;
+        const settle = (finish) => { if (settled) return; settled = true; gate.waiting -= 1; finish(); };
+        const abort = () => settle(() => reject(signal.reason ?? new DOMException('The operation was aborted.', 'AbortError')));
+        if (signal?.aborted) { abort(); return; }
+        signal?.addEventListener('abort', abort, { once: true });
+        gate.opened.then(() => settle(() => resolve(response)));
+      }));
+    }
+    return answer.finally(() => { slow.inflight -= 1; });
+  };
+})();
+"""
 
 
 class AppShellJourney(unittest.TestCase):
@@ -664,6 +742,87 @@ class AppShellJourney(unittest.TestCase):
         page.reload()
         expect(page.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
 
+    def person_with_a_task(self, name: str, *, slow: bool = True) -> tuple[Page, str, str]:
+        """A new account in its own tab with one restricted project and one task in it."""
+        page = self.page(signed_in=False)
+        if slow:
+            page.add_init_script(SLOW_ANSWERS)
+        page.goto("/sign-up")
+        page.get_by_label("Name").fill(name)
+        page.get_by_label("Email").fill(f"{name.split()[0].lower()}.sign-out+{time.time_ns()}@example.test")
+        page.get_by_label("Password").fill(PASSWORD)
+        page.get_by_role("button", name="Create account").click()
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        request, headers = page.context.request, {"Origin": ORIGIN}
+        space = request.post(f"{ORIGIN}/api/v1/workspaces", data={"name": "Dimmer bench"}, headers=headers)
+        self.assertEqual(space.status, 201, space.text())
+        project = request.post(f"{ORIGIN}/api/v1/workspaces/{space.json()['id']}/projects", data={"name": "Night light", "visibility": "restricted"}, headers=headers)
+        self.assertEqual(project.status, 201, project.text())
+        work = request.post(f"{ORIGIN}/api/v1/projects/{project.json()['id']}/work", data={"title": "Calibrate the dimmer curve", "outcome": "A fade that never flickers"}, headers=headers)
+        self.assertEqual(work.status, 201, work.text())
+        page.goto("/")
+        expect(page.get_by_role("navigation", name="Projects").get_by_role("link", name="Night light")).to_be_visible()
+        return page, project.json()["id"], work.json()["id"]
+
+    def sign_out_while_loading(self, page: Page, name: str) -> None:
+        """Signs out while the tab still waits for answers, then lets every answer arrive."""
+        page.get_by_role("button", name=re.compile(rf"{name}.*account and sign out")).click()
+        page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
+        expect(page.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
+        expect(page.get_by_role("status").filter(has_text="You’re signed out.")).to_be_visible()
+        # What the tab was loading before sign-out answers now, while the sign-in page's own check
+        # of the session is still out; then that check answers too. (That check is the sign-in
+        # loader, run again when the page drops `?notice=` from its address; gate B waits for it.)
+        page.wait_for_function("window.__slow.held('B') > 0")
+        page.evaluate("window.__slow.release('A')")
+        page.evaluate("window.__slow.quiet(500)")
+        page.evaluate("window.__slow.release('B')")
+        page.evaluate("window.__slow.quiet(500)")
+        # Sign-out ends on the sign-in page and stays there: nothing loaded for the previous account
+        # takes the tab back, neither its address nor its page.
+        expect(page).to_have_url(f"{ORIGIN}/sign-in")
+        expect(page.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
+        expect(page.get_by_text("Something went wrong")).to_have_count(0)
+        self.assertEqual(page.evaluate("location.pathname + location.search"), "/sign-in")
+
+    def test_11a_sign_out_while_an_opened_task_is_still_loading(self) -> None:
+        """A search result opens a task in Details (`?open=work:<id>`); signing out right away wins."""
+        page, project_id, _ = self.person_with_a_task("Rae Lund")
+        page.get_by_role("button", name=re.compile("Jump to")).click()
+        dialog = page.get_by_role("dialog", name="Jump to")
+        field = dialog.get_by_role("combobox", name="Jump to")
+        field.fill("dimmer curve")
+        expect(dialog.get_by_role("option").first).to_contain_text("Calibrate the dimmer curve")
+        field.press("Enter")
+        expect(page).to_have_url(re.compile(rf"/projects/{project_id}/tasks"))
+        expect(page.get_by_role("complementary", name="Details")).to_be_visible()
+        self.sign_out_while_loading(page, "Rae Lund")
+
+    def test_11b_sign_out_while_a_project_is_still_opening(self) -> None:
+        """A project link was followed and its page is still loading; signing out wins over it."""
+        page, _, _ = self.person_with_a_task("Tove Berg")
+        page.evaluate("window.__slow.arm()")
+        page.get_by_role("navigation", name="Projects").get_by_role("link", name="Night light").click()
+        page.wait_for_function("window.__slow.held('A') > 0")
+        expect(page).to_have_url(f"{ORIGIN}/")
+        self.sign_out_while_loading(page, "Tove Berg")
+
+    def test_11c_a_failed_sign_out_says_so_and_can_be_retried(self) -> None:
+        page, _, _ = self.person_with_a_task("Ida Holm", slow=False)
+        page.route("**/api/auth/sign-out", lambda route: route.fulfill(status=503, json={"code": "TEST_UNAVAILABLE", "message": "test: sign-out unavailable"}))
+        page.get_by_role("button", name=re.compile("Ida Holm.*account and sign out")).click()
+        page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
+        # The sign-out page says what happened and offers to try again; the session is still live.
+        expect(page).to_have_url(f"{ORIGIN}/sign-out")
+        expect(page.get_by_role("heading", name="Sign out of Flux?")).to_be_visible()
+        expect(page.get_by_role("alert")).to_contain_text("Try again in a moment.")
+        self.assertEqual(page.context.request.get(f"{ORIGIN}/api/v1/me").status, 200)
+        page.unroute("**/api/auth/sign-out")
+        page.get_by_role("button", name="Sign out").click()
+        expect(page).to_have_url(f"{ORIGIN}/sign-in")
+        expect(page.get_by_role("status").filter(has_text="You’re signed out.")).to_be_visible()
+        self.assertEqual(page.context.request.get(f"{ORIGIN}/api/v1/me").status, 401)
+
 
     def test_12_real_project_capture_phone_and_revocation(self) -> None:
         """Real UI: create project, send, cite a saved version, reply, revisit on phone, revoke."""
@@ -729,12 +888,16 @@ class AppShellJourney(unittest.TestCase):
         expect(owner.get_by_role("region", name="Private drafts").get_by_text("home address 123; PIR avoids storing images")).to_be_visible()
         draft_id = owner.context.request.get(f"{ORIGIN}/api/v1/workspaces/{ws['id']}/drafts").json()["items"][0]["id"]
         owner.get_by_role("navigation", name="Projects").get_by_role("link", name="Gesture lamp").click()
-        owner.get_by_label("Start a conversation").fill("Try a PIR sensor before considering a camera")
-        owner.get_by_role("button", name="Start conversation").click()
+        owner.get_by_label("Write a message").fill("Try a PIR sensor before considering a camera")
+        owner.get_by_role("button", name="Send message").click()
         expect(owner.locator(".project-convo__message > p").filter(has_text="Try a PIR sensor before considering a camera")).to_be_visible()
-        expect(owner).to_have_url(re.compile(r"/conversations/[0-9a-f-]+$"))
-        conversation_id = owner.url.split("/conversations/")[-1]
-        open_sources(owner)
+        # One project conversation (UI116-1): the root joins the stream; its replies open beside it.
+        expect(owner).to_have_url(f"{ORIGIN}/projects/{project_id}")
+        opening = owner.locator(".project-convo__message").filter(has_text="Try a PIR sensor before considering a camera")
+        conversation_id = opening.get_attribute("data-conversation-id")
+        opening.get_by_role("button", name="Reply", exact=True).click()
+        expect(owner).to_have_url(re.compile(rf"/conversations/{conversation_id}$"))
+        open_sources(owner, thread_of(owner))
         owner.get_by_role("button", name="Add material").click()
         owner.get_by_label("Start from a private draft").select_option(draft_id)
         expect(owner.get_by_label("Text")).to_have_value("home address 123; PIR avoids storing images")
@@ -748,7 +911,7 @@ class AppShellJourney(unittest.TestCase):
         owner.get_by_role("button", name="Save for this project").press("Enter")
         expect(owner.get_by_text("Privacy options")).to_be_visible()
         owner.get_by_role("button", name="Discuss this version").click()
-        expect(owner.get_by_text("Discussing “Privacy options” v1")).to_be_visible()
+        expect(thread_of(owner).locator(".composer-files__ref")).to_contain_text("Source: Privacy options · v1")
         owner.get_by_label("Reply", exact=True).fill("This is the version we should prototype")
         owner.get_by_role("button", name="Send reply").click()
         expect(owner.get_by_text("This is the version we should prototype", exact=True)).to_be_visible()
@@ -799,21 +962,22 @@ class AppShellJourney(unittest.TestCase):
         saved = owner.context.request.get(f"{ORIGIN}/api/v1/conversations/{conversation_id}").json()
         self.assertEqual(sum(message["body"] == "Reload after lost reply" for message in saved["messages"]), 1)
 
-        owner.get_by_role("link", name="New conversation").click()
+        thread_of(owner).get_by_role("button", name="Close replies").click()
+        expect(thread_of(owner)).to_have_count(0)
         def lose_committed_opening(route) -> None:
             response = route.fetch()
             self.assertEqual(response.status, 201)
             route.abort("failed")
         owner.route("**/api/v1/projects/*/conversations", lose_committed_opening)
-        owner.get_by_label("Start a conversation").fill("Revisit after lost opening")
-        owner.get_by_role("button", name="Start conversation").click()
+        owner.get_by_label("Write a message").fill("Revisit after lost opening")
+        owner.get_by_role("button", name="Send message").click()
         expect(owner.get_by_role("alert")).to_contain_text("Flux could not be reached")
         owner.unroute("**/api/v1/projects/*/conversations", lose_committed_opening)
         owner.get_by_role("link", name="Home").click()
-        owner.goto(f"/projects/{project_id}?new=1")
-        expect(owner.get_by_label("Start a conversation")).to_have_value("Revisit after lost opening")
-        owner.get_by_role("button", name="Start conversation").click()
-        # The sidebar lists the same thread (#117); the message itself is in the feed.
+        owner.goto(f"/projects/{project_id}")
+        expect(owner.get_by_label("Write a message")).to_have_value("Revisit after lost opening")
+        owner.get_by_role("button", name="Send message").click()
+        # The retried root joins the one stream once.
         expect(owner.get_by_role("region", name="Messages").get_by_text("Revisit after lost opening", exact=True)).to_be_visible()
         threads = owner.context.request.get(f"{ORIGIN}/api/v1/projects/{project_id}/conversations").json()["items"]
         self.assertEqual(sum(thread["firstMessageBody"] == "Revisit after lost opening" for thread in threads), 1)
@@ -829,11 +993,11 @@ class AppShellJourney(unittest.TestCase):
                 route.continue_()
         owner.route("**/api/v1/materials/*/versions/1", fail_first_citation)
         owner.get_by_label("Reply", exact=True).fill("Do not send this draft on read retry")
-        open_sources(owner)
+        open_sources(owner, thread_of(owner))
         owner.get_by_role("button", name="Discuss this version").click()
         expect(owner.get_by_role("button", name="Retry read")).to_be_visible()
         owner.get_by_role("button", name="Retry read").click()
-        expect(owner.get_by_text("Discussing “Privacy options” v1")).to_be_visible()
+        expect(thread_of(owner).locator(".composer-files__ref")).to_contain_text("Source: Privacy options · v1")
         self.assertEqual(owner.context.request.get(f"{ORIGIN}/api/v1/conversations/{conversation_id}").json()["messages"][-1]["body"], "Reload after lost reply")
         owner.get_by_label("Reply", exact=True).fill("")
         owner.get_by_role("button", name="Remove material citation").click()
@@ -877,7 +1041,7 @@ class AppShellJourney(unittest.TestCase):
         expect(phone.locator(".project-convo__current-thread")).to_contain_text("Try a PIR sensor before considering a camera")
         phone.set_viewport_size({"width": 390, "height": 500})
         phone.get_by_label("Reply", exact=True).focus()
-        composer = phone.locator(".project-convo__composer").bounding_box()
+        composer = thread_of(phone).locator(".project-convo__composer").bounding_box()
         self.assertIsNotNone(composer)
         self.assertLessEqual(composer["y"] + composer["height"], 500, "focused composer remains inside a reduced phone viewport")
         phone.set_viewport_size(PHONE)
@@ -906,7 +1070,7 @@ class AppShellJourney(unittest.TestCase):
 
         denial = owner.context.request.post(f"{ORIGIN}/api/v1/projects/{project_id}/grants", data={"principal": {"kind": "human", "id": partner_id}, "role": "denied"}, headers={"Origin": ORIGIN})
         self.assertEqual(denial.status, 201, denial.text())
-        open_sources(phone)
+        open_sources(phone, thread_of(phone))
         phone.get_by_role("button", name="Discuss this version").click()
         expect(phone.get_by_text("Agreed. Test low light too.", exact=True)).to_have_count(0)
         expect(phone.get_by_label("Reply", exact=True)).to_have_count(0)
@@ -942,13 +1106,19 @@ class AppShellJourney(unittest.TestCase):
         self.assertTrue(first_id)
         owner.reload()
         open_sources(owner)
-        expect(owner.get_by_role("button", name="Load more conversations")).to_be_visible()
+        # One stream (UI116-1): the newest 50 roots, then earlier windows on request.
+        stream = owner.get_by_role("region", name="Messages")
+        roots = stream.locator(".project-convo__message")
+        expect(roots).to_have_count(50)
         expect(owner.get_by_role("button", name="Load more materials")).to_be_visible()
-        owner.get_by_role("button", name="Load more conversations").click()
+        for loaded_count in (100, 101):
+            stream.get_by_role("button", name="Load earlier messages").click()
+            expect(roots).to_have_count(loaded_count)
+        expect(stream.get_by_role("button", name="Load earlier messages")).to_have_count(0)
         owner.get_by_role("button", name="Load more materials").click()
-        expect(owner.get_by_role("link", name=re.compile("Thread 000"))).to_be_visible()
+        expect(roots.first).to_contain_text("Thread 000")
         expect(owner.get_by_role("article").filter(has_text="Material 000")).to_be_visible()
-        self.assertEqual(owner.locator(".project-convo__thread").count(), 102)  # 101 threads + New
+        self.assertEqual(roots.count(), 101)
         self.assertEqual(owner.locator(".project-convo__material").count(), 101)
 
         for index in range(1, 121):
@@ -956,18 +1126,21 @@ class AppShellJourney(unittest.TestCase):
             self.assertEqual(result.status, 201, result.text())
         owner.goto(f"/projects/{project_id}/conversations/{first_id}")
         expect(owner.get_by_label("Reply", exact=True)).to_be_visible()
-        expect(owner.locator(".project-convo__message")).to_have_count(50)
-        for loaded_count in (100, 121):
+        # The thread beside the stream holds the replies; its root (sequence 1) sits at its top (UI116-1).
+        replies = thread_of(owner).locator(".project-convo__message")
+        expect(replies).to_have_count(50)
+        for loaded_count in (100, 120):
             owner.get_by_role("button", name="Load earlier replies").click()
-            expect(owner.locator(".project-convo__message")).to_have_count(loaded_count)
+            expect(replies).to_have_count(loaded_count)
         expect(owner.get_by_role("button", name="Load earlier replies")).to_have_count(0)
-        self.assertEqual(owner.locator(".project-convo__message").count(), 121)
+        expect(thread_of(owner).locator(".thread__root")).to_contain_text("Thread 000")
+        self.assertEqual(replies.count(), 120)
         result = request.post(f"{ORIGIN}/api/v1/conversations/{first_id}/messages", data={"body": "Reply 121", "clientMessageId": str(uuid.uuid4())}, headers=headers)
         self.assertEqual(result.status, 201, result.text())
         owner.evaluate("window.dispatchEvent(new Event('focus'))")
         expect(owner.get_by_text("Reply 121", exact=True)).to_be_visible()
-        self.assertEqual(owner.locator(".project-convo__message").count(), 122, "revalidation retains every loaded sequence")
-        self.assertEqual([int(text.lstrip('#')) for text in owner.locator(".project-convo__message-meta span").all_text_contents()], list(range(1, 123)))
+        self.assertEqual(replies.count(), 121, "revalidation retains every loaded sequence")
+        self.assertEqual([int(text.lstrip('#')) for text in thread_of(owner).locator(".project-convo__message-meta span").all_text_contents()], list(range(2, 123)))
 
         # More than one server window arrives while this page is idle. Refresh must fill
         # the middle before presenting the new tail beside already loaded history.
@@ -976,8 +1149,8 @@ class AppShellJourney(unittest.TestCase):
             self.assertEqual(result.status, 201, result.text())
         owner.evaluate("window.dispatchEvent(new Event('focus'))")
         expect(owner.get_by_text("Missed reply 59", exact=True)).to_be_visible()
-        expect(owner.locator(".project-convo__message")).to_have_count(182)
-        self.assertEqual([int(text.lstrip('#')) for text in owner.locator(".project-convo__message-meta span").all_text_contents()], list(range(1, 183)))
+        expect(replies).to_have_count(181)
+        self.assertEqual([int(text.lstrip('#')) for text in thread_of(owner).locator(".project-convo__message-meta span").all_text_contents()], list(range(2, 183)))
 
         # Hold the browser's POST, then prove the in-flight text cannot be overwritten.
         owner.evaluate("""() => {
@@ -999,7 +1172,7 @@ class AppShellJourney(unittest.TestCase):
         expect(owner.get_by_text("Held reply", exact=True)).to_be_visible()
         expect(reply_box).to_have_value("")
 
-        open_sources(owner)
+        open_sources(owner, thread_of(owner))
         owner.get_by_role("button", name="Add material").click()
         owner.get_by_label("Title").fill("Held material")
         owner.get_by_label("Text").fill("Do not lose this text")

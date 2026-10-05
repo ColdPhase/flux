@@ -90,7 +90,37 @@ test('bounded newest/older windows retain the exact first root and never rewrite
   const oldest = await f.read('?limit=1&beforeSequence=2');
   assert.deepEqual(oldest.messages, [sent[0]]);
   assert.equal(oldest.messagePage.hasMoreBefore, false);
+  // Every conversation window carries its current binding, even when the genuine root is outside it.
+  for (const query of ['', '?limit=1', '?limit=1&beforeSequence=4']) {
+    const conversation = expectStatus(await f.reader.browser.request('GET', `/api/v1/conversations/${sent[0]!.conversationId}${query}`), 200) as Conversation;
+    assert.deepEqual(conversation.task, { workId: f.task.id, title: f.task.title });
+    if (query) assert.equal(conversation.messages.some((message) => message.sequence === 1), false);
+  }
   assert.deepEqual(await f.counts(), before);
+});
+
+test('conversation task binding is current, absent on ordinary threads, read-only and inaccessible after revocation', async () => {
+  const f = await scene();
+  const root = expectStatus(await f.writer.browser.request('POST', f.path, {
+    body: { body: 'The task has a genuine root.', clientMessageId: randomUUID() },
+  }), 201) as ConversationMessage;
+  const ordinary = expectStatus(await f.writer.browser.request('POST', `/api/v1/projects/${f.place.id}/conversations`, {
+    body: { body: 'Independent conversation.', clientMessageId: randomUUID() },
+  }), 201) as Conversation;
+  await db.update(schema.projectWorkItems).set({ title: 'Current renamed task' }).where(eq(schema.projectWorkItems.id, f.task.id));
+  const before = await f.counts();
+  const read = expectStatus(await f.reader.browser.request('GET', `/api/v1/conversations/${root.conversationId}`), 200) as Conversation;
+  assert.deepEqual(read.task, { workId: f.task.id, title: 'Current renamed task' });
+  const nonTask = expectStatus(await f.reader.browser.request('GET', `/api/v1/conversations/${ordinary.id}`), 200) as Conversation;
+  assert.equal(Object.hasOwn(nonTask, 'task'), false);
+  assert.deepEqual(await f.counts(), before);
+  await grant(f.owner, f.place.id, f.reader, 'denied');
+  const afterRevocation = await f.counts();
+  const revoked = await f.reader.browser.request('GET', `/api/v1/conversations/${root.conversationId}`);
+  const unknown = await f.reader.browser.request('GET', `/api/v1/conversations/${randomUUID()}`);
+  assert.equal(revoked.status, 404);
+  assert.equal(unknown.status, 404);
+  assert.deepEqual(await f.counts(), afterRevocation);
 });
 
 test('durable task retries recheck access and conflict on changed payload, task or generic thread operation', async () => {
