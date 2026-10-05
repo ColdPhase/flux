@@ -414,3 +414,5 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 @media (hover: none) and (max-width: 640px) {
   .app:has(.app__pane :is(textarea, input:not([type="checkbox"], [type="radio"], [type="file"], [type="range"]), [contenteditable="true"]):focus) .app__viewbar { display: none; }
 }
+.auth__back { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; margin-left: auto; padding: 0 8px; border-radius: var(--r); font-size: var(--fs-md); color: var(--text-2); text-decoration: none; transition: var(--tr); }
+.auth__back:hover { background: var(--bg-hover); color: var(--text); }

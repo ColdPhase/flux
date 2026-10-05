@@ -2,6 +2,7 @@ import { Outlet, createBrowserRouter } from 'react-router';
 import { ToastProvider } from './ui';
 import { UpdatePrompt } from './pwa';
 import { AppLayout } from './app/AppLayout';
+import { SettingsHome } from './app/SettingsHome';
 import { appLoader } from './app/data';
 import { ProjectConversation, projectConversationLoader, shouldRevalidateProjectConversation } from './app/ProjectConversation';
 import { ProjectSetup } from './app/ProjectSetup';
@@ -125,6 +126,7 @@ export const router = createBrowserRouter([
           { path: 'dm/:dmId/sketches/:sketchId', Component: SketchRoute },
           { path: 'inbox', Component: InboxView },
           { path: 'inbox/:id', Component: InboxOpen },
+          { path: 'settings', Component: SettingsHome },
           { path: 'settings/notifications', Component: NotificationSettings },
           { path: 'settings/background-compute', loader: backgroundComputeLoader, Component: BackgroundComputeSettings },
           { path: 'settings/notifications/verify', Component: VerifyAddress },

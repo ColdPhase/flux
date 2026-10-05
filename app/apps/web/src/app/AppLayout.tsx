@@ -66,6 +66,8 @@ export function AppLayout() {
   const { me, workspace, projects, directMessages } = useShellData();
   const location = useLocation();
   const backgroundSettings = location.pathname === '/settings/background-compute';
+  // A page inside Settings (#266 PF-5): on the phone its header leads back instead of opening the drawer.
+  const settingsPage = /^\/settings\/./.test(location.pathname);
   const navDrawer = useMediaQuery(MEDIA.navDrawer);
   const phone = useMediaQuery(MEDIA.phone);
   const panelMode = useSidePanelMode();
@@ -241,7 +243,9 @@ export function AppLayout() {
     { id: 'messages', label: 'Messages', to: `/dm/${activeDm.id}` },
     { id: 'sketches', label: 'Sketches', to: `/dm/${activeDm.id}/sketches`, end: false, ...(dmSketches ? { count: dmSketches, countLabel: `, ${dmSketches} ${dmSketches === 1 ? 'sketch' : 'sketches'}` } : {}) },
   ] : null;
-  const place = backgroundSettings
+  const place = location.pathname === '/settings'
+    ? { crumb: null, title: 'Settings', topic: 'Your account, this device and your AI', views: false, noDetails: true }
+    : backgroundSettings
     ? { crumb: null, title: 'Background suggestions', topic: 'Your connection and allowance', views: false, noDetails: true }
     : location.pathname === '/search'
     ? { crumb: null, title: 'Search', topic: 'Only what you can open is searched', views: false, noDetails: true }
@@ -281,7 +285,10 @@ export function AppLayout() {
 
       <div className="app__main">
         <header className={`top${activeProject ? ' top--project' : ''}`}>
-          {navDrawer ? (
+          {phone && settingsPage ? (
+            <IconButton icon="chevron-left" label="Back" size={20} className="top__back" data-tip-align="start"
+              onClick={() => { if (location.key !== 'default') navigate(-1); else navigate('/settings'); }} />
+          ) : navDrawer ? (
             <IconButton icon="menu" label="Open navigation" size={18} aria-expanded={navOpen} aria-controls={navOpen ? 'nav-drawer' : undefined}
               aria-haspopup="dialog" data-tip-align="start" onClick={() => { setDetailsOpen(false); setNavOpen(true); }} className="top__menu" />
           ) : null}

@@ -1,0 +1,40 @@
+/* Settings (#266 PF-5): grouped cards in the reading column; on phones they fill the width and each
+   row is a 56px target with an icon, a title, one line of what it holds and a chevron. */
+.set { max-width: 640px; padding-top: 24px; }
+.set-me { display: flex; align-items: center; gap: 14px; padding: 4px 2px 8px; }
+.set-me .ui-avatar--lg { width: 48px; height: 48px; font-size: 16px; }
+.set-me__b { display: flex; flex-direction: column; min-width: 0; line-height: 1.35; }
+.set-me__b b { font-size: var(--fs-lg); font-weight: 600; letter-spacing: -.01em; color: var(--text); overflow-wrap: anywhere; }
+.set-me__b span { font-size: var(--fs-sm); color: var(--text-2); overflow-wrap: anywhere; }
+.set-me__b .set-me__session { margin-top: 2px; font-size: var(--fs-xs); color: var(--text-3); }
+.set-sec { margin-top: 22px; }
+.set-sec__h { margin: 0 0 8px 4px; font-size: var(--fs-sm); font-weight: 600; color: var(--text-2); letter-spacing: .01em; }
+.set-card {
+  list-style: none; margin: 0; padding: 0; border-radius: var(--r-lg); background: var(--bg);
+  box-shadow: inset 0 0 0 1px var(--line); overflow: hidden;
+}
+.set-card--pad { padding: 6px 14px 14px; }
+.set-field { padding-top: 12px; }
+.set-field + .set-field { margin-top: 4px; border-top: 1px solid var(--line); padding-top: 14px; }
+.set-field .me__label { display: flex; align-items: center; gap: 6px; padding: 0 0 8px; font-size: var(--fs-sm); color: var(--text-2); }
+.set-field .me__hint { margin: -4px 0 10px; }
+.set-card li + li .set-row { border-top: 1px solid var(--line); }
+.set-row {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 10px 14px;
+  color: var(--text); text-decoration: none; text-align: left; transition: var(--tr);
+}
+.set-row:hover { background: var(--bg-hover); }
+.set-row:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.set-row__ic { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: 9px; background: var(--accent-soft); color: var(--accent); }
+.set-row__b { display: flex; flex: 1; flex-direction: column; min-width: 0; gap: 1px; }
+.set-row__t { font-size: var(--fs-base); font-weight: 500; line-height: 1.35; }
+.set-row__s { font-size: var(--fs-sm); line-height: 1.4; color: var(--text-3); }
+.set-row__go { flex: none; color: var(--text-3); }
+.set-row--danger .set-row__ic { background: var(--tint-danger); color: var(--danger); }
+.set-row--danger .set-row__t { color: var(--danger); }
+@media (max-width: 640px) {
+  .set { padding-top: 14px; }
+  .set-sec { margin-top: 18px; }
+}
+/* The header's way back from a settings page to the list (#266 PF-5). */
+.top__back { flex: none; }

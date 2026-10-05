@@ -130,7 +130,7 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
           )}
         </nav>
       </div>
-      <UserMenu name={user.name} email={user.email} sessionExpiresAt={session.expiresAt} />
+      <UserMenu name={user.name} email={user.email} sessionExpiresAt={session.expiresAt} asLink={!!onClose} onNavigate={onClose} />
     </div>
   );
 }
