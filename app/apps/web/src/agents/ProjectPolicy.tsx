@@ -125,7 +125,11 @@ export function ProjectPolicy({ projectId, meId, canEdit }: { projectId: string;
     setOpen(true); setError(null); setPublished(null);
   };
   const stopEditing = () => { setEditing(null); setError(null); attempt.current = null; };
-  const change = (part: Part, value: string) => setEditing((current) => current && { ...current, draft: { ...current.draft, [part]: value } });
+  const change = (part: Part, value: string) => {
+    // A message about the last attempt no longer applies once the text changes; a part over the limit says so itself.
+    setError(null);
+    setEditing((current) => current && { ...current, draft: { ...current.draft, [part]: value } });
+  };
 
   const publish = async (event: FormEvent) => {
     event.preventDefault();

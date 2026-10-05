@@ -101,6 +101,10 @@ class ProjectPolicyJourney(unittest.TestCase):
     def editor(self, page: Page):
         return self.policy(page).get_by_role("form", name="Edit agent policy")
 
+    def to_top(self, locator) -> None:
+        """Scrolls the view's pane so the policy starts at the top of the screenshot."""
+        locator.evaluate("el => el.scrollIntoView({ block: 'start' })")
+
     def assert_no_sideways_scroll(self, page: Page) -> None:
         self.assertLessEqual(page.evaluate("document.scrollingElement.scrollWidth"), PHONE["width"], "no sideways scrolling")
 
@@ -162,7 +166,9 @@ class ProjectPolicyJourney(unittest.TestCase):
         self.assertIsNone(self.saved(page), "an invalid policy is never sent")
         priorities.fill(FIRST["Priorities"])
         expect(form).not_to_contain_text("over the 4,000 limit")
+        expect(form.get_by_role("alert")).to_have_count(0, timeout=2000)
         expect(form).to_contain_text("Agents load revision 1 at their next start or safe checkpoint.")
+        self.to_top(policy)
         shot(page, "policy-edit-desktop-1440")
 
         form.get_by_role("button", name="Publish revision 1").click()
@@ -175,6 +181,7 @@ class ProjectPolicyJourney(unittest.TestCase):
         self.assertEqual(saved["publishedBy"]["id"], PEOPLE["hubert"]["id"])
         for label, text in FIRST.items():
             expect(policy.get_by_role("definition").filter(has_text=text.split("\n")[0])).to_have_count(1)
+        self.to_top(policy)
         shot(page, "policy-read-desktop-1440")
 
         # After a reload the view shows the saved revision, folded until asked for.
@@ -251,6 +258,8 @@ class ProjectPolicyJourney(unittest.TestCase):
         policy = self.policy(page)
         show = policy.get_by_role("button", name="Show policy")
         self.assertGreaterEqual(show.bounding_box()["height"], 44, "a touch-sized target")
+        title = policy.get_by_role("heading", name="Agent policy").bounding_box()
+        self.assertLess(abs((show.bounding_box()["y"] + 22) - (title["y"] + title["height"] / 2)), 12, "the action sits beside the title")
         show.click()
         edit = policy.get_by_role("button", name="Edit policy")
         self.assertGreaterEqual(edit.bounding_box()["height"], 44)
@@ -274,7 +283,7 @@ class ProjectPolicyJourney(unittest.TestCase):
         saved = self.saved(page)
         self.assertEqual((saved["revision"], saved["reviewCriteria"], saved["publishedBy"]["id"]), (base + 1, criteria, PEOPLE["ola"]["id"]))
         self.assert_no_sideways_scroll(page)
-        policy.scroll_into_view_if_needed()
+        self.to_top(policy)
         shot(page, "policy-read-phone-390")
 
     def test_05_contributor_and_viewer_read_it_without_an_editor(self) -> None:
