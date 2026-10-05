@@ -4,7 +4,7 @@ import { DEFAULT_THOUGHT_SIZE, imageTypeOf, SKETCH_LIMITS, THOUGHT_SHAPES, type 
 import { Button, EmptyState, Icon, MEDIA, Spinner, useMediaQuery } from '../ui';
 import { getProject } from '../api/sketches';
 import { ApiError, NetworkError } from '../api/client';
-import { stageFile } from '../api/files';
+import { stageFile } from '../composer/api';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
@@ -322,7 +322,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
       const type = imageTypeOf(new Uint8Array(await file.slice(0, 16).arrayBuffer()));
       if (!type) { say('That file is not a PNG, JPEG, GIF or WebP image, so nothing was pasted.'); return; }
       say('Uploading the image privately · only you can see it until you save');
-      const staged = await stageFile(projectId, file, pastedImageName(type), crypto.randomUUID());
+      const staged = await stageFile(projectId, crypto.randomUUID(), new File([file], pastedImageName(type), { type }));
       const meanwhile = capture.peek();
       if (meanwhile && !emptyDraft(meanwhile)) { say('The image stays private and unused: you started another draft meanwhile.'); return; }
       capture.set({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), text: IMAGE_CAPTION, x: spot!.x, y: spot!.y, parentId,
