@@ -454,9 +454,10 @@ anything; only this publish writes it, never message, PR, wiki or tool text.
   managers (workspace owners and admins) write or edit the four parts and publish the next revision
   from the one they loaded, with one `Idempotency-Key` per attempt. The editor checks the server's
   rules first (no part over 4,000 characters, at least one part written) and names the part at
-  fault. A `409 VERSION_CONFLICT` keeps the manager's text and shows the newer revision; publishing
-  again replaces it knowingly. Everyone else who can read the project sees the parts read-only. The
-  view refetches on `project.agent_policy_published.v1`, so an open view follows a new revision.
+  fault. A `409 VERSION_CONFLICT` keeps the manager's text and names the parts the other manager
+  changed, each of which can be taken over; publishing again replaces that revision knowingly.
+  Everyone else who can read the project sees the parts read-only. The view refetches on
+  `project.agent_policy_published.v1`, so an open view, and an open editor, see a new revision.
   It uses the existing API; nothing was added to it. Tests: `agent-policy.test.ts` (a publish
   reaches the same session's next bootstrap; refusals and invalid policies change nothing; a
   conflict carries the newer policy) and `tests/ui/test_project_policy.py` (1440 and 390 px).

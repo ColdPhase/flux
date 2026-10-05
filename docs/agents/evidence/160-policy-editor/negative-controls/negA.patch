@@ -2,31 +2,17 @@ diff --git a/app/apps/server/src/agent-connection/bootstrap.ts b/app/apps/server
 index 3fa20bf..6a84876 100644
 --- a/app/apps/server/src/agent-connection/bootstrap.ts
 +++ b/app/apps/server/src/agent-connection/bootstrap.ts
-@@ -33,7 +33,7 @@ export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database, c
-         // The playbook and the approved project policy are #160's; #153/#74 providers are not yet handed off.
-         // No client input or wiki prose fills these fields: only a manager's publish writes policy.
-         const playbook = coworkPlaybookReference();
+@@ -36 +36 @@ export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database, c
 -        const policy = await agentPolicyRows(tx).current(projectId);
 +        const policy = await agentPolicyRows(tx).revision(projectId, 1);
-         const acknowledged = await agentPlaybookRows(tx).acknowledgment(runtime.id);
-         const current = !!acknowledged && acknowledged.bundleId === playbook.bundleId && acknowledged.version === playbook.version
-           && acknowledged.digest === playbook.digest;
 diff --git a/app/packages/core/src/agent-connection/project-policy.ts b/app/packages/core/src/agent-connection/project-policy.ts
 index af1ba95..c6991ab 100644
 --- a/app/packages/core/src/agent-connection/project-policy.ts
 +++ b/app/packages/core/src/agent-connection/project-policy.ts
-@@ -123,12 +123,11 @@ export function agentPolicyUseCases(uow: AgentPolicyUnitOfWork) {
-       const expected = command?.expectedRevision;
-       if (!Number.isInteger(expected) || expected < 0) throw new InvalidInputError('expectedRevision must be the revision you saw, 0 for none');
-       if (!Object.values(content).some((value) => value.trim())) throw new InvalidInputError('Write at least one part of the policy', 'POLICY_EMPTY');
+@@ -126 +126 @@ export function agentPolicyUseCases(uow: AgentPolicyUnitOfWork) {
 -      const { workspaceId } = await ports.requireProject(principal, projectId, 'project.manage');
 +      const { workspaceId } = await ports.requireProject(principal, projectId, 'project.read');
-       // A person decides project policy; an agent never publishes it, whatever its grants.
-       if (principal.kind !== 'human') throw new ForbiddenError('Only a person can publish project policy', 'POLICY_NEEDS_PERSON');
-       const current = await ports.rows.current(projectId);
+@@ -130,2 +130 @@ export function agentPolicyUseCases(uow: AgentPolicyUnitOfWork) {
 -      if ((current?.revision ?? 0) !== expected) throw new VersionConflictError(current?.revision ?? 0, current ? agentPolicyView(current) : null);
 -      const revision = expected + 1;
 +      const revision = (current?.revision ?? 0) + 1;
-       const digest = agentPolicyDigest({ projectId, revision, ...content });
-       if (!await ports.rows.insert({ projectId, revision, ...content, digest, publishedByUserId: principal.id })) {
-         // Another manager's publish of the same revision committed first: answer like any stale revision.
