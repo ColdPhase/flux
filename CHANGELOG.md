@@ -52,7 +52,7 @@ repository was created on 2026-09-26.
   ([#105](https://github.com/ColdPhase/flux/pull/105)). Native tasks gained
   criteria, prerequisites and plan intent ([#171](https://github.com/ColdPhase/flux/pull/171)).
   A person who can only read a proposed decision sees who decides it: someone who can
-  edit the project, never an agent or assistant ([#250](https://github.com/ColdPhase/flux/issues/250), O-009).
+  edit the project, never an agent or assistant ([#259](https://github.com/ColdPhase/flux/pull/259), O-009).
 - Canonical task discussions:
   - A task's thread starts at its first real contribution, with genuine actors
     ([#164](https://github.com/ColdPhase/flux/pull/164)).
