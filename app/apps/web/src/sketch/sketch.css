@@ -160,7 +160,7 @@
 
 .sk-first, .sk-empty-list { font-size: var(--fs-sm); color: var(--text-3); }
 .sk-first b, .sk-empty-list b { font-weight: 500; color: var(--text-2); }
-.sk-help { font-size: var(--fs-xs); color: var(--text-3); line-height: 1.7; }
+.sk-help { max-width: 66ch; font-size: var(--fs-xs); color: var(--text-3); line-height: 1.7; }
 
 .sk-list { list-style: none; margin: 0; padding: 0; }
 .sk-list > li { padding: 6px 0 8px; }

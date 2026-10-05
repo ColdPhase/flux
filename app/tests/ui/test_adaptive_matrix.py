@@ -41,6 +41,8 @@ MEASURE = 90
 TARGET = 44
 
 FIXTURE: dict = {}
+# The longest measured line per prose surface and viewport, printed after the matrix as evidence.
+MEASURED: dict[str, dict[str, int]] = {}
 PW = None
 BROWSER = None
 
@@ -218,6 +220,7 @@ class AdaptiveBase(unittest.TestCase):
         result = page.evaluate(LONGEST_LINE, selector)
         self.assertGreater(result["longest"], 0, f"{what} has rendered text at {self.where(page)}")
         self.check(result["longest"] <= MEASURE, f"{what} at {self.where(page)} keeps a readable measure: {result}")
+        MEASURED.setdefault(what, {})[self.where(page)] = result["longest"]
         return result["longest"]
 
     def no_problems(self) -> None:
@@ -257,6 +260,8 @@ class AdaptiveMatrix(AdaptiveBase):
                     self.journey(width, height)
                 finally:
                     self.no_problems()
+        for what, values in MEASURED.items():
+            print(f"\n  longest line, {what}: " + ", ".join(f"{size} {n}" for size, n in values.items()), end="")
 
     def journey(self, width: int, height: int) -> None:
         page = self.page(width, height)

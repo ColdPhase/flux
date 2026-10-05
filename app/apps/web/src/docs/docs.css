@@ -131,6 +131,9 @@
 .doc-empty { padding: 12px 0 24px; }
 
 .doc-prose { font-size: var(--fs-base); line-height: 1.85; color: var(--text); overflow-wrap: anywhere; }
+/* A readable measure inside the 820px column (#151): running text keeps at most about 90
+   characters a line; tables, code and images keep the column's width. */
+.doc-prose > :is(p, ul, ol, blockquote, dl) { max-width: 66ch; }
 .doc-prose > * { margin-top: 0; margin-bottom: 0; }
 .doc-prose > * + * { margin-top: 13px; }
 .doc-prose h1, .doc-prose h2, .doc-prose h3, .doc-prose h4, .doc-prose h5, .doc-prose h6 { line-height: 1.5; font-weight: 600; letter-spacing: -0.025em; }
