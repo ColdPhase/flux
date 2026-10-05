@@ -1,5 +1,15 @@
 import { useState } from 'react';
-import { SKETCH_LIMITS, type SketchDetail } from '@flux/contracts';
+import { FILE_LIMITS, SKETCH_LIMITS, type SketchDetail, type ThoughtFile } from '@flux/contracts';
+
+/** One future thought of a pasted list (#252): its own thought ID, link ID, request key and spot. */
+export interface DraftLine {
+  id: string;
+  linkId: string;
+  key: string;
+  text: string;
+  x: number;
+  y: number;
+}
 
 export interface ThoughtDraft {
   id: string;
@@ -9,6 +19,29 @@ export interface ThoughtDraft {
   text: string;
   x: number;
   y: number;
+  /** #252: pasted lines, one future thought each, saved together. `text` is unused while they exist. */
+  lines?: DraftLine[];
+  /** #252: the person's own privately staged image; `text` is its caption. */
+  file?: ThoughtFile;
+  width?: number;
+  height?: number;
+}
+/** A pasted row may exceed the thought limit (it is marked and blocks Save), but not without bound. */
+const LINE_CHARS = 100_000;
+const isUuid = (id: unknown) => typeof id === 'string' && /^[0-9a-f-]{36}$/i.test(id);
+const isSpot = (value: unknown) => typeof value === 'number' && Number.isFinite(value);
+
+function validLines(lines: unknown): boolean {
+  return Array.isArray(lines) && lines.length >= 1 && lines.length <= SKETCH_LIMITS.pasteLines && lines.every((line: Partial<DraftLine> | null) =>
+    !!line && typeof line === 'object' && [line.id, line.linkId, line.key].every(isUuid)
+    && typeof line.text === 'string' && line.text.length <= LINE_CHARS && isSpot(line.x) && isSpot(line.y));
+}
+
+function validFile(file: unknown): boolean {
+  const value = file as Partial<ThoughtFile> | null;
+  return !!value && typeof value === 'object' && isUuid(value.id) && typeof value.name === 'string' && value.name.length >= 1
+    && value.name.length <= FILE_LIMITS.nameChars && typeof value.size === 'number' && Number.isInteger(value.size)
+    && value.size >= 1 && value.size <= FILE_LIMITS.fileBytes;
 }
 const PREFIX = 'flux:thought-draft:';
 // This visit's newest copy of each draft. Session storage can refuse a write (quota) and keep an
@@ -20,10 +53,14 @@ function persisted(key: string): ThoughtDraft | null {
     const value: unknown = JSON.parse(sessionStorage.getItem(key) ?? 'null');
     if (value && typeof value === 'object') {
       const draft = value as Partial<ThoughtDraft>;
-      if ([draft.id, draft.linkId, draft.key].every((id) => typeof id === 'string' && /^[0-9a-f-]{36}$/i.test(id))
+      if ([draft.id, draft.linkId, draft.key].every(isUuid)
         && (draft.parentId === null || typeof draft.parentId === 'string')
         && typeof draft.text === 'string' && draft.text.length <= SKETCH_LIMITS.text
-        && typeof draft.x === 'number' && Number.isFinite(draft.x) && typeof draft.y === 'number' && Number.isFinite(draft.y)) return draft as ThoughtDraft;
+        && isSpot(draft.x) && isSpot(draft.y)
+        && (draft.lines === undefined || validLines(draft.lines))
+        && (draft.file === undefined || validFile(draft.file))
+        && (draft.lines === undefined || draft.file === undefined)
+        && (draft.width === undefined || isSpot(draft.width)) && (draft.height === undefined || isSpot(draft.height))) return draft as ThoughtDraft;
     }
   } catch { /* Storage may be refused; the current visit still retains its drafts. */ }
   return null;
