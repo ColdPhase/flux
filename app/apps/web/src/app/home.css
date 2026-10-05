@@ -87,3 +87,4 @@
   .home-return, .home-sec { animation: none; }
 }
 .home-project__goal { font-size: var(--fs-sm); color: var(--text-2); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.home-sec__row { display: flex; gap: 20px; flex-wrap: wrap; }

@@ -12,6 +12,8 @@ import './home.css';
 const dateLine = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
 /** How many rows each Home section shows before its "all" link. */
 const SHOWN = 5;
+/** Project cards on Home; each reads one bounded summary, so the rest stay on the Projects page. */
+const PROJECT_CARDS = 8;
 
 /**
  * Home (#272 FF-2): the place to get back to work. One next step with its reason, the work you own,
@@ -33,7 +35,7 @@ export function HomeView() {
   const [states, setStates] = useState<Map<string, ProjectWorkSummary>>(new Map());
   useEffect(() => {
     const controller = new AbortController();
-    void Promise.all(projects.map((project) => getProjectWorkSummary(project.id, controller.signal).then((read) => [project.id, read] as const, () => null)))
+    void Promise.all(projects.slice(0, PROJECT_CARDS).map((project) => getProjectWorkSummary(project.id, controller.signal).then((read) => [project.id, read] as const, () => null)))
       .then((reads) => { if (!controller.signal.aborted) setStates(new Map(reads.filter((read): read is readonly [string, ProjectWorkSummary] => !!read))); });
     return () => controller.abort();
   }, [projects]);
@@ -104,10 +106,13 @@ export function HomeView() {
           <div className="home-sec__head"><h3 id="home-projects" className="home-sec__h">Your projects</h3></div>
           {projects.length ? (
             <ul className="home-projects">
-              {projects.map((project) => <ProjectCard key={project.id} project={project} needs={needsByProject.get(project.id) ?? 0} summary={states.get(project.id) ?? null} />)}
+              {projects.slice(0, PROJECT_CARDS).map((project) => <ProjectCard key={project.id} project={project} needs={needsByProject.get(project.id) ?? 0} summary={states.get(project.id) ?? null} />)}
             </ul>
           ) : <p className="home-sec__empty">You are not in a project yet. Start one, or it appears here when someone adds you.</p>}
-          <Link className="home-sec__all" to="/projects/new"><Icon name="plus" size={14} />New project</Link>
+          <div className="home-sec__row">
+            {projects.length > PROJECT_CARDS ? <Link className="home-sec__all" to="/projects">All {projects.length} projects<Icon name="chevron-right" size={14} /></Link> : null}
+            <Link className="home-sec__all" to="/projects/new"><Icon name="plus" size={14} />New project</Link>
+          </div>
         </section>
       </div>
     </div>
