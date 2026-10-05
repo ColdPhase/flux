@@ -95,8 +95,8 @@ class LiveEditingOffJourney(unittest.TestCase):
         expect(page.get_by_label("Text (Markdown)")).to_have_value("The sensor reads 38% at 5 lux.")
         time.sleep(0.5)
         shown.extend(page.evaluate("window.__liveText"))
-        self.assertEqual(live, [], "an ordinary wiki never asks for a live room")
-        self.assertEqual(shown, [], "no live editor text, not even briefly")
+        # Neither a live room request nor live editor text, not even briefly before a fallback.
+        self.assertEqual({"live requests": live, "live text": shown}, {"live requests": [], "live text": []})
 
     def test_03_map_is_ordinary_with_immediate_undo(self) -> None:
         page, live = self.page()
@@ -111,5 +111,4 @@ class LiveEditingOffJourney(unittest.TestCase):
         expect(page.locator(".sk-status")).to_contain_text("Undid: removed a thought")
         expect(page.locator(".sk-node", has_text="Distance sensor")).to_be_visible()
         time.sleep(0.5)
-        self.assertEqual(live, [], "an ordinary map never asks for a live room")
-        self.assertEqual(page.evaluate("window.__liveText"), [], "no live map text, not even briefly")
+        self.assertEqual({"live requests": live, "live text": page.evaluate("window.__liveText")}, {"live requests": [], "live text": []})

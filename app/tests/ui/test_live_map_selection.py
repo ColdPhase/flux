@@ -4,7 +4,9 @@ Run only with FLUX_LIVE_EDITING_TEST=1 against the isolated development candidat
 Selection clicks must not allocate leases. Real50/200 drags still require current
 server leases, deliver every selected position before pointerup, and commit native CAS.
 """
+import asyncio
 import os
+import time
 import unittest
 
 from playwright.async_api import expect
@@ -50,9 +52,19 @@ class LiveMapSelectionJourney(LiveFixture):
                     self.assertEqual({item['id'] for item in leases[0]['thoughts']}, {thought['id'] for thought in self.thoughts})
                     self.assertTrue(all(item['expectedVersion'] == 1 for item in leases[0]['thoughts']))
                     generation = await ada.locator('.sk-canvas').get_attribute('data-live-generation')
-                    sent = [row['header'] for row in self.frames['ada'] if row['direction'] == 'sent'
-                        and row['header'].get('type') == 'map-move' and row['header'].get('generation') == generation]
-                    self.assertTrue(sent, 'Real bounded movement publication precedes pointerup')
+                    # Previews are throttled (one frame per 40 ms): the pointer's last position may still
+                    # be pending when the peer first shows a mover. Compare with the gesture's latest
+                    # sequence, which must be published before pointerup (#239 review: an earlier
+                    # frame here made the 50-thought check read one 18 px pointer step behind).
+                    own = int(await ada.locator('.sk-canvas').get_attribute('data-live-own-sequence'))
+                    deadline = time.perf_counter() + 3
+                    while True:
+                        sent = [row['header'] for row in self.frames['ada'] if row['direction'] == 'sent'
+                            and row['header'].get('type') == 'map-move' and row['header'].get('generation') == generation]
+                        if sent and sent[-1].get('sequence') == own:
+                            break
+                        self.assertLess(time.perf_counter(), deadline, f'The latest movement sequence {own} is published before pointerup')
+                        await asyncio.sleep(0.02)
                     publication = sent[-1]
                     self.assertEqual(len(publication['positions']), selected)
                     for position in publication['positions']:
@@ -70,8 +82,8 @@ class LiveMapSelectionJourney(LiveFixture):
                     committed = await self.api(kai, 'GET', f'/api/v1/sketches/{self.map_id}/live')
                     self.assertEqual({t['id']: (t['x'], t['y'], t['version']) for t in committed['sketch']['thoughts']},
                         {p['id']: (p['x'], p['y'], 2) for p in publication['positions']})
-                    self.assertFalse(any(row['header'].get('type') == 'error' for rows in self.frames.values() for row in rows),
-                        'No malformed/capacity refusal may be hidden while selecting or moving a supported group')
+                    refusals = [(key, row['header']) for key, rows in self.frames.items() for row in rows if row['header'].get('type') == 'error']
+                    self.assertEqual(refusals, [], 'No malformed/capacity refusal may be hidden while selecting or moving a supported group')
                 finally:
                     await ada.mouse.up()
                     ada.remove_listener('request', requested)
