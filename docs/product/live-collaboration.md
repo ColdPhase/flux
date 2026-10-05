@@ -156,6 +156,10 @@ different scope. An audio-analyzing agent must be an explicitly authorized
 decrypting recipient. Never silently downgrade protection to enable notes.
 [Official encryption documentation](https://docs.livekit.io/transport/encryption/)
 is a capability reference, not evidence that Flux has implemented that guarantee.
+The current boundary is recorded in the
+[encryption boundary record](../development/live-media-encryption.md): media is
+encrypted in transit (DTLS-SRTP, checked automatically) and readable in the SFU.
+E2EE is not implemented and is not claimed.
 
 ## 6. Self-hosted architecture and access
 
