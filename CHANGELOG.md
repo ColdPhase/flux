@@ -30,6 +30,10 @@ repository was created on 2026-09-26.
   triggered OCI release workflow ([#104](https://github.com/ColdPhase/flux/pull/104)).
 - An exact migration-ledger check at install and startup. A database that does not
   match the image's migrations refuses to start ([#130](https://github.com/ColdPhase/flux/pull/130)).
+- Two public extension contracts with a written compatibility promise: MCP tool
+  contract 1 and project export format 1. A versioned snapshot test catches a
+  breaking change. The [integration guide](docs/integrations/README.md) is for
+  integrators and operators ([#260](https://github.com/ColdPhase/flux/pull/260)).
 
 #### People and access
 
