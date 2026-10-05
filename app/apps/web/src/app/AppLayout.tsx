@@ -49,17 +49,18 @@ function viewOrder(pathname: string) {
 }
 
 /**
- * The phone's bottom bar holds the few main places (#266 PF-1, founder feedback on #264; #272 FF-3):
- * Home, Projects, Messages, Inbox and My sketchbook. It shows on those top-level pages; inside a
- * project, a conversation or a sketch the work takes the full height, as in a messenger.
+ * The phone's bottom bar of main places (#266 PF-1, founder feedback on #264; #272 FF-3): Home,
+ * Projects, Messages, Inbox and Sketchbook. It stays on every page, so people always see which area
+ * they are in and can reach the others with a thumb (Apple HIG, Tab bars: "Make sure the tab bar is
+ * visible when people navigate to different sections of your app"). Inside a project, a conversation
+ * or a sketch its section stays current. Only a modal sheet or the on-screen keyboard covers it.
  */
-function mainPlaces(pathname: string, inboxUnread: boolean): BottomNavItem[] | null {
-  const home = pathname === '/' || pathname === '/tasks' || pathname === '/docs';
-  const projects = pathname === '/projects';
-  const messages = pathname === '/dm' || pathname === '/dm/new';
-  const inbox = pathname === '/inbox';
-  const sketchbook = pathname === '/notes' || pathname === '/map';
-  if (!home && !projects && !messages && !inbox && !sketchbook) return null;
+function mainPlaces(pathname: string, inboxUnread: boolean): BottomNavItem[] {
+  const home = pathname === '/' || /^\/(tasks|docs)(\/|$)/.test(pathname);
+  const projects = /^\/projects(\/|$)/.test(pathname);
+  const messages = /^\/dm(\/|$)/.test(pathname);
+  const inbox = /^\/inbox(\/|$)/.test(pathname);
+  const sketchbook = /^\/(notes|map)(\/|$)/.test(pathname);
   return [
     { id: 'home', label: 'Home', to: '/', icon: 'home', current: home },
     { id: 'projects', label: 'Projects', to: '/projects', icon: 'spark', current: projects },
@@ -493,7 +494,7 @@ function AppLayoutContent() {
           <Outlet />
           <LiveStage />
         </div>
-        {phone && places ? <BottomNav className="app__viewbar" label="Main places" items={places} /> : null}
+        {phone ? <BottomNav className="app__viewbar" label="Main places" items={places} /> : null}
       </div>
 
       <JumpTo open={jumpOpen} onClose={() => setJumpOpen(false)} userId={me.user.id} />
