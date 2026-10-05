@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { Outlet, useLocation, useNavigate, useRevalidator } from 'react-router';
+import { Outlet, useLocation, useNavigate, useParams, useRevalidator } from 'react-router';
 import { useStreamEvents } from '../api/stream';
 import { BottomNav, Button, Drawer, Icon, IconButton, MEDIA, SidePanel, Tabs, duration, flip, play, useMediaQuery, useSidePanelMode, type BottomNavItem, type IconName, type TabItem } from '../ui';
 import { useShellData } from './data';
@@ -21,6 +21,8 @@ import { LiveStage } from '../live/LiveStage';
 import '../live/live.css';
 import { JumpTo } from '../search/JumpTo';
 import { useNeedsYou } from '../returns/useNeedsYou';
+import { WorkReadProvider, useProjectWorkSummary } from '../work/WorkReadContext';
+import { OverviewContext } from '../project/ProjectOverview';
 import { remember, remembered } from './remembered';
 
 const lastConversationPath = (userId: string, projectId: string) => remembered('conversation', userId, projectId) ?? `/projects/${projectId}`;
@@ -63,6 +65,12 @@ function isTyping(target: EventTarget | null) {
  * overlays below 1000px and becomes a full-screen sheet on the phone.
  */
 export function AppLayout() {
+  const { me } = useShellData();
+  const { projectId } = useParams();
+  return <WorkReadProvider accountId={me.user.id} projectId={projectId ?? null}><AppLayoutContent /></WorkReadProvider>;
+}
+
+function AppLayoutContent() {
   const { me, workspace, projects, directMessages } = useShellData();
   const location = useLocation();
   const backgroundSettings = location.pathname === '/settings/background-compute';
@@ -74,6 +82,8 @@ export function AppLayout() {
   const [navOpen, setNavOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsView, setDetailsView] = useState<DetailsView>('place');
+  const [detailsAccount, setDetailsAccount] = useState(me.user.id);
+  if (detailsAccount !== me.user.id) { setDetailsAccount(me.user.id); setDetailsView('place'); setDetailsOpen(false); }
   const [jumpOpen, setJumpOpen] = useState(false);
   const detailsButtonRef = useRef<HTMLButtonElement>(null);
   const paneRef = useRef<HTMLDivElement>(null);
@@ -108,16 +118,21 @@ export function AppLayout() {
 
   const inboxUnread = useInboxDot(me.user.id, location.pathname);
 
+  const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
+  const detailsOwner = useMemo(() => ({ accountId: me.user.id, projectId }), [me.user.id, projectId]);
+  const detailsScope = useRef<typeof detailsOwner | null>(detailsOwner);
+  useLayoutEffect(() => { detailsScope.current = detailsOwner; return () => { detailsScope.current = null; }; }, [detailsOwner]);
   const [actionSlot, setActionSlot] = useState<HTMLElement | null>(null);
   const shell = useMemo(() => ({
     openDetails(view: DetailsView = 'place') {
-      setDetailsView(view);
+      if (detailsScope.current !== detailsOwner) return;
+      setDetailsView(typeof view === 'object' && 'id' in view ? { ...view, projectId: view.projectId ?? projectId } : view);
       toggleDetails(true);
     },
     openSearch() { setNavOpen(false); setJumpOpen(true); },
     openNavigation() { setDetailsOpen(false); setNavOpen(true); },
     actionSlot,
-  }), [toggleDetails, actionSlot]);
+  }), [toggleDetails, actionSlot, projectId, detailsOwner]);
 
   // A link inside an overlaid panel or sheet (#117 overview) leads to its destination.
   const [shownPath, setShownPath] = useState(location.pathname);
@@ -221,7 +236,6 @@ export function AppLayout() {
 
   const sidebarProps = { workspace, projects, directMessages, user: me.user, session: me.session, inboxUnread };
   const where = placeOf(location.pathname);
-  const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const activeProject = projects.find((project) => project.id === projectId);
   // The Conversation tab returns to the conversation that was open before Tasks, Map, Docs or project
   // settings (GitHub), and the
@@ -234,9 +248,10 @@ export function AppLayout() {
   }, [me.user.id, projectId, onOtherView, onMap, location.pathname, location.search]);
   const shellProject = useProjectShell();
   const project = shellProject && shellProject.project.id === projectId ? shellProject : undefined;
-  const openWork = project?.work.work.filter((item) => !item.parked && (item.status === 'open' || item.status === 'in_progress' || item.status === 'blocked')).length;
+  const workSummary = useProjectWorkSummary();
+  const openWork = project ? workSummary.summary?.unfinishedTotal : undefined;
   // Conversation · Map · Tasks · Wiki · Agents in the Studio 11.6 order (#117, #136); quiet tabs without
-  // counts. The open work count stays readable to assistive technology on the Tasks tab.
+  // counts. The unfinished work count stays readable to assistive technology on the Tasks tab.
   const projectViews = projectId ? [
     { id: 'conversation', label: 'Conversation', to: onOtherView ? lastConversationPath(me.user.id, projectId) : `${location.pathname}${location.search}` },
     { id: 'map', label: 'Map', to: onMap ? location.pathname : lastMapPath(me.user.id, projectId, project?.sketches), end: false },
@@ -339,7 +354,7 @@ export function AppLayout() {
                 <button type="button" className="top__audience" onClick={openAudience} aria-haspopup="dialog" title={audience}>
                   <Icon name={audienceOpen ? 'people' : 'lock'} size={12} /><span>{audience}</span><span className="ui-vh">, who can see this project</span>
                 </button>
-                {project && !phone ? <ProjectStateLine lists={project.work} canDecide={project.project.access !== 'viewer'} /> : null}
+                {project && !phone ? <ProjectStateLine summary={workSummary.summary} phase={workSummary.phase} /> : null}
               </div>
             </div>
           ) : (
@@ -367,7 +382,7 @@ export function AppLayout() {
         {/* On the phone, Home's and a project's views move to the bar at the bottom (#266 PF-1). The
             project's state stays as one 44px line on its Conversation, where people orient themselves;
             the other views start right under the header and "What matters" sits in it (PF-2). */}
-        {project && phone && !onOtherView ? <div className="state-row"><ProjectStateRow lists={project.work} canDecide={project.project.access !== 'viewer'} /></div> : null}
+        {project && phone && !onOtherView ? <div className="state-row"><ProjectStateRow summary={workSummary.summary} phase={workSummary.phase} /></div> : null}
         {place.views && !phone
           ? <Tabs className="views" label="Views" items={homeViews} />
           : activeProject && projectViews && !phone
@@ -385,7 +400,8 @@ export function AppLayout() {
       </div>
 
       <JumpTo open={jumpOpen} onClose={() => setJumpOpen(false)} userId={me.user.id} />
-      <SidePanel open={detailsOpen} onClose={() => toggleDetails(false)} title={recapOpen ? 'What matters' : 'Details'} id="details">
+      <SidePanel open={detailsOpen} onClose={() => toggleDetails(false)} title={recapOpen ? 'What matters' : 'Details'} id="details"
+        context={phone && (detailsView === 'place' || typeof detailsView === 'object' && detailsView.kind === 'overview') ? <OverviewContext /> : undefined}>
         <Details view={detailsView} workspace={workspace} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} onClose={() => toggleDetails(false)} />
       </SidePanel>
     </div>

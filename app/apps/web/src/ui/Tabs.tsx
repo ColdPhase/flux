@@ -1,6 +1,7 @@
 import { useCallback, useLayoutEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
-import { NavLink } from 'react-router';
+import { NavLink, useNavigation } from 'react-router';
 import { Icon, type IconName } from './Icon';
+import { choosesInPlace } from './motion';
 
 export interface TabItem {
   id: string;
@@ -46,10 +47,20 @@ function Count({ item }: { item: TabItem }): ReactNode {
   );
 }
 
+/** Whether a navigation to `path` opens this tab's route. */
+function opens(item: TabItem, path: string | null): boolean {
+  const to = item.to?.split(/[?#]/)[0];
+  if (!path || !to?.startsWith('/')) return false;
+  return path === to || (item.end === false && path.startsWith(to.endsWith('/') ? to : `${to}/`));
+}
+
 /**
  * View switcher: labels with one 2px accent mark under the whole current label that slides
  * between tabs (translate + scaleX of a 1px bar, so only transform animates).
  * Navigation tabs are links with aria-current; in-page tabs follow the ARIA tabs pattern.
+ * Navigation feedback (#155, UI116-5): the mark slides to a chosen tab at once, while its view loads;
+ * the tab becomes current (aria-current) when its content shows. A newer choice retargets the mark, and
+ * a navigation that ends elsewhere returns it.
  */
 export function Tabs({ items, value, onChange, label, className, panelIdPrefix }: TabsProps) {
   const barRef = useRef<HTMLDivElement>(null);
@@ -57,12 +68,14 @@ export function Tabs({ items, value, onChange, label, className, panelIdPrefix }
   const placedRef = useRef(false);
   const shownRef = useRef<HTMLElement | null>(null);
   const isNav = items.some((item) => item.to);
+  const navigation = useNavigation();
+  const pendingPath = isNav && navigation.state !== 'idle' ? navigation.location?.pathname ?? null : null;
 
-  const place = useCallback((animate: boolean) => {
+  const place = useCallback((animate: boolean, chosen?: HTMLElement) => {
     const bar = barRef.current;
     const indicator = indicatorRef.current;
     if (!bar || !indicator) return;
-    const current = bar.querySelector<HTMLElement>('[aria-current="page"], [aria-selected="true"]');
+    const current = chosen ?? bar.querySelector<HTMLElement>('[data-pending]') ?? bar.querySelector<HTMLElement>('[aria-current="page"], [aria-selected="true"]');
     if (!current) { indicator.style.opacity = '0'; return; }
     // When the strip scrolls sideways (five tabs at 320px), bring a newly current tab into view
     // once; later renders leave the person's own scrolling alone.
@@ -84,6 +97,7 @@ export function Tabs({ items, value, onChange, label, className, panelIdPrefix }
     // The mark spans the whole current label (#266 PF-1), so the current place reads at a glance;
     // it slides and resizes between tabs with transform only.
     indicator.style.transform = `translateX(${current.offsetLeft + padLeft}px) scaleX(${Math.max(1, current.offsetWidth - padLeft - padRight)})`;
+    indicator.dataset.target = current.dataset.tab ?? '';
     if (!animate) { void indicator.offsetWidth; indicator.style.transition = ''; }
   }, []);
 
@@ -124,7 +138,12 @@ export function Tabs({ items, value, onChange, label, className, panelIdPrefix }
       <nav className={['ui-tabs', className].filter(Boolean).join(' ')} aria-label={label}>
         <div ref={barRef} className="ui-tabs__bar">
           {items.map((item) => (
-            <NavLink key={item.id} to={item.to ?? '.'} end={item.end ?? true} className="ui-tabs__tab" data-tab={item.id} aria-label={quietName(item)} onClick={(event) => event.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' })}>
+            <NavLink key={item.id} to={item.to ?? '.'} end={item.end ?? true} className="ui-tabs__tab" data-tab={item.id} data-pending={opens(item, pendingPath) ? '' : undefined} aria-label={quietName(item)} onClick={(event) => {
+                // The mark starts moving in the next frame, from the click, before the router renders the
+                // pending navigation (#155); later renders keep it there or return it.
+                if (choosesInPlace(event)) place(true, event.currentTarget);
+                event.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+              }}>
               <Label text={item.label} /><Count item={item} />
             </NavLink>
           ))}

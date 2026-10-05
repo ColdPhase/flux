@@ -215,7 +215,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         page = self.open_project("ada")
         state = page.locator("header.top").get_by_label("Current state")
         expect(state).to_contain_text("Current rule: Use a ToF sensor, not the camera, for gestures")
-        expect(state).to_contain_text("In progress: Test the camera in low light (Nia)")
+        expect(state).to_contain_text("In progress: Test the camera in low light (Nia Okafor)")
         expect(state).to_contain_text("Negative result: Camera caught 38% of gestures at 5 lux")
         expect(state).to_contain_text("Needs you: a proposed decision")
         panel = self.details(page)
@@ -459,6 +459,291 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(page.locator(".sk-aud")).to_contain_text("Only you")
         expect(page.get_by_role("navigation", name="Project views")).to_have_count(0)
         expect(page.locator("header.top h1")).not_to_have_text("Gesture lamp")
+
+
+    # ---------------------------------------------------------------- private native work drafts (#155)
+
+    def tasks(self, page: Page, project: str | None = None) -> None:
+        link = page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks"))
+        if project:
+            expect(link).to_have_attribute("href", re.compile(rf"^/projects/{project}/tasks"))
+        link.click()
+        # The List holds the private "New task" draft field; Kanban is the default view (#136).
+        page.get_by_role("radio", name="List", exact=True).click()
+        expect(page.get_by_label("New task", exact=True)).to_be_visible()
+        if project:
+            expect(page).to_have_url(re.compile(rf"/projects/{project}/tasks"))
+
+    def test_09_new_work_survives_native_source_back_views_resize_and_reload(self) -> None:
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page = self.open_project("ada", phone=phone)
+                self.tasks(page)
+                mutations = []
+                page.on("request", lambda request: mutations.append(request.url) if request.method in ("POST", "PATCH", "DELETE") else None)
+                field = page.get_by_label("New task", exact=True)
+                draft = "Order another ToF board after checking the shelf"
+                field.fill(draft)
+                field.evaluate("el => el.setSelectionRange(6, 18)")
+                page.set_viewport_size({"width": 412 if phone else 1500, "height": 900})
+                self.assertEqual(field.evaluate("el => [document.activeElement === el, el.selectionStart, el.selectionEnd]"), [True, 6, 18])
+                views = page.get_by_role("navigation", name="Task views")
+                views.get_by_label("Only mine").check()
+                views.get_by_role("button", name="Needs you", exact=False).click()
+                expect(field).to_have_value(draft)
+                views.get_by_label("Only mine").uncheck()
+                views.get_by_role("button", name="In progress", exact=False).click()
+                views.get_by_role("button", name="All", exact=True).click()
+                page.locator(".ws-list").get_by_role("button", name=re.compile("Test the camera in low light")).click()
+                expect(self.details(page).get_by_role("heading", name="Test the camera in low light")).to_be_visible()
+                source = self.details(page).get_by_role("link", name=re.compile("I ran the camera prototype"))
+                source.click()
+                expect(page).to_have_url(re.compile(rf"/conversations/{self.ids['conversation']}"))
+                page.go_back()
+                expect(field).to_have_value(draft)
+                page.reload()
+                expect(field).to_have_value(draft)
+                expect(page.locator("#ws-draft-state")).to_have_text("Draft kept on this device")
+                self.assertEqual(mutations, [], "draft/view/source actions do not create native work")
+                shot(page, f"work-draft-source-back-{'phone' if phone else 'desktop'}")
+
+    def test_10_newest_failed_storage_write_and_clear_win_on_spa_remount(self) -> None:
+        page = self.open_project("ada")
+        self.tasks(page)
+        field = page.get_by_label("New task", exact=True)
+        key = f"flux:draft:{ADA['id']}:project-work:{self.ids['project']}"
+        field.fill("Older saved text")
+        page.evaluate("""key => {
+          const set = Storage.prototype.setItem, remove = Storage.prototype.removeItem;
+          Storage.prototype.setItem = function(k,v) { if(k === key) throw new DOMException('Full','QuotaExceededError'); return set.call(this,k,v); };
+          Storage.prototype.removeItem = function(k) { if(k === key) throw new DOMException('Refused','SecurityError'); return remove.call(this,k); };
+        }""", key)
+        newest = "Newer text despite full browser storage"
+        field.fill(newest)
+        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).click()
+        self.tasks(page)
+        expect(field).to_have_value(newest)
+        expect(page.locator("#ws-draft-state")).to_contain_text("Draft kept for this visit")
+        self.assertEqual(page.evaluate("key => localStorage.getItem(key)", key), "Older saved text")
+        before = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/work?limit=100", status=200)["total"]
+        page.get_by_role("button", name="Add task", exact=True).click()
+        expect(self.details(page).get_by_role("heading", name=newest)).to_be_visible()
+        expect(field).to_have_value("")
+        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).click()
+        self.tasks(page)
+        expect(field).to_have_value("")
+        self.assertEqual(page.evaluate("key => localStorage.getItem(key)", key), "Older saved text", "failed removal remains stale, but cannot resurrect in this visit")
+        self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/work?limit=100", status=200)["total"], before + 1)
+
+    def test_11_uncertain_native_creation_reuses_the_key_after_source_back(self) -> None:
+        page = self.open_project("ada")
+        self.tasks(page)
+        draft = "One board despite an uncertain native response"
+        field = page.get_by_label("New task", exact=True)
+        field.fill(draft)
+        keys = []
+        def uncertain(route):
+            if route.request.method != "POST":
+                return route.continue_()
+            keys.append(route.request.headers["idempotency-key"])
+            response = route.fetch()
+            self.assertIn(response.status, (200, 201), response.text())
+            if len(keys) == 1:
+                route.fulfill(status=503, json={"message": "The native response was lost"})
+            else:
+                route.fulfill(response=response)
+        page.route(f"**/api/v1/projects/{self.ids['project']}/work", uncertain)
+        before = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/work?limit=100", status=200)["total"]
+        page.get_by_role("button", name="Add task", exact=True).click()
+        expect(page.get_by_role("alert")).to_have_text("The native response was lost")
+        expect(field).to_have_value(draft)
+        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).click()
+        self.tasks(page)
+        expect(field).to_have_value(draft)
+        page.get_by_role("button", name="Add task", exact=True).click()
+        expect(self.details(page).get_by_role("heading", name=draft)).to_be_visible()
+        expect(field).to_have_value("")
+        self.assertEqual(len(keys), 2)
+        self.assertEqual(keys[0], keys[1], "same native command identity after remount")
+        self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/work?limit=100", status=200)["total"], before + 1)
+        page.reload()
+        expect(field).to_have_value("")
+
+    def test_12_late_native_success_does_not_clear_a_new_draft_or_open_old_details(self) -> None:
+        page = self.open_project("ada")
+        self.tasks(page)
+        field = page.get_by_label("New task", exact=True)
+        field.fill("Submitted before following a source")
+        held = []
+        def hold(route):
+            if route.request.method != "POST":
+                return route.continue_()
+            response = route.fetch()
+            self.assertEqual(response.status, 201, response.text())
+            held.append((route, response))
+        page.route(f"**/api/v1/projects/{self.ids['project']}/work", hold)
+        page.get_by_role("button", name="Add task", exact=True).click()
+        expect(field).to_be_disabled()
+        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).click()
+        self.tasks(page)
+        field.fill("A different private draft after returning")
+        newest = "Submitted before following a source"
+        field.fill(newest)  # A→B→A is a NEW edit even though its final text equals the submitted text.
+        self.assertEqual(len(held), 1)
+        route, response = held[0]
+        with page.expect_request_finished(lambda request: request.method == "POST" and request.url.endswith("/work")):
+            route.fulfill(response=response)
+        # Execute another real navigation after completion, not a fixed sleep.
+        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).click()
+        self.tasks(page)
+        expect(field).to_have_value(newest)
+        expect(self.details(page).get_by_role("heading", name="Submitted before following a source")).to_have_count(0)
+        page.reload()
+        expect(field).to_have_value(newest)
+
+    def test_13_private_work_drafts_are_isolated_by_account_and_project(self) -> None:
+        page = self.open_project("ada")
+        self.tasks(page)
+        field = page.get_by_label("New task", exact=True)
+        field.fill("Ada's gesture lamp draft")
+        page.get_by_role("link", name="Bike light", exact=True).click()
+        self.tasks(page, self.ids["bike"])
+        expect(field).to_have_value("")
+        field.fill("Ada's bike light draft")
+        page.get_by_role("link", name="Gesture lamp", exact=True).click()
+        self.tasks(page, self.ids["project"])
+        expect(field).to_have_value("Ada's gesture lamp draft")
+        page.context.clear_cookies()
+        page.context.add_cookies(self.states["jonas"]["cookies"])
+        page.goto(f"/projects/{self.ids['project']}/tasks?view=list")
+        expect(field).to_have_value("")
+        field.fill("Jonas's own draft")
+        page.context.clear_cookies()
+        page.context.add_cookies(self.states["ada"]["cookies"])
+        page.reload()
+        expect(field).to_have_value("Ada's gesture lamp draft")
+
+    def test_14_denied_clear_keeps_disclosure_and_native_replay_key_across_reload(self) -> None:
+        page = self.open_project("ada")
+        self.tasks(page)
+        field = page.get_by_label("New task", exact=True)
+        title = "Saved once even when browser removal is refused"
+        field.fill(title)
+        key = f"flux:draft:{ADA['id']}:project-work:{self.ids['project']}"
+        page.add_init_script("""(() => {
+          const remove = Storage.prototype.removeItem;
+          Storage.prototype.removeItem = function(k) {
+            if (k.endsWith(':project-work:""" + self.ids["project"] + """')) throw new DOMException('Refused','SecurityError');
+            return remove.call(this,k);
+          };
+        })();""")
+        page.evaluate("""key => {
+          const remove = Storage.prototype.removeItem;
+          Storage.prototype.removeItem = function(k) { if(k === key) throw new DOMException('Refused','SecurityError'); return remove.call(this,k); };
+        }""", key)
+        keys = []
+        page.on("request", lambda request: keys.append(request.headers["idempotency-key"]) if request.method == "POST" and request.url.endswith("/work") else None)
+        before = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/work?limit=100", status=200)["total"]
+        page.get_by_role("button", name="Add task", exact=True).click()
+        expect(self.details(page).get_by_role("heading", name=title)).to_be_visible()
+        expect(field).to_have_value("")
+        expect(page.locator("#ws-draft-state")).to_contain_text("Reloading may restore older text")
+        pending = page.evaluate("key => JSON.parse(localStorage.getItem(key + ':pending'))", key)
+        self.assertEqual((pending["title"], pending["key"]), (title, keys[0]))
+        page.reload()
+        expect(field).to_have_value(title)
+        page.get_by_role("button", name="Add task", exact=True).click()
+        expect(field).to_have_value("")
+        self.assertEqual(len(keys), 2)
+        self.assertEqual(keys[0], keys[1], "stale stored submitted text retains its native replay identity")
+        self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/work?limit=100", status=200)["total"], before + 1)
+
+    def test_15_untouched_remount_observes_a_confirmed_native_clear(self) -> None:
+        page = self.open_project("ada")
+        self.tasks(page)
+        field = page.get_by_label("New task", exact=True)
+        title = "A confirmed command clears its untouched remounted draft"
+        field.fill(title)
+        held = []
+        def hold(route):
+            if route.request.method != "POST":
+                return route.continue_()
+            response = route.fetch()
+            self.assertEqual(response.status, 201, response.text())
+            held.append((route, response))
+        page.route(f"**/api/v1/projects/{self.ids['project']}/work", hold)
+        page.get_by_role("button", name="Add task", exact=True).click()
+        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).click()
+        self.tasks(page)
+        expect(field).to_have_value(title)
+        self.assertEqual(len(held), 1)
+        route, response = held[0]
+        route.fulfill(response=response)
+        expect(field).to_have_value("", timeout=8000)
+        expect(self.details(page).get_by_role("heading", name=title)).to_have_count(0)
+        page.reload()
+        expect(field).to_have_value("")
+
+
+    def test_16_external_tab_aba_edits_fence_late_success_even_when_unmounted(self) -> None:
+        for unmounted in (False, True):
+            with self.subTest(unmounted=unmounted):
+                page = self.open_project("ada")
+                self.tasks(page)
+                field = page.get_by_label("New task", exact=True)
+                title = f"Another tab's newer edit is preserved {unmounted}"
+                field.fill(title)
+                key = f"flux:draft:{ADA['id']}:project-work:{self.ids['project']}"
+                held = []
+                def hold(route):
+                    if route.request.method != "POST":
+                        return route.continue_()
+                    response = route.fetch()
+                    self.assertEqual(response.status, 201, response.text())
+                    held.append((route, response))
+                page.route(f"**/api/v1/projects/{self.ids['project']}/work", hold)
+                page.get_by_role("button", name="Add task", exact=True).click()
+                if unmounted:
+                    page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).click()
+                page.evaluate("""key => { window.observedDraftWrites = 0;
+                  window.addEventListener('storage', event => { if(event.key === key) window.observedDraftWrites++; });
+                }""", key)
+                other = page.context.new_page()
+                other.goto(f"/projects/{self.ids['project']}/tasks?view=list")
+                expect(other.get_by_label("New task", exact=True)).to_be_visible()
+                # Two real, synchronous browser writes; queued events both see the final A.
+                # This is a storage-fence regression, not a typing/performance measurement.
+                other.evaluate("""arg => { localStorage.setItem(arg.key, 'Different draft B'); localStorage.setItem(arg.key, arg.title); }""", {"key": key, "title": title})
+                page.wait_for_function("window.observedDraftWrites >= 2")
+                if unmounted:
+                    self.tasks(page)
+                self.assertEqual(len(held), 1)
+                route, response = held[0]
+                with page.expect_request_finished(lambda request: request.method == "POST" and request.url.endswith("/work")):
+                    route.fulfill(response=response)
+                expect(field).to_have_value(title)
+                page.reload()
+                expect(field).to_have_value(title)
+                other.close()
+
+    def test_17_home_draft_changes_account_on_current_loader_revalidation(self) -> None:
+        page = self.page("ada")
+        page.goto("/")
+        field = page.get_by_label("Private note", exact=True)
+        expect(field).to_be_visible()
+        field.fill("Ada's private Home draft before revalidation")
+        page.context.clear_cookies()
+        page.context.add_cookies(self.states["jonas"]["cookies"])
+        # Same-route router navigation revalidates the mounted Home, without a document reload.
+        page.get_by_role("navigation", name="Places").get_by_role("link", name="Home", exact=True).click()
+        expect(page.get_by_role("button", name=re.compile("^Jonas Berg .*account and sign out"))).to_be_visible()
+        expect(field).to_have_value("")
+        field.fill("Jonas's private Home draft")
+        page.context.clear_cookies()
+        page.context.add_cookies(self.states["ada"]["cookies"])
+        page.get_by_role("navigation", name="Places").get_by_role("link", name="Home", exact=True).click()
+        expect(page.get_by_role("button", name=re.compile("^Ada Kowalska .*account and sign out"))).to_be_visible()
+        expect(field).to_have_value("Ada's private Home draft before revalidation")
 
 
 if __name__ == "__main__":

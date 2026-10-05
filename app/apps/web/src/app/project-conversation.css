@@ -4,6 +4,8 @@
 .project-convo__message.is-arrived { box-shadow: inset 3px 0 0 var(--accent); }
 .project-convo { display: flex; flex: 1; min-height: 0; flex-direction: column; }
 .project-convo__feed { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+/* Laid out (positions settle) but not shown until its first bounded reads arrive (#155). */
+.project-convo__feed.is-opening { visibility: hidden; }
 /* One reading column (direction C): conversations live in the sidebar, sources in the composer. */
 .project-convo__in { max-width: calc(var(--col) + 48px); margin: 0 auto; padding: 14px 24px 24px; }
 .project-convo__head { padding: 2px 0 6px; }

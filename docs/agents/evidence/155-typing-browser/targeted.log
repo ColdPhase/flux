@@ -1,0 +1,85 @@
+ Volume flux155browser_teststate  Creating
+ Volume flux155browser_teststate  Created
+ Container flux155browser-db-1  Running
+ Container flux155browser-mailpit-1  Running
+ Container flux155browser-worker-1  Running
+ Container flux155browser-api-1  Running
+ Container flux155browser-db-1  Waiting
+ Container flux155browser-db-1  Healthy
+ Container flux155browser-migrate-1  Starting
+ Container flux155browser-migrate-1  Started
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Exited
+ Container flux155browser-migrate-1  Exited
+▶ architecture boundaries
+  ✔ the repository has no dependency violation outside the recorded allowlist (161.553959ms)
+  ✔ every allowlist entry names its tracking issue and a reason (0.489208ms)
+  ✔ the push use cases in core stay free of adapters, including through helpers (1.095958ms)
+  ✔ the sketch use cases in core stay free of adapters, including through helpers (#69) (2.441292ms)
+  ✔ the direct-message use cases in core stay free of adapters, including through helpers (#107) (0.42375ms)
+  ✔ the rules reject each kind of boundary violation (self-test) (0.812625ms)
+  ✔ the allowlist comparison reports new and fixed violations (0.291875ms)
+✔ architecture boundaries (168.613958ms)
+▶ current native human typing access and nondurable broker primitives
+  ✔ only exact live human session plus current project authority yields native typing access (150.581083ms)
+  ✔ current grant downgrade and denial withdraw sender activity while reader access follows its own policy (203.351416ms)
+  ✔ exact remote session revocation or DB expiry withdraws activity despite unchanged human/project write authority (240.213542ms)
+  ✔ sender session is checked again after asynchronous policy work; names are current native identity only (137.582458ms)
+  ✔ caller mutation across session awaits cannot mix one human with another scope or identity (56.4455ms)
+  ✔ closed 1:1 keeps readable history but denies typing publication using the native DM counterpart rule (47.312916ms)
+  ✔ native Task access without the actual accepted discussion mapping creates no substitute root (164.278166ms)
+  ✔ two independent LISTEN consumers receive bounded identifier-only pulses with no native/durable effect (99.779375ms)
+  ✔ actual listener loss signals uncertainty and reconnects without replaying old notifications (1073.929458ms)
+  ✔ closing a real listener during initial connect never reports an obsolete readiness (1103.147626ms)
+  ✔ strict broker decoder rejects private extras, invalid identity and oversized payload without echo (59.705792ms)
+✔ current native human typing access and nondurable broker primitives (3651.845917ms)
+✔ 512 timed-out upgrades keep unfinished identity permits until their promises settle (10228.968004ms)
+✔ terminal publication bypasses unrelated blocked authorization on its sender socket (66.183333ms)
+✔ held old stop and newer active remain serial; final stop cannot lose newer publication (1203.853542ms)
+✔ unrelated broker activity and compatible refresh do not starve or falsely clear a slow delivery (355.409458ms)
+✔ closed transport retains unfinished authorization permit and closing flood adds no listeners (26.450333ms)
+✔ rejected in-flight first active retires its terminal marker and releases the closed admission (23.919125ms)
+✔ database clock failure drains discarded stop fences before admitting delayed older activity (1149.316208ms)
+✔ final reconciliation keeps compatible active refresh but withdraws stop, scope, expiry and uncertainty (1.413541ms)
+✔ typing closed input rejects forged identity/text recursively, without echoing private values (1.359125ms)
+✔ coalesced newer B withdraws A before unwatched B filtering; late A never resurrects (0.321208ms)
+✔ a stop survives delayed active, different-session substitution and database clock reversal (0.251708ms)
+✔ listener loss/reconnect clears presence and invalidates pending revision; no replay (0.233208ms)
+✔ context saturation is unknown, preserves sequence fences, and bounds moving connections (0.224084ms)
+✔ global saturation cannot silently evict a stop then replay older activity; recovery drains (0.288ms)
+✔ foreign activity retains bounded anonymous fences only; watchers retain until last leave (3.07275ms)
+✔ expiry, caller mutation and invalid sequence cannot extend a pulse or alter its native scope (0.685208ms)
+✔ a valid stop and scope withdrawal survive database-clock reversal without weakening the fence (0.453417ms)
+✔ negative sequence fences outlive positive monotonic expiry when DB time reverses (0.124708ms)
+✔ global and context quarantine drain through discarded active and stop validity (0.598916ms)
+✔ an unknown unwatched B watermark suppresses delayed older A without retaining private metadata (0.483917ms)
+✔ mutating supplied limits cannot bypass validated context or global capacity (0.102916ms)
+✔ already DB-expired activity cannot resurrect after a later clock reversal or reconnect (0.091ms)
+{"typingSocket":"two-account","activeMs":22.18795799999998,"stopMs":21.3471669999999}
+▶ actual same-origin ephemeral human typing WebSocket
+  ✔ two actual accounts receive names only; immediate stop is nondurable and self is excluded (207.64ms)
+{"typingSocket":"scope-switch","stopMs":10.971208999999817}
+  ✔ newer scope B withdraws A even when only A has a receiving observer (1591.573251ms)
+  ✔ unchanged checked snapshots renew application freshness without a new durable event (1855.459292ms)
+  ✔ reader can observe but cannot publish; foreign and unknown contexts reveal no names (306.832667ms)
+{"typingSocket":"writer-revoked","withdrawMs":599.8906660000002}
+{"typingSocket":"reader-revoked","withdrawMs":975.8967510000002}
+  ✔ current writer downgrade and recipient denial withdraw on checked heartbeat (1691.186126ms)
+{"typingSocket":"session-revoked","withdrawMs":863.7250009999998}
+  ✔ exact sender session deletion withdraws despite another live session of the same human (1013.858959ms)
+{"typingSocket":"idle-expiry","expiryMs":5736.946503000001}
+{"typingSocket":"disconnect","stopMs":10.457875000000058}
+  ✔ same human sessions deduplicate; idle expiry and disconnect leave no stale activity (6018.533003ms)
+  ✔ upgrades require exact origin/session and eight-socket human cap releases after close (136.691459ms)
+  ✔ unwatched exact session revocation closes idle transport and releases its admission (844.702459ms)
+  ✔ private extras, binary frames, oversized input and command flood close without echo (58.92275ms)
+✔ actual same-origin ephemeral human typing WebSocket (14087.879214ms)
+ℹ tests 50
+ℹ suites 3
+ℹ pass 50
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 16594.211215

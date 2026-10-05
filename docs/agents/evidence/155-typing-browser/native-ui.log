@@ -1,0 +1,45 @@
+ Container flux155browser-mailpit-1  Running
+ Container flux155browser-anthropic-mock-1  Running
+ Container flux155browser-db-1  Running
+ Container flux155browser-api-1  Running
+ Container flux155browser-worker-1  Running
+ Container flux155browser-db-1  Waiting
+ Container flux155browser-db-1  Healthy
+ Container flux155browser-migrate-1  Starting
+ Container flux155browser-migrate-1  Started
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Exited
+ Container flux155browser-migrate-1  Exited
+test_01_start_a_dm_from_the_sidebar (test_direct_messages.DirectMessageJourney.test_01_start_a_dm_from_the_sidebar) ... ok
+test_02_reply_from_a_second_browser_arrives_live (test_direct_messages.DirectMessageJourney.test_02_reply_from_a_second_browser_arrives_live) ... ok
+test_03_a_lost_response_is_retried_once (test_direct_messages.DirectMessageJourney.test_03_a_lost_response_is_retried_once) ... ok
+test_04_people_outside_the_dm_cannot_open_it (test_direct_messages.DirectMessageJourney.test_04_people_outside_the_dm_cannot_open_it) ... ok
+test_05_phone_reads_and_replies_with_the_audience_in_view (test_direct_messages.DirectMessageJourney.test_05_phone_reads_and_replies_with_the_audience_in_view) ... ok
+test_06_group_dm_and_leaving (test_direct_messages.DirectMessageJourney.test_06_group_dm_and_leaving) ... ok
+test_07_dark_and_index (test_direct_messages.DirectMessageJourney.test_07_dark_and_index) ... ok
+test_08_messaging_someone_who_left_explains_instead_of_opening_a_thread (test_direct_messages.DirectMessageJourney.test_08_messaging_someone_who_left_explains_instead_of_opening_a_thread) ... ok
+test_01_three_people_share_a_project (test_project_surface.ProjectSurfaceJourney.test_01_three_people_share_a_project) ... ok
+test_02_header_names_the_project_and_its_exact_audience (test_project_surface.ProjectSurfaceJourney.test_02_header_names_the_project_and_its_exact_audience) ... ok
+test_03_each_state_segment_opens_its_object (test_project_surface.ProjectSurfaceJourney.test_03_each_state_segment_opens_its_object) ... ok
+test_04_view_tabs_switch_between_the_project_surfaces (test_project_surface.ProjectSurfaceJourney.test_04_view_tabs_switch_between_the_project_surfaces) ... ok
+test_05_details_overview_links_everything_one_step_away (test_project_surface.ProjectSurfaceJourney.test_05_details_overview_links_everything_one_step_away) ... ok
+test_06_map_tab_creates_a_project_sketch (test_project_surface.ProjectSurfaceJourney.test_06_map_tab_creates_a_project_sketch) ... ok
+test_07_phone_collapses_the_state_line_and_keeps_the_audience (test_project_surface.ProjectSurfaceJourney.test_07_phone_collapses_the_state_line_and_keeps_the_audience) ... ok
+test_08_a_sketch_never_shows_under_another_projects_frame (test_project_surface.ProjectSurfaceJourney.test_08_a_sketch_never_shows_under_another_projects_frame) ... ok
+test_01_three_people_share_a_project (test_personal_assistant.PersonalAssistantJourney.test_01_three_people_share_a_project) ... ok
+test_02_not_set_up_says_so_and_human_work_continues (test_personal_assistant.PersonalAssistantJourney.test_02_not_set_up_says_so_and_human_work_continues) ... ok
+test_03_production_states_are_worded_truthfully (test_personal_assistant.PersonalAssistantJourney.test_03_production_states_are_worded_truthfully)
+Rendering only: the stub stands in for the production composition's real status. ... ok
+test_04_owner_turns_it_on_from_the_account_menu (test_personal_assistant.PersonalAssistantJourney.test_04_owner_turns_it_on_from_the_account_menu) ... ok
+test_05_a_manager_lets_their_assistant_read_the_project (test_personal_assistant.PersonalAssistantJourney.test_05_a_manager_lets_their_assistant_read_the_project) ... ok
+test_06_owner_sees_the_working_line_and_everyone_reads_the_attributed_answer (test_personal_assistant.PersonalAssistantJourney.test_06_owner_sees_the_working_line_and_everyone_reads_the_attributed_answer) ... ok
+test_07_stop_posts_nothing_and_a_failed_provider_says_so (test_personal_assistant.PersonalAssistantJourney.test_07_stop_posts_nothing_and_a_failed_provider_says_so) ... ok
+test_08_a_proposal_waits_for_someone_with_authority (test_personal_assistant.PersonalAssistantJourney.test_08_a_proposal_waits_for_someone_with_authority) ... ok
+test_09_paused_and_capped_are_explicit (test_personal_assistant.PersonalAssistantJourney.test_09_paused_and_capped_are_explicit) ... ok
+test_10_phone_reads_the_answer_and_proposal_without_overflow (test_personal_assistant.PersonalAssistantJourney.test_10_phone_reads_the_answer_and_proposal_without_overflow) ... ok
+
+----------------------------------------------------------------------
+Ran 26 tests in 48.112s
+
+OK

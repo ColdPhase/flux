@@ -1,0 +1,154 @@
+{
+  "build-initial-failure.log": {
+    "saved_raw_sha256": "839aceb5d64574de1102908e58d06d67fddcc047a0175fc4c3c9985569695738",
+    "gzip": "build-initial-failure.log.gz",
+    "gzip_sha256": "c1363858368edb1b3e41dd00386a5c73c9a787eaffed9fed33e8bb079abf654f",
+    "owner_observed_exit": 1,
+    "tested_source": "uncommitted intermediate; no immutable source claim",
+    "authentication_cookie_redactions": 0
+  },
+  "build-ref-render-failure.log": {
+    "saved_raw_sha256": "9498d59d0083b422074ee0e55b1c1029b81eb0a59eb57dff8e46d679400e8eb8",
+    "gzip": "build-ref-render-failure.log.gz",
+    "gzip_sha256": "6b20edafe2fa7772d5325f40da655bdda68b3e436c690b46375bc5ba56dc6185",
+    "owner_observed_exit": 1,
+    "tested_source": "uncommitted intermediate; no immutable source claim",
+    "authentication_cookie_redactions": 0
+  },
+  "build-narrowing-failure.log": {
+    "saved_raw_sha256": "d7f842f6b09171f7f55e4e9099068394dac746bba11d8b8ed194130db57788e1",
+    "gzip": "build-narrowing-failure.log.gz",
+    "gzip_sha256": "ec7a6d70c113ba786c5f21531177e67b81ffad36a3bd85154b3da5b0e729f742",
+    "owner_observed_exit": 1,
+    "tested_source": "uncommitted intermediate; no immutable source claim",
+    "authentication_cookie_redactions": 0
+  },
+  "build-first-pass.log": {
+    "saved_raw_sha256": "1f5b8b420e3886542e013478755752516afb28de4053bd59218266ff79ad7860",
+    "gzip": "build-first-pass.log.gz",
+    "gzip_sha256": "d02eb29aada56a1da4cab59e604927027f4b6b2dbd013a049ede46e554183cc7",
+    "owner_observed_exit": 0,
+    "tested_source": "production matches dd9ed63c862aa0ec03976a6cdd59dad7634e0b62; browser fixture not pinned",
+    "authentication_cookie_redactions": 0
+  },
+  "browser-initial-failure.log": {
+    "saved_raw_sha256": "0118c22b68469fb2f4561790f7fbae8a799818413393675c6021481624d54ccc",
+    "gzip": "browser-initial-failure.log.gz",
+    "gzip_sha256": "89bb30e51c4df7457b65ebfe03e31310d1d509a26cc5f23f09efb8310a945203",
+    "owner_observed_exit": 1,
+    "tested_source": "dd9ed63c862aa0ec03976a6cdd59dad7634e0b62",
+    "authentication_cookie_redactions": 0
+  },
+  "build-ownership-pass.log": {
+    "saved_raw_sha256": "0789c5c4ded6cad5db011c01e0d705b00df8b40237ffd0c755b285ada713b3b1",
+    "gzip": "build-ownership-pass.log.gz",
+    "gzip_sha256": "3b599d85ab99a3540417bed8be13355219fa90e2419e2816fbad3a74438541e1",
+    "owner_observed_exit": 0,
+    "tested_source": "production matches 2a79c7bcfbb91ef16527299f9438b8d90d6c1da9; subsequent fixture additions rebuilt separately",
+    "authentication_cookie_redactions": 0
+  },
+  "browser-fixture-failure.log": {
+    "saved_raw_sha256": "96104f2e955268724884cb462d07641ae867e284f8f50d498e8ad63dda4e25f5",
+    "gzip": "browser-fixture-failure.log.gz",
+    "gzip_sha256": "aecc01657f23e09c463ee88e494e019d62f830eaca0257c181b06b21a72f8629",
+    "owner_observed_exit": 1,
+    "tested_source": "2a79c7bcfbb91ef16527299f9438b8d90d6c1da9",
+    "authentication_cookie_redactions": 0
+  },
+  "browser-first-focused-pass.log": {
+    "saved_raw_sha256": "8885d20f439ca960c6e08260db9dd38569bf52770f0c0813216880cd05c03da4",
+    "gzip": "browser-first-focused-pass.log.gz",
+    "gzip_sha256": "bb01f5b415b32200253412b5c3f9dd0f5d0cddc886a2790e2c098259979c0a8a",
+    "owner_observed_exit": 0,
+    "tested_source": "e23f2f887470baecb2d4de290c46e00261fb2674",
+    "authentication_cookie_redactions": 0
+  },
+  "browser-keyboard-failure.log": {
+    "saved_raw_sha256": "989b1bf9239044957931ad174dde35f4060e46fd2609f715895e92832bce4a5b",
+    "gzip": "browser-keyboard-failure.log.gz",
+    "gzip_sha256": "1ee36baae57376dc777ed85e84b05dd3b7b24b24b88c5b91b2728aa51209ed07",
+    "owner_observed_exit": 1,
+    "tested_source": "e23f2f887470baecb2d4de290c46e00261fb2674",
+    "authentication_cookie_redactions": 0
+  },
+  "build-first-layout-pass.log": {
+    "saved_raw_sha256": "1c487337df377a9af8163c17fa4c7b2e08894fa832a305a9da75ca58ac9fc627",
+    "gzip": "build-first-layout-pass.log.gz",
+    "gzip_sha256": "8a952acd9a55aa9400f5845e60d5bf617182144afb9bcbf86612c150f2241548",
+    "owner_observed_exit": 0,
+    "tested_source": "production matches 60b812647489f745154e955b1dd2fd9d6dc8a2d7; final browser geometry assertions rebuilt separately",
+    "authentication_cookie_redactions": 0
+  },
+  "ui-geometry-image.log": {
+    "saved_raw_sha256": "4c79defe9c004079001a4f5a766f525b967cf08e9fc90e5fada39c500c1364d9",
+    "gzip": "ui-geometry-image.log.gz",
+    "gzip_sha256": "d24593df2caef4e7c5b58dee074334910b4745dfd5cfe651bb2671fb91c44536",
+    "owner_observed_exit": 0,
+    "tested_source": "60b812647489f745154e955b1dd2fd9d6dc8a2d7",
+    "authentication_cookie_redactions": 0
+  },
+  "browser-layout-focused-pass.log": {
+    "saved_raw_sha256": "3ce407979c507952ee8c2dabb5572b36bca8127420b54b08be6cb5af70518bd5",
+    "gzip": "browser-layout-focused-pass.log.gz",
+    "gzip_sha256": "7e1e0e79a71ff38e2673ccaa1b5f0982a1d6ba4708f5b322d0198b9e6d36b00a",
+    "owner_observed_exit": 0,
+    "tested_source": "60b812647489f745154e955b1dd2fd9d6dc8a2d7",
+    "authentication_cookie_redactions": 0
+  },
+  "browser-prelayout-full-pass.log": {
+    "saved_raw_sha256": "1d2e9ce8b3d14542f48cb6e59da9d74ad51895896bfac9b5f246c2e23bef5366",
+    "gzip": "browser-prelayout-full-pass.log.gz",
+    "gzip_sha256": "a84039a655a4a64503fc0b6a6714bb933c66229bdbeed2134ada1bbb3844b926",
+    "owner_observed_exit": 0,
+    "tested_source": "60b812647489f745154e955b1dd2fd9d6dc8a2d7",
+    "authentication_cookie_redactions": 0
+  },
+  "build-separated-layout-pass.log": {
+    "saved_raw_sha256": "42dd6385c4b5a44b2e68088e55d74e1b565164915c5d360f6739dbb9e5d3baea",
+    "gzip": "build-separated-layout-pass.log.gz",
+    "gzip_sha256": "df6b398000904fe4af37fa8d7acf3eb6fd0af41be2f90237ade0463b006fd46f",
+    "owner_observed_exit": 0,
+    "tested_source": "396cffb8a6bc69ef2a4e2011cd122a310874a8df",
+    "authentication_cookie_redactions": 0
+  },
+  "browser-phone-inset-failure.log": {
+    "saved_raw_sha256": "8355311b3eebbe546e31042e1e50cebf3962457b32ca16e94bc48a140d25b442",
+    "gzip": "browser-phone-inset-failure.log.gz",
+    "gzip_sha256": "12d62c1f529fc3613e0c37a1543f96aeae019b4faec65028c9e621ca4c873073",
+    "owner_observed_exit": 1,
+    "tested_source": "396cffb8a6bc69ef2a4e2011cd122a310874a8df",
+    "authentication_cookie_redactions": 0
+  },
+  "build-final.log": {
+    "saved_raw_sha256": "7cf69a2d934de140480d6401185690d740c589604cd6947e1c7b7fa35c63c21d",
+    "gzip": "build-final.log.gz",
+    "gzip_sha256": "df03c4b8139fd49f55b8c03dde941aeb8d765416c32e9059f4b97f3b6b02f73a",
+    "owner_observed_exit": 0,
+    "tested_source": "7c0fba2f5079619021c8b6dcd3a2f8216993f008",
+    "authentication_cookie_redactions": 0
+  },
+  "browser-final.log": {
+    "saved_raw_sha256": "97d674caa3d3b03e0b358ca6876d364a5ab706b7c383f1e4649fd23444ef0602",
+    "gzip": "browser-final.log.gz",
+    "gzip_sha256": "cd870a011427a478857e7ecc67e6d64d5ab221e15715fad83a80ca02aa496977",
+    "owner_observed_exit": 0,
+    "tested_source": "7c0fba2f5079619021c8b6dcd3a2f8216993f008",
+    "authentication_cookie_redactions": 0
+  },
+  "client-final.log": {
+    "saved_raw_sha256": "d5da6b950059b8dbf8541079ec69e762a44501b465f3fcb75d593688af39a740",
+    "gzip": "client-final.log.gz",
+    "gzip_sha256": "624f33f798a4c12a2ed984c09e7b425681b82ff4e3d5755ff469f15156eafbeb",
+    "owner_observed_exit": 0,
+    "tested_source": "2a79c7bcfbb91ef16527299f9438b8d90d6c1da9",
+    "authentication_cookie_redactions": 0
+  },
+  "foundation-final.log": {
+    "saved_raw_sha256": "ad2c3784c01f9886609a4d25cefe1ecb3206acd467870de54fba9b884917a1df",
+    "gzip": "foundation-final.log.gz",
+    "gzip_sha256": "49c1c1a099e758cea2d46548bc5e2b2b0aad9842ae5141564eac74a12b1271c9",
+    "owner_observed_exit": 0,
+    "tested_source": "final production pin plus current evidence README",
+    "authentication_cookie_redactions": 0
+  }
+}

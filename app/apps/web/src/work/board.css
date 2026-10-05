@@ -72,6 +72,8 @@
 .tb-note--moving svg { color: var(--accent); }
 .tb-col__list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 12px; align-content: start; margin: 0; padding: 0; list-style: none; }
 .tb-col__empty { padding: 14px 1px 18px; font-size: var(--fs-md); color: var(--text-3); }
+/* A column holds more than its bounded first page: the List pages through the rest (#155). */
+.tb-col__more { display: block; min-height: 32px; margin: 4px 1px 8px; font-size: var(--fs-sm); text-align: left; }
 
 .tb-ring { flex: none; width: 9px; height: 9px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--text-3); }
 .tb-ring--in_progress { box-shadow: none; border: 1.5px solid var(--accent); border-right-color: transparent; transform: rotate(-45deg); }
