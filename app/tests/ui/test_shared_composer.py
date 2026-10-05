@@ -697,11 +697,16 @@ class SharedComposerJourney(unittest.TestCase):
                 with page.expect_response(lambda response: response.url.endswith("/api/auth/sign-out")) as response:
                     page.get_by_role("button", name="Sign out", exact=True).click()
                 self.assertEqual(response.value.status, 503)
-                expect(pane.get_by_label("Reply", exact=True)).to_have_value(newest)
+                # Sign-out is a navigation (#195): a failure lands on the sign-out page, which says so.
+                expect(page).to_have_url(re.compile(r"/sign-out$"))
+                expect(page.get_by_role("heading", name="Sign out of Flux?")).to_be_visible()
+                expect(page.get_by_role("alert")).to_be_visible()
                 self.assertEqual(self.record(page, project, task), persisted)
                 page.unroute("**/api/auth/sign-out", fail)
-                if page.get_by_role("dialog", name="Account").count():
-                    page.get_by_role("button", name=re.compile("account and sign out")).click()
+                # Back in the conversation, the failed sign-out has kept the newest text.
+                page.go_back()
+                expect(pane.get_by_label("Reply", exact=True)).to_have_value(newest)
+                self.assertEqual(self.record(page, project, task), persisted)
                 held = []
                 def hold_upload(route):
                     result = route.fetch()
@@ -756,12 +761,12 @@ class SharedComposerJourney(unittest.TestCase):
         with page.expect_response(lambda response: response.url.endswith('/api/auth/sign-out')) as response:
             page.get_by_role('button', name='Sign out', exact=True).click()
         self.assertEqual(response.value.status, 503)
+        # Sign-out is a navigation (#195): a failure lands on the sign-out page, which offers to try again.
+        expect(page).to_have_url(re.compile(r'/sign-out$'))
+        expect(page.get_by_role('heading', name='Sign out of Flux?')).to_be_visible()
         expect(other.get_by_label('Write to this task', exact=True)).to_have_value(text)
         self.assertEqual(self.record(other, project, task), before)
         page.unroute('**/api/auth/sign-out', fail)
-        if page.get_by_role('dialog', name='Account').count():
-            page.get_by_role('button', name=re.compile('account and sign out')).click()
-        page.get_by_role('button', name=re.compile('account and sign out')).click()
         with page.expect_response(lambda response: response.url.endswith('/api/auth/sign-out')) as response:
             page.get_by_role('button', name='Sign out', exact=True).click()
         self.assertEqual(response.value.status, 200)
