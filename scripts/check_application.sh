@@ -90,6 +90,9 @@ run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/task-contribution-eff
 # This is browser integration coverage, not the required real GitHub App installation evidence.
 $compose run --rm e2e node_modules/.bin/tsx --test tests/app/e2e/github.e2e.ts
 
+# "Let linked PRs move this task" (#74 G-1a) in task Details: toggle, history, paused/Resume and Ready to close at desktop and 390 px.
+run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/github-rules.e2e.ts
+
 # A seeded project proposal must remain editable, dismissible and usable through the actual UI.
 # The fixture bypasses rule activation: this stack leaves FLUX_BACKGROUND_COMPARISONS empty, so
 # enabling stays unavailable here (the switched-on check is the last step below).
