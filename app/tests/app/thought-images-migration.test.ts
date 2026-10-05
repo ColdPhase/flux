@@ -21,6 +21,9 @@ test('0050 keeps stored files as they were, publishes to one place only and reve
     const createFixture = { text: `CREATE DATABASE "${name}"`, query_timeout: 60_000 };
     await admin.query(createFixture);
     history = createDatabase(url.toString()).pool;
+    // Dropping the fixture database WITH (FORCE) can terminate a connection the pool is still closing; that late
+    // notice concerns only this throwaway database, never an assertion below.
+    history.on('error', () => undefined);
     for (const file of manifest.filter((entry) => entry.version < 50)) await history.query(await readFile(join(dir, file.name), 'utf8'));
     const [ws, project, conversation, message, attached, staged] = Array.from({ length: 6 }, () => randomUUID());
     const user = 'thought-image-person';
