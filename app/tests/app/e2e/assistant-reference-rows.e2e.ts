@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser, type BrowserContext, type Page, type Route } from 'playwright';
 import { expect } from 'playwright/test';
-import type { AssistantAnswer, AssistantProposal, AssistantRun, Conversation, Page as NativePage, Project, WorkItem } from '@flux/contracts';
+import { PERSONAL_RUN_CONSENT_VERSION, type AssistantAnswer, type AssistantProposal, type AssistantRun, type Conversation, type Page as NativePage, type Project, type WorkItem } from '@flux/contracts';
 import { pool } from '../support/db.js';
 import { addMember, expectStatus, grant, password, person, project, workspace, type Person } from '../support/people.js';
 
@@ -107,7 +107,7 @@ before(async () => {
   await grant(manager, place.id, owner, 'contributor'); await grant(manager, place.id, writer, 'contributor'); await grant(manager, place.id, viewer, 'viewer');
   agentId = (await post<{id:string}>(manager, `/api/v1/workspaces/${ws.id}/agents`, { name: 'Reference analyst', owner: 'self' })).id;
   await post(manager, `/api/v1/projects/${place.id}/grants`, { principal: {kind:'agent',id:agentId}, role:'viewer' });
-  await post(manager, '/api/v1/personal-assistant', {consentVersion:'o-008-2026-09-28',agentId,dailyCapCents:1000});
+  await post(manager, '/api/v1/personal-assistant', {consentVersion:PERSONAL_RUN_CONSENT_VERSION,agentId,dailyCapCents:1000});
   thread = await post<Conversation>(manager, `/api/v1/projects/${place.id}/conversations`, {body:'Measured native references',clientMessageId:randomUUID()});
 });
 after(async () => {
