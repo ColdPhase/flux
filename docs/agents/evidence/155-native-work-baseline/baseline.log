@@ -1,0 +1,64 @@
+ Container flux155workperf-mailpit-1  Running
+ Container flux155workperf-anthropic-mock-1  Running
+ Container flux155workperf-db-1  Running
+ Container flux155workperf-api-1  Running
+ Container flux155workperf-worker-1  Running
+ Container flux155workperf-db-1  Waiting
+ Container flux155workperf-db-1  Healthy
+ Container flux155workperf-migrate-1  Starting
+ Container flux155workperf-migrate-1  Started
+ Container flux155workperf-migrate-1  Waiting
+ Container flux155workperf-migrate-1  Waiting
+ Container flux155workperf-migrate-1  Exited
+ Container flux155workperf-migrate-1  Exited
+fixture: 100/1000 native work objects
+fixture: 200/1000 native work objects
+fixture: 300/1000 native work objects
+fixture: 400/1000 native work objects
+fixture: 500/1000 native work objects
+fixture: 600/1000 native work objects
+fixture: 700/1000 native work objects
+fixture: 800/1000 native work objects
+fixture: 900/1000 native work objects
+fixture: 1000/1000 native work objects
+desktop: navigation 0/200 measured
+desktop: navigation 50/200 measured
+desktop: navigation 100/200 measured
+desktop: navigation 150/200 measured
+desktop: navigation 200/200 measured
+desktop: input 0/200 measured
+desktop: input 50/200 measured
+desktop: input 100/200 measured
+desktop: input 150/200 measured
+desktop: input 200/200 measured
+desktop: view 0/200 measured
+desktop: view 50/200 measured
+desktop: view 100/200 measured
+desktop: view 150/200 measured
+desktop: view 200/200 measured
+desktop: scroll 0/200 measured
+desktop: scroll 50/200 measured
+desktop: scroll 100/200 measured
+desktop: scroll 150/200 measured
+desktop: scroll 200/200 measured
+phone-cpu4: navigation 0/200 measured
+phone-cpu4: navigation 50/200 measured
+phone-cpu4: navigation 100/200 measured
+phone-cpu4: navigation 150/200 measured
+phone-cpu4: navigation 200/200 measured
+phone-cpu4: input 0/200 measured
+phone-cpu4: input 50/200 measured
+phone-cpu4: input 100/200 measured
+phone-cpu4: input 150/200 measured
+phone-cpu4: input 200/200 measured
+phone-cpu4: view 0/200 measured
+phone-cpu4: view 50/200 measured
+phone-cpu4: view 100/200 measured
+phone-cpu4: view 150/200 measured
+phone-cpu4: view 200/200 measured
+phone-cpu4: scroll 0/200 measured
+phone-cpu4: scroll 50/200 measured
+phone-cpu4: scroll 100/200 measured
+phone-cpu4: scroll 150/200 measured
+phone-cpu4: scroll 200/200 measured
+completed-baseline-with-observed-failures

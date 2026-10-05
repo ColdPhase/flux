@@ -54,6 +54,12 @@ describe('architecture boundaries', () => {
     assert.deepEqual(reachableImports(root, entries, ['@flux/db', 'drizzle-orm', 'pg', 'pg-boss', 'fastify', 'web-push']), []);
   });
 
+  test('the bounded work read use cases stay free of persistence and transport adapters (#155)', () => {
+    const entries = files(join(root, 'packages/core/src/work-read'));
+    assert.ok(entries.length >= 5, 'the bounded read use cases, cursor and ports exist');
+    assert.deepEqual(reachableImports(root, entries, ['@flux/db', 'drizzle-orm', 'pg', 'pg-boss', 'fastify']), []);
+  });
+
   test('co-work claim use cases stay free of adapters, including through helpers (#153)', () => {
     const entries = files(join(root, 'packages/core/src/co-work'));
     assert.ok(entries.length >= 2, 'co-work use cases and their bounded entry point exist');

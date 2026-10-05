@@ -1,0 +1,1398 @@
+ Container flux155browser-db-1  Running
+ Container flux155browser-mailpit-1  Running
+ Container flux155browser-anthropic-mock-1  Recreate
+ Container flux155browser-api-1  Running
+ Container flux155browser-worker-1  Running
+ Container flux155browser-anthropic-mock-1  Recreated
+ Container flux155browser-anthropic-mock-1  Starting
+ Container flux155browser-db-1  Waiting
+ Container flux155browser-anthropic-mock-1  Started
+ Container flux155browser-db-1  Healthy
+ Container flux155browser-migrate-1  Starting
+ Container flux155browser-migrate-1  Started
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Exited
+ Container flux155browser-migrate-1  Exited
+test_01_global_object_and_edge_pages_keep_native_ids_counts_and_reply (test_work_associations.MessageWorkJourney.test_01_global_object_and_edge_pages_keep_native_ids_counts_and_reply) ... ok
+test_02_held_next_page_respects_new_wheel_reading_position_and_private_selection (test_work_associations.MessageWorkJourney.test_02_held_next_page_respects_new_wheel_reading_position_and_private_selection) ... ok
+test_03_old_page_and_required_failure_do_not_revive_chips_or_clear_reply (test_work_associations.MessageWorkJourney.test_03_old_page_and_required_failure_do_not_revive_chips_or_clear_reply) ... ok
+test_04_cookie_account_change_retires_held_old_page_and_isolates_reply (test_work_associations.MessageWorkJourney.test_04_cookie_account_change_retires_held_old_page_and_isolates_reply) ... ok
+test_05_older_visible_messages_use_one_bounded_batch_and_native_source (test_work_associations.MessageWorkJourney.test_05_older_visible_messages_use_one_bounded_batch_and_native_source) ... ok
+test_06_paused_router_revalidation_retires_viewport_selector_aba (test_work_associations.MessageWorkJourney.test_06_paused_router_revalidation_retires_viewport_selector_aba) ... ok
+test_07_restored_feed_observes_older_and_newer_native_batches (test_work_associations.MessageWorkJourney.test_07_restored_feed_observes_older_and_newer_native_batches) ... FAIL
+test_08_one_pagedown_gesture_keeps_scrolling_across_a_held_batch (test_work_associations.MessageWorkJourney.test_08_one_pagedown_gesture_keeps_scrolling_across_a_held_batch) ... FAIL
+
+======================================================================
+FAIL: test_07_restored_feed_observes_older_and_newer_native_batches (test_work_associations.MessageWorkJourney.test_07_restored_feed_observes_older_and_newer_native_batches)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/work/tests/ui/test_work_associations.py", line 262, in test_07_restored_feed_observes_older_and_newer_native_batches
+    expect(page.get_by_role("button",name="Work: Revisit the first measurement",exact=True)).to_be_visible()
+  File "/usr/local/lib/python3.12/dist-packages/playwright/sync_api/_generated.py", line 23332, in to_be_visible
+    self._sync(
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_sync_base.py", line 115, in _sync
+    return task.result()
+           ^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_assertions.py", line 852, in to_be_visible
+    await self._expect_impl(
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_assertions.py", line 128, in _expect_impl
+    _record_soft_or_raise(
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_assertions.py", line 60, in _record_soft_or_raise
+    raise error
+AssertionError: Locator expected to be visible
+Actual value: None
+Error: element(s) not found
+Call log:
+  - Expect "to_be_visible" with timeout 10000ms
+  - waiting for get_by_role("button", name="Work: Revisit the first measurement", exact=True)
+
+Aria snapshot:
+- link "Skip to content":
+  - /url: "#content"
+- complementary "Sidebar":
+  - navigation "Places":
+    - img "Flux"
+    - link "Home":
+      - /url: /
+    - link "Inbox":
+      - /url: /inbox
+    - link "Direct messages":
+      - /url: /dm
+    - link "Lamp measurements":
+      - /url: /projects/17707669-1975-4cb0-ab69-55733e017221
+  - text: Lamp measurements Ada and you · only you two
+  - button "Jump to…"
+  - navigation "Lamp measurements":
+    - button "New thought Private"
+    - region "Conversations2":
+      - heading "Conversations2" [level=2]
+      - link "New conversation":
+        - /url: /projects/17707669-1975-4cb0-ab69-55733e017221?new=1
+      - list:
+        - listitem:
+          - link "Library installation notes from the first measurement 10:57":
+            - /url: /projects/17707669-1975-4cb0-ab69-55733e017221/conversations/235fad03-7038-4986-bc60-b28f6af6c9e6
+        - listitem:
+          - link:
+            - /url: /projects/17707669-1975-4cb0-ab69-55733e017221/conversations/d815210f-4007-4c88-8b7a-c758e1a77bd1
+  - button "Ada Kowalska source-pages-f4ad10d6-474d-4cf8-af4c-6eabda8c5210@example.test , account and sign out"
+- banner:
+  - heading "Lamp measurements" [level=1]
+  - button "Ada and you · only you two , who can see this project"
+  - paragraph:
+    - 'button "Needs you: a proposed decision"'
+    - 'button "Current rule: Use the distance sensor"'
+    - 'button "Result: The shield reduced noise"'
+  - button "Together"
+  - button "Details"
+- navigation "Project views":
+  - link "Conversation":
+    - /url: /projects/17707669-1975-4cb0-ab69-55733e017221/conversations/235fad03-7038-4986-bc60-b28f6af6c9e6
+  - link "Tasks , 67 unfinished work items":
+    - /url: /projects/17707669-1975-4cb0-ab69-55733e017221/tasks
+  - link "Map":
+    - /url: /projects/17707669-1975-4cb0-ab69-55733e017221/map
+  - link "Docs":
+    - /url: /projects/17707669-1975-4cb0-ab69-55733e017221/docs
+- button "What matters"
+- heading "Library installation notes from the first measurement" [level=2]
+- paragraph: 141 messages · started Today
+- region "Messages":
+  - list:
+    - listitem: Today
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: Library installation notes from the first measurement
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 2: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 3: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 4: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 5: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 6: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 7: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 8: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 9: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 10: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 11: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 12: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 13: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 14: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 15: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 16: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 17: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 18: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 19: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 20: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 21: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 22: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 23: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 24: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 25: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 26: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 27: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 28: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 29: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 30: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 31: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 32: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 33: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 34: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 35: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 36: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 37: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 38: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 39: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 40: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 41: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 42: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 43: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 44: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 45: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 46: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 47: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 48: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 49: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 50: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 51: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 52: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 53: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 54: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 55: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 56: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 57: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 58: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 59: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 60: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 61: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 62: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 63: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 64: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 65: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 66: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 67: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 68: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 69: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 70: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 71: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 72: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 73: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 74: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 75: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 76: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 77: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 78: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 79: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 80: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 81: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 82: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 83: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 84: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 85: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 86: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 87: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 88: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 89: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 90: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 91: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 92: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 93: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 94: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 95: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 96: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 97: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 98: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 99: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 100: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 101: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 102: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 103: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 104: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 105: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 106: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 107: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 108: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 109: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 110: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 111: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 112: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 113: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 114: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 115: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 116: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 117: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 118: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 119: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 120: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 121: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 122: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 123: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 124: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 125: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 126: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 127: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 128: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 129: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 130: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 131: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 132: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 133: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 134: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 135: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 136: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 137: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 138: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 139: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 140: compare the shield, cable and standby current before ordering."
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+    - listitem:
+      - strong: Ada Kowalska · you
+      - time: 10:57
+      - paragraph: "Measurement note 141: compare the shield, cable and standby current before ordering."
+      - 'link "Source: Shield measurements · v1"':
+        - /url: /materials/df6be5e1-5d29-4463-a2e5-f3b09194bd28/versions/1
+      - group "Make something from this message":
+        - button "Create work"
+        - button "Propose decision"
+        - button "Attach result"
+        - button "Details of this message": Details
+- paragraph: Ada and you · only you two · saved to Lamp measurements
+- button "Sources, 1 saved"
+- button "Ask my assistant"
+- text: Reply
+- textbox "Reply":
+  - /placeholder: Reply to Ada…
+- button "Send reply" [disabled]
+- status
+- status
+
+======================================================================
+FAIL: test_08_one_pagedown_gesture_keeps_scrolling_across_a_held_batch (test_work_associations.MessageWorkJourney.test_08_one_pagedown_gesture_keeps_scrolling_across_a_held_batch)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/work/tests/ui/test_work_associations.py", line 276, in test_08_one_pagedown_gesture_keeps_scrolling_across_a_held_batch
+    self.ready(page);self.assertEqual(reads[-1],original)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: '0013[29 chars]6c8,0054bb0c-3982-4aa7-b983-20d18c0bacc9,01f09[3616 chars]60da' != '0013[29 chars]6c8,02b70410-9452-4cbb-b5c2-83e74ae03605,03cc0[3616 chars]09ba'
+Diff is 7405 characters long. Set self.maxDiff to None to see it.
+
+----------------------------------------------------------------------
+Ran 8 tests in 22.193s
+
+FAILED (failures=2)

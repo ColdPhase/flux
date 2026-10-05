@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import { aiConnectionLabel, type AssistantAnswer, type AssistantProposal, type AssistantRun, type AssistantSourceRef, type ConversationMessage, type WorkItem } from '@flux/contracts';
+import { aiConnectionLabel, type AssistantAnswer, type AssistantProposal, type AssistantRun, type AssistantSourceRef, type ConversationMessage, type NativeWorkRow } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { Button, Icon, IconButton } from '../ui';
+import { Button, Icon, IconButton, useLoopPause } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { canRetry, endedText, isWorking, workingText, type AskState } from './format';
 import { agentAuthorLabel } from '../docs/format';
@@ -47,12 +47,15 @@ export function WorkingLine({ run, onStop, onRetry, onDismiss }: { run: Assistan
   };
   const working = isWorking(run);
   const ended = endedText(run);
+  // Motion follows actual execution only (#155 AC-3): a queued or stopping run is static; its text says why.
+  const executing = working && run.status !== 'queued' && !run.stopRequested;
+  const loop = useLoopPause<HTMLLIElement>();
   return (
-    <li className={`assistant-working${working ? ' is-working' : ''}`} aria-live="polite" data-run-status={run.status}>
+    <li ref={loop} className={`assistant-working${executing ? ' is-working' : ''}`} aria-live="polite" data-run-status={run.status}>
       <AssistantAvatar />
       <div className="assistant-working__body">
         <p className="assistant-working__text">
-          {working ? <span className="assistant-working__pulse" aria-hidden="true" /> : null}
+          {executing ? <span className="assistant-working__pulse" aria-hidden="true" /> : null}
           {working ? workingText(run) : ended}
         </p>
         <p className="assistant-working__who"><Icon name="lock" size={12} />Only you see this · “{run.prompt.length > 90 ? `${run.prompt.slice(0, 90)}…` : run.prompt}”</p>
@@ -70,7 +73,7 @@ export function WorkingLine({ run, onStop, onRetry, onDismiss }: { run: Assistan
 interface SourceLookups {
   projectId: string;
   messages: ConversationMessage[];
-  work: WorkItem[];
+  work: ReadonlyMap<string, NativeWorkRow>;
   author: (id: string) => string;
 }
 
@@ -82,9 +85,9 @@ function SourceLink({ source, index, lookups }: { source: AssistantSourceRef; in
     return <Link className="assistant-cite" to={{ hash: `message-${source.id}` }} aria-label={label} title={label}>{index}</Link>;
   }
   if (source.type === 'work') {
-    const item = lookups.work.find((work) => work.id === source.id);
+    const item = lookups.work.get(`work:${source.id}`);
     const label = `Source ${index}: work “${item?.title ?? 'in this project'}”`;
-    return <button type="button" className="assistant-cite" aria-label={label} title={label} onClick={() => openDetails({ kind: 'work', id: source.id })}>{index}</button>;
+    return <button type="button" className="assistant-cite" data-native-ref={`work:${source.id}`} aria-label={label} title={label} onClick={() => openDetails({ kind: 'work', id: source.id })}>{index}</button>;
   }
   const label = `Source ${index}: a thought on the project map`;
   return <Link className="assistant-cite" to={`/projects/${lookups.projectId}/map/${source.sketchId}#thought-${source.id}`} aria-label={label} title={label}>{index}</Link>;
@@ -156,10 +159,13 @@ export function AnswerItem({ answer, mine, lookups, when, clock, proposal, propo
 }
 
 /** The one framed object an assistant adds: a result drafted for a person with authority. */
-export function ProposalCard({ proposal, workTitle, canDecide, meId, onDecide }: {
+export function ProposalCard({ proposal, workTitle, canAccept, canDismiss, targetState, onRefreshTarget, meId, onDecide }: {
   proposal: AssistantProposal;
   workTitle: string | null;
-  canDecide: boolean;
+  canAccept: boolean;
+  canDismiss: boolean;
+  targetState: 'ready' | 'checking' | 'unavailable' | 'failed';
+  onRefreshTarget: () => void;
   meId: string;
   onDecide: (decision: 'accept' | 'dismiss') => Promise<void>;
 }) {
@@ -177,7 +183,7 @@ export function ProposalCard({ proposal, workTitle, canDecide, meId, onDecide }:
   const decidedBy = proposal.decidedBy ? (proposal.decidedBy.id === meId ? 'you' : proposal.decidedBy.name) : '';
   const drafted = proposal.draftedBy.ownerUserId === meId ? 'your assistant' : proposal.draftedBy.label;
   return (
-    <section className={`assistant-proposal is-${proposal.status}`} aria-label={`Proposal: ${proposal.change.title}`}>
+    <section className={`assistant-proposal is-${proposal.status}`} aria-label={`Proposal: ${proposal.change.title}`} data-native-ref={proposal.change.finishes ? `work:${proposal.change.finishes.workId}` : undefined} data-proposal-target="">
       <p className="assistant-proposal__label">
         <span className="assistant-proposal__ring" aria-hidden="true" />
         {proposal.status === 'proposed' ? 'Proposal · not saved yet' : proposal.status === 'accepted' ? 'Result recorded' : 'Proposal dismissed'}
@@ -191,10 +197,14 @@ export function ProposalCard({ proposal, workTitle, canDecide, meId, onDecide }:
         <p className="assistant-proposal__effect">
           Accept records the {proposal.change.finding === 'negative' ? 'negative ' : ''}result{workTitle ? <> and finishes <b>{workTitle}</b></> : null}. Nothing is saved until then.
         </p>
-        {canDecide ? <div className="assistant-proposal__actions">
-          <Button variant="primary" busy={busy === 'accept'} disabled={!!busy && busy !== 'accept'} onClick={() => void decide('accept')}>Accept</Button>
-          <Button variant="quiet" busy={busy === 'dismiss'} disabled={!!busy && busy !== 'dismiss'} onClick={() => void decide('dismiss')}>Dismiss</Button>
-        </div> : <p className="assistant-proposal__wait">{proposal.draftedBy.label} drafted this. It waits for someone who can decide it.</p>}
+        {targetState !== 'ready' ? <p className="assistant-proposal__wait" role={targetState === 'failed' ? 'alert' : undefined}>
+          {targetState === 'checking' ? 'Checking the current task and who can decide…' : targetState === 'unavailable' ? 'The linked task is unavailable. This proposal can’t finish it.' : 'Couldn’t check the linked task. Your reply is kept.'}
+          {targetState !== 'checking' ? <> <button type="button" className="ui-link" onClick={onRefreshTarget}>Refresh linked task</button></> : null}
+        </p> : null}
+        {canAccept || canDismiss ? <div className="assistant-proposal__actions">
+          {canAccept ? <Button variant="primary" busy={busy === 'accept'} disabled={!!busy && busy !== 'accept'} onClick={() => void decide('accept')}>Accept</Button> : null}
+          {canDismiss ? <Button variant="quiet" busy={busy === 'dismiss'} disabled={!!busy && busy !== 'dismiss'} onClick={() => void decide('dismiss')}>Dismiss</Button> : null}
+        </div> : targetState === 'ready' ? <p className="assistant-proposal__wait">{proposal.draftedBy.label} drafted this. It waits for someone who can decide it.</p> : null}
       </> : proposal.status === 'accepted' ? (
         <p className="assistant-proposal__done">
           <Icon name="check" size={13} />Recorded by {decidedBy} · drafted by {drafted}

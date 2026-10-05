@@ -1,0 +1,24 @@
+services:
+  reference-e2e:
+    profiles: [test]
+    build:
+      context: /Users/maurycyzamojski/Dev/Projekty/flux/.worktrees/155-truthful-typing/app
+      dockerfile: /Users/maurycyzamojski/Dev/Projekty/flux/.worktrees/155-truthful-typing/docker/Dockerfile
+      target: e2e
+    image: flux-e2e:${FLUX_IMAGE_TAG}
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      FLUX_API_URL: http://api:8080
+      FLUX_PUBLIC_ORIGIN: ${FLUX_PUBLIC_ORIGIN}
+      FLUX_AUTH_SECRET: ${FLUX_AUTH_SECRET}
+      FLUX_GIT_COMMIT: ${FLUX_GIT_COMMIT}
+      FLUX_E2E_EVIDENCE_DIR: /evidence
+    volumes:
+      - ${FLUX_UI_SCREENSHOT_DIR}:/evidence
+    depends_on:
+      api:
+        condition: service_healthy
+      worker:
+        condition: service_started
+      anthropic-mock:
+        condition: service_healthy

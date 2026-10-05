@@ -5,11 +5,15 @@ import { ApiError } from '../api/client';
 import { useComposerDraft, useComposerScope } from '../composer/draft';
 import { ComposerFiles, MessageFiles } from '../composer/Files';
 import { contributeToTask } from '../composer/api';
-import { Avatar, Button, Icon, Input, MEDIA, sendsOnEnter, useMediaQuery } from '../ui';
+import { Avatar, Button, Icon, Input, MEDIA, sendsOnEnter, useArrivals, useMediaQuery } from '../ui';
 import { getConversation, getMaterialVersion, getProject, listConversationRoots, listDrafts, listMaterials, listTaskNotices, listWorkspaceMembers, olderMessages, publishMaterial, reply, startConversation } from './conversation-api';
 import { pageBackTo } from './seekMessage';
 import { useShellData } from './data';
 import { MessageActions, MessageObjects, useCreateWorkFromMessage } from '../work/inline';
+import { useMessageWork } from '../work/useMessageWork';
+import { useProjectWorkSummary } from '../work/WorkReadContext';
+import { useReferenceWork } from '../work/useReferenceWork';
+import { MessageWorkPages } from '../work/MessageWorkPages';
 import { audienceLine, replyTo, useProjectShell } from '../project/data';
 import { useShellActions } from './shellContext';
 import { useConversationAssistant } from '../assistant/useConversationAssistant';
@@ -17,9 +21,11 @@ import { AnswerItem, AskBar, ProposalCard, WorkingLine } from '../assistant/Conv
 import { askError as askErrorText, askState } from '../assistant/format';
 import { grantAgentProject } from '../agent-connection/api';
 import { agentAuthorLabel } from '../docs/format';
-import { ContributionMark, SourceCitation, clock, day, openOnWholeMessages, when } from './messageParts';
+import { ContributionMark, OPENING_REVEAL_MS, SourceCitation, clock, day, openOnWholeMessages, when } from './messageParts';
 import { OneConversation, type PaneProps } from './OneConversation';
 import { ThreadMessageActions } from './ThreadDrawer';
+import { useTyping } from '../typing/useTyping';
+import { TypingNotice } from '../typing/TypingNotice';
 import './project-conversation.css';
 
 /** The project's one conversation (UI116-1): the newest roots and task announcements (UI116-3), and the thread a URL opens. */
@@ -70,8 +76,9 @@ function mergeMessages(current: Conversation['messages'], incoming: Conversation
 
 export function ProjectConversation() {
   const data = useLoaderData() as ProjectData;
+  const { me } = useShellData();
   return <div className="project-page">
-    <OneConversation key={data.project.id} data={data} Pane={ProjectConversationContent} />
+    <OneConversation key={`${me.user.id}:${data.project.id}`} data={data} Pane={ProjectConversationContent} />
   </div>;
 }
 
@@ -85,11 +92,15 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const { project, materials, members } = data;
   const conversation = variant === 'thread' ? data.conversation : null;
   const shell = useProjectShell();
-  const work = shell?.work ?? { work: [], decisions: [], results: [] };
   const people = shell?.people ?? null;
   const { me } = useShellData();
   const navigate = useNavigate();
   const revalidator = useRevalidator();
+  // The stream and the thread are two panes on one route: the stream's revalidation changes the router's
+  // state every 15 s. Read the latest revalidate through a ref, so this pane's own refresh (and its 15 s
+  // fallback timer) keeps its identity and is not restarted, and so never starved, by the other pane.
+  const revalidateRef = useRef(revalidator.revalidate);
+  useEffect(() => { revalidateRef.current = revalidator.revalidate; });
   const audience = audienceLine(people, me.user.id, project.visibility === 'workspace');
   const audienceShort = audience.replace(/ · only you two$/, '');
   // The stream's composer keeps the former new-conversation draft; each thread keeps its own reply draft.
@@ -127,6 +138,11 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const [privateDrafts, setPrivateDrafts] = useState<Draft[]>([]);
   const [sourceDraft, setSourceDraft] = useState<Draft | null>(savedMaterial.sourceDraft);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [feedNode, setFeedNode] = useState<HTMLDivElement | null>(null);
+  const attachFeed = useCallback((node: HTMLDivElement | null) => { scrollRef.current = node; setFeedNode(node); }, []);
+  // The thread shows its root whole at the top (with what was made from it), then the replies: one bounded
+  // association read covers the root and the replies around the viewport (#155).
+  const sourceIds = useMemo(() => [...(rootMessageId ? [rootMessageId] : []), ...messages.filter((message) => message.sequence > 1 && message.id !== rootMessageId).map((message) => message.id)], [messages, rootMessageId]);
   const writable = project.access !== 'viewer';
   const makeWork = useCreateWorkFromMessage(project);
   const conversationId = conversation?.id;
@@ -137,18 +153,50 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const replyHint = messages.some((message) => message.authorId === null) ? 'Reply in this conversation…' : replyTo(people, me.user.id);
   // The signed-in person's own assistant (#68): ask mode, their working line, shared answers.
   const assistant = useConversationAssistant({ meId: me.user.id, projectId: project.id, conversationId: conversation?.id ?? null });
+  // Bounded native reads (#155): the visible replies' chips, and the tasks that answers, proposals and the
+  // discussed task refer to. Neither is the project's work collection.
+  const discussedTask = conversation?.task?.workId ?? null;
+  const referenceIds = useMemo(() => [...new Set([...(discussedTask ? [`work:${discussedTask}`] : []), ...assistant.answers.flatMap((answer) => {
+    const refs = answer.sources.filter((source) => source.type === 'work').map((source) => `work:${source.id}`);
+    const proposal = answer.proposalId ? assistant.proposals.get(answer.proposalId) : null;
+    if (proposal?.change.finishes) refs.push(`work:${proposal.change.finishes.workId}`);
+    return refs;
+  })])].sort(), [assistant.answers, assistant.proposals, discussedTask]);
+  const referenceWork = useReferenceWork(me.user.id, project.id, referenceIds, feedNode, !accessLost);
+  const messageWork = useMessageWork(me.user.id, project.id, accessLost ? null : conversation?.id ?? null, sourceIds, scrollRef, feedNode, referenceWork.readingRevision);
+  // Opening (#155): the replies, their task chips, referenced rows and the header's state line come from
+  // separate bounded reads. The thread shows once the first of each has settled (at most OPENING_REVEAL_MS),
+  // so nothing shifts under the reader's eyes or pointer as they arrive.
+  const workSummary = useProjectWorkSummary();
+  const openingSettled = messageWork.state.phase !== 'loading' && referenceWork.state.phase !== 'loading' && workSummary.phase !== 'loading';
+  const [openingTimedOut, setOpeningTimedOut] = useState(false);
+  useEffect(() => { const timer = window.setTimeout(() => setOpeningTimedOut(true), OPENING_REVEAL_MS); return () => window.clearTimeout(timer); }, []);
+  const [revealed, setRevealed] = useState(false);
+  if (!revealed && (openingSettled || openingTimedOut)) setRevealed(true);
   const { openDetails } = useShellActions();
   const askBusy = helperComposer.sending;
+  // Typing (#155) is the thread's: an ephemeral signal to the people who can read this conversation. The
+  // stream's composer has no conversation yet, so it has no typing scope.
+  const typing = useTyping(me.user.id, conversation && !accessLost ? { kind: 'conversation', id: conversation.id } : null, writable && !asking && !busy);
   const [askFailure, setAskFailure] = useState('');
   const [askFailureCode, setAskFailureCode] = useState<string | null>(null);
   const hideIfDenied = useCallback((cause: unknown) => {
     if (!(cause instanceof ApiError)) return;
-    if (cause.status === 403) { revalidator.revalidate(); return; }
+    if (cause.status === 403) { revalidateRef.current(); return; }
     if (cause.status !== 401 && cause.status !== 404) return;
     setAccessLost(true);
-    revalidator.revalidate();
+    revalidateRef.current();
     void getProject(project.id).then(() => setAccessLost(false)).catch(() => { /* denial keeps previous content hidden */ });
-  }, [project.id, revalidator]);
+  }, [project.id]);
+  useEffect(() => {
+    if (referenceWork.state.phase !== 'unavailable') return;
+    const cause = referenceWork.state.error;
+    let current = true;
+    // A settled current read may retire the view through router authorization.
+    // Do not carry a queued denial into a newer observation or unmounted owner.
+    queueMicrotask(() => { if (current) hideIfDenied(cause); });
+    return () => { current = false; };
+  }, [referenceWork.state, hideIfDenied]);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => {
     try { sessionStorage.setItem(materialFormKey, JSON.stringify({ open: showMaterialForm, title: materialTitle, body: materialBody, url: materialUrl, sourceDraft, mutationId: materialMutationId } satisfies MaterialFormSnapshot)); }
@@ -158,7 +206,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     if (refreshingRef.current) return;
     refreshingRef.current = true;
     // The stream's refresh reloads the route (newest roots, the project); a thread reads only its own replies.
-    if (!conversationId) revalidator.revalidate();
+    if (!conversationId) revalidateRef.current();
     try {
       const [latestMaterials, latestConversation] = await Promise.all([
         listMaterials(project.id),
@@ -180,7 +228,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
       }
     } catch (cause) { hideIfDenied(cause); }
     finally { refreshingRef.current = false; }
-  }, [conversationId, hideIfDenied, project.id, revalidator]);
+  }, [conversationId, hideIfDenied, project.id]);
   useEffect(() => {
     if (!showMaterialForm || !writable) return;
     const controller = new AbortController();
@@ -224,17 +272,25 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   }, [conversation?.id, arrived]);
   useEffect(() => {
     // A source link from "Since you left" or search opens on that whole message; otherwise on the latest.
+    // It runs again when the thread is first shown: a hidden message cannot take focus.
     const feed = scrollRef.current;
     const anchor = arrived ? document.getElementById(`message-${arrived}`) : null;
-    if (anchor && feed?.contains(anchor)) { anchor.scrollIntoView({ block: 'start' }); anchor.focus({ preventScroll: true }); return; }
+    if (anchor && feed?.contains(anchor)) { anchor.scrollIntoView({ block: 'start' }); if (revealed) anchor.focus({ preventScroll: true }); return; }
     const column = feed?.firstElementChild as HTMLElement | null;
     if (!feed || !column) return;
     return openOnWholeMessages(feed, column, '.project-convo__message');
-  }, [conversation?.id, arrived, arrivedLoaded]);
+  }, [conversation?.id, arrived, arrivedLoaded, feedNode, revealed]);
+  // Genuine replies and answers arriving in an open thread rise in gently when the reader sees them (#155,
+  // UI116-5); the history the thread opens with and earlier pages never move. The thread's position owner
+  // (useMessageWork) decides whether the reader follows the end.
+  const threadIds = conversation ? feedEntries(messages.filter((message) => message.sequence > 1), assistant.answers, !!olderCursor)
+    .map((entry) => entry.type === 'message' ? `message-${entry.message.id}` : `answer-${entry.answer.runId}`) : [];
+  useArrivals(scrollRef, threadIds, (id) => document.getElementById(id));
 
   // The stream has no assistant: `/ai …` there would post the prompt for the whole project.
   const assistantInStream = !conversation && /^\/ai(\s|$)/.test(draft.trimStart());
   function changeDraft(input: string) {
+    typing.input(Boolean(input.trim()) && !asking && !/^\/ai(\s|$)/.test(input));
     // Private prompts keep their own draft; invoking /ai never overwrites a public task draft.
     if (!asking && conversation && writable && /^\/ai(\s|$)/.test(input)) {
       helperComposer.setBody(input.replace(/^\/ai\s?/, '')); setAsking(true); setAskFailure(''); return;
@@ -261,6 +317,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     }
   }
   async function send() {
+    typing.stop();
     if (asking) { await sendToAssistant(); return; }
     // A private helper prompt is never published as a root (UI116-3); it stays in the private draft.
     if (!writable || assistantInStream) return;
@@ -330,27 +387,41 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const ask = askState(assistant.status, audienceShort);
   // The root sits at the thread's top (and in the stream); the list holds its replies and answers.
   const entries = feedEntries(messages.filter((message) => message.sequence > 1), assistant.answers, !!olderCursor);
-  const lookups = { projectId: project.id, messages, work: work.work, author };
+  const lookups = { projectId: project.id, messages, work: referenceWork.rows, author };
   // A manager can let their own assistant read this project in one step; anyone else asks a manager.
   const ownAgent = assistant.status?.enablement?.agents.find((item) => item.workspaceId === project.workspaceId)?.agentId ?? null;
   const grantAction = askFailureCode === 'PERSONAL_RUN_NO_PROJECT_ACCESS' && project.access === 'manager' && ownAgent ? {
     label: 'Let your assistant read this project',
     run: () => { void grantAgentProject(project.id, ownAgent, 'viewer').then(() => { setAskFailure(''); setAskFailureCode(null); }).catch(() => setAskFailure('Couldn’t give it access. Try again.')); },
   } : null;
-  const workOwner = (workId: string) => work.work.find((item) => item.id === workId)?.owner ?? null;
-  const canDecide = (finishes: { workId: string } | null) => {
-    if (!writable) return false;
-    if (!finishes || project.access === 'manager') return true;
-    const owner = workOwner(finishes.workId);
-    return !owner || owner.kind !== 'human' || owner.id === me.user.id;
+  const proposalAuthority = (finishes: { workId: string } | null) => {
+    if (!finishes) return { canAccept: writable && referenceWork.identityReady, canDismiss: writable && referenceWork.identityReady, targetState: 'ready' as const };
+    const key = `work:${finishes.workId}`;
+    const row = referenceWork.rows.get(key);
+    const observed = referenceWork.actionable;
+    const unavailable = observed && referenceWork.unavailable.has(key);
+    const access = referenceWork.observation?.access;
+    const canWrite = observed && access !== undefined && access !== 'viewer';
+    const ownerAllows = row?.kind === 'work' && (access === 'manager' || !row.owner || row.owner.kind !== 'human' || row.owner.id === me.user.id);
+    return {
+      canAccept: canWrite && !!ownerAllows,
+      // A genuinely unavailable target can be dismissed under the native server's
+      // final authority. Transport failure/unknown ownership cannot act as unowned.
+      canDismiss: canWrite && (!!ownerAllows || unavailable),
+      targetState: unavailable ? 'unavailable' as const : observed && row ? 'ready' as const
+        : referenceWork.state.phase === 'unavailable' ? 'failed' as const : 'checking' as const,
+    };
   };
   const trayOpen = sourcesOpen || (writable && showMaterialForm);
   const title = conversation ? conversation.firstMessageBody.split('\n')[0] || 'Conversation' : project.name;
   let lastDay = '';
-  return <div className={conversation ? 'thread__pane' : 'project-convo'} data-project-id={conversation ? undefined : project.id}>
-    {!conversation ? feed : <div className="thread__feed" ref={scrollRef}>
+  const discussedRow = discussedTask ? referenceWork.rows.get(`work:${discussedTask}`) ?? null : null;
+  return <div className={conversation ? 'thread__pane' : 'project-convo'} data-project-id={conversation ? undefined : project.id}
+    data-associations-observed-at={conversation ? messageWork.page?.observedAt : undefined} data-associations-phase={conversation ? messageWork.state.phase : undefined}
+    data-references-observed-at={conversation ? referenceWork.observation?.observedAt : undefined} data-references-phase={conversation ? referenceWork.state.phase : undefined}>
+    {!conversation ? feed : <div className={`thread__feed${revealed ? '' : ' is-opening'}`} ref={attachFeed} aria-busy={revealed ? undefined : true}>
       <div className="thread__in">
-        {rootHeader}
+        {rootHeader?.({ preview: rootMessageId ? messageWork.previews?.get(rootMessageId) ?? null : null, taskRow: discussedRow })}
         <section aria-label="Replies to this message" className="project-convo__messages">
           {conversation ? <>
             {olderCursor ? <Button variant="quiet" busy={olderBusy} onClick={() => void loadOlder()}>Load earlier replies</Button> : null}
@@ -361,10 +432,10 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
               if (entry.type === 'answer') {
                 const answer = entry.answer;
                 const proposal = answer.proposalId ? assistant.proposals.get(answer.proposalId) ?? null : null;
-                const workTitle = proposal?.change.finishes ? work.work.find((item) => item.id === proposal.change.finishes!.workId)?.title ?? 'a work item' : null;
+                const workTitle = proposal?.change.finishes ? referenceWork.rows.get(`work:${proposal.change.finishes.workId}`)?.title ?? 'a work item' : null;
                 return [divider, <AnswerItem key={entry.key} answer={answer} mine={answer.assistant.ownerUserId === me.user.id} lookups={lookups} when={when} clock={clock}
                   proposal={proposal}
-                  proposalControls={proposal ? <ProposalCard proposal={proposal} workTitle={workTitle} canDecide={canDecide(proposal.change.finishes)} meId={me.user.id}
+                  proposalControls={proposal ? <ProposalCard proposal={proposal} workTitle={workTitle} {...proposalAuthority(proposal.change.finishes)} onRefreshTarget={referenceWork.refresh} meId={me.user.id}
                     onDecide={async (decision) => {
                       try { await assistant.decide(proposal, decision); } finally { revalidator.revalidate(); }
                     }} /> : null}
@@ -374,14 +445,14 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
               }
               const message = entry.message;
               const mine = message.authorId === me.user.id;
-              return [divider, <li key={message.id} id={`message-${message.id}`} tabIndex={-1} className={`project-convo__message${mine ? ' is-mine' : ''}${arrived === message.id ? ' is-arrived' : ''}`}>
+              return [divider, <li key={message.id} id={`message-${message.id}`} data-message-id={message.id} tabIndex={-1} className={`project-convo__message${mine ? ' is-mine' : ''}${arrived === message.id ? ' is-arrived' : ''}`}>
                 <Avatar name={messageAuthor(message)} size="md" tone={mine ? 'me' : 'neutral'} />
                 <div className="project-convo__message-meta"><strong>{mine ? `${messageAuthor(message)} · you` : message.authorId === null ? messageAuthor(message) : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${messageAuthor(message)} directly`}>{messageAuthor(message)}</Link>}</strong><time dateTime={message.createdAt} title={when(message.createdAt)}>{clock(message.createdAt)}</time><span>#{message.sequence}</span></div>
                 {message.body ? <p>{message.body}</p> : null}
                 <MessageFiles files={message.files} />
                 {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={(resultId) => openDetails({ kind: 'result', id: resultId })} /> : null}
                 {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={hideIfDenied} /> : null}
-                <MessageObjects messageId={message.id} lists={work} />
+                <MessageObjects message={message} projectId={project.id} preview={messageWork.previews?.get(message.id) ?? null} />
                 <ThreadMessageActions writable={writable}><MessageActions projectId={project.id} message={message} writable={writable} busy={makeWork.busy === message.id} onCreateWork={() => void makeWork.create(message)} /></ThreadMessageActions>
                 {makeWork.failed?.messageId === message.id ? <p className="ws-act-error" role="alert">{makeWork.failed.text} <button type="button" onClick={() => void makeWork.create(message)}>Retry</button></p> : null}
               </li>];
@@ -392,6 +463,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
         </section>
       </div>
     </div>}
+    {conversation ? <MessageWorkPages read={messageWork} /> : null}
+    {conversation && referenceWork.state.phase === 'unavailable' ? <div className="ws-message-pages" role="alert">Referenced tasks could not be checked. Your reply is kept. <button type="button" className="ws-none__b" onClick={referenceWork.refresh}>Refresh task references</button></div> : null}
     <div className="composer project-convo__composer"><div className="composer__in" data-shift={conversation ? undefined : true}>
       {trayOpen ? <section id={`${conversation ? 'thread' : 'project'}-sources`} aria-label="Project materials" className="project-convo__materials">
         <div className="project-convo__section-head"><h3>Sources · saved for {project.name}</h3><span>{materialTotal}</span><button type="button" className="project-convo__tray-close" aria-label="Close sources" onClick={() => { setSourcesOpen(false); setShowMaterialForm(false); }}><Icon name="x" size={14} /></button></div>
@@ -415,7 +488,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
       </div>}
       {writable && !asking ? <ComposerFiles state={publicComposer} /> : null}
       <div className="composer__box"><button type="button" className="composer__ask project-convo__sources-btn" aria-expanded={trayOpen} aria-controls={trayOpen ? `${conversation ? 'thread' : 'project'}-sources` : undefined} aria-label={`Sources${materialTotal ? `, ${materialTotal} saved` : ''}`} data-tip={writable ? 'Sources to cite' : 'Saved sources to read'} data-tip-align="start" onClick={() => { if (trayOpen) { setSourcesOpen(false); if (writable) setShowMaterialForm(false); } else setSourcesOpen(true); }}><Icon name="doc" /><span className="project-convo__sources-t" aria-hidden="true">Sources</span>{materialTotal ? <span className="project-convo__sources-n" aria-hidden="true">{materialTotal > 99 ? '99+' : materialTotal}</span> : null}</button>{conversation && writable ? <button type="button" className="composer__ask" aria-pressed={asking} aria-label="Ask my assistant" aria-controls={asking ? 'project-ask' : undefined} data-tip="Ask my assistant · /ai" data-tip-align="start"
-        onClick={() => { if (asking) exitAsk(); else { setAsking(true); document.getElementById(composerId)?.focus(); } }}><Icon name="spark" /></button> : null}{writable ? <><label className="ui-vh" htmlFor={composerId}>{asking ? 'Ask your assistant' : conversation ? 'Reply' : 'Write a message'}</label><textarea id={composerId} value={draft} onChange={(event) => changeDraft(event.target.value)} onKeyDown={onComposerKey} disabled={!writable || busy || askBusy} aria-describedby={asking ? 'project-ask' : assistantInStream ? `${composerId}-ai-hint` : undefined} placeholder={asking ? 'Ask your assistant…' : conversation ? replyHint : 'Write a message…'} rows={1} /><button className="composer__send" aria-label={asking ? 'Send to your assistant' : conversation ? 'Send reply' : 'Send message'} aria-disabled={!composer.canSend || !writable || busy || askBusy || assistantInStream || (asking && ask.kind !== 'ready')} type="button" onClick={() => void send()}><Icon name="send" /></button></> : <p className="project-convo__read-only">Read-only · <span>You have read access to this project.</span></p>}</div>
+        onClick={() => { if (asking) exitAsk(); else { setAsking(true); document.getElementById(composerId)?.focus(); } }}><Icon name="spark" /></button> : null}{writable ? <><label className="ui-vh" htmlFor={composerId}>{asking ? 'Ask your assistant' : conversation ? 'Reply' : 'Write a message'}</label><textarea id={composerId} value={draft} onChange={(event) => changeDraft(event.target.value)} onBlur={typing.stop} onKeyDown={onComposerKey} disabled={!writable || busy || askBusy} aria-describedby={asking ? 'project-ask' : assistantInStream ? `${composerId}-ai-hint` : undefined} placeholder={asking ? 'Ask your assistant…' : conversation ? replyHint : 'Write a message…'} rows={1} /><button className="composer__send" aria-label={asking ? 'Send to your assistant' : conversation ? 'Send reply' : 'Send message'} aria-disabled={!composer.canSend || !writable || busy || askBusy || assistantInStream || (asking && ask.kind !== 'ready')} type="button" onClick={() => void send()}><Icon name="send" /></button></> : <p className="project-convo__read-only">Read-only · <span>You have read access to this project.</span></p>}</div>
+      {conversation && !accessLost ? <TypingNotice {...typing} /> : null}
       {writable && assistantInStream ? <p id={`${composerId}-ai-hint`} className="project-convo__hint" role="status">Your assistant answers inside a conversation. Open one and type /ai there. This text is not posted.</p> : null}
       {readFailure ? <p className="project-convo__error" role="alert">{readFailure.message} <button type="button" onClick={readFailure.retry}>Retry read</button></p> : null}
       {writable && error && !asking ? <p className="project-convo__error"><button type="button" onClick={() => void send()}>Retry send</button></p> : null}

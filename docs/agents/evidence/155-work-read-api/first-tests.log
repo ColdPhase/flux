@@ -1,0 +1,152 @@
+ Container flux155browser-db-1  Running
+ Container flux155browser-mailpit-1  Running
+ Container flux155browser-worker-1  Running
+ Container flux155browser-api-1  Running
+ Container flux155browser-db-1  Waiting
+ Container flux155browser-db-1  Healthy
+ Container flux155browser-migrate-1  Starting
+ Container flux155browser-migrate-1  Started
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Exited
+ Container flux155browser-migrate-1  Exited
+▶ architecture boundaries
+  ✔ the repository has no dependency violation outside the recorded allowlist (38.468083ms)
+  ✔ every allowlist entry names its tracking issue and a reason (0.465291ms)
+  ✔ the push use cases in core stay free of adapters, including through helpers (3.06125ms)
+  ✔ the sketch use cases in core stay free of adapters, including through helpers (#69) (0.756083ms)
+  ✔ the direct-message use cases in core stay free of adapters, including through helpers (#107) (0.475083ms)
+  ✔ the bounded work read use cases stay free of persistence and transport adapters (#155) (0.42025ms)
+  ✔ the rules reject each kind of boundary violation (self-test) (0.550375ms)
+  ✔ the allowlist comparison reports new and fixed violations (1.745167ms)
+✔ architecture boundaries (47.470625ms)
+▶ bounded native PostgreSQL work key selection
+  ✔ all native bands remain reachable through bounded forward and direct previous pages (44.932167ms)
+  ✔ mine uses native owner/result creator while keeping proposals and excluding rules (7.612292ms)
+  ✔ choice predicates retain parked result choices, full native kinds and literal wildcard search (10.490292ms)
+  ✔ a surviving boundary alone yields no false strict escape; an older/newer scope retains its actual opposite (11.469209ms)
+  ✔ held actual SQL keeps its original cursor for empty-page counts despite caller mutation (5.904167ms)
+✔ bounded native PostgreSQL work key selection (526.274667ms)
+▶ bounded native work reads through HTTP and current native fences
+  ✖ same-name humans and agents remain distinct bounded owners; view and summary share native observation (48.3275ms)
+  ✔ own details preserve full fields and native history without implicit links; finished selection stays separate (105.606417ms)
+  ✖ association windows span all native object kinds and zero-link sources; edges use one global bound (18.5225ms)
+  ✖ relations page native versions/current labels and strictly reverse ascending keys without loading a full graph (12.671042ms)
+  ✔ same-kind objects elsewhere or missing selectors never pass a readable project predicate (171.2555ms)
+  ✔ actual exact native SID revocation, expiry and current project denial suppress assembled responses (278.69075ms)
+  ✔ every required zero-link selector is checked after its observation, ahead of source drift (239.527292ms)
+  ✖ private thought endpoints vanish before count/title projection and drift invalidates an older observation (38.94375ms)
+  ✔ unreturned zero-link conversation messages contribute to current source fingerprints and count windows (1144.369251ms)
+  ✔ held actual native SQL retains message count selector and expected relation batch despite caller mutation (6.764625ms)
+✖ bounded native work reads through HTTP and current native fences (2718.059918ms)
+✔ task URL fields default explicitly and reject duplicates/unknown/coerced selectors (1.342916ms)
+✔ native choices stay disjoint; parked result choices keep a separate deep selection (0.526291ms)
+✔ source batch bounds apply before deduplication and conversation/source cursors are exclusive (0.618792ms)
+✔ relationship batches retain kind identities and reject malformed/oversized selectors (0.419458ms)
+✔ cursor survives direct reload/previous direction with all PostgreSQL microseconds (0.723166ms)
+✔ cursor cannot transfer between account/project/endpoint/selector/limit/object window (0.386083ms)
+✔ normalized 100-source selector produces a fixed-size scoped cursor without source identities (0.45425ms)
+✔ unknown/noncanonical/duplicate cursor JSON cannot bypass the closed envelope (0.614916ms)
+✔ page metadata emits both native directions and keeps an empty changed-page escape (0.738583ms)
+✔ combined view and summary share one observation and use access checked after its transaction (2.215125ms)
+✔ caller and query are captured before asynchronous work; result deep selection never changes its eligible page (0.818125ms)
+✔ invalid requests and scope-mismatched cursors do no policy or repository work (0.809375ms)
+✔ project denial precedes reads; failed required data becomes unavailable, never zero or a partial result (0.8485ms)
+✔ revocation at the final fence suppresses the whole assembled response (0.384208ms)
+✔ every required message is validated even when it has no edges, before association counts and hydration (0.950667ms)
+✔ required final-fence failures become unavailable; native session and scope rejection stay exact (1.0005ms)
+✔ association rows, all-source counts and global edges keep independent bounded scopes (0.999417ms)
+✔ an edge continuation fails on a changed object window before any edge or source hydration (0.282458ms)
+✔ all required selectors reach the outside fence as the original normalized request (0.821875ms)
+ℹ tests 42
+ℹ suites 3
+ℹ pass 38
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5163.298585
+
+✖ failing tests:
+
+test at tests/app/work-read-native.test.ts:1:5037
+✖ same-name humans and agents remain distinct bounded owners; view and summary share native observation (48.3275ms)
+  AssertionError [ERR_ASSERTION]: status: {"error":"Read continuation does not match this scope","code":"INVALID_WORK_READ"}
+
+  400 !== 200
+
+      at expectStatus (/app/tests/app/support/people.ts:14:10)
+      at get (/app/tests/app/work-read-native.test.ts:33:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (/app/tests/app/work-read-native.test.ts:77:33)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Promise.all (index 0)
+      at async Suite.run (node:internal/test_runner/test:1905:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 400,
+    expected: 200,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/app/work-read-native.test.ts:1:8371
+✖ association windows span all native object kinds and zero-link sources; edges use one global bound (18.5225ms)
+  AssertionError [ERR_ASSERTION]: status: {"error":"Native work could not be read","code":"WORK_READ_UNAVAILABLE"}
+
+  503 !== 200
+
+      at expectStatus (/app/tests/app/support/people.ts:14:10)
+      at get (/app/tests/app/work-read-native.test.ts:33:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (/app/tests/app/work-read-native.test.ts:108:19)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 503,
+    expected: 200,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/app/work-read-native.test.ts:1:9985
+✖ relations page native versions/current labels and strictly reverse ascending keys without loading a full graph (12.671042ms)
+  AssertionError [ERR_ASSERTION]: status: {"error":"Native work could not be read","code":"WORK_READ_UNAVAILABLE"}
+
+  503 !== 200
+
+      at expectStatus (/app/tests/app/support/people.ts:14:10)
+      at get (/app/tests/app/work-read-native.test.ts:33:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (/app/tests/app/work-read-native.test.ts:126:19)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 503,
+    expected: 200,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/app/work-read-native.test.ts:1:15628
+✖ private thought endpoints vanish before count/title projection and drift invalidates an older observation (38.94375ms)
+  AssertionError [ERR_ASSERTION]: status: {"error":"Native work could not be read","code":"WORK_READ_UNAVAILABLE"}
+
+  503 !== 200
+
+      at expectStatus (/app/tests/app/support/people.ts:14:10)
+      at get (/app/tests/app/work-read-native.test.ts:33:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (/app/tests/app/work-read-native.test.ts:199:25)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 503,
+    expected: 200,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
