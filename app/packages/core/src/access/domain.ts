@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, isNull, sql, type SQL } from 'drizzle-orm';
-import { schema } from '@flux/db';
+import { schema, eventRepository } from '@flux/db';
 import type {
   AddMemberCommand,
   Agent,
@@ -27,9 +27,9 @@ import type {
   WorkspaceMember,
   WorkspaceRole,
 } from '@flux/contracts';
-import type { Database, Principal } from '../types.js';
+import type { Database, Executor, Principal } from '../types.js';
 import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, PreconditionRequiredError, RuleViolationError, VersionConflictError } from './errors.js';
-import { recordEvent } from '../events.js';
+import { policyEventPorts, recordEvent } from '../events.js';
 import {
   accessName,
   enforce,
@@ -44,6 +44,9 @@ import {
   visibleProjectsSql,
   type Actor,
 } from './policy.js';
+
+// Events of these use cases: the access policy decides the audience; `@flux/db` stores (#89).
+const events = (tx: Executor) => policyEventPorts(tx, eventRepository(tx));
 
 // Domain commands for workspaces, projects, grants, agents and drafts. Every method
 // authorizes through ./policy.ts before touching data; mutations decide and write in the
@@ -177,7 +180,7 @@ export async function createWorkspace(principal: Principal, command: CreateWorks
   return db.transaction(async (tx) => {
     const [row] = await tx.insert(schema.workspaces).values({ id, name: workspaceName, createdBy: principal.id }).returning();
     await tx.insert(schema.workspaceMembers).values({ workspaceId: id, userId: principal.id, role: 'owner', createdBy: principal.id });
-    await recordEvent(tx, principal, id, 'workspace.created.v1', id, {});
+    await recordEvent(events(tx), principal, id, 'workspace.created.v1', id, {});
     return toWorkspace(row!, 'owner');
   });
 }
@@ -247,7 +250,7 @@ export async function addMember(principal: Principal, workspaceId: string, comma
       .onConflictDoNothing().returning();
     const member = inserted[0];
     if (!member) throw new ConflictError('Account is already a member', 'ALREADY_MEMBER');
-    await recordEvent(tx, principal, workspaceId, 'workspace.member_added.v1', workspaceId, { userId: user.id, role });
+    await recordEvent(events(tx), principal, workspaceId, 'workspace.member_added.v1', workspaceId, { userId: user.id, role });
     return { userId: user.id, email: user.email, name: user.name, role, createdAt: member.createdAt.toISOString() };
   });
 }
@@ -264,7 +267,7 @@ export async function changeRole(principal: Principal, workspaceId: string, user
     if (target.role === 'owner' && role !== 'owner' && await ownerCount(tx, workspaceId) <= 1) throw new ConflictError('A workspace needs at least one owner', 'LAST_OWNER');
     const [updated] = await tx.update(schema.workspaceMembers).set({ role, updatedAt: new Date() })
       .where(and(eq(schema.workspaceMembers.workspaceId, workspaceId), eq(schema.workspaceMembers.userId, userId))).returning();
-    await recordEvent(tx, principal, workspaceId, 'workspace.member_role_changed.v1', workspaceId, { userId, from: target.role, role });
+    await recordEvent(events(tx), principal, workspaceId, 'workspace.member_role_changed.v1', workspaceId, { userId, from: target.role, role });
     const [user] = await tx.select().from(schema.authUsers).where(eq(schema.authUsers.id, userId));
     return { userId, email: user!.email, name: user!.name, role, createdAt: updated!.createdAt.toISOString() };
   });
@@ -285,7 +288,7 @@ export async function removeMember(principal: Principal, workspaceId: string, us
     if (!self) requireRoleAuthority(actor, target.role);
     if (target.role === 'owner' && await ownerCount(tx, workspaceId) <= 1) throw new ConflictError('A workspace needs at least one owner', 'LAST_OWNER');
     await tx.delete(schema.workspaceMembers).where(and(eq(schema.workspaceMembers.workspaceId, workspaceId), eq(schema.workspaceMembers.userId, userId)));
-    await recordEvent(tx, principal, workspaceId, 'workspace.member_removed.v1', workspaceId, { userId });
+    await recordEvent(events(tx), principal, workspaceId, 'workspace.member_removed.v1', workspaceId, { userId });
   });
 }
 
@@ -299,7 +302,7 @@ export async function createProject(principal: Principal, workspaceId: string, c
     enforce(await evaluateWorkspace(principal, 'project.create', workspaceId, tx, { lock: true }), 'workspace');
     const id = randomUUID();
     const [row] = await tx.insert(schema.projects).values({ id, workspaceId, name: projectName, visibility, createdBy: principal.id }).returning();
-    await recordEvent(tx, principal, workspaceId, 'project.created.v1', id, { visibility });
+    await recordEvent(events(tx), principal, workspaceId, 'project.created.v1', id, { visibility });
     return toProject(row!, LEVEL.manager);
   });
 }
@@ -402,7 +405,7 @@ export async function grantProject(principal: Principal, projectId: string, comm
       if (pgCode(error) === '23503') throw new ConflictError('The grantee is no longer part of the workspace', 'GRANTEE_REMOVED');
       throw error;
     }
-    await recordEvent(tx, principal, workspaceId, 'project.grant_set.v1', projectId, { grantId: row!.id, principal: target, role });
+    await recordEvent(events(tx), principal, workspaceId, 'project.grant_set.v1', projectId, { grantId: row!.id, principal: target, role });
     return toGrant(row!);
   });
 }
@@ -420,7 +423,7 @@ export async function revokeProjectGrant(principal: Principal, projectId: string
       if (member?.role === 'owner') requireRoleAuthority(actor!, 'owner');
     }
     await tx.delete(schema.projectGrants).where(eq(schema.projectGrants.id, grantId));
-    await recordEvent(tx, principal, project!.workspaceId, 'project.grant_revoked.v1', projectId, { grantId });
+    await recordEvent(events(tx), principal, project!.workspaceId, 'project.grant_revoked.v1', projectId, { grantId });
   });
 }
 
@@ -434,7 +437,7 @@ export async function createAgent(principal: Principal, workspaceId: string, com
     enforce(await evaluateWorkspace(principal, owner === 'self' ? 'agent.create' : 'workspace.manage_agents', workspaceId, tx, { lock: true }), 'workspace');
     const id = randomUUID();
     const [row] = await tx.insert(schema.agents).values({ id, workspaceId, name: agentName, ownerUserId: owner === 'self' ? principal.id : null, createdBy: principal.id }).returning();
-    await recordEvent(tx, principal, workspaceId, 'agent.created.v1', id, { owner });
+    await recordEvent(events(tx), principal, workspaceId, 'agent.created.v1', id, { owner });
     return toAgent(row!);
   });
 }
@@ -452,7 +455,7 @@ export async function revokeAgent(principal: Principal, agentId: string, db: Dat
     const { agent } = enforce(await evaluateAgent(principal, 'agent.revoke', agentId, tx, { lock: true }), 'agent');
     const [row] = await tx.update(schema.agents).set({ revokedAt: agent!.revokedAt ?? new Date(), updatedAt: new Date() })
       .where(eq(schema.agents.id, agentId)).returning();
-    await recordEvent(tx, principal, agent!.workspaceId, 'agent.revoked.v1', agentId, {});
+    await recordEvent(events(tx), principal, agent!.workspaceId, 'agent.revoked.v1', agentId, {});
     return toAgent(row!);
   });
 }
@@ -513,7 +516,7 @@ export async function createDraft(principal: Principal, workspaceId: string, com
       ownerUserId: principal.kind === 'human' ? principal.id : null,
       ownerAgentId: principal.kind === 'agent' ? principal.id : null,
     }).returning();
-    await recordEvent(tx, principal, workspaceId, 'draft.created.v1', id, { projectId, visibility: 'private' });
+    await recordEvent(events(tx), principal, workspaceId, 'draft.created.v1', id, { projectId, visibility: 'private' });
     return toDraft(row!);
   });
 }
@@ -550,7 +553,7 @@ export async function updateDraft(principal: Principal, draftId: string, command
     requireVersion(draft!, command.expectedVersion);
     const [row] = await tx.update(schema.drafts).set({ ...changes, version: sql`${schema.drafts.version} + 1`, updatedAt: new Date() })
       .where(eq(schema.drafts.id, draftId)).returning();
-    await recordEvent(tx, principal, draft!.workspaceId, 'draft.updated.v1', draftId, { version: row!.version });
+    await recordEvent(events(tx), principal, draft!.workspaceId, 'draft.updated.v1', draftId, { version: row!.version });
     return toDraft(row!);
   });
 }
@@ -574,7 +577,7 @@ export async function shareDraft(principal: Principal, draftId: string, command:
     requireAudience(actor!, scope, await projectOf(tx, projectId));
     const [row] = await tx.update(schema.drafts).set({ projectId, visibility: scope, version: sql`${schema.drafts.version} + 1`, updatedAt: new Date() })
       .where(eq(schema.drafts.id, draftId)).returning();
-    await recordEvent(tx, principal, draft!.workspaceId, 'draft.shared.v1', draftId, { from: draft!.visibility, visibility: scope, projectId });
+    await recordEvent(events(tx), principal, draft!.workspaceId, 'draft.shared.v1', draftId, { from: draft!.visibility, visibility: scope, projectId });
     return toDraft(row!);
   });
 }
@@ -597,7 +600,7 @@ export async function moveDraft(principal: Principal, draftId: string, command: 
     requireAudience(actor!, visibility, target);
     const [row] = await tx.update(schema.drafts).set({ projectId: target?.id ?? null, visibility, version: sql`${schema.drafts.version} + 1`, updatedAt: new Date() })
       .where(eq(schema.drafts.id, draftId)).returning();
-    await recordEvent(tx, principal, draft!.workspaceId, 'draft.moved.v1', draftId, { from: draft!.projectId, projectId: target?.id ?? null, visibility });
+    await recordEvent(events(tx), principal, draft!.workspaceId, 'draft.moved.v1', draftId, { from: draft!.projectId, projectId: target?.id ?? null, visibility });
     return toDraft(row!);
   });
 }

@@ -1,31 +1,50 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
-import { backgroundComputeUsagePath, proactiveComparisonOutcomePath, proactiveComparisonOutcomesPath,
-  proactiveComparisonProposalsPath, WORK_LIMITS, type ConnectBackgroundComputeCommand, type CreateProactiveComparisonRule } from '@flux/contracts';
+import { AI_BASE_URL_MAX_LENGTH, AI_MODEL_LISTS_PATH, AI_PRICE_MAX_MICROS_PER_MTOK, AI_PROVIDER_KINDS, backgroundComparisonRuntimePath, backgroundComputeUsagePath,
+  proactiveComparisonOutcomePath, proactiveComparisonOutcomesPath, proactiveComparisonProposalsPath, WORK_LIMITS, type AiModelListQuery,
+  type BackgroundComparisonRuntime, type ConnectBackgroundComputeCommand, type UpdateBackgroundComputeConnectionCommand, type CreateProactiveComparisonRule } from '@flux/contracts';
 import { backgroundConnectionRepository, comparisonProposalView, proactiveOutboxRows, proactiveRuleRows, sealBackgroundKey } from '@flux/db';
-import { backgroundConnectionUseCases, ConflictError, DomainError, enforce, evaluateProject, InvalidInputError,
-  isUuid, NotFoundError, proactiveRuleUseCases, VersionConflictError, visibleProposal, type Database } from '@flux/core';
+import { backgroundConnectionUseCases, baseUrlSyntaxProblem, ConflictError, DomainError, enforce, evaluateProject, InvalidInputError,
+  isUuid, normalizeBaseUrl, NotFoundError, proactiveRuleUseCases, VersionConflictError, visibleProposal, type Database } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { workUseCases } from '../work/adapters.js';
 import { comparisonOutcomeAccess, comparisonOutcomes } from './outcome-adapter.js';
+import { aiConnectionServerComposition, type AiConnectionServerComposition } from './ai-composition.js';
 
-interface Options { db: Database; sessions: SessionResolver; backgroundMasterKey: Buffer | null }
+interface Options {
+  db: Database; sessions: SessionResolver; backgroundMasterKey: Buffer | null; ai?: AiConnectionServerComposition;
+  /** `FLUX_BACKGROUND_COMPARISONS=on` (ServerConfig): the worker runs comparisons, so owners may enable their rules (#58). */
+  comparisonsEnabled: boolean;
+}
 
-export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sessions, backgroundMasterKey }: Options) {
-  const outcomes = comparisonOutcomes(db);
-  const connections = backgroundConnectionUseCases(backgroundConnectionRepository(db), {
-    seal(plainKey, ownerUserId, connectionId) {
-      if (!backgroundMasterKey) throw new ConflictError('Background key custody is unavailable on this instance', 'BACKGROUND_KEY_CUSTODY_UNAVAILABLE');
-      return sealBackgroundKey(plainKey, ownerUserId, connectionId, backgroundMasterKey);
-    },
-  });
-  const rules = proactiveRuleUseCases({ run: (action) => db.transaction(async (tx) => action({
+/** The comparison rule use cases over the request's transaction, with the operator's switch (#58). */
+export function comparisonRuleUseCases(db: Database, runtimeAvailable: boolean) {
+  return proactiveRuleUseCases({ run: (action) => db.transaction(async (tx) => action({
     access: { async requireProject(principal, projectId, mode) {
       const result = enforce(await evaluateProject(principal, mode === 'write' ? 'project.write' : 'project.read', projectId, tx,
         { lock: mode === 'write' }), 'project');
       return { workspaceId: result.project!.workspaceId };
     } },
     rules: proactiveRuleRows(tx),
-  })) });
+  })) }, { runtimeAvailable });
+}
+
+const microsPerMTok = { type: 'integer', minimum: 0, maximum: AI_PRICE_MAX_MICROS_PER_MTOK };
+
+export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sessions, backgroundMasterKey, ai = aiConnectionServerComposition(process.env),
+  comparisonsEnabled }: Options) {
+  const outcomes = comparisonOutcomes(db);
+  const connections = backgroundConnectionUseCases(backgroundConnectionRepository(db), {
+    seal(plainKey, ownerUserId, connectionId) {
+      if (!backgroundMasterKey) throw new ConflictError('Background key custody is unavailable on this instance', 'BACKGROUND_KEY_CUSTODY_UNAVAILABLE');
+      return sealBackgroundKey(plainKey, ownerUserId, connectionId, backgroundMasterKey);
+    },
+  }, ai.providers);
+  const rules = comparisonRuleUseCases(db, comparisonsEnabled);
+  // Lets the settings page offer "Enable rule" only where the worker runs comparisons (#58).
+  app.get(backgroundComparisonRuntimePath, async (request): Promise<BackgroundComparisonRuntime> => {
+    await sessions.requirePrincipal(request);
+    return { status: comparisonsEnabled ? 'available' : 'unavailable' };
+  });
   app.setErrorHandler((error: FastifyError | DomainError, _request, reply) => {
     if (error instanceof DomainError) return reply.code(error.status).send({ error: error.message, code: error.code, ...error.details });
     if ((error as FastifyError).statusCode === 401) return reply.code(401).send({ error: 'Authentication required', code: 'UNAUTHENTICATED' });
@@ -33,11 +52,18 @@ export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sess
   });
   app.post<{ Body: ConnectBackgroundComputeCommand }>('/api/v1/background-compute-connections', {
     schema: { body: { type: 'object', additionalProperties: false,
-      required: ['apiKey', 'payerOrganization', 'providerWorkspace', 'workspaceScopedKeyConfirmed',
+      required: ['provider', 'model', 'apiKey', 'payerOrganization', 'providerWorkspace', 'workspaceScopedKeyConfirmed',
         'payerAuthorityConfirmed', 'providerBillingAcknowledged', 'projectDataDisclosureAcknowledged',
         'maxRunsPerDay', 'periodDays', 'periodBudgetCents', 'perRunCents'],
       properties: {
-        apiKey: { type: 'string', minLength: 24, maxLength: 263 },
+        name: { type: 'string', minLength: 1, maxLength: 80 },
+        useForBackground: { type: 'boolean' },
+        provider: { type: 'string', enum: [...AI_PROVIDER_KINDS] },
+        model: { type: 'string', minLength: 1, maxLength: 200 },
+        baseUrl: { type: 'string', minLength: 1, maxLength: AI_BASE_URL_MAX_LENGTH },
+        price: { type: 'object', additionalProperties: false, required: ['inputMicrosPerMTok', 'outputMicrosPerMTok'],
+          properties: { inputMicrosPerMTok: microsPerMTok, outputMicrosPerMTok: microsPerMTok } },
+        apiKey: { type: 'string', minLength: 8, maxLength: 512 },
         payerOrganization: { type: 'string', minLength: 2, maxLength: 120 },
         providerWorkspace: { type: 'string', minLength: 2, maxLength: 120 },
         workspaceScopedKeyConfirmed: { const: true }, payerAuthorityConfirmed: { const: true },
@@ -48,8 +74,30 @@ export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sess
       } } },
   }, async (request, reply) => reply.code(201).send(await connections.connect(
     (await sessions.requirePrincipal(request)).principal, request.body)));
+  // PROV-1: all of the owner's own connections; never another person's.
+  app.get('/api/v1/background-compute-connections', async (request) => connections.list(
+    (await sessions.requirePrincipal(request)).principal));
+  // The connection background comparisons use (kept for earlier clients).
   app.get('/api/v1/background-compute-connections/current', async (request) => connections.current(
     (await sessions.requirePrincipal(request)).principal));
+  app.patch<{ Params: { connectionId: string }; Body: UpdateBackgroundComputeConnectionCommand }>('/api/v1/background-compute-connections/:connectionId', {
+    schema: { body: { type: 'object', additionalProperties: false, minProperties: 1, properties: {
+      name: { type: 'string', minLength: 1, maxLength: 80 }, usedForBackground: { const: true } } } },
+  }, async (request) => connections.update((await sessions.requirePrincipal(request)).principal, request.params.connectionId, request.body));
+  // A provider's models, listed by this server without a key and through the endpoint guard (PROV-1).
+  app.post<{ Body: AiModelListQuery }>(AI_MODEL_LISTS_PATH, {
+    schema: { body: { type: 'object', additionalProperties: false, required: ['provider'], properties: {
+      provider: { type: 'string', enum: [...AI_PROVIDER_KINDS] },
+      baseUrl: { type: 'string', minLength: 1, maxLength: AI_BASE_URL_MAX_LENGTH } } } },
+  }, async (request) => {
+    await sessions.requirePrincipal(request);
+    const { provider, baseUrl } = request.body;
+    if (provider === 'openai_compatible') {
+      const problem = baseUrlSyntaxProblem(baseUrl);
+      if (problem) throw new InvalidInputError(problem, 'AI_BASE_URL_INVALID');
+    } else if (baseUrl !== undefined) throw new InvalidInputError('A named provider always uses its own public API address', 'AI_BASE_URL_INVALID');
+    return ai.listModels(provider, provider === 'openai_compatible' ? normalizeBaseUrl(baseUrl!) : null);
+  });
   app.delete<{ Params: { connectionId: string } }>('/api/v1/background-compute-connections/:connectionId', async (request, reply) => {
     await connections.revoke((await sessions.requirePrincipal(request)).principal, request.params.connectionId);
     return reply.code(204).send();

@@ -1,6 +1,6 @@
 import type { PgBoss } from 'pg-boss';
-import { SAMPLE_JOB, type Database } from '@flux/core';
-import { sampleRepository } from '@flux/db';
+import type { Database } from '@flux/core';
+import { SAMPLE_JOB, sampleRepository } from '@flux/db';
 
 /**
  * Consumes sample.process jobs, the integration fixture: each committed sample gets one result

@@ -1,10 +1,3 @@
-import { randomUUID } from 'node:crypto';
-import { sql } from 'drizzle-orm';
-import { fromDrizzle, type PgBoss } from 'pg-boss';
-import { schema } from '@flux/db';
-import type { SampleAccepted, SampleCommand } from '@flux/contracts';
-import type { Database, Principal } from './types.js';
-
 export type { Database, DatabaseHandle, Executor, Principal, Transaction } from './types.js';
 export * from './access/errors.js';
 export {
@@ -58,29 +51,10 @@ export { policyDmAccess } from './access/dm-access.js';
 export * from './docs/index.js';
 export * from './export/index.js';
 
-export const SAMPLE_JOB = 'sample.process';
-
-export async function createSample(principal: Principal, command: SampleCommand, db: Database, boss: PgBoss, testFailureAfterInsert = false): Promise<SampleAccepted> {
-  if (!principal.id) throw new Error('Unauthenticated actor');
-  const title = command.title.trim();
-  if (!title || title.length > 200) throw new Error('Title must be 1–200 characters');
-  const id = randomUUID();
-  const eventId = randomUUID();
-  const outboxId = randomUUID();
-  return db.transaction(async (tx) => {
-    await tx.insert(schema.samples).values({ id, title, createdBy: principal.id });
-    await tx.insert(schema.events).values({ id: eventId, kind: 'sample.created.v1', objectId: id, actorId: principal.id, data: { title } });
-    await tx.insert(schema.outbox).values({ id: outboxId, eventId });
-    const jobId = await boss.send(SAMPLE_JOB, { sampleId: id }, { db: fromDrizzle(tx, sql) });
-    if (!jobId) throw new Error('Job enqueue failed');
-    if (testFailureAfterInsert) throw new Error('Forced rollback');
-    return { id, eventId, jobId };
-  });
-}
-
 export * from './push/index.js';
 export * from './notifications/index.js';
 export { policySourceReader } from './access/source-reader.js';
+export * from './ai/index.js';
 export * from './proactive-comparison/rules.js';
 export * from './proactive-comparison/connections.js';
 export * from './proactive-comparison/reservation.js';
@@ -88,6 +62,7 @@ export * from './proactive-comparison/dispatch.js';
 export * from './proactive-comparison/outcomes.js';
 export * from './proactive-comparison/scheduling.js';
 export * from './proactive-comparison/recovery.js';
+export * from './proactive-comparison/runtime.js';
 export * from './search/index.js';
 export * from './personal-runs/index.js';
 export * from './task-discussions/ports.js';
@@ -101,3 +76,7 @@ export * from './agent-connection/grants.js';
 export * from './agent-connection/orientation.js';
 export * from './agent-connection/playbook.js';
 export * from './agent-connection/project-policy.js';
+export * from './agent-connection/project-agents.js';
+
+export * from './files/ports.js';
+export * from './files/service.js';

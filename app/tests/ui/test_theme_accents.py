@@ -123,12 +123,9 @@ class ThemeAccentsJourney(unittest.TestCase):
             self.assertEqual(content, self.return_content, "matched return comparison retains identical items")
         self.return_content = content
         shot(page, screenshot_name)
-        # Real product action restores the persisted baseline after this visit. It prevents
-        # one palette screenshot consuming the scenario for the next family/viewport.
-        with page.expect_response(re.compile(r"/api/v1/return-points/restore$")) as restoring:
-            page.get_by_role("button", name="Keep these for next time", exact=True).click()
-        self.assertEqual(restoring.value.status, 200)
-        expect(page.get_by_text("These will show again next time.", exact=True)).to_be_visible()
+        # Visiting Home acknowledges nothing (HOME-1, #190), so the next family and viewport see the
+        # same persisted changes without restoring anything.
+        expect(page.get_by_role("button", name="I have the context")).to_be_visible()
 
     def test_01_create_persisted_content(self):
         page = self.page()
@@ -234,6 +231,23 @@ class ThemeAccentsJourney(unittest.TestCase):
         self.appearance(blocked, "Dark", "Copper")
         expect(blocked.locator("html")).to_have_attribute("data-accent", "copper")
 
+    def test_02b_installed_title_bar_follows_the_chosen_theme(self):
+        """#203: choosing Dark or Light updates every theme-color tag to the page background."""
+        page = self.page()
+        # Not Home: visiting Home records a return point that later tests compare against.
+        page.goto("/search")
+        read = """() => ({ metas: [...document.querySelectorAll('meta[name="theme-color"]')].map((m) => m.content),
+          body: getComputedStyle(document.body).backgroundColor })"""
+        for theme in ("Dark", "Light", "Dark"):
+            with self.subTest(theme=theme):
+                self.appearance(page, theme, "Mint")
+                state = page.evaluate(read)
+                self.assertTrue(state["metas"], "the theme-color tags exist")
+                self.assertTrue(all(content == state["body"] for content in state["metas"]), state)
+        dark = page.evaluate(read)["body"]
+        self.appearance(page, "Light", "Mint")
+        self.assertNotEqual(page.evaluate(read)["metas"][0], dark, "Light and Dark give different title bars")
+
     def test_03_all_six_composited_surfaces(self):
         page = self.page()
         stable = {}
@@ -250,10 +264,12 @@ class ThemeAccentsJourney(unittest.TestCase):
                     stable[theme] = statuses
                     self.measure(page, theme, family, ".project-convo__message p")
                     self.measure(page, theme, family, ".project-convo__message-meta")
-                    textbox = page.locator(".composer__box textarea")
+                    # The conversation URL opens the stream with the thread beside it (UI116-1): two composers
+                    # share these styles; MEASURE reads the first one, the stream's.
+                    textbox = page.locator(".composer__box textarea").first
                     textbox.fill("I will compare the sensor tomorrow and attach the measured evidence.")
                     self.measure(page, theme, family, ".composer__box textarea")
-                    send = page.locator(".composer__send")
+                    send = page.locator(".composer__send").first
                     for state in ("normal", "hover", "pressed"):
                         if state == "hover": send.hover()
                         if state == "pressed": page.mouse.down()
@@ -331,7 +347,7 @@ class ThemeAccentsJourney(unittest.TestCase):
                 for name, size in (("phone", PHONE), ("tablet", {"width": 820, "height": 1180}), ("desktop-1280", {"width": 1280, "height": 800})):
                     page.set_viewport_size(size)
                     page.goto(self.conversation_url)
-                    expect(page.locator(".composer__box textarea")).to_be_visible()
+                    expect(page.locator(".composer__box textarea").last).to_be_visible()
                     self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), size["width"])
                     shot(page, f"accent-{theme.lower()}-{family.lower()}-{name}-conversation")
                     page.get_by_role("button", name=re.compile("^What matters")).click()
@@ -354,7 +370,7 @@ class ThemeAccentsJourney(unittest.TestCase):
                 page.set_viewport_size(PHONE)
                 page.goto(self.conversation_url)
                 page.add_style_tag(content=":root { --fs-xs:15px; --fs-sm:16.25px; --fs-md:17.5px; --fs-base:18.75px; --fs-lg:21.25px; --fs-xl:25px; --fs-2xl:30px; }")
-                expect(page.locator(".composer__box textarea")).to_be_visible()
+                expect(page.locator(".composer__box textarea").last).to_be_visible()
                 shot(page, f"accent-{theme.lower()}-{family.lower()}-phone-text-125-conversation")
                 self.account(page)
                 pop = page.get_by_role("dialog", name="Account", exact=True)

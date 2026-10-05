@@ -1,6 +1,5 @@
-import type { FastifyError, FastifyInstance } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import {
-  DomainError,
   getInboxItem,
   listInbox,
   markAllInboxRead,
@@ -18,7 +17,6 @@ import {
   INBOX_READ_ALL_PATH,
   PUSH_PUBLIC_KEY_PATH,
   PUSH_SUBSCRIPTIONS_PATH,
-  type ApiError,
   type InboxItem,
   type InboxResponse,
   type PushPublicKeyResponse,
@@ -90,10 +88,6 @@ function inboxItem(row: NotificationRecord): InboxItem {
  * listed and returned only while the caller can read their source (otherwise `404`).
  */
 export async function pushRoutes(app: FastifyInstance, { db, sessions, config }: PushRoutesOptions) {
-  app.setErrorHandler((error: FastifyError | DomainError, _request, reply) => {
-    if (error instanceof DomainError) return reply.code(error.status).send({ error: error.message, code: error.code } satisfies ApiError);
-    throw error;
-  });
   const subscriptions = subscriptionRepository(db);
   const inbox = { notifications: notificationRepository(db), authorizer: policySourceReader(db) };
 

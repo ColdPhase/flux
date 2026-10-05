@@ -17,6 +17,7 @@ import {
 } from '@flux/core';
 import { nativeWorkInEventSession } from '../work/adapters.js';
 import { transactionEventSession } from '../work/transaction-events.js';
+import { eventPorts } from '../events.js';
 
 // Adapters that connect the personal-run use cases (#68, O-008) to the access policy, the
 // Drizzle rows, the event log and pg-boss. Core defines the ports (#46); the server assembles
@@ -40,7 +41,7 @@ function personalRunPorts(tx: DbExecutor, queue: PersonalRunQueueFactory,
     access: policyPersonalRunAccess(tx),
     runs: personalRunRows(tx),
     queue: queue(tx),
-    events: events ?? { record: async (principal, workspaceId, kind, projectId, data) => { await recordEvent(tx, principal, workspaceId, kind, projectId, data); } },
+    events: events ?? { record: async (principal, workspaceId, kind, projectId, data) => { await recordEvent(eventPorts(tx), principal, workspaceId, kind, projectId, data); } },
   };
 }
 

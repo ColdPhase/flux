@@ -3,12 +3,14 @@ import { ToastProvider } from './ui';
 import { UpdatePrompt } from './pwa';
 import { AppLayout } from './app/AppLayout';
 import { appLoader } from './app/data';
-import { ProjectConversation, projectConversationLoader } from './app/ProjectConversation';
+import { ProjectConversation, projectConversationLoader, shouldRevalidateProjectConversation } from './app/ProjectConversation';
 import { ProjectSetup } from './app/ProjectSetup';
 import { MaterialView, materialLoader } from './app/MaterialView';
 import { ProjectTasks, projectTasksLoader } from './work/ProjectTasks';
-import { DocHistory, DocReader, ProjectDocs, WorkspaceDocs, docHistoryLoader, docLoader, projectDocsLoader } from './docs/DocViews';
+import { ProjectAgents, projectAgentsLoader } from './agents/ProjectAgents';
+import { DocHistory, DocReader, WikiHome, WorkspaceDocs, docHistoryLoader, docLoader } from './docs/DocViews';
 import { DocEditor, docEditLoader } from './docs/DocEditor';
+import { WikiLayout, wikiLoader, wikiShouldRevalidate } from './docs/Wiki';
 import { Booting, RouteErrorPage } from './app/errors';
 import { ConversationView, NotFoundView, TasksView } from './app/views';
 import { DmIndex, NewDm } from './dm/DmIndex';
@@ -80,18 +82,31 @@ export const router = createBrowserRouter([
             path: 'projects/:projectId',
             loader: projectShellLoader,
             children: [
-              { index: true, loader: projectConversationLoader, Component: ProjectConversation },
-              { path: 'conversations/:conversationId', loader: projectConversationLoader, Component: ProjectConversation },
+              // One conversation (UI116-1): the stream stays mounted while a root's thread opens beside it.
+              { loader: projectConversationLoader, shouldRevalidate: shouldRevalidateProjectConversation, Component: ProjectConversation,
+                children: [{ index: true }, { path: 'conversations/:conversationId' }] },
               { path: 'github', Component: GithubSettings },
               { path: 'tasks', loader: projectTasksLoader, Component: ProjectTasks },
               { path: 'map', Component: ProjectMap },
               { path: 'map/:sketchId', Component: SketchRoute },
-              { path: 'docs', loader: projectDocsLoader, Component: ProjectDocs },
-              { path: 'docs/new', loader: docEditLoader, Component: DocEditor },
-              { path: 'docs/:docId', loader: docLoader, Component: DocReader },
-              { path: 'docs/:docId/versions/:version', loader: docLoader, Component: DocReader },
-              { path: 'docs/:docId/edit', loader: docEditLoader, Component: DocEditor },
-              { path: 'docs/:docId/history', loader: docHistoryLoader, Component: DocHistory },
+              {
+                // The wiki (#112) as two panes (#136): the page index beside the open page.
+                id: 'wiki',
+                path: 'docs',
+                loader: wikiLoader,
+                shouldRevalidate: wikiShouldRevalidate,
+                Component: WikiLayout,
+                children: [
+                  { index: true, Component: WikiHome },
+                  { path: 'new', loader: docEditLoader, Component: DocEditor },
+                  { path: ':docId', loader: docLoader, Component: DocReader },
+                  { path: ':docId/versions/:version', loader: docLoader, Component: DocReader },
+                  { path: ':docId/edit', loader: docEditLoader, Component: DocEditor },
+                  { path: ':docId/history', loader: docHistoryLoader, Component: DocHistory },
+                ],
+              },
+              // Agents (UI116-2, #136): the project's connections and its task threads.
+              { path: 'agents', loader: projectAgentsLoader, Component: ProjectAgents },
               // An invitation's link (#62): opens the session's work with the invitation card.
               { path: 'live/:sessionId', Component: LiveOpen },
             ],

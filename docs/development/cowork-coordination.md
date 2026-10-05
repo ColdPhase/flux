@@ -45,8 +45,68 @@ integration requirement; a fresh bounded snapshot is needed at a safe resume
 boundary, and an empty page must never imply successful completion.
 
 This does not prove checkpoint creation, native graph/reviewer eligibility,
-authorized request admission/resolution, execution/publication fences, public
-MCP/client wiring or model-driven Start/Resume. Those are unchanged requirements.
+authorized request resolution, execution/publication fences, public MCP/client
+wiring or model-driven Start/Resume. Those are unchanged requirements. Request
+admission is specified in the next section.
+
+### Live request admission (2026-10-04, peer review required)
+
+`coWorkRequestInTransaction(tx, claims, command, policy)` is the internal
+caller-owned composition of #152's reserved `cowork.request` operation. It is
+not a public tool; MCP exposure stays disabled until #152/#160 wire it.
+
+- **Identity.** `objectId` is the *sender's* unit and is mandatory; the request
+  class is that unit's actual role. The payload is exactly
+  `{ generation, leaseId, request }`, where `generation`/`leaseId` are the
+  sender's live claim fence and `request` is the bounded enqueue input without
+  `commandId` (the durable client command ID is used). `request.unitId` names
+  the *recipient's* unit. A payload naming its own unit as recipient, extra
+  fields, copied prompts or authority fields are refused before any write.
+- **Lock order.** #152 `prepare` (current bearer/runtime/grant/command ledger)
+  → sorted, de-duplicated sender and recipient connection slots → sorted
+  project graph locks (#171 `lockProjectTaskGraphs`) → the complete sorted
+  native task set (both units' tasks and lineage roots, the parent request's
+  task and lineage root, and their direct prerequisites) → sorted unit rows →
+  lineage/request rows inside storage → `complete`. Fresh `clock_timestamp()`
+  after these waits fences the sender's lease. Nothing locks a graph, task or
+  material after a unit, request or stream row.
+- **Admission rules.** The sender unit must be assigned to the authenticated
+  connection in the command's project, hold a claim with exactly that
+  generation, lease ID and runtime session, and be unexpired at fresh database
+  time. The recipient unit must be in the same project and the same canonical
+  lineage (`lineage_work_id`, `run_id`) as the sender unit, so a sender cannot
+  open or borrow an unrelated lineage budget. A connection cannot address
+  itself. Review requests also follow the server-owned separation policy:
+  `distinct_connection` (default; explicit same-owner review) or
+  `distinct_owner`. Target, source and criteria references must currently exist
+  in this project at their exact recorded versions. GitHub references stay
+  refused until #74 supplies the receiving owner's verified repository adapter.
+  The recipient must be a live connection of this workspace; selecting it
+  creates queued intent only and never recipient authority, claim or grant.
+- **Refusals.** Every refusal throws a typed domain error inside the caller's
+  transaction, so no request, delivery intent, lineage count, slot change,
+  grant use or receipt survives. Unavailable recipients/units/parents/sources
+  share content-free codes. Successful admission writes the request and one
+  delivery intent, stages the `cowork.request_state` post-state from the saved
+  row, then lets #152 debit one use and write the sole receipt.
+- **Duplicates and replay.** The same command ID and fingerprint replays the
+  original receipt as an observation: no sender fence, no new request or debit,
+  but current authorization, current readability of the request's references
+  and the unchanged canonical post-state (request version/state, sender unit
+  role/assignment/lineage) are rechecked. After the recipient defers or claims
+  the request, the old receipt is `COMMAND_POSTSTATE_STALE`, as for claims. The
+  sender may then re-issue the same intent under a new command ID: storage
+  returns the existing request and delivery intent, never a second delivery,
+  and that new command spends one grant use.
+- **Recovery ordering.** Request timestamps are assigned while the recipient's
+  slot is held, and the slot is held through commit. Admissions to one
+  recipient therefore become visible in timestamp order, so a recovery cursor
+  cannot pass a row that commits later. Concurrent distinct lineages are tested.
+  Request writers other than this composition must keep the same rule.
+
+Out of scope here: request claim/resolution/supersession, checkpoint
+production, reviewer/checkpoint claim eligibility, the #238 lifecycle/use
+fence, native publication and the final event flush.
 
 ### Parent request participation
 

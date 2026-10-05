@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { eq } from 'drizzle-orm';
 import { PgBoss } from 'pg-boss';
-import { createSample } from '@flux/core';
+import { createSample } from '../../apps/server/src/fixture/sample.js';
 import { createDatabase, schema } from '@flux/db';
 import { SAMPLE_COMMAND_PATH } from '@flux/contracts';
 import { connectionString } from './support/db.js';
@@ -53,6 +53,12 @@ test('test deployment failure header rolls back; the public command body rejects
     assert.equal(failure.status, 409);
     const rejected = await browser.request('POST', SAMPLE_COMMAND_PATH, { headers, body: { title: 'invalid public flag', failAfterInsert: true } });
     assert.equal(rejected.status, 400);
+    // The fixture module maps an invalid title to 400 (#88) and a wrong token to 401; neither writes.
+    const invalid = await browser.request('POST', SAMPLE_COMMAND_PATH, { headers: { authorization: `Bearer ${token}` }, body: { title: '' } });
+    assert.equal(invalid.status, 400, invalid.text);
+    assert.match((invalid.json as { error: string }).error, /Title must be 1–200 characters/);
+    const wrongToken = await browser.request('POST', SAMPLE_COMMAND_PATH, { headers: { authorization: 'Bearer not-the-fixture-token' }, body: { title: 'wrong token' } });
+    assert.equal(wrongToken.status, 401);
     const after = await pool.query('SELECT (SELECT count(*) FROM samples)::int AS samples, (SELECT count(*) FROM events WHERE kind = \'sample.created.v1\')::int AS events, (SELECT count(*) FROM outbox)::int AS outbox, (SELECT count(*) FROM pgboss.job WHERE name = \'sample.process\')::int AS jobs');
     assert.deepEqual(after.rows[0], before.rows[0]);
   } finally {

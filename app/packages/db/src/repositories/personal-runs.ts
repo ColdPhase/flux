@@ -1,3 +1,4 @@
+import { fileRows } from './files.js';
 import { and, asc, desc, eq, inArray, isNotNull, notInArray, sql, type SQL } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
@@ -21,7 +22,7 @@ type NewEnablement = Omit<EnablementRow, 'status' | 'version' | 'consentedAt' | 
 type EnablementChanges = Partial<Pick<EnablementRow, 'perRunCents' | 'dailyCapCents' | 'timeZone' | 'status'>>;
 type NewRun = Pick<RunRow, 'id' | 'workspaceId' | 'projectId' | 'conversationId' | 'ownerUserId' | 'agentId' | 'connectionId'
   | 'clientRunId' | 'requestFingerprint' | 'kind' | 'prompt' | 'targetSketchId' | 'targetThoughtId' | 'continuesRunId' | 'retryOfRunId'
-  | 'reservedMicros' | 'model'>;
+  | 'reservedMicros' | 'provider' | 'model'>;
 type RunChanges = Partial<Pick<RunRow, 'status' | 'stoppedAtStage' | 'stopRequestedAt' | 'costState' | 'chargedMicros' | 'inputTokens'
   | 'outputTokens' | 'answerBody' | 'answerTruncated' | 'committedAt' | 'dispatchedAt' | 'completedAt'> & { answerSources: SourceRef[] }>;
 type NewProposal = Pick<ProposalRow, 'id' | 'workspaceId' | 'projectId' | 'runId' | 'ownerUserId' | 'fact' | 'interpretation'
@@ -173,12 +174,16 @@ export function personalRunRows(db: DbExecutor) {
     /** The latest `limit` messages of one project conversation, oldest first. */
     async messages(conversationId: string, limit: number) {
       const m = schema.projectMessages;
-      const rows = await db.select({ id: m.id, sequence: m.sequence, body: m.body,
+      const rows = await db.select({ id: m.id, sequence: m.sequence, body: m.body, contributionKind: m.contributionKind, resultId: m.resultId,
         authorId: m.authorId, authorAgentId: m.authorAgentId, humanName: schema.authUsers.name, agentName: schema.agents.name })
         .from(m).leftJoin(schema.authUsers, eq(schema.authUsers.id, m.authorId))
         .leftJoin(schema.agents, and(eq(schema.agents.workspaceId, m.workspaceId), eq(schema.agents.id, m.authorAgentId)))
         .where(eq(m.conversationId, conversationId)).orderBy(desc(m.sequence)).limit(limit);
-      return rows.reverse().map(({ authorId, authorAgentId, humanName, agentName, ...row }) => ({ ...row,
+      const files = await fileRows(db).messageFiles(rows.map((row) => row.id));
+      return rows.reverse().map(({ authorId, authorAgentId, humanName, agentName, contributionKind, resultId, ...row }) => ({ ...row,
+        ...(contributionKind === 'result' ? { contribution: { kind: 'result' as const, resultId: resultId! } }
+          : contributionKind !== 'text' ? { contribution: { kind: contributionKind } } : {}),
+        ...(files.get(row.id)?.length ? { files: files.get(row.id) } : {}),
         author: authorId !== null ? { kind: 'human' as const, id: authorId } : { kind: 'agent' as const, id: authorAgentId! },
         authorName: authorId !== null ? humanName ?? 'Former member' : agentName ?? 'Agent' }));
     },

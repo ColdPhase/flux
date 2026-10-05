@@ -242,6 +242,8 @@ class SearchJourney(unittest.TestCase):
         expect(results.get_by_role("link")).to_have_count(1)
         expect(results).to_contain_text("Sensor questions for Ari")
         expect(results).to_contain_text("Only you")
+        # The announced status counts in the singular for one result (#217).
+        expect(page.locator('p.ui-vh[role="status"]')).to_have_text("1 result")
         page.get_by_role("combobox", name="Place").select_option(label="All places")
         # ↓ from the field moves through the results; ↑ from the first returns to the field.
         search_box = page.get_by_role("searchbox", name="Search Flux")

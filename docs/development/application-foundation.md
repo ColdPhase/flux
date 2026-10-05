@@ -170,8 +170,8 @@ docker compose --env-file docker/.env -p flux28 -f docker/compose.source.yaml ex
 
 The command is versioned at `/api/v1/integration/sample`. Its wire types live in
 `app/packages/contracts`; the standalone TypeScript client is `app/packages/sdk`. The
-server calls `app/packages/core` with an explicit `Principal` and does not expose
-database methods directly. The fixture token is temporary technical access; do
+server's fixture module (`apps/server/src/fixture/`, #88) writes through the `@flux/db` sample repository and
+is registered only when the fixture token is set; it does not expose database methods directly. The fixture token is temporary technical access; do
 not expose this endpoint as a human or agent authorization scheme.
 
 ## Checks and isolation

@@ -1,11 +1,14 @@
 import { PgBoss } from 'pg-boss';
-import { assertExactMigrationLedger, createDatabase, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
+import { assertExactMigrationLedger, createDatabase, FLUX_SCHEMA_VERSION, loadBackgroundMasterKey, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
+import { backgroundComparisonsEnabled } from '@flux/core';
 import { registerDraftSummaryWorker } from './jobs/draft-summary.js';
 import { registerIdempotencyCleanup } from './jobs/idempotency-cleanup.js';
 import { registerSampleWorker } from './jobs/sample.js';
 import { createVapidAuthorizer, registerPushWorker } from './push/index.js';
 import { registerNotificationEmailWorker, startNotificationGenerator } from './notifications/index.js';
 import { personalRunWorkerComposition, registerPersonalRunWorker } from './personal-runs/index.js';
+import { registerComparisonWorker } from './proactive-comparison/index.js';
+import { comparisonProviders } from './proactive-comparison/providers.js';
 
 // The worker's composition root (#82): environment, pool, pg-boss and signals; each job's
 // handler lives in its registrar.
@@ -24,9 +27,12 @@ const email = await registerNotificationEmailWorker(boss, db);
 const generator = startNotificationGenerator({ db, boss, connectionString, emailAvailable: email.available });
 await registerDraftSummaryWorker(boss, db);
 // Personal assistant runs (#68): the payload is a run id; every step rechecks the owner.
-const personalRuns = personalRunWorkerComposition(process.env);
+const personalRuns = personalRunWorkerComposition(process.env, db);
 if (personalRuns.mode !== 'production') console.warn(JSON.stringify({ warning: 'TEST ONLY: personal runs use fixture connections and a mock provider', mode: personalRuns.mode }));
 const personalRunRecovery = await registerPersonalRunWorker(boss, db, personalRuns);
+// Background comparisons (#58): only when the operator switched them on; otherwise unscheduled.
+const comparisonsOn = backgroundComparisonsEnabled(process.env);
+await registerComparisonWorker(boss, db, { enabled: comparisonsOn, masterKey: comparisonsOn ? loadBackgroundMasterKey() : null, provider: comparisonProviders(process.env) });
 await registerIdempotencyCleanup(boss, db);
 console.log('Flux worker ready');
 const stop = async () => { await personalRunRecovery.stop(); await generator.stop(); await boss.stop(); email.close(); await pool.end(); process.exit(0); };

@@ -1,3 +1,4 @@
+import { messagePreview } from '@flux/contracts';
 import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
@@ -124,16 +125,16 @@ export function notificationFactRows(db: DbExecutor) {
         .innerJoin(schema.projectConversations, eq(schema.projectConversations.id, pm.conversationId)).where(eq(pm.id, messageId));
       if (!row) return null;
       const message = row.message;
-      const [opening] = await db.select({ body: pm.body }).from(pm).where(eq(pm.conversationId, message.conversationId)).orderBy(asc(pm.sequence)).limit(1);
+      const [opening] = await db.select({ body: pm.body, attachmentCount: pm.attachmentCount }).from(pm).where(eq(pm.conversationId, message.conversationId)).orderBy(asc(pm.sequence)).limit(1);
       const earlier = await db.selectDistinct({ authorId: pm.authorId }).from(pm)
         .where(and(eq(pm.conversationId, message.conversationId), sql`${pm.sequence} < ${message.sequence}`, isNotNull(pm.authorId)));
       const [agent] = message.authorAgentId ? await db.select({ name: schema.agents.name }).from(schema.agents)
         .where(and(eq(schema.agents.workspaceId, message.workspaceId), eq(schema.agents.id, message.authorAgentId))) : [];
       return {
         id: message.id, workspaceId: message.workspaceId, projectId: message.projectId, projectName: await projectName(message.projectId),
-        conversationId: message.conversationId, opening: opening?.body ?? message.body, conversationCreatedBy: row.createdBy !== null ? { kind: 'human' as const, id: row.createdBy } : { kind: 'agent' as const, id: row.createdByAgentId! },
+        conversationId: message.conversationId, opening: messagePreview(opening?.body ?? message.body, opening?.attachmentCount ?? message.attachmentCount), conversationCreatedBy: row.createdBy !== null ? { kind: 'human' as const, id: row.createdBy } : { kind: 'agent' as const, id: row.createdByAgentId! },
         author: message.authorId !== null ? { kind: 'human' as const, id: message.authorId } : { kind: 'agent' as const, id: message.authorAgentId! },
-        authorName: agent?.name ?? null, body: message.body, sequence: message.sequence, earlierAuthors: earlier.map((item) => item.authorId!),
+        authorName: agent?.name ?? null, body: message.body, attachmentCount: message.attachmentCount, sequence: message.sequence, earlierAuthors: earlier.map((item) => item.authorId!),
       };
     },
     async dmMessage(dmId: string, messageId: string) {
@@ -182,9 +183,9 @@ export function notificationFactRows(db: DbExecutor) {
       let anchor: { type: 'conversation' | 'work' | 'sketch' | 'doc'; label: string } | null = null;
       if (session.conversationId) {
         const pm = schema.projectMessages;
-        const [opening] = await db.select({ body: pm.body }).from(pm)
+        const [opening] = await db.select({ body: pm.body, attachmentCount: pm.attachmentCount }).from(pm)
           .where(and(eq(pm.conversationId, session.conversationId), eq(pm.projectId, session.projectId))).orderBy(asc(pm.sequence)).limit(1);
-        if (opening) anchor = { type: 'conversation', label: opening.body };
+        if (opening) anchor = { type: 'conversation', label: messagePreview(opening.body, opening.attachmentCount) };
       } else if (session.workId) {
         const w = schema.projectWorkItems;
         const [work] = await db.select({ title: w.title }).from(w).where(and(eq(w.id, session.workId), eq(w.projectId, session.projectId)));

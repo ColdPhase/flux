@@ -21,6 +21,7 @@ export interface GeneratorEvent {
 }
 
 export interface ProjectMessageFacts {
+  attachmentCount?: number;
   id: string;
   workspaceId: string;
   projectId: string;

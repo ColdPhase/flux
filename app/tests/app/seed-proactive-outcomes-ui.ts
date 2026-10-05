@@ -22,7 +22,7 @@ try {
     { body: { agentId: agent.id, trigger: 'human_negative_result', purpose: 'camera_sensor_comparison',
       dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal', maxRunsPerDay: 3, periodBudgetCents: 50, perRunCents: 5 } }), 201) as { id: string };
   const connection = expectStatus(await owner.browser.request('POST', '/api/v1/background-compute-connections', { body: {
-    apiKey: `sk-ant-api03-${'ui-controlled-fixture-'.repeat(4)}Z9Q7`, payerOrganization: 'Lamp research group', providerWorkspace: 'Bedside prototype',
+    provider: 'anthropic', model: 'claude-sonnet-5', apiKey: `sk-ant-api03-${'ui-controlled-fixture-'.repeat(4)}Z9Q7`, payerOrganization: 'Lamp research group', providerWorkspace: 'Bedside prototype',
     workspaceScopedKeyConfirmed: true, payerAuthorityConfirmed: true, providerBillingAcknowledged: true,
     projectDataDisclosureAcknowledged: true, maxRunsPerDay: 3, periodDays: 30, periodBudgetCents: 50, perRunCents: 5,
   } }), 201) as { id: string };
@@ -80,8 +80,8 @@ try {
       VALUES($1,$2,$3,$4,$5,$6,'completed',$7,5,now()-interval '31 days',now()-interval '31 days')`,
     [candidateId, rule.id, owner.id, prj.id, template.result_id, fingerprint, connection.id]);
     await pool.query(`INSERT INTO proactive_comparison_proposals
-      (id,outbox_id,owner_user_id,agent_id,project_id,result_id,source_fingerprint,sources,fact,interpretation,suggested_action,status)
-      VALUES($1,$2,$3,$4,$5,$6,$7,'[]','Earlier fixture fact','Earlier fixture interpretation','Earlier fixture suggestion','dismissed')`,
+      (id,outbox_id,owner_user_id,agent_id,project_id,result_id,source_fingerprint,sources,fact,interpretation,suggested_action,status,provider,model)
+      VALUES($1,$2,$3,$4,$5,$6,$7,'[]','Earlier fixture fact','Earlier fixture interpretation','Earlier fixture suggestion','dismissed','anthropic','claude-sonnet-5')`,
     [proposalId, candidateId, owner.id, agent.id, prj.id, template.result_id, fingerprint]);
     await pool.query('UPDATE proactive_comparison_outbox SET proposal_id=$1 WHERE id=$2', [proposalId, candidateId]);
   }
