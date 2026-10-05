@@ -36,7 +36,24 @@ acceptance evidence.
   re-run pending). Selection diagnostic at `3a676a28`: frames (3,4), own sequence 4, no error
   frames at 50 or 200; the 200 error-frame failure did not reproduce.
 
-## In progress
+- Targeted API at `d83630ea`: 94/94 (capacity regression, capability, search 13/13 subtests,
+  lifetime incl. ordinary tests 10/11, editing/admission/telemetry/shutdown, live map
+  authority, MCP map actions, sketches, DM sketches, outline, docs, architecture); image build
+  with tsc and eslint (0 errors, 4 warnings, unchanged count).
+- UI negative control v3 at `856c53e1`: wiki test lists 3 `/live` requests and the live text
+  `Write together`, `Connecting to the shared working copy`, `Shared working copy` (twice:
+  client navigation and direct open); map test shows `Undo requested … Waiting for confirmation`.
 
-- Targeted API at `d83630ea`, live-mode rerun at `d83bc0e5`, UI negative control v3, then full
-  `check_application.sh` (19120/19121) and full `check_ui.sh` (19122/19123) at `d83bc0e5`.
+## Blocked (2026-10-05 05:30 local)
+
+Docker Desktop's VM was killed at 04:48 local (`wait status: 9` in the backend supervisor
+log; an image extraction failed just before) and its GUI quit at 04:55. The host Data volume
+was full (548 MiB free; `Docker.raw` about 182 GB allocated). I removed my six finished scratch
+worktrees (now 2.6 GiB free); `open -a Docker` twice exited 0 without starting Docker
+Desktop; stale `com.docker.backend` processes remain. A fleet `PAUSE` marker appeared in the
+Docker slot directory at 05:27. No run includes `3a676a28` or later.
+
+Unblock: free host disk, restart Docker Desktop, prune leftover per-run `flux-test-*` and
+`flux-ui-*` images, then run against pinned worktrees at `d83bc0e5` (scratchpad scripts):
+`t239-fullapp.sh` (check_application, 19120/19121), `t239-fullui.sh` (check_ui, 19122/19123),
+and `t239-uilive.sh <scratchpad>/w239-live2` (live-mode browser modules, 19128/19129).
