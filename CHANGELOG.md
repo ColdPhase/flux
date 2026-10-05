@@ -33,7 +33,7 @@ repository was created on 2026-09-26.
 - Two public extension contracts with a written compatibility promise: MCP tool
   contract 1 and project export format 1. A versioned snapshot test catches a
   breaking change. The [integration guide](docs/integrations/README.md) is for
-  integrators and operators ([#251](https://github.com/ColdPhase/flux/issues/251)).
+  integrators and operators ([#260](https://github.com/ColdPhase/flux/pull/260)).
 
 #### People and access
 
