@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import type { AgentExecutionCommand, AgentStandingGrant, CoWorkRequestLimits, WorkItem } from '@flux/contracts';
+import type { Agent, AgentExecutionCommand, AgentStandingGrant, CoWorkRequestLimits, WorkItem } from '@flux/contracts';
 import { COWORK_PLAYBOOK, coworkPlaybookTools } from '@flux/core';
 import { coWorkClaimInTransaction, type CoWorkClaimPolicy } from '../../apps/server/src/co-work/claims.js';
 import { coWorkTaskGraphLocks } from '../../apps/server/src/co-work/graph.js';
@@ -35,7 +35,7 @@ async function scene() {
   await grant(hubert, p.id, marek, 'contributor');
   /** One OAuth-connected agent of `who`, with its MCP tools, bootstrap runtime and the bearer's claims for internal steps. */
   const connect = async (who: Person, name: string, scopes = ACTION_SCOPES) => {
-    const agent = expectStatus(await who.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name, owner: 'self' } }), 201);
+    const agent = expectStatus(await who.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name, owner: 'self' } }), 201) as Agent;
     expectStatus(await hubert.browser.request('POST', `/api/v1/projects/${p.id}/grants`,
       { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
     const connected = await agentConnection(pool, who.browser, String(agent.id), [p.id], scopes);
