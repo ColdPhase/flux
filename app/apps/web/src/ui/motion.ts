@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { arrivalShouldAnimate, arrivals, loopShouldRun } from './motion-rules';
 
 /**
@@ -114,42 +114,44 @@ export function useArrivals(feed: RefObject<HTMLElement | null>, ids: readonly s
  */
 export function useTravelingHighlight(list: RefObject<HTMLElement | null>, glide: RefObject<HTMLElement | null>, selectors: readonly string[]) {
   const order = selectors.join('\n');
-  const placed = useRef(false);
-  const place = useCallback((animate: boolean) => {
-    const box = list.current;
-    const mark = glide.current;
-    if (!box || !mark) return;
-    let current: HTMLElement | null = null;
-    for (const selector of order.split('\n')) { current = box.querySelector<HTMLElement>(selector); if (current) break; }
-    if (!current || !box.offsetParent) {
-      mark.style.opacity = '0';
-      box.classList.remove('has-glide');
-      placed.current = false;
-      return;
-    }
-    const from = box.getBoundingClientRect();
-    const to = current.getBoundingClientRect();
-    const fresh = !animate || !placed.current;
-    if (fresh) mark.style.transition = 'none';
-    mark.style.opacity = '1';
-    mark.style.transform = `translateY(${Math.round(to.top - from.top)}px)`;
-    mark.style.height = `${Math.round(to.height)}px`;
-    mark.dataset.target = current.dataset.glideId ?? '';
-    box.classList.add('has-glide');
-    if (fresh) { void mark.offsetWidth; mark.style.transition = ''; }
-    placed.current = true;
-  }, [list, glide, order]);
-  // After every render: the current item may have changed.
-  useLayoutEffect(() => { place(true); });
+  const placed = useRef({ value: false });
+  // After every render: the chosen or current item may have changed.
+  useLayoutEffect(() => { placeHighlight(list.current, glide.current, order, placed.current, true); });
   useLayoutEffect(() => {
     const box = list.current;
     if (!box) return;
+    const state = placed.current;
     // A resize (the drawer opening, rows wrapping, fonts arriving) places it again without motion.
-    const observer = new ResizeObserver(() => place(false));
+    const again = () => placeHighlight(list.current, glide.current, order, state, false);
+    const observer = new ResizeObserver(again);
     observer.observe(box);
-    void document.fonts?.ready.then(() => place(false));
+    void document.fonts?.ready.then(again);
     return () => observer.disconnect();
-  }, [list, place]);
+  }, [list, glide, order]);
+}
+
+/** Moves `mark` over the first item of `box` matching `order` (newline-separated selectors). */
+function placeHighlight(box: HTMLElement | null, mark: HTMLElement | null, order: string, placed: { value: boolean }, animate: boolean) {
+  if (!box || !mark) return;
+  let current: HTMLElement | null = null;
+  for (const selector of order.split('\n')) { current = box.querySelector<HTMLElement>(selector); if (current) break; }
+  if (!current || !box.offsetParent) {
+    mark.style.opacity = '0';
+    box.classList.remove('has-glide');
+    placed.value = false;
+    return;
+  }
+  const from = box.getBoundingClientRect();
+  const to = current.getBoundingClientRect();
+  const fresh = !animate || !placed.value;
+  if (fresh) mark.style.transition = 'none';
+  mark.style.opacity = '1';
+  mark.style.transform = `translateY(${Math.round(to.top - from.top)}px)`;
+  mark.style.height = `${Math.round(to.height)}px`;
+  mark.dataset.target = current.dataset.glideId ?? '';
+  box.classList.add('has-glide');
+  if (fresh) { void mark.offsetWidth; mark.style.transition = ''; }
+  placed.value = true;
 }
 
 export function useMediaQuery(query: string): boolean {
