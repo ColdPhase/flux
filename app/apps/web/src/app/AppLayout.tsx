@@ -117,20 +117,26 @@ export function AppLayout() {
     setShownPath(location.pathname);
     if ((panelMode !== 'docked' || backgroundSettings) && detailsOpen) setDetailsOpen(false);
   }
-  // `?open=work:<id>` (a notification's link, #116) opens that object in Details on its project;
-  // `?open=people` (a new project, #188) opens its "Who can see this".
+  // `?open=work:<id>` (a notification's link, #116, a search result, #114, or a doc reference, #112)
+  // opens that object in Details on its project; `?open=people` (a new project, #188) opens its
+  // "Who can see this". Each address is handled once, and the flag leaves it without reloading the
+  // page's data: that navigation finishes at once, so no load of this page is left running that
+  // could land after the person has moved on or signed out.
   const navigate = useNavigate();
+  const openedAt = useRef<string | null>(null);
   useEffect(() => {
+    if (openedAt.current === location.key) return;
     const params = new URLSearchParams(location.search);
     const open = params.get('open') ?? '';
     const match = /^(work|decision|result):([0-9a-f-]{36})$/i.exec(open);
     const people = open === 'people' && /^\/projects\/[^/]+/.test(location.pathname);
     if (!match && !people) return;
+    openedAt.current = location.key;
     params.delete('open');
     const search = params.toString();
-    navigate({ pathname: location.pathname, search: search ? `?${search}` : '', hash: location.hash }, { replace: true });
+    navigate({ pathname: location.pathname, search: search ? `?${search}` : '', hash: location.hash }, { replace: true, defaultShouldRevalidate: false });
     shell.openDetails(match ? { kind: match[1]!.toLowerCase() as 'work' | 'decision' | 'result', id: match[2]!.toLowerCase() } : { kind: 'overview', focus: 'people' });
-  }, [location.search, location.pathname, location.hash, navigate, shell]);
+  }, [location.key, location.search, location.pathname, location.hash, navigate, shell]);
   // ⌘K / Ctrl+K opens Jump to… from anywhere, also while typing, as the sidebar hint says.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {

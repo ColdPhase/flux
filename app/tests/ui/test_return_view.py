@@ -148,7 +148,8 @@ class ReturnViewJourney(unittest.TestCase):
         expect(page.get_by_role("heading", name="Welcome, Nia")).to_be_visible()
         self.wait_saved(page, "home")
         page.goto(f"/projects/{self.project_id}/conversations/{self.conversation_id}")
-        expect(page.get_by_role("heading", level=2, name=OPENING)).to_be_visible()
+        # One project conversation (UI116-1): the conversation's root opens with its thread beside the stream.
+        expect(page.get_by_role("complementary", name="Replies").locator(".thread__root")).to_contain_text(OPENING)
         # Opening a project no longer moves its point (#133); nothing competes with the conversation.
         expect(page.get_by_role("region", name="Since you left")).to_have_count(0)
         page.wait_for_timeout(500)
@@ -509,8 +510,8 @@ class ReturnViewJourney(unittest.TestCase):
         expect(page.locator(".is-arrived")).to_be_in_viewport()
         # "What matters" counts the same changes (the project point is older than Home's view).
         expect(page.get_by_role("button", name=re.compile("^What matters"))).to_contain_text(re.compile(r"\d"))
-        # Audience preview before writing: the composer names who will read the reply.
-        expect(page.locator(".composer__audience")).to_have_text(re.compile("Ari and you · only you two · saved to Gesture lamp"))
+        # Audience preview before writing: the thread's composer names who will read the reply.
+        expect(page.get_by_role("complementary", name="Replies").locator(".composer__audience")).to_have_text(re.compile("Ari and you · only you two · saved to Gesture lamp"))
         # Back on Home the list is still there: following a link acknowledges nothing (HOME-1). After
         # "I have the context" only the server's fresh answer is shown: nothing repeats.
         page.get_by_role("link", name="Home").first.click()
@@ -526,11 +527,12 @@ class ReturnViewJourney(unittest.TestCase):
         # Phone composer: after reading the line, the reply box is reachable, keeps its audience and sends.
         phone = self.page("nia", phone=True)
         phone.goto(f"/projects/{self.project_id}/conversations/{self.conversation_id}")
-        composer = phone.locator("#project-composer")
+        # The conversation URL opens the thread as a sheet on the phone (UI116-1); its reply box answers there.
+        composer = phone.locator("#thread-composer")
         composer.tap()
         composer.fill("Thanks, I will print the clip tonight.")
         expect(composer).to_be_in_viewport()
-        expect(phone.locator(".composer__audience")).to_be_in_viewport()
+        expect(phone.get_by_role("complementary", name="Replies").locator(".composer__audience")).to_be_in_viewport()
         self.no_horizontal_scroll(phone)
         shot(phone, "matched-project-phone-390-composer")
         phone.get_by_role("button", name="Send reply").tap()

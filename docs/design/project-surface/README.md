@@ -17,7 +17,9 @@ decision, a project sketch and a doc), 100% zoom, light theme.
 - **Tabs:** Conversation · Tasks · Map · Docs with counts and the sliding indicator; each is a
   route under `/projects/:projectId` and shares one parent loader (project, audience, work,
   sketches, docs).
-- **One reading column:** the project's conversations moved to the sidebar (as in C), sources
+- **One reading column:** the project's conversations moved to the sidebar (as in C; since
+  2026-10-02 a project has [one conversation](../studio-v11.6.md#one-project-conversation--ui116-1-clarification)
+  instead: one stream of roots, each root's replies beside it, and no sidebar thread list), sources
   moved into the composer (the document button opens saved material to cite or add), and
   messages use avatars, day lines and calm chips for the objects made from them. On a pointer,
   message actions float over the message and take no room.
