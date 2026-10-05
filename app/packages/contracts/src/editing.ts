@@ -4,6 +4,10 @@ import type { Sketch, SketchDetail, Thought, ThoughtLink } from './sketch.js';
 
 /** #228 integration seam. Routes remain disabled until the four accepted gates pass. */
 export const EDITING_SOCKET_PATH = '/api/v1/editing';
+/** The process's live map/wiki capability. Clients mount live editors only when it is `configured`;
+ * otherwise maps and the wiki behave exactly as without #228 (#239 review). */
+export const EDITING_CAPABILITIES_PATH = '/api/v1/live-editing/capabilities';
+export type EditingCapability = 'configured' | 'unavailable';
 export const liveDocPath = (id: string) => `/api/v1/docs/${id}/live`;
 export const liveDocEnrollPath = (id: string) => `${liveDocPath(id)}/enroll`;
 export const liveDocSavePath = (id: string) => `${liveDocPath(id)}/save`;

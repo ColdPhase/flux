@@ -9,6 +9,8 @@ import { useShellActions } from '../app/shellContext';
 import { createWork } from '../work/api';
 import { useProjectShell } from '../project/data';
 import { useSketchDoc, type Op } from './doc';
+import { useLiveSketchDoc, type LiveSketchDoc } from './live-doc';
+import { useEditingCapability } from '../editing/capability';
 import { audience, quote, sketchHref, when } from './format';
 import { freeSpot, rectOf } from './geometry';
 import { SketchList } from './SketchList';
@@ -55,9 +57,30 @@ function useProjectName(projectId: string | null | undefined) {
 export function SketchRoute() {
   const { sketchId = '', projectId, dmId } = useParams();
   const { me } = useShellData();
+  const capability = useEditingCapability();
   // Opened from a project's Map tab (#117) or a DM's Sketches (#96), the way back stays there.
   const back = projectId ? `/projects/${projectId}/map` : dmId ? `/dm/${dmId}/sketches` : '/map';
-  return <SketchView key={`${me.user.id}:${sketchId}`} sketchId={sketchId} projectId={projectId} dmId={dmId} back={back} />;
+  // The live map mounts only when this API's live capability is configured (#228, #239 review);
+  // otherwise the map is the ordinary one, unchanged.
+  if (capability === 'loading') return <div className="sk-page sk-page--center"><Spinner label="Opening the sketch" /></div>;
+  const View = capability === 'configured' ? LiveSketchView : SketchView;
+  return <View key={`${me.user.id}:${sketchId}`} sketchId={sketchId} projectId={projectId} dmId={dmId} back={back} />;
+}
+
+interface ViewProps { sketchId: string; projectId?: string; dmId?: string; back?: string }
+
+/** The ordinary map: native requests, stream refetches and local inverse undo. */
+export function SketchView(props: ViewProps) {
+  const { me } = useShellData();
+  const doc = useSketchDoc(props.sketchId, { id: me.user.id, name: me.user.name });
+  return <SketchEditor {...props} doc={doc} />;
+}
+
+/** The live map: ordered server deltas, live movement/presence and server-journal undo. */
+function LiveSketchView(props: ViewProps) {
+  const { me } = useShellData();
+  const doc = useLiveSketchDoc(props.sketchId, { id: me.user.id, name: me.user.name });
+  return <SketchEditor {...props} doc={doc} />;
 }
 
 /**
@@ -65,10 +88,9 @@ export function SketchRoute() {
  * a List. Everything is edited in place; there is no management panel. Changes save as they
  * happen and arrive live from the other people who can see the sketch.
  */
-export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketchId: string; projectId?: string; dmId?: string; back?: string }) {
+function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewProps & { doc: LiveSketchDoc }) {
   const { me, directMessages } = useShellData();
   const started = (useLocation().state as { started?: number } | null)?.started;
-  const doc = useSketchDoc(sketchId, { id: me.user.id, name: me.user.name });
   const { sketch } = doc;
   const personalOutline = useOutline(me.user.id, sketch);
   const capture = useThoughtDraft(me.user.id, sketchId, sketch);
@@ -363,7 +385,9 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     setEditing(null);
     setConnectFrom(null);
     const label = doc.undo();
-    say(label ? `Undo requested: ${label}. Waiting for confirmation.` : 'No undo started');
+    // Only the live map's undo waits for a server receipt; the ordinary one is applied at once.
+    if (doc.liveStatus === 'unavailable') say(label ? `Undid: ${label}` : 'Nothing to undo');
+    else say(label ? `Undo requested: ${label}. Waiting for confirmation.` : 'No undo started');
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {

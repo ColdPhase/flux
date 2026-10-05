@@ -53,3 +53,14 @@ test('a map with a live room refuses excess native commands as a retryable 503, 
   // Every preparation was released: later commands are admitted again.
   for (let index = 0; index < 3; index++) expectStatus(await thought(ari, sketch.id, BURST + index), 201, 'after the burst');
 });
+
+test('the live editing capability is reported unavailable when development live editing is off', async () => {
+  const ari = await person('Ari Capability');
+  assert.deepEqual(expectStatus(await ari.browser.request('GET', '/api/v1/live-editing/capabilities'), 200), { status: 'unavailable' });
+  // The disabled editing routes still refuse truthfully.
+  const space = await workspace(ari, 'Capability');
+  const sketch = await map(ari, space, 'Capability map');
+  const refused = await ari.browser.request('GET', `/api/v1/sketches/${sketch.id}/live`);
+  assert.equal(refused.status, 503);
+  assert.equal((refused.json as { code?: string }).code, 'LIVE_EDITING_DISABLED');
+});

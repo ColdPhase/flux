@@ -599,7 +599,15 @@ admission, so ordinary map traffic keeps main's concurrency. When a room appears
 between that read and the journal's locked head read, the journal admits the
 command inside its transaction (the same finite FIFO, 10-second deadline). Any
 native capacity refusal on these paths is a retryable 503 (`outcome: refused`),
-never a 500. A map that has a room stays charged in either mode. A native replay still uses the immutable original actor/UUID
+never a 500. A map that has a room stays charged in either mode.
+Clients read `GET /api/v1/live-editing/capabilities` (`{status: 'configured' |
+'unavailable'}`, outside the disabled editing routes) once per page load, in the
+wiki loaders before the first render. Only `configured` mounts the live map hook,
+the live wiki reader and editor; their CRDT/editor bundle is a lazily loaded chunk,
+because yjs's `lib0` reads `localStorage` while its module evaluates and a refusing
+browser storage otherwise stopped the whole application rendering (observed
+2026-10-05 at `0309cc48`). Otherwise maps and the wiki are the ordinary, pre-#228
+ones; a failed chunk load also falls back to them. A native replay still uses the immutable original actor/UUID
 and parameters, and reprojects placed-object titles under current locked rights
 before HTTP handoff. The client confirms graph state exclusively from ordered
 server deltas; HTTP replay does not patch an old graph snapshot.

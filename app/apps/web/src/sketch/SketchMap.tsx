@@ -110,10 +110,14 @@ export function SketchMap(props: SketchMapProps) {
 
   const shown = useMemo(() => sketch.thoughts.map((t): Thought => {
     let next = t;
-    if (offset?.ids.includes(t.id)) { const base = offset.base.find((thought) => thought.id === t.id) ?? t; next = { ...next, x: clamp(base.x + offset.dx, 0, SKETCH_LIMITS.coordinate), y: clamp(base.y + offset.dy, 0, SKETCH_LIMITS.coordinate) }; }
+    // The live map moves from the positions at the gesture's start; the ordinary map, as before #228, from the current ones.
+    if (offset?.ids.includes(t.id)) {
+      if (props.liveEnabled) { const base = offset.base.find((thought) => thought.id === t.id) ?? t; next = { ...next, x: clamp(base.x + offset.dx, 0, SKETCH_LIMITS.coordinate), y: clamp(base.y + offset.dy, 0, SKETCH_LIMITS.coordinate) }; }
+      else next = { ...next, x: Math.max(0, t.x + offset.dx), y: Math.max(0, t.y + offset.dy) };
+    }
     if (size?.id === t.id) next = { ...next, width: size.w, height: size.h };
     return next;
-  }), [sketch.thoughts, offset, size]);
+  }), [sketch.thoughts, offset, size, props.liveEnabled]);
   const [canvasWidth, setCanvasWidth] = useState(0);
   useEffect(() => {
     const el = canvasRef.current;
@@ -246,7 +250,7 @@ export function SketchMap(props: SketchMapProps) {
       props.onGesturePreview(d.base.map((thought) => ({ id: thought.id, x: clamp(Math.round(thought.x + dx * scaleX), 0, SKETCH_LIMITS.coordinate), y: clamp(Math.round(thought.y + dy), 0, SKETCH_LIMITS.coordinate) })));
     } else {
       const t = byId.get(d.id!) ?? sketch.thoughts.find((x) => x.id === d.id);
-      const base = d.base.find((x) => x.id === d.id) ?? t!;
+      const base = (props.liveEnabled ? d.base.find((x) => x.id === d.id) : sketch.thoughts.find((x) => x.id === d.id)) ?? t!;
       const width = clamp(Math.round(base.width + dx), SKETCH_LIMITS.minWidth, SKETCH_LIMITS.maxWidth);
       const height = clamp(Math.round(Math.max(base.height, heights.get(base.id) ?? 0) + dy), SKETCH_LIMITS.minHeight, SKETCH_LIMITS.maxHeight);
       setSize({ id: d.id!, w: width, h: height });
@@ -268,6 +272,10 @@ export function SketchMap(props: SketchMapProps) {
     window.setTimeout(() => { suppressClick.current = false; }, 0);
     if (d.kind === 'move' && offset) {
       props.onMove(d.ids.flatMap((id) => {
+        if (!props.liveEnabled) {
+          const t = sketch.thoughts.find((x) => x.id === id);
+          return t ? [{ id, x: Math.max(0, t.x + offset.dx), y: Math.max(0, t.y + offset.dy) }] : [];
+        }
         const t = d.base.find((x) => x.id === id);
         return t ? [{ id, x: clamp(t.x + offset.dx, 0, SKETCH_LIMITS.coordinate), y: clamp(t.y + offset.dy, 0, SKETCH_LIMITS.coordinate) }] : [];
       }), 'drag');
@@ -289,7 +297,7 @@ export function SketchMap(props: SketchMapProps) {
     const { key } = event;
     if (key === 'Enter' || key === 'F2') { event.preventDefault(); if (connectFrom) props.onPick(thought.id, false); else if (canWrite) props.onEdit(thought.id); return; }
     if (key === ' ') { event.preventDefault(); if (connectFrom) props.onPick(thought.id, false); else props.onToggle(thought.id); return; }
-    if (key === 'Escape') { if (drag.current && drag.current.kind !== 'pan') { onPointerCancel(); event.preventDefault(); event.stopPropagation(); } else if (props.onEscape()) { event.preventDefault(); event.stopPropagation(); } return; }
+    if (key === 'Escape') { if (props.liveEnabled && drag.current && drag.current.kind !== 'pan') { onPointerCancel(); event.preventDefault(); event.stopPropagation(); } else if (props.onEscape()) { event.preventDefault(); event.stopPropagation(); } return; }
     if (!canWrite) return;
     if (key === '+' || key === '=') { event.preventDefault(); props.onAdd(thought.id); return; }
     if (key === 'Delete' || key === 'Backspace') { event.preventDefault(); props.onRemove(selection.includes(thought.id) ? selection : [thought.id]); return; }

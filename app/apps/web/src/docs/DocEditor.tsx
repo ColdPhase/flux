@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { Link, useLoaderData, useNavigate, type LoaderFunctionArgs } from 'react-router';
-import { DOC_LIMITS, docRef, type Doc } from '@flux/contracts';
+import { DOC_LIMITS, docRef, type Doc, type Project } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { Button, Icon, useMediaQuery } from '../ui';
 import { useShellData } from '../app/data';
@@ -12,7 +12,13 @@ import { LinkPicker, type PickedRef } from './LinkPicker';
 import { WikiBar } from './WikiParts';
 import { useWiki } from './wiki-context';
 import './docs.css';
-import { LiveDocEditor } from '../editing/WikiEditor';
+import { editingCapability, useEditingCapability } from '../editing/capability';
+
+// The shared working copy (#228) and its CRDT/editor bundle load only when this API's live
+// capability is configured (#239 review); an ordinary wiki never evaluates them.
+const LiveDocEditor = lazy(() => import('../editing/WikiEditor').then((module) => ({ default: module.LiveDocEditor }), () => ({ default: OrdinaryEditor })));
+/** If the shared-text bundle cannot load (for example, refused browser storage), edit as before #228. */
+function OrdinaryEditor({ fallback }: { doc: Doc; project: Project; userId: string; fallback: ReactNode }) { return <>{fallback}</>; }
 
 // The doc editor (#112): Markdown with a server-rendered preview, a link picker for objects of
 // the project and keyboard shortcuts. A save sends If-Match with the version the editor started
@@ -22,7 +28,8 @@ import { LiveDocEditor } from '../editing/WikiEditor';
 interface EditData { doc: Doc | null }
 
 export async function docEditLoader({ params, request }: LoaderFunctionArgs): Promise<EditData> {
-  const doc = params.docId ? await getDoc(params.docId, request.signal) : null;
+  // The capability is known before the first render, so the editor never mounts the wrong kind first.
+  const [doc] = await Promise.all([params.docId ? getDoc(params.docId, request.signal) : null, editingCapability()]);
   if (doc && doc.projectId.toLowerCase() !== (params.projectId ?? '').toLowerCase()) throw new Response('Not found', { status: 404 });
   return { doc };
 }
@@ -50,8 +57,11 @@ export function DocEditor() {
   const { doc } = useLoaderData() as EditData;
   const { project } = useWiki();
   const { me } = useShellData();
-  const scope = `${me.user.id}:${doc?.id ?? `new:${project.id}`}`;
-  return doc ? <LiveDocEditor key={scope} doc={doc} project={project} userId={me.user.id} fallback={<PrivateDocEditor key={scope} />} /> : <PrivateDocEditor key={scope} />;
+  const capability = useEditingCapability();
+  // Without a configured live capability this is the ordinary editor, unchanged.
+  if (!doc || capability !== 'configured') return <PrivateDocEditor />;
+  const scope = `${me.user.id}:${doc.id}`;
+  return <Suspense fallback={null}><LiveDocEditor key={scope} doc={doc} project={project} userId={me.user.id} fallback={<PrivateDocEditor key={scope} />} /></Suspense>;
 }
 
 function PrivateDocEditor() {

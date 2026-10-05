@@ -6,6 +6,7 @@ import fastifyStatic from '@fastify/static';
 import websocket from '@fastify/websocket';
 import { PgBoss } from 'pg-boss';
 import { assertExactMigrationLedger, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
+import { EDITING_CAPABILITIES_PATH, type EditingCapability } from '@flux/contracts';
 import { registerDatabase } from './plugins/database.js';
 import { registerIdentity } from './identity/index.js';
 import { accessRoutes } from './access/routes.js';
@@ -101,6 +102,8 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await app.register(githubRoutes, { db, sessions: identity, config: loadGithubConfig(env, identityConfig.publicOrigin) });
   // Configuration alone does not prove the SFU, DNS/TLS or receiver path is healthy.
   app.get('/api/v1/live-sessions/capabilities', async () => ({ status: liveMedia ? 'configured' : 'unavailable' }));
+  // Outside the editing routes, whose disabled hook refuses every request (#239 review).
+  app.get(EDITING_CAPABILITIES_PATH, async (): Promise<{ status: EditingCapability }> => ({ status: editing ? 'configured' : 'unavailable' }));
   const livePorts = liveMedia ? { access: liveAccess(db), sessions: liveSessionStore(db), media: liveMedia.media, mediaUrl: liveMedia.mediaUrl } : null;
   if (liveMedia) await app.register(liveRoutes, {
     sessions: identity,
