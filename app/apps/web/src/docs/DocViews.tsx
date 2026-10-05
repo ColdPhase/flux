@@ -232,7 +232,7 @@ export function DocReader() {
       <article className="wiki-doc doc" data-shift aria-labelledby="doc-title">
         <p className="wiki-doc__crumb"><Icon name="doc" size={13} /><span>{project.name}</span></p>
         {!current ? (
-          <p className="doc-notice"><Icon name="undo" size={14} />You are reading a saved version. It stays as it was written.
+          <p className="doc-notice"><Icon name="undo" size={14} />{shown.version < doc.version ? 'You are reading an earlier version.' : 'You are reading a saved version.'} It stays as it was written.
             <Link to={base}>Open the current version</Link><Link to={`${base}/history?from=${shown.version}&to=${doc.version}`}>What changed since</Link></p>
         ) : null}
         <header className="doc-head">
