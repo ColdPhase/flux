@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
 import * as Y from 'yjs';
 import { EditorState, Prec, StateEffect, StateField, type Range } from '@codemirror/state';
@@ -9,6 +9,7 @@ import { Button, Icon, useMediaQuery } from '../ui';
 import { LinkPicker, type PickedRef } from '../docs/LinkPicker';
 import { docUrl, getDoc } from '../docs/api';
 import { STATE_LABEL } from '../docs/format';
+import { WikiBar } from '../docs/WikiParts';
 import { SharedWiki } from './wiki';
 import { decode64 } from './wire';
 import './editing.css';
@@ -152,6 +153,8 @@ export function LiveDocEditor({ doc, project, userId, fallback }: { doc: Doc; pr
   const [saved, setSaved] = useState<number | null>(null);
   const handleRef = useRef<EditorHandle | null>(null);
   const comparison = useRef<HTMLTextAreaElement>(null);
+  const titleId = useId();
+  const reasonId = useId();
   const [legacy] = useState(() => { try { const value = JSON.parse(sessionStorage.getItem(`flux:doc-edit:${userId}:${doc.id}`) ?? 'null') as { body?: string } | null; return typeof value?.body === 'string' && value.body.length <= DOC_LIMITS.body ? value.body : null; } catch { return null; } });
   if (client?.status === 'unavailable') return fallback;
   const privateText = client?.privateBody ?? legacy;
@@ -176,26 +179,46 @@ export function LiveDocEditor({ doc, project, userId, fallback }: { doc: Doc; pr
     finally { setBusy(false); }
   };
   const insert = (ref: PickedRef) => { handleRef.current?.insert(`[${ref.title.replace(/[\\[\]]/g, '\\$&')}](${docRef(ref.type, ref.id)})`); setPicker(false); };
-  return <div className="pane-scroll"><form className="pane-in doc doc-edit" data-shift onSubmit={(event) => void save(event)} onKeyDown={(event) => {
-    if ((event.ctrlKey || event.metaKey) && (event.key.toLowerCase() === 's' || event.key === 'Enter')) { event.preventDefault(); void save(); }
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setPicker(true); }
-  }}>
-    <nav className="doc-crumb"><Link to={docUrl(project.id, doc.id)}><Icon name="chevron-left" size={14} />{doc.title}</Link></nav>
-    <header className="doc-head"><p className="doc-head__k">Shared working copy · last saved version {client?.head?.savedVersion ?? doc.version}</p><h2 className="doc-head__t">Write together</h2><p className="doc-muted">Typing is visible to people who can read this project. Save keeps an immutable version.</p></header>
-    <p className="editing-status" role="status" data-live-status={client?.status ?? 'connecting'}>{client?.status === 'live' ? (client.pendingCount ? `${client.pendingCount} changes waiting to be shared` : 'All changes shared') : client?.status === 'private' ? 'Pending text kept privately' : 'Connecting to the shared working copy…'}{client?.text ? <WikiPresence client={client} /> : null}</p>
-    {client?.problem || error ? <p className="doc-notice" role="alert">{error ?? client?.problem}</p> : null}
-    {metadataConflict ? <section className="doc-notice"><p>Version {metadataConflict.version} now uses “{metadataConflict.title}” · {STATE_LABEL[metadataConflict.state]}. Review it before saving your metadata.</p><Button type="button" variant="secondary" onClick={() => { setTitle(metadataConflict.title); setState(metadataConflict.state); setMetadataBase({ title: metadataConflict.title, state: metadataConflict.state, version: metadataConflict.version }); setMetadataConflict(null); }}>Use their metadata</Button><Button type="button" variant="quiet" onClick={() => { setMetadataBase({ title: metadataConflict.title, state: metadataConflict.state, version: metadataConflict.version }); setMetadataConflict(null); }}>Keep my metadata on version {metadataConflict.version}</Button></section> : null}
-    {saved ? <p className="doc-notice" role="status">Version {saved} saved. Later typing stays in the shared working copy.</p> : null}
-    {privateText ? <section className="doc-notice"><span>A private copy from an earlier session is available.</span><Button type="button" variant="secondary" onClick={() => setCompare(!compare)}>{compare ? 'Close comparison' : 'Compare private text'}</Button>{compare ? <><textarea ref={comparison} aria-label="Earlier private text" readOnly value={privateText} /><p>Select the text you want to bring into the working copy, then place its cursor.</p><Button type="button" disabled={!client?.editable} onClick={() => { const area = comparison.current; if (!area || area.selectionStart === area.selectionEnd) { setError('Select text in the private copy before importing.'); return; } handleRef.current?.insert(privateText.slice(area.selectionStart, area.selectionEnd)); }}>Insert selected text</Button>{client?.hasPrivateArchive ? <Button type="button" variant="quiet" onClick={() => client.discardPrivateArchive()}>Discard earlier private copy</Button> : null}</> : null}</section> : null}
-    <label className="doc-field">Title<input value={client?.pendingSave?.title ?? title} maxLength={DOC_LIMITS.title} disabled={busy || !!client?.pendingSave || !client?.editable} onChange={(event) => setTitle(event.target.value)} required /></label>
-    <div className="doc-edit__bar"><div className="doc-seg" role="group" aria-label="Editor view">{(['write', 'preview', ...(wide ? ['both'] : [])] as ('write' | 'preview' | 'both')[]).map((value) => <button type="button" key={value} aria-pressed={displayedMode === value} onClick={() => setMode(value)}>{value[0]!.toUpperCase() + value.slice(1)}</button>)}</div><Button type="button" variant="quiet" disabled={!client?.editable} onClick={() => setPicker(true)}><Icon name="link" />Link</Button></div>
-    <div className={`doc-edit__panes editing-panes--${displayedMode}`}>
-      {client?.text ? <div hidden={displayedMode === 'preview'}><CollaborativeText client={client} handleRef={handleRef} /></div> : <p aria-busy="true">Opening text…</p>}
-      {displayedMode !== 'write' ? <div className="doc-prose doc-edit__preview" aria-label="Shared preview" data-live-sequence={client?.head?.sequence} dangerouslySetInnerHTML={{ __html: client?.html ?? doc.html }} /> : null}
-    </div>
-    <label className="doc-field">Reason for this version<input value={client?.pendingSave?.reason ?? reason} maxLength={DOC_LIMITS.reason} onChange={(event) => setReason(event.target.value)} disabled={busy || !!client?.pendingSave} /></label>
-    <label className="doc-field">State<select value={client?.pendingSave?.state ?? state} onChange={(event) => setState(event.target.value as DocState)} disabled={busy || !!client?.pendingSave}>{(['draft', 'published'] as const).map((value) => <option key={value} value={value}>{STATE_LABEL[value]}</option>)}</select></label>
-    <div className="doc-edit__acts"><Link className="ui-btn ui-btn--secondary" to={docUrl(project.id, doc.id)}>Back to doc</Link><Button type="submit" disabled={busy || !!metadataConflict || !client?.editable || client.pendingCount > 0 || !title.trim()}>{busy ? 'Saving…' : 'Save version'}</Button></div>
-    {picker ? <LinkPicker projectId={project.id} workspaceId={project.workspaceId} selfId={doc.id} onPick={insert} onClose={() => setPicker(false)} /> : null}
-  </form></div>;
+  const busySave = busy || !!client?.pendingSave;
+  // The wiki's document pane (#197): the same bar, form and save row as the private editor, with
+  // the shared working copy's status in place of a private draft (#239 review).
+  return <>
+    <WikiBar meta={<span className="doc-head__k">Shared working copy · last saved version {client?.head?.savedVersion ?? doc.version}</span>} />
+    <form className={`wiki-doc doc-edit${displayedMode === 'both' ? ' doc-edit--both' : ''}`} data-shift aria-labelledby={titleId} onSubmit={(event) => void save(event)} onKeyDown={(event) => {
+      if ((event.ctrlKey || event.metaKey) && (event.key.toLowerCase() === 's' || event.key === 'Enter')) { event.preventDefault(); void save(); }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setPicker(true); }
+    }}>
+      <p className="wiki-doc__crumb"><Icon name="lock" size={12} /><span>Everyone in {project.name} can read it, and sees typing as it happens. Save keeps an immutable version.</span></p>
+      <p className="editing-status" role="status" data-live-status={client?.status ?? 'connecting'}>{client?.status === 'live' ? (client.pendingCount ? `${client.pendingCount} changes waiting to be shared` : 'All changes shared') : client?.status === 'private' ? 'Pending text kept privately' : 'Connecting to the shared working copy…'}{client?.text ? <WikiPresence client={client} /> : null}</p>
+      {client?.problem || error ? <p className="doc-notice" role="alert">{error ?? client?.problem}</p> : null}
+      {metadataConflict ? <section className="doc-notice"><p>Version {metadataConflict.version} now uses “{metadataConflict.title}” · {STATE_LABEL[metadataConflict.state]}. Review it before saving your metadata.</p><Button type="button" variant="secondary" onClick={() => { setTitle(metadataConflict.title); setState(metadataConflict.state); setMetadataBase({ title: metadataConflict.title, state: metadataConflict.state, version: metadataConflict.version }); setMetadataConflict(null); }}>Use their metadata</Button><Button type="button" variant="quiet" onClick={() => { setMetadataBase({ title: metadataConflict.title, state: metadataConflict.state, version: metadataConflict.version }); setMetadataConflict(null); }}>Keep my metadata on version {metadataConflict.version}</Button></section> : null}
+      {saved ? <p className="doc-notice" role="status">Version {saved} saved. Later typing stays in the shared working copy.</p> : null}
+      {privateText ? <section className="doc-notice"><span>A private copy from an earlier session is available.</span><Button type="button" variant="secondary" onClick={() => setCompare(!compare)}>{compare ? 'Close comparison' : 'Compare private text'}</Button>{compare ? <><textarea ref={comparison} aria-label="Earlier private text" readOnly value={privateText} /><p>Select the text you want to bring into the working copy, then place its cursor.</p><Button type="button" disabled={!client?.editable} onClick={() => { const area = comparison.current; if (!area || area.selectionStart === area.selectionEnd) { setError('Select text in the private copy before importing.'); return; } handleRef.current?.insert(privateText.slice(area.selectionStart, area.selectionEnd)); }}>Insert selected text</Button>{client?.hasPrivateArchive ? <Button type="button" variant="quiet" onClick={() => client.discardPrivateArchive()}>Discard earlier private copy</Button> : null}</> : null}</section> : null}
+      <label className="ui-vh" htmlFor={titleId}>Title</label>
+      <input id={titleId} className="doc-edit__title" placeholder="Title" value={client?.pendingSave?.title ?? title} maxLength={DOC_LIMITS.title} disabled={busySave || !client?.editable} onChange={(event) => setTitle(event.target.value)} required />
+      <div className="doc-edit__bar">
+        <div className="doc-seg" role="group" aria-label="Editor view">{(['write', 'preview', ...(wide ? ['both'] : [])] as ('write' | 'preview' | 'both')[]).map((value) => <button type="button" key={value} aria-pressed={displayedMode === value} onClick={() => setMode(value)}>{value[0]!.toUpperCase() + value.slice(1)}</button>)}</div>
+        <Button type="button" variant="quiet" icon="link" disabled={!client?.editable} onClick={() => setPicker(true)}>Link</Button>
+        <span className="doc-edit__hint">Markdown · shared as you type</span>
+      </div>
+      {picker ? <LinkPicker projectId={project.id} workspaceId={project.workspaceId} selfId={doc.id} onPick={insert} onClose={() => setPicker(false)} /> : null}
+      <div className="doc-edit__panes">
+        {client?.text ? <div className="doc-edit__write" hidden={displayedMode === 'preview'}><CollaborativeText client={client} handleRef={handleRef} /></div> : <p aria-busy="true">Opening text…</p>}
+        {displayedMode !== 'write' ? <div className="doc-edit__preview" aria-label="Shared preview" data-live-sequence={client?.head?.sequence}><div className="doc-prose" dangerouslySetInnerHTML={{ __html: client?.html ?? doc.html }} /></div> : null}
+      </div>
+      <div className="doc-edit__save">
+        <div className="doc-edit__reason">
+          <label htmlFor={reasonId}>Reason for this version</label>
+          <input id={reasonId} className="ui-input" value={client?.pendingSave?.reason ?? reason} maxLength={DOC_LIMITS.reason} onChange={(event) => setReason(event.target.value)} disabled={busySave} />
+        </div>
+        <div className="doc-seg" role="radiogroup" aria-label="State">
+          {(['draft', 'published'] as const).map((value) => <button key={value} type="button" role="radio" aria-checked={(client?.pendingSave?.state ?? state) === value} disabled={busySave} onClick={() => setState(value)}>{STATE_LABEL[value]}</button>)}
+        </div>
+        <div className="doc-edit__acts">
+          <Link className="ui-btn ui-btn--quiet" to={docUrl(project.id, doc.id)}>Back to doc</Link>
+          <Button type="submit" variant="primary" disabled={busy || !!metadataConflict || !client?.editable || client.pendingCount > 0 || !title.trim()}>{busy ? 'Saving…' : 'Save version'}</Button>
+        </div>
+      </div>
+    </form>
+  </>;
 }
