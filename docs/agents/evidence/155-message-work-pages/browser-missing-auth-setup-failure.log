@@ -1,0 +1,53 @@
+ Container flux155browser-mailpit-1  Running
+ Container flux155browser-db-1  Running
+ Container flux155browser-anthropic-mock-1  Recreate
+ Container flux155browser-worker-1  Running
+ Container flux155browser-api-1  Running
+ Container flux155browser-anthropic-mock-1  Recreated
+ Container flux155browser-db-1  Waiting
+ Container flux155browser-anthropic-mock-1  Starting
+ Container flux155browser-anthropic-mock-1  Started
+ Container flux155browser-db-1  Healthy
+ Container flux155browser-migrate-1  Starting
+ Container flux155browser-migrate-1  Started
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Exited
+ Container flux155browser-migrate-1  Exited
+test_07_restored_feed_observes_older_and_newer_native_batches (test_work_associations.MessageWorkJourney.test_07_restored_feed_observes_older_and_newer_native_batches) ... ok
+test_08_one_pagedown_gesture_keeps_scrolling_across_a_held_batch (test_work_associations.MessageWorkJourney.test_08_one_pagedown_gesture_keeps_scrolling_across_a_held_batch) ... ok
+Exception in callback Connection.dispatch.<locals>._done_callback(<Task cancell..._page.py:294>>) at /usr/local/lib/python3.12/dist-packages/playwright/_impl/_connection.py:539
+handle: <Handle Connection.dispatch.<locals>._done_callback(<Task cancell..._page.py:294>>) at /usr/local/lib/python3.12/dist-packages/playwright/_impl/_connection.py:539>
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/asyncio/events.py", line 88, in _run
+    self._context.run(self._callback, *self._args)
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_connection.py", line 540, in _done_callback
+    exc = future.exception()
+          ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_page.py", line 308, in _on_route
+    handled = await route_handler.handle(route)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_helper.py", line 442, in handle
+    return await self._handle_internal(route)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_helper.py", line 484, in _handle_internal
+    return await handled_future
+           ^^^^^^^^^^^^^^^^^^^^
+asyncio.exceptions.CancelledError
+test_07_more_than_a_hundred_records_remain_reachable_through_native_pages (test_work_decisions.WorkDecisionsJourney.test_07_more_than_a_hundred_records_remain_reachable_through_native_pages) ... FAIL
+
+======================================================================
+FAIL: test_07_more_than_a_hundred_records_remain_reachable_through_native_pages (test_work_decisions.WorkDecisionsJourney.test_07_more_than_a_hundred_records_remain_reachable_through_native_pages)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/work/tests/ui/test_work_decisions.py", line 285, in test_07_more_than_a_hundred_records_remain_reachable_through_native_pages
+    spaces = self.api(page, "GET", "/api/v1/workspaces", status=200)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/work/tests/ui/test_work_decisions.py", line 77, in api
+    self.assertEqual(response.status, status, response.text())
+AssertionError: 401 != 200 : {"error":"Authentication required","code":"UNAUTHENTICATED"}
+
+----------------------------------------------------------------------
+Ran 3 tests in 6.398s
+
+FAILED (failures=1)

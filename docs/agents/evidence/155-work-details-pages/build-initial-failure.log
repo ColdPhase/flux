@@ -1,0 +1,206 @@
+#1 [internal] load local bake definitions
+#1 reading from stdin 1.78kB done
+#1 DONE 0.0s
+
+#2 [ui-test internal] load build definition from ui-tests.Dockerfile
+#2 transferring dockerfile: 941B done
+#2 DONE 0.0s
+
+#3 [test internal] load build definition from Dockerfile
+#3 transferring dockerfile: 2.99kB done
+#3 DONE 0.0s
+
+#4 [test internal] load metadata for docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#4 ...
+
+#5 [ui-test internal] load metadata for mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d
+#5 DONE 0.6s
+
+#6 [ui-test internal] load .dockerignore
+#6 transferring context: 191B done
+#6 DONE 0.0s
+
+#7 [ui-test internal] load build context
+#7 transferring context: 1.10kB done
+#7 DONE 0.0s
+
+#8 [ui-test 1/5] FROM mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d
+#8 resolve mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d 0.0s done
+#8 DONE 0.0s
+
+#9 [ui-test 2/5] COPY tests/ui/requirements.txt /tmp/ui-requirements.txt
+#9 CACHED
+
+#10 [ui-test 4/5] WORKDIR /work
+#10 CACHED
+
+#11 [ui-test 3/5] RUN pip install --no-cache-dir --break-system-packages --only-binary=:all: --require-hashes -r /tmp/ui-requirements.txt
+#11 CACHED
+
+#12 [ui-test 5/5] COPY tests/ui tests/ui
+#12 CACHED
+
+#13 [ui-test] exporting to image
+#13 exporting layers done
+#13 exporting manifest sha256:6bd0723a06fe7e153a019d5734658b8451b9b30eb660ace8ca81a6eb38f831f7 done
+#13 exporting config sha256:4d20f362463bf5bf4ab9f76cfb9bd9e3dd3acb70fc42ffb06ff7d4cc70fd8a74 done
+#13 exporting attestation manifest sha256:7f8e9b4990f82189eb7eaaaab5c02236a76119506fb4dcdef0a454dab46bbb53 done
+#13 exporting manifest list sha256:0b92f554c0d76ac213cecf293f9396289b9e5b8666231038dff708a19de8f812 done
+#13 naming to docker.io/library/flux-ui-tests:flux155browser done
+#13 unpacking to docker.io/library/flux-ui-tests:flux155browser done
+#13 DONE 0.0s
+
+#14 [ui-test] resolving provenance for metadata file
+#14 DONE 0.0s
+
+#4 [test internal] load metadata for docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#4 DONE 6.7s
+
+#6 [migrate internal] load .dockerignore
+#6 CACHED
+
+#15 [test build 1/8] FROM docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#15 resolve docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 done
+#15 DONE 0.0s
+
+#16 [test internal] load build context
+#16 transferring context: 3.72MB 0.1s done
+#16 DONE 0.1s
+
+#17 [test build 3/8] RUN corepack enable && corepack install -g pnpm@12.6.0
+#17 CACHED
+
+#18 [test build 4/8] COPY pnpm-lock.yaml pnpm-workspace.yaml ./
+#18 CACHED
+
+#19 [test build 2/8] WORKDIR /app
+#19 CACHED
+
+#20 [test build 5/8] RUN pnpm fetch
+#20 CACHED
+
+#21 [migrate build 6/8] COPY . .
+#21 DONE 0.1s
+
+#22 [migrate build 7/8] RUN pnpm install --offline --frozen-lockfile
+#22 0.241 Scope: all 10 workspace projects
+#22 0.284 ✓ Lockfile passes supply-chain policies (verified 16h ago)
+#22 0.284 Lockfile is up to date, resolution step is skipped
+#22 0.533 Already up to date
+#22 0.874
+#22 0.874 dependencies:
+#22 0.874 + @flux/contracts link:packages/contracts
+#22 0.874 + @flux/core link:packages/core
+#22 0.874 + @flux/db link:packages/db
+#22 0.874 + pg-boss 12.35.0
+#22 0.874
+#22 0.874 devDependencies:
+#22 0.874 + @eslint/js 9.37.0
+#22 0.874 + @types/node 24.6.2
+#22 0.874 + @types/nodemailer 8.0.2
+#22 0.874 + @types/pg 8.15.5
+#22 0.874 + @types/sanitize-html 2.16.1
+#22 0.874 + @types/ws 8.18.1
+#22 0.874 + drizzle-orm 0.45.3
+#22 0.874 + eslint 9.37.0
+#22 0.874 + eslint-plugin-react-hooks 7.1.1
+#22 0.874 + fastify 5.6.1
+#22 0.874 + playwright 1.63.0
+#22 0.874 + tsx 4.20.5
+#22 0.874 + typescript 5.9.2
+#22 0.874 + typescript-eslint 8.44.1
+#22 0.874 + ws 8.22.0
+#22 0.874
+#22 0.875 Done in 642ms using pnpm v12.6.0
+#22 DONE 1.0s
+
+#23 [migrate build 8/8] RUN pnpm build && pnpm typecheck && pnpm lint
+#23 0.188 $ pnpm -r --if-present build && tsc -p tooling/tsconfig.build.json
+#23 0.241 packages/contracts build$ tsc -p tsconfig.build.json
+#23 1.666 packages/contracts build: Done
+#23 1.667 packages/sdk build$ tsc -p tsconfig.build.json
+#23 1.667 apps/web build$ vite build
+#23 1.667 packages/db build$ tsc -p tsconfig.build.json
+#23 1.889 apps/web build: vite v8.3.1 building client environment for production...
+#23 1.901 apps/web build: transforming...
+#23 2.056 apps/web build: ✓ 270 modules transformed.
+#23 2.154 apps/web build: rendering chunks...
+#23 2.245 apps/web build: computing gzip size...
+#23 2.253 apps/web build: dist/index.html                                              1.21 kB │ gzip:   0.53 kB
+#23 2.253 apps/web build: dist/sw.js                                                   6.70 kB
+#23 2.253 apps/web build: dist/assets/inter-vietnamese-wght-normal-CBcvBZtf.woff2     10.25 kB
+#23 2.253 apps/web build: dist/assets/inter-greek-ext-wght-normal-DlzME5K_.woff2      11.23 kB
+#23 2.253 apps/web build: dist/assets/inter-cyrillic-wght-normal-DqGufNeO.woff2       18.74 kB
+#23 2.253 apps/web build: dist/assets/inter-greek-wght-normal-CkhJZR-_.woff2          18.99 kB
+#23 2.253 apps/web build: dist/assets/inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2   25.96 kB
+#23 2.253 apps/web build: dist/assets/inter-latin-wght-normal-Dx4kXJAl.woff2          48.25 kB
+#23 2.253 apps/web build: dist/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2      85.06 kB
+#23 2.253 apps/web build: dist/assets/index-CG23UaWh.css                             159.97 kB │ gzip:  28.25 kB
+#23 2.253 apps/web build: dist/assets/media-BK16HOqq.js                              419.65 kB │ gzip: 108.68 kB
+#23 2.253 apps/web build: dist/assets/index-BgT43U17.js                              781.79 kB │ gzip: 232.29 kB
+#23 2.253 apps/web build:
+#23 2.253 apps/web build: [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "use client" in "../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/index.js" may not be preserved when bundling.
+#23 2.253 apps/web build:     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m ../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/index.js:11:1 [38;5;246m][0m
+#23 2.253 apps/web build:     [38;5;246m│[0m
+#23 2.253 apps/web build:  [38;5;246m11 │[0m "use client";
+#23 2.253 apps/web build:  [38;5;240m   │[0m ──────┬──────
+#23 2.253 apps/web build:  [38;5;240m   │[0m       ╰──────── module level directive may not be preserved
+#23 2.253 apps/web build:  [38;5;240m   │[0m
+#23 2.253 apps/web build:  [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+#23 2.253 apps/web build: [38;5;246m────╯[0m
+#23 2.253 apps/web build:
+#23 2.253 apps/web build: [plugin builtin:vite-reporter]
+#23 2.253 apps/web build: (!) Some chunks are larger than 500 kB after minification. Consider:
+#23 2.253 apps/web build: - Using dynamic import() to code-split the application
+#23 2.253 apps/web build: - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+#23 2.253 apps/web build: - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+#23 2.254 apps/web build: ✓ built in 363ms
+#23 2.270 apps/web build: Done
+#23 3.382 packages/sdk build: Done
+#23 4.504 packages/db build: Done
+#23 4.505 packages/core build$ tsc -p tsconfig.build.json
+#23 6.224 packages/core build: Done
+#23 6.225 packages/agent-runtime build$ tsc -p tsconfig.build.json
+#23 6.225 apps/server build$ tsc -p tsconfig.build.json
+#23 7.065 packages/agent-runtime build: Done
+#23 7.065 apps/worker build$ tsc -p tsconfig.build.json
+#23 7.933 apps/worker build: Done
+#23 9.141 apps/server build: Done
+#23 9.851 $ tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json
+#23 17.28 apps/web/src/work/WorkDetails.tsx(200,130): error TS2353: Object literal may only specify known properties, and 'WorkDetailObject' does not exist in type 'UpdateWorkCommand'.
+#23 17.28 apps/web/src/work/WorkDetails.tsx(200,130): error TS2693: 'WorkDetailObject' only refers to a type, but is being used as a value here.
+#23 17.28 apps/web/src/work/WorkDetails.tsx(200,148): error TS2693: 'WorkDetailProjection' only refers to a type, but is being used as a value here.
+#23 17.28 apps/web/src/work/WorkDetails.tsx(200,170): error TS18004: No value exists in scope for the shorthand property 'WorkReadRef'. Either declare one or provide an initializer.
+#23 17.28 apps/web/src/work/WorkDetails.tsx(303,144): error TS2339: Property 'status' does not exist on type 'WorkReadRef'.
+#23 17.30 [ELIFECYCLE] Command failed with exit code 2.
+#23 ERROR: process "/bin/sh -c pnpm build && pnpm typecheck && pnpm lint" did not complete successfully: exit code: 2
+------
+ > [test build 8/8] RUN pnpm build && pnpm typecheck && pnpm lint:
+7.065 apps/worker build$ tsc -p tsconfig.build.json
+7.933 apps/worker build: Done
+9.141 apps/server build: Done
+9.851 $ tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json
+17.28 apps/web/src/work/WorkDetails.tsx(200,130): error TS2353: Object literal may only specify known properties, and 'WorkDetailObject' does not exist in type 'UpdateWorkCommand'.
+17.28 apps/web/src/work/WorkDetails.tsx(200,130): error TS2693: 'WorkDetailObject' only refers to a type, but is being used as a value here.
+17.28 apps/web/src/work/WorkDetails.tsx(200,148): error TS2693: 'WorkDetailProjection' only refers to a type, but is being used as a value here.
+17.28 apps/web/src/work/WorkDetails.tsx(200,170): error TS18004: No value exists in scope for the shorthand property 'WorkReadRef'. Either declare one or provide an initializer.
+17.28 apps/web/src/work/WorkDetails.tsx(303,144): error TS2339: Property 'status' does not exist on type 'WorkReadRef'.
+17.30 [ELIFECYCLE] Command failed with exit code 2.
+------
+Dockerfile:10
+
+--------------------
+
+   8 |     COPY . .
+
+   9 |     RUN pnpm install --offline --frozen-lockfile
+
+  10 | >>> RUN pnpm build && pnpm typecheck && pnpm lint
+
+  11 |
+
+  12 |     FROM build AS test
+
+--------------------
+
+target test: failed to solve: process "/bin/sh -c pnpm build && pnpm typecheck && pnpm lint" did not complete successfully: exit code: 2

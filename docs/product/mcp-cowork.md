@@ -193,6 +193,7 @@ human-confirm-every-step rule. Reserved actions still require their authority.
 | Same-task creation notice and first real discussion message | [#154](https://github.com/ColdPhase/flux/issues/154), amends #36/#101 behavior without rewriting history |
 | Studio 11.6 / Agents tab and responsive integration | #136 with #151; consumes the domain contracts above |
 | Subtle motion and real typing presence | [#155](https://github.com/ColdPhase/flux/issues/155), coordinated with #136 |
+| Public tool contract: versioning, compatibility and snapshot | [O-010 EXT-1](extension-contracts.md#ext-1--mcp-tool-contract-1), [#251](https://github.com/ColdPhase/flux/issues/251); a new tool from these rows joins tool contract 1 additively with an updated snapshot |
 
 Required integrated fixture: two owners/three connections, distinct grants and
 two projects; one existing task → local code/tests → verified PR → authorized

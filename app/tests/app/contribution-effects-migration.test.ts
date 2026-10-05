@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { createDatabase, FLUX_SCHEMA_VERSION, readMigrationManifest } from '@flux/db';
+import { guardFixturePool } from './support/fixture-database.js';
 
 const dir = 'packages/db/migrations';
 
@@ -16,10 +17,12 @@ test('0040 keeps every historical row byte-identical as plain text, adds only em
   const url = new URL(process.env.DATABASE_URL!);
   url.pathname = `/${name}`;
   let history: ReturnType<typeof createDatabase>['pool'] | undefined;
+  let guard: ReturnType<typeof guardFixturePool> | undefined;
   try {
     const createFixture = { text: `CREATE DATABASE "${name}"`, query_timeout: 60_000 };
     await admin.query(createFixture);
     history = createDatabase(url.toString()).pool;
+    guard = guardFixturePool(history);
     for (const file of manifest.filter((file) => file.version < 40)) await history.query(await readFile(join(dir, file.name), 'utf8'));
     const user = 'historic-person';
     const [workspace, project, conversation, first, second, work, result, command1, command2] = Array.from({ length: 9 }, () => randomUUID());
@@ -73,6 +76,7 @@ test('0040 keeps every historical row byte-identical as plain text, adds only em
     await assert.rejects(history.query(reverse), /reversal refused: native command receipts exist/);
     assert.equal((await history.query('SELECT count(*)::int AS n FROM native_command_receipts')).rows[0].n, 1);
   } finally {
+    guard?.cleanup();
     await history?.end();
     // Database administration can outlast the API's short read deadline under the parallel suite (another
     // migration fixture creates and drops databases at the same time); the assertions above keep ordinary deadlines.
@@ -80,4 +84,5 @@ test('0040 keeps every historical row byte-identical as plain text, adds only em
     const cleanup = { text: `DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`, query_timeout: 60_000 };
     await admin.query(cleanup).finally(() => admin.end());
   }
+  guard?.assertNoEarlyErrors();
 });

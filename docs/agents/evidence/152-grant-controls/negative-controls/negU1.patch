@@ -1,0 +1,13 @@
+diff --git a/app/apps/web/src/agent-connection/StandingGrants.tsx b/app/apps/web/src/agent-connection/StandingGrants.tsx
+index 4f4828f6..3cff871a 100644
+--- a/app/apps/web/src/agent-connection/StandingGrants.tsx
++++ b/app/apps/web/src/agent-connection/StandingGrants.tsx
+@@ -86,7 +86,7 @@ export function StandingGrants({ connection, projects, initial }: Props) {
+   const canAct = connection.scopes.includes('flux.action.execute');
+   const name = (projectId: string) => projects.get(projectId)?.name ?? `Project ${projectId.slice(0, 8)}`;
+ 
+-  if (!canAct) {
++  if (!canAct && connection.id === '') {
+     return <section className="grants" aria-label={`Standing grants for ${connection.name}`}>
+       <h2 className="grants__title">Standing grants <span className="grants__for">for {connection.name}</span></h2>
+       <p className="grants__note">This connection can read and suggest only. To let your agent make changes, save a new selection with “Run approved project actions”.</p>
