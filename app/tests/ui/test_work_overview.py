@@ -183,8 +183,11 @@ class OverviewWorkJourney(unittest.TestCase):
     def test_04_details_of_an_older_loaded_message_keeps_exact_source_scope_and_pinned_citation(self):
         page = self.page(); page.goto(f"/projects/{self.project}/conversations/{self.conversation}")
         earlier = page.get_by_role("button", name="Load earlier replies", exact=True)
-        for count in (100, 141):
-            earlier.click(); expect(page.locator(".project-convo__feed [data-message-id]")).to_have_count(count)
+        # Since #195 the conversation's root (m0) opens the thread and stays in the project's stream; the
+        # thread pages back through its 140 replies (the root heads the thread, outside its reply list).
+        for count in (100, 140):
+            earlier.click(); expect(page.locator("#thread .thread__list [data-message-id]")).to_have_count(count)
+        expect(page.locator(f"#thread .thread__root[data-message-id='{self.m0}']")).to_have_count(1)
         message = page.locator(f"#message-{self.m0}"); expect(message).to_have_count(1)
         message.scroll_into_view_if_needed(); message.hover()
         message.get_by_role("button", name="Details of this message", exact=True).click()

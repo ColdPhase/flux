@@ -244,10 +244,10 @@
 
 /* Keep distinguishing task titles visible on narrow conversation surfaces. */
 @media (max-width: 760px) {
-  .project-convo__feed .ws-chip { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 3px 6px; width: 100%; padding: 8px 10px; }
-  .project-convo__feed .ws-chip svg { grid-column: 1; grid-row: 1 / span 2; align-self: start; margin-top: 2px; }
-  .project-convo__feed .ws-chip__t { grid-column: 2; white-space: normal; overflow-wrap: anywhere; }
-  .project-convo__feed .ws-chip__k { grid-column: 2; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+  .project-convo__feed .ws-chip, .thread__feed .ws-chip { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 3px 6px; width: 100%; padding: 8px 10px; }
+  .project-convo__feed .ws-chip svg, .thread__feed .ws-chip svg { grid-column: 1; grid-row: 1 / span 2; align-self: start; margin-top: 2px; }
+  .project-convo__feed .ws-chip__t, .thread__feed .ws-chip__t { grid-column: 2; white-space: normal; overflow-wrap: anywhere; }
+  .project-convo__feed .ws-chip__k, .thread__feed .ws-chip__k { grid-column: 2; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 }
 /* A task's discussion (UI116-3, #154): its root, quoted with author and time, opens the thread in Conversation;
    before anyone has written, a short form starts it. */

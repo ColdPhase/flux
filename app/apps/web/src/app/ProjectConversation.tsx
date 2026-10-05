@@ -95,6 +95,11 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const { me } = useShellData();
   const navigate = useNavigate();
   const revalidator = useRevalidator();
+  // The stream and the thread are two panes on one route: the stream's revalidation changes the router's
+  // state every 15 s. Read the latest revalidate through a ref, so this pane's own refresh (and its 15 s
+  // fallback timer) keeps its identity and is not restarted, and so never starved, by the other pane.
+  const revalidateRef = useRef(revalidator.revalidate);
+  useEffect(() => { revalidateRef.current = revalidator.revalidate; });
   const audience = audienceLine(people, me.user.id, project.visibility === 'workspace');
   const audienceShort = audience.replace(/ · only you two$/, '');
   // The stream's composer keeps the former new-conversation draft; each thread keeps its own reply draft.
@@ -176,12 +181,12 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const [askFailureCode, setAskFailureCode] = useState<string | null>(null);
   const hideIfDenied = useCallback((cause: unknown) => {
     if (!(cause instanceof ApiError)) return;
-    if (cause.status === 403) { revalidator.revalidate(); return; }
+    if (cause.status === 403) { revalidateRef.current(); return; }
     if (cause.status !== 401 && cause.status !== 404) return;
     setAccessLost(true);
-    revalidator.revalidate();
+    revalidateRef.current();
     void getProject(project.id).then(() => setAccessLost(false)).catch(() => { /* denial keeps previous content hidden */ });
-  }, [project.id, revalidator]);
+  }, [project.id]);
   useEffect(() => {
     if (referenceWork.state.phase !== 'unavailable') return;
     const cause = referenceWork.state.error;
@@ -200,7 +205,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     if (refreshingRef.current) return;
     refreshingRef.current = true;
     // The stream's refresh reloads the route (newest roots, the project); a thread reads only its own replies.
-    if (!conversationId) revalidator.revalidate();
+    if (!conversationId) revalidateRef.current();
     try {
       const [latestMaterials, latestConversation] = await Promise.all([
         listMaterials(project.id),
@@ -222,7 +227,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
       }
     } catch (cause) { hideIfDenied(cause); }
     finally { refreshingRef.current = false; }
-  }, [conversationId, hideIfDenied, project.id, revalidator]);
+  }, [conversationId, hideIfDenied, project.id]);
   useEffect(() => {
     if (!showMaterialForm || !writable) return;
     const controller = new AbortController();
