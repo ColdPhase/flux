@@ -559,6 +559,129 @@ and classes and the playbook names it.
   `flux_bootstrap` therefore still reports `coordination_unavailable`, and
   playbook 1.2.0 says which parts exist.
 
+  The next section closes this gap for unit claim, renewal, release,
+  completion and transfer. Request admission, recovery and the inbox stay
+  unexposed.
+
+### Unit claims over MCP (2026-10-06, proposed amendment, peer review required)
+
+An MCP client can now hold a live unit claim. Five more existing compositions
+become project MCP tools, registered through the same
+`tools.forScope('flux.action.execute', { operation, classes })` path as the
+previous section's tools.
+
+| Tool | Operation | Classes | Composition |
+| --- | --- | --- | --- |
+| `flux_claim_unit` | `cowork.claim` | execute, review, plan | `coWorkClaimInTransaction` |
+| `flux_renew_unit` | `cowork.renew` | execute, review, plan | `coWorkClaimInTransaction` |
+| `flux_release_unit` | `cowork.release` | execute, review, plan | `coWorkClaimInTransaction`, with a checkpoint draft |
+| `flux_complete_unit` | `cowork.unit.complete` | execute, review, plan | `coWorkUnitTransitionInTransaction` |
+| `flux_transfer_unit` | `cowork.unit.transfer` | execute, review, plan | `coWorkUnitTransitionInTransaction` |
+
+- **Same rules as the previous section.** One call is one `db.transaction`
+  that runs the composition unchanged. The input schema is strict, and the
+  tools write no stream event. Each operation, its payload and its grant are
+  the existing ones, so this adds no operation and no migration: `0056` is not
+  used, and `FLUX_SCHEMA_VERSION` stays 54.
+- **Server-owned claim policy.** `COWORK_CLAIM_POLICY` sits in
+  `apps/server/src/co-work/policy.ts`. Tool input, client metadata and project
+  content never set it.
+  - `maximumConnectionUnits` is 1. CW-3 sets one active unit per connection by
+    default. More capacity needs its own grant, which does not exist yet.
+  - `leaseSeconds` is 300, the composition's upper bound. A client renews
+    before the lease ends.
+  - Its three providers, below, are the production implementations. Tests
+    that pass fixture callbacks no longer stand in for them.
+- **Graph locks (`prepareTaskLocks`).** This is the #171 provider that
+  creation, admission and transitions already use (`coWorkTaskGraphLocks`).
+- **Role eligibility (`requireEligible`).** It runs after the complete task
+  and unit locks. It reads the locked task row and takes no lock.
+  - **Claim and renew.** The unit's task must exist in this project and must
+    not be `done` or `not_pursued` (`COWORK_TASK_CLOSED`, the creation rule).
+    For an `execute` unit, every direct prerequisite must also be done and
+    unparked now (`requireTaskPrerequisitesMet`, `TASK_PREREQUISITES_UNMET`).
+  - Renewal repeats the check. If the task closes or a prerequisite reopens
+    while a claim is held, the next renewal is refused. The holder can still
+    release with a checkpoint, or complete, while its lease is live.
+  - `review` and `plan` units have no prerequisite rule: reviewing or planning
+    unfinished work is allowed. Reviewer/author separation is enforced when a
+    unit is created or transferred, and is not repeated here.
+  - **Release.** There is no eligibility check: a holder can always park its
+    work under a live claim.
+  - **Replay.** There is no eligibility check either. A replay is an
+    observation: it creates nothing and resumes nothing. Current authorization
+    and the unchanged post-state are still rechecked.
+  - A parked task itself is not refused, as at creation (open question below).
+- **Checkpoint producer.** `cowork.release` now has two exact payload forms:
+  - the existing `{ expectedVersion, generation, leaseId, checkpointId }`,
+    which names a checkpoint already persisted for this live claim;
+  - the new `{ expectedVersion, generation, leaseId, checkpoint }`, where
+    `checkpoint` is the draft `{ summary, nextAction, blocker }`.
+
+  The draft holds observable facts only. `summary` (1–2000 characters) is the
+  observed progress, the changed artifacts and the checks actually run.
+  `nextAction` is 1–500 characters, and `blocker` is null or 1–500 characters.
+  Its keys are exact, so a copied prompt, a transcript or an authority field is
+  refused.
+  - The core holder fence runs first (unit, version, live claim). Then the
+    composition inserts the checkpoint under the same live fence, with
+    `insertCheckpoint`'s conditional insert and a server-generated ID, and
+    releases with it. A refused release rolls the checkpoint back with
+    everything else.
+  - The stored `progress` is typed: `{ schema: 'flux.cowork.checkpoint/1',
+    summary, nextAction, blocker, sources }`. `sources` is exactly the
+    command's prepared `sources` (material ID and version), which #152
+    `prepare` locked `FOR SHARE` and found current. The client does not assert
+    coverage separately.
+  - The MCP release tool offers only the draft form.
+  - Not modeled as typed fields: the deferral reason and boundary, artifact and
+    check references, and a recovery cursor. The summary can name them. Typed
+    fields can be added later.
+- **Checkpoint sources (`requireCheckpointSources`).** The stored progress must
+  be `flux.cowork.checkpoint/1`. Otherwise the checkpoint is reported as
+  `COWORK_CHECKPOINT_NOT_FOUND`, so an untyped row is never shown.
+  - **Release and its replay.** The checkpoint is the one being released.
+    Every recorded source must be among the command's prepared sources at the
+    same version (`COWORK_CHECKPOINT_SOURCES_REQUIRED`). #152 `prepare` and
+    `complete` hold those rows and require them current, so no late lock is
+    taken.
+  - **Claim, renew and their replays.** The checkpoint is historical. Each
+    recorded material must still exist in this project, although its version
+    may have moved on. This is a plain read with no lock. Otherwise the code is
+    `COWORK_CHECKPOINT_NOT_FOUND`, which is content-free. Project access itself
+    is checked by #152 (`project.write`, under lock).
+  - This replaces, for historical checkpoints only, the rule in "Caller-owned
+    claim execution composition" that the claiming command must include the
+    checkpoint's source coverage. A client cannot know a historical
+    checkpoint's sources before it holds the claim. Requiring the recorded
+    version would make a paused unit unclaimable after any edit to one of its
+    sources, because only a release writes a checkpoint.
+- **Claim output.** `flux_claim_unit` returns the claim outcome plus the
+  unit's current checkpoint, or null. The checkpoint is read in the same
+  transaction, after the checks above, as `{ id, summary, nextAction, blocker,
+  sources, createdAt }`.
+  - This is how a resumed holder, or a new holder after a transfer, reads where
+    the work stopped. It can compare the recorded source versions with
+    `flux_changes_since`.
+  - The receipt stores only the claim outcome. A replay rereads the checkpoint
+    under the same checks.
+- **Completion and transfer** map one to one to "Unit completion and
+  transfer", with `reviewSeparation` from `COWORK_UNIT_POLICY`. The complete
+  tool's `outcome` admits only the native reference types.
+- **Still not exposed:** request admission, recovery and the inbox, and
+  resolution with a response.
+  - `flux_bootstrap` therefore still reports `coordination_unavailable`.
+    Playbook 1.2.0 now says that this gap covers only those parts.
+  - A connection learns the ID of a unit that another connection created for it
+    (a child unit) only through the inbox or recovery tools, which do not exist
+    yet.
+- **Open questions (peer review).**
+  - Should a parked task refuse new claims?
+  - Should the claim policy's capacity of 1 become a grant-backed capacity
+    before #160's clients hold an execute unit and a review unit at once?
+
+### Parent request participation
+
 ### Parent request participation
 
 A child request can name a parent only when its exact sending connection is
@@ -754,7 +877,8 @@ The accepted reservations are #58 `0026–0032`, #154 `0033`, #152 `0034`,
 creation grant operation. Both must be reserved on #153 before their branches
 are pushed. `0054` (proposed 2026-10-05; 0051 is on main for #257 and 0052–0053 are reserved elsewhere) adds
 the unit completion/transfer grant operations and `cowork_units.outcome_ref`;
-it too must be reserved on #153 before its PR is opened.
+it too must be reserved on #153 before its PR is opened. Unit claims over MCP
+(2026-10-06) need no migration; `0056` stays unused.
 The human-only `0033` checkpoint is frozen; it does not supply agent authors.
 Do not edit already merged migrations. #153 must
 compose with #152's real identity/grant storage, #154's actual contribution
@@ -931,6 +1055,8 @@ The complete task set includes every retained claim's task and canonical
 lineage root, including other projects. Public composition remains disabled
 until the actual shared graph/role/checkpoint providers are implemented and
 independently verified; passing fixture callbacks is not their implementation.
+The production providers and their MCP exposure are proposed in "Unit claims
+over MCP" (2026-10-06), pending that independent verification.
 
 Release requires the actual scoped checkpoint's current connection/generation/
 original runtime fence. Historical checkpoints from earlier assignees remain
@@ -939,7 +1065,11 @@ connection identity is not an authority requirement. Source coverage must be
 included in the original prepared command, locked before graph/tasks and
 rechecked without acquiring late upstream material/version locks. An incomplete
 coverage or changed source fails closed. A typed checkpoint producer/schema
-and complete current source adapters remain required unfinished work.
+and complete current source adapters remain required unfinished work. The
+2026-10-06 amendment adds the typed `flux.cowork.checkpoint/1` producer on
+release and narrows the coverage rule to the released checkpoint; a historical
+checkpoint needs current access to its sources, not the claiming command's
+coverage.
 
 The SQL save returns actual persisted expiry. Completion rereads every exact
 canonical claim field under the retained unit lock and rechecks current
