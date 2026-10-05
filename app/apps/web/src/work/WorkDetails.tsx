@@ -353,6 +353,13 @@ function DecisionPanel({ decision, context, reload }: { decision: Decision; cont
         </section>
       ) : null}
 
+      {decision.status === 'proposed' && !writable ? (
+        // O-009 (#250): a reader without write access sees that the proposal is not binding and who decides it.
+        <section className="details__sec" aria-labelledby="wd-who-decides">
+          <h4 id="wd-who-decides">Who decides</h4>
+          <p>Not accepted yet. A person who can edit {context.project.name} accepts it; agents and assistants can only propose.</p>
+        </section>
+      ) : null}
       {decision.status === 'proposed' && writable ? (
         <form className="details__sec wd-accept" onSubmit={(event) => void accept(event)}>
           <h4>{pivot ? 'Accept as a pivot' : 'Accept'}</h4>

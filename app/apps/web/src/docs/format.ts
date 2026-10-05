@@ -6,8 +6,18 @@ export const shortDate = (iso: string) => day.format(new Date(iso));
 export const longDate = (iso: string) => stamp.format(new Date(iso));
 
 export const STATE_LABEL: Record<DocState, string> = { draft: 'Draft', published: 'Published' };
+/**
+ * One source of truth for naming an agent author (#200): the marker after its name, exactly as
+ * rendered everywhere an agent writes under its owner's standing grant (#152); shared by the
+ * combined label below and by views that style the name and the marker separately.
+ */
+export const AGENT_SUFFIX = ' · agent';
+/** An agent's display name, or "Agent" once its connection has none yet. */
+export const agentDisplayName = (agent: { name?: string }) => agent.name ?? 'Agent';
+/** How a reader names an agent: "<name> · agent", as in the conversation. A missing name shows "Agent". */
+export const agentAuthorLabel = (agent: { name?: string }) => `${agentDisplayName(agent)}${AGENT_SUFFIX}`;
 /** Who made a version: an agent writing under its owner's standing grant (#152) is named "name · agent", as in the conversation. */
-export const authorLabel = (who: NamedPrincipal) => (who.kind === 'agent' ? `${who.name} · agent` : who.name);
+export const authorLabel = (who: NamedPrincipal) => (who.kind === 'agent' ? agentAuthorLabel(who) : who.name);
 
 const KIND: Record<string, string> = {
   doc: 'Page', work: 'Work', decision: 'Decision', result: 'Result', message: 'Message', thought: 'Thought', sketch: 'Sketch', material: 'Material',

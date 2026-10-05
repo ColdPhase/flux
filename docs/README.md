@@ -31,6 +31,8 @@ direction is in the [decision register](product/decisions.md).
 - [Container development](development/containers.md) — Docker/Compose for the application and services.
 - [Application foundation](development/application-foundation.md) — clean start, integration fixture and operations.
 - [Operations](operations/README.md) — backup schedule, restore, project export, upgrade and disk hygiene.
+- [Integrations](integrations/README.md) — the public extension contracts of v0.1 (MCP tools, project export), their
+  compatibility rules, permissions, retries and errors, for integrators and operators.
 - [Architecture](development/architecture.md) — layers, dependency direction, where code and tests go, known debt.
 - [Access policy](development/access-policy.md) — workspaces, projects, grants, agents, drafts and the single authorization choke point.
 

@@ -52,7 +52,9 @@ export async function writeEnv(directory, state) {
     MOBILE_IMAGE: state.image ?? 'flux-mobile-unbuilt', MOBILE_ORIGIN: state.origin,
     MOBILE_DB_PASSWORD: secret.databasePassword, MOBILE_AUTH_SECRET: secret.authSecret,
     MOBILE_VAPID_PUBLIC: secret.vapid.publicKey, MOBILE_VAPID_PRIVATE: secret.vapid.privateKey,
-    MOBILE_VAPID_SUBJECT: 'mailto:mobile-fixture@example.test',
+    // Apple's push service refused the unreachable `mailto:…@example.test` contact with 403 BadJwtToken
+    // on a real iPhone (#20, 2026-10-05). Once public, the session signs with its own https origin.
+    MOBILE_VAPID_SUBJECT: state.origin.startsWith('https://') ? state.origin : 'mailto:mobile-fixture@example.test',
     MOBILE_BROWSER_IMAGE: state.browserImage ?? 'selenium-unconfigured',
   };
   // Restricted state paths and generated values never need dotenv interpolation or quoting.

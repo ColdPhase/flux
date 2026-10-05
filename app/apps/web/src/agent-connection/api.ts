@@ -1,6 +1,7 @@
 import {
-  AUTH_BASE_PATH, projectGrantsPath, workspaceAgentsPath, type Agent, type AgentConnection, type AgentScope, type AgentOauthConsentContext,
-  type CreateAgentCommand, type CreateAgentConnectionCommand, type GrantProjectCommand, type ProjectGrant,
+  AUTH_BASE_PATH, agentActionGrantPath, agentActionGrantsPath, projectGrantsPath, workspaceAgentsPath, type Agent, type AgentConnection,
+  type AgentScope, type AgentOauthConsentContext, type AgentStandingGrant, type CreateAgentCommand, type CreateAgentConnectionCommand,
+  type CreateAgentStandingGrantCommand, type GrantProjectCommand, type NarrowAgentStandingGrantCommand, type Page, type ProjectGrant,
 } from '@flux/contracts';
 import { request } from '../api/client';
 
@@ -33,6 +34,32 @@ export function createAgentConnection(command: CreateAgentConnectionCommand) {
 
 export function revokeAgentConnection(connectionId: string) {
   return request<null>(`${CONNECTIONS_PATH}/${encodeURIComponent(connectionId)}`, { method: 'DELETE' });
+}
+
+/**
+ * Every standing grant of one of your connections, newest first: current ones and their history. The server
+ * pages by 50; a connection rarely has more than a few pages, and the reading stops at 10 (500 grants).
+ */
+export async function listActionGrants(connectionId: string, signal?: AbortSignal) {
+  const grants: AgentStandingGrant[] = [];
+  for (let offset = 0; offset < 500; offset += 50) {
+    const page = await request<Page<AgentStandingGrant>>(`${agentActionGrantsPath(encodeURIComponent(connectionId))}?limit=50&offset=${offset}`, { signal });
+    grants.push(...page.items);
+    if (offset + page.items.length >= page.total || page.items.length === 0) break;
+  }
+  return grants;
+}
+
+export function createActionGrant(connectionId: string, command: CreateAgentStandingGrantCommand) {
+  return request<AgentStandingGrant>(agentActionGrantsPath(encodeURIComponent(connectionId)), { method: 'POST', body: command });
+}
+
+export function narrowActionGrant(connectionId: string, grantId: string, command: NarrowAgentStandingGrantCommand) {
+  return request<AgentStandingGrant>(agentActionGrantPath(encodeURIComponent(connectionId), encodeURIComponent(grantId)), { method: 'PATCH', body: command });
+}
+
+export function revokeActionGrant(connectionId: string, grantId: string) {
+  return request<null>(agentActionGrantPath(encodeURIComponent(connectionId), encodeURIComponent(grantId)), { method: 'DELETE' });
 }
 
 export function createPersonalAgent(workspaceId: string, name: string) {
