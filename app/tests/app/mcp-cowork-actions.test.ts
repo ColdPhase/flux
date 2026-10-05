@@ -87,7 +87,7 @@ test('the co-work tools are registered for the action scope, listed with their o
   for (const { name } of COWORK_TOOLS) assert.ok(COWORK_PLAYBOOK.modules.some((module) => module.tools.includes(name)), `${name} is declared`);
   const catalog = capabilities.map((item) => item.name);
   assert.deepEqual(coworkPlaybookTools().filter((name) => !catalog.includes(name)), []);
-  assert.equal(COWORK_PLAYBOOK.version, '1.2.0');
+  assert.equal(COWORK_PLAYBOOK.version, '1.3.0');
   assert.ok((codex.bootstrap.gaps as string[]).includes('coordination_unavailable'), 'the inbox, admission and recovery are still a gap');
 
   // A connection without the action scope sees them unavailable and is refused before any effect.

@@ -557,7 +557,7 @@ and classes and the playbook names it.
     claim.
 
   `flux_bootstrap` therefore still reports `coordination_unavailable`, and
-  playbook 1.2.0 says which parts exist.
+  playbook 1.3.0 says which parts exist.
 
   The next section closes this gap for unit claim, renewal, release,
   completion and transfer. Request admission, recovery and the inbox stay
@@ -671,7 +671,7 @@ previous section's tools.
 - **Still not exposed:** request admission, recovery and the inbox, and
   resolution with a response.
   - `flux_bootstrap` therefore still reports `coordination_unavailable`.
-    Playbook 1.2.0 now says that this gap covers only those parts.
+    Playbook 1.3.0 says that this gap covers only those parts.
   - A connection learns the ID of a unit that another connection created for it
     (a child unit) only through the inbox or recovery tools, which do not exist
     yet.
