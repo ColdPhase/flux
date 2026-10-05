@@ -139,8 +139,9 @@ export function useSketchDoc(sketchId: string, me: Me) {
   const ref = useRef<SketchDetail | null>(null);
   const queue = useRef<Promise<void>>(Promise.resolve());
   const inFlight = useRef(0);
-  // Counts writes started; a read sent before the latest one may predate a confirmed change (#271).
-  const writes = useRef(0);
+  // Counts writes that have finished (#271). A read that was out while one finished may have been
+  // answered before that write committed, so it is never adopted over the confirmed change.
+  const finishedWrites = useRef(0);
   const staleRef = useRef(false);
   const undoStack = useRef<Entry[]>([]);
   const moveBuffer = useRef<{ moves: Map<string, { x: number; y: number }>; timer: number | null }>({ moves: new Map(), timer: null });
@@ -168,14 +169,16 @@ export function useSketchDoc(sketchId: string, me: Me) {
   const reload = useCallback(async (signal?: AbortSignal) => {
     try {
       let fresh: SketchDetail;
-      let started: number;
+      let finished: number;
       do {
-        started = writes.current;
+        finished = finishedWrites.current;
         fresh = await api.getSketch(sketchId, signal);
+        // A write still out: read again once every write has finished (see enqueue).
         if (inFlight.current) { staleRef.current = true; return; }
-        // #271: a write that began after this read was sent may have finished meanwhile; the read
-        // predates it and would hide a confirmed thought until the next event, so read again.
-      } while (writes.current !== started);
+        // #271: a write finished while this read was out, whether it began before or after the
+        // read was sent. The answer may predate it and would hide a confirmed thought until the
+        // next event, so read again.
+      } while (finishedWrites.current !== finished);
       adopt(fresh);
       setLoad('ready');
     } catch (error) {
@@ -296,13 +299,13 @@ export function useSketchDoc(sketchId: string, me: Me) {
 
   const enqueue = useCallback((op: Op) => {
     inFlight.current += 1;
-    writes.current += 1;
     setSaving(true);
     queue.current = queue.current.then(() => send(op)).catch(() => {
       setProblem('A change couldn’t be saved. The sketch was reloaded from the server.');
       staleRef.current = true;
     }).finally(() => {
       inFlight.current -= 1;
+      finishedWrites.current += 1;
       if (inFlight.current) return;
       setSaving(false);
       if (staleRef.current) { staleRef.current = false; void reload(); }
@@ -375,7 +378,6 @@ export function useSketchDoc(sketchId: string, me: Me) {
   const saveThoughts = useCallback(async (items: { thought: NewThought; parent: { id: string; linkId: string } | null; key: string }[]): Promise<string[]> => {
     flushMoves();
     inFlight.current += 1;
-    writes.current += 1;
     setSaving(true);
     setProblem(null);
     const saved: string[] = [];
@@ -425,6 +427,7 @@ export function useSketchDoc(sketchId: string, me: Me) {
         setUndoLabel(label);
       }
       inFlight.current -= 1;
+      finishedWrites.current += 1;
       if (inFlight.current) return;
       setSaving(false);
       if (staleRef.current) { staleRef.current = false; void reload(); }
@@ -447,7 +450,6 @@ export function useSketchDoc(sketchId: string, me: Me) {
   const saveText = useCallback(async (id: string, text: string, opened: { text: string; version: number }, key: string): Promise<boolean> => {
     flushMoves();
     inFlight.current += 1;
-    writes.current += 1;
     setSaving(true);
     setProblem(null);
     const operation = queue.current.then(async () => {
@@ -481,6 +483,7 @@ export function useSketchDoc(sketchId: string, me: Me) {
       return false;
     }).finally(() => {
       inFlight.current -= 1;
+      finishedWrites.current += 1;
       if (inFlight.current) return;
       setSaving(false);
       if (staleRef.current) { staleRef.current = false; void reload(); }

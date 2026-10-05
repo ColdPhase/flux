@@ -96,6 +96,21 @@ Each connection also sets `idle_in_transaction_session_timeout` to 60 s, so Post
 ends any session abandoned inside a transaction. Flux code does not wait on
 anything outside the database inside a transaction. pg-boss keeps its own pool.
 
+The connection timeout bounds the whole wait for a client: queued behind the pool's
+10 busy clients (the `pg` default size) or opening a new connection.
+`FLUX_DB_CONNECT_TIMEOUT_MS` (an integer from 100 to 60000) replaces the 1.5 s
+default; the production Compose files do not set it. `docker/compose.test.yaml`
+sets 10 s for the API, worker, `test` and `e2e` containers
+([#271](https://github.com/ColdPhase/flux/issues/271)). The suite sends bursts of
+up to 103 concurrent requests (`work-thought-tasks-native.test.ts`), whose tail waits
+behind the 10 clients, and concurrent Docker stacks on one host multiply every
+request's database time. At 1.5 s such runs failed with `timeout exceeded when
+trying to connect` (the pool queue) or `Connection terminated due to connection
+timeout` (a new connection, such as a migration test's fresh database). PostgreSQL
+keeps the image default `max_connections` of 100, far above what the suite's pools
+open together, so the longer wait does not hide exhaustion of the server. A leaked
+client still fails the suite: requests behind it time out after 10 s instead of 1.5 s.
+
 ### Disk hygiene
 
 Each `scripts/check_*.sh` run builds images tagged with its own Compose
