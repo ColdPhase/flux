@@ -1,0 +1,17 @@
+{
+  "utc": "2026-10-01T07:46:17Z",
+  "tested_source": "89a686eeeaf997d7ca1f2d01a1411c851cb0c0f3",
+  "compose_project": "flux155browser",
+  "api_host_port": 18581,
+  "mailpit_host_port": 18585,
+  "docker_client": "29.1.2",
+  "docker_server": "29.1.2",
+  "cpus": 14,
+  "memory_bytes": 8216887296,
+  "architecture": "aarch64",
+  "postgresql": "18.6",
+  "node": "24.21.0",
+  "test_image": "sha256:5618c97ca1c39e498ad90f767f0db26a9200aa87d079842bae9cc291129228b2",
+  "fixture": "123 native-schema records seeded through DB; two freshly registered native project contributors; not the public-command1000-object benchmark",
+  "resources": "Own isolated stack retained for next adapter implementation; no live test/build handle. Unrelated projects untouched."
+}

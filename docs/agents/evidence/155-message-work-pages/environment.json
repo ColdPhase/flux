@@ -1,0 +1,89 @@
+{
+  "tested_source": "2a848c4bc19aa27ceb8d094b1da3703d481c9be7",
+  "build_and_client_source": "8e9ae10ec9c644c095e284d6287291bec64b350a",
+  "production_and_client_test_bytes_match_both_pins": true,
+  "delta_since_build": "Only two Python UI fixtures; final ui-test image rebuilt from their exact bytes. No production or TypeScript test change.",
+  "owner_compose_project": "flux155browser",
+  "owner_api_port": 18581,
+  "owner_mailpit_port": 18585,
+  "docker_version": "29.1.2",
+  "docker_resources": "14 CPUs 8216887296 bytes aarch64",
+  "images": [
+    {
+      "tags": [
+        "flux-foundation:flux155browser"
+      ],
+      "id": "sha256:bced4759ee62a2b215c532380970c8d72842262b4a3fd893b525961c5215cdde"
+    },
+    {
+      "tags": [
+        "flux-test-tools:flux155browser"
+      ],
+      "id": "sha256:6a654fe247a5a152e0519b158c78b3b4ef13895739124c030b315d3aa9069823"
+    },
+    {
+      "tags": [
+        "flux-ui-tests:flux155browser"
+      ],
+      "id": "sha256:c4868c92f13d5e25e7f49763f5ae02ba87950371b76924ffcfaa33b1d262d4e1"
+    }
+  ],
+  "tests": {
+    "client": {
+      "pass": 25,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "duration_ms": 471.539458
+    },
+    "browser": {
+      "pass": 45,
+      "fail": 0,
+      "errors": 0,
+      "skipped": 0,
+      "duration_seconds": 77.335,
+      "composition": "8 MessageWork +17 ProjectSurface +10 WorkDecisions +10 PersonalAssistant; phone/desktop are subtests",
+      "routing_cleanup_cancelled_callbacks": 1,
+      "limitation": "ignoreErrors applies to unfinished route handlers only after native assertions; browser pageerror assertions remain. Handler completion is not certified."
+    }
+  },
+  "screenshots": {
+    "bounded-message-objects-desktop.png": {
+      "viewport_css": [
+        1500,
+        900
+      ],
+      "device_scale_factor": 1,
+      "zoom": "100%",
+      "state": "second native object page with exact matched-link window; scrolled linked work"
+    },
+    "bounded-message-objects-phone.png": {
+      "viewport_css": [
+        412,
+        915
+      ],
+      "device_scale_factor": 3,
+      "zoom": "100%",
+      "state": "second native object page with exact matched-link window; scrolled linked work"
+    },
+    "bounded-message-objects-mixed-desktop.png": {
+      "viewport_css": [
+        1500,
+        900
+      ],
+      "device_scale_factor": 1,
+      "zoom": "100%",
+      "state": "second native object page with exact matched-link window; mixed decisions/result"
+    },
+    "bounded-message-objects-mixed-phone.png": {
+      "viewport_css": [
+        412,
+        915
+      ],
+      "device_scale_factor": 3,
+      "zoom": "100%",
+      "state": "second native object page with exact matched-link window; mixed decisions/result"
+    }
+  },
+  "scope": "Native message SOURCE previews only. Parent full work lists, assistant work lookup, Overview/Details/LinkPicker and original 1000-work benchmark remain open."
+}

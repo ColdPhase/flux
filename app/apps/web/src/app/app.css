@@ -75,7 +75,13 @@ body:has(.app) { background: var(--bg-chrome); }
 .side__h { font-size: var(--fs-sm); font-weight: 500; letter-spacing: .12px; color: var(--text-2); }
 .side__add { display: grid; place-items: center; width: 25px; height: 25px; border-radius: var(--r-sm); color: var(--text-2); transition: var(--tr); }
 .side__add:hover { background: var(--bg-hover); color: var(--text); }
-.side__list { list-style: none; margin: 0; padding: 0; }
+.side__list { position: relative; list-style: none; margin: 0; padding: 0; }
+/* The open project's background travels between rows after a choice (#155, UI116-5): one short
+   transform move (compositor only; a two-line row's height is set at once), behind the rows, never
+   taking pointer input; the row's accent bar marks it when its project shows. */
+.side__glide { position: absolute; top: 0; left: 0; right: 0; height: 42px; border-radius: var(--r-sm); background: var(--bg-active);
+  opacity: 0; pointer-events: none; transition: transform var(--dur-2) var(--ease-out), opacity var(--dur-1) ease; }
+.side__list.has-glide .side__project.is-open { background: transparent; }
 .side__item {
   position: relative; display: flex; align-items: center; gap: 10px; width: 100%; min-height: 42px; margin: 3px 0; padding: 9px 8px;
   border-radius: var(--r-sm); color: var(--text-2); text-decoration: none; font-size: var(--fs-md); font-weight: 400; text-align: left;

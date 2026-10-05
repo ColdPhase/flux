@@ -154,9 +154,9 @@ class DocsJourney(unittest.TestCase):
         # The link picker: keyboard only, filtered to objects of this project.
         text.press("Control+k")
         picker = page.get_by_role("dialog", name="Link to something in this project")
-        picker.get_by_role("combobox").fill("ToF distance")
-        expect(picker.get_by_role("option").first).to_contain_text(RULE)
-        picker.get_by_role("combobox").press("Enter")
+        picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True).fill("ToF distance")
+        expect(picker.get_by_role("listbox", name="Matches").get_by_role("option").first).to_contain_text(RULE)
+        picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True).press("Enter")
         expect(text).to_have_value(re.compile(re.escape(f"[{RULE}](flux:decision/{self.decision_id})")))
         # Both panes on a wide screen; the preview is rendered by the server.
         preview = page.get_by_label("Preview")
@@ -258,7 +258,7 @@ class DocsJourney(unittest.TestCase):
         panel.get_by_role("button", name="Add to docs").click()
         expect(panel.get_by_label("Doc", exact=True)).to_have_value(self.doc_id)
         shot(page, "docs-add-from-result-desktop-1440")
-        panel.get_by_role("button", name="Add section").click()
+        panel.get_by_role("button", name="Add or update section").click()
         expect(page.get_by_role("heading", level=2, name=TITLE)).to_be_visible()
         expect(page.locator(".doc-head__why")).to_have_text(f"Added the result “{FINDING}”")
         expect(page.locator(".doc-prose").get_by_role("heading", name=f"Result: {FINDING}")).to_be_visible()

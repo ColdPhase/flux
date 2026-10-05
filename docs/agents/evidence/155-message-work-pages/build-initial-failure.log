@@ -1,0 +1,274 @@
+#1 [internal] load local bake definitions
+#1 reading from stdin 1.78kB done
+#1 DONE 0.0s
+
+#2 [migrate internal] load build definition from Dockerfile
+#2 transferring dockerfile: 2.99kB done
+#2 DONE 0.0s
+
+#3 [ui-test internal] load build definition from ui-tests.Dockerfile
+#3 transferring dockerfile: 941B done
+#3 DONE 0.0s
+
+#4 [ui-test internal] load metadata for mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d
+#4 DONE 0.1s
+
+#5 [ui-test internal] load .dockerignore
+#5 transferring context: 191B done
+#5 DONE 0.0s
+
+#6 [ui-test internal] load build context
+#6 transferring context: 992B done
+#6 DONE 0.0s
+
+#7 [ui-test 1/5] FROM mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d
+#7 resolve mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d
+#7 resolve mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d done
+#7 DONE 0.0s
+
+#8 [ui-test 2/5] COPY tests/ui/requirements.txt /tmp/ui-requirements.txt
+#8 CACHED
+
+#9 [ui-test 3/5] RUN pip install --no-cache-dir --break-system-packages --only-binary=:all: --require-hashes -r /tmp/ui-requirements.txt
+#9 CACHED
+
+#10 [ui-test 4/5] WORKDIR /work
+#10 CACHED
+
+#11 [ui-test 5/5] COPY tests/ui tests/ui
+#11 CACHED
+
+#12 [ui-test] exporting to image
+#12 exporting layers done
+#12 exporting manifest sha256:173bea20a74a88e86b1c77c94041ccb83134f6d39d03eeeeb16a851f087646e3 done
+#12 exporting config sha256:32107c6459165d5f81f74725deb30c0fe175e2edecb50a1516f4b9f306117d91 done
+#12 exporting attestation manifest sha256:d84e77085ca0902d5cec0fe25f5be0735595aaf01b4527dc1ad2a357b6a7b440 done
+#12 exporting manifest list sha256:64e6aaa33527156705fa6af5875d71347e3405e498184f09e98e3161c5e459f0 done
+#12 naming to docker.io/library/flux-ui-tests:flux155browser done
+#12 unpacking to docker.io/library/flux-ui-tests:flux155browser done
+#12 DONE 0.0s
+
+#13 [ui-test] resolving provenance for metadata file
+#13 DONE 0.0s
+
+#14 [migrate internal] load metadata for docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#14 DONE 1.5s
+
+#5 [migrate internal] load .dockerignore
+#5 CACHED
+
+#15 [test build 1/8] FROM docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#15 resolve docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 done
+#15 DONE 0.0s
+
+#16 [test internal] load build context
+#16 transferring context: 3.69MB 0.1s done
+#16 DONE 0.1s
+
+#17 [test build 3/8] RUN corepack enable && corepack install -g pnpm@12.6.0
+#17 CACHED
+
+#18 [test build 4/8] COPY pnpm-lock.yaml pnpm-workspace.yaml ./
+#18 CACHED
+
+#19 [test build 2/8] WORKDIR /app
+#19 CACHED
+
+#20 [test build 5/8] RUN pnpm fetch
+#20 CACHED
+
+#21 [test build 6/8] COPY . .
+#21 DONE 0.1s
+
+#22 [migrate build 7/8] RUN pnpm install --offline --frozen-lockfile
+#22 0.225 Scope: all 10 workspace projects
+#22 0.269 ✓ Lockfile passes supply-chain policies (verified 13h ago)
+#22 0.269 Lockfile is up to date, resolution step is skipped
+#22 0.497 Already up to date
+#22 0.962
+#22 0.962 dependencies:
+#22 0.962 + @flux/contracts link:packages/contracts
+#22 0.962 + @flux/core link:packages/core
+#22 0.962 + @flux/db link:packages/db
+#22 0.962 + pg-boss 12.35.0
+#22 0.962
+#22 0.962 devDependencies:
+#22 0.962 + @eslint/js 9.37.0
+#22 0.962 + @types/node 24.6.2
+#22 0.962 + @types/nodemailer 8.0.2
+#22 0.962 + @types/pg 8.15.5
+#22 0.962 + @types/sanitize-html 2.16.1
+#22 0.962 + @types/ws 8.18.1
+#22 0.962 + drizzle-orm 0.45.3
+#22 0.962 + eslint 9.37.0
+#22 0.962 + eslint-plugin-react-hooks 7.1.1
+#22 0.962 + fastify 5.6.1
+#22 0.962 + playwright 1.63.0
+#22 0.962 + tsx 4.20.5
+#22 0.962 + typescript 5.9.2
+#22 0.962 + typescript-eslint 8.44.1
+#22 0.962 + ws 8.22.0
+#22 0.962
+#22 0.963 Done in 747ms using pnpm v12.6.0
+#22 DONE 1.0s
+
+#23 [test build 8/8] RUN pnpm build && pnpm typecheck && pnpm lint
+#23 0.202 $ pnpm -r --if-present build && tsc -p tooling/tsconfig.build.json
+#23 0.247 packages/contracts build$ tsc -p tsconfig.build.json
+#23 1.814 packages/contracts build: Done
+#23 1.815 packages/db build$ tsc -p tsconfig.build.json
+#23 1.815 packages/sdk build$ tsc -p tsconfig.build.json
+#23 1.815 apps/web build$ vite build
+#23 2.036 apps/web build: vite v8.3.1 building client environment for production...
+#23 2.054 apps/web build: transforming...
+#23 2.163 apps/web build: ✓ 268 modules transformed.
+#23 2.233 apps/web build: rendering chunks...
+#23 2.318 apps/web build: computing gzip size...
+#23 2.327 apps/web build: dist/index.html                                              1.21 kB │ gzip:   0.53 kB
+#23 2.327 apps/web build: dist/sw.js                                                   6.70 kB
+#23 2.327 apps/web build: dist/assets/inter-vietnamese-wght-normal-CBcvBZtf.woff2     10.25 kB
+#23 2.327 apps/web build: dist/assets/inter-greek-ext-wght-normal-DlzME5K_.woff2      11.23 kB
+#23 2.327 apps/web build: dist/assets/inter-cyrillic-wght-normal-DqGufNeO.woff2       18.74 kB
+#23 2.327 apps/web build: dist/assets/inter-greek-wght-normal-CkhJZR-_.woff2          18.99 kB
+#23 2.327 apps/web build: dist/assets/inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2   25.96 kB
+#23 2.327 apps/web build: dist/assets/inter-latin-wght-normal-Dx4kXJAl.woff2          48.25 kB
+#23 2.327 apps/web build: dist/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2      85.06 kB
+#23 2.327 apps/web build: dist/assets/index-DqurgZRb.css                             158.61 kB │ gzip:  27.99 kB
+#23 2.327 apps/web build: dist/assets/media-gleJObhx.js                              419.65 kB │ gzip: 108.68 kB
+#23 2.327 apps/web build: dist/assets/index-LnlixS7T.js                              770.62 kB │ gzip: 228.55 kB
+#23 2.327 apps/web build:
+#23 2.328 apps/web build: [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "use client" in "../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/index.js" may not be preserved when bundling.
+#23 2.328 apps/web build:     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m ../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/index.js:11:1 [38;5;246m][0m
+#23 2.328 apps/web build:     [38;5;246m│[0m
+#23 2.328 apps/web build:  [38;5;246m11 │[0m "use client";
+#23 2.328 apps/web build:  [38;5;240m   │[0m ──────┬──────
+#23 2.328 apps/web build:  [38;5;240m   │[0m       ╰──────── module level directive may not be preserved
+#23 2.328 apps/web build:  [38;5;240m   │[0m
+#23 2.328 apps/web build:  [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+#23 2.328 apps/web build: [38;5;246m────╯[0m
+#23 2.328 apps/web build:
+#23 2.328 apps/web build: [plugin builtin:vite-reporter]
+#23 2.328 apps/web build: (!) Some chunks are larger than 500 kB after minification. Consider:
+#23 2.328 apps/web build: - Using dynamic import() to code-split the application
+#23 2.328 apps/web build: - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+#23 2.328 apps/web build: - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+#23 2.328 apps/web build: ✓ built in 291ms
+#23 2.351 apps/web build: Done
+#23 3.434 packages/sdk build: Done
+#23 4.563 packages/db build: Done
+#23 4.563 packages/core build$ tsc -p tsconfig.build.json
+#23 6.261 packages/core build: Done
+#23 6.261 packages/agent-runtime build$ tsc -p tsconfig.build.json
+#23 6.262 apps/server build$ tsc -p tsconfig.build.json
+#23 7.046 packages/agent-runtime build: Done
+#23 7.046 apps/worker build$ tsc -p tsconfig.build.json
+#23 7.936 apps/worker build: Done
+#23 8.987 apps/server build: Done
+#23 9.636 $ tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json
+#23 17.12 $ eslint .
+#23 25.38
+#23 25.38 /app/apps/web/src/work/WorkReadContext.tsx
+#23 25.38   12:60  warning  React Hook useMemo has unnecessary dependencies: 'accountId' and 'projectId'. Either exclude them or remove the dependency array  react-hooks/exhaustive-deps
+#23 25.38
+#23 25.38 /app/apps/web/src/work/useMessageWork.ts
+#23 25.38   57:28  error  Compilation Skipped: Existing memoization could not be preserved
+#23 25.38
+#23 25.38 React Compiler has skipped optimizing this component because the existing manual memoization could not be preserved. The inferred dependencies did not match the manually specified dependencies, which could cause the value to change more or less frequently than expected. The inferred dependency was `feed.current`, but the source dependencies were [feed, ready]. Differences in ref.current access.
+#23 25.38
+#23 25.38 /app/apps/web/src/work/useMessageWork.ts:57:28
+#23 25.38   55 | function useMessageReadingPosition(feed: RefObject<HTMLElement | null>, ready: boolean, observedAt?: string) {
+#23 25.38   56 |   const anchor = useRef<{ id: string; offset: number; top: number } | null>(null);
+#23 25.38 > 57 |   const save = useCallback(() => {
+#23 25.38      |                            ^^^^^^^
+#23 25.38 > 58 |     const pane = feed.current;
+#23 25.38      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+#23 25.38 > 59 |     if (!pane || !ready) return;
+#23 25.38      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+#23 25.38 > 60 |     const top = pane.getBoundingClientRect().top;
+#23 25.38      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+#23 25.38 > 61 |     const message = [...pane.querySelectorAll<HTMLElement>('[data-message-id]')].find((row) => row.getBoundingClientRect().bottom > top);
+#23 25.38      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+#23 25.38 > 62 |     if (message) anchor.current = { id: message.dataset.messageId!, offset: message.getBoundingClientRect().top - top, top: pane.scrollTop };
+#23 25.38      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+#23 25.38 > 63 |   }, [feed, ready]);
+#23 25.38      | ^^^^ Could not preserve existing manual memoization
+#23 25.38   64 |   useLayoutEffect(() => {
+#23 25.38   65 |     const pane = feed.current;
+#23 25.38   66 |     if (!pane || !ready) return;  react-hooks/preserve-manual-memoization
+#23 25.38   64:19  error  Error: Cannot modify local variables after render completes
+#23 25.38
+#23 25.38 This argument is a function which may reassign or mutate `feed` after render, which can cause inconsistent behavior on subsequent renders. Consider using state instead.
+#23 25.38
+#23 25.38 /app/apps/web/src/work/useMessageWork.ts:64:19
+#23 25.38   62 |     if (message) anchor.current = { id: message.dataset.messageId!, offset: message.getBoundingClientRect().top - top, top: pane.scrollTop };
+#23 25.38   63 |   }, [feed, ready]);
+#23 25.38 > 64 |   useLayoutEffect(() => {
+#23 25.38      |                   ^^^^^^^
+#23 25.38 > 65 |     const pane = feed.current;
+#23 25.38      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+#23 25.38 > 66 |     if (!pane || !ready) return;
+#23 25.38      …
+#23 25.38      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+#23 25.38 > 73 |     return () => { pane.removeEventListener('scroll', save); };
+#23 25.38      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+#23 25.38 > 74 |   }, [feed, ready, observedAt, save]);
+#23 25.38      | ^^^^ This function may (indirectly) reassign or modify `feed` after render
+#23 25.38   75 |   return save;
+#23 25.38   76 | }
+#23 25.38   77 |
+#23 25.38
+#23 25.38 /app/apps/web/src/work/useMessageWork.ts:70:7
+#23 25.38   68 |     if (stored) {
+#23 25.38   69 |       const message = [...pane.querySelectorAll<HTMLElement>('[data-message-id]')].find((row) => row.dataset.messageId === stored.id);
+#23 25.38 > 70 |       pane.scrollTop = message ? pane.scrollTop + message.getBoundingClientRect().top - pane.getBoundingClientRect().top - stored.offset : stored.top;
+#23 25.38      |       ^^^^ This modifies `feed`
+#23 25.38   71 |     }
+#23 25.38   72 |     save(); pane.addEventListener('scroll', save, { passive: true });
+#23 25.38   73 |     return () => { pane.removeEventListener('scroll', save); };                                                                                              react-hooks/immutability
+#23 25.38   70:7   error  Error: This value cannot be modified
+#23 25.38
+#23 25.38 Modifying component props or hook arguments is not allowed. Consider using a local variable instead.
+#23 25.38
+#23 25.38 /app/apps/web/src/work/useMessageWork.ts:70:7
+#23 25.38   68 |     if (stored) {
+#23 25.38   69 |       const message = [...pane.querySelectorAll<HTMLElement>('[data-message-id]')].find((row) => row.dataset.messageId === stored.id);
+#23 25.38 > 70 |       pane.scrollTop = message ? pane.scrollTop + message.getBoundingClientRect().top - pane.getBoundingClientRect().top - stored.offset : stored.top;
+#23 25.38      |       ^^^^ `feed` cannot be modified
+#23 25.38   71 |     }
+#23 25.38   72 |     save(); pane.addEventListener('scroll', save, { passive: true });
+#23 25.38   73 |     return () => { pane.removeEventListener('scroll', save); };                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-hooks/immutability
+#23 25.38
+#23 25.38 ✖ 4 problems (3 errors, 1 warning)
+#23 25.38
+#23 25.49 [ELIFECYCLE] Command failed with exit code 1.
+#23 ERROR: process "/bin/sh -c pnpm build && pnpm typecheck && pnpm lint" did not complete successfully: exit code: 1
+------
+ > [test build 8/8] RUN pnpm build && pnpm typecheck && pnpm lint:
+25.38   69 |       const message = [...pane.querySelectorAll<HTMLElement>('[data-message-id]')].find((row) => row.dataset.messageId === stored.id);
+25.38 > 70 |       pane.scrollTop = message ? pane.scrollTop + message.getBoundingClientRect().top - pane.getBoundingClientRect().top - stored.offset : stored.top;
+25.38      |       ^^^^ `feed` cannot be modified
+25.38   71 |     }
+25.38   72 |     save(); pane.addEventListener('scroll', save, { passive: true });
+25.38   73 |     return () => { pane.removeEventListener('scroll', save); };                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-hooks/immutability
+25.38
+25.38 ✖ 4 problems (3 errors, 1 warning)
+25.38
+25.49 [ELIFECYCLE] Command failed with exit code 1.
+------
+Dockerfile:10
+
+--------------------
+
+   8 |     COPY . .
+
+   9 |     RUN pnpm install --offline --frozen-lockfile
+
+  10 | >>> RUN pnpm build && pnpm typecheck && pnpm lint
+
+  11 |
+
+  12 |     FROM build AS test
+
+--------------------
+
+target migrate: failed to solve: process "/bin/sh -c pnpm build && pnpm typecheck && pnpm lint" did not complete successfully: exit code: 1

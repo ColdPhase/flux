@@ -1,0 +1,68 @@
+ Container flux155browser-mailpit-1  Running
+ Container flux155browser-db-1  Running
+ Container flux155browser-worker-1  Running
+ Container flux155browser-api-1  Running
+ Container flux155browser-db-1  Waiting
+ Container flux155browser-db-1  Healthy
+ Container flux155browser-migrate-1  Starting
+ Container flux155browser-migrate-1  Started
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Exited
+ Container flux155browser-migrate-1  Exited
+▶ architecture boundaries
+  ✔ the repository has no dependency violation outside the recorded allowlist (140.495625ms)
+  ✔ every allowlist entry names its tracking issue and a reason (0.26525ms)
+  ✔ the push use cases in core stay free of adapters, including through helpers (0.623166ms)
+  ✔ the sketch use cases in core stay free of adapters, including through helpers (#69) (1.02475ms)
+  ✔ the direct-message use cases in core stay free of adapters, including through helpers (#107) (0.29675ms)
+  ✔ the bounded work read use cases stay free of persistence and transport adapters (#155) (0.30625ms)
+  ✔ the rules reject each kind of boundary violation (self-test) (0.56275ms)
+  ✔ the allowlist comparison reports new and fixed violations (0.259ms)
+✔ architecture boundaries (144.873375ms)
+▶ bounded native PostgreSQL work key selection
+  ✔ all native bands remain reachable through bounded forward and direct previous pages (47.650291ms)
+  ✔ mine uses native owner/result creator while keeping proposals and excluding rules (20.661792ms)
+  ✔ choice predicates retain parked result choices, full native kinds and literal wildcard search (17.434167ms)
+  ✔ a surviving boundary alone yields no false strict escape; an older/newer scope retains its actual opposite (11.429541ms)
+  ✔ held actual SQL keeps its original cursor for empty-page counts despite caller mutation (9.4575ms)
+✔ bounded native PostgreSQL work key selection (506.363376ms)
+▶ bounded native work reads through HTTP and current native fences
+  ✔ same-name humans and agents remain distinct bounded owners; view and summary share native observation (146.899042ms)
+  ✔ own details preserve full fields and native history without implicit links; finished selection stays separate (115.347ms)
+  ✔ association windows span all native object kinds and zero-link sources; edges use one global bound (218.586208ms)
+  ✔ relations page native versions/current labels and strictly reverse ascending keys without loading a full graph (93.216875ms)
+  ✔ same-kind objects elsewhere or missing selectors never pass a readable project predicate (178.817792ms)
+  ✔ actual exact native SID revocation, expiry and current project denial suppress assembled responses (271.118125ms)
+  ✔ every required zero-link selector is checked after its observation, ahead of source drift (334.042ms)
+  ✔ private thought endpoints vanish before count/title projection and drift invalidates an older observation (66.583917ms)
+  ✔ unreturned zero-link conversation messages contribute to current source fingerprints and count windows (1270.729083ms)
+  ✔ held actual native SQL retains message count selector and expected relation batch despite caller mutation (6.693625ms)
+✔ bounded native work reads through HTTP and current native fences (3440.684293ms)
+✔ task URL fields default explicitly and reject duplicates/unknown/coerced selectors (5.113334ms)
+✔ native choices stay disjoint; parked result choices keep a separate deep selection (0.502625ms)
+✔ source batch bounds apply before deduplication and conversation/source cursors are exclusive (0.971541ms)
+✔ relationship batches retain kind identities and reject malformed/oversized selectors (0.340625ms)
+✔ cursor survives direct reload/previous direction with all PostgreSQL microseconds (0.625917ms)
+✔ cursor cannot transfer between account/project/endpoint/selector/limit/object window (0.401541ms)
+✔ normalized 100-source selector produces a fixed-size scoped cursor without source identities (0.303875ms)
+✔ unknown/noncanonical/duplicate cursor JSON cannot bypass the closed envelope (0.217666ms)
+✔ page metadata emits both native directions and keeps an empty changed-page escape (0.556125ms)
+✔ combined view and summary share one observation and use access checked after its transaction (6.424125ms)
+✔ caller and query are captured before asynchronous work; result deep selection never changes its eligible page (0.930583ms)
+✔ invalid requests and scope-mismatched cursors do no policy or repository work (1.643167ms)
+✔ project denial precedes reads; failed required data becomes unavailable, never zero or a partial result (1.156625ms)
+✔ revocation at the final fence suppresses the whole assembled response (1.146583ms)
+✔ every required message is validated even when it has no edges, before association counts and hydration (1.319667ms)
+✔ required final-fence failures become unavailable; native session and scope rejection stay exact (2.226667ms)
+✔ association rows, all-source counts and global edges keep independent bounded scopes (1.101041ms)
+✔ an edge continuation fails on a changed object window before any edge or source hydration (1.092416ms)
+✔ all required selectors reach the outside fence as the original normalized request (3.507542ms)
+ℹ tests 42
+ℹ suites 3
+ℹ pass 42
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5899.400628

@@ -28,6 +28,7 @@ export const PROJECT_EXPORT_EXCLUDED = [
   'direct messages',
   'private notes (drafts), including the private source of a published material',
   'private sketches and placements of notes on a sketch',
+  'images placed on map thoughts (the thoughts and captions are exported; full backups keep the images)',
   'accounts, e-mail addresses, sessions, push subscriptions and notifications',
   'agent connections, OAuth clients and tokens, and pending agent proposals',
   'approved project policies for agents (kept in full backups)',

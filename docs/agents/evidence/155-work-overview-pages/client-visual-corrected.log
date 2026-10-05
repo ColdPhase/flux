@@ -1,0 +1,47 @@
+ Container flux155browser-mailpit-1  Running
+ Container flux155browser-db-1  Running
+ Container flux155browser-api-1  Running
+ Container flux155browser-worker-1  Running
+ Container flux155browser-db-1  Waiting
+ Container flux155browser-db-1  Healthy
+ Container flux155browser-migrate-1  Starting
+ Container flux155browser-migrate-1  Started
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Exited
+ Container flux155browser-migrate-1  Exited
+▶ architecture boundaries
+  ✔ the repository has no dependency violation outside the recorded allowlist (61.110291ms)
+  ✔ every allowlist entry names its tracking issue and a reason (0.239208ms)
+  ✔ the push use cases in core stay free of adapters, including through helpers (0.52475ms)
+  ✔ the sketch use cases in core stay free of adapters, including through helpers (#69) (0.332708ms)
+  ✔ the direct-message use cases in core stay free of adapters, including through helpers (#107) (0.247625ms)
+  ✔ the bounded work read use cases stay free of persistence and transport adapters (#155) (0.416166ms)
+  ✔ the rules reject each kind of boundary violation (self-test) (0.442667ms)
+  ✔ the allowlist comparison reports new and fixed violations (0.142459ms)
+✔ architecture boundaries (64.432292ms)
+✔ a source preview keeps exact counts while object and edge windows are incomplete, deduplicates kind/id and preserves native row order (1.632833ms)
+✔ a stable globally bounded source batch follows an older visible native window without per-message paging or retaining removed IDs (1.332209ms)
+✔ late account/project/selector responses cannot replace the current observation, even if transport ignores abort (1.342291ms)
+✔ same-selector refresh fences both late success and failure by generation (0.168ms)
+✔ clearing/unmounting drops retained data and prevents a held read from reviving it (0.157084ms)
+✔ current failures are unavailable rather than empty data or retained successful pages (0.292875ms)
+✔ same-scope passive refresh retains one observation until atomic replacement, but failure or changed scope clears it (0.305041ms)
+✔ summary state preserves distinct identical owner labels and captions actual open/parked/finished work (0.233375ms)
+✔ render-time scope gating hides the old account before effect cancellation runs (0.151875ms)
+✔ mutable caller scope is captured before an asynchronous read (0.15525ms)
+✔ a synchronous abort listener can start a newer read without an outer read/clear overwriting it (0.25025ms)
+✔ a synchronous abort listener clearing state prevents the obsolete replacement from dispatching (0.2985ms)
+✔ active page lease fences held and newly requested standalone summaries, and publishes page+summary atomically (0.4055ms)
+✔ replaced page leases and wrong-account/project page requests cannot write or release the new facet (0.263041ms)
+✔ releasing a page drops its observation, fences held refresh, and permits a new standalone summary (0.198917ms)
+✔ canonical query builders preserve typed selectors, literal search, independent continuations and raw set bounds (0.84375ms)
+✔ five client adapters make one cookie-bearing GET each and preserve failures without collection fallbacks (16.389209ms)
+ℹ tests 25
+ℹ suites 1
+ℹ pass 25
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 257.607875

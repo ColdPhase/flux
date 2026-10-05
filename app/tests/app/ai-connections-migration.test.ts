@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { createDatabase, FLUX_SCHEMA_VERSION, readMigrationManifest } from '@flux/db';
+import { guardFixturePool } from './support/fixture-database.js';
 
 const dir = 'packages/db/migrations';
 
@@ -18,11 +19,13 @@ test('0042 keeps earlier connections and consents, enforces the new shape, and r
   const url = new URL(process.env.DATABASE_URL!);
   url.pathname = `/${name}`;
   let history: ReturnType<typeof createDatabase>['pool'] | undefined;
+  let guard: ReturnType<typeof guardFixturePool> | undefined;
   try {
     // Database administration and the full history can outlast the pool's short default deadline.
     const createFixture = { text: `CREATE DATABASE "${name}"`, query_timeout: 60_000 };
     await admin.query(createFixture);
     history = createDatabase(url.toString()).pool;
+    guard = guardFixturePool(history);
     for (const file of manifest.filter((file) => file.version < 42)) {
       const step = { text: await readFile(join(dir, file.name), 'utf8'), query_timeout: 60_000 };
       await history.query(step);
@@ -120,9 +123,11 @@ test('0042 keeps earlier connections and consents, enforces the new shape, and r
     await assert.rejects(history.query(reverse), /reversal refused: provider-neutral background connections exist/);
     assert.equal((await history.query("SELECT count(*)::int AS n FROM information_schema.columns WHERE table_name='background_compute_connections' AND column_name='base_url'")).rows[0].n, 1);
   } finally {
+    guard?.cleanup();
     await history?.end();
     const cleanup = { text: `DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`, query_timeout: 60_000 };
     await admin.query(cleanup);
     await admin.end();
   }
+  guard?.assertNoEarlyErrors();
 });

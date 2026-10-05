@@ -95,6 +95,21 @@ export function agentExecutionRows(tx: DbExecutor) {
         .where(and(eq(grants.id, id), eq(grants.connectionId, connectionId), eq(grants.ownerUserId, ownerUserId), isNull(grants.revokedAt)))
         .returning({ id: grants.id })).length === 1;
     },
+    /** The owner's grant on that connection, locked like an execution locks it; another owner's is absent. */
+    async lockOwnedGrant(ownerUserId: string, connectionId: string, id: string) {
+      const [row] = await tx.select().from(grants).where(and(eq(grants.id, id), eq(grants.connectionId, connectionId),
+        eq(grants.ownerUserId, ownerUserId))).for('update');
+      return row ?? null;
+    },
+    /**
+     * New limits for a grant the caller locked and checked. The generation stays: receipts keep replaying, and
+     * every execution already reads the live limits under the same row lock.
+     */
+    async narrowGrant(id: string, limits: { maximumUses: number; expiresAt: Date }) {
+      const [row] = await tx.update(grants).set({ maximumUses: limits.maximumUses, expiresAt: limits.expiresAt })
+        .where(eq(grants.id, id)).returning();
+      return grantView(row!);
+    },
     /**
      * Native post-state readers are operation-specific, same-project and content-free. `containerId` pins a
      * produced thought to its map or a produced message to the conversation the command targeted.
