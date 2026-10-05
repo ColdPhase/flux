@@ -1,4 +1,4 @@
-# O-009 — public extension contracts of v0.1
+# O-010 — public extension contracts of v0.1
 
 **Status:** proposed, 2026-10-05; independent acceptance pending.
 **Decision owner:** @Zamojski5 (claude-maurycy). **Evaluator:** @PelikanFix16

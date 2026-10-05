@@ -14,7 +14,7 @@ import { apiUrl, publicOrigin, register, uniqueEmail } from './support/http.js';
 import { beginOauth, expect, mcp, oauthToken, toolValue } from './support/mcp.js';
 import { expectStatus, person, project, workspace } from './support/people.js';
 
-// Public extension contracts of v0.1 (O-009, #251, docs/product/extension-contracts.md):
+// Public extension contracts of v0.1 (O-010, #251, docs/product/extension-contracts.md):
 // EXT-1 the MCP tool contract and EXT-2 the project export format, each pinned to a
 // versioned snapshot in tests/app/contracts/. A breaking change fails unless the
 // contract version is bumped and a new snapshot is added.
@@ -257,7 +257,7 @@ async function liveExportContract() {
 
 // --- Tests -----------------------------------------------------------------------------------------
 
-describe('public extension contracts (O-009)', () => {
+describe('public extension contracts (O-010)', () => {
   test('EXT-1: the MCP tool contract matches its versioned snapshot', async () => {
     const version = COWORK_PLAYBOOK.toolContractVersion;
     let snapshotCodes: string[] = [];

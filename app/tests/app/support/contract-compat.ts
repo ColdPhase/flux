@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { isDeepStrictEqual } from 'node:util';
 
-// Public extension contracts (O-009, #251, docs/product/extension-contracts.md). A versioned
+// Public extension contracts (O-010, #251, docs/product/extension-contracts.md). A versioned
 // snapshot under tests/app/contracts/ pins each contract; these helpers classify every
 // difference between that snapshot and the running application as additive or breaking.
 //

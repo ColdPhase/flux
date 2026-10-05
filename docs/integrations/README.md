@@ -7,7 +7,7 @@ This guide is for two readers:
 - **operators**, who run the instance those integrations connect to.
 
 The decision behind it is
-[O-009, public extension contracts of v0.1](../product/extension-contracts.md),
+[O-010, public extension contracts of v0.1](../product/extension-contracts.md),
 proposed on 2026-10-05.
 
 ## What you can rely on in v0.1

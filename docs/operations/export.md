@@ -98,7 +98,7 @@ id appears.
 
 ## Compatibility
 
-Format 1 is a public extension contract of v0.1 ([O-009 EXT-2](../product/extension-contracts.md#ext-2--project-export-format-1)).
+Format 1 is a public extension contract of v0.1 ([O-010 EXT-2](../product/extension-contracts.md#ext-2--project-export-format-1)).
 Within one `formatVersion`, a release may add fields (even required ones) and enum values; readers
 ignore unknown fields and treat an unknown enum value as unknown. Removing, renaming or making a
 field optional, changing its type or meaning, removing an enum value, removing or renaming a bundle
