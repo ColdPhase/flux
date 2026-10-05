@@ -162,7 +162,11 @@ class PhoneShellJourney(unittest.TestCase):
         self.assertNotAlmostEqual(indicator.evaluate("el => el.getBoundingClientRect().left"), before, delta=2)
         # The sidebar's current project is accent-tinted with a 3px bar.
         row = page.locator(".side__project.is-open")
-        self.assertNotEqual(row.evaluate("el => getComputedStyle(el).backgroundColor"), "rgba(0, 0, 0, 0)")
+        # The accent tint is the row's own background, or the travelling highlight behind it (#155).
+        tint = row.evaluate("""el => { const glide = el.closest('.side__list')?.querySelector('.side__glide');
+          const own = getComputedStyle(el).backgroundColor;
+          return own !== 'rgba(0, 0, 0, 0)' ? own : glide && getComputedStyle(glide).opacity === '1' ? getComputedStyle(glide).backgroundColor : own; }""")
+        self.assertNotIn(tint, ("rgba(0, 0, 0, 0)", "transparent"), "the current project is tinted")
         self.assertEqual(row.evaluate("el => getComputedStyle(el, '::before').width"), "3px")
         expect(page.get_by_role("navigation", name="Project views").locator(".ui-bottomnav__item")).to_have_count(0)
         shot(page, "266-desktop-tabs")
