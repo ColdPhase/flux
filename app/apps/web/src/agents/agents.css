@@ -14,6 +14,29 @@
 .agents__connect { display: inline-flex; align-items: center; gap: var(--s-1); font-size: var(--fs-sm); }
 .agents__no-connections { margin: 0; color: var(--text-3); font-size: var(--fs-sm); line-height: 1.5; }
 
+.agents__lead { margin: -8px 0 0; color: var(--text-2); font-size: var(--fs-md); line-height: 1.5; max-width: 62ch; }
+
+/* With no agent yet: the two ways to bring AI in (F-022), one action each (#272 FF-8). */
+.agents__modes { padding: var(--s-5); border: 1px solid var(--line); border-radius: var(--r-card); background: var(--bg-raised); }
+.agents__modes-lead { margin: 0 0 var(--s-4); font-size: var(--fs-md); color: var(--text); }
+.agents__mode-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-4); }
+.agents__mode { display: flex; align-items: center; gap: var(--s-3); flex-wrap: wrap; }
+.agents__mode-ic { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: var(--r); background: var(--accent-selected-bg); color: var(--accent-selected-text); }
+.agents__mode-b { flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-sm); color: var(--text-2); }
+.agents__mode-b b { font-size: var(--fs-md); font-weight: 600; color: var(--text); }
+.agents__mode-go { flex: none; }
+.agents__modes-foot { margin: var(--s-4) 0 0; font-size: var(--fs-sm); color: var(--text-3); }
+
+/* What is happening with the task now, and whether it needs you (#272 FF-8). */
+.agents__now { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: -8px 0 0; font-size: var(--fs-sm); color: var(--text-2); }
+.agents__now-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--text-3); }
+/* Static: a task's status never claims that anything is running right now (FF-1). */
+.agents__now-dot.is-in_progress { border-color: var(--accent); border-right-color: transparent; }
+.agents__now-dot.is-blocked { border-color: var(--warning); background: var(--warning); }
+.agents__now-dot.is-done { border-color: var(--ok); background: var(--ok); }
+.agents__now.is-need { color: var(--text); }
+.agents__now-need { padding: 1px 8px; border-radius: var(--r-pill); background: var(--accent-selected-bg); color: var(--accent-selected-text); font-size: var(--fs-xs); font-weight: 600; }
+
 /* Every connection is its own entry, so one person's second agent is never hidden. */
 .agents__connections {
   list-style: none; margin: 0; padding: 0 0 var(--s-5);

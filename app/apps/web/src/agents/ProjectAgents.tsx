@@ -135,7 +135,56 @@ function paneAtEnd(marker: HTMLElement | null) {
 
 /** The task's one thread: the real first contribution as root, then its replies. */
 /** The task a thread belongs to: its identity and title, from a bounded native read. */
-interface ThreadTask { id: string; title: string; status: WorkStatus }
+interface ThreadTask { id: string; title: string; status: WorkStatus; owner?: { id: string; name: string } | null; blocker?: string | null }
+
+/**
+ * What is happening with the task now, and whether it needs the reader (#272 FF-8): one line in words,
+ * from the task's own state; Flux never claims an agent is working without a record of it.
+ */
+function TaskNow({ task, meId }: { task: ThreadTask; meId: string }) {
+  const mine = task.owner?.id === meId;
+  const who = task.owner ? (mine ? 'you' : task.owner.name) : null;
+  const [text, need] = task.status === 'blocked'
+    ? [`Blocked${task.blocker ? `: ${/^(waiting|blocked)\b/i.test(task.blocker) ? task.blocker : `waiting for ${task.blocker}`}` : '. Nobody wrote down what it waits for yet.'}${who ? ` · ${who}` : ''}`, mine]
+    : task.status === 'in_progress'
+      ? [who ? `In progress · ${mine ? 'you are on it' : `${who} is on it`}` : 'In progress · nobody owns it', false]
+      : [who ? `Open · ${mine ? 'yours, not started' : `${who} owns it, not started`}` : 'Open · nobody has taken it yet. Write here, or take it from Tasks.', false];
+  return (
+    <p className={`agents__now${need ? ' is-need' : ''}`} role="status">
+      <span className={`agents__now-dot is-${task.status}`} aria-hidden="true" />
+      <span>{text}</span>
+      {need ? <span className="agents__now-need">Needs you</span> : null}
+    </p>
+  );
+}
+
+/** With no agent connected, the two ways to work with AI here (F-022), one action each (#272 FF-8). */
+function TwoModes() {
+  return (
+    <div className="agents__modes">
+      <p className="agents__modes-lead">No agents are connected to this project yet. There are two ways to bring AI in:</p>
+      <ul className="agents__mode-list">
+        <li className="agents__mode">
+          <span className="agents__mode-ic" aria-hidden="true"><Icon name="terminal" size={16} /></span>
+          <span className="agents__mode-b">
+            <b>An agent on your computer</b>
+            <span>Claude Code, Codex or any MCP client works on these tasks through Flux, with only the access you grant.</span>
+          </span>
+          <Link className="ui-btn ui-btn--secondary agents__mode-go" to="/connect-agent">Connect my agent</Link>
+        </li>
+        <li className="agents__mode">
+          <span className="agents__mode-ic" aria-hidden="true"><Icon name="spark" size={16} /></span>
+          <span className="agents__mode-b">
+            <b>The agent in Flux</b>
+            <span>Your own AI connection answers you in project conversations. Only you can use it.</span>
+          </span>
+          <Link className="ui-btn ui-btn--quiet agents__mode-go" to="/settings/assistant">Set it up</Link>
+        </li>
+      </ul>
+      <p className="agents__modes-foot">People can always discuss a task here; every message also appears in its thread in Conversation.</p>
+    </div>
+  );
+}
 
 function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: { task: ThreadTask; projectId: string; meId: string; names: Map<string, string>; canWrite: boolean; changingScope: boolean }) {
   const [discussion, setDiscussion] = useState<TaskDiscussion | null>(null);
@@ -355,14 +404,14 @@ export function ProjectAgents() {
   const projectId = shell?.project.id ?? data.projectId;
   // Open, unparked tasks come one bounded native page at a time (#155), never the whole project.
   const choices = useWorkChoices(me.user.id, projectId, { purpose: 'choices', choice: 'pivot_work' });
-  const tasks = useMemo<ThreadTask[]>(() => (choices.page?.items ?? []).flatMap((row) => row.kind === 'work' ? [{ id: row.id, title: row.title, status: row.status }] : []), [choices.page]);
+  const tasks = useMemo<ThreadTask[]>(() => (choices.page?.items ?? []).flatMap((row) => row.kind === 'work' ? [{ id: row.id, title: row.title, status: row.status, owner: row.owner, blocker: row.blocker }] : []), [choices.page]);
   // A `?task=` outside this page is read by itself; one that is not this project's task (or
   // cannot be read) falls back to the first open one.
   const wanted = search.get('task');
   const onPage = tasks.find((item) => item.id === wanted) ?? null;
   const own = useNativeOwn(me.user.id, projectId, 'work', wanted && !onPage ? wanted : undefined);
   const ownTask = own.value?.object.kind === 'work' && own.value.object.id === wanted && own.value.object.projectId === projectId
-    ? { id: own.value.object.id, title: own.value.object.title, status: own.value.object.status } : null;
+    ? { id: own.value.object.id, title: own.value.object.title, status: own.value.object.status, owner: own.value.object.owner, blocker: own.value.object.blocker ?? null } : null;
   // While that read (or the first page) is still on its way, nothing is chosen yet, so a
   // thread never opens on a fallback task and then jumps.
   const settling = (!!wanted && !onPage && (own.read.phase === 'loading' || !choices.page)) || (!wanted && !choices.page);
@@ -384,15 +433,14 @@ export function ProjectAgents() {
     <div className="agents">
       <header className="agents__head">
         <h1 className="agents__title">Working together</h1>
-        <Link className="ui-link agents__connect" to="/connect-agent"><Icon name="plus" size={14} />Connect my agent</Link>
+        {connections.list.length ? <Link className="ui-link agents__connect" to="/connect-agent"><Icon name="plus" size={14} />Connect my agent</Link> : null}
       </header>
+      <p className="agents__lead">People and their own AI agents work on this project’s tasks here. Each agent belongs to one person and acts only with the access they granted.</p>
       {connections.list.length ? (
         <ul className="agents__connections" aria-label="Agent connections in this project">
           {connections.list.map((connection) => <Connection key={connection.id} connection={connection} now={connections.now} />)}
         </ul>
-      ) : (
-        <p className="agents__no-connections">No agents connected. You can still discuss tasks here.</p>
-      )}
+      ) : <TwoModes />}
       {task ? (
         <>
           <div className="agents__task">
@@ -403,6 +451,7 @@ export function ProjectAgents() {
             </select>
             <Link className="ui-link agents__open" to={`/projects/${projectId}/tasks?open=work:${task.id}`}>Open task<Icon name="chevron-right" size={12} /></Link>
           </div>
+          <TaskNow task={pendingTask ?? task} meId={me.user.id} />
           {choices.page && (choices.page.previousCursor || choices.page.nextCursor) ? <WorkPagination {...choices} label="Open task choices" noun="open tasks" /> : null}
           <TaskThread key={`${me.user.id}:${projectId}:${task.id}`} task={task} projectId={projectId} meId={me.user.id} names={names} canWrite={shell?.project.access !== 'viewer'} changingScope={changingScope} />
         </>
