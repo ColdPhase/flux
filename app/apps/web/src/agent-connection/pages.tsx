@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { Link, redirect, useLoaderData, type LoaderFunctionArgs } from 'react-router';
-import { workspaceAgentsPath, type Agent, type AgentConnection, type AgentScope, type ExternalClientDesignation, type Project, type ProjectGrant, type Workspace } from '@flux/contracts';
+import { workspaceAgentsPath, type Agent, type AgentConnection, type AgentScope, type AgentStandingGrant, type ExternalClientDesignation, type Project, type ProjectGrant, type Workspace } from '@flux/contracts';
 import { getMe } from '../api/auth';
 import { ApiError, NetworkError, request as apiRequest } from '../api/client';
 import { listAccessibleProjects } from '../app/conversation-api';
@@ -8,11 +8,12 @@ import { signInPath } from '../auth/logic';
 import { Button, Icon } from '../ui';
 import {
   SCOPE_LABELS, continueAgentOAuth, createAgentConnection, createPersonalAgent, decideAgentConsent,
-  followOAuthRedirect, getConsentContext, grantAgentProject, listAgentConnections, listProjectGrants,
+  followOAuthRedirect, getConsentContext, grantAgentProject, listActionGrants, listAgentConnections, listProjectGrants,
   revokeAgentConnection, selectAgentConnection,
   type ConsentContext,
 } from './api';
 import { ClientGuide } from './ClientGuide';
+import { StandingGrants } from './StandingGrants';
 import './connection.css';
 
 const ALL_SCOPES: AgentScope[] = ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'];
@@ -32,6 +33,8 @@ interface ConnectionData {
   agents: Agent[];
   ownerId: string;
   oauthQuery: string;
+  /** Each live action connection's standing grants (current and ended); null when they could not be read. */
+  actionGrants: Record<string, AgentStandingGrant[] | null>;
 }
 
 function queryFrom(request: Request) { return new URL(request.url).search.slice(1); }
@@ -58,6 +61,14 @@ export async function agentConnectionLoader({ request }: LoaderFunctionArgs): Pr
     Promise.all(accessible.projects.filter((project) => project.access === 'manager').map(async (project) =>
       [project.id, await listProjectGrants(project.id, request.signal)] as const)),
   ]);
+  const oauthQuery = queryFrom(request);
+  // The grants are the owner's alone; the OAuth chooser does not show them.
+  const actionGrants = oauthQuery ? [] : await Promise.all(connections
+    .filter((connection) => !connection.revokedAt && connection.scopes.includes('flux.action.execute'))
+    .map(async (connection) => {
+      try { return [connection.id, await listActionGrants(connection.id, request.signal)] as const; }
+      catch (error) { if (error instanceof ApiError || error instanceof NetworkError) return [connection.id, null] as const; throw error; }
+    }));
   return {
     connections,
     projects: accessible.projects,
@@ -65,7 +76,8 @@ export async function agentConnectionLoader({ request }: LoaderFunctionArgs): Pr
     grants: Object.fromEntries(byProject),
     agents: byWorkspace.flat().filter((agent) => agent.owner.kind === 'human' && agent.owner.id === me.user.id && !agent.revokedAt),
     ownerId: me.user.id,
-    oauthQuery: queryFrom(request),
+    oauthQuery,
+    actionGrants: Object.fromEntries(actionGrants),
   };
 }
 
@@ -124,7 +136,7 @@ function ConnectionSummary({ connection, agentName, projectNames, showScopes = t
 }
 
 export function AgentConnectionPage() {
-  const { connections, projects, workspaces, agents, grants, oauthQuery } = useLoaderData() as ConnectionData;
+  const { connections, projects, workspaces, agents, grants, oauthQuery, actionGrants } = useLoaderData() as ConnectionData;
   const [items, setItems] = useState(connections.filter((connection) => !connection.revokedAt));
   const [selected, setSelected] = useState<string | null>(items[0]?.id ?? null);
   const [adding, setAdding] = useState(items.length === 0);
@@ -143,6 +155,7 @@ export function AgentConnectionPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const projectNames = new Map(projects.map((project) => [project.id, project.name]));
+  const projectsById = new Map(projects.map((project) => [project.id, project]));
   const agentNames = new Map(personalAgents.map((agent) => [agent.id, agent.name]));
   const chosenAgent = personalAgents.find((agent) => agent.id === agentId);
   const eligibleProjects = projects.filter((project) => project.workspaceId === chosenAgent?.workspaceId);
@@ -227,6 +240,7 @@ export function AgentConnectionPage() {
           <Button variant="secondary" onClick={() => { void revoke(connection.id); }}>Revoke now</Button>
           <Button variant="link" onClick={() => setRevoking(null)}>Cancel</Button></div>
           : <Button variant="link" onClick={() => setRevoking(connection.id)}>Revoke connection</Button>}
+        {!oauthQuery ? <StandingGrants connection={connection} projects={projectsById} initial={actionGrants[connection.id] ?? null} /> : null}
       </div>)}</div>
     </fieldset> : null}
     {creatingAgent ? <form className="connection__create" onSubmit={(event) => { void addPersonalAgent(event); }}>
