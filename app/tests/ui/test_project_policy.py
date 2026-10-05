@@ -137,13 +137,13 @@ class ProjectPolicyJourney(unittest.TestCase):
         type(self).ids = {"workspace": workspace["id"], "project": pid}
         self.assertIsNone(self.saved(hubert), "no policy yet")
 
-    def test_02_desktop_manager_writes_and_publishes_the_first_revision(self) -> None:
-        # Before anything is published, a contributor sees that there is none and is offered nothing to write.
+    def test_01b_before_the_first_publish_a_contributor_is_offered_nothing_to_write(self) -> None:
         marek = self.open_agents("marek")
         expect(self.policy(marek)).to_contain_text("None yet")
         expect(self.policy(marek).get_by_role("button")).to_have_count(0)
         shot(marek, "policy-none-reader-desktop-1440")
 
+    def test_02_desktop_manager_writes_and_publishes_the_first_revision(self) -> None:
         page = self.open_agents("hubert")
         policy = self.policy(page)
         expect(policy).to_contain_text("None yet")
