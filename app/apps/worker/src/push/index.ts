@@ -1,5 +1,5 @@
 import type { PgBoss } from 'pg-boss';
-import { PUSH_SEND_JOB, loadPushSenderConfig, type Database, type PushSendJob } from '@flux/core';
+import { PUSH_SEND_JOB, loadPushSenderConfig, vapidSubjectWarning, type Database, type PushSendJob } from '@flux/core';
 import { createPushAgent, deliverPush, type VapidAuthorizer } from './deliver.js';
 
 export { createVapidAuthorizer, deliverPush, type VapidAuthorizer } from './deliver.js';
@@ -13,6 +13,8 @@ export { RetryableDeliveryError, type DeliveryOutcome } from '@flux/core';
 export async function registerPushWorker(boss: PgBoss, db: Database, vapid: VapidAuthorizer, env: NodeJS.ProcessEnv = process.env) {
   const config = loadPushSenderConfig(env);
   if (config.status === 'unavailable') console.warn(`${config.reason}; notifications stay in the in-app inbox`);
+  const subjectWarning = config.status === 'available' ? vapidSubjectWarning(config.subject) : null;
+  if (subjectWarning) console.warn(subjectWarning);
   const agent = config.status === 'available' ? createPushAgent(config) : undefined;
   const log = (message: string, details?: Record<string, unknown>) => console.warn(message, details ?? {});
   await boss.work<PushSendJob>(PUSH_SEND_JOB, async (jobs) => {
