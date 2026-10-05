@@ -33,12 +33,12 @@ installation, interaction and notification evidence.
 | ID | User-visible outcome | Acceptance evidence |
 | --- | --- | --- |
 | MOB-1 | Install and launch Flux on Android, iPhone and iPad; recognizable icon/name, standalone window, stable identity and deep links | Manifest, icons and service worker meet each platform's documented install requirements; in emulation, the standalone display mode, cold launch, login/session recovery and reopening the correct project from a link |
-| MOB-2 | Productive layouts on phones and tablets, in portrait, landscape and tablet split view | Real content and all key journeys at emulated phone/tablet viewports, with a reduced-height (software keyboard) viewport, safe-area insets, rotation, zoom and touch; no clipped composer/actions or accidental page-wide scrolling |
+| MOB-2 | Productive layouts on phones and tablets, in portrait, landscape and tablet split view | Real content and all key journeys at emulated phone/tablet viewports. Includes a simulated on-screen keyboard: the viewport shrinks about 40–50% while a field has focus, and the field, Send and draft must survive (see [Acceptance evidence](#acceptance-evidence)). Also safe-area insets, rotation, zoom and touch. No clipped composer or actions, no accidental page-wide scrolling, and no focus zoom: editable controls are at least 16 px on coarse pointers. |
 | MOB-3 | Full mobile collaboration: capture, conversations, files, projects, tasks, decisions, search, maps and agent results | Integrated phone/tablet journeys with real persisted data, including opening a notification and continuing the linked work |
 | MOB-4 | Relevant push notifications with consent and user control | Subscribe, deliver with app backgrounded/not open, open the intended authorized item, mute/unsubscribe, reject permission, expire a subscription and recover delivery without duplicate notifications; delivery through the push mock and a real push service endpoint, and Apple/Chrome display rules met as documented |
 | MOB-5 | Recover safely from weak connectivity, suspension and updates | Preserve drafts, show pending/failed state, reconnect without double submission or data loss, and upgrade the service worker without losing in-progress input |
 | MOB-6 | Self-hosting includes mobile installation and push operations | Documented HTTPS deployment, origin/subpath handling, push configuration, required outbound connectivity, diagnostics and end-to-end delivery from a self-hosted instance |
-| MOB-7 | Mobile quality is verified independently before release | A dated engine/viewport/input matrix, a documented-requirements checklist with dated sources, observable journey evidence, separate visual review and interaction/accessibility testing; physical-device results are optional |
+| MOB-7 | Mobile quality is verified independently before release | A dated engine/viewport/input matrix that includes the simulated on-screen keyboard, a documented-requirements checklist with dated sources (WebKit/Apple focus-zoom and keyboard behaviour, Chrome `interactive-widget`), observable journey evidence, a separate visual review and interaction/accessibility testing. Physical-device results are optional. |
 
 ## Acceptance evidence
 
@@ -54,6 +54,24 @@ kinds of evidence, both tied to the tested commit:
    HTTPS; push goes through the existing push mock and, for transport, a real
    push service endpoint (the [fixture](../development/mobile-push-verification.md)'s
    desktop provider path). Record engine versions, viewport, scale and throttling.
+   **The on-screen keyboard is simulated** (founder decision by @Zamojski5 on
+   #268, 2026-10-05). While a field has focus, the test shrinks the viewport the
+   way a phone keyboard does, to about 40–50% of the height at 390×844 and on a
+   tablet. It does this through a viewport or CDP device-metrics change, with the
+   matching `visualViewport` resize and scroll events. It then checks:
+   - the focused field and the composer's Send stay visible and tappable above
+     the keyboard, and nothing the person needs is hidden behind it;
+   - the draft, the scroll position and the selection survive opening and
+     closing the keyboard;
+   - focusing does not zoom the page: every editable control (`input`,
+     `textarea`, `select`, `contenteditable`) computes at least 16 px on a coarse
+     pointer, because iOS Safari zooms into a smaller focused field.
+
+   This is recorded as emulation. Chromium's `interactive-widget=resizes-content`
+   shrinks the layout viewport, but iOS Safari does not support it (MDN
+   browser-compat-data, retrieved 2026-10-05). So the iPhone behaviour also needs
+   the documented-requirements row below, plus the app's handling of
+   `visualViewport`.
 2. **Documented platform requirements.** A checklist that maps each Apple,
    Android/Chrome and standards requirement below to the Flux code or test that
    meets it, with dated primary sources. Observations, vendor statements and
