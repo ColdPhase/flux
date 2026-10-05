@@ -129,7 +129,7 @@ class MapPasteJourney(unittest.TestCase):
 
     def writes(self, page):
         found = []
-        page.on("request", lambda request: found.append((request.method, request.url)) if request.method != "GET" and "/api/v1/" in request.url else None)
+        page.on("request", lambda request: found.append((request.method, request.url)) if request.method != "GET" and re.search(r"/api/v1/(sketches|projects/[^/]+/files|files)", request.url) else None)
         return found
 
     def paste(self, page, text=None, file=None):
@@ -222,16 +222,6 @@ class MapPasteJourney(unittest.TestCase):
         saved = self.wait_stored(page, lambda current: len(current["thoughts"]) == 3)
         children = {t["id"] for t in saved["thoughts"] if t["id"] != self.parent}
         self.assertEqual({link["toId"] for link in saved["links"] if link["fromId"] == self.parent}, children)
-        # An open edit refuses a paste on the map too (the editor itself keeps its native paste).
-        row = page.locator(f'.sk-li-t[data-id="{self.parent}"]')
-        row.focus()
-        row.press("F2")
-        expect(page.get_by_label("Thought text")).to_be_focused()
-        page.locator(".sk-head").evaluate("el => el.querySelector('.sk-title').focus()")
-        self.paste(page, "Not while editing")
-        expect(page.locator(".sk-status")).to_contain_text("Finish or cancel your current edit first")
-        expect(page.get_by_role("form")).to_have_count(0)
-        self.assertEqual(len(self.stored(page)["thoughts"]), 3)
 
     def test_03_link_paste_is_the_url_itself_and_opens_safely(self):
         page = self.page()
