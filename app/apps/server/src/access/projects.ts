@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { PROJECTS_PATH, WORKSPACES_PATH, type CreateProjectCommand, type GrantProjectCommand, type PageQuery } from '@flux/contracts';
+import { PROJECTS_PATH, PROJECT_GOAL_MAX, WORKSPACES_PATH, type CreateProjectCommand, type GrantProjectCommand, type PageQuery, type UpdateProjectCommand } from '@flux/contracts';
 import {
   assertAuthorized,
   createProject,
@@ -9,9 +9,10 @@ import {
   listProjectPeople,
   listProjects,
   revokeProjectGrant,
+  updateProjectGoal,
 } from '@flux/core';
-import { bodyId, requires } from '../http/commands.js';
-import { nameSchema, pageQuery } from '../http/schemas.js';
+import { bodyId, expectedVersion, requires, versionEtag } from '../http/commands.js';
+import { nameSchema, pageQuery, versionSchema } from '../http/schemas.js';
 import type { AccessContext } from './context.js';
 
 /** Projects and their grants (#85): list, create, read, grants, people and revocation. */
@@ -25,8 +26,19 @@ export function projectRoutes(app: FastifyInstance, { db, principal, command, ru
     run: (actor, conn) => createProject(actor, request.params.workspaceId, request.body, conn),
     replay: requires('project', 'project.read', bodyId),
   }));
-  app.get<{ Params: { projectId: string } }>(`${PROJECTS_PATH}/:projectId`, async (request) =>
-    getProject(await principal(request), request.params.projectId, db));
+  app.get<{ Params: { projectId: string } }>(`${PROJECTS_PATH}/:projectId`, async (request, reply) => {
+    const project = await getProject(await principal(request), request.params.projectId, db);
+    return reply.header('etag', versionEtag(project)).send(project);
+  });
+  // The project's goal (#272 FF-6): one line, set or cleared by people who can edit the project.
+  app.patch<{ Params: { projectId: string }; Body: UpdateProjectCommand & { expectedVersion?: number } }>(`${PROJECTS_PATH}/:projectId`, {
+    schema: { body: { type: 'object', required: ['goal'], additionalProperties: false, properties: {
+      goal: { anyOf: [{ type: 'string', maxLength: PROJECT_GOAL_MAX * 4 }, { type: 'null' }] }, expectedVersion: versionSchema } } },
+  }, async (request, reply) => command(request, reply, {
+    operation: `PATCH ${PROJECTS_PATH}/:projectId`, scope: projectScope(request.params.projectId), etag: true,
+    run: (actor, conn) => updateProjectGoal(actor, request.params.projectId, { goal: request.body.goal, expectedVersion: expectedVersion(request) }, conn),
+    replay: requires('project', 'project.read', () => request.params.projectId),
+  }));
   app.get<{ Params: { projectId: string } }>(`${PROJECTS_PATH}/:projectId/grants`, async (request) =>
     listProjectGrants(await principal(request), request.params.projectId, db));
   app.get<{ Params: { projectId: string } }>(`${PROJECTS_PATH}/:projectId/people`, async (request) =>

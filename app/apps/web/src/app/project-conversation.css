@@ -151,3 +151,7 @@ button.project-convo__contribution { cursor: pointer; }
 
 
 .project-convo__material-read { text-decoration: underline; text-underline-offset: 2px; }
+
+/* What the saved list is and what citing does (#272 FF-1). */
+.project-convo__tray-why { margin: 0 0 8px; font-size: var(--fs-sm); color: var(--text-3); }
+.project-convo__source svg { flex: none; margin-right: 4px; vertical-align: -1px; }

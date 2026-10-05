@@ -18,18 +18,17 @@ import './work.css';
 export type { StatePart } from './state-summary';
 
 /**
- * The project's current state from real records: the rule in force, work in progress, blocked
- * work, the latest result and a proposal waiting for a person (#101, #117).
+ * The project's current state from real records: work in progress, blocked work, the latest result
+ * and a proposal waiting for a person (#101, #117).
  */
 export function stateParts(lists: ProjectWork, canDecide: boolean): StatePart[] {
-  const rule = lists.decisions.find((decision) => decision.status === 'accepted');
   const proposal = lists.decisions.find((decision) => decision.status === 'proposed');
   const active = lists.work.filter((item) => item.status === 'in_progress' && !item.parked);
   const blocked = lists.work.filter((item) => item.status === 'blocked' && !item.parked);
   const open = lists.work.filter((item) => item.status === 'open' && !item.parked);
   const result = [...lists.results].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
   const parts: StatePart[] = [];
-  if (rule) parts.push({ key: 'rule', icon: 'rule', text: `Current rule: ${rule.title}`, short: `Rule: ${rule.title}`, title: rule.title, open: { kind: 'decision', id: rule.id } });
+  // The decision in force is not the state line's to show (#272 FF-6); What matters and Details name it.
   if (active.length) {
     const names = [...new Set(active.map((item) => item.owner?.name.trim().split(/\s+/)[0]).filter(Boolean))];
     const who = names.length ? ` (${names.join(', ')})` : '';
@@ -111,16 +110,26 @@ export function DiscussedTask({ task, row }: { task: { workId: string; title: st
     objectKind="work" objectId={task.workId} nativeRef={`work:${task.workId}`} onOpen={() => openDetails({ kind: 'work', id: task.workId })} />;
 }
 
-/** A calm chip under a message for an object made from it: icon, title and a quiet state. */
-function ObjectChip({ icon, kind, title, need, onOpen, label, objectKind, objectId, nativeRef }: { icon: 'tasks' | 'rule' | 'result'; kind: string; title: string; need?: boolean; onOpen: () => void; label: string; objectKind: string; objectId: string; nativeRef?: string }) {
+/**
+ * A calm chip under a message for an object made from it: icon, title and a quiet state. When the
+ * object's title only repeats the message above it, the chip says what it is instead ("Task from this
+ * message"), so nothing reads twice (#272 FF-1); its accessible name keeps the title.
+ */
+function ObjectChip({ icon, kind, title, need, onOpen, label, objectKind, objectId, nativeRef, repeats = false }: { icon: 'tasks' | 'rule' | 'result'; kind: string; title: string; need?: boolean; onOpen: () => void; label: string; objectKind: string; objectId: string; nativeRef?: string; repeats?: boolean }) {
   return (
-    <button type="button" data-work-kind={objectKind} data-work-id={objectId} data-native-ref={nativeRef} className={`ws-chip${need ? ' ws-chip--need' : ''}`} onClick={onOpen} aria-label={`${label}: ${title}`}>
+    <button type="button" data-work-kind={objectKind} data-work-id={objectId} data-native-ref={nativeRef} className={`ws-chip${need ? ' ws-chip--need' : ''}${repeats ? ' ws-chip--same' : ''}`} onClick={onOpen} aria-label={`${label}: ${title}`} title={repeats ? title : undefined}>
       <Icon name={icon} size={14} />
-      <span className="ws-chip__t">{title}</span>
+      <span className="ws-chip__t">{repeats ? `${objectKind === 'work' ? 'Task' : objectKind === 'decision' ? 'Decision' : 'Result'} from this message` : title}</span>
       <span className="ws-chip__k">{kind}</span>
     </button>
   );
 }
+
+/** Whether a title only repeats the message's own first line. */
+const repeatsMessage = (title: string, body: string) => {
+  const tidy = (text: string) => text.replace(/\s+/g, ' ').replace(/[.…]+$/, '').trim().toLowerCase();
+  return !!body.trim() && tidy(title) === tidy(firstLine(body));
+};
 
 /** The icon already says "work": "Work · In progress · Kai" → "In progress · Kai". */
 const rest = (line: string) => line.replace(/^Work · /, '');
@@ -142,7 +151,7 @@ export function MessageObjects({ message, projectId, preview, thread = null, thr
   return (
     <div className="ws-attach">
       {discussed ? <DiscussedTask task={discussed} row={threadRow} /> : null}
-      {items.map((item) => <ObjectChip key={`${item.kind}:${item.id}`} objectKind={item.kind} objectId={item.id} icon={item.kind === 'work' ? 'tasks' : item.kind === 'decision' ? 'rule' : 'result'} kind={item.kind === 'work' ? rest(workLine(item)) : item.kind === 'decision' ? decisionLine(item) : resultLine(item)} title={item.title} need={item.kind === 'decision' && item.status === 'proposed'} label={item.kind === 'work' ? 'Work' : item.kind === 'decision' ? 'Decision' : 'Result'} onOpen={() => openDetails({ kind: item.kind, id: item.id })} />)}
+      {items.map((item) => <ObjectChip key={`${item.kind}:${item.id}`} objectKind={item.kind} objectId={item.id} icon={item.kind === 'work' ? 'tasks' : item.kind === 'decision' ? 'rule' : 'result'} kind={item.kind === 'work' ? rest(workLine(item)) : item.kind === 'decision' ? decisionLine(item) : resultLine(item)} title={item.title} need={item.kind === 'decision' && item.status === 'proposed'} label={item.kind === 'work' ? 'Work' : item.kind === 'decision' ? 'Decision' : 'Result'} repeats={repeatsMessage(item.title, message.body)} onOpen={() => openDetails({ kind: item.kind, id: item.id })} />)}
       {items.length < total ? <button type="button" className="ws-attach__more" onClick={() => openDetails({ kind: 'overview', messageId: message.id, selection: { accountId: me.user.id, projectId, message } })}>{[counts.work ? `${counts.work} work` : null, counts.decisions ? `${counts.decisions} ${counts.decisions === 1 ? 'decision' : 'decisions'}` : null, counts.results ? `${counts.results} ${counts.results === 1 ? 'result' : 'results'}` : null].filter(Boolean).join(' · ')} · view linked objects</button> : null}
     </div>
   );

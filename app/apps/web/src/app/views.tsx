@@ -165,6 +165,15 @@ function HomeNotes() {
     if (anchor) { anchor.scrollIntoView({ block: 'center' }); anchor.focus({ preventScroll: true }); }
   }, [arrivedDraft, serverDrafts]);
   useEffect(() => { if (captureRequest) textareaRef.current?.focus(); }, [captureRequest]);
+  // The notes open at the newest, as a chat does, unless the reader had scrolled elsewhere before
+  // (the reading position restores that) or a search result points at one note.
+  const openedAtEnd = useRef(false);
+  useLayoutEffect(() => {
+    if (openedAtEnd.current || !serverDrafts.length) return;
+    openedAtEnd.current = true;
+    const pane = endRef.current?.closest<HTMLElement>('.pane-scroll');
+    if (!arrivedDraft && pane && pane.scrollTop <= 0) endRef.current?.scrollIntoView({ block: 'end' });
+  }, [serverDrafts, arrivedDraft]);
 
   const autosize = () => {
     const el = textareaRef.current;
@@ -280,8 +289,9 @@ function HomeNotes() {
         {serverDrafts.length ? (
           <section className="notes" aria-label="Private drafts">
             <p className="notes__h"><Icon name="lock" size={13} />Private drafts · saved in your space</p>
-            <ol className="notes__list">{serverDrafts.map((item) => <li className={`note${arrivedDraft === item.id ? ' is-arrived' : ''}`} key={item.id} id={`draft-${item.id}`} tabIndex={-1}><p className="note__text">{item.body}</p><div className="note__meta">You · v{item.version} · <time dateTime={item.updatedAt}>{when(item.updatedAt)}</time></div></li>)}</ol>
-            {draftsRead < draftsTotal ? <Button variant="quiet" busy={moreBusy} onClick={() => void loadMoreDrafts()}>Show more drafts</Button> : null}
+            {/* Earlier notes load above, as in a chat (#272): the newest sits right above the composer. */}
+            {draftsRead < draftsTotal ? <Button variant="quiet" busy={moreBusy} onClick={() => void loadMoreDrafts()}>Show earlier notes</Button> : null}
+            <ol className="notes__list">{[...serverDrafts].reverse().map((item) => <li className={`note${arrivedDraft === item.id ? ' is-arrived' : ''}`} key={item.id} id={`draft-${item.id}`} tabIndex={-1}><p className="note__text">{item.body}</p><div className="note__meta">You · v{item.version} · <time dateTime={item.updatedAt}>{when(item.updatedAt)}</time></div></li>)}</ol>
           </section>
         ) : null}
         {move.state === 'done' && !items.length ? <p className="notes__moved" role="status">Moved {move.moved} {move.moved === 1 ? 'note' : 'notes'} into {targetName ?? 'your space'}.</p> : null}

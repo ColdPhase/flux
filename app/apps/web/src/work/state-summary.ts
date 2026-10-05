@@ -12,9 +12,10 @@ export interface StatePart {
 }
 
 export function summaryStateParts(summary: ProjectWorkSummary, canDecide: boolean): StatePart[] {
-  const { rule, proposal, active, blocked, open, history, result } = summary.state;
+  // The decision in force is not the state line's to show (#272 FF-6): the header's goal says what the
+  // project is for, and What matters and Details name the current decision with who agreed it and when.
+  const { proposal, active, blocked, open, history, result } = summary.state;
   const parts: StatePart[] = [];
-  if (rule) parts.push({ key: 'rule', icon: 'rule', text: `Current rule: ${rule.title}`, short: `Rule: ${rule.title}`, title: rule.title, open: { kind: 'decision', id: rule.id } });
   if (active.count && active.first) {
     // Server distinctness is native kind/id. Identical names remain separate owners.
     const names = active.owners.map((owner) => owner.name);

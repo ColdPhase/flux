@@ -13,6 +13,19 @@
 .top__audience > span:not(.ui-vh) { min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .top__audience svg { flex: none; width: 10px; height: 10px; }
 .top__audience:hover { background: var(--bg-hover); color: var(--text); }
+/* The project's goal (#272 FF-6), after the audience: one quiet line, editable in place. */
+.top__goal { position: relative; display: inline-flex; align-items: center; gap: 5px; flex: 0 1 auto; min-width: 0; max-width: 60ch; min-height: 22px; margin: 0 -4px; padding: 0 4px; border-radius: var(--r-sm); font-size: var(--fs-sm); color: var(--text-2); text-align: left; transition: var(--tr); }
+.top__goal::before { content: ""; position: absolute; left: -13px; top: 3px; bottom: 3px; border-left: 1px solid var(--line); }
+button.top__goal:hover { background: var(--bg-hover); color: var(--text); }
+.top__goal svg { flex: none; color: var(--accent-selected-text); }
+.top__goal-k { flex: none; color: var(--text-3); }
+.top__goal-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.top__goal--add { color: var(--text-3); }
+.top__goal--add svg { color: inherit; }
+.top__goal--edit { flex: 1 1 28ch; max-width: 70ch; }
+.top__goal-input { flex: 1; min-width: 12ch; height: 26px; padding: 0 8px; border: 1px solid var(--line-input); border-radius: var(--r-sm); background: var(--bg); color: var(--text); font: inherit; }
+.top__goal-input:focus { outline: none; border-color: var(--focus); box-shadow: 0 0 0 3px var(--accent-soft); }
+.top__goal-note { flex: none; font-size: var(--fs-xs); color: var(--danger); }
 .top--project .ws-state { position: relative; flex-wrap: wrap; margin: 0; font-size: var(--fs-sm); line-height: 1.4; }
 .top--project .ws-state::before { content: ""; position: absolute; left: -13px; top: 2px; bottom: 2px; border-left: 1px solid var(--line); }
 .top--project .ws-part { display: contents; }

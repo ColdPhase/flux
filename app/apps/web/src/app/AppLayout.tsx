@@ -23,6 +23,7 @@ import { JumpTo } from '../search/JumpTo';
 import { useNeedsYou } from '../returns/useNeedsYou';
 import { WorkReadProvider, useProjectWorkSummary } from '../work/WorkReadContext';
 import { OverviewContext } from '../project/ProjectOverview';
+import { ProjectGoal } from '../project/ProjectGoal';
 import { remember, remembered } from './remembered';
 
 const lastConversationPath = (userId: string, projectId: string) => remembered('conversation', userId, projectId) ?? `/projects/${projectId}`;
@@ -441,6 +442,8 @@ function AppLayoutContent() {
                 <button type="button" className="top__audience" onClick={openAudience} aria-haspopup="dialog" title={audience}>
                   <Icon name={audienceOpen ? 'people' : 'lock'} size={12} /><span>{audience}</span><span className="ui-vh">, who can see this project</span>
                 </button>
+                {/* What the project is for (#272 FF-6), then its current state. */}
+                {project ? <ProjectGoal project={project.project} accountId={me.user.id} /> : null}
                 {project && !phone ? <ProjectStateLine summary={workSummary.summary} phase={workSummary.phase} /> : null}
               </div>
             </div>

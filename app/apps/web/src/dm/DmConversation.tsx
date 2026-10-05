@@ -283,7 +283,8 @@ function DmContent({ initial }: { initial: Dm }) {
   if (gone) return <DmUnavailable />;
   const canSend = draft.trim().length > 0 && !busy && !recipientGone;
   const selectButton = actionSlot && messages.length && !recipientGone ? createPortal(
-    <Button ref={selectButtonRef} variant="quiet" icon="check" aria-pressed={selecting} className="dm-select-btn" onClick={() => toggleSelecting(!selecting)}>Select</Button>,
+    // Named for what it leads to (#272 FF-1): pick messages, then start a sketch from them.
+    <Button ref={selectButtonRef} variant="quiet" icon="check" aria-pressed={selecting} className="dm-select-btn" data-tip="Pick messages to start a sketch from them" onClick={() => toggleSelecting(!selecting)}>Select to sketch</Button>,
     actionSlot,
   ) : null;
   const rows = messages.map((message, index) => {

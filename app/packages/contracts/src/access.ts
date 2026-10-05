@@ -104,9 +104,23 @@ export interface Project {
   workspaceId: string;
   name: string;
   visibility: ProjectVisibility;
+  /** What the project is for, in one line (#272 FF-6); null until someone writes it. */
+  goal: string | null;
   access: ProjectAccess;
   version: number;
   createdAt: string;
+}
+
+/** The longest project goal, in characters (#272 FF-6). */
+export const PROJECT_GOAL_MAX = 200;
+
+/**
+ * `PATCH /api/v1/projects/:projectId` (#272 FF-6): sets or clears the goal. Needs `project.write`,
+ * like the project's own content; `If-Match` carries the project version the person saw.
+ */
+export interface UpdateProjectCommand {
+  /** One line, trimmed; null or an empty string clears it. */
+  goal: string | null;
 }
 
 /**

@@ -60,7 +60,7 @@ export function ComposerFiles({ state, disabled = false, attach = 'row' }: { sta
       </li>)}</ol>
     </> : null}
     {state.draft.references.map((ref) => <div key={`${ref.materialId}:${ref.version}`} className="composer-files__ref">
-      <span>Source: {ref.title} · v{ref.version}</span><button type="button" disabled={blocked} aria-label="Remove material citation" onClick={() => state.setReference(null)}><Icon name="x" size={14} /></button>
+      <span title="Readers of your message can open this saved item, in this version">Citing: {ref.title} · v{ref.version}</span><button type="button" disabled={blocked} aria-label="Remove material citation" onClick={() => state.setReference(null)}><Icon name="x" size={14} /></button>
     </div>)}
     {state.storage === 'visit' ? <p className="composer-files__privacy">This browser refused draft storage. Your text, files and sources stay during this visit; keep this tab open to recover them.</p> : null}
     {state.draft.unconfirmed && !state.sending && !state.error ? <p className="composer-files__privacy">This send is unconfirmed. Retry sends the same command once.</p> : null}

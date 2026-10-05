@@ -114,7 +114,9 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     change: false,
   }));
   const { hash } = location;
-  const [renaming, setRenaming] = useState<boolean>(!!(location.state as { fresh?: boolean } | null)?.fresh);
+  // A new sketch asks for its name with a keyboard and pointer; on a touch screen it opens on the canvas,
+  // so the on-screen keyboard does not cover it at once (#272), and the name is a tap away.
+  const [renaming, setRenaming] = useState<boolean>(() => !!(location.state as { fresh?: boolean } | null)?.fresh && !window.matchMedia('(pointer: coarse)').matches);
   const [heights] = useState(() => new Map<string, number>());
   const rootRef = useRef<HTMLDivElement>(null);
   const helpId = useId();

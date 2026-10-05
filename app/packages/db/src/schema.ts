@@ -325,6 +325,8 @@ export const projects = pgTable('projects', {
   workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   visibility: text('visibility', { enum: ['workspace', 'restricted'] }).notNull().default('workspace'),
+  /** What the project is for, in one line (#272 FF-6); null until someone writes it. */
+  goal: text('goal'),
   createdBy: text('created_by').notNull(),
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

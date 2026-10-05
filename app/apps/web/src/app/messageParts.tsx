@@ -72,5 +72,8 @@ export function SourceCitation({ materialId, version, onDenied }: { materialId: 
   const onDeniedRef = useRef(onDenied);
   useEffect(() => { onDeniedRef.current = onDenied; }, [onDenied]);
   useEffect(() => { const controller = new AbortController(); getMaterialVersion(materialId, version, controller.signal).then((item) => setTitle(item.title)).catch((cause: unknown) => { if (!controller.signal.aborted) { onDeniedRef.current(cause); setTitle('Material unavailable'); } }); return () => controller.abort(); }, [materialId, version]);
-  return <Link to={`/materials/${materialId}/versions/${version}`} className="project-convo__source">Source: {title} · v{version}</Link>;
+  // Says why it is here (#272 FF-1): the author cited something saved for the project; it opens the
+  // exact version they cited, even after later edits.
+  return <Link to={`/materials/${materialId}/versions/${version}`} className="project-convo__source" title={`Cited by the author: saved for this project. Opens version ${version}, the one they cited.`}>
+    <Icon name="doc" size={12} />Cited: {title} · v{version}</Link>;
 }

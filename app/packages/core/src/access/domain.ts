@@ -23,10 +23,12 @@ import type {
   ProjectVisibility,
   ShareDraftCommand,
   UpdateDraftCommand,
+  UpdateProjectCommand,
   Workspace,
   WorkspaceMember,
   WorkspaceRole,
 } from '@flux/contracts';
+import { PROJECT_GOAL_MAX } from '@flux/contracts';
 import type { Database, Executor, Principal } from '../types.js';
 import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, PreconditionRequiredError, RuleViolationError, VersionConflictError } from './errors.js';
 import { policyEventPorts, recordEvent } from '../events.js';
@@ -129,7 +131,7 @@ function toWorkspace(row: typeof schema.workspaces.$inferSelect, role: Workspace
 function toProject(row: typeof schema.projects.$inferSelect, level: number): Project {
   const access = accessName(level);
   if (!access) throw new Error('Invisible project serialized');
-  return { id: row.id, workspaceId: row.workspaceId, name: row.name, visibility: row.visibility, access, version: row.version, createdAt: row.createdAt.toISOString() };
+  return { id: row.id, workspaceId: row.workspaceId, name: row.name, visibility: row.visibility, goal: row.goal ?? null, access, version: row.version, createdAt: row.createdAt.toISOString() };
 }
 
 function toGrant(row: typeof schema.projectGrants.$inferSelect): ProjectGrant {
@@ -323,6 +325,30 @@ export async function listProjects(principal: Principal, workspaceId: string, qu
 export async function getProject(principal: Principal, projectId: string, db: Database): Promise<Project> {
   const { project, level } = enforce(await evaluateProject(principal, 'project.read', projectId, db), 'project');
   return toProject(project!, level);
+}
+
+/**
+ * Sets or clears a project's goal (#272 FF-6). Anyone who can edit the project's content may change
+ * it. The version the person saw must still be current (If-Match), so two edits never silently
+ * overwrite each other; authorization comes first, so a stale version never reveals the project.
+ */
+export async function updateProjectGoal(principal: Principal, projectId: string, command: UpdateProjectCommand & { expectedVersion?: unknown }, db: Database): Promise<Project> {
+  const raw = command?.goal;
+  if (raw !== null && typeof raw !== 'string') throw new InvalidInputError('goal must be text or null', 'GOAL_INVALID');
+  const goal = raw === null ? null : raw.replace(/\s+/g, ' ').trim() || null;
+  if (goal && [...goal].length > PROJECT_GOAL_MAX) throw new InvalidInputError(`A goal is at most ${PROJECT_GOAL_MAX} characters`, 'GOAL_TOO_LONG');
+  return db.transaction(async (tx) => {
+    const { project, level } = enforce(await evaluateProject(principal, 'project.write', projectId, tx, { lock: true }), 'project');
+    const expected = command.expectedVersion;
+    if (expected === undefined || expected === null) throw new PreconditionRequiredError();
+    if (typeof expected !== 'number' || !Number.isInteger(expected) || expected < 1) throw new InvalidInputError('expectedVersion must be a positive integer');
+    if (project!.version !== expected) throw new VersionConflictError(project!.version, toProject(project!, level));
+    if ((project!.goal ?? null) === goal) return toProject(project!, level);
+    const [row] = await tx.update(schema.projects).set({ goal, version: sql`${schema.projects.version} + 1`, updatedAt: new Date() })
+      .where(eq(schema.projects.id, projectId)).returning();
+    await recordEvent(events(tx), principal, row!.workspaceId, 'project.goal_changed.v1', projectId, { cleared: goal === null });
+    return toProject(row!, level);
+  });
 }
 
 export async function listProjectGrants(principal: Principal, projectId: string, db: Database): Promise<ProjectGrant[]> {
