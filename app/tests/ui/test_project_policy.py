@@ -138,6 +138,12 @@ class ProjectPolicyJourney(unittest.TestCase):
         self.assertIsNone(self.saved(hubert), "no policy yet")
 
     def test_02_desktop_manager_writes_and_publishes_the_first_revision(self) -> None:
+        # Before anything is published, a contributor sees that there is none and is offered nothing to write.
+        marek = self.open_agents("marek")
+        expect(self.policy(marek)).to_contain_text("None yet")
+        expect(self.policy(marek).get_by_role("button")).to_have_count(0)
+        shot(marek, "policy-none-reader-desktop-1440")
+
         page = self.open_agents("hubert")
         policy = self.policy(page)
         expect(policy).to_contain_text("None yet")
@@ -172,7 +178,7 @@ class ProjectPolicyJourney(unittest.TestCase):
         shot(page, "policy-edit-desktop-1440")
 
         form.get_by_role("button", name="Publish revision 1").click()
-        expect(policy.get_by_role("status")).to_have_text("Published revision 1. Connected agents load it at their next start or safe checkpoint.")
+        expect(policy.get_by_role("status")).to_have_text("Published revision 1. Agents pick it up at their next start or safe checkpoint.")
         expect(form).to_have_count(0)
         expect(policy).to_contain_text("Revision 1 · Hubert Nowak")
         saved = self.saved(page)
@@ -235,19 +241,31 @@ class ProjectPolicyJourney(unittest.TestCase):
         form.get_by_role("button", name=f"Publish revision {base + 1}").click()
         conflict = form.get_by_role("alert")
         expect(conflict).to_contain_text(f"Ola Kowalska published revision {base + 1} while you were editing.")
-        expect(conflict).to_contain_text("Your text is still here.")
+        expect(conflict).to_contain_text("Your text is still here. They changed Allowed work.")
         expect(form.get_by_label("Scope", exact=True)).to_have_value(mine)
         saved = self.saved(hubert)
         self.assertEqual((saved["revision"], saved["scope"], saved["allowedWork"]), (base + 1, FIRST["Scope"], theirs), "Hubert's edit was not published")
-        conflict.get_by_text(f"Their revision {base + 1}").click()
-        expect(conflict.get_by_role("definition").filter(has_text=theirs)).to_be_visible()
+        # Only the part she changed is shown, so he can keep it.
+        changed = form.get_by_role("list", name=f"Changed in revision {base + 1}").get_by_role("listitem")
+        expect(changed).to_have_count(1)
+        expect(changed).to_contain_text("Their allowed work")
+        expect(changed).to_contain_text(theirs)
+        self.to_top(policy)
         shot(hubert, "policy-conflict-desktop-1440")
+        changed.get_by_role("button", name="Use their allowed work").click()
+        expect(form.get_by_label("Allowed work", exact=True)).to_have_value(theirs)
+        expect(changed).to_contain_text("Your allowed work now matches theirs.")
+        expect(form.get_by_label("Scope", exact=True)).to_have_value(mine)
+        publish = form.get_by_role("button", name=f"Publish mine as revision {base + 2}")
+        publish.scroll_into_view_if_needed()
+        shot(hubert, "policy-conflict-actions-desktop-1440")
 
-        # He has read hers; publishing now replaces it as the next revision, knowingly.
-        form.get_by_role("button", name=f"Publish mine as revision {base + 2}").click()
+        # He has read hers and kept her part; publishing now replaces her revision as the next one, knowingly.
+        publish.click()
         expect(policy.get_by_role("status")).to_contain_text(f"Published revision {base + 2}.")
         saved = self.saved(hubert)
-        self.assertEqual((saved["revision"], saved["scope"], saved["publishedBy"]["id"]), (base + 2, mine, PEOPLE["hubert"]["id"]))
+        self.assertEqual((saved["revision"], saved["scope"], saved["allowedWork"], saved["publishedBy"]["id"]),
+                         (base + 2, mine, theirs, PEOPLE["hubert"]["id"]))
         # Ola's open view follows without a reload.
         expect(ola_policy).to_contain_text(f"Revision {base + 2} · Hubert Nowak")
 
@@ -295,7 +313,7 @@ class ProjectPolicyJourney(unittest.TestCase):
                 expect(policy).to_contain_text(f"Revision {before['revision']} · {before['publishedBy']['name']}")
                 policy.get_by_role("button", name="Show policy").click()
                 expect(policy.get_by_role("definition").filter(has_text=before["reviewCriteria"])).to_have_count(1)
-                expect(policy).to_contain_text("Only a project manager can change it.")
+                expect(policy).to_contain_text("Only Hubert Nowak or Ola Kowalska can change it.")
                 expect(policy.get_by_role("button", name="Edit policy")).to_have_count(0)
                 expect(policy.get_by_role("button", name="Write policy")).to_have_count(0)
                 expect(policy.get_by_role("form")).to_have_count(0)

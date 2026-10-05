@@ -37,8 +37,8 @@ const draftOf = (policy: AgentProjectPolicy | null): Draft => policy
   ? { scope: policy.scope, priorities: policy.priorities, reviewCriteria: policy.reviewCriteria, allowedWork: policy.allowedWork } : EMPTY;
 const sameText = (draft: Draft, policy: AgentProjectPolicy) => PARTS.every(({ part }) => draft[part] === policy[part]);
 
-function listed(labels: string[]) {
-  return labels.length <= 1 ? labels[0] ?? '' : `${labels.slice(0, -1).join(', ')} and ${labels.at(-1)}`;
+function listed(labels: string[], last = 'and') {
+  return labels.length <= 1 ? labels[0] ?? '' : `${labels.slice(0, -1).join(', ')} ${last} ${labels.at(-1)}`;
 }
 
 function describe(error: unknown): string {
@@ -60,8 +60,11 @@ interface Editing {
   /** The revision this edit publishes over: the one loaded when editing began, or the newer one a conflict showed. */
   base: AgentProjectPolicy | null;
   draft: Draft;
-  /** A newer revision someone else published while this edit was open, shown before publishing over it. */
-  conflict: AgentProjectPolicy | null;
+  /**
+   * A newer revision someone else published while this edit was open, shown before publishing over it, with the
+   * revision this edit had started from so the parts they changed can be named.
+   */
+  conflict: { theirs: AgentProjectPolicy; from: AgentProjectPolicy | null } | null;
 }
 
 function Sections({ policy }: { policy: AgentProjectPolicy }) {
@@ -77,7 +80,39 @@ function Sections({ policy }: { policy: AgentProjectPolicy }) {
   );
 }
 
-export function ProjectPolicy({ projectId, meId, canEdit }: { projectId: string; meId: string; canEdit: boolean }) {
+/**
+ * Someone else published while this edit was open. Their revision is named with the parts they changed from the
+ * revision this edit started from, since publishing replaces those unless the manager takes their text over.
+ */
+function Conflict({ theirs, from, draft, busy, onUse }: { theirs: AgentProjectPolicy; from: AgentProjectPolicy | null; draft: Draft; busy: boolean;
+  onUse: (part: Part, value: string) => void }) {
+  const changed = PARTS.filter(({ part }) => theirs[part] !== (from?.[part] ?? ''));
+  return (
+    <div className="agents-policy__conflict">
+      <p className="agents-policy__conflict-note" role="alert">
+        <b>{publisher(theirs)} published revision {theirs.revision} while you were editing.</b> Your text is still here.{' '}
+        {changed.length ? `They changed ${listed(changed.map(({ label }) => label))}. ` : 'Their text is the same as the revision you started from. '}
+        Publishing yours replaces their revision; use their text for any part you want to keep, or cancel to keep theirs.
+      </p>
+      {changed.length ? (
+        <ul className="agents-policy__theirs" aria-label={`Changed in revision ${theirs.revision}`}>
+          {changed.map(({ part, label }) => (
+            <li key={part}>
+              <span className="agents-policy__theirs-label">Their {label.toLowerCase()}</span>
+              <span className="agents-policy__theirs-text" data-empty={theirs[part].trim() ? undefined : 'true'}>{theirs[part].trim() || 'Not set'}</span>
+              {draft[part] === theirs[part]
+                ? <span className="agents-policy__theirs-same">Your {label.toLowerCase()} now matches theirs.</span>
+                : <Button variant="link" disabled={busy} onClick={() => onUse(part, theirs[part])}>Use their {label.toLowerCase()}</Button>}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+/** `managers`: the people who can change the policy, named to readers when there are only a few. */
+export function ProjectPolicy({ projectId, meId, canEdit, managers }: { projectId: string; meId: string; canEdit: boolean; managers: string[] }) {
   const id = useId();
   const [load, setLoad] = useState<Load>({ phase: 'loading' });
   const [open, setOpen] = useState(false);
@@ -161,7 +196,7 @@ export function ProjectPolicy({ projectId, meId, canEdit }: { projectId: string;
       attempt.current = null;
       setLoad((shown) => shown.phase === 'ready' && shown.policy && shown.policy.revision > next.revision ? shown : { phase: 'ready', policy: next });
       setEditing(null); setOpen(true);
-      setPublished(`Published revision ${next.revision}. Connected agents load it at their next start or safe checkpoint.`);
+      setPublished(`Published revision ${next.revision}. Agents pick it up at their next start or safe checkpoint.`);
     } catch (cause) {
       // Only a lost answer is retried with the same key; any answer ends this attempt.
       if (!(cause instanceof NetworkError)) attempt.current = null;
@@ -169,7 +204,7 @@ export function ProjectPolicy({ projectId, meId, canEdit }: { projectId: string;
         ? (cause.body as { current?: AgentProjectPolicy | null } | null)?.current ?? null : null;
       if (theirs) {
         // Keep the text; show their revision and publish over it only when the manager presses Publish again.
-        setEditing((current) => current && { ...current, base: theirs, conflict: theirs });
+        setEditing((current) => current && { ...current, base: theirs, conflict: { theirs, from: current.base } });
         setLoad({ phase: 'ready', policy: theirs });
       } else {
         setError(describe(cause));
@@ -206,14 +241,7 @@ export function ProjectPolicy({ projectId, meId, canEdit }: { projectId: string;
         <form className="agents-policy__form" aria-label="Edit agent policy" onSubmit={(event) => { void publish(event); }} noValidate>
           <p className="agents-policy__note">Connected agents read this before they plan. It narrows what they take on within their owners’ grants and never gives them more access.</p>
           {editing.conflict ? (
-            <div className="agents-policy__conflict" role="alert">
-              <p><b>{publisher(editing.conflict)} published revision {editing.conflict.revision} while you were editing.</b> Your text is still here.
-                Read their version below, then publish yours to replace it as revision {editing.conflict.revision + 1}, or cancel to keep theirs.</p>
-              <details className="agents-policy__theirs">
-                <summary>Their revision {editing.conflict.revision}</summary>
-                <Sections policy={editing.conflict} />
-              </details>
-            </div>
+            <Conflict {...editing.conflict} draft={editing.draft} busy={busy} onUse={change} />
           ) : newer ? (
             <p className="agents-policy__newer" role="status">{publisher(newer)} published revision {newer.revision} while you were editing. When you publish, Flux shows it to you first.</p>
           ) : null}
@@ -240,9 +268,9 @@ export function ProjectPolicy({ projectId, meId, canEdit }: { projectId: string;
           {error ? <p className="agents-policy__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
           <div className="agents-policy__actions">
             <span className="agents-policy__next">Agents load revision {nextRevision} at their next start or safe checkpoint.</span>
-            <Button variant="quiet" onClick={stopEditing} disabled={busy}>Cancel</Button>
             <Button type="submit" variant="primary" busy={busy}>
               {editing.conflict ? `Publish mine as revision ${nextRevision}` : `Publish revision ${nextRevision}`}</Button>
+            <Button variant="quiet" onClick={stopEditing} disabled={busy}>Cancel</Button>
           </div>
         </form>
       ) : open && policy ? (
@@ -252,7 +280,7 @@ export function ProjectPolicy({ projectId, meId, canEdit }: { projectId: string;
           <Sections policy={policy} />
           {canEdit
             ? <div className="agents-policy__actions"><Button variant="secondary" onClick={startEditing}>Edit policy</Button></div>
-            : <p className="agents-policy__note">Only a project manager can change it.</p>}
+            : <p className="agents-policy__note">{managers.length && managers.length <= 3 ? `Only ${listed(managers, 'or')} can change it.` : 'Only a project manager can change it.'}</p>}
         </div>
       ) : null}
     </section>

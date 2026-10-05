@@ -393,7 +393,8 @@ export function ProjectAgents() {
       ) : (
         <p className="agents__no-connections">No agents connected. You can still discuss tasks here.</p>
       )}
-      <ProjectPolicy key={projectId} projectId={projectId} meId={me.user.id} canEdit={shell?.project.access === 'manager'} />
+      <ProjectPolicy key={projectId} projectId={projectId} meId={me.user.id} canEdit={shell?.project.access === 'manager'}
+        managers={(shell?.people ?? []).filter((person) => person.kind === 'human' && person.access === 'manager').map((person) => person.name)} />
       {task ? (
         <>
           <div className="agents__task">

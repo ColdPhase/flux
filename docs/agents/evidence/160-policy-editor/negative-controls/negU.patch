@@ -1,0 +1,49 @@
+diff --git a/app/apps/web/src/agents/ProjectAgents.tsx b/app/apps/web/src/agents/ProjectAgents.tsx
+index caac661..ac748e9 100644
+--- a/app/apps/web/src/agents/ProjectAgents.tsx
++++ b/app/apps/web/src/agents/ProjectAgents.tsx
+@@ -393,7 +393,7 @@ export function ProjectAgents() {
+       ) : (
+         <p className="agents__no-connections">No agents connected. You can still discuss tasks here.</p>
+       )}
+-      <ProjectPolicy key={projectId} projectId={projectId} meId={me.user.id} canEdit={shell?.project.access === 'manager'} />
++      <ProjectPolicy key={projectId} projectId={projectId} meId={me.user.id} canEdit={true} />
+       {task ? (
+         <>
+           <div className="agents__task">
+diff --git a/app/apps/web/src/agents/ProjectPolicy.tsx b/app/apps/web/src/agents/ProjectPolicy.tsx
+index f5e46ee..c0c8afc 100644
+--- a/app/apps/web/src/agents/ProjectPolicy.tsx
++++ b/app/apps/web/src/agents/ProjectPolicy.tsx
+@@ -137,7 +137,7 @@ export function ProjectPolicy({ projectId, meId, canEdit }: { projectId: string;
+     const { draft, base } = editing;
+     // The same rules as the server, checked first so the message can name the part.
+     const tooLong = PARTS.filter(({ part }) => characters(draft[part]) > LIMIT);
+-    if (tooLong.length) {
++    if (tooLong.length < 0) {
+       setError(`Shorten ${listed(tooLong.map(({ label }) => label))} to publish. Each part can be up to ${count.format(LIMIT)} characters.`);
+       boxes.current[tooLong[0]!.part]?.focus();
+       return;
+@@ -151,7 +151,8 @@ export function ProjectPolicy({ projectId, meId, canEdit }: { projectId: string;
+       setError(`Nothing has changed since revision ${base.revision}.`);
+       return;
+     }
+-    const command: PublishAgentProjectPolicyCommand = { ...draft, expectedRevision: base?.revision ?? 0 };
++    const fresh = (await getAgentPolicy(projectId)).policy;
++    const command: PublishAgentProjectPolicyCommand = { ...draft, expectedRevision: fresh?.revision ?? 0 };
+     const signature = JSON.stringify(command);
+     const key = attempt.current?.signature === signature ? attempt.current.key : crypto.randomUUID();
+     attempt.current = { signature, key };
+diff --git a/app/apps/web/src/agents/policy.css b/app/apps/web/src/agents/policy.css
+index 2c8783d..1311dc5 100644
+--- a/app/apps/web/src/agents/policy.css
++++ b/app/apps/web/src/agents/policy.css
+@@ -60,7 +60,7 @@
+ 
+ /* Touch: 16 px text in the fields (no zoom on focus) and 44 px targets; buttons already follow --ctl. */
+ @media (pointer: coarse) {
+-  .agents-policy__field textarea { font-size: 16px; }
++  .agents-policy__field textarea { font-size: var(--fs-base); }
+   .agents-policy__theirs summary { display: flex; align-items: center; min-height: 44px; }
+ }
+ @media (max-width: 680px) {

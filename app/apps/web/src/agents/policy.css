@@ -43,16 +43,23 @@
 }
 .agents-policy__field-error svg, .agents-policy__error svg { flex: none; margin-top: 2px; }
 
-/* Someone else published while this edit was open: their revision, before publishing over it. */
-.agents-policy__conflict {
-  display: flex; flex-direction: column; gap: var(--s-2);
-  padding: var(--s-3) var(--s-4); border-radius: var(--r); background: var(--tint-warning);
+/* Someone else published while this edit was open: one tinted line, then only the parts they changed. */
+.agents-policy__conflict { display: flex; flex-direction: column; gap: var(--s-2); }
+.agents-policy__conflict-note {
+  margin: 0; padding: var(--s-2) var(--s-3); border-radius: var(--r); background: var(--tint-warning);
   font-size: var(--fs-sm); line-height: 1.5; color: var(--text);
 }
-.agents-policy__conflict p { margin: 0; }
-.agents-policy__theirs summary { cursor: pointer; font-weight: 500; color: var(--link); }
-.agents-policy__theirs[open] summary { margin-bottom: var(--s-2); }
-.agents-policy__theirs .agents-policy__section dd { font-size: var(--fs-sm); }
+.agents-policy__theirs {
+  list-style: none; margin: 0; padding: 0 var(--s-3); border: 1px solid var(--line); border-radius: var(--r);
+  display: flex; flex-direction: column;
+}
+.agents-policy__theirs li { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: var(--s-2) 0; border-top: 1px solid var(--line); }
+.agents-policy__theirs li:first-child { border-top: 0; }
+.agents-policy__theirs-label { font-size: var(--fs-sm); font-weight: 600; color: var(--text-2); }
+.agents-policy__theirs-text { max-width: 72ch; font-size: var(--fs-sm); line-height: 1.55; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+.agents-policy__theirs-text[data-empty] { color: var(--text-3); }
+.agents-policy__theirs-same { font-size: var(--fs-xs); color: var(--text-3); }
+.agents-policy__theirs .ui-btn { margin-left: -6px; }
 
 .agents-policy__actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: var(--s-2); }
 .agents-policy__body .agents-policy__actions { justify-content: flex-start; }
@@ -61,7 +68,6 @@
 /* Touch: 16 px text in the fields (no zoom on focus) and 44 px targets; buttons already follow --ctl. */
 @media (pointer: coarse) {
   .agents-policy__field textarea { font-size: 16px; }
-  .agents-policy__theirs summary { display: flex; align-items: center; min-height: 44px; }
 }
 @media (max-width: 680px) {
   .agents-policy__head { grid-template-columns: minmax(0, 1fr) auto; }
