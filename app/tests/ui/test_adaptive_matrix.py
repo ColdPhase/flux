@@ -639,6 +639,86 @@ class AdaptiveTransitions(AdaptiveBase):
             self.resize(page, width, height)
             expect(heading, f"the task stays open in Details at {width}×{height}").to_be_visible()
 
+    def test_15_a_zoomed_in_phone_map_keeps_its_sideways_place(self) -> None:
+        """T151-E: zoomed in, the phone's two columns scroll sideways; selecting, the keyboard and a zoom step keep that place."""
+        page = self.page(390, 844)
+        canvas = self.open_map(page)
+        for label in ("110%", "125%", "150%"):
+            page.get_by_role("button", name="Zoom in").click()
+            expect(page.get_by_role("button", name=f"Zoom {label}, reset to 100%")).to_be_visible()
+        right = canvas.evaluate("""(c) => {
+          const box = c.getBoundingClientRect();
+          let best = null;
+          for (const n of c.querySelectorAll('.sk-node')) {
+            const b = n.getBoundingClientRect();
+            const x = b.left - box.left + c.scrollLeft;
+            if (!best || x > best.x + 1 || (Math.abs(x - best.x) <= 1 && b.top < best.top)) best = {id: n.dataset.id, x, top: b.top - box.top + c.scrollTop};
+          }
+          return best;
+        }""")
+        camera = self.set_camera(page, round(right["x"]) - 16, max(0, round(right["top"]) - 40))
+        self.assertGreater(camera["left"], 0, "the zoomed-in phone map scrolls sideways")
+        node = page.locator(f'.sk-node[data-id="{right["id"]}"]')
+        visible = "(n) => { const c = n.closest('.sk-canvas').getBoundingClientRect(); const b = n.getBoundingClientRect(); return b.left >= c.left - 1 && b.right <= c.right + 1; }"
+        self.assertTrue(node.evaluate(visible), "the right-hand thought is in view before it is selected")
+        node.tap()
+        expect(node).to_have_attribute("aria-pressed", "true")
+        page.wait_for_timeout(250)
+        self.assertEqual(page.evaluate(CAMERA)["left"], camera["left"], "selecting keeps the sideways place")
+        self.check(node.evaluate(visible), "the selected thought stays in view")
+        self.resize(page, 390, 520)
+        self.assertEqual(page.evaluate(CAMERA)["left"], camera["left"], "a keyboard keeps the sideways place")
+        self.resize(page, 390, 844)
+        self.assertEqual(page.evaluate(CAMERA)["left"], camera["left"], "closing the keyboard keeps the sideways place")
+        page.get_by_role("button", name="Zoom out").click()
+        expect(page.get_by_role("button", name="Zoom 125%, reset to 100%")).to_be_visible()
+        page.wait_for_timeout(250)
+        self.assertGreater(page.evaluate(CAMERA)["left"], 0, "a zoom step keeps a sideways place")
+        self.assertEqual(self.thoughts(page), len(fx.THOUGHTS), "nothing is saved")
+        self.no_problems()
+
+    def test_16_dragging_the_top_thought_on_a_phone_moves_the_thought_not_the_view(self) -> None:
+        """T151-E: the phone camera anchors on the top thought; dragging that thought must not scroll the map with it."""
+        page = self.page(390, 844)
+        canvas = self.open_map(page)
+        self.set_camera(page, 0, 160)
+        top = canvas.evaluate("""(c) => {
+          const box = c.getBoundingClientRect();
+          let best = null;
+          for (const n of c.querySelectorAll('.sk-node')) {
+            const b = n.getBoundingClientRect();
+            if (b.bottom > box.top + 1 && (!best || b.top < best.top)) best = {id: n.dataset.id, top: b.top};
+          }
+          return best.id;
+        }""")
+        stored = {t["id"]: (t["x"], t["y"]) for t in self.api(page, "GET", f"/api/v1/sketches/{self.ids['sketch']}")["thoughts"]}
+        node = page.locator(f'.sk-node[data-id="{top}"]')
+        node.click()
+        expect(node).to_have_attribute("aria-pressed", "true")
+        page.wait_for_timeout(250)
+        camera, start = page.evaluate(CAMERA), node.bounding_box()
+        x, y = start["x"] + 20, start["y"] + 12
+        page.mouse.move(x, y)
+        page.mouse.down()
+        for step in range(1, 7):
+            page.mouse.move(x, y + 25 * step, steps=3)
+            page.wait_for_timeout(50)
+            self.assertEqual(page.evaluate(CAMERA), camera, f"the view stays still {25 * step} px into the drag")
+        page.mouse.up()
+        expect(page.locator(".sk-status")).to_contain_text("Moved")
+        page.wait_for_timeout(300)
+        self.assertGreater(node.bounding_box()["y"], start["y"], "the dragged thought moves down on screen")
+        self.assertEqual(page.evaluate(CAMERA), camera, "dropping keeps the view")
+        moved = {t["id"]: (t["x"], t["y"]) for t in self.api(page, "GET", f"/api/v1/sketches/{self.ids['sketch']}")["thoughts"]}
+        self.assertEqual(moved[top][1], stored[top][1] + 150, "the drop saves the dragged distance")
+        # Put the shared fixture back.
+        page.keyboard.press("Control+z")
+        expect(page.locator(".sk-status")).to_contain_text("Undid")
+        page.wait_for_timeout(300)
+        restored = {t["id"]: (t["x"], t["y"]) for t in self.api(page, "GET", f"/api/v1/sketches/{self.ids['sketch']}")["thoughts"]}
+        self.assertEqual(restored[top], stored[top], "undo puts the thought back")
+        self.no_problems()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -142,8 +142,9 @@ export function SketchMap(props: SketchMapProps) {
   // keyboard and the switch between the plane and the phone's two columns. The browser clamps a
   // scroll position whenever the scrollable area shrinks (the phone projection is only as wide as
   // the canvas) and never restores it, so the map keeps its own camera per projection: the plane's
-  // scroll position, and on the phone the thought at the top and its offset. Layout changes put
-  // that camera back; only a scroll the layout did not cause moves it. Nothing here auto-fits.
+  // scroll position, and on the phone the thought at the top, its offset and the sideways scroll
+  // (which only exists zoomed in). Layout changes put that camera back; only a scroll the layout
+  // did not cause moves it. Nothing here auto-fits.
   const geometry = useRef({ rects, origin, zoom });
   const coarseRef = useRef(coarse);
   const cameras = useRef<Record<Mode, Camera | null>>({ plane: null, compact: null });
@@ -156,7 +157,8 @@ export function SketchMap(props: SketchMapProps) {
     const { rects: all, origin: o, zoom: z } = geometry.current;
     if (at === 'plane') return { left: camera.left, top: camera.top };
     const r = camera.id ? all.get(camera.id) : undefined;
-    return { left: 0, top: Math.max(0, r ? (r.y - o.y) * z - camera.top : camera.top) };
+    // Zoomed in, the two columns are wider than the canvas: keep the sideways place too.
+    return { left: camera.left, top: Math.max(0, r ? (r.y - o.y) * z - camera.top : camera.top) };
   }, []);
   /** The camera for a scroll position: on the phone, the first thought in view keeps its place. */
   const cameraAt = useCallback((pos: { left: number; top: number }, at: Mode): Camera => {
@@ -167,7 +169,7 @@ export function SketchMap(props: SketchMapProps) {
       const y = (r.y - o.y) * z;
       if (y + r.h * z > pos.top + 1 && (!best || y < best.y)) best = { id, y };
     }
-    return best ? { left: 0, top: best.y - pos.top, id: best.id } : { left: 0, top: pos.top, id: null };
+    return best ? { left: pos.left, top: best.y - pos.top, id: best.id } : { left: pos.left, top: pos.top, id: null };
   }, []);
   const apply = useCallback(() => {
     const el = canvasRef.current;
@@ -201,6 +203,9 @@ export function SketchMap(props: SketchMapProps) {
       record(el);
       return;
     }
+    // A thought being dragged or resized changes the layout under the person's finger: the view
+    // stays still instead of following the camera's anchor, which may be that very thought.
+    if (drag.current?.moved && drag.current.kind !== 'pan') { record(el); return; }
     // The layout changed under the camera: unless something else scrolled at the same time
     // (a moved thought scrolled into view), the browser only clamped it.
     const clamped = last ? { left: Math.min(last.left, Math.max(0, now.x)), top: Math.min(last.top, Math.max(0, now.y)) } : null;
