@@ -291,7 +291,8 @@ Not yet agent tools:
 - A task's first discussion contribution and explicit blocker, result or handoff
   contributions. Once a task thread exists, a reply joins it.
 
-The built-in playbook 1.0.0 does not name these tools yet; its revision belongs to #160.
+Since 1.2.0 the built-in playbook declares these four tools and the map tools in its
+execute/checkpoint module, and the conversation, wiki and map reads in orient/plan (#160).
 
 Co-work operations remain registry entries without tools. #153's claim adapter,
 the #160 playbook and real Codex/Claude model-driven activation are still required
@@ -300,18 +301,23 @@ before agent decomposition counts as delivered.
 ## Built-in co-work playbook (#160)
 
 The server ships one versioned instruction bundle, `COWORK_PLAYBOOK`
-(`flux.cowork` 1.1.0, in `app/packages/core/src/agent-connection/playbook.ts`). It
+(`flux.cowork` 1.2.0, in `app/packages/core/src/agent-connection/playbook.ts`). It
 has a core part and five role modules: start/resume, orient/plan,
 execute/checkpoint, request/review/fix and block/transfer/stop. Each module
 declares the MCP tools and server providers it needs. The bundle names only tools
-the MCP server registers, and a test pins this. Where a provider does not exist
+the MCP server registers, and every registered tool is declared by at least one
+module; `mcp-playbook.test.ts` pins both directions against `tools/list` and the
+bootstrap catalog. Where a provider does not exist
 yet (coordination, verified repository context), the text tells the agent to treat
 that step as unavailable rather than simulate it. Since 1.1.0 the orient/plan module
-tells the agent to read the approved project policy (below) before planning.
+tells the agent to read the approved project policy (below) before planning. Since
+1.2.0 every registered tool is declared by a module: orient/plan lists the wiki,
+conversation, map and result reads, and execute/checkpoint the doc, conversation and
+map writes with the standing-grant operation each needs.
 
 Every authenticated MCP connection delivers it in three ways:
 
-- **Resource:** `flux://playbook/flux.cowork/1.1.0` (Markdown) returns the
+- **Resource:** `flux://playbook/flux.cowork/1.2.0` (Markdown) returns the
   rendered bundle with its digest.
 - **Prompts:** `start_work` and `resume_work` are the host-invoked Start and
   Resume actions. Claude Code, for example, lists MCP prompts as slash commands.
