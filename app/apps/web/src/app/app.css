@@ -47,6 +47,7 @@ body:has(.app) { background: var(--bg-chrome); }
   transition: margin-left var(--dur-3) var(--ease-out), opacity var(--dur-2) ease, visibility 0s linear 0s;
 }
 /* The sidebar slides away and the sheet takes the width (#272 FF-5); "Show sidebar" brings it back. */
+.top__show-side { flex: none; margin: 0 6px 0 -8px; }
 .app[data-side="hidden"] .app__side { margin-left: calc(-1 * var(--side-w)); opacity: 0; visibility: hidden;
   transition: margin-left var(--dur-3) var(--ease-out), opacity var(--dur-2) ease, visibility 0s linear var(--dur-3); }
 .app[data-side="hidden"] .app__main { margin-left: max(var(--sheet-inset), env(safe-area-inset-left)); }

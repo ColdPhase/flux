@@ -31,7 +31,7 @@
 .agents__now { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: -8px 0 0; font-size: var(--fs-sm); color: var(--text-2); }
 .agents__now-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--text-3); }
 /* Static: a task's status never claims that anything is running right now (FF-1). */
-.agents__now-dot.is-in_progress { border-color: var(--accent); border-right-color: transparent; }
+.agents__now-dot.is-in_progress { border-color: var(--accent); background: linear-gradient(90deg, var(--accent) 50%, transparent 50%); }
 .agents__now-dot.is-blocked { border-color: var(--warning); background: var(--warning); }
 .agents__now-dot.is-done { border-color: var(--ok); background: var(--ok); }
 .agents__now.is-need { color: var(--text); }

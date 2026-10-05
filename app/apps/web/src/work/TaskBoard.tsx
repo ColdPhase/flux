@@ -39,6 +39,8 @@ export const columnOf = (status: WorkStatus): ColumnId =>
 
 /** A short, stable label of the task's own id; the full id is its title and in Details. */
 export const shortId = (id: string) => id.replace(/-/g, '').slice(0, 8).toUpperCase();
+/** Two titles that read the same, ignoring case, spacing and a trailing ellipsis. */
+const sameText = (a: string, b: string) => { const tidy = (text: string) => text.replace(/\s+/g, ' ').replace(/[.…]+$/, '').trim().toLowerCase(); return tidy(a) === tidy(b) || tidy(b).startsWith(tidy(a)) && /[.…]$/.test(a.trim()); };
 
 /** One card: a bounded native task row, not a full WorkItem. */
 type BoardTask = WorkRowProjection;
@@ -168,7 +170,8 @@ function Card({ item, from, column, meId, writable, hintId, saving, dragged, lif
     <li className={classes} data-card-id={item.id} aria-busy={saving || undefined}
       onPointerDown={onPointerDown} onClickCapture={onClickCapture} onDragStart={(event) => event.preventDefault()}>
       <div className="tb-card__top">
-        <span className="tb-card__id" title={`Task ${item.id}`}><span className="ui-vh">Task ID </span>{shortId(item.id)}</span>
+        {/* The internal id stays for search and reference but is not shown: a hex code is noise on a card (#272 FF-1). */}
+        <span className="tb-card__id ui-vh" title={`Task ${item.id}`}>Task ID {shortId(item.id)}</span>
         {state ? <span className={`tb-card__state${blocked ? ' tb-card__state--blocked' : ''}`}>{blocked ? <Icon name="alert" size={12} /> : null}{state}</span> : null}
         {writable ? (
           <IconButton ref={menuButton} icon="more" size={15} label="Move to…" className="tb-card__menu" aria-haspopup="menu" aria-expanded={menuOpen}
@@ -182,7 +185,8 @@ function Card({ item, from, column, meId, writable, hintId, saving, dragged, lif
       {blocked ? <p className="tb-card__blocker">{item.blocker ? `Waiting for ${item.blocker}` : 'Blocked; nobody wrote down what it waits for yet.'}</p> : null}
       {from ? (
         <Link className="tb-card__from" to={from.to} draggable={false} title={`${from.kind}: ${from.title}`}>
-          <Icon name={from.icon} size={12} /><span><span className="ui-vh">{from.kind}: </span>{from.title}</span>
+          {/* When the source only repeats the task's title, the line says where it came from instead (#272 FF-1). */}
+          <Icon name={from.icon} size={12} />{sameText(from.title, item.title) ? <span>{from.kind}</span> : <span><span className="ui-vh">{from.kind}: </span>{from.title}</span>}
         </Link>
       ) : null}
       <div className="tb-card__foot">

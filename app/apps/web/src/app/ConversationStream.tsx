@@ -469,6 +469,14 @@ export function ConversationStream({ project, meId, roots: stream, notices, auth
   }
 
   const dayOf = entries.map((entry) => day(entry.at));
+  // Several tasks one person created in a row read as one list (#272 FF-1, visual review of #267): the
+  // first says who, the rest are just their titles. Each one stays its own announcement and link.
+  const continues = entries.map((entry, index) => {
+    const before = entries[index - 1];
+    return entry.kind === 'notice' && before?.kind === 'notice' && dayOf[index - 1] === dayOf[index]
+      && before.notice.createdBy.kind === entry.notice.createdBy.kind && before.notice.createdBy.id === entry.notice.createdBy.id
+      && Date.parse(entry.at) - Date.parse(before.at) < 10 * 60_000;
+  });
   const below = newBelowText(newBelow.messages, newBelow.tasks);
   return (<>
     <div className="convo-stream">
@@ -484,7 +492,7 @@ export function ConversationStream({ project, meId, roots: stream, notices, auth
               {entries.map((entry, index) => {
                 const label = dayOf[index]!;
                 const divider = index === 0 || dayOf[index - 1] !== label ? <li className="project-convo__day" key={`day-${entry.key}`}><span>{label}</span></li> : null;
-                if (entry.kind === 'notice') return [divider, <NoticeItem key={entry.key} notice={entry.notice} meId={meId} row={referenceWork.rows.get(`work:${entry.notice.workId}`) ?? null} onOpenTask={(id) => openDetails({ kind: 'work', id })} />];
+                if (entry.kind === 'notice') return [divider, <NoticeItem key={entry.key} notice={entry.notice} meId={meId} continued={continues[index]!} row={referenceWork.rows.get(`work:${entry.notice.workId}`) ?? null} onOpenTask={(id) => openDetails({ kind: 'work', id })} />];
                 const { root } = entry;
                 return [divider, <RootItem key={entry.key} root={root} project={project} meId={meId} author={author} messageWork={messageWork}
                   taskRow={root.task ? referenceWork.rows.get(`work:${root.task.workId}`) ?? null : null}
@@ -518,14 +526,15 @@ function creatorName(creator: NamedPrincipal, meId: string) {
  * One compact announcement that a task was created (UI116-3): who created it, its current title and a
  * link that opens exactly that task. It is not a message, so it has no replies or actions of its own.
  */
-function NoticeItem({ notice, meId, row, onOpenTask }: { notice: TaskCreationNotice; meId: string; row: NativeWorkRow | null; onOpenTask: (workId: string) => void }) {
+function NoticeItem({ notice, meId, row, continued = false, onOpenTask }: { notice: TaskCreationNotice; meId: string; row: NativeWorkRow | null; continued?: boolean; onOpenTask: (workId: string) => void }) {
   // The task's current title from the visible reference read (#155); the announced title until it answers.
   const title = row?.kind === 'work' && row.id === notice.workId ? row.title : notice.workTitle;
   return (
-    <li className="convo-notice" id={`notice-${notice.id}`} data-work-id={notice.workId}>
+    <li className={`convo-notice${continued ? ' convo-notice--more' : ''}`} id={`notice-${notice.id}`} data-work-id={notice.workId}>
       <span className="convo-notice__icon" aria-hidden="true"><Icon name="tasks" size={14} /></span>
       <span className="convo-notice__body">
-        <span className="convo-notice__meta">New task · {creatorName(notice.createdBy, meId)}</span>
+        {/* In a run, who and when are said once, above; assistive technology still hears them for each task. */}
+        <span className={`convo-notice__meta${continued ? ' ui-vh' : ''}`}>New task · {creatorName(notice.createdBy, meId)}</span>
         <button type="button" className="convo-notice__task" data-native-ref={`work:${notice.workId}`} onClick={() => onOpenTask(notice.workId)} aria-label={`Open task: ${title}`}>
           <span className="convo-notice__title">{title}</span><Icon name="chevron-right" size={14} />
         </button>

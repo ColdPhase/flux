@@ -106,3 +106,9 @@
 .convo-notice + .convo-notice { margin-top: -12px; }
 .convo-notice__title { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
 @media (max-width: 640px) { .convo-notice { margin: 14px 0; } .convo-notice + .convo-notice { margin-top: -6px; } }
+
+/* A run of tasks one person created reads as one list (#272): the rest of the run shows only titles. */
+.convo-notice.convo-notice--more { margin-top: -18px; }
+.convo-notice--more .convo-notice__icon { visibility: hidden; }
+.convo-notice--more > time { visibility: hidden; }
+@media (max-width: 640px) { .convo-notice.convo-notice--more { margin-top: -10px; } }
