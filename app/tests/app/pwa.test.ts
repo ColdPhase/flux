@@ -122,6 +122,7 @@ describe('compressed app files', () => {
       assert.equal(br.headers['content-encoding'], 'br', asset);
       assert.equal(br.headers['content-type'], plain.headers['content-type'], asset);
       assert.equal(br.headers['cache-control'], 'public, max-age=31536000, immutable', asset);
+      for (const answer of [plain, br]) assert.match(String(answer.headers.vary), /accept-encoding/i, `${asset} varies by encoding`);
       assert.deepEqual(brotliDecompressSync(br.bytes), plain.bytes, `${asset} decodes to the same bytes`);
       assert.ok(br.bytes.length < plain.bytes.length / 2, `${asset}: ${br.bytes.length} of ${plain.bytes.length} bytes`);
       const gz = await raw(asset, 'gzip');

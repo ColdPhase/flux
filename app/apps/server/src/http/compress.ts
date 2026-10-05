@@ -1,6 +1,7 @@
 import { promisify } from 'node:util';
 import { brotliCompress, constants, gzip } from 'node:zlib';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { AUTH_BASE_PATH } from '@flux/contracts';
 
 const brotli = promisify(brotliCompress);
 const gzipAsync = promisify(gzip);
@@ -31,8 +32,8 @@ export function chooseEncoding(acceptEncoding: string | undefined): 'br' | 'gzip
  */
 export function useJsonCompression(app: FastifyInstance) {
   app.addHook('onSend', async (request: FastifyRequest, reply: FastifyReply, payload: unknown) => {
-    if (request.method === 'HEAD' || reply.getHeader('content-encoding')) return payload;
-    if (request.url.startsWith('/api/auth/') || !request.url.startsWith('/api/')) return payload;
+    if (reply.getHeader('content-encoding')) return payload;
+    if (request.url.startsWith(`${AUTH_BASE_PATH}/`) || !request.url.startsWith('/api/')) return payload;
     if (typeof payload !== 'string' && !Buffer.isBuffer(payload)) return payload;
     if (!/^application\/(?:[\w.+-]+\+)?json\b/.test(String(reply.getHeader('content-type') ?? ''))) return payload;
     const bytes = typeof payload === 'string' ? Buffer.from(payload) : payload;
@@ -40,7 +41,8 @@ export function useJsonCompression(app: FastifyInstance) {
     const vary = String(reply.getHeader('vary') ?? '');
     if (!/\baccept-encoding\b/i.test(vary)) reply.header('vary', vary ? `${vary}, Accept-Encoding` : 'Accept-Encoding');
     const encoding = chooseEncoding(request.headers['accept-encoding']);
-    if (!encoding) return payload;
+    // HEAD carries the same Vary as GET; its body is never sent, so it is not compressed.
+    if (!encoding || request.method === 'HEAD') return payload;
     const compressed = encoding === 'br'
       ? await brotli(bytes, { params: { [constants.BROTLI_PARAM_QUALITY]: 5, [constants.BROTLI_PARAM_SIZE_HINT]: bytes.length } })
       : await gzipAsync(bytes, { level: 6 });

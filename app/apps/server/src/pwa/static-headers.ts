@@ -9,6 +9,8 @@ import { basename } from 'node:path';
 export function setStaticHeaders(res: { setHeader(name: string, value: string): unknown }, filePath: string) {
   // A precompressed copy (`sw.js.br`, #266) gets the headers of the file it stands for.
   const name = basename(filePath).replace(/\.(?:br|gz)$/, '');
+  // The same URL answers Brotli, gzip or plain bytes (#266), so every cache must key on the encoding.
+  res.setHeader('Vary', 'Accept-Encoding');
   if (/[/\\]assets[/\\]/.test(filePath)) {
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     return;

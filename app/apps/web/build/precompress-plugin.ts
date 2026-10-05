@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { brotliCompressSync, constants, gzipSync } from 'node:zlib';
 import type { Plugin, ResolvedConfig } from 'vite';
 
@@ -21,7 +21,7 @@ export function fluxPrecompress(minBytes = 1024): Plugin {
       config = resolved;
     },
     closeBundle() {
-      const outDir = join(config.root, config.build.outDir);
+      const outDir = resolve(config.root, config.build.outDir);
       const walk = (dir: string) => {
         for (const name of readdirSync(dir)) {
           const path = join(dir, name);
