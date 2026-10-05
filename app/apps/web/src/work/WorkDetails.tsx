@@ -13,6 +13,7 @@ import { acceptDecision, createResult, getDecision, getResult, getWork, listAgen
 import { STATUS_LABEL, decisionLine, firstLine, isFinished, linked, resultLine, shortDate } from './format';
 import { docsLinking } from '../docs/AddToDoc';
 import { TaskDiscussionSection } from './TaskDiscussion';
+import { ReadyToClose, TaskPullRequests } from '../github/TaskPullRequests';
 
 // The Details panel for work items, decisions and results, and the two forms that start from a
 // message (#101). Everything shown here is visible to the people with access to the project;
@@ -175,6 +176,7 @@ function WorkPanel({ item, context, reload }: { item: WorkItem; context: Context
       <h3 className="details__title">{item.title}</h3>
       {item.outcome ? <p className="details__lead">{item.outcome}</p> : null}
       {item.status === 'blocked' && item.blocker ? <p className="wd-blocker"><Icon name="alert" size={14} />Blocked: {item.blocker}</p> : null}
+      <ReadyToClose item={item} writable={writable} busy={busy} done={() => void change({ status: 'done' })} />
       {!isFinished(item) ? <LiveEntry variant="inline" anchor={liveAnchor} /> : null}
 
       {writable ? (
@@ -220,6 +222,8 @@ function WorkPanel({ item, context, reload }: { item: WorkItem; context: Context
       ) : null}
 
       {item.prerequisites.length ? <Prerequisites item={item} openDetails={openDetails} /> : null}
+
+      <TaskPullRequests item={item} project={context.project} writable={writable} reload={reload} />
 
       <section className="details__sec" aria-labelledby="wd-from">
         <h4 id="wd-from">Came from</h4>
