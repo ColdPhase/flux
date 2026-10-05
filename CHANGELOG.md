@@ -52,6 +52,8 @@ repository was created on 2026-09-26.
 - Sketches: persistent maps of connected thoughts ([#100](https://github.com/ColdPhase/flux/pull/100)).
   - A stable personal list view ([#146](https://github.com/ColdPhase/flux/pull/146)).
   - Draft-before-save for new thoughts ([#158](https://github.com/ColdPhase/flux/pull/158)).
+  - Paste lines, a link or an image onto a map as a private draft; a project map keeps
+    the image as a stored file ([#257](https://github.com/ColdPhase/flux/pull/257)).
 - Work items, decisions and results linked to the conversations they came from
   ([#105](https://github.com/ColdPhase/flux/pull/105)). Native tasks gained
   criteria, prerequisites and plan intent ([#171](https://github.com/ColdPhase/flux/pull/171)).
