@@ -240,7 +240,7 @@
   .sk-plus--labelled { width: auto; gap: 6px; padding: 0 16px 0 14px; border-radius: var(--r-pill); font-size: var(--fs-md); font-weight: 500; }
 .sk-edit-btn { min-height: 44px; min-width: 44px; padding: 0 16px; font-size: var(--fs-md); }
   .sk-li-t, .sk-li-edit, .sk-title { min-height: 44px; }
-  .sk-zoom button { min-width: 44px; height: 44px; }
+  .sk-zoom button, .sk-zoom .sk-zoom__fit { min-width: 44px; height: 44px; }
   /* The count stays compact inside the thought; its touch target reaches 44px around it. */
   .sk { --sk-work-h: 28px; }
   .sk-work--map::before { content: ''; position: absolute; inset: -8px -4px; }

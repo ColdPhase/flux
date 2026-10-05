@@ -83,34 +83,59 @@ LONGEST_LINE = r"""(selector) => {
   return {longest, sample};
 }"""
 
+# Names an element for a failure message.
+NAME = r"""const name = (n) => !n ? 'nothing' : `${n.tagName.toLowerCase()}${n.id ? '#' + n.id : ''}.${String(n.className).trim().split(/\s+/).slice(0, 2).join('.')}${n.getAttribute('aria-label') ? `[${n.getAttribute('aria-label').slice(0, 24)}]` : ''}`;"""
+
 # Brings an element into view inside its own scroller and reports whether all of it is on screen
 # and actually hit at its centre and near each edge (nothing clips or covers it).
 REACH = r"""(el) => {
+  """ + NAME + r"""
   el.scrollIntoView({block: 'nearest', inline: 'nearest'});
   const b = el.getBoundingClientRect();
   const inside = b.width > 0 && b.height > 0 && b.left >= -0.5 && b.right <= innerWidth + 0.5 && b.top >= -0.5 && b.bottom <= innerHeight + 0.5;
-  const mine = (x, y) => { const hit = document.elementFromPoint(x, y); return !!hit && (hit === el || el.contains(hit)); };
   const inset = Math.min(3, b.width / 4, b.height / 4);
-  const points = [[b.left + b.width / 2, b.top + b.height / 2], [b.left + inset, b.top + b.height / 2], [b.right - inset, b.top + b.height / 2],
-                  [b.left + b.width / 2, b.top + inset], [b.left + b.width / 2, b.bottom - inset]];
-  return {inside, hit: points.every(([x, y]) => mine(x, y)), box: [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)]};
+  const points = {centre: [b.left + b.width / 2, b.top + b.height / 2], left: [b.left + inset, b.top + b.height / 2], right: [b.right - inset, b.top + b.height / 2],
+                  top: [b.left + b.width / 2, b.top + inset], bottom: [b.left + b.width / 2, b.bottom - inset]};
+  const covered = {};
+  for (const [where, [x, y]] of Object.entries(points)) {
+    const hit = document.elementFromPoint(x, y);
+    if (!hit || !(hit === el || el.contains(hit))) covered[where] = name(hit);
+  }
+  const why = {};
+  if (Object.keys(covered).length) {
+    why.inert = name(el.closest('[inert]'));
+    why.interactivity = getComputedStyle(el).interactivity;
+  }
+  return {inside, hit: !Object.keys(covered).length, covered, ...why, box: [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)]};
 }"""
 
-# The element's own hit area around its centre reaches 44 px across and down (pseudo-element
-# extensions such as a stretched card link count; neighbouring controls do not).
+# The element's own hit area, measured from its centre outwards in half-pixel steps along both
+# axes until another element (or nothing) is hit. Pseudo-element extensions such as a stretched
+# card link count; a neighbouring control or a covering bar ends the target.
 TARGET_JS = r"""(el) => {
+  """ + NAME + r"""
   el.scrollIntoView({block: 'nearest', inline: 'nearest'});
   const b = el.getBoundingClientRect();
-  const cx = b.left + b.width / 2, cy = b.top + b.height / 2, d = 21.5;
+  const cx = b.left + b.width / 2, cy = b.top + b.height / 2;
   const mine = (x, y) => { const hit = document.elementFromPoint(x, y); return !!hit && (hit === el || el.contains(hit)); };
-  const misses = [[cx - d, cy], [cx + d, cy], [cx, cy - d], [cx, cy + d]].filter(([x, y]) => !mine(x, y)).map(([x, y]) => [Math.round(x - cx), Math.round(y - cy)]);
-  return {size: [Math.round(b.width), Math.round(b.height)], misses};
+  const reach = (dx, dy) => { let d = 0; while (d < 60 && mine(cx + dx * (d + 0.5), cy + dy * (d + 0.5))) d += 0.5; return {d, stop: name(document.elementFromPoint(cx + dx * (d + 0.5), cy + dy * (d + 0.5)))}; };
+  const l = reach(-1, 0), r = reach(1, 0), u = reach(0, -1), dn = reach(0, 1);
+  return {size: [Math.round(b.width), Math.round(b.height)], across: l.d + r.d + 0.5, down: u.d + dn.d + 0.5,
+          stops: {left: l.stop, right: r.stop, up: u.stop, down: dn.stop}};
 }"""
 
-SIDEWAYS = r"""() => ({
-  page: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - innerWidth,
-  sheet: (() => { const el = document.querySelector('.app__main'); return el ? el.scrollWidth - el.clientWidth : 0; })(),
-})"""
+SIDEWAYS = r"""() => {
+  """ + NAME + r"""
+  const main = document.querySelector('.app__main');
+  const edge = main ? main.getBoundingClientRect() : null;
+  const wider = [];
+  if (main) for (const el of main.querySelectorAll('*')) {
+    const box = el.getBoundingClientRect();
+    if (box.width && (box.right > edge.right + 0.5 || box.left < edge.left - 0.5)) wider.push(`${name(el)} ${Math.round(box.left)}–${Math.round(box.right)}`);
+  }
+  return {page: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - innerWidth,
+          sheet: main ? main.scrollWidth - main.clientWidth : 0, sheetEdge: edge ? [Math.round(edge.left), Math.round(edge.right)] : null, wider: wider.slice(0, 6)};
+}"""
 
 FIRST_IN_VIEW = r"""() => {
   const feed = document.querySelector('.project-convo__feed');
@@ -121,6 +146,10 @@ FIRST_IN_VIEW = r"""() => {
   }
   return null;
 }"""
+
+# Every finite animation (a view sliding in, a sheet arriving) has finished: layout is measured at
+# rest, not mid-transition. Endless indicators are ignored.
+SETTLED = """() => document.getAnimations().every((a) => a.playState !== 'running' || a.effect?.getComputedTiming().endTime === Infinity)"""
 
 CAMERA = "() => { const c = document.querySelector('.sk-canvas'); return {left: Math.round(c.scrollLeft), top: Math.round(c.scrollTop)}; }"
 
@@ -149,7 +178,11 @@ class AdaptiveBase(unittest.TestCase):
         size = page.viewport_size
         return f"{size['width']}×{size['height']}"
 
+    def settle(self, page: Page) -> None:
+        page.wait_for_function(SETTLED, timeout=5000)
+
     def no_sideways_scroll(self, page: Page, surface: str) -> None:
+        self.settle(page)
         overflow = page.evaluate(SIDEWAYS)
         self.check(overflow["page"] <= 0, f"{surface} at {self.where(page)}: no horizontal page scroll ({overflow})")
         self.check(overflow["sheet"] <= 0, f"{surface} at {self.where(page)}: nothing overflows the work sheet sideways ({overflow})")
@@ -163,6 +196,7 @@ class AdaptiveBase(unittest.TestCase):
 
     def reachable(self, locator: Locator, what: str) -> dict:
         expect(locator, what).to_be_visible()
+        self.settle(locator.page)
         result = locator.evaluate(REACH)
         self.check(result["inside"], f"{what} lies fully inside the viewport: {result}")
         self.check(result["hit"], f"{what} is not clipped or covered: {result}")
@@ -172,13 +206,15 @@ class AdaptiveBase(unittest.TestCase):
         if not page.evaluate("matchMedia('(pointer: coarse)').matches"):
             return
         result = locator.evaluate(TARGET_JS)
-        self.check(result["misses"] == [], f"{what} at {self.where(page)} offers a {TARGET} px touch target: {result}")
+        # Half-pixel sampling: a 44 px target measures at least 43.5 px.
+        self.check(min(result["across"], result["down"]) >= TARGET - 0.5, f"{what} at {self.where(page)} offers a {TARGET} px touch target: {result}")
 
     def primary(self, page: Page, locator: Locator, what: str) -> None:
         self.reachable(locator, f"{what} at {self.where(page)}")
         self.target(page, locator, what)
 
     def measure(self, page: Page, selector: str, what: str) -> int:
+        self.settle(page)
         result = page.evaluate(LONGEST_LINE, selector)
         self.assertGreater(result["longest"], 0, f"{what} has rendered text at {self.where(page)}")
         self.check(result["longest"] <= MEASURE, f"{what} at {self.where(page)} keeps a readable measure: {result}")

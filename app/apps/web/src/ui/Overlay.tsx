@@ -13,7 +13,12 @@ let inertCount = 0;
 function setAppInert(on: boolean) {
   const root = document.getElementById('root');
   inertCount = Math.max(0, inertCount + (on ? 1 : -1));
-  if (root) root.inert = inertCount > 0;
+  if (!root) return;
+  root.inert = inertCount > 0;
+  // Chromium can keep an animated element's inert style after the root leaves inert: on a phone the
+  // work pane stayed untappable after Details closed, from its next view slide on (#151). A changed
+  // inherited custom property makes every element below the root compute its style again.
+  root.style.setProperty('--app-inert', inertCount > 0 ? '1' : '0');
 }
 
 /** Keeps a component mounted while its exit animation runs. */
