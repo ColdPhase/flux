@@ -323,12 +323,18 @@ function AppLayoutContent() {
     const distance = from && to && from !== to ? 28 : 12;
     previousView.current = index;
     const area = areaOf(location.pathname);
-    const newArea = area !== previousArea.current;
+    const before = previousArea.current;
     previousArea.current = area;
     // Moving to another place (Home, a project, a conversation) rises in gently, so the change of place is
     // felt as well as seen (#272 FF-9); views within a place keep their sideways slide.
-    if (!direction && newArea) {
-      void play(paneRef.current, [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], duration('--dur-2'), '--ease-out', { fill: 'backwards' });
+    if (!direction && area !== before) {
+      // A list opening one of its places pushes in from the right, and going back to the list slides in
+      // from the left, as a phone's navigation does (#264: "push in, swipe back"); other moves rise in.
+      const depth = (key: string) => (/^\/(projects|dm)\//.test(key) ? 2 : 1);
+      const push = Math.sign(depth(area) - depth(before));
+      void play(paneRef.current, push
+        ? [{ opacity: 0, transform: `translateX(${push * 24}px)` }, { opacity: 1, transform: 'none' }]
+        : [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], duration('--dur-2'), '--ease-out', { fill: 'backwards' });
       return;
     }
     if (!direction) return;
