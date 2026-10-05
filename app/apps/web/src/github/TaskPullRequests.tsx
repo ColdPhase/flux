@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import {
   githubTaskRulePath, githubTaskRuleResumePath, type GithubCapabilities, type GithubRuleChange, type GithubRuleMode, type GithubTaskLink,
   type GithubTaskRuleView, type Project, type WorkItem,
@@ -46,17 +46,22 @@ export function TaskPullRequests({ item, project, writable, reload }: { item: Wo
   const [error, setError] = useState('');
   const modeId = useId();
   const hasRule = !!item.githubRule;
+  // A rule change (Ready to close, a pause) keeps the task version; its own timestamp reloads the history.
+  const ruleStamp = item.githubRule?.updatedAt ?? '';
   // The private PR projection needs this reader's own GitHub authorization; without it the rule still shows.
-  const load = useCallback(async (signal: AbortSignal) => {
-    const [capabilities, rule] = await Promise.all([
-      request<GithubCapabilities>(`/api/v1/projects/${project.id}/github/capabilities`, { signal }).catch(() => null),
-      hasRule ? request<GithubTaskRuleView>(githubTaskRulePath(item.id), { signal }).catch(() => null) : Promise.resolve(null),
-    ]);
-    const pulls = capabilities?.status === 'configured' && capabilities.authorization === 'connected'
-      ? await request<GithubTaskLink[]>(`/api/v1/work/${item.id}/github-links`, { signal }).catch(() => []) : [];
-    if (!signal.aborted) { setLinks(pulls); setView(rule); }
-  }, [project.id, item.id, hasRule]);
-  useEffect(() => { const controller = new AbortController(); void load(controller.signal); return () => controller.abort(); }, [load, item.version]);
+  useEffect(() => {
+    const controller = new AbortController(); const { signal } = controller;
+    (async () => {
+      const [capabilities, rule] = await Promise.all([
+        request<GithubCapabilities>(`/api/v1/projects/${project.id}/github/capabilities`, { signal }).catch(() => null),
+        hasRule ? request<GithubTaskRuleView>(githubTaskRulePath(item.id), { signal }).catch(() => null) : Promise.resolve(null),
+      ]);
+      const pulls = capabilities?.status === 'configured' && capabilities.authorization === 'connected'
+        ? await request<GithubTaskLink[]>(`/api/v1/work/${item.id}/github-links`, { signal }).catch(() => []) : [];
+      if (!signal.aborted) { setLinks(pulls); setView(rule); }
+    })().catch(() => undefined);
+    return () => controller.abort();
+  }, [project.id, item.id, item.version, ruleStamp, hasRule]);
 
   const rule = item.githubRule;
   const required = links.filter((link) => link.role === 'required_output');

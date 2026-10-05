@@ -133,8 +133,7 @@ export function githubRows(db: DbExecutor) {
       return new Map((await db.select().from(r).where(inArray(r.taskId, [...taskIds]))).map((row) => [row.taskId, ruleView(row)]));
     },
     async saveRule(rule: Rule) {
-      const { taskId, ...rest } = rule;
-      await db.insert(r).values(rule).onConflictDoUpdate({ target: r.taskId, set: rest });
+      await db.insert(r).values(rule).onConflictDoUpdate({ target: r.taskId, set: { ...rule } });
     },
     async activeRules(bindingId: string) {
       return (await db.select().from(r).where(and(eq(r.state, 'active'), sql`EXISTS (SELECT 1 FROM github_task_links gl
