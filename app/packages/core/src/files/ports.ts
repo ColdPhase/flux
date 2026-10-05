@@ -50,6 +50,8 @@ export interface FileRepository {
   messageFiles(messageIds: readonly string[]): Promise<Map<string, MessageFile[]>>;
   /** #252: publishes a ready, unpublished file as the image of one map thought; false when it is not both. */
   publishToThought(id: string, thoughtId: string, publishedAt: Date): Promise<boolean>;
+  /** #252: whether a file (of any project) is already published as the image of this thought id. */
+  hasThoughtImage(thoughtId: string): Promise<boolean>;
 }
 
 /** Bytes received into owned private scratch, measured and hashed, not yet durable under a final id. */

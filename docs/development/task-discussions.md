@@ -404,7 +404,9 @@ both empty. After publication anyone who can read the project downloads it
 has no foreign key: removing the thought neither unpublishes nor deletes the
 file. Re-creating that same thought ID with the same file (Undo) is accepted;
 any other reuse is `409 ATTACHMENT_ALREADY_PUBLISHED`, and a published thought
-image cannot be attached to a message. Project sketch thoughts carry
+image cannot be attached to a message. A thought ID keeps at most one image in any
+project, so re-creating a removed image thought's ID with another file is
+`409 THOUGHT_IMAGE_EXISTS` and that file stays staged. Project sketch thoughts carry
 `file { id, name, size }` when they have an image. Portable export format 1 leaves
 these images out (listed in its exclusions); full backups keep them.
 Migration 0051 takes the next number after the 0046–0050 numbers reserved by

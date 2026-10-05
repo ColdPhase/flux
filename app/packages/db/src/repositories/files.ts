@@ -71,6 +71,10 @@ export function fileRows(db: DbExecutor) {
         .where(and(eq(f.id, id), eq(f.state, 'ready'), isNull(f.publishedAt))).returning({ id: f.id });
       return rows.length === 1;
     },
+    /** #252: one image per thought id across projects (`project_files_thought_idx`); a removed thought keeps its file. */
+    async hasThoughtImage(thoughtId: string) {
+      return (await db.select({ id: f.id }).from(f).where(eq(f.thoughtId, thoughtId)).limit(1)).length === 1;
+    },
     /** The images of these thoughts in one project, by thought id. */
     async thoughtFiles(projectId: string, thoughtIds: readonly string[]) {
       const files = new Map<string, MessageFile>();

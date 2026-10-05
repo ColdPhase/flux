@@ -210,3 +210,25 @@ test('an image is published once: Undo restores the same thought, nothing else c
   const map = await detail(f.reader, f.map.id);
   assert.deepEqual(map.thoughts.filter((thought) => thought.file).map((thought) => thought.id), [id]);
 });
+
+test('a removed image thought\'s id comes back only with its own image, in any project', async () => {
+  const f = await scene();
+  const first = (await upload(f.writer, f.place.id, PNG)).body;
+  const id = randomUUID();
+  const created = expectStatus(await place(f.writer, f.map.id, { id, fileId: first.id }), 201) as CreatedThought;
+  expectStatus(await f.writer.browser.request('DELETE', `/api/v1/sketches/${f.map.id}/thoughts/${id}`, { headers: { 'if-match': `"${created.thought.version}"` } }), 204);
+  // Another staged file under that id is a conflict, not a server error, and the file stays private staging.
+  const second = (await upload(f.writer, f.place.id, PNG, 'second.png')).body;
+  const again = await place(f.writer, f.map.id, { id, fileId: second.id });
+  assert.deepEqual([again.status, code(again)], [409, 'THOUGHT_IMAGE_EXISTS']);
+  assert.deepEqual([(await row(second.id)).thoughtId, (await row(second.id)).publishedAt], [null, null]);
+  // The same id with an image of another project's map is refused the same way.
+  const elsewhere = expectStatus(await f.writer.browser.request('POST', `/api/v1/workspaces/${f.ws.id}/sketches`,
+    { body: { title: 'Reading corner map', scope: 'project', projectId: f.elsewhere.id } }), 201) as Sketch;
+  const other = (await upload(f.writer, f.elsewhere.id, PNG, 'other.png')).body;
+  const crossProject = await place(f.writer, elsewhere.id, { id, fileId: other.id });
+  assert.deepEqual([crossProject.status, code(crossProject)], [409, 'THOUGHT_IMAGE_EXISTS']);
+  // Undo still restores the thought with its own image.
+  const restored = expectStatus(await place(f.writer, f.map.id, { id, fileId: first.id }), 201) as CreatedThought;
+  assert.equal(restored.thought.file?.id, first.id);
+});

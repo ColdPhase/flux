@@ -113,6 +113,9 @@ export async function placeThoughtImage(files: FileRepository, storage: Pick<Fil
   if (isPublished(row)) throw new ConflictError(row.messageId !== null ? 'A file is already attached to a message'
     : 'A file is already the image of another map thought', 'ATTACHMENT_ALREADY_PUBLISHED');
   if (!same(row.uploader, author) || !row.expiresAt || row.expiresAt <= clock()) throw attachmentUnavailable();
+  // A removed thought keeps its published image, so its id can come back only with that image (Undo, above).
+  if (await files.hasThoughtImage(input.thoughtId))
+    throw new ConflictError('This thought id already has another image; add the image as a new thought', 'THOUGHT_IMAGE_EXISTS');
   const bytes = await storage.read(row.id);
   if (!bytes || bytes.byteLength !== row.size || createHash('sha256').update(bytes).digest('hex') !== row.sha256) throw attachmentUnavailable();
   if (!imageTypeOf(bytes)) throw new InvalidInputError('Only a PNG, JPEG, GIF or WebP image can be placed on a map', 'UNSUPPORTED_IMAGE');
