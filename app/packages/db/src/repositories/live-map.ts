@@ -19,6 +19,8 @@ export function liveMapRows<Change extends Record<string,unknown>>(db:DbExecutor
   const alive = sql`LEAST(clock_timestamp()+interval '5 seconds',(SELECT expires_at FROM auth_sessions WHERE id=${g.sessionId}))`;
   return {
     head,
+    /** Non-locking: whether this map has an established live room. An ordinary map takes no live preparation. */
+    async exists(sketchId:string) { const [row]=await db.select({sketchId:h.sketchId}).from(h).where(eq(h.sketchId,sketchId)).limit(1);return !!row; },
     async ensureHead(sketchId:string,workspaceId:string) {
       await db.insert(h).values({sketchId,workspaceId,generation:randomUUID()}).onConflictDoNothing();return (await head(sketchId))!;
     },

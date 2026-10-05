@@ -1,12 +1,12 @@
 import { z } from 'zod';
 import type { AgentExecutionCommand, AgentJsonValue, AgentOperation, AgentPostcondition, AuthenticatedAgentRuntime,
   ObjectRef } from '@flux/contracts';
-import { sketchRows } from '@flux/db';
+import { sketchRows, type DbExecutor } from '@flux/db';
 import { agentExecutionUseCases, requestHash, type Database, type Principal } from '@flux/core';
 import { nativeConversationsInEventSession } from '../conversation/store.js';
 import { nativeDocsInEventSession } from '../docs/adapters.js';
-import { prepareNativeMap } from '../editing/native-map-journal.js';
-import { nativeSketchInEventSession } from '../sketches/adapters.js';
+import { nativeMapRoomExists, prepareNativeMap } from '../editing/native-map-journal.js';
+import { nativeCapacityRefusal, nativeSketchInEventSession } from '../sketches/adapters.js';
 import { nativeWorkInEventSession } from '../work/adapters.js';
 import { transactionEventSession } from '../work/transaction-events.js';
 import type { FluxMcpClaims } from './context.js';
@@ -60,7 +60,9 @@ export function nativeActionExecutor(db: Database, claims: FluxMcpClaims) {
     const command: AgentExecutionCommand = { runtimeSessionId: input.runtimeSessionId, grantId: input.grantId,
       clientCommandId: input.clientCommandId, projectId: input.projectId, operation, peerRequestClass: input.peerRequestClass,
       audience: { kind: 'project', projectId: input.projectId }, objectId, sources: input.sources, payload };
-    const releases=new Set<()=>void>();if(operation.startsWith('map.'))releases.add(await prepareNativeMap({claims,command}));
+    // Only a map with an established live room takes the live preparation; an ordinary map is not charged or queued.
+    const live=operation.startsWith('map.')&&objectId!==null&&await nativeMapRoomExists(db as DbExecutor,objectId);
+    const releases=new Set<()=>void>();if(live)releases.add(await prepareNativeMap({claims,command}).catch((error:unknown)=>{throw nativeCapacityRefusal(error);}));
     try {return await db.transaction(async (tx) => {
       const session = transactionEventSession(tx);
       let replayed = false;
@@ -69,7 +71,7 @@ export function nativeActionExecutor(db: Database, claims: FluxMcpClaims) {
           replayed = true;
           return { value: scope.replay.value, postconditions: scope.replay.postconditions };
         }
-        return effect({ work: nativeWorkInEventSession(tx, session), maps: nativeSketchInEventSession(tx, session,{prepared:operation.startsWith('map.'),commandId:input.clientCommandId,operation:`native-agent:${operation}`,fingerprint:requestHash(command),retainUntil:release=>releases.add(release)}),
+        return effect({ work: nativeWorkInEventSession(tx, session), maps: nativeSketchInEventSession(tx, session,{prepared:live,commandId:input.clientCommandId,operation:`native-agent:${operation}`,fingerprint:requestHash(command),retainUntil:release=>releases.add(release)}),
           docs: nativeDocsInEventSession(tx, session), conversations: nativeConversationsInEventSession(tx, session),
           agent: { kind: 'agent', id: scope.context.agentId }, runtime: scope.context,
           async mapCheckpoint(mapId) {

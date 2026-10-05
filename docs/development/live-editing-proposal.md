@@ -591,7 +591,15 @@ controllers, live HTTP, and native map HTTP/MCP journals. The existing common
 32 MiB cap and frame/chunk/assembly/window bounds remain in force. Native map
 HTTP owns its preparation before session/SQL admission; journal adapters reuse
 that reservation. MCP retains its native journal reservation through the outer
-caller transaction. A native replay still uses the immutable original actor/UUID
+caller transaction. This live preparation applies only to a map whose live room
+already exists (2026-10-05, #239 review): with the development capability off, an
+ordinary HTTP/MCP map command first makes a non-locking room-existence read; a map
+without a room is neither charged in the shared budget nor queued for native
+admission, so ordinary map traffic keeps main's concurrency. When a room appears
+between that read and the journal's locked head read, the journal admits the
+command inside its transaction (the same finite FIFO, 10-second deadline). Any
+native capacity refusal on these paths is a retryable 503 (`outcome: refused`),
+never a 500. A map that has a room stays charged in either mode. A native replay still uses the immutable original actor/UUID
 and parameters, and reprojects placed-object titles under current locked rights
 before HTTP handoff. The client confirms graph state exclusively from ordered
 server deltas; HTTP replay does not patch an old graph snapshot.

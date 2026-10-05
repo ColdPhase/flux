@@ -17,6 +17,8 @@ export async function prepareNativeMap(context:unknown) {
   catch(error){input();throw error;}
 }
 export const nativeMapAdmissionQueued=()=>admissions.queued;
+/** Non-locking room read before any live preparation; a map without a live room stays ordinary (#239 review). */
+export const nativeMapRoomExists=(db:DbExecutor,sketchId:string)=>liveMapRows(db,decodeMapChange).exists(sketchId);
 
 export interface NativeMapOptions {
   commandId?:string;sessionId?:string;fingerprint?:string;operation?:string;principal?:Principal;retainUntil?: (release:()=>void)=>void;prepared?:boolean;resourceId?:string;context?:unknown;
@@ -29,6 +31,9 @@ export function nativeMapJournal(db:DbExecutor,repository:SketchRepository,optio
   const pending=new Map<string,{room:NonNullable<Awaited<ReturnType<typeof rows.head>>>;change:MapNativeChange;commandId:string;principal:Principal}>();
   const journal:SketchLiveJournal={
     async before(principal,sketch,affected) {
+      // An unprepared command on a map without a live room stays ordinary: no live charge,
+      // admission or author requirement (#239 review). A prepared caller saw the room already.
+      if(!options.prepared&&!await rows.exists(sketch.id)){if(affected.leaseId)throw new ConflictError('No active drag lease exists','EDITING_LEASE_CHANGED');return;}
       if(principal.kind==='fixture')throw new InvalidInputError('A real map author is required');
       const releaseInput=apiEditingOutputBudget.reserve(editingMapContextCharge({principal,sketchId:sketch.id,affected,commandId:options.commandId,sessionId:options.sessionId,operation:options.operation}));
       retained.add(releaseInput);

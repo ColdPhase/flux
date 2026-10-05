@@ -123,21 +123,31 @@ export function sketchPorts(tx: Database): SketchPorts {
   };
 }
 
+/** A finite native map/output capacity refusal is a retryable 503, never an internal error. */
+export function nativeCapacityRefusal(error: unknown): unknown {
+  if(error instanceof Error&&'code' in error&&(error.code==='EDITING_MAP_CAPACITY'||error.code==='EDITING_OUTPUT_CAPACITY')&&!(error instanceof ServiceUnavailableError)) {
+    const refusal=new ServiceUnavailableError('The finite native map capacity is busy',String(error.code));refusal.details={outcome:'refused',retryable:true};return refusal;
+  }
+  return error;
+}
+
 /** One transaction per use case; on an open transaction (an idempotency scope) it nests as a savepoint. */
 export function sketchUnitOfWork(db: Database,options:NativeMapOptions={}): SketchUnitOfWork {
   return { async run<T>(work:(ports:SketchPorts)=>Promise<T>):Promise<T> {
     let release=()=>{};let releasePreparation=()=>{};
-    if(!options.prepared&&options.principal)releasePreparation=await prepareNativeMap(options.context??{principal:options.principal,sessionId:options.sessionId,resourceId:options.resourceId,commandId:options.commandId,operation:options.operation,fingerprint:options.fingerprint});
-    const prepared=options.prepared||!!options.principal;
-    try {return await db.transaction(async tx=>{
-      const ports=sketchPorts(tx);const events=transactionEventSession(tx);ports.events=events;const journal=nativeMapJournal(tx,ports.sketches,{...options,prepared});ports.live=journal.journal;release=()=>journal.release();
-      const replay=await journal.replay();if(replay.found)return replay.value as T;
-      const result=await events.run(()=>work(ports));await journal.finish(result);await events.flushEvents();return result;
-    });} catch(error) {
-      if(error instanceof Error&&'code' in error&&error.code==='EDITING_MAP_CAPACITY') {
-        const refusal=new ServiceUnavailableError('The finite native map capacity is busy','EDITING_MAP_CAPACITY');refusal.details={outcome:'refused',retryable:true};throw refusal;
-      }
-      throw error;
+    try {
+      // Only a map with an established live room takes the live preparation (#239 review); an
+      // ordinary map is neither charged nor queued. A room that appears later is admitted by the journal.
+      const live=!options.prepared&&!!options.principal&&!!options.resourceId&&await liveMapRows(db as DbExecutor,decodeMapChange).exists(options.resourceId);
+      if(live)releasePreparation=await prepareNativeMap(options.context??{principal:options.principal,sessionId:options.sessionId,resourceId:options.resourceId,commandId:options.commandId,operation:options.operation,fingerprint:options.fingerprint});
+      const prepared=!!options.prepared||live;
+      return await db.transaction(async tx=>{
+        const ports=sketchPorts(tx);const events=transactionEventSession(tx);ports.events=events;const journal=nativeMapJournal(tx,ports.sketches,{...options,prepared});ports.live=journal.journal;release=()=>journal.release();
+        const replay=await journal.replay();if(replay.found)return replay.value as T;
+        const result=await events.run(()=>work(ports));await journal.finish(result);await events.flushEvents();return result;
+      });
+    } catch(error) {
+      throw nativeCapacityRefusal(error);
     } finally {release();if(options.retainUntil)options.retainUntil(releasePreparation);else releasePreparation();}
   } };
 }
@@ -149,6 +159,6 @@ export const sketchUseCases = (db: Database,options:NativeMapOptions={}) => crea
 export function nativeSketchInEventSession(tx: Transaction, session: TransactionEventSession,options:NativeMapOptions={}) {
   const ports:SketchPorts={...sketchPorts(tx),events:session};const journal=nativeMapJournal(tx,ports.sketches,options);ports.live=journal.journal;
   return createSketchUseCases({run:(action)=>session.run(async()=>{try {const result=await action(ports);await journal.finish(result);return result;}
-    catch(error){if(error instanceof Error&&'code' in error&&error.code==='EDITING_MAP_CAPACITY'){const refusal=new ServiceUnavailableError('The finite native map capacity is busy','EDITING_MAP_CAPACITY');refusal.details={outcome:'refused',retryable:true};throw refusal;}throw error;}
+    catch(error){throw nativeCapacityRefusal(error);}
     finally{journal.release();}})});
 }
