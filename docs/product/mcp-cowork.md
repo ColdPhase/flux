@@ -20,8 +20,10 @@ Bindings, grants, tools, events and caches retain both boundaries. Changing a
 selected project in the browser cannot retarget a running agent's authorization.
 
 Keep O-002 React/Node/Fastify/PostgreSQL and shared domain commands. This section
-is mode 1 of the proposed [F-022](ai-modes.md) two AI modes; mode 2 also keeps
-provider subscription credentials off the Flux server. The supplied
+is mode (b) of the proposed [F-022](ai-modes.md) two AI modes. Mode (a)
+runtimes are sandboxed per-owner containers beside the instance, not the Flux
+server process. Vendor credentials stay in each owner's runtime volume, and the
+CLI reaches Flux only as an MCP client with mode (b) permissions. The supplied
 FastAPI/Next.js, new storage services and hosted execution diagrams are not
 adopted. This adds local external co-work; it does not move terminals, agent
 containers, browsers or provider subscription credentials into the Flux server.

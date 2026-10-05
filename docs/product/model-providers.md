@@ -8,10 +8,10 @@ support inside the Flux agent. Implementation is tracked in
 [#179](https://github.com/ColdPhase/flux/issues/179).
 **Owner:** @PelikanFix16. **Evaluator:** @Zamojski5.
 
-> **Two-mode framing: [F-022](ai-modes.md), proposed 2026-10-04 — awaiting peer review.**
-> Everything here is mode 2 (the agent in Flux) except PROV-5, which is mode 1 (your
-> agent app over MCP). F-022 adds a connection *transport* (PROV-1), a token-cap
-> variant for plan connections (PROV-3) and replaces PROV-4's subscription sentence.
+> **Two-mode framing: [F-022](ai-modes.md), revised 2026-10-05 — proposed, awaiting peer review.**
+> Everything here is mode (a) (the agent in Flux) except PROV-5, which is mode (b)
+> (your agent app over MCP). F-022 adds a connection *transport* (PROV-1), run caps
+> for `runtime` connections (PROV-3) and replaces PROV-4's subscription sentence.
 
 This decision **supersedes the Anthropic-only provider scope** of
 [O-007](background-compute.md) and [O-008](personal-runs-compute.md), O-008's
@@ -58,11 +58,12 @@ An owner may keep one or more AI connections. Each connection records:
 - **Base URL:** fixed for the named providers; owner-set for `openai_compatible`.
 - **Key:** custody as in O-007 §2, generalised per provider: "one provider workspace" means the provider account or project the key belongs to, and "revoke at Claude Platform" means revoking the key with that provider.
 - **Price:** see PROV-3.
-- **Transport ([F-022](ai-modes.md#aim-2--mode-2-the-agent-in-flux)):** `server`
+- **Transport ([F-022](ai-modes.md#aim-1--mode-a-the-agent-in-flux)):** `server`
   (the Flux worker calls the provider with the key above; every provider kind) or
-  `companion` (the owner's Flux companion calls the provider; only `chatgpt_plan`,
-  [AIM-3](ai-modes.md#aim-3--the-companion-and-the-chatgpt-plan-connection-mode-2)).
-  A `companion` connection has no key in Flux.
+  `runtime` (the owner's unmodified official CLI, client `claude_code` or `codex`,
+  runs in the owner's runtime container under the owner's own sign-in;
+  [AIM-3](ai-modes.md#aim-3--the-runtime-transport)). A `runtime` connection has no
+  key, base URL or price in Flux.
 
 The owner chooses which connection each use runs on (assistant in Flux,
 background rule). Configuring a connection enables neither use; each use keeps
@@ -93,6 +94,9 @@ adapters.
 - **Neutral UI.** The UI names the selected provider and model neutrally, e.g.
   "OpenRouter · model-id". "Anthropic" or "Claude" appears only where that is
   the selected connection or an external client the person labelled that way.
+- **`runtime` connections.** The CLI runs its own loop. Flux still owns the
+  brief, the place, the tools (Flux MCP only; the CLI's built-in tools are off),
+  output parsing, proposals, stop and audit ([AIM-3](ai-modes.md#aim-3--the-runtime-transport)).
 - **Model differences are shown, not hidden.** A model with a smaller context
   window gets the same bounded input when it fits. When it does not fit, the run
   fails closed with a clear state, as any provider would.
@@ -124,12 +128,18 @@ the reservation, is treated like a lost response. The run fails closed: the cost
 stays `unknown`, the whole reservation stays counted against the daily cap, the
 reported numbers are not stored as the charge, and the answer is withheld.
 
-**Plan connections ([F-022](ai-modes.md#aim-3--the-companion-and-the-chatgpt-plan-connection-mode-2)).**
-A `chatgpt_plan` connection has no per-token price. Its use is bounded by a daily
-token cap and a per-run token ceiling (input estimate + maximum output), reserved
-and reconciled exactly like a money reservation; a lost response keeps its token
-reservation as `unknown`. The payer is the owner's ChatGPT plan, shown as *Using
-ChatGPT plan* with a *Manage usage* link. A plan limit fails closed.
+**`runtime` connections ([F-022](ai-modes.md#caps)).** The owner's plan reports
+no per-token price, so the price source and money reservation do not apply.
+Consent and pause stay. A use is bounded instead by:
+
+- runs per day;
+- one concurrent run per runtime;
+- a wall-clock timeout (default five minutes);
+- maximum turns;
+- maximum output bytes.
+
+Usage shows as "your plan (cost not reported)", never as zero. A plan limit or
+expired login fails closed. Nothing falls back to an API key.
 
 **Input bound.** The same conservative Flux token estimate bounds input for every
 provider. A provider token-count endpoint may tighten the estimate, never loosen
@@ -156,15 +166,18 @@ The O-007 §2 custody rules apply to every adapter:
   operator enables them explicitly with an allowlist.
 - Environment variables never redirect a key.
 
-**Subscriptions ([F-022](ai-modes.md), proposed 2026-10-04; replaces the earlier
-blanket exclusion).** Flux never collects, stores or forwards a consumer sign-in,
-session or CLI credential (Claude.ai, `claude setup-token`, `~/.codex/auth.json`,
-ChatGPT cookies), and never impersonates another application's OAuth client. A
-subscription enters mode 2 only through a provider-documented plan-usage grant to
-third-party apps. On 2026-10-04 that is OpenAI's Sign in with ChatGPT, held by the
-owner's companion ([AIM-3](ai-modes.md#aim-3--the-companion-and-the-chatgpt-plan-connection-mode-2)),
-never by the Flux server. Anthropic permits no such grant, so a Claude plan is used
-through the person's own Claude Code in mode 1 (PROV-5).
+**Subscriptions ([F-022](ai-modes.md), revised 2026-10-05; replaces the earlier
+blanket exclusion).**
+
+- A subscription enters mode (a) only through the unmodified official CLI
+  (`claude`, `codex`) in the owner's runtime, signed in through the CLI's own flow
+  ([AIM-3](ai-modes.md#aim-3--the-runtime-transport)).
+- Flux never holds the vendor token. It lives only in that owner's runtime volume,
+  never in the database, queue, logs, exports, API responses or admin UI.
+- Flux never collects or forwards a consumer sign-in, session or CLI credential
+  (a pasted `claude setup-token`, `~/.codex/auth.json`, claude.ai or ChatGPT
+  cookies), and never impersonates another application's OAuth client.
+- A subscription also works in mode (b), through the person's own client (PROV-5).
 
 ## PROV-5 — external clients are equal too
 
@@ -179,7 +192,7 @@ The client label stays a recognition aid, not a verified identity.
 
 Flux tokens are audience-bound to the Flux MCP resource, and Flux never accepts or
 passes through a client's provider token (MCP authorization 2026-07-28;
-[AIM-1](ai-modes.md#aim-1--mode-1-your-agent-app-connects-to-flux)).
+[AIM-2](ai-modes.md#aim-2--mode-b-your-agent-app-over-mcp)).
 
 ## PROV-6 — evidence
 
@@ -208,12 +221,13 @@ evidence is recorded. The requirement itself does not wait for that check.
 **External clients.** Real Codex and Claude Code connections are recorded,
 together with one other MCP client as a smoke test.
 
-**Companion and plan connection ([F-022](ai-modes.md)).** The same contract suite runs
-in Docker against a mock Responses streaming server behind a companion process,
-covering success, plan limit (`subscription_sharing_usage_limit_exceeded`),
-expired/revoked token, cancel, disconnect mid-stream, offline computer, duplicate
-delivery and token-absence on the Flux side. A real ChatGPT-plan smoke test is
-dated and recorded, or reported unverified.
+**`runtime` connections ([F-022](ai-modes.md)).** Fake `claude` and `codex` binaries
+with the real argv and JSONL shapes run in Docker. They cover sign-in, real MCP calls
+with the run token, success, expired login, plan limit, timeout, crash, stop,
+oversized output, redaction, escape attempts and token absence on the Flux side.
+A flag contract test runs the pinned real CLIs' `--help`. A real-account smoke test
+for each CLI is dated and recorded, or reported unverified
+([test plan](research/2026-10-04-two-ai-modes-plan.md#docker-test-plan)).
 
 ## Implementation status (#179, 2026-10-02)
 
