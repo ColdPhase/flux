@@ -61,6 +61,48 @@ The safeguards of the accepted design stay:
 - A writer confirms it with one tap. Rules act only on confirmed required links.
 - The ID alone never links across projects or bindings.
 
+## 2a. G-1a as implemented
+
+This section records the choices the implementation needed. It supersedes the matching sentences of the
+accepted design for task rules only.
+
+**Turning the rule on is the explicit publication.** The accepted design kept standing automation off until
+"a separately reviewed explicit publication policy" existed. That policy is this toggle. The writer who turns it on
+publishes, to everyone who can read the task, the status changes its required PRs cause, and with them the PR
+numbers, head commits and check names. The one-line explanation next to the toggle says so. Repository names, PR
+titles, links and other provider facts stay behind each reader's own GitHub access, and events carry identifiers only.
+
+**Who the rule acts as.** The person who turns it on, changes its mode or resumes it becomes its author. They need
+current write access to the task and their own GitHub access to the repository of every required link. The rule
+captures their GitHub identity and authorization generation. Each processing re-checks both before the binding lock.
+- A lost Flux write or GitHub access, or a new authorization generation, suspends the rule.
+- A GitHub outage only skips that delivery.
+- Turning the rule off needs no GitHub access.
+
+**What counts as a manual change.** A change of status or blocker since the rule last acted suspends it. Other
+edits (title, owner, criteria) only move the version it expects. Readers see the suspension at once, and the next
+delivery records it. The rule never clears a blocker a person wrote. Resuming keeps a block the rule itself wrote,
+even if a person reworded it.
+
+**Checks.** The rule reads every check run and commit status on the PR's current head.
+- One failure blocks the task.
+- A task blocked by a failed check is unblocked only when every check on each open required PR has passed. A
+  pending or truncated list does not count.
+- Choosing specific required checks is a later refinement.
+
+**Completion.** Flux never records a written criterion as met, so "Complete" marks the task done only when it has
+no written criteria and its prerequisites are done. Otherwise the task shows **Ready to close**. Done is then an
+ordinary versioned change by a person. A required link that cannot be read now (unavailable binding or failed
+refresh) stops the rule from acting at all.
+
+**Where it runs.** In the existing per-binding processing unit, after the facts are saved, for the tasks whose links
+that delivery refreshed. Lock order: credential pins, binding, task graph, the sorted task rows, rule rows, then the
+changes and one final event batch. Turning the rule on, the project default and a newly linked required PR schedule
+one coalesced local reconciliation, so every automatic change names the signed delivery or reconciliation behind it.
+
+**Project default.** A project manager can turn it on for new required links. The writer who links a required PR
+to a task without a rule then becomes the author of that task's rule.
+
 ## 3. Delivery order
 
 1. **G-1a** rule engine and the task UI (toggle, history line, Ready to close), with Docker tests: open, draft, failed check, re-run, merge, closed unmerged, two required PRs, manual override, access loss, duplicate and out-of-order deliveries.
