@@ -104,7 +104,7 @@ test('grants made, narrowed and revoked in the browser are what the agent\'s nex
     await pool.query("UPDATE agent_standing_grants SET expires_at = clock_timestamp() - interval '1 second' WHERE id=$1", [second.id]);
     assert.equal(toolFailure(await createTask(second.id, 'After the end')).code, 'AGENT_EXECUTION_UNAVAILABLE');
     await page.reload();
-    await panel.getByText('None yet').waitFor();
+    await panel.getByText('None active').waitFor();
     await panel.getByRole('button', { name: 'Show ended grants (2)' }).click();
     await panel.getByRole('list', { name: 'Ended grants' }).getByText(/^Ended /).waitFor();
     await panel.getByRole('list', { name: 'Ended grants' }).getByText(/^Revoked /).waitFor();

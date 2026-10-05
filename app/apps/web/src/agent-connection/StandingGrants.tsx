@@ -88,7 +88,7 @@ export function StandingGrants({ connection, projects, initial }: Props) {
 
   if (!canAct) {
     return <section className="grants" aria-label={`Standing grants for ${connection.name}`}>
-      <h2 className="grants__title">Standing grants</h2>
+      <h2 className="grants__title">Standing grants <span className="grants__for">for {connection.name}</span></h2>
       <p className="grants__note">This connection can read and suggest only. To let your agent make changes, save a new selection with “Run approved project actions”.</p>
     </section>;
   }
@@ -113,8 +113,8 @@ export function StandingGrants({ connection, projects, initial }: Props) {
 
   return <section className="grants" aria-label={`Standing grants for ${connection.name}`} aria-busy={busy || undefined}>
     <div className="grants__head">
-      <h2 className="grants__title">Standing grants</h2>
-      <span className="grants__count">{grants === null ? 'Not loaded' : current.length ? `${current.length} active` : 'None yet'}</span>
+      <h2 className="grants__title">Standing grants <span className="grants__for">for {connection.name}</span></h2>
+      <span className="grants__count">{grants === null ? 'Not loaded' : current.length ? `${current.length} active` : ended.length ? 'None active' : 'None yet'}</span>
     </div>
     <p className="grants__note">A grant lets this agent make one kind of change in one project, a set number of times, until it ends. Flux checks it on every call.</p>
     {error ? <p className="grants__alert" role="alert">{error}</p> : null}
@@ -137,14 +137,17 @@ export function StandingGrants({ connection, projects, initial }: Props) {
           const created = await create((grant) => setGrants((list) => [grant, ...(list ?? []).filter((item) => item.id !== grant.id)]));
           if (created) setAdding(false);
         })} />
-      : <Button variant="link" className="grants__add-toggle" disabled={busy || grants === null} onClick={() => { setAdding(true); setError(null); }}>Add a grant</Button>}
+      : <Button variant="secondary" icon="plus" className="grants__add-toggle" disabled={busy || grants === null} onClick={() => { setAdding(true); setError(null); }}>Add a grant</Button>}
     {ended.length ? <div className="grants__ended">
+      {showEnded ? <>
+        <h3>Ended</h3>
+        <ul className="grants__list grants__list--ended" aria-label="Ended grants">{ended.map((grant) => <li className="grants__item" key={grant.id} data-state={stateOf(grant, now)}>
+          <span className="grants__status">{grant.revokedAt ? `Revoked ${when(grant.revokedAt)}` : `Ended ${when(grant.expiresAt)}`}</span>
+          <span className="grants__limits">{operationLabel(grant.operation)} · {CLASS_LABEL[grant.peerRequestClass]} · {name(grant.projectId)} · {grant.used} of {grant.maximumUses} used</span>
+        </li>)}</ul>
+      </> : null}
       <Button variant="quiet" aria-expanded={showEnded} onClick={() => setShowEnded((value) => !value)}>
         {showEnded ? 'Hide ended grants' : `Show ended grants (${ended.length})`}</Button>
-      {showEnded ? <ul className="grants__list grants__list--ended" aria-label="Ended grants">{ended.map((grant) => <li className="grants__item" key={grant.id} data-state={stateOf(grant, now)}>
-        <span className="grants__what"><strong>{operationLabel(grant.operation)}</strong> · {CLASS_LABEL[grant.peerRequestClass]} · {name(grant.projectId)}</span>
-        <span className="grants__limits">{grant.revokedAt ? `Revoked ${when(grant.revokedAt)}` : `Ended ${when(grant.expiresAt)}`} · {grant.used} of {grant.maximumUses} used</span>
-      </li>)}</ul> : null}
     </div> : null}
   </section>;
 }
@@ -200,7 +203,7 @@ function GrantRow({ grant, now, busy, onNarrow, onRevoke }: {
         {earlier.map((choice) => <option key={choice.id} value={choice.id}>{choice.label}</option>)}
       </select>
       <span className="grants__form-actions">
-        <Button type="submit" variant="secondary" busy={busy} disabled={!validUses}>Save</Button>
+        <Button type="submit" variant="primary" busy={busy} disabled={!validUses}>Save</Button>
         <Button variant="quiet" disabled={busy} onClick={() => setMode('idle')}>Cancel</Button>
       </span>
     </form> : null}
@@ -308,7 +311,7 @@ function AddGrant({ connection, projects, name, busy, existing, onCancel, onCrea
     </div>
     <p className="grants__note">Grants stay inside this connection: its selected projects and the actions it was approved for.</p>
     <span className="grants__form-actions">
-      <Button type="submit" variant="secondary" busy={busy} disabled={!chosen.length || !validUses || !projectId}>
+      <Button type="submit" variant="primary" busy={busy} disabled={!chosen.length || !validUses || !projectId}>
         {chosen.length > 1 ? `Grant ${chosen.length} changes` : 'Grant'}</Button>
       <Button variant="quiet" disabled={busy} onClick={onCancel}>Cancel</Button>
     </span>

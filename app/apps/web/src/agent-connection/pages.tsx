@@ -236,11 +236,11 @@ export function AgentConnectionPage() {
         <label className="connection__choice"><input type="radio" name="connection" value={connection.id} checked={selected === connection.id} onChange={() => setSelected(connection.id)} />
           <ConnectionSummary connection={connection} agentName={agentNames.get(connection.agentId) ?? `Agent ${connection.agentId.slice(0, 8)}`} projectNames={projectNames} />
         </label>
+        {!oauthQuery ? <StandingGrants connection={connection} projects={projectsById} initial={actionGrants[connection.id] ?? null} /> : null}
         {revoking === connection.id ? <div className="connection__revoke"><span>Revoke this connection now? Its tools will stop working.</span>
           <Button variant="secondary" onClick={() => { void revoke(connection.id); }}>Revoke now</Button>
           <Button variant="link" onClick={() => setRevoking(null)}>Cancel</Button></div>
           : <Button variant="link" onClick={() => setRevoking(connection.id)}>Revoke connection</Button>}
-        {!oauthQuery ? <StandingGrants connection={connection} projects={projectsById} initial={actionGrants[connection.id] ?? null} /> : null}
       </div>)}</div>
     </fieldset> : null}
     {creatingAgent ? <form className="connection__create" onSubmit={(event) => { void addPersonalAgent(event); }}>
