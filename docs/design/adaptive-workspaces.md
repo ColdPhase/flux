@@ -28,7 +28,7 @@ Studio direction and human collaboration without AI.
 | ADAPT-2 | More space reveals useful authorized work: more readable rows/columns, a larger map, or related source/details beside the main task. Prose remains readable; users can keep a focused view. | Matched realistic narrow/laptop/wide scenarios showing a concrete information or interaction gain. Enlarged controls, long text lines or empty gutters alone do not satisfy this outcome. |
 | ADAPT-3 | The same places, objects, vocabulary, audiences, primary actions and source relationships remain recognizable across layouts. Essential human workflows remain reachable on small screens. | Complete the same capture → conversation/source → map/work → return journey on phone, tablet and desktop; demonstrate the equivalent entry/action/back route. |
 | ADAPT-4 | Resizing, rotation, keyboard appearance and pane transitions preserve active work and orientation. | In-place transitions retain unsent input, current object/selection, reading anchor and meaningful map view; no accidental save/send, lost focus, duplicate action or extra acknowledgment/AI run. |
-| ADAPT-5 | The expanded layouts are readable, accessible and responsive to input at realistic data volumes. | Independent visual review plus running keyboard/touch, measured text enlargement, reflow, focus, performance and real-device evidence; unknown results stay unverified. |
+| ADAPT-5 | The expanded layouts are readable, accessible and responsive to input at realistic data volumes. | Independent visual review plus running keyboard/touch, measured text enlargement, reflow, focus and performance evidence in emulated devices with recorded throttling; physical devices are optional (#266 item 10); unknown results stay unverified. |
 
 ## Use space deliberately
 
@@ -101,7 +101,7 @@ than hiding a core workflow because the display is small.
 | Small laptop / short desktop | 1024×768, 1280×720, 1280×800, 1366×768 |
 | Standard / large desktop | 1440×900, 1920×1080, 2560×1440 |
 | Ultrawide / very wide | 2560×1080, 3440×1440, 5120×1440 |
-| 4K-sized workspace | 3840×2160; also test a real 4K display at available 100%, 150% and 200% system scaling, recording its actual CSS viewport |
+| 4K-sized workspace | 3840×2160; also emulate the CSS viewports a 4K display gives at 100%, 150% and 200% system scaling (3840×2160, 2560×1440 and 1920×1080 at device pixel ratio 1, 1.5 and 2) |
 | Tall / portrait window | 900×1600 |
 
 A real 4K display at larger OS scaling or browser zoom usually exposes a smaller
@@ -138,23 +138,24 @@ Separately test:
   revocation and reconnect. Device-to-device continuation uses real saved data
   and current authorization. Do not turn a resize into new persistence semantics.
 - Input/scroll/resize latency, long-list/map behavior, request count and memory at
-  recorded dataset sizes on representative low-end Android and desktop hardware.
+  recorded dataset sizes under recorded CPU/network throttling that approximates
+  low-end Android, and on the desktop host.
   At task kickoff, before optimization, record numeric budgets, dataset and
   hardware/browser baseline with independent agreement; a bigger viewport is not permission for unbounded
-  rendering, fetching or reflow. Missing hardware/performance evidence stays open.
+  rendering, fetching or reflow. Missing performance evidence stays open.
 
 Run substantial matrix/interaction checks in Docker with bounded reusable
-fixtures; keep PR Actions light. Actual supported browser/OS/device evidence and
-installation/OS-push requirements remain under #20. For large screens, record at
-least one real 4K and one ultrawide session, including scaling/readability and a
-window resize; emulation complements those checks. A hardware blocker is recorded
-with its missing evidence and unblock condition, while independent work continues.
+fixtures; keep PR Actions light. Supported-browser emulation and the documented
+installation/OS-push requirements remain under #20. Large screens use the 4K and
+ultrawide fixtures above, including scaling/readability and a window resize.
+Founder direction #266 item 10, 2026-10-05: real phone, tablet, 4K or ultrawide
+hardware is optional extra evidence, never a gate.
 
 ## Delivery and evidence status
 
 Implement through [#151](https://github.com/ColdPhase/flux/issues/151), with the
 same shell owner (@Zamojski5) as #136 and independent evaluator @PelikanFix16. #136 remains the integrated UX acceptance
-record and must include ADAPT-1–ADAPT-5; #20 retains mobile/device acceptance.
+record and must include ADAPT-1–ADAPT-5; #20 retains mobile acceptance.
 Coordinate shared shell/token/map work with #134/#135/#148/#149; one writer per
 branch. Split implementation by independently verifiable surfaces if useful,
 retaining all outcomes and final combined-head checks. This document adds a
