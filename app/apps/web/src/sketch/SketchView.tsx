@@ -367,7 +367,8 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     }
   };
 
-  // Ctrl/⌘ V on the map or list, or with nothing focused. Text fields keep their own paste (#149 shortcuts).
+  // Ctrl/⌘ V on the map or list, or on what holds it (the page, or the main pane a click on empty canvas focuses).
+  // Elsewhere (sidebar, details) is not the map. Text fields keep their own paste (#149 shortcuts).
   const pasteHandler = useRef(handlePaste);
   useEffect(() => { pasteHandler.current = handlePaste; });
   useEffect(() => {
@@ -375,7 +376,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
       const root = rootRef.current;
       if (!root || event.defaultPrevented) return;
       const target = event.target instanceof Element ? event.target : null;
-      if (target && target !== document.body && target !== document.documentElement && !root.contains(target)) return;
+      if (target && !root.contains(target) && !target.contains(root)) return;
       if (target?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
       event.preventDefault();
       pasteHandler.current({ text: event.clipboardData?.getData('text/plain') ?? '', file: clipboardFile(event.clipboardData) });
