@@ -45,6 +45,8 @@
 .connection__guide h2 { font-size: var(--fs-lg); }
 .connection__guide p { color: var(--text-3); font-size: var(--fs-sm); line-height: 1.5; }
 .connection__guide code { display: block; padding: 9px 11px; border-radius: var(--r-sm); background: var(--bg); font: var(--fs-xs)/1.5 var(--mono); overflow-wrap: anywhere; user-select: all; }
+.connection__client { display: flex; flex-direction: column; gap: 6px; padding-top: 9px; border-top: 1px solid var(--line); }
+.connection__client h3 { font-size: var(--fs-md); }
 .connection__checks strong, .connection__checks small { display: block; }
 .connection__checks strong { font-weight: 500; }
 .connection__checks small { color: var(--text-3); font-size: var(--fs-xs); }

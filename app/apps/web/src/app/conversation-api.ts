@@ -1,8 +1,8 @@
 import {
   WORKSPACES_PATH, conversationMessagesPath, conversationPath, materialPath,
-  materialVersionPath, projectConversationsPath, projectMaterialsPath, projectPath, workspaceProjectsPath,
-  type Conversation, type ConversationMessage, type ConversationSummary, type CreateMaterialCommand,
-  type Draft, type WorkspaceMember, type Material, type MaterialOrDoc, type MaterialVersion, type Page, type Project, type SendMessageCommand, type Workspace, workspaceDraftsPath,
+  materialVersionPath, projectConversationRootsPath, projectConversationsPath, projectMaterialsPath, projectPath, projectTaskNoticesPath, workspaceProjectsPath,
+  type Conversation, type ConversationMessage, type ConversationRootWindow, type ConversationSummary, type CreateMaterialCommand,
+  type Draft, type WorkspaceMember, type Material, type MaterialOrDoc, type MaterialVersion, type Page, type Project, type SendMessageCommand, type TaskCreationNotice, type Workspace, workspaceDraftsPath,
   IDEMPOTENCY_KEY_HEADER,
 } from '@flux/contracts';
 import { request } from '../api/client';
@@ -27,6 +27,17 @@ export const createProject = (workspaceId: string, name: string, idempotencyKey:
   request<Project>(workspaceProjectsPath(workspaceId), { method: 'POST', body: { name, visibility: 'restricted' }, headers: { [IDEMPOTENCY_KEY_HEADER]: idempotencyKey } });
 export const getProject = (id: string, signal?: AbortSignal) => request<Project>(projectPath(id), { signal });
 export const listConversations = (projectId: string, signal?: AbortSignal, offset = 0) => request<Page<ConversationSummary>>(`${projectConversationsPath(projectId)}?limit=100&offset=${offset}`, { signal });
+/** The project's one stream (UI116-1): the newest roots, or those before a conversation id. */
+export const listConversationRoots = (projectId: string, options: { before?: string | null; limit?: number } = {}, signal?: AbortSignal) => {
+  const query = new URLSearchParams();
+  if (options.limit) query.set('limit', String(options.limit));
+  if (options.before) query.set('before', options.before);
+  const search = query.toString();
+  return request<ConversationRootWindow>(`${projectConversationRootsPath(projectId)}${search ? `?${search}` : ''}`, { signal });
+};
+/** The project's task announcements (UI116-3), newest first. */
+export const listTaskNotices = (projectId: string, options: { offset?: number; limit?: number } = {}, signal?: AbortSignal) =>
+  request<Page<TaskCreationNotice>>(`${projectTaskNoticesPath(projectId)}?limit=${options.limit ?? 100}&offset=${options.offset ?? 0}`, { signal });
 export const getConversation = (id: string, signal?: AbortSignal) => request<Conversation>(conversationPath(id), { signal });
 export const olderMessages = (id: string, beforeSequence: number, signal?: AbortSignal, limit?: number) =>
   request<Conversation>(`${conversationPath(id)}?beforeSequence=${beforeSequence}${limit ? `&limit=${limit}` : ''}`, { signal });
@@ -37,7 +48,8 @@ export const publishMaterial = (projectId: string, command: CreateMaterialComman
 export const getMaterial = (id: string, signal?: AbortSignal) => request<MaterialOrDoc>(materialPath(id), { signal });
 export const getMaterialVersion = (id: string, version: number, signal?: AbortSignal) => request<MaterialVersion>(materialVersionPath(id, version), { signal });
 
-export const listDrafts = (workspaceId: string, signal?: AbortSignal) => request<Page<Draft>>(`${workspaceDraftsPath(workspaceId)}?limit=100`, { signal });
-export const createPrivateDraft = (workspaceId: string, title: string, body: string, idempotencyKey: string) =>
-  request<Draft>(workspaceDraftsPath(workspaceId), { method: 'POST', body: { title, body }, headers: { [IDEMPOTENCY_KEY_HEADER]: idempotencyKey } });
+export const listDrafts = (workspaceId: string, signal?: AbortSignal, offset = 0) => request<Page<Draft>>(`${workspaceDraftsPath(workspaceId)}?limit=100&offset=${offset}`, { signal });
+/** A private draft; an `idempotencyKey` makes a retry return the same draft instead of a second one. */
+export const createPrivateDraft = (workspaceId: string, title: string, body: string, idempotencyKey?: string, signal?: AbortSignal) =>
+  request<Draft>(workspaceDraftsPath(workspaceId), { method: 'POST', body: { title, body }, signal, ...(idempotencyKey ? { headers: { [IDEMPOTENCY_KEY_HEADER]: idempotencyKey } } : {}) });
 export const listWorkspaceMembers = (workspaceId: string, signal?: AbortSignal) => request<WorkspaceMember[]>(`${WORKSPACES_PATH}/${workspaceId}/members`, { signal });

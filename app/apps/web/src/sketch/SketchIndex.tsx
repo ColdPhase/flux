@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link, useNavigate, useRevalidator } from 'react-router';
 import type { Sketch } from '@flux/contracts';
 import { Button, EmptyState, Icon, Spinner, useToast } from '../ui';
 import * as api from '../api/sketches';
 import { useShellData } from '../app/data';
+import { ensurePersonalSpace } from '../app/personalSpace';
 import { useStreamEvents } from '../api/stream';
 import { audience, sketchHref, when } from './format';
 import './sketch.css';
@@ -51,6 +52,7 @@ async function loadSketches(pages: number, signal: AbortSignal): Promise<Loaded>
 export function SketchIndex() {
   const { me, directMessages } = useShellData();
   const navigate = useNavigate();
+  const revalidator = useRevalidator();
   const toast = useToast();
   const [state, setState] = useState<Loaded | 'loading' | 'failed'>('loading');
   const [creating, setCreating] = useState(false);
@@ -72,8 +74,10 @@ export function SketchIndex() {
     if (creating || typeof state !== 'object') return;
     setCreating(true);
     try {
-      // Nobody has to set up a workspace before thinking: the first sketch creates a personal one.
-      const workspaceId = state.workspaceId ?? (await api.createWorkspace('Personal', crypto.randomUUID())).id;
+      // Nobody has to set up a workspace before thinking: the first sketch creates the personal space,
+      // the same one a first Home note would (#190 HOME-3), and the shell learns about it.
+      const workspaceId = state.workspaceId ?? (await ensurePersonalSpace(me.user.id)) ?? (await api.listWorkspaces())[0]!.id;
+      if (!state.workspaceId) revalidator.revalidate();
       const sketch = await api.createPrivateSketch(workspaceId, 'Untitled sketch', crypto.randomUUID());
       navigate(`/map/${sketch.id}`, { state: { fresh: true } });
     } catch {
