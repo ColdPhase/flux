@@ -1,7 +1,10 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { ConversationMessage } from '@flux/contracts';
 import { Avatar, Icon, IconButton, useMediaQuery } from '../ui';
+import { DiscussedTask } from '../work/inline';
+import type { ProjectWork } from '../work/api';
 import { SourceCitation, clock, day, when } from './messageParts';
+import { MessageFiles } from '../composer/Files';
 
 export type ThreadMode = 'docked' | 'sheet';
 
@@ -56,8 +59,10 @@ export function ThreadMessageActions({ writable, children }: { writable: boolean
 }
 
 /** The message the thread answers, at its top: who said it, when, and what, with its cited source. */
-export function ThreadRoot({ message, body, author, meId, writable, replies, onDenied }: {
-  message: ConversationMessage | null; body: string; author: string | null; meId: string; writable: boolean; replies: number; onDenied: (cause: unknown) => void;
+export function ThreadRoot({ message, body, author, meId, writable, replies, task = null, work, onDenied }: {
+  message: ConversationMessage | null; body: string; author: string | null; meId: string; writable: boolean; replies: number;
+  /** The task whose discussion this thread is (UI116-3). */
+  task?: { workId: string; title: string } | null; work: ProjectWork; onDenied: (cause: unknown) => void;
 }) {
   const mine = !!message && message.authorId === meId;
   return (
@@ -70,8 +75,10 @@ export function ThreadRoot({ message, body, author, meId, writable, replies, onD
             <time dateTime={message.createdAt} title={when(message.createdAt)}>{day(message.createdAt)} · {clock(message.createdAt)}</time>
           </div>
         ) : null}
-        <p>{body}</p>
+        {message?.body || !message ? <p>{body}</p> : null}
+        <MessageFiles files={message?.files} />
         {message?.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
+        {task ? <div className="ws-attach"><DiscussedTask task={task} lists={work} /></div> : null}
       </article>
       <p className="thread__hint">{replies ? `${replies} ${replies === 1 ? 'reply' : 'replies'}` : writable ? 'Reply to this message. No new topic needed.' : 'No replies yet.'}</p>
     </>

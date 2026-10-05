@@ -55,6 +55,8 @@ export interface ConversationFields {
   createdAt: string;
   /** Stable discussion label from the opening message. */
   firstMessageBody: string;
+  /** The current canonical task binding, including windows that do not contain its root (#154). */
+  task?: { workId: string; title: string };
   messages: ConversationMessage[];
   messagePage: {
     /** True when messages with a lower sequence can be fetched. */
@@ -98,6 +100,11 @@ export interface ConversationRoot {
   /** Messages after the root in its thread. */
   replyCount: number;
   lastReplyAt: string | null;
+  /**
+   * Present when this root opened a task's discussion (UI116-3): the first genuine contribution to that
+   * task, which every later contribution answers. The title is the task's current one.
+   */
+  task?: { workId: string; title: string };
 }
 
 /** Stable, newest-first window of roots returned in ascending display order. */

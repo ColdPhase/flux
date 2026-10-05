@@ -78,3 +78,17 @@
 }
 @keyframes thread-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes thread-dock { from { opacity: 0; } to { opacity: 1; } }
+
+/* A task announcement (UI116-3): one quiet line in the stream, not a message. The task mark sits in the
+   avatars' column, who created the task above its title, and the time at the far side. */
+.convo-notice { display: grid; grid-template-columns: 27px minmax(0, 1fr) auto; column-gap: 12px; align-items: start; margin: 24px 0; }
+.convo-notice__icon { display: grid; place-items: center; width: 27px; height: 27px; border-radius: 6px; background: var(--bg-active); box-shadow: inset 0 0 0 1px var(--line); color: var(--text-2); }
+.convo-notice__body { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+.convo-notice__meta { font-size: var(--fs-xs); color: var(--text-3); }
+.convo-notice__task { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 0; border: 0; background: none; color: var(--text); font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; }
+.convo-notice__title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.convo-notice__task svg { flex: none; color: var(--text-3); }
+.convo-notice__task:hover .convo-notice__title { text-decoration: underline; text-underline-offset: 2px; }
+.convo-notice__task:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+.convo-notice time { padding-top: 1px; font-size: var(--fs-xs); color: var(--text-3); font-variant-numeric: tabular-nums; }
+@media (pointer: coarse) { .convo-notice__task { min-height: 44px; } }

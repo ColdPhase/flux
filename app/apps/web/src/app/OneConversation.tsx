@@ -7,7 +7,7 @@ import { useRegisterLiveHere } from '../live/LiveProvider';
 import { excerpt } from '../live/anchors';
 import { audienceLine, useProjectShell } from '../project/data';
 import { useShellData } from './data';
-import { ConversationStream, useConversationRoots } from './ConversationStream';
+import { ConversationStream, useConversationRoots, useTaskNotices } from './ConversationStream';
 import { ThreadDrawer, ThreadRoot, type ThreadMode } from './ThreadDrawer';
 import type { ProjectData } from './ProjectConversation';
 import './one-conversation.css';
@@ -62,6 +62,7 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   // A link names a root (or a reply in it): the stream reads back to it and shows it.
   const reveal = conversation && !state?.fromStream ? { conversationId: conversation.id, key: `${conversation.id}:${location.key}` } : null;
   const roots = useConversationRoots(project.id, data.roots, reveal?.conversationId ?? null, onDenied);
+  const notices = useTaskNotices(project.id, data.notices, roots.roots, roots.hasOlder, onDenied);
   const root = thread ? roots.roots.find((item) => item.conversationId === thread.id) ?? null : null;
   const [endToken, setEndToken] = useState(0);
 
@@ -120,8 +121,9 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   }, [thread]);
 
   const audience = audienceLine(people, me.user.id, project.visibility === 'workspace');
+  const work = shell?.work ?? { work: [], decisions: [], results: [] };
   const stream = (
-    <ConversationStream project={project} meId={me.user.id} roots={roots} work={shell?.work ?? { work: [], decisions: [], results: [] }} author={author}
+    <ConversationStream project={project} meId={me.user.id} roots={roots} notices={notices} work={work} author={author}
       audience={audience} openId={thread?.id ?? null} reveal={reveal} arrived={arrived} endToken={endToken} onOpen={open} onDenied={onDenied} />
   );
   const rootMessage = root?.message ?? thread?.messages.find((message) => message.sequence === 1) ?? null;
@@ -138,7 +140,7 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
           <Pane key={thread.id} data={data} variant="thread" rootMessageId={rootMessage?.id ?? null}
             focusComposer={!!state?.focusComposer} onThreadSize={roots.threadSize}
             rootHeader={<ThreadRoot message={rootMessage} body={rootMessage?.body ?? thread.firstMessageBody} author={rootMessage ? author(rootMessage) : null}
-              meId={me.user.id} writable={writable} replies={replies} onDenied={onDenied} />} />
+              meId={me.user.id} writable={writable} replies={replies} task={root?.task ?? null} work={work} onDenied={onDenied} />} />
         </ThreadDrawer>
       ) : null}
     </div>

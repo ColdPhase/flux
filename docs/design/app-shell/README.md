@@ -86,6 +86,11 @@ still loading; that navigation finishes later and can take the page and its addr
 action that moves the person elsewhere is therefore posted with a navigation form, not
 `useFetcher`.
 
+Signing out in one tab signs out every tab of this browser (#229): the others receive the sign-out
+through storage and a broadcast channel and go to the sign-in page, so no tab keeps showing the
+previous account or can write into the next one. The server's session checks stay the second
+line of defence for a tab that misses the notice.
+
 ## Adjusted for the founder direction (#44)
 
 - No workspace selector. The administrative workspace is a data boundary only. Home (the
