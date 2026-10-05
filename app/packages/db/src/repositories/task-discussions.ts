@@ -79,7 +79,7 @@ export function taskDiscussionRows(db: DbExecutor) {
         attachmentCount: input.files?.length ?? 0, contributionKind: input.kind ?? 'text', resultId: input.resultId ?? null }).returning();
       for (const [position, file] of (input.files ?? []).entries()) {
         const updated = await db.update(schema.projectFiles).set({ messageId: row!.id, position, publishedAt: row!.createdAt, expiresAt: null })
-          .where(and(eq(schema.projectFiles.id, file.id), eq(schema.projectFiles.projectId, conversation.projectId), sql`${schema.projectFiles.messageId} IS NULL`))
+          .where(and(eq(schema.projectFiles.id, file.id), eq(schema.projectFiles.projectId, conversation.projectId), sql`${schema.projectFiles.publishedAt} IS NULL`))
           .returning({ id: schema.projectFiles.id });
         if (updated.length !== 1) throw new Error('Locked attachment publication invariant failed');
       }

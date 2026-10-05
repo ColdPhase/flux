@@ -45,6 +45,8 @@ export const SKETCH_LIMITS = {
   maxHeight: 800,
   /** Thoughts per positions request. */
   moves: 200,
+  /** Non-empty lines one paste may turn into draft thoughts (#252); a longer paste is refused whole. */
+  pasteLines: 50,
 } as const;
 export const DEFAULT_THOUGHT_SIZE = { width: 184, height: 72 } as const;
 
@@ -109,10 +111,22 @@ export interface Thought {
   shape: ThoughtShape;
   placement: Placement | null;
   source: ThoughtSource | null;
+  /**
+   * #252: the image of a project sketch's thought, a stored file of the project published to it.
+   * Absent when the thought has none. The bytes download from `filePath(file.id)`; the text is its caption.
+   */
+  file?: ThoughtFile;
   createdBy: PersonRef;
   version: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/** A stored file shown as a thought's image (#252): its display name and size. */
+export interface ThoughtFile {
+  id: string;
+  name: string;
+  size: number;
 }
 
 /** Undirected; `fromId`/`toId` record how it was drawn. One link per pair of thoughts. */
@@ -187,6 +201,12 @@ export interface CreateThoughtCommand {
    * a removed thought. The server takes its author and time from the message itself.
    */
   sourceMessageId?: string;
+  /**
+   * Project sketches only (#252): the caller's own staged image of the sketch's project (PNG, JPEG, GIF or
+   * WebP) becomes this thought's image and readable by the project, in the same transaction. Re-creating
+   * the same thought id with its own image (undo) is accepted; any other published file is refused.
+   */
+  fileId?: string;
 }
 
 export interface CreatedThought {
