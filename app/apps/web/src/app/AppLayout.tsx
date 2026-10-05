@@ -70,6 +70,14 @@ function mainPlaces(pathname: string, inboxUnread: boolean): BottomNavItem[] {
   ];
 }
 
+/** Which place a path belongs to, for the transition between places: a project, a conversation, My sketchbook, or a page. */
+function areaOf(pathname: string) {
+  const inside = pathname.match(/^\/(projects|dm)\/[^/]+/)?.[0];
+  if (inside) return inside;
+  const first = pathname.split('/')[1] ?? '';
+  return first === 'notes' || first === 'map' ? 'sketchbook' : first;
+}
+
 /** The desktop sidebar's hidden state is remembered on this device (#272 FF-5). */
 const SIDE_KEY = 'flux.sidebar';
 function readSideHidden() {
@@ -304,6 +312,7 @@ function AppLayoutContent() {
   // A new view slides in from the side its tab sits on; a Settings page slides in from the right
   // and back from the left, like a pushed page (#266 PF-4).
   const previousPath = useRef(location.pathname);
+  const previousArea = useRef(areaOf(location.pathname));
   useLayoutEffect(() => {
     const index = viewOrder(location.pathname);
     const settingsDepth = (path: string) => (path === '/settings' ? 1 : /^\/settings\/./.test(path) ? 2 : 0);
@@ -313,6 +322,15 @@ function AppLayoutContent() {
     const direction = from && to && from !== to ? Math.sign(to - from) : Math.sign(index - previousView.current);
     const distance = from && to && from !== to ? 28 : 12;
     previousView.current = index;
+    const area = areaOf(location.pathname);
+    const newArea = area !== previousArea.current;
+    previousArea.current = area;
+    // Moving to another place (Home, a project, a conversation) rises in gently, so the change of place is
+    // felt as well as seen (#272 FF-9); views within a place keep their sideways slide.
+    if (!direction && newArea) {
+      void play(paneRef.current, [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], duration('--dur-2'), '--ease-out', { fill: 'backwards' });
+      return;
+    }
     if (!direction) return;
     void play(paneRef.current, [{ opacity: 0, transform: `translateX(${direction * distance}px)` }, { opacity: 1, transform: 'none' }], duration('--dur-2'), '--ease-out', { fill: 'backwards' });
   }, [location.pathname]);
