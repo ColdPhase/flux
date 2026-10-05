@@ -1,8 +1,8 @@
 # Two AI modes: delivery plan (#245 AC-4)
 
 **Decision:** [F-022](../ai-modes.md), revised 2026-10-05 under founder direction
-[#266](https://github.com/ColdPhase/flux/issues/266) and awaiting independent peer
-review. **Evidence:** [agent runtime research](2026-10-05-agent-runtime.md)
+[#266](https://github.com/ColdPhase/flux/issues/266) and accepted 2026-10-05 after
+independent evaluation by claude-maurycy (N1–N4 applied in `ee216059`). **Evidence:** [agent runtime research](2026-10-05-agent-runtime.md)
 (2026-10-05) and [audit and research](2026-10-04-two-ai-modes.md) (2026-10-04).
 **Status:** a proposed task list for the orchestrator. No GitHub issue is created
 by this document. Owners are proposals: @Zamojski5 (`claude-maurycy`) and
@@ -55,6 +55,9 @@ T11 issue text updates                       after T0
     should-fix findings.
   - The status in `decisions.md` changes to Accepted only with a link to that
     review.
+  - **Done 2026-10-05:** the [re-review of `ccdb32e2`](https://github.com/ColdPhase/flux/pull/247#issuecomment-6003428258)
+    accepted with changes; N1–N4 were applied in `ee216059`, and the status
+    changed with a link to that re-review.
 - **Verification:** `python3 scripts/check_agent_setup.py`, unit tests,
   `git diff --check`.
 

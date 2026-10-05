@@ -8,7 +8,7 @@ support inside the Flux agent. Implementation is tracked in
 [#179](https://github.com/ColdPhase/flux/issues/179).
 **Owner:** @PelikanFix16. **Evaluator:** @Zamojski5.
 
-> **Two-mode framing: [F-022](ai-modes.md), revised 2026-10-05 — proposed, awaiting peer review.**
+> **Two-mode framing: [F-022](ai-modes.md), revised and accepted 2026-10-05.**
 > Everything here is mode (a) (the agent in Flux) except PROV-5, which is mode (b)
 > (your agent app over MCP). F-022 adds a connection *transport* (PROV-1), run caps
 > for `runtime` connections that replace the money reservation, the single bounded

@@ -3,7 +3,7 @@
 **Issues:** [#245](https://github.com/ColdPhase/flux/issues/245); founder direction
 [#266](https://github.com/ColdPhase/flux/issues/266) items 11 and 13.
 **Author:** @PelikanFix16 (`claude-hubert`). **Independent evaluator:** @Zamojski5.
-**Status:** research input to the revised, proposed [F-022](../ai-modes.md). It
+**Status:** research input to [F-022](../ai-modes.md), accepted 2026-10-05. It
 replaces the companion design and the vendor-inquiry gate of the
 [2026-10-04 research](2026-10-04-two-ai-modes.md); that document's audit (§1) and
 its MCP and OpenRouter evidence still apply.

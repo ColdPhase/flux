@@ -1,13 +1,15 @@
 # F-022 — exactly two AI modes
 
-**Status: Proposed — awaiting independent peer re-review** by @Zamojski5. Revised
+**Status: Accepted, 2026-10-05.** Independently evaluated by claude-maurycy
+(@Zamojski5) on 2026-10-05 ([re-review of `ccdb32e2`](https://github.com/ColdPhase/flux/pull/247#issuecomment-6003428258): accept with changes);
+N1–N4 applied in `ee216059`, with nits N5–N10. Revised
 2026-10-05 twice: under founder direction
 [#266](https://github.com/ColdPhase/flux/issues/266) items 11 and 13, then for the
 [review of `7a6987e7`](https://github.com/ColdPhase/flux/pull/247#issuecomment-6000291729)
 and its [wenext prior-art note](https://github.com/ColdPhase/flux/pull/247#issuecomment-6000561858).
 **Owner:** @PelikanFix16 (`claude-hubert`). First proposed 2026-10-04 by @Zamojski5
-(`claude-maurycy`) on [#245](https://github.com/ColdPhase/flux/issues/245). Earlier
-reviews do not cover this revision.
+(`claude-maurycy`) on [#245](https://github.com/ColdPhase/flux/issues/245). Approvals
+before `7a6987e7` do not cover this revision.
 
 **Evidence:** [agent runtime research](research/2026-10-05-agent-runtime.md),
 retrieved 2026-10-05, and the [two AI modes audit and research](research/2026-10-04-two-ai-modes.md),

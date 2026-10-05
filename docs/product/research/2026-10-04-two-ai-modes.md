@@ -3,7 +3,7 @@
 **Issue:** [#245](https://github.com/ColdPhase/flux/issues/245), milestone 2.
 **Author:** @Zamojski5 (`claude-maurycy`). **Independent evaluator:** @PelikanFix16.
 **Retrieved:** 2026-10-04 for every source below, unless a row says otherwise.
-**Status:** research input to the proposed [F-022](../decisions.md) decision. It is
+**Status:** research input to the [F-022](../decisions.md) decision, accepted 2026-10-05. It is
 not accepted until the independent peer reviews it.
 
 > **Revised 2026-10-05 (founder direction [#266](https://github.com/ColdPhase/flux/issues/266) items 11 and 13).**

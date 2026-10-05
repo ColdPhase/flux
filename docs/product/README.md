@@ -58,7 +58,7 @@ Flux has exactly two AI modes: (a) the agent in Flux with the owner's chosen
 connection, and (b) your agent app connecting over MCP. In mode (a) the owner can
 sign their own Claude or Codex subscription into the unmodified official CLI, which
 runs in their own runtime slot, as in a terminal. No vendor inquiry gates it.
-The proposed [F-022](ai-modes.md) maps foundation §9.2's three ways onto the two
+The accepted [F-022](ai-modes.md) maps foundation §9.2's three ways onto the two
 modes (its second and third rows are both the agent in Flux).
 
 The [later founder delegation](autonomy.md) authorizes agents to choose and accept
