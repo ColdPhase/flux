@@ -378,7 +378,8 @@ class PersonalAssistantJourney(unittest.TestCase):
     def test_07b_working_motion_follows_execution_and_pauses_unseen(self) -> None:
         """#155 AC-3/AC-4: the working mark moves only while the run actually executes, pauses under a modal
         or off screen, is static while stopping, and the line's text always says what is happening."""
-        mock("/__script", {"reset": True, "delay": 8})
+        # A long provider delay keeps the run executing for the whole check; Stop ends it below.
+        mock("/__script", {"reset": True, "delay": 30})
         jo = self.conversation("jo")
         expect(jo.locator(".assistant-answer").first).to_be_visible()
         self.ask(jo, "Compare the two sensors once more")

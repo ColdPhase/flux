@@ -28,7 +28,8 @@ GLIDE_AT = """(id) => {
   const a = g.getBoundingClientRect(), b = r.getBoundingClientRect();
   return { top: a.top - b.top, height: a.height - b.height, left: a.left - b.left, width: a.width - b.width, running: g.getAnimations().length };
 }"""
-SETTLED = "() => !document.querySelector('.side__glide').getAnimations().length && !document.querySelector('.views .ui-tabs__indicator')?.getAnimations().length"
+SETTLED = """() => { const glide = document.querySelector('.side__glide'), mark = document.querySelector('.views .ui-tabs__indicator');
+  return !!glide && !!glide.dataset.target && !glide.getAnimations().length && !(mark && mark.getAnimations().length); }"""
 FIRST_IN_VIEW = """() => { const feed = document.querySelector('.project-convo__feed.is-stream'); const top = feed.getBoundingClientRect().top;
   for (const item of feed.querySelectorAll('.project-convo__message, .convo-notice')) { const box = item.getBoundingClientRect();
     if (box.bottom > top + 1) return { id: item.id, top: box.top - top }; } return null; }"""
@@ -114,6 +115,7 @@ class MotionJourney(unittest.TestCase):
         return page.locator(f'.side__project[data-glide-id="{self.projects[index]}"]')
 
     def assert_glide_on(self, page, index):
+        expect(page.locator(".side__glide")).to_have_attribute("data-target", self.projects[index])
         page.wait_for_function(SETTLED)
         geo = page.evaluate(GLIDE_AT, self.projects[index])
         self.assertIsNotNone(geo)
@@ -324,12 +326,15 @@ class MotionJourney(unittest.TestCase):
         line.get_by_role("button").click()
         expect(late).to_be_in_viewport()
         expect(line.get_by_role("button")).to_have_count(0)
-        # Earlier history loaded above never animates either.
+        # Earlier history loaded above never animates either: no entry of the stream is animated.
+        page.evaluate("""() => { window.__entryAnimations = 0; const animate = Element.prototype.animate;
+          Element.prototype.animate = function (...args) { if (this.matches?.('.project-convo__message, .convo-notice')) window.__entryAnimations++; return animate.apply(this, args); }; }""")
         loaded = page.locator(".project-convo__feed.is-stream li.project-convo__message").count()
         page.get_by_role("button", name="Load earlier messages").click()
         expect(page.locator(".project-convo__feed.is-stream li.project-convo__message")).not_to_have_count(loaded)
         self.assertGreater(page.locator(".project-convo__feed.is-stream li.project-convo__message").count(), loaded)
-        self.assertEqual(page.locator(".project-convo__feed.is-stream [data-arrival]").count(), 2)
+        page.wait_for_timeout(300)
+        self.assertEqual(page.evaluate("() => window.__entryAnimations"), 0, "earlier roots joined without motion")
 
     def test_08_an_entry_arriving_under_a_modal_does_not_animate(self):
         page = self.page()
