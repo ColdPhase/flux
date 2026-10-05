@@ -19,7 +19,7 @@ check below), **inference** (Flux's conclusion from the others).
 | Path | Protection | Plaintext available to | Basis |
 | --- | --- | --- | --- |
 | Browser ↔ SFU media: direct UDP/7882, ICE-TCP/7881, or relayed by TURN | DTLS-SRTP, negotiated between the browser and the SFU. RTP payload encrypted, RTP header authenticated only. | Sender, the SFU (it decrypts and re-encrypts for each receiver), receivers | standard, observed, inference |
-| Same packets on the network | — | Observers on direct paths see RTP headers: SSRC, sequence, timestamps and header extensions, including the per-packet audio level | standard |
+| Same packets on the network | — | Observers on direct paths see RTP headers: SSRC, sequence, timestamps and header extensions such as the per-packet audio level (RFC 6464). Header-extension encryption (RFC 9335) would hide the extensions; this record does not check whether it is negotiated. | standard |
 | Browser ↔ TURN, UDP/3478 | TURN framing in clear; the relayed payload is the DTLS-SRTP above | TURN sees client address, allocation, peer, packet sizes and timing | standard |
 | Browser ↔ TURN, TLS/443 | TLS (LiveKit requires at least 1.2; the local run negotiated 1.3) around TURN and DTLS-SRTP | The TURN service, embedded in the SFU process: the SFU trust domain | source, observed |
 | Browser → Flux `/media` signaling | WSS: the operator's TLS proxy, then the Flux API | Proxy, Flux API, SFU. Carries SDP with the DTLS fingerprints, ICE credentials, identities and track metadata | source |
@@ -82,8 +82,8 @@ refreshing an existing one. That gives no Flux media: the participant, its
 DTLS session and the room generation are gone. The relay can still forward to
 public peers. LiveKit denies private and loopback peers by default, and allows
 at most 12 allocations per participant credential. source. This is a relay
-resource concern rather than a confidentiality gap. #63 tracks it with the
-TURN profile.
+resource concern rather than a confidentiality gap. It is recorded as a
+remaining #63 item; this change does not alter TURN.
 
 ## Not end-to-end encrypted
 
