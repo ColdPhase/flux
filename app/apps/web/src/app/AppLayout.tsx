@@ -48,16 +48,17 @@ function viewOrder(pathname: string) {
 }
 
 /**
- * The phone's bottom bar holds the few main places (#266 PF-1, founder feedback on #264): Home, Inbox,
- * Messages and Projects. It shows on those top-level pages; inside a project or a conversation the
- * work takes the full height, as in a messenger.
+ * The phone's bottom bar of main places (#266 PF-1, founder feedback on #264): Home, Inbox, Messages
+ * and Projects. It stays on every page, so people always see which area they are in and can reach
+ * the others with a thumb (Apple HIG, Tab bars: "Make sure the tab bar is visible when people navigate
+ * to different sections of your app"). Inside a project or a conversation its section stays current.
+ * Only a modal sheet or the on-screen keyboard covers it.
  */
-function mainPlaces(pathname: string, inboxUnread: boolean): BottomNavItem[] | null {
-  const home = /^\/(map|tasks|docs)?$/.test(pathname);
-  const inbox = pathname === '/inbox';
-  const messages = pathname === '/dm' || pathname === '/dm/new';
-  const projects = pathname === '/projects';
-  if (!home && !inbox && !messages && !projects) return null;
+function mainPlaces(pathname: string, inboxUnread: boolean): BottomNavItem[] {
+  const home = /^\/(map|tasks|docs)?(\/|$)/.test(pathname);
+  const inbox = /^\/inbox(\/|$)/.test(pathname);
+  const messages = /^\/dm(\/|$)/.test(pathname);
+  const projects = /^\/projects(\/|$)/.test(pathname);
   return [
     { id: 'home', label: 'Home', to: '/', icon: 'home', current: home },
     { id: 'inbox', label: 'Inbox', to: '/inbox', icon: 'inbox', current: inbox, ...(inboxUnread ? { countLabel: ', something new', dot: true } : {}) },
@@ -424,7 +425,7 @@ function AppLayoutContent() {
           <Outlet />
           <LiveStage />
         </div>
-        {phone && places ? <BottomNav className="app__viewbar" label="Main places" items={places} /> : null}
+        {phone ? <BottomNav className="app__viewbar" label="Main places" items={places} /> : null}
       </div>
 
       <JumpTo open={jumpOpen} onClose={() => setJumpOpen(false)} userId={me.user.id} />
