@@ -7,6 +7,7 @@ import { useRegisterLiveHere } from '../live/LiveProvider';
 import { excerpt } from '../live/anchors';
 import { audienceLine, useProjectShell } from '../project/data';
 import { useShellData } from './data';
+import { agentAuthorLabel } from '../docs/format';
 import { ConversationStream, useConversationRoots, useTaskNotices } from './ConversationStream';
 import { ThreadDrawer, ThreadRoot, type ThreadMode } from './ThreadDrawer';
 import type { ProjectData } from './ProjectConversation';
@@ -67,7 +68,7 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   const [endToken, setEndToken] = useState(0);
 
   const author = useCallback((message: ConversationMessage) => {
-    if (message.authorId === null) return `${message.author.name ?? 'Agent'} · agent`;
+    if (message.authorId === null) return agentAuthorLabel(message.author);
     if (message.authorId === me.user.id) return me.user.name;
     return members.find((member) => member.userId === message.authorId)?.name
       ?? people?.find((person) => person.kind === 'human' && person.id === message.authorId)?.name ?? 'Member';

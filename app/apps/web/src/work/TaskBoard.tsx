@@ -6,6 +6,7 @@ import { ApiError, NetworkError } from '../api/client';
 import { Button, Icon, IconButton, initials, type IconName } from '../ui';
 import { createWork, updateWork, type ProjectWork } from './api';
 import { isFinished, linked } from './format';
+import { AGENT_SUFFIX } from '../docs/format';
 import './board.css';
 
 // The Tasks board (#136, UI116-4): three columns over the existing statuses, no new status and no
@@ -174,7 +175,7 @@ function Card({ item, column, projectId, meId, writable, hintId, saving, dragged
         {owner ? (
           <span className={`tb-card__owner${owner.kind === 'agent' ? ' tb-card__owner--agent' : ''}`}>
             <span className="tb-av" aria-hidden="true">{owner.kind === 'agent' ? <Icon name="agent" size={12} /> : initials(owner.name)}</span>
-            <span className="tb-card__name">{owner.name}{owner.kind === 'agent' ? <span className="tb-card__kind"> · agent</span> : owner.id === meId ? <span className="tb-card__kind"> · you</span> : null}</span>
+            <span className="tb-card__name">{owner.name}{owner.kind === 'agent' ? <span className="tb-card__kind">{AGENT_SUFFIX}</span> : owner.id === meId ? <span className="tb-card__kind"> · you</span> : null}</span>
           </span>
         ) : <span className="tb-card__owner tb-card__owner--none">No owner</span>}
         {waiting || results ? (
