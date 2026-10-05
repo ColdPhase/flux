@@ -6,7 +6,7 @@ import net from 'node:net';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser, type BrowserContext } from 'playwright';
-import type { ConversationMessage, WorkItem } from '@flux/contracts';
+import { taskDiscussionPath, type ConversationMessage, type WorkItem } from '@flux/contracts';
 import { taskDiscussionUseCases } from '../../../apps/server/src/work/task-discussions.js';
 import { db, pool } from '../support/db.js';
 import { addMember, expectStatus, grant, password, person, project, workspace, type Person } from '../support/people.js';
@@ -90,7 +90,8 @@ test('agent root renders without a human DM link, real human reply persists, and
     assert.match(await row.innerText(), /Trial analyst · agent/);
     assert.equal(await row.locator('a[href*="/dm/new"]').count(), 0);
     assert.equal(await row.locator('.project-convo__message-meta time').getAttribute('datetime'), root.createdAt);
-    const audience = page.locator('.project-convo__composer .composer__audience').filter({ hasText: '1 agent' });
+    // One project conversation (UI116-1): the root is in the stream, its replies and reply box in the thread beside it.
+    const audience = page.locator('#thread .project-convo__composer .composer__audience').filter({ hasText: '1 agent' });
     await audience.waitFor();
     assert.doesNotMatch(await audience.innerText(), /Only you|only you two/);
     // The thread starts with an agent, so the composer must not name a person who is not in the visible thread.
@@ -98,15 +99,27 @@ test('agent root renders without a human DM link, real human reply persists, and
     assert.equal(await composer.getAttribute('placeholder'), 'Reply in this conversation…');
     await composer.fill('I checked the trial: the counterexample is real.');
     const savedReply = page.waitForResponse((response) => response.request().method() === 'POST'
-      && new URL(response.url()).pathname === `/api/v1/conversations/${root.conversationId}/messages`);
+      && new URL(response.url()).pathname === taskDiscussionPath(task.id));
     await page.getByRole('button', { name: 'Send reply', exact: true }).click();
     const replyResponse = await savedReply;
     assert.equal(replyResponse.status(), 201, await replyResponse.text());
+    const humanCommand = replyResponse.request().postDataJSON();
+    assert.equal(humanCommand.kind, 'text');
+    assert.equal(humanCommand.body, 'I checked the trial: the counterexample is real.');
+    assert.match(humanCommand.clientMessageId, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+    const receipt = await replyResponse.json() as ConversationMessage;
     await page.getByText('I checked the trial: the counterexample is real.', { exact: true }).waitFor();
     const read = expectStatus(await owner.browser.request('GET', `/api/v1/conversations/${root.conversationId}`), 200) as { messages: ConversationMessage[] };
     const human = read.messages[1]!;
+    assert.equal(read.messages.length, 2);
+    assert.deepEqual(human, receipt);
     assert.equal(human.authorId, owner.id);
     assert.equal(Object.hasOwn(human, 'author'), false);
+    assert.deepEqual(expectStatus(await owner.browser.request('POST', taskDiscussionPath(task.id), {
+      body: humanCommand,
+    }), 201), receipt);
+    const replayed = expectStatus(await owner.browser.request('GET', `/api/v1/conversations/${root.conversationId}`), 200) as { messages: ConversationMessage[] };
+    assert.deepEqual(replayed.messages, read.messages);
     assert.deepEqual(await taskDiscussionUseCases(db).contribute(actor, task.id, command), root);
     await page.reload();
     await row.waitFor();
@@ -126,10 +139,11 @@ test('agent root renders without a human DM link, real human reply persists, and
       const humanRow = view.locator(`#message-${human.id}`);
       await humanRow.waitFor();
       assert.equal(await humanRow.locator(`a[href$="with=${owner.id}"]`).count(), 1);
-      await view.getByText('You have read access to this project.', { exact: true }).waitFor();
+      const thread = view.locator('#thread');
+      await thread.getByText('You have read access to this project.', { exact: true }).waitFor();
       assert.equal(await view.getByRole('textbox', { name: 'Reply', exact: true }).count(), 0);
       assert.equal(await view.getByRole('button', { name: 'Send reply', exact: true }).count(), 0);
-      const sources = view.getByRole('button', { name: 'Sources', exact: true });
+      const sources = thread.getByRole('button', { name: 'Sources', exact: true });
       await sources.focus();
       await sources.press('Enter');
       await view.getByRole('heading', { name: `Sources · saved for ${place.name}`, exact: true }).waitFor();
@@ -137,6 +151,9 @@ test('agent root renders without a human DM link, real human reply persists, and
       await view.getByRole('button', { name: 'Close sources', exact: true }).click();
       expectStatus(await reader.browser.request('POST', `/api/v1/conversations/${root.conversationId}/messages`, {
         body: { body: 'This viewer cannot publish.', clientMessageId: randomUUID() },
+      }), 403);
+      expectStatus(await reader.browser.request('POST', taskDiscussionPath(task.id), {
+        body: { body: 'This viewer cannot publish to the canonical task.', clientMessageId: randomUUID(), kind: 'text' },
       }), 403);
       if (evidence) await view.screenshot({ path: join(evidence, `mixed-authors-reader-${width}.png`), fullPage: true });
     }

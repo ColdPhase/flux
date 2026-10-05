@@ -98,13 +98,17 @@ class PersonalAssistantJourney(unittest.TestCase):
         return json.loads(response.text()) if response.text() else {}
 
     def conversation(self, who: str, **kwargs) -> Page:
+        """The conversation's thread, open beside the project's stream (UI116-1); the assistant is asked there."""
         page = self.page(who, **kwargs)
         page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
-        expect(page.get_by_role("heading", name=OPENING)).to_be_visible()
+        expect(self.opening(page)).to_contain_text(OPENING)
         return page
 
+    def opening(self, page: Page):
+        return page.get_by_role("complementary", name="Replies").locator(".thread__root")
+
     def composer(self, page: Page):
-        return page.locator("#project-composer")
+        return page.locator("#thread-composer")
 
     def ask(self, page: Page, prompt: str) -> None:
         box = self.composer(page)
@@ -367,7 +371,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(working).to_contain_text("The AI provider didn’t answer. Nothing was posted.", timeout=20000)
         self.assertEqual(len([item for item in mock("/__requests")["requests"] if item["path"] == "/v1/messages"]), 1)
         jo.reload()
-        expect(jo.get_by_role("heading", name=OPENING)).to_be_visible()
+        expect(self.opening(jo)).to_contain_text(OPENING)
         expect(jo.locator(".assistant-answer").first).to_be_visible()
         expect(jo.locator(".assistant-answer")).to_have_count(before)
 

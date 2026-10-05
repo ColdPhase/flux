@@ -264,10 +264,12 @@ class ThemeAccentsJourney(unittest.TestCase):
                     stable[theme] = statuses
                     self.measure(page, theme, family, ".project-convo__message p")
                     self.measure(page, theme, family, ".project-convo__message-meta")
-                    textbox = page.locator(".composer__box textarea")
+                    # The conversation URL opens the stream with the thread beside it (UI116-1): two composers
+                    # share these styles; MEASURE reads the first one, the stream's.
+                    textbox = page.locator(".composer__box textarea").first
                     textbox.fill("I will compare the sensor tomorrow and attach the measured evidence.")
                     self.measure(page, theme, family, ".composer__box textarea")
-                    send = page.locator(".composer__send")
+                    send = page.locator(".composer__send").first
                     for state in ("normal", "hover", "pressed"):
                         if state == "hover": send.hover()
                         if state == "pressed": page.mouse.down()
@@ -345,7 +347,7 @@ class ThemeAccentsJourney(unittest.TestCase):
                 for name, size in (("phone", PHONE), ("tablet", {"width": 820, "height": 1180}), ("desktop-1280", {"width": 1280, "height": 800})):
                     page.set_viewport_size(size)
                     page.goto(self.conversation_url)
-                    expect(page.locator(".composer__box textarea")).to_be_visible()
+                    expect(page.locator(".composer__box textarea").last).to_be_visible()
                     self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), size["width"])
                     shot(page, f"accent-{theme.lower()}-{family.lower()}-{name}-conversation")
                     page.get_by_role("button", name=re.compile("^What matters")).click()
@@ -368,7 +370,7 @@ class ThemeAccentsJourney(unittest.TestCase):
                 page.set_viewport_size(PHONE)
                 page.goto(self.conversation_url)
                 page.add_style_tag(content=":root { --fs-xs:15px; --fs-sm:16.25px; --fs-md:17.5px; --fs-base:18.75px; --fs-lg:21.25px; --fs-xl:25px; --fs-2xl:30px; }")
-                expect(page.locator(".composer__box textarea")).to_be_visible()
+                expect(page.locator(".composer__box textarea").last).to_be_visible()
                 shot(page, f"accent-{theme.lower()}-{family.lower()}-phone-text-125-conversation")
                 self.account(page)
                 pop = page.get_by_role("dialog", name="Account", exact=True)

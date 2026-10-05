@@ -55,6 +55,8 @@ export interface ConversationFields {
   createdAt: string;
   /** Stable discussion label from the opening message. */
   firstMessageBody: string;
+  /** The current canonical task binding, including windows that do not contain its root (#154). */
+  task?: { workId: string; title: string };
   messages: ConversationMessage[];
   messagePage: {
     /** True when messages with a lower sequence can be fetched. */
@@ -83,6 +85,46 @@ export interface ConversationSummaryFields {
   lastMessageBody: string;
 }
 export type ConversationSummary = ConversationSummaryFields & ConversationIdentity;
+
+/**
+ * One project conversation (UI116-1, 2026-10-02): a chronological stream of roots. A root is the
+ * opening message (sequence 1) of a stored conversation; its later messages are that root's
+ * one-level thread, read through `GET /api/v1/conversations/:id`.
+ */
+export const projectConversationRootsPath = (projectId: string) => `/api/v1/projects/${projectId}/conversation-roots`;
+
+export interface ConversationRoot {
+  conversationId: string;
+  /** The root message, sequence 1, with its true author, time, source and contribution. */
+  message: ConversationMessage;
+  /** Messages after the root in its thread. */
+  replyCount: number;
+  lastReplyAt: string | null;
+  /**
+   * Present when this root opened a task's discussion (UI116-3): the first genuine contribution to that
+   * task, which every later contribution answers. The title is the task's current one.
+   */
+  task?: { workId: string; title: string };
+}
+
+/** Stable, newest-first window of roots returned in ascending display order. */
+export interface ConversationRootQuery {
+  /** 1–100, default 50. */
+  limit?: number;
+  /** Fetch roots older than this conversation of the same project. */
+  before?: string;
+}
+
+export interface ConversationRootWindow {
+  projectId: string;
+  roots: ConversationRoot[];
+  rootPage: {
+    /** True when older roots can be fetched with `before: nextBefore`. */
+    hasMoreBefore: boolean;
+    nextBefore: string | null;
+    limit: number;
+  };
+}
 
 export interface SendMessageCommand {
   /** 1–100000 characters, or empty when `attachmentIds` names at least one file. */
