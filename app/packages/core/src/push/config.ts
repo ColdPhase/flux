@@ -90,6 +90,25 @@ export function loadPushSenderConfig(env: NodeJS.ProcessEnv = process.env): Push
   return { status: 'available', publicKey: publicKey.replace(/=+$/, ''), privateKey: privateKey.replace(/=+$/, ''), subject, allowPrivateNetwork };
 }
 
+/** Host suffixes that cannot receive mail or serve a public site: localhost, mDNS and the RFC 2606/6761 reserved names. */
+const UNREACHABLE_CONTACT_HOST = /(^|\.)(localhost|localdomain|local|test|example|invalid|internal|home\.arpa)$/;
+
+/**
+ * Apple's push service refuses a VAPID contact it cannot reach with 403 BadJwtToken, so iPhone and iPad
+ * notifications fail while other push services accept the same token (#20, observed 2026-10-05 for
+ * `example.test`). Returns a warning for such a contact, or null. The configuration still loads: desktop
+ * and Android delivery and local development keep working.
+ */
+export function vapidSubjectWarning(subject: string): string | null {
+  const host = (subject.startsWith('mailto:') ? subject.slice(subject.lastIndexOf('@') + 1) : hostOf(subject)).toLowerCase().replace(/\.$/, '');
+  if (host && host.includes('.') && !UNREACHABLE_CONTACT_HOST.test(host) && !/^[\d.]+$|^\[|:/.test(host)) return null;
+  return `FLUX_VAPID_SUBJECT ${subject} is not a reachable contact; Apple's push service refuses it, so iPhone and iPad notifications fail. Set a mailto: address at your own domain or your public https origin.`;
+}
+
+function hostOf(url: string): string {
+  try { return new URL(url).hostname; } catch { return ''; }
+}
+
 /**
  * Push endpoints are user-supplied URLs the worker will POST to. Only public https hosts
  * named by DNS are accepted; the worker additionally refuses private addresses at connect time.
