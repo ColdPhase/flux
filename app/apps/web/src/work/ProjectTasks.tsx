@@ -10,6 +10,7 @@ import { NewWorkComposer } from './NewWorkComposer';
 import { STATUS_LABEL, isFinished, shortDate } from './format';
 import { getProjectWorkView, getWorkReferenceRows, workReferenceReadUrl, workViewReadUrl } from './read-api';
 import { useWorkRead } from './useWorkRead';
+import { OPENING_REVEAL_MS } from '../app/messageParts';
 import { useProjectWorkPage } from './WorkReadContext';
 import { WorkPagination } from './WorkPagination';
 import { useWorkReadingPosition } from './useWorkReadingPosition';
@@ -250,6 +251,12 @@ export function ProjectTasks() {
   const outcomeScope = useMemo(() => outcomeResults ? { accountId: me.user.id, projectId: project.id, selector: workReferenceReadUrl(project.id, outcomeResults) } : null, [me.user.id, project.id, outcomeResults]);
   const loadOutcomeResults = useCallback((signal: AbortSignal) => getWorkReferenceRows(project.id, outcomeResults, signal), [project.id, outcomeResults]);
   const outcomeRead = useWorkRead(outcomeScope, loadOutcomeResults, outcomes.length, revalidator.state === 'idle');
+  // A proposal names its result in its first line: proposals are laid out but hidden until those titles
+  // have been read (at most OPENING_REVEAL_MS), so the line never changes under the reader (#155).
+  const [titlesTimedOut, setTitlesTimedOut] = useState(false);
+  useEffect(() => { const timer = window.setTimeout(() => setTitlesTimedOut(true), OPENING_REVEAL_MS); return () => window.clearTimeout(timer); }, []);
+  const [titlesShown, setTitlesShown] = useState(false);
+  if (!titlesShown && (outcomeRead.phase !== 'loading' || titlesTimedOut)) setTitlesShown(true);
   const jump = useRef<{ routeKey: string; id: string; group: GroupId } | null>(null);
   // Outcome links refer to the whole project's work/results in the List. Restore All before
   // scrolling, since a saved status/mine filter or a search can hide their destination.
@@ -369,6 +376,7 @@ export function ProjectTasks() {
   if (outcomeRead.phase === 'ready' || outcomeRead.phase === 'refreshing') for (const row of outcomeRead.value.items) if (row.kind === 'result') resultTitles.set(row.id, row.title);
   for (const result of results) resultTitles.set(result.id, result.title);
   const proposals = (
+    <div className="ws-proposals-gate" style={titlesShown ? undefined : { visibility: 'hidden' }} aria-busy={titlesShown ? undefined : true}>
     <ProjectProposals outcomes={outcomes} people={shell?.people ?? null} projectName={project.name}
       resultTitles={resultTitles}
       workCount={data?.summary.workTotal ?? 0} resultCount={data?.summary.all.results ?? 0}
@@ -376,6 +384,7 @@ export function ProjectTasks() {
       jumpToSection={jumpToSection} writable={writable} refresh={() => { if (mode === 'list') refresh(); else refreshBoard(); revalidator.revalidate(); }}
       openResult={(id) => openDetails({ kind: 'result', id, projectId: project.id })}
       openWork={(item) => openDetails({ kind: 'work', id: item.id, projectId: project.id })} />
+    </div>
   );
 
   return (
