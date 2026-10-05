@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { connect } from 'node:net';
 import { test } from 'node:test';
 import { eq } from 'drizzle-orm';
 import { fileRows, schema } from '@flux/db';
 import { createAgent, createFileUseCases, grantProject, type Principal } from '@flux/core';
-import { imageTypeOf, type CreatedThought, type Sketch, type SketchDetail, type StagedFile } from '@flux/contracts';
+import { FILE_LIMITS, imageTypeOf, type CreatedThought, type Sketch, type SketchDetail, type StagedFile } from '@flux/contracts';
 import { diskFileStorage } from '../../apps/server/src/files/storage.js';
 import { fileUnitOfWork } from '../../apps/server/src/files/adapters.js';
 import { sketchUseCases } from '../../apps/server/src/sketches/adapters.js';
@@ -42,6 +43,23 @@ async function upload(who: Person, projectId: string, bytes: Uint8Array, name = 
     body: Buffer.from(bytes),
   });
   return { status: response.status, body: await response.json() as StagedFile & { code?: string } };
+}
+/** An upload that only declares its length: the server must refuse it from the headers alone. */
+async function declaredUpload(who: Person, projectId: string, length: number) {
+  const base = new URL(who.browser.base);
+  const raw = await new Promise<string>((resolve, reject) => {
+    const socket = connect(Number(base.port || 80), base.hostname, () => {
+      socket.write(`POST /api/v1/projects/${projectId}/files?uploadId=${randomUUID()}&name=large.png HTTP/1.1\r\nHost: ${base.host}\r\n`
+        + `Content-Type: application/octet-stream\r\nContent-Length: ${length}\r\nCookie: ${who.browser.cookieHeader()}\r\n`
+        + `Origin: ${who.browser.defaultOrigin}\r\nConnection: close\r\n\r\n`);
+    });
+    let response = '';
+    socket.setEncoding('utf8');
+    socket.on('data', (chunk: string) => { response += chunk; });
+    socket.on('end', () => resolve(response));
+    socket.on('error', reject);
+  });
+  return { status: Number(raw.slice(9, 12)), code: (JSON.parse(raw.slice(raw.indexOf('\r\n\r\n') + 4)) as { code: string }).code };
 }
 const download = (who: Person, id: string) => fetch(new URL(`/api/v1/files/${id}`, who.browser.base), { headers: { cookie: who.browser.cookieHeader() } });
 const detail = async (who: Person, sketchId: string) => expectStatus(await who.browser.request('GET', `/api/v1/sketches/${sketchId}`), 200) as SketchDetail;
@@ -137,9 +155,9 @@ test('viewers, other uploaders, other projects, private maps, agents and non-ima
     assert.equal((await row(other.id)).publishedAt, null);
     assert.equal((await download(f.reader, other.id)).status, 404);
   }
-  // Size limit: the stored-file limit refuses a larger image before it is staged.
-  const large = await upload(f.writer, f.place.id, Buffer.concat([PNG, Buffer.alloc(5 * 1024 * 1024)]));
-  assert.equal(large.status, 413);
+  // Size limit: the stored-file limit refuses a larger image by its declared length, before any byte is staged.
+  // (Sending the bytes would race the early 413 against the client's write, as in stored-files.test.ts.)
+  assert.deepEqual(await declaredUpload(f.writer, f.place.id, FILE_LIMITS.fileBytes + 1), { status: 413, code: 'FILE_TOO_LARGE' });
   // Stored files belong to a project: a private map refuses the image and keeps it staged.
   const mine = expectStatus(await f.writer.browser.request('POST', `/api/v1/workspaces/${f.ws.id}/sketches`, { body: { title: 'Mine', scope: 'private' } }), 201) as Sketch;
   const privateMap = await place(f.writer, mine.id, { fileId: staged.id });
