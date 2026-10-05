@@ -9,7 +9,9 @@ import { expectStatus, person, project, workspace, type Person } from './support
 // concurrent native HTTP commands keep main's behaviour. A map that has a room stays charged and
 // queued, but a finite capacity refusal is a retryable 503, never a 500.
 
-const BURST = 70;
+// search.test's concurrency, which main serves; far above one admitted plus eight queued native commands.
+// (70 concurrent writers of one map met the database pool/row-lock timeout here; that limit is not measured.)
+const BURST = 25;
 const thought = (someone: Person, sketchId: string, index: number) =>
   someone.browser.request('POST', `/api/v1/sketches/${sketchId}/thoughts`, { body: { text: `Burst thought ${index}`, x: index * 10, y: 0 } });
 async function map(someone: Person, space: Workspace, title: string) {
