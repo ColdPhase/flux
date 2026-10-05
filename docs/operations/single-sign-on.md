@@ -1,7 +1,7 @@
 # Single sign-on
 
 Flux can let people sign in with your organisation's OpenID Connect identity provider (Keycloak,
-Microsoft Entra ID, Google Workspace, Okta, Authentik and others), next to email and password
+Google Workspace, Okta, Authentik and others), next to email and password
 ([#113](https://github.com/ColdPhase/flux/issues/113)). Flux supports **one** provider per
 instance. Email/password sign-in keeps working, so the first owner and anyone outside the
 provider can still sign in.
@@ -92,3 +92,14 @@ for Mailpit) and removes everything afterwards.
 
 Not covered: SAML, SCIM provisioning, several providers at once, and a production provider's
 own policies (MFA, conditional access), which stay the provider's responsibility.
+
+- **Microsoft Entra ID (unverified, 2026-10-06).** Flux accepts an identity only when the ID token says
+  `email_verified: true`. Entra's ID token and optional-claims references and its `claims_supported`
+  list don't include `email_verified`, so Entra sign-in is expected to be refused until a provider
+  profile for it exists (F-024 S5, [#274](https://github.com/ColdPhase/flux/pull/274)). This is an
+  inference from Microsoft's documentation; it was not tested against a real Entra tenant.
+- **Agent (MCP) authorization.** The page an agent client opens for authorization (`/login`, for
+  example from `claude mcp login`) offers email and password only, not single sign-on. Single sign-on
+  there is F-024 S1 ([#274](https://github.com/ColdPhase/flux/pull/274)). Until then, sign in at
+  `/sign-in` with single sign-on in the same browser first, then run the client's login again; the
+  authorization then uses the signed-in session (read from the code; no end-to-end test covers it yet).
