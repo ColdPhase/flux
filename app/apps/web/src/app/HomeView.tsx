@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
-import type { ReturnItem, WorkItem } from '@flux/contracts';
+import type { ProjectWorkSummary, ReturnItem, WorkItem } from '@flux/contracts';
 import { Button, Icon, Spinner } from '../ui';
 import { STATUS_LABEL } from '../work/format';
 import { Foot, Item, SourceLink, useReturn } from '../returns/SinceYouLeft';
 import { useAssignedWork } from './HomeTasks';
-import { useShellData } from './data';
+import { useShellData, type ProjectSummary } from './data';
+import { getProjectWorkSummary } from '../work/read-api';
 import './home.css';
 
 const dateLine = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
@@ -27,6 +28,21 @@ export function HomeView() {
   const moving = mine.filter((item) => item.status === 'in_progress' || item.status === 'blocked');
   const needs = (summary?.items ?? []).filter((item) => item.needsYou && item.id !== summary?.nextStep?.item);
   const updates = summary?.point.savedAt ? (summary.items ?? []).filter((item) => !item.needsYou && item.id !== summary.nextStep?.item) : [];
+  // Each project's current state, read once per visit: decisions waiting for the reader show in For you,
+  // and each card says what the project's own state line says (FF-1).
+  const [states, setStates] = useState<Map<string, ProjectWorkSummary>>(new Map());
+  useEffect(() => {
+    const controller = new AbortController();
+    void Promise.all(projects.map((project) => getProjectWorkSummary(project.id, controller.signal).then((read) => [project.id, read] as const, () => null)))
+      .then((reads) => { if (!controller.signal.aborted) setStates(new Map(reads.filter((read): read is readonly [string, ProjectWorkSummary] => !!read))); });
+    return () => controller.abort();
+  }, [projects]);
+  const listed = new Set((summary?.items ?? []).map((item) => `${item.source.type}:${'id' in item.source ? item.source.id : ''}`));
+  const decisions = projects.flatMap((project) => {
+    const state = states.get(project.id);
+    const proposal = state?.access !== 'viewer' ? state?.state.proposal : null;
+    return proposal && !listed.has(`decision:${proposal.id}`) ? [{ project, proposal }] : [];
+  });
   const needsByProject = new Map<string, number>();
   for (const item of summary?.items ?? []) if (item.needsYou && item.project) needsByProject.set(item.project.id, (needsByProject.get(item.project.id) ?? 0) + 1);
 
@@ -47,14 +63,30 @@ export function HomeView() {
           <section className="home-sec" aria-labelledby="home-for-you">
             <div className="home-sec__head">
               <h3 id="home-for-you" className="home-sec__h">For you</h3>
-              {summary?.needsYou ? <span className="home-sec__count" aria-label={`${summary.needsYou} ${summary.needsYou === 1 ? 'needs' : 'need'} you`}>{summary.needsYou}</span> : null}
+              {(summary?.needsYou ?? 0) + decisions.length ? <span className="home-sec__count" aria-label={`${(summary?.needsYou ?? 0) + decisions.length} ${(summary?.needsYou ?? 0) + decisions.length === 1 ? 'needs' : 'need'} you`}>{(summary?.needsYou ?? 0) + decisions.length}</span> : null}
             </div>
             <p className="home-sec__why">Replies, mentions and requests that wait for you, across your projects.</p>
+            {decisions.length ? (
+              <ul className="since__list" aria-label="Decisions waiting for you">
+                {decisions.map(({ project, proposal }) => (
+                  <li key={proposal.id}>
+                    <Link className="since__item is-need" to={`/projects/${project.id}?open=decision:${proposal.id}`}>
+                      <span className="since__dot since__dot--need" aria-hidden="true" />
+                      <span className="since__body">
+                        <span className="since__text">Decide: {proposal.title}</span>
+                        <span className="since__detail">{project.name} · proposed, waiting for someone who can accept it</span>
+                      </span>
+                      <Icon name="chevron-right" size={14} className="since__go" />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
             {ack === 'done' ? <p className="home-sec__empty" role="status">You’re caught up. New things for you will show here.</p>
               : !summary ? <div className="home-sec__wait"><Spinner label="Loading what needs you" /></div>
                 : needs.length || updates.length ? (
                   <>
-                    {needs.length ? <ul className="since__list">{needs.slice(0, SHOWN).map((item) => <Item key={item.id} item={item} showProject />)}</ul> : <p className="home-sec__empty">Nothing needs you right now.</p>}
+                    {needs.length ? <ul className="since__list">{needs.slice(0, SHOWN).map((item) => <Item key={item.id} item={item} showProject />)}</ul> : decisions.length ? null : <p className="home-sec__empty">Nothing needs you right now.</p>}
                     {updates.length ? (
                       <>
                         <h4 className="home-sec__sub">Other changes since you were last here</h4>
@@ -63,7 +95,7 @@ export function HomeView() {
                     ) : null}
                     <Foot summary={summary} ack={ack} onAcknowledge={() => void acknowledge()} />
                   </>
-                ) : <p className="home-sec__empty">Nothing needs you right now. When someone replies to you, mentions you or asks for your decision, it shows here and in your Inbox.</p>}
+                ) : decisions.length ? null : <p className="home-sec__empty">Nothing needs you right now. When someone replies to you, mentions you or asks for your decision, it shows here and in your Inbox.</p>}
             <Link className="home-sec__all" to="/inbox">Open Inbox<Icon name="chevron-right" size={14} /></Link>
           </section>
         </div>
@@ -72,28 +104,41 @@ export function HomeView() {
           <div className="home-sec__head"><h3 id="home-projects" className="home-sec__h">Your projects</h3></div>
           {projects.length ? (
             <ul className="home-projects">
-              {projects.map((project) => {
-                const count = needsByProject.get(project.id) ?? 0;
-                return (
-                  <li key={project.id} className="home-project">
-                    <Link className="home-project__open" to={`/projects/${project.id}`}>
-                      <span className="home-project__ic" aria-hidden="true"><Icon name="spark" size={16} /></span>
-                      <span className="home-project__body">
-                        <span className="home-project__name">{project.name}</span>
-                        <span className={`home-project__state${count ? ' is-need' : ''}`}>{count ? `${count} ${count === 1 ? 'thing needs' : 'things need'} you` : project.hasNew ? 'New activity' : 'Nothing needs you'}</span>
-                      </span>
-                      <Icon name="chevron-right" size={14} className="home-project__go" />
-                    </Link>
-                    <Link className="home-project__recap" to={`/projects/${project.id}?open=recap`}><Icon name="leaf" size={13} />What matters</Link>
-                  </li>
-                );
-              })}
+              {projects.map((project) => <ProjectCard key={project.id} project={project} needs={needsByProject.get(project.id) ?? 0} summary={states.get(project.id) ?? null} />)}
             </ul>
           ) : <p className="home-sec__empty">You are not in a project yet. Start one, or it appears here when someone adds you.</p>}
           <Link className="home-sec__all" to="/projects/new"><Icon name="plus" size={14} />New project</Link>
         </section>
       </div>
     </div>
+  );
+}
+
+/**
+ * One project on Home (FF-2): its goal, and what is happening there in the same words as the project's
+ * own state line, so Home and the project never disagree about what needs you.
+ */
+function ProjectCard({ project, needs, summary }: { project: ProjectSummary; needs: number; summary: ProjectWorkSummary | null }) {
+  const decide = !!summary?.state.proposal && summary.access !== 'viewer';
+  const [line, need] = decide ? ['A decision needs you', true]
+    : needs ? [`${needs} ${needs === 1 ? 'thing needs' : 'things need'} you`, true]
+      : summary?.state.blocked.count ? [`${summary.state.blocked.count} blocked`, false]
+        : summary?.state.active.count ? [`${summary.state.active.count} in progress`, false]
+          : summary?.unfinishedTotal ? [`${summary.unfinishedTotal} open ${summary.unfinishedTotal === 1 ? 'task' : 'tasks'}`, false]
+            : summary ? ['Nothing open', false] : [project.hasNew ? 'New activity' : '', false];
+  return (
+    <li className="home-project">
+      <Link className="home-project__open" to={`/projects/${project.id}`}>
+        <span className="home-project__ic" aria-hidden="true"><Icon name="spark" size={16} /></span>
+        <span className="home-project__body">
+          <span className="home-project__name">{project.name}</span>
+          {project.goal ? <span className="home-project__goal">{project.goal}</span> : null}
+          <span className={`home-project__state${need ? ' is-need' : ''}`}>{line}</span>
+        </span>
+        <Icon name="chevron-right" size={14} className="home-project__go" />
+      </Link>
+      <Link className="home-project__recap" to={`/projects/${project.id}?open=recap`}><Icon name="leaf" size={13} />What matters</Link>
+    </li>
   );
 }
 

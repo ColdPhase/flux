@@ -438,6 +438,8 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
    data-typing while a text field, or the same composer's buttons, hold focus). */
 @media (hover: none) and (max-width: 640px) {
   .app[data-typing] .app__viewbar { display: none; }
+  /* While typing, the state line steps aside too, so the conversation keeps its height (visual review of #267). */
+  .app[data-typing] .state-row { display: none; }
 }
 .auth__back { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; margin-left: auto; padding: 0 8px; border-radius: var(--r); font-size: var(--fs-md); color: var(--text-2); text-decoration: none; transition: var(--tr); }
 .auth__back:hover { background: var(--bg-hover); color: var(--text); }

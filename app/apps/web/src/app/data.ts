@@ -17,7 +17,7 @@ export interface WorkspaceSummary {
   role?: WorkspaceRole | null;
 }
 /** A small, audience-specific project. Only projects the person belongs to are ever listed. */
-export interface ProjectSummary { id: string; name: string; workspaceName?: string; hasNew?: boolean }
+export interface ProjectSummary { id: string; name: string; workspaceName?: string; hasNew?: boolean; /** What the project is for (#272 FF-6). */ goal?: string | null }
 /** A private conversation with one or more people, independent of any project. */
 export interface DirectMessageSummary {
   id: string; workspaceId: string; kind: 'pair' | 'group'; title: string; people: string[]; participantIds: string[];

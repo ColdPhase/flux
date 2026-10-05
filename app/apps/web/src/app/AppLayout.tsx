@@ -343,6 +343,10 @@ function AppLayoutContent() {
   ] : null;
   const homeViews: TabItem[] = VIEWS.map((view) => ({ id: view.id, label: view.label, to: view.path, end: false }));
   const places = mainPlaces(location.pathname, inboxUnread);
+  const backTo = !phone ? null
+    : /^\/projects\/(?!new$)[^/]+/.test(location.pathname) ? { to: '/projects', label: 'All projects' }
+      : /^\/dm\/(?!new$)[^/]+/.test(location.pathname) ? { to: '/dm', label: 'All messages' }
+        : /^\/map\/[^/]+/.test(location.pathname) ? { to: '/map', label: 'My sketchbook' } : null;
   const audienceOpen = project?.project.visibility === 'workspace';
   const audience = project ? audienceLine(project.people, me.user.id, audienceOpen) : 'People with project access';
   // The audience line leads to "Who can see this", where managers change it (#188).
@@ -421,7 +425,12 @@ function AppLayoutContent() {
 
       <div className="app__main">
         <header className={`top${activeProject ? ' top--project' : ''}`}>
-          {phone && settingsPage ? (
+          {phone && backTo ? (
+            // Inside a place on the phone, the top-left control leads back to its list, as in a messenger
+            // (#272 FF-3, visual review of #267); the lists keep the menu and the bar of main places.
+            <IconButton icon="chevron-left" label={backTo.label} size={20} className="top__back" data-tip-align="start"
+              onClick={() => navigate(backTo.to)} />
+          ) : phone && settingsPage ? (
             <IconButton icon="chevron-left" label="Back" size={20} className="top__back" data-tip-align="start"
               onClick={() => { if (location.key !== 'default') navigate(-1); else navigate('/settings'); }} />
           ) : !navDrawer && sideHidden ? (
