@@ -120,6 +120,9 @@ body:has(.app) { background: var(--bg-chrome); }
   text-align: left; transition: var(--tr);
 }
 .me__btn:hover, .me__btn[aria-expanded="true"] { background: var(--bg-hover); }
+/* In the phone drawer the account row is a link into Settings (#266 PF-5). */
+a.me__btn { color: inherit; text-decoration: none; }
+a.me__btn[aria-current="page"] { background: var(--accent-selected-bg); }
 .me__text { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
 .me__text b, .me__who b { font-weight: 500; font-size: var(--fs-md); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .me__text > span, .me__who span { font-size: var(--fs-xs); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
