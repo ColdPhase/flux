@@ -132,10 +132,14 @@ class ProjectStateJourney(unittest.TestCase):
             with self.subTest(width=width, dark=dark):
                 page = self.page("Jonas Reader", width, height, dark)
                 page.goto(f"/projects/{project['id']}")
-                expect(page.get_by_role("heading", name="No conversations yet", exact=True)).to_be_visible()
+                # One project conversation (UI116-1): an empty stream says so to a reader, with no composer.
+                expect(page.get_by_role("heading", name="No messages yet", exact=True)).to_be_visible()
+                # The two tasks are announced above it (UI116-3); announcements are not messages.
+                expect(page.locator(".convo-notice")).to_have_count(2)
+                expect(page.locator(".project-convo__message")).to_have_count(0)
                 expect(page.locator(".project-convo__read-only")).to_be_visible()
                 expect(page.locator("#project-composer")).to_have_count(0)
-                expect(page.get_by_role("button", name="Start conversation", exact=True)).to_have_count(0)
+                expect(page.get_by_role("button", name="Send message", exact=True)).to_have_count(0)
                 self.assert_text_is_unclipped(page.locator("header.top .top__audience > span").first)
                 self.assert_text_is_unclipped(page.locator(".composer__audience > span").first)
                 if width <= 640:
@@ -178,16 +182,17 @@ class ProjectStateJourney(unittest.TestCase):
         principal = {"kind": "human", "id": self.accounts["Jonas Reader"]["id"]}
         self.call(owner, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": principal, "role": "contributor"}, 201)
         reader = self.page("Jonas Reader", 390, 844)
-        reader.goto(f"/projects/{project['id']}?new=1")
-        reader.get_by_label("Start a conversation", exact=True).fill("Unsent sensor notes remain mine")
+        reader.goto(f"/projects/{project['id']}")
+        reader.get_by_label("Write a message", exact=True).fill("Unsent sensor notes remain mine")
         self.call(owner, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": principal, "role": "viewer"}, 201)
         thread = self.call(owner, "POST", f"/api/v1/projects/{project['id']}/conversations",
             {"body": "Sensor calibration plan for the library", "clientMessageId": str(uuid.uuid4())}, 201)
         material = self.call(owner, "POST", f"/api/v1/projects/{project['id']}/materials",
             {"title": "Low-light sensor notes", "body": "ToF detects gestures without saving camera images.", "clientMutationId": str(uuid.uuid4())}, 201)
         reader.reload()
-        expect(reader.get_by_role("heading", name="Choose a conversation", exact=True)).to_be_visible()
-        expect(reader.get_by_role("heading", name="No conversations yet", exact=True)).to_have_count(0)
+        # The existing root is in the one stream (UI116-1); the reader has no composer.
+        expect(reader.locator(".project-convo__message > p")).to_have_text("Sensor calibration plan for the library")
+        expect(reader.get_by_role("heading", name="No messages yet", exact=True)).to_have_count(0)
         expect(reader.locator("#project-composer")).to_have_count(0)
         expect(reader.get_by_text("Unsent sensor notes remain mine", exact=True)).to_have_count(0)
         reader.get_by_role("button", name=re.compile("^Sources")).click()
@@ -199,20 +204,25 @@ class ProjectStateJourney(unittest.TestCase):
         source.focus()
         reader.keyboard.press("Enter")
         expect(reader.locator(".material-view__body")).to_have_text(material["body"])
-        reader.goto(f"/projects/{project['id']}?new=1")
+        reader.goto(f"/projects/{project['id']}")
         reader.get_by_role("button", name="Open navigation", exact=True).click()
         expect(reader.get_by_role("link", name="New conversation", exact=True)).to_have_count(0)
-        reader.get_by_role("link", name=re.compile("Sensor calibration plan for the library")).click()
-        expect(reader).to_have_url(re.compile(f"/conversations/{thread['id']}$"))
+        # The drawer lists projects, not their conversations; the saved conversation's own URL opens its thread.
+        expect(reader.get_by_role("link", name=re.compile("Sensor calibration plan for the library"))).to_have_count(0)
+        reader.keyboard.press("Escape")
+        reader.goto(f"/projects/{project['id']}/conversations/{thread['id']}")
+        thread_view = reader.get_by_role("complementary", name="Replies")
+        expect(thread_view.locator(".thread__root")).to_contain_text("Sensor calibration plan for the library")
         expect(reader.locator(".project-convo__message > p")).to_have_text("Sensor calibration plan for the library")
-        expect(reader.locator(".project-convo__read-only")).to_be_visible()
-        expect(reader.locator(".project-convo__current-thread")).to_contain_text("Conversation · Sensor calibration")
-        expect(reader.locator(".project-convo__current-thread")).not_to_contain_text("Replying to")
+        expect(thread_view.locator(".project-convo__read-only")).to_be_visible()
+        expect(thread_view.locator(".project-convo__current-thread")).to_contain_text("Conversation · Sensor calibration")
+        expect(thread_view.locator(".project-convo__current-thread")).not_to_contain_text("Replying to")
         expect(reader.locator("#project-composer")).to_have_count(0)
+        expect(reader.locator("#thread-composer")).to_have_count(0)
         shot(reader, "136-state-reader-saved-conversation-390")
         self.call(owner, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": principal, "role": "contributor"}, 201)
-        reader.goto(f"/projects/{project['id']}?new=1")
-        expect(reader.get_by_label("Start a conversation", exact=True)).to_have_value("Unsent sensor notes remain mine")
+        reader.goto(f"/projects/{project['id']}")
+        expect(reader.get_by_label("Write a message", exact=True)).to_have_value("Unsent sensor notes remain mine")
 
     def test_05_long_project_title_yields_to_readable_audience_and_compact_header(self):
         for name in (LONG_NAME, LONG_NAME + " — sensor calibration and accessible night lighting"):

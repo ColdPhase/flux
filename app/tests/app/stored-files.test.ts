@@ -9,7 +9,7 @@ import { gunzipSync } from 'node:zlib';
 import { and, eq, sql } from 'drizzle-orm';
 import { fileRows, schema } from '@flux/db';
 import { createFileUseCases, NotFoundError, type FileUnitOfWork } from '@flux/core';
-import { FILE_LIMITS, type Conversation, type ConversationMessage, type StagedFile, type TaskDiscussion, type WorkItem } from '@flux/contracts';
+import { FILE_LIMITS, type Conversation, type ConversationMessage, type ConversationRootWindow, type StagedFile, type TaskDiscussion, type WorkItem } from '@flux/contracts';
 import { diskFileStorage } from '../../apps/server/src/files/storage.js';
 import { exportUseCases } from '../../apps/server/src/export/adapters.js';
 import { fileUnitOfWork } from '../../apps/server/src/files/adapters.js';
@@ -163,6 +163,9 @@ test('files-only roots, ordinary replies and task replies retain exact order and
   const discussion = expectStatus(await f.reader.browser.request('GET', `/api/v1/work/${task.id}/discussion`), 200) as TaskDiscussion;
   assert.deepEqual(discussion.root, root);
   assert.deepEqual(discussion.messages, [root]);
+  const roots = expectStatus(await f.reader.browser.request('GET', `/api/v1/projects/${f.place.id}/conversation-roots`), 200) as ConversationRootWindow;
+  assert.deepEqual(roots.roots.find((item) => item.message.id === root.id)?.message, root, 'stream root has the same ordered stored files');
+  assert.deepEqual(roots.roots.find((item) => item.message.id === started.messages[0]!.id)?.message.files, started.messages[0]!.files);
   assert.deepEqual(expectStatus(await f.writer.browser.request('POST', `/api/v1/work/${task.id}/discussion`, { body: taskCommand }), 201), root);
   await grant(f.owner, f.place.id, f.writer, 'denied');
   assert.equal((await download(f.writer, staged.body.id)).status, 404);
@@ -188,6 +191,35 @@ test('foreign, revoked, missing and same-size corrupt staged bytes cannot create
   assert.equal((await send(f.writer)).status, 404);
   const [row] = await db.select().from(schema.projectFiles).where(eq(schema.projectFiles.id, file.id));
   assert.equal(row!.messageId, null);
+});
+
+test('expired staged files leave task roots and replies unchanged; reselecting bytes publishes a new exact file', async () => {
+  const f = await scene();
+  const bytes = Buffer.from([0, 255, 4, 10, 128]);
+  const staged = (await upload(f.writer, f.place.id, bytes, randomUUID(), 'expired.bin')).body;
+  await db.update(schema.projectFiles).set({ expiresAt: new Date(Date.now() - 1000) }).where(eq(schema.projectFiles.id, staged.id));
+  const task = expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.place.id}/work`, {
+    body: { title: 'Recover the expired measurement' },
+  }), 201) as WorkItem;
+  const path = `/api/v1/work/${task.id}/discussion`;
+  const command = { body: 'Keep the text until the file is available', attachmentIds: [staged.id], clientMessageId: randomUUID() };
+  assert.equal((await f.writer.browser.request('POST', path, { body: command })).status, 404);
+  const empty = expectStatus(await f.reader.browser.request('GET', path), 200) as TaskDiscussion;
+  assert.equal(empty.root, null);
+  const root = expectStatus(await f.owner.browser.request('POST', path, {
+    body: { body: 'An independently written root', clientMessageId: randomUUID() },
+  }), 201) as ConversationMessage;
+  assert.equal((await f.writer.browser.request('POST', path, { body: command })).status, 404);
+  assert.deepEqual((expectStatus(await f.reader.browser.request('GET', path), 200) as TaskDiscussion).messages, [root]);
+  assert.equal((await fileRows(db).findFile(staged.id))!.messageId, null);
+  const replacement = (await upload(f.writer, f.place.id, bytes, randomUUID(), staged.name)).body;
+  const recovered = expectStatus(await f.writer.browser.request('POST', path, {
+    body: { ...command, attachmentIds: [replacement.id], clientMessageId: randomUUID() },
+  }), 201) as ConversationMessage;
+  assert.equal(recovered.body, command.body);
+  assert.equal(recovered.conversationId, root.conversationId);
+  assert.deepEqual(recovered.files?.map((file) => file.id), [replacement.id]);
+  assert.deepEqual(Buffer.from(await (await download(f.reader, replacement.id)).arrayBuffer()), bytes);
 });
 
 test('upload and upload retry reauthorize after streaming; an in-flight replay returns no revoked file', async () => {
