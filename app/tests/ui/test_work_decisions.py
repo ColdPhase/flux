@@ -172,7 +172,8 @@ class WorkDecisionsJourney(unittest.TestCase):
         page.keyboard.press("Enter")
         expect(panel.locator(".wd-eyebrow")).to_contain_text("Current rule")
         expect(panel).to_contain_text("Ada Lind")
-        expect(page.get_by_label("Current state")).to_contain_text("Current rule: Use a camera for gesture control")
+        # Details names the rule; the header's state line no longer does (#272 FF-6).
+        expect(page.get_by_label("Current state")).not_to_contain_text("Current rule")
         decision = self.work(page)["decisions"][0]
         self.assertEqual((decision["status"], decision["decidedBy"]["id"]), ("accepted", OWNER["id"]))
         self.assertEqual([link["to"]["id"] for link in decision["links"] if link["role"] == "source"], [self.messages["idea"]])
@@ -243,7 +244,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         panel.get_by_role("button", name="Accept and pivot").click()
         expect(panel.locator(".wd-eyebrow")).to_contain_text("Current rule")
         expect(panel.get_by_role("region", name="At this pivot")).to_contain_text("parked")
-        expect(page.get_by_label("Current state")).to_contain_text(f"Current rule: {PIVOT}")
+        expect(page.get_by_label("Current state")).not_to_contain_text("Current rule")
 
         stored = self.work(page)
         by_title = {item["title"]: item for item in stored["work"]}
@@ -307,7 +308,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         self.assertEqual(self.api(page, "GET", f"{base}/work?limit=1", status=200)["total"], 101)
         page.goto(f"/projects/{project['id']}/tasks")
         page.get_by_role("radio", name="List", exact=True).click()
-        expect(page.get_by_label("Current state")).to_contain_text("Current rule: Oldest rule: battery powered")
+        expect(page.get_by_label("Current state")).not_to_contain_text("Current rule")
         views=page.get_by_role("navigation",name="Task views")
         expect(views.get_by_role("button",name=re.compile("^Open"))).to_contain_text("101")
         expect(views.get_by_role("button",name=re.compile("^Needs you"))).to_contain_text("101")
@@ -323,6 +324,11 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(pager.get_by_role("button",name="Next",exact=True)).to_be_disabled()
         pager.get_by_role("button",name="Previous",exact=True).click()
         expect(pager).to_contain_text("151–200 of 203 objects")
+        # The oldest accepted rule is still the current one beyond a hundred newer proposals; Details
+        # names it (#272 FF-6 moved it off the state line).
+        page.goto(f"/projects/{project['id']}/tasks?open=decision:{rule['id']}")
+        expect(page.locator("#details").get_by_role("heading", name="Oldest rule: battery powered")).to_be_visible()
+        expect(page.locator("#details .wd-eyebrow")).to_contain_text("Current rule")
 
     # ---------------------------------------------------------------- phone task views (#136 AC-2)
 

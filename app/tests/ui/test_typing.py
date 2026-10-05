@@ -146,7 +146,7 @@ class TypingJourney(unittest.TestCase):
         alice = self.open("alice", video=True)
         bob = self.open("bob")
         # The receiver keeps its draft, selected source, keyboard focus and scroll.
-        self.thread(bob).get_by_role("button", name=re.compile(r"^Sources")).click()
+        self.thread(bob).get_by_role("button", name=re.compile("^(Cite something saved|Saved) for this project")).click()
         self.thread(bob).get_by_role("button", name="Discuss this version").click()
         expect(self.thread(bob).locator(".composer-files__ref")).to_contain_text("Low-light observations")
         self.composer(bob).fill("PRIVATE-DRAFT receiver notes")

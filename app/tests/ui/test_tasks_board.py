@@ -605,7 +605,8 @@ class TasksBoardJourney(unittest.TestCase):
                     expect(page.locator(".tb-card__from").first).to_be_visible()
                     page.wait_for_timeout(250)
                     for selector, minimum, spec in (
-                        (".tb-card__id", 4.5, {}), (".tb-card__title", 4.5, {}), (".tb-card__from", 4.5, {}), (".tb-card__kind", 4.5, {}),
+                        # The card's task ID is for assistive technology and its title only (#272 FF-1), so it has no visible contrast to measure.
+                        (".tb-card__title", 4.5, {}), (".tb-card__from", 4.5, {}), (".tb-card__kind", 4.5, {}),
                         (".tb-card__state--blocked", 4.5, {}), (".tb-card__blocker", 4.5, {}), (".tb-col__n", 4.5, {}), (".tb-col__b", 4.5, {}),
                         (".tb-col__h", 4.5, {}), ('.tb-mode__b[aria-checked="true"]', 4.5, {}), ('.tb-mode__b[aria-checked="false"]', 4.5, {}),
                         (".tb-dr", 4.5, {}), (".tb-mine", 4.5, {}), (".tb-also__b--need", 4.5, {}), (".tb-search input", 4.5, {"pseudo": "::placeholder"}),
