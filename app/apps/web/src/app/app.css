@@ -66,6 +66,7 @@ body:has(.app) { background: var(--bg-chrome); }
 }
 .side__jump svg { color: var(--text-2); }
 .side__jump kbd { margin-left: auto; box-shadow: none; color: var(--text-2); font: 9px/1 var(--mono); }
+@media (hover: none) { .side__jump kbd { display: none; } }
 .side__jump:hover { color: var(--text); border-bottom-color: var(--line-strong); }
 /* The 12px side padding keeps the current-place bar (left: -9px) inside the scroll box, unclipped. */
 .side__scroll { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -12px; padding: 0 12px 12px; }
