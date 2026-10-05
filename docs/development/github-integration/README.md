@@ -1,5 +1,9 @@
 # GitHub App connection
 
+**2026-10-05:** [G-1](2026-10-05-app-and-task-rules.md) (proposed, #266 item 12) keeps the
+read-only App and adds rules by which linked PRs move the same Flux task, one-click App setup,
+polling for instances without public HTTPS, and suggested links found in PRs.
+
 This is the first implementation slice of [#74](https://github.com/ColdPhase/flux/issues/74).
 Repository bindings and verified task/PR references are implemented under each
 reader's own GitHub authorization. Native task rules, local-agent delivery,
