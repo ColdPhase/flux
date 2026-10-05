@@ -30,6 +30,8 @@ WATCH = r"""
 
 class LiveEditingOffJourney(unittest.TestCase):
     state: dict | None = None
+    doc_url = ""
+    map_url = ""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -62,8 +64,8 @@ class LiveEditingOffJourney(unittest.TestCase):
         self.assertEqual(response.status, status, response.text())
         return json.loads(response.text()) if response.text() else {}
 
-    def test_01_wiki_and_map_stay_ordinary(self) -> None:
-        page, live = self.page()
+    def test_01_setup(self) -> None:
+        page, _ = self.page()
         page.goto("/sign-up")
         page.get_by_label("Name").fill("Olga Ordinary")
         page.get_by_label("Email").fill(f"olga-{uuid.uuid4().hex[:10]}@example.test")
@@ -74,37 +76,40 @@ class LiveEditingOffJourney(unittest.TestCase):
         self.assertEqual(self.api(page, "GET", "/api/v1/live-editing/capabilities", status=200), {"status": "unavailable"})
         ws = self.api(page, "POST", "/api/v1/workspaces", {"name": "Ordinary studio"})
         project = self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Ordinary lamp", "visibility": "restricted"})
-        doc = self.api(page, "POST", f"/api/v1/projects/{project['id']}/docs", {"title": "Bench notes", "body": "The sensor reads 38% at 5 lux."})
+        type(self).doc_url = f"/projects/{project['id']}/docs/" + self.api(page, "POST", f"/api/v1/projects/{project['id']}/docs", {"title": "Bench notes", "body": "The sensor reads 38% at 5 lux."})["id"]
         sketch = self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/sketches", {"title": "Sensor map", "scope": "project", "projectId": project["id"]})
         self.api(page, "POST", f"/api/v1/sketches/{sketch['id']}/thoughts", {"text": "Distance sensor", "x": 80, "y": 80})
+        type(self).map_url = f"/map/{sketch['id']}"
 
-        reader, live = self.page()
+    def test_02_wiki_reader_and_editor_are_ordinary_from_the_first_render(self) -> None:
+        page, live = self.page()
         shown: list[str] = []
-
-        def seen() -> None:
-            shown.extend(reader.evaluate("window.__liveText"))
-
-        reader.goto(f"/projects/{project['id']}/docs/{doc['id']}")
-        expect(reader.get_by_role("heading", level=2, name="Bench notes")).to_be_visible()
-        expect(reader.get_by_text("The sensor reads 38% at 5 lux.")).to_be_visible()
-        reader.get_by_role("link", name="Edit").click()
-        expect(reader.get_by_label("Text (Markdown)")).to_have_value("The sensor reads 38% at 5 lux.")
-        seen()
+        page.goto(self.doc_url)
+        expect(page.get_by_role("heading", level=2, name="Bench notes")).to_be_visible()
+        expect(page.get_by_text("The sensor reads 38% at 5 lux.")).to_be_visible()
+        page.get_by_role("link", name="Edit").click()
+        expect(page.get_by_label("Text (Markdown)")).to_have_value("The sensor reads 38% at 5 lux.")
+        shown.extend(page.evaluate("window.__liveText"))
         # A directly opened editor is ordinary from its first render too.
-        reader.goto(f"/projects/{project['id']}/docs/{doc['id']}/edit")
-        expect(reader.get_by_label("Text (Markdown)")).to_have_value("The sensor reads 38% at 5 lux.")
-        seen()
-        reader.goto(f"/map/{sketch['id']}")
-        thought = reader.locator(".sk-node", has_text="Distance sensor")
+        page.goto(self.doc_url + "/edit")
+        expect(page.get_by_label("Text (Markdown)")).to_have_value("The sensor reads 38% at 5 lux.")
+        time.sleep(0.5)
+        shown.extend(page.evaluate("window.__liveText"))
+        self.assertEqual(live, [], "an ordinary wiki never asks for a live room")
+        self.assertEqual(shown, [], "no live editor text, not even briefly")
+
+    def test_03_map_is_ordinary_with_immediate_undo(self) -> None:
+        page, live = self.page()
+        page.goto(self.map_url)
+        thought = page.locator(".sk-node", has_text="Distance sensor")
         expect(thought).to_be_visible()
         thought.click()
         thought.press("Delete")
-        expect(reader.locator(".sk-status")).to_contain_text("Saved")
+        expect(page.locator(".sk-status")).to_contain_text("Saved")
         expect(thought).to_have_count(0)
-        reader.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Undo", exact=True).click()
-        expect(reader.locator(".sk-status")).to_contain_text("Undid: removed a thought")
-        expect(reader.locator(".sk-node", has_text="Distance sensor")).to_be_visible()
+        page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Undo", exact=True).click()
+        expect(page.locator(".sk-status")).to_contain_text("Undid: removed a thought")
+        expect(page.locator(".sk-node", has_text="Distance sensor")).to_be_visible()
         time.sleep(0.5)
-        seen()
-        self.assertEqual(live, [], "an ordinary page never asks for a live room")
-        self.assertEqual(shown, [], "no live editor or live map text, not even briefly")
+        self.assertEqual(live, [], "an ordinary map never asks for a live room")
+        self.assertEqual(page.evaluate("window.__liveText"), [], "no live map text, not even briefly")
