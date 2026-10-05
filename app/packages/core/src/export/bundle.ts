@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { gzipSync } from 'node:zlib';
+import { Readable, pipeline } from 'node:stream';
+import { createGzip } from 'node:zlib';
 
 /**
  * A minimal POSIX ustar writer for the export bundle (issue #123): regular files only, one
@@ -44,17 +45,24 @@ function header(path: string, size: number, mtime: number) {
   return block;
 }
 
-/** A `.tar.gz` of `files` under `root/`. */
-export function tarGzip(root: string, files: BundleFile[], modified: Date): Buffer {
+/** A `.tar.gz` stream with backpressure; only the current file is retained. */
+export function tarGzip(root: string, files: Iterable<BundleFile> | AsyncIterable<BundleFile>, modified: Date, signal?: AbortSignal): Readable {
   const mtime = Math.floor(modified.getTime() / 1000);
-  const parts: Buffer[] = [];
-  for (const file of files) {
-    parts.push(header(`${root}/${file.path}`, file.content.length, mtime), file.content);
-    const padding = (512 - (file.content.length % 512)) % 512;
-    if (padding) parts.push(Buffer.alloc(padding, 0));
+  async function* blocks() {
+    for await (const file of files) {
+      signal?.throwIfAborted();
+      yield header(`${root}/${file.path}`, file.content.length, mtime);
+      yield file.content;
+      const padding = (512 - (file.content.length % 512)) % 512;
+      if (padding) yield Buffer.alloc(padding, 0);
+    }
+    yield Buffer.alloc(1024, 0);
   }
-  parts.push(Buffer.alloc(1024, 0));
-  return gzipSync(Buffer.concat(parts), { level: 9 });
+  const archive = Readable.from(blocks(), { objectMode: false, highWaterMark: 64 * 1024, signal });
+  const compressed = createGzip({ level: 9 });
+  // pipeline propagates consumer disconnects and storage errors to both streams.
+  pipeline(archive, compressed, () => { /* the consumer receives the stream error */ });
+  return compressed;
 }
 
 export function sha256(content: Buffer) {

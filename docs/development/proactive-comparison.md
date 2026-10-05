@@ -54,16 +54,15 @@ Enabling returns `BACKGROUND_CONNECTION_REQUIRED` without a current owner
 connection, `BACKGROUND_PRICE_UNKNOWN` when that connection has no known price,
 `BACKGROUND_BUDGET_TOO_LOW` if the rule exceeds that owner's consented budget or
 one request at the connection's price exceeds the per-request allowance, and
-`BACKGROUND_RUNTIME_UNAVAILABLE` after those checks because
-the complete worker/provider path is not implemented yet. The stored rule remains
-paused. A configured key does not start a provider call or emit a proposal. A
+`BACKGROUND_RUNTIME_UNAVAILABLE` after those checks while the operator's runtime switch
+is off (the default; see "Runtime switch"). The stored rule then remains paused. A configured key does not start a provider call or emit a proposal. A
 negative result authored by any currently authorized human contributor creates a
 deduplicated outbox candidate for each opted-in owner of that named project in the
-result transaction **only for an enabled rule**; production activation is
-still disabled, so current production rules do not create candidates. The worker
+result transaction **only for an enabled rule**; with the runtime switch off (the
+default) no rule can be enabled, so production rules do not create candidates. The worker
 adapter rechecks current owner/agent access, result authorship, the selected source
-snapshot and budget before reserving; production scheduling is not registered. An explicitly
-invoked dispatch path in the worker decrypts only the owner's active
+snapshot and budget before reserving; scheduling is registered only with the runtime switch
+on. The dispatch path in the worker decrypts only the owner's active
 key, bounds the input at 8,000 tokens by the conservative Flux estimate (raised,
 never lowered, by Anthropic's token count), makes at most one 1,200-output-token
 call on the connection's provider and model,
@@ -243,9 +242,10 @@ cursor-recovery fixtures deliberately own its global cursor. Existing dispatch
 fixtures make only their own candidate due and explicitly advance that fixture
 cursor; they do not prove scheduling.
 
-The scheduler selects candidate ids without a provider/key port. It and the
-provider adapter remain unregistered in production; rule activation still fails
-closed. The real-provider acceptance gates remain verification work.
+The scheduler selects candidate ids without a provider/key port. It, the dispatch and the
+provider registry run in the worker only when the operator switches background comparisons on
+(see "Runtime switch" below); otherwise rule activation still fails closed. The real-provider
+acceptance gates remain verification work.
 
 ## Controlled interrupted-reservation recovery
 
@@ -256,7 +256,7 @@ private `not_run` with zero usage; after intent it records private `unknown` and
 retains the reservation, observed usage and connection history. No source, key,
 provider, output or notification port is available. Late dispatch cannot overwrite
 the terminal row, publish an outcome or release uncertain spending. Unchanged
-fingerprints remain suppressed. The tick is not registered in production.
+fingerprints remain suppressed. The tick runs every ten minutes when the runtime switch is on.
 
 Docker build/typecheck/lint and 56 targeted tests passed on 2026-09-30 for the
 recovery, scheduler, context, dispatch and outcome sources. Recovery covers a
@@ -289,6 +289,53 @@ subsequent usage wording passed Docker build/typecheck/lint and three outcome/ow
 browser journeys in independent desktop/phone/tablet contexts. Those touch flags
 do not establish physical-device operation. Independent full-head functional
 acceptance remains a separate check.
+
+## Runtime switch (#58)
+
+`FLUX_BACKGROUND_COMPARISONS` (API and worker, the same value on both; see
+[containers](containers.md)) is the operator's switch, like `FLUX_PERSONAL_RUNS`:
+
+- **Empty or `off` (the default).** Owners can save paused rules and connections; enabling answers
+  `BACKGROUND_RUNTIME_UNAVAILABLE`. The worker registers nothing and removes schedules an earlier
+  run left in the queue.
+- **`on`.** Enabling runs every check above and then enables the rule (a new version). The worker
+  works two pg-boss queues, created by the migration step with a `singleton` policy (one job active
+  at a time across workers) and no retries:
+  - `proactive.comparison.tick.v1`, every minute: `comparisonSchedulingTick` collects source
+    changes and reconsiders enabled projects, then each ready candidate is dispatched one at a time
+    through the provider registry of `@flux/agent-runtime` (F-020) with the owner's sealed key. Each
+    dispatch reserves before any provider call, so a candidate never runs twice, even across workers.
+  - `proactive.comparison.recovery.v1`, every ten minutes: `comparisonRecoveryTick`.
+- **Anything else** stops both apps at startup.
+
+The switch is a proposed O-007 amendment, pending acceptance on #58 (see
+[background compute](../product/background-compute.md)). Still required before an instance should
+switch it on (the remaining #58 gates below):
+- an authorized real-provider test call with an observed bill;
+- live cancellation;
+- an independent full-context quality evaluation;
+- real crash reconciliation.
+
+What runs today:
+- `proactive-comparison-runtime.test.ts` enables a rule through the switch, records one negative
+  result and runs the worker's registered tick handler twice at once against that ready candidate
+  with a counting provider: exactly one paid request, and none on a later tick.
+- The running-app check, the last step of `scripts/check_application.sh`
+  (`tests/app/background-comparisons-switch.ts` and `tests/app/e2e/background-comparisons.e2e.ts`).
+  Rules that earlier suites left enabled are paused first, so only its own rule can run.
+  - Switch empty: nothing is scheduled, and enabling answers `BACKGROUND_RUNTIME_UNAVAILABLE`.
+  - Switch `on` for the API and the worker: the owner enables the paused rule in the settings page,
+    and a contributor records a negative result. With no test trigger or fixture shortcut, the
+    worker's own scheduled ticks wait out the quiet window and send exactly one request through the
+    production provider registry to the Compose provider mock, an OpenAI-compatible endpoint that
+    `FLUX_AI_PRIVATE_TARGETS` admits. The request carries the owner's key and the project material,
+    and no private draft. The quiet proposal then appears in the project. Pausing in settings
+    queues nothing for a later negative result.
+  - Switch empty again: the jobs are unscheduled. The same rule, still enabled, with a candidate
+    made ready, is neither reserved nor dispatched for 75 seconds, and a tick job sent by hand stays
+    unworked.
+
+  The mock is not a provider: this is no provider, billing or quality evidence.
 
 ## Key file, restore and rotation
 
@@ -410,7 +457,8 @@ project and save a **paused** comparison rule. An earlier revoked rule remains
 unchanged: renewal creates a new paused identity/version with fresh scope and
 allowance confirmation. Concurrent renewal allows one creation; unknown possible
 charges remain counted across connections and renewed rules. Enable truthfully
-stays unavailable until the accepted runtime is registered and verified.
+stays unavailable unless the operator switched the runtime on, which must wait for the
+real-provider gates (see "Runtime switch").
 
 The [owner-setup evidence](../design/proactive-comparison/owner-setup-2026-09-30/)
 separately records rendered states, independent visual findings and their
@@ -426,8 +474,9 @@ continues to hold at least the original reservation in the local budget.
 
 Remaining #58 work: an authorized real-provider test call and actual billing
 observation including live-provider cancellation, independent full-context quality
-evaluation, real crash/provider reconciliation, registered production scheduling and activation,
-plus independent/current integrated migration and release acceptance. Controlled
+evaluation, real crash/provider reconciliation, plus independent/current integrated migration and
+release acceptance. Production scheduling and activation are registered behind the runtime switch
+(off by default). Controlled
 changed-evidence reopening, insufficient-evidence outcomes and private usage
 accounting now have the separate fixture evidence above. This file describes a
 controlled integration slice, not completion of #58.

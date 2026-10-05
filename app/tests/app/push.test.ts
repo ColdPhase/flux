@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import type { LookupAddress } from 'node:dns';
+import type { LookupFunction } from 'node:net';
 import { after, before, describe, test } from 'node:test';
 import { PgBoss } from 'pg-boss';
 import {
@@ -12,7 +14,7 @@ import {
 } from '@flux/core';
 import type { PushPayload, PushSubscriptionSummary } from '@flux/contracts';
 import { deliverPush, RetryableDeliveryError } from '../../apps/worker/src/push/index.js';
-import { createVapidAuthorizer } from '../../apps/worker/src/push/deliver.js';
+import { createPushAgent, createVapidAuthorizer } from '../../apps/worker/src/push/deliver.js';
 import { createNotifier } from '../../apps/server/src/push/adapters.js';
 import { connectionString, db, pool } from './support/db.js';
 import { Browser, publicOrigin, register, signIn, uniqueEmail, waitForMail } from './support/http.js';
@@ -262,6 +264,42 @@ describe('push delivery rechecks (in process)', () => {
     assert.equal(result.outcome, 'rejected');
     assert.match((result as { reason: string }).reason, /non-public address/);
     assert.equal((await recordedPushes(subscription.mockId)).length, 0, 'nothing reached the private host');
+  });
+
+  test('without the private-network override the worker agent admits public provider addresses and refuses private ones', async () => {
+    // The worker's own agent and Node's real resolver, without the override this test stack sets for
+    // its local push mock. Literal hosts resolve locally, so nothing here depends on outside DNS.
+    // Main once refused every public IPv4 answer here: Node applies a ::ffff:0:0/96 rule to IPv4 (#232).
+    assert.equal(sender.status, 'available');
+    if (sender.status !== 'available') return;
+    assert.equal(createPushAgent({ ...sender, allowPrivateNetwork: true }).options.lookup, undefined, 'only the explicit override skips the guard');
+    const agent = createPushAgent({ ...sender, allowPrivateNetwork: false });
+    const lookup = agent.options.lookup as LookupFunction | undefined;
+    assert.equal(typeof lookup, 'function', 'the production agent resolves every connection through the guard');
+    const resolved = (host: string, all: boolean) => new Promise<{ code: string | null; addresses: string[] }>((done) => {
+      lookup!(host, { family: 0, hints: 0, all }, ((error, address, family) => {
+        if (error) done({ code: (error as NodeJS.ErrnoException).code ?? 'unknown', addresses: [] });
+        else done({ code: null, addresses: Array.isArray(address) ? (address as LookupAddress[]).map((entry) => entry.address) : [`${address}/${family}`] });
+      }) as Parameters<LookupFunction>[2]);
+    });
+    try {
+      const allowed: [string, number][] = [
+        ['216.239.38.57', 4], ['17.253.144.10', 4], ['1.1.1.1', 4], ['2001:4860:4802:36::39', 6], ['2a01:b740:a42::1', 6], ['::ffff:216.239.38.57', 6],
+      ];
+      for (const [host, family] of allowed) {
+        assert.deepEqual(await resolved(host, true), { code: null, addresses: [host] }, `public ${host} is a push destination`);
+        assert.deepEqual(await resolved(host, false), { code: null, addresses: [`${host}/${family}`] }, `public ${host} (single answer)`);
+      }
+      const refused = [
+        '127.0.0.1', '10.20.30.40', '172.20.0.5', '192.168.1.10', '169.254.169.254', '100.64.0.1', '0.0.0.0', '224.0.0.1',
+        '::1', '::', 'fe80::1', 'fd00::1', 'fc00::1', 'ff02::1', '64:ff9b::a00:1',
+        '::ffff:127.0.0.1', '::ffff:10.0.0.1', '::ffff:192.168.0.1', '::ffff:169.254.169.254', '::ffff:7f00:1',
+        'localhost', // the one name: answered by the container's /etc/hosts (127.0.0.1 and ::1), not outside DNS
+      ];
+      for (const host of refused) for (const all of [true, false]) {
+        assert.deepEqual(await resolved(host, all), { code: 'EPUSHPRIVATE', addresses: [] }, `${host} is refused (all=${all})`);
+      }
+    } finally { agent.destroy(); }
   });
 
   test('skips quietly when push is unavailable; the inbox row remains', async () => {

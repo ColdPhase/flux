@@ -62,6 +62,7 @@ export * from './proactive-comparison/dispatch.js';
 export * from './proactive-comparison/outcomes.js';
 export * from './proactive-comparison/scheduling.js';
 export * from './proactive-comparison/recovery.js';
+export * from './proactive-comparison/runtime.js';
 export * from './search/index.js';
 export * from './personal-runs/index.js';
 export * from './task-discussions/ports.js';
@@ -76,3 +77,6 @@ export * from './agent-connection/orientation.js';
 export * from './agent-connection/playbook.js';
 export * from './agent-connection/project-policy.js';
 export * from './agent-connection/project-agents.js';
+
+export * from './files/ports.js';
+export * from './files/service.js';

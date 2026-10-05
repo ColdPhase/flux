@@ -1,5 +1,7 @@
+import { pipeline } from 'node:stream/promises';
 import { createDatabase, exportOperatorRows } from '@flux/db';
-import { DomainError } from '@flux/core';
+import { DomainError, ForbiddenError } from '@flux/core';
+import { diskFileStorage } from '../files/storage.js';
 import { exportUseCases } from './adapters.js';
 
 // `./flux export <project> [--as <email>]` (issue #123) runs this inside the API container. It
@@ -33,14 +35,16 @@ try {
   const target = matches[0]!;
   const userId = as ? await operator.findUserByEmail(as) : await operator.workspaceOwner(target.workspaceId);
   if (!userId) fail(as ? `no account has the e-mail address ${as}` : 'the project workspace has no owner; pass --as <email>');
-  const bundle = await exportUseCases(db, process.env.FLUX_PUBLIC_ORIGIN ?? null).exportBundle({ kind: 'human', id: userId }, target.id);
+  const storage = await diskFileStorage(process.env.FLUX_FILES_DIR ?? '/data/files');
+  const bundle = await exportUseCases(db, process.env.FLUX_PUBLIC_ORIGIN ?? null, storage).exportBundle({ kind: 'human', id: userId }, target.id);
   process.stderr.write(`Exported "${bundle.data.project.name}" (${target.id}) as ${bundle.data.provenance.exportedBy.name}: `
     + `${bundle.data.conversations.length} conversations, ${bundle.data.docs.length} docs, ${bundle.data.sketches.length} sketches, `
     + `${bundle.data.work.length} work items, ${bundle.data.decisions.length} decisions, ${bundle.data.results.length} results.\n`);
   process.stderr.write(`FLUX_EXPORT_FILE ${bundle.fileName}\n`);
-  await new Promise<void>((resolve, reject) => process.stdout.write(bundle.content, (error) => (error ? reject(error) : resolve())));
+  await pipeline(bundle.content, process.stdout);
 } catch (error) {
-  if (error instanceof DomainError) fail(`${error.message} (${error.code}): the account may not manage this project; pass --as <email> of a workspace owner or admin`);
+  if (error instanceof DomainError) fail(`${error.message} (${error.code})${error instanceof ForbiddenError
+    ? ': the account may not manage this project; pass --as <email> of a workspace owner or admin' : ''}`);
   throw error;
 } finally {
   await pool.end();
