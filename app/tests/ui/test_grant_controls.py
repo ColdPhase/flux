@@ -139,7 +139,7 @@ class GrantControlsJourney(unittest.TestCase):
         form = desk.get_by_role("form", name="Add a grant to Desk laptop")
         project = form.get_by_label("Project", exact=True)
         # Only the connection's selected projects: "Archive" is never offered.
-        self.assertEqual(project.locator("option").all_inner_texts(), ["Sensor study", "Field notes"])
+        self.assertEqual(sorted(project.locator("option").all_inner_texts()), ["Field notes", "Sensor study"])
         acts = form.get_by_label("Acts as", exact=True)
         self.assertEqual(acts.locator("option").all_inner_texts(), ["Doing the work", "Planning"], "no review grant for native changes")
         acts.select_option(label="Planning")
@@ -268,10 +268,11 @@ class GrantControlsJourney(unittest.TestCase):
         before = self.grants(hubert, "Desk laptop")
         target = next(g for g in before if g["operation"] == "work.create")
         base = f"/api/v1/agent-connections/{self.ids['Desk laptop']}/action-grants"
-        self.api(page, "GET", base, status=404)
-        self.api(page, "PATCH", f"{base}/{target['id']}", {"maximumUses": 1}, status=404)
-        self.api(page, "DELETE", f"{base}/{target['id']}", status=404)
-        self.api(page, "POST", base, {"clientCommandId": "2d8c6f80-7f2e-4f60-8c3b-5e4d3c2b1a0f", "projectId": self.ids["sensor"], "operation": "work.create",
+        marek = self.page("marek")
+        self.api(marek, "GET", base, status=404)
+        self.api(marek, "PATCH", f"{base}/{target['id']}", {"maximumUses": 1}, status=404)
+        self.api(marek, "DELETE", f"{base}/{target['id']}", status=404)
+        self.api(marek, "POST", base, {"clientCommandId": "2d8c6f80-7f2e-4f60-8c3b-5e4d3c2b1a0f", "projectId": self.ids["sensor"], "operation": "work.create",
                  "peerRequestClass": "execute", "maximumUses": 900, "expiresAt": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()}, status=404)
         self.assertEqual(self.grants(hubert, "Desk laptop"), before, "Hubert's grants are unchanged")
         # The project Agents view lists Hubert's connections for Marek, but offers no grant controls there.

@@ -81,6 +81,8 @@ export function StandingGrants({ connection, projects, initial }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [showEnded, setShowEnded] = useState(false);
+  // Whether a grant is current depends on the time; it is read again after every change the owner makes.
+  const [now, setNow] = useState(() => Date.now());
   const canAct = connection.scopes.includes('flux.action.execute');
   const name = (projectId: string) => projects.get(projectId)?.name ?? `Project ${projectId.slice(0, 8)}`;
 
@@ -98,11 +100,10 @@ export function StandingGrants({ connection, projects, initial }: Props) {
     setBusy(true); setError(null);
     try { await action(); return true; }
     catch (cause) { setError(describe(cause)); await refresh(); return false; }
-    finally { setBusy(false); }
+    finally { setBusy(false); setNow(Date.now()); }
   }
   const replace = (grant: AgentStandingGrant) => setGrants((current) => (current ?? []).map((item) => item.id === grant.id ? grant : item));
 
-  const now = Date.now();
   const all = grants ?? [];
   const current = all.filter((grant) => ['active', 'used_up'].includes(stateOf(grant, now)));
   const ended = all.filter((grant) => !current.includes(grant));
