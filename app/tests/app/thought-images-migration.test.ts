@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { createDatabase, FLUX_SCHEMA_VERSION, readMigrationManifest } from '@flux/db';
+import { guardFixturePool } from './support/fixture-database.js';
 
 // #252: migration 0051 lets a stored file be published to one map thought. It keeps every earlier file row as it was,
 // keeps "published to exactly one place" in the database, and reverses only before any image was placed on a thought.
@@ -17,13 +18,12 @@ test('0051 keeps stored files as they were, publishes to one place only and reve
   const url = new URL(process.env.DATABASE_URL!);
   url.pathname = `/${name}`;
   let history: ReturnType<typeof createDatabase>['pool'] | undefined;
+  let guard: ReturnType<typeof guardFixturePool> | undefined;
   try {
     const createFixture = { text: `CREATE DATABASE "${name}"`, query_timeout: 60_000 };
     await admin.query(createFixture);
     history = createDatabase(url.toString()).pool;
-    // Dropping the fixture database WITH (FORCE) can terminate a connection the pool is still closing; that late
-    // notice concerns only this throwaway database, never an assertion below.
-    history.on('error', () => undefined);
+    guard = guardFixturePool(history);
     for (const file of manifest.filter((entry) => entry.version < 51)) await history.query(await readFile(join(dir, file.name), 'utf8'));
     const [ws, project, conversation, message, attached, staged] = Array.from({ length: 6 }, () => randomUUID());
     const user = 'thought-image-person';
@@ -67,9 +67,11 @@ test('0051 keeps stored files as they were, publishes to one place only and reve
     await assert.rejects(history.query(reverse), /0051 reversal refused/);
     assert.equal((await history.query('SELECT thought_id FROM project_files WHERE id = $1', [staged])).rows[0].thought_id, thought);
   } finally {
+    guard?.cleanup();
     await history?.end();
     const dropFixture = { text: `DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`, query_timeout: 60_000 };
     await admin.query(dropFixture);
     await admin.end();
   }
+  guard?.assertNoEarlyErrors();
 });
