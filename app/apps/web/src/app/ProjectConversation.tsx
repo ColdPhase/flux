@@ -110,6 +110,19 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const publicComposer = useComposerDraft(me.user.id, project.id, conversation?.task ? `task:${conversation.task.workId}` : conversation ? `conversation:${conversation.id}` : 'new');
   const helperComposer = useComposerDraft(me.user.id, project.id, `helper:${conversation?.id ?? 'new'}`);
   const composer = asking ? helperComposer : publicComposer;
+  // A private note sent here from My sketchbook (#272 FF-3) lands in the message box, after any text
+  // already there; nothing is shared until the person sends it.
+  const routeState = useLocation().state as { fromNote?: { id: string; text: string } } | null;
+  const takenNote = useRef<string | null>(null);
+  useEffect(() => {
+    const note = routeState?.fromNote;
+    if (!note || conversation || takenNote.current === note.id) return;
+    takenNote.current = note.id;
+    const current = publicComposer.draft.body.trim();
+    publicComposer.setBody(current ? `${current}\n\n${note.text}` : note.text);
+    navigate('.', { replace: true, state: null });
+    requestAnimationFrame(() => document.getElementById(composerId)?.focus());
+  }, [routeState, conversation, publicComposer, navigate, composerId]);
   const draft = composer.draft.body;
   const captureScope = useComposerScope(publicComposer.key);
   const captureHelperScope = useComposerScope(helperComposer.key);

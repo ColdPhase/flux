@@ -322,6 +322,18 @@ a.me__btn[aria-current="page"] { background: var(--accent-selected-bg); }
 .note { padding: 10px 0; animation: rise var(--dur-3) var(--ease-out) both; }
 .note + .note { border-top: 1px solid var(--line); }
 .note__text { color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; max-width: 64ch; }
+/* What a note can become (#272 FF-3): quiet until hovered on desktop, always there on touch. */
+.note__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 6px; }
+.note__act { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 0 6px; margin-left: -6px; border-radius: var(--r-sm); font-size: var(--fs-xs); color: var(--text-3); transition: var(--tr); }
+.note__act:hover, .note__act[aria-expanded="true"] { color: var(--text); background: var(--bg-hover); }
+@media (hover: hover) { .note:not(:hover):not(:focus-within) .note__actions { opacity: .55; } }
+@media (pointer: coarse) { .note__act { min-height: 44px; } }
+.note__pick { flex-basis: 100%; display: flex; flex-direction: column; gap: 2px; margin-top: 4px; padding: 10px; border: 1px solid var(--line); border-radius: var(--r-card); background: var(--bg-raised); animation: rise var(--dur-2) var(--ease-out) both; }
+.note__pick-why { margin: 0 0 6px; font-size: var(--fs-xs); color: var(--text-3); }
+.note__pick-p { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 8px; border-radius: var(--r-sm); font-size: var(--fs-sm); color: var(--text); text-align: left; }
+.note__pick-p:hover { background: var(--bg-hover); }
+.note__pick-sub { color: var(--text-3); }
+@media (pointer: coarse) { .note__pick-p { min-height: 44px; } }
 .note__meta { display: flex; align-items: center; gap: 8px; margin-top: 2px; font-size: var(--fs-xs); color: var(--text-3); font-variant-numeric: tabular-nums; }
 .note__del { min-height: 24px; padding: 0 6px; border-radius: var(--r-sm); color: var(--text-3); opacity: 0; transition: var(--tr); }
 .note:hover .note__del, .note__del:focus-visible { opacity: 1; }

@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { Link, useLocation, useRevalidator, type NavigateFunction } from 'react-router';
+import { Link, useLocation, useNavigate, useRevalidator, type NavigateFunction } from 'react-router';
 import type { Draft } from '@flux/contracts';
 import { Button, EmptyState, Icon, IconButton, MEDIA, duration, sendsOnEnter, useMediaQuery, type IconName } from '../ui';
 import { createPrivateDraft, listDrafts } from './conversation-api';
@@ -49,6 +49,44 @@ function when(iso: string) {
   const date = new Date(iso);
   const today = new Date().toDateString() === date.toDateString();
   return today ? timeFormat.format(date) : `${dayFormat.format(date)}, ${timeFormat.format(date)}`;
+}
+
+/**
+ * What a private note can become (#272 FF-3), said in words: copied, or sent to a project, where it
+ * waits in that project's message box. Nothing is shared until the person sends it there.
+ */
+function NoteActions({ id, text }: { id: string; text: string }) {
+  const { projects } = useShellData();
+  const navigate = useNavigate();
+  const [picking, setPicking] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const pickerId = useId();
+  const pickerRef = useRef<HTMLDivElement>(null);
+  // The list opens under the note; bring it into view, where a phone's last note leaves it off screen.
+  useEffect(() => { if (picking) pickerRef.current?.scrollIntoView({ block: 'nearest', behavior: duration('--dur-2') ? 'smooth' : 'auto' }); }, [picking]);
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(text); setCopied(true); window.setTimeout(() => setCopied(false), 1600); } catch { setCopied(false); }
+  };
+  return (
+    <div className="note__actions">
+      <button type="button" className="note__act" onClick={() => void copy()}><Icon name="paste" size={13} />{copied ? 'Copied' : 'Copy'}</button>
+      {projects.length ? (
+        <button type="button" className="note__act" aria-expanded={picking} aria-controls={picking ? pickerId : undefined} onClick={() => setPicking((open) => !open)}>
+          <Icon name="send" size={13} />Send to a project
+        </button>
+      ) : null}
+      {picking ? (
+        <div className="note__pick" id={pickerId} ref={pickerRef} role="group" aria-label="Send this note to a project">
+          <p className="note__pick-why">It opens the project’s conversation with this note in the message box. Nothing is shared until you send it.</p>
+          {projects.map((project) => (
+            <button key={project.id} type="button" className="note__pick-p" onClick={() => navigate(`/projects/${project.id}`, { state: { fromNote: { id, text } } })}>
+              <Icon name="spark" size={13} />{project.name}{project.workspaceName ? <span className="note__pick-sub"> · {project.workspaceName}</span> : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 /** Focus the note composer in My sketchbook, e.g. from Home's "Write a note". */
@@ -291,7 +329,7 @@ function HomeNotes() {
             <p className="notes__h"><Icon name="lock" size={13} />Private drafts · saved in your space</p>
             {/* Earlier notes load above, as in a chat (#272): the newest sits right above the composer. */}
             {draftsRead < draftsTotal ? <Button variant="quiet" busy={moreBusy} onClick={() => void loadMoreDrafts()}>Show earlier notes</Button> : null}
-            <ol className="notes__list">{[...serverDrafts].reverse().map((item) => <li className={`note${arrivedDraft === item.id ? ' is-arrived' : ''}`} key={item.id} id={`draft-${item.id}`} tabIndex={-1}><p className="note__text">{item.body}</p><div className="note__meta">You · v{item.version} · <time dateTime={item.updatedAt}>{when(item.updatedAt)}</time></div></li>)}</ol>
+            <ol className="notes__list">{[...serverDrafts].reverse().map((item) => <li className={`note${arrivedDraft === item.id ? ' is-arrived' : ''}`} key={item.id} id={`draft-${item.id}`} tabIndex={-1}><p className="note__text">{item.body}</p><div className="note__meta">You · v{item.version} · <time dateTime={item.updatedAt}>{when(item.updatedAt)}</time></div><NoteActions id={item.id} text={item.body} /></li>)}</ol>
           </section>
         ) : null}
         {move.state === 'done' && !items.length ? <p className="notes__moved" role="status">Moved {move.moved} {move.moved === 1 ? 'note' : 'notes'} into {targetName ?? 'your space'}.</p> : null}
