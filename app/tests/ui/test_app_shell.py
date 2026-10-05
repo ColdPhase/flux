@@ -558,10 +558,12 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("complementary", name="Sidebar")).to_have_count(0)
         composer = page.get_by_label("Private note", exact=True)
         composer_box = box(page, page.locator(".composer"))
-        # #266 PF-1: the view bar sits at the bottom and the composer right above it.
-        bar_box = box(page, page.get_by_role("navigation", name="Views"))
-        self.assertAlmostEqual(bar_box["y"] + bar_box["height"], PHONE["height"], delta=2, msg="the view bar is pinned to the bottom")
-        self.assertAlmostEqual(composer_box["y"] + composer_box["height"], bar_box["y"], delta=2, msg="the composer sits right above the view bar")
+        # #266 PF-1: the bar of main places sits at the bottom and the composer right above it; the
+        # views are chips under the header.
+        bar_box = box(page, page.get_by_role("navigation", name="Main places"))
+        self.assertAlmostEqual(bar_box["y"] + bar_box["height"], PHONE["height"], delta=2, msg="the places bar is pinned to the bottom")
+        self.assertAlmostEqual(composer_box["y"] + composer_box["height"], bar_box["y"], delta=2, msg="the composer sits right above the places bar")
+        self.assertLess(box(page, page.get_by_role("navigation", name="Views"))["y"], composer_box["y"], "the view chips sit at the top")
         shot(page, "phone-390-light")
 
         # Coarse pointer: primary targets are at least 44px.
