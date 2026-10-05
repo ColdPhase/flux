@@ -152,6 +152,10 @@ with its missing evidence and unblock condition, while independent work continue
 
 ## Delivery and evidence status
 
+**Proposed amendment, 2026-10-05 (#151 AC-1, pending peer review):** the current pane and
+breakpoint rules, input modes, readable measure, map camera rule and surface mapping are
+recorded in [adaptive layout rules](adaptive-layout-rules.md). It uses emulated viewports only.
+
 Implement through [#151](https://github.com/ColdPhase/flux/issues/151), with the
 same shell owner (@Zamojski5) as #136 and independent evaluator @PelikanFix16. #136 remains the integrated UX acceptance
 record and must include ADAPT-1–ADAPT-5; #20 retains mobile/device acceptance.
