@@ -4,8 +4,8 @@ import { request as httpRequest } from 'node:http';
 import { test } from 'node:test';
 import { brotliDecompressSync } from 'node:zlib';
 import { AUTH_BASE_PATH, filePath, PROJECT_EXPORT_BUNDLE_QUERY, projectExportPath, type Conversation, type StagedFile } from '@flux/contracts';
-import { apiUrl } from './support/http.js';
-import { expectStatus, person, project, workspace, type Person } from './support/people.js';
+import { apiUrl, signIn } from './support/http.js';
+import { expectStatus, password, person, project, workspace, type Person } from './support/people.js';
 
 // Compression as wired into the running API (#266 item 9): node:http shows the bytes as sent,
 // where fetch would decode them.
@@ -43,8 +43,13 @@ test('a large JSON answer is Brotli encoded with Vary; auth, file and export ans
   const head = await raw(`/api/v1/docs/${doc.id}`, 'br', owner, 'HEAD');
   assert.ok(varies(head.headers), 'HEAD varies like GET');
 
-  const session = await raw(`${AUTH_BASE_PATH}/get-session`, 'br', owner);
+  // The session answer repeats the sign-in's user agent, so a long one makes it large enough that only the
+  // auth exclusion keeps it uncompressed (a plain fresh session is under the 2 KiB threshold).
+  const { browser: longAgent, response: signedIn } = await signIn(owner.email, password, { 'user-agent': `FluxTest/1.0 (${'compression-check '.repeat(150)})` });
+  assert.equal(signedIn.status, 200);
+  const session = await raw(`${AUTH_BASE_PATH}/get-session`, 'br', { ...owner, browser: longAgent });
   assert.equal(session.status, 200);
+  assert.ok(session.bytes.length >= 2048, `the session answer is large enough to compress (${session.bytes.length} bytes)`);
   assert.equal(session.headers['content-encoding'], undefined, 'auth answers are never compressed');
 
   const upload = await fetch(new URL(`/api/v1/projects/${place.id}/files?uploadId=${randomUUID()}&name=readings.txt`, apiUrl), {
