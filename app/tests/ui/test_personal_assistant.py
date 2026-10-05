@@ -378,8 +378,9 @@ class PersonalAssistantJourney(unittest.TestCase):
     def test_07b_working_motion_follows_execution_and_pauses_unseen(self) -> None:
         """#155 AC-3/AC-4: the working mark moves only while the run actually executes, pauses under a modal
         or off screen, is static while stopping, and the line's text always says what is happening."""
-        # A long provider delay keeps the run executing for the whole check; Stop ends it below.
-        mock("/__script", {"reset": True, "delay": 30})
+        # The provider answers after 12 s, so the run is executing for the whole check; Stop ends it below
+        # (the worker holds the stopped call until the provider answers, so the delay stays short).
+        mock("/__script", {"reset": True, "delay": 12})
         jo = self.conversation("jo")
         expect(jo.locator(".assistant-answer").first).to_be_visible()
         self.ask(jo, "Compare the two sensors once more")
@@ -397,12 +398,13 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(jo.locator('[aria-modal="true"]')).to_have_count(0)
         expect(working).not_to_have_attribute("data-motion-paused", "")
         # Off screen it pauses too: a short window, the thread read from its top.
-        jo.set_viewport_size({"width": 1440, "height": 420})
+        jo.set_viewport_size({"width": 1440, "height": 640})
         jo.locator(".thread__feed").evaluate("el => { el.scrollTop = 0; }")
         self.assertTrue(working.evaluate("el => { const f = el.closest('.thread__feed').getBoundingClientRect(), r = el.getBoundingClientRect(); return r.top >= f.bottom || r.bottom <= f.top; }"),
                         "the working line is outside the visible part of the thread")
         expect(working).to_have_attribute("data-motion-paused", "")
         jo.locator(".thread__feed").evaluate("el => { el.scrollTop = el.scrollHeight; }")
+        expect(working).to_be_in_viewport()
         expect(working).not_to_have_attribute("data-motion-paused", "")
         jo.set_viewport_size({"width": 1440, "height": 900})
         # Stopping is not execution: the mark is static and the text says so.
