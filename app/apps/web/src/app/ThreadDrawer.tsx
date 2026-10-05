@@ -1,8 +1,8 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import type { ConversationMessage } from '@flux/contracts';
+import type { ConversationMessage, NativeWorkRow } from '@flux/contracts';
 import { Avatar, Icon, IconButton, useMediaQuery } from '../ui';
-import { DiscussedTask } from '../work/inline';
-import type { ProjectWork } from '../work/api';
+import { DiscussedTask, MessageObjects } from '../work/inline';
+import type { MessageWorkPreview } from '../work/message-associations';
 import { SourceCitation, clock, day, when } from './messageParts';
 import { MessageFiles } from '../composer/Files';
 
@@ -59,15 +59,17 @@ export function ThreadMessageActions({ writable, children }: { writable: boolean
 }
 
 /** The message the thread answers, at its top: who said it, when, and what, with its cited source. */
-export function ThreadRoot({ message, body, author, meId, writable, replies, task = null, work, onDenied }: {
-  message: ConversationMessage | null; body: string; author: string | null; meId: string; writable: boolean; replies: number;
-  /** The task whose discussion this thread is (UI116-3). */
-  task?: { workId: string; title: string } | null; work: ProjectWork; onDenied: (cause: unknown) => void;
+export function ThreadRoot({ message, projectId, body, author, meId, writable, replies, task = null, taskRow = null, preview = null, onDenied }: {
+  message: ConversationMessage | null; projectId: string; body: string; author: string | null; meId: string; writable: boolean; replies: number;
+  /** The task whose discussion this thread is (UI116-3), and its row from the thread's visible reference read (#155). */
+  task?: { workId: string; title: string } | null; taskRow?: NativeWorkRow | null;
+  /** What was made from the root, from the thread's bounded association read (#155): the root is shown whole here. */
+  preview?: MessageWorkPreview | null; onDenied: (cause: unknown) => void;
 }) {
   const mine = !!message && message.authorId === meId;
   return (
     <>
-      <article className={`thread__root${mine ? ' is-mine' : ''}`} aria-label={author ? `Message from ${mine ? 'you' : author}` : 'Opening message'}>
+      <article className={`thread__root${mine ? ' is-mine' : ''}`} id={message ? `thread-root-${message.id}` : undefined} data-message-id={message?.id} aria-label={author ? `Message from ${mine ? 'you' : author}` : 'Opening message'}>
         {message && author ? (
           <div className="thread__root-meta">
             <Avatar name={author} size="sm" tone={mine ? 'me' : 'neutral'} />
@@ -78,7 +80,8 @@ export function ThreadRoot({ message, body, author, meId, writable, replies, tas
         {message?.body || !message ? <p>{body}</p> : null}
         <MessageFiles files={message?.files} />
         {message?.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
-        {task ? <div className="ws-attach"><DiscussedTask task={task} lists={work} /></div> : null}
+        {message ? <MessageObjects message={message} projectId={projectId} preview={preview} thread={task} threadRow={taskRow} />
+          : task ? <div className="ws-attach"><DiscussedTask task={task} row={taskRow} /></div> : null}
       </article>
       <p className="thread__hint">{replies ? `${replies} ${replies === 1 ? 'reply' : 'replies'}` : writable ? 'Reply to this message. No new topic needed.' : 'No replies yet.'}</p>
     </>

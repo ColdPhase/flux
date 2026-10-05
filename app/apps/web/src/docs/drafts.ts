@@ -4,7 +4,8 @@ import type { DocState } from '@flux/contracts';
 // another page or tab does not lose it. The reader says when a page has some (#136).
 
 export interface Fields { title: string; body: string; state: DocState; reason: string }
-export interface Kept extends Fields { base: number }
+/** `attempt`: the idempotency key of a save whose answer was lost, reused after a reload. */
+export interface Kept extends Fields { base: number; attempt?: string }
 
 export const draftKey = (userId: string, docId: string | null, projectId: string) => `flux:doc-edit:${userId}:${docId ?? `new:${projectId}`}`;
 

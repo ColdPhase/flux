@@ -1,0 +1,28 @@
+{
+  "tested_runtime": "5a1dfaa04edeedc0d552cd6050d99d9b3dd66c1e",
+  "baseline": "c4f01936e5cdc49eae8b0fe7978b7f8daf6126df",
+  "inputs": {
+    "app/apps/web/src/api/client.ts": "e6758c110388c312f6013f1af5d5edbf99bcbac7f578aaf0cde82da3433bdea1",
+    "app/apps/web/src/app/AppLayout.tsx": "ea0e9adc2e691bdc8e70b82438a1a8e4e6de7573965ad89f673e22d38f7e970e",
+    "app/apps/web/src/app/data.ts": "99f7f2d46c344885c30d66ab580803ea7e6313dd351847db82e8581ff3423115",
+    "app/apps/web/src/docs/DocEditor.tsx": "da4cdec582d38168e81ced31635a01134cfee8aa871694f2bceff504775eb4af",
+    "app/apps/web/src/docs/LinkPicker.tsx": "6879133451fb74fe98161191105c0dedadf21663269c3eb693114efeabb44085",
+    "app/apps/web/src/docs/api.ts": "0aa6589d024e8807eb0d3d2a703f2bc8be517792f2456763d399c7a3fa5076e9",
+    "app/apps/web/src/docs/docs.css": "c118335518e8fc771a92fe228f340f169de0fc8748820eb38457265c8300633d",
+    "app/apps/web/src/project/data.ts": "15de72c68f25887d9364eb22a3087dbec247f639fab6e398d6dad35ff3db006f",
+    "app/apps/web/src/router.tsx": "a5c150e98a07c9c1a1b18c0236218c3422be1bbf0bbdc8404dbb9c08eb7ec1e5",
+    "app/apps/web/src/work/read-api.ts": "9846e7e4ccd5bde8ec978e4e1fb7a0a3336b913c4eb3a430670b566502b217e5",
+    "app/apps/web/src/work/read-state.ts": "4cc6a36ac3ecd8ec9e4cffadaeff5a444485df45d20ebab3708c3d80836a3715",
+    "app/apps/web/src/work/useDetailReads.ts": "64d7c7e8256ea77a2ed95baae890093557a67252316d79800f939d1fbe9870b0",
+    "app/apps/web/src/work/useWorkRead.ts": "70119bec4bf09a25744004f1d154bcad8bc4fe0b88ce6f7f0f5a0dd868c168f0",
+    "app/package.json": "920ff6de187602209b7e08b9da85f3ca78dfab1e0f012f8cd54b01bc09a3c89b",
+    "app/pnpm-lock.yaml": "bb5dffadc088cb37ef12b0c6eaa05cdc744bf4980cd099a268deb5a57f53f12a",
+    "app/tests/ui/test_doc_references.py": "d30c6d7a1f3759321d2d5d9cbd7fba084630687cfc3135246d0363a39bec89ba",
+    "app/tests/ui/test_docs.py": "935883eddcaa264ab99b0817beb2e4be34d91e87a7c35438b5576afbea0e6b52",
+    "docker/Dockerfile": "9c308c7df75d3d371239a9da25b9fead5e3b26943d1e6cb680449ae1f11ac841",
+    "docker/compose.source.yaml": "405a7779e7eb2cdfccdf395af79f5e4a66ee2c3c2b6ed7e7cc14b79126108b00",
+    "docs/development/performance/2026-10-03-native-doc-ref-migration.md": "88cc17733f3ea6510a2539a35dba7fe8e4199b307b475e6e5990796b1e3c0e8f",
+    "scripts/check_ui.sh": "7e4e1a87ddc02066f82527cec61f28a81278f6f63f337e04c1d54ad715ec0a81",
+    "scripts/test_images.sh": "38128f02e905718a1c66bb35e7c042da55e3b9a00ecd5938197b01013e37d391"
+  }
+}

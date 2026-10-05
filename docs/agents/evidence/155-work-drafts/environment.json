@@ -1,0 +1,33 @@
+{
+  "tested_source": "5bd354684f4977b324e7eb0d0ae5115017e64d59",
+  "contract_agreement": "93fb60842277203a6721eccfbcd734a9e82dbf95",
+  "draft_source_agreement": "5bd354684f4977b324e7eb0d0ae5115017e64d59",
+  "observed_utc": "2026-10-01 06:43:42 UTC",
+  "compose_project": "flux155browser",
+  "origin": "http://127.0.0.1:18581",
+  "mailpit_port": 18585,
+  "desktop_capture": {
+    "viewport": {
+      "width": 1500,
+      "height": 900
+    },
+    "dpr": 1
+  },
+  "phone_capture": {
+    "viewport": {
+      "width": 412,
+      "height": 900
+    },
+    "dpr": 3,
+    "is_mobile": true,
+    "has_touch": true
+  },
+  "phone_scope": "Chromium emulation; no physical PWA/install/WebPush proof",
+  "images": {
+    "application": "sha256:c1c9059ff0eaa997286855e6c43ec7188c41ada9a5793aa5faa34f09b5adf68c",
+    "ui_tests": "sha256:ecac8d016e2bd99e65a724f453adbcd0d197e2c997da01b0c0446360fb9e7353",
+    "test_tools": "sha256:d8cb44d170ea6cb4a4afc737f8eaee0b92a2dc5d5aae952f13236b64ce52cbe9"
+  },
+  "postgres": "18.6 aarch64 Alpine15.2.0",
+  "review_scope": "Independent source and neutral screenshots only; reviewer did not rerun tests or certify whole155/eligibleapproval."
+}

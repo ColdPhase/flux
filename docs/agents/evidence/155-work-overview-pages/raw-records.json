@@ -1,0 +1,170 @@
+{
+  "build-initial.log": {
+    "saved_raw_sha256": "2e22376f5f79ac5acb177afdf9d17ee19bd097a1065b912e86f7f6f433b53dc9",
+    "gzip": "build-initial.log.gz",
+    "gzip_sha256": "95d4f385d62b0bbd8c547d736b3ef1245abea4cfcb06ef3036cb4664b4a1e8e0",
+    "owner_observed_exit": 0,
+    "tested_source": "uncommitted intermediate; not the final immutable variant",
+    "authentication_cookie_redactions": 0
+  },
+  "browser-initial-failure.log": {
+    "saved_raw_sha256": "a1dff2f2ac5a52782265c47eba1fd55e803c21443839b4dc2f27e15749a9edfb",
+    "gzip": "browser-initial-failure.log.gz",
+    "gzip_sha256": "d62404bfba6c1d53f99adf0f2f7b751b1e95d47549d26432c5ff842f2507128a",
+    "owner_observed_exit": 1,
+    "tested_source": "497d7869ef29d24da7a87cfa94bc4ac1800a7f89",
+    "authentication_cookie_redactions": 0
+  },
+  "browser-intermediate-pass.log": {
+    "saved_raw_sha256": "03ec69a2f2a4cf0e37666d4f02f65800e4770def2116b79061ffd481081b3933",
+    "gzip": "browser-intermediate-pass.log.gz",
+    "gzip_sha256": "755198a81c670f9c056fcbecd54c69b1712538da0672f62876b7f4d4334043c9",
+    "owner_observed_exit": 0,
+    "tested_source": "uncommitted intermediate; not the final immutable variant",
+    "authentication_cookie_redactions": 0
+  },
+  "build-cursor-title.log": {
+    "saved_raw_sha256": "3e5cab1ec66ea3330d3c341b8c239eeb33242773eeb02ec7988f586571be35eb",
+    "gzip": "build-cursor-title.log.gz",
+    "gzip_sha256": "5ea68487fd09f6e0fec669f4bf9887733bd9d58c791a2f035f221311b2c5d7e1",
+    "owner_observed_exit": 0,
+    "tested_source": "b7c80357edef1cb2972675ab6735f97eeaceb592",
+    "authentication_cookie_redactions": 0
+  },
+  "browser-response-order-failure.log": {
+    "saved_raw_sha256": "3fc521be9c507b515cad5928b669cedd1650a44ccb97e30e467a55edc35ced68",
+    "gzip": "browser-response-order-failure.log.gz",
+    "gzip_sha256": "30af85da7895aebf0d9750a482683b51ffd6b69524a51ac0c2d905edb61ba4b4",
+    "owner_observed_exit": 1,
+    "tested_source": "b7c80357edef1cb2972675ab6735f97eeaceb592",
+    "authentication_cookie_redactions": 0
+  },
+  "build-previsual.log": {
+    "saved_raw_sha256": "500c2bc4a412c42ff86a8b16453736348a12c565b6933c0ad9e4e2b647591146",
+    "gzip": "build-previsual.log.gz",
+    "gzip_sha256": "dc7ddff06792b03064a26d4db29352517c848bb32713320de18cccf5e7168018",
+    "owner_observed_exit": 0,
+    "tested_source": "6193e320690a5e99b42eb5ae62546f31098ace91",
+    "authentication_cookie_redactions": 0
+  },
+  "browser-selection-assertion-failure.log": {
+    "saved_raw_sha256": "07d33c4e48b065301bc7ec0f24d6368f99ee3925efb4907a961d82f22736410b",
+    "gzip": "browser-selection-assertion-failure.log.gz",
+    "gzip_sha256": "0961e5fba5bc8fcd0c7aa693310087ff228edc636533bf754d1e381e2c4d49d8",
+    "owner_observed_exit": 1,
+    "tested_source": "6193e320690a5e99b42eb5ae62546f31098ace91",
+    "authentication_cookie_redactions": 0
+  },
+  "ui-image-previsual.log": {
+    "saved_raw_sha256": "a759533c500700f45220f4f3586696bb71f3223d468b8662d6a04658c3700f5b",
+    "gzip": "ui-image-previsual.log.gz",
+    "gzip_sha256": "88df8fd7b52b0716a80827efaecafb39f1d93f73283398fb6b88a1e69a9c3a02",
+    "owner_observed_exit": 0,
+    "tested_source": "5d0b5c2d1cba59e28cbb51f68b0ee17d68b36e13",
+    "authentication_cookie_redactions": 0
+  },
+  "client-previsual.log": {
+    "saved_raw_sha256": "2ef784cfed41a91a75f98e96567b560918f57e56213ac8a8b449be02d292b3f8",
+    "gzip": "client-previsual.log.gz",
+    "gzip_sha256": "67e8e533fbe7967d8848346f93266a3e678084fb40559ca24f1f04c45038348c",
+    "owner_observed_exit": 0,
+    "tested_source": "6193e320690a5e99b42eb5ae62546f31098ace91",
+    "authentication_cookie_redactions": 0
+  },
+  "browser-previsual.log": {
+    "saved_raw_sha256": "899d2ba1cf045de5d86b612c1372eb0c7331819797890be6ae325418c8c6bb03",
+    "gzip": "browser-previsual.log.gz",
+    "gzip_sha256": "46bc214e0a93253b492189d03fd8f9743670d5579f82cd411191b036c165ade1",
+    "owner_observed_exit": 0,
+    "tested_source": "5d0b5c2d1cba59e28cbb51f68b0ee17d68b36e13",
+    "authentication_cookie_redactions": 0
+  },
+  "build-visual-corrected.log": {
+    "saved_raw_sha256": "129129cb6a0972a9d155487ee42316b215b723ea6941a9acc3f6289acae2933f",
+    "gzip": "build-visual-corrected.log.gz",
+    "gzip_sha256": "4325a78aed1bd853a4b581498f36780b3143442be08aed1b866b73e45ac72c8a",
+    "owner_observed_exit": 0,
+    "tested_source": "0c0ae00246b8ab6f929a00389979d5cc71c687a1",
+    "authentication_cookie_redactions": 0
+  },
+  "browser-visual-corrected.log": {
+    "saved_raw_sha256": "c95194685781cbb92906e84cdd9fa18ad1152ab5ff6f43b3699f0bcc9677b098",
+    "gzip": "browser-visual-corrected.log.gz",
+    "gzip_sha256": "3dabc4b5a6c64e8119d22783056d9bd6e2709dc4eb4286e9d066b67789c5f58b",
+    "owner_observed_exit": 0,
+    "tested_source": "0c0ae00246b8ab6f929a00389979d5cc71c687a1",
+    "authentication_cookie_redactions": 0
+  },
+  "client-visual-corrected.log": {
+    "saved_raw_sha256": "ec43d333ae75bd618a1109f247ec2a31e7bc95fc019a5c17bf1c58b1dcd76426",
+    "gzip": "client-visual-corrected.log.gz",
+    "gzip_sha256": "b5d4e9ad40d2022e6953ac818a7d5e556b12f1335700bdd9fc1e43bffac05403",
+    "owner_observed_exit": 0,
+    "tested_source": "0c0ae00246b8ab6f929a00389979d5cc71c687a1",
+    "authentication_cookie_redactions": 0
+  },
+  "build-final.log": {
+    "saved_raw_sha256": "7dd1b43968c1a553a57e3ba22c080914aa2c0b9f226284c436f4bf7925457794",
+    "gzip": "build-final.log.gz",
+    "gzip_sha256": "ec83cb1f95c123313c2c4d7b0ddb38724b121491b5aacc9979347b0920f1accf",
+    "owner_observed_exit": 0,
+    "tested_source": "76397bf184661277471ebf6700f74df0711f38f2",
+    "authentication_cookie_redactions": 0
+  },
+  "browser-wheel-anchor-failure.log": {
+    "saved_raw_sha256": "f19157d778f78de38386a1ed525269cd2b238b9333432a561208d98fea774cd7",
+    "gzip": "browser-wheel-anchor-failure.log.gz",
+    "gzip_sha256": "6761682a49ce9d9493ec97e88be93b5132d36ec3964a7cb01e14cbd29d36bb4e",
+    "owner_observed_exit": 1,
+    "tested_source": "76397bf184661277471ebf6700f74df0711f38f2",
+    "authentication_cookie_redactions": 0
+  },
+  "diagnostic-ui-build.log": {
+    "saved_raw_sha256": "2745b592640e3d36151e56ce2ddde24582b21763a66df963bd1968a1f581c90f",
+    "gzip": "diagnostic-ui-build.log.gz",
+    "gzip_sha256": "6ff3e0f27bd6120e7f02dc213a78a772f4270726b3b5ff1bc3f68dbc79f919d6",
+    "owner_observed_exit": 0,
+    "tested_source": "uncommitted intermediate; not the final immutable variant",
+    "authentication_cookie_redactions": 0
+  },
+  "diagnostic-refresh-failure.log": {
+    "saved_raw_sha256": "0b9b15d4bec56042067fb09179b83e99050a56dd269e141fb72fbb4061a3468c",
+    "gzip": "diagnostic-refresh-failure.log.gz",
+    "gzip_sha256": "add687bb70a1ef9bc5ca2d83055f867653b3606334e24cfac6876728acc69673",
+    "owner_observed_exit": 1,
+    "tested_source": "uncommitted intermediate; not the final immutable variant",
+    "authentication_cookie_redactions": 0
+  },
+  "ui-image-final.log": {
+    "saved_raw_sha256": "8a31f8dbdff4abdd1746641db80a3feabacd421b76e60129e86d850601c50806",
+    "gzip": "ui-image-final.log.gz",
+    "gzip_sha256": "6ab0cc2fffb171304bf9a67a60442cdf5d7bfd7f27339813e709f68be2a2999e",
+    "owner_observed_exit": 0,
+    "tested_source": "b1f648d7fcc497fa735cc913f9e8bfacb91113b9",
+    "authentication_cookie_redactions": 0
+  },
+  "browser-final.log": {
+    "saved_raw_sha256": "ac9f659b7f3150e04a02eb73db32882429438149722fdb29638b22838f2359de",
+    "gzip": "browser-final.log.gz",
+    "gzip_sha256": "160f4ed0ae00fc48713a6cff297bce3b11f25c8da10a6ee968fb78b88aef7c71",
+    "owner_observed_exit": 0,
+    "tested_source": "b1f648d7fcc497fa735cc913f9e8bfacb91113b9",
+    "authentication_cookie_redactions": 0
+  },
+  "client-final.log": {
+    "saved_raw_sha256": "b1872cacfd68daa8fcc7f5080866e25253674218be947c0cc1bde47dea254005",
+    "gzip": "client-final.log.gz",
+    "gzip_sha256": "7eafbb76a88da54f5c584a814e5b79d79cf7766cb0729ddee0e78e3a0d39f596",
+    "owner_observed_exit": 0,
+    "tested_source": "76397bf184661277471ebf6700f74df0711f38f2",
+    "authentication_cookie_redactions": 0
+  },
+  "foundation-final.log": {
+    "saved_raw_sha256": "130d3363b06192e9f213628e901dbc90157f85c6556d4f64058d8a86537d9715",
+    "gzip": "foundation-final.log.gz",
+    "gzip_sha256": "c23fe91e8368907fc92826b0b192c9afffcc5b1452171b76a06112119970c356",
+    "owner_observed_exit": 0,
+    "tested_source": "76397bf184661277471ebf6700f74df0711f38f2",
+    "authentication_cookie_redactions": 0
+  }
+}

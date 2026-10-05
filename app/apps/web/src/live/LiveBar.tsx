@@ -8,7 +8,7 @@ import type { MediaPerson } from './media';
 import { DeviceButton } from './DeviceButton';
 import { LivePanel } from './LivePanel';
 import { Popover } from './Popover';
-import { namesLine } from './LiveEntry';
+import { LiveDot, namesLine } from './LiveEntry';
 
 function Face({ person, name }: { person: MediaPerson; name: string }) {
   return (
@@ -100,7 +100,7 @@ export function LiveBar() {
     <section className={`lv-bar${live.quiet ? ' is-quiet' : ''}${reconnecting ? ' is-reconnecting' : ''}`} aria-label="Live session">
       <div className="lv-row">
         <span className="lv-row__lead" role="status" aria-live="polite">
-          {connecting || reconnecting ? <Spinner /> : <span className={`lv-dot${live.quiet ? '' : ' lv-dot--on'}`} aria-hidden="true" />}
+          {connecting || reconnecting ? <Spinner /> : <LiveDot on={!live.quiet} />}
           <span className="lv-status">{status}</span>
         </span>
         <button type="button" className="lv-where" onClick={() => navigate(anchorPath(where), { state: { liveFollow: true } })}

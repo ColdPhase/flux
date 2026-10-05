@@ -1,0 +1,356 @@
+#1 [internal] load local bake definitions
+#1 reading from stdin 1.78kB done
+#1 DONE 0.0s
+
+#2 [test internal] load build definition from Dockerfile
+#2 transferring dockerfile: 2.99kB done
+#2 DONE 0.0s
+
+#3 [ui-test internal] load build definition from ui-tests.Dockerfile
+#3 transferring dockerfile: 941B done
+#3 DONE 0.0s
+
+#4 [test internal] load metadata for docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#4 ...
+
+#5 [ui-test internal] load metadata for mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d
+#5 DONE 2.8s
+
+#6 [ui-test internal] load .dockerignore
+#6 transferring context: 191B done
+#6 DONE 0.0s
+
+#7 [ui-test 1/5] FROM mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d
+#7 resolve mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d 0.0s done
+#7 DONE 0.0s
+
+#8 [ui-test internal] load build context
+#8 transferring context: 69.49kB 0.0s done
+#8 DONE 0.0s
+
+#9 [ui-test 2/5] COPY tests/ui/requirements.txt /tmp/ui-requirements.txt
+#9 CACHED
+
+#10 [ui-test 3/5] RUN pip install --no-cache-dir --break-system-packages --only-binary=:all: --require-hashes -r /tmp/ui-requirements.txt
+#10 CACHED
+
+#11 [ui-test 4/5] WORKDIR /work
+#11 CACHED
+
+#12 [ui-test 5/5] COPY tests/ui tests/ui
+#12 DONE 0.0s
+
+#13 [ui-test] exporting to image
+#13 exporting layers 0.0s done
+#13 exporting manifest sha256:1f77e53c1a41d3cf4622bcfadc41ece19440637872d34369464362a5ccdfa306 done
+#13 exporting config sha256:d13342666cdb1e03ea813003d3d0917837500925e5389d5fa15b7902a39e7a79 done
+#13 exporting attestation manifest sha256:19093702e884ad95eb9eaa5ae80986dedd6586d70080961ac9bf95b351e0a790 done
+#13 exporting manifest list sha256:00798bf4be9dafec7368f0a01523449c297251933bfb26cfdd4ee64a85191b21 done
+#13 naming to docker.io/library/flux-ui-tests:flux155browser done
+#13 unpacking to docker.io/library/flux-ui-tests:flux155browser 0.0s done
+#13 DONE 0.1s
+
+#14 [ui-test] resolving provenance for metadata file
+#14 DONE 0.0s
+
+#4 [test internal] load metadata for docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#4 DONE 8.5s
+
+#6 [test internal] load .dockerignore
+#6 CACHED
+
+#15 [migrate build 1/8] FROM docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#15 resolve docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 done
+#15 DONE 0.0s
+
+#16 [test internal] load build context
+#16 transferring context: 3.73MB 0.1s done
+#16 transferring context: 3.73MB 0.1s done
+#16 DONE 0.1s
+
+#17 [test build 4/8] COPY pnpm-lock.yaml pnpm-workspace.yaml ./
+#17 CACHED
+
+#18 [test build 2/8] WORKDIR /app
+#18 CACHED
+
+#19 [test build 3/8] RUN corepack enable && corepack install -g pnpm@12.6.0
+#19 CACHED
+
+#20 [migrate build 5/8] RUN pnpm fetch
+#20 CACHED
+
+#21 [test build 6/8] COPY . .
+#21 DONE 0.1s
+
+#22 [test build 7/8] RUN pnpm install --offline --frozen-lockfile
+#22 0.353 Scope: all 10 workspace projects
+#22 0.419 ✓ Lockfile passes supply-chain policies (verified 17h ago)
+#22 0.419 Lockfile is up to date, resolution step is skipped
+#22 0.728 Already up to date
+#22 1.109
+#22 1.109 dependencies:
+#22 1.109 + @flux/contracts link:packages/contracts
+#22 1.109 + @flux/core link:packages/core
+#22 1.109 + @flux/db link:packages/db
+#22 1.109 + pg-boss 12.35.0
+#22 1.109
+#22 1.109 devDependencies:
+#22 1.109 + @eslint/js 9.37.0
+#22 1.109 + @types/node 24.6.2
+#22 1.109 + @types/nodemailer 8.0.2
+#22 1.109 + @types/pg 8.15.5
+#22 1.109 + @types/sanitize-html 2.16.1
+#22 1.109 + @types/ws 8.18.1
+#22 1.109 + drizzle-orm 0.45.3
+#22 1.109 + eslint 9.37.0
+#22 1.109 + eslint-plugin-react-hooks 7.1.1
+#22 1.109 + fastify 5.6.1
+#22 1.109 + playwright 1.63.0
+#22 1.109 + tsx 4.20.5
+#22 1.109 + typescript 5.9.2
+#22 1.109 + typescript-eslint 8.44.1
+#22 1.109 + ws 8.22.0
+#22 1.109
+#22 1.109 Done in 771ms using pnpm v12.6.0
+#22 DONE 1.2s
+
+#23 [test build 8/8] RUN pnpm build && pnpm typecheck && pnpm lint
+#23 0.217 $ pnpm -r --if-present build && tsc -p tooling/tsconfig.build.json
+#23 0.267 packages/contracts build$ tsc -p tsconfig.build.json
+#23 1.679 packages/contracts build: Done
+#23 1.680 packages/sdk build$ tsc -p tsconfig.build.json
+#23 1.680 apps/web build$ vite build
+#23 1.680 packages/db build$ tsc -p tsconfig.build.json
+#23 1.896 apps/web build: vite v8.3.1 building client environment for production...
+#23 1.906 apps/web build: transforming...
+#23 1.994 apps/web build: ✓ 270 modules transformed.
+#23 2.078 apps/web build: rendering chunks...
+#23 2.174 apps/web build: computing gzip size...
+#23 2.181 apps/web build: dist/index.html                                              1.21 kB │ gzip:   0.53 kB
+#23 2.181 apps/web build: dist/sw.js                                                   6.70 kB
+#23 2.181 apps/web build: dist/assets/inter-vietnamese-wght-normal-CBcvBZtf.woff2     10.25 kB
+#23 2.181 apps/web build: dist/assets/inter-greek-ext-wght-normal-DlzME5K_.woff2      11.23 kB
+#23 2.181 apps/web build: dist/assets/inter-cyrillic-wght-normal-DqGufNeO.woff2       18.74 kB
+#23 2.181 apps/web build: dist/assets/inter-greek-wght-normal-CkhJZR-_.woff2          18.99 kB
+#23 2.181 apps/web build: dist/assets/inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2   25.96 kB
+#23 2.181 apps/web build: dist/assets/inter-latin-wght-normal-Dx4kXJAl.woff2          48.25 kB
+#23 2.181 apps/web build: dist/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2      85.06 kB
+#23 2.181 apps/web build: dist/assets/index-CG23UaWh.css                             159.97 kB │ gzip:  28.25 kB
+#23 2.181 apps/web build: dist/assets/media-B2onFXu3.js                              419.65 kB │ gzip: 108.68 kB
+#23 2.181 apps/web build: dist/assets/index-DVvAD53W.js                              784.85 kB │ gzip: 233.07 kB
+#23 2.181 apps/web build:
+#23 2.182 apps/web build: [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "use client" in "../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/index.js" may not be preserved when bundling.
+#23 2.182 apps/web build:     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m ../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/index.js:11:1 [38;5;246m][0m
+#23 2.182 apps/web build:     [38;5;246m│[0m
+#23 2.182 apps/web build:  [38;5;246m11 │[0m "use client";
+#23 2.182 apps/web build:  [38;5;240m   │[0m ──────┬──────
+#23 2.182 apps/web build:  [38;5;240m   │[0m       ╰──────── module level directive may not be preserved
+#23 2.182 apps/web build:  [38;5;240m   │[0m
+#23 2.182 apps/web build:  [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+#23 2.182 apps/web build: [38;5;246m────╯[0m
+#23 2.182 apps/web build:
+#23 2.182 apps/web build: [plugin builtin:vite-reporter]
+#23 2.182 apps/web build: (!) Some chunks are larger than 500 kB after minification. Consider:
+#23 2.182 apps/web build: - Using dynamic import() to code-split the application
+#23 2.182 apps/web build: - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+#23 2.182 apps/web build: - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+#23 2.183 apps/web build: ✓ built in 286ms
+#23 2.201 apps/web build: Done
+#23 3.325 packages/sdk build: Done
+#23 4.596 packages/db build: Done
+#23 4.596 packages/core build$ tsc -p tsconfig.build.json
+#23 6.303 packages/core build: Done
+#23 6.305 packages/agent-runtime build$ tsc -p tsconfig.build.json
+#23 6.305 apps/server build$ tsc -p tsconfig.build.json
+#23 7.136 packages/agent-runtime build: Done
+#23 7.137 apps/worker build$ tsc -p tsconfig.build.json
+#23 8.098 apps/worker build: Done
+#23 9.170 apps/server build: Done
+#23 9.867 $ tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json
+#23 17.92 $ eslint .
+#23 26.04
+#23 26.04 /app/apps/web/src/work/WorkReadContext.tsx
+#23 26.04   12:60  warning  React Hook useMemo has unnecessary dependencies: 'accountId' and 'projectId'. Either exclude them or remove the dependency array  react-hooks/exhaustive-deps
+#23 26.04
+#23 26.04 ✖ 1 problem (0 errors, 1 warning)
+#23 26.04
+#23 DONE 26.2s
+
+#24 [test] exporting to image
+#24 exporting layers
+#24 exporting layers 0.5s done
+#24 exporting manifest sha256:9cda69469bc79cbdac830e538c6f42cefda95712616e029ae864ef6047297b6c done
+#24 exporting config sha256:753da8b830604fcc446cec28d1300cfd0480f73379370996751a1d8a01368478 0.0s done
+#24 exporting attestation manifest sha256:cea36d625746cbbf60473541b1c834ff5264856b7dac31be9c72b9e688e5feb7 0.0s done
+#24 exporting manifest list sha256:a90256240b0e98b5d8566afdf8f9efb688daac46768b4be24ec35a241887d71e done
+#24 naming to docker.io/library/flux-test-tools:flux155browser done
+#24 unpacking to docker.io/library/flux-test-tools:flux155browser
+#24 ...
+
+#25 [migrate production-dependencies 1/1] RUN pnpm install --prod --offline --frozen-lockfile
+#25 0.228 Scope: all 10 workspace projects
+#25 0.264 ✓ Lockfile passes supply-chain policies (verified 17h ago)
+#25 0.264 Lockfile is up to date, resolution step is skipped
+#25 0.460 Packages: -199
+#25 0.460 --------------------------------------------------------------------------------
+#25 0.637
+#25 0.637 devDependencies:
+#25 0.637 - @eslint/js 9.37.0
+#25 0.637 - @types/node 24.6.2
+#25 0.637 - @types/nodemailer 8.0.2
+#25 0.637 - @types/pg 8.15.5
+#25 0.637 - @types/sanitize-html 2.16.1
+#25 0.637 - @types/ws 8.18.1
+#25 0.637 - drizzle-orm 0.45.3
+#25 0.637 - eslint 9.37.0
+#25 0.637 - eslint-plugin-react-hooks 7.1.1
+#25 0.637 - fastify 5.6.1
+#25 0.637 - playwright 1.63.0
+#25 0.637 - tsx 4.20.5
+#25 0.637 - typescript 5.9.2
+#25 0.637 - typescript-eslint 8.44.1
+#25 0.637 - ws 8.22.0
+#25 0.637
+#25 0.637 Done in 412ms using pnpm v12.6.0
+#25 DONE 0.7s
+
+#24 [test] exporting to image
+#24 unpacking to docker.io/library/flux-test-tools:flux155browser 0.3s done
+#24 DONE 1.0s
+
+#26 [test] resolving provenance for metadata file
+#26 DONE 0.0s
+
+#18 [migrate build 2/8] WORKDIR /app
+#18 CACHED
+
+#27 [migrate runtime  3/25] COPY --from=production-dependencies /app/node_modules ./node_modules
+#27 DONE 1.9s
+
+#28 [migrate runtime  4/25] COPY --from=production-dependencies /app/apps/server/node_modules ./apps/server/node_modules
+#28 DONE 0.1s
+
+#29 [migrate runtime  5/25] COPY --from=production-dependencies /app/apps/worker/node_modules ./apps/worker/node_modules
+#29 DONE 0.0s
+
+#30 [migrate runtime  6/25] COPY --from=production-dependencies /app/packages/core/node_modules ./packages/core/node_modules
+#30 DONE 0.0s
+
+#31 [migrate runtime  7/25] COPY --from=production-dependencies /app/packages/db/node_modules ./packages/db/node_modules
+#31 DONE 0.0s
+
+#32 [migrate runtime  8/25] COPY --from=production-dependencies /app/packages/agent-runtime/node_modules ./packages/agent-runtime/node_modules
+#32 DONE 0.0s
+
+#33 [migrate runtime  9/25] COPY --from=build /app/package.json ./package.json
+#33 DONE 0.0s
+
+#34 [migrate runtime 10/25] COPY --from=build /app/apps/server/package.json ./apps/server/package.json
+#34 DONE 0.0s
+
+#35 [migrate runtime 11/25] COPY --from=build /app/apps/worker/package.json ./apps/worker/package.json
+#35 DONE 0.0s
+
+#36 [migrate runtime 12/25] COPY --from=build /app/packages/contracts/package.json ./packages/contracts/package.json
+#36 DONE 0.0s
+
+#37 [migrate runtime 13/25] COPY --from=build /app/packages/core/package.json ./packages/core/package.json
+#37 DONE 0.0s
+
+#38 [migrate runtime 14/25] COPY --from=build /app/packages/db/package.json ./packages/db/package.json
+#38 DONE 0.0s
+
+#39 [migrate runtime 15/25] COPY --from=build /app/packages/agent-runtime/package.json ./packages/agent-runtime/package.json
+#39 DONE 0.0s
+
+#40 [migrate runtime 16/25] COPY --from=build /app/apps/server/dist ./apps/server/dist
+#40 DONE 0.0s
+
+#41 [migrate runtime 17/25] COPY --from=build /app/apps/worker/dist ./apps/worker/dist
+#41 DONE 0.0s
+
+#42 [migrate runtime 18/25] COPY --from=build /app/apps/web/dist ./apps/web/dist
+#42 DONE 0.0s
+
+#43 [migrate runtime 19/25] COPY --from=build /app/packages/contracts/dist ./packages/contracts/dist
+#43 DONE 0.0s
+
+#44 [migrate runtime 20/25] COPY --from=build /app/packages/core/dist ./packages/core/dist
+#44 DONE 0.0s
+
+#45 [migrate runtime 21/25] COPY --from=build /app/packages/db/dist ./packages/db/dist
+#45 DONE 0.0s
+
+#46 [migrate runtime 22/25] COPY --from=build /app/packages/agent-runtime/dist ./packages/agent-runtime/dist
+#46 DONE 0.0s
+
+#47 [migrate runtime 23/25] COPY --from=build /app/packages/db/migrations ./packages/db/migrations
+#47 DONE 0.0s
+
+#48 [migrate runtime 24/25] COPY --from=build /app/tooling/dist ./tooling/dist
+#48 DONE 0.0s
+
+#49 [migrate runtime 25/25] RUN mkdir -p /data/files && chown -R node:node /data
+#49 DONE 0.1s
+
+#50 [migrate] exporting to image
+#50 exporting layers
+#50 exporting layers 5.4s done
+#50 exporting manifest sha256:ed77180b7cad7d63ddd387b033c862590a7f0f835e55a0d3cedac09a6cd5ff5e done
+#50 exporting config sha256:c9fc9d7a6c187c76637b2228d4ff2ea927f4dce1af63f3181171c7ecf2243ab0 done
+#50 exporting attestation manifest sha256:9d671bf96a4999dc0076ea9c9ffb1b987790368e5b7912afeb6f89ad64dfc91e done
+#50 exporting manifest list sha256:cc6ce60a4093b525a7ec1bbfd7388bb1e2fd63ccbc366b504017468627dde49a done
+#50 naming to docker.io/library/flux-foundation:flux155browser done
+#50 unpacking to docker.io/library/flux-foundation:flux155browser
+#50 unpacking to docker.io/library/flux-foundation:flux155browser 2.0s done
+#50 DONE 7.4s
+
+#51 [migrate] resolving provenance for metadata file
+#51 DONE 0.0s
+ flux-foundation:flux155browser  Built
+ flux-ui-tests:flux155browser  Built
+ flux-test-tools:flux155browser  Built
+ Container flux155browser-mailpit-1  Running
+ Container flux155browser-db-1  Running
+ Container flux155browser-migrate-1  Recreate
+ Container flux155browser-migrate-1  Recreated
+ Container flux155browser-db-1  Waiting
+ Container flux155browser-db-1  Healthy
+ Container flux155browser-migrate-1  Starting
+ Container flux155browser-migrate-1  Started
+time="2026-10-01T15:54:31+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux155browser-anthropic-mock-1  Recreate
+ Container flux155browser-db-1  Running
+ Container flux155browser-migrate-1  Running
+ Container flux155browser-worker-1  Recreate
+ Container flux155browser-api-1  Recreate
+time="2026-10-01T15:54:31+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+time="2026-10-01T15:54:31+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux155browser-worker-1  Recreated
+ Container flux155browser-anthropic-mock-1  Recreated
+ Container flux155browser-api-1  Recreated
+ Container flux155browser-db-1  Waiting
+ Container flux155browser-anthropic-mock-1  Starting
+ Container flux155browser-anthropic-mock-1  Started
+ Container flux155browser-db-1  Healthy
+ Container flux155browser-migrate-1  Starting
+ Container flux155browser-migrate-1  Started
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Exited
+ Container flux155browser-api-1  Starting
+ Container flux155browser-migrate-1  Exited
+ Container flux155browser-worker-1  Starting
+ Container flux155browser-worker-1  Started
+ Container flux155browser-api-1  Started
+ Container flux155browser-db-1  Waiting
+ Container flux155browser-anthropic-mock-1  Waiting
+ Container flux155browser-worker-1  Waiting
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-api-1  Waiting
+ Container flux155browser-migrate-1  Exited
+ Container flux155browser-anthropic-mock-1  Healthy
+ Container flux155browser-db-1  Healthy
+ Container flux155browser-worker-1  Healthy
+ Container flux155browser-api-1  Healthy

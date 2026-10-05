@@ -601,6 +601,8 @@ class TasksBoardJourney(unittest.TestCase):
                     page.goto(f"/projects/{self.ids['project']}/tasks")
                     expect(page.locator("html")).to_have_attribute("data-accent", family.lower())
                     expect(page.locator(".tb-card").first).to_be_visible()
+                    # Since #155 a card's source line comes from its own bounded read, after the cards.
+                    expect(page.locator(".tb-card__from").first).to_be_visible()
                     page.wait_for_timeout(250)
                     for selector, minimum, spec in (
                         (".tb-card__id", 4.5, {}), (".tb-card__title", 4.5, {}), (".tb-card__from", 4.5, {}), (".tb-card__kind", 4.5, {}),

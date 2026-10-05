@@ -1,0 +1,54 @@
+ Container flux155browser-mailpit-1  Running
+ Container flux155browser-anthropic-mock-1  Running
+ Container flux155browser-db-1  Running
+ Container flux155browser-api-1  Running
+ Container flux155browser-worker-1  Running
+ Container flux155browser-db-1  Waiting
+ Container flux155browser-db-1  Healthy
+ Container flux155browser-migrate-1  Starting
+ Container flux155browser-migrate-1  Started
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Exited
+ Container flux155browser-migrate-1  Exited
+test_01_all_native_object_and_relation_pages_are_reachable_on_desktop_and_phone (test_work_overview.OverviewWorkJourney.test_01_all_native_object_and_relation_pages_are_reachable_on_desktop_and_phone) ... ok
+test_02_required_relation_failure_is_unavailable_then_retries_without_touching_private_reply (test_work_overview.OverviewWorkJourney.test_02_required_relation_failure_is_unavailable_then_retries_without_touching_private_reply) ... ok
+test_03_held_old_relations_cannot_replace_a_new_object_window_or_erase_selection (test_work_overview.OverviewWorkJourney.test_03_held_old_relations_cannot_replace_a_new_object_window_or_erase_selection) ... ok
+test_04_details_of_an_older_loaded_message_keeps_exact_source_scope_and_pinned_citation (test_work_overview.OverviewWorkJourney.test_04_details_of_an_older_loaded_message_keeps_exact_source_scope_and_pinned_citation) ... ok
+test_05_refresh_preserves_native_row_reading_focus_and_private_selection_then_failure_clears_rows (test_work_overview.OverviewWorkJourney.test_05_refresh_preserves_native_row_reading_focus_and_private_selection_then_failure_clears_rows) ... ok
+test_06_keyboard_exposes_each_focused_native_row_inside_the_overview_list (test_work_overview.OverviewWorkJourney.test_06_keyboard_exposes_each_focused_native_row_inside_the_overview_list) ... ok
+test_07_passive_refresh_resets_relations_for_a_changed_actual_native_row_window (test_work_overview.OverviewWorkJourney.test_07_passive_refresh_resets_relations_for_a_changed_actual_native_row_window) ... ok
+test_08_thought_source_opens_the_exact_native_thought_selected_on_its_sketch (test_work_overview.OverviewWorkJourney.test_08_thought_source_opens_the_exact_native_thought_selected_on_its_sketch) ... FAIL
+
+======================================================================
+FAIL: test_08_thought_source_opens_the_exact_native_thought_selected_on_its_sketch (test_work_overview.OverviewWorkJourney.test_08_thought_source_opens_the_exact_native_thought_selected_on_its_sketch)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/work/tests/ui/test_work_overview.py", line 273, in test_08_thought_source_opens_the_exact_native_thought_selected_on_its_sketch
+    expect(node).to_have_class(re.compile("selected"))
+  File "/usr/local/lib/python3.12/dist-packages/playwright/sync_api/_generated.py", line 22206, in to_have_class
+    self._sync(
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_sync_base.py", line 115, in _sync
+    return task.result()
+           ^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_assertions.py", line 396, in to_have_class
+    await self._expect_impl(
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_assertions.py", line 128, in _expect_impl
+    _record_soft_or_raise(
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_assertions.py", line 60, in _record_soft_or_raise
+    raise error
+AssertionError: Locator expected to have class 're.compile('selected')'
+Actual value: sk-node sk-node--card
+Call log:
+  - Expect "to_have_class" with timeout 10000ms
+  - waiting for locator(".sk-node[data-id=\"3e158723-f3d5-41a8-acc9-0d0981e88b3b\"]")
+    24 × locator resolved to <button type="button" aria-pressed="true" aria-describedby="_r_7_" class="sk-node sk-node--card" data-id="3e158723-f3d5-41a8-acc9-0d0981e88b3b">…</button>
+       - unexpected value "sk-node sk-node--card"
+
+Aria snapshot:
+- button "Try the same shield with both low-light runs From you · 12:17" [pressed]
+
+----------------------------------------------------------------------
+Ran 8 tests in 27.046s
+
+FAILED (failures=1)
