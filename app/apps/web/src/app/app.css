@@ -89,7 +89,7 @@ body:has(.app) { background: var(--bg-chrome); }
 }
 .side__item[aria-current="page"] :is(.side__ic, .side__pi, .side__trail), .side__project.is-open :is(.side__pi, .side__sub) { color: var(--accent-selected-text); }
 .side__project.is-open::before, .side__places .side__item[aria-current="page"]::before, .side__dm[aria-current="page"]::before {
-  content: ""; position: absolute; left: -9px; top: 50%; width: 3px; height: 20px; margin-top: -10px; border-radius: 3px; background: var(--accent);
+  content: ""; position: absolute; left: -9px; top: calc(50% - 10px); width: 3px; height: 20px; border-radius: 3px; background: var(--accent);
   animation: side-mark-in var(--dur-3) var(--ease-glide) both;
 }
 @keyframes side-mark-in { from { opacity: 0; transform: scaleY(.2); } }
@@ -401,7 +401,7 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 }
 @keyframes badge-in { from { opacity: 0; transform: scale(.4); } }
 @media (max-width: 640px) {
-  .top, .top--project {
+  header.top, header.top.top--project {
     min-height: calc(52px + env(safe-area-inset-top)); height: auto; align-items: center; gap: 2px;
     padding: env(safe-area-inset-top) 2px 0; border-bottom: 1px solid var(--line);
   }
@@ -413,12 +413,10 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
   .top__details.ui-icon-btn, .top__recap.ui-icon-btn { width: 44px; height: 44px; }
   .top__details[aria-expanded="true"], .top__recap[aria-expanded="true"] { background: var(--bg-active); color: var(--text); }
 }
-/* Typing on a touch screen: the keyboard needs the room, so the view bar steps aside until it closes.
-   It stays aside while focus is anywhere in the composer or form being typed in, so tapping Send or
-   Attach never moves the button from under the finger. */
+/* Typing on a touch screen: the keyboard needs the room, so the view bar steps aside (AppLayout sets
+   data-typing while a text field, or the same composer's buttons, hold focus). */
 @media (hover: none) and (max-width: 640px) {
-  .app:has(.app__pane :is(textarea, input:not([type="checkbox"], [type="radio"], [type="file"], [type="range"], [type="button"], [type="submit"]), [contenteditable="true"]):focus) .app__viewbar,
-  .app:has(.app__pane :is(.composer, .agents-composer, form):focus-within) .app__viewbar { display: none; }
+  .app[data-typing] .app__viewbar { display: none; }
 }
 .auth__back { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; margin-left: auto; padding: 0 8px; border-radius: var(--r); font-size: var(--fs-md); color: var(--text-2); text-decoration: none; transition: var(--tr); }
 .auth__back:hover { background: var(--bg-hover); color: var(--text); }

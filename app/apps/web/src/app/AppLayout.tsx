@@ -174,6 +174,35 @@ export function AppLayout() {
   }, [toggleDetails, detailsOpen]);
 
 
+  // Typing on a touch phone (#266 PF-3): the view bar steps aside for the keyboard once a text field
+  // takes focus, stays aside while focus moves to the same composer's buttons (Send, Attach,
+  // Sources), and comes back shortly after focus leaves it, so no tap lands on a moved control.
+  const appRef = useRef<HTMLDivElement>(null);
+  const touch = useMediaQuery(MEDIA.touch);
+  useEffect(() => {
+    const app = appRef.current;
+    const pane = paneRef.current;
+    if (!phone || !touch || !app || !pane) return;
+    let timer = 0;
+    const field = (el: EventTarget | null) => el instanceof HTMLTextAreaElement || (el instanceof HTMLElement && el.isContentEditable)
+      || (el instanceof HTMLInputElement && !['checkbox', 'radio', 'file', 'range', 'button', 'submit', 'reset', 'color'].includes(el.type));
+    const group = (el: EventTarget | null) => (el instanceof Element ? el.closest('.composer, .agents-composer, form') : null);
+    const onIn = (event: FocusEvent) => {
+      if (field(event.target)) { window.clearTimeout(timer); app.dataset.typing = 'true'; }
+      else if (app.dataset.typing && group(event.target)) window.clearTimeout(timer);
+    };
+    const onOut = (event: FocusEvent) => {
+      if (!app.dataset.typing) return;
+      const next = event.relatedTarget;
+      if (next instanceof Node && pane.contains(next) && (field(next) || (group(next) && group(next) === group(event.target)))) return;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => { delete app.dataset.typing; }, 200);
+    };
+    pane.addEventListener('focusin', onIn);
+    pane.addEventListener('focusout', onOut);
+    return () => { window.clearTimeout(timer); delete app.dataset.typing; pane.removeEventListener('focusin', onIn); pane.removeEventListener('focusout', onOut); };
+  }, [phone, touch]);
+
   // A new view slides in from the side its tab sits on; a Settings page slides in from the right
   // and back from the left, like a pushed page (#266 PF-4).
   const previousPath = useRef(location.pathname);
@@ -280,7 +309,7 @@ export function AppLayout() {
     <ShellContext.Provider value={shell}>
     {/* One live session per tab, above the routes, so navigation keeps it (#62). */}
     <LiveProvider meId={me.user.id}>
-    <div className="app">
+    <div className="app" ref={appRef}>
       <a className="ui-skip" href="#content">Skip to content</a>
       {navDrawer ? (
         <Drawer open={navOpen && navDrawer} onClose={() => setNavOpen(false)} labelledBy={drawerTitleId} id="nav-drawer" className="nav-drawer">

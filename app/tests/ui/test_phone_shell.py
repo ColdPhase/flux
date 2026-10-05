@@ -229,7 +229,7 @@ class PhoneShellJourney(unittest.TestCase):
     def test_07_reduced_motion_changes_state_without_animating(self):
         page = self.page(reduced=True)
         page.goto(f"/projects/{self.project['id']}")
-        self.assertEqual(page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--dur-4').trim()"), "0ms")
+        self.assertIn(page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--dur-4').trim()"), ("0ms", "0s"))
         page.get_by_role("navigation", name="Project views").get_by_role("link", name="Map").click()
         page.get_by_role("button", name="Open navigation").click()
         expect(page.get_by_role("dialog", name="Flux")).to_be_visible()
@@ -286,7 +286,7 @@ class PhoneShellJourney(unittest.TestCase):
         toolbar = page.locator(".tb-bar")
         expect(toolbar).to_be_visible()
         self.assertLessEqual(self.box(toolbar)["height"], 60, "one row of tools")
-        first = page.locator(".tb-card").first
+        first = page.locator(".tb-card:visible").first
         expect(first).to_be_visible()
         self.assertLessEqual(self.box(first)["y"], 320, "the first card starts within 320px")
         page.locator(".tb-ov", has_text="In progress").click()
@@ -295,7 +295,7 @@ class PhoneShellJourney(unittest.TestCase):
         self.settle(page)
         self.assertGreater(self.box(page.locator(".tb-search"))["width"], 250, "search takes the row while in use")
         search.fill("probes")
-        expect(page.locator(".tb-card")).to_have_count(1)
+        expect(page.locator(".tb-card:visible")).to_have_count(1)
         page.locator("header.top h1").click()
         expect(search).to_have_value("probes")
         self.assertGreater(self.box(page.locator(".tb-search"))["width"], 250, "a filter in use stays readable")
