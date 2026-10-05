@@ -107,7 +107,7 @@ export function useArrivals(feed: RefObject<HTMLElement | null>, ids: readonly s
 /**
  * One short traveling highlight within a list (#155, UI116-5 project selector). It goes to the first
  * item found for `selectors`, in order (e.g. the item being opened, then the current one), moving from
- * where it was (transform and height over --dur-2, 0 with reduced motion). An interrupted move retargets
+ * where it was (transform over --dur-2, 0 with reduced motion; its height is set at once). An interrupted move retargets
  * from where it is, so it settles on the latest choice. It never takes focus or moves scroll, and hides
  * while the list is not shown. The list gets `has-glide` while the highlight stands in for the current
  * item's own background.

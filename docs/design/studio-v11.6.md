@@ -169,7 +169,7 @@ chosen within the proposals above, and the rules the views follow. Measured numb
 live in [`155-reference-client-wip`](../agents/evidence/155-reference-client-wip/README.md).
 
 - Selection: the project row's highlight (`.side__glide`) and the work tabs' mark travel with
-  `--dur-2` (160 ms, ease-out, transform/height only). They go to the chosen item **at once, while
+  `--dur-2` (160 ms, ease-out, transform only; a taller row's height is set at once). They go to the chosen item **at once, while
   its view loads** (router pending navigation); the row or tab becomes current (accent bar,
   `aria-current`) when its content shows. A newer choice retargets from where the mark is; a choice
   that does not happen returns the mark. Focus, scroll and drafts are untouched.
