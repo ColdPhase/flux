@@ -24,6 +24,12 @@
 .top--project .ws-state--empty { overflow: hidden; text-overflow: ellipsis; }
 .top--project .top__right { padding-top: 2px; }
 
+/* ---------- Phone: the state line is one 44px row that opens Details ---------- */
+.ws-state-row { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 0 10px 0 16px; border-top: 1px solid var(--line); font-size: var(--fs-sm); color: var(--text-3); text-align: left; white-space: nowrap; transition: var(--tr); }
+.ws-state-row__t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ws-state-row__blocked { flex: none; color: var(--text-2); }
+.ws-state-row svg { flex: none; }
+.ws-state-row:active { background: var(--bg-hover); }
 @media (max-width: 680px) {
   .top--project { min-height: calc(56px + env(safe-area-inset-top)); padding: max(18px, env(safe-area-inset-top)) 12px 0 8px; align-items: center; }
   .top--project .top__title--project { flex-direction: column; align-items: flex-start; gap: 0; text-align: left; line-height: 1.25; }

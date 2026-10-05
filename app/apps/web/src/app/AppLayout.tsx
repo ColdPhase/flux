@@ -11,7 +11,7 @@ import { placeOf } from './place';
 import { ShellContext, type DetailsView } from './shellContext';
 import { Sidebar } from './Sidebar';
 import { VIEWS, viewIndex } from './views';
-import { ProjectStateLine } from '../work/inline';
+import { ProjectStateLine, ProjectStateRow } from '../work/inline';
 import { audienceLine, useProjectShell } from '../project/data';
 import { useDmSketchCount } from '../dm/DmSketches';
 import { LiveProvider } from '../live/LiveProvider';
@@ -174,13 +174,20 @@ export function AppLayout() {
   }, [toggleDetails, detailsOpen]);
 
 
-  // A new view slides in from the side its tab sits on.
+  // A new view slides in from the side its tab sits on; a Settings page slides in from the right
+  // and back from the left, like a pushed page (#266 PF-4).
+  const previousPath = useRef(location.pathname);
   useLayoutEffect(() => {
     const index = viewOrder(location.pathname);
-    const direction = Math.sign(index - previousView.current);
+    const settingsDepth = (path: string) => (path === '/settings' ? 1 : /^\/settings\/./.test(path) ? 2 : 0);
+    const from = settingsDepth(previousPath.current);
+    const to = settingsDepth(location.pathname);
+    previousPath.current = location.pathname;
+    const direction = from && to && from !== to ? Math.sign(to - from) : Math.sign(index - previousView.current);
+    const distance = from && to && from !== to ? 28 : 12;
     previousView.current = index;
     if (!direction) return;
-    void play(paneRef.current, [{ opacity: 0, transform: `translateX(${direction * 12}px)` }, { opacity: 1, transform: 'none' }], duration('--dur-2'), '--ease-out', { fill: 'backwards' });
+    void play(paneRef.current, [{ opacity: 0, transform: `translateX(${direction * distance}px)` }, { opacity: 1, transform: 'none' }], duration('--dur-2'), '--ease-out', { fill: 'backwards' });
   }, [location.pathname]);
 
   const sidebarProps = { workspace, projects, directMessages, user: me.user, session: me.session, inboxUnread };
@@ -328,8 +335,10 @@ export function AppLayout() {
             </Button>}
           </div>
         </header>
-        {/* On the phone, Home's and a project's views move to the bar at the bottom (#266 PF-1); the
-            project's state stays one tap away in Details and "What matters" in the header. */}
+        {/* On the phone, Home's and a project's views move to the bar at the bottom (#266 PF-1). The
+            project's state stays as one 44px line on its Conversation, where people orient themselves;
+            the other views start right under the header and "What matters" sits in it (PF-2). */}
+        {project && phone && !onOtherView ? <div className="state-row"><ProjectStateRow lists={project.work} canDecide={project.project.access !== 'viewer'} /></div> : null}
         {place.views && !phone
           ? <Tabs className="views" label="Views" items={homeViews} />
           : activeProject && projectViews && !phone

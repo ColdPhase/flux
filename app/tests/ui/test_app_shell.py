@@ -335,7 +335,7 @@ class AppShellJourney(unittest.TestCase):
         self.assertEqual(round(box(page, sheet)["x"]), 220, "the sheet meets the sidebar")
         rail = places
         marker = places.get_by_role("link", name="Home").evaluate("el => { const s = getComputedStyle(el, '::before'); return [s.width, s.height]; }")
-        self.assertEqual(marker, ["2px", "14px"], "a short accent bar beside the current place")
+        self.assertEqual(marker, ["3px", "20px"], "an accent bar beside the current place (#266 PF-1)")
         expect(sidebar.get_by_text("No projects yet")).to_be_visible()
         expect(sidebar.get_by_role("button", name=re.compile("^New note"))).to_be_visible()
         views = page.get_by_role("navigation", name="Views")
@@ -558,7 +558,10 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("complementary", name="Sidebar")).to_have_count(0)
         composer = page.get_by_label("Private note", exact=True)
         composer_box = box(page, page.locator(".composer"))
-        self.assertAlmostEqual(composer_box["y"] + composer_box["height"], PHONE["height"], delta=2, msg="composer is pinned to the bottom")
+        # #266 PF-1: the view bar sits at the bottom and the composer right above it.
+        bar_box = box(page, page.get_by_role("navigation", name="Views"))
+        self.assertAlmostEqual(bar_box["y"] + bar_box["height"], PHONE["height"], delta=2, msg="the view bar is pinned to the bottom")
+        self.assertAlmostEqual(composer_box["y"] + composer_box["height"], bar_box["y"], delta=2, msg="the composer sits right above the view bar")
         shot(page, "phone-390-light")
 
         # Coarse pointer: primary targets are at least 44px.
@@ -733,8 +736,10 @@ class AppShellJourney(unittest.TestCase):
         page.goto("/map")
         page.get_by_role("button", name="Open navigation").click()
         drawer = page.get_by_role("dialog", name="Flux")
-        drawer.get_by_role("button", name=re.compile(NAME)).click()
-        drawer.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
+        # On the phone the drawer's account row opens Settings, which signs out (#266 PF-5).
+        drawer.get_by_role("link", name=re.compile(rf"{NAME}.*settings and sign out")).click()
+        expect(page).to_have_url(f"{ORIGIN}/settings")
+        page.get_by_role("button", name=re.compile("^Sign out")).click()
         expect(page).to_have_url(f"{ORIGIN}/sign-in")
         expect(page.get_by_role("status").filter(has_text="You’re signed out.")).to_be_visible()
         page.goto("/map")

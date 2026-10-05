@@ -85,6 +85,28 @@ export function ProjectStateLine({ lists, canDecide }: { lists: ProjectWork; can
   return <p className="ws-state" aria-label="Current state">{parts.map((part, index) => <span key={part.key} className="ws-part">{index ? <span className="ws-sep" aria-hidden="true">·</span> : null}<button type="button" className={`ws-seg${part.tone ? ` ws-seg--${part.tone}` : ''}`} data-seg={part.key} title={part.title} onClick={() => openDetails(part.open)}>{part.icon ? <Icon name={part.icon} size={13} /> : <span className={`ws-dot ws-dot--${part.dot}`} aria-hidden="true" />}<span>{part.text}</span></button></span>)}</p>;
 }
 
+/**
+ * On the phone the state line is one 44 px row that opens the project's overview in Details,
+ * where every part opens its object (#117).
+ */
+export function ProjectStateRow({ lists, canDecide }: { lists: ProjectWork; canDecide: boolean }) {
+  const { openDetails } = useShellActions();
+  // What needs the reader leads, since the row truncates.
+  const parts = stateParts(lists, canDecide).sort((a, b) => Number(b.tone === 'need') - Number(a.tone === 'need'));
+  const need = parts.find((part) => part.tone === 'need');
+  // Keep blocking work readable even when the rest of the phone summary is clipped.
+  const blocked = parts.length > 1 ? parts.find((part) => part.key === 'blocked') : undefined;
+  const summary = blocked ? parts.filter((part) => part !== blocked) : parts;
+  return (
+    <button type="button" className="ws-state-row" onClick={() => openDetails('place')} aria-haspopup="dialog">
+      {need ? <span className="ws-dot ws-dot--need" aria-hidden="true" /> : <Icon name={parts[0]?.icon ?? 'tasks'} size={13} />}
+      <span className="ws-state-row__t">{summary.length ? summary.map((part) => part.short).join(' · ') : 'No decisions or work yet'}</span>
+      {blocked ? <span className="ws-state-row__blocked">{blocked.short}</span> : null}
+      <span className="ui-vh">, open project details</span>
+      <Icon name="chevron-right" size={16} />
+    </button>
+  );
+}
 
 /** The task a thread discusses (UI116-3), with its current title and state; it opens the task in Details. */
 export function DiscussedTask({ task, lists }: { task: { workId: string; title: string }; lists: ProjectWork }) {

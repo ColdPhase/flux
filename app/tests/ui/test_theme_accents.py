@@ -79,9 +79,15 @@ class ThemeAccentsJourney(unittest.TestCase):
         # Wait for the authenticated shell loader; a missing desktop control is not a
         # narrow-layout signal while the route is still loading.
         page.locator(".app").wait_for(state="visible")
-        # The same account control lives in the responsive sidebar drawer.
+        # The same account control lives in the responsive sidebar drawer. There (#266 PF-5) the
+        # account row opens Settings, which holds the same appearance choices.
         if not page.locator(".me__btn").is_visible():
             page.get_by_role("button", name="Open navigation").click()
+            page.locator(".me__btn").click()
+            expect(page).to_have_url(re.compile(r"/settings$"))
+            settings = page.locator(".set")
+            expect(settings.get_by_role("radiogroup", name="Appearance")).to_be_visible()
+            return settings
         page.locator(".me__btn").click()
         pop = page.get_by_role("dialog", name="Account", exact=True)
         expect(pop).to_be_visible()
