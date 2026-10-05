@@ -15,6 +15,7 @@ import { DocEditor, docEditLoader } from './docs/DocEditor';
 import { WikiLayout, wikiLoader, wikiShouldRevalidate } from './docs/Wiki';
 import { Booting, RouteErrorPage } from './app/errors';
 import { ConversationView, NotFoundView, TasksView } from './app/views';
+import { HomeView } from './app/HomeView';
 import { DmIndex, NewDm } from './dm/DmIndex';
 import { DmConversation, dmLoader } from './dm/DmConversation';
 import { DmSketches } from './dm/DmSketches';
@@ -76,7 +77,9 @@ export const router = createBrowserRouter([
         Component: AppLayout,
         ErrorBoundary: RouteErrorPage,
         children: [
-          { index: true, Component: ConversationView },
+          // Home is the place to get back to work (#272 FF-2); private notes are My sketchbook's Notes (FF-3).
+          { index: true, Component: HomeView },
+          { path: 'notes', Component: ConversationView },
           { path: 'projects', Component: ProjectsIndex },
           { path: 'projects/new', Component: ProjectSetup },
           {

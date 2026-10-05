@@ -9,20 +9,17 @@ import { useIntentKeys } from '../api/intent-keys';
 import { useShellData } from './data';
 import { useDraft, useReadingPosition } from './drafts';
 import { useShellActions } from './shellContext';
-import { SinceYouLeftHome } from '../returns/SinceYouLeft';
 import { HomeTasks } from './HomeTasks';
 import { getAssistantStatus } from '../assistant/api';
 
-/** Home's views in the same order and words as a project's (Studio 11.6, #136). */
+/** My sketchbook's views (#272 FF-3): your private notes and your private sketches. */
 export const VIEWS = [
-  { id: 'conversation', label: 'Conversation', path: '/' },
+  { id: 'notes', label: 'Notes', path: '/notes' },
   { id: 'map', label: 'Map', path: '/map' },
-  { id: 'tasks', label: 'Tasks', path: '/tasks' },
-  { id: 'docs', label: 'Wiki', path: '/docs' },
 ] as const;
 
 export function viewIndex(pathname: string): number {
-  const index = VIEWS.findIndex((view) => view.path !== '/' && pathname.startsWith(view.path));
+  const index = VIEWS.findIndex((view) => pathname.startsWith(view.path));
   return index < 0 ? 0 : index;
 }
 
@@ -54,21 +51,21 @@ function when(iso: string) {
   return today ? timeFormat.format(date) : `${dayFormat.format(date)}, ${timeFormat.format(date)}`;
 }
 
-/** Focus the Home composer, e.g. from "+ New note". */
+/** Focus the note composer in My sketchbook, e.g. from Home's "Write a note". */
 export function startCapture(navigate: NavigateFunction) {
   const composer = document.getElementById('composer');
-  if (composer && window.location.pathname === '/') { composer.focus(); return; }
-  navigate('/', { state: { capture: Date.now() } });
+  if (composer && window.location.pathname === '/notes') { composer.focus(); return; }
+  navigate('/notes', { state: { capture: Date.now() } });
 }
 
 /**
- * Home: the personal return view. Its conversation is your private notes, saved as private
- * drafts in your space (HOME-3, #190); the first note creates that space. The composer always
+ * My sketchbook's Notes (#272 FF-3, formerly Home's conversation): your private notes, saved as
+ * private drafts in your space (HOME-3, #190); the first note creates that space. The composer always
  * shows the audience ("Only you"). Notes an account once kept only in this browser are offered,
  * explicitly, to move into the account. Project conversations and direct messages (#36) open from
  * the sidebar.
  */
-/** Home's notes. Everything it holds (space, drafts, a move in progress) is one account's: another starts afresh. */
+/** Your notes. Everything they hold (space, drafts, a move in progress) is one account's: another starts afresh. */
 export function ConversationView() {
   const { me } = useShellData();
   return <HomeNotes key={me.user.id} />;
@@ -121,8 +118,6 @@ function HomeNotes() {
     return () => controller.abort();
   }, [me.user.id]);
   const intents = useIntentKeys();
-  // With changes to return to, the "nothing here yet" empty state would contradict them.
-  const [returning, setReturning] = useState(false);
   useEffect(() => {
     if (!selectedWorkspace) return;
     const controller = new AbortController();
@@ -279,10 +274,9 @@ function HomeNotes() {
     <div className="convo">
       <Pane>
         <div className="intro">
-          <h2>Welcome, {firstName}</h2>
-          <p>Jot down a note, a link or a half-formed idea. It stays with you until you choose to share it.</p>
+          <h2>Your notes, {firstName}</h2>
+          <p>Jot down a note, a link or a half-formed idea. Only you can see it until you choose to share it.</p>
         </div>
-        <SinceYouLeftHome onShown={setReturning} />
         {serverDrafts.length ? (
           <section className="notes" aria-label="Private drafts">
             <p className="notes__h"><Icon name="lock" size={13} />Private drafts · saved in your space</p>
@@ -320,9 +314,9 @@ function HomeNotes() {
               ))}
             </ol>
           </section>
-        ) : !serverDrafts.length && !returning ? (
-          <ViewEmpty icon="chat" title="Nothing here yet" level={3}>
-            <p>Write your first note below. When you’re added to a project or someone messages you, those conversations open from the sidebar.</p>
+        ) : !serverDrafts.length ? (
+          <ViewEmpty icon="chat" title="No notes yet" level={3}>
+            <p>Write your first note below. It is saved privately to your space; nobody else can open it, not even workspace admins or agents.</p>
           </ViewEmpty>
         ) : null}
         <div ref={endRef} />

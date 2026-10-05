@@ -17,15 +17,13 @@ const ORDER: Record<string, number> = { in_progress: 0, blocked: 1, open: 2 };
 interface Loaded { userId: string; items: WorkItem[]; total: number; failed: boolean; names: Map<string, string> }
 
 /**
- * Home's Tasks (#190 HOME-2): the work you own that is open, in progress or blocked, across every
- * project you can read now, grouped by project. Only the current account's latest answer is shown;
- * nothing is kept between mounts or accounts. It reads again when shown, when the tab becomes
- * visible and on project events, without polling.
+ * The tasks the signed-in person owns that are open, in progress or blocked, across every project they
+ * can read now (#190 HOME-2), with project names. Only the current account's latest answer is
+ * returned (null while loading); it reads again when the tab becomes visible and on project events,
+ * without polling. Home (#272 FF-2) and "All my tasks" share it.
  */
-export function HomeTasks() {
+export function useAssignedWork(): (Loaded & { again: () => void }) | null {
   const { me, workspaces, projects } = useShellData();
-  const { openNavigation } = useShellActions();
-  const narrow = useMediaQuery(MEDIA.navDrawer);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [refresh, setRefresh] = useState(0);
   // A burst of project events (messages, assistant progress) reads once, not once per event.
@@ -48,7 +46,11 @@ export function HomeTasks() {
     const userId = me.user.id;
     void (async () => {
       let read: Awaited<ReturnType<typeof listAssignedWork>>;
-      try { read = await listAssignedWork(workspaces.map((space) => space.id), CAP, controller.signal); } catch { return; }
+      try { read = await listAssignedWork(workspaces.map((space) => space.id), CAP, controller.signal); } catch {
+        // Unreachable: say so (with a retry) rather than wait forever.
+        if (!controller.signal.aborted) setLoaded({ userId, items: [], total: 0, failed: true, names: new Map() });
+        return;
+      }
       const { items, total, failed } = read;
       // Project names as the sidebar shows them; a project granted after the shell loaded asks once.
       const names = new Map(projects.map((project) => [project.id, project.workspaceName ? `${project.name} · ${project.workspaceName}` : project.name]));
@@ -65,6 +67,16 @@ export function HomeTasks() {
   }, [me.user.id, workspaces, projects, refresh]);
 
   const shown = loaded?.userId === me.user.id ? loaded : null;
+  return shown ? { ...shown, again } : null;
+}
+
+/** All my tasks (#190 HOME-2, reached from Home's My work): grouped by project, most moving first. */
+export function HomeTasks() {
+  const { projects } = useShellData();
+  const { openNavigation } = useShellActions();
+  const narrow = useMediaQuery(MEDIA.navDrawer);
+  const shown = useAssignedWork();
+  const again = () => shown?.again();
   if (!shown) return <div className="home-tasks__center"><Spinner label="Loading your tasks" /></div>;
 
   const groups = new Map<string, WorkItem[]>();

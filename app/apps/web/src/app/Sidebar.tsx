@@ -1,9 +1,8 @@
 import { useRef } from 'react';
-import { Link, NavLink, useLocation, useNavigate, useNavigation } from 'react-router';
+import { Link, NavLink, useLocation, useNavigation } from 'react-router';
 import { Avatar, FluxMark, Icon, IconButton, choosesInPlace, useTravelingHighlight } from '../ui';
 import { type DirectMessageSummary, type ProjectSummary, type WorkspaceSummary } from './data';
 import { placeOf } from './place';
-import { startCapture } from './views';
 import { UserMenu } from './UserMenu';
 import { useShellActions } from './shellContext';
 
@@ -15,27 +14,29 @@ export interface SidebarProps {
   session: { expiresAt: string };
   /** In the drawer: a close button and closing after navigation. */
   onClose?: () => void;
+  /** Beside the sheet (#272 FF-5): hides the sidebar so the work takes the width. */
+  onCollapse?: () => void;
   inboxUnread?: boolean;
   titleId?: string;
 }
 
 /**
- * Studio 11.6 sidebar (#136): one list on the chrome beside the sheet. Places (Home, Inbox,
- * Direct messages and the private sketchbook), then Projects and Messages. A project has one
+ * Studio 11.6 sidebar (#136, #272 FF-3): one list on the chrome beside the sheet. Places (Home, Inbox
+ * and the private sketchbook), then Projects and Messages, whose headings open their full lists. A project has one
  * conversation (UI116-1): its roots and their threads live in the project's Conversation tab, not
  * in this list. A project never reveals another project's contents.
  */
-export function Sidebar({ projects, directMessages, user, session, onClose, titleId, inboxUnread = false }: SidebarProps) {
-  const go = useNavigate();
+export function Sidebar({ projects, directMessages, user, onClose, onCollapse, titleId, inboxUnread = false }: SidebarProps) {
   const { openSearch } = useShellActions();
   const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
   const location = useLocation();
   const place = placeOf(location.pathname);
   const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const navigate = onClose ? () => onClose() : undefined;
-  const sketchbook = place === 'home' && /^\/map(\/|$)/.test(location.pathname);
-  // Home is current where the header says Home: not in My sketchbook, Search or personal settings.
-  const home = place === 'home' && !sketchbook && !/^\/(search|settings|projects)(\/|$)/.test(location.pathname);
+  // My sketchbook is a private place of its own: notes and sketches (#272 FF-3).
+  const sketchbook = place === 'home' && /^\/(notes|map)(\/|$)/.test(location.pathname);
+  // Home is the return page only (#272 FF-2).
+  const home = location.pathname === '/';
   // Subtle navigation feedback (#155, UI116-5): the highlight travels to a chosen project at once, while
   // the project loads; the row becomes current (accent bar, aria-current) when its content shows. A newer
   // choice retargets it, and a navigation that ends elsewhere (refused, cancelled) returns it.
@@ -52,7 +53,8 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
           <span className="side__glyph" role="img" aria-label="Flux" id={titleId}><FluxMark size={21} /></span>
           <span className="side__word" aria-hidden="true">flux<span>.</span></span>
         </span>
-        {onClose ? <IconButton icon="x" label="Close navigation" onClick={onClose} /> : null}
+        {onClose ? <IconButton icon="x" label="Close navigation" onClick={onClose} />
+          : onCollapse ? <IconButton icon="panel" label="Hide sidebar" className="side__collapse" aria-keyshortcuts="[" data-tip={'Hide sidebar   ['} data-tip-align="end" onClick={onCollapse} /> : null}
       </div>
       <button type="button" className="side__jump" aria-keyshortcuts={mac ? 'Meta+K' : 'Control+K'} onClick={() => { onClose?.(); openSearch(); }}>
         <Icon name="search" size={15} />Jump to…<kbd aria-hidden="true">{mac ? '⌘K' : 'Ctrl K'}</kbd>
@@ -74,21 +76,15 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
               </NavLink>
             </div>
           ) : null}
-          <Link to="/dm" className="side__item" aria-current={location.pathname === '/dm' ? 'page' : undefined} onClick={navigate}>
-            <Icon name="chat" className="side__ic" /><span className="side__label">Direct messages</span>
-          </Link>
-          <Link to="/map" className="side__item" aria-current={sketchbook ? 'page' : undefined} onClick={navigate}>
-            <Icon name="map" className="side__ic" /><span className="side__label">My sketchbook</span>
+          <Link to="/notes" className="side__item" aria-current={sketchbook ? 'page' : undefined} onClick={navigate}>
+            <Icon name="edit" className="side__ic" /><span className="side__label">My sketchbook</span>
             <Icon name="lock" size={12} className="side__trail" />
           </Link>
         </nav>
-        <button type="button" className="side__item side__capture" onClick={() => { onClose?.(); startCapture(go); }}>
-          <Icon name="plus" className="side__ic" />New note<span className="side__hint"><Icon name="lock" size={12} />Private</span>
-        </button>
 
         <nav className="side__sec" aria-labelledby="side-projects">
           <div className="side__head">
-            <h2 className="side__h" id="side-projects">Projects</h2>
+            <h2 className="side__h" id="side-projects"><Link to="/projects" className="side__hl" aria-current={location.pathname === '/projects' ? 'page' : undefined} onClick={navigate}>Projects</Link></h2>
             <Link to="/projects/new" className="side__add" aria-label="New project" onClick={navigate}><Icon name="plus" size={14} /></Link>
           </div>
           {projects.length ? (
@@ -121,7 +117,7 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
 
         <nav className="side__sec" aria-labelledby="side-dms">
           <div className="side__head">
-            <h2 className="side__h" id="side-dms">Messages</h2>
+            <h2 className="side__h" id="side-dms"><Link to="/dm" className="side__hl" aria-current={location.pathname === '/dm' ? 'page' : undefined} onClick={navigate}>Messages</Link></h2>
             <Link to="/dm/new" className="side__add" aria-label="New message" onClick={navigate}><Icon name="plus" size={14} /></Link>
           </div>
           {directMessages.length ? (
@@ -140,7 +136,7 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
           )}
         </nav>
       </div>
-      <UserMenu name={user.name} email={user.email} sessionExpiresAt={session.expiresAt} asLink={!!onClose} onNavigate={onClose} />
+      <UserMenu name={user.name} email={user.email} onNavigate={onClose} />
     </div>
   );
 }

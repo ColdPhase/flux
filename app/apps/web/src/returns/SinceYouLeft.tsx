@@ -18,7 +18,7 @@ const sameDay = (iso: string) => new Date(iso).toDateString() === new Date().toD
 const shortWhen = (iso: string) => (sameDay(iso) ? time.format(new Date(iso)) : day.format(new Date(iso)));
 const since = (iso: string) => (sameDay(iso) ? `today, ${time.format(new Date(iso))}` : day.format(new Date(iso)));
 
-type Ack = 'idle' | 'busy' | 'done' | 'failed';
+export type Ack = 'idle' | 'busy' | 'done' | 'failed';
 
 
 /**
@@ -26,7 +26,7 @@ type Ack = 'idle' | 'busy' | 'done' | 'failed';
  * "I have the context" saves it, at the mark this visit showed. The one exception is a place with no
  * point yet, whose first visit saves a starting point: nothing was shown, so nothing is acknowledged.
  */
-function useReturn(place: ReturnPlace) {
+export function useReturn(place: ReturnPlace) {
   const placeKey = place.type === 'home' ? 'home' : `${place.type}:${place.id}`;
   // Only the current request's authorized response is ever shown: nothing is kept on the client
   // between mounts, accounts or visits, so a revoked item or another account's item never appears.
@@ -102,7 +102,7 @@ export function NextStep({ step }: { step: ReturnNextStep }) {
   );
 }
 
-function Foot({ summary, ack, onAcknowledge }: { summary: ReturnSummary; ack: Ack; onAcknowledge: () => void }) {
+export function Foot({ summary, ack, onAcknowledge }: { summary: ReturnSummary; ack: Ack; onAcknowledge: () => void }) {
   return (
     <div className="since__foot">
       {/* When the person last said "I have the context": the changes above came after it (#190 A1.2). */}

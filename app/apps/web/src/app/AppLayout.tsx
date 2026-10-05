@@ -48,22 +48,30 @@ function viewOrder(pathname: string) {
 }
 
 /**
- * The phone's bottom bar holds the few main places (#266 PF-1, founder feedback on #264): Home, Inbox,
- * Messages and Projects. It shows on those top-level pages; inside a project or a conversation the
- * work takes the full height, as in a messenger.
+ * The phone's bottom bar holds the few main places (#266 PF-1, founder feedback on #264; #272 FF-3):
+ * Home, Projects, Messages, Inbox and My sketchbook. It shows on those top-level pages; inside a
+ * project, a conversation or a sketch the work takes the full height, as in a messenger.
  */
 function mainPlaces(pathname: string, inboxUnread: boolean): BottomNavItem[] | null {
-  const home = /^\/(map|tasks|docs)?$/.test(pathname);
-  const inbox = pathname === '/inbox';
-  const messages = pathname === '/dm' || pathname === '/dm/new';
+  const home = pathname === '/' || pathname === '/tasks' || pathname === '/docs';
   const projects = pathname === '/projects';
-  if (!home && !inbox && !messages && !projects) return null;
+  const messages = pathname === '/dm' || pathname === '/dm/new';
+  const inbox = pathname === '/inbox';
+  const sketchbook = pathname === '/notes' || pathname === '/map';
+  if (!home && !projects && !messages && !inbox && !sketchbook) return null;
   return [
     { id: 'home', label: 'Home', to: '/', icon: 'home', current: home },
-    { id: 'inbox', label: 'Inbox', to: '/inbox', icon: 'inbox', current: inbox, ...(inboxUnread ? { countLabel: ', something new', dot: true } : {}) },
-    { id: 'messages', label: 'Messages', to: '/dm', icon: 'chat', current: messages },
     { id: 'projects', label: 'Projects', to: '/projects', icon: 'spark', current: projects },
+    { id: 'messages', label: 'Messages', to: '/dm', icon: 'chat', current: messages },
+    { id: 'inbox', label: 'Inbox', to: '/inbox', icon: 'inbox', current: inbox, ...(inboxUnread ? { countLabel: ', something new', dot: true } : {}) },
+    { id: 'sketchbook', label: 'Sketchbook', to: '/notes', icon: 'edit', current: sketchbook },
   ];
+}
+
+/** The desktop sidebar's hidden state is remembered on this device (#272 FF-5). */
+const SIDE_KEY = 'flux.sidebar';
+function readSideHidden() {
+  try { return localStorage.getItem(SIDE_KEY) === 'hidden'; } catch { return false; }
 }
 
 function isTyping(target: EventTarget | null) {
@@ -93,6 +101,15 @@ function AppLayoutContent() {
   const phone = useMediaQuery(MEDIA.phone);
   const panelMode = useSidePanelMode();
   const [navOpen, setNavOpen] = useState(false);
+  // Beside the sheet the sidebar can be hidden, so the work takes the width (#272 FF-5).
+  const [sideHidden, setSideHidden] = useState(readSideHidden);
+  const toggleSide = useCallback((hidden?: boolean) => {
+    setSideHidden((was) => {
+      const next = hidden ?? !was;
+      try { if (next) localStorage.setItem(SIDE_KEY, 'hidden'); else localStorage.removeItem(SIDE_KEY); } catch { /* this visit only */ }
+      return next;
+    });
+  }, []);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsView, setDetailsView] = useState<DetailsView>('place');
   const [detailsAccount, setDetailsAccount] = useState(me.user.id);
@@ -165,13 +182,18 @@ function AppLayoutContent() {
     const params = new URLSearchParams(location.search);
     const open = params.get('open') ?? '';
     const match = /^(work|decision|result):([0-9a-f-]{36})$/i.exec(open);
-    const people = open === 'people' && /^\/projects\/[^/]+/.test(location.pathname);
-    if (!match && !people) return;
+    const inProject = /^\/projects\/[^/]+/.test(location.pathname);
+    const people = open === 'people' && inProject;
+    // `?open=recap` (Home's "What matters", #272) opens the project's recap.
+    const recap = open === 'recap' && inProject;
+    if (!match && !people && !recap) return;
     openedAt.current = location.key;
     params.delete('open');
     const search = params.toString();
     navigate({ pathname: location.pathname, search: search ? `?${search}` : '', hash: location.hash }, { replace: true, defaultShouldRevalidate: false });
-    shell.openDetails(match ? { kind: match[1]!.toLowerCase() as 'work' | 'decision' | 'result', id: match[2]!.toLowerCase() } : { kind: 'overview', focus: 'people' });
+    const recapProject = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
+    shell.openDetails(match ? { kind: match[1]!.toLowerCase() as 'work' | 'decision' | 'result', id: match[2]!.toLowerCase() }
+      : recap && recapProject ? { kind: 'recap', projectId: recapProject } : { kind: 'overview', focus: 'people' });
   }, [location.key, location.search, location.pathname, location.hash, navigate, shell]);
   // ⌘K / Ctrl+K opens Jump to… from anywhere, also while typing, as the sidebar hint says.
   useEffect(() => {
@@ -186,6 +208,30 @@ function AppLayoutContent() {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, []);
+
+  // Focus follows the sidebar: hiding it moves focus to "Show sidebar", showing it to "Hide sidebar",
+  // so a keyboard never lands in content that just became inert.
+  const sideShown = useRef(sideHidden);
+  useEffect(() => {
+    if (sideShown.current === sideHidden) return;
+    sideShown.current = sideHidden;
+    const active = document.activeElement;
+    if (active && active !== document.body && !active.closest('.app__side, .top__show-side')) return;
+    document.querySelector<HTMLElement>(sideHidden ? '.top__show-side' : '.side__collapse')?.focus();
+  }, [sideHidden]);
+
+  // "[" hides or shows the sidebar beside the sheet (#272 FF-5), as "]" does for Details.
+  useEffect(() => {
+    if (navDrawer) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== '[' || event.metaKey || event.ctrlKey || event.altKey || isTyping(event.target)) return;
+      if (document.getElementById('root')?.inert) return;
+      event.preventDefault();
+      toggleSide();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [navDrawer, toggleSide]);
 
   // "]" toggles Details, as in the header tooltip, only where the header offers Details.
   useEffect(() => {
@@ -294,7 +340,7 @@ function AppLayoutContent() {
     { id: 'docs', label: 'Wiki', to: `/projects/${projectId}/docs`, end: false },
     { id: 'agents', label: 'Agents', to: `/projects/${projectId}/agents` },
   ] : null;
-  const homeViews: TabItem[] = VIEWS.map((view) => ({ id: view.id, label: view.label, to: view.path, end: view.path === '/' }));
+  const homeViews: TabItem[] = VIEWS.map((view) => ({ id: view.id, label: view.label, to: view.path, end: false }));
   const places = mainPlaces(location.pathname, inboxUnread);
   const audienceOpen = project?.project.visibility === 'workspace';
   const audience = project ? audienceLine(project.people, me.user.id, audienceOpen) : 'People with project access';
@@ -345,8 +391,16 @@ function AppLayoutContent() {
         : dmId === 'new'
           ? { crumb: null, title: 'New message', topic: 'Only the people you choose can read it', views: false, noDetails: true }
           : { crumb: null, title: 'Direct messages', topic: 'Conversations with people, outside any project', views: false, noDetails: true }
-      // Home's Tasks span every workspace, so no single workspace is named above them (#190).
-      : { crumb: location.pathname.startsWith('/tasks') ? null : workspace?.name ?? null, title: 'Home', topic: 'Your private notes and where you left off', views: true };
+      : location.pathname === '/'
+        // The page itself greets and explains (#272 FF-2), so the header stays quiet.
+        ? { crumb: null, title: 'Home', topic: '', views: false, noDetails: true }
+        // All my tasks span every workspace, so no single workspace is named above them (#190).
+        : location.pathname === '/tasks'
+          ? { crumb: null, title: 'My work', topic: 'Tasks you own in every project', views: false, noDetails: true }
+          : location.pathname === '/docs'
+            ? { crumb: null, title: 'Wiki pages', topic: 'Pages in the projects you can read', views: false, noDetails: true }
+            // My sketchbook (#272 FF-3): a private place with its notes and sketches.
+            : { crumb: null, title: 'My sketchbook', topic: 'Only you', views: true };
   // A place without its own Details (Search, Inbox, the DM list) never keeps the generic panel open.
   if ('noDetails' in place && detailsOpen && detailsView === 'place') setDetailsOpen(false);
 
@@ -354,14 +408,14 @@ function AppLayoutContent() {
     <ShellContext.Provider value={shell}>
     {/* One live session per tab, above the routes, so navigation keeps it (#62). */}
     <LiveProvider meId={me.user.id}>
-    <div className="app" ref={appRef}>
+    <div className="app" ref={appRef} data-side={!navDrawer && sideHidden ? 'hidden' : undefined}>
       <a className="ui-skip" href="#content">Skip to content</a>
       {navDrawer ? (
         <Drawer open={navOpen && navDrawer} onClose={() => setNavOpen(false)} labelledBy={drawerTitleId} id="nav-drawer" className="nav-drawer">
           <Sidebar {...sidebarProps} onClose={() => setNavOpen(false)} titleId={drawerTitleId} />
         </Drawer>
       ) : (
-        <aside className="app__side" aria-label="Sidebar"><Sidebar {...sidebarProps} /></aside>
+        <aside className="app__side" aria-label="Sidebar" inert={sideHidden || undefined}><Sidebar {...sidebarProps} onCollapse={() => toggleSide(true)} /></aside>
       )}
 
       <div className="app__main">
@@ -369,6 +423,9 @@ function AppLayoutContent() {
           {phone && settingsPage ? (
             <IconButton icon="chevron-left" label="Back" size={20} className="top__back" data-tip-align="start"
               onClick={() => { if (location.key !== 'default') navigate(-1); else navigate('/settings'); }} />
+          ) : !navDrawer && sideHidden ? (
+            <IconButton icon="panel" label="Show sidebar" size={18} className="top__menu top__show-side" aria-keyshortcuts="[" data-tip={'Show sidebar   ['}
+              data-tip-align="start" onClick={() => toggleSide(false)} />
           ) : navDrawer ? (
             <IconButton icon="menu" label="Open navigation" size={18} aria-expanded={navOpen} aria-controls={navOpen ? 'nav-drawer' : undefined}
               aria-haspopup="dialog" data-tip-align="start" onClick={() => { setDetailsOpen(false); setNavOpen(true); }} className="top__menu" />
@@ -391,7 +448,7 @@ function AppLayoutContent() {
           <div className="top__title">
             {place.crumb ? <><span className="top__crumb">{place.crumb}</span><span className="top__slash" aria-hidden="true">/</span></> : null}
             <h1>{place.title}</h1>
-            <span className="top__topic">{place.topic}</span>
+            {place.topic ? <span className="top__topic">{place.topic}</span> : null}
           </div>
           )}
           <div className="top__right" data-shift>

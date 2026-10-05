@@ -42,10 +42,17 @@ body:has(.app) { background: var(--bg-chrome); }
 .app { position: relative; display: flex; height: 100vh; height: var(--app-h, 100dvh); overflow: hidden; background: var(--bg-chrome); }
 /* While the iOS keyboard is up the app sits in the visual viewport (AppLayout sets these). */
 .app[style*="--app-top"] { transform: translateY(var(--app-top)); }
-.app__side { flex: none; min-height: 0; display: flex; width: var(--side-w); padding-left: env(safe-area-inset-left); }
+.app__side {
+  flex: none; min-height: 0; display: flex; width: var(--side-w); padding-left: env(safe-area-inset-left);
+  transition: margin-left var(--dur-3) var(--ease-out), opacity var(--dur-2) ease, visibility 0s linear 0s;
+}
+/* The sidebar slides away and the sheet takes the width (#272 FF-5); "Show sidebar" brings it back. */
+.app[data-side="hidden"] .app__side { margin-left: calc(-1 * var(--side-w)); opacity: 0; visibility: hidden;
+  transition: margin-left var(--dur-3) var(--ease-out), opacity var(--dur-2) ease, visibility 0s linear var(--dur-3); }
+.app[data-side="hidden"] .app__main { margin-left: max(var(--sheet-inset), env(safe-area-inset-left)); }
 .app__main {
   flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: clip;
-  margin: var(--sheet-inset) var(--sheet-inset) var(--sheet-inset) 0;
+  margin: var(--sheet-inset) var(--sheet-inset) var(--sheet-inset) 0; transition: margin-left var(--dur-3) var(--ease-out);
   margin-top: max(var(--sheet-inset), env(safe-area-inset-top)); margin-right: max(var(--sheet-inset), env(safe-area-inset-right));
   margin-bottom: max(var(--sheet-inset), env(safe-area-inset-bottom));
   background: var(--bg); border: 1px solid var(--sheet-edge); border-radius: var(--r-sheet);
@@ -106,8 +113,11 @@ body:has(.app) { background: var(--bg-chrome); }
 .side__pi { display: grid; place-items: center; width: 21px; height: 24px; flex: none; color: var(--text-2); }
 .side__trail { margin-left: auto; color: var(--text-2); }
 .side__dot { width: 4px; height: 4px; border-radius: 50%; background: var(--accent); margin-left: auto; flex: none; }
-.side__capture { color: var(--text-2); }
-.side__hint { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; font-size: var(--fs-xs); color: var(--text-2); }
+/* Projects and Messages headings open their full lists (#272 FF-3). */
+.side__hl { color: inherit; text-decoration: none; border-radius: var(--r-sm); padding: 2px 4px; margin: -2px -4px; transition: var(--tr); }
+.side__hl:hover { color: var(--text); background: var(--bg-hover); }
+.side__hl[aria-current="page"] { color: var(--accent-selected-text); }
+.side__collapse { margin-left: auto; color: var(--text-3); }
 .side__empty { padding: 2px 8px 6px; font-size: var(--fs-sm); line-height: 1.5; color: var(--text-2); }
 .side__person { display: flex; align-items: center; gap: 10px; min-height: 30px; padding: 0 8px; font-size: var(--fs-md); color: var(--text-2); }
 /* Two projects with one name show their workspace on a compact second line with the row's full
@@ -123,7 +133,9 @@ body:has(.app) { background: var(--bg-chrome); }
 .side__threads .side__item.is-current { background: var(--bg-hover); color: var(--text); }
 
 /* Account button and popover */
-.me { position: relative; margin: 8px -10px 0; border-top: 1px solid var(--line); padding: 6px 6px; padding-bottom: max(6px, env(safe-area-inset-bottom)); }
+.me { position: relative; display: flex; align-items: center; gap: 2px; margin: 8px -10px 0; border-top: 1px solid var(--line); padding: 6px 6px; padding-bottom: max(6px, env(safe-area-inset-bottom)); }
+.me .me__btn { flex: 1; min-width: 0; }
+.me__theme { flex: none; color: var(--text-2); }
 .me__btn {
   display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 4px 8px; border-radius: var(--r);
   text-align: left; transition: var(--tr);
