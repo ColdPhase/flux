@@ -155,6 +155,7 @@ function Toolbar({ mode, onMode, query, onQuery, mine, onMine, writable, onNew, 
       {mode === 'board' ? (
         <div className={`tb-search${query ? ' has-query' : ''}`}>
           <Icon name="search" size={14} />
+          <span className="tb-search__l" aria-hidden="true">Search</span>
           <label className="ui-vh" htmlFor={searchId}>Search tasks</label>
           <input id={searchId} type="search" value={query} placeholder="Search tasks" autoComplete="off" maxLength={200}
             onChange={(event) => onQuery(event.target.value)}
@@ -162,7 +163,7 @@ function Toolbar({ mode, onMode, query, onQuery, mine, onMine, writable, onNew, 
         </div>
       ) : null}
       {/* The current rule and what was learned stay one step away from the board (Journey A). */}
-      <button type="button" className="tb-dr" onClick={onDecisions}><Icon name="rule" size={14} /><span className="tb-dr__l">Decisions &amp; results</span>
+      <button type="button" className="tb-dr" onClick={onDecisions}><Icon name="rule" size={14} /><span className="tb-dr__l">Decisions &amp; results</span><span className="tb-dr__s" aria-hidden="true">Decisions</span>
         {needs ? <span className="tb-dr__n">{needs}<span className="ui-vh">, {needs === 1 ? 'one waits' : `${needs} wait`} for a decision</span></span> : null}</button>
       <div className="tb-bar__end">
         <div className="tb-mode" role="radiogroup" aria-label="Show tasks as" ref={radios} onKeyDown={onRadioKey}>

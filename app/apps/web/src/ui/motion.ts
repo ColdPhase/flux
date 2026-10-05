@@ -90,11 +90,15 @@ export function useArrivals(feed: RefObject<HTMLElement | null>, ids: readonly s
     if (!arrived.length || !pane) return;
     const ms = duration('--dur-2');
     const box = pane.getBoundingClientRect();
+    // A reader at the end follows it (#170's position owner may scroll after this runs): an entry that
+    // only extends the feed below that reader is arriving where they are looking (#266).
+    const arrivedHeight = arrived.reduce((sum, id) => sum + (elementFor(id)?.getBoundingClientRect().height ?? 0), 0);
+    const following = pane.scrollHeight - pane.scrollTop - pane.clientHeight <= arrivedHeight + 8;
     for (const id of arrived) {
       const el = elementFor(id);
       if (!el) continue;
       const rect = el.getBoundingClientRect();
-      const animate = arrivalShouldAnimate({ reduced: !ms, hidden: document.visibilityState === 'hidden', visible: rect.bottom > box.top && rect.top < box.bottom, obscured: isObscured(el) });
+      const animate = arrivalShouldAnimate({ reduced: !ms, hidden: document.visibilityState === 'hidden', visible: (rect.bottom > box.top && rect.top < box.bottom) || following, obscured: isObscured(el) });
       el.dataset.arrival = animate ? 'animated' : 'static';
       if (animate) void play(el, [{ opacity: 0, transform: 'translateY(4px)' }, { opacity: 1, transform: 'none' }], ms, '--ease-out');
     }

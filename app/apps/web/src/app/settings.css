@@ -38,3 +38,8 @@
 }
 /* The header's way back from a settings page to the list (#266 PF-5). */
 .top__back { flex: none; }
+/* Projects list (#266 PF-1). */
+.proj-index__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin: 4px 2px 14px; }
+.proj-index__lead { flex: 1 1 16em; margin: 0; font-size: var(--fs-sm); color: var(--text-3); line-height: 1.5; }
+.proj-index__dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--accent); }
+.proj-index__empty { display: grid; gap: 12px; justify-items: start; padding: 20px 2px; color: var(--text-2); font-size: var(--fs-md); }

@@ -3,6 +3,7 @@ import { ToastProvider } from './ui';
 import { UpdatePrompt } from './pwa';
 import { AppLayout } from './app/AppLayout';
 import { SettingsHome } from './app/SettingsHome';
+import { ProjectsIndex } from './app/ProjectsIndex';
 import { appLoader } from './app/data';
 import { ProjectConversation, projectConversationLoader, shouldRevalidateProjectConversation } from './app/ProjectConversation';
 import { ProjectSetup } from './app/ProjectSetup';
@@ -76,6 +77,7 @@ export const router = createBrowserRouter([
         ErrorBoundary: RouteErrorPage,
         children: [
           { index: true, Component: ConversationView },
+          { path: 'projects', Component: ProjectsIndex },
           { path: 'projects/new', Component: ProjectSetup },
           {
             // One project (#117): its header, audience, state line and view tabs share this data.

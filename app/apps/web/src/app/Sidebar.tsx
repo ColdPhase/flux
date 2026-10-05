@@ -35,7 +35,7 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
   const navigate = onClose ? () => onClose() : undefined;
   const sketchbook = place === 'home' && /^\/map(\/|$)/.test(location.pathname);
   // Home is current where the header says Home: not in My sketchbook, Search or personal settings.
-  const home = place === 'home' && !sketchbook && !/^\/(search|settings)(\/|$)/.test(location.pathname);
+  const home = place === 'home' && !sketchbook && !/^\/(search|settings|projects)(\/|$)/.test(location.pathname);
   // Subtle navigation feedback (#155, UI116-5): the highlight travels to a chosen project at once, while
   // the project loads; the row becomes current (accent bar, aria-current) when its content shows. A newer
   // choice retargets it, and a navigation that ends elsewhere (refused, cancelled) returns it.

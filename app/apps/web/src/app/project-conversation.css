@@ -144,7 +144,7 @@ button.project-convo__contribution { cursor: pointer; }
 @media (max-width: 640px) {
   .project-convo__composer { padding: 6px 10px 6px; }
   .project-convo__composer .composer__box { gap: 0 2px; padding: 8px 6px 4px 12px; border-radius: 14px; }
-  .project-convo__composer .composer__box textarea { min-height: 26px; max-height: 30vh; padding: 2px 4px 2px 0; line-height: 1.5; }
+  .project-convo__composer .composer__box textarea { min-height: 44px; max-height: 30vh; padding: 10px 4px 10px 0; line-height: 1.5; box-sizing: border-box; overflow-y: auto; }
   .project-convo__composer .composer__attach { margin-left: -6px; }
   .project-convo__composer .project-convo__to { margin: 4px 4px 0; }
 }

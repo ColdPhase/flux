@@ -39,7 +39,9 @@
 
 /* ---------- App frame (Studio 11.6): sidebar on the chrome, the work on a rounded sheet ---------- */
 body:has(.app) { background: var(--bg-chrome); }
-.app { position: relative; display: flex; height: 100vh; height: 100dvh; overflow: hidden; background: var(--bg-chrome); }
+.app { position: relative; display: flex; height: 100vh; height: var(--app-h, 100dvh); overflow: hidden; background: var(--bg-chrome); }
+/* While the iOS keyboard is up the app sits in the visual viewport (AppLayout sets these). */
+.app[style*="--app-top"] { transform: translateY(var(--app-top)); }
 .app__side { flex: none; min-height: 0; display: flex; width: var(--side-w); padding-left: env(safe-area-inset-left); }
 .app__main {
   flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: clip;
@@ -438,3 +440,23 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 .state-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding-right: 8px; border-bottom: 1px solid var(--line); }
 .state-row .ws-state-row { flex: 1; min-width: 0; border-top: 0; }
 .state-row .ws-state-row:has(.ws-state-row__blocked) { flex-basis: 18em; min-width: min(18em, 100%); }
+
+/* ---------- Phone: a place's views as chips (#266 PF-1) ----------
+   A row of labelled chips right under the header; the current one is filled with the accent, the
+   others are outlined. On narrow phones the row scrolls and keeps the current chip in view. */
+@media (max-width: 640px) {
+  .views--chips { border-bottom: 1px solid var(--line); }
+  .views--chips.views--project { padding-right: 0; }
+  .views--chips .ui-tabs__bar { gap: 6px; padding: 7px 10px; justify-content: flex-start; }
+  .views--chips .ui-tabs__tab {
+    flex: none; min-height: 36px; padding: 0 13px; border-radius: var(--r-pill); font-size: 13px; font-weight: 500;
+    color: var(--text-2); box-shadow: inset 0 0 0 1px var(--line-strong); transition: background-color var(--dur-2) ease, color var(--dur-1) ease, box-shadow var(--dur-1) ease;
+  }
+  .views--chips .ui-tabs__tab::after, .views--chips .ui-tabs__indicator { display: none; }
+  .views--chips .ui-tabs__tab:is([aria-current="page"], [aria-selected="true"], [data-pending]) {
+    background: var(--accent-selected-bg); color: var(--accent-selected-text); font-weight: 650; box-shadow: inset 0 0 0 1px transparent;
+  }
+  .views--chips .ui-tabs__count { color: inherit; }
+}
+@media (max-width: 640px) and (pointer: coarse) { .views--chips .ui-tabs__tab { min-height: 44px; padding: 0 14px; } .views--chips .ui-tabs__bar { padding-block: 4px; } }
+.state-row .views__recap { flex: none; margin-left: auto; }

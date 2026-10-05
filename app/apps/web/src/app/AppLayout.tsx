@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import { flushSync } from 'react-dom';
 import { Outlet, useLocation, useNavigate, useParams, useRevalidator } from 'react-router';
 import { useStreamEvents } from '../api/stream';
-import { BottomNav, Button, Drawer, Icon, IconButton, MEDIA, SidePanel, Tabs, duration, flip, play, useMediaQuery, useSidePanelMode, type BottomNavItem, type IconName, type TabItem } from '../ui';
+import { BottomNav, Button, Drawer, Icon, IconButton, MEDIA, SidePanel, Tabs, duration, flip, play, useMediaQuery, useSidePanelMode, type BottomNavItem, type TabItem } from '../ui';
 import { useShellData } from './data';
 import { registerServiceWorker, syncPushSubscription } from '../pwa';
 import { Details } from './Details';
@@ -47,10 +47,23 @@ function viewOrder(pathname: string) {
   return viewIndex(pathname);
 }
 
-/** The phone's view bar shows each view as an icon over its label (#266 PF-1). */
-const VIEW_ICONS: Record<string, IconName> = { conversation: 'chat', map: 'map', tasks: 'tasks', docs: 'book', agents: 'agent' };
-function withIcons(items: TabItem[]): BottomNavItem[] {
-  return items.map((item) => ({ ...item, to: item.to ?? '/', icon: VIEW_ICONS[item.id] ?? 'doc' }));
+/**
+ * The phone's bottom bar holds the few main places (#266 PF-1, founder feedback on #264): Home, Inbox,
+ * Messages and Projects. It shows on those top-level pages; inside a project or a conversation the
+ * work takes the full height, as in a messenger.
+ */
+function mainPlaces(pathname: string, inboxUnread: boolean): BottomNavItem[] | null {
+  const home = /^\/(map|tasks|docs)?$/.test(pathname);
+  const inbox = pathname === '/inbox';
+  const messages = pathname === '/dm' || pathname === '/dm/new';
+  const projects = pathname === '/projects';
+  if (!home && !inbox && !messages && !projects) return null;
+  return [
+    { id: 'home', label: 'Home', to: '/', icon: 'home', current: home },
+    { id: 'inbox', label: 'Inbox', to: '/inbox', icon: 'inbox', current: inbox, ...(inboxUnread ? { countLabel: ', something new', dot: true } : {}) },
+    { id: 'messages', label: 'Messages', to: '/dm', icon: 'chat', current: messages },
+    { id: 'projects', label: 'Projects', to: '/projects', icon: 'spark', current: projects },
+  ];
 }
 
 function isTyping(target: EventTarget | null) {
@@ -218,6 +231,28 @@ function AppLayoutContent() {
     return () => { window.clearTimeout(timer); delete app.dataset.typing; pane.removeEventListener('focusin', onIn); pane.removeEventListener('focusout', onOut); };
   }, [phone, touch]);
 
+  // iOS Safari does not shrink the layout for the on-screen keyboard (no interactive-widget support),
+  // so on touch screens the app follows the visual viewport while the keyboard is up, keeping the
+  // composer and Send above it (#266 PF-3, #268). Chromium already resizes; there this never applies.
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    const app = appRef.current;
+    if (!viewport || !app || !touch) return;
+    const update = () => {
+      if (window.innerHeight - viewport.height > 120) {
+        app.style.setProperty('--app-h', `${Math.round(viewport.height)}px`);
+        app.style.setProperty('--app-top', `${Math.round(viewport.offsetTop)}px`);
+      } else {
+        app.style.removeProperty('--app-h');
+        app.style.removeProperty('--app-top');
+      }
+    };
+    viewport.addEventListener('resize', update);
+    viewport.addEventListener('scroll', update);
+    update();
+    return () => { viewport.removeEventListener('resize', update); viewport.removeEventListener('scroll', update); app.style.removeProperty('--app-h'); app.style.removeProperty('--app-top'); };
+  }, [touch]);
+
   // A new view slides in from the side its tab sits on; a Settings page slides in from the right
   // and back from the left, like a pushed page (#266 PF-4).
   const previousPath = useRef(location.pathname);
@@ -260,6 +295,7 @@ function AppLayoutContent() {
     { id: 'agents', label: 'Agents', to: `/projects/${projectId}/agents` },
   ] : null;
   const homeViews: TabItem[] = VIEWS.map((view) => ({ id: view.id, label: view.label, to: view.path, end: view.path === '/' }));
+  const places = mainPlaces(location.pathname, inboxUnread);
   const audienceOpen = project?.project.visibility === 'workspace';
   const audience = project ? audienceLine(project.people, me.user.id, audienceOpen) : 'People with project access';
   // The audience line leads to "Who can see this", where managers change it (#188).
@@ -277,15 +313,7 @@ function AppLayoutContent() {
       {needsYou ? <span className="views__recap-n">{needsYou}<span className="ui-vh"> {needsYou === 1 ? 'needs' : 'need'} you</span></span> : null}
     </Button>
   ) : null;
-  // On the phone the entry is an icon in the header with its count as a badge (#266 PF-2), so the
-  // work starts right under the header instead of under a state row and a tab row.
-  const recapIcon = activeProject && projectId ? (
-    <button type="button" className="ui-icon-btn top__recap" aria-expanded={recapOpen} aria-controls={recapOpen ? 'details' : undefined} data-tip="What matters"
-      onClick={() => { if (recapOpen) toggleDetails(false); else { setDetailsView({ kind: 'recap', projectId }); toggleDetails(true); } }}>
-      <Icon name="leaf" size={18} /><span className="ui-vh">What matters</span>
-      {needsYou ? <span className="top__badge">{needsYou > 99 ? '99+' : needsYou}<span className="ui-vh"> {needsYou === 1 ? 'needs' : 'need'} you</span></span> : null}
-    </button>
-  ) : null;
+
   const dmId = location.pathname.match(/^\/dm\/([^/]+)/)?.[1];
   const activeDm = directMessages.find((dm) => dm.id === dmId);
   // Messages · Sketches: a DM's sketches stay inside it, for exactly its people (#96).
@@ -294,7 +322,9 @@ function AppLayoutContent() {
     { id: 'messages', label: 'Messages', to: `/dm/${activeDm.id}` },
     { id: 'sketches', label: 'Sketches', to: `/dm/${activeDm.id}/sketches`, end: false, ...(dmSketches ? { count: dmSketches, countLabel: `, ${dmSketches} ${dmSketches === 1 ? 'sketch' : 'sketches'}` } : {}) },
   ] : null;
-  const place = location.pathname === '/settings'
+  const place = location.pathname === '/projects'
+    ? { crumb: null, title: 'Projects', topic: 'Every project you can open', views: false, noDetails: true }
+    : location.pathname === '/settings'
     ? { crumb: null, title: 'Settings', topic: 'Your account, this device and your AI', views: false, noDetails: true }
     : backgroundSettings
     ? { crumb: null, title: 'Background suggestions', topic: 'Your connection and allowance', views: false, noDetails: true }
@@ -369,34 +399,32 @@ function AppLayoutContent() {
             <span className="top__actions" ref={setActionSlot} />
             {activeProject ? <LiveEntry /> : null}
             {/* The inbox and its settings have nothing to show in Details. */}
-            {phone ? recapIcon : null}
-            {'noDetails' in place ? null : phone ? <IconButton ref={detailsButtonRef} icon="panel" label="Details" size={18} className="top__details" aria-expanded={detailsOpen && !recapOpen}
-              aria-controls={detailsOpen ? 'details' : undefined} onClick={() => { setDetailsView('place'); if (!recapOpen) toggleDetails(); }} />
-              : <Button ref={detailsButtonRef} variant="quiet" icon="panel" className="top__details" aria-expanded={detailsOpen && !recapOpen}
+            {/* Labelled on every size (#264: icons alone left people unsure what to tap). */}
+            {'noDetails' in place ? null : <Button ref={detailsButtonRef} variant="quiet" icon="panel" className="top__details" aria-expanded={detailsOpen && !recapOpen}
               aria-controls={detailsOpen ? 'details' : undefined} aria-keyshortcuts="]" data-tip={'Toggle details   ]'}
               onClick={() => { setDetailsView('place'); if (!recapOpen) toggleDetails(); }}>
               Details
             </Button>}
           </div>
         </header>
-        {/* On the phone, Home's and a project's views move to the bar at the bottom (#266 PF-1). The
-            project's state stays as one 44px line on its Conversation, where people orient themselves;
-            the other views start right under the header and "What matters" sits in it (PF-2). */}
-        {project && phone && !onOtherView ? <div className="state-row"><ProjectStateRow summary={workSummary.summary} phase={workSummary.phase} /></div> : null}
-        {place.views && !phone
-          ? <Tabs className="views" label="Views" items={homeViews} />
-          : activeProject && projectViews && !phone
-            ? <div className="views views--project"><Tabs className="views__tabs" label="Project views" items={projectViews} />{recapEntry}</div>
+        {/* The project's state line (needs you, rule, blocked) with "What matters" stays on the phone's
+            Conversation, where people orient themselves (#266 PF-2). */}
+        {project && phone && !onOtherView ? <div className="state-row"><ProjectStateRow summary={workSummary.summary} phase={workSummary.phase} />{recapEntry}</div> : null}
+        {/* A place's views: tabs on wider screens, a row of chips with the current one filled on the phone
+            (#266 PF-1), so where you are is never a guess. */}
+        {place.views
+          ? <Tabs className={`views${phone ? ' views--chips' : ''}`} label="Views" items={homeViews} />
+          : activeProject && projectViews
+            ? <div className={`views views--project${phone ? ' views--chips' : ''}`}><Tabs className="views__tabs" label="Project views" items={projectViews} />{phone ? null : recapEntry}</div>
             : dmViews
-              ? <Tabs className="views" label="Direct message views" items={dmViews} />
+              ? <Tabs className={`views${phone ? ' views--chips' : ''}`} label="Direct message views" items={dmViews} />
               : <div className="views views--none" aria-hidden="true" />}
         <LiveBar />
         <div className="app__pane" id="content" ref={paneRef} tabIndex={-1}>
           <Outlet />
           <LiveStage />
         </div>
-        {phone && place.views ? <BottomNav className="app__viewbar" label="Views" items={withIcons(homeViews)} />
-          : phone && activeProject && projectViews ? <BottomNav className="app__viewbar" label="Project views" items={withIcons(projectViews)} /> : null}
+        {phone && places ? <BottomNav className="app__viewbar" label="Main places" items={places} /> : null}
       </div>
 
       <JumpTo open={jumpOpen} onClose={() => setJumpOpen(false)} userId={me.user.id} />

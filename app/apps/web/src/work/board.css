@@ -183,31 +183,42 @@ html.tb-is-dragging, html.tb-is-dragging * { cursor: grabbing !important; user-s
   .tb-col__head { margin-bottom: 12px; padding-bottom: 10px; }
 }
 
-/* ---------- Phone toolbar (#266 PF-6): one row of tools; search opens to the full row ---------- */
+/* ---------- Phone toolbar (#266 PF-6, #264): one row of labelled tools ----------
+   Each tool is an icon over a short visible label, so nothing has to be guessed. Search is a tap target
+   as wide as its tile; tapped, it opens to the full row, and a filter in use stays open beside the tools. */
+.tb-search__l, .tb-dr__s { display: none; }
 @media (max-width: 640px) {
-  .tb-bar { min-height: 0; flex-wrap: nowrap; gap: 2px; padding: 6px 10px; }
-  .tb-search { order: 0; flex: 0 0 44px; height: 44px; padding-left: 15px; border-radius: var(--r); box-shadow: none;
-    transition: flex-basis var(--dur-2) var(--ease-out), background-color var(--dur-1) ease; }
-  .tb-search input::placeholder { color: transparent; }
-  .tb-search:focus-within, .tb-search.has-query { flex: 1 1 auto; padding: 0 12px; background: var(--bg-side); }
-  .tb-search:focus-within input::placeholder, .tb-search.has-query input::placeholder { color: var(--text-3); }
+  .tb-bar { min-height: 0; flex-wrap: nowrap; gap: 2px; padding: 4px 8px; }
+  .tb-bar :is(.tb-search, .tb-dr, .tb-mode__b, .tb-mine) {
+    position: relative; flex: none; flex-direction: column; justify-content: center; align-items: center; gap: 2px;
+    min-width: 44px; min-height: 48px; height: auto; padding: 4px 6px; border-radius: var(--r); font-size: 10.5px; font-weight: 500; line-height: 1.15; box-shadow: none;
+  }
+  .tb-bar .tb-mode__b[aria-checked="true"], .tb-bar .tb-mine[aria-pressed="true"] { background: var(--accent-selected-bg); color: var(--accent-selected-text); }
+  .tb-search { order: 0; transition: background-color var(--dur-1) ease; }
+  .tb-search__l { display: block; }
+  /* Collapsed, the field covers the whole tile, so a tap anywhere on it focuses the search. */
+  .tb-search input { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0 12px 0 36px; border-radius: inherit; opacity: 0; }
+  .tb-search:focus-within, .tb-search.has-query { flex: 1 1 auto; flex-direction: row; justify-content: flex-start; padding: 0 12px; background: var(--bg-side); }
+  .tb-search:focus-within input, .tb-search.has-query input { opacity: 1; background: transparent; }
+  .tb-search:focus-within .tb-search__l, .tb-search.has-query .tb-search__l { display: none; }
+  .tb-search:focus-within > svg, .tb-search.has-query > svg { position: relative; z-index: 1; pointer-events: none; }
   .tb-bar:has(.tb-search:focus-within) :is(.tb-dr, .tb-bar__end) { display: none; }
-  .tb-dr { order: 1; flex: none; justify-content: center; min-width: 44px; padding: 0; }
+  .tb-dr { order: 1; }
   .tb-dr__l { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .tb-dr__s { display: block; }
   .tb-bar__end { order: 2; margin-left: auto; gap: 2px; }
-  .tb-mode__l { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  .tb-mode__b { padding: 0; }
-  .tb-mine span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  .tb-mine { justify-content: center; min-width: 44px; padding: 0; }
-  .tb-add.ui-btn { margin-left: 4px; }
+  .tb-mode { gap: 2px; }
+  .tb-add.ui-btn { margin-left: 4px; min-height: 48px; }
   .tb-also { padding-top: 8px; }
   .tb-col__head { min-height: 0; }
   /* The count on Decisions & results says a decision waits; the List row stays only for parked work. */
-  .tb-dr__n { position: absolute; top: 4px; right: 2px; box-shadow: 0 0 0 2px var(--bg); }
+  .tb-dr__n { position: absolute; top: 2px; right: 2px; box-shadow: 0 0 0 2px var(--bg); }
   .tb-also__b--need { display: none; }
   .tb-also:not(:has(.tb-also__b:not(.tb-also__b--need))) { display: none; }
   .tb-card__id { font-size: 10px; opacity: .85; }
 }
+@media (max-width: 350px) { .tb-bar { gap: 0; padding-inline: 4px; } .tb-bar :is(.tb-search, .tb-dr, .tb-mode__b, .tb-mine) { padding-inline: 3px; } }
+
 /* One column at a time on a narrow board: the status tabs above already name it and count it, so the
    column keeps only a quiet "New task" row (its heading stays for assistive technology). */
 @container tasks (max-width: 699px) {

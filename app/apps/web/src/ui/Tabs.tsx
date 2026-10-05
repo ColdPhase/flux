@@ -1,5 +1,5 @@
 import { useCallback, useLayoutEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
-import { NavLink, useNavigation } from 'react-router';
+import { Link, NavLink, useNavigation } from 'react-router';
 import { Icon, type IconName } from './Icon';
 import { choosesInPlace } from './motion';
 
@@ -185,22 +185,33 @@ export function Tabs({ items, value, onChange, label, className, panelIdPrefix }
 export interface BottomNavItem extends TabItem {
   to: string;
   icon: IconName;
+  /** Whether this place is the current one; it overrides the route match for places with several pages. */
+  current?: boolean;
+  /** A quiet dot for something new there (its words come from `countLabel`). */
+  dot?: boolean;
 }
 
 /**
- * The phone's view bar (#266 PF-1): the same destinations as the top tabs, at thumb height,
- * each an icon over its label. The current view carries an accent pill behind its icon, an
- * accent label and aria-current; the pill grows in, so the change of place is felt as well as seen.
+ * The phone's bar of main places (#266 PF-1): each an icon over its label, at thumb height. The current
+ * place carries an accent pill behind its icon, an accent label and aria-current; the pill grows in,
+ * so the change of place is felt as well as seen. A chosen place shows the pill at once while it loads
+ * (as #155 does for the tabs).
  */
 export function BottomNav({ items, label, className }: { items: BottomNavItem[]; label: string; className?: string }) {
+  const navigation = useNavigation();
+  const pendingPath = navigation.state !== 'idle' ? navigation.location?.pathname ?? null : null;
   return (
     <nav className={['ui-bottomnav', className].filter(Boolean).join(' ')} aria-label={label}>
-      {items.map((item) => (
-        <NavLink key={item.id} to={item.to} end={item.end ?? true} className="ui-bottomnav__item" data-tab={item.id} aria-label={quietName(item)}>
-          <span className="ui-bottomnav__pill" aria-hidden="true"><Icon name={item.icon} size={20} /></span>
+      {items.map((item) => {
+        const content = <>
+          <span className="ui-bottomnav__pill" aria-hidden="true"><Icon name={item.icon} size={20} />{item.dot ? <span className="ui-bottomnav__dot" /> : null}</span>
           <span className="ui-bottomnav__label">{item.label}</span>
-        </NavLink>
-      ))}
+        </>;
+        const pending = pendingPath !== null && pendingPath === item.to ? '' : undefined;
+        return item.current === undefined
+          ? <NavLink key={item.id} to={item.to} end={item.end ?? true} className="ui-bottomnav__item" data-tab={item.id} data-pending={pending} aria-label={quietName(item)}>{content}</NavLink>
+          : <Link key={item.id} to={item.to} className="ui-bottomnav__item" data-tab={item.id} data-pending={pending} aria-current={item.current ? 'page' : undefined} aria-label={quietName(item)}>{content}</Link>;
+      })}
     </nav>
   );
 }

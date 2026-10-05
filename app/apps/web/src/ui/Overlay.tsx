@@ -67,7 +67,7 @@ const offstage: Record<OverlayPlacement, string> = {
  * their own paths (scrim, close button, Esc), and vertical scrolling inside the drawer is untouched.
  */
 function useDismissDrag(placement: OverlayPlacement, surfaceRef: RefObject<HTMLDivElement | null>, scrimRef: RefObject<HTMLDivElement | null>, close: () => void) {
-  const state = useRef<{ id: number; x: number; y: number; t: number; moving: boolean } | null>(null);
+  const state = useRef<{ id: number; x: number; y: number; t: number; moving: boolean; prev: number; prevT: number; last: number; lastT: number } | null>(null);
   if (placement !== 'left' && placement !== 'bottom') return {};
   const axis = placement === 'left' ? 'x' : 'y';
   const sign = placement === 'left' ? -1 : 1;
@@ -92,7 +92,7 @@ function useDismissDrag(placement: OverlayPlacement, surfaceRef: RefObject<HTMLD
       // The sheet drags only from its header, so its body keeps scrolling normally.
       if (placement === 'bottom' && !(event.target as HTMLElement).closest('.ui-panel__head')) return;
       if ((event.target as HTMLElement).closest('input, textarea, select, [contenteditable="true"]')) return;
-      state.current = { id: event.pointerId, x: event.clientX, y: event.clientY, t: event.timeStamp, moving: false };
+      state.current = { id: event.pointerId, x: event.clientX, y: event.clientY, t: event.timeStamp, moving: false, prev: 0, prevT: event.timeStamp, last: 0, lastT: event.timeStamp };
     },
     onPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
       const drag = state.current;
@@ -108,6 +108,7 @@ function useDismissDrag(placement: OverlayPlacement, surfaceRef: RefObject<HTMLD
         event.currentTarget.setPointerCapture(event.pointerId);
       }
       // Toward the edge it follows the finger; the other way it resists.
+      drag.prev = drag.last; drag.prevT = drag.lastT; drag.last = along; drag.lastT = event.timeStamp;
       apply(Math.sign(along) === sign ? along : along / 6);
     },
     onPointerUp(event: ReactPointerEvent<HTMLDivElement>) {
@@ -115,7 +116,8 @@ function useDismissDrag(placement: OverlayPlacement, surfaceRef: RefObject<HTMLD
       state.current = null;
       if (!drag || drag.id !== event.pointerId || !drag.moving) return;
       const along = axis === 'x' ? event.clientX - drag.x : event.clientY - drag.y;
-      const velocity = along / Math.max(1, event.timeStamp - drag.t);
+      // A flick is judged by the finger's speed as it lets go, not averaged from the start.
+      const velocity = (along - drag.prev) / Math.max(1, event.timeStamp - drag.prevT);
       if (Math.sign(along) === sign && (Math.abs(along) > size() / 3 || velocity * sign > 0.5)) close();
       else settle();
     },
@@ -150,7 +152,8 @@ export function Overlay({ open, onClose, placement, label, labelledBy, initialFo
     // A reopen during the exit animation starts from a clean slate.
     for (const el of [surface, scrim]) el?.getAnimations().forEach((animation) => animation.cancel());
     setAppInert(true);
-    const ms = duration('--dur-3');
+    // Full-screen phone sheets travel further, so they take the longer token (#266 PF-4).
+    const ms = duration(placement === 'bottom' ? '--dur-4' : '--dur-3');
     void play(scrim, [{ opacity: 0 }, { opacity: 1 }], ms, '--ease-out', { fill: 'backwards' });
     void play(surface, [{ transform: offstage[placement] }, { transform: 'none' }], ms, '--ease-sheet', { fill: 'backwards' });
     (initialFocus?.current ?? surface)?.focus({ preventScroll: true });
