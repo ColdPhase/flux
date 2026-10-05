@@ -6,7 +6,7 @@ import { listAccessibleProjects } from '../app/conversation-api';
 import { useShellData } from '../app/data';
 import { createPersonalAgent, grantAgentProject, listProjectGrants } from '../agent-connection/api';
 import { Button, Spinner } from '../ui';
-import { changeBackgroundRule, createBackgroundRule, listBackgroundRules } from './api';
+import { backgroundComparisonRuntime, changeBackgroundRule, createBackgroundRule, listBackgroundRules } from './api';
 
 interface ProjectSetup { id: string; agents: Agent[]; grants: ProjectGrant[] | null; rules: ProactiveComparisonRule[] }
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
@@ -29,6 +29,13 @@ export function ProjectRuleSettings({ connection }: { connection: BackgroundComp
   const ready = setup?.id === projectId ? setup : null;
   const current = ready?.rules.find((rule) => rule.status !== 'revoked');
   const writable = selected?.access === 'manager' || selected?.access === 'contributor';
+  // Enabling is offered only where the worker runs comparisons (#58, FLUX_BACKGROUND_COMPARISONS).
+  const [runtime, setRuntime] = useState<'available' | 'unavailable' | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    backgroundComparisonRuntime(controller.signal).then((answer) => setRuntime(answer.status), () => { if (!controller.signal.aborted) setRuntime('unavailable'); });
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -63,6 +70,10 @@ export function ProjectRuleSettings({ connection }: { connection: BackgroundComp
     try { await action(); setSaved(message); requestAnimationFrame(() => statusRef.current?.focus()); }
     catch (cause) {
       if (cause instanceof ApiError && cause.code === 'AGENT_NOT_FOUND') setError('Choose your own agent with contributor access to this project. A project manager can grant that access.');
+      else if (cause instanceof ApiError && cause.code === 'BACKGROUND_CONNECTION_REQUIRED') setError('Mark one of your AI connections for background suggestions above, then enable the rule.');
+      else if (cause instanceof ApiError && cause.code === 'BACKGROUND_PRICE_UNKNOWN') setError('That connection has no known price, so nothing can be reserved. Set its price above first.');
+      else if (cause instanceof ApiError && cause.code === 'BACKGROUND_BUDGET_TOO_LOW') setError('This rule needs more than your connection allows. Lower the rule’s allowance or raise the connection’s limits.');
+      else if (cause instanceof ApiError && cause.code === 'BACKGROUND_RUNTIME_UNAVAILABLE') { setRuntime('unavailable'); setError('Background execution is unavailable on this instance. Your rule stays paused.'); }
       else if (cause instanceof ApiError && cause.code === 'VERSION_CONFLICT') {
         setSetup(null); setAgentId(''); setRefresh((value) => value + 1);
         setError('The rule changed. Review its current state before trying again.');
@@ -104,12 +115,17 @@ export function ProjectRuleSettings({ connection }: { connection: BackgroundComp
           <div><dt>Your agent</dt><dd>{ready.agents.find((agent) => agent.id === current.agentId)?.name ?? 'Personal agent no longer available'}</dd></div>
           <div><dt>Rule allowance</dt><dd>{money(current.periodBudgetCents)} over rolling 30 days · up to {current.maxRunsPerDay} requests a UTC day · {money(current.perRunCents)} per request</dd></div>
         </dl>
-        {current.status === 'paused' ? <p className="background-settings__help">Background execution is unavailable on this instance. Your rule is saved and paused.</p> : null}
+        {current.status === 'paused' ? <p className="background-settings__help">{runtime === 'available'
+          ? 'Your rule is saved and paused. Once enabled, a negative result recorded in this project, or a later change to the evidence it cites, can start a paid comparison for any of the project’s negative results, including earlier ones, on your connection and within the allowance above.'
+          : 'Background execution is unavailable on this instance. Your rule is saved and paused.'}</p> : null}
         <div className="background-settings__actions">
           {current.status === 'enabled' ? <Button disabled={!writable || busy} onClick={() => void mutate(async () => {
             const changed = await changeBackgroundRule(current, 'paused');
             setSetup({ ...ready, rules: ready.rules.map((rule) => rule.id === changed.id ? changed : rule) });
-          }, 'Rule paused.')}>Pause rule</Button> : <Button disabled>Enable unavailable</Button>}
+          }, 'Rule paused.')}>Pause rule</Button> : runtime === 'available' ? <Button variant="primary" disabled={!writable || busy} onClick={() => void mutate(async () => {
+            const changed = await changeBackgroundRule(current, 'enabled');
+            setSetup({ ...ready, rules: ready.rules.map((rule) => rule.id === changed.id ? changed : rule) });
+          }, 'Rule enabled. New or changed negative results in this project can now start comparisons, within your allowance.')}>Enable rule</Button> : <Button disabled>Enable unavailable</Button>}
           <Button disabled={!writable || busy} onClick={() => void mutate(async () => {
             const changed = await changeBackgroundRule(current, 'revoked');
             setSetup({ ...ready, rules: ready.rules.map((rule) => rule.id === changed.id ? changed : rule) });

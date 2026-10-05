@@ -183,6 +183,8 @@ export function createDmUseCases(uow: DmUnitOfWork) {
       const authorId = person(principal);
       if (command && typeof command === 'object' && 'source' in command && (command as { source?: unknown }).source !== undefined)
         throw new RuleViolationError('Direct messages cannot cite project material yet', 'DM_SOURCE_UNSUPPORTED');
+      if (command && typeof command === 'object' && (command as { attachmentIds?: unknown }).attachmentIds !== undefined)
+        throw new RuleViolationError('Direct messages cannot carry files yet', 'DM_ATTACHMENTS_UNSUPPORTED');
       const input = normalizeMessage(command);
       return uow.run(async (ports) => {
         await ports.access.requireDm(principal, 'dm.write', dmId, { lock: true });

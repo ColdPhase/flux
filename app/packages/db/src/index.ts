@@ -112,3 +112,5 @@ export * from './repositories/agent-execution.js';
 export * from './repositories/agent-orientation.js';
 export * from './repositories/agent-playbook.js';
 export * from './repositories/agent-policies.js';
+
+export * from './repositories/files.js';
