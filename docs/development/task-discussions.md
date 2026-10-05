@@ -294,3 +294,30 @@ refuses file or deletion-queue use. Operational recovery uses paired DB/files
 backup. Shared composer drafts and rendered UI acceptance remain the separate
 #136 integration; #152/#153 must compose real grant checks before agent file writes
 can be enabled. Real client and device evidence is still required for release.
+
+## Map thought images (#252, migration 0050)
+
+Recorded before implementation, 2026-10-05. A stored file can instead be
+published once as the image of one map thought. `fileId` on
+`POST /api/v1/sketches/:id/thoughts` of a **project** sketch publishes the
+creator's own ready, unexpired, unpublished file of that same project inside the
+thought transaction: sketch write lock, then the file row lock with the checks of
+message attachments (uploader, project, ready, expiry, bytes present with exact
+size and SHA-256), then an image signature check of the stored bytes (PNG, JPEG,
+GIF or WebP; never SVG), else `400 UNSUPPORTED_IMAGE` and the file stays staged.
+A private or DM sketch answers `422 IMAGES_NEED_A_PROJECT`; an agent
+`403 AGENT_FILES_UNAVAILABLE`.
+
+Publication sets `project_files.thought_id`, `published_at` and clears the
+expiry. A file is published when `message_id` or `thought_id` is set, never both,
+so every staging, quota, cleanup and download rule above reads “unpublished” as
+both empty. After publication anyone who can read the project downloads it
+(the download rechecks current project access). Like a placement, `thought_id`
+has no foreign key: removing the thought neither unpublishes nor deletes the
+file. Re-creating that same thought ID with the same file (Undo) is accepted;
+any other reuse is `409 ATTACHMENT_ALREADY_PUBLISHED`, and a published thought
+image cannot be attached to a message. Project sketch thoughts carry
+`file { id, name, size }` when they have an image. Portable export format 1 leaves
+these images out (listed in its exclusions); full backups keep them.
+Migration 0050 takes the next number after the 0046–0049 numbers reserved by
+open branches.

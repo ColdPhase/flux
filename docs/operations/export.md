@@ -80,6 +80,8 @@ names.
 - private notes (drafts), including the private note a material was published from: the
   material's text is exported, its source note and the note's id are not;
 - private sketches, and the placement of a note on any sketch;
+- images placed on map thoughts (#252): the thought and its caption are exported, the image
+  is not in format version 1; a full backup keeps it;
 - accounts, e-mail addresses, sessions, push subscriptions and notifications;
 - approved project policies for agents (#160): a full backup keeps them, a project export does not;
 - agent connections, OAuth clients, access and refresh tokens and signing keys (secrets of this
