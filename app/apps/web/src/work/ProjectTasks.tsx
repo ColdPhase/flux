@@ -145,7 +145,7 @@ function Toolbar({ mode, onMode, query, onQuery, mine, onMine, writable, onNew, 
   };
   return (
     <div className="tb-bar">
-      <div className="tb-search">
+      <div className={`tb-search${query ? ' has-query' : ''}`}>
         <Icon name="search" size={14} />
         <label className="ui-vh" htmlFor={searchId}>Search tasks</label>
         <input id={searchId} type="search" value={query} placeholder="Search tasks" autoComplete="off" maxLength={200}
@@ -153,7 +153,7 @@ function Toolbar({ mode, onMode, query, onQuery, mine, onMine, writable, onNew, 
           onKeyDown={(event) => { if (event.key === 'Escape' && query) { event.preventDefault(); event.stopPropagation(); onQuery(''); } }} />
       </div>
       {/* The current rule and what was learned stay one step away from the board (Journey A). */}
-      <button type="button" className="tb-dr" onClick={onDecisions}><Icon name="rule" size={14} /><span>Decisions &amp; results</span></button>
+      <button type="button" className="tb-dr" onClick={onDecisions}><Icon name="rule" size={14} /><span className="tb-dr__l">Decisions &amp; results</span></button>
       <div className="tb-bar__end">
         <div className="tb-mode" role="radiogroup" aria-label="Show tasks as" ref={radios} onKeyDown={onRadioKey}>
           {(['board', 'list'] as const).map((value) => (

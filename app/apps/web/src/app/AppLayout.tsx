@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import { flushSync } from 'react-dom';
 import { Outlet, useLocation, useNavigate, useRevalidator } from 'react-router';
 import { useStreamEvents } from '../api/stream';
-import { Button, Drawer, Icon, IconButton, MEDIA, SidePanel, Tabs, duration, flip, play, useMediaQuery, useSidePanelMode } from '../ui';
+import { BottomNav, Button, Drawer, Icon, IconButton, MEDIA, SidePanel, Tabs, duration, flip, play, useMediaQuery, useSidePanelMode, type BottomNavItem, type IconName, type TabItem } from '../ui';
 import { useShellData } from './data';
 import { registerServiceWorker, syncPushSubscription } from '../pwa';
 import { Details } from './Details';
@@ -11,7 +11,7 @@ import { placeOf } from './place';
 import { ShellContext, type DetailsView } from './shellContext';
 import { Sidebar } from './Sidebar';
 import { VIEWS, viewIndex } from './views';
-import { ProjectStateLine, ProjectStateRow } from '../work/inline';
+import { ProjectStateLine } from '../work/inline';
 import { audienceLine, useProjectShell } from '../project/data';
 import { useDmSketchCount } from '../dm/DmSketches';
 import { LiveProvider } from '../live/LiveProvider';
@@ -43,6 +43,12 @@ function viewOrder(pathname: string) {
   const inDm = pathname.match(/^\/dm\/(?!new$)[^/]+(\/sketches)?/);
   if (inDm) return inDm[1] ? 1 : 0;
   return viewIndex(pathname);
+}
+
+/** The phone's view bar shows each view as an icon over its label (#266 PF-1). */
+const VIEW_ICONS: Record<string, IconName> = { conversation: 'chat', map: 'map', tasks: 'tasks', docs: 'book', agents: 'agent' };
+function withIcons(items: TabItem[]): BottomNavItem[] {
+  return items.map((item) => ({ ...item, to: item.to ?? '/', icon: VIEW_ICONS[item.id] ?? 'doc' }));
 }
 
 function isTyping(target: EventTarget | null) {
@@ -200,6 +206,7 @@ export function AppLayout() {
     { id: 'docs', label: 'Wiki', to: `/projects/${projectId}/docs`, end: false },
     { id: 'agents', label: 'Agents', to: `/projects/${projectId}/agents` },
   ] : null;
+  const homeViews: TabItem[] = VIEWS.map((view) => ({ id: view.id, label: view.label, to: view.path, end: view.path === '/' }));
   const audienceOpen = project?.project.visibility === 'workspace';
   const audience = project ? audienceLine(project.people, me.user.id, audienceOpen) : 'People with project access';
   // The audience line leads to "Who can see this", where managers change it (#188).
@@ -216,6 +223,15 @@ export function AppLayout() {
       What matters
       {needsYou ? <span className="views__recap-n">{needsYou}<span className="ui-vh"> {needsYou === 1 ? 'needs' : 'need'} you</span></span> : null}
     </Button>
+  ) : null;
+  // On the phone the entry is an icon in the header with its count as a badge (#266 PF-2), so the
+  // work starts right under the header instead of under a state row and a tab row.
+  const recapIcon = activeProject && projectId ? (
+    <button type="button" className="ui-icon-btn top__recap" aria-expanded={recapOpen} aria-controls={recapOpen ? 'details' : undefined} data-tip="What matters"
+      onClick={() => { if (recapOpen) toggleDetails(false); else { setDetailsView({ kind: 'recap', projectId }); toggleDetails(true); } }}>
+      <Icon name="leaf" size={18} /><span className="ui-vh">What matters</span>
+      {needsYou ? <span className="top__badge">{needsYou > 99 ? '99+' : needsYou}<span className="ui-vh"> {needsYou === 1 ? 'needs' : 'need'} you</span></span> : null}
+    </button>
   ) : null;
   const dmId = location.pathname.match(/^\/dm\/([^/]+)/)?.[1];
   const activeDm = directMessages.find((dm) => dm.id === dmId);
@@ -295,19 +311,22 @@ export function AppLayout() {
             <span className="top__actions" ref={setActionSlot} />
             {activeProject ? <LiveEntry /> : null}
             {/* The inbox and its settings have nothing to show in Details. */}
-            {'noDetails' in place ? null : <Button ref={detailsButtonRef} variant="quiet" icon="panel" className="top__details" aria-expanded={detailsOpen && !recapOpen}
+            {phone ? recapIcon : null}
+            {'noDetails' in place ? null : phone ? <IconButton ref={detailsButtonRef} icon="panel" label="Details" size={18} className="top__details" aria-expanded={detailsOpen && !recapOpen}
+              aria-controls={detailsOpen ? 'details' : undefined} onClick={() => { setDetailsView('place'); if (!recapOpen) toggleDetails(); }} />
+              : <Button ref={detailsButtonRef} variant="quiet" icon="panel" className="top__details" aria-expanded={detailsOpen && !recapOpen}
               aria-controls={detailsOpen ? 'details' : undefined} aria-keyshortcuts="]" data-tip={'Toggle details   ]'}
               onClick={() => { setDetailsView('place'); if (!recapOpen) toggleDetails(); }}>
               Details
             </Button>}
           </div>
         </header>
-        {/* On a phone the tab row has no room: the entry joins the one-line project state row. */}
-        {project && phone ? <div className="state-row"><ProjectStateRow lists={project.work} canDecide={project.project.access !== 'viewer'} />{recapEntry}</div> : null}
-        {place.views
-          ? <Tabs className="views" label="Views" items={VIEWS.map((view) => ({ id: view.id, label: view.label, to: view.path, end: view.path === '/' }))} />
-          : activeProject && projectViews
-            ? <div className="views views--project"><Tabs className="views__tabs" label="Project views" items={projectViews} />{phone ? null : recapEntry}</div>
+        {/* On the phone, Home's and a project's views move to the bar at the bottom (#266 PF-1); the
+            project's state stays one tap away in Details and "What matters" in the header. */}
+        {place.views && !phone
+          ? <Tabs className="views" label="Views" items={homeViews} />
+          : activeProject && projectViews && !phone
+            ? <div className="views views--project"><Tabs className="views__tabs" label="Project views" items={projectViews} />{recapEntry}</div>
             : dmViews
               ? <Tabs className="views" label="Direct message views" items={dmViews} />
               : <div className="views views--none" aria-hidden="true" />}
@@ -316,6 +335,8 @@ export function AppLayout() {
           <Outlet />
           <LiveStage />
         </div>
+        {phone && place.views ? <BottomNav className="app__viewbar" label="Views" items={withIcons(homeViews)} />
+          : phone && activeProject && projectViews ? <BottomNav className="app__viewbar" label="Project views" items={withIcons(projectViews)} /> : null}
       </div>
 
       <JumpTo open={jumpOpen} onClose={() => setJumpOpen(false)} userId={me.user.id} />

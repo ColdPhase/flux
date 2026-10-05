@@ -137,5 +137,15 @@ button.project-convo__contribution { cursor: pointer; }
   .project-convo__composer { padding: 8px 14px 15px; padding-bottom: max(15px, env(safe-area-inset-bottom)); }
   .project-convo__composer .composer__box { padding: 11px 13px; border-radius: 9px; }
 }
+/* Phone (#266 PF-3): the view bar below already keeps the safe area, so the composer is one compact
+   card — the text, then a slim row of tools — with the audience as one quiet line under it. */
+@media (max-width: 640px) {
+  .project-convo__composer { padding: 6px 10px 6px; }
+  .project-convo__composer .composer__box { gap: 0 2px; padding: 8px 6px 4px 12px; border-radius: 14px; }
+  .project-convo__composer .composer__box textarea { min-height: 26px; max-height: 30vh; padding: 2px 4px 2px 0; line-height: 1.5; }
+  .project-convo__composer .composer__attach { margin-left: -6px; }
+  .project-convo__composer .project-convo__to { margin: 4px 4px 0; }
+}
+
 
 .project-convo__material-read { text-decoration: underline; text-underline-offset: 2px; }

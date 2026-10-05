@@ -1,5 +1,6 @@
 import { useCallback, useLayoutEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
 import { NavLink } from 'react-router';
+import { Icon, type IconName } from './Icon';
 
 export interface TabItem {
   id: string;
@@ -30,6 +31,11 @@ function quietName(item: TabItem): string | undefined {
   return item.count === undefined && item.countLabel ? `${item.label}${item.countLabel}` : undefined;
 }
 
+/** The label reserves its bold width, so the current tab's heavier weight never shifts its neighbours. */
+function Label({ text }: { text: string }) {
+  return <span className="ui-tabs__label" data-text={text}>{text}</span>;
+}
+
 function Count({ item }: { item: TabItem }): ReactNode {
   if (item.count === undefined) return null;
   return (
@@ -41,8 +47,8 @@ function Count({ item }: { item: TabItem }): ReactNode {
 }
 
 /**
- * Quiet view switcher: labels only, one short 2px accent mark that slides between tabs
- * (translate + scaleX of a 1px bar, so only transform animates).
+ * View switcher: labels with one 2px accent mark under the whole current label that slides
+ * between tabs (translate + scaleX of a 1px bar, so only transform animates).
  * Navigation tabs are links with aria-current; in-page tabs follow the ARIA tabs pattern.
  */
 export function Tabs({ items, value, onChange, label, className, panelIdPrefix }: TabsProps) {
@@ -70,11 +76,14 @@ export function Tabs({ items, value, onChange, label, className, panelIdPrefix }
         else if (tab.right > box.right) scroller.scrollLeft += tab.right - box.right + 8;
       }
     }
-    const pad = parseFloat(getComputedStyle(current).paddingLeft) || 0;
+    const style = getComputedStyle(current);
+    const padLeft = parseFloat(style.paddingLeft) || 0;
+    const padRight = parseFloat(style.paddingRight) || 0;
     if (!animate) indicator.style.transition = 'none';
     indicator.style.opacity = '1';
-    // A short mark at the start of the current label (Studio 11.6): at most 16px wide.
-    indicator.style.transform = `translateX(${current.offsetLeft + pad}px) scaleX(${Math.min(16, Math.max(1, current.offsetWidth - pad * 2))})`;
+    // The mark spans the whole current label (#266 PF-1), so the current place reads at a glance;
+    // it slides and resizes between tabs with transform only.
+    indicator.style.transform = `translateX(${current.offsetLeft + padLeft}px) scaleX(${Math.max(1, current.offsetWidth - padLeft - padRight)})`;
     if (!animate) { void indicator.offsetWidth; indicator.style.transition = ''; }
   }, []);
 
@@ -116,7 +125,7 @@ export function Tabs({ items, value, onChange, label, className, panelIdPrefix }
         <div ref={barRef} className="ui-tabs__bar">
           {items.map((item) => (
             <NavLink key={item.id} to={item.to ?? '.'} end={item.end ?? true} className="ui-tabs__tab" data-tab={item.id} aria-label={quietName(item)} onClick={(event) => event.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' })}>
-              {item.label}<Count item={item} />
+              <Label text={item.label} /><Count item={item} />
             </NavLink>
           ))}
           {indicator}
@@ -144,12 +153,35 @@ export function Tabs({ items, value, onChange, label, className, panelIdPrefix }
               tabIndex={selected ? 0 : -1}
               onClick={() => onChange?.(item.id)}
             >
-              {item.label}<Count item={item} />
+              <Label text={item.label} /><Count item={item} />
             </button>
           );
         })}
         {indicator}
       </div>
     </div>
+  );
+}
+
+export interface BottomNavItem extends TabItem {
+  to: string;
+  icon: IconName;
+}
+
+/**
+ * The phone's view bar (#266 PF-1): the same destinations as the top tabs, at thumb height,
+ * each an icon over its label. The current view carries an accent pill behind its icon, an
+ * accent label and aria-current; the pill grows in, so the change of place is felt as well as seen.
+ */
+export function BottomNav({ items, label, className }: { items: BottomNavItem[]; label: string; className?: string }) {
+  return (
+    <nav className={['ui-bottomnav', className].filter(Boolean).join(' ')} aria-label={label}>
+      {items.map((item) => (
+        <NavLink key={item.id} to={item.to} end={item.end ?? true} className="ui-bottomnav__item" data-tab={item.id} aria-label={quietName(item)}>
+          <span className="ui-bottomnav__pill" aria-hidden="true"><Icon name={item.icon} size={20} /></span>
+          <span className="ui-bottomnav__label">{item.label}</span>
+        </NavLink>
+      ))}
+    </nav>
   );
 }

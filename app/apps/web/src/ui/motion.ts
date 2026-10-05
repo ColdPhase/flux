@@ -10,7 +10,7 @@ export function token(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
-export function duration(name: '--dur-1' | '--dur-2' | '--dur-3'): number {
+export function duration(name: '--dur-1' | '--dur-2' | '--dur-3' | '--dur-4'): number {
   if (reduceQuery?.matches) return 0;
   return parseFloat(token(name)) || 0;
 }

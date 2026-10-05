@@ -178,14 +178,25 @@ html.tb-is-dragging, html.tb-is-dragging * { cursor: grabbing !important; user-s
   .tb-col__head { margin-bottom: 12px; padding-bottom: 10px; }
 }
 
-/* ---------- Phone toolbar: the actions on one row, the search below ---------- */
+/* ---------- Phone toolbar (#266 PF-6): one row of tools; search opens to the full row ---------- */
 @media (max-width: 640px) {
-  .tb-bar { min-height: 0; padding: 10px var(--space-page) 8px; }
-  .tb-bar__end { order: 1; flex: 1 1 100%; justify-content: flex-end; }
-  .tb-search { order: 2; flex: 1 1 0; }
-  .tb-dr { order: 3; padding: 0 6px; }
+  .tb-bar { min-height: 0; flex-wrap: nowrap; gap: 2px; padding: 6px 10px; }
+  .tb-search { order: 0; flex: 0 0 44px; height: 44px; padding-left: 15px; border-radius: var(--r); box-shadow: none;
+    transition: flex-basis var(--dur-2) var(--ease-out), background-color var(--dur-1) ease; }
+  .tb-search input::placeholder { color: transparent; }
+  .tb-search:focus-within, .tb-search.has-query { flex: 1 1 auto; padding: 0 12px; background: var(--bg-side); }
+  .tb-search:focus-within input::placeholder, .tb-search.has-query input::placeholder { color: var(--text-3); }
+  .tb-bar:has(.tb-search:focus-within) :is(.tb-dr, .tb-bar__end) { display: none; }
+  .tb-dr { order: 1; flex: none; justify-content: center; min-width: 44px; padding: 0; }
+  .tb-dr__l { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .tb-bar__end { order: 2; margin-left: auto; gap: 2px; }
   .tb-mode__l { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .tb-mode__b { padding: 0; }
+  .tb-mine span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .tb-mine { justify-content: center; min-width: 44px; padding: 0; }
+  .tb-add.ui-btn { margin-left: 4px; }
+  .tb-also { padding-top: 8px; }
+  .tb-col__head { min-height: 0; }
 }
 
 @media (pointer: coarse) {
