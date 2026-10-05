@@ -5,3 +5,7 @@ export type { CoWorkContext, CoWorkRole, CoWorkLease, CoWorkUnit, ClaimFence, Cl
 export { normalizeCoWorkSource, normalizeCoWorkRequest, validateCoWorkRequestLimits, coWorkRequestFingerprint } from './requests.js';
 export { normalizeCoWorkAdmission, requireCoWorkAdmission } from './admission.js';
 export type { CoWorkSenderFence, CoWorkAdmissionInput, CoWorkReviewSeparation, CoWorkAdmissionUnit, CoWorkAdmissionFacts } from './admission.js';
+export { COWORK_DECLINE_REASONS, normalizeCoWorkRequestClaim, normalizeCoWorkResponse, normalizeCoWorkResponseRef,
+  requireCoWorkRequestClaim, requireCoWorkResponse } from './responses.js';
+export type { CoWorkDeclineReason, CoWorkRequestClaimInput, CoWorkResponseInput, CoWorkRecipientUnit, CoWorkLockedRequest,
+  CoWorkResponseFacts } from './responses.js';

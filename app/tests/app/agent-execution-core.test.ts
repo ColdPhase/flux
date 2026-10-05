@@ -144,6 +144,10 @@ test('every operation has a registered postcondition entry; an incomplete sample
     'cowork.claim': [claim()], 'cowork.renew': [claim()], 'cowork.release': [claim()],
     'cowork.request': [{ kind: 'cowork.request_state', workspaceId: uuid(), projectId: uuid(), connectionId: uuid(), unitId: uuid(),
       requestId: uuid(), role: 'review', version: 1, state: 'queued' }],
+    'cowork.request.claim': [{ kind: 'cowork.request_state', workspaceId: uuid(), projectId: uuid(), connectionId: uuid(), unitId: uuid(),
+      requestId: uuid(), role: 'review', version: 2, state: 'claimed' }],
+    'cowork.request.respond': [{ kind: 'cowork.request_state', workspaceId: uuid(), projectId: uuid(), connectionId: uuid(), unitId: uuid(),
+      requestId: uuid(), role: 'review', version: 3, state: 'resolved' }],
   };
   for (const operation of AGENT_OPERATIONS) validateAgentPostconditions(operation, samples[operation]);
   // @ts-expect-error a table without its cowork.request entry must not satisfy the exhaustive operation record
