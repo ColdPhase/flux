@@ -153,10 +153,20 @@ over TURN/TLS.
   This shows the assertion is not vacuous. It also shows that the media key is
   bound to the signaled fingerprint.
 
-**Observed 2026-10-05, local Docker run:** see
-[evidence](evidence/live-encryption/2026-10-05/README.md) for the exact commit,
-the cipher suites and DTLS version reported, and the negative-control state
-sequence.
+**Observed 2026-10-05, local Docker run** at `deafe9e0`: `check_live_turn.sh`
+exited 0 with 17/17 tests. The publisher and the receiver each had one
+RTP-carrying transport, with the following values:
+
+- `dtlsState: connected`;
+- `tlsVersion: FEFD` (DTLS 1.2);
+- `TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256`;
+- `SRTP_AES128_CM_HMAC_SHA1_80`;
+- a `sha-256` remote certificate equal to the signaled fingerprint.
+
+In the negative control, ICE reached `connected`, then DTLS went to
+`failed`, and the connection went to `failed`. The transport carried no SRTP
+profile and 0 inbound RTP bytes. See the
+[evidence](evidence/live-encryption/2026-10-05/README.md).
 
 The check does not prove:
 

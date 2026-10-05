@@ -16,7 +16,7 @@ stack encrypts is recorded in [live-media-encryption.md](live-media-encryption.m
 | [`docker/k3s/livekit-site.example.yaml`](../../docker/k3s/livekit-site.example.yaml) | What each site supplies: media node selector, private signaling bind address, public `rtc.node_ip`, TURN name and TLS Secret, webhook key ID and URL. Placeholders only. |
 | [`scripts/check_live_k3s.sh`](../../scripts/check_live_k3s.sh) and [`scripts/live_k3s_render.mjs`](../../scripts/live_k3s_render.mjs) | The render check below. |
 
-`./scripts/check_live_k3s.sh` takes under a minute after the first image pull.
+`./scripts/check_live_k3s.sh` took 9 seconds with cached images (2026-10-05).
 It starts no cluster and leaves no container, and runs in digest-pinned
 containers: `alpine/helm` 4.3.0, `ghcr.io/yannh/kubeconform` v0.8.0,
 `mikefarah/yq` 4.54.1, and the application's Node base image. It:
@@ -41,9 +41,18 @@ containers: `alpine/helm` 4.3.0, `ghcr.io/yannh/kubeconform` v0.8.0,
 
 Before installing, an operator runs it with their own site file:
 `FLUX_K3S_SITE_VALUES=/path/site.yaml ./scripts/check_live_k3s.sh`. In that
-mode, documentation addresses and `.example` names are also refused. Install
-the same verified archive with the same two values files; set
-`FLUX_K3S_RENDER_OUT` to keep the reviewed render.
+mode, documentation addresses and `.example` names are also refused. Set
+`FLUX_K3S_RENDER_OUT` to keep the reviewed render. Then install the same
+archive with the same two values files:
+
+```sh
+helm pull livekit-server --repo https://helm.livekit.io --version 1.9.0
+echo "4fafb11011747552803061ce41480c7d2b4fa58d3471f6d3579d988c53399109  livekit-server-1.9.0.tgz" | sha256sum -c -
+helm install livekit livekit-server-1.9.0.tgz -n <flux-namespace> \
+  -f docker/k3s/livekit-values.yaml -f /path/site.yaml
+```
+
+The namespace is the Flux API's own, so that `http://livekit:7880` resolves.
 Network access is needed for the chart and schema downloads. The check is not
 a cluster test: it cannot see node addresses, firewall rules, admission
 policies, DNS, certificates or media.
