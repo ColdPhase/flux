@@ -9,7 +9,7 @@ not accepted until the independent peer reviews it.
 > **Revised 2026-10-05 (founder direction [#266](https://github.com/ColdPhase/flux/issues/266) items 11 and 13).**
 > The companion design, "Claude plan not offered" and every gate on a vendor answer
 > in this document are replaced by F-022's `runtime` transport: the owner's
-> unmodified official CLI in a per-owner container. Evidence:
+> unmodified official CLI in a per-owner runtime slot. Evidence:
 > [agent runtime research](2026-10-05-agent-runtime.md). The audit (§1) and the MCP
 > and OpenRouter evidence below still apply. The founder's 2026-10-05 letters swap
 > the numbering used here: mode 1 below is mode (b), mode 2 is mode (a).

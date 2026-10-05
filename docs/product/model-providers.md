@@ -11,7 +11,8 @@ support inside the Flux agent. Implementation is tracked in
 > **Two-mode framing: [F-022](ai-modes.md), revised 2026-10-05 — proposed, awaiting peer review.**
 > Everything here is mode (a) (the agent in Flux) except PROV-5, which is mode (b)
 > (your agent app over MCP). F-022 adds a connection *transport* (PROV-1), run caps
-> for `runtime` connections (PROV-3) and replaces PROV-4's subscription sentence.
+> for `runtime` connections that replace the money reservation, the single bounded
+> request and the input bound (PROV-3), and replaces PROV-4's subscription sentence.
 
 This decision **supersedes the Anthropic-only provider scope** of
 [O-007](background-compute.md) and [O-008](personal-runs-compute.md), O-008's
@@ -23,7 +24,8 @@ stays in force:
 - [F-019](decisions.md) owner-only use
 - separate consent per use
 - daily caps and per-run reservations
-- one bounded request per run
+- one bounded request per run (for `runtime` connections, F-022's turn and MCP
+  result caps instead; [PROV-3](#prov-3--cost-caps-and-token-bounds))
 - source and audience limits
 - stop, retry and continue semantics
 - fail-closed behaviour with no payer fallback
@@ -61,9 +63,11 @@ An owner may keep one or more AI connections. Each connection records:
 - **Transport ([F-022](ai-modes.md#aim-1--mode-a-the-agent-in-flux)):** `server`
   (the Flux worker calls the provider with the key above; every provider kind) or
   `runtime` (the owner's unmodified official CLI, client `claude_code` or `codex`,
-  runs in the owner's runtime container under the owner's own sign-in;
+  runs in the owner's runtime slot under the owner's own sign-in, with any method
+  of the CLI's own login command;
   [AIM-3](ai-modes.md#aim-3--the-runtime-transport)). A `runtime` connection has no
-  key, base URL or price in Flux.
+  key, base URL or price in Flux. Its MCP access goes through an owner-consented
+  agent connection ([F-022](ai-modes.md#agent-connection-and-permissions)).
 
 The owner chooses which connection each use runs on (assistant in Flux,
 background rule). Configuring a connection enables neither use; each use keeps
@@ -95,8 +99,9 @@ adapters.
   "OpenRouter · model-id". "Anthropic" or "Claude" appears only where that is
   the selected connection or an external client the person labelled that way.
 - **`runtime` connections.** The CLI runs its own loop. Flux still owns the
-  brief, the place, the tools (Flux MCP only; the CLI's built-in tools are off),
-  output parsing, proposals, stop and audit ([AIM-3](ai-modes.md#aim-3--the-runtime-transport)).
+  brief, the place, the tools (the exact Flux MCP tools only; every built-in and
+  local tool is off and read back before use), output parsing, proposals, stop
+  and audit ([AIM-3](ai-modes.md#hardening-no-local-tool)).
 - **Model differences are shown, not hidden.** A model with a smaller context
   window gets the same bounded input when it fits. When it does not fit, the run
   fails closed with a clear state, as any provider would.
@@ -133,18 +138,25 @@ no per-token price, so the price source and money reservation do not apply.
 Consent and pause stay. A use is bounded instead by:
 
 - runs per day;
-- one concurrent run per runtime;
-- a wall-clock timeout (default five minutes);
+- one serial lane per runtime slot (sign-in, status, run and sign-out);
+- a wall-clock timeout (default five minutes) and a no-event timeout;
 - maximum turns;
-- maximum output bytes.
+- MCP result size per tool call and per run;
+- maximum answer size.
 
-Usage shows as "your plan (cost not reported)", never as zero. A plan limit or
-expired login fails closed. Nothing falls back to an API key.
+Usage shows with a payer label from the sign-in method, for example "your Claude
+plan (plan limits or paid extra usage, not visible to Flux)", never as zero. A plan
+limit the CLI reports, or an expired login, fails closed. Nothing falls back to an
+API key. Whether the vendor draws paid extra usage instead is not visible to Flux
+([F-022](ai-modes.md#payer-and-data)).
 
 **Input bound.** The same conservative Flux token estimate bounds input for every
 provider. A provider token-count endpoint may tighten the estimate, never loosen
 the bound. This replaces O-007/O-008's preflight count with the Anthropic
 token-counting endpoint as the bound; that endpoint becomes one optional refinement.
+For `runtime` connections Flux does not assemble the input: the CLI fetches its
+context through MCP. There the bound is the MCP result size per call and per run,
+together with maximum turns.
 
 ## PROV-4 — security
 
@@ -172,8 +184,11 @@ blanket exclusion).**
 - A subscription enters mode (a) only through the unmodified official CLI
   (`claude`, `codex`) in the owner's runtime, signed in through the CLI's own flow
   ([AIM-3](ai-modes.md#aim-3--the-runtime-transport)).
-- Flux never holds the vendor token. It lives only in that owner's runtime volume,
-  never in the database, queue, logs, exports, API responses or admin UI.
+- Flux never persists or transmits the vendor token. It lives only in that owner's
+  binding directory in the runtime slot's volume, written by the CLI, never in the
+  database, queue, logs, exports, API responses or admin UI. The supervisor beside
+  the CLI and the host root could technically read it; the supervisor never opens
+  it.
 - Flux never collects or forwards a consumer sign-in, session or CLI credential
   (a pasted `claude setup-token`, `~/.codex/auth.json`, claude.ai or ChatGPT
   cookies), and never impersonates another application's OAuth client.
@@ -222,11 +237,14 @@ evidence is recorded. The requirement itself does not wait for that check.
 together with one other MCP client as a smoke test.
 
 **`runtime` connections ([F-022](ai-modes.md)).** Fake `claude` and `codex` binaries
-with the real argv and JSONL shapes run in Docker. They cover sign-in, real MCP calls
-with the run token, success, expired login, plan limit, timeout, crash, stop,
-oversized output, redaction, escape attempts and token absence on the Flux side.
-A flag contract test runs the pinned real CLIs' `--help`. A real-account smoke test
-for each CLI is dated and recorded, or reported unverified
+with the real argv and JSONL shapes run in Docker. They cover every sign-in method,
+real MCP calls with the run token, success, expired login, plan limit, timeouts,
+crash, stop, oversized output, an extra tool at start, redaction, escape attempts
+and token absence on the Flux side. A test checks that no Compose file mounts a
+Docker or Podman socket. A flag contract test runs the pinned real CLIs' `--help`,
+and a read-back test checks the pinned real Codex's effective config. A
+real-account smoke test for each CLI, with an adversarial no-tool check, is dated
+and recorded, or reported unverified
 ([test plan](research/2026-10-04-two-ai-modes-plan.md#docker-test-plan)).
 
 ## Implementation status (#179, 2026-10-02)
