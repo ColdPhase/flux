@@ -377,6 +377,40 @@ class MapPasteJourney(unittest.TestCase):
         expect(page.get_by_role("form")).to_have_count(0)
         self.assertEqual(self.stored(self.owner), self.before, "a cancelled image leaves nothing shared")
 
+    def test_08_a_failed_row_stops_the_run_keeps_the_rest_and_retries_with_the_same_keys(self):
+        page = self.page()
+        self.open(page)
+        path = f"**/api/v1/sketches/{self.sketch}/thoughts"
+        failed = []
+
+        def second_fails(route):
+            failed.append((route.request.post_data_json, route.request.headers["idempotency-key"]))
+            if len(failed) == 2:
+                route.fulfill(status=503, json={"message": "test: temporarily unavailable"})
+            else:
+                route.continue_()
+
+        page.route(path, second_fails)
+        self.paste(page, "Dim at dusk\nHold to switch off\nDouble tap to read")
+        draft = page.get_by_role("form", name="Pasted thoughts draft")
+        draft.get_by_label("Pasted thought 1 of 3", exact=True).press("Enter")
+        expect(page.locator(".sk-status")).to_contain_text("Saved 1 of 3 thoughts. The other 2 are kept in your draft")
+        expect(draft.get_by_role("textbox")).to_have_count(2)
+        expect(draft.get_by_label("Pasted thought 1 of 2", exact=True)).to_have_value("Hold to switch off")
+        expect(draft.get_by_label("Pasted thought 2 of 2", exact=True)).to_have_value("Double tap to read")
+        self.assertEqual(len(failed), 2, "the failed row stops the run")
+        stored = self.stored(self.owner)
+        self.assertEqual(sorted(t["text"] for t in stored["thoughts"] if t["id"] != self.parent), ["Dim at dusk"], "only the confirmed row is shared")
+        page.unroute(path, second_fails)
+        retried = []
+        page.on("request", lambda r: retried.append((r.post_data_json, r.headers["idempotency-key"])) if r.method == "POST" and r.url.endswith(f"/{self.sketch}/thoughts") else None)
+        draft.get_by_role("button", name="Save 2 thoughts").click()
+        expect(page.get_by_role("form", name="Pasted thoughts draft")).to_have_count(0)
+        saved = self.wait_stored(self.owner, lambda current: len(current["thoughts"]) == 4)
+        self.assertEqual(sorted(t["text"] for t in saved["thoughts"] if t["id"] != self.parent), ["Dim at dusk", "Double tap to read", "Hold to switch off"])
+        self.assertEqual(retried[0], failed[1], "the retry keeps the failed row's thought ID, text and request key")
+        self.assertEqual(len(retried), 2)
+
     def test_06_phone_paste_fills_the_empty_draft_through_the_clipboard_prompt(self):
         page = self.page(clipboard=True, viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
         self.open(page)
