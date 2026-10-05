@@ -64,7 +64,9 @@ fixture() { # checkout mode [state-json]
 sha256() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
 copy_tree() { # target
   mkdir -p "$1"
-  (cd "$here" && git ls-files -z --cached --others --exclude-standard | xargs -0 tar -cf - 2>/dev/null) | (cd "$1" && tar -xf -)
+  # Read the complete NUL-delimited inventory in one archive. xargs may split a large
+  # checkout into multiple tar invocations; an extractor then stops after the first archive.
+  (cd "$here" && git ls-files -z --cached --others --exclude-standard | tar --null -T - -cf -) | (cd "$1" && tar -xf -)
 }
 schema_of_tree() { ls "$(migration_dir "$1")" | sed -n 's/^\([0-9]\{4\}\)_.*\.sql$/\1/p' | sort | tail -n 1 | sed 's/^0*//'; }
 migrations_of_ref() { git -C "$here" ls-tree --name-only "$1" packages/db/migrations/ app/packages/db/migrations/ | sed -n 's#^.*/\([0-9]\{4\}_.*\.sql\)$#\1#p' | sort; }
@@ -135,6 +137,12 @@ while read -r path; do
   [ "$(sha256 "$bundle/$path")" = "$expected" ] || fail "bundle checksum mismatch for $path"
 done < "$work/manifest-paths"
 ls "$bundle"/docs/*.md >/dev/null 2>&1 || fail "bundle has no docs/*.md"
+# The fixture publishes a binary attachment through HTTP; the operator CLI must export its
+# exact bytes and the paired restore later rechecks them through the authorized download.
+file_id=$(printf '%s' "$state" | sed -n 's/.*"fileId":"\([0-9a-f-]*\)".*/\1/p')
+file_hex=$(printf '%s' "$state" | sed -n 's/.*"fileHex":"\([0-9a-f]*\)".*/\1/p')
+[ -n "$file_id" ] && [ -n "$file_hex" ] || fail "no binary attachment fixture"
+[ "$(od -An -v -tx1 "$bundle/files/$file_id" | tr -d ' \n')" = "$file_hex" ] || fail "CLI export attachment bytes differ"
 if flux_a export 'Community garden sensors' --as jonas@demo.flux.test --output "$work/denied.tar.gz" > "$work/denied.out" 2>&1; then fail "a member without project.manage exported"; fi
 grep -q 'may not manage' "$work/denied.out" || fail "no project.manage refusal: $(cat "$work/denied.out")"
 [ ! -e "$work/denied.tar.gz" ] || fail "a refused export left a file"

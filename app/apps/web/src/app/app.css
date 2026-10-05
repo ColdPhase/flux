@@ -102,12 +102,10 @@ body:has(.app) { background: var(--bg-chrome); }
 .side__sub { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-xs); color: var(--text-2); white-space: nowrap; }
 .side__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .side__dm .ui-avatar { flex: none; }
-/* The open project's conversations, indented under its row. */
+/* Sub-places indented under their row (Inbox → Notification settings). */
 .side__threads { margin: 0 0 6px 18px; padding-left: 8px; border-left: 1px solid var(--line); }
 .side__threads .side__item { min-height: 32px; margin: 1px 0; padding: 5px 8px; font-size: var(--fs-sm); }
 .side__threads .side__item.is-current { background: var(--bg-hover); color: var(--text); }
-.side__when { margin-left: auto; font-size: var(--fs-xs); color: var(--text-2); flex: none; }
-.side__threads .ui-btn { min-height: 28px; font-size: var(--fs-sm); }
 
 /* Account button and popover */
 .me { position: relative; margin: 8px -10px 0; border-top: 1px solid var(--line); padding: 6px 6px; padding-bottom: max(6px, env(safe-area-inset-bottom)); }
@@ -341,6 +339,8 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
   .side__item, .side__person, .side__threads .side__item { min-height: 44px; }
   .side__jump { min-height: 44px; }
   .side__add { width: 44px; height: 44px; margin: -10px -10px -10px 0; }
+  /* The 44px "+" reaches 10px below its heading row: an empty state there starts below it. */
+  .side__head + .side__empty { padding-top: 12px; }
   .side__threads .ui-btn { min-height: 44px; }
   .me__item { min-height: 44px; }
   .seg__b { min-height: 44px; }

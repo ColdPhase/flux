@@ -1,13 +1,14 @@
+import { messagePreview } from '@flux/contracts';
 import { randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, lt, sql } from 'drizzle-orm';
-import { schema, taskDiscussionRows, workRows } from '@flux/db';
+import { and, asc, desc, eq, lt, sql, type SQL } from 'drizzle-orm';
+import { fileRows, schema, taskDiscussionRows, workRows } from '@flux/db';
 import type {
-  Conversation, ConversationMessage, ConversationSummary, Material, MaterialOrDoc,
+  Conversation, ConversationMessage, ConversationRootWindow, ConversationSummary, Material, MaterialOrDoc,
   MaterialVersion, Page, PageQuery,
 } from '@flux/contracts';
 import {
   ConflictError, conversationUseCases, enforce, evaluateDraft, evaluateProject, InvalidInputError, NotFoundError,
-  messageContribution, positiveVersion, uuid,
+  lockAttachments, messageContribution, positiveVersion, uuid, type FileStorage,
   parsePage, recordEvent, type Database, type Principal, type Transaction,
 } from '@flux/core';
 import type { ConversationPort } from '@flux/core';
@@ -28,6 +29,7 @@ export interface ConversationEventLog {
     data: { conversationId: string; messageId: string }): Promise<void>;
 }
 export interface ConversationStoreOptions {
+  storage?: FileStorage;
   /** A composing caller's event collector (one final batch); by default each command records its event inline. */
   events?: ConversationEventLog;
   /**
@@ -51,12 +53,12 @@ function creator(row: ConversationRow, names: Map<string, string>) {
   return row.createdBy !== null ? { createdBy: row.createdBy } : { createdBy: null,
     createdByActor: { kind: 'agent' as const, id: row.createdByAgentId!, name: names.get(`agent:${row.createdByAgentId}`) ?? 'Agent' } };
 }
-function message(row: MessageRow, names: Map<string, string> = new Map()): ConversationMessage {
+function message(row: MessageRow & { files?: import('@flux/contracts').MessageFile[] }, names: Map<string, string> = new Map()): ConversationMessage {
   const contribution = messageContribution(row.contributionKind, row.resultId);
   return { id: row.id, conversationId: row.conversationId, ...(row.authorId !== null ? { authorId: row.authorId } : { authorId: null,
     author: { kind: 'agent' as const, id: row.authorAgentId!, name: names.get(`agent:${row.authorAgentId}`) ?? 'Agent' } }), body: row.body,
     source: row.sourceMaterialId && row.sourceMaterialVersion ? { materialId: row.sourceMaterialId, version: row.sourceMaterialVersion } : null,
-    sequence: row.sequence, createdAt: row.createdAt.toISOString(), ...(contribution ? { contribution } : {}) };
+    sequence: row.sequence, createdAt: row.createdAt.toISOString(), ...(contribution ? { contribution } : {}), ...(row.files?.length ? { files: row.files } : {}) };
 }
 
 function versionFields(row: VersionRow, principal: Principal) {
@@ -142,21 +144,27 @@ async function lockIdempotency(tx: Tx, projectId: string, author: Actor, clientI
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`${projectId.toLowerCase()}:${author.kind}:${author.id}:${clientId.toLowerCase()}`}))`);
 }
 
-async function sendInTransaction(tx: Tx, conversation: ConversationRow, author: Actor, input: Parameters<ConversationPort['sendMessage']>[2]): Promise<{ message: ConversationMessage; inserted: boolean }> {
+async function sendInTransaction(tx: Tx, conversation: ConversationRow, author: Actor, input: Parameters<ConversationPort['sendMessage']>[2], files?: import('@flux/contracts').MessageFile[]): Promise<{ message: ConversationMessage; inserted: boolean }> {
   const names = author.kind === 'agent' ? await workRows(tx).names([author]) : new Map<string, string>();
   const existing = await existingMessage(conversation.projectId, author, input.clientMessageId, tx);
   if (existing) {
     if (existing.requestFingerprint !== input.fingerprint || existing.conversationId !== conversation.id)
       throw new ConflictError('This clientMessageId was used for another message', 'IDEMPOTENCY_CONFLICT');
-    return { message: message(existing, names), inserted: false };
+    return { message: message({ ...existing, files: (await fileRows(tx).messageFiles([existing.id])).get(existing.id) }, names), inserted: false };
   }
   await sourceExists(conversation.projectId, input.source, tx);
-  const inserted = await taskDiscussionRows(tx).append(conversation, author, input);
+  const inserted = await taskDiscussionRows(tx).append(conversation, author, { ...input, files });
   return { message: message(inserted, names), inserted: true };
 }
 
 export function conversationStore(db: Database, options: ConversationStoreOptions = {}) {
   const agentAuthors = options.agentAuthors === true;
+  const attachments = async (tx: Tx, projectId: string, author: Actor, ids: readonly string[]) => {
+    if (!ids.length) return [];
+    if (!options.storage) throw new InvalidInputError('Files are unavailable from this entry point', 'AGENT_FILES_UNAVAILABLE');
+    return (await lockAttachments(fileRows(tx), options.storage, projectId.toLowerCase(), author, ids, () => new Date()))
+      .map((row) => ({ id: row.id, name: row.name, size: row.size! }));
+  };
   const eventLog = (tx: Tx): ConversationEventLog => options.events ?? { record: async (principal, workspaceId, kind, projectId, data) => {
     await recordEvent(eventPorts(tx), principal, workspaceId, kind, projectId, data);
   } };
@@ -179,10 +187,55 @@ export function conversationStore(db: Database, options: ConversationStoreOption
             .orderBy(desc(schema.projectMessages.sequence)).limit(1),
         ]);
         return { id: row.id, projectId: row.projectId, ...creator(row, names), createdAt: row.createdAt.toISOString(),
-          firstMessageBody: first?.body ?? '', lastMessageAt: last?.createdAt.toISOString() ?? row.createdAt.toISOString(),
-          lastMessageBody: last?.body ?? '' };
+          firstMessageBody: messagePreview(first?.body ?? '', first?.attachmentCount ?? 0), lastMessageAt: last?.createdAt.toISOString() ?? row.createdAt.toISOString(),
+          lastMessageBody: messagePreview(last?.body ?? '', last?.attachmentCount ?? 0) };
       }));
       return { items, total: count?.total ?? 0, ...page };
+    },
+
+    /**
+     * The project's one stream (UI116-1, 2026-10-02): each stored conversation's opening message,
+     * newest first by (created_at, id) and returned oldest first, with its thread's size. Current
+     * project access is checked and held before the cursor, counts and page are read; every root of
+     * the project shares the project audience, so nothing is filtered after the page is cut.
+     */
+    async listRoots(principal: Principal, projectId: string, window: Parameters<ConversationPort['listRoots']>[2]): Promise<ConversationRootWindow> {
+      return db.transaction(async (tx) => {
+        await requireProject(principal, projectId, tx, false, true);
+        const conversations = schema.projectConversations;
+        let before: SQL | undefined;
+        if (window.before !== null) {
+          const [cursor] = await tx.select({ id: conversations.id }).from(conversations)
+            .where(and(eq(conversations.id, window.before), eq(conversations.projectId, projectId)));
+          if (!cursor) throw new InvalidInputError('before must be a conversation of this project');
+          // Compared in SQL so the cursor keeps PostgreSQL's microsecond precision.
+          before = sql`(${conversations.createdAt}, ${conversations.id}) < (SELECT c.created_at, c.id FROM project_conversations c WHERE c.id = ${window.before})`;
+        }
+        const discussions = schema.projectTaskDiscussions;
+        const rows = await tx.select({
+          root: schema.projectMessages,
+          replyCount: sql<number>`(SELECT count(*)::int FROM project_messages r WHERE r.conversation_id = ${conversations.id} AND r.sequence > 1)`,
+          lastReplyAt: sql<string | null>`(SELECT max(r.created_at) FROM project_messages r WHERE r.conversation_id = ${conversations.id} AND r.sequence > 1)`,
+          taskId: discussions.workId,
+          taskTitle: schema.projectWorkItems.title,
+        }).from(conversations)
+          .innerJoin(schema.projectMessages, and(eq(schema.projectMessages.conversationId, conversations.id), eq(schema.projectMessages.sequence, 1)))
+          // A task's discussion is a conversation of the same project, so it shares the audience checked above.
+          .leftJoin(discussions, eq(discussions.conversationId, conversations.id))
+          .leftJoin(schema.projectWorkItems, and(eq(schema.projectWorkItems.id, discussions.workId), eq(schema.projectWorkItems.projectId, projectId)))
+          .where(and(eq(conversations.projectId, projectId), before))
+          .orderBy(desc(conversations.createdAt), desc(conversations.id))
+          .limit(window.limit + 1);
+        const hasMoreBefore = rows.length > window.limit;
+        const page = rows.slice(0, window.limit).reverse();
+        const names = await workRows(tx).names(page.filter((row) => row.root.authorAgentId !== null)
+          .map((row) => ({ kind: 'agent' as const, id: row.root.authorAgentId! })));
+        const files = await fileRows(tx).messageFiles(page.map((row) => row.root.id));
+        const roots = page.map((row) => ({ conversationId: row.root.conversationId, message: message({ ...row.root, files: files.get(row.root.id) }, names), replyCount: Number(row.replyCount),
+          lastReplyAt: row.lastReplyAt === null ? null : new Date(row.lastReplyAt).toISOString(),
+          ...(row.taskId !== null && row.taskTitle !== null ? { task: { workId: row.taskId, title: row.taskTitle } } : {}) }));
+        return { projectId, roots, rootPage: { hasMoreBefore, nextBefore: hasMoreBefore ? roots[0]!.conversationId : null, limit: window.limit } };
+      });
     },
 
     async getConversation(principal: Principal, conversationId: string, window: Parameters<ConversationPort['getConversation']>[2]): Promise<Conversation> {
@@ -194,13 +247,23 @@ export function conversationStore(db: Database, options: ConversationStoreOption
       const hasMoreBefore = rows.length > window.limit;
       const names = await workRows(db).names([row.createdByAgentId, ...rows.map((item) => item.authorAgentId)]
         .filter((actorId): actorId is string => actorId !== null).map((actorId) => ({ kind: 'agent' as const, id: actorId })));
-      const messages = rows.slice(0, window.limit).reverse().map((item) => message(item, names));
+      const files = await fileRows(db).messageFiles(rows.map((item) => item.id));
+      const messages = rows.slice(0, window.limit).reverse().map((item) => message({ ...item, files: files.get(item.id) }, names));
       const openingInWindow = messages.find((item) => item.sequence === 1);
-      const [opening] = openingInWindow ? [] : await db.select({ body: schema.projectMessages.body }).from(schema.projectMessages)
+      const [opening] = openingInWindow ? [] : await db.select({ body: schema.projectMessages.body, attachmentCount: schema.projectMessages.attachmentCount }).from(schema.projectMessages)
         .where(eq(schema.projectMessages.conversationId, row.id)).orderBy(asc(schema.projectMessages.sequence)).limit(1);
+      const [task] = await db.select({ workId: schema.projectTaskDiscussions.workId, title: schema.projectWorkItems.title }).from(schema.projectTaskDiscussions)
+        .innerJoin(schema.projectWorkItems, and(eq(schema.projectWorkItems.id, schema.projectTaskDiscussions.workId),
+          eq(schema.projectWorkItems.projectId, row.projectId), eq(schema.projectWorkItems.workspaceId, row.workspaceId)))
+        .innerJoin(schema.projectMessages, and(eq(schema.projectMessages.id, schema.projectTaskDiscussions.rootMessageId),
+          eq(schema.projectMessages.conversationId, row.id), eq(schema.projectMessages.projectId, row.projectId),
+          eq(schema.projectMessages.workspaceId, row.workspaceId), eq(schema.projectMessages.sequence, 1)))
+        .where(and(eq(schema.projectTaskDiscussions.conversationId, row.id), eq(schema.projectTaskDiscussions.projectId, row.projectId),
+          eq(schema.projectTaskDiscussions.workspaceId, row.workspaceId)));
       return { id: row.id, projectId: row.projectId, workspaceId: row.workspaceId,
         audience: { kind: 'project', projectId: row.projectId }, ...creator(row, names),
-        createdAt: row.createdAt.toISOString(), firstMessageBody: openingInWindow?.body ?? opening?.body ?? '', messages,
+        ...(task ? { task } : {}),
+        createdAt: row.createdAt.toISOString(), firstMessageBody: messagePreview(openingInWindow?.body ?? opening?.body ?? '', openingInWindow?.files?.length ?? opening?.attachmentCount ?? 0), messages,
         messagePage: { hasMoreBefore, nextBeforeSequence: hasMoreBefore ? messages[0]!.sequence : null, limit: window.limit } };
     },
 
@@ -217,19 +280,20 @@ export function conversationStore(db: Database, options: ConversationStoreOption
           const row = await locateConversation(principal, existing.conversationId, tx);
           return { id: row.id, projectId: row.projectId, workspaceId: row.workspaceId,
             audience: { kind: 'project' as const, projectId: row.projectId }, ...creator(row, names),
-            createdAt: row.createdAt.toISOString(), firstMessageBody: existing.body, messages: [message(existing, names)],
+            createdAt: row.createdAt.toISOString(), firstMessageBody: messagePreview(existing.body, existing.attachmentCount), messages: [message({ ...existing, files: (await fileRows(tx).messageFiles([existing.id])).get(existing.id) }, names)],
             messagePage: { hasMoreBefore: false, nextBeforeSequence: null, limit: 50 } };
         }
         await sourceExists(projectId, input.source, tx);
+        const files = await attachments(tx, projectId, author, input.attachmentIds);
         const [row] = await tx.insert(schema.projectConversations).values({
           id: randomUUID(), workspaceId: project.workspaceId, projectId,
           createdBy: author.kind === 'human' ? author.id : null, createdByAgentId: author.kind === 'agent' ? author.id : null,
         }).returning();
-        const first = await sendInTransaction(tx, row!, author, input);
+        const first = await sendInTransaction(tx, row!, author, input, files);
         if (first.inserted) await eventLog(tx).record(principal, project.workspaceId, 'project.conversation_created.v1', projectId, { conversationId: row!.id, messageId: first.message.id });
         return { id: row!.id, projectId, workspaceId: project.workspaceId,
           audience: { kind: 'project' as const, projectId }, ...creator(row!, names),
-          createdAt: row!.createdAt.toISOString(), firstMessageBody: first.message.body, messages: [first.message],
+          createdAt: row!.createdAt.toISOString(), firstMessageBody: messagePreview(first.message.body, first.message.files?.length), messages: [first.message],
           messagePage: { hasMoreBefore: false, nextBeforeSequence: null, limit: 50 } };
       });
     },
@@ -239,10 +303,12 @@ export function conversationStore(db: Database, options: ConversationStoreOption
       return db.transaction(async (tx) => {
         const row = await locateConversation(principal, conversationId, tx, true, true);
         await lockIdempotency(tx, row.projectId, author, input.clientMessageId);
+        const existing = await existingMessage(row.projectId, author, input.clientMessageId, tx);
+        const files = existing ? undefined : await attachments(tx, row.projectId, author, input.attachmentIds);
         // A reply to a task's bound conversation enters the task order (access, command identity, task row,
         // conversation sequence), exactly like a contribution; it never takes the conversation first.
         await taskDiscussionRows(tx).lockBoundTask(row.id);
-        const sent = await sendInTransaction(tx, row, author, input);
+        const sent = await sendInTransaction(tx, row, author, input, files);
         if (sent.message.sequence === 1)
           throw new ConflictError('This clientMessageId was used to start the conversation', 'IDEMPOTENCY_CONFLICT');
         if (sent.inserted) await eventLog(tx).record(principal, row.workspaceId, 'project.message_sent.v1', row.projectId, { conversationId: row.id, messageId: sent.message.id });

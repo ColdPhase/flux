@@ -196,7 +196,11 @@ This records the required final behavior; it does not assert that all of it is i
   Without a request, record `not run: <reason>` and zero usage. Manual work remains
   available regardless of the rule or provider.
 
-The current controlled integration still has production activation disabled.
+Production activation is off by default. **Operator switch (proposed 2026-10-03 in #212,
+pending peer acceptance on #58):** the worker runtime and rule enabling exist only when the
+instance operator sets `FLUX_BACKGROUND_COMPARISONS=on` for both the API and the worker. It is
+empty by default, the release `docker/compose.yaml` does not pass it, and an operator must not
+switch it on before the real-provider verification gates below pass.
 Source selection, source-change scheduling and outcome/accounting changes are
 separate verifiable implementation portions of this amendment.
 
@@ -313,8 +317,9 @@ If a cursor falls behind the retained event range, or ahead of a rebuilt log,
 reconsider every project with an enabled rule once and report the recovery.
 Cursor, due-project rows and candidate due time use one new migration numbered
 by actual merge order. Portable internal scheduling ports have focused DB and
-worker composition. Production enabling and provider registration remain off
-until their separate real-provider verification gates pass. This section records
+worker composition. Production enabling and provider registration stay off by default (the
+proposed operator switch above, pending acceptance on #58) and must not be switched on until their
+separate real-provider verification gates pass. This section records
 the accepted contract, not completed scheduling or production evidence.
 
 ### Interrupted reservation recovery (accepted 2026-09-30)

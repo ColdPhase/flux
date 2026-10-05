@@ -184,7 +184,7 @@ export function ProjectTasks() {
   const [attempt, setAttempt] = useState(() => crypto.randomUUID());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [search, setSearch] = useSearchParams();
+  const [search] = useSearchParams();
   const { me } = useShellData();
   const scroller = useRef<HTMLDivElement>(null);
   const { pathname, search: routerSearch } = useLocation();
@@ -234,15 +234,6 @@ export function ProjectTasks() {
     document.getElementById(jumpId.current)?.scrollIntoView({ block: 'start' });
     jumpId.current = null;
   }, [view]);
-
-  // `?open=work:<id>` (a doc reference opened in a new tab, #112) opens that object's details.
-  const open = search.get('open');
-  useEffect(() => {
-    const match = /^(work|decision|result):([0-9a-f-]{36})$/i.exec(open ?? '');
-    if (!match) return;
-    openDetails({ kind: match[1] as 'work' | 'decision' | 'result', id: match[2]! });
-    setSearch((current) => { current.delete('open'); return current; }, { replace: true });
-  }, [open, openDetails, setSearch]);
 
   useEffect(() => {
     const refresh = () => { if (document.visibilityState === 'visible') revalidator.revalidate(); };

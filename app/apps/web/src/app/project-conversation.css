@@ -58,6 +58,7 @@ button.project-convo__contribution { cursor: pointer; }
 .project-convo__citation { display: flex; justify-content: space-between; align-items: center; font-size: var(--fs-xs); color: var(--text-2); padding: 4px 4px 4px 8px; border: 1px solid var(--line); border-radius: var(--r-sm); margin-bottom: 6px; }
 .project-convo__citation button { min-width: 28px; min-height: 28px; }
 .project-convo__error { color: var(--danger); font-size: var(--fs-sm); margin-top: 6px; }
+.project-convo__hint { color: var(--text-2); font-size: var(--fs-sm); margin-top: 6px; }
 .project-convo__error button { text-decoration: underline; min-height: 32px; }
 .project-setup { max-width: 560px; }
 .material-view { max-width: 760px; }
@@ -67,7 +68,7 @@ button.project-convo__contribution { cursor: pointer; }
   .project-convo__in { padding: 8px 16px 16px; }
   .project-convo__message { padding-left: 44px; }
   .project-convo__composer { padding-top: 6px; padding-bottom: max(8px, env(safe-area-inset-bottom)); }
-  .project-convo__composer .composer__where, .project-convo__sources-t { display: none; }
+  .project-convo__composer .composer__where { display: none; }
   .project-convo__to { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-bottom: 4px; }
   .project-convo__current-thread { display: block; flex: 1; min-width: 0; color: var(--text-2); font-size: var(--fs-xs); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; }
   .project-convo__to .composer__audience { flex: 0 1 auto; max-width: 100%; margin: 0; }
@@ -124,7 +125,7 @@ button.project-convo__contribution { cursor: pointer; }
 .project-convo__composer .composer__send { margin-left: auto; }
 .project-convo__composer .project-convo__to { order: 2; display: flex; align-items: baseline; gap: 4px 10px; margin: 7px 4px 0; }
 .project-convo__composer .project-convo__to .composer__audience { margin: 0; font-size: var(--fs-xs); font-weight: 400; color: var(--text-2); }
-.project-convo__composer .project-convo__error { order: 3; }
+.project-convo__composer .project-convo__error, .project-convo__composer .project-convo__hint { order: 3; }
 @media (max-width: 680px) {
   .project-convo__in { padding: 22px 17px 12px; }
   /* Phones give the text the width: no avatars (11.6). */
