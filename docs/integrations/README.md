@@ -29,8 +29,9 @@ release:
 - `@flux/sdk`;
 - the GitHub bridge's internals.
 
-Flux 0.1 has **no outbound webhooks**. It also has no REST API for integrations,
-no supported SDK, no plugins and no export re-import. These are deferred, each
+Flux 0.1 has **no outbound webhooks**. It also has no general REST API for
+integrations beyond the export route, no supported SDK, no plugins and no export
+re-import. These are deferred, each
 with a condition, in [the deferral table](../product/extension-contracts.md#deferred-scope-record-for-249).
 
 ## Compatibility rules
