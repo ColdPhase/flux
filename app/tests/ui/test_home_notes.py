@@ -279,12 +279,13 @@ class HomeNotesJourney(unittest.TestCase):
         switching.get_by_label("Password").fill(PASSWORD)
         switching.get_by_role("button", name="Sign in").click()
         expect(switching.get_by_role("heading", name="Welcome, Olek")).to_be_visible()
-        # The stale tabs still show Nia's Home. Moving and saving check the session first, write nothing,
-        # and the tab catches up with the account that is signed in now.
-        self.offer(moving).get_by_role("button", name="Move 2 notes into Personal").click()
-        expect(moving.get_by_role("heading", name="Welcome, Olek")).to_be_visible()
-        typing.get_by_role("button", name="Save note").click()
-        expect(typing.get_by_role("heading", name="Welcome, Olek")).to_be_visible()
+        # Signing out in one tab retires every tab of this browser (#229): no tab keeps showing Nia's Home,
+        # so none can move her notes or save her typed note into the account signed in now.
+        for stale in (moving, typing):
+            expect(stale).to_have_url(re.compile("/sign-in"))
+            expect(stale.get_by_role("heading", name="Welcome, Nia Stale")).to_have_count(0)
+            expect(stale.get_by_role("button", name="Move 2 notes into Personal")).to_have_count(0)
+            expect(stale.get_by_role("button", name="Save note")).to_have_count(0)
         self.assertEqual(self.spaces(switching), [], "nothing was created or saved for Olek")
         self.assertEqual(sorted(item["id"] for item in self.in_browser(moving, nia["id"])), ["stale-1", "stale-2"],
                          "Nia's notes stay in this browser, still hers")
