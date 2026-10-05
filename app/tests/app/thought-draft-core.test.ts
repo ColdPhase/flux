@@ -131,3 +131,30 @@ test('blocked session storage still keeps this visit’s drafts, without throwin
   assert.equal(drafts.readThoughtDraft(key), null);
   drafts.forgetThoughtDrafts();
 });
+
+test('#252: pasted rows and a staged image survive a reload; malformed ones never do', async () => {
+  const { items } = installStorage();
+  const drafts = await visit();
+  const key = keyOf(ada);
+  const lines = [0, 1, 2].map((index) => ({ id: uuid(200 + index), linkId: uuid(300 + index), key: uuid(400 + index), text: `Line ${index + 1}`, x: 24, y: 24 + index * 112 }));
+  const batch = { ...thoughtDraft(''), lines };
+  drafts.writeThoughtDraft(key, batch);
+  assert.deepEqual((await visit()).readThoughtDraft(key), batch);
+  // A row over the thought limit is kept (it is marked and blocks Save), but a corrupt row never restores.
+  const long = { ...batch, lines: [{ ...lines[0]!, text: 'x'.repeat(1500) }] };
+  items[key] = JSON.stringify(long);
+  assert.deepEqual((await visit()).readThoughtDraft(key), long);
+  for (const broken of [{ ...batch, lines: [] }, { ...batch, lines: [{ ...lines[0]!, id: 'not-an-id' }] }, { ...batch, lines: Array.from({ length: 51 }, () => lines[0]) },
+    { ...batch, lines: [{ ...lines[0]!, x: 'left' }] }]) {
+    items[key] = JSON.stringify(broken);
+    assert.equal((await visit()).readThoughtDraft(key), null);
+  }
+  const image = { ...thoughtDraft('Pasted image'), file: { id: uuid(500), name: 'Pasted image 2026-10-05 14.32.png', size: 68 }, width: 240, height: 200 };
+  drafts.writeThoughtDraft(key, image);
+  assert.deepEqual((await visit()).readThoughtDraft(key), image);
+  for (const broken of [{ ...image, file: { ...image.file, id: 'guess' } }, { ...image, file: { ...image.file, size: 0 } },
+    { ...image, file: { ...image.file, size: 5 * 1024 * 1024 + 1 } }, { ...image, file: { ...image.file, name: '' } }, { ...image, lines }]) {
+    items[key] = JSON.stringify(broken);
+    assert.equal((await visit()).readThoughtDraft(key), null);
+  }
+});
