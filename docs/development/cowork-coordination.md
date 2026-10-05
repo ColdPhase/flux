@@ -263,7 +263,136 @@ exposure stays disabled until #152/#160 wire it.
 
 Out of scope here: the production publication provider and its grant,
 scheduling, checkpoint production, reviewer eligibility, the #238 fence, the
-#74 GitHub recipient adapter, unit creation and MCP exposure.
+#74 GitHub recipient adapter and MCP exposure. Unit creation is specified in
+the next section.
+
+### Unit creation (2026-10-05, peer review required)
+
+`coWorkUnitCreateInTransaction(tx, claims, command, policy)` is the internal
+caller-owned composition that creates work units. Until now only test fixtures
+inserted units, so claims and requests could not be used. It is not a public
+tool, and MCP exposure stays disabled until #152/#160 wire it.
+
+Authority comes from the owner's standing grant to the agent connection, used
+by the agent's own command through #152 `prepare`/`complete`. There is no new
+owner HTTP endpoint; owners keep using the existing grant API.
+
+- **Operation.** `cowork.unit.create` is a new #152 registry operation and
+  needs its owner's acceptance. Migration `0050` widens the closed grant
+  operation list with exactly this one operation.
+  - `objectId` is the native task the unit is for. `prepare` checks that it
+    is a task in this project, as for `work.update`.
+  - A grant with an exact target names that task.
+  - The class is the role of the unit being *created*. For example, the
+    author of a task holds a `review`-class grant to open a reviewer's unit.
+
+  The grant gives the creator no claim on the new unit. It gives the assignee
+  no authority either: the new unit is queued intent, like a request's
+  recipient. To claim it, the assignee still needs its own `cowork.claim`
+  grant of that class from its own owner.
+- **Payload (exact keys).**
+  `{ unitKey, expectedTaskVersion, assignmentConnectionId, parent }`.
+  - `unitKey` is the intent key, matching `^[a-zA-Z0-9_:.-]{1,200}$`.
+  - `parent` is `null` for a root unit. For a child unit it is
+    `{ unitId, generation, leaseId }`: the creator's live claim on a unit of
+    the same lineage.
+
+  Extra fields are refused before any write. So are lineage, run, state,
+  budget or authority fields and copied prompts.
+- **Root.** A root unit opens a new run on the task, with
+  `work_id = lineage_work_id = objectId`.
+  - The server derives the run ID from the creator connection, the task and
+    `unitKey`. The same intent therefore always maps to the same run, and the
+    existing unique key (task, run, `unitKey`) deduplicates it in the
+    database.
+  - The assignee must be the creator itself, because only a run's own
+    assignee opens it. Otherwise the code is `COWORK_ASSIGNMENT_REFUSED`.
+  - `COWORK_UNIT_TAKEN` refuses the root while any other open unit with
+    this role exists on the task, in any run. Open means `pending`, `claimed`
+    or `paused`, so a paused unit also blocks; moving it is a transfer, which
+    is a separate command.
+  - The rule is checked under the task row lock. It is the atomic guard
+    against two connections taking the same task, and for `plan` units it is
+    the sole plan-writer guard.
+- **Child.** The parent unit must be assigned to the creator in this project
+  and be on the same task (`objectId`). Otherwise the code is
+  `COWORK_UNIT_NOT_FOUND`. The creator must hold the parent's claim live in
+  this runtime session, with exactly this generation and lease, at fresh
+  database time; otherwise the code is `COWORK_CLAIM_LOST`.
+  - The new unit inherits the parent's `lineage_work_id` and `run_id`. It
+    cannot open or borrow another lineage.
+  - It may be assigned to another connection.
+- **Assignee.** The assignee must be a live, unrevoked connection of this
+  workspace that has this project selected and holds the
+  `flux.action.execute` scope. Otherwise the code is
+  `COWORK_ASSIGNEE_UNAVAILABLE`, which is content-free.
+  - Its connection row is locked `FOR SHARE` before any slot. A concurrent
+    revocation therefore either commits first, so creation is refused, or
+    waits and then stops the new unit with its trigger.
+- **Separation.** Within one run, the assignee of a review unit is never the
+  assignee of an execute unit, and the reverse also holds
+  (`COWORK_REVIEW_SEPARATION`).
+  - Under the server-owned `distinct_owner` policy, their owners must differ
+    as well.
+  - A connection that has been deleted has an unknown owner, so the check
+    fails closed.
+  - Admission still applies its own review separation to each request.
+- **Task fence.** The task must be at `expectedTaskVersion`, or the code is
+  `COWORK_VERSION_CONFLICT`. It must not be `done` or `not_pursued`, or the
+  code is `COWORK_TASK_CLOSED`. Creation never changes the task row, its
+  status or its human assignee.
+- **Bounds.** The server-owned `maximumRunUnits` (1–64) caps the units of one
+  run. The count is taken under the lineage root task lock and is never
+  refunded (`COWORK_BUDGET_EXHAUSTED`). Every created or re-issued unit spends
+  one grant use. Creation never creates a request lineage, request, delivery
+  intent, claim or capacity.
+- **Lock order.** The order is:
+  1. #152 `prepare`;
+  2. the assignee's connection row, `FOR SHARE`;
+  3. the sorted, de-duplicated creator and assignee connection slots;
+  4. the sorted project graph locks (#171) and direct prerequisites;
+  5. the complete sorted native task set: the task, the lineage root and
+     those prerequisites;
+  6. for a child, the parent unit row;
+  7. fresh `clock_timestamp()`, which fences the parent's lease;
+  8. the insert, or the read of the existing unit for the same intent;
+  9. the post-state hook and `complete`, then the caller's single final
+     event flush.
+
+  Nothing locks a graph or task after a unit row.
+- **Post-state.** A new kind, `cowork.unit_state`, has the fields
+  `{ workspaceId, projectId, unitId, taskId, lineageTaskId, runId, role,
+  assignmentConnectionId, version, state }`.
+  - It is bound to the command: `taskId` is `objectId` and `role` is the
+    class.
+  - `assignmentConnectionId` may differ from the acting connection. The
+    receipt itself records the creator.
+  - The hook rereads the canonical unit under the retained locks. A missing
+    hook fails closed.
+- **Duplicates and replay.** The same command ID and fingerprint replays the
+  original receipt as an observation. There is no fence, insert or debit.
+  Current authorization and the unchanged canonical post-state are rechecked.
+  Once the unit changes (claimed, renewed, released or stopped), the old
+  receipt is `COMMAND_POSTSTATE_STALE`.
+
+  A new command ID with the same intent returns the existing unit after the
+  same fences, as `status: 'existing'`, and spends one grant use. The same
+  intent means the same task, creator and `unitKey` for a root, and the same
+  run and `unitKey` for a child. If the role, assignment or lineage differs,
+  the code is `COWORK_UNIT_CONFLICT`. Nothing new is created, so the
+  `TAKEN`, cap and separation rules apply only to a new unit.
+- **Refusals.** Every refusal throws a typed domain error inside the caller's
+  transaction. No unit, slot row, grant use or receipt survives it.
+
+Out of scope here:
+
+- decomposing a plan into new native tasks (the rest of AC-1);
+- reassignment and transfer;
+- unit completion;
+- scheduling;
+- the #238 fence;
+- MCP exposure and #160 Start/Resume;
+- the Agents UI.
 
 ### Parent request participation
 
@@ -456,8 +585,9 @@ zero idle model calls; server mocks do not prove them.
 
 The accepted reservations are #58 `0026–0032`, #154 `0033`, #152 `0034`,
 #153 `0035`, #74 `0036`, and #154's actor extension `0037`. #153 proposes
-`0049` for the request claim/respond grant operations; it must be reserved on
-#153 before that branch is pushed.
+`0049` for the request claim/respond grant operations and `0050` for the unit
+creation grant operation. Both must be reserved on #153 before their branches
+are pushed.
 The human-only `0033` checkpoint is frozen; it does not supply agent authors.
 Do not edit already merged migrations. #153 must
 compose with #152's real identity/grant storage, #154's actual contribution

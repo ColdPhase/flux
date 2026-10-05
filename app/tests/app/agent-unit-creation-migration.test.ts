@@ -3,21 +3,16 @@ import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { AGENT_OPERATIONS, AGENT_PEER_REQUEST_CLASSES, type AgentOperation } from '@flux/contracts';
+import { AGENT_OPERATIONS, AGENT_PEER_REQUEST_CLASSES } from '@flux/contracts';
 import { assertExactMigrationLedger, assertMigrationSqlLedgerChange, assertMigrationStepLedger,
   FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
 import { pool } from './support/db.js';
 
 const migrationsDir = 'packages/db/migrations';
-/** Exactly the list 0049 writes. Later migrations (0050) widen it; 0049 itself stays frozen. */
-const OPERATIONS_AT_0049: readonly AgentOperation[] = ['work.create', 'work.update', 'result.record', 'decision.propose',
-  'map.create', 'map.rename', 'map.thought.create', 'map.thought.update', 'map.thought.delete', 'map.positions.update',
-  'map.link.create', 'map.link.delete', 'doc.create', 'doc.update', 'conversation.create', 'conversation.reply',
-  'cowork.claim', 'cowork.renew', 'cowork.release', 'cowork.request', 'cowork.request.claim', 'cowork.request.respond'];
 
-test('0049 widens only the closed grant operation CHECK to the recipient request operations: rows survive and it is idempotent', async () => {
+test('0050 widens only the closed grant operation CHECK to unit creation: rows survive, the list equals the contract and it is idempotent', async () => {
   const client = await pool.connect();
-  const schema = `flux153_responses_${randomUUID().replaceAll('-', '')}`;
+  const schema = `flux153_units_${randomUUID().replaceAll('-', '')}`;
   const owner = randomUUID(); const workspace = randomUUID(); const project = randomUUID(); const agent = randomUUID(); const connection = randomUUID();
   const historicGrant = randomUUID();
   try {
@@ -25,22 +20,22 @@ test('0049 widens only the closed grant operation CHECK to the recipient request
     await client.query(`CREATE SCHEMA ${schema}`);
     await client.query(`SET LOCAL search_path TO ${schema}, public, pg_catalog`);
     const manifest = await readMigrationManifest(migrationsDir, FLUX_SCHEMA_VERSION);
-    const migration = manifest.find((file) => file.version === 49);
-    assert.equal(migration?.name, '0049_cowork_request_responses.sql');
-    const upToCurrent = manifest.filter((file) => file.version <= 49);
+    const migration = manifest.find((file) => file.version === 50);
+    assert.equal(migration?.name, '0050_cowork_unit_creation.sql');
+    const upToCurrent = manifest.filter((file) => file.version <= 50);
     // The migrator owns ledger rows for files that do not self-record, so replay exactly its apply loop.
-    for (const file of upToCurrent.filter((file) => file.version < 49)) {
+    for (const file of upToCurrent.filter((file) => file.version < 50)) {
       await client.query(await readFile(join(migrationsDir, file.name), 'utf8'));
       await client.query('INSERT INTO flux_schema_version(version) VALUES ($1) ON CONFLICT DO NOTHING', [file.version]);
     }
     const before = await readAppliedMigrationVersions(client);
-    assert.deepEqual(before, upToCurrent.filter((file) => file.version < 49).map((file) => file.version), 'the current ledger before 0049');
-    assert.throws(() => assertExactMigrationLedger(upToCurrent, before), /0049_cowork_request_responses\.sql/, 'the migrator must apply 0049 before Flux starts');
+    assert.deepEqual(before, upToCurrent.filter((file) => file.version < 50).map((file) => file.version), 'the current ledger before 0050');
+    assert.throws(() => assertExactMigrationLedger(upToCurrent, before), /0050_cowork_unit_creation\.sql/, 'the migrator must apply 0050 before Flux starts');
 
-    await client.query("INSERT INTO auth_users (id,name,email) VALUES ($1,'Response owner',$2)", [owner, `${owner}@example.test`]);
-    await client.query("INSERT INTO workspaces (id,name,created_by) VALUES ($1,'Response space',$2)", [workspace, owner]);
-    await client.query("INSERT INTO projects (id,workspace_id,name,created_by) VALUES ($1,$2,'Response project',$3)", [project, workspace, owner]);
-    await client.query("INSERT INTO agents (id,workspace_id,name,owner_user_id,created_by) VALUES ($1,$2,'Response agent',$3,$3)", [agent, workspace, owner]);
+    await client.query("INSERT INTO auth_users (id,name,email) VALUES ($1,'Unit owner',$2)", [owner, `${owner}@example.test`]);
+    await client.query("INSERT INTO workspaces (id,name,created_by) VALUES ($1,'Unit space',$2)", [workspace, owner]);
+    await client.query("INSERT INTO projects (id,workspace_id,name,created_by) VALUES ($1,$2,'Unit project',$3)", [project, workspace, owner]);
+    await client.query("INSERT INTO agents (id,workspace_id,name,owner_user_id,created_by) VALUES ($1,$2,'Unit agent',$3,$3)", [agent, workspace, owner]);
     await client.query("INSERT INTO agent_connections (id,workspace_id,owner_user_id,agent_id,scopes) VALUES ($1,$2,$3,$4,$5)",
       [connection, workspace, owner, agent, ['flux.context.read', 'flux.action.execute']]);
     await client.query('INSERT INTO agent_connection_projects (workspace_id,connection_id,project_id) VALUES ($1,$2,$3)', [workspace, connection, project]);
@@ -61,13 +56,11 @@ test('0049 widens only the closed grant operation CHECK to the recipient request
       "SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid='agent_standing_grants'::regclass AND conname='agent_standing_grants_operation_check'")).rows;
     const listed = (definition: string) => [...definition.matchAll(/'([^']*)'::text/g)].map((match) => match[1]).sort();
 
-    // Before: the 0043 list does not know the recipient operations (the failing-before observation).
-    for (const operation of ['cowork.request.claim', 'cowork.request.respond']) {
-      const rejected = await refused(operation);
-      assert.equal(rejected.code, '23514'); assert.equal(rejected.constraint, 'agent_standing_grants_operation_check');
-    }
+    // Before: the 0049 list does not know unit creation (the failing-before observation).
+    const rejected = await refused('cowork.unit.create');
+    assert.equal(rejected.code, '23514'); assert.equal(rejected.constraint, 'agent_standing_grants_operation_check');
     const prior = listed((await constraint())[0]!.definition as string);
-    await insert(historicGrant, 'cowork.request', 'execute');
+    await insert(historicGrant, 'cowork.request.claim', 'review');
     const historic = (await client.query('SELECT * FROM agent_standing_grants WHERE id=$1', [historicGrant])).rows[0];
 
     // Apply exactly as tooling/migrate.ts does, including its ledger checks.
@@ -80,15 +73,13 @@ test('0049 widens only the closed grant operation CHECK to the recipient request
     assertMigrationStepLedger(before, after, migration!);
     assertExactMigrationLedger(upToCurrent, after);
 
-    // After: rows are untouched; the database list is exactly the 0049 list, i.e. the prior list plus the two operations.
-    // The exact contract-list equality now lives in the 0050 test.
+    // After: rows are untouched; the database list is exactly the contract list, i.e. the prior list plus unit creation.
     assert.deepEqual((await client.query('SELECT * FROM agent_standing_grants WHERE id=$1', [historicGrant])).rows[0], historic);
     const definition = (await constraint())[0]!.definition as string;
-    assert.deepEqual(listed(definition), [...OPERATIONS_AT_0049].sort());
-    assert.deepEqual(listed(definition), [...prior, 'cowork.request.claim', 'cowork.request.respond'].sort());
-    assert.ok(OPERATIONS_AT_0049.every((operation) => AGENT_OPERATIONS.includes(operation)), 'every 0049 operation is still a contract operation');
-    for (const operation of OPERATIONS_AT_0049) for (const peerRequestClass of AGENT_PEER_REQUEST_CLASSES) await insert(randomUUID(), operation, peerRequestClass);
-    for (const operation of ['cowork.request.ack', 'cowork.respond', 'cowork.request.review', 'COWORK.REQUEST.CLAIM', 'cowork.request.claim ', '']) {
+    assert.deepEqual(listed(definition), [...AGENT_OPERATIONS].sort());
+    assert.deepEqual(listed(definition), [...prior, 'cowork.unit.create'].sort());
+    for (const operation of AGENT_OPERATIONS) for (const peerRequestClass of AGENT_PEER_REQUEST_CLASSES) await insert(randomUUID(), operation, peerRequestClass);
+    for (const operation of ['cowork.unit', 'cowork.units.create', 'cowork.unit.assign', 'cowork.unit.transfer', 'COWORK.UNIT.CREATE', 'cowork.unit.create ', '']) {
       const error = await refused(operation);
       assert.equal(error.code, '23514', `${JSON.stringify(operation)} stays refused`); assert.equal(error.constraint, 'agent_standing_grants_operation_check');
     }

@@ -87,7 +87,7 @@ const POSTCONDITIONS: Record<AgentExecutionCommand['operation'], readonly AgentP
   'doc.create': ['doc'], 'doc.update': ['doc'], 'conversation.create': ['message'], 'conversation.reply': ['message'],
   'cowork.claim': ['cowork.claim_state'], 'cowork.renew': ['cowork.claim_state'], 'cowork.release': ['cowork.claim_state'],
   'cowork.request': ['cowork.request_state'], 'cowork.request.claim': ['cowork.request_state'],
-  'cowork.request.respond': ['cowork.request_state'],
+  'cowork.request.respond': ['cowork.request_state'], 'cowork.unit.create': ['cowork.unit_state'],
 };
 function postconditionInvalid(): never {
   throw new DomainError(409, 'COMMAND_POSTSTATE_INVALID', 'A command needs its exact canonical produced post-state');
@@ -105,7 +105,8 @@ export function validateAgentPostconditions(operation: AgentExecutionCommand['op
   for (const raw of value) {
     if (!raw || typeof raw !== 'object' || !POSTCONDITIONS[operation]?.includes(raw.kind)) postconditionInvalid();
     const condition = raw as AgentPostcondition;
-    const identity = `${condition.kind}:${condition.kind === 'cowork.request_state' ? condition.requestId : 'id' in condition ? condition.id : condition.unitId}`;
+    const identity = `${condition.kind}:${condition.kind === 'cowork.request_state' ? condition.requestId
+      : condition.kind === 'cowork.unit_state' ? condition.unitId : 'id' in condition ? condition.id : condition.unitId}`;
     if (identities.has(identity)) postconditionInvalid();
     identities.add(identity); counts.set(condition.kind, (counts.get(condition.kind) ?? 0) + 1);
     let fields: string[];
@@ -123,6 +124,11 @@ export function validateAgentPostconditions(operation: AgentExecutionCommand['op
       if (![condition.workspaceId, condition.projectId, condition.connectionId, condition.unitId, condition.requestId].every(isUuid)
         || !AGENT_PEER_REQUEST_CLASSES.includes(condition.role) || !integer(condition.version)
         || !['queued', 'deferred', 'claimed', 'resolved', 'declined', 'superseded', 'expired', 'cancelled'].includes(condition.state)) postconditionInvalid();
+    } else if (condition.kind === 'cowork.unit_state') {
+      fields = ['kind', 'workspaceId', 'projectId', 'unitId', 'taskId', 'lineageTaskId', 'runId', 'role', 'assignmentConnectionId', 'version', 'state'];
+      if (![condition.workspaceId, condition.projectId, condition.unitId, condition.taskId, condition.lineageTaskId, condition.runId,
+        condition.assignmentConnectionId].every(isUuid) || !AGENT_PEER_REQUEST_CLASSES.includes(condition.role) || !integer(condition.version)
+        || !['pending', 'claimed', 'paused', 'completed', 'stopped'].includes(condition.state)) postconditionInvalid();
     } else {
       if (!isUuid(condition.id)) postconditionInvalid();
       if (condition.kind === 'result' || condition.kind === 'message') fields = ['kind', 'id'];
