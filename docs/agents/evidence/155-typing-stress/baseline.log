@@ -1,0 +1,240 @@
+ Volume flux155socket_teststate  Creating
+ Volume flux155socket_teststate  Created
+ Container flux155socket-mailpit-1  Running
+ Container flux155socket-db-1  Running
+ Container flux155socket-worker-1  Running
+ Container flux155socket-api-1  Running
+ Container flux155socket-db-1  Waiting
+ Container flux155socket-db-1  Healthy
+ Container flux155socket-migrate-1  Starting
+ Container flux155socket-migrate-1  Started
+ Container flux155socket-migrate-1  Waiting
+ Container flux155socket-migrate-1  Waiting
+ Container flux155socket-migrate-1  Exited
+ Container flux155socket-migrate-1  Exited
+{
+  "timingDefinition": {
+    "inputToReceipt": "driver send to first ready remote snapshot containing actor after observed stop",
+    "acceptedToReceipt": "signed first receipt minus API publish-promise completion, same monotonic clock; may be negative",
+    "handler": "command execution including authority and publication, queue reported separately"
+  },
+  "durable": {
+    "before": {
+      "messages": "1",
+      "events": "65",
+      "notifications": "0",
+      "outbox": "0",
+      "audience": "1088"
+    },
+    "after": {
+      "messages": "1",
+      "events": "65",
+      "notifications": "0",
+      "outbox": "0",
+      "audience": "1088"
+    },
+    "checkFailure": null
+  },
+  "source": "9a39b1ea81972a9f7a58b1e901395a3b88fee3e7",
+  "phase": "dense-initial-publication",
+  "failure": "32 publishers visible to all128 recipients: transport did not sustain the workload",
+  "runtime": {
+    "node": "v24.21.0",
+    "driver": "ws8.22 real cookie sockets",
+    "browserDom": "not measured in this experiment",
+    "memoryScope": "in-process production route plus driver, not API-only RSS",
+    "cpuProfile": "Docker development allocation"
+  },
+  "dataset": {
+    "actors": 32,
+    "requestedSockets": 128,
+    "connectedSockets": 128,
+    "publishers": 32,
+    "additionalWatchers": 96,
+    "warmups": 0,
+    "requestedMeasured": 200,
+    "completedMeasured": 0,
+    "measuredElapsedMs": 0
+  },
+  "distributions": {
+    "inputToReceipt": {
+      "count": 0,
+      "p50Ms": null,
+      "p95Ms": null,
+      "maxMs": null
+    },
+    "acceptedToReceipt": {
+      "count": 0,
+      "p50Ms": null,
+      "p95Ms": null,
+      "maxMs": null
+    },
+    "stopToReceipt": {
+      "count": 0,
+      "p50Ms": null,
+      "p95Ms": null,
+      "maxMs": null
+    }
+  },
+  "api": {
+    "published": 64,
+    "phases": {
+      "command": {
+        "started": 160,
+        "completed": 160,
+        "carryIn": 0,
+        "inFlight": 0,
+        "peak": 32,
+        "failed": 0,
+        "meanMs": 5.476881193750103,
+        "maxMs": 46.90825000000041,
+        "p50UpperMs": 2,
+        "p95UpperMs": 16,
+        "overflow2048Ms": 0
+      },
+      "queue": {
+        "started": 160,
+        "completed": 160,
+        "carryIn": 0,
+        "inFlight": 0,
+        "peak": 0,
+        "failed": 0,
+        "meanMs": 0.0030370250001055866,
+        "maxMs": 0.055666000000201166,
+        "p50UpperMs": 1,
+        "p95UpperMs": 1,
+        "overflow2048Ms": 0
+      },
+      "delivery": {
+        "started": 9241,
+        "completed": 9129,
+        "carryIn": 0,
+        "inFlight": 112,
+        "peak": 128,
+        "failed": 0,
+        "meanMs": 76.41880435053154,
+        "maxMs": 2027.7178329999988,
+        "p50UpperMs": 75,
+        "p95UpperMs": 105,
+        "overflow2048Ms": 0
+      },
+      "session": {
+        "started": 857,
+        "completed": 857,
+        "carryIn": 0,
+        "inFlight": 0,
+        "peak": 116,
+        "failed": 0,
+        "meanMs": 9.540912663944058,
+        "maxMs": 20.6612499999992,
+        "p50UpperMs": 11,
+        "p95UpperMs": 14,
+        "overflow2048Ms": 0
+      },
+      "sender": {
+        "started": 3696,
+        "completed": 3584,
+        "carryIn": 0,
+        "inFlight": 112,
+        "peak": 128,
+        "failed": 0,
+        "meanMs": 69.22736566183026,
+        "maxMs": 126.34854199999972,
+        "p50UpperMs": 67,
+        "p95UpperMs": 94,
+        "overflow2048Ms": 0
+      },
+      "recipient": {
+        "started": 18354,
+        "completed": 18354,
+        "carryIn": 0,
+        "inFlight": 0,
+        "peak": 128,
+        "failed": 0,
+        "meanMs": 36.63098340198325,
+        "maxMs": 80.58308299999953,
+        "p50UpperMs": 37,
+        "p95UpperMs": 55,
+        "overflow2048Ms": 0
+      },
+      "publish": {
+        "started": 64,
+        "completed": 64,
+        "carryIn": 0,
+        "inFlight": 0,
+        "peak": 32,
+        "failed": 0,
+        "meanMs": 16.22009700000052,
+        "maxMs": 30.73199999999997,
+        "p50UpperMs": 10,
+        "p95UpperMs": 30,
+        "overflow2048Ms": 0
+      }
+    }
+  },
+  "work": {
+    "contexts": 0,
+    "entries": 32,
+    "watermarks": 32,
+    "sockets": 0,
+    "pendingBroker": 32,
+    "pumping": true,
+    "admissions": 112,
+    "humans": 32
+  },
+  "memory": [
+    {
+      "atMs": 18340.046967,
+      "rss": 552423424,
+      "heapUsed": 196248056,
+      "work": {
+        "contexts": 1,
+        "entries": 0,
+        "watermarks": 0,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 19339.857216,
+      "rss": 574951424,
+      "heapUsed": 260158048,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 20339.673217,
+      "rss": 581050368,
+      "heapUsed": 129123160,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "admissions": 128,
+        "humans": 32
+      }
+    }
+  ],
+  "transport": {
+    "frames": 9241,
+    "bytes": 1210980,
+    "closed": 128,
+    "codes": {
+      "1011": 128
+    }
+  }
+}

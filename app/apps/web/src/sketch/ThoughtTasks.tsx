@@ -1,29 +1,48 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { Link } from 'react-router';
-import type { WorkItem, WorkStatus } from '@flux/contracts';
+import { Link, useRevalidator } from 'react-router';
+import type { ThoughtTaskRow, WorkThoughtTasks } from '@flux/contracts';
 import { Icon, IconButton, MEDIA, Sheet, duration, play, trapTab, useMediaQuery } from '../ui';
 import { STATUS_LABEL } from '../work/format';
+import { getWorkThoughtTasks, thoughtChunks } from '../work/read-api';
+import { useWorkRead } from '../work/useWorkRead';
 import { quote } from './format';
 
-/** Work still moving comes first, then what was finished; parked work goes last among its peers. */
-const ORDER: Record<WorkStatus, number> = { in_progress: 0, blocked: 1, open: 2, done: 3, not_pursued: 4 };
+/** One thought's linked tasks: the exact count and the tasks of its bounded window. */
+export interface ThoughtTasksEntry {
+  count: number;
+  /** In chooser order; all of them when `complete`, else read on their own when the chooser opens. */
+  tasks: ThoughtTaskRow[];
+  complete: boolean;
+  accountId: string;
+  revision: number;
+}
 
 /**
- * The project's tasks under each thought (UI116-4). Links are many-to-many: one task made from
- * two thoughts is listed under both, and a thought can lead to several tasks. Only links that
- * the task itself holds to a thought count, whether it was created from it or related to it.
+ * The tasks linked to each thought of one project sketch (UI116-4, #170): bounded native reads
+ * of at most 100 thoughts each, never the project's work collection. Many-to-many: one task made
+ * from two thoughts is listed under both. A refresh keeps the current counts until it lands.
  */
-export function tasksByThought(work: WorkItem[]): Map<string, WorkItem[]> {
-  const byThought = new Map<string, WorkItem[]>();
-  for (const item of work) {
-    const thoughts = new Set(item.links.flatMap((link) => link.from.type === 'work' && link.from.id === item.id && link.to.type === 'thought' ? [link.to.id] : []));
-    for (const id of thoughts) byThought.set(id, [...(byThought.get(id) ?? []), item]);
-  }
-  for (const items of byThought.values()) {
-    items.sort((a, b) => Number(!!a.parked) - Number(!!b.parked) || ORDER[a.status] - ORDER[b.status] || a.createdAt.localeCompare(b.createdAt));
-  }
-  return byThought;
+export function useThoughtTasks(accountId: string, projectId: string | null, thoughtIds: readonly string[], revision: number): Map<string, ThoughtTasksEntry> {
+  const idle = useRevalidator().state === 'idle';
+  const key = thoughtIds.join(',');
+  const chunks = useMemo(() => projectId && key ? thoughtChunks(key.split(',')) : [], [projectId, key]);
+  const selector = chunks.join(' ');
+  const scope = useMemo(() => projectId && selector ? { accountId, projectId, selector: `thought-tasks ${selector}` } : null, [accountId, projectId, selector]);
+  const load = useCallback((signal: AbortSignal) => Promise.all(selector.split(' ').map((ids) => getWorkThoughtTasks(projectId!, ids, signal))), [projectId, selector]);
+  const read = useWorkRead<WorkThoughtTasks[]>(scope, load, revision, idle);
+  const pages = read.phase === 'ready' || read.phase === 'refreshing' ? read.value : null;
+  return useMemo(() => {
+    const value = new Map<string, ThoughtTasksEntry>();
+    for (const page of pages ?? []) {
+      const rows = new Map(page.items.map((item) => [item.id, item]));
+      for (const { thoughtId, tasks: count } of page.counts) {
+        const tasks = page.links.flatMap((link) => link.thoughtId === thoughtId && rows.has(link.workId) ? [rows.get(link.workId)!] : []);
+        value.set(thoughtId, { count, tasks, complete: tasks.length === count, accountId, revision });
+      }
+    }
+    return value;
+  }, [pages, accountId, revision]);
 }
 
 /** The short task ID a Tasks card shows; the full ID is the link's title and target. */
@@ -35,7 +54,7 @@ const count = (n: number) => `${n} ${n === 1 ? 'task' : 'tasks'}`;
 
 export interface ThoughtTasksProps {
   thought: { id: string; text: string };
-  tasks: WorkItem[];
+  tasks: ThoughtTasksEntry;
   projectId: string;
   /** `map`: "2 tasks" under the thought's text; `list`: a compact count at the end of the row. */
   variant: 'map' | 'list';
@@ -48,8 +67,20 @@ export interface ThoughtTasksProps {
  * screens, a sheet on a phone. It only reads: opening and closing never select, move or scroll
  * the map, and closing returns focus to the count.
  */
-export function ThoughtTasks({ thought, tasks, projectId, variant, onOpenTask }: ThoughtTasksProps) {
+export function ThoughtTasks({ thought, tasks: entry, projectId, variant, onOpenTask }: ThoughtTasksProps) {
   const [open, setOpen] = useState(false);
+  // A thought whose tasks were not all in its sketch-wide window reads its own (at most 100).
+  const idle = useRevalidator().state === 'idle';
+  const own = open && !entry.complete;
+  const ownScope = useMemo(() => own ? { accountId: entry.accountId, projectId, selector: `thought-tasks-one ${thought.id}` } : null, [own, entry.accountId, projectId, thought.id]);
+  const loadOwn = useCallback((signal: AbortSignal) => getWorkThoughtTasks(projectId, thought.id, signal), [projectId, thought.id]);
+  const ownRead = useWorkRead<WorkThoughtTasks>(ownScope, loadOwn, entry.revision, idle);
+  const ownPage = ownRead.phase === 'ready' || ownRead.phase === 'refreshing' ? ownRead.value : null;
+  const tasks = entry.complete ? entry.tasks : ownPage ? ownPage.links.flatMap((link) => {
+    const row = ownPage.items.find((item) => item.id === link.workId);
+    return link.thoughtId === thought.id && row ? [row] : [];
+  }) : entry.tasks;
+  const total = entry.count;
   const anchor = useRef<HTMLButtonElement>(null);
   const phone = useMediaQuery(MEDIA.phone);
   const titleId = useId();
@@ -75,7 +106,7 @@ export function ThoughtTasks({ thought, tasks, projectId, variant, onOpenTask }:
   const body = (
     <div className="sk-tasks">
       <div className="sk-tasks__head">
-        <p className="sk-tasks__k"><Icon name="tasks" size={12} />{count(tasks.length)} linked to this thought</p>
+        <p className="sk-tasks__k"><Icon name="tasks" size={12} />{count(total)} linked to this thought</p>
         <h2 className="sk-tasks__t" id={titleId}>{thought.text}</h2>
         <IconButton icon="x" label="Close" className="sk-tasks__close" onClick={() => close(true)} />
       </div>
@@ -94,6 +125,7 @@ export function ThoughtTasks({ thought, tasks, projectId, variant, onOpenTask }:
           </li>
         ))}
       </ul>
+      {tasks.length < total ? <p className="sk-tasks__note" role="status">{ownRead.phase === 'unavailable' ? 'The other linked tasks could not be loaded.' : ownPage ? `${total - tasks.length} more linked ${total - tasks.length === 1 ? 'task is' : 'tasks are'} not listed here.` : 'Loading the other linked tasks…'}</p> : null}
       <p className="sk-tasks__note">The same tasks as on Tasks. Opening one changes nothing on the map.</p>
     </div>
   );
@@ -101,7 +133,7 @@ export function ThoughtTasks({ thought, tasks, projectId, variant, onOpenTask }:
   return (
     <>
       <button ref={anchor} type="button" className={`sk-work sk-work--${variant}`} aria-haspopup="dialog" aria-expanded={open}
-        aria-label={`${count(tasks.length)} linked to ${quote(thought.text)}`}
+        aria-label={`${count(total)} linked to ${quote(thought.text)}`}
         onClick={(event) => {
           // Some touch browsers never focus a tapped button; the chooser returns here when it closes.
           event.currentTarget.focus({ preventScroll: true });
@@ -109,7 +141,7 @@ export function ThoughtTasks({ thought, tasks, projectId, variant, onOpenTask }:
         }}>
         <Icon name="tasks" size={12} />
         {/* Worded and with a chevron in the List too, so it reads as a button, not as metadata. */}
-        <span>{count(tasks.length)}</span>
+        <span>{count(total)}</span>
         <Icon name="chevron-right" size={11} />
       </button>
       {phone

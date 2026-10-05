@@ -1,0 +1,118 @@
+ Container flux155browser-db-1  Running
+ Container flux155browser-mailpit-1  Running
+ Container flux155browser-worker-1  Running
+ Container flux155browser-api-1  Running
+ Container flux155browser-db-1  Waiting
+ Container flux155browser-db-1  Healthy
+ Container flux155browser-migrate-1  Starting
+ Container flux155browser-migrate-1  Started
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Exited
+ Container flux155browser-migrate-1  Exited
+▶ architecture boundaries
+  ✔ the repository has no dependency violation outside the recorded allowlist (128.059959ms)
+  ✔ every allowlist entry names its tracking issue and a reason (0.340917ms)
+  ✔ the push use cases in core stay free of adapters, including through helpers (0.971333ms)
+  ✔ the sketch use cases in core stay free of adapters, including through helpers (#69) (0.569292ms)
+  ✔ the direct-message use cases in core stay free of adapters, including through helpers (#107) (0.401875ms)
+  ✔ the bounded work read use cases stay free of persistence and transport adapters (#155) (0.510125ms)
+  ✔ the rules reject each kind of boundary violation (self-test) (1.124834ms)
+  ✔ the allowlist comparison reports new and fixed violations (0.2245ms)
+✔ architecture boundaries (133.759208ms)
+▶ bounded native PostgreSQL work key selection
+  ✖ all native bands remain reachable through bounded forward and direct previous pages
+  ✖ mine uses native owner/result creator while keeping proposals and excluding rules
+  ✖ choice predicates retain parked result choices, full native kinds and literal wildcard search
+  ✖ a surviving boundary alone yields no false strict escape; an older/newer scope retains its actual opposite
+  ✖ held actual SQL keeps its original cursor for empty-page counts despite caller mutation
+✖ bounded native PostgreSQL work key selection (308.290417ms)
+✔ task URL fields default explicitly and reject duplicates/unknown/coerced selectors (2.465542ms)
+✔ native choices stay disjoint; parked result choices keep a separate deep selection (0.520292ms)
+✔ source batch bounds apply before deduplication and conversation/source cursors are exclusive (0.642667ms)
+✔ relationship batches retain kind identities and reject malformed/oversized selectors (0.270458ms)
+✔ cursor survives direct reload/previous direction with all PostgreSQL microseconds (0.472791ms)
+✔ cursor cannot transfer between account/project/endpoint/selector/limit/object window (0.302167ms)
+✔ normalized 100-source selector produces a fixed-size scoped cursor without source identities (0.490458ms)
+✔ unknown/noncanonical/duplicate cursor JSON cannot bypass the closed envelope (0.606292ms)
+✔ page metadata emits both native directions and keeps an empty changed-page escape (0.87075ms)
+✔ combined view and summary share one observation and use access checked after its transaction (2.994792ms)
+✔ caller and query are captured before asynchronous work; result deep selection never changes its eligible page (0.554958ms)
+✔ invalid requests and scope-mismatched cursors do no policy or repository work (0.920125ms)
+✔ project denial precedes reads; failed required data becomes unavailable, never zero or a partial result (0.677792ms)
+✔ revocation at the final fence suppresses the whole assembled response (0.332541ms)
+✔ every required message is validated even when it has no edges, before association counts and hydration (1.317208ms)
+✔ required final-fence failures become unavailable; native session and scope rejection stay exact (1.157084ms)
+✔ association rows, all-source counts and global edges keep independent bounded scopes (0.897833ms)
+✔ an edge continuation fails on a changed object window before any edge or source hydration (1.085917ms)
+ℹ tests 31
+ℹ suites 2
+ℹ pass 26
+ℹ fail 0
+ℹ cancelled 5
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1292.525293
+
+✖ failing tests:
+
+test at tests/app/work-read-keys.test.ts:1:3377
+✖ all native bands remain reachable through bounded forward and direct previous pages
+  'test did not finish before its parent and was cancelled'
+
+test at tests/app/work-read-keys.test.ts:1:4628
+✖ mine uses native owner/result creator while keeping proposals and excluding rules
+  'test did not finish before its parent and was cancelled'
+
+test at tests/app/work-read-keys.test.ts:1:5170
+✖ choice predicates retain parked result choices, full native kinds and literal wildcard search
+  'test did not finish before its parent and was cancelled'
+
+test at tests/app/work-read-keys.test.ts:1:5890
+✖ a surviving boundary alone yields no false strict escape; an older/newer scope retains its actual opposite
+  'test did not finish before its parent and was cancelled'
+
+test at tests/app/work-read-keys.test.ts:1:6878
+✖ held actual SQL keeps its original cursor for empty-page counts despite caller mutation
+  'test did not finish before its parent and was cancelled'
+
+test at tests/app/work-read-keys.test.ts:1:764
+✖ bounded native PostgreSQL work key selection (308.290417ms)
+  Error: Failed query: insert into "project_decisions" ("id", "workspace_id", "project_id", "title", "rationale", "status", "proposed_by_kind", "proposed_by_id", "decided_by", "decided_at", "supersedes_id", "superseded_by_id", "superseded_at", "version", "created_at", "updated_at") values ($1, $2, $3, $4, default, $5, $6, $7, default, default, default, default, default, default, $8, default), ($9, $10, $11, $12, default, $13, $14, $15, default, default, default, default, default, default, $16, default), ($17, $18, $19, $20, default, $21, $22, $23, default, default, default, default, default, default, $24, default)
+  params: f239f862-fd45-4152-83ae-e69a1fd17c73,54ba305b-36d3-44ac-a6c6-4a923ebc0bd3,dc0e84a1-abfa-4c23-b4b1-7b0005e14279,Decision 0,proposed,human,2d2b5c57-1d55-4841-ab38-557fe2550651,2026-10-01T06:00:00.123Z,46be380b-adb3-4cd1-915e-4e0f0962f687,54ba305b-36d3-44ac-a6c6-4a923ebc0bd3,dc0e84a1-abfa-4c23-b4b1-7b0005e14279,Decision 1,accepted,human,2d2b5c57-1d55-4841-ab38-557fe2550651,2026-10-01T06:00:00.123Z,ce254666-d224-4506-a9b6-48e248f9ccf0,54ba305b-36d3-44ac-a6c6-4a923ebc0bd3,dc0e84a1-abfa-4c23-b4b1-7b0005e14279,Decision 2,superseded,human,2d2b5c57-1d55-4841-ab38-557fe2550651,2026-10-01T06:00:00.123Z
+      at NodePgPreparedQuery.queryWithCache (/app/node_modules/.pnpm/drizzle-orm@0.45.3_@types+pg@8.15.5_kysely@0.29.6_pg@8.23.0/node_modules/src/pg-core/session.ts:73:11)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async SuiteContext.<anonymous> (/app/tests/app/work-read-keys.test.ts:33:5)
+      ... 3 lines matching cause stack trace ...
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    query: 'insert into "project_decisions" ("id", "workspace_id", "project_id", "title", "rationale", "status", "proposed_by_kind", "proposed_by_id", "decided_by", "decided_at", "supersedes_id", "superseded_by_id", "superseded_at", "version", "created_at", "updated_at") values ($1, $2, $3, $4, default, $5, $6, $7, default, default, default, default, default, default, $8, default), ($9, $10, $11, $12, default, $13, $14, $15, default, default, default, default, default, default, $16, default), ($17, $18, $19, $20, default, $21, $22, $23, default, default, default, default, default, default, $24, default)',
+    params: [ 'f239f862-fd45-4152-83ae-e69a1fd17c73', '54ba305b-36d3-44ac-a6c6-4a923ebc0bd3', 'dc0e84a1-abfa-4c23-b4b1-7b0005e14279', 'Decision 0', 'proposed', 'human', '2d2b5c57-1d55-4841-ab38-557fe2550651', '2026-10-01T06:00:00.123Z', '46be380b-adb3-4cd1-915e-4e0f0962f687', '54ba305b-36d3-44ac-a6c6-4a923ebc0bd3', 'dc0e84a1-abfa-4c23-b4b1-7b0005e14279', 'Decision 1', 'accepted', 'human', '2d2b5c57-1d55-4841-ab38-557fe2550651', '2026-10-01T06:00:00.123Z', 'ce254666-d224-4506-a9b6-48e248f9ccf0', '54ba305b-36d3-44ac-a6c6-4a923ebc0bd3', 'dc0e84a1-abfa-4c23-b4b1-7b0005e14279', 'Decision 2', 'superseded', 'human', '2d2b5c57-1d55-4841-ab38-557fe2550651', '2026-10-01T06:00:00.123Z' ],
+    cause: error: new row for relation "project_decisions" violates check constraint "project_decisions_check"
+        at /app/node_modules/.pnpm/pg-pool@3.14.0_pg@8.23.0/node_modules/pg-pool/index.js:45:11
+        at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+        at async <anonymous> (/app/node_modules/.pnpm/drizzle-orm@0.45.3_@types+pg@8.15.5_kysely@0.29.6_pg@8.23.0/node_modules/src/node-postgres/session.ts:149:14)
+        at async NodePgPreparedQuery.queryWithCache (/app/node_modules/.pnpm/drizzle-orm@0.45.3_@types+pg@8.15.5_kysely@0.29.6_pg@8.23.0/node_modules/src/pg-core/session.ts:71:12)
+        at async SuiteContext.<anonymous> (/app/tests/app/work-read-keys.test.ts:33:5)
+        at async TestHook.run (node:internal/test_runner/test:1409:7)
+        at async Suite.runHook (node:internal/test_runner/test:1289:9)
+        at async Suite.run (node:internal/test_runner/test:1899:7)
+        at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+      length: 505,
+      severity: 'ERROR',
+      code: '23514',
+      detail: 'Failing row contains (46be380b-adb3-4cd1-915e-4e0f0962f687, 54ba305b-36d3-44ac-a6c6-4a923ebc0bd3, dc0e84a1-abfa-4c23-b4b1-7b0005e14279, Decision 1, , accepted, human, 2d2b5c57-1d55-4841-ab38-557fe2550651, null, null, null, null, null, 1, 2026-10-01 06:00:00.123+00, 2026-10-01 07:41:40.75492+00).',
+      hint: undefined,
+      position: undefined,
+      internalPosition: undefined,
+      internalQuery: undefined,
+      where: undefined,
+      schema: 'public',
+      table: 'project_decisions',
+      column: undefined,
+      dataType: undefined,
+      constraint: 'project_decisions_check',
+      file: 'execMain.c',
+      line: '2076',
+      routine: 'ExecConstraints'
+    }
+  }

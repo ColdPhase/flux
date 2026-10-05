@@ -179,7 +179,9 @@ test('real project UI presents sourced quiet suggestions, then persists edits, u
         return !!bounds && bounds.y > 0 && bounds.bottom < innerHeight;
       });
       await activate(workSource);
-      await page.getByRole('heading', { name: 'Measure ToF response at 5 lux', exact: true }).waitFor();
+      // The board card carries the same title; the source must open that exact work's Details.
+      await page.locator(`.wd[data-detail-kind="work"][data-detail-id="${fixture.workId}"]`)
+        .getByRole('heading', { name: 'Measure ToF response at 5 lux', exact: true }).waitFor();
       await page.goto(`${origin.origin}/projects/${fixture.projectId}/tasks?view=list`);
       await activate(viewportCards.first().locator('.ws-proposal__toggle'));
       await activate(viewportCards.first().getByRole('link', { name: /^Test a ToF sensor using the same 5 lux protocol/ }));

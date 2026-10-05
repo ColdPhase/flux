@@ -1,0 +1,114 @@
+{
+  "tested_source": "b1f648d7fcc497fa735cc913f9e8bfacb91113b9",
+  "production_build_and_client_source": "76397bf184661277471ebf6700f74df0711f38f2",
+  "production_and_client_test_bytes_match_both_pins": true,
+  "delta_since_build": "One Python browser-fixture wait captures the native row anchor only after actual wheel delivery. Production and TypeScript client-test bytes are unchanged; final UI-test image rebuilt from tested_source.",
+  "owner_compose_project": "flux155browser",
+  "owner_api_port": 18581,
+  "owner_mailpit_port": 18585,
+  "docker_version": "29.1.2",
+  "docker_resources": "14 CPUs 8216887296 bytes aarch64",
+  "images": [
+    {
+      "tags": [
+        "flux-foundation:flux155browser"
+      ],
+      "id": "sha256:55ae3653e0f2242c480bc53566c171aef8281cae89bcd9cd93f39e436dd274e2"
+    },
+    {
+      "tags": [
+        "flux-test-tools:flux155browser"
+      ],
+      "id": "sha256:7bae42e8d9111e4245776ce574f628070550626ef87104293e68d943a47b5ad4"
+    },
+    {
+      "tags": [
+        "flux-ui-tests:flux155browser"
+      ],
+      "id": "sha256:2547ffaade4081439e79bf631f84f4b26847706d4abc96fa6f951e7c015e8998"
+    }
+  ],
+  "tests": {
+    "client": {
+      "pass": 25,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "duration_ms": 281.51325
+    },
+    "browser": {
+      "pass": 53,
+      "fail": 0,
+      "errors": 0,
+      "skipped": 0,
+      "duration_seconds": 93.676,
+      "composition": "8 Overview +17 ProjectSurface +8 MessageWork +10 WorkDecisions +10 PersonalAssistant; desktop/phone are subtests",
+      "destroyed_pending_route_callbacks": 1,
+      "cancelled_route_callbacks": 0,
+      "limitation": "Named native assertions and pageerror checks pass. Recorded callback diagnostics are counted above; fixture handler completion is not certified, including unfinished route handlers cleaned using ignoreErrors."
+    }
+  },
+  "screenshots": {
+    "bounded-overview-desktop.png": {
+      "sha256": "fcf6e0d494622de18cc84aa97e6c7f5cfd5e45392038ec9d1e585bd9620513fe",
+      "viewport_css": [
+        1500,
+        900
+      ],
+      "device_scale_factor": 1,
+      "zoom": "100%",
+      "state": "linked native object window; first page and current project state"
+    },
+    "bounded-overview-phone.png": {
+      "sha256": "8519031dbc0f764bc7b7a9ee6908de7eee12a263f21159874c6240497f3ca5fb",
+      "viewport_css": [
+        412,
+        915
+      ],
+      "device_scale_factor": 3,
+      "zoom": "100%",
+      "state": "linked native object window; first page and current project state"
+    },
+    "bounded-overview-mixed-desktop.png": {
+      "sha256": "b24c651b4383a12238bbcf7a3436d49ea9587f82fead5fdf87a10d0e6b51e1a5",
+      "viewport_css": [
+        1500,
+        900
+      ],
+      "device_scale_factor": 1,
+      "zoom": "100%",
+      "state": "linked native object window; second page mixed kinds"
+    },
+    "bounded-overview-mixed-phone.png": {
+      "sha256": "b83ca3257bf3718308890c9574ade5ea66f645bf103f6166c6c63e332ac8b4cc",
+      "viewport_css": [
+        412,
+        915
+      ],
+      "device_scale_factor": 3,
+      "zoom": "100%",
+      "state": "linked native object window; second page mixed kinds"
+    },
+    "bounded-overview-sources-desktop.png": {
+      "sha256": "3d513d4ce397550c5e635e9b8ae9df271a0605172cc685755fbafb6a8a82be57",
+      "viewport_css": [
+        1500,
+        900
+      ],
+      "device_scale_factor": 1,
+      "zoom": "100%",
+      "state": "linked native object window; scrolled native version/thought/doc sources"
+    },
+    "bounded-overview-sources-phone.png": {
+      "sha256": "79fa2876ee96b08afd17bafb6bc44b6ff6e628ec10583fd678211babc3916761",
+      "viewport_css": [
+        412,
+        915
+      ],
+      "device_scale_factor": 3,
+      "zoom": "100%",
+      "state": "linked native object window; scrolled native version/thought/doc sources"
+    }
+  },
+  "scope": "Native Overview ANY association/relationship pages and scoped selected native message only. Full parent collections, Details/assistant/LinkPicker, original1000benchmark and full product/device/release gates remain open."
+}

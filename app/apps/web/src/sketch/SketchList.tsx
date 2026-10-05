@@ -1,11 +1,11 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
-import type { SketchDetail, WorkItem } from '@flux/contracts';
+import type { SketchDetail } from '@flux/contracts';
 import { Icon } from '../ui';
 import { provenance, quote } from './format';
 import { ThoughtEditor } from './ThoughtEditor';
 import { ThoughtImage } from './ThoughtImage';
 import { linkOf } from './paste';
-import { ThoughtTasks } from './ThoughtTasks';
+import { ThoughtTasks, type ThoughtTasksEntry } from './ThoughtTasks';
 import { groupingChoices, visibleRows, type OutlineRow } from './outline';
 import type { PersonalOutline } from './useOutline';
 import type { Editing } from './SketchView';
@@ -20,7 +20,7 @@ export interface SketchListProps {
   canWrite: boolean;
   personalOutline: PersonalOutline;
   /** The project's tasks linked to each thought (UI116-4); none outside a project. */
-  tasks: Map<string, WorkItem[]>;
+  tasks: Map<string, ThoughtTasksEntry>;
   projectId: string | null;
   onOpenTask(id: string): void;
   onPick(id: string, additive: boolean): void;
@@ -145,7 +145,7 @@ export function SketchList({ sketch, meId, selection, connectFrom, editing, canW
                 {row.children.length ? <button type="button" className="sk-outline-toggle" aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${quote(thought.text)}`} aria-expanded={!collapsed} onClick={() => { view.toggle(thought.id); focus(thought.id); }}><Icon name={collapsed ? 'chevron-right' : 'chevron-down'} size={14} /></button> : <span className="sk-outline-leaf" aria-hidden="true" />}
                 {editing?.id === thought.id && canWrite ? <ThoughtEditor key={`${editing.id}:${editing.attempt}`} className="sk-li-edit" initial={editing.initial} disabled={editing.saving} onChange={on.onEditText} onDone={on.onFinishEdit} /> : <button type="button" className="sk-li-t" data-id={thought.id} aria-pressed={selected}
                   onClick={(event) => on.onPick(thought.id, event.shiftKey || event.metaKey || event.ctrlKey)} onFocus={() => { lastFocus.current = { id: thought.id, index }; }} onKeyDown={(event) => keyDown(event, row, index)}>{thought.text}{selected ? <span className="sk-outline-selected" aria-hidden="true"><Icon name="check" size={12} /></span> : null}</button>}
-                {linked?.length && projectId ? <ThoughtTasks thought={thought} tasks={linked} projectId={projectId} variant="list" onOpenTask={on.onOpenTask} /> : null}
+                {linked?.count && projectId ? <ThoughtTasks thought={thought} tasks={linked} projectId={projectId} variant="list" onOpenTask={on.onOpenTask} /> : null}
               </div>
               <div className="sk-outline-body">
                 {thought.file ? <ThoughtImage className="sk-li-img" fileId={thought.file.id} name={thought.file.name} /> : null}

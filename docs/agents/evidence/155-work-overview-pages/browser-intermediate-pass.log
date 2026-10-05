@@ -1,0 +1,27 @@
+ Container flux155browser-mailpit-1  Running
+ Container flux155browser-db-1  Running
+ Container flux155browser-anthropic-mock-1  Recreate
+ Container flux155browser-worker-1  Running
+ Container flux155browser-api-1  Running
+ Container flux155browser-anthropic-mock-1  Recreated
+ Container flux155browser-anthropic-mock-1  Starting
+ Container flux155browser-db-1  Waiting
+ Container flux155browser-anthropic-mock-1  Started
+ Container flux155browser-db-1  Healthy
+ Container flux155browser-migrate-1  Starting
+ Container flux155browser-migrate-1  Started
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Exited
+ Container flux155browser-migrate-1  Exited
+test_01_all_native_object_and_relation_pages_are_reachable_on_desktop_and_phone (test_work_overview.OverviewWorkJourney.test_01_all_native_object_and_relation_pages_are_reachable_on_desktop_and_phone) ... ok
+test_02_required_relation_failure_is_unavailable_then_retries_without_touching_private_reply (test_work_overview.OverviewWorkJourney.test_02_required_relation_failure_is_unavailable_then_retries_without_touching_private_reply) ... ok
+test_03_held_old_relations_cannot_replace_a_new_object_window_or_erase_selection (test_work_overview.OverviewWorkJourney.test_03_held_old_relations_cannot_replace_a_new_object_window_or_erase_selection) ... ok
+test_04_details_of_an_older_loaded_message_keeps_exact_source_scope_and_pinned_citation (test_work_overview.OverviewWorkJourney.test_04_details_of_an_older_loaded_message_keeps_exact_source_scope_and_pinned_citation) ... ok
+test_05_refresh_preserves_native_row_reading_focus_and_private_selection_then_failure_clears_rows (test_work_overview.OverviewWorkJourney.test_05_refresh_preserves_native_row_reading_focus_and_private_selection_then_failure_clears_rows) ... ok
+test_06_keyboard_exposes_each_focused_native_row_inside_the_overview_list (test_work_overview.OverviewWorkJourney.test_06_keyboard_exposes_each_focused_native_row_inside_the_overview_list) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 13.388s
+
+OK
