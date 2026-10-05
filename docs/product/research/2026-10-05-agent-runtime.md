@@ -11,7 +11,7 @@ its MCP and OpenRouter evidence still apply.
 [review of `7a6987e7`](https://github.com/ColdPhase/flux/pull/247#issuecomment-6000291729)
 and its [wenext note](https://github.com/ColdPhase/flux/pull/247#issuecomment-6000561858):
 adverse vendor text (§3), a corrected analysis (§3.3–3.4), hardened commands and a
-socket-free runtime (§4), and lower fit ratings (§5).
+socket-free runtime (§4), and lower fit ratings (§5). Revised again for the [re-review of `ccdb32e2`](https://github.com/ColdPhase/flux/pull/247#issuecomment-6003428258) (N1–N10): Codex's JSONL check and extra overrides, credential wording, reconciliation, slot reuse, networks and secrets.
 **Retrieved:** 2026-10-05 for every source below, unless a row says otherwise. No real Claude or ChatGPT account was used, so every behaviour with a real subscription is **unverified**.
 
 **Mode letters.** This document uses the founder's letters: (a) the agent in Flux,
@@ -184,6 +184,8 @@ Sources: OpenAI docs at learn.chatgpt.com, and `openai/codex` at HEAD `823ea830`
 - `web_search` is a mode: `disabled`, `cached` (the default), `indexed` or `live`. `tools.web_search` configures the web search tool. `tools.view_image` enables the local-image tool.
 - `mcp_servers.<id>.enabled_tools` is an allowlist of the server's tools. `required = true` fails start-up if the server cannot initialize. `bearer_token_env_var` names the variable that holds its bearer token.
 - `forced_login_method` (`chatgpt` or `api`) restricts Codex to one sign-in method.
+- Further default-on features found by the reviewer [R]: `features.hooks` (hook files, which `--ignore-user-config` does not skip), `features.goals` ("automatic continuation… on by default"), `features.remote_plugin` and `features.memories`.
+- `config/read` returns "the effective configuration on disk after resolving configuration layering" [R]. It may therefore not reflect `-c` overrides.
 
 **MCP [V]**
 - Configure Flux as `[mcp_servers.flux] url = …`, with `bearer_token_env_var`, `required = true` and `enabled_tools`.
@@ -239,6 +241,7 @@ Sources: OpenAI docs at learn.chatgpt.com, and `openai/codex` at HEAD `823ea830`
 **Terms of Use** (effective 2026-01-01; current in-force version; Wayback capture 2026-10-03, because openai.com returned 403) [V]:
 - "You may not share your account credentials or make your account available to anyone else".
 - Prohibited: "Automatically or programmatically extract data or Output".
+- Training: "If you do not want us to use your Content to train our models, you can opt out…" (as checked by the reviewer [R]).
 
 **Codex auth page** [V]: "Use API key authentication for programmatic Codex CLI workflows… Don't expose Codex execution in untrusted or public environments" (as checked by the review, and seen again on 2026-10-05 by this author).
 
@@ -379,11 +382,12 @@ browser ──HTTPS──> api (Fastify) ──queue──> worker (personal-run
      -c cli_auth_credentials_store=file
      -c features.shell_tool=false -c features.unified_exec=false -c features.apps=false
      -c features.multi_agent=false -c features.skill_mcp_dependency_install=false
+     -c features.hooks=false -c features.goals=false -c features.remote_plugin=false -c features.memories=false
      -c web_search=disabled -c tools.web_search=false -c tools.view_image=false
      -c mcp_servers.flux.url=… -c mcp_servers.flux.bearer_token_env_var=FLUX_RUN_TOKEN
      -c mcp_servers.flux.required=true -c 'mcp_servers.flux.enabled_tools=[…]'
    ```
-4. **Read-back.** Claude: the first `system/init` event must list only the exact Flux tools (plus `EndConversation`) and only a connected Flux MCP server, or the run stops with no answer. Codex: before the run, `config/read` through an app-server client that may send only `initialize` and `config/read` must return every value above, or the run does not start.
+4. **Start-up and run checks.** Claude: the first `system/init` event must list only the exact Flux tools (plus `EndConversation`) and only a connected Flux MCP server, or the run stops with no answer. The MCP route lists exactly the run's tools to a run token, so the two lists match. Codex: the `-c` list is a denylist of today's features, so the authoritative check is the run's own JSONL. Any `item.*` other than an agent message, reasoning, or an `mcp_tool_call` to `flux` with a listed tool stops the CLI, and nothing is committed. A `config/read` preflight stays only if T6 shows it reflects `-c`. The app-server client may send only `initialize`, `config/read` and `account/rateLimits/read`.
 5. JSONL is parsed by one adapter per CLI into the existing owner-only progress events (`assistant_run.changed.v1`).
 6. The final text is redacted for token patterns and the exact run token, then commits through the existing personal-run path, shown as "Jo's assistant · asked by Jo".
 7. Domain writes happen only through Flux MCP tools under the grant. Consequential changes become proposals, exactly as in mode (b).
@@ -403,11 +407,12 @@ browser ──HTTPS──> api (Fastify) ──queue──> worker (personal-run
 
 **Revoke and sign out.**
 - *Sign out* runs `claude auth logout` / `codex logout`, then deletes that CLI's files.
-- *Remove runtime*, revoking the connection, and deleting the owner each sign out every CLI, kill in-flight runs (the next MCP call returns 403), delete the binding directory, and free the slot once `/data` is confirmed empty.
+- *Remove runtime*, revoking the connection, and deleting the owner each sign out every CLI, kill in-flight runs (the next MCP call returns 403) and delete the binding directory. The supervisor confirms `/data` is empty and exits; the restart policy starts a fresh supervisor with an empty `/tmp`. The slot is bound again only after that restart.
+- The operator can release a binding from the admin view (sign-out first), and an optional idle policy releases unused bindings, so a pool does not fill for good.
 - A failed logout still deletes the files; the owner is told to end the session in their vendor account. Whether logout revokes the refresh token at the vendor is **unverified**.
 - If the vendor revokes the login, the next run shows *Sign in again*.
 
-**Backup and cleanup.** `./flux backup` excludes slot volumes; host snapshots include them. A restore reconciles bindings and directories. `./flux reset` and `./flux clean` sign out first, then remove slot volumes. Switching off keeps the volumes; a purge step removes them.
+**Backup and cleanup.** `./flux backup` excludes slot volumes; host snapshots include them. After a restore, the worker reads the bindings from the database and reconciles them with each slot's directory through the manager, which has no database access. `./flux reset` and `./flux clean` sign out first, then remove slot volumes. Switching off keeps the volumes; a purge step removes them.
 
 ### 4.2 Security boundaries
 
@@ -421,16 +426,19 @@ browser ──HTTPS──> api (Fastify) ──queue──> worker (personal-run
 
 **Control**
 - The supervisor accepts only bind, login, status, run, stop, logout and release, with a client and method from fixed lists. It never takes a command line, flag, path or environment variable from the manager.
-- The manager has no database and no Docker access. It holds the key from which each slot's secret is derived, and listens on no slot network.
+- The manager has no database and no Docker access, and listens on no slot network. The API and worker reach it on a `runtime-control` network that holds no database or Redis.
+- The launcher generates one secret per slot in `docker/.env`. Each slot receives only its own; the manager receives all.
+- The manager's reader of supervisor streams and `runtime-egress` are the parsers a compromised slot would attack. Both are size-bounded, minimal and fuzz-tested.
 
 **Network**
-- Each slot's network is `internal: true` and shared only with the manager and `runtime-egress`. Slots cannot reach each other.
+- Each slot's network is `internal: true` and shared only with the manager and `runtime-egress`. Slots cannot reach each other. A slot added by override must attach both services to its new network.
+- `runtime-egress` reaches the API on a `runtime-api` network that holds only those two services.
 - `runtime-egress` allows HTTPS only to the vendor hosts in §2, and forwards only the Flux `/mcp` route to the API.
 - No database, Redis, worker, other API path, metadata IP or LAN access.
 - `downloads.claude.ai` only for the one-shot installer.
 
 **Secrets**
-- Tokens exist only in the binding directory. Flux never persists or transmits them.
+- Tokens exist only in the binding directory, stored by the CLI's own flow. Flux never persists, logs or parses them. The sign-in console relays what the owner types at the CLI's own prompt, in memory only.
 - They never appear in the database, queue payloads, API responses, logs, exports or admin UI. A schema test fails if a runtime table gains a column that could hold one.
 - The supervisor could read them, and never opens them. The host root can read them.
 - The manager and supervisor never log PTY or CLI stdout. They redact `sk-ant-`, `eyJ…` and `refresh_token` patterns from errors, and token patterns from the committed answer.
@@ -449,10 +457,10 @@ browser ──HTTPS──> api (Fastify) ──queue──> worker (personal-run
 2. **Services.** Under the `runtime` profile: `runtime-manager`, `runtime-egress`, `runtime-install` and four slots running the `ghcr.io/coldphase/flux-agent-runtime` image. The image includes the supervisor and the pinned official Codex release, which is Apache-2.0. Claude Code is installed by the official installer when the operator enables it.
 3. **Claude Code only.** Sign-in console with its three methods, auth status, sign out and remove.
 4. **One owner-invoked run.** Uses read-only Flux MCP tools for the requested place, with the read-back, a streamed answer, stop, timeouts and caps.
-5. **Agents view.** Lists "Agent in Flux · Claude Code (your plan)".
+5. **Agents view.** Lists "Agent in Flux · Claude Code · your Claude plan", with the payer label from the sign-in method.
 
 **Next slices**
-- Codex sign-in, the `codex exec` adapter and its `config/read` read-back.
+- Codex sign-in, the `codex exec` adapter and its JSONL check.
 - Write tools and proposals.
 - `--resume` continuations, with a decision on where transcripts may live.
 - A per-run repository workspace with shell tools in the sandbox.
@@ -463,7 +471,7 @@ browser ──HTTPS──> api (Fastify) ──queue──> worker (personal-run
 **Fake CLIs.** Build `test/fake-claude` and `test/fake-codex` as Node binaries with the same argv and JSONL shapes. Scenarios are selected by `FAKE_SCENARIO`:
 - **Login:** prints a URL and waits for a pasted code, or prints a device URL and code and then polls, for each method. It writes `.credentials.json` / `auth.json` into the binding directory, and `auth status` reports the method.
 - **Run:** emits `system/init` with tools and `mcp_servers` status. It makes **real** MCP calls to Flux with the injected token, then emits deltas and a `result` or `turn.completed`.
-- **Failures:** expired login, plan limit, hang (to test both timeouts), crash, SIGINT acknowledgement, oversized output, an extra tool in `system/init`, and a token-shaped string in the answer (to test redaction).
+- **Failures:** expired login, plan limit, hang (to test both timeouts), crash, SIGINT acknowledgement, oversized output, an extra tool in `system/init`, a Codex `command_execution` or other non-Flux item, and a token-shaped string in the answer (to test redaction).
 - **Escape attempts:** reading another slot's path, and reaching the database, the API outside `/mcp`, another slot or the metadata IP. All must fail.
 
 **Integration tests** run with two owners:
@@ -476,14 +484,14 @@ browser ──HTTPS──> api (Fastify) ──queue──> worker (personal-run
 
 **Flag contract test.** Run the pinned real `claude --help` and `codex exec --help` in Docker, which needs no account, and assert that every flag Flux uses exists.
 
-**Read-back tests.** Run the pinned real `codex app-server` `config/read` with Flux's overrides (no account needed) and assert every value. Check whether the pinned real `claude` emits `system/init` before a login; if not, the Claude read-back is first verified in T10.
+**Read-back tests.** Run the pinned real `codex app-server` `config/read` with Flux's overrides (no account needed) and record whether it reflects them; the preflight is kept only if it does. Check whether the pinned real `claude` emits `system/init` before a login; if not, the Claude read-back is first verified in T10.
 
 **Real-account smoke.** A dated, manual check, otherwise reported **unverified**. It includes an adversarial run that asks the CLI to print its credential file or environment, or to run a command.
 
 ### 4.5 Records to change before implementing
 
 - **F-022 (PR #247).** Replace "Claude plan: not offered" and the gated ChatGPT companion with the `runtime` transport above. Keep mode (b) as it is.
-- **F-020 PROV-4.** Replace "no consumer subscription sign-in … through their own external client over MCP" with: "only through the unmodified official CLI in the owner's runtime; Flux never persists or transmits the vendor token".
+- **F-020 PROV-4.** Replace "no consumer subscription sign-in … through their own external client over MCP" with: "only through the unmodified official CLI in the owner's runtime; Flux never persists, logs or parses the vendor credential".
 - **PROV-3 and O-008.** Add the run, time, turn and MCP result caps for `runtime` connections, replacing the money reservation, the single bounded request and the input bound.
 - **mcp-cowork.md.** Add a sentence: mode (a) runtimes are the instance's sandboxed slots, not the Flux server process.
 
@@ -493,7 +501,7 @@ browser ──HTTPS──> api (Fastify) ──queue──> worker (personal-run
 
 | Option | How | Pros | Cons | Terms risk |
 | --- | --- | --- | --- | --- |
-| **A. Official CLI runtime (recommended)** | Per-user runtime slot. Unmodified `claude` / `codex`. The user signs in with the CLI's own login command. Flux MCP comes back in with a per-run token | Hosts the user's own sign-in as Anthropic's carve-out describes. Uses Codex's documented remote login. Flux never persists or transmits vendor tokens. Same grants as mode (b). Like OpenClaw's Claude back end | A fixed slot pool. The CLI's output format can change. One run at a time per user. The operator can technically reach the volumes. §9.4's payer split is not visible | **Medium–high for Claude Code:** three Anthropic texts send products for others to API keys, and the carve-out does not clearly cover a product driving the CLI (§3.3); plus the Commercial Terms for whoever runs it and "ordinary, individual usage". **Medium for Codex:** ChatGPT login for automation is documented but not the default, and a team-hosted instance is "remotely hosted" |
+| **A. Official CLI runtime (recommended)** | Per-user runtime slot. Unmodified `claude` / `codex`. The user signs in with the CLI's own login command. Flux MCP comes back in with a per-run token | Hosts the user's own sign-in as Anthropic's carve-out describes. Uses Codex's documented remote login. Flux never persists, logs or parses vendor credentials. Same grants as mode (b). Like OpenClaw's Claude back end | A fixed slot pool. The CLI's output format can change. One run at a time per user. The operator can technically reach the volumes. §9.4's payer split is not visible | **Medium–high for Claude Code:** three Anthropic texts send products for others to API keys, and the carve-out does not clearly cover a product driving the CLI (§3.3); plus the Commercial Terms for whoever runs it and "ordinary, individual usage". **Medium for Codex:** ChatGPT login for automation is documented but not the default, and a team-hosted instance is "remotely hosted" |
 | **A′. SIWC plus official Codex app-server** | OpenAI open-source OAuth (`dynamic_agent_client`, loopback); `ACCESS_TOKEN` passed to the app-server | Route OpenAI documents for open-source apps; per-app usage controls | Loopback-only callback, so a remote Flux needs local sign-in and a credential transfer (or an undocumented redirect-URL paste). Plus/Pro only. Preview limits | **Low** for local or self-hosted VMs. "Remotely hosted" points to the interest form |
 | **B. OAuth token reuse or spoofing** | Vendor client IDs (`9d1c250a…`, `app_EMoam…`) with direct Messages API or `chatgpt.com/backend-api` calls; pasted `setup-token` / `auth.json` | No CLI process; simplest to stream | Impersonates another application. Flux stores vendor tokens. Rotating-token races. Reported broken by enforcement for others ([P] Jan–Apr 2026, historical) | **High.** "misrepresent their identity", "may not collect, store, or intermediate", OpenAI's "never been permitted … hosted" |
 | **C. API key only (F-020 today)** | Owner's key, encrypted on the server | Already implemented; clear pricing and caps; unattended use is allowed | Not what the founder asked for; pay-per-token instead of the plan | **Low.** Standard API terms, and both vendors' recommended path |
@@ -539,4 +547,4 @@ browser ──HTTPS──> api (Fastify) ──queue──> worker (personal-run
 - PR #247 at `b9ca6acb`: [F-022 proposal](../ai-modes.md), [2026-10-04 research](2026-10-04-two-ai-modes.md) and [plan](2026-10-04-two-ai-modes-plan.md).
 - `main` on 2026-10-05: [model providers](../model-providers.md), [decisions](../decisions.md) (F-019, F-020), [MCP co-work](../mcp-cowork.md), [personal runs](../../development/personal-runs.md), `app/apps/server/src/agent-connection/mcp-route.ts`, `app/packages/db/migrations/0011_agent_connection.sql` and `0034_multiple_agent_connections.sql`, `docker/compose.yaml`, the `./flux` launcher (`backup`, `reset`, `clean`).
 
-**Not retrieved:** openai.com directly (HTTP 403; Wayback used); Hermes `dynamic_agent_client` usage (GitHub API rate limit); the OpenAI hosts Codex needs; OpenAI's plan data settings.
+**Not retrieved:** openai.com directly (HTTP 403; Wayback used); Hermes `dynamic_agent_client` usage (GitHub API rate limit); the OpenAI hosts Codex needs.

@@ -184,11 +184,12 @@ blanket exclusion).**
 - A subscription enters mode (a) only through the unmodified official CLI
   (`claude`, `codex`) in the owner's runtime, signed in through the CLI's own flow
   ([AIM-3](ai-modes.md#aim-3--the-runtime-transport)).
-- Flux never persists or transmits the vendor token. It lives only in that owner's
-  binding directory in the runtime slot's volume, written by the CLI, never in the
-  database, queue, logs, exports, API responses or admin UI. The supervisor beside
-  the CLI and the host root could technically read it; the supervisor never opens
-  it.
+- Flux never persists, logs or parses the vendor credential. It lives only in
+  that owner's binding directory in the runtime slot's volume, written by the CLI's
+  own flow, never in the database, queue, logs, exports, API responses or admin UI.
+  The sign-in console relays what the owner types at the CLI's own prompt, in
+  memory only. The supervisor beside the CLI and the host root could technically
+  read the stored login; the supervisor never opens it.
 - Flux never collects or forwards a consumer sign-in, session or CLI credential
   (a pasted `claude setup-token`, `~/.codex/auth.json`, claude.ai or ChatGPT
   cookies), and never impersonates another application's OAuth client.
