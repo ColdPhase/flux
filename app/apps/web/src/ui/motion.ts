@@ -112,9 +112,11 @@ export function useArrivals(feed: RefObject<HTMLElement | null>, ids: readonly s
  * while the list is not shown. The list gets `has-glide` while the highlight stands in for the current
  * item's own background.
  */
-export function useTravelingHighlight(list: RefObject<HTMLElement | null>, glide: RefObject<HTMLElement | null>, selectors: readonly string[]) {
+export function useTravelingHighlight(list: RefObject<HTMLElement | null>, glide: RefObject<HTMLElement | null>, selectors: readonly string[]): (item: HTMLElement) => void {
   const order = selectors.join('\n');
   const placed = useRef({ value: false });
+  // The chosen item, from the click itself: the highlight starts moving in the next frame, before the
+  // router renders the pending navigation (which can take longer than one frame on a large view).
   // After every render: the chosen or current item may have changed.
   useLayoutEffect(() => { placeHighlight(list.current, glide.current, order, placed.current, true); });
   useLayoutEffect(() => {
@@ -128,13 +130,19 @@ export function useTravelingHighlight(list: RefObject<HTMLElement | null>, glide
     void document.fonts?.ready.then(again);
     return () => observer.disconnect();
   }, [list, glide, order]);
+  return (item) => placeHighlight(list.current, glide.current, order, placed.current, true, item);
+}
+
+/** Whether a click on a link opens it here (not a new tab or window, and not already handled). */
+export function choosesInPlace(event: { button: number; metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; altKey: boolean; defaultPrevented: boolean }): boolean {
+  return event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && !event.defaultPrevented;
 }
 
 /** Moves `mark` over the first item of `box` matching `order` (newline-separated selectors). */
-function placeHighlight(box: HTMLElement | null, mark: HTMLElement | null, order: string, placed: { value: boolean }, animate: boolean) {
+function placeHighlight(box: HTMLElement | null, mark: HTMLElement | null, order: string, placed: { value: boolean }, animate: boolean, chosen?: HTMLElement) {
   if (!box || !mark) return;
-  let current: HTMLElement | null = null;
-  for (const selector of order.split('\n')) { current = box.querySelector<HTMLElement>(selector); if (current) break; }
+  let current: HTMLElement | null = chosen && box.contains(chosen) ? chosen : null;
+  if (!current) for (const selector of order.split('\n')) { current = box.querySelector<HTMLElement>(selector); if (current) break; }
   if (!current || !box.offsetParent) {
     mark.style.opacity = '0';
     box.classList.remove('has-glide');

@@ -9,15 +9,17 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useSyncExternalStore, 
 export type DraftStorage = 'device' | 'visit';
 
 interface DraftState { text: string; storage: DraftStorage; revision: number }
-interface DraftEntry { state: DraftState; listeners: Set<() => void> }
+interface DraftEntry { state: DraftState; listeners: Set<() => void>; local: boolean }
 // One visit-local store for the existing per-account/context browser state. Every edit,
 // even A→B→A, advances revision; a failed empty clear is retained as a tombstone.
+// `local`: this tab has edited the value. Its own text then stays what this tab shows; another
+// tab's write only advances the fence (two tabs typing at once each keep their own draft, #211).
 const memory = new Map<string, DraftEntry>();
 
-function retain(key: string, text: string, storage: DraftStorage, edit = false): DraftEntry {
+function retain(key: string, text: string, storage: DraftStorage, edit = false, local = false): DraftEntry {
   const previous = memory.get(key);
   if (previous && !edit && previous.state.text === text && previous.state.storage === storage) return previous;
-  const entry = { state: { text, storage, revision: (previous?.state.revision ?? 0) + 1 }, listeners: previous?.listeners ?? new Set<() => void>() };
+  const entry = { state: { text, storage, revision: (previous?.state.revision ?? 0) + 1 }, listeners: previous?.listeners ?? new Set<() => void>(), local: local || !!previous?.local };
   memory.set(key, entry);
   return entry;
 }
@@ -27,9 +29,10 @@ export const scrollKey = (userId: string, context: string) => `flux:scroll:${use
 
 function read(key: string): DraftState {
   // A failed write (including an empty clear) is newer than the value still on disk.
-  // Keep that override until a successful write; ordinary device writes remain cross-tab readable.
+  // Keep that override until a successful write; a value this tab has not edited stays
+  // cross-tab readable, and one it has edited is this tab's own.
   const previous = memory.get(key);
-  if (previous?.state.storage === 'visit') return previous.state;
+  if (previous?.state.storage === 'visit' || previous?.local) return previous.state;
   try {
     const stored = localStorage.getItem(key);
     return retain(key, stored ?? '', 'device').state;
@@ -42,7 +45,7 @@ function write(key: string, value: string): DraftState {
   try {
     if (value) localStorage.setItem(key, value); else localStorage.removeItem(key);
   } catch { storage = 'visit'; }
-  const entry = retain(key, value, storage, true);
+  const entry = retain(key, value, storage, true, true);
   for (const listener of entry.listeners) listener();
   return entry.state;
 }

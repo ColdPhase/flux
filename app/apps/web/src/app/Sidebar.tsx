@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { Link, NavLink, useLocation, useNavigate, useNavigation } from 'react-router';
-import { Avatar, FluxMark, Icon, IconButton, useTravelingHighlight } from '../ui';
+import { Avatar, FluxMark, Icon, IconButton, choosesInPlace, useTravelingHighlight } from '../ui';
 import { type DirectMessageSummary, type ProjectSummary, type WorkspaceSummary } from './data';
 import { placeOf } from './place';
 import { startCapture } from './views';
@@ -43,7 +43,7 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
   const pendingProject = navigation.state !== 'idle' ? navigation.location?.pathname.match(/^\/projects\/([^/]+)/)?.[1] ?? null : null;
   const projectList = useRef<HTMLUListElement>(null);
   const glide = useRef<HTMLLIElement>(null);
-  useTravelingHighlight(projectList, glide, ['.side__project[data-pending]', '.side__project.is-open']);
+  const glideTo = useTravelingHighlight(projectList, glide, ['.side__project[data-pending]', '.side__project.is-open']);
   return (
     <div className="side">
       <div className="side__brand">
@@ -98,7 +98,7 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
                 const open = project.id === projectId;
                 return (
                   <li key={project.id}>
-                    <NavLink to={`/projects/${project.id}`} end={false} className={`side__item side__project${open ? ' is-open' : ''}`} onClick={navigate} data-glide-id={project.id} data-pending={pendingProject === project.id && !open ? '' : undefined}
+                    <NavLink to={`/projects/${project.id}`} end={false} className={`side__item side__project${open ? ' is-open' : ''}`} onClick={(event) => { if (choosesInPlace(event)) glideTo(event.currentTarget); navigate?.(); }} data-glide-id={project.id} data-pending={pendingProject === project.id && !open ? '' : undefined}
                       title={project.workspaceName ? `${project.name} · ${project.workspaceName}` : project.name}
                       aria-label={project.hasNew ? `${project.name}, new activity` : undefined}>
                       <span className="side__pi" aria-hidden="true"><Icon name="spark" size={15} /></span>

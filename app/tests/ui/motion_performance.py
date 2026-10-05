@@ -40,6 +40,8 @@ BUDGETS = {
     "desktop": {"selectionFeedback": 150, "selectionCommitted": 2000, "motionEnd": 150 + 220, "keyInput": 100, "frameGap": 50},
     "phone-cpu4": {"selectionFeedback": 300, "selectionCommitted": 4000, "motionEnd": 300 + 220, "keyInput": 200, "frameGap": 100},
 }
+# The same desktop journeys with reduced motion (tokens 0 ms): what the motion itself costs.
+BUDGETS["desktop-reduced"] = dict(BUDGETS["desktop"])
 PROBE = r"""(() => {
   const probe = window.__motionProbe = { result: null };
   // One trusted click on a project row or a work tab: feedback (the highlight/mark on the chosen item,
@@ -151,8 +153,9 @@ class MotionPerformance(unittest.TestCase):
         cls.browser.close()
         cls.pw.stop()
 
-    def open(self, who, viewport, cpu, path):
-        context = self.browser.new_context(base_url=ORIGIN, storage_state=self.states[who], viewport=viewport, device_scale_factor=1, locale="en-GB")
+    def open(self, who, viewport, cpu, path, reduced=False):
+        context = self.browser.new_context(base_url=ORIGIN, storage_state=self.states[who], viewport=viewport, device_scale_factor=1, locale="en-GB",
+                                           reduced_motion="reduce" if reduced else "no-preference")
         context.add_init_script(PROBE)
         page = context.new_page()
         if cpu > 1:
@@ -181,10 +184,12 @@ class MotionPerformance(unittest.TestCase):
 
     def test_motion_and_navigation_feedback_budgets(self):
         failures = []
-        for label, viewport, cpu in (("desktop", {"width": 1280, "height": 800}, 1), ("phone-cpu4", {"width": 390, "height": 844}, 4)):
+        for label, viewport, cpu in (("desktop", {"width": 1280, "height": 800}, 1), ("desktop-reduced", {"width": 1280, "height": 800}, 1), ("phone-cpu4", {"width": 390, "height": 844}, 4)):
             budget = BUDGETS[label]
-            profile = {"label": label, "viewport": viewport, "cpuThrottle": cpu, "distributions": {}}
-            context, page = self.open("ada", viewport, cpu, f"/projects/{self.projects[0]}")
+            reduced = label.endswith("-reduced")
+            profile = {"label": label, "viewport": viewport, "cpuThrottle": cpu, "reducedMotion": reduced, "distributions": {},
+                       "note": "maxFrameGap spans click to committed paint, so it includes the chosen view's own render"}
+            context, page = self.open("ada", viewport, cpu, f"/projects/{self.projects[0]}", reduced)
             tabs = page.locator(".views")
             go = lambda name: (lambda: tabs.locator(f'[data-tab="{name}"]').click())
             results, seconds = self.series(page, [go("tasks"), go("conversation")], "tab")
@@ -193,7 +198,7 @@ class MotionPerformance(unittest.TestCase):
                 "motionEnd": summary([r["motionEnd"] for r in results], budget["motionEnd"]),
                 "selectionCommitted": summary([r["committed"] for r in results], budget["selectionCommitted"]),
                 "maxFrameGap": summary([r["maxGap"] for r in results], budget["frameGap"])}
-            if label == "desktop":
+            if label.startswith("desktop"):
                 pick = lambda index: (lambda: page.locator(f'.side .side__project[data-glide-id="{self.projects[index]}"]').click())
                 results, seconds = self.series(page, [pick(1), pick(2), pick(0)], "project")
                 profile["distributions"]["project"] = {"seconds": seconds,
@@ -202,6 +207,13 @@ class MotionPerformance(unittest.TestCase):
                     "selectionCommitted": summary([r["committed"] for r in results], budget["selectionCommitted"]),
                     "maxFrameGap": summary([r["maxGap"] for r in results], budget["frameGap"])}
             context.close()
+            if reduced:
+                self.report["profiles"].append(profile)
+                for name, distribution in profile["distributions"].items():
+                    for metric, data in distribution.items():
+                        if isinstance(data, dict) and data.get("passed") is False:
+                            failures.append(f"{label}:{name}:{metric}")
+                continue
             # Keys with typing presence live: Bob watches the same thread, so Ada's input publishes activity.
             watcher, _ = self.open("bob", {"width": 1280, "height": 800}, 1, f"/projects/{self.projects[0]}/conversations/{self.thread['id']}")
             context, page = self.open("ada", viewport, cpu, f"/projects/{self.projects[0]}/conversations/{self.thread['id']}")
