@@ -30,6 +30,10 @@ repository was created on 2026-09-26.
   triggered OCI release workflow ([#104](https://github.com/ColdPhase/flux/pull/104)).
 - An exact migration-ledger check at install and startup. A database that does not
   match the image's migrations refuses to start ([#130](https://github.com/ColdPhase/flux/pull/130)).
+- Two public extension contracts with a written compatibility promise: MCP tool
+  contract 1 and project export format 1. A versioned snapshot test catches a
+  breaking change. The [integration guide](docs/integrations/README.md) is for
+  integrators and operators ([#260](https://github.com/ColdPhase/flux/pull/260)).
 
 #### People and access
 
@@ -48,9 +52,13 @@ repository was created on 2026-09-26.
 - Sketches: persistent maps of connected thoughts ([#100](https://github.com/ColdPhase/flux/pull/100)).
   - A stable personal list view ([#146](https://github.com/ColdPhase/flux/pull/146)).
   - Draft-before-save for new thoughts ([#158](https://github.com/ColdPhase/flux/pull/158)).
+  - Paste lines, a link or an image onto a map as a private draft; a project map keeps
+    the image as a stored file ([#257](https://github.com/ColdPhase/flux/pull/257)).
 - Work items, decisions and results linked to the conversations they came from
   ([#105](https://github.com/ColdPhase/flux/pull/105)). Native tasks gained
   criteria, prerequisites and plan intent ([#171](https://github.com/ColdPhase/flux/pull/171)).
+  A person who can only read a proposed decision sees who decides it: someone who can
+  edit the project, never an agent or assistant ([#259](https://github.com/ColdPhase/flux/pull/259), O-009).
 - Canonical task discussions:
   - A task's thread starts at its first real contribution, with genuine actors
     ([#164](https://github.com/ColdPhase/flux/pull/164)).
