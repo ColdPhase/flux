@@ -52,9 +52,12 @@ a change of direction is a new proposal that names the current rule.
 
 **DA-4 — No silent acceptance.** Acceptance is one explicit command
 (`POST /api/v1/decisions/:id/accept` with `If-Match` or `expectedVersion`) sent by the
-deciding person's own browser session. Nothing else can set the status:
+deciding person's own browser session, and that person is recorded as the decider.
+Nothing else can set the status or the decider:
 
-- a create body or an MCP tool argument (their schemas are strict);
+- a REST create or accept body (the API ignores fields it does not define, so a
+  `status` or `decidedBy` in the body has no effect);
+- an MCP tool argument (the tool schemas are strict and refuse such a field);
 - model output, an assistant proposal or a standing rule;
 - a notification or an idempotent replay.
 
@@ -137,5 +140,5 @@ the question is about Flux's own role model.
 | DA-1, DA-2, DA-3 | `acceptDecision` / `proposeDecision` over the single access policy | `app/tests/app/decision-authority.test.ts` (role matrix, narrowing after a proposal, leaving, superseding), `app/tests/app/work.test.ts` |
 | DA-2, DA-5 for the agent path | No accepting tool or operation; standing-grant schema; `DECISION_NEEDS_PERSON` | `decision-authority.test.ts` (an MCP proposal, the tool list, the refused `decision.accept` grant, person-owned and workspace-owned agents) |
 | DA-1, DA-4 for the assistant path | Result-only proposal parsing; proposal accept needs a person with authority | `app/tests/app/personal-runs.test.ts` ("#250 AC-3") |
-| DA-4 | Strict request schemas; `0008_work.sql` `CHECK` and `FOREIGN KEY` | `decision-authority.test.ts` (raw SQL updates refused, no event on refusal) |
+| DA-4 | Server-defined status and decider (unknown REST fields ignored, strict MCP schemas); `0008_work.sql` `CHECK` and `FOREIGN KEY` | `decision-authority.test.ts` (a body naming a status or decider, raw SQL updates refused, no event on refusal) |
 | DA-2 in the UI | `DecisionPanel`: Accept only with write access; otherwise a "Who decides" note | `app/tests/ui/test_decision_authority.py`, `app/tests/ui/test_work_decisions.py` |

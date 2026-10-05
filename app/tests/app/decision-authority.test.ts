@@ -114,12 +114,14 @@ describe('decision acceptance authority (#250, O-009)', () => {
     expectStatus(await accept(ada.browser, rule.id, rule.version), 200, 'current rule');
     const count = async () => (await pool.query('SELECT count(*)::int AS n FROM project_decisions WHERE project_id = $1', [lamp.id])).rows[0].n as number;
     const before = await count();
-    // A proposal cannot arrive accepted, and an acceptance cannot name its own decider.
-    for (const body of [{ title: 'Already decided', status: 'accepted' }, { title: 'Already decided', decidedBy: ada.id }]) {
-      const silent = await mia.browser.request('POST', decisionsPath(), { body });
-      assert.equal(silent.status, 400, silent.text);
+    // A create body that claims a status or a decider is still only a proposal by its actual author: the API
+    // ignores fields it does not define.
+    for (const body of [{ title: 'Already decided', status: 'accepted' }, { title: 'Decided by Ada', decidedBy: ada.id, decidedAt: new Date().toISOString() }]) {
+      const created = expectStatus(await mia.browser.request('POST', decisionsPath(), { body }), 201, JSON.stringify(body)) as Decision;
+      assert.deepEqual([created.status, created.decidedBy, created.proposedBy.id], ['proposed', null, mia.id], JSON.stringify(body));
+      await stillProposed(ada.browser, created, `create body ${JSON.stringify(body)}`);
     }
-    assert.equal(await count(), before, 'no decision was stored');
+    assert.equal(await count(), before + 2);
     assert.equal((await vic.browser.request('POST', decisionsPath(), { body: { title: 'Viewer replacement', supersedes: rule.id } })).status, 403,
       'a viewer cannot even propose a replacement');
 
@@ -128,15 +130,16 @@ describe('decision acceptance authority (#250, O-009)', () => {
     const replacement = await work.proposeDecision(agent, lamp.id, { title: 'Use a ToF sensor instead', rationale: 'Works in the dark', supersedes: rule.id });
     const current = async () => expectStatus(await mia.browser.request('GET', `/api/v1/decisions/${rule.id}`), 200) as Decision;
     assert.deepEqual([replacement.status, replacement.proposedBy.kind, (await current()).status], ['proposed', 'agent', 'accepted']);
-    const extra = await accept(ada.browser, replacement.id, replacement.version, { decidedBy: ada.id });
-    assert.equal(extra.status, 400, 'an acceptance body cannot carry a decider');
     assert.equal((await accept(vic.browser, replacement.id, replacement.version)).status, 403);
+    assert.equal((await accept(vic.browser, replacement.id, replacement.version, { decidedBy: ada.id })).status, 403,
+      'naming someone with authority lends none');
     await rejects(work.acceptDecision(agent, replacement.id, {}, replacement.version), 'DECISION_NEEDS_PERSON');
     await stillProposed(ada.browser, replacement, 'refused replacement');
     assert.equal((await current()).status, 'accepted', 'the current rule stays current until a person decides');
 
-    // A guest contributor accepts the replacement: the earlier rule is superseded and keeps its history.
-    const pivot = expectStatus(await accept(gus.browser, replacement.id, replacement.version), 200, 'pivot') as Decision;
+    // A guest contributor accepts the replacement: the earlier rule is superseded and keeps its history. The
+    // caller is the decider, whoever the body names.
+    const pivot = expectStatus(await accept(gus.browser, replacement.id, replacement.version, { decidedBy: ada.id }), 200, 'pivot') as Decision;
     assert.deepEqual([pivot.status, pivot.decidedBy?.id, pivot.supersedes], ['accepted', gus.id, rule.id]);
     const earlier = await current();
     assert.deepEqual([earlier.status, earlier.supersededBy, earlier.decidedBy?.id, earlier.rationale],
