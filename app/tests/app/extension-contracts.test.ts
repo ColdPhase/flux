@@ -309,6 +309,15 @@ describe('public extension contracts (O-010)', () => {
     assert.deepEqual(kinds(compareSchema(base, edit((s) => { s.properties.note.maxLength = 500; }), 'output')), ['breaking $.properties.note.maxLength: maxLength 100 → 500']);
     assert.deepEqual(kinds(compareSchema(base, { ...base, title: 'Renamed' }, 'output')), ['additive $.title: text changed']);
 
+    // An input default is what an omitted argument means; `not` inverts its schema; more prefixItems constrain more positions.
+    const paged = (limit: number) => ({ type: 'object', properties: { limit: { type: 'integer', default: limit } } });
+    assert.deepEqual(kinds(compareSchema(paged(20), paged(5), 'input')), ['breaking $.properties.limit.default: default 20 → 5']);
+    assert.deepEqual(kinds(compareSchema(paged(20), paged(5), 'output')), ['additive $.properties.limit.default: default changed']);
+    assert.deepEqual(kinds(compareSchema({ type: 'string', not: { enum: ['a'] } }, { type: 'string', not: { enum: ['a', 'b'] } }, 'input')),
+      ['breaking $.not: not changed: an inverted schema cannot be shown compatible']);
+    assert.deepEqual(kinds(compareSchema({ type: 'array', prefixItems: [{ type: 'string' }] },
+      { type: 'array', prefixItems: [{ type: 'string' }, { type: 'integer' }] }, 'input')), ['breaking $.prefixItems: prefixItems branches 1 → 2']);
+
     // `structural` drops description keywords but keeps a property that is named `description`.
     assert.deepEqual(structural({ type: 'object', description: 'gone', required: ['b', 'a'], properties: { description: { type: 'string', description: 'gone' } } }),
       { type: 'object', required: ['a', 'b'], properties: { description: { type: 'string' } } });

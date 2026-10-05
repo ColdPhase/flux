@@ -41,7 +41,7 @@ a later release may make **additive** changes:
 
 | | Additive: same version | Breaking: new version |
 | --- | --- | --- |
-| **MCP tools (inputs you send)** | A new tool, prompt or resource. A new optional argument. A wider type, enum or bound. A removed pattern or format restriction. New wording. | A removed or renamed tool, prompt, argument or resource. A removed or newly required argument. A narrower type, enum, bound, pattern or format. A changed required scope, operation, peer-request classes or annotation. A changed error envelope. A removed listed error code or bootstrap key. |
+| **MCP tools (inputs you send)** | A new tool, prompt or resource. A new optional argument. A wider type, enum or bound. A removed pattern or format restriction. New wording. | A removed or renamed tool, prompt, argument or resource. A removed or newly required argument. A narrower type, enum, bound, pattern or format. A changed or removed default. A changed required scope, operation, peer-request classes or annotation. A changed error envelope. A removed listed error code or bootstrap key. |
 | **Export (documents you read)** | A new field, even a required one. A new enum value. A tighter bound. A new bundle file. New wording. | A removed or renamed field. A field that becomes optional or nullable. A changed type, constant, pattern or format. A removed enum value. A removed or renamed bundle file. A changed manifest identification. |
 
 To keep working across additive changes, an integration must:

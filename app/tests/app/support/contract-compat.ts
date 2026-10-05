@@ -18,7 +18,7 @@ type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 type SchemaObject = { [key: string]: Json };
 
 const contractsDir = new URL('../contracts/', import.meta.url);
-const TEXT = new Set(['title', 'description', '$comment', 'examples', 'default']);
+const TEXT = new Set(['title', 'description', '$comment', 'examples']);
 const LOWER = new Set(['minimum', 'exclusiveMinimum', 'minLength', 'minItems', 'minProperties']);
 const UPPER = new Set(['maximum', 'exclusiveMaximum', 'maxLength', 'maxItems', 'maxProperties']);
 const SCHEMA_MAPS = new Set(['properties', 'definitions', '$defs', 'patternProperties']);
@@ -60,6 +60,11 @@ export function compareSchema(before: Json | undefined, after: Json | undefined,
     const at = `${path}.${key}`;
     if (isDeepStrictEqual(a, b)) continue;
     if (TEXT.has(key)) add('additive', at, 'text changed');
+    else if (key === 'default') {
+      // An input default is what an omitted argument means: changing or dropping it changes existing calls.
+      if (dir === 'output' || a === undefined) add('additive', at, a === undefined ? 'default added' : 'default changed');
+      else add('breaking', at, b === undefined ? 'default removed' : `default ${JSON.stringify(a)} → ${JSON.stringify(b)}`);
+    } else if (key === 'not') add('breaking', at, 'not changed: an inverted schema cannot be shown compatible');
     else if (SCHEMA_MAPS.has(key)) {
       const left = isObject(a) ? a : {};
       const right = isObject(b) ? b : {};
@@ -102,8 +107,11 @@ export function compareSchema(before: Json | undefined, after: Json | undefined,
       else {
         const [short, long] = a.length < b.length ? [a, b] : [b, a];
         const prefix = short.every((item, index) => isDeepStrictEqual(item, long[index]));
+        // More anyOf/oneOf branches accept more (wider); more prefixItems constrain more positions (narrower).
+        const longer = key === 'prefixItems' ? narrowed(dir) : widened(dir);
+        const shorter = key === 'prefixItems' ? widened(dir) : narrowed(dir);
         if (!prefix) add('breaking', at, `${key} branches changed`);
-        else add(b.length > a.length ? widened(dir) : narrowed(dir), at, `${key} branches ${a.length} → ${b.length}`);
+        else add(b.length > a.length ? longer : shorter, at, `${key} branches ${a.length} → ${b.length}`);
       }
     } else if (a === undefined) add(narrowed(dir), at, `${key} constraint added`);
     else if (b === undefined) add(widened(dir), at, `${key} constraint removed`);
