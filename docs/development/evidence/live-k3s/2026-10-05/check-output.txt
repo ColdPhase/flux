@@ -10,8 +10,9 @@ Summary: 3 resources found parsing stdin - Valid: 3, Invalid: 0, Errors: 0, Skip
 Route assertions passed (example site values).
 Negative controls refused: 17/17 mutated renders.
 k3s live-media render check passed: chart 1.9.0 (4fafb11011747552803061ce41480c7d2b4fa58d3471f6d3579d988c53399109), Kubernetes 1.37.1, example site values.
+exit 0
 
-# Same check with the example file passed as an operator site file (FLUX_K3S_SITE_VALUES): expected refusal, exit 1
+# The example file passed as an operator site file (FLUX_K3S_SITE_VALUES): expected refusal
 == chart livekit-server 1.9.0: checksum, lint, render (operator site values)
 livekit-server-1.9.0.tgz: OK
 ==> Linting livekit-server-1.9.0.tgz
@@ -22,4 +23,33 @@ livekit-server-1.9.0.tgz: OK
 Summary: 3 resources found parsing stdin - Valid: 3, Invalid: 0, Errors: 0, Skipped: 0
 == route assertions and Compose consistency
 FAIL no documentation address or .example name left in the site values
+FAIL no example webhook key ID or node label left in the site values
 exit 1
+
+# Operator site file with non-documentation addresses but the example webhook key ID and node label left in (not committed): expected refusal
+== chart livekit-server 1.9.0: checksum, lint, render (operator site values)
+livekit-server-1.9.0.tgz: OK
+==> Linting livekit-server-1.9.0.tgz
+[INFO] Chart.yaml: icon is recommended
+
+1 chart(s) linted, 0 chart(s) failed
+== Kubernetes 1.37.1 schemas (strict)
+Summary: 3 resources found parsing stdin - Valid: 3, Invalid: 0, Errors: 0, Skipped: 0
+== route assertions and Compose consistency
+FAIL no example webhook key ID or node label left in the site values
+exit 1
+
+# The same operator site file with those two values replaced (not committed): expected pass
+== chart livekit-server 1.9.0: checksum, lint, render (operator site values)
+livekit-server-1.9.0.tgz: OK
+==> Linting livekit-server-1.9.0.tgz
+[INFO] Chart.yaml: icon is recommended
+
+1 chart(s) linted, 0 chart(s) failed
+== Kubernetes 1.37.1 schemas (strict)
+Summary: 3 resources found parsing stdin - Valid: 3, Invalid: 0, Errors: 0, Skipped: 0
+== route assertions and Compose consistency
+Route assertions passed (operator site values).
+Negative controls refused: 17/17 mutated renders.
+k3s live-media render check passed: chart 1.9.0 (4fafb11011747552803061ce41480c7d2b4fa58d3471f6d3579d988c53399109), Kubernetes 1.37.1, operator site values.
+exit 0

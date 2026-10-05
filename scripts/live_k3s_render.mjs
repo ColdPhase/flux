@@ -114,6 +114,10 @@ export function check(objects, compose, mode, renderText) {
     expect('no documentation address or .example name left in the site values', hosts.every((host) =>
       typeof host === 'string' && !/(^|\.)example$/i.test(host) &&
       !(isIP(host) && documentation.check(host, ipv(host)))));
+    // Placeholders of livekit-site.example.yaml that would otherwise deploy silently.
+    expect('no example webhook key ID or node label left in the site values',
+      config.webhook?.api_key !== 'flux-livekit-key-id' &&
+      Object.keys(pod.nodeSelector ?? {}).every((label) => !/\.example\//i.test(label)));
   }
   return failures;
 }

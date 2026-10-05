@@ -16,7 +16,7 @@ stack encrypts is recorded in [live-media-encryption.md](live-media-encryption.m
 | [`docker/k3s/livekit-site.example.yaml`](../../docker/k3s/livekit-site.example.yaml) | What each site supplies: media node selector, private signaling bind address, public `rtc.node_ip`, TURN name and TLS Secret, webhook key ID and URL. Placeholders only. |
 | [`scripts/check_live_k3s.sh`](../../scripts/check_live_k3s.sh) and [`scripts/live_k3s_render.mjs`](../../scripts/live_k3s_render.mjs) | The render check below. |
 
-`./scripts/check_live_k3s.sh` took 9 seconds with cached images (2026-10-05).
+`./scripts/check_live_k3s.sh` took 7–10 seconds per run with cached images (2026-10-05).
 It starts no cluster and leaves no container, and runs in digest-pinned
 containers: `alpine/helm` 4.3.0, `ghcr.io/yannh/kubeconform` v0.8.0,
 `mikefarah/yq` 4.54.1, and the application's Node base image. It:
@@ -41,7 +41,8 @@ containers: `alpine/helm` 4.3.0, `ghcr.io/yannh/kubeconform` v0.8.0,
 
 Before installing, an operator runs it with their own site file:
 `FLUX_K3S_SITE_VALUES=/path/site.yaml ./scripts/check_live_k3s.sh`. In that
-mode, documentation addresses and `.example` names are also refused. Set
+mode, it also refuses documentation addresses, `.example` names, and the
+example's webhook key ID and node label. Set
 `FLUX_K3S_RENDER_OUT` to keep the reviewed render. Then install the same
 archive with the same two values files:
 
@@ -60,7 +61,7 @@ policies, DNS, certificates or media.
 **Observed 2026-10-05:** the check passed with the example site values: checksum
 OK, lint OK, 3/3 objects valid, route and Compose assertions passed, and 17/17
 mutations refused. With the example file passed as an operator file, the check
-failed on its documentation values, as intended. The render and output are in
+failed on its documentation values and placeholders, as intended. The render and output are in
 the [2026-10-05 evidence](evidence/live-k3s/2026-10-05/README.md).
 
 ## Route decision — proposed amendment, 2026-10-06 (peer review required)

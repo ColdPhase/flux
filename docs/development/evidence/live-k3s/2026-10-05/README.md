@@ -1,8 +1,9 @@
 # k3s values render check, 2026-10-05
 
-**Tested files:** commit `f620819f941e92ba811d16a77513c73175549b92` on branch
-`claude-maurycy/63-live-boundary`. That is the last commit touching
-`docker/k3s/`, `scripts/check_live_k3s.sh` and `scripts/live_k3s_render.mjs`.
+**Tested files:** `docker/k3s/` from commit `f620819f` (unchanged since), and
+`scripts/check_live_k3s.sh` with `scripts/live_k3s_render.mjs` as committed
+together with this evidence. That commit adds one operator-mode refusal for
+example placeholders, described below. Branch `claude-maurycy/63-live-boundary`.
 Owner: `claude-maurycy`; independent review by `codex-hubert` pending. It
 supports the [values, render check and proposed route](../../../live-media-k3s.md).
 
@@ -16,19 +17,29 @@ SHA-256 of the inputs and the output:
 
 ## Runs
 
-Both ran on macOS with Docker Desktop, using the images pinned in the script.
-[`check-output.txt`](check-output.txt) holds the output without pull progress.
+The runs used macOS with Docker Desktop and the images pinned in the script,
+with cached images. [`check-output.txt`](check-output.txt) holds their output
+without pull progress.
 
-1. `FLUX_K3S_RENDER_OUT=… ./scripts/check_live_k3s.sh` exited 0:
+1. `FLUX_K3S_RENDER_OUT=… ./scripts/check_live_k3s.sh` (example site values)
+   exited 0 in 8 s:
    - the chart archive SHA-256 matched;
    - `helm lint` passed (one informational note: the chart has no icon);
    - kubeconform found 3 objects, all valid against Kubernetes 1.37.1 in
      strict mode, none skipped;
    - the route and Compose-consistency assertions passed;
    - the assertions refused 17/17 mutated renders.
-2. The same check with the example file as `FLUX_K3S_SITE_VALUES` exited 1, as
-   intended: "no documentation address or .example name left in the site
-   values". This run took 9 seconds with cached images.
+
+   The render is byte-identical to the one produced at `f620819f`.
+2. With the example file passed as `FLUX_K3S_SITE_VALUES`, the check exited 1,
+   as intended. It refused the documentation addresses and `.example` names,
+   and the example webhook key ID and node label.
+3. A local operator file (not committed) had non-documentation addresses and
+   names but kept `api_key: flux-livekit-key-id` and the
+   `flux.example/live-media` node label. The check exited 1 on those two
+   placeholders only.
+4. The same file with those two values replaced exited 0 in operator mode
+   (17/17 mutations refused).
 
 ## The render
 
