@@ -347,6 +347,36 @@ class MapPasteJourney(unittest.TestCase):
         expect(page.get_by_role("form", name="New thought draft").get_by_label("Thought text")).to_have_value("Private text still pastes")
         self.assertEqual(writes, [])
 
+    def test_07_nothing_new_starts_while_a_pasted_image_uploads(self):
+        page = self.page()
+        self.open(page)
+        held = []
+        page.route("**/api/v1/projects/*/files?*", lambda route: held.append(route))
+        self.paste(page, None, self.image())
+        expect(page.locator(".sk-draft--uploading")).to_contain_text("Uploading the pasted image privately")
+        for _ in range(50):
+            if held:
+                break
+            page.wait_for_timeout(100)
+        self.assertEqual(len(held), 1, "the private upload is in flight")
+        # An edit or a new thought started now would be replaced by the image draft when the upload finishes.
+        row = page.locator(f'.sk-li-t[data-id="{self.parent}"]')
+        row.focus()
+        row.press("F2")
+        expect(page.locator(".sk-status")).to_contain_text("Wait for the pasted image to finish uploading")
+        expect(page.get_by_label("Thought text", exact=True)).to_have_count(0)
+        page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Thought", exact=True).click()
+        expect(page.get_by_role("form")).to_have_count(0)
+        row.focus()
+        self.paste(page, "Another idea while uploading")
+        expect(page.locator(".sk-status")).to_contain_text("Wait for the pasted image to finish uploading")
+        held[0].continue_()
+        draft = page.get_by_role("form", name="New thought draft")
+        expect(draft.get_by_label("Image caption")).to_have_value("Pasted image")
+        draft.get_by_role("button", name="Cancel", exact=True).click()
+        expect(page.get_by_role("form")).to_have_count(0)
+        self.assertEqual(self.stored(self.owner), self.before, "a cancelled image leaves nothing shared")
+
     def test_06_phone_paste_fills_the_empty_draft_through_the_clipboard_prompt(self):
         page = self.page(clipboard=True, viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
         self.open(page)
