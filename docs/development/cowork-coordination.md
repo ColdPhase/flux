@@ -104,9 +104,166 @@ not a public tool; MCP exposure stays disabled until #152/#160 wire it.
   cannot pass a row that commits later. Concurrent distinct lineages are tested.
   Request writers other than this composition must keep the same rule.
 
-Out of scope here: request claim/resolution/supersession, checkpoint
-production, reviewer/checkpoint claim eligibility, the #238 lifecycle/use
-fence, native publication and the final event flush.
+Out of scope here: request claim/resolution/supersession (specified in the
+next section), checkpoint production, reviewer/checkpoint claim eligibility,
+the #238 lifecycle/use fence, native publication and the final event flush.
+
+### Request claim and resolution (2026-10-04, peer review required)
+
+`coWorkRequestResponseInTransaction(tx, claims, command, policy)` is the
+recipient's internal caller-owned composition. It is not a public tool, and MCP
+exposure stays disabled until #152/#160 wire it.
+
+- **Operations.** This adds two #152 registry operations, which need their
+  owner's acceptance. Migration `0049` widens the closed grant operation list
+  with exactly these two. Its number must be reserved on #153 before the branch
+  is pushed.
+  - `cowork.request.claim` takes a delivered request.
+  - `cowork.request.respond` resolves or declines it.
+
+  `objectId` is the *recipient's* own unit, and the class is that unit's actual
+  role. A grant with an exact target must name a unit assigned to the grantee
+  with that role, as for `cowork.claim`. The post-state is the existing
+  `cowork.request_state`, where `connectionId` is the acting (recipient)
+  connection, `unitId` its unit and `role` that unit's role. A request grant,
+  delivery, ACK or deferral never stands in for these grants.
+- **Payloads (exact keys).**
+  - Claim is `{ generation, leaseId, requestId, expectedRequestVersion }`.
+  - Resolve is
+    `{ generation, leaseId, requestId, expectedRequestVersion, outcome: 'resolved', response }`.
+    `response` is a bounded object handed to the publication step; it is never
+    stored in the coordination row.
+  - Decline is
+    `{ generation, leaseId, requestId, expectedRequestVersion, outcome: 'declined', reason }`.
+    `reason` is one of `capability`, `policy`, `scope` or `source_changed`.
+
+  `generation` and `leaseId` are the recipient's live claim on its unit, made
+  through `cowork.claim`. Extra fields, copied prompts and authority fields are
+  refused before any write.
+- **Lock order.** The order is:
+  1. #152 `prepare`;
+  2. the recipient's connection slot;
+  3. the sorted project graph locks (#171) for this unit and every unit the
+     connection currently claims;
+  4. the complete sorted native task set (those units' tasks, lineage roots
+     and direct prerequisites);
+  5. sorted unit rows;
+  6. the request row (`FOR UPDATE`);
+  7. for a resolution, the publication step;
+  8. the conditional request update;
+  9. `complete`, then the caller's single final event flush.
+
+  The request's task is the unit's task, so it is already in the set. The
+  publication step may touch only that task and the conversation/stream
+  sequence; it queues event intents and never flushes. Fresh
+  `clock_timestamp()` after the lock waits fences the lease and the request
+  expiry. The conditional SQL update repeats the unit fence (state, generation,
+  lease, runtime session, unexpired lease) and the request's version and state
+  in its `WHERE` clause.
+- **Claim rules.**
+  - The unit must be assigned to the authenticated connection in this project,
+    and claimed live in this runtime session with exactly this generation and
+    lease.
+  - The request must be addressed to this connection *and* this unit, have
+    this exact version and be unexpired.
+  - Its target, source and criteria references must be readable at their
+    exact versions now.
+  - Accepted stored states are `queued`, `deferred`, and `claimed` with a
+    `claimed_generation` that differs from the unit's live generation. The last
+    case is a claim lost through expiry, release or reassignment: it is pending
+    again and can be re-claimed under the new generation.
+
+  The update sets `claimed_generation` to the live generation, increments the
+  version and clears any deferral reason, boundary and dependency.
+
+  The refusal codes are:
+  - a request already claimed under the live generation:
+    `COWORK_REQUEST_CLAIMED`;
+  - a terminal request: `COWORK_REQUEST_CLOSED`;
+  - an expired request: `COWORK_REQUEST_EXPIRED`;
+  - an unknown or foreign request, or one addressed elsewhere:
+    `COWORK_REQUEST_UNAVAILABLE`, content-free.
+- **Respond rules.** The same unit fence and addressing apply. The request must
+  be `claimed` with `claimed_generation` equal to the live generation, at the
+  exact version and unexpired. A request that is only queued or deferred is
+  refused with `COWORK_REQUEST_NOT_CLAIMED`. A lost request claim is refused
+  with `COWORK_CLAIM_LOST`.
+  - **Resolve.** The request's own references must still be readable at their
+    exact versions; otherwise the recipient declines with `source_changed`.
+    The injected `publishResponse` step then produces the native response in
+    this same transaction and returns its exact reference. That reference must
+    be a result/message ID or a versioned material/doc/work/thought, never
+    GitHub, and readable now. Otherwise `COWORK_RESPONSE_UNAVAILABLE` rolls
+    back the publication too. The request becomes `resolved` with that
+    `response_ref`.
+  - **Decline.** No publication happens and source readability is not
+    required: a decline is content-free. The request becomes `declined` with
+    its reason.
+
+  The unit's own claim is unchanged; releasing or completing it is a separate
+  command. Resolution does not mark the task done, approve a PR or satisfy a
+  current-version gate.
+- **Publication authority (open, peer review).** The production
+  `publishResponse` provider is #154's actor-aware contribution primitive. It
+  is not implemented here. Public composition stays disabled until that
+  provider is wired and independently verified. Passing a fixture provider is
+  not its implementation. "No separate transaction may publish a response and
+  later try to mark it done" is kept: the response and the resolution commit
+  together. Which grant authorizes the publication itself is still open: a
+  second native operation scope in the same command, or a respond grant that
+  covers publication. `cowork.request.respond` alone must not become a general
+  publication right.
+- **Supersession.** A `cowork.request` admission that *creates* a request
+  supersedes, in the same transaction, every earlier request that matches all
+  of the following:
+  - the same lineage, the same sender connection, the same recipient unit and
+    the same kind;
+  - stored state `queued` or `deferred`.
+
+  Each such request becomes `superseded` with reason `newer_request` and a
+  version increment, and its IDs are returned in the admission outcome. The
+  rules around it are:
+  - A `claimed` request is never superseded: an in-flight review keeps its
+    history, but cannot satisfy a current-version gate.
+  - An `existing` (re-issued) intent supersedes nothing.
+  - Supersession refunds no lineage budget.
+  - It runs after the request insert, under the sender and recipient slots
+    already held. A concurrent request claim (which also holds the recipient
+    slot) therefore serializes with it: whichever commits first wins, and the
+    other sees the committed state.
+- **Refusals.** Every refusal throws a typed domain error inside the caller's
+  transaction. The request row is unchanged, and no response, grant use or
+  receipt survives.
+- **Replay.** The same command ID and fingerprint replays the original receipt
+  as an observation. There is no fence, request change, publication or debit.
+  Current authorization is still rechecked, and so is the unchanged canonical
+  post-state, which covers:
+  - the request version and state, its recipient and unit;
+  - the unit's assignment and role;
+  - for a `claimed` post-state, `claimed_generation` equal to the unit's
+    current generation.
+
+  Readability is also rechecked: the request references for claim and resolve,
+  and the response for resolve. A decline observation is content-free. Later
+  outcomes behave as follows:
+  - Historical lease expiry alone leaves the rows unchanged, so the claim
+    receipt can still be observed.
+  - A unit release or re-claim changes the generation, so the claim receipt
+    becomes `COMMAND_POSTSTATE_STALE`.
+  - A later resolution, decline or supersession also makes earlier receipts
+    stale.
+- **Recovery visibility.** The pending projection already treats a `claimed`
+  request whose generation, lease, assignment or unit state no longer matches
+  as `queued` with `claim_lost`. Re-claiming under the new generation shows it
+  `claimed` again. Resolved, declined and superseded requests leave the
+  pending recovery page and the ready candidates. A request past its expiry
+  stays visible in recovery as `expired` (`request_expired`) and is not a
+  ready candidate. The sender still sees the outcome through the request row;
+  its admission receipt becomes stale once the state changes.
+
+Out of scope here: the production publication provider and its grant,
+scheduling, checkpoint production, reviewer eligibility, the #238 fence, the
+#74 GitHub recipient adapter, unit creation and MCP exposure.
 
 ### Parent request participation
 
@@ -298,7 +455,9 @@ zero idle model calls; server mocks do not prove them.
 ## Migrations and verification
 
 The accepted reservations are #58 `0026–0032`, #154 `0033`, #152 `0034`,
-#153 `0035`, #74 `0036`, and #154's actor extension `0037`.
+#153 `0035`, #74 `0036`, and #154's actor extension `0037`. #153 proposes
+`0049` for the request claim/respond grant operations; it must be reserved on
+#153 before that branch is pushed.
 The human-only `0033` checkpoint is frozen; it does not supply agent authors.
 Do not edit already merged migrations. #153 must
 compose with #152's real identity/grant storage, #154's actual contribution
