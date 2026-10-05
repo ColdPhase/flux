@@ -1,4 +1,4 @@
-import { loadPushServerConfig, type PushServerConfig } from '@flux/core';
+import { backgroundComparisonsEnabled, loadPushServerConfig, type PushServerConfig } from '@flux/core';
 import { loadBackgroundMasterKey } from '@flux/db';
 import { loadIdentityConfig, type IdentityConfig } from './identity/index.js';
 
@@ -23,6 +23,8 @@ export interface ServerConfig {
   heartbeatMs: number;
   port: number;
   backgroundMasterKey: Buffer | null;
+  /** `FLUX_BACKGROUND_COMPARISONS=on` (#58): owners may enable comparison rules; the worker runs them. */
+  backgroundComparisons: boolean;
   /**
    * `FLUX_DEVELOPMENT_LIVE_EDITING=true` (#228): selects the isolated development live map/wiki
    * editing path. Off by default; selecting it certifies none of the four F-021 gates.
@@ -45,6 +47,7 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env, backgroun
     heartbeatMs,
     port: Number(env.PORT ?? 8080),
     backgroundMasterKey: backgroundKeyPath === undefined ? loadBackgroundMasterKey() : loadBackgroundMasterKey(backgroundKeyPath),
+    backgroundComparisons: backgroundComparisonsEnabled(env),
     developmentLiveEditing: env.FLUX_DEVELOPMENT_LIVE_EDITING === 'true',
   };
 }

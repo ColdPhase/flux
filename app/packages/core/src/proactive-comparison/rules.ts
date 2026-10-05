@@ -28,7 +28,12 @@ function owner(principal: Principal): string {
 function uuid(id: string): boolean { return typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id); }
 function bounded(n: number, lo: number, hi: number): boolean { return Number.isInteger(n) && n >= lo && n <= hi; }
 
-export function proactiveRuleUseCases(unit: RuleUnitOfWork) {
+/**
+ * `runtimeAvailable` is true only when the operator switched background comparisons on
+ * (`backgroundComparisonsEnabled`), so a worker with reservation, interruption and current-access
+ * checks runs them; otherwise enabling fails closed with BACKGROUND_RUNTIME_UNAVAILABLE.
+ */
+export function proactiveRuleUseCases(unit: RuleUnitOfWork, { runtimeAvailable = false }: { runtimeAvailable?: boolean } = {}) {
   return {
     async create(principal: Principal, projectId: string, command: CreateProactiveComparisonRule): Promise<ProactiveComparisonRule> {
       const ownerUserId = owner(principal);
@@ -78,8 +83,8 @@ export function proactiveRuleUseCases(unit: RuleUnitOfWork) {
             || comparisonReservationCents(budget.price) > Math.min(current.perRunCents, budget.perRunCents))
             throw new ConflictError('The rule exceeds the owner-approved background budget', 'BACKGROUND_BUDGET_TOO_LOW');
           // Key custody and consent are necessary, but a worker with reservation,
-          // interruption and current-access checks must exist before activation.
-          throw new ConflictError('Background execution is not available yet', 'BACKGROUND_RUNTIME_UNAVAILABLE');
+          // interruption and current-access checks must run before activation (#58).
+          if (!runtimeAvailable) throw new ConflictError('Background execution is not available yet', 'BACKGROUND_RUNTIME_UNAVAILABLE');
         }
         return (await rules.change(ownerUserId, ruleId, expectedVersion, status))!;
       });
