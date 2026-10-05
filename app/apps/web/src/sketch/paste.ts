@@ -16,7 +16,7 @@ export type PastedText =
 /** Clipboard text as draft thoughts: trimmed, empty lines dropped; one line is one ordinary draft. */
 export function pastedText(text: string): PastedText {
   if (text.length > PASTE_TEXT_CHARS) return { kind: 'too-long' };
-  const lines = text.split(/\r\n|\r|\n| | /).map((line) => line.trim()).filter(Boolean);
+  const lines = text.split(/\r\n|\r|\n|\u2028|\u2029/).map((line) => line.trim()).filter(Boolean);
   if (!lines.length) return { kind: 'empty' };
   if (lines.length === 1) return { kind: 'one', text: lines[0]! };
   if (lines.length > SKETCH_LIMITS.pasteLines) return { kind: 'too-many', count: lines.length };

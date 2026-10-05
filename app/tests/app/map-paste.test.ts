@@ -89,7 +89,7 @@ test('a pasted image stays private staging until its thought is saved, then the 
   assert.equal(published.expiresAt, null, 'a published image never expires');
   assert.ok(published.publishedAt);
   // An exact retry returns the same thought; it never duplicates or republishes.
-  assert.deepEqual(expectStatus(await place(f.writer, f.map.id, { id: thoughtId, fileId: staged.body.id }, key), 201), created);
+  assert.deepEqual(expectStatus(await place(f.writer, f.map.id, { id: thoughtId, fileId: staged.body.id.toUpperCase() }, key), 201), created);
   const shared = await detail(f.reader, f.map.id);
   assert.equal(shared.thoughts.length, before.thoughts.length + 1);
   assert.deepEqual(shared.thoughts.find((thought) => thought.id === thoughtId)!.file, created.thought.file);
