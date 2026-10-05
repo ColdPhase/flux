@@ -20,8 +20,7 @@ promotion default) are separate improvements and do not block #188's criteria.
 
 Both runs built the images from this commit. The image step
 `pnpm build && pnpm typecheck && pnpm lint` was a cache hit, so an earlier build of
-the same inputs had already passed it. Lint reports one existing warning in
-`ProjectTasks.tsx:225`, which #188 did not add.
+the same inputs had already passed it.
 
 ## Acceptance criteria
 
