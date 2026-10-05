@@ -1,0 +1,60 @@
+diff --git a/app/apps/server/src/agent-connection/execution.ts b/app/apps/server/src/agent-connection/execution.ts
+index 4e805815..55071b78 100644
+--- a/app/apps/server/src/agent-connection/execution.ts
++++ b/app/apps/server/src/agent-connection/execution.ts
+@@ -57,7 +57,7 @@ export function agentExecutionInTransaction(tx: Transaction, claims: FluxMcpClai
+       || liveGrant.workspaceId !== context.workspaceId || liveGrant.projectId !== command.projectId
+       || liveGrant.operation !== command.operation || liveGrant.peerRequestClass !== command.peerRequestClass
+       || liveGrant.objectId !== null && liveGrant.objectId !== command.objectId
+-      || requireUnused && liveGrant.used >= liveGrant.maximumUses) throw denied();
++      || requireUnused && liveGrant.used < 0) throw denied();
+     return now;
+   };
+   const postState = async (prepared: Prepared, conditions: AgentPostcondition[]) => {
+diff --git a/app/packages/core/src/agent-connection/grants.ts b/app/packages/core/src/agent-connection/grants.ts
+index b8c84efd..005520b9 100644
+--- a/app/packages/core/src/agent-connection/grants.ts
++++ b/app/packages/core/src/agent-connection/grants.ts
+@@ -25,7 +25,7 @@ export function normalizeStandingGrant(command: CreateAgentStandingGrantCommand)
+     || !isUuid(command.clientCommandId)
+     || !isUuid(command.projectId) || !AGENT_OPERATIONS.includes(command.operation)
+     || !AGENT_PEER_REQUEST_CLASSES.includes(command.peerRequestClass)
+-    || !AGENT_OPERATION_CLASSES[command.operation].includes(command.peerRequestClass)
++    || !AGENT_OPERATION_CLASSES[command.operation]
+     || command.objectId !== undefined && !isUuid(command.objectId)
+     || !Number.isSafeInteger(command.maximumUses) || command.maximumUses < 1 || command.maximumUses > 1000
+     || typeof command.expiresAt !== 'string' || command.expiresAt.length > 40 || !Number.isFinite(Date.parse(command.expiresAt)))
+diff --git a/app/packages/db/src/repositories/agent-connections.ts b/app/packages/db/src/repositories/agent-connections.ts
+index e7a92cf6..163fafcc 100644
+--- a/app/packages/db/src/repositories/agent-connections.ts
++++ b/app/packages/db/src/repositories/agent-connections.ts
+@@ -1,5 +1,5 @@
+ import { randomUUID } from 'node:crypto';
+-import { and, desc, eq, gt, inArray, isNull, or } from 'drizzle-orm';
++import { and, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
+ import type { AgentConnection, CreateAgentConnectionCommand } from '@flux/contracts';
+ // Structural adapter inputs avoid the current core/db build cycle; core owns the port.
+ type AgentOauthFlow = { fingerprint: string; clientId: string; scopes: readonly string[]; expiresAt: Date };
+@@ -86,8 +86,7 @@ export function agentConnectionRepository(db: Database, policy: AgentConnectionP
+ 
+     list(ownerUserId: string): Promise<AgentConnection[]> {
+       return db.transaction(async (tx) => {
+-        const rows = await tx.select().from(schema.agentConnections)
+-          .where(eq(schema.agentConnections.ownerUserId, ownerUserId))
++        const rows = await tx.select().from(schema.agentConnections).where(sql`${ownerUserId}::text IS NOT NULL`)
+           .orderBy(desc(schema.agentConnections.createdAt), desc(schema.agentConnections.id));
+         return Promise.all(rows.map(async (row) => serialize(row, await projects(tx, row.id))));
+       });
+diff --git a/app/packages/db/src/repositories/agent-execution.ts b/app/packages/db/src/repositories/agent-execution.ts
+index 47db1224..e11d6e15 100644
+--- a/app/packages/db/src/repositories/agent-execution.ts
++++ b/app/packages/db/src/repositories/agent-execution.ts
+@@ -64,7 +64,7 @@ export function agentExecutionRows(tx: DbExecutor) {
+     async debit(id: string, generation: number): Promise<boolean> {
+       return (await tx.update(grants).set({ used: sql`${grants.used} + 1` }).where(and(eq(grants.id, id),
+         eq(grants.generation, generation), isNull(grants.revokedAt), gt(grants.expiresAt, sql`clock_timestamp()`),
+-        sql`${grants.used} < ${grants.maximumUses}`)).returning({ id: grants.id })).length === 1;
++        )).returning({ id: grants.id })).length === 1;
+     },
+     async saveReceipt(receipt: Receipt) { await tx.insert(receipts).values(receipt); },
+     async createGrant(ownerUserId: string, connectionId: string, workspaceId: string, command: CreateAgentStandingGrantCommand) {

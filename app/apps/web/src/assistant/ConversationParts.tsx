@@ -5,6 +5,7 @@ import { ApiError } from '../api/client';
 import { Button, Icon, IconButton, useLoopPause } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { canRetry, endedText, isWorking, workingText, type AskState } from './format';
+import { agentAuthorLabel } from '../docs/format';
 import './assistant.css';
 
 // The personal assistant in a project conversation (#57 design, #68 AC-8), in the calm v11
@@ -80,7 +81,7 @@ function SourceLink({ source, index, lookups }: { source: AssistantSourceRef; in
   const { openDetails } = useShellActions();
   if (source.type === 'message') {
     const message = lookups.messages.find((item) => item.id === source.id);
-    const label = message ? `Source ${index}: message #${message.sequence} by ${(message.authorId !== null ? lookups.author(message.authorId) : `${message.author.name ?? 'Agent'} · agent`)}` : `Source ${index}: a message in this conversation`;
+    const label = message ? `Source ${index}: message #${message.sequence} by ${(message.authorId !== null ? lookups.author(message.authorId) : agentAuthorLabel(message.author))}` : `Source ${index}: a message in this conversation`;
     return <Link className="assistant-cite" to={{ hash: `message-${source.id}` }} aria-label={label} title={label}>{index}</Link>;
   }
   if (source.type === 'work') {

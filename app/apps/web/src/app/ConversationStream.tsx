@@ -12,6 +12,7 @@ import { useShellActions } from './shellContext';
 import { listConversationRoots, listTaskNotices } from './conversation-api';
 import { ContributionMark, OPENING_REVEAL_MS, SourceCitation, clock, day, openOnWholeMessages, when } from './messageParts';
 import { MessageFiles } from '../composer/Files';
+import { agentAuthorLabel } from '../docs/format';
 
 // One project conversation (UI116-1, 2026-10-02): a chronological stream of roots. Each root is the
 // opening message of a stored conversation; its replies open beside it in a one-level thread.
@@ -506,9 +507,9 @@ export function ConversationStream({ project, meId, roots: stream, notices, auth
   </>);
 }
 
-/** Who created a task, as the stream names people: "Ada · you", "Ada", "Scout · agent". */
+/** Who created a task, as the stream names people: "Ada · you", "Ada", or an agent via agentAuthorLabel. */
 function creatorName(creator: NamedPrincipal, meId: string) {
-  if (creator.kind === 'agent') return `${creator.name ?? 'Agent'} · agent`;
+  if (creator.kind === 'agent') return agentAuthorLabel(creator);
   const name = creator.name ?? 'Member';
   return creator.id === meId ? `${name} · you` : name;
 }

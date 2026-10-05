@@ -74,7 +74,8 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   const lifecycle = liveMedia ? liveLifecycle(db, pool, liveMedia.media) : null;
   const liveRevocation = liveMedia ? liveRevocationCoordinator(db, pool, liveMedia.media, lifecycle!) : null;
   await app.register(accessRoutes, { db, sessions: identity, boss, liveRevocation });
-  await app.register(sketchRoutes, { db, sessions: identity });
+  const fileStorage = await diskFileStorage(filesDir);
+  await app.register(sketchRoutes, { db, sessions: identity, storage: fileStorage });
   await app.register(dmRoutes, { db, sessions: identity });
   await app.register(pushRoutes, { db, sessions: identity, config: pushConfig });
   if (pushConfig.status === 'unavailable') app.log.warn(pushConfig.reason);
@@ -84,7 +85,6 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await app.register(websocket, { options: { maxPayload: 1024, server: streamUpgrades as unknown as Server } });
   await app.register(streamRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, connectionString, heartbeatMs: config.heartbeatMs, cursorSecret: identityConfig.secret, exposeWork });
   await app.register(typingRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, connectionString, tasks: typingTaskDiscussion(db) });
-  const fileStorage = await diskFileStorage(filesDir);
   await app.register(fileRoutes, { db, sessions: identity, storage: fileStorage });
   await app.register(conversationRoutes, { db, sessions: identity, storage: fileStorage });
   await app.register(workRoutes, { db, sessions: identity, storage: fileStorage });

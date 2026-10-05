@@ -7,6 +7,7 @@ import { ComposerFiles, MessageFiles } from '../composer/Files';
 import { clock, day, when } from '../app/messageParts';
 import { useProjectShell } from '../project/data';
 import { contributeToTask, getTaskDiscussion } from '../composer/api';
+import { agentAuthorLabel } from '../docs/format';
 
 /**
  * A task's discussion in Details (UI116-3, #154): its root, which is the task's first genuine
@@ -38,7 +39,7 @@ export function TaskDiscussionSection({ workId, project, members, me }: {
 
   const thread = discussion?.conversationId ? `/projects/${project.id}/conversations/${discussion.conversationId}` : null;
   const author = (message: ConversationMessage) => {
-    if (message.authorId === null) return `${message.author.name ?? 'Agent'} · agent`;
+    if (message.authorId === null) return agentAuthorLabel(message.author);
     if (message.authorId === me.id) return `${me.name} · you`;
     return members.find((member) => member.userId === message.authorId)?.name
       ?? people?.find((person) => person.kind === 'human' && person.id === message.authorId)?.name ?? 'Member';

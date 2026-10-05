@@ -3,6 +3,8 @@ import type { SketchDetail } from '@flux/contracts';
 import { Icon } from '../ui';
 import { provenance, quote } from './format';
 import { ThoughtEditor } from './ThoughtEditor';
+import { ThoughtImage } from './ThoughtImage';
+import { linkOf } from './paste';
 import { ThoughtTasks, type ThoughtTasksEntry } from './ThoughtTasks';
 import { groupingChoices, visibleRows, type OutlineRow } from './outline';
 import type { PersonalOutline } from './useOutline';
@@ -133,6 +135,7 @@ export function SketchList({ sketch, meId, selection, connectFrom, editing, canW
             return other && other.thought.id !== row.parentId && !row.children.includes(other.thought.id) ? [{ link, other }] : [];
           });
           const placement = thought.placement ? (thought.placement.title ? `Draft · ${thought.placement.title}` : 'Draft you can’t open') : null;
+          const link = linkOf(thought.text);
           const choices = groupingChoices(thought.id, view.outline, sketch.links);
           const linked = projectId ? tasks.get(thought.id) : undefined;
           const parentLabel = row.parentId ? sketch.links.find((link) => (link.fromId === thought.id && link.toId === row.parentId) || (link.toId === thought.id && link.fromId === row.parentId))?.label : null;
@@ -145,6 +148,8 @@ export function SketchList({ sketch, meId, selection, connectFrom, editing, canW
                 {linked?.count && projectId ? <ThoughtTasks thought={thought} tasks={linked} projectId={projectId} variant="list" onOpenTask={on.onOpenTask} /> : null}
               </div>
               <div className="sk-outline-body">
+                {thought.file ? <ThoughtImage className="sk-li-img" fileId={thought.file.id} name={thought.file.name} /> : null}
+                {link ? <a className="sk-li-link" href={link.href} target="_blank" rel="noopener noreferrer" aria-label={`Open link ${link.host} in a new tab`}><Icon name="link" size={12} />Open link · {link.host}</a> : null}
                 <span className="sk-li-s">{placement ? `${placement} · ` : ''}{provenance(thought, meId)}</span>
                 {parentLabel ? <span className="sk-li-s">Connection · {parentLabel}</span> : null}
                 {row.depth > 0 ? <details className="sk-outline-path" open={pathId === thought.id} onToggle={(event) => { const open = event.currentTarget.open; setPathId((before) => open ? thought.id : before === thought.id ? null : before); }}><summary>Path · level {row.depth}</summary>{pathId === thought.id ? <ol aria-label={`Path to ${thought.text}`}>{row.ancestors.map((id) => { const ancestor = view.outline.byId.get(id)!; return <li key={id}><button type="button" aria-label={`Go to ancestor ${ancestor.thought.text}`} onClick={() => follow(thought.id, id)}>{ancestor.thought.text}</button></li>; })}</ol> : null}</details> : null}

@@ -13,6 +13,7 @@ import { Button, Icon } from '../ui';
 import { STATUS_LABEL } from '../work/format';
 import { useNativeOwn, useWorkChoices } from '../work/useDetailReads';
 import { WorkPagination } from '../work/WorkPagination';
+import { AGENT_SUFFIX, agentDisplayName } from '../docs/format';
 import { getProjectAgents } from './api';
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
@@ -88,7 +89,7 @@ function Connection({ connection, now }: { connection: ProjectAgentConnection; n
 }
 
 function authorName(message: ConversationMessage, names: Map<string, string>) {
-  if (message.authorId === null) return `${message.author.name ?? 'Agent'}`;
+  if (message.authorId === null) return agentDisplayName(message.author);
   return names.get(message.authorId) ?? 'Someone';
 }
 
@@ -271,7 +272,7 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
           return (
             <li key={message.id} className={`agents-msg${own ? ' agents-msg--own' : ''}${agent ? ' agents-msg--agent' : ''}`}>
               <span className="agents-msg__meta">
-                <b>{own ? 'You' : authorName(message, names)}</b>{agent ? <span className="agents-msg__kind"> · agent</span> : null}
+                <b>{own ? 'You' : authorName(message, names)}</b>{agent ? <span className="agents-msg__kind">{AGENT_SUFFIX}</span> : null}
                 <time dateTime={message.createdAt}>{when(message.createdAt)}</time>
                 {message.contribution ? <span className="agents-msg__kind"> · {message.contribution.kind}</span> : null}
               </span>
