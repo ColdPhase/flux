@@ -33,7 +33,7 @@ installation, interaction and notification evidence.
 | ID | User-visible outcome | Acceptance evidence |
 | --- | --- | --- |
 | MOB-1 | Install and launch Flux on Android, iPhone and iPad; recognizable icon/name, standalone window, stable identity and deep links | Manifest, icons and service worker meet each platform's documented install requirements; in emulation, the standalone display mode, cold launch, login/session recovery and reopening the correct project from a link |
-| MOB-2 | Productive layouts on phones and tablets, in portrait, landscape and tablet split view | Real content and all key journeys at emulated phone/tablet viewports. Includes a simulated on-screen keyboard: the viewport shrinks about 40–50% while a field has focus, and the field, Send and draft must survive (see [Acceptance evidence](#acceptance-evidence)). Also safe-area insets, rotation, zoom and touch. No clipped composer or actions, no accidental page-wide scrolling, and no focus zoom: editable controls are at least 16 px on coarse pointers. |
+| MOB-2 | Productive layouts on phones and tablets, in portrait, landscape and tablet split view | Real content and all key journeys at emulated phone/tablet viewports. Includes a simulated on-screen keyboard: the viewport shrinks by about 40–50% while a field has focus, and the field, Send and draft must survive (see [Acceptance evidence](#acceptance-evidence)). Also safe-area insets, rotation, zoom and touch. No clipped composer or actions, no accidental page-wide scrolling, and no focus zoom: editable controls are at least 16 px on coarse pointers. |
 | MOB-3 | Full mobile collaboration: capture, conversations, files, projects, tasks, decisions, search, maps and agent results | Integrated phone/tablet journeys with real persisted data, including opening a notification and continuing the linked work |
 | MOB-4 | Relevant push notifications with consent and user control | Subscribe, deliver with app backgrounded/not open, open the intended authorized item, mute/unsubscribe, reject permission, expire a subscription and recover delivery without duplicate notifications; delivery through the push mock and a real push service endpoint, and Apple/Chrome display rules met as documented |
 | MOB-5 | Recover safely from weak connectivity, suspension and updates | Preserve drafts, show pending/failed state, reconnect without double submission or data loss, and upgrade the service worker without losing in-progress input |
@@ -56,7 +56,7 @@ kinds of evidence, both tied to the tested commit:
    desktop provider path). Record engine versions, viewport, scale and throttling.
    **The on-screen keyboard is simulated** (founder decision by @Zamojski5 on
    #268, 2026-10-05). While a field has focus, the test shrinks the viewport the
-   way a phone keyboard does, to about 40–50% of the height at 390×844 and on a
+   way a phone keyboard does, by about 40–50% of the height at 390×844 and on a
    tablet. It does this through a viewport or CDP device-metrics change, with the
    matching `visualViewport` resize and scroll events. It then checks:
    - the focused field and the composer's Send stay visible and tappable above
@@ -65,13 +65,15 @@ kinds of evidence, both tied to the tested commit:
      closing the keyboard;
    - focusing does not zoom the page: every editable control (`input`,
      `textarea`, `select`, `contenteditable`) computes at least 16 px on a coarse
-     pointer, because iOS Safari zooms into a smaller focused field.
+     pointer. iOS Safari is reported to zoom into a smaller focused field; this
+     is a report, not a vendor statement (see the focus-zoom row below).
 
    This is recorded as emulation. Chromium's `interactive-widget=resizes-content`
    shrinks the layout viewport, but iOS Safari does not support it (MDN
    browser-compat-data, retrieved 2026-10-05). So the iPhone behaviour also needs
-   the documented-requirements row below, plus the app's handling of
-   `visualViewport`.
+   the keyboard and focus-zoom rows under
+   [Documented platform requirements](#documented-platform-requirements-266-checked-2026-10-05),
+   plus the app's handling of `visualViewport`.
 2. **Documented platform requirements.** A checklist that maps each Apple,
    Android/Chrome and standards requirement below to the Flux code or test that
    meets it, with dated primary sources. Observations, vendor statements and
@@ -208,6 +210,34 @@ These are vendor documentation statements plus our inferences, not device result
 Retrieved 2026-10-05 for the [acceptance evidence](#acceptance-evidence). Vendor
 or standards statements unless marked as a report or an inference.
 
+- **On-screen keyboard, Chrome on Android.** [Prepare for viewport resize behavior changes coming to Chrome on Android](https://developer.chrome.com/blog/viewport-resize-behavior)
+  (last updated 2022-10-28): from Chrome 108, "If you don't include
+  `interactive-widget` in the viewport meta tag, Chrome will use the default
+  behavior, which is `resizes-visual`". `interactive-widget=resizes-content`
+  restores the earlier behaviour. Flux: `app/apps/web/index.html` sets
+  `interactive-widget=resizes-content`; the simulated keyboard is
+  `test_phone_shell.py` test_11 (#267).
+- **On-screen keyboard, iPhone and iPad.**
+  - Support: [MDN browser-compat-data, `interactive-widget`](https://github.com/mdn/browser-compat-data/blob/main/html/elements/meta/name/viewport/interactive-widget.json)
+    (retrieved 2026-10-05) lists `chrome_android` 108, `firefox_android` 133 and
+    `safari` `false`; `safari_ios` mirrors Safari. So iOS keeps the layout
+    viewport while the keyboard is up.
+  - Apple guidance: the HIG's [Virtual keyboards](https://developer.apple.com/design/human-interface-guidelines/virtual-keyboards)
+    (page change noted 2025-06-09, retrieved 2026-10-05) says "Using the layout
+    guide also helps you keep important parts of your interface visible while
+    the virtual keyboard is onscreen".
+  - Flux: on touch screens, the app follows `visualViewport` while the keyboard
+    is up (`AppLayout.tsx`, #267). This is an inference from the support data;
+    it is unverified on a physical iPhone.
+- **Focus zoom on iOS (report).** No Apple or WebKit statement about zooming into
+  focused fields below 16 px was found (searched 2026-10-05). The 16 px threshold
+  is a widely reported WebKit behaviour, so treat it as a report and an
+  inference, not a vendor requirement.
+  - The HIG's [Text fields](https://developer.apple.com/design/human-interface-guidelines/text-fields)
+    (page change noted 2023-06-05, retrieved 2026-10-05) asks to "match the size
+    of a text field to the quantity of anticipated text".
+  - Flux: a coarse-pointer rule sets every editable control to at least 16 px
+    (`ui/ui.css`), and `test_phone_shell.py` test_12 checks it on six screens.
 - **Apple Web Push.** [Sending web push notifications in web apps and browsers](https://developer.apple.com/documentation/usernotifications/sending-web-push-notifications-in-web-apps-and-browsers)
   (undated page): web push for "Home Screen web apps in iOS 16.4 or later";
   permission through a gesture, subscribing "immediately from the gesture's event
