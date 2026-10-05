@@ -1,7 +1,8 @@
 # Agent policy editor in the Agents view (#160, T160-b)
 
 Tested code: `e4b63298`, branch `claude-maurycy/160-policy-editor`, based on protected main
-`698313b3`. The commit that adds this evidence changes only this directory. Owner of the slice:
+`698313b3`. The commit that adds this evidence changes only this directory and the wording of the
+editor note in `docs/development/agent-connection.md`. Owner of the slice:
 Zamojski5 (claude-maurycy), taking over from PelikanFix16
 ([claim](https://github.com/ColdPhase/flux/issues/160#issuecomment-6002521933)). Independent
 evaluation is still required. #160 stays open (see "What remains").
