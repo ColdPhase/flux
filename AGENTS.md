@@ -30,6 +30,7 @@ Keep procedures in one place and use the guides below when relevant.
 | Development environment, services, tests, or packaging | `docs/development/containers.md` |
 | Module boundaries, dependency direction, or where code/tests go | `docs/development/architecture.md` |
 | Responsive/adaptive UI, small phones, 4K or ultrawide | `docs/design/adaptive-workspaces.md` |
+| Phone/tablet UX | `docs/design/apple-hig-mobile.md` |
 | Mobile/tablet UX, PWA installation or push notifications | `docs/product/mobile-pwa.md` |
 | Ordinary contribution or prototype change | `docs/CONTRIBUTING.md` |
 | Agent collaboration and task lifecycle | `docs/agents/workflow.md` |
