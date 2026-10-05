@@ -60,9 +60,11 @@ draft; nothing shared is written before Save, and Save uses the commands above.
 - **Where.** Ctrl/⌘ V while focus is on the map or list (a thought, the canvas
   or the page itself). Text fields keep their native paste: the thought editor,
   the draft field and the sketch name are never intercepted. Touch devices,
-  which have no paste shortcut there, get a **Paste** tool that reads the
-  clipboard through the browser's own permission prompt; when the browser
-  refuses, the status says so and nothing changes.
+  which have no paste shortcut there, get **Paste lines, a link or an image** in
+  the empty new-thought draft (Thought, then Paste). It reads the clipboard
+  through the browser's own permission prompt and fills that draft, keeping its
+  parent; when the browser refuses, the status says so and nothing changes. The
+  toolbar keeps its tools, so phone widths keep their two rows.
 - **Who and when.** Only people who can change the map. A viewer's paste reads
   nothing, uploads nothing and says “You can look at this map but not add to
   it”. While an edit or another draft is open, paste says to finish or cancel it

@@ -108,5 +108,7 @@ export function useThoughtDraft(personId: string, sketchId: string, sketch: Sket
     writeThoughtDraft(key, draft);
     setLoaded({ key, draft });
   };
-  return { draft: current.draft, set };
+  /** The newest copy now, even from an earlier render's callback (an upload that finished later). */
+  const peek = () => readThoughtDraft(key);
+  return { draft: current.draft, set, peek };
 }

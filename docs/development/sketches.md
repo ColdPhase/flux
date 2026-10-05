@@ -109,7 +109,8 @@ author receives the events of a private sketch. The stream's `objectType` is `sk
   - Keyboard: arrows move (Shift for bigger steps, Alt to resize), Enter edits, Space
     selects, `+` adds a connected thought, Delete removes, and Ctrl/⌘ Z undoes.
   - Paste (#252): Ctrl/⌘ V on the map or list turns lines, a link or an image into a
-    private draft that is saved only on confirmation; touch devices have a Paste tool.
+    private draft that is saved only on confirmation; on touch devices the empty new-thought
+    draft offers Paste.
   - Selecting or dragging never opens a panel.
   - **List** shows each thought once in a personal, stable outline with named
     clickable relations. Fresh browsers start with top-level thoughts; **Group in

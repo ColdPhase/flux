@@ -16,7 +16,7 @@ import { freeSpot, rectOf } from './geometry';
 import { SketchList } from './SketchList';
 import { SketchMap } from './SketchMap';
 import { useOutline } from './useOutline';
-import { useThoughtDraft, type DraftLine } from './createdDraft';
+import { useThoughtDraft, type DraftLine, type ThoughtDraft } from './createdDraft';
 import { DraftCapture, draftReady } from './DraftCapture';
 import { clipboardFile, IMAGE_CAPTION, IMAGE_THOUGHT_SIZE, imageRefusal, linkOf, pastedImageName, pastedText } from './paste';
 import { tasksByThought } from './ThoughtTasks';
@@ -53,6 +53,8 @@ function uploadProblem(error: unknown) {
 }
 
 const VIEW_ONLY = 'You can look at this map but not add to it.';
+/** A new single-thought draft with nothing in it yet: a paste may fill it. */
+const emptyDraft = (draft: ThoughtDraft) => !draft.lines && !draft.file && !draft.text.trim();
 
 /** The project's name for the audience line, when the sketch belongs to one. */
 function useProjectName(projectId: string | null | undefined) {
@@ -248,13 +250,13 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     return false;
   };
 
-  /** Whether a new draft may start now; says why not. */
-  const blocked = () => {
+  /** Whether a new draft may start now; says why not. `replace` lets a paste fill the open, still empty draft. */
+  const blocked = (replace = false) => {
     if (!sketch) return true;
     if (!canWrite) { say(VIEW_ONLY); return true; }
     if (uploadingRef.current) { say('Wait for the pasted image to finish uploading'); return true; }
     if (editingState) { say('Finish or cancel your current edit first'); return true; }
-    if (capture.draft) { rootRef.current?.querySelector<HTMLElement>('.sk-draft textarea, .sk-draft input')?.focus(); say('Finish or cancel your current thought draft first'); return true; }
+    if (capture.draft && !(replace && emptyDraft(capture.draft))) { rootRef.current?.querySelector<HTMLElement>('.sk-draft textarea, .sk-draft input')?.focus(); say('Finish or cancel your current thought draft first'); return true; }
     return false;
   };
 
@@ -270,8 +272,8 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     });
   };
 
-  const add = (parentId: string | null, text = '') => {
-    if (blocked()) return;
+  const add = (parentId: string | null, text = '', replace = false) => {
+    if (blocked(replace)) return;
     const [spot] = spots(parentId, 1, { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height });
     capture.set({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), text, x: spot!.x, y: spot!.y, parentId });
     setConnectFrom(null);
@@ -280,10 +282,11 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
       : `Private ${linkOf(text) ? 'link' : 'thought'} draft from the clipboard · Enter saves, Escape cancels`);
   };
 
-  // #252: what is pasted becomes a private draft with the same parent rule as the Thought button.
-  const pasteParent = () => selection[selection.length - 1] ?? null;
+  // #252: what is pasted becomes a private draft with the same parent rule as the Thought button; pasting into the
+  // open empty draft keeps that draft's parent.
+  const pasteParent = () => (capture.draft && emptyDraft(capture.draft) ? capture.draft.parentId : selection[selection.length - 1] ?? null);
 
-  const pasteText = (text: string) => {
+  const pasteText = (text: string, replace: boolean) => {
     const parsed = pastedText(text);
     if (parsed.kind === 'empty') { say('Nothing to paste: the clipboard has no text or image'); return; }
     if (parsed.kind === 'too-long') { say('That paste is too long for map thoughts. Nothing was added; paste a shorter list.'); return; }
@@ -292,7 +295,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
       return;
     }
     const parentId = pasteParent();
-    if (parsed.kind === 'one' && parsed.text.length <= SKETCH_LIMITS.text) { add(parentId, parsed.text); return; }
+    if (parsed.kind === 'one' && parsed.text.length <= SKETCH_LIMITS.text) { add(parentId, parsed.text, replace); return; }
     // Several lines, or one line too long for a thought (marked, so it can be shortened before Save).
     const lines = parsed.kind === 'one' ? [parsed.text] : parsed.lines;
     const places = spots(parentId, lines.length, { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height });
@@ -318,6 +321,8 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
       if (!type) { say('That file is not a PNG, JPEG, GIF or WebP image, so nothing was pasted.'); return; }
       say('Uploading the image privately · only you can see it until you save');
       const staged = await stageFile(projectId, file, pastedImageName(type), crypto.randomUUID());
+      const meanwhile = capture.peek();
+      if (meanwhile && !emptyDraft(meanwhile)) { say('The image stays private and unused: you started another draft meanwhile.'); return; }
       capture.set({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), text: IMAGE_CAPTION, x: spot!.x, y: spot!.y, parentId,
         file: { id: staged.id, name: staged.name, size: staged.size }, width: IMAGE_THOUGHT_SIZE.width, height: IMAGE_THOUGHT_SIZE.height });
       setConnectFrom(null);
@@ -331,28 +336,31 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     }
   };
 
-  const handlePaste = (data: { text: string; file: Blob | null }) => {
-    if (blocked()) return;
+  const handlePaste = (data: { text: string; file: Blob | null }, replace = false) => {
+    if (blocked(replace)) return;
     if (data.file) void pasteImage(data.file);
-    else pasteText(data.text);
+    else pasteText(data.text, replace);
   };
 
-  /** Touch devices have no paste shortcut on the map: read the clipboard through the browser's own prompt. */
+  /**
+   * Touch devices have no paste shortcut on the map: the empty new-thought draft offers Paste, which reads the
+   * clipboard through the browser's own prompt and fills that draft.
+   */
   const pasteFromClipboard = async () => {
-    if (blocked()) return;
+    if (blocked(true)) return;
     const clipboard = typeof navigator === 'undefined' ? undefined : navigator.clipboard;
     try {
       if (clipboard?.read) {
         const items = await clipboard.read();
         for (const item of items) {
           const type = item.types.find((candidate) => candidate.startsWith('image/'));
-          if (type) { handlePaste({ text: '', file: await item.getType(type) }); return; }
+          if (type) { handlePaste({ text: '', file: await item.getType(type) }, true); return; }
         }
         const text = items.find((item) => item.types.includes('text/plain'));
-        handlePaste({ text: text ? await (await text.getType('text/plain')).text() : '', file: null });
+        handlePaste({ text: text ? await (await text.getType('text/plain')).text() : '', file: null }, true);
         return;
       }
-      if (clipboard?.readText) { handlePaste({ text: await clipboard.readText(), file: null }); return; }
+      if (clipboard?.readText) { handlePaste({ text: await clipboard.readText(), file: null }, true); return; }
       say('This browser doesn’t let Flux read the clipboard. Add a Thought and paste into its text instead.');
     } catch {
       say('The browser didn’t allow reading the clipboard. Add a Thought and paste into its text instead.');
@@ -590,9 +598,8 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
 
         {canWrite ? (
           <div className={`sk-bar${doc.problem ? ' sk-bar--problem' : ''}`}>
-            <div className={`sk-tools${sketch.scope === 'project' || coarse ? ' sk-tools--seven' : ''}`} role="toolbar" aria-label="Sketch tools">
+            <div className={`sk-tools${sketch.scope === 'project' ? ' sk-tools--seven' : ''}`} role="toolbar" aria-label="Sketch tools">
             <button type="button" className="ui-btn ui-btn--quiet sk-add" onClick={() => add(selection[selection.length - 1] ?? null)}><Icon name="plus" size={14} />Thought</button>
-            {coarse ? <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={uploading} onClick={() => void pasteFromClipboard()} aria-label="Paste"><Icon name="paste" size={14} /><span className="sk-bl">Paste</span></button> : null}
             <button type="button" className="ui-btn ui-btn--quiet" aria-pressed={!!connectFrom} onClick={connect} aria-label="Connect"><Icon name="link" size={14} /><span className="sk-bl">Connect</span></button>
             <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={selection.length !== 1} onClick={() => {
               if (selection.length !== 1) { say('Select one thought, then Edit'); return; }
@@ -632,6 +639,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
             if (lines.length) { capture.set({ ...capture.draft, lines }); return; }
             capture.set(null); say('Pasted thoughts cancelled'); focusThought('.sk-add');
           }}
+          onPaste={coarse ? () => void pasteFromClipboard() : undefined}
           onSave={() => void saveDraft()} onCancel={() => { capture.set(null); say(capture.draft?.lines ? 'Pasted thoughts cancelled' : 'Thought draft cancelled'); focusThought('.sk-add'); }} /> : null}
         {uploading ? <p className="sk-draft sk-draft--uploading" role="status"><Icon name="image" size={14} />Uploading the pasted image privately…</p> : null}
 
@@ -653,7 +661,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
 
         <p className="sk-help" id={helpId}>
           {coarse
-            ? 'Tap a thought to select it, then drag it. Add links a new thought to it. Paste turns copied lines, a link or an image into a draft. List shows the same thoughts in order.'
+            ? 'Tap a thought to select it, then drag it. Add links a new thought to it. Thought, then Paste, turns copied lines, a link or an image into a draft. List shows the same thoughts in order.'
             : 'Drag to move, drag empty space to pan, Shift-click to select several. On a focused thought: arrows move (Shift further, Alt resizes) · Enter edits · Space selects · + adds a linked thought · Delete removes · Ctrl/⌘ Z undoes · Ctrl/⌘ V pastes lines, a link or an image as a draft.'}
         </p>
       </div>

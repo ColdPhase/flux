@@ -11,9 +11,12 @@ export function draftReady(draft: ThoughtDraft) {
   return draft.lines ? draft.lines.length > 0 && draft.lines.every((line) => fits(line.text)) : fits(draft.text);
 }
 
-export function DraftCapture({ draft, parent, saving, canWrite, onText, onLines, onSave, onCancel }: {
+export function DraftCapture({ draft, parent, saving, canWrite, onText, onLines, onPaste, onSave, onCancel }: {
   draft: ThoughtDraft; parent: string | null; saving: boolean; canWrite: boolean;
-  onText(text: string): void; onLines(lines: DraftLine[]): void; onSave(): void; onCancel(): void;
+  onText(text: string): void; onLines(lines: DraftLine[]): void;
+  /** Touch devices (#252): fill this empty draft from the clipboard. */
+  onPaste?(): void;
+  onSave(): void; onCancel(): void;
 }) {
   const form = useRef<HTMLFormElement>(null);
   // A new draft takes focus once; later row edits or removals keep it where the person put it.
@@ -54,13 +57,15 @@ export function DraftCapture({ draft, parent, saving, canWrite, onText, onLines,
     </form>;
   }
   return <form ref={form} className="sk-draft" aria-label="New thought draft" onSubmit={(event) => { event.preventDefault(); if (ready) onSave(); }}>
-    <p className="sk-draft__context">{draft.file ? 'New image' : 'New thought'} · {where} · private until saved</p>
+    <p className="sk-draft__context">{draft.file ? 'New image' : linkOf(draft.text) ? 'New link' : 'New thought'} · {where} · private until saved</p>
     {draft.file ? <div className="sk-draft__image"><ThoughtImage className="sk-draft__img" fileId={draft.file.id} name={draft.file.name} />
       <span>{draft.file.name} · only you can see it until you save</span></div> : null}
     <textarea className="ui-input" rows={2} aria-label={draft.file ? 'Image caption' : 'Thought text'} value={draft.text} maxLength={SKETCH_LIMITS.text} disabled={saving}
       onChange={(event) => onText(event.target.value)} onKeyDown={keys} />
     <div className="sk-draft__actions"><button type="submit" className="ui-btn ui-btn--primary" disabled={!ready}>{saving ? 'Saving…' : draft.file ? 'Save image' : 'Save thought'}</button>
       <button type="button" className="ui-btn ui-btn--quiet" disabled={saving} onClick={onCancel}>Cancel</button>
+      {onPaste && !draft.file && !draft.text.trim() ? <button type="button" className="ui-btn ui-btn--quiet sk-draft__paste" disabled={saving} onClick={onPaste}>
+        <Icon name="paste" size={14} />Paste lines, a link or an image</button> : null}
       <span>Enter saves · Shift+Enter adds a line · Escape cancels</span></div>
   </form>;
 }
