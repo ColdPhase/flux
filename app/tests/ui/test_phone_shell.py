@@ -298,7 +298,10 @@ class PhoneShellJourney(unittest.TestCase):
         expect(page.locator(".tb-card:visible")).to_have_count(1)
         page.locator("header.top h1").click()
         expect(search).to_have_value("probes")
-        self.assertGreater(self.box(page.locator(".tb-search"))["width"], 250, "a filter in use stays readable")
+        # A filter in use keeps the field open and marked beside the tools, which come back.
+        self.assertGreater(self.box(page.locator(".tb-search"))["width"], 80, "a filter in use stays visible")
+        expect(page.locator(".tb-search.has-query")).to_have_count(1)
+        expect(page.get_by_role("button", name=re.compile("Task$"))).to_be_visible()
         shot(page, "266-tasks-search-phone")
 
 
