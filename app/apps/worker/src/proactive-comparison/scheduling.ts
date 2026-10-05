@@ -2,8 +2,8 @@ import { comparisonSchedulingRows } from '@flux/db';
 import { collectComparisonSourceChanges, COMPARISON_EVENT_BATCH, reconsiderComparisonSources, type Database } from '@flux/core';
 import { comparisonScheduling } from './scheduling-adapter.js';
 
-/** Controlled runtime entry point. It selects ids only; no key or provider port is present.
- * Production registration stays off pending the real-provider acceptance gates. */
+/** Selects ready candidate ids only; no key or provider port is present. Registered by
+ * `registerComparisonWorker` when the operator switched background comparisons on (#58). */
 export async function comparisonSchedulingTick(db: Database, now = new Date(),
   log: (message: string, details: Record<string, number>) => void = (message, details) => console.warn(message, details)) {
   const unit = comparisonScheduling(db);

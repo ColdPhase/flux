@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { assertExactMigrationLedger, assertKnownMigrationVersions, assertMigrationSqlLedgerChange, assertMigrationStepLedger, createDatabase, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
 import { PgBoss } from 'pg-boss';
-import { NOTIFICATION_EMAIL_JOB, NOTIFICATION_EMAIL_QUEUE, PERSONAL_RUN_JOB, PERSONAL_RUN_QUEUE, PUSH_SEND_JOB, PUSH_SEND_QUEUE } from '@flux/core';
+import { COMPARISON_JOB_QUEUE, COMPARISON_JOB_RETRY, COMPARISON_RECOVERY_JOB, COMPARISON_TICK_JOB, NOTIFICATION_EMAIL_JOB, NOTIFICATION_EMAIL_QUEUE, PERSONAL_RUN_JOB, PERSONAL_RUN_QUEUE, PUSH_SEND_JOB, PUSH_SEND_QUEUE } from '@flux/core';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error('DATABASE_URL is required');
@@ -52,6 +52,11 @@ try {
   await boss.updateQueue(NOTIFICATION_EMAIL_JOB, NOTIFICATION_EMAIL_QUEUE);
   await boss.createQueue(PERSONAL_RUN_JOB, PERSONAL_RUN_QUEUE);
   await boss.updateQueue(PERSONAL_RUN_JOB, PERSONAL_RUN_QUEUE);
+  // Background comparisons (#58): created always, scheduled only when the operator switches them on.
+  for (const queue of [COMPARISON_TICK_JOB, COMPARISON_RECOVERY_JOB]) {
+    await boss.createQueue(queue, COMPARISON_JOB_QUEUE);
+    await boss.updateQueue(queue, COMPARISON_JOB_RETRY);
+  }
   await boss.stop();
   console.log(`Flux schema ${FLUX_SCHEMA_VERSION} and pg-boss ready`);
 } finally {
