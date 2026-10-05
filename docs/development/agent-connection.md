@@ -449,6 +449,17 @@ anything; only this publish writes it, never message, PR, wiki or tool text.
 - The narrowing is guidance the agent follows, not a server rule: every command is still decided by
   the owner's grants and current project access alone, whatever the policy says. Policy text is
   counted in characters (code points); the publisher's name in the resource is quoted as data.
+- **Editor (T160-b).** The project's Agents view shows the policy as one folded line (revision,
+  publisher, time) under the connections (`app/apps/web/src/agents/ProjectPolicy.tsx`). Project
+  managers (workspace owners and admins) write or edit the four parts and publish the next revision
+  from the one they loaded, with one `Idempotency-Key` per attempt. The editor checks the server's
+  rules first (no part over 4,000 characters, at least one part written) and names the part at
+  fault. A `409 VERSION_CONFLICT` keeps the manager's text and shows the newer revision; publishing
+  again replaces it knowingly. Everyone else who can read the project sees the parts read-only. The
+  view refetches on `project.agent_policy_published.v1`, so an open view follows a new revision.
+  It uses the existing API; nothing was added to it. Tests: `agent-policy.test.ts` (a publish
+  reaches the same session's next bootstrap; refusals and invalid policies change nothing; a
+  conflict carries the newer policy) and `tests/ui/test_project_policy.py` (1440 and 390 px).
 
 ## Verification boundary
 
