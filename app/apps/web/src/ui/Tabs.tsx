@@ -1,5 +1,5 @@
 import { useCallback, useLayoutEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
-import { NavLink } from 'react-router';
+import { NavLink, useNavigation } from 'react-router';
 
 export interface TabItem {
   id: string;
@@ -40,10 +40,20 @@ function Count({ item }: { item: TabItem }): ReactNode {
   );
 }
 
+/** Whether a navigation to `path` opens this tab's route. */
+function opens(item: TabItem, path: string | null): boolean {
+  const to = item.to?.split(/[?#]/)[0];
+  if (!path || !to?.startsWith('/')) return false;
+  return path === to || (item.end === false && path.startsWith(to.endsWith('/') ? to : `${to}/`));
+}
+
 /**
  * Quiet view switcher: labels only, one short 2px accent mark that slides between tabs
  * (translate + scaleX of a 1px bar, so only transform animates).
  * Navigation tabs are links with aria-current; in-page tabs follow the ARIA tabs pattern.
+ * Navigation feedback (#155, UI116-5): the mark slides to a chosen tab at once, while its view loads;
+ * the tab becomes current (aria-current) when its content shows. A newer choice retargets the mark, and
+ * a navigation that ends elsewhere returns it.
  */
 export function Tabs({ items, value, onChange, label, className, panelIdPrefix }: TabsProps) {
   const barRef = useRef<HTMLDivElement>(null);
@@ -51,12 +61,14 @@ export function Tabs({ items, value, onChange, label, className, panelIdPrefix }
   const placedRef = useRef(false);
   const shownRef = useRef<HTMLElement | null>(null);
   const isNav = items.some((item) => item.to);
+  const navigation = useNavigation();
+  const pendingPath = isNav && navigation.state !== 'idle' ? navigation.location?.pathname ?? null : null;
 
   const place = useCallback((animate: boolean) => {
     const bar = barRef.current;
     const indicator = indicatorRef.current;
     if (!bar || !indicator) return;
-    const current = bar.querySelector<HTMLElement>('[aria-current="page"], [aria-selected="true"]');
+    const current = bar.querySelector<HTMLElement>('[data-pending]') ?? bar.querySelector<HTMLElement>('[aria-current="page"], [aria-selected="true"]');
     if (!current) { indicator.style.opacity = '0'; return; }
     // When the strip scrolls sideways (five tabs at 320px), bring a newly current tab into view
     // once; later renders leave the person's own scrolling alone.
@@ -75,6 +87,7 @@ export function Tabs({ items, value, onChange, label, className, panelIdPrefix }
     indicator.style.opacity = '1';
     // A short mark at the start of the current label (Studio 11.6): at most 16px wide.
     indicator.style.transform = `translateX(${current.offsetLeft + pad}px) scaleX(${Math.min(16, Math.max(1, current.offsetWidth - pad * 2))})`;
+    indicator.dataset.target = current.dataset.tab ?? '';
     if (!animate) { void indicator.offsetWidth; indicator.style.transition = ''; }
   }, []);
 
@@ -115,7 +128,7 @@ export function Tabs({ items, value, onChange, label, className, panelIdPrefix }
       <nav className={['ui-tabs', className].filter(Boolean).join(' ')} aria-label={label}>
         <div ref={barRef} className="ui-tabs__bar">
           {items.map((item) => (
-            <NavLink key={item.id} to={item.to ?? '.'} end={item.end ?? true} className="ui-tabs__tab" data-tab={item.id} aria-label={quietName(item)} onClick={(event) => event.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' })}>
+            <NavLink key={item.id} to={item.to ?? '.'} end={item.end ?? true} className="ui-tabs__tab" data-tab={item.id} data-pending={opens(item, pendingPath) ? '' : undefined} aria-label={quietName(item)} onClick={(event) => event.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' })}>
               {item.label}<Count item={item} />
             </NavLink>
           ))}

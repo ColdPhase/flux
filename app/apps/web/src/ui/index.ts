@@ -4,7 +4,7 @@ export { EmptyState } from './EmptyState';
 export { ErrorState } from './ErrorState';
 export { FluxMark, Icon, type IconName } from './Icon';
 export { Input } from './Input';
-export { MEDIA, duration, flip, play, sendsOnEnter, useMediaQuery } from './motion';
+export { MEDIA, duration, flip, isObscured, play, sendsOnEnter, useArrivals, useLoopPause, useMediaQuery, useTravelingHighlight } from './motion';
 export { Drawer, Overlay, Sheet, focusableIn, trapTab } from './Overlay';
 export { SidePanel, useSidePanelMode, type SidePanelMode } from './SidePanel';
 export { Tabs, type TabItem } from './Tabs';

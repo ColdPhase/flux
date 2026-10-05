@@ -14,6 +14,8 @@ import { STATUS_LABEL } from '../work/format';
 import { useNativeOwn, useWorkChoices } from '../work/useDetailReads';
 import { WorkPagination } from '../work/WorkPagination';
 import { getProjectAgents } from './api';
+import { useTyping } from '../typing/useTyping';
+import { TypingNotice } from '../typing/TypingNotice';
 import './agents.css';
 
 /**
@@ -150,6 +152,10 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
   const captureScope = useComposerScope(composer.key);
   const sending = composer.sending;
   const blocked = changingScope || !discussion || !canWrite || accessLost;
+  // Typing (#155 AC-2) is the task thread's: the same canonical conversation as the task's thread in
+  // Conversation, so a person writing in both views is one person typing. A task without a genuine first
+  // contribution has no thread yet, so it has no typing scope (nothing is created to show it).
+  const typing = useTyping(meId, discussion?.conversationId && !accessLost && !changingScope ? { kind: 'conversation', id: discussion.conversationId } : null, canWrite && !blocked && !sending);
   const box = useRef<HTMLTextAreaElement>(null);
   const end = useRef<HTMLDivElement>(null);
 
@@ -228,6 +234,7 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
 
   const send = async (event?: FormEvent) => {
     event?.preventDefault();
+    typing.stop();
     if (blocked) return;
     const command = composer.begin();
     if (!command) return;
@@ -280,8 +287,9 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
         <label className="ui-vh" htmlFor="agents-draft">Write to this task</label>
         <textarea id="agents-draft" ref={box} value={composer.draft.body} rows={2} readOnly={sending || changingScope} aria-busy={sending || changingScope}
           placeholder={canWrite ? 'Add to this work…' : 'You can read this task but not write to it.'} disabled={blocked}
-          onChange={(event) => { if (!blocked) composer.setBody(event.target.value); }} onKeyDown={onKeyDown} />
+          onChange={(event) => { if (!blocked) { composer.setBody(event.target.value); typing.input(Boolean(event.target.value.trim())); } }} onBlur={typing.stop} onKeyDown={onKeyDown} />
         <ComposerFiles state={composer} disabled={blocked} />
+        {discussion?.conversationId && !accessLost ? <TypingNotice {...typing} /> : null}
         {changingScope ? <p className="agents-composer__hint" role="status">Opening your selection… Your current draft is kept.</p> : null}
         <div className="agents-composer__row">
           <span className="agents-composer__hint">Goes to the task thread · Enter sends, Shift+Enter new line</span>

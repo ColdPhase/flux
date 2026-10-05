@@ -199,6 +199,9 @@ svg { flex: none; }
 .ui-avatar--lg { width: 36px; height: 36px; font-size: 13px; }
 .ui-avatar--me { background: var(--text); color: var(--bg); }
 
+/* A looping mark pauses while hidden, off screen or under a modal (#155, motion.ts useLoopPause). */
+[data-motion-paused], [data-motion-paused] *, [data-motion-paused]::before, [data-motion-paused]::after,
+[data-motion-paused] *::before, [data-motion-paused] *::after { animation-play-state: paused !important; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0s !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; transition-delay: 0s !important; scroll-behavior: auto !important; }
 }

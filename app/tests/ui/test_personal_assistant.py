@@ -375,6 +375,44 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(jo.locator(".assistant-answer").first).to_be_visible()
         expect(jo.locator(".assistant-answer")).to_have_count(before)
 
+    def test_07b_working_motion_follows_execution_and_pauses_unseen(self) -> None:
+        """#155 AC-3/AC-4: the working mark moves only while the run actually executes, pauses under a modal
+        or off screen, is static while stopping, and the line's text always says what is happening."""
+        mock("/__script", {"reset": True, "delay": 8})
+        jo = self.conversation("jo")
+        expect(jo.locator(".assistant-answer").first).to_be_visible()
+        self.ask(jo, "Compare the two sensors once more")
+        working = jo.locator(".assistant-working")
+        expect(working).to_contain_text("Your assistant is writing an answer…", timeout=15000)
+        expect(working).to_have_class(re.compile(r"\bis-working\b"))
+        pulse = working.locator(".assistant-working__pulse")
+        self.assertEqual(pulse.evaluate("el => [getComputedStyle(el).animationName, getComputedStyle(el).animationPlayState]"), ["assistant-breathe", "running"])
+        # Under a modal (Jump to…) the mark pauses; it runs again when the modal closes.
+        jo.keyboard.press("Control+k")
+        expect(jo.locator('[aria-modal="true"]')).to_be_visible()
+        expect(working).to_have_attribute("data-motion-paused", "")
+        self.assertEqual(pulse.evaluate("el => getComputedStyle(el).animationPlayState"), "paused")
+        jo.keyboard.press("Escape")
+        expect(jo.locator('[aria-modal="true"]')).to_have_count(0)
+        expect(working).not_to_have_attribute("data-motion-paused", "")
+        # Off screen it pauses too: a short window, the thread read from its top.
+        jo.set_viewport_size({"width": 1440, "height": 420})
+        jo.locator(".thread__feed").evaluate("el => { el.scrollTop = 0; }")
+        self.assertTrue(working.evaluate("el => { const f = el.closest('.thread__feed').getBoundingClientRect(), r = el.getBoundingClientRect(); return r.top >= f.bottom || r.bottom <= f.top; }"),
+                        "the working line is outside the visible part of the thread")
+        expect(working).to_have_attribute("data-motion-paused", "")
+        jo.locator(".thread__feed").evaluate("el => { el.scrollTop = el.scrollHeight; }")
+        expect(working).not_to_have_attribute("data-motion-paused", "")
+        jo.set_viewport_size({"width": 1440, "height": 900})
+        # Stopping is not execution: the mark is static and the text says so.
+        working.get_by_role("button", name="Stop").click()
+        expect(working).to_contain_text(re.compile("Stopping… nothing will be posted.|Stopped. Nothing was posted."), timeout=15000)
+        expect(working).not_to_have_class(re.compile(r"\bis-working\b"))
+        expect(working.locator(".assistant-working__pulse")).to_have_count(0)
+        expect(working).to_contain_text("Stopped. Nothing was posted.", timeout=15000)
+        working.get_by_role("button", name="Dismiss").click()
+        expect(working).to_have_count(0)
+
     # ---------------------------------------------------------------- the proposal: only authority accepts
 
     def test_08_a_proposal_waits_for_someone_with_authority(self) -> None:

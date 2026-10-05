@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { aiConnectionLabel, type AssistantAnswer, type AssistantProposal, type AssistantRun, type AssistantSourceRef, type ConversationMessage, type NativeWorkRow } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { Button, Icon, IconButton } from '../ui';
+import { Button, Icon, IconButton, useLoopPause } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { canRetry, endedText, isWorking, workingText, type AskState } from './format';
 import './assistant.css';
@@ -46,12 +46,15 @@ export function WorkingLine({ run, onStop, onRetry, onDismiss }: { run: Assistan
   };
   const working = isWorking(run);
   const ended = endedText(run);
+  // Motion follows actual execution only (#155 AC-3): a queued or stopping run is static; its text says why.
+  const executing = working && run.status !== 'queued' && !run.stopRequested;
+  const loop = useLoopPause<HTMLLIElement>();
   return (
-    <li className={`assistant-working${working ? ' is-working' : ''}`} aria-live="polite" data-run-status={run.status}>
+    <li ref={loop} className={`assistant-working${executing ? ' is-working' : ''}`} aria-live="polite" data-run-status={run.status}>
       <AssistantAvatar />
       <div className="assistant-working__body">
         <p className="assistant-working__text">
-          {working ? <span className="assistant-working__pulse" aria-hidden="true" /> : null}
+          {executing ? <span className="assistant-working__pulse" aria-hidden="true" /> : null}
           {working ? workingText(run) : ended}
         </p>
         <p className="assistant-working__who"><Icon name="lock" size={12} />Only you see this · “{run.prompt.length > 90 ? `${run.prompt.slice(0, 90)}…` : run.prompt}”</p>

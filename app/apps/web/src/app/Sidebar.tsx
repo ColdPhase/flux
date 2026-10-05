@@ -1,5 +1,6 @@
-import { Link, NavLink, useLocation, useNavigate } from 'react-router';
-import { Avatar, FluxMark, Icon, IconButton } from '../ui';
+import { useRef } from 'react';
+import { Link, NavLink, useLocation, useNavigate, useNavigation } from 'react-router';
+import { Avatar, FluxMark, Icon, IconButton, useTravelingHighlight } from '../ui';
 import { type DirectMessageSummary, type ProjectSummary, type WorkspaceSummary } from './data';
 import { placeOf } from './place';
 import { startCapture } from './views';
@@ -35,6 +36,14 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
   const sketchbook = place === 'home' && /^\/map(\/|$)/.test(location.pathname);
   // Home is current where the header says Home: not in My sketchbook, Search or personal settings.
   const home = place === 'home' && !sketchbook && !/^\/(search|settings)(\/|$)/.test(location.pathname);
+  // Subtle navigation feedback (#155, UI116-5): the highlight travels to a chosen project at once, while
+  // the project loads; the row becomes current (accent bar, aria-current) when its content shows. A newer
+  // choice retargets it, and a navigation that ends elsewhere (refused, cancelled) returns it.
+  const navigation = useNavigation();
+  const pendingProject = navigation.state !== 'idle' ? navigation.location?.pathname.match(/^\/projects\/([^/]+)/)?.[1] ?? null : null;
+  const projectList = useRef<HTMLUListElement>(null);
+  const glide = useRef<HTMLLIElement>(null);
+  useTravelingHighlight(projectList, glide, ['.side__project[data-pending]', '.side__project.is-open']);
   return (
     <div className="side">
       <div className="side__brand">
@@ -83,12 +92,13 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
             <Link to="/projects/new" className="side__add" aria-label="New project" onClick={navigate}><Icon name="plus" size={14} /></Link>
           </div>
           {projects.length ? (
-            <ul className="side__list">
+            <ul className="side__list" ref={projectList}>
+              <li className="side__glide" ref={glide} aria-hidden="true" role="none" />
               {projects.map((project) => {
                 const open = project.id === projectId;
                 return (
                   <li key={project.id}>
-                    <NavLink to={`/projects/${project.id}`} end={false} className={`side__item side__project${open ? ' is-open' : ''}`} onClick={navigate}
+                    <NavLink to={`/projects/${project.id}`} end={false} className={`side__item side__project${open ? ' is-open' : ''}`} onClick={navigate} data-glide-id={project.id} data-pending={pendingProject === project.id && !open ? '' : undefined}
                       title={project.workspaceName ? `${project.name} · ${project.workspaceName}` : project.name}
                       aria-label={project.hasNew ? `${project.name}, new activity` : undefined}>
                       <span className="side__pi" aria-hidden="true"><Icon name="spark" size={15} /></span>

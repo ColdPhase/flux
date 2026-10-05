@@ -5,7 +5,7 @@ import { ApiError } from '../api/client';
 import { useComposerDraft, useComposerScope } from '../composer/draft';
 import { ComposerFiles, MessageFiles } from '../composer/Files';
 import { contributeToTask } from '../composer/api';
-import { Avatar, Button, Icon, Input, MEDIA, sendsOnEnter, useMediaQuery } from '../ui';
+import { Avatar, Button, Icon, Input, MEDIA, sendsOnEnter, useArrivals, useMediaQuery } from '../ui';
 import { getConversation, getMaterialVersion, getProject, listConversationRoots, listDrafts, listMaterials, listTaskNotices, listWorkspaceMembers, olderMessages, publishMaterial, reply, startConversation } from './conversation-api';
 import { pageBackTo } from './seekMessage';
 import { useShellData } from './data';
@@ -279,6 +279,12 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     if (!feed || !column) return;
     return openOnWholeMessages(feed, column, '.project-convo__message');
   }, [conversation?.id, arrived, arrivedLoaded, feedNode, revealed]);
+  // Genuine replies and answers arriving in an open thread rise in gently when the reader sees them (#155,
+  // UI116-5); the history the thread opens with and earlier pages never move. The thread's position owner
+  // (useMessageWork) decides whether the reader follows the end.
+  const threadIds = conversation ? feedEntries(messages.filter((message) => message.sequence > 1), assistant.answers, !!olderCursor)
+    .map((entry) => entry.type === 'message' ? `message-${entry.message.id}` : `answer-${entry.answer.runId}`) : [];
+  useArrivals(scrollRef, threadIds, (id) => document.getElementById(id));
 
   // The stream has no assistant: `/ai …` there would post the prompt for the whole project.
   const assistantInStream = !conversation && /^\/ai(\s|$)/.test(draft.trimStart());

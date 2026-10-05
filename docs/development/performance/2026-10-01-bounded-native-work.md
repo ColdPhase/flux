@@ -228,6 +228,17 @@ restored. Input away from the end stops following the end. While a mouse or pen 
 moved over a message within the last 2 s, growth keeps that message at its screen position,
 ahead of following the end; after a scroll the pointer aims at the message now under it.
 
+One project conversation (2026-10-05, #155 merge of main's #195 stream and thread): the rules
+above now apply to the open **thread**, whose one position owner is `useMessageWork`; its one
+bounded association read covers the root (shown whole at the thread's top, with what was made
+from it) and the replies around the viewport, at most 100. The project's **stream** of roots keeps
+#195's own position owner (`ConversationStream`); its chips come from the read alone
+(`useMessageWorkRead`, never positioning the feed) for the roots around the viewport, and task
+announcement titles and discussed tasks from one reference-row read of the visible
+`data-native-ref` rows. Both feeds open hidden for at most 1 s as above, and both use the opening
+settle with the reader-input rule (`openOnWholeMessages`). Neither reads the project's work
+collection.
+
 Agents view (2026-10-04, #170 integration of #183): open, unparked tasks come from the bounded
 `pivot_work` choice page (50 per page, paged with Previous/Next only when there is more); a
 `?task=` outside that page is read by itself through the native own-object read, and nothing is

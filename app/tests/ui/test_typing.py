@@ -380,6 +380,76 @@ class TypingJourney(unittest.TestCase):
         self.assertEqual(sum(frame.get("active") is True for frame in alice.typing_sent), pulses)
         self.assert_wire(alice, "alice")
 
+    def test_10_task_views_share_one_presence_without_durable_effects(self):
+        """AC-2: the Agents task thread and the task's thread in Conversation are one typing scope (the
+        accepted discussion root): a person writing in both views is shown once, and nothing is stored."""
+        owner = self.page("alice")
+        work = owner.request.post(f"/api/v1/projects/{self.project}/work", data={"title": "Measure the lamp at 5 lux", "clientCommandId": str(uuid.uuid4())}, headers={"origin": ORIGIN})
+        self.assertEqual(work.status, 201, work.text())
+        work = work.json()
+        root = owner.request.post(f"/api/v1/work/{work['id']}/discussion", data={"body": "Start with the reading corner at dusk.", "clientMessageId": str(uuid.uuid4()), "kind": "text"}, headers={"origin": ORIGIN})
+        self.assertEqual(root.status, 201, root.text())
+        conversation = root.json()["conversationId"]
+        before = owner.request.get(f"/api/v1/work/{work['id']}/discussion").json()
+        owner.context.close()
+
+        def agents(who):
+            page = self.page(who)
+            page.goto(f"/projects/{self.project}/agents?task={work['id']}")
+            expect(page.locator(".agents-thread .typing-notice")).to_have_attribute("data-availability", "ready")
+            return page
+
+        def thread(who):
+            page = self.page(who)
+            page.goto(f"/projects/{self.project}/conversations/{conversation}")
+            expect(page.locator("#thread .typing-notice")).to_have_attribute("data-availability", "ready")
+            return page
+
+        alice_agents, alice_thread = agents("alice"), thread("alice")
+        bob_thread, bob_agents = thread("bob"), agents("bob")
+        self.measure("task-agents-input-visible", lambda: alice_agents.locator("#agents-draft").fill("PRIVATE-DRAFT from the Agents view"),
+                     lambda: expect(bob_thread.locator("#thread .typing-notice")).to_have_text("Alice Rivera is typing…", timeout=2000), 2000)
+        expect(bob_agents.locator(".agents-thread .typing-notice")).to_have_text("Alice Rivera is typing…", timeout=2000)
+        # The same person writing in both views at once is one person typing, in both of Bob's views.
+        self.composer(alice_thread).fill("PRIVATE-DRAFT from the Conversation thread")
+        alice_thread.wait_for_timeout(600)
+        expect(bob_thread.locator("#thread .typing-notice")).to_have_text("Alice Rivera is typing…")
+        expect(bob_agents.locator(".agents-thread .typing-notice")).to_have_text("Alice Rivera is typing…")
+        # Her own views never show her as typing; Bob writing in the thread reaches her Agents view.
+        expect(alice_agents.locator(".agents-thread .typing-notice")).not_to_contain_text("Alice Rivera")
+        self.composer(bob_thread).fill("PRIVATE-DRAFT Bob in the thread")
+        expect(alice_agents.locator(".agents-thread .typing-notice")).to_have_text("Bob Nowak is typing…", timeout=2000)
+        self.composer(bob_thread).blur()
+        expect(alice_agents.locator(".agents-thread .typing-notice")).not_to_contain_text("Bob Nowak", timeout=750)
+        alice_agents.locator("#agents-draft").blur(); self.composer(alice_thread).blur()
+        self.measure("task-views-blur-stop", lambda: None, lambda: expect(bob_thread.locator("#thread .typing-notice")).not_to_contain_text("Alice Rivera", timeout=750), 750)
+        expect(bob_agents.locator(".agents-thread .typing-notice")).not_to_contain_text("Alice Rivera", timeout=750)
+        verifier = self.page("alice")
+        after = verifier.request.get(f"/api/v1/work/{work['id']}/discussion").json()
+        self.assertEqual(before["messages"], after["messages"], "typing in task views stores no discussion message")
+        for page, who in ((alice_agents, "alice"), (alice_thread, "alice"), (bob_thread, "bob"), (bob_agents, "bob")):
+            self.assert_wire(page, who)
+
+    def test_11_virtual_keyboard_height_keeps_notice_static_focus_and_draft(self):
+        """AC-5: a phone keyboard shortens the visual viewport; the typing line stays static and the
+        receiver's focus, caret and draft stay where they were."""
+        alice = self.open("alice")
+        bob = self.open("bob", viewport={"width": 390, "height": 844})
+        box = self.composer(bob)
+        box.fill("PRIVATE-DRAFT receiver on a phone")
+        box.evaluate("el => { el.focus(); el.setSelectionRange(8, 13); }")
+        # The on-screen keyboard: the layout viewport keeps its width and loses ~45% of its height.
+        bob.set_viewport_size({"width": 390, "height": 460})
+        self.composer(alice).fill("PRIVATE-DRAFT author while the keyboard is open")
+        expect(bob.locator(".typing-notice")).to_have_text("Alice Rivera is typing…", timeout=2000)
+        self.assertEqual(box.evaluate("el => [document.activeElement === el, el.selectionStart, el.selectionEnd, el.value]"), [True, 8, 13, "PRIVATE-DRAFT receiver on a phone"])
+        self.assertEqual(bob.locator(".typing-notice").evaluate("el => getComputedStyle(el).animationName"), "none")
+        notice = bob.locator(".typing-notice").bounding_box(); field = box.bounding_box()
+        self.assertTrue(notice and field and notice["y"] + notice["height"] <= 460 and field["y"] + field["height"] <= 460, "composer and notice stay above the keyboard")
+        shot(bob, "typing-project-390-virtual-keyboard")
+        self.composer(alice).blur()
+        expect(bob.locator(".typing-notice")).not_to_contain_text("Alice Rivera", timeout=750)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

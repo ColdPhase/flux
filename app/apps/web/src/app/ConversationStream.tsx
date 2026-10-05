@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import type { Conversation, ConversationMessage, ConversationRoot, ConversationRootWindow, NamedPrincipal, NativeWorkRow, Page, Project, TaskCreationNotice } from '@flux/contracts';
-import { Avatar, Button, EmptyState, Icon } from '../ui';
+import { Avatar, Button, EmptyState, Icon, useArrivals } from '../ui';
+import { newBelowText } from '../ui/motion-rules';
 import { MessageActions, MessageObjects, useCreateWorkFromMessage } from '../work/inline';
 import { useMessageWorkRead, type MessageWorkRead } from '../work/useMessageWork';
 import { useReferenceWork } from '../work/useReferenceWork';
@@ -351,6 +352,26 @@ export function ConversationStream({ project, meId, roots: stream, notices, auth
     feed.scrollTop = feed.scrollHeight;
   }, [endToken]);
 
+  // Genuine arrivals (#155, UI116-5): a short rise for new entries the reader sees arrive. A reader who is
+  // with earlier content is never moved; a quiet line says what is new below until they reach the end.
+  const [newBelow, setNewBelow] = useState({ messages: 0, tasks: 0 });
+  const entryIds = entries.map((entry) => entry.kind === 'root' ? `message-${entry.root.message.id}` : `notice-${entry.notice.id}`);
+  useArrivals(feedRef, entryIds, (id) => document.getElementById(id), (arrived) => {
+    const feed = feedRef.current;
+    if (!feed || stickRef.current) return;
+    const bottom = feed.getBoundingClientRect().bottom;
+    const below = arrived.filter((id) => (document.getElementById(id)?.getBoundingClientRect().top ?? 0) >= bottom - 1);
+    const tasks = below.filter((id) => id.startsWith('notice-')).length;
+    if (below.length) setNewBelow((current) => ({ messages: current.messages + below.length - tasks, tasks: current.tasks + tasks }));
+  });
+  const toEnd = () => {
+    const feed = feedRef.current;
+    if (!feed) return;
+    stickRef.current = true;
+    feed.scrollTop = feed.scrollHeight;
+    setNewBelow({ messages: 0, tasks: 0 });
+  };
+
   // The thread docks beside the stream and leaves again: the root whose replies the person opened stays
   // at the same place (otherwise the first root in view, or the end when they were reading the end).
   useEffect(() => {
@@ -373,6 +394,7 @@ export function ConversationStream({ project, meId, roots: stream, notices, auth
       frame = 0;
       const { top, bottom } = feed.getBoundingClientRect();
       stickRef.current = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 48;
+      if (stickRef.current) setNewBelow((current) => current.messages || current.tasks ? { messages: 0, tasks: 0 } : current);
       if (performance.now() - personAt < 500) {
         const pinned = pinRef.current ? document.getElementById(pinRef.current.id)?.getBoundingClientRect() : null;
         pinRef.current = pinned && pinned.bottom > top && pinned.top < bottom ? { id: pinRef.current!.id, offset: pinned.top - top } : null;
@@ -446,7 +468,9 @@ export function ConversationStream({ project, meId, roots: stream, notices, auth
   }
 
   const dayOf = entries.map((entry) => day(entry.at));
+  const below = newBelowText(newBelow.messages, newBelow.tasks);
   return (<>
+    <div className="convo-stream">
     <div className={`project-convo__feed is-stream${revealed ? '' : ' is-opening'}`} ref={attachFeed} aria-busy={revealed ? undefined : true}
       data-associations-observed-at={messageWork.page?.observedAt} data-associations-phase={messageWork.state.phase}
       data-references-observed-at={referenceWork.observation?.observedAt} data-references-phase={referenceWork.state.phase}>
@@ -474,6 +498,9 @@ export function ConversationStream({ project, meId, roots: stream, notices, auth
             : <EmptyState icon="chat" title="No messages yet"><p>You have read access to {project.name}. Messages appear here when someone writes. You can browse saved tasks, maps, docs and sources.</p></EmptyState>}
         </section>
       </div>
+    </div>
+    {/* Static and announced once per change; it takes no layout space and moves nobody. */}
+    <p className="convo-newbelow" role="status" aria-live="polite">{below ? <button type="button" className="convo-newbelow__b" onClick={toEnd}><Icon name="chevron-down" size={14} />{below}</button> : null}</p>
     </div>
     <MessageWorkPages read={messageWork} />
   </>);

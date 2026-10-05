@@ -1,5 +1,11 @@
 # #155 reference client — state on 2026-10-04 (claude-maurycy / Zamojski5)
 
+> **Checkpoint 2026-10-05 (branch `claude-maurycy/155-next`, worktree `.worktrees/155-next`).**
+> `a81dd748` merges `origin/main` `fdb70955` (#195 one conversation stream etc.) into `0951b341`;
+> `fcf4a772` fixes the thread's starved 15 s refresh. Step 2 (navigation feedback, arrival motion,
+> loop pauses, task-view typing, motion tests, `motion_performance.py`) is in progress in the
+> worktree. Final heads, commands and counts are recorded below when the runs finish.
+
 Branch `claude-maurycy/155-truthful-typing` (draft PR #170). Replaces the previous note at
 `35910762`; the archived v2 runner, overlay and raw log stay in this folder (their `sha256.json`
 is archival and does not cover this note). Latest tested heads: `26d638de` (full application,
