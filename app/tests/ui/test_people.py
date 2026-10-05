@@ -176,6 +176,24 @@ class PeopleJourney(unittest.TestCase):
         self.no_horizontal_scroll(page, DESKTOP["width"])
         shot(page, "people-desktop-1440-light")
 
+    def test_01b_an_admin_cannot_hand_out_or_change_the_owner_role(self) -> None:
+        """#236: an admin sees no Owner choice and no Change on owner rows; the server says OWNER_REQUIRED."""
+        page = self.page("lee")
+        self.open_people(page, "Riverside Makers")
+        form = page.get_by_role("region", name="Add someone")
+        labels = form.get_by_label("Role").locator("option").all_inner_texts()
+        self.assertNotIn("Owner", labels, labels)
+        self.assertIn("Admin", labels, labels)
+        roster = page.get_by_role("list", name="People in Riverside Makers")
+        expect(roster.get_by_role("listitem").filter(has_text="Ada Kowalska")).to_contain_text("Owner")
+        expect(page.get_by_role("button", name="Change Ada Kowalska")).to_have_count(0)
+        expect(page.get_by_role("button", name="Change Kai Tanaka")).to_be_visible()
+        response = page.request.patch(f"/api/v1/workspaces/{self.riverside}/members/{self.ids['kai']}",
+                                      data={"role": "owner"}, headers={"origin": ORIGIN})
+        self.assertEqual(response.status, 403, response.text())
+        self.assertEqual(response.json()["code"], "OWNER_REQUIRED")
+        self.assertEqual(self.roles(page, self.riverside)[self.ids["kai"]], "member")
+
     def test_02_not_found_and_already_member_say_what_to_do(self) -> None:
         page = self.page("ada")
         self.open_people(page, "Riverside Makers")
@@ -364,7 +382,7 @@ class PeopleJourney(unittest.TestCase):
         audience.click()
         region = self.access_region(page)
         expect(region.get_by_role("heading", name="Who can see this")).to_be_focused()
-        expect(region).to_contain_text("Open to Riverside Makers. Every member can write here; guests only with access given here.")
+        expect(region).to_contain_text("Open to Riverside Makers. Members can write here unless listed below with less access; guests only with access given here.")
         lee_row = region.get_by_role("listitem").filter(has_text="Lee Moreno")
         expect(lee_row).to_contain_text("Can write · Everyone in Riverside Makers")
         region.get_by_role("button", name="Change access for Lee Moreno").click()

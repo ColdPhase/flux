@@ -6,3 +6,5 @@ docs/development/evidence/live-turn/2026-09-30-code/**/*.log whitespace=-blank-a
 docs/development/evidence/live-turn/2026-09-30-code/**/*.prom whitespace=-blank-at-eol
 docs/development/evidence/live-k3s/2026-09-30/relative-key-health-check.txt whitespace=-blank-at-eol
 docs/development/evidence/live-k3s/2026-09-30/relative-key-repeat-health.txt whitespace=-blank-at-eol
+# Negative-control patches keep the blank context lines that diff output needs.
+docs/agents/evidence/152-grant-controls/negative-controls/*.patch whitespace=-blank-at-eol

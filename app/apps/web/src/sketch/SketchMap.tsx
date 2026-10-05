@@ -4,7 +4,9 @@ import { Icon } from '../ui';
 import { linkPath, PAD, project, rectOf, type Rect } from './geometry';
 import { provenance, quote } from './format';
 import { ThoughtEditor } from './ThoughtEditor';
+import { ThoughtImage } from './ThoughtImage';
 import { ThoughtTasks } from './ThoughtTasks';
+import { linkOf } from './paste';
 import type { Editing } from './SketchView';
 
 export interface SketchMapProps {
@@ -289,6 +291,13 @@ export function SketchMap(props: SketchMapProps) {
   const editingRect = editing ? rects.get(editing.id) : undefined;
   const editingThought = editing ? byId.get(editing.id) : undefined;
   const plus = last && lastThought && !editing && !connectFrom && canWrite && !offset ? place(last) : null;
+  // #252: a selected link thought offers its link; the node itself is a button, so the link sits beside it.
+  const openLink = last && lastThought && !editing && !connectFrom && !offset ? linkOf(lastThought.text) : null;
+  const linkAnchor = openLink ? (
+    <a className="sk-edit-btn sk-open-link" href={openLink.href} target="_blank" rel="noopener noreferrer" aria-label={`Open link ${openLink.host} in a new tab`}>
+      <Icon name="link" size={12} />Open link
+    </a>
+  ) : null;
 
   return (
     <div className="sk-canvas-wrap sk-canvas-wrap--controls">
@@ -322,9 +331,10 @@ export function SketchMap(props: SketchMapProps) {
             const p = place(r);
             const selected = selection.includes(thought.id);
             const dragging = !!offset?.ids.includes(thought.id);
+            const link = linkOf(thought.text);
             const meta = thought.placement
               ? (thought.placement.title ? `Draft · ${thought.placement.title}` : 'Draft you can’t open')
-              : null;
+              : link ? `Link · ${link.host}` : null;
             // UI116-4: a count of the linked tasks, never their titles or results, under the text.
             const linked = projectId ? tasks.get(thought.id) : undefined;
             return (
@@ -340,8 +350,10 @@ export function SketchMap(props: SketchMapProps) {
                 onClick={(event) => { if (suppressClick.current) return; props.onPick(thought.id, event.shiftKey || event.metaKey || event.ctrlKey); }}
                 onDoubleClick={() => { if (canWrite && !connectFrom) props.onEdit(thought.id); }}
                 onKeyDown={(event) => onNodeKeyDown(event, thought)}>
-                {meta ? <span className="sk-k"><Icon name="doc" size={12} />{meta}</span> : null}
-                <span className="sk-t">{thought.text}</span>
+                {meta ? <span className="sk-k"><Icon name={thought.placement ? 'doc' : 'link'} size={12} />{meta}</span> : null}
+                {thought.file ? <ThoughtImage className="sk-img" fileId={thought.file.id} name={thought.file.name}
+                  style={{ maxHeight: Math.max(48, thought.height - 64) }} /> : null}
+                <span className={`sk-t${link ? ' sk-t--link' : ''}`}>{thought.text}</span>
                 <span className="sk-p">{provenance(thought, meId)}</span>
                 {/* Room for the count, which is its own button beside this one. */}
                 {linked?.length ? <span className="sk-work-gap" aria-hidden="true" /> : null}
@@ -369,11 +381,15 @@ export function SketchMap(props: SketchMapProps) {
               <button type="button" className="sk-edit-btn" aria-label={`Edit ${quote(lastThought.text)}`} onClick={() => props.onEdit(lastThought.id)}>Edit</button>
             );
             return coarse ? (
-              <div className="sk-actions" style={{ transform: `translate(${plus.x + last.w / 2}px, ${plus.y + last.h + 6}px) ${keep} translateX(-50%)` }}>{edit}{add}</div>
+              <div className="sk-actions" style={{ transform: `translate(${plus.x + last.w / 2}px, ${plus.y + last.h + 6}px) ${keep} translateX(-50%)` }}>{edit}{linkAnchor}{add}</div>
             ) : (
               // With a fine pointer, Edit sits in the toolbar so nothing covers nearby thoughts.
-              <div className="sk-actions" style={{ transform: `translate(${plus.x + last.w + 8}px, ${plus.y + last.h / 2}px) ${keep} translateY(-50%)` }}>{add}</div>
+              <div className="sk-actions" style={{ transform: `translate(${plus.x + last.w + 8}px, ${plus.y + last.h / 2}px) ${keep} translateY(-50%)` }}>{linkAnchor}{add}</div>
             );
+          })() : linkAnchor && last ? (() => {
+            // People who can only look still open a selected link.
+            const at = place(last);
+            return <div className="sk-actions" style={{ transform: `translate(${at.x + last.w / 2}px, ${at.y + last.h + 6}px) scale(${1 / zoom}) translateX(-50%)` }}>{linkAnchor}</div>;
           })() : null}
           {editing && editingRect && editingThought && canWrite ? (
             <ThoughtEditor key={`${editing.id}:${editing.attempt}`} className="sk-edit" initial={editing.initial} disabled={editing.saving} onChange={props.onEditText}

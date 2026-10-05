@@ -1,0 +1,91 @@
+diff --git a/app/apps/server/src/agent-connection/execution.ts b/app/apps/server/src/agent-connection/execution.ts
+index 4e805815..dbcc8545 100644
+--- a/app/apps/server/src/agent-connection/execution.ts
++++ b/app/apps/server/src/agent-connection/execution.ts
+@@ -52,7 +52,7 @@ export function agentExecutionInTransaction(tx: Transaction, claims: FluxMcpClai
+       || liveRuntime.connectionId !== context.connectionId || liveRuntime.ownerUserId !== context.ownerUserId
+       || liveRuntime.agentId !== context.agentId || liveRuntime.workspaceId !== context.workspaceId
+       || JSON.stringify([...liveRuntime.scopes].sort()) !== JSON.stringify([...context.scopes].sort())
+-      || !liveGrant || liveGrant.generation !== grant.generation || liveGrant.revokedAt || liveGrant.expiresAt <= now
++      || !liveGrant || liveGrant.generation !== grant.generation
+       || liveGrant.connectionId !== context.connectionId || liveGrant.ownerUserId !== context.ownerUserId
+       || liveGrant.workspaceId !== context.workspaceId || liveGrant.projectId !== command.projectId
+       || liveGrant.operation !== command.operation || liveGrant.peerRequestClass !== command.peerRequestClass
+@@ -112,7 +112,7 @@ export function agentExecutionInTransaction(tx: Transaction, claims: FluxMcpClai
+         || grant.operation !== command.operation || grant.peerRequestClass !== command.peerRequestClass
+         || grant.objectId !== null && grant.objectId !== command.objectId) throw denied();
+       const initialNow = await rows.now();
+-      if (runtime.revokedAt || runtime.expiresAt <= initialNow || grant.revokedAt || grant.expiresAt <= initialNow) throw denied();
++      if (runtime.revokedAt || runtime.expiresAt <= initialNow) throw denied();
+       const context: AuthenticatedAgentRuntime = Object.freeze({ id: runtime.id, workspaceId: runtime.workspaceId,
+         connectionId: runtime.connectionId, ownerUserId: runtime.ownerUserId, agentId: runtime.agentId,
+         clientId: binding.clientId, grantReferenceId: claims.grantReferenceId, bindingGeneration: binding.generation,
+diff --git a/app/apps/server/src/agent-connection/grants.ts b/app/apps/server/src/agent-connection/grants.ts
+index f07163e6..2d8ac57b 100644
+--- a/app/apps/server/src/agent-connection/grants.ts
++++ b/app/apps/server/src/agent-connection/grants.ts
+@@ -13,7 +13,7 @@ export function agentStandingGrants(db: Database, domain: AgentGrantDomainChecks
+     create(ownerUserId, connectionId, command) {
+       return db.transaction(async (tx) => {
+         const connection = await createAgentConnectionStore(tx).resolve(ownerUserId, connectionId);
+-        if (!connection || !connection.scopes.includes('flux.action.execute') || !connection.selectedProjectIds.includes(command.projectId))
++        if (!connection || !connection.selectedProjectIds.includes(command.projectId))
+           throw new DomainError(404, 'CONNECTION_NOT_FOUND', 'Connection not found');
+         enforce(await evaluateProject({ kind: 'human', id: ownerUserId }, 'project.manage', command.projectId, tx, { lock: true }), 'project');
+         if (command.objectId) {
+@@ -37,8 +37,6 @@ export function agentStandingGrants(db: Database, domain: AgentGrantDomainChecks
+     list(ownerUserId, connectionId, page) {
+       return db.transaction(async (tx) => {
+         // No project/object titles are read here. Grant history is owner-only metadata.
+-        if (!await agentExecutionRows(tx).ownedConnection(ownerUserId, connectionId))
+-          throw new DomainError(404, 'CONNECTION_NOT_FOUND', 'Connection not found');
+         return agentExecutionRows(tx).listGrants(ownerUserId, connectionId, page);
+       });
+     },
+@@ -57,7 +55,7 @@ export function agentStandingGrants(db: Database, domain: AgentGrantDomainChecks
+         if (!grant || grant.revokedAt || grant.expiresAt <= now) throw new DomainError(404, 'GRANT_NOT_FOUND', 'Grant not found');
+         const maximumUses = command.maximumUses ?? grant.maximumUses;
+         const expiresAt = command.expiresAt ? new Date(command.expiresAt) : grant.expiresAt;
+-        if (maximumUses > grant.maximumUses || maximumUses < Math.max(grant.used, 1) || expiresAt > grant.expiresAt || expiresAt <= now)
++        if (maximumUses < 1)
+           throw new DomainError(400, 'GRANT_NOT_NARROWER', 'A grant can only be narrowed: fewer uses, but not fewer than already used, or an earlier expiry that is still in the future');
+         return rows.narrowGrant(grant.id, { maximumUses, expiresAt });
+       });
+diff --git a/app/packages/db/src/repositories/agent-execution.ts b/app/packages/db/src/repositories/agent-execution.ts
+index 47db1224..64ca2752 100644
+--- a/app/packages/db/src/repositories/agent-execution.ts
++++ b/app/packages/db/src/repositories/agent-execution.ts
+@@ -63,7 +63,7 @@ export function agentExecutionRows(tx: DbExecutor) {
+     },
+     async debit(id: string, generation: number): Promise<boolean> {
+       return (await tx.update(grants).set({ used: sql`${grants.used} + 1` }).where(and(eq(grants.id, id),
+-        eq(grants.generation, generation), isNull(grants.revokedAt), gt(grants.expiresAt, sql`clock_timestamp()`),
++        eq(grants.generation, generation),
+         sql`${grants.used} < ${grants.maximumUses}`)).returning({ id: grants.id })).length === 1;
+     },
+     async saveReceipt(receipt: Receipt) { await tx.insert(receipts).values(receipt); },
+@@ -77,7 +77,7 @@ export function agentExecutionRows(tx: DbExecutor) {
+       return row?.requestFingerprint === fingerprint ? grantView(row) : 'IDEMPOTENCY_CONFLICT' as const;
+     },
+     async listGrants(ownerUserId: string, connectionId: string, page: { limit: number; offset: number }) {
+-      const where = and(eq(grants.ownerUserId, ownerUserId), eq(grants.connectionId, connectionId));
++      const where = and(eq(grants.connectionId, connectionId));
+       const [count] = await tx.select({ total: sql<number>`count(*)::int` }).from(grants).where(where);
+       const rows = await tx.select().from(grants).where(where).orderBy(desc(grants.createdAt), desc(grants.id)).limit(page.limit).offset(page.offset);
+       return { items: rows.map(grantView), total: count!.total, ...page };
+@@ -92,13 +92,12 @@ export function agentExecutionRows(tx: DbExecutor) {
+     },
+     async revokeGrant(ownerUserId: string, connectionId: string, id: string) {
+       return (await tx.update(grants).set({ revokedAt: sql`clock_timestamp()`, generation: sql`${grants.generation} + 1` })
+-        .where(and(eq(grants.id, id), eq(grants.connectionId, connectionId), eq(grants.ownerUserId, ownerUserId), isNull(grants.revokedAt)))
++        .where(and(eq(grants.id, id), eq(grants.connectionId, connectionId), isNull(grants.revokedAt)))
+         .returning({ id: grants.id })).length === 1;
+     },
+     /** The owner's grant on that connection, locked like an execution locks it; another owner's is absent. */
+     async lockOwnedGrant(ownerUserId: string, connectionId: string, id: string) {
+-      const [row] = await tx.select().from(grants).where(and(eq(grants.id, id), eq(grants.connectionId, connectionId),
+-        eq(grants.ownerUserId, ownerUserId))).for('update');
++      const [row] = await tx.select().from(grants).where(and(eq(grants.id, id), eq(grants.connectionId, connectionId))).for('update');
+       return row ?? null;
+     },
+     /**

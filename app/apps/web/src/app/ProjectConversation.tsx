@@ -16,6 +16,7 @@ import { useConversationAssistant } from '../assistant/useConversationAssistant'
 import { AnswerItem, AskBar, ProposalCard, WorkingLine } from '../assistant/ConversationParts';
 import { askError as askErrorText, askState } from '../assistant/format';
 import { grantAgentProject } from '../agent-connection/api';
+import { agentAuthorLabel } from '../docs/format';
 import { ContributionMark, SourceCitation, clock, day, openOnWholeMessages, when } from './messageParts';
 import { OneConversation, type PaneProps } from './OneConversation';
 import { ThreadMessageActions } from './ThreadDrawer';
@@ -130,7 +131,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const makeWork = useCreateWorkFromMessage(project);
   const conversationId = conversation?.id;
   const author = (id: string) => id === me.user.id ? me.user.name : members.find((member) => member.userId === id)?.name ?? 'Member';
-  const messageAuthor = (item: ConversationMessage) => item.authorId !== null ? author(item.authorId) : `${item.author.name ?? 'Agent'} · agent`;
+  const messageAuthor = (item: ConversationMessage) => item.authorId !== null ? author(item.authorId) : agentAuthorLabel(item.author);
   // Replies reach the whole project audience. Name a reply target only while every voice in the thread is human;
   // with a genuine agent author the named people would not match the visible thread.
   const replyHint = messages.some((message) => message.authorId === null) ? 'Reply in this conversation…' : replyTo(people, me.user.id);

@@ -10,7 +10,7 @@ import { audienceLine, useProjectShell } from './data';
 import { ProjectAccess } from '../people/ProjectAccess';
 import { docUrl } from '../docs/api';
 import { docsLinking } from '../docs/AddToDoc';
-import { authorLabel } from '../docs/format';
+import { agentAuthorLabel, authorLabel } from '../docs/format';
 
 /** The Conversation tab's loader data: the open thread, if any, and the stream's newest roots (UI116-1). */
 function useOpenConversation(): { conversation: Conversation | null; materials: Material[]; roots?: ConversationRootWindow } | null {
@@ -132,7 +132,7 @@ export function ProjectOverview({ messageId, focusPeople = null, onBack }: { mes
     key: part.key, icon: part.icon ?? (part.key === 'work' ? 'tasks' : 'rule'), kind: part.key === 'rule' ? 'Current rule' : part.key === 'result' ? 'Latest result' : part.key === 'proposal' ? 'Proposed decision' : part.key === 'blocked' ? 'Blocked' : part.key === 'open' ? 'Open' : part.key === 'history' ? (part.open.kind === 'work' ? 'Earlier work' : 'Earlier decision') : 'In progress',
     title: part.title, need: part.tone === 'need', sub: part.tone === 'need' ? 'Needs you' : undefined, open: part.open,
   }));
-  const author = message ? (message.authorId === null ? `${message.author.name ?? 'Agent'} · agent` : message.authorId === me.user.id ? 'you' : people?.find((person) => person.id === message.authorId)?.name ?? 'a member') : null;
+  const author = message ? (message.authorId === null ? agentAuthorLabel(message.author) : message.authorId === me.user.id ? 'you' : people?.find((person) => person.id === message.authorId)?.name ?? 'a member') : null;
   const title = message ? `Message from ${author}` : conversation ? conversation.firstMessageBody.split('\n')[0] || 'Conversation' : project.name;
 
   return (

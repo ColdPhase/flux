@@ -16,6 +16,13 @@ and recovery without periodic global GitHub scans. #160 packages instructions
 and onboarding over #152/#153; #74 preserves formal provider review facts.
 Historic statements below yield only on these explicit amendments.
 
+**Later amendment, 2026-10-05:** [O-009](decision-authority.md) (proposed, #250)
+records v0.1 acceptance authority: one person with current project write access
+(contributor or manager) accepts, and so supersedes; viewers, people without
+access, agents and the assistant never accept. The Decide and Change-direction
+rows' delegated authority with scope and expiry is out of v0.1 scope (O-009 DA-5):
+Ari accepts D-2 as a project contributor, checked against current access.
+
 The [foundation](FLUX-FOUNDATION.md), [delegation](autonomy.md) and
 [mobile requirement](mobile-pwa.md) define the goal. The [accepted #14 journey](journeys-and-vocabulary.md)
 and #44 creative scenarios remain useful. Consult the [decision register](decisions.md)
