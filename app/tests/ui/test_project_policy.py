@@ -189,7 +189,18 @@ class ProjectPolicyJourney(unittest.TestCase):
         expect(page.get_by_role("list", name="Agent connections in this project").get_by_role("listitem")).to_have_count(1)
         expect(page.get_by_label("Write to this task")).to_be_visible()
 
+    def publish_through_api(self, who: str, changes: dict[str, str]) -> dict:
+        """Publishes the next revision from the saved one, with these parts changed: a known starting point."""
+        page = self.page(who)
+        current = self.saved(page)
+        body = {field: (current or {}).get(field, FIRST[label]) for label, field in FIELD.items()}
+        body.update(changes)
+        return self.api(page, "PUT", f"/api/v1/projects/{self.ids['project']}/agent-policy",
+                        {**body, "expectedRevision": current["revision"] if current else 0}, status=201)
+
     def test_03_two_managers_edit_the_same_revision(self) -> None:
+        # Both start from the same known revision, whatever the earlier tests left.
+        base = self.publish_through_api("hubert", {field: FIRST[label] for label, field in FIELD.items()})["revision"]
         hubert = self.open_agents("hubert")
         policy = self.policy(hubert)
         policy.get_by_role("button", name="Show policy").click()
@@ -199,38 +210,42 @@ class ProjectPolicyJourney(unittest.TestCase):
         mine = "Firmware for the porch light only: motion sensing and dusk detection. The dimming curve waits for the new LED driver."
         form.get_by_label("Scope", exact=True).fill(mine)
 
-        # Meanwhile Ola, the workspace admin, publishes revision 2 from her own editor.
+        # Meanwhile Ola, the workspace admin, publishes the next revision from her own editor.
         ola = self.open_agents("ola")
         theirs = "Tasks and results only. Wiki notes go through a person until the wiring diagram is settled."
         ola_policy = self.policy(ola)
         ola_policy.get_by_role("button", name="Show policy").click()
         ola_policy.get_by_role("button", name="Edit policy").click()
         self.editor(ola).get_by_label("Allowed work", exact=True).fill(theirs)
-        self.editor(ola).get_by_role("button", name="Publish revision 2").click()
-        expect(ola_policy).to_contain_text("Revision 2 · Ola Kowalska")
+        self.editor(ola).get_by_role("button", name=f"Publish revision {base + 1}").click()
+        expect(ola_policy).to_contain_text(f"Revision {base + 1} · Ola Kowalska")
         self.assertEqual(self.saved(ola)["allowedWork"], theirs)
+        # Hubert's open editor is told at once, without a reload, and keeps his text.
+        expect(form.get_by_role("status")).to_contain_text(f"Ola Kowalska published revision {base + 1} while you were editing.")
+        expect(form.get_by_label("Scope", exact=True)).to_have_value(mine)
 
-        # Hubert still edits revision 1. Publishing does not overwrite Ola's: it shows her revision and keeps his text.
-        form.get_by_role("button", name="Publish revision 2").click()
+        # He still edits revision {base}. Publishing does not overwrite Ola's: it shows her revision and keeps his text.
+        form.get_by_role("button", name=f"Publish revision {base + 1}").click()
         conflict = form.get_by_role("alert")
-        expect(conflict).to_contain_text("Ola Kowalska published revision 2 while you were editing.")
+        expect(conflict).to_contain_text(f"Ola Kowalska published revision {base + 1} while you were editing.")
         expect(conflict).to_contain_text("Your text is still here.")
         expect(form.get_by_label("Scope", exact=True)).to_have_value(mine)
         saved = self.saved(hubert)
-        self.assertEqual((saved["revision"], saved["scope"], saved["allowedWork"]), (2, FIRST["Scope"], theirs), "Hubert's edit was not published")
-        conflict.get_by_text("Their revision 2").click()
+        self.assertEqual((saved["revision"], saved["scope"], saved["allowedWork"]), (base + 1, FIRST["Scope"], theirs), "Hubert's edit was not published")
+        conflict.get_by_text(f"Their revision {base + 1}").click()
         expect(conflict.get_by_role("definition").filter(has_text=theirs)).to_be_visible()
         shot(hubert, "policy-conflict-desktop-1440")
 
-        # He has read hers; publishing now replaces it as revision 3, knowingly.
-        form.get_by_role("button", name="Publish mine as revision 3").click()
-        expect(policy.get_by_role("status")).to_contain_text("Published revision 3.")
+        # He has read hers; publishing now replaces it as the next revision, knowingly.
+        form.get_by_role("button", name=f"Publish mine as revision {base + 2}").click()
+        expect(policy.get_by_role("status")).to_contain_text(f"Published revision {base + 2}.")
         saved = self.saved(hubert)
-        self.assertEqual((saved["revision"], saved["scope"], saved["publishedBy"]["id"]), (3, mine, PEOPLE["hubert"]["id"]))
+        self.assertEqual((saved["revision"], saved["scope"], saved["publishedBy"]["id"]), (base + 2, mine, PEOPLE["hubert"]["id"]))
         # Ola's open view follows without a reload.
-        expect(ola_policy).to_contain_text("Revision 3 · Hubert Nowak")
+        expect(ola_policy).to_contain_text(f"Revision {base + 2} · Hubert Nowak")
 
     def test_04_phone_manager_edits_with_touch_sized_controls(self) -> None:
+        base = self.publish_through_api("hubert", {"reviewCriteria": FIRST["Review criteria"]})["revision"]
         page = self.open_agents("ola", phone=True)
         self.assertTrue(page.evaluate(COARSE), "the phone context has a coarse pointer")
         policy = self.policy(page)
@@ -247,7 +262,7 @@ class ProjectPolicyJourney(unittest.TestCase):
             self.assertGreaterEqual(box.bounding_box()["height"], 44)
         criteria = "Each change names the bench test it passed, the measured current draw and a photo of the mounted sensor."
         form.get_by_label("Review criteria", exact=True).fill(criteria)
-        publish = form.get_by_role("button", name="Publish revision 4")
+        publish = form.get_by_role("button", name=f"Publish revision {base + 1}")
         cancel = form.get_by_role("button", name="Cancel")
         publish.scroll_into_view_if_needed()
         for button in (publish, cancel):
@@ -255,9 +270,9 @@ class ProjectPolicyJourney(unittest.TestCase):
         self.assert_no_sideways_scroll(page)
         shot(page, "policy-edit-phone-390")
         publish.click()
-        expect(policy.get_by_role("status")).to_contain_text("Published revision 4.")
+        expect(policy.get_by_role("status")).to_contain_text(f"Published revision {base + 1}.")
         saved = self.saved(page)
-        self.assertEqual((saved["revision"], saved["reviewCriteria"], saved["publishedBy"]["id"]), (4, criteria, PEOPLE["ola"]["id"]))
+        self.assertEqual((saved["revision"], saved["reviewCriteria"], saved["publishedBy"]["id"]), (base + 1, criteria, PEOPLE["ola"]["id"]))
         self.assert_no_sideways_scroll(page)
         policy.scroll_into_view_if_needed()
         shot(page, "policy-read-phone-390")
@@ -268,7 +283,7 @@ class ProjectPolicyJourney(unittest.TestCase):
             for phone in (False, True):
                 page = self.open_agents(who, phone=phone)
                 policy = self.policy(page)
-                expect(policy).to_contain_text(f"Revision {before['revision']} · Ola Kowalska")
+                expect(policy).to_contain_text(f"Revision {before['revision']} · {before['publishedBy']['name']}")
                 policy.get_by_role("button", name="Show policy").click()
                 expect(policy.get_by_role("definition").filter(has_text=before["reviewCriteria"])).to_have_count(1)
                 expect(policy).to_contain_text("Only a project manager can change it.")
