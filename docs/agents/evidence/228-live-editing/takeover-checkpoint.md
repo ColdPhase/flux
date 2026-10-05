@@ -22,10 +22,21 @@ acceptance evidence.
   `t239-diag2.log`). Regression `app/tests/ui/test_live_editing_off.py`.
 - `3a676a28` P1-5a: LiveDocEditor on the WikiBar document-pane layout.
 
+- `ea3dbfdf`, `d83bc0e5`: off-mode UI test split into wiki/map tests; live selection test
+  waits for the gesture's own latest sequence before comparing (test race, see below).
+
+## Observed so far (feature off unless noted)
+
+- Targeted UI at `d83630ea`: 81 tests OK (live-off, sketches, thought drafts, map outline,
+  theme accents, docs, wiki panes, one conversation).
+- UI negative control at `856c53e1` (pre-fix) with the split off-mode test: the wiki test sees
+  `/live` requests; the map test sees "Undo requested … Waiting for confirmation".
+- Live mode (`FLUX_DEVELOPMENT_LIVE_EDITING=true`) at `d83630ea`: 14/16; selection 50 failed
+  (stale frame) and wiki test_01 once showed "3 changes waiting to be shared" (unexplained,
+  re-run pending). Selection diagnostic at `3a676a28`: frames (3,4), own sequence 4, no error
+  frames at 50 or 200; the 200 error-frame failure did not reproduce.
+
 ## In progress
 
-- Targeted UI (off), targeted API, live-mode UI and the UI negative control runs.
-- P1-5b live selection: the 50-thought failure looks like a test race (stale `sent[-1]`,
-  one 18 px mouse step behind the trailing throttled frame); 200 error frames need the
-  diagnostic `t239-seldiag.log`.
-- Then full `check_application.sh` (19120/19121) and full `check_ui.sh` (19122/19123).
+- Targeted API at `d83630ea`, live-mode rerun at `d83bc0e5`, UI negative control v3, then full
+  `check_application.sh` (19120/19121) and full `check_ui.sh` (19122/19123) at `d83bc0e5`.
