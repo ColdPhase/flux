@@ -568,3 +568,158 @@ class ThoughtDraftJourney(unittest.TestCase):
         self.assertEqual([t["id"] for t in stored["thoughts"] if t["text"].startswith("First text")], [created[0]["id"]],
                          "the refined text lands on the thought that committed, never a second thought")
         self.assertEqual(len(stored["thoughts"]), len(committed["thoughts"]))
+
+    # ---------------------------------------------------------------- Studio 11.6 continuity (#149 with #136)
+
+    def link_task(self, page, thought_id, title):
+        """A task from the thought, so its count opens the chooser (UI116-4). The sketch itself is unchanged."""
+        return self.api(page, "POST", f"/api/v1/projects/{self.project}/work", {"title": title, "sources": [{"type": "thought", "id": thought_id}]}, 201)["id"]
+
+    def project_work(self, page):
+        return self.api(page, "GET", f"/api/v1/projects/{self.project}/work?limit=100")
+
+    def record_shared_writes(self, page):
+        """Every non-GET request to a map, a thought or a task. Switching views may record visits elsewhere."""
+        writes = []
+        shared = re.compile(r"/api/v1/(sketches|work)(/|\?|$)|/api/v1/(projects|workspaces)/[^/]+/(work|sketches)")
+        page.on("request", lambda request: writes.append(f"{request.method} {request.url}") if request.method != "GET" and shared.search(request.url) else None)
+        return writes
+
+    def tab(self, page, name, *, touch=False):
+        link = page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile(f"^{name}"))
+        link.tap() if touch else link.click()
+
+    def back_to_map(self, page, *, touch=False):
+        """The Map tab returns to its last place (#189): this sketch, or the project's list of maps."""
+        self.tab(page, "Map", touch=touch)
+        page.wait_for_url(re.compile(rf"/projects/{self.project}/map(/{self.sketch})?$"))
+        if not page.url.endswith(f"/map/{self.sketch}"):
+            page.locator(f'.sk-index a[href="/projects/{self.project}/map/{self.sketch}"]').click()
+        expect(page.locator(".sk-head")).to_be_visible()
+
+    def round_trip_through_every_view(self, page, *, touch=False):
+        """Map → Conversation → Agents → Tasks → Wiki → Map inside one page visit, as a person switches tabs."""
+        page.evaluate("window.sameVisit = true")
+        for name, path in (("Conversation", r"(/conversations/[0-9a-f-]{36})?$"), ("Agents", r"/agents$"), ("Tasks", r"/tasks(\?.*)?$"), ("Wiki", r"/docs(/.*)?$")):
+            self.tab(page, name, touch=touch)
+            page.wait_for_url(re.compile(rf"/projects/{self.project}{path}"))
+            if name == "Agents":
+                expect(page.get_by_role("heading", level=1, name="Working together")).to_be_visible()
+            expect(page.locator(".sk-head")).to_have_count(0)
+            expect(page.get_by_role("form", name="New thought draft")).to_have_count(0)
+        self.back_to_map(page, touch=touch)
+        self.assertTrue(page.evaluate("window.sameVisit === true"), "the views changed inside one page visit, not by reloading")
+
+    def test_17_task_chooser_and_view_tabs_keep_a_live_child_draft_until_it_is_discarded(self):
+        page = self.owner
+        child = next(t for t in self.before["thoughts"] if t["id"] != self.parent)
+        task = self.link_task(page, child["id"], "Measure the radar through a fabric lampshade")
+        before, work = self.stored(page), self.project_work(page)
+        self.open(page)
+        writes = self.record_shared_writes(page)
+        text = "Ask Jonas whether the radar sees through the shade\n<b>Keep this markup literal</b>"
+        field = self.capture(page, child=True)
+        field.fill(text)
+        form = page.get_by_role("form", name="New thought draft")
+        expect(form).to_contain_text("Connected to “Capture a gesture without recording camera images” on save")
+
+        # The count on another thought opens its chooser over the live draft; Escape and Close leave the draft alone.
+        row_count = page.locator(f'.sk-outline-list > li[data-id="{child["id"]}"] .sk-work')
+        chooser = page.get_by_role("dialog", name=child["text"], exact=True)
+        row_count.click()
+        expect(chooser).to_be_visible()
+        expect(chooser.get_by_role("link")).to_have_count(1)
+        expect(field).to_have_value(text)
+        page.keyboard.press("Escape")
+        expect(chooser).to_have_count(0)
+        expect(row_count).to_be_focused()
+        expect(form).to_have_count(1)
+        expect(field).to_have_value(text)
+        row_count.click()
+        chooser.get_by_role("button", name="Close", exact=True).click()
+        expect(chooser).to_have_count(0)
+        expect(field).to_have_value(text)
+        # Pressing back into the draft closes the chooser and puts the cursor in the same text.
+        row_count.click()
+        expect(chooser).to_be_visible()
+        field.click()
+        expect(chooser).to_have_count(0)
+        expect(field).to_be_focused()
+        expect(field).to_have_value(text)
+
+        # The same on the canvas, and opening the task beside the map.
+        page.get_by_role("radio", name="Map", exact=True).click()
+        node_count = page.locator(f'.sk-node[data-id="{child["id"]}"] + .sk-work-slot .sk-work')
+        node_count.click()
+        expect(chooser).to_be_visible()
+        page.keyboard.press("Escape")
+        expect(chooser).to_have_count(0)
+        expect(field).to_have_value(text)
+        node_count.click()
+        chooser.get_by_role("link").click()
+        expect(page.locator(".details__title")).to_have_text("Measure the radar through a fabric lampshade")
+        expect(page).to_have_url(re.compile(rf"/projects/{self.project}/map/{self.sketch}"))
+        expect(field).to_have_value(text)
+        shot(page, "thought-draft-continuity-chooser-desktop")
+        self.assertEqual(self.stored(page), before)
+
+        # Every project view and back: the draft returns with its text and its intended parent.
+        self.round_trip_through_every_view(page)
+        field = page.get_by_role("form", name="New thought draft").get_by_label("Thought text")
+        expect(field).to_have_value(text)
+        expect(page.get_by_role("form", name="New thought draft")).to_contain_text("Connected to “Capture a gesture without recording camera images” on save")
+        self.assertEqual(self.stored_drafts(page), [text])
+        page.reload()
+        expect(page.get_by_role("form", name="New thought draft").get_by_label("Thought text")).to_have_value(text)
+        self.assertEqual((self.stored(page), self.project_work(page)), (before, work), "nothing was saved before confirmation")
+        self.assertEqual(writes, [], "no map or task write while the chooser, the tabs and the reload kept the draft")
+
+        # Discarding leaves nothing behind, in this view or after another round trip.
+        page.get_by_role("button", name="Cancel", exact=True).click()
+        expect(page.get_by_role("form", name="New thought draft")).to_have_count(0)
+        self.assertEqual(self.stored_drafts(page), [])
+        self.round_trip_through_every_view(page)
+        expect(page.get_by_role("form", name="New thought draft")).to_have_count(0)
+        page.reload()
+        expect(page.locator(".sk-head")).to_be_visible()
+        expect(page.get_by_role("form", name="New thought draft")).to_have_count(0)
+        self.assertEqual((self.stored(page), self.project_work(page)), (before, work))
+        self.assertEqual(writes, [], "a discarded draft never reaches the server")
+        self.assertEqual(self.api(page, "GET", f"/api/v1/work/{task}")["title"], "Measure the radar through a fabric lampshade")
+
+    def test_18_phone_390_root_draft_survives_the_task_sheet_and_view_tabs(self):
+        page = self.page(viewport=PHONE, has_touch=True, is_mobile=True)
+        child = next(t for t in self.before["thoughts"] if t["id"] != self.parent)
+        self.link_task(page, child["id"], "Print a diffuser sample in white PETG")
+        before, work = self.stored(page), self.project_work(page)
+        self.open(page)
+        writes = self.record_shared_writes(page)
+        text = "Try a slower fade for the night light"
+        field = self.capture(page)
+        field.fill(text)
+        expect(page.get_by_role("form", name="New thought draft")).to_contain_text("Top level")
+
+        row_count = page.locator(f'.sk-outline-list > li[data-id="{child["id"]}"] .sk-work')
+        row_count.scroll_into_view_if_needed()
+        row_count.tap()
+        sheet = page.get_by_role("dialog", name=child["text"], exact=True)
+        expect(sheet).to_be_visible()
+        sheet.get_by_role("button", name="Close", exact=True).tap()
+        expect(sheet).to_have_count(0)
+        expect(field).to_have_value(text)
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), PHONE["width"])
+
+        self.round_trip_through_every_view(page, touch=True)
+        field = page.get_by_role("form", name="New thought draft").get_by_label("Thought text")
+        expect(field).to_have_value(text)
+        shot(page, "thought-draft-continuity-phone-390")
+        self.assertEqual((self.stored(page), self.project_work(page)), (before, work))
+        self.assertEqual(writes, [], "no map or task write on the phone either")
+
+        page.get_by_role("button", name="Cancel", exact=True).tap()
+        expect(page.get_by_role("form", name="New thought draft")).to_have_count(0)
+        self.round_trip_through_every_view(page, touch=True)
+        expect(page.get_by_role("form", name="New thought draft")).to_have_count(0)
+        self.assertEqual(self.stored_drafts(page), [])
+        self.assertEqual((self.stored(page), self.project_work(page)), (before, work))
+        self.assertEqual(writes, [])

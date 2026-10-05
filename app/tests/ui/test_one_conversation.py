@@ -36,6 +36,15 @@ NUMBERS_REPLY = "Thanks. Let's keep the negative result next to the ToF test."
 ORDER = "Order two ToF boards today?"
 
 
+def contrast(a: list[float], b: list[float]) -> float:
+    """WCAG contrast of two opaque sRGB colours (0–255 channels)."""
+    def luminance(rgb: list[float]) -> float:
+        linear = [c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4 for c in (v / 255 for v in rgb)]
+        return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+    high, low = sorted((luminance(a), luminance(b)), reverse=True)
+    return (high + 0.05) / (low + 0.05)
+
+
 class OneConversationJourney(unittest.TestCase):
     """Tests run in name order and share three accounts and one project."""
 
@@ -602,6 +611,32 @@ class OneConversationJourney(unittest.TestCase):
                     }""", arg=selector, timeout=5000)
                     value = page.evaluate(MEASURE, {"selector": selector})
                     self.assertGreaterEqual(value["ratio"], 4.5, value)
+                # The reply link (at rest and on hover) and the open root's ring use the accent: every family (#148 AC-4).
+                root = f"#message-{self.ids['r1']}"
+                expect(page.locator(root)).to_have_class(re.compile("is-open"))
+                chosen = page.evaluate("document.documentElement.dataset.accent ?? null")
+                for family in ("mint", "sky", "copper"):
+                    page.evaluate(f"document.documentElement.dataset.accent = '{family}'")
+                    page.mouse.move(1, 1)
+                    page.wait_for_timeout(250)
+                    rest = page.evaluate(MEASURE, {"selector": f"{root} .convo-replies__open"})
+                    self.assertGreaterEqual(rest["ratio"], 4.5, (theme, family, "reply link", rest))
+                    page.locator(f"{root} .convo-replies__open").hover()
+                    page.wait_for_timeout(250)
+                    hovered = page.evaluate(MEASURE, {"selector": f"{root} .convo-replies__open"})
+                    self.assertGreaterEqual(hovered["ratio"], 4.5, (theme, family, "reply link on hover", hovered))
+                    page.mouse.move(1, 1)
+                    page.wait_for_timeout(250)
+                    ring = page.locator(f"{root} > p").evaluate("e => getComputedStyle(e).boxShadow")
+                    accent = page.evaluate("""() => { const probe = document.createElement('i'); probe.style.color = 'var(--accent)';
+                      document.body.append(probe); const color = getComputedStyle(probe).color; probe.remove(); return color; }""")
+                    self.assertEqual(ring, f"{accent} 0px 0px 0px 1px inset", (theme, family, "the open root has a solid accent ring"))
+                    colour = [int(channel) for channel in re.findall(r"\d+", accent)[:3]]
+                    # The ring separates the root's bubble from the stream: measured against both.
+                    for inside in (f"{root} > p", root):
+                        background = page.evaluate(MEASURE, {"selector": inside})["background"]
+                        self.assertGreaterEqual(contrast(colour, background), 3, (theme, family, "open root ring", inside, colour, background))
+                page.evaluate("value => { if (value) document.documentElement.dataset.accent = value; else delete document.documentElement.dataset.accent; }", chosen)
 
 
 if __name__ == "__main__":
