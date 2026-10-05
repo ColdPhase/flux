@@ -133,11 +133,14 @@ if (existing) {
       [owner, 'Agreed. I compared probes in the shortlist; the capacitive one should survive a season outdoors.', { materialId: material.materialId, version: material.version }],
       [partner, 'Then let us order six and put two on the far beds to test the LoRa range. I can ask the school about two more.'],
     ];
+    const said = [];
     for (const [person, body, source] of replies) {
-      await person.session.expect('POST', `/api/v1/conversations/${thread.id}/messages`, { body, clientMessageId: ids(), ...(source ? { source } : {}) });
+      said.push(await person.session.expect('POST', `/api/v1/conversations/${thread.id}/messages`, { body, clientMessageId: ids(), ...(source ? { source } : {}) }));
     }
     summary.seeded.push(`conversation with ${replies.length + 1} messages between ${owner.name} and ${partner.name}, one citing the material`);
     summary.conversationId = thread.id;
+    summary.messageIds = said.map((message) => message.id).filter(Boolean);
+    summary.materialRef = { type: 'material', id: material.materialId, version: material.version };
   } else {
     summary.skipped.push('conversation: this build has no conversation API yet (#36)');
   }
@@ -209,6 +212,44 @@ if (existing) {
     summary.seeded.push(`doc "${doc.title}" with ${updated.version} versions by ${owner.name} and ${partner.name}`);
   } else {
     summary.skipped.push('doc: this build has no docs API yet (#112)');
+  }
+  // What the project is for, the work people own and one decision waiting for Ada (#272 F-023): the demo
+  // shows Flux's Home, a project's goal and its tasks as they are meant to be used, not empty screens.
+  const projectPath = `/api/v1/projects/${project.id}`;
+  const current = await owner.session.request('GET', projectPath);
+  if (current.status === 200 && 'goal' in (current.json ?? {})) {
+    await owner.session.expect('PATCH', projectPath, { goal: 'Know when each bed needs water, with six sensors from the council grant' }, [200], { 'if-match': `"${current.json.version}"` });
+    summary.seeded.push('the project goal');
+  } else {
+    summary.skipped.push('project goal: this build has no goal yet (#272)');
+  }
+  const workPath = `/api/v1/projects/${project.id}/work`;
+  if (await hasRoute(owner.session, workPath)) {
+    const fromChat = summary.messageIds?.length ? [{ type: 'message', id: summary.messageIds[2] ?? summary.messageIds[0] }] : [];
+    const tasks = [
+      { title: 'Order six capacitive probes', owner, status: 'in_progress', outcome: 'Six probes on the shed shelf, receipts in the wiki', sources: [...fromChat, ...(summary.materialRef ? [summary.materialRef] : [])] },
+      { title: 'Design an enclosure volunteers can open without tools', owner, status: 'blocked', blocker: 'the probe dimensions from the supplier' },
+      { title: 'Ask the school to lend two ESP32 kits', owner: partner, status: 'open', sources: fromChat },
+      { title: 'Test LoRa range through the hedge', owner: partner, status: 'done', outcome: 'Two sensors reach the gateway from 140 m' },
+      { title: 'Write the watering guide for volunteers', owner: null, status: 'open' },
+    ];
+    for (const task of tasks) {
+      await owner.session.expect('POST', workPath, {
+        title: task.title, status: task.status, owner: task.owner ? { kind: 'human', id: task.owner.id } : null,
+        ...(task.outcome ? { outcome: task.outcome } : {}), ...(task.blocker ? { blocker: task.blocker } : {}), ...(task.sources?.length ? { sources: task.sources } : {}),
+        clientCommandId: ids(),
+      }, [201], { 'idempotency-key': ids() });
+    }
+    summary.seeded.push(`${tasks.length} tasks with owners and states (one blocked, with its reason)`);
+    const decision = await partner.session.request('POST', `/api/v1/projects/${project.id}/decisions`, {
+      title: 'Measure soil moisture first; frost warnings come later',
+      rationale: 'Volunteers overwater the raised beds now, and frost only matters in spring.',
+      ...(summary.messageIds?.length ? { sources: [{ type: 'message', id: summary.messageIds[0] }] } : {}),
+    }, { 'idempotency-key': ids() });
+    if (decision.status === 201) summary.seeded.push(`a decision ${partner.name} proposed, waiting for ${owner.name}`);
+    else summary.skipped.push(`decision: answered ${decision.status}`);
+  } else {
+    summary.skipped.push('tasks: this build has no work API yet (#101)');
   }
 }
 

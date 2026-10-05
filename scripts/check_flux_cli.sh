@@ -117,6 +117,9 @@ printf '%s\n' "$out" | grep -q 'seeded  conversation with 4 messages' || fail "c
 printf '%s\n' "$out" | grep -Eq 'seeded  sketch|skipped sketch' || fail "sketch neither seeded nor skipped"
 printf '%s\n' "$out" | grep -q 'seeded  direct message between Ada Kowalska and Jonas Berg with 4 messages' || fail "direct message not seeded"
 printf '%s\n' "$out" | grep -q 'seeded  doc "How the garden sensors work" with 2 versions' || fail "doc with two versions not seeded"
+printf '%s\n' "$out" | grep -q 'seeded  the project goal' || fail "project goal not seeded"
+printf '%s\n' "$out" | grep -q 'seeded  5 tasks with owners and states' || fail "tasks not seeded"
+printf '%s\n' "$out" | grep -q 'seeded  a decision Jonas Berg proposed, waiting for Ada Kowalska' || fail "proposed decision not seeded"
 
 jar="$work/jar"
 sign_in() { # email password -> cookie jar $jar
