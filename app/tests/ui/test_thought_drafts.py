@@ -39,6 +39,20 @@ BUTTONS_TAKE_NO_FOCUS = """document.addEventListener('mousedown', (event) => {
   event.preventDefault();
   if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
 });"""
+# A slow network for this sketch's reads only (#271): each read's response, with the server's state
+# when it was asked, reaches the page `window.__fluxSlowReads` ms later. Writes are not delayed.
+SLOW_SKETCH_READS = """(() => {
+  const send = window.fetch.bind(window);
+  window.fetch = async (input, init) => {
+    const response = await send(input, init);
+    const method = String((init && init.method) || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+    const path = new URL(input instanceof Request ? input.url : String(input), location.href).pathname;
+    if (method === 'GET' && /^\\/api\\/v1\\/sketches\\/[^/]+$/.test(path) && window.__fluxSlowReads) {
+      await new Promise((resolve) => setTimeout(resolve, window.__fluxSlowReads));
+    }
+    return response;
+  };
+})();"""
 STORED_DRAFT_TEXTS = "Object.keys(sessionStorage).filter(k => k.startsWith('flux:thought-draft:')).map(k => JSON.parse(sessionStorage.getItem(k)).text)"
 EARLIER = "Earlier persisted draft"
 LATEST = "Latest recoverable draft after quota exhaustion"
@@ -568,3 +582,28 @@ class ThoughtDraftJourney(unittest.TestCase):
         self.assertEqual([t["id"] for t in stored["thoughts"] if t["text"].startswith("First text")], [created[0]["id"]],
                          "the refined text lands on the thought that committed, never a second thought")
         self.assertEqual(len(stored["thoughts"]), len(committed["thoughts"]))
+
+    def test_17_a_slow_earlier_read_never_hides_a_thought_saved_after_it(self):
+        page = self.owner
+        page.add_init_script(SLOW_SKETCH_READS)
+        self.open(page)
+        sketch_read = lambda request: request.method == "GET" and request.url.endswith(f"/api/v1/sketches/{self.sketch}")
+        page.evaluate("() => { window.__fluxSlowReads = 3000; }")
+        # The first save's own event makes the page read the sketch again; that read is slow.
+        with page.expect_request(sketch_read):
+            field = self.capture(page)
+            field.fill("First capture, then a slow read")
+            field.press("Enter")
+            expect(page.locator(".sk-status")).to_contain_text("Saved")
+        # The next save is confirmed while that earlier read is still on its way.
+        field = self.capture(page)
+        field.fill("Second capture, saved during the slow read")
+        field.press("Enter")
+        expect(page.locator(".sk-status")).to_contain_text("Saved")
+        second = page.locator(".sk-outline-list .sk-li-t", has_text="Second capture, saved during the slow read")
+        expect(second).to_have_count(1)
+        # The earlier read arrives without the second thought; the confirmed thought stays in the list.
+        for _ in range(40):
+            self.assertEqual(second.count(), 1, "a read sent before a confirmed save never removes the saved thought")
+            page.wait_for_timeout(100)
+        self.assertTrue(any(t["text"] == "Second capture, saved during the slow read" for t in self.stored(page)["thoughts"]))

@@ -64,7 +64,17 @@ export function BackgroundComputeSettings() {
   const statusRef = useRef<HTMLParagraphElement>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
   const addRef = useRef<HTMLButtonElement>(null);
+  // Focus moves once the element it names is committed (#271). A requestAnimationFrame callback
+  // can run before React renders the new error or the restored button, and then focuses nothing.
+  const focusAfterRender = useRef<'status' | 'error' | 'add' | null>(null);
   useEffect(() => { headingRef.current?.focus(); }, []);
+  useLayoutEffect(() => {
+    const target = focusAfterRender.current;
+    const node = target === 'status' ? statusRef.current : target === 'error' ? errorRef.current : target === 'add' ? addRef.current : null;
+    if (!node) return;
+    focusAfterRender.current = null;
+    node.focus();
+  });
   useLayoutEffect(() => {
     if (!editing) return;
     formRef.current?.querySelector<HTMLInputElement>('input[name="apiKey"]')?.focus({ preventScroll: true });
@@ -78,11 +88,11 @@ export function BackgroundComputeSettings() {
   }
   const announce = (message: string) => {
     setSaved(message);
-    requestAnimationFrame(() => statusRef.current?.focus());
+    focusAfterRender.current = 'status';
   };
   function cancelAdding() {
     formRef.current?.reset(); setEditing(false); setError('');
-    requestAnimationFrame(() => addRef.current?.focus());
+    focusAfterRender.current = 'add';
   }
 
   async function connect(event: FormEvent<HTMLFormElement>) {
@@ -123,7 +133,7 @@ export function BackgroundComputeSettings() {
       setEditing(false);
       announce(added.usedForBackground ? 'Connection saved and used for background suggestions. No rule was enabled.' : 'Connection saved. No rule was enabled.');
       await refreshUsage();
-    } catch (cause) { setError(failure(cause)); requestAnimationFrame(() => errorRef.current?.focus()); }
+    } catch (cause) { setError(failure(cause)); focusAfterRender.current = 'error'; }
     finally {
       // The key exists only in this password input and the same-origin request, never app storage.
       const key = form.elements.namedItem('apiKey');
@@ -143,7 +153,7 @@ export function BackgroundComputeSettings() {
         ? 'Disconnected in Flux. Background suggestions stop until you choose another connection; none takes over by itself.'
         : 'Disconnected in Flux. New requests cannot use this key.');
       await refreshUsage();
-    } catch (cause) { setError(failure(cause)); requestAnimationFrame(() => errorRef.current?.focus()); }
+    } catch (cause) { setError(failure(cause)); focusAfterRender.current = 'error'; }
     finally { setBusy(false); }
   }
 
@@ -154,7 +164,7 @@ export function BackgroundComputeSettings() {
       const marked = await markBackgroundConnection(target.id);
       setConnections((current) => current.map((item) => (item.id === marked.id ? marked : { ...item, usedForBackground: false })));
       announce(`Background suggestions now use ${marked.name}.`);
-    } catch (cause) { setError(failure(cause)); requestAnimationFrame(() => errorRef.current?.focus()); }
+    } catch (cause) { setError(failure(cause)); focusAfterRender.current = 'error'; }
     finally { setBusy(false); }
   }
 
