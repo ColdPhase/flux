@@ -383,11 +383,14 @@ class MapOutlineJourney(unittest.TestCase):
             for family in FAMILIES:
                 page = self.page()
                 self.open(page)
+                # Appearance lives on the Settings page (#272 FF-4); back to the sketch within this visit.
                 page.locator(".me__btn").click()
-                pop = page.get_by_role("dialog", name="Account", exact=True)
+                pop = page.locator(".set")
                 pop.get_by_role("radio", name=scheme, exact=True).click()
                 pop.get_by_role("radio", name=family, exact=True).click()
-                page.keyboard.press("Escape")
+                expect(pop.get_by_role("radio", name=family, exact=True)).to_have_attribute("aria-checked", "true")
+                page.go_back()
+                expect(page).not_to_have_url(re.compile(r"/settings$"))
                 self.title(page, 4).click()
                 for selector in ('.sk-li-t', '.sk-li-s', '.sk-outline-related button', '.sk-outline-selected', '.sk-outline-path summary'):
                     page.wait_for_function("selector => { const node = document.querySelector(selector); if (!node) return false; for (let el = node; el; el = el.parentElement) if (Number(getComputedStyle(el).opacity) !== 1) return false; return true; }", arg=selector)

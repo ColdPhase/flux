@@ -187,11 +187,19 @@ class DocReferenceJourney(unittest.TestCase):
                 expect(text).to_have_value("PRIVATE-DRAFT of native reference notes\n")
 
     def assert_account(self, page, name, phone):
-        if phone: page.get_by_role("button", name="Open navigation", exact=True).click()
-        # In the phone drawer the account row leads to Settings (#266 PF-5).
-        role, suffix = ("link", "settings and sign out") if phone else ("button", "account and sign out")
-        expect(page.get_by_role(role, name=re.compile(f"^{name} .*{suffix}"))).to_be_visible()
-        if phone: page.get_by_role("button", name="Close navigation", exact=True).click()
+        """The shell names the signed-in person at the foot of the sidebar (or the drawer): "<name> Settings and
+        sign out" (#266 PF-5, #272 FF-4).
+
+        Inside a project a phone's top-left control leads back to all projects instead of the drawer (#272);
+        leaving would unmount the editor this test watches, so the phone case widens the same document to a
+        drawer layout (680 px and below, wider than a phone), reads the drawer and narrows it again."""
+        if phone:
+            page.set_viewport_size({"width": 660, "height": 844})
+            page.get_by_role("button", name="Open navigation", exact=True).click()
+        expect(page.get_by_role("link", name=re.compile(f"^{name}.*Settings and sign out"))).to_be_visible()
+        if phone:
+            page.get_by_role("button", name="Close navigation", exact=True).click()
+            page.set_viewport_size({"width": 390, "height": 844})
 
     def expect_new_editor(self, page, project_name):
         # Main's #197 wiki pane splits the old "New doc · everyone in <project> can read it" line:

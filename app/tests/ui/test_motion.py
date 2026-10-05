@@ -282,7 +282,9 @@ class MotionJourney(unittest.TestCase):
         tab = page.get_by_role("navigation", name="Project views").get_by_role("link", name="Conversation").bounding_box()
         self.assertTrue(mark and tab and tab["x"] <= mark["x"] <= tab["x"] + tab["width"])
         shot(page, "motion-zoom-200")
-        phone = self.page(viewport={"width": 390, "height": 844}, scale=3)
+        # The drawer inside a project: a narrow window keeps it (680 px and below). On a phone (640 px and
+        # below) the top-left control inside a project leads back to all projects instead (#272).
+        phone = self.page(viewport={"width": 660, "height": 900}, scale=2)
         phone.goto(f"/projects/{self.projects[2]}")
         phone.get_by_role("button", name="Open navigation").click()
         drawer = phone.locator("#nav-drawer")

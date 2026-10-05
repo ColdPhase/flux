@@ -76,33 +76,40 @@ class ThemeAccentsJourney(unittest.TestCase):
         return response.json()
 
     def account(self, page):
+        """Opens the Settings page from the person at the foot of the sidebar and returns its body.
+
+        Settings is a page on every size (#272 FF-4): the desktop sidebar's person row, or the phone
+        drawer's (#266 PF-5). It holds this device's appearance choices."""
         # Wait for the authenticated shell loader; a missing desktop control is not a
         # narrow-layout signal while the route is still loading.
         page.locator(".app").wait_for(state="visible")
-        # The same account control lives in the responsive sidebar drawer. There (#266 PF-5) the
-        # account row opens Settings, which holds the same appearance choices.
-        if not page.locator(".me__btn").is_visible():
-            page.get_by_role("button", name="Open navigation").click()
+        if not page.url.split("?")[0].endswith("/settings"):
+            if not page.locator(".me__btn").is_visible():
+                # Inside a project a phone's top-left control leads back to all projects (#272); the
+                # drawer opens from there.
+                back = page.locator("header.top .top__back")
+                if back.count():
+                    back.click()
+                    expect(page.get_by_role("button", name="Open navigation")).to_be_visible()
+                page.get_by_role("button", name="Open navigation").click()
             page.locator(".me__btn").click()
             expect(page).to_have_url(re.compile(r"/settings$"))
-            settings = page.locator(".set")
-            expect(settings.get_by_role("radiogroup", name="Appearance")).to_be_visible()
-            return settings
-        page.locator(".me__btn").click()
-        pop = page.get_by_role("dialog", name="Account", exact=True)
-        expect(pop).to_be_visible()
-        page.wait_for_function("document.querySelector('.me__pop')?.getAnimations().every(a => a.playState === 'finished' || a.playState === 'idle')")
-        return pop
+        settings = page.locator(".set")
+        expect(settings.get_by_role("radiogroup", name="Appearance")).to_be_visible()
+        return settings
+
+    def leave_settings(self, page):
+        """Back to the page Settings was opened from, within this visit (a reload would drop visit-only choices)."""
+        page.go_back()
+        expect(page).not_to_have_url(re.compile(r"/settings$"))
+        page.locator(".app").wait_for(state="visible")
 
     def appearance(self, page, theme, family):
-        pop = self.account(page)
-        pop.get_by_role("radio", name=theme, exact=True).click()
-        pop.get_by_role("radio", name=family, exact=True).click()
-        expect(pop.get_by_role("radio", name=family, exact=True)).to_have_attribute("aria-checked", "true")
-        page.keyboard.press("Escape")
-        # If account was opened in the phone navigation drawer, close that separately.
-        if page.get_by_role("button", name="Close navigation").is_visible():
-            page.get_by_role("button", name="Close navigation").click()
+        settings = self.account(page)
+        settings.get_by_role("radio", name=theme, exact=True).click()
+        settings.get_by_role("radio", name=family, exact=True).click()
+        expect(settings.get_by_role("radio", name=family, exact=True)).to_have_attribute("aria-checked", "true")
+        self.leave_settings(page)
         page.wait_for_timeout(200)
 
     def measure(self, page, theme, family, selector, minimum=4.5, **spec):
@@ -121,9 +128,11 @@ class ThemeAccentsJourney(unittest.TestCase):
 
     def return_home(self, page, screenshot_name):
         page.goto("/")
-        expect(page.locator(".since-home")).to_be_visible()
-        expect(page.locator(".since-home .since__next")).to_be_visible()
-        content = page.locator(".since-home .since__text").all_text_contents()
+        # Home (#272 FF-2): Flux's next step in the return card, then the rest in "For you".
+        expect(page.locator(".home-return")).to_contain_text("Your next step")
+        for_you = page.get_by_role("region", name="For you", exact=True)
+        expect(for_you.locator(".since__item").first).to_be_visible()
+        content = for_you.locator(".since__text").all_text_contents()
         self.assertGreater(len(content), 0, "return comparison contains actual persisted changes")
         if hasattr(self, "return_content"):
             self.assertEqual(content, self.return_content, "matched return comparison retains identical items")
@@ -131,7 +140,7 @@ class ThemeAccentsJourney(unittest.TestCase):
         shot(page, screenshot_name)
         # Visiting Home acknowledges nothing (HOME-1, #190), so the next family and viewport see the
         # same persisted changes without restoring anything.
-        expect(page.get_by_role("button", name="I have the context")).to_be_visible()
+        expect(for_you.get_by_role("button", name="I have the context")).to_be_visible()
 
     def test_01_create_persisted_content(self):
         page = self.page()
@@ -200,12 +209,10 @@ class ThemeAccentsJourney(unittest.TestCase):
         mint.press("ArrowLeft")
         expect(copper).to_be_focused()
         page.wait_for_timeout(200)
-        self.measure(page, "Light", "Copper", '[data-accent-option="copper"]', 3, property="outlineColor", backgroundSelector=".me__pop")
+        self.measure(page, "Light", "Copper", '[data-accent-option="copper"]', 3, property="outlineColor", backgroundSelector=".set-card")
         pop.get_by_role("radio", name="Dark", exact=True).click()
         expect(mint).to_have_attribute("aria-checked", "true")
         sky.click()
-        page.keyboard.press("Escape")
-        expect(page.locator(".me__btn")).to_be_focused()
         page.reload()
         expect(page.locator("html")).to_have_attribute("data-accent", "sky")
         expect(page.locator("html")).to_have_attribute("data-theme", "dark")
@@ -215,7 +222,6 @@ class ThemeAccentsJourney(unittest.TestCase):
         pop.get_by_role("radio", name="Light", exact=True).click()
         expect(pop.get_by_role("radio", name="Copper", exact=True)).to_have_attribute("aria-checked", "true")
         pop.get_by_role("radio", name="System", exact=True).click()
-        page.keyboard.press("Escape")
         page.emulate_media(color_scheme="dark")
         expect(page.locator("html")).to_have_attribute("data-accent", "sky")
         dark = page.locator("html").evaluate("e => getComputedStyle(e).getPropertyValue('--accent').trim()")
@@ -298,9 +304,9 @@ class ThemeAccentsJourney(unittest.TestCase):
                     expect(selected).to_be_focused()
                     page.wait_for_timeout(200)
                     self.assertEqual(selected.evaluate("e => getComputedStyle(e).outlineWidth"), "2px")
-                    self.measure(page, theme, family, f'[data-accent-option="{family.lower()}"]', 3, property="outlineColor", backgroundSelector=".me__pop")
+                    self.measure(page, theme, family, f'[data-accent-option="{family.lower()}"]', 3, property="outlineColor", backgroundSelector=".set-card")
                     shot(page, f"accent-{theme.lower()}-{family.lower()}-settings-1440")
-                    page.keyboard.press("Escape")
+                    self.leave_settings(page)
                     page.get_by_role("button", name=re.compile("^What matters")).click()
                     expect(page.locator("#details").get_by_role("heading", name="What matters")).to_be_visible()
                     expect(page.locator("#details .since__next")).to_be_visible()
@@ -440,7 +446,6 @@ class ThemeAccentsJourney(unittest.TestCase):
                 pop.get_by_role("radio", name="Dark", exact=True).click()
                 expect(page.locator("html")).to_have_attribute("data-accent", dark)
                 expect(pop.get_by_role("radio", name="Iris", exact=True)).to_have_count(0)
-                page.keyboard.press("Escape")
 
     def test_07_device_scope_survives_actual_account_switch(self):
         page = self.page()
@@ -449,7 +454,7 @@ class ThemeAccentsJourney(unittest.TestCase):
         self.appearance(page, "Light", "Copper")
         self.appearance(page, "Dark", "Sky")
         pop = self.account(page)
-        pop.get_by_role("button", name="Sign out", exact=True).click()
+        pop.get_by_role("button", name=re.compile("^Sign out")).click()
         expect(page.get_by_role("button", name="Sign in", exact=True)).to_be_visible()
         expect(page.locator("html")).to_have_attribute("data-accent", "sky")
         page.goto("/sign-up")

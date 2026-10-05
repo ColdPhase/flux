@@ -350,8 +350,9 @@ class ThoughtDraftJourney(unittest.TestCase):
         page = self.owner
         self.open(page)
         self.capture(page).fill("PRIVATE Ada draft")
+        # The person row opens Settings, which signs out (#272 FF-4).
         page.locator(".me__btn").click()
-        page.get_by_role("dialog", name="Account", exact=True).get_by_role("button", name="Sign out", exact=True).click()
+        page.get_by_role("button", name=re.compile("^Sign out")).click()
         expect(page).to_have_url(re.compile(r"/sign-in$"))
         self.assertEqual(page.evaluate("Object.keys(sessionStorage).filter(k => k.startsWith('flux:thought-draft:'))"), [])
         page.get_by_label("Email").fill(self.people["writer"]["email"])
@@ -463,8 +464,9 @@ class ThoughtDraftJourney(unittest.TestCase):
         self.exhaust_session_storage(page)
         field.fill(LATEST)
         page.evaluate("window.sameVisit = true")
+        # The person row opens Settings, which signs out (#272 FF-4).
         page.locator(".me__btn").click()
-        page.get_by_role("dialog", name="Account", exact=True).get_by_role("button", name="Sign out", exact=True).click()
+        page.get_by_role("button", name=re.compile("^Sign out")).click()
         expect(page).to_have_url(re.compile(r"/sign-in$"))
         self.assertEqual(self.stored_drafts(page), [])
         page.get_by_label("Email").fill(self.people["owner"]["email"])

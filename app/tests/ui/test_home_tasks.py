@@ -1,4 +1,4 @@
-"""Browser tests for Home's Tasks (#190 HOME-2): the work you own across your projects.
+"""Browser tests for All my tasks (#190 HOME-2, reached from Home's My work since #272 FF-2): the work you own across your projects.
 
 Runs with the other tests/ui modules through scripts/check_ui.sh against the running Compose
 application. Ada runs two workspaces; Nia works in a project of each. Home's Tasks lists only
@@ -186,14 +186,17 @@ class HomeTasksJourney(unittest.TestCase):
             page.wait_for_timeout(50)
         self.assertEqual(len(late), 1, "Nia's tasks were being read again")
         self.assertEqual(late[0][1].status, 200)
-        page.get_by_role("button", name=re.compile("Nia Berg")).click()
-        page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
+        # Signing out is on Settings, opened from the person at the foot of the sidebar (#272 FF-4).
+        page.get_by_role("link", name=re.compile("^Nia Berg.*Settings and sign out")).click()
+        page.get_by_role("button", name=re.compile("^Sign out")).click()
         expect(page).to_have_url(re.compile("/sign-in"))
         page.get_by_label("Email").fill(PEOPLE["olek"][1])
         page.get_by_label("Password").fill(PASSWORD)
         page.get_by_role("button", name="Sign in").click()
-        expect(page.get_by_role("heading", name="Welcome, Olek")).to_be_visible()
-        page.get_by_role("navigation", name="Views").get_by_role("link", name="Tasks").click()
+        expect(page.get_by_role("heading", name="Hi, Olek.")).to_be_visible()
+        # Home's My work reads the same tasks (#272 FF-2): Olek owns none.
+        expect(page.get_by_role("region", name="My work", exact=True)).to_contain_text("Nothing of yours is in progress.")
+        page.get_by_role("link", name="All my tasks").click()
         expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
         route, response = late[0]
         try:
@@ -206,6 +209,10 @@ class HomeTasksJourney(unittest.TestCase):
         expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
         # The sidebar offers the same link when there are no projects; this one is the empty state's.
         expect(page.locator("#content").get_by_role("link", name="Create a project")).to_have_attribute("href", "/projects/new")
+        # Nor does Home's My work show them.
+        page.get_by_role("navigation", name="Places").get_by_role("link", name="Home").click()
+        expect(page.get_by_role("region", name="My work", exact=True)).to_contain_text("Nothing of yours is in progress.")
+        self.assertNotIn("Mount the PIR sensor", page.content())
 
     # ---------------------------------------------------------------- phone
 

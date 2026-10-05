@@ -2,7 +2,8 @@
 
 Runs with the other tests/ui journeys through scripts/check_ui.sh against the running Compose
 application. Two people share one project. Nia looks at Home and the project, Ari changes things
-while she is away, and Nia comes back: Home shows the personal return view with one next step;
+while she is away, and Nia comes back: Home shows one next step in its return card and the rest in
+"For you" (#272 FF-2);
 in the project, "What matters" opens a private panel with the scope, the period, the next step
 and the changes, "Summarize" quotes whole messages, sources open and return to the same snapshot,
 and only "I have the context" moves the project's return point. Phone, failure, empty and race
@@ -115,6 +116,19 @@ class ReturnViewJourney(unittest.TestCase):
     def say(self, page: Page, body: str) -> str:
         return self.api(page, "POST", f"/api/v1/conversations/{self.conversation_id}/messages", {"body": body, "clientMessageId": str(uuid.uuid4())}, status=201)["id"]
 
+    def for_you(self, page: Page):
+        """Home's "For you" (#272 FF-2): what waits for you, then the other changes since your last visit."""
+        return page.get_by_role("region", name="For you", exact=True)
+
+    def return_card(self, page: Page):
+        """Home's return card (#272 FF-2): Flux's next step with its reason and "Back to work"."""
+        return page.locator(".home-return")
+
+    def sign_out(self, page: Page, name: str) -> None:
+        """Signing out is on Settings, opened from the person at the foot of the sidebar (#272 FF-4)."""
+        page.get_by_role("link", name=re.compile(rf"^{name}.*Settings and sign out")).click()
+        page.get_by_role("button", name=re.compile("^Sign out")).click()
+
     def no_horizontal_scroll(self, page: Page) -> None:
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"))
 
@@ -145,7 +159,10 @@ class ReturnViewJourney(unittest.TestCase):
     def test_02_viewing_saves_a_return_point_and_first_visits_are_quiet(self) -> None:
         page = self.page("nia")
         page.goto("/")
-        expect(page.get_by_role("heading", name="Welcome, Nia")).to_be_visible()
+        expect(page.get_by_role("heading", name="Hi, Nia.")).to_be_visible()
+        # A first visit is quiet: nothing waits and nothing changed (#272 FF-2).
+        expect(self.return_card(page)).to_contain_text("All caught up")
+        expect(self.for_you(page)).to_contain_text("Nothing needs you right now.")
         self.wait_saved(page, "home")
         page.goto(f"/projects/{self.project_id}/conversations/{self.conversation_id}")
         # One project conversation (UI116-1): the conversation's root opens with its thread beside the stream.
@@ -186,35 +203,48 @@ class ReturnViewJourney(unittest.TestCase):
     def test_04_home_shows_the_personal_return_view_with_one_next_step(self) -> None:
         page = self.page("nia")
         page.goto("/")
-        region = page.get_by_role("region", name=re.compile("^Since you left"))
+        # Flux's next step leads Home in its return card, with its reason and where it is (#272 FF-2).
+        card = self.return_card(page)
+        expect(card).to_contain_text("Your next step")
+        expect(card.get_by_role("heading", level=3, name="Answer Ari's question")).to_be_visible()
+        expect(card).to_contain_text(f"“{QUESTION}” Ari asked you in “Camera or sensor for the bedside lamp?”.")
+        expect(card).to_contain_text("Gesture lamp")
+        expect(card.get_by_role("link", name=re.compile("^Back to work"))).to_be_visible()
+        # For you holds the rest: what needs you, then the other changes since the last visit. Nine
+        # updates (eight plus the task thread that the result opened, #154): the next step above, the
+        # two others that need Nia, and the newest of the six other changes (each list shows five).
+        region = self.for_you(page)
         expect(region).to_be_visible()
-        # Eight updates plus the task thread that the result opened (#154): "Ari started “Camera misses 62% of gestures at 5 lux”".
-        expect(region).to_contain_text("9 updates since today")
-        expect(region).to_contain_text("3 need you")
-        expect(region.get_by_role("heading", level=4, name="Gesture lamp")).to_be_visible()
-        expect(region.locator(".since__next")).to_contain_text("Answer Ari's question")
-        expect(region.locator(".since__next")).to_contain_text(f"“{QUESTION}” Ari asked you in “Camera or sensor for the bedside lamp?”.")
+        expect(region.locator(".home-sec__count")).to_have_attribute("aria-label", "3 need you")
+        expect(region.locator(".since__item.is-need")).to_have_count(2)
+        expect(region.locator(".since__item:not(.is-need)")).to_have_count(5)
+        self.assertEqual(len(self.summary(page, "home")["items"]), 9, "nine updates since Nia's last visit")
+        expect(region.get_by_role("heading", level=4, name="Other changes since you were last here")).to_be_visible()
+        # Each row says which project it comes from.
+        expect(region.locator(".since__detail").first).to_contain_text("Gesture lamp")
         # The next step is not repeated in the list below it.
         expect(region.locator(".since__item", has_text="Ari asked you")).to_have_count(0)
         expect(region.get_by_role("link", name=re.compile("Current rule changed: Exclude gestures in the dark"))).to_contain_text("Previously: Use the camera for gestures · No reason was recorded.")
         expect(region.get_by_role("link", name=re.compile("^Blocked: Order the wide-angle lens"))).to_contain_text("No reason was recorded.")
         # Home does not also claim that nothing is here.
-        expect(page.get_by_text("Nothing here yet")).to_have_count(0)
+        expect(region.get_by_text("Nothing needs you right now")).to_have_count(0)
+        expect(card).not_to_contain_text("All caught up")
         # No guilt: nothing to clear and no badges in the rail.
         expect(page.get_by_role("button", name=re.compile("Mark all", re.I))).to_have_count(0)
         shot(page, "return-home-desktop-1440")
         # Visiting acknowledges nothing (HOME-1, #190): a reload shows the same list, and only
         # "I have the context" moves Home's point.
         page.reload()
-        expect(region).to_contain_text("9 updates since today")
+        expect(region.locator(".since__item")).to_have_count(7)
         self.assertTrue(self.summary(page, "home")["items"], "the visit saved nothing")
         expect(region).to_contain_text("Last caught up")
         region.get_by_role("button", name="I have the context").click()
-        done = page.get_by_role("status").filter(has_text="You’re caught up. New changes will show here.")
+        done = page.get_by_role("status").filter(has_text="You’re caught up. New things for you will show here.")
         expect(done).to_be_visible()
         # Focus moves to the Home heading (#190 A1.3); the status line says what happened.
         expect(page.locator("header.top").get_by_role("heading", level=1, name="Home")).to_be_focused()
-        expect(page.get_by_role("region", name=re.compile("^Since you left"))).to_have_count(0)
+        expect(region.locator(".since__item")).to_have_count(0)
+        expect(region.get_by_role("button", name="I have the context")).to_have_count(0)
         self.wait_saved(page, "home")
 
     def test_05_what_matters_shows_the_next_step_changes_and_a_digest(self) -> None:
@@ -446,11 +476,11 @@ class ReturnViewJourney(unittest.TestCase):
         self.say(ari, line)
         page = self.page("nia")
         page.goto("/")
-        expect(page.get_by_role("region", name=re.compile("^Since you left"))).to_contain_text("the clip printed fine")
+        expect(page.locator("#content")).to_contain_text("the clip printed fine")
         page.goto(f"/projects/{self.project_id}/conversations/{self.conversation_id}")
         self.have_context(page, self.open_recap(page))
         page.goto("/")
-        expect(page.get_by_role("heading", name="Welcome, Nia")).to_be_visible()
+        expect(page.get_by_role("heading", name="Hi, Nia.")).to_be_visible()
         page.wait_for_timeout(500)
         expect(page.get_by_text("the clip printed fine")).to_have_count(0)
         self.assertFalse(any("the clip printed fine" in item["text"] + (item.get("detail") or "") for item in self.summary(page, "home")["items"]))
@@ -469,8 +499,8 @@ class ReturnViewJourney(unittest.TestCase):
                                        ("phone-390", {"width": 390, "height": 844}, True)):
             page = self.context_at("nia", viewport, phone)
             page.goto("/")
-            region = page.get_by_role("region", name=re.compile("^Since you left"))
-            expect(region.locator(".since__next")).to_contain_text("Answer Ari's question")
+            expect(self.return_card(page)).to_contain_text("Answer Ari's question")
+            expect(self.return_card(page).get_by_role("link", name=re.compile("^Back to work"))).to_be_in_viewport()
             self.no_horizontal_scroll(page)
             shot(page, f"matched-home-{label}")
             # Visiting saved nothing (HOME-1), so the next viewport shows the same state.
@@ -505,7 +535,7 @@ class ReturnViewJourney(unittest.TestCase):
         # Navigation from Home: the next step opens the project on the whole message it names.
         page = self.page("nia")
         page.goto("/")
-        page.get_by_role("region", name=re.compile("^Since you left")).get_by_role("link", name="Answer Ari's question").click()
+        self.return_card(page).get_by_role("link", name=re.compile("^Back to work")).click()
         expect(page).to_have_url(re.compile(f"/projects/{self.project_id}/conversations/{self.conversation_id}#message-"))
         expect(page.locator(".is-arrived")).to_be_in_viewport()
         # "What matters" counts the same changes (the project point is older than Home's view).
@@ -515,14 +545,18 @@ class ReturnViewJourney(unittest.TestCase):
         # Back on Home the list is still there: following a link acknowledges nothing (HOME-1). After
         # "I have the context" only the server's fresh answer is shown: nothing repeats.
         page.get_by_role("link", name="Home").first.click()
-        expect(page.get_by_role("heading", name="Welcome, Nia")).to_be_visible()
-        home = page.get_by_role("region", name=re.compile("^Since you left"))
-        expect(home).to_be_visible()
+        expect(page.get_by_role("heading", name="Hi, Nia.")).to_be_visible()
+        home = self.for_you(page)
+        expect(self.return_card(page)).to_contain_text("Answer Ari's question")
+        expect(home.locator(".since__item").first).to_be_visible()
         home.get_by_role("button", name="I have the context").click()
-        expect(page.get_by_role("region", name=re.compile("^Since you left"))).to_have_count(0)
+        expect(home.get_by_role("status")).to_have_text("You’re caught up. New things for you will show here.")
+        expect(home.locator(".since__item")).to_have_count(0)
         page.reload()
-        expect(page.get_by_role("heading", name="Welcome, Nia")).to_be_visible()
-        expect(page.get_by_role("region", name=re.compile("^Since you left"))).to_have_count(0)
+        expect(page.get_by_role("heading", name="Hi, Nia.")).to_be_visible()
+        expect(self.for_you(page)).to_contain_text("Nothing needs you right now.")
+        expect(self.for_you(page).locator(".since__item")).to_have_count(0)
+        expect(self.return_card(page)).not_to_contain_text("Answer Ari's question")
 
         # Phone composer: after reading the line, the reply box is reachable, keeps its audience and sends.
         phone = self.page("nia", phone=True)
@@ -564,17 +598,15 @@ class ReturnViewJourney(unittest.TestCase):
         # One tab: Nia signs in fresh and sees the restricted item on Home.
         page = self.page(None)
         self.sign_in(page, NIA)
-        region = page.get_by_role("region", name=re.compile("^Since you left"))
-        expect(region).to_contain_text("keep the 14 Nov date quiet")
+        expect(page.locator("#content")).to_contain_text("keep the 14 Nov date quiet")
         # Sign out in the same tab and sign in as Olek, with the return API held back.
-        page.get_by_role("button", name=re.compile("Nia Berg")).click()
-        page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
+        self.sign_out(page, "Nia Berg")
         expect(page).to_have_url(re.compile("/sign-in"))
         held: list = []
         summary_url = re.compile(r"/api/v1/return\?")
         page.route(summary_url, lambda route: held.append(route))
         self.sign_in(page, olek)
-        expect(page.get_by_role("heading", name="Welcome, Olek")).to_be_visible()
+        expect(page.get_by_role("heading", name="Hi, Olek.")).to_be_visible()
         for _ in range(40):
             if held:
                 break
@@ -582,7 +614,8 @@ class ReturnViewJourney(unittest.TestCase):
         self.assertTrue(held, "the Home summary request was made")
         # Before the answer: nothing of Nia's return view is on the page.
         self.assertNotIn("14 Nov", page.content())
-        expect(page.get_by_role("region", name=re.compile("^Since you left"))).to_have_count(0)
+        expect(self.for_you(page).locator(".since__item")).to_have_count(0)
+        expect(self.return_card(page)).not_to_contain_text("14 Nov")
         for route in held:
             route.continue_()
         page.unroute(summary_url)
@@ -597,9 +630,8 @@ class ReturnViewJourney(unittest.TestCase):
         line = f"Before the change {STAMP}: Nia, can you confirm the lens order?"
         self.say(ari, line)
         page.goto("/")
-        region = page.get_by_role("region", name=re.compile("^Since you left"))
-        expect(region).to_contain_text("confirm the lens order")
-        region.get_by_role("button", name="I have the context").click()
+        expect(page.locator("#content")).to_contain_text("confirm the lens order")
+        self.for_you(page).get_by_role("button", name="I have the context").click()
         self.wait_saved(page, "home")
         # Nia loses access; her Home point is also moved back, so only authorization can hide the item.
         self.api(ari, "POST", f"/api/v1/projects/{self.project_id}/grants", {"principal": {"kind": "human", "id": NIA["id"]}, "role": "denied"}, status=201)
@@ -607,16 +639,16 @@ class ReturnViewJourney(unittest.TestCase):
         fresh = self.summary(page, "home")
         self.assertEqual(fresh["items"], [], "the server's fresh answer is empty")
         # Navigating within the app, then reloading: the item is gone both times.
-        views = page.get_by_role("navigation", name="Views")
-        views.get_by_role("link", name="Wiki").click()
-        expect(page.get_by_role("heading", name="No docs yet")).to_be_visible()
-        views.get_by_role("link", name="Conversation").click()
-        expect(page.get_by_role("heading", name="Welcome, Nia")).to_be_visible()
+        places = page.get_by_role("navigation", name="Places")
+        places.get_by_role("link", name="Inbox").click()
+        expect(page.get_by_role("heading", level=1, name="Inbox")).to_be_visible()
+        places.get_by_role("link", name="Home").click()
+        expect(page.get_by_role("heading", name="Hi, Nia.")).to_be_visible()
         page.wait_for_timeout(600)
         self.assertNotIn("confirm the lens order", page.content())
-        expect(page.get_by_role("region", name=re.compile("^Since you left"))).to_have_count(0)
+        expect(self.for_you(page).locator(".since__item")).to_have_count(0)
         page.reload()
-        expect(page.get_by_role("heading", name="Welcome, Nia")).to_be_visible()
+        expect(page.get_by_role("heading", name="Hi, Nia.")).to_be_visible()
         page.wait_for_timeout(600)
         self.assertNotIn("confirm the lens order", page.content())
 
@@ -626,8 +658,10 @@ class ReturnViewJourney(unittest.TestCase):
         self.api(ari, "POST", f"/api/v1/projects/{self.project_id}/results", {"title": "PIR sees a hand at 1.2 m in the dark", "finding": "positive", "evidence": "10 of 10 in a dark room"}, status=201)
         page = self.page("nia", phone=True)
         page.goto("/")
-        region = page.get_by_role("region", name=re.compile("^Since you left"))
-        expect(region.locator(".since__next")).to_contain_text("Answer Ari's question")
+        region = self.for_you(page)
+        expect(self.return_card(page)).to_contain_text("Answer Ari's question")
+        # On a phone "Back to work" is in the first screen (#272 FF-2).
+        expect(self.return_card(page).get_by_role("link", name=re.compile("^Back to work"))).to_be_in_viewport()
         self.no_horizontal_scroll(page)
         shot(page, "return-home-phone-390")
         acknowledge = region.get_by_role("button", name="I have the context").bounding_box()

@@ -111,9 +111,11 @@ class PeopleJourney(unittest.TestCase):
         return {member["userId"]: member["role"] for member in members}
 
     def open_people(self, page: Page, workspace: str) -> None:
-        """Home → Details → People → the workspace, as a person finds it."""
-        page.goto("/")
-        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        """My sketchbook → Details → People → the workspace, as a person finds it.
+
+        Home has no Details since #272 FF-2; the personal place's Details is My sketchbook's."""
+        page.goto("/notes")
+        expect(page.get_by_role("heading", level=1, name="My sketchbook")).to_be_visible()
         page.get_by_role("button", name="Details", exact=True).click()
         people = page.get_by_role("region", name="People")
         people.get_by_role("button", name=re.compile(f"^{workspace}")).click()
@@ -268,9 +270,9 @@ class PeopleJourney(unittest.TestCase):
         expect(mia.get_by_text("Kai Tanaka")).to_have_count(0)
         expect(mia.get_by_role("region", name="Add someone")).to_have_count(0)
 
-        # Ada's Home lists both workspaces; in Harbour Studio she is a member, read-only.
+        # Ada's personal Details lists both workspaces; in Harbour Studio she is a member, read-only.
         ada = self.page("ada")
-        ada.goto("/")
+        ada.goto("/notes")
         ada.get_by_role("button", name="Details", exact=True).click()
         rows = ada.get_by_role("region", name="People")
         expect(rows.get_by_role("button", name=re.compile("^Riverside Makers.*owner"))).to_be_visible()
@@ -493,7 +495,12 @@ class PeopleJourney(unittest.TestCase):
         expect(lee).to_have_url(f"{ORIGIN}/")
         self.assertEqual(self.api(lee, f"/api/v1/workspaces/{self.riverside}")[0], 404)
         self.assertNotIn(self.ids["lee"], self.roles(page, self.riverside))
-        # Details stays open on Home, now listing only the workspace Lee is still in.
+        # Leaving lands on Home; the personal Details now lists only the workspace Lee is still in.
+        lee.get_by_role("navigation", name="Places").get_by_role("link", name="My sketchbook").click()
+        details = lee.get_by_role("button", name="Details", exact=True)
+        expect(details).to_be_visible()
+        if details.get_attribute("aria-expanded") != "true":
+            details.click()
         rows = lee.get_by_role("region", name="People")
         expect(rows.get_by_role("button", name=re.compile("^Harbour Studio"))).to_be_visible()
         expect(rows.get_by_role("button", name=re.compile("^Riverside Makers"))).to_have_count(0)

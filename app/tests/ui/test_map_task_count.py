@@ -200,23 +200,24 @@ class MapTaskCountJourney(unittest.TestCase):
 
     def appearance(self, page: Page, theme: str, family: str) -> None:
         page.locator(".app").wait_for(state="visible")
+        # The person row opens the Settings page on every size, with these choices (#266 PF-5, #272 FF-4).
         if not page.locator(".me__btn").is_visible():
-            # The phone drawer's account row opens Settings, with the same choices (#266 PF-5).
+            # Inside a project or a sketch a phone's top-left control leads back to its list (#272); the
+            # drawer opens from there.
+            back = page.locator("header.top .top__back")
+            if back.count():
+                back.click()
+                expect(page.get_by_role("button", name="Open navigation")).to_be_visible()
             page.get_by_role("button", name="Open navigation").click()
-            page.locator(".me__btn").click()
-            pop = page.locator(".set")
-            expect(pop.get_by_role("radiogroup", name="Appearance")).to_be_visible()
-        else:
-            page.locator(".me__btn").click()
-            pop = page.get_by_role("dialog", name="Account", exact=True)
+        page.locator(".me__btn").click()
+        pop = page.locator(".set")
+        expect(pop.get_by_role("radiogroup", name="Appearance")).to_be_visible()
         pop.get_by_role("radio", name=theme, exact=True).click()
         pop.get_by_role("radio", name=family, exact=True).click()
         expect(pop.get_by_role("radio", name=family, exact=True)).to_have_attribute("aria-checked", "true")
-        page.keyboard.press("Escape")
-        if page.get_by_role("button", name="Close navigation").is_visible():
-            page.get_by_role("button", name="Close navigation").click()
-        if not page.url.endswith("/settings"):
-            expect(pop).to_have_count(0)
+        # Back to the page the choice was made for, within this visit.
+        page.go_back()
+        expect(page).not_to_have_url(re.compile(r"/settings$"))
 
     def expected_counts(self, page: Page) -> dict[str, int]:
         """Tasks per thought from the API's own links, many-to-many."""

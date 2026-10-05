@@ -169,6 +169,8 @@ class ProjectSurfaceJourney(unittest.TestCase):
         self.assertEqual([text.split("\n")[0] for text in tabs.get_by_role("link").all_inner_texts()[:4]], ["Conversation", "Map", "Tasks", "Wiki"])
         expect(tabs.get_by_role("link", name="Tasks, 2 open")).to_be_visible()
         expect(header.get_by_role("button", name="Details")).to_be_visible()
+        # No goal yet (#272 FF-6): Ada can edit the project, so the header offers to add one.
+        expect(header.get_by_role("button", name="Add a goal")).to_be_visible()
         # One project conversation (UI116-1): the sidebar lists no threads; the stream shows the root
         # with its thread open beside it, and the centre uses the pane (#136) with readable bubbles.
         expect(page.get_by_role("complementary", name="Sidebar").get_by_role("link", name=re.compile("^Should the lamp react"))).to_have_count(0)
@@ -214,17 +216,24 @@ class ProjectSurfaceJourney(unittest.TestCase):
     def test_03_each_state_segment_opens_its_object(self) -> None:
         page = self.open_project("ada")
         state = page.locator("header.top").get_by_label("Current state")
-        expect(state).to_contain_text("Current rule: Use a ToF sensor, not the camera, for gestures")
+        # The decision in force is not the state line's (#272 FF-6): the header shows the project's goal,
+        # and Details names the current rule (below).
+        expect(state).not_to_contain_text("Current rule")
         expect(state).to_contain_text("In progress: Test the camera in low light (Nia Okafor)")
         expect(state).to_contain_text("Negative result: Camera caught 38% of gestures at 5 lux")
         expect(state).to_contain_text("Needs you: a proposed decision")
         panel = self.details(page)
-        for segment, heading in (("rule", "Use a ToF sensor, not the camera, for gestures"), ("work", "Test the camera in low light"),
+        for segment, heading in (("work", "Test the camera in low light"),
                                  ("result", "Camera caught 38% of gestures at 5 lux"), ("proposal", "Keep a manual off switch on the base")):
             state.locator(f'[data-seg="{segment}"]').click()
             expect(panel.get_by_role("heading", name=heading)).to_be_visible()
         panel.get_by_role("button", name="Close details").click()
         expect(panel).to_be_hidden()
+        # The current rule is named where it now lives: its Details.
+        page.goto(f"/projects/{self.ids['project']}/tasks?open=decision:{self.ids['rule']}")
+        expect(panel.get_by_role("heading", name="Use a ToF sensor, not the camera, for gestures")).to_be_visible()
+        expect(panel.locator(".wd-eyebrow")).to_contain_text("Current rule")
+        expect(page.locator("header.top").get_by_label("Current state")).not_to_contain_text("Current rule")
 
     # ---------------------------------------------------------------- tabs
 
@@ -253,7 +262,8 @@ class ProjectSurfaceJourney(unittest.TestCase):
         # The state line stays with the project on every tab, and Map returns to the list chosen last.
         tabs.get_by_role("link", name=re.compile("^Map")).click()
         expect(page).to_have_url(re.compile(r"/map$"))
-        expect(page.locator("header.top").get_by_label("Current state")).to_contain_text("Current rule")
+        expect(page.locator("header.top").get_by_label("Current state")).to_contain_text("In progress")
+        expect(page.locator("header.top").get_by_label("Current state")).not_to_contain_text("Current rule")
         # At 320px the tab strip scrolls sideways; the current tab is brought into view.
         page.set_viewport_size({"width": 320, "height": 640})
         tabs.get_by_role("link", name=re.compile("^Wiki")).click()
@@ -398,12 +408,20 @@ class ProjectSurfaceJourney(unittest.TestCase):
         self.assertTrue(bar["inside"], f"the bar lies inside the sidebar's scroll box: {bar}")
         self.assertTrue(bar["hit"], "the bar is painted, not clipped")
         # On a phone every sidebar control is a 44px target: +, Jump to, places and projects.
+        # Inside a project the phone's top-left control leads back to all projects (#272), a 44px target too;
+        # the drawer opens from there.
         phone = self.open_project("ada", phone=True)
+        back = phone.locator("header.top").get_by_role("button", name="All projects")
+        back_box = back.bounding_box()
+        assert back_box
+        self.assertGreaterEqual(min(back_box["width"], back_box["height"]), 44, "the way back is a touch target")
+        back.tap()
+        expect(phone).to_have_url(re.compile(r"/projects$"))
         phone.get_by_role("button", name="Open navigation").tap()
         drawer = phone.get_by_role("dialog")
-        expect(drawer.locator(".side__project.is-open")).to_be_visible()
+        expect(drawer.locator(".side__project").first).to_be_visible()
         targets = [drawer.get_by_role("link", name="New project"), drawer.get_by_role("link", name="New message"),
-                   drawer.locator(".side__jump"), drawer.get_by_role("link", name="Home"), drawer.locator(".side__project.is-open")]
+                   drawer.locator(".side__jump"), drawer.get_by_role("link", name="Home"), drawer.locator(".side__project").first]
         # One project conversation (UI116-1): the sidebar lists no conversation threads under the project.
         expect(drawer.locator(".side__thread")).to_have_count(0)
         for target in targets:
@@ -727,22 +745,24 @@ class ProjectSurfaceJourney(unittest.TestCase):
                 other.close()
 
     def test_17_home_draft_changes_account_on_current_loader_revalidation(self) -> None:
+        # The private notes moved from Home to My sketchbook (#272 FF-3); the draft is still the note composer's.
         page = self.page("ada")
-        page.goto("/")
+        page.goto("/notes")
         field = page.get_by_label("Private note", exact=True)
         expect(field).to_be_visible()
         field.fill("Ada's private Home draft before revalidation")
         page.context.clear_cookies()
         page.context.add_cookies(self.states["jonas"]["cookies"])
-        # Same-route router navigation revalidates the mounted Home, without a document reload.
-        page.get_by_role("navigation", name="Places").get_by_role("link", name="Home", exact=True).click()
-        expect(page.get_by_role("button", name=re.compile("^Jonas Berg .*account and sign out"))).to_be_visible()
+        # Same-route router navigation revalidates the mounted notes, without a document reload.
+        sketchbook = page.get_by_role("navigation", name="Places").get_by_role("link", name="My sketchbook", exact=True)
+        sketchbook.click()
+        expect(page.get_by_role("link", name=re.compile("^Jonas Berg.*Settings and sign out"))).to_be_visible()
         expect(field).to_have_value("")
         field.fill("Jonas's private Home draft")
         page.context.clear_cookies()
         page.context.add_cookies(self.states["ada"]["cookies"])
-        page.get_by_role("navigation", name="Places").get_by_role("link", name="Home", exact=True).click()
-        expect(page.get_by_role("button", name=re.compile("^Ada Kowalska .*account and sign out"))).to_be_visible()
+        sketchbook.click()
+        expect(page.get_by_role("link", name=re.compile("^Ada Kowalska.*Settings and sign out"))).to_be_visible()
         expect(field).to_have_value("Ada's private Home draft before revalidation")
 
 

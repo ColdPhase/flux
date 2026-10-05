@@ -91,7 +91,7 @@ def open_sources(page: Page, scope=None) -> None:
     With a thread open (UI116-1) both the stream's and the thread's composer have Sources: pass the
     thread as `scope` to use its composer."""
     within = scope or page
-    button = within.get_by_role("button", name=re.compile("^Sources"))
+    button = within.get_by_role("button", name=re.compile("^(Cite something saved|Saved) for this project"))
     if button.get_attribute("aria-expanded") != "true":
         button.click()
     expect(within.get_by_role("region", name="Project materials")).to_be_visible()
@@ -275,7 +275,9 @@ class AppShellJourney(unittest.TestCase):
         page.get_by_role("button", name="Create account").click()
         expect(page).to_have_url(f"{ORIGIN}/")
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
-        expect(page.get_by_role("button", name=re.compile(NAME))).to_be_visible()
+        # Home greets the new person by first name (#272 FF-2); the foot of the sidebar names them.
+        expect(page.get_by_role("heading", level=2, name="Hi, Jo.")).to_be_visible()
+        expect(page.get_by_role("link", name=re.compile(rf"^{NAME}.*Settings and sign out"))).to_be_visible()
         self.save_state(page)
 
         # The same email cannot register twice; the message offers a way forward.
@@ -300,7 +302,7 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("heading", name="No docs yet")).to_be_visible()
         page.reload()
         expect(page).to_have_url(f"{ORIGIN}/docs")
-        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        expect(page.get_by_role("heading", level=1, name="Wiki pages")).to_be_visible()
         # A signed-in person who opens sign-in is taken to their work.
         page.goto("/sign-in")
         expect(page).to_have_url(f"{ORIGIN}/")
@@ -318,8 +320,9 @@ class AppShellJourney(unittest.TestCase):
         expect(sidebar.get_by_role("img", name="Flux")).to_be_visible()
         places = sidebar.get_by_role("navigation", name="Places")
         expect(places.get_by_role("link", name="Home")).to_have_attribute("aria-current", "page")
-        expect(places.get_by_role("link", name="Direct messages")).not_to_have_attribute("aria-current", "page")
-        self.assertEqual(places.get_by_role("link").all_inner_texts(), ["Home", "Inbox", "Direct messages", "My sketchbook"])
+        expect(places.get_by_role("link", name="My sketchbook")).not_to_have_attribute("aria-current", "page")
+        # Three places (#272 FF-3): direct messages open from the Messages heading.
+        self.assertEqual(places.get_by_role("link").all_inner_texts(), ["Home", "Inbox", "My sketchbook"])
         # Search and personal settings have their own header; Home is not current there (#184 delta review S1).
         for path, title in (("/search", "Search"), ("/settings/assistant", "Your assistant"), ("/settings/background-compute", "Background suggestions")):
             page.goto(path)
@@ -337,17 +340,30 @@ class AppShellJourney(unittest.TestCase):
         marker = places.get_by_role("link", name="Home").evaluate("el => { const s = getComputedStyle(el, '::before'); return [s.width, s.height]; }")
         self.assertEqual(marker, ["3px", "20px"], "an accent bar beside the current place (#266 PF-1)")
         expect(sidebar.get_by_text("No projects yet")).to_be_visible()
-        expect(sidebar.get_by_role("button", name=re.compile("^New note"))).to_be_visible()
+        # Notes are written in My sketchbook, not from a sidebar button (#272 FF-3).
+        expect(sidebar.get_by_role("button", name=re.compile("^New note"))).to_have_count(0)
+        # Home is the return page (#272 FF-2): a greeting, no views and no Details of its own.
+        expect(page.get_by_role("heading", level=2, name="Hi, Jo.")).to_be_visible()
+        expect(page.get_by_role("navigation", name="Views")).to_have_count(0)
+        expect(page.get_by_role("button", name="Details", exact=True)).to_have_count(0)
+        shot(page, "desktop-1440-empty-light")
+
+        # My sketchbook holds the private notes (Notes) and sketches (Map) (#272 FF-3).
+        places.get_by_role("link", name="My sketchbook").click()
+        expect(page).to_have_url(f"{ORIGIN}/notes")
+        expect(page.locator("header.top").get_by_role("heading", level=1, name="My sketchbook")).to_be_visible()
+        expect(places.get_by_role("link", name="My sketchbook")).to_have_attribute("aria-current", "page")
+        expect(places.get_by_role("link", name="Home")).not_to_have_attribute("aria-current", "page")
         views = page.get_by_role("navigation", name="Views")
-        for label in ("Conversation", "Map", "Tasks", "Wiki"):
-            expect(views.get_by_role("link", name=label, exact=True)).to_be_visible()
-        expect(views.get_by_role("link", name="Conversation")).to_have_attribute("aria-current", "page")
-        expect(page.get_by_role("heading", name="Nothing here yet")).to_be_visible()
+        self.assertEqual([text.strip() for text in views.get_by_role("link").all_inner_texts()], ["Notes", "Map"])
+        expect(views.get_by_role("link", name="Notes")).to_have_attribute("aria-current", "page")
+        expect(page.get_by_role("heading", name="Your notes, Jo")).to_be_visible()
+        expect(page.get_by_role("heading", name="No notes yet")).to_be_visible()
         composer = page.get_by_label("Private note", exact=True)
         # The composer sits at the bottom of the work area and always shows its audience.
         self.assertGreater(box(page, composer)["y"], DESKTOP["height"] - 130)
         expect(page.locator(".composer__audience")).to_contain_text("Only you")
-        shot(page, "desktop-1440-empty-light")
+        shot(page, "desktop-1440-notes-empty-light")
 
         # Quick capture: Enter saves a private note, which survives a reload.
         save = page.get_by_role("button", name="Save note")
@@ -372,13 +388,12 @@ class AppShellJourney(unittest.TestCase):
 
         indicator = page.locator(".views .ui-tabs__indicator")
         before = indicator.evaluate("el => el.style.transform")
-        views.get_by_role("link", name="Tasks").click()
-        expect(page).to_have_url(f"{ORIGIN}/tasks")
-        expect(views.get_by_role("link", name="Tasks")).to_have_attribute("aria-current", "page")
-        expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
-        self.assertNotEqual(before, indicator.evaluate("el => el.style.transform"), "the underline moves to the chosen view")
         views.get_by_role("link", name="Map").click()
+        expect(page).to_have_url(f"{ORIGIN}/map")
+        expect(views.get_by_role("link", name="Map")).to_have_attribute("aria-current", "page")
         expect(page.get_by_role("heading", name="Start a sketch")).to_be_visible()
+        self.assertNotEqual(before, indicator.evaluate("el => el.style.transform"), "the underline moves to the chosen view")
+        expect(places.get_by_role("link", name="My sketchbook")).to_have_attribute("aria-current", "page")
         shot(page, "desktop-1440-map-light")
 
         details_button = page.get_by_role("button", name="Details", exact=True)
@@ -402,16 +417,34 @@ class AppShellJourney(unittest.TestCase):
         page.get_by_role("button", name="Close details").click()
         expect(page.get_by_role("complementary", name="Details")).to_have_count(0)
 
-        # Direct messages is its own place: the sidebar lists conversations, there are no views.
-        rail.get_by_role("link", name="Direct messages").click()
+        # All my tasks opens from Home's My work, in every project, without views (#272 FF-2).
+        rail.get_by_role("link", name="Home").click()
+        expect(page.get_by_role("heading", level=2, name="Hi, Jo.")).to_be_visible()
+        page.get_by_role("link", name="All my tasks").click()
+        expect(page).to_have_url(f"{ORIGIN}/tasks")
+        expect(page.locator("header.top").get_by_role("heading", level=1, name="My work")).to_be_visible()
+        expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
+        expect(page.get_by_role("navigation", name="Views")).to_have_count(0)
+        expect(places.locator('[aria-current="page"]')).to_have_count(0)
+
+        # Direct messages is its own place, opened from the Messages heading (#272 FF-3): the sidebar
+        # lists conversations, there are no views.
+        messages = sidebar.get_by_role("navigation", name="Messages")
+        messages.get_by_role("link", name="Messages", exact=True).click()
         expect(page).to_have_url(f"{ORIGIN}/dm")
         expect(page.get_by_role("heading", level=1, name="Direct messages")).to_be_visible()
         expect(page.get_by_role("heading", name="No direct messages yet")).to_be_visible()
-        expect(rail.get_by_role("link", name="Direct messages")).to_have_attribute("aria-current", "page")
+        expect(messages.get_by_role("link", name="Messages", exact=True)).to_have_attribute("aria-current", "page")
         expect(sidebar.get_by_text("No conversations yet", exact=False)).to_be_visible()
         expect(sidebar.get_by_role("link", name="New message")).to_be_visible()
         expect(page.get_by_role("navigation", name="Views")).to_have_count(0)
         shot(page, "desktop-1440-dm-light")
+        # The Projects heading opens every project (#272 FF-3).
+        projects = sidebar.get_by_role("navigation", name="Projects")
+        projects.get_by_role("link", name="Projects", exact=True).click()
+        expect(page).to_have_url(f"{ORIGIN}/projects")
+        expect(page.get_by_role("heading", level=1, name="Projects")).to_be_visible()
+        expect(projects.get_by_role("link", name="Projects", exact=True)).to_have_attribute("aria-current", "page")
         rail.get_by_role("link", name="Home").click()
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
 
@@ -422,7 +455,7 @@ class AppShellJourney(unittest.TestCase):
 
     def test_04a_draft_survives_view_switch_and_reload(self) -> None:
         page = self.page()
-        page.goto("/")
+        page.goto("/notes")
         views = page.get_by_role("navigation", name="Views")
         composer = page.get_by_label("Private note", exact=True)
         state = page.locator(".composer__state")
@@ -434,9 +467,9 @@ class AppShellJourney(unittest.TestCase):
         self.assertEqual(page.evaluate(f"localStorage.getItem('flux:draft:{user_id}:home')"), unfinished, "stored per account and context")
 
         # A view switch remounts the composer; the text comes back.
-        views.get_by_role("link", name="Tasks").click()
-        expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
-        views.get_by_role("link", name="Conversation").click()
+        views.get_by_role("link", name="Map").click()
+        expect(page.get_by_role("heading", name="Start a sketch")).to_be_visible()
+        views.get_by_role("link", name="Notes").click()
         expect(composer).to_have_value(unfinished)
         expect(state).to_have_text("Draft kept on this device")
 
@@ -461,7 +494,7 @@ class AppShellJourney(unittest.TestCase):
 
     def test_04b_reading_position_is_kept_per_view(self) -> None:
         page = self.page()
-        page.goto("/")
+        page.goto("/notes")
         user_id = page.evaluate("fetch('/api/v1/me').then(r => r.json()).then(b => b.user.id)")
         key = f"flux.captures.{user_id}"
         saved = page.evaluate(f"localStorage.getItem('{key}')")
@@ -471,7 +504,7 @@ class AppShellJourney(unittest.TestCase):
             page.reload()
             scroller = page.locator(".convo .pane-scroll")
             expect(page.get_by_text("note 40:")).to_be_attached()
-            # Home loads blocks above these notes after they render (private drafts, the offer to move
+            # Notes load blocks above these notes after they render (private drafts, the offer to move
             # browser notes, #190 HOME-3); the position is a pixel offset, so it is taken once they have.
             expect(page.get_by_role("button", name=re.compile(r"^Move 40 notes"))).to_be_visible()
             page.wait_for_load_state("networkidle")
@@ -485,9 +518,9 @@ class AppShellJourney(unittest.TestCase):
             anchor = page.evaluate(first_visible)
             self.assertIsNotNone(anchor)
             views = page.get_by_role("navigation", name="Views")
-            views.get_by_role("link", name="Wiki").click()
-            expect(page.get_by_role("heading", name="No docs yet")).to_be_visible()
-            views.get_by_role("link", name="Conversation").click()
+            views.get_by_role("link", name="Map").click()
+            expect(page.get_by_role("heading", name="Start a sketch")).to_be_visible()
+            views.get_by_role("link", name="Notes").click()
             expect(page.get_by_role("button", name=re.compile(r"^Move 40 notes"))).to_be_visible()
             page.wait_for_load_state("networkidle")
             # Restored by content, not pixels: a block that loads above the notes after the restore (drafts,
@@ -501,12 +534,12 @@ class AppShellJourney(unittest.TestCase):
             page.wait_for_load_state("networkidle")
             self.assertEqual(page.evaluate(first_visible), anchor, "the same note is at the top after a reload")
         finally:
-            page.evaluate(f"localStorage.setItem('{key}', {json.dumps(saved)}); localStorage.removeItem('flux:scroll:{user_id}:/')" if saved else f"localStorage.removeItem('{key}'); localStorage.removeItem('flux:scroll:{user_id}:/')")
+            page.evaluate(f"localStorage.setItem('{key}', {json.dumps(saved)}); localStorage.removeItem('flux:scroll:{user_id}:/notes')" if saved else f"localStorage.removeItem('{key}'); localStorage.removeItem('flux:scroll:{user_id}:/notes')")
             self.save_state(page)
 
     def test_04c_personal_assistant_needs_a_connection(self) -> None:
         page = self.page()
-        page.goto("/")
+        page.goto("/notes")
         composer = page.get_by_label("Private note", exact=True)
         composer.fill("Which sensor works in the dark?")
         # With no assistant of their own, the spark button leads to "Connect your AI" (#189); nothing is
@@ -538,6 +571,8 @@ class AppShellJourney(unittest.TestCase):
         self.assertEqual(page.evaluate("getComputedStyle(document.body).backgroundColor"), "rgb(25, 28, 33)", "the dark chrome")
         self.assertEqual(page.locator(".app__main").evaluate("el => getComputedStyle(el).backgroundColor"), "rgb(33, 37, 43)", "the dark sheet")
         shot(page, "desktop-1440-dark")
+        # Home has no Details (#272 FF-2); My sketchbook's notes do.
+        page.goto("/notes")
         page.get_by_role("button", name="Details", exact=True).click()
         expect(page.get_by_role("complementary", name="Details")).to_be_visible()
         shot(page, "desktop-1440-details-dark")
@@ -553,8 +588,8 @@ class AppShellJourney(unittest.TestCase):
 
     def test_06_phone_drawer_sheet_and_targets(self) -> None:
         page = self.page(phone=True)
-        page.goto("/")
-        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        page.goto("/notes")
+        expect(page.get_by_role("heading", level=1, name="My sketchbook")).to_be_visible()
         expect(page.get_by_role("complementary", name="Sidebar")).to_have_count(0)
         composer = page.get_by_label("Private note", exact=True)
         composer_box = box(page, page.locator(".composer"))
@@ -569,7 +604,7 @@ class AppShellJourney(unittest.TestCase):
         # Coarse pointer: primary targets are at least 44px.
         menu = page.get_by_role("button", name="Open navigation")
         details_button = page.get_by_role("button", name="Details", exact=True)
-        targets = [menu, details_button, *[page.get_by_role("navigation", name="Views").get_by_role("link", name=n, exact=True) for n in ("Conversation", "Map", "Tasks", "Wiki")]]
+        targets = [menu, details_button, *[page.get_by_role("navigation", name="Views").get_by_role("link", name=n, exact=True) for n in ("Notes", "Map")]]
         for target in targets:
             size = box(page, target)
             self.assertGreaterEqual(min(size["width"], size["height"]), 44, f"44px target: {target}")
@@ -584,7 +619,7 @@ class AppShellJourney(unittest.TestCase):
         drawer_places = drawer.get_by_role("navigation", name="Places")
         expect(drawer_places).to_be_visible()
         self.assertLessEqual(round(box(page, drawer)["width"]), 260)
-        for name in ("Home", "Inbox", "Direct messages"):
+        for name in ("Home", "Inbox", "My sketchbook"):
             self.assertGreaterEqual(box(page, drawer_places.get_by_role("link", name=name))["height"], 44, f"44px place target: {name}")
         self.assertTrue(drawer.evaluate("el => el.contains(document.activeElement)"), "focus moves into the drawer")
         self.assertTrue(page.evaluate("document.getElementById('root').inert"), "the page behind the drawer is inert")
@@ -644,30 +679,32 @@ class AppShellJourney(unittest.TestCase):
     def test_08_theme_choice_persists_and_reduced_motion(self) -> None:
         page = self.page()
         page.goto("/")
-        account = page.get_by_role("button", name=re.compile(NAME))
+        # The person at the foot of the sidebar opens the Settings page; there is no account popover (#272 FF-4).
+        account = page.get_by_role("link", name=re.compile(rf"^{NAME}.*Settings and sign out"))
         account.click()
-        menu = page.get_by_role("dialog", name="Account")
-        expect(menu).to_be_visible()
+        expect(page).to_have_url(f"{ORIGIN}/settings")
+        expect(page.get_by_role("dialog", name="Account")).to_have_count(0)
+        expect(account).to_have_attribute("aria-current", "page")
         # Account and session details live here, with this device's notifications (#41).
-        expect(menu.get_by_text(EMAIL)).to_be_visible()
-        expect(menu.get_by_text("Signed in on this device until")).to_be_visible()
-        expect(menu.get_by_text("Notifications on this device")).to_be_visible()
+        expect(page.get_by_role("region", name="Account").first).to_be_visible()
+        expect(page.get_by_text(EMAIL)).to_be_visible()
+        expect(page.get_by_text("Signed in on this device until")).to_be_visible()
+        device = page.get_by_role("region", name="This device")
+        expect(device.get_by_text("Notifications on this device")).to_be_visible()
         # check_ui.sh runs without VAPID keys, so the server says push isn't set up.
-        expect(menu.get_by_role("note")).to_contain_text("Notifications are not set up on this Flux server.")
+        expect(device.get_by_role("note")).to_contain_text("Notifications are not set up on this Flux server.")
         shot(page, "desktop-1440-account-light")
-        menu.get_by_role("radio", name="Dark").click()
+        device.get_by_role("radio", name="Dark").click()
         self.assertEqual(page.evaluate("document.documentElement.dataset.theme"), "dark")
-        page.keyboard.press("Escape")
-        expect(menu).to_have_count(0)
-        expect(account).to_be_focused()
+        expect(device.get_by_role("radio", name="Dark")).to_have_attribute("aria-checked", "true")
         page.reload()
         self.assertEqual(page.evaluate("document.documentElement.dataset.theme"), "dark")
-        account.click()
-        page.get_by_role("dialog", name="Account").get_by_role("radio", name="System").click()
+        expect(page.get_by_role("region", name="This device").get_by_role("radio", name="Dark")).to_have_attribute("aria-checked", "true")
+        page.get_by_role("region", name="This device").get_by_role("radio", name="System").click()
         self.assertIsNone(page.evaluate("document.documentElement.dataset.theme ?? null"))
 
         calm = self.page(reduced_motion="reduce")
-        calm.goto("/")
+        calm.goto("/notes")
         self.assertEqual(calm.evaluate("parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--dur-3'))"), 0)
         calm.get_by_role("button", name="Details", exact=True).click()
         panel = calm.get_by_role("complementary", name="Details")
@@ -739,7 +776,7 @@ class AppShellJourney(unittest.TestCase):
         page.get_by_role("button", name="Open navigation").click()
         drawer = page.get_by_role("dialog", name="Flux")
         # On the phone the drawer's account row opens Settings, which signs out (#266 PF-5).
-        drawer.get_by_role("link", name=re.compile(rf"{NAME}.*settings and sign out")).click()
+        drawer.get_by_role("link", name=re.compile(rf"{NAME}.*Settings and sign out")).click()
         expect(page).to_have_url(f"{ORIGIN}/settings")
         page.get_by_role("button", name=re.compile("^Sign out")).click()
         expect(page).to_have_url(f"{ORIGIN}/sign-in")
@@ -772,9 +809,14 @@ class AppShellJourney(unittest.TestCase):
         return page, project.json()["id"], work.json()["id"]
 
     def sign_out_while_loading(self, page: Page, name: str) -> None:
-        """Signs out while the tab still waits for answers, then lets every answer arrive."""
-        page.get_by_role("button", name=re.compile(rf"{name}.*account and sign out")).click()
-        page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
+        """Signs out on Settings while the tab still waits for answers, then lets every answer arrive.
+
+        Signing out lives on the Settings page (#272 FF-4); a tab not already there opens it from the
+        person at the foot of the sidebar."""
+        if urllib.parse.urlsplit(page.url).path != "/settings":
+            page.get_by_role("link", name=re.compile(rf"^{name}.*Settings and sign out")).click()
+            expect(page).to_have_url(f"{ORIGIN}/settings")
+        page.get_by_role("button", name=re.compile("^Sign out")).click()
         expect(page.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
         expect(page.get_by_role("status").filter(has_text="You’re signed out.")).to_be_visible()
         # What the tab was loading before sign-out answers now, while the sign-in page's own check
@@ -808,17 +850,21 @@ class AppShellJourney(unittest.TestCase):
     def test_11b_sign_out_while_a_project_is_still_opening(self) -> None:
         """A project link was followed and its page is still loading; signing out wins over it."""
         page, _, _ = self.person_with_a_task("Tove Berg")
+        # Sign out is on Settings (#272 FF-4): the project is followed from there and, while it still
+        # loads, Settings stays on screen with its Sign out.
+        page.get_by_role("link", name=re.compile(r"^Tove Berg.*Settings and sign out")).click()
+        expect(page.get_by_role("button", name=re.compile("^Sign out"))).to_be_visible()
         page.evaluate("window.__slow.arm()")
         page.get_by_role("navigation", name="Projects").get_by_role("link", name="Night light").click()
         page.wait_for_function("window.__slow.held('A') > 0")
-        expect(page).to_have_url(f"{ORIGIN}/")
+        expect(page).to_have_url(f"{ORIGIN}/settings")
         self.sign_out_while_loading(page, "Tove Berg")
 
     def test_11c_a_failed_sign_out_says_so_and_can_be_retried(self) -> None:
         page, _, _ = self.person_with_a_task("Ida Holm", slow=False)
         page.route("**/api/auth/sign-out", lambda route: route.fulfill(status=503, json={"code": "TEST_UNAVAILABLE", "message": "test: sign-out unavailable"}))
-        page.get_by_role("button", name=re.compile("Ida Holm.*account and sign out")).click()
-        page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
+        page.get_by_role("link", name=re.compile("^Ida Holm.*Settings and sign out")).click()
+        page.get_by_role("button", name=re.compile("^Sign out")).click()
         # The sign-out page says what happened and offers to try again; the session is still live.
         expect(page).to_have_url(f"{ORIGIN}/sign-out")
         expect(page.get_by_role("heading", name="Sign out of Flux?")).to_be_visible()
@@ -842,7 +888,7 @@ class AppShellJourney(unittest.TestCase):
         owner.get_by_label("Password").fill(PASSWORD)
         owner.get_by_role("button", name="Create account").click()
         expect(owner.get_by_role("heading", level=1, name="Home")).to_be_visible()
-        owner.get_by_role("link", name="New project").click()
+        owner.get_by_role("navigation", name="Projects").get_by_role("link", name="New project").click()
         owner.get_by_label("Your space").fill("Lamp lab")
         owner.get_by_label("Project name").fill("Gesture lamp")
 
@@ -881,7 +927,7 @@ class AppShellJourney(unittest.TestCase):
         ws = spaces[0]
         projects = owner.context.request.get(f"{ORIGIN}/api/v1/workspaces/{ws['id']}/projects?limit=100").json()
         self.assertEqual([p["id"] for p in projects["items"]], [project_id], "a retried project whose first response was lost is not created twice")
-        owner.get_by_role("link", name="Home").click()
+        owner.get_by_role("navigation", name="Places").get_by_role("link", name="My sketchbook").click()
         owner.get_by_label("Private note", exact=True).fill("home address 123; PIR avoids storing images")
         lost_draft = lose_first_committed(f"**/api/v1/workspaces/{ws['id']}/drafts")
         owner.get_by_role("button", name="Save note").click()
@@ -918,11 +964,11 @@ class AppShellJourney(unittest.TestCase):
         owner.get_by_role("button", name="Save for this project").press("Enter")
         expect(owner.get_by_text("Privacy options")).to_be_visible()
         owner.get_by_role("button", name="Discuss this version").click()
-        expect(thread_of(owner).locator(".composer-files__ref")).to_contain_text("Source: Privacy options · v1")
+        expect(thread_of(owner).locator(".composer-files__ref")).to_contain_text("Citing: Privacy options · v1")
         owner.get_by_label("Reply", exact=True).fill("This is the version we should prototype")
         owner.get_by_role("button", name="Send reply").click()
         expect(owner.get_by_text("This is the version we should prototype", exact=True)).to_be_visible()
-        source = owner.get_by_role("link", name="Source: Privacy options · v1")
+        source = owner.get_by_role("link", name="Cited: Privacy options · v1")
         expect(source).to_be_visible()
         source.click()
         expect(owner.get_by_text("PIR avoids storing images")).to_be_visible()
@@ -989,7 +1035,7 @@ class AppShellJourney(unittest.TestCase):
         threads = owner.context.request.get(f"{ORIGIN}/api/v1/projects/{project_id}/conversations").json()["items"]
         self.assertEqual(sum(thread["firstMessageBody"] == "Revisit after lost opening" for thread in threads), 1)
         owner.goto(f"/projects/{project_id}/conversations/{conversation_id}")
-        expect(owner.get_by_role("link", name="Source: Privacy options · v1")).to_be_visible()
+        expect(owner.get_by_role("link", name="Cited: Privacy options · v1")).to_be_visible()
 
         read_failures = {"count": 0}
         def fail_first_citation(route) -> None:
@@ -1004,7 +1050,7 @@ class AppShellJourney(unittest.TestCase):
         owner.get_by_role("button", name="Discuss this version").click()
         expect(owner.get_by_role("button", name="Retry read")).to_be_visible()
         owner.get_by_role("button", name="Retry read").click()
-        expect(thread_of(owner).locator(".composer-files__ref")).to_contain_text("Source: Privacy options · v1")
+        expect(thread_of(owner).locator(".composer-files__ref")).to_contain_text("Citing: Privacy options · v1")
         self.assertEqual(owner.context.request.get(f"{ORIGIN}/api/v1/conversations/{conversation_id}").json()["messages"][-1]["body"], "Reload after lost reply")
         owner.get_by_label("Reply", exact=True).fill("")
         owner.get_by_role("button", name="Remove material citation").click()
@@ -1040,9 +1086,10 @@ class AppShellJourney(unittest.TestCase):
         phone.goto(f"/projects/{project_id}/conversations/{conversation_id}")
         expect(phone.get_by_text("Agreed. Test low light too.", exact=True)).to_be_visible()
         phone.get_by_label("Reply", exact=True).fill("Phone draft survives a view switch")
-        # A project has its own context; leave through the drawer and return without losing text.
-        phone.get_by_role("button", name="Open navigation").click()
-        phone.get_by_role("dialog", name="Flux").get_by_role("link", name="Home").click()
+        # A project has its own context; leave through the top-left way back to all projects (#272) and
+        # return without losing text.
+        phone.locator("header.top").get_by_role("button", name="All projects").click()
+        expect(phone).to_have_url(f"{ORIGIN}/projects")
         phone.go_back()
         expect(phone.get_by_label("Reply", exact=True)).to_have_value("Phone draft survives a view switch")
         expect(phone.locator(".project-convo__current-thread")).to_contain_text("Try a PIR sensor before considering a camera")
@@ -1094,7 +1141,7 @@ class AppShellJourney(unittest.TestCase):
         owner.get_by_label("Email").fill(email)
         owner.get_by_label("Password").fill(PASSWORD)
         owner.get_by_role("button", name="Create account").click()
-        owner.get_by_role("link", name="New project").click()
+        owner.get_by_role("navigation", name="Projects").get_by_role("link", name="New project").click()
         owner.get_by_label("Your space").fill("Many ideas")
         owner.get_by_label("Project name").fill("Busy project")
         owner.get_by_role("button", name="Create project").click()
@@ -1208,7 +1255,7 @@ class AppShellJourney(unittest.TestCase):
         page.get_by_label("Email").fill(email)
         page.get_by_label("Password").fill(PASSWORD)
         page.get_by_role("button", name="Create account").click()
-        page.get_by_role("link", name="New project").click()
+        page.get_by_role("navigation", name="Projects").get_by_role("link", name="New project").click()
         page.get_by_label("Your space").fill("Research space")
         page.get_by_label("Project name").fill("Sensor study")
         page.get_by_role("button", name="Create project").click()

@@ -16,7 +16,8 @@ from playwright.sync_api import expect, sync_playwright
 from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
 
 VIEWS = ("Conversation", "Map", "Tasks", "Wiki", "Agents")
-PLACES = ("Home", "Inbox", "Messages", "Projects")
+# The phone's main places, in order (#272 FF-3).
+PLACES = ("Home", "Projects", "Messages", "Inbox", "Sketchbook")
 SE = {"width": 375, "height": 667}
 
 
@@ -97,6 +98,7 @@ class PhoneShellJourney(unittest.TestCase):
                     self.assertGreaterEqual(min(item["width"], item["height"]), 44, f"44px target: {name}")
                     label = link.locator(".ui-bottomnav__label")
                     self.assertTrue(label.evaluate("el => el.scrollWidth <= el.clientWidth + 1"), f"{name} is not clipped at {width}px")
+                self.assertEqual([label.strip() for label in bar.locator(".ui-bottomnav__label").all_inner_texts()], list(PLACES), "the places in order")
                 current = bar.locator('[aria-current="page"]')
                 expect(current).to_have_count(1)
                 expect(current).to_contain_text("Home")
@@ -108,11 +110,17 @@ class PhoneShellJourney(unittest.TestCase):
                 self.assertEqual(page.evaluate("document.documentElement.scrollWidth"), width, "no sideways scroll")
                 shot(page, f"266-home-phone-{width}")
 
-                # Inside a project the work takes the full height: no bar; the views are chips under the header.
+                # Inside a project the places bar stays, with Projects current (Apple HIG tab bars, #272 FF-3);
+                # the views are chips under the header and the top-left control leads back to all projects.
                 page.goto(f"/projects/{self.project['id']}/tasks")
                 chips = page.get_by_role("navigation", name="Project views")
                 expect(chips).to_be_visible()
-                expect(page.get_by_role("navigation", name="Main places")).to_have_count(0)
+                inside = page.get_by_role("navigation", name="Main places")
+                expect(inside).to_be_visible()
+                expect(inside.locator('[aria-current="page"]')).to_have_count(1)
+                expect(inside.locator('[aria-current="page"]')).to_contain_text("Projects")
+                expect(page.locator("header.top").get_by_role("button", name="All projects")).to_be_visible()
+                expect(page.get_by_role("button", name="Open navigation")).to_have_count(0)
                 header = self.box(page.locator("header.top"))
                 self.assertLessEqual(header["y"] + header["height"], 60, "a single compact header")
                 chips_box = self.box(chips)
@@ -140,7 +148,7 @@ class PhoneShellJourney(unittest.TestCase):
         page = self.page()
         page.goto("/")
         bar = page.get_by_role("navigation", name="Main places")
-        for name, path in (("Inbox", "/inbox"), ("Messages", "/dm"), ("Projects", "/projects"), ("Home", "/")):
+        for name, path in (("Inbox", "/inbox"), ("Messages", "/dm"), ("Projects", "/projects"), ("Sketchbook", "/notes"), ("Home", "/")):
             bar.get_by_role("link", name=re.compile(f"^{name}")).click()
             expect(page).to_have_url(f"{ORIGIN}{path}")
             expect(bar.get_by_role("link", name=re.compile(f"^{name}"))).to_have_attribute("aria-current", "page")
@@ -150,7 +158,8 @@ class PhoneShellJourney(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name="Projects")).to_be_visible()
         page.get_by_role("link", name=re.compile("^Community garden sensors")).click()
         expect(page).to_have_url(re.compile(f"/projects/{self.project['id']}$"))
-        expect(page.get_by_role("navigation", name="Main places")).to_have_count(0)
+        # The bar stays inside the project, with Projects current (#272 FF-3, Apple HIG).
+        expect(bar.get_by_role("link", name=re.compile("^Projects"))).to_have_attribute("aria-current", "page")
         chips = page.get_by_role("navigation", name="Project views")
         expect(chips.get_by_role("link", name="Conversation")).to_have_attribute("aria-current", "page")
         for name, path in (("Map", "/map"), ("Wiki", "/docs"), ("Agents", "/agents"), ("Tasks", "/tasks")):
@@ -159,12 +168,21 @@ class PhoneShellJourney(unittest.TestCase):
             expect(chips.get_by_role("link", name=re.compile(f"^{name}"))).to_have_attribute("aria-current", "page")
             expect(chips.locator('[aria-current="page"]')).to_have_count(1)
         shot(page, "266-chips-after-switching")
+        # The top-left control leads back to all projects (#272), and the bar is still there.
+        back = page.locator("header.top").get_by_role("button", name="All projects")
+        self.assertGreaterEqual(min(self.box(back)["width"], self.box(back)["height"]), 44)
+        back.click()
+        expect(page).to_have_url(f"{ORIGIN}/projects")
+        expect(page.get_by_role("heading", level=1, name="Projects")).to_be_visible()
+        expect(bar.get_by_role("link", name=re.compile("^Projects"))).to_have_attribute("aria-current", "page")
 
     def test_03_header_has_a_labelled_details_and_the_state_line_holds_what_matters(self):
         page = self.page()
         page.goto(f"/projects/{self.project['id']}")
         header = page.locator("header.top")
-        for name in ("Open navigation", "Details"):
+        # Inside a project the top-left control leads back to all projects (#272); Details stays labelled.
+        expect(header.get_by_role("button", name="Open navigation")).to_have_count(0)
+        for name in ("All projects", "Details"):
             button = header.get_by_role("button", name=name, exact=True)
             expect(button).to_be_visible()
             size = self.box(button)
@@ -241,7 +259,7 @@ class PhoneShellJourney(unittest.TestCase):
         shot(page, "266-composer-phone")
 
         # On a top-level page the places bar steps aside while a text field has focus.
-        page.goto("/")
+        page.goto("/notes")
         bar = page.get_by_role("navigation", name="Main places")
         note = page.get_by_label("Private note", exact=True)
         expect(bar).to_be_visible()
@@ -266,7 +284,8 @@ class PhoneShellJourney(unittest.TestCase):
 
     def test_06_the_drawer_and_the_sheet_follow_a_finger(self):
         page = self.page()
-        page.goto(f"/projects/{self.project['id']}")
+        # The drawer opens from the top-level pages; inside a project the top-left control goes back (#272).
+        page.goto("/projects")
         page.get_by_role("button", name="Open navigation").click()
         drawer = page.get_by_role("dialog", name="Flux")
         expect(drawer).to_be_visible()
@@ -281,6 +300,7 @@ class PhoneShellJourney(unittest.TestCase):
         self.swipe(page, (220, 420), (30, 420))
         expect(page.get_by_role("dialog", name="Flux")).to_have_count(0)
         expect(page.get_by_role("button", name="Open navigation")).to_be_focused()
+        page.goto(f"/projects/{self.project['id']}")
         page.get_by_role("button", name="Details", exact=True).click()
         sheet = page.get_by_role("dialog", name="Details")
         expect(sheet).to_be_visible()
@@ -294,6 +314,10 @@ class PhoneShellJourney(unittest.TestCase):
         self.assertIn(page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--dur-4').trim()"), ("0ms", "0s"))
         page.get_by_role("navigation", name="Project views").get_by_role("link", name="Map").click()
         expect(page).to_have_url(re.compile("/map$"))
+        self.assertEqual(page.evaluate("document.getAnimations().filter((a) => a.playState === 'running').length"), 0)
+        # Back to all projects, then the drawer: still no animation.
+        page.locator("header.top").get_by_role("button", name="All projects").click()
+        expect(page).to_have_url(f"{ORIGIN}/projects")
         page.get_by_role("button", name="Open navigation").click()
         expect(page.get_by_role("dialog", name="Flux")).to_be_visible()
         self.assertEqual(page.evaluate("document.getAnimations().filter((a) => a.playState === 'running').length"), 0)
@@ -302,9 +326,10 @@ class PhoneShellJourney(unittest.TestCase):
 
     def test_08_settings_is_one_place_reached_in_two_taps_on_a_phone(self):
         page = self.page()
-        page.goto(f"/projects/{self.project['id']}")
+        # From a top-level page (inside a project the top-left control leads back to all projects, #272).
+        page.goto("/inbox")
         page.get_by_role("button", name="Open navigation").click()
-        page.get_by_role("dialog", name="Flux").get_by_role("link", name=re.compile("settings and sign out")).click()
+        page.get_by_role("dialog", name="Flux").get_by_role("link", name=re.compile("Settings and sign out")).click()
         expect(page).to_have_url(f"{ORIGIN}/settings")
         expect(page.get_by_role("heading", level=1, name="Settings")).to_be_visible()
         for section in ("This device", "Notifications", "AI", "Account"):
@@ -330,15 +355,16 @@ class PhoneShellJourney(unittest.TestCase):
         self.assertEqual(page.evaluate("document.documentElement.scrollWidth"), SE["width"])
         shot(page, "266-settings-phone")
 
-    def test_09_desktop_account_menu_leads_to_all_settings(self):
+    def test_09_desktop_person_row_opens_settings(self):
+        # #272 FF-4: the person at the foot of the sidebar opens the Settings page; no account popover.
         page = self.page({"width": 1440, "height": 900}, touch=False)
         page.goto("/")
-        page.get_by_role("button", name=re.compile("account and sign out")).click()
-        menu = page.get_by_role("dialog", name="Account")
-        expect(menu.get_by_role("radiogroup", name="Appearance")).to_be_visible()
-        menu.get_by_role("link", name="All settings").click()
+        page.get_by_role("complementary", name="Sidebar").get_by_role("link", name=re.compile("Settings and sign out")).click()
         expect(page).to_have_url(f"{ORIGIN}/settings")
         expect(page.get_by_role("heading", level=1, name="Settings")).to_be_visible()
+        expect(page.get_by_role("dialog", name="Account")).to_have_count(0)
+        expect(page.get_by_role("radiogroup", name="Appearance")).to_be_visible()
+        expect(page.get_by_role("button", name=re.compile("^Sign out"))).to_be_visible()
         shot(page, "266-settings-desktop")
 
     # ------------------------------------------------------------------ PF-6
@@ -404,7 +430,7 @@ class PhoneShellJourney(unittest.TestCase):
           .filter((el) => el.getClientRects().length)
           .map((el) => [el.getAttribute('aria-label') || el.name || el.tagName, parseFloat(getComputedStyle(el).fontSize)])
           .filter(([, size]) => size < 16)"""
-        for path in ("/", f"/projects/{self.project['id']}", f"/projects/{self.project['id']}/tasks",
+        for path in ("/", "/notes", f"/projects/{self.project['id']}", f"/projects/{self.project['id']}/tasks",
                      f"/projects/{self.project['id']}/agents", "/settings/notifications", "/dm/new"):
             with self.subTest(path=path):
                 page.goto(path)

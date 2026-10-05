@@ -219,8 +219,9 @@ class PersonalAssistantJourney(unittest.TestCase):
     def test_04_owner_turns_it_on_from_the_account_menu(self) -> None:
         page = self.page("jo")
         page.goto("/")
+        # The person row opens Settings, whose AI section leads to the assistant (#272 FF-4).
         page.locator(".me__btn").click()
-        page.get_by_role("link", name="Your assistant").click()
+        page.get_by_role("link", name=re.compile("^Agent in Flux")).click()
         expect(page).to_have_url(re.compile(r"/settings/assistant$"))
         expect(page.get_by_role("heading", name="Not set up")).to_be_visible()
         expect(page.get_by_text("Never your direct messages, private notes, private maps or other projects.")).to_be_visible()
@@ -247,10 +248,11 @@ class PersonalAssistantJourney(unittest.TestCase):
         self.assertEqual(self.status(kai)["state"], "not_enabled")
 
     def test_04b_home_ask_mode_never_sends_a_private_note(self) -> None:
-        # Home's spark button switches ask mode for the owner's own assistant. A note on Home stays private:
+        # The notes' spark button switches ask mode for the owner's own assistant. A private note stays private:
         # ask mode only explains where the assistant answers, never sends, and Esc or "Stop asking" leaves it.
+        # The notes are My sketchbook's since #272 FF-3.
         page = self.page("jo")
-        page.goto("/")
+        page.goto("/notes")
         composer = page.get_by_label("Private note")
         composer.fill("Which sensor works in the dark?")
         ask = page.get_by_role("button", name="Ask my assistant")
@@ -273,7 +275,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(composer).to_be_focused()
         # Kai has no assistant: the same button leads to "Connect your AI" and never toggles.
         kai = self.page("kai")
-        kai.goto("/")
+        kai.goto("/notes")
         expect(kai.locator(".composer__ask")).to_have_accessible_name("Connect your AI")
         expect(kai.locator(".composer__ask")).not_to_have_attribute("aria-pressed", re.compile(".*"))
 

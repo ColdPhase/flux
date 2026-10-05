@@ -102,6 +102,8 @@ class SketchJourney(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         type(self).state = page.context.storage_state()
 
+        # Private sketches are My sketchbook's Map (#272 FF-3).
+        page.get_by_role("navigation", name="Places").get_by_role("link", name="My sketchbook").click()
         page.get_by_role("navigation", name="Views").get_by_role("link", name="Map").click()
         expect(page.get_by_role("heading", name="Start a sketch")).to_be_visible()
         page.get_by_role("button", name="New sketch").click()
@@ -481,6 +483,7 @@ class SketchJourney(unittest.TestCase):
         page.get_by_label("Password").fill(PASSWORD)
         page.get_by_role("button", name="Sign in").click()
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        page.get_by_role("navigation", name="Places").get_by_role("link", name="My sketchbook").click()
         page.get_by_role("navigation", name="Views").get_by_role("link", name="Map").click()
         page.get_by_role("link", name=re.compile("Lamp ideas")).click()
         expect(page.get_by_role("group", name="Sketch: Lamp ideas")).to_be_visible()
@@ -490,14 +493,15 @@ class SketchJourney(unittest.TestCase):
         self.assertTrue(any(s["frames"] for s in sockets), "the first account's stream is live")
 
         # Sign out and in as the other person without leaving the tab.
-        page.get_by_role("button", name=re.compile(NAME)).click()
-        page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
+        page.get_by_role("link", name=re.compile(rf"^{NAME}.*Settings and sign out")).click()
+        page.get_by_role("button", name=re.compile("^Sign out")).click()
         expect(page).to_have_url(re.compile(r"/sign-in"))
         before = len(sockets)
         page.get_by_label("Email").fill(other_email)
         page.get_by_label("Password").fill(PASSWORD)
         page.get_by_role("button", name="Sign in").click()
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        page.get_by_role("navigation", name="Places").get_by_role("link", name="My sketchbook").click()
         page.get_by_role("navigation", name="Views").get_by_role("link", name="Map").click()
         page.get_by_role("link", name=re.compile("Noor’s map")).click()
         expect(page.get_by_role("group", name="Sketch: Noor’s map")).to_be_visible()

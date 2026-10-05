@@ -119,7 +119,8 @@ class DirectMessageJourney(unittest.TestCase):
     def test_01_start_a_dm_from_the_sidebar(self) -> None:
         page = self.page("ada")
         page.goto("/")
-        page.get_by_role("navigation", name="Places").get_by_role("link", name="Direct messages").click()
+        # The Messages heading opens every direct message (#272 FF-3).
+        page.get_by_role("navigation", name="Messages").get_by_role("link", name="Messages", exact=True).click()
         expect(page.get_by_role("heading", name="No direct messages yet")).to_be_visible()
         expect(page.get_by_text("not workspace owners or admins")).to_be_visible()
         page.get_by_role("navigation", name="Messages").get_by_role("link", name="New message").click()
@@ -158,7 +159,7 @@ class DirectMessageJourney(unittest.TestCase):
         expect(ada.locator(".dm-msg__body")).to_have_count(2)
         kai = self.page("kai")
         kai.goto("/")
-        kai.get_by_role("navigation", name="Places").get_by_role("link", name="Direct messages").click()
+        kai.get_by_role("navigation", name="Messages").get_by_role("link", name="Messages", exact=True).click()
         kai.get_by_role("navigation", name="Messages").get_by_role("link", name=re.compile("Ada Kowalska")).click()
         expect(kai).to_have_url(f"{ORIGIN}{self.dm_path}")
         expect(kai.locator(".composer__audience")).to_contain_text("Only you and Ada")
@@ -228,7 +229,7 @@ class DirectMessageJourney(unittest.TestCase):
         page = self.page("kai", phone=True)
         page.goto("/")
         page.get_by_role("button", name="Open navigation").click()
-        page.get_by_role("dialog").get_by_role("link", name="Direct messages").click()
+        page.get_by_role("dialog").get_by_role("navigation", name="Messages").get_by_role("link", name="Messages", exact=True).click()
         expect(page).to_have_url(f"{ORIGIN}/dm")
         expect(page.get_by_role("list", name="Conversations").get_by_role("link", name=re.compile("Ada Kowalska"))).to_be_visible()
         shot(page, "dm-phone-390-index")
@@ -239,6 +240,8 @@ class DirectMessageJourney(unittest.TestCase):
         drawer.get_by_role("link", name=re.compile("Ada Kowalska")).click()
         expect(page).to_have_url(f"{ORIGIN}{self.dm_path}")
         expect(page.get_by_role("heading", level=1, name="Ada Kowalska")).to_be_visible()
+        # Inside a conversation the top-left control leads back to all messages (#272).
+        expect(page.locator("header.top").get_by_role("button", name="All messages")).to_be_visible()
         expect(page.locator(".composer__audience")).to_contain_text("Only you and Ada")
         send = page.get_by_role("button", name="Send message")
         size = box(page, send)

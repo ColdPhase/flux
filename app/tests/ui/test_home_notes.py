@@ -1,4 +1,4 @@
-"""Browser tests for first notes on Home (#190 HOME-3).
+"""Browser tests for first notes in My sketchbook (#190 HOME-3; on Home until #272 FF-3 moved them to /notes).
 
 Runs with the other tests/ui modules through scripts/check_ui.sh against the running Compose
 application. A person without any space writes a first note: it creates one "Personal" space and is
@@ -69,8 +69,16 @@ class HomeNotesJourney(unittest.TestCase):
         page.get_by_label("Password").fill(PASSWORD)
         page.get_by_role("button", name="Create account").click()
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        # Private notes are My sketchbook's Notes (#272 FF-3).
+        page.goto("/notes")
+        expect(page.get_by_role("heading", name=f"Your notes, {name.split()[0]}")).to_be_visible()
         user = page.evaluate("fetch('/api/v1/me').then(r => r.json())")["user"]
         return page, {"id": user["id"], "email": email, "name": name}
+
+    def sign_out(self, page: Page, name: str) -> None:
+        """Signs out in this tab: the person at the foot of the sidebar opens Settings, which signs out (#272 FF-4)."""
+        page.get_by_role("link", name=re.compile(rf"^{name}.*Settings and sign out")).click()
+        page.get_by_role("button", name=re.compile("^Sign out")).click()
 
     def get(self, page: Page, path: str):
         return page.evaluate(f"fetch({json.dumps(path)}).then(r => r.json())")
@@ -99,7 +107,7 @@ class HomeNotesJourney(unittest.TestCase):
         expect(page.locator(".composer__where")).to_have_text("private draft in your personal space")
         # A double Enter and a second tab saving at the same moment still make one space.
         other = self.watch(context.new_page())
-        other.goto("/")
+        other.goto("/notes")
         other.get_by_label("Private note", exact=True).fill("From the other tab")
         composer.fill("The first note")
         composer.press("Enter")
@@ -118,7 +126,7 @@ class HomeNotesJourney(unittest.TestCase):
         page.get_by_role("button", name="New sketch").click()
         expect(page).to_have_url(re.compile(r"/map/[0-9a-f-]{36}$"))
         self.assertEqual(len(self.spaces(page)), 1, "a sketch reuses the personal space")
-        # The open private sketch is Home's Map view.
+        # The open private sketch is My sketchbook's Map view.
         expect(page.get_by_role("navigation", name="Views").get_by_role("link", name="Map")).to_have_attribute("aria-current", "page")
         shot(page, "home-notes-first-sketch-desktop-1440")
 
@@ -187,7 +195,7 @@ class HomeNotesJourney(unittest.TestCase):
         self.keep_in_browser(first, nia["id"], kept)
         first.reload()
         second = self.watch(context.new_page())
-        second.goto("/")
+        second.goto("/notes")
         expect(self.offer(second).get_by_role("listitem")).to_have_count(4)
         # Deleted in the second tab: the first tab's list follows, and the move skips it.
         self.offer(second).get_by_role("button", name=re.compile("Delete note: tabs note 2")).click()
@@ -237,13 +245,13 @@ class HomeNotesJourney(unittest.TestCase):
                 break
             page.wait_for_timeout(50)
         self.assertEqual(len(held), 1, "the move asked for Nia's spaces")
-        page.get_by_role("button", name=re.compile("Nia Switch")).click()
-        page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
+        # Signing out is on Settings (#272 FF-4), reached in this same tab while the move still waits.
+        self.sign_out(page, "Nia Switch")
         expect(page).to_have_url(re.compile("/sign-in"))
         page.get_by_label("Email").fill(olek["email"])
         page.get_by_label("Password").fill(PASSWORD)
         page.get_by_role("button", name="Sign in").click()
-        expect(page.get_by_role("heading", name="Welcome, Olek")).to_be_visible()
+        expect(page.get_by_role("heading", name="Hi, Olek.")).to_be_visible()
         try:
             held[0].fulfill(status=200, content_type="application/json", body="[]")
         except Exception:  # the page already gave up on it when the account changed
@@ -251,6 +259,8 @@ class HomeNotesJourney(unittest.TestCase):
         page.unroute(spaces_path)
         page.wait_for_timeout(800)
         # Olek is never offered Nia's notes, and nothing of hers was saved under his session.
+        page.get_by_role("navigation", name="Places").get_by_role("link", name="My sketchbook").click()
+        expect(page.get_by_role("heading", name="Your notes, Olek")).to_be_visible()
         expect(self.offer(page)).to_have_count(0)
         self.assertNotIn("switch note", page.content())
         self.assertEqual(self.spaces(page), [], "Olek has no space and so no drafts")
@@ -268,22 +278,21 @@ class HomeNotesJourney(unittest.TestCase):
         moving.reload()
         expect(self.offer(moving).get_by_role("listitem")).to_have_count(2)
         typing = self.watch(context.new_page())
-        typing.goto("/")
+        typing.goto("/notes")
         typing.get_by_label("Private note").fill("Typed while Nia was signed in")
         switching = self.watch(context.new_page())
         switching.goto("/")
-        switching.get_by_role("button", name=re.compile("Nia Stale")).click()
-        switching.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
+        self.sign_out(switching, "Nia Stale")
         expect(switching).to_have_url(re.compile("/sign-in"))
         switching.get_by_label("Email").fill(olek["email"])
         switching.get_by_label("Password").fill(PASSWORD)
         switching.get_by_role("button", name="Sign in").click()
-        expect(switching.get_by_role("heading", name="Welcome, Olek")).to_be_visible()
-        # Signing out in one tab retires every tab of this browser (#229): no tab keeps showing Nia's Home,
+        expect(switching.get_by_role("heading", name="Hi, Olek.")).to_be_visible()
+        # Signing out in one tab retires every tab of this browser (#229): no tab keeps showing Nia's notes,
         # so none can move her notes or save her typed note into the account signed in now.
         for stale in (moving, typing):
             expect(stale).to_have_url(re.compile("/sign-in"))
-            expect(stale.get_by_role("heading", name="Welcome, Nia Stale")).to_have_count(0)
+            expect(stale.get_by_role("heading", name="Your notes, Nia")).to_have_count(0)
             expect(stale.get_by_role("button", name="Move 2 notes into Personal")).to_have_count(0)
             expect(stale.get_by_role("button", name="Save note")).to_have_count(0)
         self.assertEqual(self.spaces(switching), [], "nothing was created or saved for Olek")
@@ -311,7 +320,7 @@ class HomeNotesJourney(unittest.TestCase):
         self.assertEqual(self.spaces(page), [])
 
     def test_07_spaces_created_after_home_loaded_can_be_chosen(self) -> None:
-        # Home loaded with no space; two arrive before the first note (another tab, an invitation).
+        # Notes loaded with no space; two arrive before the first note (another tab, an invitation).
         # The server then has several, so no Personal space is made: the person chooses, and can (#211 review).
         context = self.context()
         page, _ = self.sign_up(context, "Nia Later")

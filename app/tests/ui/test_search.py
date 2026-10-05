@@ -287,8 +287,9 @@ class SearchJourney(unittest.TestCase):
         page.keyboard.press("Escape")
         stored = page.evaluate("Object.keys(localStorage).filter((k) => k.startsWith('flux.search.recent.'))")
         self.assertEqual(stored, [f"flux.search.recent.{PEOPLE['nia']['id']}"])
-        page.get_by_role("button", name=re.compile("Nia Berg")).click()
-        page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
+        # Signing out is on Settings, opened from the person at the foot of the sidebar (#272 FF-4).
+        page.get_by_role("link", name=re.compile("^Nia Berg.*Settings and sign out")).click()
+        page.get_by_role("button", name=re.compile("^Sign out")).click()
         expect(page).to_have_url(f"{ORIGIN}/sign-in")
         self.assertEqual(page.evaluate("Object.keys(localStorage).filter((k) => k.startsWith('flux.search.recent.'))"), [])
         # Signing in again (the stored session ended) starts with no recent searches.
