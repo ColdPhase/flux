@@ -18,7 +18,8 @@ test('0050 keeps stored files as they were, publishes to one place only and reve
   url.pathname = `/${name}`;
   let history: ReturnType<typeof createDatabase>['pool'] | undefined;
   try {
-    await admin.query({ text: `CREATE DATABASE "${name}"`, query_timeout: 60_000 });
+    const createFixture = { text: `CREATE DATABASE "${name}"`, query_timeout: 60_000 };
+    await admin.query(createFixture);
     history = createDatabase(url.toString()).pool;
     for (const file of manifest.filter((entry) => entry.version < 50)) await history.query(await readFile(join(dir, file.name), 'utf8'));
     const [ws, project, conversation, message, attached, staged] = Array.from({ length: 6 }, () => randomUUID());
@@ -64,7 +65,8 @@ test('0050 keeps stored files as they were, publishes to one place only and reve
     assert.equal((await history.query('SELECT thought_id FROM project_files WHERE id = $1', [staged])).rows[0].thought_id, thought);
   } finally {
     await history?.end();
-    await admin.query({ text: `DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`, query_timeout: 60_000 });
+    const dropFixture = { text: `DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`, query_timeout: 60_000 };
+    await admin.query(dropFixture);
     await admin.end();
   }
 });
