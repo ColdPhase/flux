@@ -1,19 +1,24 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { and, asc, eq, inArray, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, lte, sql } from 'drizzle-orm';
 import type { GithubPullFacts } from '@flux/contracts';
 import * as s from '../schema.js';
 import type { DbExecutor } from './push.js';
 type Binding = typeof s.githubBindings.$inferSelect;
 type Link = typeof s.githubTaskLinks.$inferSelect;
+type Rule = typeof s.githubTaskRules.$inferSelect;
+type RuleChange = typeof s.githubTaskRuleChanges.$inferSelect;
 interface Delivery {
   id: string; appId: string; digest: string; event: string; payload: Record<string, unknown>;
   installationId: string | null; repositoryId: string | null; origin: 'webhook' | 'reconcile'; providerObjectId: string | null;
   targetBindingId?: string | null;
 }
 const bindingView = (row: Binding) => ({ ...row, host: 'github.com' as const });
+const ruleView = (row: Rule) => row;
+const changeView = (row: RuleChange) => row;
 const linkView = (row: Link) => { const { id, workspaceId, projectId, taskId, bindingId, role, facts, verifiedAt, state } = row; return { id, workspaceId, projectId, taskId, bindingId, role, facts, verifiedAt, state }; };
 export function githubRows(db: DbExecutor) {
   const b = s.githubBindings; const l = s.githubTaskLinks; const p = s.githubProcessing; const d = s.githubDeliveries;
+  const r = s.githubTaskRules; const c = s.githubTaskRuleChanges; const f = s.githubRuleDefaults;
   return {
     async binding(id: string, lock = false) {
       const query = db.select().from(b).where(eq(b.id, id));
@@ -102,6 +107,8 @@ export function githubRows(db: DbExecutor) {
       const credentials = await db.update(s.githubCredentials).set({ state: 'revoked', encryptedTokens: null, updatedAt: new Date() }).returning({ id: s.githubCredentials.userId });
       const bindings = await db.update(b).set({ state: 'revoked' }).returning({ id: b.id });
       await db.update(l).set({ state: 'unavailable' });
+      // Restored standing task rules never act on restored authority; a person resumes them after reconnecting.
+      await db.update(s.githubTaskRules).set({ state: 'suspended', suspendedReason: 'author_access', updatedAt: new Date() }).where(eq(s.githubTaskRules.state, 'active'));
       await db.update(s.githubOauthFlows).set({ consumedAt: new Date(), encryptedVerifier: null });
       await db.update(p).set({ state: 'completed', errorCode: 'GITHUB_RESTORED_AUTHORIZATION_REVOKED' });
       return { credentials: credentials.length, bindings: bindings.length };
@@ -114,6 +121,37 @@ export function githubRows(db: DbExecutor) {
       await db.insert(s.githubBridgeOutbox).values({ id: randomUUID(), deliveryId: delivery.id, bindingId: binding.id, linkId: link.id,
         taskId: link.taskId, workspaceId: binding.workspaceId, projectId: binding.projectId, headSha: facts.headSha,
         event: delivery.event, providerObjectId: delivery.providerObjectId, correlationKey, state: 'pending_audience_adapter' }).onConflictDoNothing();
+    },
+    async rule(taskId: string, lock = false) {
+      const query = db.select().from(r).where(eq(r.taskId, taskId));
+      const [row] = lock ? await query.for('update') : await query;
+      return row ? ruleView(row) : null;
+    },
+    /** Rules of these tasks for the native task read model; ids are not authorized here. */
+    async taskRules(taskIds: readonly string[]) {
+      if (!taskIds.length) return new Map<string, Rule>();
+      return new Map((await db.select().from(r).where(inArray(r.taskId, [...taskIds]))).map((row) => [row.taskId, ruleView(row)]));
+    },
+    async saveRule(rule: Rule) {
+      const { taskId, ...rest } = rule;
+      await db.insert(r).values(rule).onConflictDoUpdate({ target: r.taskId, set: rest });
+    },
+    async activeRules(bindingId: string) {
+      return (await db.select().from(r).where(and(eq(r.state, 'active'), sql`EXISTS (SELECT 1 FROM github_task_links gl
+        WHERE gl.task_id=${r.taskId} AND gl.binding_id=${bindingId} AND gl.role='required_output')`)).orderBy(asc(r.taskId))).map(ruleView);
+    },
+    async recordRuleChange(change: RuleChange) { await db.insert(c).values(change).onConflictDoNothing(); },
+    async ruleChanges(taskId: string, limit: number) {
+      return (await db.select().from(c).where(eq(c.taskId, taskId)).orderBy(desc(c.createdAt), desc(c.id)).limit(limit)).map(changeView);
+    },
+    async ruleDefault(projectId: string) {
+      const [row] = await db.select().from(f).where(eq(f.projectId, projectId));
+      return row ? { mode: row.mode, setByUserId: row.setByUserId, updatedAt: row.updatedAt } : null;
+    },
+    async setRuleDefault(scope: { workspaceId: string; projectId: string }, value: { mode: 'complete' | 'ready' | null; setByUserId: string | null } | null) {
+      if (!value) { await db.delete(f).where(eq(f.projectId, scope.projectId)); return; }
+      await db.insert(f).values({ ...scope, ...value, updatedAt: new Date() })
+        .onConflictDoUpdate({ target: f.projectId, set: { mode: value.mode, setByUserId: value.setByUserId, updatedAt: new Date() } });
     },
     async due(limit = 10) {
       return db.select({ deliveryId: p.deliveryId, bindingId: p.bindingId }).from(p)
