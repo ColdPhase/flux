@@ -15,3 +15,7 @@ export type { CoWorkUnitParentFence, CoWorkUnitCreateInput, CoWorkUnitPolicy, Co
 export { normalizeCoWorkUnitTransition, requireCoWorkUnitTransition, validateCoWorkUnitTransitionPolicy } from './transitions.js';
 export type { CoWorkHolderFence, CoWorkUnitTransitionInput, CoWorkUnitTransitionPolicy, CoWorkTransitionUnit,
   CoWorkUnitTransitionFacts } from './transitions.js';
+export { COWORK_CHECKPOINT_LIMITS, COWORK_CHECKPOINT_SCHEMA, coWorkCheckpointProgress, normalizeCoWorkCheckpointDraft,
+  parseCoWorkCheckpointProgress, requireCoWorkCheckpointSources, requireCoWorkClaimEligibility } from './checkpoints.js';
+export type { CoWorkCheckpointDraft, CoWorkCheckpointSource, CoWorkCheckpointProgress, CoWorkClaimEligibilityReader,
+  CoWorkCheckpointSourceReader } from './checkpoints.js';

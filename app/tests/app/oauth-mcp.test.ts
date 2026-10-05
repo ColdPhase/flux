@@ -170,8 +170,10 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
         'flux_remove_thought:map.thought.delete', 'flux_move_thoughts:map.positions.update', 'flux_link_thoughts:map.link.create',
         'flux_unlink_thoughts:map.link.delete', 'flux_create_doc:doc.create', 'flux_update_doc:doc.update',
         'flux_start_conversation:conversation.create', 'flux_reply_in_conversation:conversation.reply',
-        // #153's co-work unit creation and request claim/decline; no resolve, unit claim, completion or transfer tool.
-        'flux_create_unit:cowork.unit.create', 'flux_claim_request:cowork.request.claim', 'flux_decline_request:cowork.request.respond']
+        // #153's co-work unit creation, unit claim/renew/release/completion/transfer and request claim/decline; no resolve tool.
+        'flux_create_unit:cowork.unit.create', 'flux_claim_unit:cowork.claim', 'flux_renew_unit:cowork.renew',
+        'flux_release_unit:cowork.release', 'flux_complete_unit:cowork.unit.complete', 'flux_transfer_unit:cowork.unit.transfer',
+        'flux_claim_request:cowork.request.claim', 'flux_decline_request:cowork.request.respond']
         .map((entry) => ({ name: entry.split(':')[0], operation: entry.split(':')[1], available: false }))],
     'only the verified native work, map, doc, conversation and co-work actions are advertised, unavailable without the action scope');
   const unscoped = await mcp(bearer, 147, 'tools/call', { name: 'flux_create_task', arguments: { projectId,

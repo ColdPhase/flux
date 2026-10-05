@@ -3,24 +3,24 @@ import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import type { Agent, AgentExecutionCommand, AgentStandingGrant, CoWorkRequestLimits, WorkItem } from '@flux/contracts';
 import { COWORK_PLAYBOOK, coworkPlaybookTools } from '@flux/core';
-import { coWorkClaimInTransaction, type CoWorkClaimPolicy } from '../../apps/server/src/co-work/claims.js';
-import { coWorkTaskGraphLocks } from '../../apps/server/src/co-work/graph.js';
 import { coWorkRequestInTransaction } from '../../apps/server/src/co-work/requests.js';
 import { db, pool } from './support/db.js';
 import { agentConnection, toolFailure } from './support/mcp-actions.js';
 import { toolValue } from './support/mcp.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 
-// The co-work MCP tools (#153): unit creation and request claim/decline over the real OAuth bearer, the registry and
-// the same internal compositions. A unit claim and a request admission are not MCP tools yet, so those steps use the
-// internal compositions with the same bearer's claims. Not real-client evidence.
+// The co-work MCP tools (#153): unit creation, unit claims and request claim/decline over the real OAuth bearer, the
+// registry and the same internal compositions. Request admission is not an MCP tool yet, so that step uses the internal
+// composition with the same bearer's claims. Not real-client evidence.
 const ACTION_SCOPES = ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'];
-const CLAIMS: CoWorkClaimPolicy = { maximumConnectionUnits: 2, leaseSeconds: 120,
-  prepareTaskLocks: (tx, context, units) => coWorkTaskGraphLocks(tx, context.workspaceId, units),
-  async requireEligible() {}, async requireCheckpointSources() {} };
 const LIMITS: CoWorkRequestLimits = { maximumRequests: 128, maximumDepth: 8, maximumReviewRounds: 16 };
 const COWORK_TOOLS = [
   { name: 'flux_create_unit', operation: 'cowork.unit.create' },
+  { name: 'flux_claim_unit', operation: 'cowork.claim' },
+  { name: 'flux_renew_unit', operation: 'cowork.renew' },
+  { name: 'flux_release_unit', operation: 'cowork.release' },
+  { name: 'flux_complete_unit', operation: 'cowork.unit.complete' },
+  { name: 'flux_transfer_unit', operation: 'cowork.unit.transfer' },
   { name: 'flux_claim_request', operation: 'cowork.request.claim' },
   { name: 'flux_decline_request', operation: 'cowork.request.respond' },
 ];
@@ -53,10 +53,11 @@ async function scene() {
       ({ runtimeSessionId: connected.runtimeSessionId, grantId, clientCommandId: randomUUID(), projectId: p.id,
         operation: operation as AgentExecutionCommand['operation'], peerRequestClass: role, audience: { kind: 'project', projectId: p.id },
         objectId, sources: [], payload: payload as AgentExecutionCommand['payload'] });
-    /** A live claim on this connection's unit through the internal composition (not an MCP tool yet). */
+    /** A live claim on this connection's unit over MCP (flux_claim_unit), under an exact cowork.claim grant. */
     const claimUnit = async (unitId: string, role: Role, expectedVersion = 1) => {
       const g = await standing('cowork.claim', unitId, role);
-      return db.transaction((tx) => coWorkClaimInTransaction(tx, claims, internal('cowork.claim', unitId, role, g.id, { expectedVersion }), CLAIMS));
+      const claimed = toolValue(await connected.tool('flux_claim_unit', { ...base(g.id, role), unitId, expectedVersion }));
+      return claimed as { generation: number; version: number; lease: { id: string } | null };
     };
     return { ...connected, claims, standing, base, internal, claimUnit };
   };
@@ -81,18 +82,19 @@ test('the co-work tools are registered for the action scope, listed with their o
     available: boolean }[];
   assert.deepEqual(capabilities.filter((item) => item.operation?.startsWith('cowork.')).map(({ name, operation, classes, requiredScope, available }) =>
     ({ name, operation, classes, requiredScope, available })), COWORK_TOOLS.map((tool) => ({ ...tool, classes: ['execute', 'review', 'plan'],
-    requiredScope: 'flux.action.execute', available: true })), 'exactly these co-work tools are registered; no resolve, claim or transfer tool');
+    requiredScope: 'flux.action.execute', available: true })), 'exactly these co-work tools are registered; no resolve or admission tool');
   // The playbook names every co-work tool in a module and names no tool the server does not register.
   for (const { name } of COWORK_TOOLS) assert.ok(COWORK_PLAYBOOK.modules.some((module) => module.tools.includes(name)), `${name} is declared`);
   const catalog = capabilities.map((item) => item.name);
   assert.deepEqual(coworkPlaybookTools().filter((name) => !catalog.includes(name)), []);
   assert.equal(COWORK_PLAYBOOK.version, '1.2.0');
-  assert.ok((codex.bootstrap.gaps as string[]).includes('coordination_unavailable'), 'the rest of coordination is still reported as a gap');
+  assert.ok((codex.bootstrap.gaps as string[]).includes('coordination_unavailable'), 'the inbox, admission and recovery are still a gap');
 
   // A connection without the action scope sees them unavailable and is refused before any effect.
   const reader = await f.connect(f.hubert, 'Hubert reader', ['flux.context.read']);
   const readable = reader.bootstrap.capabilities as { name: string; available: boolean }[];
-  assert.deepEqual(readable.filter((item) => COWORK_TOOLS.some((tool) => tool.name === item.name)).map((item) => item.available), [false, false, false]);
+  assert.deepEqual(readable.filter((item) => COWORK_TOOLS.some((tool) => tool.name === item.name)).map((item) => item.available),
+    COWORK_TOOLS.map(() => false));
   const a = await f.task('Native outcome A');
   const refused = toolFailure(await reader.tool('flux_create_unit', { ...reader.base(randomUUID(), 'execute'), taskId: a.id, unitKey: 'take',
     expectedTaskVersion: a.version, assignmentConnectionId: reader.connectionId, parent: null }));
@@ -148,7 +150,7 @@ test('flux_claim_request and flux_decline_request act only on a request addresse
   const f = await scene();
   const codex = await f.connect(f.hubert, 'Hubert Codex'), marekClaude = await f.connect(f.marek, 'Marek Claude');
   const a = await f.task('Native outcome A');
-  // Codex takes task A over MCP and holds the root claim; it opens Marek's review unit over MCP with that parent fence.
+  // Codex takes task A and claims its root unit over MCP; it opens Marek's review unit over MCP with that parent fence.
   const takeGrant = await codex.standing('cowork.unit.create', a.id, 'execute');
   const root = toolValue(await codex.tool('flux_create_unit', { ...codex.base(takeGrant.id, 'execute'), taskId: a.id, unitKey: 'take',
     expectedTaskVersion: a.version, assignmentConnectionId: codex.connectionId, parent: null }));
@@ -169,7 +171,7 @@ test('flux_claim_request and flux_decline_request act only on a request addresse
     'COWORK_CLAIM_LOST');
   assert.deepEqual([await f.used(take.id), await f.used(respond.id)], [0, 0]);
 
-  // Marek claims his unit (internal composition) and Codex addresses a review request to it (internal composition).
+  // Marek claims his unit over MCP and Codex addresses a review request to it (internal composition).
   const reviewClaim = await marekClaude.claimUnit(reviewUnit, 'review');
   const ask = await codex.standing('cowork.request', String(root.unitId), 'execute');
   const asked = await db.transaction((tx) => coWorkRequestInTransaction(tx, codex.claims, codex.internal('cowork.request', String(root.unitId),

@@ -1,9 +1,11 @@
 import { z } from 'zod';
 import { AGENT_OPERATION_CLASSES, AGENT_PEER_REQUEST_CLASSES, type AgentExecutionCommand, type AgentJsonValue,
   type AgentOperation, type AgentPeerRequestClass } from '@flux/contracts';
-import { COWORK_DECLINE_REASONS, type Database } from '@flux/core';
-import { COWORK_RESPONSES_WITHOUT_PUBLICATION, COWORK_UNIT_POLICY } from '../co-work/policy.js';
+import { COWORK_CHECKPOINT_LIMITS, COWORK_DECLINE_REASONS, type Database } from '@flux/core';
+import { coWorkClaimCheckpoint, coWorkClaimInTransaction } from '../co-work/claims.js';
+import { COWORK_CLAIM_POLICY, COWORK_RESPONSES_WITHOUT_PUBLICATION, COWORK_UNIT_POLICY } from '../co-work/policy.js';
 import { coWorkRequestResponseInTransaction } from '../co-work/responses.js';
+import { coWorkUnitTransitionInTransaction } from '../co-work/transitions.js';
 import { coWorkUnitCreateInTransaction } from '../co-work/units.js';
 import { actionAnnotations as annotations, actionId as id, actionVersion as version } from './action-execution.js';
 import type { FluxMcpClaims } from './context.js';
@@ -29,17 +31,32 @@ const requestFence = {
   expectedRequestVersion: version.describe('The request version you last read.'),
 };
 
+/** Your live claim on your own unit, at the unit version you last read. */
+const unitFence = {
+  unitId: id.describe('Your own unit.'),
+  expectedVersion: version.describe('The unit version you last read (from the claim, renewal or creation result).'),
+  generation: version.describe('The generation of your live claim on that unit.'),
+  leaseId: id.describe('The lease ID of your live claim on that unit.'),
+};
+const checkpointText = (maximum: number) => z.string().min(1).max(maximum);
+/** One exact native reference; GitHub outcomes wait for the #74 recipient adapter. */
+const outcomeRef = z.discriminatedUnion('type', [
+  z.strictObject({ type: z.enum(['result', 'message']), id }),
+  z.strictObject({ type: z.enum(['material', 'doc', 'work', 'thought']), id, version }),
+]);
+type Source = { materialId: string; version: number };
+
 function command({ projectId, runtimeSessionId, grantId, clientCommandId, peerRequestClass }: Execution, operation: AgentOperation,
-  objectId: string, payload: AgentJsonValue): AgentExecutionCommand {
+  objectId: string, payload: AgentJsonValue, sources: Source[] = []): AgentExecutionCommand {
   return { runtimeSessionId, grantId, clientCommandId, projectId, operation, peerRequestClass,
-    audience: { kind: 'project', projectId }, objectId, sources: [], payload };
+    audience: { kind: 'project', projectId }, objectId, sources, payload };
 }
 
 /**
  * Co-work tools (#153) over the existing internal compositions, one transaction per call. Each composition runs #152's
- * prepare/complete itself (current runtime, grant, command ledger, receipt) and writes no stream event. Resolving a
- * request with a response, claiming/renewing/releasing a unit, request admission, the inbox, completion and transfer
- * are not exposed yet (docs/development/cowork-coordination.md "MCP exposure").
+ * prepare/complete itself (current runtime, grant, command ledger, receipt) and writes no stream event. Unit claims,
+ * renewal, release, completion and transfer are tools since 2026-10-06 ("Unit claims over MCP"); resolving a request
+ * with a response, request admission and the inbox are not exposed yet (docs/development/cowork-coordination.md).
  */
 export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Database, claims: FluxMcpClaims) {
   const register = (operation: AgentOperation) => tools.forScope('flux.action.execute', { operation, classes: AGENT_OPERATION_CLASSES[operation] });
@@ -65,6 +82,73 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
   }, ({ taskId, unitKey, expectedTaskVersion, assignmentConnectionId, parent, ...input }) => run(() =>
     db.transaction((tx) => coWorkUnitCreateInTransaction(tx, claims, command(input, 'cowork.unit.create', taskId,
       { unitKey, expectedTaskVersion, assignmentConnectionId, parent }), COWORK_UNIT_POLICY))));
+
+  register('cowork.claim').registerTool('flux_claim_unit', {
+    title: 'Claim your co-work unit under a standing grant',
+    description: 'Take the live lease on one unit assigned to you, at the unit version you last read: only one connection and '
+      + 'one runtime session hold it, for 300 seconds. Needs a live cowork.claim grant whose class is the unit\'s role, and the '
+      + 'runtime from flux_bootstrap. One connection holds one live unit at a time (COWORK_CONNECTION_BUSY): release or complete '
+      + 'it first. The task must be open (COWORK_TASK_CLOSED), and an execute unit needs every prerequisite done '
+      + '(TASK_PREREQUISITES_UNMET). The result has the generation and lease ID that later unit and request tools need, and the '
+      + 'unit\'s last checkpoint (summary, next action, blocker and the source versions it covered), if any.',
+    inputSchema: z.strictObject({ ...execution, unitId: unitFence.unitId, expectedVersion: unitFence.expectedVersion }), annotations,
+  }, ({ unitId, expectedVersion, ...input }) => run(() => db.transaction(async (tx) => {
+    const outcome = await coWorkClaimInTransaction(tx, claims, command(input, 'cowork.claim', unitId, { expectedVersion }), COWORK_CLAIM_POLICY);
+    return { ...outcome, checkpoint: await coWorkClaimCheckpoint(tx, { projectId: input.projectId, unitId: outcome.unitId },
+      outcome.checkpointId) };
+  })));
+
+  register('cowork.renew').registerTool('flux_renew_unit', {
+    title: 'Renew your live claim on a co-work unit under a standing grant',
+    description: 'Extend your live lease on your own unit by another 300 seconds from now, before it ends. Needs a live '
+      + 'cowork.renew grant whose class is the unit\'s role. A lease that already ended, another runtime session or a stale '
+      + 'version is refused with COWORK_CLAIM_LOST or COWORK_VERSION_CONFLICT: claim the unit again instead. If the task '
+      + 'closed or a prerequisite reopened meanwhile, renewal is refused: release the unit with a checkpoint or complete it.',
+    inputSchema: z.strictObject({ ...execution, ...unitFence }), annotations,
+  }, ({ unitId, expectedVersion, generation, leaseId, ...input }) => run(() => db.transaction((tx) =>
+    coWorkClaimInTransaction(tx, claims, command(input, 'cowork.renew', unitId, { expectedVersion, generation, leaseId }), COWORK_CLAIM_POLICY))));
+
+  register('cowork.release').registerTool('flux_release_unit', {
+    title: 'Pause your co-work unit with a checkpoint under a standing grant',
+    description: 'Release your live claim at a safe boundary and leave the unit paused with a durable checkpoint: what you '
+      + 'observably did (changed artifacts, checks you actually ran), the next action and any blocker. The source material '
+      + 'revisions you relied on are recorded with it and must still be current. Never put a prompt, hidden reasoning or a '
+      + 'transcript in it. Needs a live cowork.release grant whose class is the unit\'s role. Whoever claims the unit next '
+      + 'receives this checkpoint.',
+    inputSchema: z.strictObject({ ...execution, ...unitFence,
+      checkpoint: z.strictObject({ summary: checkpointText(COWORK_CHECKPOINT_LIMITS.summary),
+        nextAction: checkpointText(COWORK_CHECKPOINT_LIMITS.nextAction),
+        blocker: checkpointText(COWORK_CHECKPOINT_LIMITS.blocker).nullable() }),
+      sources: z.array(z.strictObject({ materialId: id, version })).max(50).default([])
+        .describe('The exact current material revisions this checkpoint relies on.') }), annotations,
+  }, ({ unitId, expectedVersion, generation, leaseId, checkpoint, sources, ...input }) => run(() => db.transaction((tx) =>
+    coWorkClaimInTransaction(tx, claims, command(input, 'cowork.release', unitId, { expectedVersion, generation, leaseId, checkpoint }, sources),
+      COWORK_CLAIM_POLICY))));
+
+  register('cowork.unit.complete').registerTool('flux_complete_unit', {
+    title: 'Complete your co-work unit with its outcome under a standing grant',
+    description: 'Finish your own unit under your live claim, naming its outcome: one exact native record that exists now (a '
+      + 'result or message ID, or a material, doc, task or thought at its version). Completion is final. It does not change '
+      + 'the task, approve anything or resolve a request. Requests still open on the unit refuse it '
+      + '(COWORK_UNIT_REQUESTS_OPEN): answer or decline them first. Needs a live cowork.unit.complete grant whose class is the '
+      + 'unit\'s role.',
+    inputSchema: z.strictObject({ ...execution, ...unitFence, outcome: outcomeRef }), annotations,
+  }, ({ unitId, expectedVersion, generation, leaseId, outcome, ...input }) => run(() => db.transaction((tx) =>
+    coWorkUnitTransitionInTransaction(tx, claims, command(input, 'cowork.unit.complete', unitId,
+      { expectedVersion, generation, leaseId, outcome }), COWORK_UNIT_POLICY))));
+
+  register('cowork.unit.transfer').registerTool('flux_transfer_unit', {
+    title: 'Hand your co-work unit to another connection under a standing grant',
+    description: 'Reassign your own unit, under your live claim, to another live connection of this workspace that has this '
+      + 'project selected. The unit becomes pending for it and your claim ends; it claims the unit with its own owner\'s '
+      + 'grant and receives the unit\'s last checkpoint. An author never hands review of its own work to itself '
+      + '(COWORK_REVIEW_SEPARATION), and open requests on the unit refuse the transfer (COWORK_UNIT_REQUESTS_OPEN). Needs a live '
+      + 'cowork.unit.transfer grant whose class is the unit\'s role.',
+    inputSchema: z.strictObject({ ...execution, ...unitFence,
+      assignmentConnectionId: id.describe('The connection that should continue the unit.') }), annotations,
+  }, ({ unitId, expectedVersion, generation, leaseId, assignmentConnectionId, ...input }) => run(() => db.transaction((tx) =>
+    coWorkUnitTransitionInTransaction(tx, claims, command(input, 'cowork.unit.transfer', unitId,
+      { expectedVersion, generation, leaseId, assignmentConnectionId }), COWORK_UNIT_POLICY))));
 
   register('cowork.request.claim').registerTool('flux_claim_request', {
     title: 'Pick up a request addressed to your unit under a standing grant',
