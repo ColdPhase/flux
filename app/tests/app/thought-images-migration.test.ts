@@ -5,13 +5,13 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { createDatabase, FLUX_SCHEMA_VERSION, readMigrationManifest } from '@flux/db';
 
-// #252: migration 0050 lets a stored file be published to one map thought. It keeps every earlier file row as it was,
+// #252: migration 0051 lets a stored file be published to one map thought. It keeps every earlier file row as it was,
 // keeps "published to exactly one place" in the database, and reverses only before any image was placed on a thought.
-test('0050 keeps stored files as they were, publishes to one place only and reverses only before use', async () => {
+test('0051 keeps stored files as they were, publishes to one place only and reverses only before use', async () => {
   const dir = 'packages/db/migrations';
   const manifest = await readMigrationManifest(dir, FLUX_SCHEMA_VERSION);
-  const migration = manifest.find((entry) => entry.version === 50)!;
-  assert.equal(migration.name, '0050_thought_images.sql');
+  const migration = manifest.find((entry) => entry.version === 51)!;
+  assert.equal(migration.name, '0051_thought_images.sql');
   const name = `flux_thought_images_${randomUUID().replaceAll('-', '')}`;
   const admin = createDatabase(process.env.DATABASE_URL!).pool;
   const url = new URL(process.env.DATABASE_URL!);
@@ -24,7 +24,7 @@ test('0050 keeps stored files as they were, publishes to one place only and reve
     // Dropping the fixture database WITH (FORCE) can terminate a connection the pool is still closing; that late
     // notice concerns only this throwaway database, never an assertion below.
     history.on('error', () => undefined);
-    for (const file of manifest.filter((entry) => entry.version < 50)) await history.query(await readFile(join(dir, file.name), 'utf8'));
+    for (const file of manifest.filter((entry) => entry.version < 51)) await history.query(await readFile(join(dir, file.name), 'utf8'));
     const [ws, project, conversation, message, attached, staged] = Array.from({ length: 6 }, () => randomUUID());
     const user = 'thought-image-person';
     await history.query('INSERT INTO auth_users(id,name,email) VALUES($1,$2,$3)', [user, 'Historical uploader', 'thought-image@example.test']);
@@ -42,7 +42,7 @@ test('0050 keeps stored files as they were, publishes to one place only and reve
       created_at,ready_at,expires_at,message_id,position,published_at FROM project_files ORDER BY id`)).rows;
     const before = await snapshot();
     const forward = await readFile(join(dir, migration.name), 'utf8');
-    const reverse = await readFile(join(dir, 'reverse', '0050_thought_images.down.sql'), 'utf8');
+    const reverse = await readFile(join(dir, 'reverse', '0051_thought_images.down.sql'), 'utf8');
     await history.query(forward);
     assert.deepEqual(await snapshot(), before);
     assert.deepEqual((await history.query('SELECT thought_id FROM project_files')).rows, [{ thought_id: null }, { thought_id: null }]);
@@ -64,7 +64,7 @@ test('0050 keeps stored files as they were, publishes to one place only and reve
     await assert.rejects(history.query('UPDATE project_files SET thought_id = $1, published_at = now(), expires_at = NULL WHERE id = $2', [thought, second]), /project_files_thought_idx/);
 
     // After an image was placed on a thought, the reversal refuses and changes nothing.
-    await assert.rejects(history.query(reverse), /0050 reversal refused/);
+    await assert.rejects(history.query(reverse), /0051 reversal refused/);
     assert.equal((await history.query('SELECT thought_id FROM project_files WHERE id = $1', [staged])).rows[0].thought_id, thought);
   } finally {
     await history?.end();

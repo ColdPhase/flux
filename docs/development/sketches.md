@@ -26,9 +26,9 @@ placement is returned only to readers who can open the object now; for anyone el
 is `null`.
 
 A thought of a project sketch can also show an image (#252): a stored file of the
-project published to that thought (`project_files.thought_id`, migration 0050), returned
+project published to that thought (`project_files.thought_id`, migration 0051), returned
 as `file { id, name, size }`. The thought keeps its text as the caption. The
-[stored-files amendment](task-discussions.md#map-thought-images-252-migration-0050) has
+[stored-files amendment](task-discussions.md#map-thought-images-252-migration-0051) has
 the publication and access rules, and [paste on the map](../design/thought-drafts.md#paste-on-the-map-252)
 the draft lifecycle.
 

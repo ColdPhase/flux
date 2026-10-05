@@ -100,7 +100,7 @@ draft; nothing shared is written before Save, and Save uses the commands above.
   write before Save”). The draft then holds the staged file's ID, name and size
   and an editable caption, prefilled “Pasted image”. Save creates the thought
   with `fileId`, and the server publishes the file to it in the same transaction
-  (see the [stored-files amendment](../development/task-discussions.md#map-thought-images-252-migration-0050)).
+  (see the [stored-files amendment](../development/task-discussions.md#map-thought-images-252-migration-0051)).
   Cancel discards the draft; the staged file stays private and expires after
   7 days (there is deliberately no delete route). A failed upload creates no
   draft and says why. After a reload the draft still names the staged file and

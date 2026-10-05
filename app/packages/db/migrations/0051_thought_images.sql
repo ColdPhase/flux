@@ -1,6 +1,6 @@
 -- #252: a stored file can instead be published once as the image of one map thought
--- (docs/development/task-discussions.md, "Map thought images"). 0050 is the next free number:
--- 0046–0049 are reserved by open branches. Like a placement, `thought_id` has no foreign key:
+-- (docs/development/task-discussions.md, "Map thought images"). 0051 is the next free number:
+-- 0046–0050 are reserved by open branches. Like a placement, `thought_id` has no foreign key:
 -- removing the thought neither unpublishes nor deletes the file, and Undo restores the same thought.
 ALTER TABLE project_files ADD COLUMN thought_id uuid;
 

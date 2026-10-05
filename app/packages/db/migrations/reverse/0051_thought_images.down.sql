@@ -1,11 +1,11 @@
--- Guarded pre-use reversal of 0050 (#252). It is not applied by the migrator and never edits the schema ledger:
+-- Guarded pre-use reversal of 0051 (#252). It is not applied by the migrator and never edits the schema ledger:
 -- a reversal runner owns that. The previous schema cannot publish a file to a map thought, so this refuses
 -- (and changes nothing) once any image was placed on a thought. After real use, preserve the upgraded
 -- database and files volume, and recover from the paired pre-upgrade backup with the matching image.
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM project_files WHERE thought_id IS NOT NULL) THEN
-    RAISE EXCEPTION '0050 reversal refused: images placed on map thoughts exist' USING ERRCODE = 'restrict_violation';
+    RAISE EXCEPTION '0051 reversal refused: images placed on map thoughts exist' USING ERRCODE = 'restrict_violation';
   END IF;
 END $$;
 DROP INDEX project_files_expiry_idx;

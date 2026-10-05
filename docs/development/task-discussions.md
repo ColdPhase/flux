@@ -295,7 +295,7 @@ backup. Shared composer drafts and rendered UI acceptance remain the separate
 #136 integration; #152/#153 must compose real grant checks before agent file writes
 can be enabled. Real client and device evidence is still required for release.
 
-## Map thought images (#252, migration 0050)
+## Map thought images (#252, migration 0051)
 
 Recorded before implementation, 2026-10-05. A stored file can instead be
 published once as the image of one map thought. `fileId` on
@@ -319,5 +319,5 @@ any other reuse is `409 ATTACHMENT_ALREADY_PUBLISHED`, and a published thought
 image cannot be attached to a message. Project sketch thoughts carry
 `file { id, name, size }` when they have an image. Portable export format 1 leaves
 these images out (listed in its exclusions); full backups keep them.
-Migration 0050 takes the next number after the 0046–0049 numbers reserved by
+Migration 0051 takes the next number after the 0046–0050 numbers reserved by
 open branches.
