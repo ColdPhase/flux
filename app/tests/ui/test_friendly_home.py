@@ -515,7 +515,7 @@ class FriendlyHomeJourney(unittest.TestCase):
         for_you = page.get_by_role("region", name="For you", exact=True)
         decisions = for_you.get_by_role("list", name="Decisions waiting for you")
         row = decisions.get_by_role("link", name=re.compile(f"^Decide: {title}"))
-        expect(row).to_contain_text(PROJECT)
+        expect(row).to_contain_text(f"{PROJECT} · proposed, waiting for your decision")
         expect(row).to_have_attribute("href", f"/projects/{self.project['id']}?open=decision:{proposal['id']}")
         expect(for_you.locator(".home-sec__count")).to_have_attribute("aria-label", re.compile(r"^\d+ needs? you$"))
         expect(page.get_by_role("region", name="Your projects", exact=True).get_by_role("link", name=re.compile(f"^{PROJECT}"))).to_contain_text("A decision needs you")
