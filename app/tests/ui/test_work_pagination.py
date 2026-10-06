@@ -248,7 +248,9 @@ class WorkPaginationJourney(unittest.TestCase):
         task = api(owner, "POST", f"/api/v1/projects/{project}/work", {"title": "Check the wall socket before installation"}, 201)
         for phone in (False, True):
             page = self.page(phone=phone)
-            page.goto(f"/projects/{project}/tasks?view=list"); self.ready(page)
+            # On the phone the state line belongs to the project's Conversation (#266 PF-2).
+            if phone: page.goto(f"/projects/{project}")
+            else: page.goto(f"/projects/{project}/tasks?view=list"); self.ready(page)
             state = page.locator(".ws-state-row") if phone else page.get_by_label("Current state", exact=True)
             expect(state).to_contain_text("1 open task")
             expect(state).not_to_contain_text("No decisions or work yet")

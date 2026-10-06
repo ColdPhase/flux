@@ -45,7 +45,8 @@ or service-account key under that affirmation. Prefer a service-account key for
 unattended work; a personal key can stop when its creator leaves the Console
 organization, which pauses the rule and requires reconnection without fallback.
 Do not accept another member's key, a Claude consumer-plan session, a shared
-administrator key, or a silent fallback source.
+administrator key, or a silent fallback source. (Still true under [F-022](ai-modes.md), accepted 2026-10-05: unattended
+background rules use `server` connections only, never a `runtime` plan connection.)
 
 The rule is unavailable until that owner configures a key, sees the provider and
 data-disclosure notice, sets a period budget and a per-run ceiling, and explicitly

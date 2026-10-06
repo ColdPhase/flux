@@ -394,7 +394,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
           const hit = document.elementFromPoint(x, y);
           return { x, inside: x >= box.left && x <= box.right, hit: !!hit && (hit === el || el.contains(hit)), width: parseFloat(before.width) };
         }""")
-        self.assertEqual(bar["width"], 2, "the 2px accent bar")
+        self.assertEqual(bar["width"], 3, "the 3px accent bar (#266 PF-1)")
         self.assertTrue(bar["inside"], f"the bar lies inside the sidebar's scroll box: {bar}")
         self.assertTrue(bar["hit"], "the bar is painted, not clipped")
         # On a phone every sidebar control is a 44px target: +, Jump to, places and projects.

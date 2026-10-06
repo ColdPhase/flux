@@ -179,7 +179,8 @@ export function ProjectOverview({ messageId, selection, focusPeople = null, onBa
   return (
     <div className="details ov" data-overview-phase={read.objects.phase} data-overview-observed-at={read.page?.observedAt} data-overview-relations-phase={read.relations.phase} data-overview-relations-observed-at={read.links?.observedAt}>
       {messageMode ? <button type="button" className="details__back" onClick={onBack}><Icon name="chevron-left" size={14} />{conversation ? 'This conversation' : 'Project'}</button> : null}
-      <p className="details__eyebrow">{project.name}{conversation && !messageMode ? ' · Conversation' : ''}</p>
+      {/* The project's own overview is titled with its name, so its eyebrow says what this is (#266). */}
+      <p className="details__eyebrow">{!conversation && !messageMode ? 'Project overview' : <>{project.name}{conversation && !messageMode ? ' · Conversation' : ''}</>}</p>
       <h3 className="details__title">{title}</h3>
       {message ? <p className="details__lead ov-quote">{message.body.length > 280 ? `${message.body.slice(0, 279)}…` : message.body}</p> : null}
       <p className="ov-audience"><Icon name={project.visibility === 'workspace' ? 'people' : 'lock'} size={13} />{audienceLine(people, me.user.id, project.visibility === 'workspace')}</p>
