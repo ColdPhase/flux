@@ -255,6 +255,8 @@ class ConversationFirstJourney(unittest.TestCase):
         # The sidebar steps aside for as long as the thread is open, and the thread docks beside the stream.
         expect(app).to_have_attribute("data-side", "hidden")
         expect(page.locator("#thread")).to_have_class(re.compile(r"\bthread--docked\b"))
+        # Docked at once; the stream takes its width when the sidebar's slide has ended.
+        page.evaluate("() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => null)))")
         stream, thread = self.box(page.locator(".convo-split__stream")), self.box(page.locator("#thread"))
         self.assertGreaterEqual(stream["width"], 380, "the stream stays readable beside the thread")
         self.assertLessEqual(stream["x"] + stream["width"], thread["x"] + 1, "side by side, not covered")
