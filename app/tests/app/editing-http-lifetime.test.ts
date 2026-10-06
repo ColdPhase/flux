@@ -15,11 +15,13 @@ import { mapAuthority } from '../../apps/server/src/editing/map-authority.js';
 import { wikiAuthority } from '../../apps/server/src/editing/authority.js';
 import { editingHTTPLifetime } from '../../apps/server/src/editing/http-lifetime.js';
 import { apiEditingOutputBudget, EditingOutputBudget } from '../../apps/server/src/editing/output.js';
+import { diskFileStorage } from '../../apps/server/src/files/storage.js';
 import { Browser } from './support/http.js';
 import { expectStatus } from './support/people.js';
 import { connectionString, pool } from './support/db.js';
 
 const preparationBytes = 24 * 1024 * 1024;
+const filesDir = process.env.FLUX_TEST_FILES_DIR ?? '/data/files';
 function signal() {
   let resolve = () => {};
   const promise = new Promise<void>(done => { resolve = done; });
@@ -113,7 +115,7 @@ async function fixture(developmentEditing = true) {
   const identity = registerIdentity(app, { db: database.db, config, mailer: null });
   const backend = mapBackend(database, { beforeHandoff: () => beforeHandoff('map') }); const maps = mapAuthority(backend, apiEditingOutputBudget);
   const wiki = wikiAuthority(database, undefined, { beforeHandoff: () => beforeHandoff('wiki'), outputBudget: apiEditingOutputBudget });
-  await app.register(sketchRoutes, { db: database.db, sessions: identity, developmentEditing, liveBackend: () => backend });
+  await app.register(sketchRoutes, { db: database.db, sessions: identity, storage: await diskFileStorage(filesDir), developmentEditing, liveBackend: () => backend });
   await app.register(docRoutes, { db: database.db, sessions: identity });
   await app.register(editingRoutes, { sessions: identity, authority: wiki, maps, outputBudget: apiEditingOutputBudget });
   const base = await app.listen({ host: '127.0.0.1', port: 0 }); const browser = new Browser(base, origin);

@@ -79,9 +79,15 @@ class ThemeAccentsJourney(unittest.TestCase):
         # Wait for the authenticated shell loader; a missing desktop control is not a
         # narrow-layout signal while the route is still loading.
         page.locator(".app").wait_for(state="visible")
-        # The same account control lives in the responsive sidebar drawer.
+        # The same account control lives in the responsive sidebar drawer. There (#266 PF-5) the
+        # account row opens Settings, which holds the same appearance choices.
         if not page.locator(".me__btn").is_visible():
             page.get_by_role("button", name="Open navigation").click()
+            page.locator(".me__btn").click()
+            expect(page).to_have_url(re.compile(r"/settings$"))
+            settings = page.locator(".set")
+            expect(settings.get_by_role("radiogroup", name="Appearance")).to_be_visible()
+            return settings
         page.locator(".me__btn").click()
         pop = page.get_by_role("dialog", name="Account", exact=True)
         expect(pop).to_be_visible()
@@ -372,33 +378,30 @@ class ThemeAccentsJourney(unittest.TestCase):
                 page.add_style_tag(content=":root { --fs-xs:15px; --fs-sm:16.25px; --fs-md:17.5px; --fs-base:18.75px; --fs-lg:21.25px; --fs-xl:25px; --fs-2xl:30px; }")
                 expect(page.locator(".composer__box textarea").last).to_be_visible()
                 shot(page, f"accent-{theme.lower()}-{family.lower()}-phone-text-125-conversation")
-                self.account(page)
-                pop = page.get_by_role("dialog", name="Account", exact=True)
+                # On the phone the drawer's account row opens Settings (#266 PF-5): the same choices
+                # on a page that scrolls, so nothing is clipped at enlarged text or a short viewport.
+                settings = self.account(page)
                 for family_label in FAMILIES:
-                    expect(pop.get_by_role("radio", name=family_label, exact=True)).to_be_visible()
+                    expect(settings.get_by_role("radio", name=family_label, exact=True)).to_be_visible()
                 self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), PHONE["width"])
                 shot(page, f"accent-{theme.lower()}-{family.lower()}-phone-text-125-settings")
                 if family == "Mint":
                     page.set_viewport_size({"width": 390, "height": 500})
-                    pop.get_by_role("radio", name="Sky", exact=True).scroll_into_view_if_needed()
-                    expect(pop.get_by_role("radio", name="Sky", exact=True)).to_be_visible()
-                    rect = pop.bounding_box()
-                    self.assertGreaterEqual(rect["y"], 0, "account popover remains on the short viewport")
-                    self.assertLessEqual(rect["y"] + rect["height"], 500)
+                    sky = settings.get_by_role("radio", name="Sky", exact=True)
+                    sky.scroll_into_view_if_needed()
+                    expect(sky).to_be_in_viewport()
                     shot(page, f"accent-{theme.lower()}-{family.lower()}-phone-short-125-settings")
-                    sign_out = pop.get_by_role("button", name="Sign out", exact=True)
+                    sign_out = settings.get_by_role("button", name=re.compile("^Sign out"))
                     sign_out.scroll_into_view_if_needed()
-                    expect(sign_out).to_be_visible()
+                    expect(sign_out).to_be_in_viewport()
                     sign_out.focus()
                     expect(sign_out).to_be_focused()
-                    end = sign_out.bounding_box()
-                    self.assertGreaterEqual(end["y"], rect["y"])
-                    self.assertLessEqual(end["y"] + end["height"], rect["y"] + rect["height"])
-                    # Reverse order stays inside the menu: the background suggestions link (#124) precedes Sign out.
+                    self.assertGreaterEqual(min(sign_out.bounding_box()["height"], 56), 44, "a 44px target")
+                    # Reverse order reaches the AI rows before Sign out.
                     page.keyboard.press("Shift+Tab")
-                    expect(pop.get_by_role("link", name="Your background suggestions", exact=True)).to_be_focused()
+                    expect(settings.get_by_role("link", name=re.compile("^Background suggestions"))).to_be_focused()
                     page.keyboard.press("Shift+Tab")
-                    expect(pop.get_by_role("link", name="Your assistant", exact=True)).to_be_focused()
+                    expect(settings.get_by_role("link", name=re.compile("^Agent connections"))).to_be_focused()
 
     def test_05_error_text_all_six(self):
         for theme in ("Light", "Dark"):

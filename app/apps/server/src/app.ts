@@ -19,6 +19,7 @@ import { conversationRoutes } from './conversation/routes.js';
 import { diskFileStorage } from './files/storage.js';
 import { fileRoutes } from './files/routes.js';
 import { workRoutes } from './work/routes.js';
+import { workReadRoutes } from './work-read/routes.js';
 import { liveRoutes } from './live/routes.js';
 import { liveAccess } from './live/access.js';
 import { liveSessionStore } from './live/store.js';
@@ -42,6 +43,8 @@ import { searchRoutes } from './search/routes.js';
 import { personalRunRoutes } from './personal-runs/routes.js';
 import { personalRunServerComposition } from './personal-runs/composition.js';
 import { exportRoutes } from './export/routes.js';
+import { typingRoutes } from './typing/routes.js';
+import { typingTaskDiscussion } from './typing/tasks.js';
 import { githubRoutes } from './github/routes.js';
 import { loadGithubConfig } from './github/config.js';
 import type { ServerConfig } from './config.js';
@@ -50,6 +53,8 @@ import { registerHealth } from './health/routes.js';
 import { useDomainErrors } from './http/errors.js';
 import { registerUpgradeDispatcher } from './http/upgrades.js';
 import { registerEditing } from './editing/composition.js';
+import { useJsonCompression } from './http/compress.js';
+import { useFramingProtection } from './http/framing.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -72,6 +77,9 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   const app = Fastify({ logger: true, trustProxy: identityConfig.trustedProxies.length ? identityConfig.trustedProxies : false });
   // Domain errors and missing sessions are mapped once, here; route plugins inherit it (#85).
   useDomainErrors(app);
+  useJsonCompression(app);
+  // Every response refuses framing, the OAuth consent page included (#287).
+  useFramingProtection(app);
   const { pool, db } = registerDatabase(app, connectionString);
   const migrationManifest = await readMigrationManifest(migrationsDir, FLUX_SCHEMA_VERSION);
   assertExactMigrationLedger(migrationManifest, await readAppliedMigrationVersions(pool));
@@ -86,7 +94,8 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await app.register(accessRoutes, { db, sessions: identity, boss, liveRevocation });
   // Live map/wiki editing (#228) is composed below, after media; native map routes reach its backend lazily.
   let editing: Awaited<ReturnType<typeof registerEditing>> = null;
-  await app.register(sketchRoutes, { db, sessions: identity, developmentEditing: config.developmentLiveEditing, liveBackend: () => editing?.mapsBackend ?? null });
+  const fileStorage = await diskFileStorage(filesDir);
+  await app.register(sketchRoutes, { db, sessions: identity, storage: fileStorage, developmentEditing: config.developmentLiveEditing, liveBackend: () => editing?.mapsBackend ?? null });
   await app.register(dmRoutes, { db, sessions: identity });
   await app.register(pushRoutes, { db, sessions: identity, config: pushConfig });
   if (pushConfig.status === 'unavailable') app.log.warn(pushConfig.reason);
@@ -95,10 +104,11 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   const streamUpgrades = new EventEmitter();
   await app.register(websocket, { options: { maxPayload: 1024, server: streamUpgrades as unknown as Server } });
   await app.register(streamRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, connectionString, heartbeatMs: config.heartbeatMs, cursorSecret: identityConfig.secret, exposeWork });
-  const fileStorage = await diskFileStorage(filesDir);
+  await app.register(typingRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, connectionString, tasks: typingTaskDiscussion(db) });
   await app.register(fileRoutes, { db, sessions: identity, storage: fileStorage });
   await app.register(conversationRoutes, { db, sessions: identity, storage: fileStorage });
   await app.register(workRoutes, { db, sessions: identity, storage: fileStorage });
+  await app.register(workReadRoutes, { db, sessions: identity });
   await app.register(githubRoutes, { db, sessions: identity, config: loadGithubConfig(env, identityConfig.publicOrigin) });
   // Configuration alone does not prove the SFU, DNS/TLS or receiver path is healthy.
   app.get('/api/v1/live-sessions/capabilities', async () => ({ status: liveMedia ? 'configured' : 'unavailable' }));
@@ -192,9 +202,11 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await app.register(exportRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, storage: fileStorage });
 
   registerHealth(app, { pool, boss, manifest: migrationManifest, filesDir });
-  registerFixtureRoutes(app, { config: config.fixture, db, boss });
+  registerFixtureRoutes(app, { config: config.fixture, db, boss, publicOrigin: identityConfig.publicOrigin });
 
-  await fastifyStatic(app, { root: join(process.cwd(), 'apps/web/dist'), prefix: '/', cacheControl: false, setHeaders: setStaticHeaders });
+  // The build writes .br/.gz copies of the app's text files (#266 item 9); a client that accepts
+  // them gets the smaller copy, everyone else the original.
+  await fastifyStatic(app, { root: join(process.cwd(), 'apps/web/dist'), prefix: '/', cacheControl: false, setHeaders: setStaticHeaders, preCompressed: true });
   app.setNotFoundHandler(async (request, reply) => {
     if (request.url.startsWith('/api/')) return reply.code(404).send({ error: 'Not Found' });
     if (!request.headers.accept?.includes('text/html')) return reply.code(404).send({ error: 'Not Found' });

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import { test } from 'node:test';
+import { oauthClientIdHost, oauthRedirectTarget } from '@flux/core';
 import { oauthFingerprint, oauthFlow, verifiedOauthQuery } from '../../apps/server/src/identity/oauth-query.js';
 import { createOauthRequests, oauthRequestContext } from '../../apps/server/src/identity/oauth-flow.js';
 
@@ -35,6 +36,7 @@ test('flow fingerprints bind every semantic parameter and omit only the pinned p
     assert.equal(await verifiedOauthQuery(`${signed(original)}&${encodeURIComponent(key)}=substituted`, secret), null, key);
   }
   assert.equal(oauthFlow(original, resource)?.fingerprint, fingerprint);
+  assert.equal(oauthFlow(original, resource)?.redirectUri, 'https://client.example/callback', 'consent shows where access goes (#287)');
   const verified = await verifiedOauthQuery(signed(original), secret); assert.ok(verified);
   assert.equal(oauthFlow(verified, resource)?.fingerprint, fingerprint);
 });
@@ -53,6 +55,10 @@ test('expired, duplicated and unsupported signed authorization requests fail clo
     const unsupported = query(); unsupported.set(key, value);
     assert.equal(oauthFlow(unsupported, resource), null, key);
   }
+  for (const key of ['client_id', 'redirect_uri']) {
+    const missing = query(); missing.delete(key);
+    assert.equal(oauthFlow(missing, resource), null, `without ${key}`);
+  }
   await assert.rejects(oauthRequestContext(new URL('https://flux.example/api/auth/oauth2/continue'),
     'oauth_query=one&oauth_query=two', secret, resource));
 });
@@ -67,4 +73,25 @@ test('OAuth callback context is isolated across concurrent requests and auth ins
     await Promise.resolve(); assert.equal(requests.getStore(), context); assert.equal(other.getStore(), undefined);
   })));
   assert.equal(requests.getStore(), undefined);
+});
+
+test('consent names where access goes: loopback, web host, app link and the metadata-document client host (#287)', () => {
+  for (const [uri, expected] of [
+    ['http://127.0.0.1:19737/callback', { kind: 'loopback', host: '127.0.0.1:19737' }],
+    ['http://[::1]:8123/cb', { kind: 'loopback', host: '[::1]:8123' }],
+    ['http://LOCALHOST:33418/callback', { kind: 'loopback', host: 'localhost:33418' }],
+    ['https://localhost/callback', { kind: 'loopback', host: 'localhost' }],
+    ['https://collector.example.net/oauth/callback', { kind: 'web', host: 'collector.example.net' }],
+    ['http://127.0.0.1.collector.example.net:8080/cb', { kind: 'web', host: '127.0.0.1.collector.example.net:8080' }],
+    ['http://localhost.collector.example.net/cb', { kind: 'web', host: 'localhost.collector.example.net' }],
+    ['http://10.0.0.7:9000/cb', { kind: 'web', host: '10.0.0.7:9000' }],
+    // A look-alike internationalised name is shown in its unambiguous ASCII form.
+    ['https://cläude.example/cb', { kind: 'web', host: 'xn--clude-hra.example' }],
+    ['com.example.agent:/oauth/callback', { kind: 'app', host: 'com.example.agent:/oauth/callback' }],
+    ['not a url', { kind: 'app', host: 'not a url' }],
+  ] as const) assert.deepEqual(oauthRedirectTarget(uri), expected, uri);
+  assert.equal(oauthClientIdHost('https://agent-tools.example.org/oauth/client.json'), 'agent-tools.example.org');
+  assert.equal(oauthClientIdHost('https://agent-tools.example.org:8443/client.json'), 'agent-tools.example.org:8443');
+  for (const clientId of ['flux-fixture-1', 'http://agent-tools.example.org/client.json', 'urn:example:client', ''])
+    assert.equal(oauthClientIdHost(clientId), null, clientId);
 });

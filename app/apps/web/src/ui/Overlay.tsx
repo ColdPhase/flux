@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { duration, play } from './motion';
 
@@ -13,7 +13,12 @@ let inertCount = 0;
 function setAppInert(on: boolean) {
   const root = document.getElementById('root');
   inertCount = Math.max(0, inertCount + (on ? 1 : -1));
-  if (root) root.inert = inertCount > 0;
+  if (!root) return;
+  root.inert = inertCount > 0;
+  // Chromium can keep an animated element's inert style after the root leaves inert: on a phone the
+  // work pane stayed untappable after Details closed, from its next view slide on (#151). A changed
+  // inherited custom property makes every element below the root compute its style again.
+  root.style.setProperty('--app-inert', inertCount > 0 ? '1' : '0');
 }
 
 /** Keeps a component mounted while its exit animation runs. */
@@ -61,6 +66,75 @@ const offstage: Record<OverlayPlacement, string> = {
 };
 
 /**
+ * Touch dismissal (#266 PF-4): the drawer follows a finger dragging it back to the left and the
+ * phone sheet follows a drag down from its header. Released past a third of the way, or with a
+ * flick, it closes from where it is; otherwise it settles back. Mouse input and keyboard keep
+ * their own paths (scrim, close button, Esc), and vertical scrolling inside the drawer is untouched.
+ */
+function useDismissDrag(placement: OverlayPlacement, surfaceRef: RefObject<HTMLDivElement | null>, scrimRef: RefObject<HTMLDivElement | null>, close: () => void) {
+  const state = useRef<{ id: number; x: number; y: number; t: number; moving: boolean; prev: number; prevT: number; last: number; lastT: number } | null>(null);
+  if (placement !== 'left' && placement !== 'bottom') return {};
+  const axis = placement === 'left' ? 'x' : 'y';
+  const sign = placement === 'left' ? -1 : 1;
+  const size = () => { const r = surfaceRef.current?.getBoundingClientRect(); return (axis === 'x' ? r?.width : r?.height) || 1; };
+  const apply = (offset: number) => {
+    const surface = surfaceRef.current;
+    if (!surface) return;
+    surface.style.transform = axis === 'x' ? `translateX(${offset}px)` : `translateY(${offset}px)`;
+    if (scrimRef.current) scrimRef.current.style.opacity = String(Math.max(0, 1 - Math.abs(offset) / size()));
+  };
+  const settle = () => {
+    const surface = surfaceRef.current;
+    const scrim = scrimRef.current;
+    const from = surface?.style.transform || 'none';
+    void play(surface, [{ transform: from }, { transform: 'none' }], duration('--dur-2'), '--ease-out').then(() => { if (surface) surface.style.transform = ''; });
+    if (scrim) { void play(scrim, [{ opacity: scrim.style.opacity || '1' }, { opacity: 1 }], duration('--dur-2'), '--ease-out').then(() => { scrim.style.opacity = ''; }); }
+    if (!duration('--dur-2')) { if (surface) surface.style.transform = ''; if (scrim) scrim.style.opacity = ''; }
+  };
+  return {
+    onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+      if (event.pointerType === 'mouse' || !event.isPrimary) return;
+      // The sheet drags only from its header, so its body keeps scrolling normally.
+      if (placement === 'bottom' && !(event.target as HTMLElement).closest('.ui-panel__head')) return;
+      if ((event.target as HTMLElement).closest('input, textarea, select, [contenteditable="true"]')) return;
+      state.current = { id: event.pointerId, x: event.clientX, y: event.clientY, t: event.timeStamp, moving: false, prev: 0, prevT: event.timeStamp, last: 0, lastT: event.timeStamp };
+    },
+    onPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+      const drag = state.current;
+      if (!drag || drag.id !== event.pointerId) return;
+      const dx = event.clientX - drag.x;
+      const dy = event.clientY - drag.y;
+      const along = axis === 'x' ? dx : dy;
+      const across = axis === 'x' ? dy : dx;
+      if (!drag.moving) {
+        if (Math.abs(along) < 8) return;
+        if (Math.abs(across) > Math.abs(along) || Math.sign(along) !== sign) { state.current = null; return; }
+        drag.moving = true;
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }
+      // Toward the edge it follows the finger; the other way it resists.
+      drag.prev = drag.last; drag.prevT = drag.lastT; drag.last = along; drag.lastT = event.timeStamp;
+      apply(Math.sign(along) === sign ? along : along / 6);
+    },
+    onPointerUp(event: ReactPointerEvent<HTMLDivElement>) {
+      const drag = state.current;
+      state.current = null;
+      if (!drag || drag.id !== event.pointerId || !drag.moving) return;
+      const along = axis === 'x' ? event.clientX - drag.x : event.clientY - drag.y;
+      // A flick is judged by the finger's speed as it lets go, not averaged from the start.
+      const velocity = (along - drag.prev) / Math.max(1, event.timeStamp - drag.prevT);
+      if (Math.sign(along) === sign && (Math.abs(along) > size() / 3 || velocity * sign > 0.5)) close();
+      else settle();
+    },
+    onPointerCancel() {
+      const drag = state.current;
+      state.current = null;
+      if (drag?.moving) settle();
+    },
+  };
+}
+
+/**
  * Modal surface in a portal: scrim, focus moved in and trapped, Esc and scrim close,
  * the rest of the app inert, focus returned to the opener. Slides from its edge.
  */
@@ -83,7 +157,8 @@ export function Overlay({ open, onClose, placement, label, labelledBy, initialFo
     // A reopen during the exit animation starts from a clean slate.
     for (const el of [surface, scrim]) el?.getAnimations().forEach((animation) => animation.cancel());
     setAppInert(true);
-    const ms = duration('--dur-3');
+    // Full-screen phone sheets travel further, so they take the longer token (#266 PF-4).
+    const ms = duration(placement === 'bottom' ? '--dur-4' : '--dur-3');
     void play(scrim, [{ opacity: 0 }, { opacity: 1 }], ms, '--ease-out', { fill: 'backwards' });
     void play(surface, [{ transform: offstage[placement] }, { transform: 'none' }], ms, '--ease-sheet', { fill: 'backwards' });
     (initialFocus?.current ?? surface)?.focus({ preventScroll: true });
@@ -93,12 +168,21 @@ export function Overlay({ open, onClose, placement, label, labelledBy, initialFo
       returnRef.current = null;
       if (target?.isConnected) target.focus({ preventScroll: true });
       const ms2 = placement === 'bottom' ? duration('--dur-3') * 0.85 : duration('--dur-2');
-      void play(scrim, [{ opacity: 1 }, { opacity: 0 }], ms2, '--ease-in', { fill: 'forwards' });
-      void play(surface, [{ transform: 'none' }, { transform: offstage[placement] }], ms2, '--ease-in', { fill: 'forwards' }).then(() => { if (!openRef.current) unmount(); });
+      // A drag that closed the surface continues from where the finger let go (#266 PF-4).
+      const from = surface?.style.transform || 'none';
+      const scrimFrom = scrim?.style.opacity || '1';
+      void play(scrim, [{ opacity: scrimFrom }, { opacity: 0 }], ms2, '--ease-in', { fill: 'forwards' });
+      void play(surface, [{ transform: from }, { transform: offstage[placement] }], ms2, from === 'none' ? '--ease-in' : '--ease-out', { fill: 'forwards' }).then(() => {
+        if (surface) surface.style.transform = '';
+        if (scrim) scrim.style.opacity = '';
+        if (!openRef.current) unmount();
+      });
     };
     // unmount/initialFocus are stable for the lifetime of one open overlay.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, mounted, placement]);
+
+  const drag = useDismissDrag(placement, surfaceRef, scrimRef, () => onCloseRef.current());
 
   if (!mounted) return null;
 
@@ -121,6 +205,7 @@ export function Overlay({ open, onClose, placement, label, labelledBy, initialFo
         tabIndex={-1}
         onKeyDown={onKeyDown}
         inert={!open}
+        {...drag}
       >
         {children}
       </div>

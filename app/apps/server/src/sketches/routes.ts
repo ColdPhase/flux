@@ -12,7 +12,7 @@ import {
   type UpdateSketchCommand,
   type UpdateThoughtCommand,
 } from '@flux/contracts';
-import { DomainError,ServiceUnavailableError,derivedUuid, requestHash, type Database, type Principal, type ResourceRef,type LiveMapBackend } from '@flux/core';
+import { DomainError,ServiceUnavailableError,derivedUuid, requestHash, type Database, type FileStorage, type Principal, type ResourceRef,type LiveMapBackend } from '@flux/core';
 import type { SessionContext, SessionResolver } from '../identity/index.js';
 import { bodyId, commandRunner, expectedVersion, requires, useDomainErrors, versionEtag } from '../http/commands.js';
 import { sketchUseCases } from './adapters.js';
@@ -26,6 +26,8 @@ import type { CommandSpec } from '../http/commands.js';
 export interface SketchRouteOptions {
   db: Database;
   sessions: SessionResolver;
+  /** The files volume: a new thought may take the caller's staged image (#252). */
+  storage: FileStorage;
   developmentEditing?:boolean;liveBackend?:()=>LiveMapBackend|null;
 }
 
@@ -44,7 +46,7 @@ const routeUrl=(request:FastifyRequest)=>{const url=request.routeOptions.url;if(
  * `Idempotency-Key`; renaming, editing, moving and removing thoughts need their version
  * (`If-Match` or `expectedVersion`; batch moves carry one per thought).
  */
-export async function sketchRoutes(app: FastifyInstance, { db, sessions,developmentEditing=false,liveBackend }: SketchRouteOptions) {
+export async function sketchRoutes(app: FastifyInstance, { db, sessions, storage,developmentEditing=false,liveBackend }: SketchRouteOptions) {
   useDomainErrors(app);
   const domainErrors=app.errorHandler;
   app.setErrorHandler(function(error,request,reply) {
@@ -97,7 +99,7 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions,developm
     const key=request.headers['idempotency-key'];const original=typeof key==='string'?key:null;
     const url=routeUrl(request);
     const uuid=original&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(original)?original.toLowerCase():original?derivedUuid('flux.map.legacy-key.v1',actor.kind,actor.id,request.method,url,original):undefined;
-    return sketchUseCases(conn,{context:{params:request.params,body:request.body,query:request.query,headers:request.headers,session},prepared:developmentEditing,resourceId:(request.params as {sketchId?:string}).sketchId,principal:actor,sessionId:session.sessionId,commandId:uuid,retainUntil:(release)=>{const lifetime=lifetimes.get(reply);if(!lifetime)throw new Error('Native HTTP work has no response owner');lifetime.retain(release);},
+    return sketchUseCases(conn,storage,{context:{params:request.params,body:request.body,query:request.query,headers:request.headers,session},prepared:developmentEditing,resourceId:(request.params as {sketchId?:string}).sketchId,principal:actor,sessionId:session.sessionId,commandId:uuid,retainUntil:(release)=>{const lifetime=lifetimes.get(reply);if(!lifetime)throw new Error('Native HTTP work has no response owner');lifetime.retain(release);},
       operation:`native:${request.method} ${url}`,fingerprint:requestHash({params:request.params,body:request.body??null,query:request.query,ifMatch:request.headers['if-match']??null})});
   }
   const sketchScope = (sketchId: string): ResourceRef => ({ type: 'sketch', id: sketchId });
@@ -145,7 +147,7 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions,developm
           id, text: { type: 'string', maxLength: 2000 }, x: number, y: number, width: number, height: number, shape,
           placement: { type: 'object', required: ['type', 'id'], additionalProperties: false, properties: { type: { type: 'string', enum: ['draft'] }, id } },
           linkFrom: { type: 'object', required: ['thoughtId'], additionalProperties: false, properties: { thoughtId: id, label, linkId: id } },
-          sourceMessageId: id,
+          sourceMessageId: id, fileId: id,
         },
       },
     },

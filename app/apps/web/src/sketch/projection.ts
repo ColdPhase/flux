@@ -1,4 +1,4 @@
-import { DEFAULT_THOUGHT_SIZE, type LiveMapPosition, type SketchDetail, type Thought, type ThoughtShape } from '@flux/contracts';
+import { DEFAULT_THOUGHT_SIZE, type LiveMapPosition, type SketchDetail, type Thought, type ThoughtFile, type ThoughtShape } from '@flux/contracts';
 
 export interface NewThought {
   id: string;
@@ -11,6 +11,8 @@ export interface NewThought {
   placement?: { type: 'draft'; id: string; title: string | null } | null;
   /** The message it came from (#96); only a message of the sketch's own DM is restored on the server. */
   source?: Thought['source'];
+  /** Its image (#252): a staged file on first save, or the same published file when Undo restores the thought. */
+  file?: ThoughtFile;
 }
 
 export type Op =
@@ -29,7 +31,8 @@ function localThought(me: Me, sketchId: string, input: NewThought): Thought {
   return {
     id: input.id, sketchId, text: input.text, x: input.x, y: input.y, width: input.width ?? DEFAULT_THOUGHT_SIZE.width,
     height: input.height ?? DEFAULT_THOUGHT_SIZE.height, shape: input.shape ?? 'card', placement: input.placement ?? null,
-    source: input.source ?? null, createdBy: { kind: 'human', id: me.id, name: me.name }, version: 0, createdAt: now, updatedAt: now,
+    source: input.source ?? null, ...(input.file ? { file: input.file } : {}),
+    createdBy: { kind: 'human', id: me.id, name: me.name }, version: 0, createdAt: now, updatedAt: now,
   };
 }
 

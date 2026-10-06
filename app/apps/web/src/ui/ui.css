@@ -112,22 +112,59 @@ svg { flex: none; }
 /* ---------- Tabs (view switcher) ---------- */
 .ui-tabs { position: relative; min-width: 0; }
 .ui-tabs__bar { position: relative; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
-/* Studio 11.6 project tabs: plain labels 27px apart with a short accent mark under the current one. */
 .ui-tabs__bar::-webkit-scrollbar { display: none; }
 .ui-tabs__tab {
   position: relative; display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 0 8px;
   border-radius: var(--r-sm); font-size: var(--fs-md); font-weight: 500; color: var(--text-3); white-space: nowrap; text-decoration: none;
   transition: var(--tr);
 }
+/* Hover previews the mark in a neutral tone; the current tab's own mark is the sliding indicator. */
+.ui-tabs__tab::after {
+  content: ""; position: absolute; left: var(--tab-pad, 8px); right: var(--tab-pad, 8px); bottom: 0; height: 2px; border-radius: 2px;
+  background: var(--line-strong); opacity: 0; transform: scaleX(.6); transition: opacity var(--dur-1) ease, transform var(--dur-2) var(--ease-out);
+}
 .ui-tabs__tab:hover { color: var(--text); }
-.ui-tabs__tab[aria-current="page"], .ui-tabs__tab[aria-selected="true"] { color: var(--text); }
+.ui-tabs__tab:hover:not([aria-current="page"], [aria-selected="true"])::after { opacity: 1; transform: none; }
+.ui-tabs__tab[aria-current="page"], .ui-tabs__tab[aria-selected="true"] { color: var(--text); font-weight: 650; }
 .ui-tabs__tab:focus-visible { outline-offset: -4px; }
+/* The label keeps the width of its bold form, so selecting a tab never nudges the others. */
+.ui-tabs__label { display: inline-flex; flex-direction: column; }
+.ui-tabs__label::after { content: attr(data-text); height: 0; overflow: hidden; visibility: hidden; font-weight: 650; pointer-events: none; user-select: none; }
 .ui-tabs__count { font-size: var(--fs-xs); color: var(--text-3); font-variant-numeric: tabular-nums; }
 .ui-tabs__indicator {
   position: absolute; left: 0; bottom: 0; width: 1px; height: 2px; border-radius: 1px; background: var(--accent);
-  transform-origin: 0 0; pointer-events: none; opacity: 0; transition: transform var(--dur-2) var(--ease-out);
+  transform-origin: 0 0; pointer-events: none; opacity: 0; transition: transform var(--dur-3) var(--ease-glide), opacity var(--dur-1) ease;
 }
-@media (pointer: coarse) { .ui-tabs__tab { min-height: 44px; padding: 0 12px; } }
+@media (pointer: coarse) { .ui-tabs__tab { min-height: 44px; padding: 0 12px; --tab-pad: 12px; } }
+
+/* ---------- Bottom view bar (phone, #266 PF-1) ---------- */
+.ui-bottomnav {
+  display: flex; flex: none; position: relative; z-index: 2;
+  padding: 4px 4px max(4px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--bg);
+  transition: transform var(--dur-3) var(--ease-sheet), opacity var(--dur-2) ease;
+}
+.ui-bottomnav__item {
+  /* Equal shares, but never narrower than the label: "Conversation" takes what Map and Wiki don't need. */
+  flex: 1 1 0; min-width: max-content;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 52px; padding: 4px 0;
+  border-radius: var(--r-lg); color: var(--text-3); text-decoration: none; font-size: 11px; line-height: 1.2; font-weight: 500;
+  -webkit-tap-highlight-color: transparent; transition: color var(--dur-1) ease;
+}
+.ui-bottomnav__item:focus-visible { outline-offset: -3px; }
+.ui-bottomnav__pill { position: relative; display: grid; place-items: center; width: 56px; height: 30px; border-radius: var(--r-pill); }
+.ui-bottomnav__pill::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--accent-soft);
+  opacity: 0; transform: scaleX(.45); transition: transform var(--dur-3) var(--ease-glide), opacity var(--dur-2) ease;
+}
+.ui-bottomnav__pill { isolation: isolate; }
+.ui-bottomnav__pill svg { transition: transform var(--dur-3) var(--ease-glide); }
+.ui-bottomnav__label { white-space: nowrap; letter-spacing: -.05px; }
+@media (max-width: 340px) { .ui-bottomnav__item { font-size: 10.5px; } .ui-bottomnav__pill { width: 52px; } }
+.ui-bottomnav__item:is([aria-current="page"], [data-pending]) { color: var(--accent-selected-text); font-weight: 650; }
+.ui-bottomnav__item:is([aria-current="page"], [data-pending]) .ui-bottomnav__pill::before { opacity: 1; transform: none; }
+.ui-bottomnav__dot { position: absolute; top: 3px; right: 14px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--bg); }
+.ui-bottomnav__item:active .ui-bottomnav__pill svg { transform: scale(.9); transition-duration: var(--dur-1); }
+@media (hover: hover) { .ui-bottomnav__item:hover:not([aria-current="page"]) { color: var(--text); } }
 
 /* ---------- Overlays: scrim, drawer, sheet, overlay panel ---------- */
 .ui-overlay { position: fixed; inset: 0; z-index: var(--z-overlay); pointer-events: none; }
@@ -141,6 +178,14 @@ svg { flex: none; }
 .ui-overlay--right .ui-overlay__surface { right: 0; top: 0; bottom: 0; width: min(420px, 100%); }
 .ui-overlay--bottom .ui-overlay__surface { inset: 0; box-shadow: none; }
 .ui-drawer { background: var(--bg-side); }
+/* Horizontal drags inside the drawer (its scroll box included) reach the dismiss gesture; vertical ones scroll. */
+.ui-drawer, .ui-drawer * { touch-action: pan-y pinch-zoom; }
+/* The phone sheet's header is its handle: a grabber shows it can be pulled down to close (#266 PF-4). */
+.ui-sheet .ui-panel__head { position: relative; touch-action: none; }
+.ui-sheet .ui-panel__head::before {
+  content: ""; position: absolute; left: 50%; top: calc(env(safe-area-inset-top) + 6px); width: 36px; height: 4px; margin-left: -18px;
+  border-radius: 2px; background: var(--line-strong);
+}
 @media (max-width: 640px) { .ui-overlay--left .ui-overlay__surface { width: 100%; } }
 
 /* ---------- Side panel ---------- */
@@ -199,6 +244,9 @@ svg { flex: none; }
 .ui-avatar--lg { width: 36px; height: 36px; font-size: 13px; }
 .ui-avatar--me { background: var(--text); color: var(--bg); }
 
+/* A looping mark pauses while hidden, off screen or under a modal (#155, motion.ts useLoopPause). */
+[data-motion-paused], [data-motion-paused] *, [data-motion-paused]::before, [data-motion-paused]::after,
+[data-motion-paused] *::before, [data-motion-paused] *::after { animation-play-state: paused !important; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0s !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; transition-delay: 0s !important; scroll-behavior: auto !important; }
 }
@@ -207,3 +255,11 @@ svg { flex: none; }
   left: 50%; top: 12vh; translate: -50% 0; width: min(640px, calc(100% - 32px)); max-height: 76vh;
   border-radius: var(--r-lg); overflow: hidden;
 }
+
+/* ---------- Touch: no zoom on focus, no double-tap delay (#264, #266 PF-3) ----------
+   iOS Safari zooms into a focused field under 16px and does not zoom back, so every editable control is
+   at least 16px on a coarse pointer. Controls answer a tap at once; pinch-zoom stays available. */
+@media (pointer: coarse) {
+  :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]), textarea, select, [contenteditable="true"]) { font-size: max(16px, 1em) !important; }
+}
+:is(a, button, [role="button"], [role="tab"], [role="radio"], [role="menuitem"], [role="option"], label, summary, input, select, textarea) { touch-action: manipulation; }

@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, Navigate, useLocation, useParams, useRevalidator } from 'react-router';
-import { DEFAULT_THOUGHT_SIZE, THOUGHT_SHAPES, type SketchDetail } from '@flux/contracts';
+import { DEFAULT_THOUGHT_SIZE, imageTypeOf, SKETCH_LIMITS, THOUGHT_SHAPES, type SketchDetail } from '@flux/contracts';
 import { Button, EmptyState, Icon, MEDIA, Spinner, useMediaQuery } from '../ui';
 import { getProject } from '../api/sketches';
+import { ApiError, NetworkError } from '../api/client';
+import { stageFile } from '../composer/api';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
 import { createWork } from '../work/api';
-import { useProjectShell } from '../project/data';
 import { useSketchDoc, type Op } from './doc';
 import { useLiveSketchDoc, type LiveSketchDoc } from './live-doc';
 import { useEditingCapability } from '../editing/capability';
@@ -16,9 +17,10 @@ import { freeSpot, rectOf } from './geometry';
 import { SketchList } from './SketchList';
 import { SketchMap } from './SketchMap';
 import { useOutline } from './useOutline';
-import { useThoughtDraft } from './createdDraft';
-import { DraftCapture } from './DraftCapture';
-import { tasksByThought } from './ThoughtTasks';
+import { useThoughtDraft, type DraftLine, type ThoughtDraft } from './createdDraft';
+import { DraftCapture, draftReady } from './DraftCapture';
+import { clipboardFile, IMAGE_CAPTION, IMAGE_THOUGHT_SIZE, imageRefusal, linkOf, pastedImageName, pastedText } from './paste';
+import { useThoughtTasks } from './ThoughtTasks';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import './sketch.css';
 import '../editing/editing.css';
@@ -40,6 +42,21 @@ const MODE_KEY = 'flux.sketch.mode';
 function storedMode(): Mode {
   try { return localStorage.getItem(MODE_KEY) === 'list' ? 'list' : 'map'; } catch { return 'map'; }
 }
+
+/** Why a pasted image could not be staged, in words; nothing was drafted or shared. */
+function uploadProblem(error: unknown) {
+  if (error instanceof ApiError) {
+    if (error.status === 403 || error.status === 404) return 'You can no longer add to this map, so the image was not uploaded.';
+    if (error.status === 413) return 'That image is larger than 5 MB, so it was not uploaded.';
+    if (error.code === 'UPLOAD_QUOTA_EXCEEDED') return 'Too many of your uploads are waiting in this project; unused ones expire after 7 days. Nothing was pasted.';
+  }
+  if (error instanceof NetworkError) return 'Flux could not be reached, so the image was not uploaded. Paste it again.';
+  return 'The image could not be uploaded, so nothing was pasted. Paste it again.';
+}
+
+const VIEW_ONLY = 'You can look at this map but not add to it.';
+/** A new single-thought draft with nothing in it yet: a paste may fill it. */
+const emptyDraft = (draft: ThoughtDraft) => !draft.lines && !draft.file && !draft.text.trim();
 
 /** The project's name for the audience line, when the sketch belongs to one. */
 function useProjectName(projectId: string | null | undefined) {
@@ -96,6 +113,9 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
   const capture = useThoughtDraft(me.user.id, sketchId, sketch);
   const [savingDraft, setSavingDraft] = useState(false);
   const draftSaveInFlight = useRef(false);
+  // #252: a pasted image is staged privately before its draft exists; nothing else starts meanwhile.
+  const [uploading, setUploading] = useState(false);
+  const uploadingRef = useRef(false);
   const coarse = useMediaQuery('(pointer: coarse)');
   const phone = useMediaQuery(MEDIA.phone);
   const [mode, setModeState] = useState<Mode>(storedMode);
@@ -125,21 +145,30 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
   const projectName = useProjectName(sketch?.projectId);
   const canWrite = sketch?.access === 'write' && !!doc.liveCanWrite;
 
-  // UI116-4: each thought of a project sketch shows how many of the project's tasks link to it.
-  // The tasks are the project's own (loaded once for all its views) and refresh when its work
-  // or links change; a private or DM sketch has no linkable thoughts.
-  const shell = useProjectShell();
+  // UI116-4: each thought of a project sketch shows how many of the project's tasks link to it,
+  // from bounded reads of the sketch's own thoughts (#170), never the project's work collection.
+  // They refresh when the project's work or links change, on focus and after Create work; a
+  // private or DM sketch has no linkable thoughts.
   const taskProjectId = sketch?.scope === 'project' ? sketch.projectId ?? null : null;
-  const projectWork = shell && taskProjectId && shell.project.id === taskProjectId ? shell.work.work : null;
-  const tasks = useMemo(() => tasksByThought(projectWork ?? []), [projectWork]);
+  const [taskRevision, setTaskRevision] = useState(0);
+  const thoughtIds = useMemo(() => sketch?.thoughts.map((t) => t.id).sort() ?? [], [sketch?.thoughts]);
+  const thoughtKey = thoughtIds.join(',');
+  const stableIds = useMemo(() => thoughtKey ? thoughtKey.split(',') : [], [thoughtKey]);
+  const tasks = useThoughtTasks(me.user.id, taskProjectId, stableIds, taskRevision);
   const revalidator = useRevalidator();
   const workRefresh = useRef<number | null>(null);
   useEffect(() => () => { if (workRefresh.current !== null) window.clearTimeout(workRefresh.current); }, []);
   useStreamEvents(me.user.id, (event) => {
     if (!taskProjectId || event.objectType !== 'project' || event.objectId !== taskProjectId || !/^project\.(work|link|result)_/.test(event.kind)) return;
     if (workRefresh.current !== null) window.clearTimeout(workRefresh.current);
-    workRefresh.current = window.setTimeout(() => { workRefresh.current = null; revalidator.revalidate(); }, 250);
+    workRefresh.current = window.setTimeout(() => { workRefresh.current = null; setTaskRevision((value) => value + 1); }, 250);
   });
+  useEffect(() => {
+    if (!taskProjectId) return;
+    const refresh = () => { if (document.visibilityState === 'visible') setTaskRevision((value) => value + 1); };
+    window.addEventListener('focus', refresh);
+    return () => window.removeEventListener('focus', refresh);
+  }, [taskProjectId]);
 
   const say = (text: string, change = false) => setStatus({ text, change });
   const find = (id: string) => sketch?.thoughts.find((t) => t.id === id);
@@ -172,6 +201,8 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
   const startEdit = (id: string) => {
     const thought = find(id);
     if (!thought || !canWrite || editSaveInFlight.current) return;
+    // The finished upload opens its draft; an edit started meanwhile would be closed under the person's typing.
+    if (uploadingRef.current) { say('Wait for the pasted image to finish uploading'); return; }
     if (editingState) {
       rootRef.current?.querySelector<HTMLTextAreaElement>('.sk-edit, .sk-li-edit')?.focus();
       say('Finish or cancel your current edit first');
@@ -254,34 +285,165 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
     return false;
   };
 
-  const add = (parentId: string | null) => {
-    if (!sketch || !canWrite) return;
-    if (editingState) { say('Finish or cancel your current edit first'); return; }
-    if (capture.draft) { rootRef.current?.querySelector<HTMLTextAreaElement>('.sk-draft textarea')?.focus(); say('Finish or cancel your current thought draft first'); return; }
+  /** Whether a new draft may start now; says why not. `replace` lets a paste fill the open, still empty draft. */
+  const blocked = (replace = false) => {
+    if (!sketch) return true;
+    if (!canWrite) { say(VIEW_ONLY); return true; }
+    if (uploadingRef.current) { say('Wait for the pasted image to finish uploading'); return true; }
+    if (editingState) { say('Finish or cancel your current edit first'); return true; }
+    if (capture.draft && !(replace && emptyDraft(capture.draft))) { rootRef.current?.querySelector<HTMLElement>('.sk-draft textarea, .sk-draft input')?.focus(); say('Finish or cancel your current thought draft first'); return true; }
+    return false;
+  };
+
+  /** Free spots for `count` new thoughts beside the intended parent (else top left), one after another. */
+  const spots = (parentId: string | null, count: number, size: { w: number; h: number }) => {
     const parent = parentId ? find(parentId) : undefined;
-    const rects = sketch.thoughts.map((t) => rectOf(t, heights));
-    const spot = freeSpot(rects, parent ? rectOf(parent, heights) : null, { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height }, phone);
-    capture.set({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), text: '', x: spot.x, y: spot.y, parentId });
+    const rects = (sketch?.thoughts ?? []).map((t) => rectOf(t, heights));
+    const from = parent ? rectOf(parent, heights) : null;
+    return Array.from({ length: count }, () => {
+      const spot = freeSpot(rects, from, size, phone);
+      rects.push({ ...spot, ...size });
+      return spot;
+    });
+  };
+
+  const add = (parentId: string | null, text = '', replace = false) => {
+    if (blocked(replace)) return;
+    const [spot] = spots(parentId, 1, { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height });
+    capture.set({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), text, x: spot!.x, y: spot!.y, parentId });
     setConnectFrom(null);
     setEditing(null);
-    say('Private thought draft · Enter saves, Escape cancels');
+    say(!text ? 'Private thought draft · Enter saves, Escape cancels'
+      : `Private ${linkOf(text) ? 'link' : 'thought'} draft from the clipboard · Enter saves, Escape cancels`);
   };
+
+  // #252: what is pasted becomes a private draft with the same parent rule as the Thought button; pasting into the
+  // open empty draft keeps that draft's parent.
+  const pasteParent = () => (capture.draft && emptyDraft(capture.draft) ? capture.draft.parentId : selection[selection.length - 1] ?? null);
+
+  const pasteText = (text: string, replace: boolean) => {
+    const parsed = pastedText(text);
+    if (parsed.kind === 'empty') { say('Nothing to paste: the clipboard has no text or image'); return; }
+    if (parsed.kind === 'too-long') { say('That paste is too long for map thoughts. Nothing was added; paste a shorter list.'); return; }
+    if (parsed.kind === 'too-many') {
+      say(`A paste adds at most ${SKETCH_LIMITS.pasteLines} thoughts and this one has ${parsed.count} lines. Nothing was added; paste fewer lines at a time.`);
+      return;
+    }
+    const parentId = pasteParent();
+    if (parsed.kind === 'one' && parsed.text.length <= SKETCH_LIMITS.text) { add(parentId, parsed.text, replace); return; }
+    // Several lines, or one line too long for a thought (marked, so it can be shortened before Save).
+    const lines = parsed.kind === 'one' ? [parsed.text] : parsed.lines;
+    const places = spots(parentId, lines.length, { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height });
+    capture.set({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), text: '', x: places[0]!.x, y: places[0]!.y, parentId,
+      lines: lines.map((line, index): DraftLine => ({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), text: line, x: places[index]!.x, y: places[index]!.y })) });
+    setConnectFrom(null);
+    setEditing(null);
+    say(`${lines.length} private draft ${lines.length === 1 ? 'thought' : 'thoughts'} from the clipboard · check, then Save`);
+  };
+
+  const pasteImage = async (file: Blob) => {
+    if (!sketch) return;
+    if (sketch.scope !== 'project' || !sketch.projectId) { say('Images can be added to a project’s maps only. Paste text or a link here instead.'); return; }
+    const refusal = imageRefusal(file);
+    if (refusal) { say(refusal); return; }
+    const projectId = sketch.projectId;
+    const parentId = pasteParent();
+    const [spot] = spots(parentId, 1, { w: IMAGE_THOUGHT_SIZE.width, h: IMAGE_THOUGHT_SIZE.height });
+    uploadingRef.current = true;
+    setUploading(true);
+    try {
+      const type = imageTypeOf(new Uint8Array(await file.slice(0, 16).arrayBuffer()));
+      if (!type) { say('That file is not a PNG, JPEG, GIF or WebP image, so nothing was pasted.'); return; }
+      say('Uploading the image privately · only you can see it until you save');
+      const staged = await stageFile(projectId, crypto.randomUUID(), new File([file], pastedImageName(type), { type }));
+      const meanwhile = capture.peek();
+      if (meanwhile && !emptyDraft(meanwhile)) { say('The image stays private and unused: you started another draft meanwhile.'); return; }
+      capture.set({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), text: IMAGE_CAPTION, x: spot!.x, y: spot!.y, parentId,
+        file: { id: staged.id, name: staged.name, size: staged.size }, width: IMAGE_THOUGHT_SIZE.width, height: IMAGE_THOUGHT_SIZE.height });
+      setConnectFrom(null);
+      setEditing(null);
+      say('Private image draft · change the caption if you like, then Save');
+    } catch (error) {
+      say(uploadProblem(error));
+    } finally {
+      uploadingRef.current = false;
+      setUploading(false);
+    }
+  };
+
+  const handlePaste = (data: { text: string; file: Blob | null }, replace = false) => {
+    if (blocked(replace)) return;
+    if (data.file) void pasteImage(data.file);
+    else pasteText(data.text, replace);
+  };
+
+  /**
+   * Touch devices have no paste shortcut on the map: the empty new-thought draft offers Paste, which reads the
+   * clipboard through the browser's own prompt and fills that draft.
+   */
+  const pasteFromClipboard = async () => {
+    if (blocked(true)) return;
+    const clipboard = typeof navigator === 'undefined' ? undefined : navigator.clipboard;
+    try {
+      if (clipboard?.read) {
+        const items = await clipboard.read();
+        for (const item of items) {
+          const type = item.types.find((candidate) => candidate.startsWith('image/'));
+          if (type) { handlePaste({ text: '', file: await item.getType(type) }, true); return; }
+        }
+        const text = items.find((item) => item.types.includes('text/plain'));
+        handlePaste({ text: text ? await (await text.getType('text/plain')).text() : '', file: null }, true);
+        return;
+      }
+      if (clipboard?.readText) { handlePaste({ text: await clipboard.readText(), file: null }, true); return; }
+      say('This browser doesn’t let Flux read the clipboard. Add a Thought and paste into its text instead.');
+    } catch {
+      say('The browser didn’t allow reading the clipboard. Add a Thought and paste into its text instead.');
+    }
+  };
+
+  // Ctrl/⌘ V on the map or list, or on what holds it (the page, or the main pane a click on empty canvas focuses).
+  // Elsewhere (sidebar, details) is not the map. Text fields keep their own paste (#149 shortcuts).
+  const pasteHandler = useRef(handlePaste);
+  useEffect(() => { pasteHandler.current = handlePaste; });
+  useEffect(() => {
+    const onPaste = (event: ClipboardEvent) => {
+      const root = rootRef.current;
+      if (!root || event.defaultPrevented) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target && !root.contains(target) && !target.contains(root)) return;
+      if (target?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+      event.preventDefault();
+      pasteHandler.current({ text: event.clipboardData?.getData('text/plain') ?? '', file: clipboardFile(event.clipboardData) });
+    };
+    document.addEventListener('paste', onPaste);
+    return () => document.removeEventListener('paste', onPaste);
+  }, []);
 
   const saveDraft = async () => {
     const draft = capture.draft;
-    if (!draft || draftSaveInFlight.current || !canWrite || !draft.text.trim()) return;
+    if (!draft || draftSaveInFlight.current || !canWrite || !draftReady(draft)) return;
     draftSaveInFlight.current = true;
     setSavingDraft(true);
-    const saved = await doc.saveThought({ kind: 'add', thought: { id: draft.id, text: draft.text.trim(), x: draft.x, y: draft.y },
-      ...(draft.parentId ? { link: { id: draft.linkId, fromId: draft.parentId, label: null } } : {}) }, draft.key);
+    const parent = (linkId: string) => (draft.parentId ? { id: draft.parentId, linkId } : null);
+    const items = draft.lines
+      ? draft.lines.map((line) => ({ thought: { id: line.id, text: line.text.trim(), x: line.x, y: line.y }, parent: parent(line.linkId), key: line.key }))
+      : [{ thought: { id: draft.id, text: draft.text.trim(), x: draft.x, y: draft.y,
+        ...(draft.file ? { file: draft.file, width: draft.width, height: draft.height } : {}) }, parent: parent(draft.linkId), key: draft.key }];
+    const saved = await doc.saveThoughts(items);
     setSavingDraft(false);
     draftSaveInFlight.current = false;
-    if (!saved) { say('Couldn’t confirm the save. Your thought draft is kept; try again.'); return; }
-    personalOutline.group(draft.id, draft.parentId, false);
+    for (const id of saved) personalOutline.group(id, draft.parentId, false);
+    if (saved.length < items.length) {
+      // Confirmed thoughts are shared now; only the rest stay in the draft, with their IDs and request keys.
+      if (draft.lines && saved.length) capture.set({ ...draft, lines: draft.lines.filter((line) => !saved.includes(line.id)) });
+      say('Couldn’t confirm the save. Your thought draft is kept; try again.');
+      return;
+    }
     capture.set(null);
-    setSelection([draft.id]);
-    say(`Added ${quote(draft.text.trim())}`, true);
-    focusThought(`.sk-node[data-id="${draft.id}"], .sk-li-t[data-id="${draft.id}"]`);
+    setSelection(saved);
+    say(saved.length === 1 ? `Added ${quote(items[0]!.thought.text)}` : `Added ${saved.length} thoughts`, true);
+    focusThought(`.sk-node[data-id="${saved[0]}"], .sk-li-t[data-id="${saved[0]}"]`);
   };
 
   const finishEdit = async (text: string | null) => {
@@ -374,9 +536,10 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
     try {
       const item = await createWork(sketch.projectId, { title: title.slice(0, 200), sources: thoughts.map((t) => ({ type: 'thought' as const, id: t.id })) }, workAttempt.current.key);
       workAttempt.current = null;
+      setTaskRevision((value) => value + 1);
       revalidator.revalidate();
       say(`Created work ${quote(item.title)}; the thoughts stay on the map`);
-      openDetails({ kind: 'work', id: item.id });
+      openDetails({ kind: 'work', id: item.id, projectId: item.projectId });
     } catch { say('Could not create the work yet. Wait for “Saved”, then try again.'); }
   };
 
@@ -411,7 +574,7 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
           <EmptyState icon="map" title={doc.load === 'not-found' ? 'This sketch isn’t available' : 'The sketch couldn’t be opened'}
             action={doc.load === 'not-found' ? <Link className="ui-btn ui-btn--secondary" to={back}>All sketches</Link> : <Button onClick={() => void doc.reload()}>Try again</Button>}>
             <p>{doc.load === 'not-found' ? 'It may have been shared with other people only, or you no longer have access to where it lives.' : 'Flux could not be reached. Your changes are safe; try again in a moment.'}</p>
-            {capture.draft ? <label>Your private thought draft<textarea aria-label="Recoverable thought draft" readOnly value={capture.draft.text} /></label> : null}
+            {capture.draft ? <label>Your private thought draft<textarea aria-label="Recoverable thought draft" readOnly value={capture.draft.lines ? capture.draft.lines.map((line) => line.text).join('\n') : capture.draft.text} /></label> : null}
             {editingState ? <label>Your unsaved edit<textarea aria-label="Recoverable thought edit" readOnly value={editingState.initial} /></label> : null}
           </EmptyState>
         </div>
@@ -493,9 +656,12 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
             </p>
           </div>
         ) : (
-          <p className="sk-readonly"><Icon name="lock" size={12} />{doc.liveStatus === 'connecting' ? 'Reconnecting to the shared map. Wait for confirmation before changing it.' : sketch.scope === 'dm'
-            ? 'Nobody else is in this conversation now, so the sketch is read-only until the other person reopens it.'
-            : 'You can look at this sketch; people who can change it keep it up to date.'}</p>
+          <>
+            <p className="sk-readonly"><Icon name="lock" size={12} />{doc.liveStatus === 'connecting' ? 'Reconnecting to the shared map. Wait for confirmation before changing it.' : sketch.scope === 'dm'
+              ? 'Nobody else is in this conversation now, so the sketch is read-only until the other person reopens it.'
+              : 'You can look at this sketch; people who can change it keep it up to date.'}</p>
+            <p className="sk-status sk-status--readonly" role="status">{status.text}</p>
+          </>
         )}
 
         {doc.privateMovement ? <details className="editing-map-recovery"><summary>An unfinished movement is kept privately</summary><p>Compare these positions with the current thoughts before starting a new movement. This copy is not shared automatically.</p><ul>{doc.privateMovement.positions.map((position) => <li key={position.id}>{quote(find(position.id)?.text ?? 'Unavailable thought')} · x {Math.round(position.x)}, y {Math.round(position.y)}{position.width !== undefined ? ` · width ${Math.round(position.width)}, height ${Math.round(position.height ?? 0)}` : ''}</li>)}</ul><Button variant="quiet" onClick={doc.discardPrivateMovement}>Discard private movement copy</Button></details> : null}
@@ -509,7 +675,14 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
 
         {capture.draft ? <DraftCapture draft={capture.draft} parent={capture.draft.parentId ? find(capture.draft.parentId)?.text ?? null : null}
           saving={savingDraft} canWrite={canWrite} onText={(text) => { if (capture.draft) capture.set({ ...capture.draft, text, key: doc.newId() }); }}
-          onSave={() => void saveDraft()} onCancel={() => { capture.set(null); say('Thought draft cancelled'); focusThought('.sk-add'); }} /> : null}
+          onLines={(lines) => {
+            if (!capture.draft) return;
+            if (lines.length) { capture.set({ ...capture.draft, lines }); return; }
+            capture.set(null); say('Pasted thoughts cancelled'); focusThought('.sk-add');
+          }}
+          onPaste={coarse ? () => void pasteFromClipboard() : undefined}
+          onSave={() => void saveDraft()} onCancel={() => { capture.set(null); say(capture.draft?.lines ? 'Pasted thoughts cancelled' : 'Thought draft cancelled'); focusThought('.sk-add'); }} /> : null}
+        {uploading ? <p className="sk-draft sk-draft--uploading" role="status"><Icon name="image" size={14} />Uploading the pasted image privately…</p> : null}
 
         {editingState && (!editing || !canWrite) ? <label className="sk-draft">Your unsaved edit is kept
           <textarea aria-label="Recoverable thought edit" readOnly value={editingState.initial} />
@@ -532,8 +705,8 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
 
         <p className="sk-help" id={helpId}>
           {coarse
-            ? 'Tap a thought to select it, then drag it. Add links a new thought to it. List shows the same thoughts in order.'
-            : 'Drag to move, drag empty space to pan, Shift-click to select several. On a focused thought: arrows move (Shift further, Alt resizes) · Enter edits · Space selects · + adds a linked thought · Delete removes · Ctrl/⌘ Z undoes.'}
+            ? 'Tap a thought to select it, then drag it. Add links a new thought to it. Thought, then Paste, turns copied lines, a link or an image into a draft. List shows the same thoughts in order.'
+            : 'Drag to move, drag empty space to pan, Shift-click to select several. On a focused thought: arrows move (Shift further, Alt resizes) · Enter edits · Space selects · + adds a linked thought · Delete removes · Ctrl/⌘ Z undoes · Ctrl/⌘ V pastes lines, a link or an image as a draft.'}
         </p>
       </div>
     </div>

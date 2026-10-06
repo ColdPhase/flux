@@ -20,6 +20,10 @@
 .auth__lead { margin-top: 8px; font-size: var(--fs-base); color: var(--text-3); line-height: 1.55; }
 .auth__form { display: flex; flex-direction: column; gap: 18px; }
 .auth__form .ui-btn--primary { margin-top: 6px; }
+.auth__sso { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
+.auth__sso-error { margin: 0; font-size: var(--fs-sm); color: var(--danger, var(--text)); }
+.auth__or { display: flex; align-items: center; gap: 12px; margin: 8px 0 0; font-size: var(--fs-sm); color: var(--text-3); }
+.auth__or::before, .auth__or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .auth__alt { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--line); font-size: var(--fs-md); color: var(--text-3); }
 .auth__error, .auth__notice {
   display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: var(--r-lg);
@@ -39,7 +43,9 @@
 
 /* ---------- App frame (Studio 11.6): sidebar on the chrome, the work on a rounded sheet ---------- */
 body:has(.app) { background: var(--bg-chrome); }
-.app { position: relative; display: flex; height: 100vh; height: 100dvh; overflow: hidden; background: var(--bg-chrome); }
+.app { position: relative; display: flex; height: 100vh; height: var(--app-h, 100dvh); overflow: hidden; background: var(--bg-chrome); }
+/* While the iOS keyboard is up the app sits in the visual viewport (AppLayout sets these). */
+.app[style*="--app-top"] { transform: translateY(var(--app-top)); }
 .app__side { flex: none; min-height: 0; display: flex; width: var(--side-w); padding-left: env(safe-area-inset-left); }
 .app__main {
   flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: clip;
@@ -66,6 +72,7 @@ body:has(.app) { background: var(--bg-chrome); }
 }
 .side__jump svg { color: var(--text-2); }
 .side__jump kbd { margin-left: auto; box-shadow: none; color: var(--text-2); font: 9px/1 var(--mono); }
+@media (hover: none) { .side__jump kbd { display: none; } }
 .side__jump:hover { color: var(--text); border-bottom-color: var(--line-strong); }
 /* The 12px side padding keeps the current-place bar (left: -9px) inside the scroll box, unclipped. */
 .side__scroll { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -12px; padding: 0 12px 12px; }
@@ -75,18 +82,30 @@ body:has(.app) { background: var(--bg-chrome); }
 .side__h { font-size: var(--fs-sm); font-weight: 500; letter-spacing: .12px; color: var(--text-2); }
 .side__add { display: grid; place-items: center; width: 25px; height: 25px; border-radius: var(--r-sm); color: var(--text-2); transition: var(--tr); }
 .side__add:hover { background: var(--bg-hover); color: var(--text); }
-.side__list { list-style: none; margin: 0; padding: 0; }
+.side__list { position: relative; list-style: none; margin: 0; padding: 0; }
+/* The open project's accent tint (#266 PF-1) travels between rows after a choice (#155, UI116-5): one short
+   transform move (compositor only; a two-line row's height is set at once), behind the rows, never
+   taking pointer input; the row's accent bar marks it when its project shows. */
+.side__glide { position: absolute; top: 0; left: 0; right: 0; height: 42px; border-radius: var(--r-sm); background: var(--accent-selected-bg);
+  opacity: 0; pointer-events: none; transition: transform var(--dur-2) var(--ease-out), opacity var(--dur-1) ease; }
+.side__list.has-glide .side__project.is-open { background: transparent; }
 .side__item {
   position: relative; display: flex; align-items: center; gap: 10px; width: 100%; min-height: 42px; margin: 3px 0; padding: 9px 8px;
   border-radius: var(--r-sm); color: var(--text-2); text-decoration: none; font-size: var(--fs-md); font-weight: 400; text-align: left;
   transition: var(--tr);
 }
-.side__item:hover { background: var(--bg-active); color: var(--text); }
-.side__item[aria-current="page"], .side__project.is-open { background: var(--bg-active); color: var(--text); }
-/* The current project: a short accent bar in the gutter beside its row. */
-.side__project.is-open::before, .side__places .side__item[aria-current="page"]::before {
-  content: ""; position: absolute; left: -9px; top: 14px; width: 2px; height: 14px; border-radius: 2px; background: var(--accent);
+.side__item:hover { background: var(--bg-hover); color: var(--text); }
+/* The current place (#266 PF-1): an accent-tinted row with accent text and icon, and a 3px accent bar
+   in the gutter that grows in when the place changes. Hover stays neutral, so only one row is accented. */
+.side__item[aria-current="page"], .side__project.is-open, .side__dm[aria-current="page"] {
+  background: var(--accent-selected-bg); color: var(--accent-selected-text); font-weight: 600;
 }
+.side__item[aria-current="page"] :is(.side__ic, .side__pi, .side__trail), .side__project.is-open :is(.side__pi, .side__sub) { color: var(--accent-selected-text); }
+.side__project.is-open::before, .side__places .side__item[aria-current="page"]::before, .side__dm[aria-current="page"]::before {
+  content: ""; position: absolute; left: -9px; top: calc(50% - 10px); width: 3px; height: 20px; border-radius: 3px; background: var(--accent);
+  animation: side-mark-in var(--dur-3) var(--ease-glide) both;
+}
+@keyframes side-mark-in { from { opacity: 0; transform: scaleY(.2); } }
 .side__ic { color: var(--text-2); width: 16px; flex: none; }
 .side__pi { display: grid; place-items: center; width: 21px; height: 24px; flex: none; color: var(--text-2); }
 .side__trail { margin-left: auto; color: var(--text-2); }
@@ -114,6 +133,9 @@ body:has(.app) { background: var(--bg-chrome); }
   text-align: left; transition: var(--tr);
 }
 .me__btn:hover, .me__btn[aria-expanded="true"] { background: var(--bg-hover); }
+/* In the phone drawer the account row is a link into Settings (#266 PF-5). */
+a.me__btn { color: inherit; text-decoration: none; }
+a.me__btn[aria-current="page"] { background: var(--accent-selected-bg); }
 .me__text { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
 .me__text b, .me__who b { font-weight: 500; font-size: var(--fs-md); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .me__text > span, .me__who span { font-size: var(--fs-xs); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -261,6 +283,11 @@ body:has(.app) { background: var(--bg-chrome); }
 .composer__send:not([aria-disabled="true"]):hover::before { filter: brightness(.95); }
 .composer__send:not([aria-disabled="true"]):active::before { filter: brightness(.9); }
 .composer__send:not([aria-disabled="true"]):active::before { transform: scale(.9); transition-duration: calc(var(--dur-1) / 2); }
+/* Attach (#266 PF-3): a quiet paperclip among the composer's tools; staged files list above the box. */
+.composer__attach { display: grid; place-items: center; width: 32px; height: 32px; flex: none; border-radius: var(--r); color: var(--text-3); transition: var(--tr); }
+.composer__attach:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
+.composer__attach:disabled { opacity: .5; cursor: default; }
+.composer__attach:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; }
 /* ✦ Ask my assistant (#57): one quiet button in the box; no connection means an honest note. */
 .composer__ask { display: grid; place-items: center; width: 32px; height: 32px; flex: none; margin-left: -8px; border-radius: var(--r); color: var(--text-3); transition: var(--tr); }
 .composer__ask:hover { background: var(--bg-hover); color: var(--text); }
@@ -347,7 +374,9 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
   .brand { min-height: 44px; }
   .composer__box { padding: 4px 4px 4px 14px; align-items: center; }
   .composer__box textarea { min-height: 44px; padding: 10px 0; }
-  .composer__send, .composer__ask { width: 44px; height: 44px; }
+  .composer__send, .composer__ask, .composer__attach { width: 44px; height: 44px; }
+  /* 16px text: iOS zooms the page into any smaller field on focus. */
+  .composer__box textarea { font-size: 16px; }
   .composer__ask { margin-left: -10px; }
   .details__back { min-height: 44px; }
   /* The chip stays small; its close button's hit area reaches 44px. */
@@ -373,8 +402,65 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 .note.is-arrived { box-shadow: inset 3px 0 0 var(--accent); padding-left: 12px; }
 .note:focus { outline: none; }
 .note:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-/* Phone: share a line where readable; allow the recap to wrap at narrow/enlarged text sizes. */
-.state-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding-right: 8px; border-top: 1px solid var(--line); }
+/* ---------- Phone shell (#266 PF-1, PF-2) ----------
+   One 52px header (menu, place, What matters, Details), the work, and the view bar at the bottom.
+   Nothing else is fixed, so the work starts right under the header. */
+.top__recap { position: relative; }
+.top__badge {
+  position: absolute; top: 5px; right: 3px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px;
+  background: var(--attention); color: var(--bg); box-shadow: 0 0 0 2px var(--bg);
+  font-size: 10px; font-weight: 700; line-height: 17px; text-align: center; font-variant-numeric: tabular-nums;
+  animation: badge-in var(--dur-3) var(--ease-glide) both;
+}
+@keyframes badge-in { from { opacity: 0; transform: scale(.4); } }
+@media (max-width: 640px) {
+  header.top, header.top.top--project {
+    min-height: calc(52px + env(safe-area-inset-top)); height: auto; align-items: center; gap: 2px;
+    padding: env(safe-area-inset-top) 2px 0; border-bottom: 1px solid var(--line);
+  }
+  .top--project .top__head { gap: 0; padding-left: 0; }
+  .top--project .top__title--project h1 { font-size: 16px; letter-spacing: -.2px; }
+  .top--project .top__audience { min-height: 22px; font-size: 11px; }
+  .top--project .top__right { padding-top: 0; }
+  .top__right { gap: 0; }
+  .top__details.ui-icon-btn, .top__recap.ui-icon-btn { width: 44px; height: 44px; }
+  .top__details[aria-expanded="true"], .top__recap[aria-expanded="true"] { background: var(--bg-active); color: var(--text); }
+}
+/* Typing on a touch screen: the keyboard needs the room, so the view bar steps aside (AppLayout sets
+   data-typing while a text field, or the same composer's buttons, hold focus). */
+@media (hover: none) and (max-width: 640px) {
+  .app[data-typing] .app__viewbar { display: none; }
+}
+.auth__back { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; margin-left: auto; padding: 0 8px; border-radius: var(--r); font-size: var(--fs-md); color: var(--text-2); text-decoration: none; transition: var(--tr); }
+.auth__back:hover { background: var(--bg-hover); color: var(--text); }
+/* Home's note composer on phones (#266 PF-3): the audience reads as one line, and the standing
+   privacy reminder under the box gives way to the work (the audience line already says "Only you"). */
+@media (max-width: 640px) {
+  .composer > .composer__in > .composer__audience { display: block; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .composer > .composer__in > .composer__audience svg { margin-right: 4px; vertical-align: -2px; }
+  .composer__hint:has(> .composer__state--idle:only-child), .composer__hint:has(> .composer__keys + .composer__state--idle) { display: none; }
+}
+/* The project's state on its phone Conversation (#117, #266 PF-2): one 44px line under the header. */
+.state-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding-right: 8px; border-bottom: 1px solid var(--line); }
 .state-row .ws-state-row { flex: 1; min-width: 0; border-top: 0; }
 .state-row .ws-state-row:has(.ws-state-row__blocked) { flex-basis: 18em; min-width: min(18em, 100%); }
+
+/* ---------- Phone: a place's views as chips (#266 PF-1) ----------
+   A row of labelled chips right under the header; the current one is filled with the accent, the
+   others are outlined. On narrow phones the row scrolls and keeps the current chip in view. */
+@media (max-width: 640px) {
+  .views--chips { border-bottom: 1px solid var(--line); }
+  .views--chips.views--project { padding-right: 0; }
+  .views--chips .ui-tabs__bar { gap: 6px; padding: 7px 10px; justify-content: flex-start; }
+  .views--chips .ui-tabs__tab {
+    flex: none; min-height: 36px; padding: 0 13px; border-radius: var(--r-pill); font-size: 13px; font-weight: 500;
+    color: var(--text-2); box-shadow: inset 0 0 0 1px var(--line-strong); transition: background-color var(--dur-2) ease, color var(--dur-1) ease, box-shadow var(--dur-1) ease;
+  }
+  .views--chips .ui-tabs__tab::after, .views--chips .ui-tabs__indicator { display: none; }
+  .views--chips .ui-tabs__tab:is([aria-current="page"], [aria-selected="true"], [data-pending]) {
+    background: var(--accent-selected-bg); color: var(--accent-selected-text); font-weight: 650; box-shadow: inset 0 0 0 1px transparent;
+  }
+  .views--chips .ui-tabs__count { color: inherit; }
+}
+@media (max-width: 640px) and (pointer: coarse) { .views--chips .ui-tabs__tab { min-height: 44px; padding: 0 14px; } .views--chips .ui-tabs__bar { padding-block: 4px; } }
 .state-row .views__recap { flex: none; margin-left: auto; }

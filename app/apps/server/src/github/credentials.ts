@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
-import { schema } from '@flux/db';
+import { githubRows, schema } from '@flux/db';
 import { githubId, ServiceUnavailableError, type Database } from '@flux/core';
 import type { GithubConfig } from './config.js';
 import { seal, unseal } from './crypto.js';
@@ -91,7 +91,9 @@ export function githubCredentials(db: Database, config: GithubConfig, transport:
     async revoke(userId: string) {
       await githubTransaction(db, async (tx) => {
         await tx.update(c).set({ state: 'revoked', encryptedTokens: null, updatedAt: new Date() }).where(eq(c.userId, userId));
-        await tx.update(schema.githubBindings).set({ state: 'revoked' }).where(eq(schema.githubBindings.authorUserId, userId));
+        const bindings = await tx.update(schema.githubBindings).set({ state: 'revoked' }).where(eq(schema.githubBindings.authorUserId, userId)).returning({ id: schema.githubBindings.id });
+        // Task rules reading these repositories pause until someone resumes them (#74 G-1a).
+        await githubRows(tx).suspendRulesFor(bindings.map((binding) => binding.id), userId);
       });
     },
     forTransaction(tx: Database): { token(userId: string): Promise<Credential> } {

@@ -160,7 +160,7 @@
 
 .sk-first, .sk-empty-list { font-size: var(--fs-sm); color: var(--text-3); }
 .sk-first b, .sk-empty-list b { font-weight: 500; color: var(--text-2); }
-.sk-help { font-size: var(--fs-xs); color: var(--text-3); line-height: 1.7; }
+.sk-help { max-width: 66ch; font-size: var(--fs-xs); color: var(--text-3); line-height: 1.7; }
 
 .sk-list { list-style: none; margin: 0; padding: 0; }
 .sk-list > li { padding: 6px 0 8px; }
@@ -240,7 +240,7 @@
   .sk-plus--labelled { width: auto; gap: 6px; padding: 0 16px 0 14px; border-radius: var(--r-pill); font-size: var(--fs-md); font-weight: 500; }
 .sk-edit-btn { min-height: 44px; min-width: 44px; padding: 0 16px; font-size: var(--fs-md); }
   .sk-li-t, .sk-li-edit, .sk-title { min-height: 44px; }
-  .sk-zoom button { min-width: 44px; height: 44px; }
+  .sk-zoom button, .sk-zoom .sk-zoom__fit { min-width: 44px; height: 44px; }
   /* The count stays compact inside the thought; its touch target reaches 44px around it. */
   .sk { --sk-work-h: 28px; }
   .sk-work--map::before { content: ''; position: absolute; inset: -8px -4px; }
@@ -264,13 +264,14 @@
   .sk-promote { order: 3; flex: 1 1 auto; justify-content: center; }
   .sk-origin__long { display: none; }
   .sk-bar { flex-direction: column; align-items: stretch; padding: 2px; gap: 0; }
-  .sk-tools { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 2px; }
-  /* A project map adds Create work: four columns keep two rows, with its short label. */
-  .sk-tools--seven { grid-template-columns: repeat(4, auto); justify-content: space-between; }
+  /* One row of tools, each an icon over a short label (#266 PF-6): the canvas gets the second row
+     back. Below about 340px the row scrolls sideways instead of wrapping. */
+  .sk-tools, .sk-tools--seven { display: flex; flex-wrap: nowrap; justify-content: space-between; gap: 0; overflow-x: auto; scrollbar-width: none; }
+  .sk-tools::-webkit-scrollbar { display: none; }
   .sk-tools--seven .sk-bl--long { display: none; }
   .sk-tools--seven .sk-bl--short { display: inline; }
   .sk-div { display: none; }
-  .sk-bar .ui-btn { padding: 0 6px; justify-content: flex-start; }
+  .sk-bar .sk-tools .ui-btn { flex: 1 0 auto; min-width: 44px; flex-direction: column; justify-content: center; gap: 1px; padding: 3px 2px; font-size: 10.5px; line-height: 1.2; }
   .sk-status { flex: none; padding: 0 8px 6px; white-space: normal; }
   .sk-status:empty { display: none; }
   .sk-canvas { height: clamp(360px, calc(100dvh - 250px), 620px); }
@@ -285,3 +286,30 @@
 .sk-draft__actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-2); }
 .sk-draft__actions span { color: var(--text-3); font-size: var(--fs-xs); }
 .sk-edit-controls { display: flex; gap: var(--s-2); margin: 0 var(--s-4) var(--s-3); }
+/* #252: a paste becomes one private draft: several rows, a link, or a privately staged image with its caption. */
+.sk-draft__lines { display: grid; gap: var(--s-1); margin: 0; padding: 0; list-style: none; max-height: min(45vh, 360px); overflow-y: auto; }
+.sk-draft__lines li { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 2px var(--s-2); }
+.sk-draft__lines input { width: 100%; min-width: 0; min-height: 32px; padding: 0 var(--s-2); font-family: var(--font); font-size: var(--fs-md); }
+.sk-draft__lines li > svg { justify-self: end; color: var(--text-3); }
+.sk-draft__n { justify-self: end; font-size: var(--fs-xs); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.sk-draft__lines li.is-invalid input { border-color: var(--danger); }
+.sk-draft__remove { width: 32px; min-height: 32px; padding: 0; justify-content: center; }
+.sk-draft__warn { grid-column: 2 / -1; font-size: var(--fs-xs); color: var(--danger); }
+.sk-draft__image { display: flex; align-items: center; gap: var(--s-3); margin-bottom: var(--s-2); min-width: 0; font-size: var(--fs-xs); color: var(--text-3); overflow-wrap: anywhere; }
+.sk-draft__img { flex: none; width: 96px; height: 72px; object-fit: contain; border-radius: var(--r-sm); background: var(--bg-side); }
+.sk-draft--uploading { display: flex; align-items: center; gap: var(--s-2); font-size: var(--fs-sm); color: var(--text-2); }
+.sk-img { display: block; width: 100%; height: auto; min-height: 0; margin: 2px 0 4px; object-fit: contain; border-radius: var(--r-sm); background: var(--bg-side); pointer-events: none; }
+span.sk-img { min-height: 48px; }
+.sk-img.is-missing, .sk-li-img.is-missing { display: grid; place-items: center; padding: 8px; font-size: var(--fs-xs); color: var(--text-3); }
+.sk-t--link { color: var(--link); text-decoration: underline; text-underline-offset: 2px; }
+.sk-open-link { display: inline-flex; align-items: center; gap: 6px; color: var(--text); text-decoration: none; }
+.sk-li-img { display: block; max-width: min(100%, 320px); max-height: 200px; margin: 4px 0; object-fit: contain; border-radius: var(--r-sm); background: var(--bg-side); }
+span.sk-li-img { width: 160px; height: 96px; }
+.sk-li-link { display: flex; width: fit-content; align-items: center; gap: 4px; max-width: 100%; font-size: var(--fs-sm); color: var(--link); overflow-wrap: anywhere; }
+.sk-status--readonly { padding: 0; }
+.sk-status--readonly:empty { display: none; }
+@media (pointer: coarse) {
+  .sk-draft__lines input { min-height: 44px; }
+  .sk-draft__remove { width: 44px; min-height: 44px; }
+  .sk-li-link { min-height: 44px; }
+}

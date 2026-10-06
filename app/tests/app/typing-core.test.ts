@@ -1,0 +1,201 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { normalizeTypingCommand, TypingPresence, type TypingPulse } from '@flux/core';
+import type { TypingContext } from '@flux/contracts';
+
+const a: TypingContext = { kind: 'conversation', id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' };
+const b: TypingContext = { kind: 'conversation', id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' };
+const pulse = (changes: Partial<TypingPulse> = {}): TypingPulse => ({ connectionId: 'connection1', actorId: 'human1', sessionId: 'session1', context: a, sequence: 1, active: true, expiresAt: 5000, ...changes });
+function store(limits = { contexts: 128, perContext: 512, entries: 4096 }) {
+  const state = new TypingPresence(limits); state.watch(a); state.setAvailable(true); return state;
+}
+
+test('final reconciliation keeps compatible active refresh but withdraws stop, scope, expiry and uncertainty', () => {
+  const state = store(); const first = pulse(); state.accept(first, 0, 0);
+  assert.equal(state.current(first, 0), true);
+  state.accept(pulse({ sequence: 2, expiresAt: 5100 }), 100, 100);
+  assert.equal(state.current(first, 200), true, 'same current actor/session/context refresh is continuous');
+  state.accept(pulse({ sequence: 3, active: false, expiresAt: 5200 }), 200, 200);
+  assert.equal(state.current(first, 200), false);
+  state.accept(pulse({ sequence: 4, expiresAt: 5300 }), 300, 300);
+  assert.equal(state.current(first, 5300), false, 'monotonic positive lifetime');
+  state.accept(pulse({ sequence: 5, context: b, expiresAt: 5400 }), 400, 400);
+  assert.equal(state.current(first, 400), false, 'unwatched scope still withdraws');
+  state.setAvailable(false);
+  assert.equal(state.availableFor(a, 400), false);
+});
+
+test('typing closed input rejects forged identity/text recursively, without echoing private values', () => {
+  assert.deepEqual(normalizeTypingCommand({ type: 'watch', context: { ...a, id: a.id.toUpperCase() } }), { type: 'watch', context: a });
+  for (const field of ['author', 'session', 'text', 'expiresAt', 'name']) {
+    assert.throws(() => normalizeTypingCommand({ type: 'active', active: true, [field]: 'secret-draft' }), (error: unknown) => error instanceof Error && !error.message.includes('secret-draft'));
+    assert.throws(() => normalizeTypingCommand({ type: 'watch', context: { ...a, [field]: 'secret-draft' } }));
+  }
+  for (const malformed of [null, [], { type: 'active', active: 1 }, { type: 'leave', context: a }, { type: 'watch', context: { kind: 'project', id: a.id } }]) assert.throws(() => normalizeTypingCommand(malformed));
+});
+
+test('coalesced newer B withdraws A before unwatched B filtering; late A never resurrects', () => {
+  const state = store(); state.accept(pulse(), 0, 0);
+  assert.equal(state.candidates(a, 0, 0).pulses.length, 1);
+  // A stop has been coalesced out by the transport: the B update must remove A itself.
+  assert.equal(state.accept(pulse({ context: b, sequence: 3, expiresAt: 5500 }), 500, 500), false);
+  assert.deepEqual(state.candidates(a, 500, 500).pulses, []);
+  state.accept(pulse({ sequence: 2, expiresAt: 5200 }), 500, 500);
+  assert.deepEqual(state.candidates(a, 500, 500).pulses, []);
+  assert.equal(state.work.entries, 1);
+});
+
+test('a stop survives delayed active, different-session substitution and database clock reversal', () => {
+  const state = store(); state.accept(pulse(), 0, 0);
+  state.accept(pulse({ active: false, sequence: 3, expiresAt: 5500 }), 500, 500);
+  assert.equal(state.accept(pulse({ sequence: 2, expiresAt: 5200 }), 500, 600), false);
+  assert.equal(state.accept(pulse({ sequence: 4, sessionId: 'other-session', expiresAt: 5600 }), 600, 700), false);
+  assert.equal(state.accept(pulse({ sequence: 4, expiresAt: 5400 }), 400, 800), false);
+  assert.deepEqual(state.candidates(a, 400, 800).pulses, []);
+  // Monotonic retention expires even though database wall time has moved backwards.
+  assert.equal(state.candidates(a, 100, 5500).pulses.length, 0);
+  assert.equal(state.work.entries, 1);
+  assert.equal(state.work.watermarks, 1);
+});
+
+test('listener loss/reconnect clears presence and invalidates pending revision; no replay', () => {
+  const state = store(); state.accept(pulse(), 0, 0);
+  const revision = state.candidates(a, 0, 0).revision;
+  state.setAvailable(false);
+  assert.notEqual(state.revision, revision);
+  assert.equal(state.candidates(a, 0, 0).availability, 'unavailable');
+  assert.equal(state.accept(pulse({ sequence: 2 }), 0, 0), false);
+  state.setAvailable(true);
+  assert.deepEqual(state.candidates(a, 0, 0).pulses, []);
+  assert.equal(state.work.entries, 0);
+});
+
+test('context saturation is unknown, preserves sequence fences, and bounds moving connections', () => {
+  const state = store({ contexts: 2, perContext: 1, entries: 3 }); state.watch(b);
+  state.accept(pulse(), 0, 0);
+  state.accept(pulse({ connectionId: 'connection2', actorId: 'human2', sessionId: 'session2', context: b }), 0, 0);
+  assert.equal(state.accept(pulse({ context: b, sequence: 2, expiresAt: 5100 }), 100, 100), false);
+  assert.deepEqual(state.candidates(a, 100, 100).pulses, []);
+  assert.equal(state.candidates(b, 100, 100).availability, 'unavailable');
+  assert.equal(state.work.entries, 2);
+  state.accept(pulse(), 100, 100);
+  assert.deepEqual(state.candidates(a, 100, 100).pulses, []);
+  assert.equal(state.accept(pulse({ context: b, sequence: 3, expiresAt: 5200 }), 200, 200), false);
+  assert.equal(state.work.entries, 2);
+});
+
+test('global saturation cannot silently evict a stop then replay older activity; recovery drains', () => {
+  const state = store({ contexts: 1, perContext: 2, entries: 1 });
+  state.accept(pulse(), 0, 0);
+  state.accept(pulse({ active: false, sequence: 3, expiresAt: 5100 }), 100, 100);
+  state.accept(pulse({ connectionId: 'connection2', actorId: 'human2', sessionId: 'session2', expiresAt: 5200 }), 200, 200);
+  assert.equal(state.candidates(a, 200, 200).availability, 'unavailable');
+  assert.equal(state.work.entries, 1);
+  state.accept(pulse({ sequence: 2, expiresAt: 5000 }), 200, 200);
+  assert.equal(state.work.entries, 1);
+  assert.equal(state.candidates(a, 5200, 5200).availability, 'ready');
+  assert.equal(state.work.entries, 0);
+  assert.equal(state.accept(pulse({ sequence: 4, expiresAt: 10_300 }), 5300, 5300), true);
+});
+
+test('foreign activity retains bounded anonymous fences only; watchers retain until last leave', () => {
+  const state = store({ contexts: 1, perContext: 2, entries: 2 });
+  assert.equal(state.watch(b), false);
+  for (let i = 0; i < 1000; i++) state.accept(pulse({ connectionId: `foreign-${i}`, context: b }), 0, 0);
+  assert.equal(state.work.entries, 0);
+  assert.equal(state.work.watermarks, 2);
+  state.candidates(a, 5001, 5001);
+  state.watch(a); state.accept(pulse({ expiresAt: 10001 }), 5001, 5001); state.leave(a);
+  assert.equal(state.candidates(a, 5001, 5001).pulses.length, 1);
+  state.leave(a);
+  assert.equal(state.candidates(a, 5001, 5001).availability, 'unavailable');
+  state.watch(a);
+  assert.deepEqual(state.candidates(a, 5001, 5001).pulses, []);
+  state.accept(pulse({ sequence: 1, expiresAt: 10001 }), 5001, 5001);
+  assert.deepEqual(state.candidates(a, 5001, 5001).pulses, []);
+});
+
+test('expiry, caller mutation and invalid sequence cannot extend a pulse or alter its native scope', () => {
+  const state = store(); const update = pulse(); state.accept(update, 0, 0);
+  update.context = b; update.actorId = 'forged';
+  const candidates = state.candidates(a, 0, 0); candidates.pulses[0]!.context = b;
+  assert.equal(state.candidates(a, 0, 0).pulses[0]!.actorId, 'human1');
+  for (const sequence of [NaN, Infinity, -1, 0, 1.5]) assert.equal(state.accept(pulse({ sequence }), 0, 0), false);
+  assert.equal(state.accept(pulse({ sequence: 2, expiresAt: 6000 }), 0, 0), false);
+  assert.deepEqual(state.candidates(a, 5000, 1000).pulses, []);
+  assert.equal(state.work.entries, 0);
+});
+
+
+test('a valid stop and scope withdrawal survive database-clock reversal without weakening the fence', () => {
+  const state = store();
+  state.accept(pulse({ expiresAt: 6000 }), 1000, 0);
+  // Server preserves max(previous expiry, current database time + TTL) on its stop.
+  assert.equal(state.accept(pulse({ active: false, sequence: 3, expiresAt: 6000 }), 0, 100), true);
+  assert.deepEqual(state.candidates(a, 0, 100).pulses, []);
+  assert.equal(state.accept(pulse({ sequence: 2, expiresAt: 6000 }), 0, 200), false);
+  assert.equal(state.accept(pulse({ sequence: 4, expiresAt: 6500 }), 0, 200), false);
+  assert.deepEqual(state.candidates(a, 0, 200).pulses, []);
+  const moving = store(); moving.accept(pulse({ expiresAt: 6000 }), 1000, 0);
+  moving.accept(pulse({ context: b, sequence: 3, expiresAt: 6000 }), 0, 100);
+  assert.deepEqual(moving.candidates(a, 0, 100).pulses, []);
+  moving.accept(pulse({ sequence: 2, expiresAt: 6000 }), 0, 200);
+  assert.deepEqual(moving.candidates(a, 0, 200).pulses, []);
+});
+
+
+test('negative sequence fences outlive positive monotonic expiry when DB time reverses', () => {
+  const state = store(); state.accept(pulse({ expiresAt: 6000 }), 1000, 0);
+  state.accept(pulse({ active: false, sequence: 3, expiresAt: 6000 }), 0, 100);
+  assert.deepEqual(state.candidates(a, 5000, 5100).pulses, []);
+  assert.equal(state.accept(pulse({ sequence: 2, expiresAt: 6000 }), 5000, 5101), false);
+  assert.equal(state.work.watermarks, 1);
+  state.candidates(a, 6000, 6100); assert.equal(state.work.watermarks, 0);
+});
+
+test('global and context quarantine drain through discarded active and stop validity', () => {
+  for (const limits of [{ contexts: 1, perContext: 2, entries: 1 }, { contexts: 1, perContext: 1, entries: 3 }]) {
+    const state = store(limits); state.accept(pulse(), 0, 0);
+    const second = pulse({ connectionId: 'second', actorId: 'other', sessionId: 'other-session', sequence: 3, expiresAt: 6000 });
+    state.accept(second, 1000, 1000);
+    state.accept({ ...second, sequence: 5, expiresAt: 10000 }, 5000, 5000);
+    state.accept({ ...second, sequence: 6, active: false, expiresAt: 10500 }, 5500, 5500);
+    assert.equal(state.candidates(a, 6001, 6001).availability, 'unavailable');
+    assert.equal(state.accept({ ...second, sequence: 5, expiresAt: 10000 }, 6001, 6001), false);
+    assert.deepEqual(state.candidates(a, 10501, 12000).pulses, []);
+    assert.equal(state.candidates(a, 10501, 12000).availability, 'ready');
+    assert.equal(state.accept({ ...second, sequence: 5, expiresAt: 10000 }, 10501, 12000), false);
+  }
+});
+
+test('an unknown unwatched B watermark suppresses delayed older A without retaining private metadata', () => {
+  const state = store();
+  state.accept(pulse({ context: b, sequence: 3 }), 0, 0);
+  assert.equal(state.work.entries, 0); assert.equal(state.work.watermarks, 1);
+  assert.equal(state.accept(pulse({ sequence: 2 }), 0, 0), false);
+  assert.deepEqual(state.candidates(a, 0, 0).pulses, []);
+});
+
+test('mutating supplied limits cannot bypass validated context or global capacity', () => {
+  const limits = { contexts: 1, perContext: 1, entries: 1 }; const state = store(limits);
+  limits.contexts = limits.perContext = limits.entries = 10000;
+  assert.equal(state.watch(b), false); state.accept(pulse(), 0, 0);
+  state.accept(pulse({ connectionId: 'second', actorId: 'other', sessionId: 'other-session' }), 0, 0);
+  assert.equal(state.work.watermarks, 1); assert.equal(state.work.entries, 1);
+  assert.equal(state.candidates(a, 0, 0).availability, 'unavailable');
+});
+
+
+test('already DB-expired activity cannot resurrect after a later clock reversal or reconnect', () => {
+  const state = store(); state.accept(pulse(), 0, 0);
+  state.accept(pulse({ active: false, sequence: 3, expiresAt: 5500 }), 500, 500);
+  state.candidates(a, 6000, 6000); assert.equal(state.work.watermarks, 0);
+  assert.equal(state.accept(pulse({ sequence: 2, expiresAt: 5200 }), 1000, 6100), false);
+  assert.equal(state.candidates(a, 1000, 6100).availability, 'unavailable');
+  assert.deepEqual(state.candidates(a, 1000, 6100).pulses, []);
+  state.setAvailable(false); state.setAvailable(true);
+  assert.equal(state.accept(pulse({ sequence: 2, expiresAt: 5200 }), 1000, 6200), false);
+  assert.equal(state.candidates(a, 1000, 6200).availability, 'unavailable');
+  assert.equal(state.candidates(a, 6001, 7000).availability, 'ready');
+  assert.equal(state.accept(pulse({ sequence: 4, expiresAt: 11001 }), 6001, 7000), true);
+});

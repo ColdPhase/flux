@@ -1,0 +1,105 @@
+# Flux v0.1.0-rc.1 operator Compose, built from source commit 662aec62e2e05c3d944053a5b35771986900b9e3.
+# Runs the published release: no source checkout, no build.
+#
+# api, worker and migrate run one image at one revision, pinned by the digest that
+# release.json records. Use this file with the env.example, INSTALL.md and SHA256SUMS of the
+# SAME GitHub Release: their image digest, migrations and variables match.
+#
+#   cp env.example .env && chmod 600 .env   # then fill in the REQUIRED values, see env.example
+#   docker compose --env-file .env -f compose.yaml config --quiet
+#   docker compose --env-file .env -f compose.yaml up -d --wait
+# Install, upgrade, backup and restore: INSTALL.md.
+#
+# PostgreSQL is pinned by digest. Only the API is published, on loopback: put a TLS reverse
+# proxy in front of it.
+name: ${FLUX_PROJECT:-flux}
+
+services:
+  db:
+    image: postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-flux}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-flux}
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+  migrate:
+    # One-shot: applies the release's SQL migrations in order, then exits. API and worker
+    # start only after it succeeded.
+    image: ghcr.io/coldphase/flux@sha256:0000000000000000000000000000000000000000000000000000000000000000
+    command: ["node", "tooling/dist/migrate.js"]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-flux}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-flux}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+  api:
+    image: ghcr.io/coldphase/flux@sha256:0000000000000000000000000000000000000000000000000000000000000000
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-flux}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-flux}
+      # Empty disables the integration fixture endpoint. Leave empty on a real deployment.
+      FLUX_FIXTURE_TOKEN: ${FLUX_FIXTURE_TOKEN:-}
+      FLUX_FILES_DIR: /data/files
+      FLUX_PUBLIC_ORIGIN: ${FLUX_PUBLIC_ORIGIN:?Set FLUX_PUBLIC_ORIGIN in .env}
+      FLUX_AUTH_SECRET: ${FLUX_AUTH_SECRET:?Set FLUX_AUTH_SECRET in .env}
+      FLUX_TRUSTED_PROXIES: ${FLUX_TRUSTED_PROXIES:-}
+      FLUX_SMTP_URL: ${FLUX_SMTP_URL:-}
+      FLUX_MAIL_FROM: ${FLUX_MAIL_FROM:-}
+      FLUX_PASSWORD_RESET_TTL_SECONDS: ${FLUX_PASSWORD_RESET_TTL_SECONDS:-3600}
+      FLUX_AUTH_RATE_LIMIT: ${FLUX_AUTH_RATE_LIMIT:-true}
+      # Web Push: the API only needs the public key; empty reports push unavailable.
+      FLUX_VAPID_PUBLIC_KEY: ${FLUX_VAPID_PUBLIC_KEY:-}
+      FLUX_STREAM_HEARTBEAT_MS: ${FLUX_STREAM_HEARTBEAT_MS:-25000}
+      # GitHub App integration (#74). All empty reports unavailable.
+      FLUX_GITHUB_CLIENT_ID: ${FLUX_GITHUB_CLIENT_ID:-}
+      FLUX_GITHUB_CLIENT_SECRET: ${FLUX_GITHUB_CLIENT_SECRET:-}
+      FLUX_GITHUB_APP_ID: ${FLUX_GITHUB_APP_ID:-}
+      FLUX_GITHUB_APP_SLUG: ${FLUX_GITHUB_APP_SLUG:-}
+      FLUX_GITHUB_WEBHOOK_SECRET: ${FLUX_GITHUB_WEBHOOK_SECRET:-}
+      FLUX_GITHUB_ENCRYPTION_KEY: ${FLUX_GITHUB_ENCRYPTION_KEY:-}
+      PORT: 8080
+    volumes:
+      # The image owns /data/files as its non-root user, so a new volume starts writable.
+      # "z" relabels the shared volume for SELinux hosts and is ignored elsewhere.
+      - files:/data/files:z
+    ports:
+      - 127.0.0.1:${FLUX_PORT:-8081}:8080
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/api/v1/health',{signal:AbortSignal.timeout(3000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+  worker:
+    image: ghcr.io/coldphase/flux@sha256:0000000000000000000000000000000000000000000000000000000000000000
+    restart: unless-stopped
+    command: ["node", "apps/worker/dist/index.js"]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-flux}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-flux}
+      # Notification email uses the instance SMTP transport and links to the public origin.
+      FLUX_PUBLIC_ORIGIN: ${FLUX_PUBLIC_ORIGIN:?Set FLUX_PUBLIC_ORIGIN in .env}
+      FLUX_SMTP_URL: ${FLUX_SMTP_URL:-}
+      FLUX_MAIL_FROM: ${FLUX_MAIL_FROM:-}
+      # The worker signs Web Push requests. Set all three or none.
+      FLUX_VAPID_PUBLIC_KEY: ${FLUX_VAPID_PUBLIC_KEY:-}
+      FLUX_VAPID_PRIVATE_KEY: ${FLUX_VAPID_PRIVATE_KEY:-}
+      FLUX_VAPID_SUBJECT: ${FLUX_VAPID_SUBJECT:-}
+    volumes:
+      - files:/data/files:z
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:
+  files:

@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { Link, redirect, useLoaderData, type LoaderFunctionArgs } from 'react-router';
-import { workspaceAgentsPath, type Agent, type AgentConnection, type AgentScope, type ExternalClientDesignation, type Project, type ProjectGrant, type Workspace } from '@flux/contracts';
+import { workspaceAgentsPath, type Agent, type AgentConnection, type AgentScope, type AgentStandingGrant, type ExternalClientDesignation, type Project, type ProjectGrant, type Workspace } from '@flux/contracts';
 import { getMe } from '../api/auth';
 import { ApiError, NetworkError, request as apiRequest } from '../api/client';
 import { listAccessibleProjects } from '../app/conversation-api';
@@ -8,11 +8,12 @@ import { signInPath } from '../auth/logic';
 import { Button, Icon } from '../ui';
 import {
   SCOPE_LABELS, continueAgentOAuth, createAgentConnection, createPersonalAgent, decideAgentConsent,
-  followOAuthRedirect, getConsentContext, grantAgentProject, listAgentConnections, listProjectGrants,
+  followOAuthRedirect, getConsentContext, grantAgentProject, listActionGrants, listAgentConnections, listProjectGrants,
   revokeAgentConnection, selectAgentConnection,
   type ConsentContext,
 } from './api';
 import { ClientGuide } from './ClientGuide';
+import { StandingGrants } from './StandingGrants';
 import './connection.css';
 
 const ALL_SCOPES: AgentScope[] = ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'];
@@ -32,6 +33,8 @@ interface ConnectionData {
   agents: Agent[];
   ownerId: string;
   oauthQuery: string;
+  /** Each live action connection's standing grants (current and ended); null when they could not be read. */
+  actionGrants: Record<string, AgentStandingGrant[] | null>;
 }
 
 function queryFrom(request: Request) { return new URL(request.url).search.slice(1); }
@@ -58,6 +61,14 @@ export async function agentConnectionLoader({ request }: LoaderFunctionArgs): Pr
     Promise.all(accessible.projects.filter((project) => project.access === 'manager').map(async (project) =>
       [project.id, await listProjectGrants(project.id, request.signal)] as const)),
   ]);
+  const oauthQuery = queryFrom(request);
+  // The grants are the owner's alone; the OAuth chooser does not show them.
+  const actionGrants = oauthQuery ? [] : await Promise.all(connections
+    .filter((connection) => !connection.revokedAt && connection.scopes.includes('flux.action.execute'))
+    .map(async (connection) => {
+      try { return [connection.id, await listActionGrants(connection.id, request.signal)] as const; }
+      catch (error) { if (error instanceof ApiError || error instanceof NetworkError) return [connection.id, null] as const; throw error; }
+    }));
   return {
     connections,
     projects: accessible.projects,
@@ -65,7 +76,8 @@ export async function agentConnectionLoader({ request }: LoaderFunctionArgs): Pr
     grants: Object.fromEntries(byProject),
     agents: byWorkspace.flat().filter((agent) => agent.owner.kind === 'human' && agent.owner.id === me.user.id && !agent.revokedAt),
     ownerId: me.user.id,
-    oauthQuery: queryFrom(request),
+    oauthQuery,
+    actionGrants: Object.fromEntries(actionGrants),
   };
 }
 
@@ -124,7 +136,7 @@ function ConnectionSummary({ connection, agentName, projectNames, showScopes = t
 }
 
 export function AgentConnectionPage() {
-  const { connections, projects, workspaces, agents, grants, oauthQuery } = useLoaderData() as ConnectionData;
+  const { connections, projects, workspaces, agents, grants, oauthQuery, actionGrants } = useLoaderData() as ConnectionData;
   const [items, setItems] = useState(connections.filter((connection) => !connection.revokedAt));
   const [selected, setSelected] = useState<string | null>(items[0]?.id ?? null);
   const [adding, setAdding] = useState(items.length === 0);
@@ -143,6 +155,7 @@ export function AgentConnectionPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const projectNames = new Map(projects.map((project) => [project.id, project.name]));
+  const projectsById = new Map(projects.map((project) => [project.id, project]));
   const agentNames = new Map(personalAgents.map((agent) => [agent.id, agent.name]));
   const chosenAgent = personalAgents.find((agent) => agent.id === agentId);
   const eligibleProjects = projects.filter((project) => project.workspaceId === chosenAgent?.workspaceId);
@@ -223,6 +236,7 @@ export function AgentConnectionPage() {
         <label className="connection__choice"><input type="radio" name="connection" value={connection.id} checked={selected === connection.id} onChange={() => setSelected(connection.id)} />
           <ConnectionSummary connection={connection} agentName={agentNames.get(connection.agentId) ?? `Agent ${connection.agentId.slice(0, 8)}`} projectNames={projectNames} />
         </label>
+        {!oauthQuery ? <StandingGrants connection={connection} projects={projectsById} initial={actionGrants[connection.id] ?? null} /> : null}
         {revoking === connection.id ? <div className="connection__revoke"><span>Revoke this connection now? Its tools will stop working.</span>
           <Button variant="secondary" onClick={() => { void revoke(connection.id); }}>Revoke now</Button>
           <Button variant="link" onClick={() => setRevoking(null)}>Cancel</Button></div>
@@ -302,6 +316,28 @@ export function AgentConnectionPage() {
   </section>;
 }
 
+/** Where an approved request goes (#287): the redirect host, the client_id host and a warning off this computer. */
+function ConsentDestination({ context }: { context: ConsentContext }) {
+  const { redirect, clientIdHost } = context;
+  return <section className="connection__destination" aria-labelledby="consent-destination">
+    <h2 id="consent-destination">Where access goes</h2>
+    <dl>
+      <div><dt>Sends access to</dt><dd className="connection__host">{redirect.host}</dd></div>
+      <div><dt>Client details from</dt>{clientIdHost
+        ? <dd className="connection__host">{clientIdHost}</dd>
+        : <dd>Registered on this Flux server</dd>}</div>
+    </dl>
+    {redirect.kind === 'loopback'
+      ? <p>This address is on your own computer, where your agent client runs.</p>
+      : <p className="connection__warning" role="note">
+        <Icon name="alert" size={16} />
+        {redirect.kind === 'app'
+          ? <span><strong>This access goes to an app link.</strong> Flux will hand it to whichever app on this device opens that link. Allow only if you set up this client and trust that app.</span>
+          : <span><strong>This address is not on your computer.</strong> Flux will send access to {redirect.host}, and whoever controls that address can use this connection. Allow only if you set up this client and trust that address.</span>}
+      </p>}
+  </section>;
+}
+
 export function AgentConsentPage() {
   const { context, oauthQuery } = useLoaderData() as { context: ConsentContext; oauthQuery: string };
   const [busy, setBusy] = useState(false);
@@ -317,9 +353,10 @@ export function AgentConsentPage() {
   }
   return <section className="connection connection--consent" aria-label="Agent access consent">
     <FlowHeader step="Agent connection · 2 of 2" title="Review access before connecting">
-      <strong>{context.clientName}</strong> is asking to connect to Flux. Check the selected projects and actions below.
+      <strong>{context.clientName}</strong> is asking to connect to Flux. Check where access goes, the selected projects and the actions below.
     </FlowHeader>
     {error ? <div className="connection__alert" role="alert">{error}</div> : null}
+    <ConsentDestination context={context} />
     <ConnectionSummary connection={context.connection} agentName={context.agentName ?? `Agent ${context.connection.agentId.slice(0, 8)}`} projectNames={projectNames} showScopes={false} />
     <div className="connection__requested">
       <h2>Requested by this client</h2>

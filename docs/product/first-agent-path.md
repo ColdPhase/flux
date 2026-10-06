@@ -10,6 +10,14 @@ future capability does not change which clients/operations have been verified.
 Codex and any other MCP client equal: the same consent, grants and presentation, with
 each client's own setup commands. Verified clients are still only those with recorded evidence.
 
+**Proposed amendment, 2026-10-06 ([#287](https://github.com/ColdPhase/flux/issues/287),
+pending independent acceptance):** the implementation uses only the decision's client
+ID metadata documents. Dynamic client registration (DCR) stays off, and no browser session
+can register or change an OAuth client. "Optional pre-registration" is an operator step with
+database access. Consent shows the redirect host and the `client_id` host, and warns when
+the redirect is not loopback. Details are in the
+[agent connection contract](../development/agent-connection.md#identities-and-consent).
+
 **Proposal:** 2026-09-27, `codex-hubert` for [#37](https://github.com/ColdPhase/flux/issues/37).
 **Status:** accepted after [independent peer review](https://github.com/ColdPhase/flux/pull/53#pullrequestreview-5331573326).
 This is the product/architecture decision for the [#52 implementation](https://github.com/ColdPhase/flux/issues/52).
@@ -56,6 +64,15 @@ idempotent replay and queued output. Token or session caching cannot restore a
 revoked grant. Do not reveal an inaccessible project's existence, count, title,
 event cursor or summary.
 
+**Proposed amendment, 2026-10-06 ([F-024](mcp-identity.md#connection-access-keys-header-only-clients-and-ci),
+[#273](https://github.com/ColdPhase/flux/issues/273), pending independent acceptance):**
+the MCP server stays an OAuth 2.1 resource server for every OAuth client. When the
+operator turns on connection access keys (`FLUX_MCP_ACCESS_KEYS=on`, off by
+default), `/mcp` also accepts a Flux-issued key for one connection, for clients
+that can only send a fixed header and for CI. A key is not an OAuth token: it is
+checked against its stored hash, and then gets the same connection, grant, owner
+and standing checks as a token.
+
 The first tool set is deliberately small: list authorized current contexts,
 read a selected source with revision, and create a **sourced proposal** for
 human review. An agent cannot accept a decision, change audience, assign work
@@ -81,7 +98,10 @@ grows. An embedded/API/local Flux-operated agent requires a separately accepted
 compute owner, secret handling, payer consent, budget and runtime contract.
 Third-party claude.ai login or routing Free/Pro/Max credentials through Flux is
 excluded. A manually invoked MCP tool is a transport slice, not completion of
-the required proactive AI path.
+the required proactive AI path. Under [F-022](ai-modes.md) (accepted 2026-10-05) this path is
+mode (b) of exactly two AI modes. Flux still never offers claude.ai login or holds
+plan credentials; mode (a)'s `runtime` instead runs the unmodified Claude Code
+binary under the owner's own sign-in.
 
 ## Evidence checked on 2026-09-27
 

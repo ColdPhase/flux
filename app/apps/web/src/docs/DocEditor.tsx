@@ -1,5 +1,5 @@
-import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
-import { Link, useLoaderData, useNavigate, type LoaderFunctionArgs } from 'react-router';
+import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { Link, useLoaderData, useNavigate, useNavigation, useRevalidator, type LoaderFunctionArgs } from 'react-router';
 import { DOC_LIMITS, docRef, type Doc, type Project } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { Button, Icon, useMediaQuery } from '../ui';
@@ -58,19 +58,48 @@ export function DocEditor() {
   const { project } = useWiki();
   const { me } = useShellData();
   const capability = useEditingCapability();
+  // A private draft and its pending effects belong to exactly one editor lifetime.
+  // Version revalidation in the same lifetime still preserves conflict handling.
+  const ordinary = <ScopedDocEditor key={JSON.stringify([me.user.id, project.id, doc?.id ?? 'new'])} project={project} doc={doc} accountId={me.user.id} />;
   // Without a configured live capability this is the ordinary editor, unchanged.
-  if (!doc || capability !== 'configured') return <PrivateDocEditor />;
+  if (!doc || capability !== 'configured') return ordinary;
   const scope = `${me.user.id}:${doc.id}`;
-  return <Suspense fallback={null}><LiveDocEditor key={scope} doc={doc} project={project} userId={me.user.id} fallback={<PrivateDocEditor key={scope} />} /></Suspense>;
+  return <Suspense fallback={null}><LiveDocEditor key={scope} doc={doc} project={project} userId={me.user.id} fallback={ordinary} /></Suspense>;
 }
 
-function PrivateDocEditor() {
-  const { doc } = useLoaderData() as EditData;
-  const { project } = useWiki();
-  const { me } = useShellData();
+function ScopedDocEditor({ project, doc, accountId }: EditData & { project: Project; accountId: string }) {
   const navigate = useNavigate();
+  const revalidator = useRevalidator();
+  const navigation = useNavigation();
+  const reconciling = revalidator.state !== 'idle' || navigation.state !== 'idle';
+  const mounted = useRef(false);
+  const settled = useRef(true);
+  const pending = useRef(new Set<(current: boolean) => void>());
+  useLayoutEffect(() => {
+    const waiters = pending.current;
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      for (const resolve of waiters) resolve(false);
+      waiters.clear();
+    };
+  }, []);
+  useLayoutEffect(() => {
+    settled.current = !reconciling;
+    if (settled.current) {
+      for (const resolve of pending.current) resolve(true);
+      pending.current.clear();
+    }
+  }, [reconciling]);
+  // A completed command waits for loader ownership to settle. A different editor
+  // lifetime retires it; revalidation of the same editor lets it finish normally.
+  async function currentAfterReconciliation() {
+    if (!mounted.current) return false;
+    if (!settled.current) await new Promise<boolean>((resolve) => pending.current.add(resolve));
+    return mounted.current && settled.current;
+  }
   const wide = useMediaQuery('(min-width: 1280px)');
-  const storageKey = draftKey(me.user.id, doc?.id ?? null, project.id);
+  const storageKey = draftKey(accountId, doc?.id ?? null, project.id);
   const initial = useMemo<Kept>(() => readKept(storageKey) ?? {
     title: doc?.title ?? '', body: doc?.body ?? '', state: doc?.state ?? 'draft', reason: '', base: doc?.version ?? 0,
     // Only the first render reads storage; later renders keep the editor's own state.
@@ -83,7 +112,7 @@ function PrivateDocEditor() {
   // "Both" needs the width; on a narrow screen it reads as Write.
   const mode = !wide && chosenMode === 'both' ? 'write' : chosenMode;
   const [preview, setPreview] = useState<{ html: string; missing: number } | null>(null);
-  const [attempt, setAttempt] = useState(() => crypto.randomUUID());
+  const [attempt, setAttempt] = useState(() => initial.attempt ?? crypto.randomUUID());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [conflict, setConflict] = useState<Doc | null>(null);
@@ -96,7 +125,7 @@ function PrivateDocEditor() {
   const restored = !!readKept(storageKey) && (initial.body !== (doc?.body ?? '') || initial.title !== (doc?.title ?? ''));
 
   const dirty = fields.title !== (doc?.title ?? '') || fields.body !== (doc?.body ?? '') || fields.state !== (doc?.state ?? 'draft');
-  useEffect(() => { keep(storageKey, dirty || fields.reason ? { ...fields, base } : null); }, [storageKey, fields, base, dirty]);
+  useEffect(() => { keep(storageKey, dirty || fields.reason ? { ...fields, base, attempt } : null); }, [storageKey, fields, base, dirty, attempt]);
 
   // The preview is rendered by the server exactly as a saved version would be.
   const showPreview = mode !== 'write';
@@ -105,7 +134,7 @@ function PrivateDocEditor() {
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
       previewDoc(project.id, fields.body, controller.signal)
-        .then((result) => setPreview({ html: result.html, missing: result.mentions.filter((item) => !item.path).length }))
+        .then((result) => { if (!controller.signal.aborted) setPreview({ html: result.html, missing: result.mentions.filter((item) => !item.path).length }); })
         .catch(() => { if (!controller.signal.aborted) setPreview({ html: '<p>Preview is not available right now. Your text is kept.</p>', missing: 0 }); });
     }, 250);
     return () => { controller.abort(); window.clearTimeout(timer); };
@@ -124,27 +153,34 @@ function PrivateDocEditor() {
     const body = fields.body.slice(0, start) + text + fields.body.slice(end);
     edit({ body });
     if (mode === 'preview') setMode('write');
-    requestAnimationFrame(() => { area?.focus(); area?.setSelectionRange(start + text.length, start + text.length); });
+    requestAnimationFrame(() => {
+      // Restore focus from the removed picker, but respect a newer user focus.
+      if (area?.isConnected && (document.activeElement === document.body || document.activeElement === area)) {
+        area.focus(); area.setSelectionRange(start + text.length, start + text.length);
+      }
+    });
   }, [fields.body, mode]);
 
   async function save(event?: FormEvent) {
     event?.preventDefault();
-    if (busy) return;
+    if (busy || reconciling) return;
     if (!fields.title.trim()) { setError('Give the page a title.'); return; }
     setBusy(true); setError('');
     try {
       const command = { title: fields.title.trim(), body: fields.body, state: fields.state, ...(fields.reason.trim() ? { reason: fields.reason.trim() } : {}) };
       const saved = doc ? await updateDoc(doc.id, base, command, attempt) : await createDoc(project.id, command, attempt);
+      if (!await currentAfterReconciliation()) return;
       keep(storageKey, null);
       navigate(docUrl(project.id, saved.id), { replace: true });
     } catch (cause) {
+      if (!await currentAfterReconciliation()) return;
       if (cause instanceof ApiError && cause.code === 'VERSION_CONFLICT') {
         const latest = (cause.body as { current?: Doc } | null)?.current ?? null;
         setConflict(latest); setShowTheirs(false); setAttempt(crypto.randomUUID());
       } else if (cause instanceof ApiError && cause.status === 403) setError('You can read this project but not change its pages.');
       else if (cause instanceof ApiError && cause.status === 404) setError('This page is no longer available to you.');
       else setError(cause instanceof Error ? `${cause.message}. Your text is kept; try again.` : 'Could not save. Your text is kept; try again.');
-    } finally { setBusy(false); }
+    } finally { if (mounted.current) setBusy(false); }
   }
 
   /** The person saw the newer version and saves their text on top of it as the next version. */
@@ -241,7 +277,7 @@ function PrivateDocEditor() {
           </div>
           <div className="doc-edit__acts">
             <Link className="ui-btn ui-btn--quiet" to={back} onClick={() => keep(storageKey, null)}>Cancel</Link>
-            <Button type="submit" variant="primary" busy={busy} disabled={!!conflict || (!!doc && !dirty)} aria-keyshortcuts={isMac ? 'Meta+S' : 'Control+S'}>{doc ? 'Save version' : 'Create page'}</Button>
+            <Button type="submit" variant="primary" busy={busy} disabled={reconciling || !!conflict || (!!doc && !dirty)} aria-keyshortcuts={isMac ? 'Meta+S' : 'Control+S'}>{doc ? 'Save version' : 'Create page'}</Button>
           </div>
         </div>
         {error ? <p className="doc-error" role="alert">{error}</p> : null}

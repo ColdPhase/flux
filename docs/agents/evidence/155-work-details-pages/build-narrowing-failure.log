@@ -1,0 +1,200 @@
+#1 [internal] load local bake definitions
+#1 reading from stdin 1.78kB done
+#1 DONE 0.0s
+
+#2 [migrate internal] load build definition from Dockerfile
+#2 DONE 0.0s
+
+#3 [ui-test internal] load build definition from ui-tests.Dockerfile
+#3 transferring dockerfile: 941B done
+#3 DONE 0.0s
+
+#2 [migrate internal] load build definition from Dockerfile
+#2 transferring dockerfile: 2.99kB done
+#2 DONE 0.0s
+
+#4 [test internal] load metadata for docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#4 DONE 0.0s
+
+#5 [ui-test internal] load .dockerignore
+#5 transferring context: 191B done
+#5 DONE 0.0s
+
+#6 [test build 1/8] FROM docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#6 resolve docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 done
+#6 DONE 0.0s
+
+#7 [migrate internal] load build context
+#7 transferring context: 95.89kB 0.0s done
+#7 DONE 0.0s
+
+#8 [test build 3/8] RUN corepack enable && corepack install -g pnpm@12.6.0
+#8 CACHED
+
+#9 [test build 2/8] WORKDIR /app
+#9 CACHED
+
+#10 [test build 4/8] COPY pnpm-lock.yaml pnpm-workspace.yaml ./
+#10 CACHED
+
+#11 [migrate build 5/8] RUN pnpm fetch
+#11 CACHED
+
+#12 [ui-test internal] load metadata for mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d
+#12 DONE 0.1s
+
+#13 [ui-test internal] load build context
+#13 transferring context: 1.10kB done
+#13 DONE 0.0s
+
+#14 [ui-test 1/5] FROM mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d
+#14 resolve mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d done
+#14 DONE 0.0s
+
+#15 [migrate build 6/8] COPY . .
+#15 DONE 0.1s
+
+#16 [ui-test 3/5] RUN pip install --no-cache-dir --break-system-packages --only-binary=:all: --require-hashes -r /tmp/ui-requirements.txt
+#16 CACHED
+
+#17 [ui-test 4/5] WORKDIR /work
+#17 CACHED
+
+#18 [ui-test 2/5] COPY tests/ui/requirements.txt /tmp/ui-requirements.txt
+#18 CACHED
+
+#19 [ui-test 5/5] COPY tests/ui tests/ui
+#19 CACHED
+
+#20 [ui-test] exporting to image
+#20 exporting layers done
+#20 exporting manifest sha256:6bd0723a06fe7e153a019d5734658b8451b9b30eb660ace8ca81a6eb38f831f7 done
+#20 exporting config sha256:4d20f362463bf5bf4ab9f76cfb9bd9e3dd3acb70fc42ffb06ff7d4cc70fd8a74 done
+#20 exporting attestation manifest sha256:4c27f09f395324157988f6753b10ebc47b813d7d96ab8a0b94ff9476b99d9dc4 done
+#20 exporting manifest list sha256:9fd224a58c0002816ec753d793daf8826c89591970b5f4db0cdff9d2088d53b3 done
+#20 naming to docker.io/library/flux-ui-tests:flux155browser done
+#20 unpacking to docker.io/library/flux-ui-tests:flux155browser done
+#20 DONE 0.1s
+
+#21 [ui-test] resolving provenance for metadata file
+#21 DONE 0.0s
+
+#22 [test build 7/8] RUN pnpm install --offline --frozen-lockfile
+#22 0.181 Scope: all 10 workspace projects
+#22 0.218 ✓ Lockfile passes supply-chain policies (verified 16h ago)
+#22 0.218 Lockfile is up to date, resolution step is skipped
+#22 0.417 Already up to date
+#22 0.753
+#22 0.753 dependencies:
+#22 0.753 + @flux/contracts link:packages/contracts
+#22 0.753 + @flux/core link:packages/core
+#22 0.753 + @flux/db link:packages/db
+#22 0.753 + pg-boss 12.35.0
+#22 0.753
+#22 0.753 devDependencies:
+#22 0.753 + @eslint/js 9.37.0
+#22 0.753 + @types/node 24.6.2
+#22 0.753 + @types/nodemailer 8.0.2
+#22 0.753 + @types/pg 8.15.5
+#22 0.753 + @types/sanitize-html 2.16.1
+#22 0.753 + @types/ws 8.18.1
+#22 0.753 + drizzle-orm 0.45.3
+#22 0.753 + eslint 9.37.0
+#22 0.753 + eslint-plugin-react-hooks 7.1.1
+#22 0.753 + fastify 5.6.1
+#22 0.753 + playwright 1.63.0
+#22 0.753 + tsx 4.20.5
+#22 0.753 + typescript 5.9.2
+#22 0.753 + typescript-eslint 8.44.1
+#22 0.753 + ws 8.22.0
+#22 0.753
+#22 0.753 Done in 576ms using pnpm v12.6.0
+#22 DONE 0.8s
+
+#23 [test build 8/8] RUN pnpm build && pnpm typecheck && pnpm lint
+#23 0.218 $ pnpm -r --if-present build && tsc -p tooling/tsconfig.build.json
+#23 0.281 packages/contracts build$ tsc -p tsconfig.build.json
+#23 1.705 packages/contracts build: Done
+#23 1.706 packages/sdk build$ tsc -p tsconfig.build.json
+#23 1.706 apps/web build$ vite build
+#23 1.706 packages/db build$ tsc -p tsconfig.build.json
+#23 1.887 apps/web build: vite v8.3.1 building client environment for production...
+#23 1.898 apps/web build: transforming...
+#23 1.991 apps/web build: ✓ 270 modules transformed.
+#23 2.050 apps/web build: rendering chunks...
+#23 2.127 apps/web build: computing gzip size...
+#23 2.134 apps/web build: dist/index.html                                              1.21 kB │ gzip:   0.53 kB
+#23 2.134 apps/web build: dist/sw.js                                                   6.70 kB
+#23 2.134 apps/web build: dist/assets/inter-vietnamese-wght-normal-CBcvBZtf.woff2     10.25 kB
+#23 2.134 apps/web build: dist/assets/inter-greek-ext-wght-normal-DlzME5K_.woff2      11.23 kB
+#23 2.134 apps/web build: dist/assets/inter-cyrillic-wght-normal-DqGufNeO.woff2       18.74 kB
+#23 2.134 apps/web build: dist/assets/inter-greek-wght-normal-CkhJZR-_.woff2          18.99 kB
+#23 2.134 apps/web build: dist/assets/inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2   25.96 kB
+#23 2.134 apps/web build: dist/assets/inter-latin-wght-normal-Dx4kXJAl.woff2          48.25 kB
+#23 2.134 apps/web build: dist/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2      85.06 kB
+#23 2.134 apps/web build: dist/assets/index-CG23UaWh.css                             159.97 kB │ gzip:  28.25 kB
+#23 2.134 apps/web build: dist/assets/media-G5dkP7fM.js                              419.65 kB │ gzip: 108.68 kB
+#23 2.134 apps/web build: dist/assets/index-bGlLpjvS.js                              784.75 kB │ gzip: 233.07 kB
+#23 2.134 apps/web build:
+#23 2.135 apps/web build: [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "use client" in "../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/index.js" may not be preserved when bundling.
+#23 2.135 apps/web build:     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m ../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/index.js:11:1 [38;5;246m][0m
+#23 2.135 apps/web build:     [38;5;246m│[0m
+#23 2.135 apps/web build:  [38;5;246m11 │[0m "use client";
+#23 2.135 apps/web build:  [38;5;240m   │[0m ──────┬──────
+#23 2.135 apps/web build:  [38;5;240m   │[0m       ╰──────── module level directive may not be preserved
+#23 2.135 apps/web build:  [38;5;240m   │[0m
+#23 2.135 apps/web build:  [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+#23 2.135 apps/web build: [38;5;246m────╯[0m
+#23 2.135 apps/web build:
+#23 2.135 apps/web build: [plugin builtin:vite-reporter]
+#23 2.135 apps/web build: (!) Some chunks are larger than 500 kB after minification. Consider:
+#23 2.135 apps/web build: - Using dynamic import() to code-split the application
+#23 2.135 apps/web build: - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+#23 2.135 apps/web build: - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+#23 2.135 apps/web build: ✓ built in 247ms
+#23 2.151 apps/web build: Done
+#23 3.161 packages/sdk build: Done
+#23 4.405 packages/db build: Done
+#23 4.405 packages/core build$ tsc -p tsconfig.build.json
+#23 6.145 packages/core build: Done
+#23 6.145 packages/agent-runtime build$ tsc -p tsconfig.build.json
+#23 6.146 apps/server build$ tsc -p tsconfig.build.json
+#23 6.946 packages/agent-runtime build: Done
+#23 6.946 apps/worker build$ tsc -p tsconfig.build.json
+#23 7.821 apps/worker build: Done
+#23 8.764 apps/server build: Done
+#23 9.424 $ tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json
+#23 17.62 apps/web/src/work/WorkDetails.tsx(169,185): error TS2322: Type 'LinkOwnerType' is not assignable to type '"result" | "work" | "decision"'.
+#23 17.62   Type '"doc"' is not assignable to type '"result" | "work" | "decision"'.
+#23 17.64 [ELIFECYCLE] Command failed with exit code 2.
+#23 ERROR: process "/bin/sh -c pnpm build && pnpm typecheck && pnpm lint" did not complete successfully: exit code: 2
+------
+ > [migrate build 8/8] RUN pnpm build && pnpm typecheck && pnpm lint:
+6.145 packages/agent-runtime build$ tsc -p tsconfig.build.json
+6.146 apps/server build$ tsc -p tsconfig.build.json
+6.946 packages/agent-runtime build: Done
+6.946 apps/worker build$ tsc -p tsconfig.build.json
+7.821 apps/worker build: Done
+8.764 apps/server build: Done
+9.424 $ tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json
+17.62 apps/web/src/work/WorkDetails.tsx(169,185): error TS2322: Type 'LinkOwnerType' is not assignable to type '"result" | "work" | "decision"'.
+17.62   Type '"doc"' is not assignable to type '"result" | "work" | "decision"'.
+17.64 [ELIFECYCLE] Command failed with exit code 2.
+------
+Dockerfile:10
+
+--------------------
+
+   8 |     COPY . .
+
+   9 |     RUN pnpm install --offline --frozen-lockfile
+
+  10 | >>> RUN pnpm build && pnpm typecheck && pnpm lint
+
+  11 |
+
+  12 |     FROM build AS test
+
+--------------------
+
+target test: failed to solve: process "/bin/sh -c pnpm build && pnpm typecheck && pnpm lint" did not complete successfully: exit code: 2

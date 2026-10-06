@@ -1,10 +1,12 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type WheelEvent } from 'react';
-import { SKETCH_LIMITS, type LiveMapPosition, type SketchDetail, type Thought, type WorkItem } from '@flux/contracts';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type WheelEvent } from 'react';
+import { SKETCH_LIMITS, type LiveMapPosition, type SketchDetail, type Thought } from '@flux/contracts';
 import { Icon } from '../ui';
 import { linkPath, PAD, project, rectOf, type Rect } from './geometry';
 import { provenance, quote } from './format';
 import { ThoughtEditor } from './ThoughtEditor';
-import { ThoughtTasks } from './ThoughtTasks';
+import { ThoughtImage } from './ThoughtImage';
+import { ThoughtTasks, type ThoughtTasksEntry } from './ThoughtTasks';
+import { linkOf } from './paste';
 import type { Editing } from './SketchView';
 
 export interface SketchMapProps {
@@ -21,7 +23,7 @@ export interface SketchMapProps {
   heights: Map<string, number>;
   canWrite: boolean;
   /** The project's tasks linked to each thought (UI116-4); none outside a project. */
-  tasks: Map<string, WorkItem[]>;
+  tasks: Map<string, ThoughtTasksEntry>;
   projectId: string | null;
   onOpenTask(id: string): void;
   onPick(id: string, additive: boolean): void;
@@ -51,6 +53,11 @@ const FIT_MIN = 0.6;
 const FIT_MIN_COARSE = 0.75;
 const zoomIn = (z: number) => ZOOMS.find((step) => step > z + 0.001) ?? ZOOMS[ZOOMS.length - 1]!;
 const zoomOut = (z: number) => [...ZOOMS].reverse().find((step) => step < z - 0.001) ?? ZOOMS[0]!;
+
+type Mode = 'plane' | 'compact';
+/** Where a person is looking: scroll pixels on the plane; on the phone, a thought and its offset from the top. */
+interface Camera { left: number; top: number; id?: string | null; whole?: boolean }
+const near = (a: { left: number; top: number }, b: { left: number; top: number }) => Math.abs(a.left - b.left) < 1 && Math.abs(a.top - b.top) < 1;
 
 interface Drag {
   kind: 'move' | 'resize' | 'pan';
@@ -82,7 +89,15 @@ export function SketchMap(props: SketchMapProps) {
   const [offset, setOffset] = useState<{ ids: string[]; base: Thought[]; dx: number; dy: number } | null>(null);
   const [size, setSize] = useState<{ id: string; w: number; h: number } | null>(null);
   const [panning, setPanning] = useState(false);
-  const [zoom, setZoom] = useState(1);
+  // Each projection keeps its own zoom: the phone's two columns already fit at full size (#151).
+  const mode: Mode = compact ? 'compact' : 'plane';
+  const [zooms, setZooms] = useState<Record<Mode, number>>({ plane: 1, compact: 1 });
+  const zoom = zooms[mode];
+  const modeRef = useRef<Mode>(mode);
+  const setZoom = useCallback((next: number | ((z: number) => number)) => setZooms((all) => {
+    const key = modeRef.current;
+    return { ...all, [key]: typeof next === 'function' ? next(all[key]) : next };
+  }), []);
   const [, remeasure] = useState(0);
   const observer = useRef<ResizeObserver | null>(null);
   useEffect(() => {
@@ -143,20 +158,141 @@ export function SketchMap(props: SketchMapProps) {
   const lastThought = selection.length ? shown.find((t) => t.id === selection[selection.length - 1]) : undefined;
   const byId = new Map(shown.map((t) => [t.id, t]));
 
-  // Fit: show the whole graph when it fits at a readable size, otherwise start at its top left.
-  const geometry = useRef({ rects, origin });
+  // Camera continuity (#151, ADAPT-4): the view a person chose survives resizing, rotation, the
+  // keyboard and the switch between the plane and the phone's two columns. The browser clamps a
+  // scroll position whenever the scrollable area shrinks (the phone projection is only as wide as
+  // the canvas) and never restores it, so the map keeps its own camera per projection: the plane's
+  // scroll position, and on the phone the thought at the top, its offset and the sideways scroll
+  // (which only exists zoomed in). Layout changes put that camera back; only a scroll the layout
+  // did not cause moves it. Nothing here auto-fits.
+  const geometry = useRef({ rects, origin, zoom });
   const coarseRef = useRef(coarse);
-  const compactRef = useRef(compact);
-  useEffect(() => { coarseRef.current = coarse; compactRef.current = compact; });
-  useEffect(() => { geometry.current = { rects, origin }; });
+  const cameras = useRef<Record<Mode, Camera | null>>({ plane: null, compact: null });
+  const lastKnown = useRef<{ left: number; top: number } | null>(null);
+  const seen = useRef<{ x: number; y: number } | null>(null);
+  useEffect(() => { coarseRef.current = coarse; });
+  const range = (el: HTMLElement) => ({ x: el.scrollWidth - el.clientWidth, y: el.scrollHeight - el.clientHeight });
+  /** The scroll position a camera means in the current layout. */
+  const positionOf = useCallback((camera: Camera, at: Mode) => {
+    const { rects: all, origin: o, zoom: z } = geometry.current;
+    if (at === 'plane') return { left: camera.left, top: camera.top };
+    const r = camera.id ? all.get(camera.id) : undefined;
+    // A narrower phone makes the anchored thought taller: one that was wholly in view stays so.
+    const room = canvasRef.current && r ? canvasRef.current.clientHeight - r.h * z : -1;
+    const offset = camera.whole && room >= 0 ? Math.min(camera.top, room) : camera.top;
+    // Zoomed in, the two columns are wider than the canvas: keep the sideways place too.
+    return { left: camera.left, top: Math.max(0, r ? (r.y - o.y) * z - offset : camera.top) };
+  }, []);
+  /** The camera for a scroll position: on the phone, the first thought in view keeps its place. */
+  const cameraAt = useCallback((pos: { left: number; top: number }, at: Mode): Camera => {
+    if (at === 'plane') return { left: pos.left, top: pos.top };
+    const { rects: all, origin: o, zoom: z } = geometry.current;
+    let best: { id: string; y: number; h: number } | null = null;
+    for (const [id, r] of all) {
+      const y = (r.y - o.y) * z;
+      if (y + r.h * z > pos.top + 1 && (!best || y < best.y)) best = { id, y, h: r.h * z };
+    }
+    const height = canvasRef.current?.clientHeight ?? 0;
+    return best ? { left: pos.left, top: best.y - pos.top, id: best.id, whole: best.y >= pos.top && best.y + best.h <= pos.top + height }
+      : { left: pos.left, top: pos.top, id: null };
+  }, []);
+  const apply = useCallback(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const camera = cameras.current[modeRef.current];
+    if (camera) {
+      const to = positionOf(camera, modeRef.current);
+      el.scrollLeft = to.left;
+      el.scrollTop = to.top;
+    }
+    lastKnown.current = { left: el.scrollLeft, top: el.scrollTop };
+    seen.current = range(el);
+  }, [positionOf]);
+  const record = useCallback((el: HTMLElement) => {
+    const pos = { left: el.scrollLeft, top: el.scrollTop };
+    cameras.current[modeRef.current] = cameraAt(pos, modeRef.current);
+    lastKnown.current = pos;
+    seen.current = range(el);
+  }, [cameraAt]);
+  /** Called on scroll and when the canvas or the plane changes size. */
+  const sync = useCallback((fromScroll: boolean) => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const pos = { left: el.scrollLeft, top: el.scrollTop };
+    const now = range(el);
+    const last = lastKnown.current;
+    const resized = !seen.current || now.x !== seen.current.x || now.y !== seen.current.y;
+    if (!resized) {
+      // Our own placement arriving as a scroll event, or nothing new.
+      if (!fromScroll || (last && near(pos, last))) return;
+      record(el);
+      return;
+    }
+    // A thought being dragged or resized changes the layout under the person's finger: the view
+    // stays still instead of following the camera's anchor, which may be that very thought.
+    if (drag.current?.moved && drag.current.kind !== 'pan') { record(el); return; }
+    // The layout changed under the camera: unless something else scrolled at the same time
+    // (a moved thought scrolled into view), the browser only clamped it.
+    const clamped = last ? { left: Math.min(last.left, Math.max(0, now.x)), top: Math.min(last.top, Math.max(0, now.y)) } : null;
+    if (!last || near(pos, last) || (clamped && near(pos, clamped))) apply();
+    else record(el);
+  }, [apply, record]);
+  useLayoutEffect(() => {
+    const el = canvasRef.current;
+    const plane = el?.firstElementChild;
+    if (!el || !plane || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => sync(false));
+    ro.observe(el);
+    ro.observe(plane);
+    const onScroll = () => sync(true);
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => { ro.disconnect(); el.removeEventListener('scroll', onScroll); };
+  }, [sync]);
+  // Crossing between the plane and the phone projection: return to that projection's own camera, or
+  // on a first visit keep the selected thought (else the first one in view) where the person saw it.
+  useLayoutEffect(() => {
+    const from = modeRef.current;
+    if (from === mode) return;
+    const el = canvasRef.current;
+    if (el && !cameras.current[mode] && cameras.current[from]) {
+      const old = geometry.current;
+      const view = positionOf(cameras.current[from]!, from);
+      const visible = (r: Rect) => {
+        const x = (r.x - old.origin.x) * old.zoom, y = (r.y - old.origin.y) * old.zoom;
+        return x + r.w * old.zoom > view.left && x < view.left + el.clientWidth && y + r.h * old.zoom > view.top && y < view.top + el.clientHeight;
+      };
+      const picked = selection.length ? selection[selection.length - 1]! : null;
+      const pickedRect = picked ? old.rects.get(picked) : undefined;
+      const first = [...old.rects].filter(([, r]) => visible(r)).sort(([, a], [, b]) => (a.y - b.y) || (a.x - b.x))[0];
+      const id = pickedRect && visible(pickedRect) ? picked! : first?.[0];
+      const before = id ? old.rects.get(id) : undefined;
+      const after = id ? rects.get(id) : undefined;
+      if (id && before && after) {
+        const fit = (offset: number, room: number) => Math.max(0, Math.min(offset, room));
+        const top = fit((before.y - old.origin.y) * old.zoom - view.top, el.clientHeight - after.h * zoom);
+        if (mode === 'compact') cameras.current.compact = { left: 0, top, id, whole: top + after.h * zoom <= el.clientHeight };
+        else {
+          const left = fit((before.x - old.origin.x) * old.zoom - view.left, el.clientWidth - after.w * zoom);
+          cameras.current.plane = { left: Math.max(0, (after.x - origin.x) * zoom - left), top: Math.max(0, (after.y - origin.y) * zoom - top) };
+        }
+      }
+    }
+    modeRef.current = mode;
+    geometry.current = { rects, origin, zoom };
+    apply();
+  });
+  useLayoutEffect(() => { geometry.current = { rects, origin, zoom }; });
+
+  // Fit: show the whole graph when it fits at a readable size, otherwise start at its top left.
   const fit = useCallback(() => {
     const canvas = canvasRef.current;
     const { rects: all, origin: o } = geometry.current;
     if (!canvas || !all.size) return;
-    if (compactRef.current) {
+    if (modeRef.current === 'compact') {
       // The projection already fits the width at full size.
       setZoom(1);
-      requestAnimationFrame(() => { canvas.scrollLeft = 0; canvas.scrollTop = 0; });
+      cameras.current.compact = { left: 0, top: 0, id: null };
+      requestAnimationFrame(apply);
       return;
     }
     const boxes = [...all.values()];
@@ -168,11 +304,9 @@ export function SketchMap(props: SketchMapProps) {
     // Round down so a fitted graph never grows beyond that measured viewport.
     const z = Math.max(coarseRef.current ? FIT_MIN_COARSE : FIT_MIN, Math.floor(Math.min(1, canvas.clientWidth / (maxX - minX), canvas.clientHeight / (maxY - minY)) * 100) / 100);
     setZoom(z);
-    requestAnimationFrame(() => {
-      canvas.scrollLeft = Math.max(0, (minX - o.x) * z);
-      canvas.scrollTop = Math.max(0, (minY - o.y) * z);
-    });
-  }, []);
+    cameras.current.plane = { left: Math.max(0, (minX - o.x) * z), top: Math.max(0, (minY - o.y) * z) };
+    requestAnimationFrame(apply);
+  }, [apply, setZoom]);
   const fitted = useRef(false);
   const hasThoughts = sketch.thoughts.length > 0;
   useEffect(() => {
@@ -323,6 +457,13 @@ export function SketchMap(props: SketchMapProps) {
   const editingRect = editing ? rects.get(editing.id) : undefined;
   const editingThought = editing ? byId.get(editing.id) : undefined;
   const plus = last && lastThought && !editing && !connectFrom && canWrite && !offset ? place(last) : null;
+  // #252: a selected link thought offers its link; the node itself is a button, so the link sits beside it.
+  const openLink = last && lastThought && !editing && !connectFrom && !offset ? linkOf(lastThought.text) : null;
+  const linkAnchor = openLink ? (
+    <a className="sk-edit-btn sk-open-link" href={openLink.href} target="_blank" rel="noopener noreferrer" aria-label={`Open link ${openLink.host} in a new tab`}>
+      <Icon name="link" size={12} />Open link
+    </a>
+  ) : null;
 
   return (
     <div className="sk-canvas-wrap sk-canvas-wrap--controls">
@@ -357,9 +498,10 @@ export function SketchMap(props: SketchMapProps) {
             const p = place(r);
             const selected = selection.includes(thought.id);
             const dragging = !!offset?.ids.includes(thought.id);
+            const link = linkOf(thought.text);
             const meta = thought.placement
               ? (thought.placement.title ? `Draft · ${thought.placement.title}` : 'Draft you can’t open')
-              : null;
+              : link ? `Link · ${link.host}` : null;
             // UI116-4: a count of the linked tasks, never their titles or results, under the text.
             const linked = projectId ? tasks.get(thought.id) : undefined;
             return (
@@ -369,24 +511,26 @@ export function SketchMap(props: SketchMapProps) {
                 ref={(el) => {
                   if (el) { nodes.current.set(thought.id, el); observer.current?.observe(el); return () => { nodes.current.delete(thought.id); observer.current?.unobserve(el); }; }
                 }}
-                className={`sk-node sk-node--${thought.shape}${dragging ? ' is-dragging' : ''}${editing?.id === thought.id ? ' is-editing' : ''}${thought.version === 0 ? ' is-new' : ''}${linked?.length ? ' has-work' : ''}`}
+                className={`sk-node sk-node--${thought.shape}${dragging ? ' is-dragging' : ''}${editing?.id === thought.id ? ' is-editing' : ''}${thought.version === 0 ? ' is-new' : ''}${linked?.count ? ' has-work' : ''}`}
                 style={{ transform: `translate(${p.x}px, ${p.y}px)`, width: r.w, minHeight: thought.shape === 'circle' ? r.w : thought.height, height: thought.shape === 'circle' ? r.w : undefined }}
                 aria-pressed={selected} aria-describedby={helpId}
                 onPointerDown={(event) => onNodePointerDown(event, thought.id)}
                 onClick={(event) => { if (suppressClick.current) return; props.onPick(thought.id, event.shiftKey || event.metaKey || event.ctrlKey); }}
                 onDoubleClick={() => { if (canWrite && !connectFrom) props.onEdit(thought.id); }}
                 onKeyDown={(event) => onNodeKeyDown(event, thought)}>
-                {meta ? <span className="sk-k"><Icon name="doc" size={12} />{meta}</span> : null}
-                <span className="sk-t">{thought.text}</span>
+                {meta ? <span className="sk-k"><Icon name={thought.placement ? 'doc' : 'link'} size={12} />{meta}</span> : null}
+                {thought.file ? <ThoughtImage className="sk-img" fileId={thought.file.id} name={thought.file.name}
+                  style={{ maxHeight: Math.max(48, thought.height - 64) }} /> : null}
+                <span className={`sk-t${link ? ' sk-t--link' : ''}`}>{thought.text}</span>
                 <span className="sk-p">{provenance(thought, meId)}</span>
                 {props.movers.get(thought.id) ? <span className="sk-live-mover">{props.movers.get(thought.id)} is moving</span> : null}
                 {/* Room for the count, which is its own button beside this one. */}
-                {linked?.length ? <span className="sk-work-gap" aria-hidden="true" /> : null}
+                {linked?.count ? <span className="sk-work-gap" aria-hidden="true" /> : null}
                 {selected && selection.length === 1 && canWrite && !coarse && !editing ? (
                   <span className="sk-resize" aria-hidden="true" onPointerDown={(event) => onResizePointerDown(event, thought)} />
                 ) : null}
               </button>
-              {linked?.length && projectId ? (
+              {linked?.count && projectId ? (
                 <div className={`sk-work-slot sk-work-slot--${thought.shape}${dragging ? ' is-dragging' : ''}`} style={{ transform: `translate(${p.x}px, ${p.y}px)`, width: r.w, height: r.h }}>
                   <ThoughtTasks thought={thought} tasks={linked} projectId={projectId} variant="map" onOpenTask={props.onOpenTask} />
                 </div>
@@ -406,11 +550,15 @@ export function SketchMap(props: SketchMapProps) {
               <button type="button" className="sk-edit-btn" aria-label={`Edit ${quote(lastThought.text)}`} onClick={() => props.onEdit(lastThought.id)}>Edit</button>
             );
             return coarse ? (
-              <div className="sk-actions" style={{ transform: `translate(${plus.x + last.w / 2}px, ${plus.y + last.h + 6}px) ${keep} translateX(-50%)` }}>{edit}{add}</div>
+              <div className="sk-actions" style={{ transform: `translate(${plus.x + last.w / 2}px, ${plus.y + last.h + 6}px) ${keep} translateX(-50%)` }}>{edit}{linkAnchor}{add}</div>
             ) : (
               // With a fine pointer, Edit sits in the toolbar so nothing covers nearby thoughts.
-              <div className="sk-actions" style={{ transform: `translate(${plus.x + last.w + 8}px, ${plus.y + last.h / 2}px) ${keep} translateY(-50%)` }}>{add}</div>
+              <div className="sk-actions" style={{ transform: `translate(${plus.x + last.w + 8}px, ${plus.y + last.h / 2}px) ${keep} translateY(-50%)` }}>{linkAnchor}{add}</div>
             );
+          })() : linkAnchor && last ? (() => {
+            // People who can only look still open a selected link.
+            const at = place(last);
+            return <div className="sk-actions" style={{ transform: `translate(${at.x + last.w / 2}px, ${at.y + last.h + 6}px) scale(${1 / zoom}) translateX(-50%)` }}>{linkAnchor}</div>;
           })() : null}
           {editing && editingRect && editingThought && canWrite ? (
             <ThoughtEditor key={`${editing.id}:${editing.attempt}`} className="sk-edit" initial={editing.initial} disabled={editing.saving} onChange={props.onEditText}

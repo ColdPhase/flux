@@ -3,7 +3,7 @@ import { editingSessionRows,editingTransactions,liveMapRows,schema,type createDa
 import { ConflictError,ForbiddenError,InvalidInputError,NotFoundError,ServiceUnavailableError,createSketchUseCases,policySketchAccess,
   presentSketch,presentThoughts,presentThoughtLink,type LiveMapBackend,type MapIdentity,type MapNativeChange,type MapTransient } from '@flux/core';
 import type { LiveMapDelta,LiveMapPosition,NamedPrincipal } from '@flux/contracts';
-import { sketchPorts,sketchRepository } from '../sketches/adapters.js';
+import { sketchFiles,sketchPorts,sketchRepository } from '../sketches/adapters.js';
 import { UnauthenticatedError } from '../identity/session.js';
 import { decodeMapChange,mapHash } from './map-state.js';
 import { undoMap } from './map-undo.js';
@@ -37,9 +37,9 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
       const result=await action({db,actor,principal,room,sketch,access,finalFence});await finalFence();return result;
     });active.add(work);editingResourcesChanged();try{return await work;}finally{active.delete(work);editingResourcesChanged();}
   }
-  async function delta(db:Db,principal:{kind:'human';id:string},room:{generation:string;workspaceId:string},record:NonNullable<Awaited<ReturnType<ReturnType<typeof liveMapRows<MapNativeChange>>['after']>>>,access:'read'|'write'):Promise<LiveMapDelta> {
+  async function delta(db:Db,principal:{kind:'human';id:string},room:{generation:string;workspaceId:string},sketch:Parameters<typeof presentThoughts>[2],record:NonNullable<Awaited<ReturnType<ReturnType<typeof liveMapRows<MapNativeChange>>['after']>>>,access:'read'|'write'):Promise<LiveMapDelta> {
     const change=record.change;const accessPort=policySketchAccess(db);
-    const thoughts=await presentThoughts({access:accessPort},principal,room.workspaceId,change.thoughts.filter(t=>t.after&&changed(t.before,t.after)).map(t=>t.after!));
+    const thoughts=await presentThoughts({access:accessPort,files:sketchFiles(db)},principal,{...sketch,workspaceId:room.workspaceId},change.thoughts.filter(t=>t.after&&changed(t.before,t.after)).map(t=>t.after!));
     const [author]=record.actorKind==='human'?await db.select({name:schema.authUsers.name}).from(schema.authUsers).where(eq(schema.authUsers.id,record.actorId))
       :await db.select({name:schema.agents.name}).from(schema.agents).where(eq(schema.agents.id,record.actorId));
     return {generation:record.generation,sequence:record.sequence,commandId:record.commandId,actor:{kind:record.actorKind,id:record.actorId,name:author?.name??'Former collaborator'},
@@ -120,7 +120,7 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
     deliverUndo(who,sketchId,commandId,handoff){return run(who,sketchId,false,async c=>{
       const row=await liveMapRows(c.db,decodeMapChange).command({kind:'human',id:who.actorId},id(commandId));
       if(!row||row.sketchId!==sketchId||row.generation!==c.room.generation)throw new NotFoundError('Undo receipt');
-      const value=await delta(c.db,c.principal,c.room,row,c.access);await boundary.beforeHandoff?.();await c.finalFence();handoff({commandId,delta:value});
+      const value=await delta(c.db,c.principal,c.room,c.sketch,row,c.access);await boundary.beforeHandoff?.();await c.finalFence();handoff({commandId,delta:value});
     });},
     deliver(who,sketchId,generation,afterSequence,handoff,options={}){return run(who,sketchId,false,async c=>{
       if(id(generation)!==c.room.generation)throw new ConflictError('The map generation changed','EDITING_GENERATION_CHANGED');
@@ -137,7 +137,7 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
         try{if(!await editingSessionRows(c.db).lock({sessionId:current.sessionId,actorId:current.actorId}))continue;await access.requireSketch({kind:'human',id:current.actorId},'sketch.write',sketchId,{lock:true});}catch(error){if(error instanceof ForbiddenError||error instanceof NotFoundError)continue;throw error;}
         transient.push({type:'map-presence',generation,connectionId:current.connectionId,actor:{kind:'human',id:current.actorId,name},selected:current.selected,cursor:current.cursor,expiresAt:current.expiresAt.toISOString()});
       }
-      const next=record?await delta(c.db,c.principal,c.room,record,c.access):null;await boundary.beforeHandoff?.();
+      const next=record?await delta(c.db,c.principal,c.room,c.sketch,record,c.access):null;await boundary.beforeHandoff?.();
       const clock=await rows.currentTransientFence(who,sketchId,generation);if(!clock.recipientAlive)throw new UnauthenticatedError();
       const gestures=new Set(clock.gestureIds),people=new Set(clock.presenceIds);
       // No further await between this recipient+producer clock observation and the synchronous callback.

@@ -1,0 +1,83 @@
+ Container flux155browser-anthropic-mock-1  Running
+ Container flux155browser-mailpit-1  Running
+ Container flux155browser-db-1  Running
+ Container flux155browser-api-1  Running
+ Container flux155browser-worker-1  Running
+ Container flux155browser-db-1  Waiting
+ Container flux155browser-db-1  Healthy
+ Container flux155browser-migrate-1  Starting
+ Container flux155browser-migrate-1  Started
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Exited
+ Container flux155browser-migrate-1  Exited
+test_01_project_input_blur_expiry_and_unchanged_renewal (test_typing.TypingJourney.test_01_project_input_blur_expiry_and_unchanged_renewal) ... ok
+test_02_scope_navigation_restores_draft_without_activity_and_send_stops (test_typing.TypingJourney.test_02_scope_navigation_restores_draft_without_activity_and_send_stops) ... FAIL
+test_03_dm_is_exact_scope_and_send_is_durable_once (test_typing.TypingJourney.test_03_dm_is_exact_scope_and_send_is_durable_once) ... ok
+test_04_reader_observes_and_current_access_revocation_clears (test_typing.TypingJourney.test_04_reader_observes_and_current_access_revocation_clears) ... ok
+test_05_receiver_loses_application_frames_and_expires (test_typing.TypingJourney.test_05_receiver_loses_application_frames_and_expires) ... ok
+test_06_viewport_matrix_static_notice_keeps_layout_and_focus (test_typing.TypingJourney.test_06_viewport_matrix_static_notice_keeps_layout_and_focus) ... ok
+test_07_reconnect_acknowledges_cookie_account_before_any_new_pulse (test_typing.TypingJourney.test_07_reconnect_acknowledges_cookie_account_before_any_new_pulse) ... FAIL
+
+======================================================================
+FAIL: test_02_scope_navigation_restores_draft_without_activity_and_send_stops (test_typing.TypingJourney.test_02_scope_navigation_restores_draft_without_activity_and_send_stops)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/work/tests/ui/test_typing.py", line 181, in test_02_scope_navigation_restores_draft_without_activity_and_send_stops
+    expect(bob.locator(".project-convo__message", has_text="A manual switch still works when the sensor is unavailable.")).to_have_count(1)
+  File "/usr/local/lib/python3.12/dist-packages/playwright/sync_api/_generated.py", line 22365, in to_have_count
+    self._sync(
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_sync_base.py", line 115, in _sync
+    return task.result()
+           ^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_assertions.py", line 465, in to_have_count
+    await self._expect_impl(
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_assertions.py", line 128, in _expect_impl
+    _record_soft_or_raise(
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_assertions.py", line 60, in _record_soft_or_raise
+    raise error
+AssertionError: Locator expected to have count '1'
+Actual value: 0
+Call log:
+  - Expect "to_have_count" with timeout 10000ms
+  - waiting for locator(".project-convo__message").filter(has_text="A manual switch still works when the sensor is unavailable.")
+    24 × locator resolved to 0 elements
+       - unexpected value "0"
+
+
+======================================================================
+FAIL: test_07_reconnect_acknowledges_cookie_account_before_any_new_pulse (test_typing.TypingJourney.test_07_reconnect_acknowledges_cookie_account_before_any_new_pulse)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/work/tests/ui/test_typing.py", line 270, in test_07_reconnect_acknowledges_cookie_account_before_any_new_pulse
+    expect(self.composer(alice)).to_have_value("", timeout=15000)
+  File "/usr/local/lib/python3.12/dist-packages/playwright/sync_api/_generated.py", line 22638, in to_have_value
+    self._sync(
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_sync_base.py", line 115, in _sync
+    return task.result()
+           ^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_assertions.py", line 568, in to_have_value
+    await self._expect_impl(
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_assertions.py", line 128, in _expect_impl
+    _record_soft_or_raise(
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_assertions.py", line 60, in _record_soft_or_raise
+    raise error
+AssertionError: Locator expected to have Value ''
+Actual value: PRIVATE-DRAFT belonging only to Alice
+Call log:
+  - Expect "to_have_value" with timeout 15000ms
+  - waiting for locator("#project-composer")
+    33 × locator resolved to <textarea rows="1" id="project-composer" placeholder="Reply to Bob and Nia…">PRIVATE-DRAFT belonging only to Alice</textarea>
+       - unexpected value "PRIVATE-DRAFT belonging only to Alice"
+    - locator resolved to <textarea rows="1" id="project-composer" placeholder="Reply to Alice and Nia…">PRIVATE-DRAFT belonging only to Alice</textarea>
+    - unexpected value "PRIVATE-DRAFT belonging only to Alice"
+
+Aria snapshot:
+- textbox "Reply":
+  - /placeholder: Reply to Alice and Nia…
+  - text: PRIVATE-DRAFT belonging only to Alice
+
+----------------------------------------------------------------------
+Ran 7 tests in 56.096s
+
+FAILED (failures=2)

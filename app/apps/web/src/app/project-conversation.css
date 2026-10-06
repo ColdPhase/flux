@@ -4,6 +4,8 @@
 .project-convo__message.is-arrived { box-shadow: inset 3px 0 0 var(--accent); }
 .project-convo { display: flex; flex: 1; min-height: 0; flex-direction: column; }
 .project-convo__feed { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+/* Laid out (positions settle) but not shown until its first bounded reads arrive (#155). */
+.project-convo__feed.is-opening { visibility: hidden; }
 /* One reading column (direction C): conversations live in the sidebar, sources in the composer. */
 .project-convo__in { max-width: calc(var(--col) + 48px); margin: 0 auto; padding: 14px 24px 24px; }
 .project-convo__head { padding: 2px 0 6px; }
@@ -123,6 +125,9 @@ button.project-convo__contribution { cursor: pointer; }
 .project-convo__composer .composer__box:focus-within { box-shadow: inset 0 0 0 1px var(--accent); }
 .project-convo__composer .composer__box textarea { order: -1; flex: 1 1 100%; min-height: 36px; max-height: 135px; padding: 0; line-height: 1.65; }
 .project-convo__composer .composer__send { margin-left: auto; }
+/* Touch above phone width (#151): the field keeps its 36px line but its own hit area reaches 44px into
+   the card's padding. Phones have their own 44px field below (#266 PF-3). */
+@media (pointer: coarse) and (min-width: 641px) { .project-convo__composer .composer__box textarea { min-height: 44px; margin-block: -4px; padding-block: 4px; } }
 .project-convo__composer .project-convo__to { order: 2; display: flex; align-items: baseline; gap: 4px 10px; margin: 7px 4px 0; }
 .project-convo__composer .project-convo__to .composer__audience { margin: 0; font-size: var(--fs-xs); font-weight: 400; color: var(--text-2); }
 .project-convo__composer .project-convo__error, .project-convo__composer .project-convo__hint { order: 3; }
@@ -137,5 +142,15 @@ button.project-convo__contribution { cursor: pointer; }
   .project-convo__composer { padding: 8px 14px 15px; padding-bottom: max(15px, env(safe-area-inset-bottom)); }
   .project-convo__composer .composer__box { padding: 11px 13px; border-radius: 9px; }
 }
+/* Phone (#266 PF-3): the view bar below already keeps the safe area, so the composer is one compact
+   card — the text, then a slim row of tools — with the audience as one quiet line under it. */
+@media (max-width: 640px) {
+  .project-convo__composer { padding: 6px 10px 6px; }
+  .project-convo__composer .composer__box { gap: 0 2px; padding: 8px 6px 4px 12px; border-radius: 14px; }
+  .project-convo__composer .composer__box textarea { min-height: 44px; max-height: 30vh; padding: 10px 4px 10px 0; line-height: 1.5; box-sizing: border-box; overflow-y: auto; }
+  .project-convo__composer .composer__attach { margin-left: -6px; }
+  .project-convo__composer .project-convo__to { margin: 4px 4px 0; }
+}
+
 
 .project-convo__material-read { text-decoration: underline; text-underline-offset: 2px; }

@@ -164,6 +164,25 @@ Keep touch hit targets, readable text and keyboard focus independent of animatio
 checked 2026-09-30, supports user ability to disable nonessential interaction
 motion; this contract deliberately applies that approach throughout Flux.
 
+**Implementation record (#155, 2026-10-05; owner Zamojski5, evaluation pending).** The tokens
+chosen within the proposals above, and the rules the views follow. Measured numbers and the method
+live in [`155-reference-client-wip`](../agents/evidence/155-reference-client-wip/README.md).
+
+- Selection: the project row's highlight (`.side__glide`) and the work tabs' mark travel with
+  `--dur-2` (160 ms, ease-out, transform only; a taller row's height is set at once). They go to the chosen item **at once, while
+  its view loads** (router pending navigation); the row or tab becomes current (accent bar,
+  `aria-current`) when its content shows. A newer choice retargets from where the mark is; a choice
+  that does not happen returns the mark. Focus, scroll and drafts are untouched.
+- Arrival: only entries that arrive after the newest one already shown (`arrivals()` in
+  `ui/motion-rules.ts`) rise in (opacity + 4 px, `--dur-2`), and only when visible, in a visible page
+  and not under a modal or an inert sheet. Restored history, earlier pages and refreshes never move.
+  A reader with earlier content is not moved; one static live-region line ("2 new messages · 1 new
+  task") offers the end, taking no layout space.
+- Loops: the assistant's working mark moves only while the run actually executes (`reading`,
+  `dispatching`), not while queued or stopping; it and the live-session mark pause while the page is
+  hidden, the mark is off screen or a modal covers it. Typing stays a static, reserved line.
+- Reduced motion: every token is 0 ms, so marks are placed at once and nothing arrives with motion.
+
 ## Home: acknowledgement, your tasks, first notes — HOME-1 to HOME-3
 
 Accepted 2026-10-03, with amendments, by independent peer review of the proposal on
@@ -204,7 +223,7 @@ beside permitted sources/PR review/context; phone keeps the same actions and
 vocabulary in focused views. No mandatory dashboard sprawl or long unreadable
 message rows. On very tall screens, keep a short work stream and its composer
 visually connected rather than separating them by a large empty region. Preserve 320px Android through 4K/ultrawide, zoom, rotation and
-virtual-keyboard requirements and actual #20 device acceptance.
+virtual-keyboard requirements and #20 mobile acceptance.
 
 Use the issue map in [F-016](../product/mcp-cowork.md#delivery-and-evidence--co-5).
 Review rendered realistic full views independently of behavior. Actual server

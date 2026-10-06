@@ -1,19 +1,26 @@
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 'react';
-import { Link } from 'react-router';
-import type { GithubBinding, GithubCapabilities, GithubRepository, GithubTaskLink } from '@flux/contracts';
+import { Link, useNavigation, useRevalidator } from 'react-router';
+import { githubRuleDefaultPath, type GithubBinding, type GithubCapabilities, type GithubRepository, type GithubRuleDefault, type GithubTaskLink } from '@flux/contracts';
 import { ApiError, request } from '../api/client';
 import { useProjectShell, type ProjectShell } from '../project/data';
 import { Button, Spinner } from '../ui';
+import { useShellData } from '../app/data';
+import { useWorkChoices } from '../work/useDetailReads';
+import { WorkPagination } from '../work/WorkPagination';
 import './github.css';
 const failure = (cause: unknown) => cause instanceof ApiError && cause.status < 500 ? cause.message : 'GitHub is unavailable. Your work is saved; try again when the connection returns.';
 export function GithubSettings() {
   const shell = useProjectShell();
+  const { me } = useShellData();
   // A different project gets a fresh private projection, including its pending requests.
-  return shell ? <GithubProjectSettings key={shell.project.id} shell={shell} /> : null;
+  return shell ? <GithubProjectSettings key={`${me.user.id}:${shell.project.id}`} shell={shell} /> : null;
 }
 function GithubProjectSettings({ shell }: { shell: ProjectShell }) {
   const projectId = shell.project.id; const prefix = `/api/v1/projects/${projectId}/github`;
   const [capabilities, setCapabilities] = useState<GithubCapabilities | null>(null);
+  // The default as last saved here; the link form discloses it (#74 G-1a).
+  const [savedDefault, setSavedDefault] = useState<{ value: GithubRuleDefault | null } | null>(null);
+  const ruleDefault = savedDefault ? savedDefault.value : capabilities?.ruleDefault ?? null;
   const [bindings, setBindings] = useState<GithubBinding[]>([]); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
   const loadRequest = useRef<AbortController | null>(null);
   const load = useCallback(() => {
@@ -57,10 +64,29 @@ function GithubProjectSettings({ shell }: { shell: ProjectShell }) {
             <a href={binding.url} target="_blank" rel="noreferrer">{binding.owner}/{binding.name}</a><span>{binding.private ? 'Private' : 'Public'}</span>
             {shell.project.access === 'manager' ? <Button variant="secondary" disabled={busy} onClick={() => void disconnect(binding.id)}>Disconnect</Button> : null}</li>)}</ul> : <p>{error ? 'Repository access could not be verified. Refresh access or reconnect your account.' : 'No repositories connected to this project yet.'}</p>}</section>
           {shell.project.access === 'manager' ? <RepositoryPicker prefix={prefix} onBound={refresh} /> : null}
-          {bindings.length ? <PullReferences bindings={bindings} tasks={shell.work.work} canLink={shell.project.access !== 'viewer'} /> : null}
+          {shell.project.access === 'manager' && bindings.length ? <RuleDefault projectId={projectId} current={ruleDefault} onSaved={(value) => setSavedDefault({ value })} /> : null}
+          {bindings.length ? <PullReferences projectId={projectId} bindings={bindings} canLink={shell.project.access !== 'viewer'} ruleDefault={ruleDefault} /> : null}
         </>}
-    <p className="github-settings__note">Task automation and agent event delivery are not available yet. Merge, checks and reviews stay visible on GitHub; they do not complete your task’s acceptance criteria.</p>
+    <p className="github-settings__note">Linked PRs move a task only when someone who can edit it turns that on in the task’s Details, or links a required PR while this project’s default below is on. A merge never checks off written criteria. Agent event delivery is not available yet.</p>
   </div></div>;
+}
+/** A manager's default (#74 G-1a): whoever links a required PR to a task without a rule turns its rule on. */
+function RuleDefault({ projectId, current, onSaved }: { projectId: string; current: GithubRuleDefault | null; onSaved: (value: GithubRuleDefault | null) => void }) {
+  const id = useId(); const value = current; const [busy, setBusy] = useState(false); const [error, setError] = useState('');
+  async function save(enabled: boolean, mode: GithubRuleDefault['mode']) {
+    setBusy(true); setError('');
+    try { onSaved((await request<{ ruleDefault: GithubRuleDefault | null }>(githubRuleDefaultPath(projectId), { method: 'PUT', body: { enabled, mode } })).ruleDefault); }
+    catch (cause) { setError(failure(cause)); } finally { setBusy(false); }
+  }
+  return <section><h3>New required pull requests</h3>
+    <p>When someone links a required PR to a task that has no rule yet, Flux turns on “Let linked PRs move this task” for it, on that person’s behalf. Everyone who can see the task then sees its status changes, with PR numbers, check names and commits.</p>
+    <label className="github-settings__check"><input type="checkbox" checked={!!value} disabled={busy} onChange={(event) => void save(event.target.checked, value?.mode ?? null)} /> Turn it on for new required links</label>
+    {value ? <div className="github-settings__form"><label htmlFor={`${id}-mode`}>When every PR is merged</label>
+      <select id={`${id}-mode`} value={value.mode ?? ''} disabled={busy} onChange={(event) => void save(true, (event.target.value || null) as GithubRuleDefault['mode'])}>
+        <option value="">Ready to close if the task has written criteria, otherwise done</option><option value="ready">Always Ready to close</option><option value="complete">Done unless the task has written criteria</option>
+      </select></div> : null}
+    {error ? <p role="alert" className="github-settings__error">{error}</p> : null}
+  </section>;
 }
 function RepositoryPicker({ prefix, onBound }: { prefix: string; onBound: () => Promise<void> }) {
   const id = useId(); const [installations, setInstallations] = useState<{ id: string; account: string }[]>([]); const [installation, setInstallation] = useState('');
@@ -85,15 +111,28 @@ function RepositoryPicker({ prefix, onBound }: { prefix: string; onBound: () => 
     </form> : null}{error ? <p role="alert" className="github-settings__error">{error}</p> : null}
   </section>;
 }
-function PullReferences({ bindings, tasks, canLink }: { bindings: GithubBinding[]; tasks: { id: string; title: string }[]; canLink: boolean }) {
+function PullReferences({ projectId, bindings, canLink, ruleDefault }: { projectId: string; bindings: GithubBinding[]; canLink: boolean; ruleDefault: GithubRuleDefault | null }) {
+  const { me } = useShellData();
+  const [search, setSearch] = useState('');
+  const navigation = useNavigation();
+  const revalidator = useRevalidator();
+  const identityReady = navigation.state === 'idle' && revalidator.state === 'idle';
+  const choices = useWorkChoices(me.user.id, projectId, identityReady ? { purpose: 'choices', choice: 'doc_refs', kind: 'work', q: search.trim() || undefined } : null);
+  const canCommit = identityReady && choices.read.phase === 'ready' && choices.page?.summary.access !== 'viewer';
+  const tasks = choices.page?.items ?? [];
+  // One explicitly chosen identity is private form state, never a growing page cache.
+  const [chosen, setChosen] = useState<{ id: string; title: string } | null>(null);
   const id = useId(); const [task, setTask] = useState(''); const [binding, setBinding] = useState(''); const [number, setNumber] = useState('');
   const [role, setRole] = useState<'required_output' | 'related'>('required_output'); const [links, setLinks] = useState<GithubTaskLink[]>([]); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
-  async function openTask(value: string) { setTask(value); setLinks([]); setError(''); if (!value) return; setBusy(true);
+  async function openTask(value: string) { setTask(value); setChosen(tasks.find((row) => row.id === value) ?? (chosen?.id === value ? chosen : null)); setLinks([]); setError(''); if (!value) return; setBusy(true);
     try { setLinks(await request(`/api/v1/work/${value}/github-links`)); } catch (cause) { setError(failure(cause)); } finally { setBusy(false); } }
   async function link(event: FormEvent) { event.preventDefault(); setError(''); setBusy(true); try {
     await request(`/api/v1/work/${task}/github-links`, { method: 'POST', body: { bindingId: binding, number: Number(number), role } }); setLinks(await request(`/api/v1/work/${task}/github-links`));
   } catch (cause) { setError(failure(cause)); } finally { setBusy(false); } }
-  const taskPicker = <><label htmlFor={`${id}-task`}>Task</label><select id={`${id}-task`} value={task} disabled={busy} onChange={(event) => void openTask(event.target.value)}><option value="">Choose task…</option>{tasks.map((row) => <option key={row.id} value={row.id}>{row.title}</option>)}</select></>;
+  const taskPicker = <><label htmlFor={`${id}-search`}>Find task</label><input id={`${id}-search`} type="search" value={search} onChange={(event) => setSearch(event.target.value)} />
+    <label htmlFor={`${id}-task`}>Task</label><select id={`${id}-task`} value={task} disabled={busy || choices.busy || !choices.page} onChange={(event) => void openTask(event.target.value)}><option value="">Choose task…</option>{chosen && !tasks.some((row) => row.id === chosen.id) ? <option value={chosen.id}>{chosen.title}</option> : null}{tasks.map((row) => <option key={row.id} value={row.id}>{row.title}</option>)}</select>
+    <WorkPagination {...choices} label="GitHub task choices" noun="tasks" />
+    {choices.read.phase === 'unavailable' ? <p role="alert">Tasks could not be loaded. Your selection is kept. <button type="button" className="ui-link" onClick={choices.onRefresh}>Refresh task choices</button></p> : null}</>;
   return <section><h3>{canLink ? 'Link an existing pull request' : 'Linked pull requests'}</h3><p>{canLink ? 'Select the task, repository and exact PR number. Flux verifies the original PR; your existing tasks remain authoritative.' : 'Choose an existing task to read its verified pull requests under your own current repository access.'}</p>
     {canLink ?
     <form onSubmit={(event) => void link(event)} className="github-settings__form">
@@ -101,7 +140,8 @@ function PullReferences({ bindings, tasks, canLink }: { bindings: GithubBinding[
       <label htmlFor={`${id}-binding`}>Repository</label><select id={`${id}-binding`} value={binding} disabled={busy} onChange={(event) => setBinding(event.target.value)}><option value="">Choose repository…</option>{bindings.map((row) => <option key={row.id} value={row.id}>{row.owner}/{row.name}</option>)}</select>
       <label htmlFor={`${id}-number`}>Pull request number</label><input id={`${id}-number`} type="number" min="1" required disabled={busy} value={number} onChange={(event) => setNumber(event.target.value)} />
       <label htmlFor={`${id}-role`}>Relationship</label><select id={`${id}-role`} value={role} disabled={busy} onChange={(event) => setRole(event.target.value as typeof role)}><option value="required_output">Required output</option><option value="related">Related context</option></select>
-      <Button type="submit" busy={busy} disabled={!task || !binding || !number}>Verify and link PR</Button>
+      {ruleDefault && role === 'required_output' ? <p className="github-settings__disclose" role="note">This project’s default turns on “Let linked PRs move this task” for a task without a rule, on your behalf. Everyone who can see the task then sees its status changes, with PR numbers, check names and commits.</p> : null}
+      <Button type="submit" busy={busy} disabled={!task || !binding || !number || !canCommit}>Verify and link PR</Button>
     </form> : <div className="github-settings__form">{taskPicker}</div>}{error ? <p role="alert" className="github-settings__error">{error}</p> : null}
     {links.length ? <ul className="github-settings__pulls">{links.map((row) => <li key={row.id}><a href={row.facts.url} target="_blank" rel="noreferrer">#{row.facts.number} · {row.facts.title}</a>
       <span>{row.role === 'required_output' ? 'Required output' : 'Related'} · {row.facts.execution.replaceAll('_', ' ')} · {row.state}</span>

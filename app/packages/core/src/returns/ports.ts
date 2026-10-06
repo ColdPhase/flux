@@ -88,6 +88,8 @@ export interface ReturnRepository {
   lastEvent(recipient: string): Promise<{ id: string; seq: number } | null>;
   projects(ids: string[]): Promise<Map<string, { id: string; name: string }>>;
   work(ids: string[]): Promise<Map<string, ReturnWork>>;
+  /** Work in these projects that one of these decisions parks now (an accepted pivot, #290). */
+  parkedWork(projectIds: string[], decisionIds: string[]): Promise<{ id: string; projectId: string; decisionId: string }[]>;
   decisions(ids: string[]): Promise<Map<string, ReturnDecision>>;
   results(ids: string[]): Promise<Map<string, ReturnResult>>;
   /** Work items a result is linked to (any role), in the result's project. */

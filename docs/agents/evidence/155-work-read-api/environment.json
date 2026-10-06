@@ -1,0 +1,30 @@
+{
+  "utc": "2026-10-01T08:44:13.225959+00:00",
+  "tested_source": "ef15f280343683d8d848cf0d5c4e14464381d7d4",
+  "compose_project": "flux155browser",
+  "api_host_port": 18581,
+  "mailpit_host_port": 18585,
+  "docker_client": "29.1.2",
+  "docker_server": "29.1.2",
+  "cpus": 14,
+  "memory_bytes": 8216887296,
+  "architecture": "aarch64",
+  "postgresql": "18.6",
+  "node": "24.21.0",
+  "api_image": "sha256:e153900e6b30f3d49ebc901868ef5bc7e117bfb64a154d496ccaf33726f4e4d7",
+  "test_image": "sha256:5c8e096515e1a37bcb3d36bb00cf3a49fcfdb79122529f4147c886e0d8400c7c",
+  "ui_tools_image": "sha256:05d2a385f3c39661db038745d0cc1c6851885ad0afa9d8a375c39fefcbc4032b",
+  "fixture": "Actual public commands/register/cookies/grants for humans, agents, work, decisions, results, two material versions, conversations/messages and shared sketch/thought. 123-key fixture remains native SQL seeded. Held destructive transitions explicitly use native SQL; no public delete command claimed. Not 1000-object benchmark or real agent execution.",
+  "resources": "Owned isolated five-service stack retained for client implementation. All build/test handles terminal; unrelated projects preserved.",
+  "outcomes": {
+    "c12b380_prepare": "exit1: missing accessName export and route kind type",
+    "ceca8d6_prepare": "exit127: wrapper edited during run; configured build/type/lint and service readiness completed but entire invocation failed",
+    "0a6825f_prepare": "exit0",
+    "0a6825f_tests": "exit1:38 pass4 fail0 cancel0skip; viewer cursor changed principal; native raw edge Date typing invalid",
+    "655d350_prepare": "exit0",
+    "655d350_tests": "exit0:42 pass0fail0cancel0skip,5.899400628s",
+    "ef15f28_prepare": "exit0",
+    "ef15f28_tests": "exit0:45pass0fail0cancel0skip,5.842035836s"
+  },
+  "digest_scope": "Project work/decisions/results/links/messages and events whose object_id is the project. No all-database/notification/job side-effect claim."
+}

@@ -1,4 +1,4 @@
-import { liveMapRows, sketchRows, type DbExecutor } from '@flux/db';
+import { fileRows, liveMapRows, sketchRows, type DbExecutor } from '@flux/db';
 import type { PromotionPerson } from '@flux/contracts';
 import {
   authorize,
@@ -6,6 +6,7 @@ import {
   createSketchUseCases,
   ForbiddenError,
   ConflictError,
+  placeThoughtImage,
   getProject,
   grantProject,
   listMembers,
@@ -17,7 +18,9 @@ import {
   ServiceUnavailableError,
   visibleFilter,
   type Database,
+  type FileStorage,
   type Principal,
+  type SketchFiles,
   type SketchPorts,
   type SketchPromotion,
   type SketchRepository,
@@ -111,11 +114,26 @@ export function sketchPromotion(tx: Database): SketchPromotion {
   };
 }
 
+/**
+ * Map thought images (#252) over the stored-files rows of the same transaction. Without the files volume (compositions
+ * that only read maps, such as agent reads) placing an image is refused; agents are refused by the files rule anyway.
+ */
+export function sketchFiles(tx: Database, storage?: FileStorage): SketchFiles {
+  const files = fileRows(tx as DbExecutor);
+  return {
+    ofThoughts: (projectId, thoughtIds) => files.thoughtFiles(projectId, thoughtIds),
+    place: (principal, input) => placeThoughtImage(files, storage ?? { read: async () => {
+      throw new ForbiddenError('Images cannot be placed on a map here', 'FILE_PLACEMENT_UNAVAILABLE');
+    } }, principal, input),
+  };
+}
+
 /** The ports of one unit of work (exported for the concurrency tests). */
-export function sketchPorts(tx: Database): SketchPorts {
+export function sketchPorts(tx: Database, storage?: FileStorage): SketchPorts {
   const sketches=sketchRepository(tx as DbExecutor);
   return {
     access: policySketchAccess(tx),
+    files: sketchFiles(tx, storage),
     sketches,
     live:nativeMapJournal(tx as DbExecutor,sketches).journal,
     promotion: sketchPromotion(tx),
@@ -132,7 +150,7 @@ export function nativeCapacityRefusal(error: unknown): unknown {
 }
 
 /** One transaction per use case; on an open transaction (an idempotency scope) it nests as a savepoint. */
-export function sketchUnitOfWork(db: Database,options:NativeMapOptions={}): SketchUnitOfWork {
+export function sketchUnitOfWork(db: Database, storage?: FileStorage, options: NativeMapOptions = {}): SketchUnitOfWork {
   return { async run<T>(work:(ports:SketchPorts)=>Promise<T>):Promise<T> {
     let release=()=>{};let releasePreparation=()=>{};
     try {
@@ -142,7 +160,7 @@ export function sketchUnitOfWork(db: Database,options:NativeMapOptions={}): Sket
       if(live)releasePreparation=await prepareNativeMap(options.context??{principal:options.principal,sessionId:options.sessionId,resourceId:options.resourceId,commandId:options.commandId,operation:options.operation,fingerprint:options.fingerprint});
       const prepared=!!options.prepared||live;
       return await db.transaction(async tx=>{
-        const ports=sketchPorts(tx);const events=transactionEventSession(tx);ports.events=events;const journal=nativeMapJournal(tx,ports.sketches,{...options,prepared});ports.live=journal.journal;release=()=>journal.release();
+        const ports=sketchPorts(tx,storage);const events=transactionEventSession(tx);ports.events=events;const journal=nativeMapJournal(tx,ports.sketches,{...options,prepared});ports.live=journal.journal;release=()=>journal.release();
         const replay=await journal.replay();if(replay.found)return replay.value as T;
         const result=await events.run(()=>work(ports));await journal.finish(result);await events.flushEvents();return result;
       });
@@ -152,8 +170,8 @@ export function sketchUnitOfWork(db: Database,options:NativeMapOptions={}): Sket
   } };
 }
 
-/** The sketch use cases bound to a connection or transaction. */
-export const sketchUseCases = (db: Database,options:NativeMapOptions={}) => createSketchUseCases(sketchUnitOfWork(db,options));
+/** The sketch use cases bound to a connection or transaction; `storage` lets a thought take a staged image (#252). */
+export const sketchUseCases = (db: Database, storage?: FileStorage, options: NativeMapOptions = {}) => createSketchUseCases(sketchUnitOfWork(db, storage, options));
 
 /** Sketch commands sharing a composing caller's transaction and single final event batch (#152 map actions). */
 export function nativeSketchInEventSession(tx: Transaction, session: TransactionEventSession,options:NativeMapOptions={}) {

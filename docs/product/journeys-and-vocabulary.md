@@ -41,6 +41,8 @@ These terms are provisional until #8 and #13 settle the segment and domain bound
 
 **Actor roles:** the *steward* restores context and an accurate next step; a *collaborator* contributes conversation, material or work; the *decision owner* accepts or supersedes a choice; the *work owner* answers for the outcome and can hand it off; an *administrator* governs membership and policy; an *agent* acts under a revocable grant. One human can hold several roles. “Private to me,” “shared with this project,” “shared with the team,” and “restricted to a named group” are provisional user-facing audience descriptions; #13 must settle their exact authorization model. Group membership gives access only to material explicitly shared with that group. The displayed audience must agree with enforced access through UI, API, files, search, and extensions.
 
+**Later amendment, 2026-10-05 ([O-009](decision-authority.md), proposed, #250):** in v0.1 the *decision owner* is any person whose current project access is contributor or manager; agents and the assistant never accept. Below, Jo's "delegation" to Ari means Ari keeps contributor access to the project, and Ari accepts D-2 on that basis. A separate delegation of decision authority with a scope and an expiry is out of v0.1 scope (DA-5).
+
 ## Synthetic scenario and source records
 
 Jo (returning project steward and initial decision owner), Ari (designer, support liaison, and delegated decision owner during Jo's absence), and Nia (engineer and work owner) maintain a small software product, **Tide**. Their project **Shared export** asks whether a CSV export should include archived work invisible to a guest. “Guest” and “member” are Tide's customer roles, not Flux access roles. Ari, who belongs to a restricted support group, redacts the original support report before publishing M-1 to the project. Jo accepts the initial choice D-1, then leaves for a week. During that absence Nia's permission test changes the choice; Ari accepts the correction under delegated authority and assigns the related work. Jo returns after those changes.
@@ -88,7 +90,7 @@ Human handoff follows Journey A's return and uses the same in-progress W-1, D-2,
 | H3 | Ari comments and records a result or hands W-1 back to Nia. | Author, version, open question, and next owner remain on W-1/H-1. | Project. Nia can continue without treating Ari's comment as an accepted decision. |
 | H4 | Ari loses project membership. Authorized members reassign H-1. | Ari's old link shows no project content; search, files, and notification target do not reveal it. | Current membership is checked at read and action time. An old link or cached view cannot restore access. |
 
-An **optional agent path** could use an officially supported external tool or an approved embedded/API/local execution mode, depending on the independent [#9 O-005 decision](https://github.com/ColdPhase/flux/issues/9). No personal subscription, provider login, or embedded run is promised here.
+An **optional agent path** could use an officially supported external tool or an approved embedded/API/local execution mode, depending on the independent [#9 O-005 decision](https://github.com/ColdPhase/flux/issues/9). No personal subscription, provider login, or embedded run is promised here. [F-022](ai-modes.md) (accepted 2026-10-05) now defines the two AI modes and how a subscription is connected.
 
 | Step | Actor, visible state, and source links | Authorization, cost, and failure boundary |
 | --- | --- | --- |

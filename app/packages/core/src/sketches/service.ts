@@ -18,6 +18,7 @@ import {
   type SketchListQuery,
   type SketchPage,
   type Thought,
+  type ThoughtFile,
   type ThoughtLink,
   type UpdateSketchCommand,
   type UpdateThoughtCommand,
@@ -75,8 +76,15 @@ export function presentThoughtLink(record: LinkRecord): ThoughtLink {
   return { id: record.id, sketchId: record.sketchId, fromId: record.fromId, toId: record.toId, label: record.label, createdAt: iso(record.createdAt) };
 }
 
-/** Thoughts as `principal` may see them: a placement's title only when its object is readable now. */
-export async function presentThoughts(ports: Pick<SketchPorts, 'access'>, principal: Principal, workspaceId: string, records: ThoughtRecord[]): Promise<Thought[]> {
+/**
+ * Thoughts as `principal` may see them: a placement's title only when its object is readable now. A project sketch's
+ * thoughts carry their image (#252); its readers are the project's readers, who may read its published files.
+ * Exported for the live map deltas (#228), which present the same views.
+ */
+export async function presentThoughts(ports: Pick<SketchPorts, 'access' | 'files'>, principal: Principal, sketch: Pick<SketchRecord, 'workspaceId' | 'scope' | 'projectId'>, records: ThoughtRecord[]): Promise<Thought[]> {
+  const { workspaceId } = sketch;
+  const files = sketch.scope === 'project' && sketch.projectId && records.length
+    ? await ports.files.ofThoughts(sketch.projectId, records.map((record) => record.id)) : new Map<string, ThoughtFile>();
   const placements = new Map<string, Placement>();
   for (const record of records) {
     if (!record.placement || placements.has(record.placement.id)) continue;
@@ -88,6 +96,7 @@ export async function presentThoughts(ports: Pick<SketchPorts, 'access'>, princi
     id: record.id, sketchId: record.sketchId, text: record.text, x: record.x, y: record.y, width: record.width, height: record.height,
     shape: record.shape, placement: record.placement ? placements.get(record.placement.id)! : null,
     source: record.source ? { author: { id: record.source.authorId, name: record.source.authorName }, sentAt: iso(record.source.sentAt), dmMessageId: record.source.messageId } : null,
+    ...(files.has(record.id) ? { file: files.get(record.id)! } : {}),
     createdBy: record.createdBy,
     version: record.version, createdAt: iso(record.createdAt), updatedAt: iso(record.updatedAt),
   }));
@@ -247,7 +256,7 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
         }
         return {
           ...presentSketch(sketch, access),
-          thoughts: await presentThoughts(ports, principal, sketch.workspaceId, thoughts),
+          thoughts: await presentThoughts(ports, principal, sketch, thoughts),
           links: links.map(presentThoughtLink),
           copies,
         };
@@ -267,7 +276,7 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
           throw new ConflictError('The map changed; read it again from the first page', 'SOURCE_VERSION_CONFLICT');
         const [thoughts, links, counts] = await Promise.all([ports.sketches.thoughts(sketch.id, page),
           ports.sketches.links(sketch.id, linkPage), ports.sketches.mapCounts(sketch.id)]);
-        return { ...presentSketch(sketch, access), thoughts: await presentThoughts(ports, principal, sketch.workspaceId, thoughts), links: links.map(presentThoughtLink),
+        return { ...presentSketch(sketch, access), thoughts: await presentThoughts(ports, principal, sketch, thoughts), links: links.map(presentThoughtLink),
           thoughtPage: { ...page, total: counts.thoughts, nextOffset: page.offset + page.limit < counts.thoughts ? page.offset + page.limit : null },
           linkPage: { ...linkPage, total: counts.links, nextOffset: linkPage.offset + linkPage.limit < counts.links ? linkPage.offset + linkPage.limit : null } };
       });
@@ -307,6 +316,7 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
         linkId: valid.optionalId(command.linkFrom.linkId, 'linkFrom.linkId') ?? randomUUID(),
       };
       const sourceMessageId = valid.optionalId(command.sourceMessageId, 'sourceMessageId');
+      const fileId = valid.optionalId(command.fileId, 'fileId');
       return uow.run(async (ports) => {
         const { sketch } = await authorized(ports, principal, 'sketch.write', sketchId);
         let source: ThoughtSourceRecord | null = null;
@@ -325,11 +335,15 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
         if (await ports.sketches.thoughtExists(thoughtId)) throw new ConflictError('A thought with this id already exists', 'THOUGHT_EXISTS');
         if (linkFrom && await ports.sketches.linkExists(linkFrom.linkId)) throw new ConflictError('A link with this id already exists', 'LINK_EXISTS');
         await ports.live.before(principal,sketch,{thoughtIds:[thoughtId,...(linkFrom?[linkFrom.thoughtId]:[])],linkIds:linkFrom?[linkFrom.linkId]:[]});
+        // #252: stored files belong to a project, so only a project sketch's thought can show one.
+        if (fileId && (sketch.scope !== 'project' || !sketch.projectId))
+          throw new RuleViolationError('Images can be placed only on a project’s maps', 'IMAGES_NEED_A_PROJECT');
+        if (fileId) await ports.files.place(principal, { projectId: sketch.projectId!, fileId, thoughtId });
         const thought = await ports.sketches.insertThought({ id: thoughtId, workspaceId: sketch.workspaceId, sketchId: sketch.id, ...values, placement, source, createdBy: principal });
         const link = linkFrom ? await ports.sketches.insertLink({
           id: linkFrom.linkId, workspaceId: sketch.workspaceId, sketchId: sketch.id, fromId: linkFrom.thoughtId, toId: thought.id, label: linkFrom.label, createdBy: principal,
         }) : null;
-        const [view] = await presentThoughts(ports, principal, sketch.workspaceId, [thought]);
+        const [view] = await presentThoughts(ports, principal, sketch, [thought]);
         await changed(ports, principal, sketch, { op: 'thought_added', thoughtIds: [thought.id], linkIds: link ? [link.id] : [] });
         return { thought: view!, link: link ? presentThoughtLink(link) : null };
       });
@@ -347,11 +361,11 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
       return uow.run(async (ports) => {
         const { sketch } = await authorized(ports, principal, 'sketch.write', sketchId);
         const current = await lockedThought(ports, sketch.id, valid.id(thoughtId, 'thoughtId'));
-        const [currentView] = await presentThoughts(ports, principal, sketch.workspaceId, [current]);
+        const [currentView] = await presentThoughts(ports, principal, sketch, [current]);
         checkVersion(current, command.expectedVersion, currentView!);
         await ports.live.before(principal,sketch,{thoughtIds:[current.id],linkIds:[],leaseId:command.leaseId});
         const updated = await ports.sketches.updateThought(sketch.id, current.id, changes);
-        const [view] = await presentThoughts(ports, principal, sketch.workspaceId, [updated]);
+        const [view] = await presentThoughts(ports, principal, sketch, [updated]);
         await changed(ports, principal, sketch, { op: 'thought_updated', thoughtIds: [current.id], linkIds: [] });
         return view!;
       });
@@ -373,13 +387,13 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
         if (locked.size !== parsed.length) throw new NotFoundError('Thought', 'THOUGHT_NOT_FOUND');
         const stale = parsed.filter((move) => locked.get(move.id)!.version !== valid.expectedVersion(move.expectedVersion));
         if (stale.length) {
-          const views = await presentThoughts(ports, principal, sketch.workspaceId, stale.map((move) => locked.get(move.id)!));
+          const views = await presentThoughts(ports, principal, sketch, stale.map((move) => locked.get(move.id)!));
           throw new PositionsConflictError(views.map((view) => ({ id: view.id, currentVersion: view.version, current: view })));
         }
         await ports.live.before(principal,sketch,{thoughtIds:parsed.map(move=>move.id),linkIds:[],leaseId:command.leaseId});
         const updated: ThoughtRecord[] = [];
         for (const move of parsed) updated.push(await ports.sketches.updateThought(sketch.id, move.id, { x: move.x, y: move.y }));
-        const thoughts = await presentThoughts(ports, principal, sketch.workspaceId, updated);
+        const thoughts = await presentThoughts(ports, principal, sketch, updated);
         await changed(ports, principal, sketch, { op: 'thoughts_moved', thoughtIds: parsed.map((move) => move.id), linkIds: [] });
         return { thoughts };
       });
@@ -389,7 +403,7 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
       await uow.run(async (ports) => {
         const { sketch } = await authorized(ports, principal, 'sketch.write', sketchId);
         const current = await lockedThought(ports, sketch.id, valid.id(thoughtId, 'thoughtId'));
-        const [currentView] = await presentThoughts(ports, principal, sketch.workspaceId, [current]);
+        const [currentView] = await presentThoughts(ports, principal, sketch, [current]);
         checkVersion(current, expected, currentView!);
         const linkIds = (await ports.sketches.relatedLinks(sketch.id,{thoughtId:current.id})).map((link) => link.id);
         await ports.live.before(principal,sketch,{thoughtIds:[current.id],linkIds});

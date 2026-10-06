@@ -14,9 +14,11 @@ import { transactionEventSession } from '../../apps/server/src/work/transaction-
 import { sketchRoutes } from '../../apps/server/src/sketches/routes.js';
 import { editingRoutes } from '../../apps/server/src/editing/routes.js';
 import { apiEditingOutputBudget } from '../../apps/server/src/editing/output.js';
+import { diskFileStorage } from '../../apps/server/src/files/storage.js';
 import type { SessionContext,SessionResolver } from '../../apps/server/src/identity/session.js';
 import { db,pool } from './support/db.js';
 import { addMember,expectStatus,grant,person,project,workspace } from './support/people.js';
+const filesDir=process.env.FLUX_TEST_FILES_DIR??'/data/files';
 const refused=(code:string)=>(error:unknown)=>error instanceof Error&&'code' in error&&error.code===code;
 async function context(user:Awaited<ReturnType<typeof person>>):Promise<SessionContext> {
   const row=(await pool.query('SELECT s.id,s.expires_at,u.name,u.email FROM auth_sessions s JOIN auth_users u ON u.id=s.user_id WHERE s.user_id=$1 ORDER BY s.created_at DESC LIMIT 1',[user.id])).rows[0];
@@ -33,7 +35,7 @@ async function scene(count=2) {
 const who=(session:SessionContext)=>({sessionId:session.sessionId,actorId:session.principal.id});
 async function bootstrap(backend:ReturnType<typeof mapBackend>,session:SessionContext,id:string) {const heads:LiveMapBootstrap[]=[];await backend.bootstrap(who(session),id,head=>heads.push(head));assert.equal(heads.length,1);return heads[0]!;}
 function native(session:SessionContext,sketchId:string,commandId:string,parameters:unknown,operation='fixture-native') {
-  return sketchUseCases(db,{principal:session.principal,sessionId:session.sessionId,resourceId:sketchId,context:{session,sketchId,commandId,parameters,operation},commandId,operation,fingerprint:requestHash(parameters)});
+  return sketchUseCases(db,undefined,{principal:session.principal,sessionId:session.sessionId,resourceId:sketchId,context:{session,sketchId,commandId,parameters,operation},commandId,operation,fingerprint:requestHash(parameters)});
 }
 async function delta(backend:ReturnType<typeof mapBackend>,session:SessionContext,head:LiveMapBootstrap,after:number) {
   const deltas:LiveMapDelta[]=[];await backend.deliver(who(session),head.resourceId,head.generation,after,result=>{if(result.delta)deltas.push(result.delta);});return deltas[0]??null;
@@ -105,7 +107,7 @@ test('native deletion/link restore keep monotonic thought versions and link epoc
 test('real live/native HTTP shares one budget, uses ordered receipts and current reader/write policy', {timeout:15000},async()=>{
   const f=await scene();const backend=mapBackend({pool});const authority=mapAuthority(backend,apiEditingOutputBudget);let current=f.ownerSession;
   const sessions:SessionResolver={async requirePrincipal(){return current;},async resolveSession(){return current;}};const app=Fastify();
-  await app.register(sketchRoutes,{db,sessions,developmentEditing:true,liveBackend:()=>backend});await app.register(editingRoutes,{sessions,authority:null,maps:authority,outputBudget:apiEditingOutputBudget});
+  await app.register(sketchRoutes,{db,sessions,storage:await diskFileStorage(filesDir),developmentEditing:true,liveBackend:()=>backend});await app.register(editingRoutes,{sessions,authority:null,maps:authority,outputBudget:apiEditingOutputBudget});
   try {
     // Map capability is enabled independently of the wiki fixture; production enables both through one composition.
     const bootstrapResponse=await app.inject({method:'GET',url:`/api/v1/sketches/${f.sketch.id}/live`});assert.equal(bootstrapResponse.statusCode,200,bootstrapResponse.body);const head=JSON.parse(bootstrapResponse.body) as LiveMapBootstrap;
@@ -172,7 +174,7 @@ test('deleted retained link UUID cannot migrate into an ordinary unjoined map th
     await bootstrap(backend,f.ownerSession,f.sketch.id);const linkId=randomUUID();
     const add={id:linkId,fromId:f.ids[0]!,toId:f.ids[1]!};await native(f.ownerSession,f.sketch.id,randomUUID(),add).addLink(f.ownerSession.principal,f.sketch.id,add);
     await native(f.ownerSession,f.sketch.id,randomUUID(),{linkId}).removeLink(f.ownerSession.principal,f.sketch.id,linkId);
-    const ordinary=sketchUseCases(db,{principal:f.ownerSession.principal,sessionId:f.ownerSession.sessionId,context:{session:f.ownerSession}});
+    const ordinary=sketchUseCases(db,undefined,{principal:f.ownerSession.principal,sessionId:f.ownerSession.sessionId,context:{session:f.ownerSession}});
     const other=await ordinary.create(f.ownerSession.principal,f.ws.id,{scope:'project',projectId:f.place.id,title:'Never joined second map'});
     const first=(await ordinary.addThought(f.ownerSession.principal,other.id,{text:'New room first',x:0,y:0})).thought;
     const second=(await ordinary.addThought(f.ownerSession.principal,other.id,{text:'New room second',x:200,y:0})).thought;
@@ -188,7 +190,7 @@ test('dense map refuses an oversized edit but permits one unlink and atomic own-
   const links=[];for(let a=0;a<f.ids.length;a++)for(let b=a+1;b<f.ids.length;b++)links.push({id:randomUUID(),workspaceId:f.ws.id,sketchId:f.sketch.id,fromId:f.ids[a]!,toId:f.ids[b]!,createdByUserId:f.owner.id});
   await db.insert(schema.sketchLinks).values(links);
   const sessions:SessionResolver={async requirePrincipal(){return f.ownerSession;},async resolveSession(){return f.ownerSession;}};const app=Fastify();
-  await app.register(sketchRoutes,{db,sessions,developmentEditing:true,liveBackend:()=>backend});
+  await app.register(sketchRoutes,{db,sessions,storage:await diskFileStorage(filesDir),developmentEditing:true,liveBackend:()=>backend});
   try {
     const head=await bootstrap(backend,f.ownerSession,f.sketch.id);assert.equal(head.sketch.links.length,780,'Bootstrap is a smaller one-copy representation');
     const response=await app.inject({method:'PATCH',url:`/api/v1/sketches/${f.sketch.id}/thoughts/${f.ids[0]}`,payload:{text:'Must remain uncommitted',expectedVersion:1}});

@@ -1,5 +1,6 @@
 import type { PrincipalRef, VersionPrecondition } from './access.js';
 import type { SendMessageCommand } from './conversation.js';
+import type { GithubTaskRule } from './github.js';
 
 /**
  * Work items, decisions and results of a project (issue #101, foundation 8.5/8.6).
@@ -148,6 +149,8 @@ export interface WorkItem extends ProjectObject {
   /** Set when a pivot parked the work. Parking keeps the status: parked work is not done. */
   parked: { decisionId: string; at: string } | null;
   createdBy: NamedPrincipal;
+  /** "Let linked PRs move this task" (#74 G-1a); null when nobody turned it on. */
+  githubRule: GithubTaskRule | null;
   version: number;
   updatedAt: string;
 }

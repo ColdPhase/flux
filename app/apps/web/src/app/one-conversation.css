@@ -4,6 +4,13 @@
 .convo-split__stream { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
 /* The stream keeps its own reading anchor when earlier roots load or the thread docks beside it. */
 .project-convo__feed.is-stream { overflow-anchor: none; }
+/* The stream's frame (#155): its feed, and over it the quiet "new below" line, which takes no layout space. */
+.convo-stream { position: relative; display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.convo-newbelow { position: absolute; left: 0; right: 0; bottom: 10px; display: flex; justify-content: center; margin: 0; pointer-events: none; }
+.convo-newbelow__b { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; border-radius: 999px; background: var(--bg);
+  box-shadow: var(--shadow), inset 0 0 0 1px var(--line-strong); color: var(--text-2); font-size: var(--fs-sm); font-weight: 500; pointer-events: auto; transition: var(--tr); }
+.convo-newbelow__b:hover { color: var(--text); }
+@media (pointer: coarse) { .convo-newbelow__b { min-height: 44px; } }
 
 /* Under a root: the size of its thread and the reply action. Both open the thread. */
 .convo-replies { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin: 6px 0 0 -7px; font-size: var(--fs-sm); }
@@ -18,7 +25,7 @@
   .convo-replies__open + .convo-replies__reply { opacity: 0; transition: var(--tr); }
   .project-convo__message:hover .convo-replies__reply, .project-convo__message.is-open .convo-replies__reply, .convo-replies__reply:focus-visible { opacity: 1; }
 }
-@media (pointer: coarse) { .convo-replies button { min-height: 44px; } }
+@media (pointer: coarse) { .convo-replies button { min-height: 44px; min-width: 44px; justify-content: center; } }
 /* The root whose thread is open, marked without colour alone: its control is also expanded. */
 .project-convo__message.is-open > p { box-shadow: inset 0 0 0 1px var(--accent); }
 
@@ -35,6 +42,8 @@
 .thread--sheet .thread__close { order: -1; margin-left: 0; }
 .thread__pane { display: flex; flex: 1; flex-direction: column; min-height: 0; }
 .thread__feed { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+/* Laid out but hidden until its first bounded reads settle (#155, at most 1 s), so nothing shifts as they arrive. */
+.thread__feed.is-opening { visibility: hidden; }
 .thread__in { padding: 18px 20px 12px; }
 .thread__root-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; color: var(--text-3); font-size: var(--fs-xs); }
 .thread__root-meta strong { color: var(--text); font-size: var(--fs-sm); font-weight: 550; }
@@ -92,3 +101,8 @@
 .convo-notice__task:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
 .convo-notice time { padding-top: 1px; font-size: var(--fs-xs); color: var(--text-3); font-variant-numeric: tabular-nums; }
 @media (pointer: coarse) { .convo-notice__task { min-height: 44px; } }
+/* Task notices read as one quiet group (#266 PF-6): adjacent notices sit close, and a title wraps to
+   two lines instead of being cut to one. */
+.convo-notice + .convo-notice { margin-top: -12px; }
+.convo-notice__title { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
+@media (max-width: 640px) { .convo-notice { margin: 14px 0; } .convo-notice + .convo-notice { margin-top: -6px; } }

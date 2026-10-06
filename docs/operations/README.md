@@ -12,6 +12,7 @@ host and never touches another Compose project or a volume that is not this chec
 | Restore a backup, here or on a new machine | `./flux restore <archive> [--migrate] [--revoke-agent-connections] [-y]` | [Backup and restore](backup-restore.md#restore) |
 | Export one project as open JSON plus files | `./flux export <project> [--as EMAIL]`, `GET /api/v1/projects/:id/export` | [Project export](export.md) |
 | Move to a newer version | `./flux upgrade [--pull] [-y]` | [Upgrade](upgrade.md) |
+| Let people sign in with your identity provider (OpenID Connect) | `FLUX_OIDC_*` in `docker/.env` | [Single sign-on](single-sign-on.md) |
 | Run a published release without the source (operators) | `docker compose --env-file .env -f compose.yaml up -d --wait` | [Install from a release](install-release.md), [the release's `INSTALL.md`](release-guide.md) |
 
 Every command acts on this checkout's Compose project (`FLUX_PROJECT` in `docker/.env`) and uses the

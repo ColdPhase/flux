@@ -30,6 +30,10 @@ repository was created on 2026-09-26.
   triggered OCI release workflow ([#104](https://github.com/ColdPhase/flux/pull/104)).
 - An exact migration-ledger check at install and startup. A database that does not
   match the image's migrations refuses to start ([#130](https://github.com/ColdPhase/flux/pull/130)).
+- Two public extension contracts with a written compatibility promise: MCP tool
+  contract 1 and project export format 1. A versioned snapshot test catches a
+  breaking change. The [integration guide](docs/integrations/README.md) is for
+  integrators and operators ([#260](https://github.com/ColdPhase/flux/pull/260)).
 
 #### People and access
 
@@ -48,9 +52,13 @@ repository was created on 2026-09-26.
 - Sketches: persistent maps of connected thoughts ([#100](https://github.com/ColdPhase/flux/pull/100)).
   - A stable personal list view ([#146](https://github.com/ColdPhase/flux/pull/146)).
   - Draft-before-save for new thoughts ([#158](https://github.com/ColdPhase/flux/pull/158)).
+  - Paste lines, a link or an image onto a map as a private draft; a project map keeps
+    the image as a stored file ([#257](https://github.com/ColdPhase/flux/pull/257)).
 - Work items, decisions and results linked to the conversations they came from
   ([#105](https://github.com/ColdPhase/flux/pull/105)). Native tasks gained
   criteria, prerequisites and plan intent ([#171](https://github.com/ColdPhase/flux/pull/171)).
+  A person who can only read a proposed decision sees who decides it: someone who can
+  edit the project, never an agent or assistant ([#259](https://github.com/ColdPhase/flux/pull/259), O-009).
 - Canonical task discussions:
   - A task's thread starts at its first real contribution, with genuine actors
     ([#164](https://github.com/ColdPhase/flux/pull/164)).
@@ -76,6 +84,9 @@ repository was created on 2026-09-26.
   ([#145](https://github.com/ColdPhase/flux/pull/145), [#157](https://github.com/ColdPhase/flux/pull/157)).
 - A project can connect a read-only GitHub App repository and link tasks to verified
   pull requests, from signed, deduplicated webhook deliveries ([#168](https://github.com/ColdPhase/flux/pull/168)).
+- "Let linked PRs move this task": a person who can edit a task lets its required pull requests
+  start, block and finish it, or mark it Ready to close. A manual status change pauses it until resumed
+  ([#270](https://github.com/ColdPhase/flux/pull/270)).
 
 #### AI that stays yours
 
@@ -113,3 +124,7 @@ repository was created on 2026-09-26.
 - Blocked project work stays visible on narrow phones ([#172](https://github.com/ColdPhase/flux/pull/172)).
 - Retrying a first space, project or private draft after a lost response no longer
   creates a second one ([#178](https://github.com/ColdPhase/flux/pull/178)).
+- Security: a signed-in account can no longer register or change OAuth clients, so a
+  member cannot pass off a look-alike client with their own redirect. The agent consent
+  page shows where access goes and warns when that is not this computer, and no Flux
+  page can be framed by another site ([#287](https://github.com/ColdPhase/flux/issues/287)).

@@ -49,7 +49,7 @@ owners and current-head reviews remain; final integration waits for their outcom
 The 11.6 reference still needs improved phone Agents reading height, clear phone
 board status navigation and useful wide-screen context. Independent layout work
 can proceed while backend contracts settle. Required no-AI #44 journeys, #57/#68
-helper, #59 live collaboration, current permissions and #20 device evidence remain.
+helper, #59 live collaboration, current permissions and #20 mobile evidence remain.
 Demo storage, roles, PR/CI and author assertion counts establish no production
 capability. Earlier appearance inputs are [history](../../design/reference-history.md).
 
@@ -64,7 +64,7 @@ during transitions. The same #136 shell owner coordinates this child; final
 
 Use the full viewport/height/scaling/input matrix, intermediate widths, real
 text enlargement, independent visual and running behavior review, measurable
-performance budgets and real 4K/ultrawide plus mobile evidence. Prototype screenshots do not verify the production or hardware requirement. Missing device evidence
+performance budgets and emulated 4K/ultrawide plus mobile evidence with documented platform requirements; physical hardware is optional (founder direction #266, 2026-10-05). Prototype screenshots do not verify the production requirement. Missing evidence
 remains open; available implementation and layout checks continue independently.
 
 ## Ready co-work instructions and addressed requests — F-018

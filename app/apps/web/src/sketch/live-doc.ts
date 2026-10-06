@@ -4,7 +4,7 @@ import { ApiError, NetworkError, request } from '../api/client';
 import { SharedMap } from '../editing/map';
 import * as api from '../api/sketches';
 import { useStreamEvents } from '../api/stream';
-import { applyLocal, applyLivePreviews, type Me, type Op } from './projection.js';
+import { applyLocal, applyLivePreviews, type Me, type NewThought, type Op } from './projection.js';
 import { inverse, type LoadState } from './doc';
 
 /**
@@ -155,7 +155,7 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
         const created = await deliver(() => api.addThought(sketchId, {
           id: op.thought.id, text: op.thought.text, x: op.thought.x, y: op.thought.y, width: op.thought.width, height: op.thought.height, shape: op.thought.shape,
           placement: op.thought.placement ? { type: op.thought.placement.type, id: op.thought.placement.id } : undefined,
-          sourceMessageId: op.thought.source?.dmMessageId ?? undefined,
+          sourceMessageId: op.thought.source?.dmMessageId ?? undefined, fileId: op.thought.file?.id,
           linkFrom: op.link ? { thoughtId: op.link.fromId, label: op.link.label, linkId: op.link.id } : undefined,
         }, id));
         if (!shared) patch([created.thought], created.link ? { links: [...confirmed.current!.links.filter((link) => link.id !== created.link!.id), created.link] } : {}); break;
@@ -295,16 +295,33 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
     undoStack.current.pop(); perform(entry.ops, `undid ${entry.label}`, { undoable: false });
     setUndoLabel(undoStack.current.at(-1)?.label ?? null); return entry.label;
   }, [sketchId, perform]);
-  const saveThought = useCallback((op: Extract<Op, { kind: 'add' }>, key: string): Promise<boolean> => {
-    const current = ref.current; if (!current) return Promise.resolve(false);
-    if (pending.current.size >= 256 || [...pending.current.values()].reduce((total, intent) => total + JSON.stringify(intent.op).length * 2, JSON.stringify(op).length * 2) > 1024 * 1024) { setProblem('Wait for the pending changes before sharing this private draft.'); return Promise.resolve(false); }
-    const entry: Entry = { label: 'added a thought', ops: [{ kind: 'remove', id: op.thought.id }], commands: [], at: Date.now() };
-    const intent: Intent = { id: key, scope: scope.current.number, op, epochs: new Map(touched(op, current).map((id) => [id, epochs.current.get(id) ?? 0])), entry };
-    ownCommands.current.add(key);
-    while (ownCommands.current.size > 12_000) ownCommands.current.delete(ownCommands.current.values().next().value!);
-    // This draft is shared only by explicit Save; no pointer preview or live text uses it.
-    pending.current.set(key, intent); publish();
-    return enqueue(intent).then((saved) => { if (saved) { undoStack.current.push(entry); if (undoStack.current.length > 50) undoStack.current.shift(); setUndoLabel(entry.label); } return saved; });
+  /**
+   * Explicit draft save: no optimistic shared thought or undo step before confirmation. Several thoughts (a pasted
+   * list, #252) are shared in order and stop at the first failure; the confirmed ones form one undo step. Returns the
+   * confirmed thought IDs; the caller keeps the rest of its draft with their IDs and keys.
+   */
+  const saveThoughts = useCallback(async (items: { thought: NewThought; parent: { id: string; linkId: string } | null; key: string }[]): Promise<string[]> => {
+    const saved: string[] = [];
+    const label = items.length === 1 ? 'added a thought' : `added ${items.length} thoughts`;
+    const entry: Entry = { label, ops: [], commands: [], at: Date.now() };
+    for (const { thought, parent, key } of items) {
+      const current = ref.current; if (!current) break;
+      const op: Extract<Op, { kind: 'add' }> = { kind: 'add', thought, ...(parent ? { link: { id: parent.linkId, fromId: parent.id, label: null } } : {}) };
+      if (pending.current.size >= 256 || [...pending.current.values()].reduce((total, intent) => total + JSON.stringify(intent.op).length * 2, JSON.stringify(op).length * 2) > 1024 * 1024) { setProblem('Wait for the pending changes before sharing this private draft.'); break; }
+      const intent: Intent = { id: key, scope: scope.current.number, op, epochs: new Map(touched(op, current).map((id) => [id, epochs.current.get(id) ?? 0])), entry };
+      ownCommands.current.add(key);
+      while (ownCommands.current.size > 12_000) ownCommands.current.delete(ownCommands.current.values().next().value!);
+      // This draft is shared only by explicit Save; no pointer preview or live text uses it.
+      pending.current.set(key, intent); publish();
+      if (!await enqueue(intent)) break;
+      saved.push(thought.id);
+    }
+    if (saved.length) {
+      entry.label = saved.length === 1 ? 'added a thought' : `added ${saved.length} thoughts`;
+      entry.ops = [...saved].reverse().map((id): Op => ({ kind: 'remove', id }));
+      undoStack.current.push(entry); if (undoStack.current.length > 50) undoStack.current.shift(); setUndoLabel(entry.label);
+    }
+    return saved;
   }, [enqueue, publish]);
   const saveText = useCallback((id: string, text: string, opened: { text: string; version: number }, key: string): Promise<boolean> => {
     const current = confirmed.current?.thoughts.find((thought) => thought.id === id);
@@ -323,7 +340,7 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
     if (busy) { setProblem('Wait for these thoughts to be confirmed before dragging them.'); return false; }
     return live.current?.begin(ids.flatMap((id) => { const thought = current.thoughts.find((thought) => thought.id === id); return thought ? [thought] : []; })) ?? false;
   };
-  return { sketch, load, saving, problem: problem ?? liveState.problem, clearProblem: () => setProblem(null), canUndo: undoLabel !== null && !saving, perform, saveThought, saveText, undo, reload, newId: uuid,
+  return { sketch, load, saving, problem: problem ?? liveState.problem, clearProblem: () => setProblem(null), canUndo: undoLabel !== null && !saving, perform, saveThoughts, saveText, undo, reload, newId: uuid,
     liveStatus: liveState.status, liveCanWrite: liveState.canWrite, ownGesture: liveState.ownGesture, previews: liveState.previews, peers: liveState.peers, privateMovement: liveState.privateMovement, discardPrivateMovement: () => live.current?.discardPrivateMovement(),
     beginGesture, previewGesture: (positions: LiveMapPosition[]) => live.current?.preview(positions), cancelGesture: () => live.current?.cancel(true),
     finishGesture: () => live.current?.status === 'unavailable' ? undefined : live.current?.finish(),
