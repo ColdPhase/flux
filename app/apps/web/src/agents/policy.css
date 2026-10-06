@@ -65,9 +65,25 @@
 .agents-policy__body .agents-policy__actions { justify-content: flex-start; }
 .agents-policy__next { margin-right: auto; font-size: var(--fs-xs); color: var(--text-3); }
 
-/* Touch: 16 px text in the fields (no zoom on focus) and 44 px targets; buttons already follow --ctl. */
+/* A press state on every button (HIG-16); the primary one darkens through the shared rule. */
+.agents-policy .ui-btn:not(.ui-btn--primary):active:not(:disabled):not([aria-disabled="true"]) { background: var(--bg-active); }
+
+/* Touch, after the Apple HIG checklist (docs/design/apple-hig-mobile.md): fields at 16 px so focusing one never
+   zooms (HIG-41), no text under 11 px with secondary lines at 13 px and the policy itself at 16 px (HIG-08, HIG-09),
+   44 px targets through --ctl (HIG-14) with 12 px between neighbours (HIG-15). */
 @media (pointer: coarse) {
   .agents-policy__field textarea { font-size: 16px; }
+  .agents-policy__title { font-size: 16px; }
+  .agents-policy__section dd { font-size: 16px; }
+  .agents-policy__note, .agents-policy__published, .agents-policy__newer, .agents-policy__field label, .agents-policy__section dt,
+  .agents-policy__field-error, .agents-policy__error, .agents-policy__conflict-note, .agents-policy__theirs-label,
+  .agents-policy__theirs-text { font-size: 14px; }
+  .agents-policy__meta, .agents-policy__hint, .agents-policy__count, .agents-policy__next, .agents-policy__theirs-same { font-size: 13px; }
+  .agents-policy__actions { gap: var(--s-3); }
+}
+/* Touch has no hover: a tapped button must not keep the hover fill as if it were still pressed. */
+@media (hover: none) {
+  .agents-policy .ui-btn:not(.ui-btn--primary):hover { background: transparent; }
 }
 @media (max-width: 680px) {
   .agents-policy__head { grid-template-columns: minmax(0, 1fr) auto; }

@@ -11,6 +11,7 @@ reload. That an agent's next bootstrap names the published revision is covered b
 from __future__ import annotations
 
 import json
+import re
 import time
 import unittest
 
@@ -37,6 +38,18 @@ FIRST = {
 FIELD = {"Scope": "scope", "Priorities": "priorities", "Review criteria": "reviewCriteria", "Allowed work": "allowedWork"}
 COARSE = "() => matchMedia('(pointer: coarse)').matches"
 FONT_SIZE = "el => parseFloat(getComputedStyle(el).fontSize)"
+# The smallest visible text in an element (Apple HIG checklist HIG-08: none under 11 px on a touch screen).
+SMALLEST_TEXT = """el => {
+  const sizes = [];
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) {
+    const parent = walker.currentNode.parentElement;
+    if (walker.currentNode.textContent.trim() && parent.getClientRects().length) sizes.push(parseFloat(getComputedStyle(parent).fontSize));
+  }
+  return Math.min(...sizes);
+}"""
+# What a press may change (HIG-16): fill, opacity, scale or brightness.
+PRESS_STYLE = "el => { const s = getComputedStyle(el); return [s.backgroundColor, s.opacity, s.transform, s.filter].join(' | '); }"
 
 
 class ProjectPolicyJourney(unittest.TestCase):
@@ -104,6 +117,25 @@ class ProjectPolicyJourney(unittest.TestCase):
     def to_top(self, locator) -> None:
         """Scrolls the view's pane so the policy starts at the top of the screenshot."""
         locator.evaluate("el => el.scrollIntoView({ block: 'start' })")
+
+    def press_changes(self, page: Page, button) -> tuple[str, str]:
+        """The button's look before and while pressed, with :active forced as the HIG checklist's check does."""
+        before = button.evaluate(PRESS_STYLE)
+        button.evaluate("el => el.setAttribute('data-press-probe', '')")
+        cdp = page.context.new_cdp_session(page)
+        try:
+            cdp.send("DOM.enable")
+            cdp.send("CSS.enable")
+            root = cdp.send("DOM.getDocument", {"depth": 0})["root"]["nodeId"]
+            node = cdp.send("DOM.querySelector", {"nodeId": root, "selector": "[data-press-probe]"})["nodeId"]
+            cdp.send("CSS.forcePseudoState", {"nodeId": node, "forcedPseudoClasses": ["active"]})
+            page.wait_for_timeout(300)  # past the colour transition
+            pressed = button.evaluate(PRESS_STYLE)
+            cdp.send("CSS.forcePseudoState", {"nodeId": node, "forcedPseudoClasses": []})
+        finally:
+            cdp.detach()
+            button.evaluate("el => el.removeAttribute('data-press-probe')")
+        return before, pressed
 
     def assert_no_sideways_scroll(self, page: Page) -> None:
         self.assertLessEqual(page.evaluate("document.scrollingElement.scrollWidth"), PHONE["width"], "no sideways scrolling")
@@ -279,6 +311,12 @@ class ProjectPolicyJourney(unittest.TestCase):
         title = policy.get_by_role("heading", name="Agent policy").bounding_box()
         self.assertLess(abs((show.bounding_box()["y"] + 22) - (title["y"] + title["height"] / 2)), 12, "the action sits beside the title")
         show.click()
+        # Readable on a touch screen: nothing under 11 px, secondary lines at 13 px, the policy itself at 16 px.
+        expect(policy.get_by_role("definition").first).to_be_visible()
+        self.assertGreaterEqual(policy.evaluate(SMALLEST_TEXT), 11, "no text under 11 px (HIG-08)")
+        self.assertGreaterEqual(policy.locator(".agents-policy__meta").evaluate(FONT_SIZE), 13, "the revision line")
+        for definition in policy.get_by_role("definition").all():
+            self.assertGreaterEqual(definition.evaluate(FONT_SIZE), 16, "the policy reads at 16 px (HIG-09)")
         edit = policy.get_by_role("button", name="Edit policy")
         self.assertGreaterEqual(edit.bounding_box()["height"], 44)
         edit.click()
@@ -294,6 +332,9 @@ class ProjectPolicyJourney(unittest.TestCase):
         publish.scroll_into_view_if_needed()
         for button in (publish, cancel):
             self.assertGreaterEqual(button.bounding_box()["height"], 44)
+        gap = cancel.bounding_box()["x"] - (publish.bounding_box()["x"] + publish.bounding_box()["width"])
+        self.assertGreaterEqual(gap, 12, "12 px between neighbouring buttons (HIG-15)")
+        self.assertGreaterEqual(form.evaluate(SMALLEST_TEXT), 11, "no text under 11 px in the editor (HIG-08)")
         self.assert_no_sideways_scroll(page)
         shot(page, "policy-edit-phone-390")
         publish.click()
@@ -303,6 +344,26 @@ class ProjectPolicyJourney(unittest.TestCase):
         self.assert_no_sideways_scroll(page)
         self.to_top(policy)
         shot(page, "policy-read-phone-390")
+
+    def test_04b_phone_buttons_have_a_press_state_and_no_hover_fill(self) -> None:
+        page = self.open_agents("ola", phone=True)
+        self.assertTrue(page.evaluate("() => matchMedia('(hover: none)').matches"), "the phone context has no hover")
+        policy = self.policy(page)
+        show = policy.get_by_role("button", name="Show policy")
+        before, pressed = self.press_changes(page, show)
+        self.assertNotEqual(before, pressed, "Show policy has a press state (HIG-16)")
+        show.click()
+        hide = policy.get_by_role("button", name="Hide policy")
+        expect(hide).to_have_css("background-color", "rgba(0, 0, 0, 0)")
+        policy.get_by_role("button", name="Edit policy").click()
+        form = self.editor(page)
+        for button in (form.get_by_role("button", name="Cancel"), form.get_by_role("button", name=re.compile(r"^Publish revision \d+$"))):
+            button.scroll_into_view_if_needed()
+            self.assertEqual(button.evaluate("el => getComputedStyle(el).touchAction"), "manipulation", "no double-tap delay (HIG-17)")
+            before, pressed = self.press_changes(page, button)
+            self.assertNotEqual(before, pressed, f"{button.inner_text()} has a press state (HIG-16)")
+        form.get_by_role("button", name="Cancel").click()
+        expect(form).to_have_count(0)
 
     def test_05_contributor_and_viewer_read_it_without_an_editor(self) -> None:
         before = self.saved(self.page("hubert"))
