@@ -318,6 +318,9 @@ class SearchJourney(unittest.TestCase):
         field.fill("sensor")
         options = dialog.get_by_role("option")
         expect(options.first).to_be_visible()
+        # Measure the settled sheet: its opening animation scales it slightly until it ends (#286 made motion
+        # last its real duration in the production build).
+        page.evaluate("() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => null)))")
         cancel = dialog.get_by_role("button", name="Cancel")
         cancel_box = cancel.bounding_box()
         assert cancel_box is not None
