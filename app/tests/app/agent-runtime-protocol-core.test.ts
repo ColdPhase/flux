@@ -3,10 +3,9 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { describe, test } from 'node:test';
 import {
   encodeFrame, FrameStreamError, NdjsonReader, parseRuntimeSwitch, parseSupervisorFrame, parseSupervisorRequest, redactSecrets,
-  REQUEST_LIMITS, SUPERVISOR_REQUESTS, type SupervisorFrame,
+  REQUEST_LIMITS, RUNTIME_CLIENTS, SUPERVISOR_REQUESTS, type SupervisorFrame,
 } from '@flux/runtime-protocol';
 import { AGENT_RUNTIME_CLIENTS } from '@flux/contracts';
-import { RUNTIME_CLIENTS } from '@flux/runtime-protocol';
 
 // F-022 T3: the runtime's closed request set and the bounded reader of supervisor streams. No database,
 // no network. The reader and the request parser see bytes a compromised slot or caller controls, so

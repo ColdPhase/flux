@@ -80,7 +80,7 @@ export function parseSupervisorRequest(kind: unknown, body: unknown): ParsedRequ
   if (kind === 'login' && !(RUNTIME_LOGIN_METHODS[fields.client as RuntimeClient] as readonly string[]).includes(fields.method as string)) {
     return { ok: false, code: 'invalid_request', field: 'method' };
   }
-  return { ok: true, request: { kind, ...fields } as SupervisorRequest };
+  return { ok: true, request: { kind, ...fields } as unknown as SupervisorRequest };
 }
 
 /** The wire body of a request (its fields without `kind`, which travels in the path). */

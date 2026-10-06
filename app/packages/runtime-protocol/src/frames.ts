@@ -58,7 +58,7 @@ export type SupervisorFrame =
 
 const client = oneOf(RUNTIME_CLIENTS);
 const outcome = oneOf(STEP_OUTCOMES);
-const perClient = <T>(check: Check<T>) => object({ claude_code: check, codex: check }) as Check<Record<RuntimeClient, T>>;
+const perClient = <T>(check: Check<T>) => object({ claude_code: check, codex: check }) as unknown as Check<Record<RuntimeClient, T>>;
 const enabled: Check<RuntimeClient[]> = (value): value is RuntimeClient[] =>
   arrayOf(client, 2)(value) && new Set(value).size === value.length;
 
@@ -70,12 +70,12 @@ export const isSlotReport: Check<SlotReport> = object({
   installed: perClient(bool),
   enabled,
   busy: bool,
-}) as Check<SlotReport>;
+}) as unknown as Check<SlotReport>;
 
 const isClientStatus = object({
   client, signedIn: bool, credentialFile: oneOf(['ok', 'missing', 'loose_mode'] as const),
   bindingBytes: int(0, Number.MAX_SAFE_INTEGER), bindingOverLimit: bool,
-}) as Check<ClientStatus>;
+}) as unknown as Check<ClientStatus>;
 
 const RESULTS: Check<SupervisorResult>[] = [
   object({ kind: literal('bind'), bindingId: str(BINDING_ID, 36) }),
@@ -84,7 +84,7 @@ const RESULTS: Check<SupervisorResult>[] = [
   object({ kind: literal('logout'), client, logout: outcome }),
   object({ kind: literal('release'), bindingId: str(BINDING_ID, 36), logout: perClient(outcome), dataEmpty: bool, exiting: bool }),
   object({ kind: literal('stop'), runId: str(UUID, 36), state: oneOf(['not_running', 'stopping'] as const) }),
-] as Check<SupervisorResult>[];
+] as unknown as Check<SupervisorResult>[];
 
 export const isSupervisorResult: Check<SupervisorResult> = (value): value is SupervisorResult => RESULTS.some((check) => check(value));
 
@@ -93,7 +93,7 @@ const FRAMES: Check<SupervisorFrame>[] = [
   object({ t: literal('step'), step: oneOf(['logout', 'delete', 'verify'] as const), outcome }, { client }),
   object({ t: literal('result'), result: isSupervisorResult }),
   object({ t: literal('error'), code: oneOf(SUPERVISOR_ERRORS) }),
-] as Check<SupervisorFrame>[];
+] as unknown as Check<SupervisorFrame>[];
 
 /** The frame, or null when the value is not exactly one of the closed frame shapes. */
 export function parseSupervisorFrame(value: unknown): SupervisorFrame | null {
