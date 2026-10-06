@@ -1,0 +1,182 @@
+---
+# Source: livekit-server/templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: livekit
+data:
+  config.yaml: |
+    bind_addresses:
+    - 10.20.0.10
+    - 127.0.0.1
+    key_file: keys.yaml
+    keys: {}
+    log_level: info
+    port: 7880
+    prometheus_port: 6789
+    redis: {}
+    room:
+      auto_create: false
+      departure_timeout: 180
+      empty_timeout: 420
+      max_participants: 16
+    rtc:
+      node_ip: 198.51.100.10
+      port_range_end: 0
+      port_range_start: 0
+      stun_servers:
+      - turn.flux.example:3478
+      tcp_port: 7881
+      udp_port: 7882
+      use_external_ip: false
+    turn:
+      domain: turn.flux.example
+      enabled: true
+      loadBalancerAnnotations: {}
+      secretName: flux-turn-tls
+      tls_port: 443
+      udp_port: 3478
+    webhook:
+      api_key: flux-livekit-key-id
+      urls:
+      - http://flux-api.flux.svc.cluster.local:8080/api/v1/internal/livekit/webhook
+
+---
+# Source: livekit-server/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: livekit
+  labels:
+    helm.sh/chart: livekit-server-1.9.0
+    app.kubernetes.io/name: livekit-server
+    app.kubernetes.io/instance: livekit
+    app.kubernetes.io/version: "v1.9.0"
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+spec:
+  ports:
+    - port: 7880
+      targetPort: http
+      protocol: TCP
+      name: http
+    - name: rtc-tcp
+      port: 7881
+      protocol: TCP
+      targetPort: rtc-tcp
+    - name: rtc-udp
+      port: 7882
+      protocol: UDP
+      targetPort: rtc-udp
+    - port: 6789
+      targetPort: metrics
+      protocol: TCP
+      name: metrics
+  selector:
+    app.kubernetes.io/name: livekit-server
+    app.kubernetes.io/instance: livekit
+
+---
+# Source: livekit-server/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: livekit
+  labels:
+    helm.sh/chart: livekit-server-1.9.0
+    app.kubernetes.io/name: livekit-server
+    app.kubernetes.io/instance: livekit
+    app.kubernetes.io/version: "v1.9.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: livekit-server
+      app.kubernetes.io/instance: livekit
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        linkerd.io/inject: disabled
+        sidecar.istio.io/inject: "false"
+        checksum/config: d4fd20dded025840ae2c5fe18f86f5be8352cf93e90d02c633e38fbe55e3f219
+      labels:
+        app.kubernetes.io/name: livekit-server
+        app.kubernetes.io/instance: livekit
+    spec:
+      serviceAccountName: default
+      securityContext:
+        {}
+      dnsPolicy: ClusterFirstWithHostNet
+      hostNetwork: true
+      terminationGracePeriodSeconds: 18000
+      containers:
+        - name: livekit-server
+          securityContext:
+            {}
+          image: "livekit/livekit-server:v1.13.7@sha256:6fd3b7088874c4d119160dd688798dfec852bc014786d392caad15f6f63912a3"
+          imagePullPolicy: IfNotPresent
+          args: ["--disable-strict-config"]
+          env:
+            - name: LIVEKIT_CONFIG
+              valueFrom:
+                configMapKeyRef:
+                  name: livekit
+                  key: config.yaml
+            - name: LIVEKIT_TURN_CERT
+              value: /etc/lkcert/tls.crt
+            - name: LIVEKIT_TURN_KEY
+              value: /etc/lkcert/tls.key
+          ports:
+            - name: http
+              containerPort: 7880
+              protocol: TCP
+            - name: rtc-udp
+              containerPort: 7882
+              hostPort: 7882
+              protocol: UDP
+            - name: rtc-tcp
+              containerPort: 7881
+              hostPort: 7881
+              protocol: TCP
+            - name: metrics
+              containerPort: 6789
+              hostPort: 6789
+              protocol: TCP
+            - name: turn-tls
+              containerPort: 443
+              hostPort: 443
+              protocol: TCP
+            - name: turn-udp
+              containerPort: 3478
+              hostPort: 3478
+              protocol: UDP
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+          resources:
+            {}
+          volumeMounts:
+            - name: keys-volume
+              mountPath: keys.yaml
+              subPath: keys.yaml
+            - name: lkturncert
+              mountPath: /etc/lkcert
+              readOnly: true
+      volumes:
+        - name: keys-volume
+          secret:
+            secretName: flux-livekit-keys
+            defaultMode: 0600
+        - name: lkturncert
+          secret:
+            secretName: flux-turn-tls
+      nodeSelector:
+        flux.example/live-media: "true"

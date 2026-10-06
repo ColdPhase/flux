@@ -82,6 +82,7 @@ test('real bytes have a measured digest, private staging, canonical upload retry
   assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
   assert.equal(response.headers.get('cache-control'), 'private, no-store');
   assert.equal(response.headers.get('content-security-policy'), 'sandbox');
+  assert.equal(response.headers.get('x-frame-options'), 'DENY', 'a stored file cannot be framed either (#287)');
   assert.deepEqual(Buffer.from(await response.arrayBuffer()), bytes);
   assert.deepEqual(await readFile(objectPath(staged.body.id)), bytes);
 });

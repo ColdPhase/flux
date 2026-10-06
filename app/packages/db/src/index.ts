@@ -43,6 +43,7 @@ export * from './repositories/task-discussions.js';
 export * from './repositories/direct-messages.js';
 export * from './repositories/docs.js';
 export * from './repositories/sample.js';
+export * from './repositories/fixture-oauth-clients.js';
 export * from './repositories/idempotency.js';
 export * from './repositories/draft-results.js';
 export * from './repositories/events.js';
