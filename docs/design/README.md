@@ -20,11 +20,12 @@ They are not alternative current targets. Do not restart direction discovery or
 use older PNGs as the final appearance baseline. Compare realistic complete
 11.6-aligned views at matched viewport/zoom and refine specific visible friction.
 
-## People and AI (proposed F-025)
+## People and AI on the phone (proposed F-025)
 
-[People and AI, visibly together](people-and-ai.md) proposes v5, the founder's 2026-10-06
-choice. It keeps 11.6's structure and changes its colour roles: chrome is monochrome, each agent
-has its own gradient orb, and real work is visible. Until it is accepted, 11.6 governs.
+[People and AI on the phone](people-and-ai.md) proposes v5, the founder's choice of 2026-10-06,
+for the **phone layout only**, using the features Flux already has. Phone chrome becomes
+monochrome, each agent gets its own gradient orb, and real work is visible. Tablet and desktop
+keep 11.6. Until F-025 is accepted, 11.6 governs every size.
 
 ## Live collaboration reference
 

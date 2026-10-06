@@ -1,39 +1,46 @@
-# People and AI, visibly together (F-025)
+# People and AI on the phone (F-025)
 
 - **Status:** proposed, 2026-10-06, by claude-maurycy (Zamojski5). Evaluator: claude-hubert.
   Acceptance is by independent peer review on the PR that adds this page.
-- **Founder direction** (Maurycy, 2026-10-06, relayed from chat, typing errors corrected): "tylko
-  bardziej bym chciał tak elevenlabsowo … żeby było widać, że to jest połączenie ludzi i AI, że AI
-  ma jakiś swój wyróżnik, że widać, że oni pracują, coś robią". In English: more ElevenLabs-like,
-  so it is visible that this is people and AI together, that AI has its own mark, and that they are
-  visibly working. Shown the result (v5), he said: "podoba mi się teraz to UI najnowsze" ("I like
-  the newest UI now").
-- **Evidence:**
-  - The renders, the earlier directions (v2–v4) and what ElevenLabs does (observed 2026-10-06) are
-    in [#302](https://github.com/ColdPhase/flux/pull/302): `docs/design/research/2026-10-06-calm-renders/`
-    and section 11 of the calm research note.
-  - v3 put the desktop 11.6 look onto the phone; the founder rejected it as heavy.
+- **Scope:** the **phone layout only** (≤ 640 px, the PF-1 breakpoint). Tablet and desktop keep
+  Studio 11.6 unchanged: tokens, mint/sky/copper accents, layout. This is a new appearance for
+  **the features Flux already has**. It adds no feature, permission or data.
+- **Founder direction** (Maurycy, 2026-10-06, relayed from chat, typing errors corrected):
+  - "tylko bardziej bym chciał tak elevenlabsowo … żeby było widać, że to jest połączenie ludzi i
+    AI, że AI ma jakiś swój wyróżnik, że widać, że oni pracują, coś robią". In English: more
+    ElevenLabs-like, so it is visible that this is people and AI together, that AI has its own
+    mark, and that they are visibly working.
+  - On v5: "podoba mi się teraz to UI najnowsze" ("I like the newest UI now").
+  - On scope: "desktopu wyglądu nie zmieniamy, tylko mobile miał być taki, z funkcjonalnościami,
+    które mamy" ("we don't change the desktop's look; only mobile should look like this, with the
+    features we have").
+- **Evidence:** the renders, the earlier directions (v2–v4) and what ElevenLabs does (observed
+  2026-10-06) are on [#302](https://github.com/ColdPhase/flux/pull/302), in
+  `docs/design/research/2026-10-06-calm-renders/` and section 11 of the calm research note. The
+  renders are illustrations. Where they show something Flux does not have (a consent request on
+  Agents, an "N min" work card, a per-agent colour setting), this contract does **not** adopt it.
 - **Keeps:**
-  - the 11.6 structure (one project conversation, views, places);
-  - PF-1, PF-3 to PF-7;
+  - the 11.6 structure: one project conversation, the views, the places;
+  - PF-1 and PF-3 to PF-7;
   - the [HIG checklist](apple-hig-mobile.md);
   - UI116-2 and UI116-5;
   - every access rule.
-- **Amends, once accepted:** the 11.6 colour roles, the #148 accent families and PF-2's label
-  rule, as listed under [Amendments](#amendments).
+- **Amends, once accepted, on phones only:** the 11.6 colour roles and PF-2's label rule; see
+  [Amendments](#amendments).
 
 ## The idea
 
-Flux is where people and their agents work together. The interface shows that at a glance:
+On the phone, Flux shows at a glance that people and their agents work together:
 
-- **People are calm and neutral.**
-- **Each agent has a face of its own:** an orb.
-- **You can see an agent working**, and only when it really is.
+- people are calm and neutral;
+- each agent has a face of its own, an orb;
+- you see an agent working, and only when it really is.
 
-## PA-1. Monochrome surfaces
+## PA-1. Monochrome surfaces on phones
 
-Chrome is warm white and near-black. There is no accent colour in navigation, selection or
-buttons. One primary action per screen uses the action colour.
+On phones, chrome is warm white and near-black, with no accent colour in navigation, selection or
+buttons. One primary action per screen uses the action colour. The values apply under the phone
+media query only. The token names stay the same, so components need no forks.
 
 | Role | Light | Dark |
 | --- | --- | --- |
@@ -46,136 +53,121 @@ buttons. One primary action per screen uses the action colour.
 | Hairline | `#e9e6e2` | `#2e2d2b` |
 | Action (primary pill, Send, own bubble) / on action | `#111111` / `#ffffff` | `#f2f0ed` / `#141414` |
 
-Other colour roles:
-
-- **Current place, tab or segment:** a quiet fill plus a heavier weight, never colour alone.
+- **Selection:** a current place, tab or segment uses the quiet fill and a heavier weight, never
+  colour alone.
 - **Unread:** a dot in the text colour.
 - **Links:** text colour, underlined.
 - **Focus:** a 2 px ring in the text colour with a 2 px offset.
-- **Status:** the 11.6 `--ok`, `--warning` and `--danger` stay, for status text and marks only.
+- **Status colours:** the 11.6 `--ok`, `--warning` and `--danger` stay for status text and marks.
+- **The person's #148 accent** still applies on tablet and desktop. On phones the chrome ignores it.
 
 **Acceptance:**
 
-- `scripts/check_contrast.py` checks both themes: text ≥ 4.5:1, and secondary text and
-  boundaries ≥ 3:1 where WCAG requires it.
-- A UI test finds no accent-family colour in chrome.
+- `scripts/check_contrast.py` checks the phone palette in both themes: text at least 4.5:1, and
+  secondary text and boundaries at least 3:1 where WCAG requires it.
+- A UI test at 390 px finds no accent colour in chrome. At 1440 px the 11.6 accent is unchanged.
 
-## PA-2. One orb per agent connection
+## PA-2. One orb per agent
 
-An agent's avatar is an **orb**: a sphere filled with a soft multi-stop gradient and a fixed grain.
-It is drawn with CSS gradients and one shared static noise texture, with no WebGL.
+Wherever an agent appears on a phone, its avatar is an **orb**: a sphere with a soft multi-stop
+gradient and a fixed grain. It is drawn with CSS gradients and one shared static noise texture,
+with no WebGL.
 
-- **Palettes:** there are eight (copper, lagoon, violet, rose, sun, sea, moss, slate). Each
-  connection keeps one palette.
-- **Choosing a palette:**
-  - The owner chooses it in Settings → "Your agents' colour". This replaces #148's accent
-    choice, so the setting survives with a new meaning.
-  - Without a choice, the palette comes from a stable hash of the connection ID.
-  - The built-in assistant is violet.
-  - Within one project, two working connections never share a palette while another palette
-    is free.
-- **Where the orb appears:** wherever an agent appears, including messages, the header, Agents,
-  a task's executor or reviewer, notifications and the projects list.
-- **Never colour alone:** an agent's message header always shows the orb **plus the name and an
-  "AI" badge**.
-- **People never get an orb.** A person is neutral initials on the quiet fill.
+- **Which agents:** the person's assistant (the agent in Flux) and every agent connection (MCP).
+- **Where it shows:** messages, the header, Agents, a task's executor or reviewer, the projects
+  list and notifications.
+- **Colour:** eight palettes. A connection's palette comes from a stable hash of its ID; the
+  built-in assistant is violet. There is no new setting.
+- **Never colour alone:** an agent's message header shows the orb **plus the name and an "AI"
+  badge**.
+- **People never get an orb.** A person is shown as neutral initials on the quiet fill.
 
 **Acceptance:**
 
-- A unit test shows palette assignment is stable across reloads and accounts.
-- A UI test shows every agent-authored entry has an orb, a name and an AI badge, and no
-  person's entry has an orb.
+- A unit test shows palette assignment is stable.
+- A UI test at 390 px shows that every agent-authored entry has an orb, a name and an AI badge,
+  and that no person's entry has an orb.
 
-## PA-3. Visible work, only when it is real
+## PA-3. Visible work, from states Flux already has
 
-- **While a connection's run is executing**, as the server reports it (UI116-5's "authenticated
-  active execution/review"), its orb turns slowly (one turn in about 9 s), and its one-line status
-  shimmers.
-- **When it is queued, waiting for consent, waiting for review or offline**, the orb is still and
-  the status is plain text, for example "Waiting for your consent" or "Offline".
-- **The status text is the run's reported activity:** the task title, a file name or a step,
-  with the elapsed time from server timestamps. It never shows generated thoughts or a progress
-  percent (UI116-2).
-- **Motion stops:**
-  - when the page is hidden, the orb is off screen, or a modal covers it (#155);
-  - completely under reduced motion. Every state still reads correctly from the text.
+An orb turns slowly (one turn in about 9 s) and its status line shimmers only for states that
+UI116-5 counts as active execution, mapped from today's data:
+
+| Who | Moving (orb turns, line shimmers) | Still (plain text) |
+| --- | --- | --- |
+| The person's assistant (`AssistantRun`) | `reading`, `dispatching`, with today's `workingText` | `queued` ("getting ready"), stopping, and every ended state with today's `endedText` |
+| An agent connection (Agents view, `ProjectAgents`) | It holds a live co-work claim on a task, once #261's claims are on `main`; the line is today's "Last: … · time" | `session_open` without a claim, `offline`, `unavailable`, configured |
+
+- **Status text:** existing text only. Nothing is invented: no thoughts, no percent, no timer the
+  server does not report (UI116-2).
+- **When motion stops:** when the page is hidden, the orb is off screen, or a modal covers it
+  (#155). Under reduced motion there is no motion at all, and every state reads correctly from its
+  text.
 
 **Acceptance:**
 
-- A UI test with an executing fixture run shows the live state.
-- Stopping the run makes it still within one stream event.
+- A UI test with a fixture run in `reading` shows the moving state.
+- The test changes the run to an ended state and expects stillness within one stream event.
 - A reduced-motion run shows no animation.
-- A negative control: forcing the live class on a queued run fails the test.
+- Negative control: forcing the moving state on a `queued` run fails the test.
 
-## PA-4. Messages
+## PA-4. Messages on phones
 
 - **Bubble colours:**
-  - Your own messages use the action colour with inverse text.
-  - Other people's messages use the bubble colour.
-  - An agent's messages use the bubble colour, with its orb and the AI badge.
-- **A run started from this conversation or task** shows one work card in the stream: orb, name,
-  owner, status (PA-3) and a link to its task. It updates in place and ends as the run's result
-  or blocker.
-- **Shape and labels:**
-  - Bubble radius 20.
-  - The name sits above the first message in a run.
-  - Days are separated by a date.
-  - There are no IDs on messages.
+  - your own messages use the action colour with inverse text;
+  - other people's messages use the bubble colour;
+  - an agent's messages use the bubble colour, with its orb and the AI badge.
+- **The assistant's working line** (PA-3) sits in the stream where it is today.
+- **Shape and headings:** bubble radius 20. The name sits above the first message of a run, and a
+  date separates days. Messages show no IDs.
+- **Unchanged:** results, blockers, task notices, replies and files keep their current content.
+  They are restyled to PA-1 (soft cards, no coloured side rules) and keep their status colours.
 
-## PA-5. The header names both groups
+## PA-5. The phone header names both groups
 
-A project or DM header shows the title, then "N people · M AI" with up to four faces and orbs.
-Tapping it opens Details, with members and connections. The count comes from current access,
-not from history.
+The header shows the title, then "N people · M AI", using up to four faces and orbs. Both counts
+come from the project's current members and agent connections. Tapping it opens the existing
+Details.
 
-## PA-6. Agents
+## PA-6. Agents on phones
 
-There is one card per connection, never one per owner, so a second agent is not hidden
-(UI116-2).
+The existing Agents view (UI116-2: one card per connection, so a second agent is never hidden)
+is restyled. Each card shows the orb, the name, the owner and client, and the PA-3 state with
+today's text. Nothing new is added.
 
-- **Each card shows:** the orb, the name, owner and client, the PA-3 state, and the current task
-  with its elapsed time.
-- **A consent request** offers the screen's one primary action, "Allow", and a secondary "Deny".
-- **A filter** above the cards: Working · Waiting · All, with counts.
+## PA-7. Composer on phones
 
-## PA-7. Composer
-
-The composer is one pill: attach (+), the field, ask the assistant (its orb), and Send (the
-action colour). PF-3's quiet audience line stays under the pill; the v5 renders leave it out.
-
-## PA-8. One identity on every size
-
-PA-1 to PA-7 apply to phone, tablet and desktop.
-
-- **Desktop keeps its own layout:** the sidebar, the sheet, panels and compact sizes. Only colour
-  roles, avatars, messages and work states change.
-- **Why:** the founder wants the phone to stay consistent with Flux, and one identity avoids two
-  products.
+The existing composer becomes one pill: attach (+), the field, ask the assistant (its orb, where
+the assistant is available today), and Send in the action colour. PF-3's quiet audience line stays
+under the pill; the v5 renders leave it out.
 
 ## Amendments
 
-| Contract | Today | With F-025 |
+These apply to phones only.
+
+| Contract | Today | With F-025 on phones (≤ 640 px) |
 | --- | --- | --- |
-| F-017, [11.6 design system](studio-v11.6-design-system.md) tokens | Mint accent for selection, links, focus and unread; slate `--action`; mint-tinted own bubble | PA-1 roles. The token names stay; their values and uses change. |
-| #148, [theme accents](theme-accents.md) | The person picks Mint, Sky or Copper for the chrome | The choice becomes the colour of the person's own agents (PA-2). Light/dark stays. |
-| PF-2, [phone-first](phone-first.md) | "No control is a bare icon" | Navigation keeps words. Actions may be symbols with accessible names, which is principle 3 of #302 and HIG-26. |
-| D1 (#302) | Open | Unchanged. The v5 renders leave out the tab bar inside a conversation, but F-025 does not decide D1. |
+| F-017, [11.6 design system](studio-v11.6-design-system.md) tokens | Mint accent for selection, links, focus and unread; slate `--action`; mint-tinted own bubble | PA-1 values under the phone query; tablet and desktop unchanged |
+| #148, [theme accents](theme-accents.md) | The chosen accent colours the chrome on every size | It still does on tablet and desktop; phone chrome is monochrome |
+| PF-2, [phone-first](phone-first.md) | "No control is a bare icon" | Navigation keeps words; actions may be symbols with accessible names, as in principle 3 of #302 and HIG-26 |
+| D1 (#302) | Open | Unchanged. The v5 renders leave out the tab bar inside a conversation, but F-025 does not decide D1 |
 
 ## Delivery slices
 
-These become issues once F-025 is accepted. The owner is in brackets: Mz is claude-maurycy,
-H is claude-hubert.
+These become issues once F-025 is accepted. The owner is in brackets: Mz is claude-maurycy, H is
+claude-hubert.
 
-1. **PA-1 tokens for both themes**, people's initials, and contrast checks. [Mz]
-2. **The orb component**, palettes, assignment and the agents' colour setting (PA-2). [Mz]
-3. **Truthful working state** from the server's run activity to orb and status (PA-3). [H, who
-   owns the agent runtime]
-4. **Messages, work card, header and composer** (PA-4, PA-5, PA-7). [Mz]
-5. **The Agents view and consent card** (PA-6). [H, who owns UI116-2]
-6. **The projects list's live orb, notifications, and desktop parity** (PA-8). [Mz]
+1. **Tokens:** PA-1 phone tokens in both themes, people's initials, and the contrast checks. [Mz]
+2. **Orb:** the orb component, its palettes and their assignment (PA-2). [Mz]
+3. **Working state:** PA-3 on the assistant's run states, and on connections' claims after #261.
+   [H, who owns the agent runtime]
+4. **Conversation:** messages, header and composer on phones (PA-4, PA-5, PA-7). [Mz]
+5. **Agents and lists:** the Agents view, the projects list and notifications on phones (PA-6,
+   PA-2). [H for Agents, Mz for the lists]
 
 ## Revisit when
 
 - People in a first-use test cannot tell agents from people.
-- The orb or shimmer costs more than a frame on a low-end Android phone.
+- The orb or the shimmer costs more than a frame on a low-end Android phone.
 - A contrast check fails in either theme.
+- The founders want the same look on tablet or desktop.
