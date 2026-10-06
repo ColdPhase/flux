@@ -110,6 +110,13 @@ Not changed:
   touch screens no longer keep a hover fill (`test_04b`).
 - The fields use the column width, like the task composer below them.
 
+That review predates the merge of #267, the HIG sizing and the redesigned conflict view. A fresh
+neutral visual pass on these screenshots, taken at the merged head, is still owed.
+
+The HIG checks in the browser tests cover the read view and the editor at 390 px. That means Show,
+Hide, Edit, Publish, Cancel and the fields; target size is measured as height. The conflict view's
+"Use their …" buttons use the same button rules, but the tests exercise them only at 1440 px.
+
 ## Screenshots
 
 - Desktop 1440:
@@ -132,9 +139,9 @@ the running application.
 ## What remains of #160
 
 This slice is T160-b only. It counts toward AC-1 (the bounded, approved project policy) and AC-4
-(a project-policy update reaching the agent's next bootstrap). Still open:
+(a project-policy update reaching the agent's next bootstrap). T160-a, the playbook naming every
+registered tool (`flux.cowork` 1.2.0), is already on main through #256 (`a2a71007`). Still open:
 
-- **T160-a:** the playbook names every tool.
 - **Inbox, safe-checkpoint scheduling and recovery (AC-3/AC-4):** these need #153.
 - **AC-5:** the Agents controls (Start/Resume/Pause/Stop and the request states) need #136.
 - **AC-2:** real Claude Code and Codex onboarding in a fresh context, with pinned versions. This
