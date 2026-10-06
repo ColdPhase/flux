@@ -73,8 +73,8 @@ services:
     environment:
       # The operator allowlist lets owner endpoints reach the local provider mock only.
       FLUX_AI_PRIVATE_TARGETS: providermock
-      # Pool connection wait sized for this suite (#271, docs/development/containers.md): bursts of 100
-      # concurrent requests queue on 10 clients while other stacks share the CPU. Production keeps 1.5 s.
+      # Pool connection wait for this suite (#271, docs/development/containers.md): new connections and
+      # short waits while other stacks share the host. Production keeps 1.5 s.
       FLUX_DB_CONNECT_TIMEOUT_MS: ${FLUX_DB_CONNECT_TIMEOUT_MS:-10000}
   worker:
     environment:

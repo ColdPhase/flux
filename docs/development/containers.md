@@ -99,17 +99,27 @@ anything outside the database inside a transaction. pg-boss keeps its own pool.
 The connection timeout bounds the whole wait for a client: queued behind the pool's
 10 busy clients (the `pg` default size) or opening a new connection.
 `FLUX_DB_CONNECT_TIMEOUT_MS` (an integer from 100 to 60000) replaces the 1.5 s
-default; the production Compose files do not set it. `docker/compose.test.yaml`
-sets 10 s for the API, worker, `test` and `e2e` containers
-([#271](https://github.com/ColdPhase/flux/issues/271)). The suite sends bursts of
-up to 103 concurrent requests (`work-thought-tasks-native.test.ts`), whose tail waits
-behind the 10 clients, and concurrent Docker stacks on one host multiply every
-request's database time. At 1.5 s such runs failed with `timeout exceeded when
-trying to connect` (the pool queue) or `Connection terminated due to connection
-timeout` (a new connection, such as a migration test's fresh database). PostgreSQL
-keeps the image default `max_connections` of 100, far above what the suite's pools
-open together, so the longer wait does not hide exhaustion of the server. A leaked
-client still fails the suite: requests behind it time out after 10 s instead of 1.5 s.
+default; the production Compose files do not set it.
+
+Under concurrent Docker stacks the suite failed with `timeout exceeded when trying
+to connect` (the pool queue) or `Connection terminated due to connection timeout` (a
+new connection, such as a migration test's fresh database)
+([#271](https://github.com/ColdPhase/flux/issues/271)). The queue came from the
+suite's own fixture bursts, up to 105 concurrent requests, more than the API's 10
+clients. Every write ends with the stream's event insert, which holds one global
+advisory lock until commit so events get their commit-order `seq`. When the database
+is slow the burst waits on that lock and then for a client. Measured with only the database
+container's CPU limited (2026-10-06): at 0.15 CPU a 103-request burst passed at 1.5 s;
+at 0.1 CPU 64 of its 103 requests failed at 1.5 s and 17 at 10 s, the rest of those on
+the 2 s read timeout. Two changes follow:
+
+- Fixture bursts in `tests/app` run through `support/batches.ts`, at most 5 requests at
+  a time, so they never queue for a client. Concurrency tests keep their own bursts.
+- `docker/compose.test.yaml` sets 10 s for the API, worker, `test` and `e2e` containers,
+  for new connections and short waits while other stacks share the host. It does not
+  cover a database too slow for the 2 s read timeout, and it does not hide exhaustion:
+  PostgreSQL keeps the image default `max_connections` of 100 and the suite peaks near
+  21 client connections. A leaked client still fails the suite, after 10 s instead of 1.5 s.
 
 ### Disk hygiene
 

@@ -22,8 +22,8 @@ export const IDLE_IN_TRANSACTION_TIMEOUT_MS = 60_000;
 
 /**
  * How long a pool waits to hand out a connection, whether queued behind busy clients or opening a new
- * one. 1.5 s by default; `FLUX_DB_CONNECT_TIMEOUT_MS` sets it. The Docker test stack sets 10 s, because
- * its bursts of 100 concurrent requests queue on 10 clients while other stacks share the CPU (#271).
+ * one. 1.5 s by default; `FLUX_DB_CONNECT_TIMEOUT_MS` sets it. The Docker test stack sets 10 s for new
+ * connections and short waits while other stacks share the host (#271, docs/development/containers.md).
  */
 export const DEFAULT_DB_CONNECT_TIMEOUT_MS = 1500;
 export function databaseConnectTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
