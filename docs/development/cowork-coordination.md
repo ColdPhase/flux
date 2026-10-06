@@ -511,9 +511,9 @@ for why).
   a finished transition meets the changed unit and is refused by the fence.
 - **Refusals.** Every refusal throws a typed domain error inside the caller's
   transaction. No unit change, slot row, grant use or receipt survives it.
-- **#238 seam.** Completion and transfer are persisted unit uses. When #238's
-  lifecycle/use fence lands, it joins at the conditional update, inside the
-  same transaction. This slice does not implement that fence.
+- **#238 seam.** Completion and transfer are persisted unit uses. #238 joins
+  them to its task-use fence at the conditional update, inside the same
+  transaction; see [Task-use fence (#238)](#task-use-fence-238).
 
 Out of scope here: the assignee's accept/decline, re-addressing open requests,
 stop by the owner, completion or transfer of a unit without a live claim, plan
@@ -1083,3 +1083,15 @@ must escape the caller's outer transaction. Actual domain publication needs its
 appropriate operation/grant and live fence; it is not an arbitrary side effect
 authorized by `cowork.claim`. All domain/receipt/outgoing work finishes before
 the shared genuine native final event flush.
+
+### Task-use fence (#238)
+
+Every co-work writer that takes the native task set now takes it as the shared
+[task-use fence](task-creation-undo/README.md#never-used-ac-u2-the-shared-task-use-fence):
+the single sorted task pass of unit creation, claims, request admission, request
+claims and responses, and unit completion and transfer is `taskUseRows(tx).lockPrepared`,
+which refuses a task whose creation was undone (`TASK_CREATION_REVERTED`). The tasks a
+request names (target, sources, criteria) and a task named as a completion outcome join
+that same pass after the project graph locks. A saved unit, claim, checkpoint, request,
+response or transition then marks first use of its tasks, so a task taken by co-work can
+no longer be undone. Replays and acknowledgements mark nothing.
