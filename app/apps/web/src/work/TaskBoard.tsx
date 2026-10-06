@@ -39,7 +39,6 @@ export const columnOf = (status: WorkStatus): ColumnId =>
 
 /** A short, stable label of the task's own id; the full id is its title and in Details. */
 export const shortId = (id: string) => id.replace(/-/g, '').slice(0, 8).toUpperCase();
-/** How people name a task in its project: "#12" (#276). */
 
 /** One card: a bounded native task row, not a full WorkItem. */
 type BoardTask = WorkRowProjection;

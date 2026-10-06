@@ -116,16 +116,24 @@ test('"#n" finds the task in search, only for people who can open it', async () 
   await addMember(owner, ws.id, reader, 'member');
   const place = await project(owner, ws.id, 'Hedge sensors', 'restricted');
   await grant(owner, place.id, reader, 'viewer');
-  const titles = ['Order walnut probes', 'Seal the barrel lid', 'Log the hedge readings'];
+  // 26 tasks: #20–#26 share the prefix "2", and two titles name the number 2 in words.
+  const titles = ['Phase 2 walnut probes', 'Seal the barrel lid', 'Order 2 spare probes',
+    ...Array.from({ length: 23 }, (_, index) => `Log the hedge readings ${String.fromCharCode(97 + index)}`)];
   const made: WorkItem[] = [];
   for (const title of titles) made.push(expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`,
     { body: { title }, headers: { 'idempotency-key': randomUUID() } }), 201) as WorkItem);
-  const found = async (who: typeof owner, q: string) => (expectStatus(await who.browser.request('GET', `/api/v1/search?${new URLSearchParams({ q })}`), 200) as SearchResponse)
-    .items.filter((item) => item.kind === 'work').map((item) => item.id);
+  const search = async (who: typeof owner, q: string, limit?: number) => expectStatus(await who.browser.request('GET',
+    `/api/v1/search?${new URLSearchParams({ q, ...(limit ? { limit: String(limit) } : {}) })}`), 200) as SearchResponse;
+  const found = async (who: typeof owner, q: string) => (await search(who, q)).items.filter((item) => item.kind === 'work').map((item) => item.id);
   const second = `work:${made[1]!.id}`;
-  for (const q of ['#2', '2', ' #2 ']) assert.ok((await found(owner, q)).includes(second), `${JSON.stringify(q)} finds task #2`);
-  assert.equal((await found(owner, '#2'))[0], second, 'the numbered task leads');
+  const id = (index: number) => `work:${made[index]!.id}`;
+  for (const q of ['#2', '2', ' #2 ']) assert.equal((await found(owner, q))[0], second, `${JSON.stringify(q)} finds task #2 first`);
+  // Exactly #2 and the titles with the word 2; never #20–#26 by prefix.
+  assert.deepEqual(new Set(await found(owner, '#2')), new Set([second, id(0), id(2)]));
+  const page = await search(owner, '#2', 8);
+  assert.equal(page.items[0]?.id, second, 'the numbered task leads a short page, ahead of every other kind of hit');
+  assert.equal((await found(owner, '#21'))[0], id(20), '"#21" finds task #21');
   assert.ok((await found(reader, '#2')).includes(second), 'a viewer of the project finds it too');
   assert.deepEqual(await found(member, '#2'), [], 'a workspace member without access to the project finds nothing');
-  assert.ok(!(await found(owner, '#9')).length, 'a number no task has finds no task');
+  assert.ok(!(await found(owner, '#99')).length, 'a number no task has finds no task');
 });
