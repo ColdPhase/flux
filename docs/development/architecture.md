@@ -160,7 +160,8 @@ and the job is sent through the shared core `JobQueue` port, whose pg-boss adapt
 Resolved from the allowlist: `app/packages/core/src/index.ts` only exports. The integration-fixture
 sample command lives in `app/apps/server/src/fixture/` over the `@flux/db` sample repository, with
 typed errors, and exists only when `FLUX_FIXTURE_TOKEN` is set (with failure injection, so do the
-test-only stream and search routes). The API's composition root is `app/apps/server/src/app.ts`
+test-only stream and search routes and, since #287, OAuth client registration over the `@flux/db`
+fixture client repository). The API's composition root is `app/apps/server/src/app.ts`
 (`buildApp(config)` from `config.ts`, read once); `index.ts` only builds and listens, and the health
 check is `health/routes.ts` ([#88](https://github.com/ColdPhase/flux/issues/88)).
 
