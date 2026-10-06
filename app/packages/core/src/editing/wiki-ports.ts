@@ -28,8 +28,12 @@ export interface WikiUpdate {
   sequence: number; bytes: Uint8Array; commandId: string; actor: NamedPrincipal; hash: string;
 }
 export interface WikiPresence { connectionId: string; actor: NamedPrincipal; cursor: LiveCursor; expiresAt: string }
+/** The locked head without its codec state: a confirmed read needs only whether it is initialized. */
+export type WikiHeadSummary = Omit<WikiHead<WikiCodecState>, 'codecState'> & { initialized: boolean };
 export interface WikiRows<State extends WikiCodecState> {
   lockHead(docId: string): Promise<WikiHead<State> | null>;
+  /** The same row lock as lockHead, without transferring or decoding the codec state. */
+  lockHeadSummary(docId: string): Promise<WikiHeadSummary | null>;
   insertHead(doc: DocWithCurrent, generation: string, state: State): Promise<WikiHead<State>>;
   replaceState(head: WikiHead<State>, state: State, hash: string): Promise<void>;
   replica(docId: string, generation: string, replicaId: number): Promise<WikiReplica | null>;

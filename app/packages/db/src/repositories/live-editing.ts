@@ -26,6 +26,13 @@ export function liveEditingRows<Codec extends State>(db: DbExecutor, decodeState
     savedVersion: row.savedVersion, savedSequence: row.savedSequence, codecState: row.codecState ? decodeState(row.codecState) : null });
   return {
     async lockHead(docId: string) { const [row] = await db.select().from(h).where(eq(h.docId, docId)).for('update'); return row ? present(row) : null; },
+    async lockHeadSummary(docId: string) {
+      const [row] = await db.select({ docId: h.docId, workspaceId: h.workspaceId, projectId: h.projectId, generation: h.generation, sequence: h.sequence,
+        body: h.body, hash: h.hash, savedVersion: h.savedVersion, savedSequence: h.savedSequence, initialized: sql<boolean>`${h.codecState} IS NOT NULL` })
+        .from(h).where(eq(h.docId, docId)).for('update');
+      return row ? { resourceId: row.docId, workspaceId: row.workspaceId, projectId: row.projectId, generation: row.generation, sequence: row.sequence,
+        body: row.body, hash: row.hash, savedVersion: row.savedVersion, savedSequence: row.savedSequence, initialized: row.initialized === true } : null;
+    },
     async insertHead(doc: SavedDoc, generation: string, state: Codec) {
       const [row] = await db.insert(h).values({ docId: doc.doc.id, workspaceId: doc.doc.workspaceId, projectId: doc.doc.projectId,
         generation, sequence: 0, body: state.body, hash: hash(state.body), savedVersion: doc.current.version, savedSequence: 0, codecState: state }).returning();

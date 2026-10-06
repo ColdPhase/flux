@@ -161,7 +161,10 @@ export function liveWiki<State extends WikiCodecState, Lease>(ports: WikiPorts<S
     /** Caller hands off synchronously inside this authority transaction; a returned buffer alone is not a delivery fence. */
     async readConfirmed(identity: WikiIdentity, docId: string, generation: string, afterSequence: number, view: { previewAfterSequence?: number; includeContent?: boolean } = {}) {
       const { actor, principal, doc } = await authorized(identity, docId, 'read');
-      const current = await head(docId, generation);
+      // A read sends updates and the preview, never the codec state: lock the same head row without
+      // transferring or decoding that state (up to 8 MiB at 100k characters).
+      const current = await ports.rows.lockHeadSummary(docId);
+      if (!current?.initialized || current.generation !== generation) throw generationChanged();
       if (!Number.isSafeInteger(afterSequence) || afterSequence < 0 || afterSequence > current.sequence) throw new InvalidInputError('Invalid confirmed sequence');
       const updates = view.includeContent === false ? [] : await ports.rows.updates(docId, generation, afterSequence, 1);
       if (view.includeContent !== false && afterSequence < current.sequence && updates[0]?.sequence !== afterSequence + 1) throw generationChanged();
