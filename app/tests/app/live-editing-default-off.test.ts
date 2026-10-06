@@ -42,11 +42,12 @@ test('the default API reports live editing unavailable, refuses its routes and o
   try {
     const config = load({ ...base, FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY: '1', FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE: 'api-one' });
     assert.equal(config.developmentLiveEditing, false);
-    app = await buildApp(config);
-    const address = await app.listen({ host: '127.0.0.1', port: 0 });
-    assert.deepEqual((await app.inject({ method: 'GET', url: EDITING_CAPABILITIES_PATH })).json(), { status: 'unavailable' });
+    const server = await buildApp(config);
+    app = server;
+    const address = await server.listen({ host: '127.0.0.1', port: 0 });
+    assert.deepEqual((await server.inject({ method: 'GET', url: EDITING_CAPABILITIES_PATH })).json(), { status: 'unavailable' });
     for (const url of [liveDocPath(randomUUID()), liveMapPath(randomUUID())]) {
-      const refused = await app.inject({ method: 'GET', url, headers: { origin: config.identity.publicOrigin } });
+      const refused = await server.inject({ method: 'GET', url, headers: { origin: config.identity.publicOrigin } });
       assert.equal(refused.statusCode, 503, url);
       assert.equal(refused.json().code, 'LIVE_EDITING_DISABLED', url);
     }
@@ -63,7 +64,7 @@ test('the default API reports live editing unavailable, refuses its routes and o
     });
     socket.terminate();
     assert.equal(outcome, 'refused');
-    assert.equal(await app.closeGracefully(), true, 'nothing live to drain');
+    assert.equal(await server.closeGracefully(), true, 'nothing live to drain');
     app = undefined;
     assert.deepEqual(writes.filter((line) => line.includes('FLUX_LIVE_QUEUE')), [], 'no live queue telemetry when off');
   } finally {
