@@ -97,7 +97,7 @@ describe('human identity', () => {
     const email = uniqueEmail('reset');
     const { browser: before } = await register(email, password);
     const capabilities = await new Browser().request('GET', '/api/v1/auth/capabilities');
-    assert.deepEqual(capabilities.json, { passwordReset: 'available' });
+    assert.deepEqual(capabilities.json, { passwordReset: 'available', sso: null });
 
     const request = await new Browser().request('POST', '/api/auth/request-password-reset', {
       body: { email, redirectTo: `${publicOrigin}/reset-password` },

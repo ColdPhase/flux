@@ -121,7 +121,7 @@ class OperatorComposeTest(unittest.TestCase):
         # One executable template also serves the source launcher/dev profile.
         source_only = {"FLUX_MAILPIT_PORT", "FLUX_DEV_PORT", "FLUX_DEMO_OWNER_PASSWORD", "FLUX_DEMO_PARTNER_PASSWORD",
                        "FLUX_BACKGROUND_KEY_HOST_FILE", "FLUX_AI_PRIVATE_TARGETS", "FLUX_PERSONAL_RUNS",
-                       "FLUX_BACKGROUND_COMPARISONS"}
+                       "FLUX_BACKGROUND_COMPARISONS", "FLUX_OIDC_CLIENT_SECRET_HOST_FILE"}
         self.assertEqual(set(self.env) - referenced, source_only, "unexpected unconsumed template variable")
         consumers = (ROOT / "docker/compose.source.yaml").read_text() + (ROOT / "docker/compose.dev.yaml").read_text() + (ROOT / "flux").read_text()
         for name in source_only:

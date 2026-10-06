@@ -1,0 +1,4 @@
+
+== Preflight: Docker is reachable and there are at least 20 GB free
+FAIL: only 12 GB free on /System/Volumes/Data; need 20 GB
+EXIT 1
