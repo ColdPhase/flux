@@ -191,6 +191,9 @@ services:
       FLUX_ANTHROPIC_MOCK_URL: http://anthropic-mock:8090
       # TEST ONLY (#179): an OpenAI-compatible endpoint for the connection settings form.
       FLUX_OPENAI_MOCK_URL: http://openai-mock:8091
+      # TEST ONLY (#287): browser sessions cannot register OAuth clients, so the browser tests
+      # register theirs through the integration fixture with this token.
+      FLUX_FIXTURE_TOKEN: ${FLUX_FIXTURE_TOKEN:?Set FLUX_FIXTURE_TOKEN}
     volumes:
       # Tests are baked into the image (see docker/ui-tests.Dockerfile). Only the screenshot
       # output is mounted; "z" relabels it for SELinux hosts and is ignored elsewhere.

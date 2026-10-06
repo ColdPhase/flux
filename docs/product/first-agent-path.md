@@ -10,6 +10,14 @@ future capability does not change which clients/operations have been verified.
 Codex and any other MCP client equal: the same consent, grants and presentation, with
 each client's own setup commands. Verified clients are still only those with recorded evidence.
 
+**Proposed amendment, 2026-10-06 ([#287](https://github.com/ColdPhase/flux/issues/287),
+pending independent acceptance):** the implementation uses only the decision's client
+ID metadata documents. Dynamic client registration (DCR) stays off, and no browser session
+can register or change an OAuth client. "Optional pre-registration" is an operator step with
+database access. Consent shows the redirect host and the `client_id` host, and warns when
+the redirect is not loopback. Details are in the
+[agent connection contract](../development/agent-connection.md#identities-and-consent).
+
 **Proposal:** 2026-09-27, `codex-hubert` for [#37](https://github.com/ColdPhase/flux/issues/37).
 **Status:** accepted after [independent peer review](https://github.com/ColdPhase/flux/pull/53#pullrequestreview-5331573326).
 This is the product/architecture decision for the [#52 implementation](https://github.com/ColdPhase/flux/issues/52).

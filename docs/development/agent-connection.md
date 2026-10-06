@@ -48,6 +48,38 @@ signed consent screen shows the same connection, client, project names and
 requested scopes. OAuth carries the server-owned connection ID in its signed
 token; it never accepts project or agent IDs from the external client.
 
+**Proposed amendment, 2026-10-06 ([#287](https://github.com/ColdPhase/flux/issues/287),
+pending independent acceptance):** client registration and the consent screen.
+
+- **How clients arrive.** Flux registers an OAuth client only from a Client ID Metadata
+  Document: an `https` `client_id` whose document the server fetches and validates. RFC 7591
+  dynamic registration (`/api/auth/oauth2/register`) stays off. No browser session can create,
+  read, list, update, rotate or delete an OAuth client through the provider's
+  `/api/auth/oauth2/*-client` routes: the provider's `clientPrivileges` hook refuses every
+  action, and its `/admin/oauth2/*` routes are server-only. O-005's optional
+  pre-registration is an operator step with database access; Flux has no web route for it.
+- **Test deployments.** They register clients through the integration fixture
+  `POST /api/v1/integration/oauth-clients`. It needs the `FLUX_FIXTURE_TOKEN` bearer and
+  exists only with `FLUX_TEST_FAILURE_INJECTION=true`, which `./flux up` never sets.
+- **What consent shows.** The client name is self-asserted, so the consent screen also shows:
+  - where access goes: the host of the signed request's `redirect_uri`, which the provider
+    matched to the client's registration before signing;
+  - for a metadata-document client, the `client_id` host; otherwise "Registered on this
+    Flux server".
+  It warns when the redirect is not loopback (`127.0.0.1`, `[::1]` or `localhost`), and for
+  an app's private-use scheme. The MCP 2026-07-28 security considerations, as quoted in the
+  [#274 review (finding A2)](https://github.com/ColdPhase/flux/pull/274), require the
+  authorization server to "clearly display the redirect URI hostname during authorization".
+- **Framing.** Every response sends `X-Frame-Options: DENY`, and
+  `Content-Security-Policy: frame-ancestors 'none'` unless the route sets its own policy
+  (stored files keep `sandbox`). Flux frames none of its own pages, and the installed PWA is
+  a top-level window. The Vite dev server (`./flux dev`) serves the page without these headers.
+- **Tests.** `app/tests/app/oauth-clients.test.ts` covers refused registration, the fixture,
+  the consent hosts and the framing headers. `app/tests/app/oauth-flow.test.ts` covers the
+  redirect and `client_id` host rules, and `app/tests/app/fixture-routes.test.ts` shows the
+  fixture is absent without its switches. `app/tests/ui/test_oauth_consent.py` covers the
+  consent page at 1440 and on a 390 touch phone, and a refused framed load.
+
 The browser setup presents personal-agent creation before client commands and
 reveals project selection after a personal agent exists. The
 consent review names the selected projects prominently, lists the requested
