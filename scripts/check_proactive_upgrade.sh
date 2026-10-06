@@ -133,8 +133,8 @@ expect_refusal() {
 }
 # A one-off API or worker start with this image; a start that stays up for 30 s counts as accepted.
 start_refused() { compose run --rm --no-deps -T --entrypoint timeout "$1" 30 node "$2"; }
-migrate_with() { compose run --rm -T -v "$1:/app/packages/db/migrations:ro" migrate; }
-api_with() { compose run --rm --no-deps -T -v "$1:/app/packages/db/migrations:ro" --entrypoint timeout api 30 node apps/server/dist/index.js; }
+migrate_with() { compose run --rm -T -v "$1:/app/packages/db/migrations:ro,z" migrate; }
+api_with() { compose run --rm --no-deps -T -v "$1:/app/packages/db/migrations:ro,z" --entrypoint timeout api 30 node apps/server/dist/index.js; }
 image_files() { rm -rf "$work/faults"; mkdir -p "$work/faults"; cp "$(migration_dir)"/*.sql "$work/faults/"; chmod -R a+rX "$work/faults"; }
 [ "$(health)" = 200 ] || { echo 'Upgraded API is not healthy before fault injection'; exit 1; }
 
