@@ -28,6 +28,7 @@ import { LiveOpen } from './live/LiveOpen';
 import { SearchPage } from './search/SearchPage';
 import { GithubSettings } from './github/GithubSettings';
 import { AssistantSettings } from './assistant/AssistantSettings';
+import { ClaudeCodeSignIn } from './agent-runtime/ClaudeCodeSignIn';
 import {
   forgotPasswordAction,
   forgotPasswordLoader,
@@ -133,6 +134,8 @@ export const router = createBrowserRouter([
           { path: 'settings/background-compute', loader: backgroundComputeLoader, Component: BackgroundComputeSettings },
           { path: 'settings/notifications/verify', Component: VerifyAddress },
           { path: 'settings/assistant', Component: AssistantSettings },
+          // F-022 T4: the Claude Code sign-in console; its terminal loads only here.
+          { path: 'settings/assistant/claude-code', Component: ClaudeCodeSignIn },
           { path: '*', Component: NotFoundView },
         ],
       },

@@ -9,7 +9,13 @@ import type { Plugin, ResolvedConfig } from 'vite';
  * replaces vite-plugin-pwa/Workbox: no extra runtime dependency, Vite 8 compatibility is ours
  * to keep, and the caching rules (never /api/*, network-first navigations) stay explicit.
  */
-export function fluxServiceWorker(source = 'src/pwa/sw.js'): Plugin {
+/**
+ * Chunks that only work online are not precached: the Claude Code sign-in console's terminal (F-022
+ * T4) needs a live connection to the runtime, so every installed client would download it for nothing.
+ */
+export const ONLINE_ONLY = [/^assets\/SignInConsole-[^/]+\.(js|css)$/];
+
+export function fluxServiceWorker(source = 'src/pwa/sw.js', onlineOnly: RegExp[] = ONLINE_ONLY): Plugin {
   let config: ResolvedConfig;
   return {
     name: 'flux-service-worker',
@@ -20,7 +26,7 @@ export function fluxServiceWorker(source = 'src/pwa/sw.js'): Plugin {
     generateBundle(_options, bundle) {
       const entries = new Map<string, string | Uint8Array>();
       for (const file of Object.values(bundle)) {
-        if (file.fileName.endsWith('.map') || file.fileName === 'index.html') continue;
+        if (file.fileName.endsWith('.map') || file.fileName === 'index.html' || onlineOnly.some((pattern) => pattern.test(file.fileName))) continue;
         entries.set(`/${file.fileName}`, file.type === 'chunk' ? file.code : file.source);
       }
       const publicDir = config.publicDir;

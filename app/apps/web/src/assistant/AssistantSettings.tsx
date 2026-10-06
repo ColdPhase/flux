@@ -9,6 +9,7 @@ import { Button, ErrorState, Icon, Spinner } from '../ui';
 import { listBackgroundConnections } from '../proactive-comparison/api';
 import { enableAssistant, getAssistantStatus, pauseAssistant, removeAssistant, resumeAssistant, selectAssistantAgent, updateAssistant } from './api';
 import { dollars, micros, perMillion, stateLine, unavailableText } from './format';
+import { RuntimeSection } from '../agent-runtime/RuntimeSection';
 import '../notifications/notifications.css';
 import './assistant.css';
 
@@ -52,6 +53,8 @@ export function AssistantSettings() {
         </div>
         <span className="nset__saved" role="status" aria-live="polite">{saved ? <><Icon name="check" size={14} />{saved}</> : null}</span>
       </div>
+      {/* F-022 T4: the owner's own Claude Code in their runtime, beside the API-key assistant below. */}
+      <RuntimeSection />
       {status.enablement
         ? <Enabled status={status} agents={agents} workspaces={workspaces} onChange={done} onRemoved={() => { setStatus(null); load(); }} onAgent={(agent) => setAgents((current) => [...(current ?? []), agent])} name={me.user.name} />
         : <Setup status={status} agents={agents} workspaces={workspaces} name={me.user.name} onEnabled={(next) => done(next, 'Assistant turned on')} onAgent={(agent) => setAgents((current) => [...(current ?? []), agent])} />}

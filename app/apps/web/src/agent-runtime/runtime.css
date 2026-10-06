@@ -1,0 +1,56 @@
+/* Claude Code in Flux (F-022 T4 #279): the runtime section of Agent in Flux and its sign-in console.
+   Phone first: one column, 44px targets and 16px fields on coarse pointers (docs/design/apple-hig-mobile.md). */
+.rt .aset__state { flex-wrap: wrap; }
+.rt-sub { margin: 14px 0 8px; font-size: var(--fs-sm); font-weight: 600; color: var(--text-2); }
+.rt-facts { display: grid; gap: 10px; margin: 0 0 6px; padding: 0; list-style: none; font-size: var(--fs-sm); }
+.rt-facts li { display: grid; grid-template-columns: 148px 1fr; gap: 10px; }
+.rt-facts b { font-weight: 500; color: var(--text-2); }
+.rt-facts span { color: var(--text); line-height: 1.5; min-width: 0; overflow-wrap: anywhere; }
+.rt-notice { align-items: center; flex-wrap: wrap; }
+.rt-notice > span { flex: 1 1 16em; }
+.rt-actions .ui-btn { flex: none; }
+.rt-page h2 { overflow-wrap: anywhere; }
+.rt-methods { display: grid; gap: 8px; margin: 0; padding-top: 16px; border: 0; border-bottom: 1px solid var(--line); min-width: 0; }
+.rt-legend { padding: 0; margin-bottom: 4px; font-size: var(--fs-base); font-weight: 600; }
+.rt-method {
+  display: flex; gap: 12px; align-items: flex-start; min-height: 56px; padding: 12px 14px; border-radius: var(--r-lg);
+  box-shadow: inset 0 0 0 1px var(--line); cursor: pointer; transition: var(--tr);
+}
+.rt-method:hover { box-shadow: inset 0 0 0 1px var(--line-strong); }
+.rt-method.is-on { box-shadow: inset 0 0 0 2px var(--accent); background: var(--accent-soft); }
+.rt-method input { flex: none; width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--accent); }
+.rt-method__b { display: grid; gap: 3px; min-width: 0; }
+.rt-method__t { font-size: var(--fs-base); font-weight: 600; color: var(--text); }
+.rt-method__s, .rt-method__p { font-size: var(--fs-sm); line-height: 1.45; color: var(--text-2); }
+.rt-method__p { color: var(--text-3); }
+.rt-steps { margin: 0 0 8px; padding-left: 20px; display: grid; gap: 6px; font-size: var(--fs-sm); line-height: 1.5; color: var(--text); }
+.rt-phase { display: flex; align-items: center; gap: 8px; min-height: 24px; margin: -4px 0 10px; font-size: var(--fs-sm); color: var(--text-2); }
+.rt-open { margin: 0 0 12px; max-width: 100%; white-space: normal; text-align: left; }
+.rt-term {
+  /* The terminal keeps its own dark surface in both themes, as a terminal does. */
+  height: clamp(240px, 46vh, 420px); padding: 8px; border-radius: var(--r-lg); background: #16181d; overflow: hidden;
+}
+.rt-term .xterm { height: 100%; }
+.rt-term .xterm-viewport { border-radius: var(--r); }
+.rt-code { display: grid; gap: 6px; margin-top: 14px; }
+.rt-code label { font-size: var(--fs-sm); font-weight: 600; color: var(--text-2); }
+.rt-code__row { display: flex; gap: 8px; }
+.rt-code__row .ui-input { flex: 1; min-width: 0; font-family: var(--mono); }
+.rt-outcome .nset__problem { margin-top: 4px; }
+@media (max-width: 640px) {
+  .rt-facts li { grid-template-columns: 1fr; gap: 2px; }
+  .rt-term { height: clamp(220px, 42vh, 360px); padding: 6px; }
+  .rt-actions { flex-direction: column; align-items: stretch; }
+  .rt-actions .ui-btn { justify-content: center; }
+}
+@media (pointer: coarse) {
+  .rt-method { min-height: 64px; }
+  .rt-method input { width: 22px; height: 22px; }
+  .rt-open { min-height: 48px; }
+  .rt-code__row .ui-btn { min-width: 72px; }
+}
+@media (pointer: coarse) {
+  /* HIG-14: a link inside running text is at least 28px tall; one standing alone is a 44px target. */
+  .rt a.ui-link, .rt-page a.ui-link, .rt button.ui-link { padding-block: 4px; }
+  .rt-page .aset__actions > .ui-link { display: inline-flex; align-items: center; min-height: 44px; }
+}

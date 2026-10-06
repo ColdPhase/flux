@@ -75,7 +75,16 @@ describe('service worker delivery', () => {
     assert.ok(precache.some((url) => /^\/assets\/.+\.js$/.test(url)), 'the app bundle is precached');
     assert.equal(precache.some((url) => url.startsWith('/api/')), false, 'no API URL is precached');
     assert.equal(precache.includes('/index.html'), false, 'navigations are network-first, not precached');
+    // F-022 T4: the sign-in console's terminal works only online; installed clients do not download it.
+    assert.equal(precache.some((url) => /\/assets\/SignInConsole-/.test(url)), false, 'the sign-in console is not precached');
     for (const url of precache) assert.equal((await get(url)).response.status, 200, `precached ${url} exists`);
+    // Control: the console's chunk exists and the app loads it on demand from the network.
+    let consoleChunk: string | null = null;
+    for (const url of precache.filter((entry) => /^\/assets\/.+\.js$/.test(entry))) {
+      consoleChunk ??= (await get(url)).bytes.toString('utf8').match(/SignInConsole-[A-Za-z0-9_-]+\.js/)?.[0] ?? null;
+    }
+    assert.ok(consoleChunk, 'the app bundle names the sign-in console\'s chunk');
+    assert.equal((await get(`/assets/${consoleChunk}`)).response.status, 200);
   });
 
   test('hashed assets are immutable while HTML and the offline page revalidate', async () => {
