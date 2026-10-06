@@ -103,6 +103,12 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests }: A
         loginPage: '/login', consentPage: '/consent', resource,
         scopes: ['flux.context.read', 'flux.proposal.write', 'flux.action.execute', 'offline_access'],
         grantTypes: ['authorization_code', 'refresh_token'],
+        // Clients arrive only through Client ID Metadata Documents (the cimd plugin below, which does
+        // not consult this hook). No browser session may create, read, list, update, rotate or delete
+        // an OAuth client, so a member cannot register a look-alike client with their own redirect
+        // (#287). RFC 7591 dynamic registration at /oauth2/register stays off.
+        clientPrivileges: () => false,
+        allowDynamicClientRegistration: false,
         postLogin: {
           page: '/connect-agent',
           shouldRedirect: async ({ user, session }) => {

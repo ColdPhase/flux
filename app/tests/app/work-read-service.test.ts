@@ -146,7 +146,7 @@ test('all required selectors reach the outside fence as the original normalized 
     associationSources: async () => ({ ...slice([{ messageId, work: 0, decisions: 0, results: 0, edges: 0 }]), items: [{ key: { rank: 0, createdAt: at, id: messageId }, value: { messageId, work: 0, decisions: 0, results: 0, edges: 0 } }] }),
     associationEdges: async () => slice<ObjectLink>([]), associationEdgeTotal: async () => 0,
     relations: async () => ({ page: slice<ObjectLink>([]), observedAt: at }),
-    detail: async () => ({ object: { kind: 'work', id, projectId, workspaceId, audience: { kind: 'project', projectId }, title: 'Own native work', outcome: '', criteria: [], dependencyIds: [], prerequisites: [], planIntent: null, status: 'open', owner: null, blocker: null, parked: null, version: 1, createdAt: at, updatedAt: at, createdBy: { ...actor, name: 'Native' } }, observedAt: at, relations, context: [] }),
+    detail: async () => ({ object: { kind: 'work', id, projectId, workspaceId, audience: { kind: 'project', projectId }, title: 'Own native work', outcome: '', criteria: [], dependencyIds: [], prerequisites: [], planIntent: null, status: 'open', owner: null, blocker: null, parked: null, version: 1, createdAt: at, updatedAt: at, createdBy: { ...actor, name: 'Native' }, githubRule: null }, observedAt: at, relations, context: [] }),
   }, { check: async (_principal, _pid, _digest, required) => { captured.push(required); return 'viewer'; } });
   await reads.detail(actor, projectId, 'work', id);
   await reads.relations(actor, projectId, new URLSearchParams(`objects=work:${id}`));

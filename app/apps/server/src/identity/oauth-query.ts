@@ -13,15 +13,17 @@ export function oauthFingerprint(params: URLSearchParams): string {
 export function oauthFlow(params: URLSearchParams, resource: string): AgentOauthFlow | null {
   for (const key of new Set(params.keys())) if (key !== 'resource' && key !== 'ba_param' && params.getAll(key).length !== 1) return null;
   const clientId = params.get('client_id');
+  // The provider matched it to the client's registration before signing; consent shows its host (#287).
+  const redirectUri = params.get('redirect_uri');
   const scopes = (params.get('scope') ?? '').split(' ').filter(Boolean);
   const resources = params.getAll('resource');
   const expiry = Number(params.get('exp'));
-  if (!clientId || params.get('response_type') !== 'code' || params.get('code_challenge_method') !== 'S256' || !params.get('code_challenge')
+  if (!clientId || !redirectUri || params.get('response_type') !== 'code' || params.get('code_challenge_method') !== 'S256' || !params.get('code_challenge')
     || !scopes.length || new Set(scopes).size !== scopes.length
     || scopes.some((scope) => !['flux.context.read', 'flux.proposal.write', 'flux.action.execute', 'offline_access'].includes(scope))
     || resources.length !== 1 || resources[0] !== resource || params.has('request') || params.has('request_uri')
     || !Number.isSafeInteger(expiry) || expiry <= 0) return null;
-  return { fingerprint: oauthFingerprint(params), clientId, scopes, expiresAt: new Date(expiry * 1000) };
+  return { fingerprint: oauthFingerprint(params), clientId, redirectUri, scopes, expiresAt: new Date(expiry * 1000) };
 }
 
 /**

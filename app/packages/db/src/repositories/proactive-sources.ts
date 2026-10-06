@@ -19,12 +19,13 @@ const humanThought = and(isNull(t.placementType), isNull(t.placementId), isNull(
     AND e.kind = 'sketch.changed.v1' AND e.data->>'op' IN ('thought_added', 'thought_updated')
     AND e.data->'thoughtIds' @> jsonb_build_array(${t.id}::text) AND e.actor_id LIKE 'agent:%')`);
 
-// A work item made from this agent's earlier proposal or changed by an agent is not evidence.
+// A work item made from this agent's earlier proposal or changed by an agent, or by a GitHub task rule (#74 G-1a),
+// is not evidence of human work.
 const humanWork = and(eq(w.createdByKind, 'human'),
   sql`NOT EXISTS (SELECT 1 FROM ${schema.proactiveComparisonProposals} p WHERE p.used_work_id = ${w.id})`,
   sql`NOT EXISTS (SELECT 1 FROM ${schema.events} e WHERE e.object_id = ${w.projectId}
     AND e.kind IN ('project.work_created.v1', 'project.work_updated.v1')
-    AND e.data->>'workId' = ${w.id}::text AND e.actor_id LIKE 'agent:%')`);
+    AND e.data->>'workId' = ${w.id}::text AND (e.actor_id LIKE 'agent:%' OR e.data->>'automation' = 'github_rule'))`);
 
 /** Metadata only. Callers must check current project access before selecting or reading content. */
 export function comparisonSources(db: DbExecutor) {
