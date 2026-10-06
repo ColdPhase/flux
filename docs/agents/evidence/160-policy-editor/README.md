@@ -99,7 +99,7 @@ evaluation is still required. #160 stays open (see "What remains").
 | Run | Code | Result |
 | --- | --- | --- |
 | UI, `check_ui.sh test_project_policy test_agents_view test_grant_controls test_shared_composer test_typing test_app_shell test_phone_shell test_agents_accents` (image build ran build, typecheck and lint; these screenshots) | `f0e397cf` | 90/90 OK (10 + 17 + 4 + 14 + 11 + 20 + 12 + 2) |
-| `./scripts/check_application.sh` (build, typecheck, lint, app tests including both policy suites, every browser/e2e phase) | `f0e397cf` | RESULT_FULL |
+| `./scripts/check_application.sh` (build, typecheck, lint, app tests including both policy suites, every browser/e2e phase) | `f0e397cf` | Not run yet. It is queued behind the slot lock's disk guard: the host has 13–14 GB free, under 15 GB. The CI "Application validation" check passes on the evidence head. |
 | Earlier heads | `97ba7e36`; `8f0ba3f3` and `e4b63298` | UI 86/86 and full check exit 0 (969/969, then 20/20); before the first merge, UI 72/72 and full check exit 0 (943/943, then 20/20) |
 
 ## Negative controls
