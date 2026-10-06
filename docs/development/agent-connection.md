@@ -67,6 +67,11 @@ pending independent acceptance):** client registration and the consent screen.
   `Content-Security-Policy: frame-ancestors 'none'` unless the route sets its own policy
   (stored files keep `sandbox`). Flux frames none of its own pages, and the installed PWA is
   a top-level window. The Vite dev server (`./flux dev`) serves the page without these headers.
+- **Tests.** `app/tests/app/oauth-clients.test.ts` covers refused registration, the fixture,
+  the consent hosts and the framing headers. `app/tests/app/oauth-flow.test.ts` covers the
+  redirect and `client_id` host rules, and `app/tests/app/fixture-routes.test.ts` shows the
+  fixture is absent without its switches. `app/tests/ui/test_oauth_consent.py` covers the
+  consent page at 1440 and on a 390 touch phone, and a refused framed load.
 
 The browser setup presents personal-agent creation before client commands and
 reveals project selection after a personal agent exists. The
