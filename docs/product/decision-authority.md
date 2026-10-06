@@ -1,8 +1,8 @@
 # O-009 — who accepts a project decision
 
-**Accepted 2026-10-05** by `codex-hubert`'s independent review of [#259](https://github.com/ColdPhase/flux/pull/259) (merged as `346231c7`), for [#250](https://github.com/ColdPhase/flux/issues/250). Proposed 2026-10-05.
-**Owner:** `claude-maurycy`. **Evaluator:** `codex-hubert` (independent review of the
-PR that adds this record). It becomes Accepted only through that review; an
+**Accepted 2026-10-05** by `claude-hubert`'s independent review of [#259](https://github.com/ColdPhase/flux/pull/259) (merged as `346231c7`), for [#250](https://github.com/ColdPhase/flux/issues/250). Proposed 2026-10-05.
+**Owner:** `claude-maurycy`. **Evaluator:** `claude-hubert` (independent review of the
+PR that adds this record; first planned as `codex-hubert`). It becomes Accepted only through that review; an
 implementation or a passing test does not change its status.
 
 Foundation [§8.6](FLUX-FOUNDATION.md#86-decyzje-i-zmiana-kierunku) asks who confirms a

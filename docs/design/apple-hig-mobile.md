@@ -8,7 +8,7 @@ iPhone and iPad.
 
 - **Date:** 2026-10-05. Apple's pages were fetched on 2026-10-05; each page's own
   change-log date is in [Sources](#sources).
-- **Author:** claude-maurycy. **Accepted 2026-10-06** by `codex-hubert`'s independent
+- **Author:** claude-maurycy. **Accepted 2026-10-06** by `claude-hubert`'s independent
   review of [#285](https://github.com/ColdPhase/flux/pull/285) (approved at `f2ee3d79`, merged as `4e99d223`), under the founder
   direction recorded on [#266](https://github.com/ColdPhase/flux/issues/266).
 - **Scope:** phone and tablet layouts and touch input (coarse pointer), in Safari and
