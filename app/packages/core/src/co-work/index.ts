@@ -9,3 +9,6 @@ export { COWORK_DECLINE_REASONS, normalizeCoWorkRequestClaim, normalizeCoWorkRes
   requireCoWorkRequestClaim, requireCoWorkResponse } from './responses.js';
 export type { CoWorkDeclineReason, CoWorkRequestClaimInput, CoWorkResponseInput, CoWorkRecipientUnit, CoWorkLockedRequest,
   CoWorkResponseFacts } from './responses.js';
+export { coWorkRootRunId, normalizeCoWorkUnitCreate, requireCoWorkUnitCreation, validateCoWorkUnitPolicy } from './units.js';
+export type { CoWorkUnitParentFence, CoWorkUnitCreateInput, CoWorkUnitPolicy, CoWorkCreationUnit, CoWorkUnitCreationFacts,
+  CoWorkUnitDecision } from './units.js';

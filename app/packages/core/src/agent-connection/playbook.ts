@@ -7,6 +7,7 @@ import type { AgentInstructionReference } from '@flux/contracts';
  * It names only tools that the MCP server actually registers. A provider that does not exist yet
  * (coordination, verified repository context) is declared as a requirement, never described as working;
  * bootstrap's gaps say which ones this server lacks. The approved project policy exists since 1.1.0 (#160).
+ * Since 1.2.0 every registered tool is declared by a module, including the wiki, conversation and map reads and writes.
  */
 export type CoworkProvider = 'coordination' | 'approved_policy' | 'repository_references';
 export interface CoworkPlaybookModule {
@@ -30,7 +31,7 @@ export interface CoworkPlaybook {
 
 const playbook: CoworkPlaybook = {
   bundleId: 'flux.cowork',
-  version: '1.1.0',
+  version: '1.2.0',
   toolContractVersion: 1,
   startPayload: `Start my authorized Flux work in the bound project. Load this playbook and the authenticated bootstrap first. \
 Understand the project's current plan, wiki, relevant conversations, decisions and existing tasks before planning or creating more \
@@ -77,14 +78,19 @@ rely on the task records and your own recorded checkpoints.`,
     },
     {
       id: 'orient_plan', title: 'Orient and plan',
-      tools: ['flux_project_orientation', 'flux_get_doc', 'flux_read_material', 'flux_list_decisions', 'flux_get_decision',
-        'flux_list_work', 'flux_get_work', 'flux_list_results', 'flux_search_project', 'flux_create_proposal', 'flux_create_task',
-        'flux_propose_decision'],
+      tools: ['flux_project_orientation', 'flux_list_materials', 'flux_read_material', 'flux_list_docs', 'flux_get_doc',
+        'flux_list_decisions', 'flux_get_decision', 'flux_list_work', 'flux_get_work', 'flux_list_results', 'flux_get_result',
+        'flux_list_conversations', 'flux_get_conversation', 'flux_list_maps', 'flux_get_map', 'flux_search_project',
+        'flux_create_proposal', 'flux_create_task', 'flux_propose_decision'],
       providers: ['approved_policy'],
       text: `On first entry, list the project's sources with flux_project_orientation for each kind (doc, material, work, decision, \
 result, conversation, map). Read the current plan and the accepted decisions completely, paging with nextOffset and the exact \
-version. Follow other sources only as far as the outcome you are working on needs them, using flux_search_project and the get \
-tools. Record coverage: which sources and versions you read, which you skipped, and the gaps. Keep accepted decisions apart from \
+version. Follow other sources only as far as the outcome you are working on needs them, using flux_search_project and the \
+list and read tools of each kind: flux_list_materials and flux_read_material, flux_list_docs and flux_get_doc (the wiki), \
+flux_list_work and flux_get_work, flux_list_decisions and flux_get_decision, flux_list_results and flux_get_result, \
+flux_list_conversations and flux_get_conversation (at most 50 messages per page; older ones with nextBeforeSequence), and \
+flux_list_maps and flux_get_map (thoughts and links in pages, continued from the returned updatedAt checkpoint). Record \
+coverage: which sources and versions you read, which you skipped, and the gaps. Keep accepted decisions apart from \
 proposals and superseded discussion; an unavailable critical source is a blocker, not assumed knowledge.
 To suggest something for people to review, use flux_create_proposal. To decompose a plan into native tasks you need a live \
 work.create grant: list existing tasks with flux_list_work first and never recreate one that exists. Call flux_create_task with \
@@ -102,7 +108,10 @@ approved_policy_unavailable, no policy is published: follow your owner's directi
     },
     {
       id: 'execute_checkpoint', title: 'Execute and checkpoint',
-      tools: ['flux_get_work', 'flux_update_task', 'flux_record_result'], providers: ['coordination'],
+      tools: ['flux_get_work', 'flux_update_task', 'flux_record_result', 'flux_reply_in_conversation', 'flux_start_conversation',
+        'flux_create_doc', 'flux_update_doc', 'flux_create_map', 'flux_rename_map', 'flux_add_thought', 'flux_update_thought',
+        'flux_move_thoughts', 'flux_remove_thought', 'flux_link_thoughts', 'flux_unlink_thoughts'],
+      providers: ['coordination'],
       text: `Work on one task at a time. Read it with flux_get_work: its outcome, criteria, prerequisites and current version. \
 Starting (in_progress) or finishing (done) requires every prerequisite to be done; otherwise finish or report the prerequisite \
 first. With a live work.update grant, keep the task current with flux_update_task at the version you last read: status, \
@@ -111,7 +120,18 @@ project's own build and test instructions, preserve other authors' work, and at 
 changed artifact references, the checks you actually ran and the next action. With a result.record grant, record what you \
 actually observed with flux_record_result (positive or negative, with its evidence) linked to the task; it can finish that task \
 at the version you read when the observation completes it. Leases and durable server checkpoints need the \
-coordination provider; while it is unavailable, keep that record on the task and in your report to your owner.`,
+coordination provider; while it is unavailable, keep that record on the task and in your report to your owner.
+Useful work is not only code. Publish what you found on the project's existing records, each effect under a live standing \
+grant for its own operation. Post progress, questions and findings to the task's discussion thread, or to another project \
+conversation that fits, with flux_reply_in_conversation (conversation.reply); start a new topic with flux_start_conversation \
+(conversation.create) only when none fits. Write the wiki with flux_create_doc (doc.create) and flux_update_doc (doc.update), \
+editing at the version you last read. Shape a shared project map with flux_create_map (map.create), flux_rename_map \
+(map.rename), flux_add_thought (map.thought.create), flux_update_thought (map.thought.update), flux_move_thoughts \
+(map.positions.update), flux_remove_thought (map.thought.delete), flux_link_thoughts (map.link.create) and \
+flux_unlink_thoughts (map.link.delete). Renaming a map and changing, moving or removing a thought name the version you last \
+read; after a conflict, read again and reapply only your own change. The project's people see these records at once; there \
+is no private draft. Keep them sourced and concise, and never post hidden \
+reasoning, transcripts or secrets.`,
     },
     {
       id: 'request_review_fix', title: 'Request help, review and fixes',
