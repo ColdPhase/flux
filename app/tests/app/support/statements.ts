@@ -43,25 +43,15 @@ interface PlanNode {
   'Node Type': string;
   'Parent Relationship'?: string;
   'Subplan Name'?: string;
+  'Total Cost': number;
   'Actual Loops'?: number;
   'Actual Rows'?: number;
-  'Relation Name'?: string;
   Plans?: PlanNode[];
 }
 
 /** EXPLAIN (ANALYZE, FORMAT JSON) of a recorded statement, run again with the same parameters. */
-export async function explainAnalyze(statement: SentStatement): Promise<PlanNode> {
-  const { rows } = await observer.query<{ 'QUERY PLAN': [{ Plan: PlanNode }] }>(`EXPLAIN (ANALYZE, FORMAT JSON) ${statement.text}`, statement.values);
-  return rows[0]!['QUERY PLAN'][0].Plan;
-}
-
-/** Every subplan of a plan (a `SubPlan` relationship) with how often it ran. */
-export function subplans(plan: PlanNode): { name: string; loops: number }[] {
-  const found: { name: string; loops: number }[] = [];
-  const visit = (node: PlanNode) => {
-    if (node['Parent Relationship'] === 'SubPlan') found.push({ name: node['Subplan Name'] ?? '', loops: node['Actual Loops'] ?? 0 });
-    for (const child of node.Plans ?? []) visit(child);
-  };
-  visit(plan);
-  return found;
+export async function explainAnalyze(statement: SentStatement): Promise<{ Plan: PlanNode; JIT?: { Functions: number } }> {
+  const { rows } = await observer.query<{ 'QUERY PLAN': [{ Plan: PlanNode; JIT?: { Functions: number } }] }>(
+    `EXPLAIN (ANALYZE, FORMAT JSON) ${statement.text}`, statement.values);
+  return rows[0]!['QUERY PLAN'][0];
 }

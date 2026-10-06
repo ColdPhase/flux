@@ -17,7 +17,7 @@ import { explainAnalyze, recordingDatabase, subplans } from './support/statement
 const { db, statements } = recordingDatabase();
 
 describe('inbox unread count (#298)', () => {
-  test('decides which sources the reader can see once per query, not once per notification', async () => {
+  test('stays a cheap plan however many notifications a member has: no JIT compilation per count', async () => {
     const owner = await person('Inbox owner');
     const member = await person('Inbox member');
     const space = await workspace(owner, 'Inbox volume');
@@ -26,21 +26,27 @@ describe('inbox unread count (#298)', () => {
     const hidden = await project(owner, space.id, 'Restricted project', 'restricted');
     const insert = (projectId: string, count: number) => pool.query(`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, title, reason)
       SELECT gen_random_uuid(), $1, $2, 'project', $3, 'Reply ' || i, 'reply' FROM generate_series(1, $4::int) AS i`, [member.id, space.id, projectId, count]);
-    await insert(open.id, 300);
+    await insert(open.id, 3000);
     // Rows about a project the member cannot read stay out of the count, as before.
     await insert(hidden.id, 5);
+    // Current statistics, so the planner estimates these rows as PostgreSQL would in use.
+    await pool.query('ANALYZE notifications');
 
     const { result, sent } = await statements(() => notificationRepository(db).listReadable(member.id, 1));
-    assert.equal(result.unread, 300, 'only notifications about readable projects are counted');
+    assert.equal(result.unread, 3000, 'only notifications about readable projects are counted');
     assert.equal(result.items.length, 1);
     const count = sent.find((statement) => /^select count\(\*\) from "notifications"/i.test(statement.text));
     assert.ok(count, 'the unread count is one statement');
-    const runs = subplans(await explainAnalyze(count));
-    assert.ok(runs.length > 0, 'the source checks are subplans of the count');
-    // Before #298 the project check was a correlated EXISTS under an OR: PostgreSQL ran it, and the
-    // grant checks inside it, once for each of the 305 rows. Now the set of readable projects is
-    // built once (its own grant checks run once per project of the workspace, here two).
-    assert.deepEqual(runs.filter((run) => run.loops > 2), [], `no source subplan runs per notification: ${JSON.stringify(runs)}`);
+    const explained = await explainAnalyze(count);
+    const threshold = Number((await pool.query<{ jit_above_cost: string }>('SHOW jit_above_cost')).rows[0]!.jit_above_cost);
+    // Before #298 the draft and DM checks were correlated subplans whose estimated cost the planner
+    // multiplied by every notification: from about a thousand notifications the estimate crossed
+    // jit_above_cost, and every count (the inbox dot, on each navigation) compiled JIT code for
+    // about 50 ms to run a query of about 1 ms. As uncorrelated IN (SELECT ...) sets they are
+    // hashed once and the estimate stays small.
+    assert.ok(explained.Plan['Total Cost'] < threshold, `estimated cost ${explained.Plan['Total Cost']} stays below jit_above_cost ${threshold}`);
+    assert.equal(explained.JIT, undefined, 'no JIT compilation');
+    assert.deepEqual(subplans(explained.Plan).filter((run) => run.loops > 2), [], 'no source subplan runs per notification');
   });
 });
 

@@ -37,9 +37,10 @@ async function inboxAudience(db: DbExecutor, userId: string): Promise<SQL> {
     const projects = await visibleFilter(principal, workspaceId, 'project', db);
     const drafts = await visibleFilter(principal, workspaceId, 'draft', db);
     const dms = await visibleFilter(principal, workspaceId, 'dm', db);
-    // Each source set is an uncorrelated `IN (SELECT …)`: PostgreSQL decides it once per query and
-    // probes a hash per row (a "hashed SubPlan"). A correlated EXISTS under these ORs re-ran the
-    // policy's grant checks for every notification counted (#298).
+    // Each source set is an uncorrelated `IN (SELECT …)`, which PostgreSQL decides once per query
+    // and probes as a hash per row. As correlated EXISTS (#298) the draft and DM checks were costed
+    // once per notification: past about a thousand of them the estimate crossed jit_above_cost and
+    // every unread count compiled JIT code for ~50 ms to run a ~1 ms query.
     const sources: SQL[] = [
       sql`(${n.sourceType} = 'project' AND ${n.sourceId} IN (SELECT ${schema.projects.id} FROM ${schema.projects} WHERE ${projects}))`,
       sql`(${n.sourceType} = 'draft' AND ${n.sourceId} IN (SELECT ${schema.drafts.id} FROM ${schema.drafts} WHERE ${drafts}))`,
