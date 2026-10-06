@@ -37,3 +37,15 @@ export function newBelowText(messages: number, tasks: number): string {
   const parts = [messages ? `${messages} new ${messages === 1 ? 'message' : 'messages'}` : null, tasks ? `${tasks} new ${tasks === 1 ? 'task' : 'tasks'}` : null];
   return parts.filter(Boolean).join(' · ');
 }
+
+/**
+ * A CSS <time> as milliseconds (#264). The production build minifies `180ms` to `.18s`, so a bare
+ * parseFloat read the drawer's 180 ms as 0.18 ms and every script-driven motion jumped in one frame.
+ * Anything that is not a number with `ms` or `s` is 0, so motion stays off rather than misbehaving.
+ */
+export function cssTimeToMs(value: string): number {
+  const match = /^\s*(-?(?:\d+\.?\d*|\.\d+))(ms|s)\s*$/i.exec(value);
+  if (!match) return 0;
+  const amount = Number(match[1]) * (match[2]!.toLowerCase() === 's' ? 1000 : 1);
+  return Number.isFinite(amount) && amount > 0 ? amount : 0;
+}

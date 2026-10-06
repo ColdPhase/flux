@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
+import { fluxPrecompress } from './build/precompress-plugin.js';
 import { fluxServiceWorker } from './build/service-worker-plugin.js';
 
 // `./flux dev` (issue #72) sets FLUX_DEV_API_URL: the dev server proxies /api, including the
@@ -8,7 +9,7 @@ import { fluxServiceWorker } from './build/service-worker-plugin.js';
 const devApi = process.env.FLUX_DEV_API_URL;
 
 export default defineConfig({
-  plugins: [fluxServiceWorker()],
+  plugins: [fluxServiceWorker(), fluxPrecompress()],
   resolve: devApi
     ? { alias: { '@flux/contracts': fileURLToPath(new URL('../../packages/contracts/src/index.ts', import.meta.url)) } }
     : undefined,

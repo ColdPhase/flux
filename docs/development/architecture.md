@@ -85,6 +85,7 @@ are the only places that choose concrete adapters and wire them together.
 | Checks against a restarted or reconfigured stack | `app/tests/app/*.ts` / `*.check.ts` called by the script | `check_application.sh` |
 | Browser journeys in the web app (Playwright, Python) | `app/tests/ui/test_*.py` | `./scripts/check_ui.sh` |
 | The normal (non-test) deployment: fixture rollback header ignored, worker processes, restart keeps data | `scripts/check_runtime.sh` | `./scripts/check_runtime.sh` |
+| k3s live-media chart values: render, Kubernetes schemas, route and Compose consistency | `docker/k3s/`, `scripts/live_k3s_render.mjs` | `./scripts/check_live_k3s.sh` |
 | Repository and agent tooling | `tests/test_*.py` | `python3 -m unittest discover -s tests -p 'test_*.py'` |
 
 Pure core use cases can be tested with in-memory port implementations

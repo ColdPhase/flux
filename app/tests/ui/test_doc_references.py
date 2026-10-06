@@ -188,7 +188,9 @@ class DocReferenceJourney(unittest.TestCase):
 
     def assert_account(self, page, name, phone):
         if phone: page.get_by_role("button", name="Open navigation", exact=True).click()
-        expect(page.get_by_role("button", name=re.compile(f"^{name} .*account and sign out"))).to_be_visible()
+        # In the phone drawer the account row leads to Settings (#266 PF-5).
+        role, suffix = ("link", "settings and sign out") if phone else ("button", "account and sign out")
+        expect(page.get_by_role(role, name=re.compile(f"^{name} .*{suffix}"))).to_be_visible()
         if phone: page.get_by_role("button", name="Close navigation", exact=True).click()
 
     def expect_new_editor(self, page, project_name):

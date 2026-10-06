@@ -156,6 +156,10 @@ different scope. An audio-analyzing agent must be an explicitly authorized
 decrypting recipient. Never silently downgrade protection to enable notes.
 [Official encryption documentation](https://docs.livekit.io/transport/encryption/)
 is a capability reference, not evidence that Flux has implemented that guarantee.
+The current boundary is recorded in the
+[encryption boundary record](../development/live-media-encryption.md): media is
+encrypted in transit (DTLS-SRTP, checked automatically) and readable in the SFU.
+E2EE is not implemented and is not claimed.
 
 ## 6. Self-hosted architecture and access
 
@@ -254,15 +258,21 @@ Android phone/tablet, iPhone and iPad browser/PWA participation. Include denial,
 device disappearance, headphones/Bluetooth changes, background/lock/foreground,
 rotation, network changes and service-worker updates. Preserve unfinished work;
 show suspension honestly instead of promising uninterrupted mobile background
-audio without platform evidence.
+audio without platform evidence. Founder direction
+[#266](https://github.com/ColdPhase/flux/issues/266) item 10, 2026-10-05: the
+platform rows run Chromium, Firefox and WebKit in Docker with emulated
+phone/tablet viewports, touch and fake media devices, plus documented platform
+capabilities with dated sources ([mobile evidence](mobile-pwa.md#acceptance-evidence));
+physical phones, tablets and other machines are optional extra evidence.
 
 **Mobile screen viewing and screen publication are different capabilities.** On
 the research date, [MDN browser compatibility data](https://github.com/mdn/browser-compat-data/blob/main/api/MediaDevices.json)
 marks `getDisplayMedia` unsupported in Chrome/Firefox Android and Safari iOS.
 Installing a PWA does not create native capture APIs. Provide the supported
 voice/camera, received screen and native Flux-fragment flows with clear capability
-states; verify each on real devices. If full mobile OS-screen publication is
-required, explicitly track a native implementation with its lifecycle/permissions.
+states; verify each in emulation against the documented capabilities. If full
+mobile OS-screen publication is required, explicitly track a native
+implementation with its lifecycle/permissions.
 Do not silently remove the existing mobile requirements or claim universal capture.
 
 ## 9. Evidence and delivery ledger
