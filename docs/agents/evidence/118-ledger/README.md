@@ -9,7 +9,7 @@ Branch `claude-maurycy/release-prep`. This is author evidence; PelikanFix16 eval
 `app/` and `docker/` trees equal `origin/main` [`662aec62`](https://github.com/ColdPhase/flux/commit/662aec62)
 (after #225, migration 0045). The branch changes only `scripts/check_proactive_upgrade.sh`,
 `scripts/proactive-upgrade-fixture.mjs` and documentation:
-`git diff 662aec62 868de210 --stat -- app docker` prints nothing (checked 2026-10-04).
+`git diff 662aec62 868de210 --stat -- app docker` prints nothing (checked 2026-10-04). Later runs name their own pin: the backup run at `ce763053` (app equal to `fdb70955`) and the upgrade re-run at `4f60ba60` (app equal to `c892a10f`).
 
 ## Acceptance criteria on `main`
 
@@ -19,7 +19,7 @@ Line numbers are at `662aec62`.
 | --- | --- | --- |
 | AC-1 Unique numeric prefixes; the migrator records only the version it applied; SQL cannot add or remove another ledger row unnoticed | implemented (#130 `9d27e994`) | `app/packages/db/src/migrations/ledger.ts:12-29` (`parseMigrationManifest`: one file per prefix, strict `NNNN_name.sql`, a stale `FLUX_SCHEMA_VERSION` fails), `:58-65` (`assertMigrationSqlLedgerChange`), `:67-72` (`assertMigrationStepLedger`). `app/tooling/migrate.ts:13` (manifest), `:16` (advisory lock), `:22-34` (one transaction per file: SQL, ledger-delta check, own-version insert, step check, rollback on any error). Tests: `app/tests/app/migration-ledger.test.ts:36-42` (duplicate, invalid name, `.SQL`, version 0, stale constant), `:61-84` (legacy self-recording allowed; foreign insert or deletion rolls back). |
 | AC-2 Startup and post-migration comparison with the image's files; phantom, missing and skipped files fail with an operator error; reserved gaps allowed | implemented (#130) | `ledger.ts:43-47` (`assertKnownMigrationVersions`), `:50-55` (`assertExactMigrationLedger`); `migrate.ts:18` (before applying), `:37` (after); API startup `app/apps/server/src/app.ts:63-64`; health on every request `app/apps/server/src/health/routes.ts:17` (503); worker startup `app/apps/worker/src/index.ts:15`; restore gate `app/tooling/operations.ts:39-51`. Tests: `migration-ledger.test.ts:24-34` (shipped files, embedded versions and the running database agree), `:44-52` (a lower file fills a gap), `:54-59` (phantom, missing, skipped fail even when the maximum is right). No contiguity check exists by design (AC-2 allows gaps); at the pin the files are 0001–0045 without a gap. |
-| AC-3 Docker rehearsal of fresh install and same-volume upgrades in the real landing order, asserting tables and the exact set; injected duplicate and phantom fail closed | implemented for the landed order up to 0045 (this page); repeat at the release candidate | The #61-era order 0011–0020 was rehearsed in #130's review; 0021–0024 and the 0026–0032 gap fill on #118 (2026-09-29/10-02). This page adds the late arrivals 0035 and 0042 (lower than already-applied 0036–0041 and 0043–0044), 0043/0044, and 0045, plus fault injection on the upgraded volume and a schema comparison with a fresh install. Still open: 0046–0048 ([#239], [#244]) and the final candidate (T118-B), and an upgrade from a published rc (#77 T77-B). |
+| AC-3 Docker rehearsal of fresh install and same-volume upgrades in the real landing order, asserting tables and the exact set; injected duplicate and phantom fail closed | implemented for the landed order up to 0051, with 0046–0048 still reserved (this page); repeat at the release candidate | The #61-era order 0011–0020 was rehearsed in #130's review; 0021–0024 and the 0026–0032 gap fill on #118 (2026-09-29/10-02). This page adds the late arrivals 0035 and 0042 (lower than already-applied 0036–0041 and 0043–0044), 0043/0044, and 0045, plus fault injection on the upgraded volume and a schema comparison with a fresh install. The 2026-10-06 re-run adds 0049–0051 after the gap. Still open: 0046–0048 ([#239], [#244]), which would now arrive below applied versions, the final candidate (T118-B), and an upgrade from a published rc (#77 T77-B). |
 | AC-4 Operator action documented; check in the validation/release gate; PR and head linked | implemented (#130) | Operator steps: [application foundation, "Migration ledger mismatch"](../../../development/application-foundation.md#migration-ledger-mismatch-118); restore gate: [backup and restore](../../../operations/backup-restore.md#restore) step 3. Gates: `migration-ledger.test.ts` runs in `scripts/check_application.sh`; the health check (exact ledger) gates `up --wait` in `scripts/check_operator_compose.sh:79-92` and in the release workflow's `scripts/release/smoke_artifacts.sh:42-43`. The fast PR check `Application validation` runs only portable tests, so the database-backed ledger test is not in it. |
 
 ## What this branch adds
@@ -84,20 +84,58 @@ Earlier attempts, kept out of the repository: the first run (candidate on `6f742
 connection allowed 2, so enablement correctly answered `BACKGROUND_BUDGET_TOO_LOW` (fixture
 fixed in `4c659eb7`); a run at `4c659eb7`, before the schema comparison existed, passed.
 
-### Backup, restore and upgrade (`check_backup.sh`)
+### Re-run at `4f60ba60` after main `c892a10f` (2026-10-06)
 
-**Not run at this pin: disk guard.** On 2026-10-04 (~22:00 UTC) the script's preflight
-refused with `FAIL: only 12 GB free on /System/Volumes/Data; need 20 GB` ([log](backup-preflight-refused.txt)), before creating
-any checkout, project or image. The guard was not bypassed. Rerun when the host has at least
-20 GB free:
+The branch merged `main` at `c892a10f` (after #284; migrations 0049–0051 landed after the
+reserved 0046–0048) and labelled the two fault-image mounts `:ro,z` (`4f60ba60`, review item 1:
+on an SELinux host the unlabelled mounts were unreadable). `git diff c892a10f 4f60ba60 -- app
+docker` prints nothing. One run, 2026-10-06 05:11–05:17 CEST, Docker 29.1.2 (Docker Desktop,
+linux/arm64), through the shared Docker slot wrapper with nothing else added:
 
 ```sh
-FLUX_UPGRADE_FROM=63a5c6b5 FLUX_BACKUP_TEST_PORT=19110 ./scripts/check_backup.sh
+TMPDIR=<scratch> FLUX_UPGRADE_FROM=63a5c6b5 FLUX_PROACTIVE_UPGRADE_PORT=22358 ./scripts/check_proactive_upgrade.sh
 ```
 
-From `63a5c6b5` its upgrade leg applies 0035, 0042 and 0045 through `./flux upgrade`, and its
-`restore --migrate` leg applies them again to the restored pre-upgrade backup. Until then the
-backup/restore path at this pin is **unverified**.
+**PASS** ([log](upgrade-from-63a5c6b5-at-4f60ba60.txt)):
+
+- the migrator applied 0035, 0042, 0045, 0049, 0050 and 0051 to the existing volume, and the
+  ledger went from {1–34, 36–41, 43, 44} to exactly {1–45, 49–51};
+- the 18 snapshots on baseline columns, the API checks and the idempotent rerun passed as above;
+- a fresh install of the candidate has the same `public` schema (2841 DDL lines) and ledger;
+- all 14 faults were refused with their operator errors; the duplicate-prefix image now
+  duplicates 0051, and the foreign ledger insert rides on `0051_thought_images.sql`.
+
+The script removed its project, volumes and images; no container, volume or image of the run
+remained afterwards. This host has no SELinux, so the `z` label is a no-op here: the run shows
+that the change keeps Docker Desktop working, not that it fixes the SELinux host. PelikanFix16's
+run on Fedora 42 with SELinux enforcing passed with the same `:ro,z` mounts (his review of
+`ce763053` on #248).
+
+### Backup, restore and upgrade (`check_backup.sh`)
+
+**First attempt refused by the disk guard.** On 2026-10-04 (~22:00 UTC) the script's preflight
+refused with `FAIL: only 12 GB free on /System/Volumes/Data; need 20 GB` ([log](backup-preflight-refused.txt)), before creating
+any checkout, project or image. The guard was not bypassed.
+
+**Pass at `ce763053`, 2026-10-05 09:00–09:19 CEST** ([log](backup-ce763053.txt)). Branch head
+`ce763053` (main `fdb70955` merged in; `git diff fdb70955 ce763053 -- app docker` prints
+nothing), Docker 29.1.2 with 25 GB free, the script's own Compose projects, ports and volumes,
+all removed afterwards. Command: `FLUX_BACKUP_TEST_PORT=<port> ./scripts/check_backup.sh` with
+the default baseline, the previous main `6f742eba` (schema 44), so the upgrade leg applied one
+migration, 0045. The log's final line:
+
+> PASS: backup, restore into a fresh project, agent access, export, upgrade from 6f742eba (+1 migrations) and failed-upgrade recovery
+
+Its stages, in order: `./flux up`, `./flux demo` and the real-data fixture; `./flux export`
+without DMs, private notes or other projects; `./flux backup` refusing when the writers cannot
+be confirmed stopped; two backups in the same second kept apart, then `--keep 1`; `./flux
+restore` asking first and refusing damaged archives, other versions and a ledger version the
+image lacks; restore into a fresh checkout after destroying the volumes; the upgrade; the
+pre-upgrade backup restoring only with `--migrate`; a failing upgrade printing restore
+instructions that work; a failure after the new version started stopping the writers and
+saying work may be missing; and a rollback to the real source layout that keeps the original
+custom project, then an upgrade again. The baseline `63a5c6b5` proposed earlier (0035, 0042
+and 0045 through `./flux upgrade`) was not used; that longer upgrade leg is still unrun.
 
 ## Not covered here
 
