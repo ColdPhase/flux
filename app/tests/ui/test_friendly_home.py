@@ -753,8 +753,9 @@ class FriendlyHomeJourney(unittest.TestCase):
             page.mouse.down()
             page.wait_for_timeout(300)
             during = locator.evaluate("(el) => getComputedStyle(el).backgroundColor")
-            page.mouse.up()
+            # Released away from the control, so the press does not become a tap that navigates.
             page.mouse.move(1, 1)
+            page.mouse.up()
             return rest, during
 
         def pressed(locator, what):
@@ -784,6 +785,7 @@ class FriendlyHomeJourney(unittest.TestCase):
         page.wait_for_timeout(300)
         self.assertEqual(current.evaluate("(el) => getComputedStyle(el).backgroundColor"), before, "the current place keeps its fill")
         self.assertLess(float(current.evaluate("(el) => getComputedStyle(el).opacity")), 1, "and dims while pressed")
+        page.mouse.move(1, 1)
         page.mouse.up()
 
 
