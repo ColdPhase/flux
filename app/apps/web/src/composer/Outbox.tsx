@@ -10,7 +10,7 @@ import './composer.css';
  * goes ("Sending…", "Uploading…", "Waiting for connection") and an alert with Retry and Remove when
  * it was not sent. Nothing is shown once it is stored (HIG-69).
  */
-export function OutboxStatus({ item, onRetry, onRemove }: { item: PendingSend; onRetry: () => void; onRemove: () => void }) {
+export function OutboxStatus({ item, inline = false, onRetry, onRemove }: { item: PendingSend; inline?: boolean; onRetry: () => void; onRemove: () => void }) {
   if (item.state === 'failed') {
     return (
       <div className="outbox-status is-failed" role="alert">
@@ -23,6 +23,8 @@ export function OutboxStatus({ item, onRetry, onRemove }: { item: PendingSend; o
       </div>
     );
   }
+  // In a meta row (where the stored message's time will be) it is a phrase, so it takes no extra line.
+  if (inline && (item.state === 'sending' || item.state === 'uploading')) return <span className={`outbox-status is-${item.state}`}><span className="outbox-status__dot" aria-hidden="true" /><span className="outbox-status__text">{item.state === 'uploading' ? 'Uploading…' : 'Sending…'}</span></span>;
   return <PendingStatus item={item} onRetry={onRetry} onRemove={onRemove} />;
 }
 

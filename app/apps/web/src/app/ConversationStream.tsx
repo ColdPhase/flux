@@ -576,7 +576,7 @@ type QueuedRootProps = { pending: PendingSend; name: string; onRetry: () => void
  * item for both, so the stored root reuses the queued message's item (same key) and nothing moves.
  */
 function RootItem(props: RootItemProps | QueuedRootProps) {
-  if ('pending' in props) return pendingMessageRow({ place: 'stream', item: props.pending, name: props.name, onRetry: props.onRetry, onRemove: props.onRemove });
+  if ('pending' in props) return pendingMessageRow({ place: 'stream', keyed: false, item: props.pending, name: props.name, onRetry: props.onRetry, onRemove: props.onRemove });
   const { root, project, meId, author, messageWork, taskRow, open, arrived, makeWork, onOpen, onOpenResult, onDenied } = props;
   const { message } = root;
   const writable = project.access !== 'viewer';

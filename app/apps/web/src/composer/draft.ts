@@ -256,8 +256,10 @@ function changePending(key: string, id: string, change: (item: PendingSend) => P
   put(key, { ...current, pending: current.pending.map((item) => item.id === id ? change(item) : item) });
 }
 /** A refused message returns to an empty field with its command, files and source; otherwise it stays, "Not sent". */
-function refuse(key: string, item: PendingSend, cause: unknown, reason: string) {
+function refuse(key: string, queued: PendingSend, cause: unknown, reason: string) {
   const current = snapshots.get(key)!;
+  // The queue's own copy: it knows whether a request was made (the server may then hold the command).
+  const item = current.pending.find((other) => other.id === queued.id) ?? queued;
   if (blank(current.draft)) {
     put(key, { ...current, error: reason, pending: current.pending.filter((other) => other.id !== item.id),
       draft: { version: 1, body: item.body, files: item.files, references: item.references, commandId: item.id, unconfirmed: !!item.attempted } });

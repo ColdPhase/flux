@@ -223,6 +223,8 @@ class TaskAnnouncements(unittest.TestCase):
         composer.fill("Numbers at 5 lux: 97% of waves caught.")
         thread.get_by_role("button", name="Send reply").click()
         expect(thread.locator(".project-convo__message", has_text="Numbers at 5 lux")).to_be_visible()
+        # Sending is instant (#264): the reply shows at once and is stored a moment later.
+        expect(thread.locator("[data-client-message-id]")).to_have_count(0)
         discussion = self.api(page, "GET", f"/api/v1/work/{self.ids['measure']}/discussion", status=200)
         self.assertEqual(discussion["rootMessageId"], self.ids["first"])
         self.assertEqual([message["body"] for message in discussion["messages"]][-1], "Numbers at 5 lux: 97% of waves caught.")

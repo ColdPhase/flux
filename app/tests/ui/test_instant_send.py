@@ -32,10 +32,27 @@ WIDTHS = (1440, 390)
 # Times the person's tap and the first queued message in the page itself (HIG-59: within 100 ms).
 PROBE = """() => {
   window.__send = { clicked: null, shown: null };
+  window.__scrolls = [];
+  document.addEventListener('scroll', (event) => { const el = event.target === document ? document.scrollingElement : event.target;
+    window.__scrolls.push([Math.round(performance.now()), String(el.className || el.tagName).slice(0, 30), Math.round(el.scrollTop)]); }, true);
   document.addEventListener('click', () => { if (window.__send.clicked === null) window.__send.clicked = performance.now(); }, true);
   new MutationObserver(() => {
     if (window.__send.shown === null && document.querySelector('[data-client-message-id]')) window.__send.shown = performance.now();
   }).observe(document.body, { subtree: true, childList: true, attributes: true });
+}"""
+
+
+# Every scrolled box on the page and the kept message's height, to tell layout from scrolling.
+SCROLLERS = """() => ({ kept: document.querySelector('[data-probe=kept]')?.getBoundingClientRect().height,
+  scrolled: [document.scrollingElement, ...document.querySelectorAll('*')].filter((el) => el && el.scrollHeight > el.clientHeight + 1 && getComputedStyle(el).overflowY !== 'visible' || el === document.scrollingElement)
+    .map((el) => `${el.className || el.tagName}:${Math.round(el.scrollTop)}/${el.scrollHeight - el.clientHeight}`) })"""
+# Where a message sits in its conversation: its top within the scrolled content of the box that scrolls it,
+# so the pane following its end (or the shell's chrome changing the pane's height) does not count as a move.
+PLACE = """el => {
+  let box = el.parentElement;
+  while (box && !['auto', 'scroll'].includes(getComputedStyle(box).overflowY)) box = box.parentElement;
+  box = box || document.scrollingElement;
+  return { place: el.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop, top: el.getBoundingClientRect().top };
 }"""
 
 
@@ -174,6 +191,7 @@ class InstantSendJourney(unittest.TestCase):
         expect(bubble).to_contain_text("Sending…")
         expect(field).to_have_value("")
         delay = self.shown_within(page)
+        at_once = page.evaluate(SCROLLERS)
         self.assertLess(delay, 100, "the message shows within 100 ms of the tap (HIG-59)")
         if announcer:
             # Announced once, politely (HIG-71); Agents' thread list is itself the live region.
@@ -183,7 +201,9 @@ class InstantSendJourney(unittest.TestCase):
         expect(bubble).to_be_in_viewport()
         page.wait_for_timeout(400)
         self.assertEqual(len(held), 1, "a double tap sends one request")
-        top = bubble.evaluate("el => { el.dataset.probe = 'kept'; return el.getBoundingClientRect().top; }")
+        bubble.evaluate("el => { el.dataset.probe = 'kept'; }")
+        start = bubble.evaluate(PLACE)
+        before = page.evaluate(SCROLLERS)
         shot(page, f"instant-send-sending-{width}")
         held[0].continue_()
         stored = scope.locator(stored_selector).filter(has_text=body)
@@ -193,9 +213,12 @@ class InstantSendJourney(unittest.TestCase):
         expect(scope.locator("[data-probe='kept']")).to_have_count(1)
         expect(scope.locator("[data-probe='kept']")).to_contain_text(body)
         expect(scope.locator("[data-probe='kept']")).not_to_have_attribute("data-client-message-id", re.compile("."))
-        moved = abs(scope.locator("[data-probe='kept']").evaluate("el => el.getBoundingClientRect().top") - top)
-        self.assertLessEqual(moved, 2, f"the message keeps its place when it is stored ({moved:.1f} px)")
-        print(f"\n{body!r}: queued message shown {delay:.1f} ms after the tap; moved {moved:.1f} px when stored")
+        end = scope.locator("[data-probe='kept']").evaluate(PLACE)
+        moved = abs(end["place"] - start["place"])
+        scrolled = end["top"] - start["top"]
+        self.assertLessEqual(moved, 2, f"the message keeps its place when it is stored ({moved:.1f} px); scrollers {at_once} -> {before} -> {page.evaluate(SCROLLERS)}; "
+                             f"send {page.evaluate('() => window.__send')}; scrolls {page.evaluate('() => window.__scrolls')}")
+        print(f"\n{body!r}: queued message shown {delay:.1f} ms after the tap; moved {moved:.1f} px in its conversation when stored (viewport {scrolled:+.1f} px)")
 
     # ---------------------------------------------------------------- held sends
 

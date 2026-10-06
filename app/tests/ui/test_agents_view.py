@@ -455,6 +455,8 @@ class AgentsViewJourney(unittest.TestCase):
         # offline: "Offline" can only come from the client comparing expiresAt with its clock on
         # the 15 s tick. No focus or reload is triggered.
         page = self.page("hubert")
+        # The 15 s refetch can be in flight as the test ends: stop answering it before the context closes.
+        self.addCleanup(lambda: page.unroute_all(behavior="ignoreErrors"))
         reads: list[str] = []
 
         def session_ending_soon(route) -> None:

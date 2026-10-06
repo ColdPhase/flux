@@ -252,11 +252,11 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
     const result = await outcome;
     if (!active() || result.status !== 'delivered') return;
     const message = result.message;
+    // The stored message takes its queued item's exact place, so the pane does not move again.
     flushSync(() => show((current) => current && !current.messages.some((item) => item.id === message.id) && current.root?.id !== message.id
       ? { ...current, conversationId: current.conversationId ?? message.conversationId, rootMessageId: current.rootMessageId ?? message.id,
         root: current.root ?? message, messages: [...current.messages, message] }
       : current));
-    if (paneAtEnd(end.current)) scrollPaneToEnd(end.current);
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -289,11 +289,12 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
         }), ...outbox.pending.map((item) => (
           <li key={`pending-${item.id}`} id={`pending-${item.id}`} data-client-message-id={item.id} data-send-state={item.state}
             className={`agents-msg agents-msg--own is-pending${item.state === 'failed' ? ' is-failed-send' : ''}`}>
-            <span className="agents-msg__meta"><b>You</b></span>
+            {/* "Sending…" stands where the stored message's time will be, so it takes that message's exact space. */}
+            <span className="agents-msg__meta"><b>You</b>{item.state === 'sending' || item.state === 'uploading' ? <OutboxStatus inline item={item} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} /> : null}</span>
             {item.body ? <p className="agents-msg__body">{item.body}</p> : null}
             <PendingFiles files={item.files} />
             <PendingSource item={item} />
-            <OutboxStatus item={item} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} />
+            {item.state === 'sending' || item.state === 'uploading' ? null : <OutboxStatus item={item} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} />}
           </li>
         ))]}
       </ol>}

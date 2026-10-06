@@ -53,6 +53,6 @@
    status sits in the meta row, where the time will be. */
 .project-convo__message.is-pending-stream > .outbox-status { min-height: 26px; margin: 6px 0 0; }
 .project-convo__message.is-mine.is-pending-stream > .outbox-status { justify-content: flex-end; }
-.project-convo__message-meta > .outbox-status { margin: 0; }
+.project-convo__message-meta > .outbox-status, .agents-msg__meta > .outbox-status { display: inline-flex; margin: 0; font-size: inherit; line-height: inherit; }
 .project-convo__message-meta > .outbox-status span { visibility: visible; }
 @media (pointer: coarse) { .project-convo__message.is-pending-stream > .outbox-status { min-height: 44px; } }
