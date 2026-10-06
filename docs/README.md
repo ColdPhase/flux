@@ -30,6 +30,7 @@ direction is in the [decision register](product/decisions.md).
 - [Design workflow](design/README.md) — realistic variants, density and independent review.
 - [Container development](development/containers.md) — Docker/Compose for the application and services.
 - [Application foundation](development/application-foundation.md) — clean start, integration fixture and operations.
+- [Time to first run](development/time-to-first-run.md) — measured time from `git clone` to a running Flux, and what the README missed.
 - [Operations](operations/README.md) — backup schedule, restore, project export, upgrade and disk hygiene.
 - [Integrations](integrations/README.md) — the public extension contracts of v0.1 (MCP tools, project export), their
   compatibility rules, permissions, retries and errors, for integrators and operators.
