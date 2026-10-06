@@ -317,6 +317,10 @@ root on the host or every owner's credentials.
    reported, a masked account label and the time.
    - A later sign-in to a different account shows a notice to the owner. A stolen
      Flux session therefore cannot quietly switch the runtime to another account.
+   - To tell accounts apart even when their masked labels match, the slot reports a
+     digest of the account's address and organization, and Flux keeps only an HMAC
+     of it under a key derived from the API's secret: compared, never shown, and
+     unable to hold a token (T4, migration 0057).
 6. The CLI keeps its login as a file in the binding directory and refreshes it
    itself. For Claude Code that is `CLAUDE_CONFIG_DIR`. For Codex,
    `cli_auth_credentials_store=file` is passed on every Codex command; `auto` and

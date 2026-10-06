@@ -216,6 +216,44 @@ T11 issue text updates                       after T0
     frames or API responses.
   - Phone-width layout of the console and the notices.
 
+- **Implementation notes (#279, 2026-10-06), for the evaluator:**
+  - **The pinned CLI, observed.** Claude Code 2.1.285 (`runtime-install`'s verified binary, no account,
+    `--network none`, 2026-10-06): `auth login --help` lists `--claudeai` ("Use Claude subscription
+    (default)"), `--console`, `--email <email>` (pre-fills the address on the login page), `-h, --help`
+    and `--sso`. So the three console methods are every method; *Claude account* runs `claude auth
+    login` as the decision says, which is the CLI's default and the same as `--claudeai`. In a terminal,
+    each method prints "Opening browser to sign in…", the authorization URL as an OSC 8 hyperlink
+    (`claude.com/cai/oauth/authorize`, `platform.claude.com/oauth/authorize` for `--console`,
+    `login_method=sso` for `--sso`) and "Paste code here if prompted > ", then reads one line; a wrong
+    code gives "Invalid code. Please make sure the full code was copied." Signed out, `auth status`
+    prints `{"loggedIn": false, "authMethod": "none", "apiProvider": "firstParty", …}` and exits 1. The
+    fake `claude` mirrors this. The signed-in fields beyond `loggedIn` and `authMethod` (`email`,
+    `subscriptionType`, `orgId`) are **unverified** until the real-account check (T10); a field that is
+    missing or malformed is left out, never guessed.
+  - **The PTY.** Node has no pseudo-terminal, so the supervisor uses node-pty 1.1.0 (pinned; forkpty
+    and `execvp` of the fixed argv, no shell), compiled from source in the build stage. It is the only
+    dependency of `@flux/runtime` besides the protocol (architecture rule updated).
+  - **The console's path.** API → `runtime-manager` → supervisor are HTTP upgrades to `flux-console/1`
+    with the same secrets as every runtime request, then bounded binary frames (open, input, resize;
+    control, output). The first frame is the closed `login` request (with the terminal size); a plain
+    `login` request is refused. The manager re-checks the request and every frame and logs only slot,
+    outcome and duration. The browser's WebSocket attaches with a single-use, one-minute ticket signed
+    with a key derived from the API's secret and bound to the owner and the session that asked for it.
+  - **Ends.** On exit (then `auth status`), on disconnect (no status), after 15 minutes (injectable
+    timers in the tests), and when a release arrives. A newer console of the same owner replaces an
+    older one; the supervisor waits up to three seconds for the older PTY to end, then answers `busy`.
+  - **What is stored.** Migration 0057 adds the account-change notice (a keyed HMAC of the slot's account
+    digest, the previous masked label, when it changed) and the last sign-out with whether the CLI's
+    logout failed. The schema test reviews the new columns.
+  - **The page.** `/settings/assistant/claude-code`; Settings → *Agent in Flux* gains a *Claude Code in
+    Flux* section on the existing page (compatible with #275's Settings). xterm.js 6 loads only on the
+    console page and is not precached by the service worker. The browser's terminal turns the CLI's own
+    OSC 8 link into an *Open the sign-in page* button; Flux's servers never read the frames.
+  - **Phone caveat (inference).** Opening the sign-in page puts the Flux tab in the background. If the
+    phone's browser closes the WebSocket meanwhile, the PTY ends by design (F-022) and the owner starts
+    again; the page says so. Chromium and WebKit emulation cannot show this; it is **unverified** on
+    devices.
+
 ### T5 — First owner-invoked run on Claude Code (new issue; minimum viable slice, part 3)
 
 - **Owner:** @PelikanFix16. **Evaluator:** @Zamojski5. **Depends on:** T4.
