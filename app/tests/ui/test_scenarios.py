@@ -476,8 +476,10 @@ class ScenarioJourney:
         self.tap(bar.get_by_role("button", name="Start sketch from these messages"))
         page.wait_for_url(re.compile(rf"/dm/{dm}/sketches/[0-9a-f-]{{36}}$"))
         dm_sketch = page.url.rsplit("/", 1)[-1]
-        expect(page.get_by_label("Sketch name")).to_be_focused()
-        page.keyboard.press("Escape")
+        if not self.phone:
+            expect(page.get_by_label("Sketch name")).to_be_focused()
+            page.keyboard.press("Escape")
+        # On a touch screen a new sketch opens on its canvas, without the keyboard covering it (#272).
         expect(page.locator(".sk-status")).to_contain_text("Started from 3 messages · only you and Jonas can see it")
         sketch = self.sketch("ada", dm_sketch)
         self.assertEqual((sketch["scope"], sketch["dmId"], sketch["projectId"]), ("dm", dm, None))
@@ -901,10 +903,11 @@ class ScenarioJourney:
         # Flux's next step leads Home in the return card (F-023 FF-2).
         expect(page.locator(".home-return")).to_contain_text("Answer Jonas's question")
         expect(page.get_by_role("button", name=re.compile("Mark all", re.I))).to_have_count(0)
-        # Ada has no AI of her own: the note composer's spark offers to connect one.
-        expect(page.locator(".composer__ask")).to_have_accessible_name("Connect your AI")
         self.no_sideways_scroll(page)
         self.shot(page, "4-home-return")
+        # Ada has no AI of her own: the note composer's spark offers to connect one (notes live in My sketchbook).
+        page.goto("/notes")
+        expect(page.locator(".composer__ask")).to_have_accessible_name("Connect your AI")
 
         # In the project, "What matters" works without AI.
         page.goto(f"/projects/{lamp}")
