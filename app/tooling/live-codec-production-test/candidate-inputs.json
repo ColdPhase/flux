@@ -7,7 +7,7 @@
     "envelope.mjs": "b6ab8236e53619785845ae9770bcf31f58a15201c2ba8a2f29c7b41400ac276f",
     "assembly.mjs": "d6bf996556227eade5dad239af0d4897048dead1873f3870d2c5d3a8d79079fe",
     "admission-budget.mjs": "2ee7dafe07716d1a4e6edc29c097a0204936abaa58a06af0312e294b99685ad8",
-    "worker-pool.mjs": "19e9071041f78b566e2a70c18a35c075b6b86c40e9377cca3347c3be94c2cf1a",
+    "worker-pool.mjs": "5eadd75bbd7bf5f6bd36a0325cb2f60190f7a8d78b3f289ffb9b44cc251ccc38",
     "codec-worker.mjs": "f923ca41399e67eb11ed4b08dd81329405702f2a245d81529e58c23f8b9ac47e",
     "room-cache.mjs": "16a8ef1b1edecde982b1ba04d53d49dd41f3589d5268ecd093e826b23fa0e6c3"
   },
@@ -48,7 +48,8 @@
     "authorcopy-pressure retained-input handoff",
     "inheritedindependentC3 retained-input handoff",
     "priorreviewedmandatoryC3framingfields",
-    "publicNodeimportsforlint"
+    "publicNodeimportsforlint",
+    "keptcodecworkerswithinthetwoworkercap;terminateontimeout/failure"
   ],
   "meaning": "Current canonical corpus candidate, not historicalPASS or durableSQL proof"
 }

@@ -77,3 +77,17 @@ source manifest records these explicit observer-only differences; historical too
 initial-copy manifest and earlier pass/failure logs remain unchanged. These new bytes
 require fresh canonical codec regressions and independent assessment. Prepared primitive
 observer tests do not certify production queues, graceful shutdown or full-path latency.
+
+## Kept codec workers (2026-10-06, #239 latency work)
+
+The pool started and terminated a fresh worker for every text update, so each keystroke
+paid a worker bootstrap (module load of Yjs and the validator) on top of its validation.
+The accepted contract is two codec workers with a 100 ms task deadline and termination on
+timeout. A codec worker that answered within its deadline, whether it admitted or refused
+the candidate, now stays for the next task, at most `CAPS.workers` of them. A timed-out,
+failed, exited or aborted worker is terminated as before, and a later task starts a fresh
+one through the same bootstrap deadline and resource-limit check. Every task still carries
+its complete state, so a kept worker retains nothing between tasks. The failure controls
+(stall, silent, exit) always start their own worker. `editing-codec-pool.test.ts` checks
+reuse, refusal, the cap and shutdown; `worker-pool.mjs` has a new pinned hash in
+`source.sha256` and `candidate-inputs.json`.
