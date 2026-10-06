@@ -106,3 +106,8 @@
 .convo-notice + .convo-notice { margin-top: -12px; }
 .convo-notice__title { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
 @media (max-width: 640px) { .convo-notice { margin: 14px 0; } .convo-notice + .convo-notice { margin-top: -6px; } }
+/* Phones (F-025 PA-4): a task notice is a soft card on the quiet fill. */
+@media (max-width: 640px) {
+  .convo-notice { padding: 10px 12px; border-radius: 16px; background: var(--bg-side); }
+  .convo-notice__icon { box-shadow: none; background: var(--bg-raised); }
+}

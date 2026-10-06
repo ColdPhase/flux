@@ -11,7 +11,7 @@ import uuid
 
 from playwright.sync_api import expect, sync_playwright
 
-from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
+from test_app_shell import ORIGIN, UPSTREAM, open_plus, shot, start_forwarder
 from test_project_surface import LONG_NAME
 
 
@@ -195,6 +195,7 @@ class ProjectStateJourney(unittest.TestCase):
         expect(reader.get_by_role("heading", name="No messages yet", exact=True)).to_have_count(0)
         expect(reader.locator("#project-composer")).to_have_count(0)
         expect(reader.get_by_text("Unsent sensor notes remain mine", exact=True)).to_have_count(0)
+        open_plus(reader)
         reader.get_by_role("button", name=re.compile("^Sources")).click()
         tray = reader.get_by_role("region", name="Project materials")
         expect(tray.get_by_role("button", name="Discuss this version")).to_have_count(0)
@@ -250,6 +251,7 @@ class ProjectStateJourney(unittest.TestCase):
         self.call(owner, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": principal, "role": "contributor"}, 201)
         reader = self.page("Jonas Reader", 390, 844)
         reader.goto(f"/projects/{project['id']}")
+        open_plus(reader)
         reader.get_by_role("button", name=re.compile("^Sources")).click()
         reader.get_by_role("button", name="Add material", exact=True).click()
         reader.get_by_label("Title", exact=True).fill("Unpublished calibration source")
@@ -260,6 +262,7 @@ class ProjectStateJourney(unittest.TestCase):
         expect(reader.locator(".project-convo__material-form")).to_have_count(0)
         reader.reload()
         expect(reader.locator(".project-convo__read-only")).to_be_visible()
+        open_plus(reader)
         reader.get_by_role("button", name=re.compile("^Sources")).click()
         expect(reader.locator(".project-convo__material-form")).to_have_count(0)
         expect(reader.get_by_role("button", name="Save for this project", exact=True)).to_have_count(0)

@@ -21,7 +21,7 @@ import { AnswerItem, AskBar, ProposalCard, WorkingLine } from '../assistant/Conv
 import { askError as askErrorText, askState } from '../assistant/format';
 import { grantAgentProject } from '../agent-connection/api';
 import { agentAuthorLabel, agentDisplayName } from '../docs/format';
-import { ContributionMark, OPENING_REVEAL_MS, SourceCitation, clock, day, openOnWholeMessages, when } from './messageParts';
+import { ContributionMark, OPENING_REVEAL_MS, SourceCitation, authorOf, clock, day, openOnWholeMessages, when } from './messageParts';
 import { OneConversation, type PaneProps } from './OneConversation';
 import { ThreadMessageActions } from './ThreadDrawer';
 import { useTyping } from '../typing/useTyping';
@@ -109,6 +109,17 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const materialFormKey = `flux.project-material.${me.user.id}.${project.id}${conversation ? '.thread' : ''}`;
   const composerId = conversation ? 'thread-composer' : 'project-composer';
   const [asking, setAsking] = useState(false);
+  // The phone composer's "+" (F-025 PA-7): Attach and Sources open from it.
+  const [moreOpen, setMoreOpen] = useState(false);
+  useEffect(() => {
+    if (!moreOpen) return;
+    const away = (event: PointerEvent) => { if (!(event.target instanceof Element) || !event.target.closest('.composer__menu, .composer__plus')) setMoreOpen(false); };
+    const escape = (event: globalThis.KeyboardEvent) => { if (event.key === 'Escape') { setMoreOpen(false); document.getElementById(`${composerId}-plus`)?.focus(); } };
+    document.addEventListener('pointerdown', away);
+    document.addEventListener('keydown', escape);
+    return () => { document.removeEventListener('pointerdown', away); document.removeEventListener('keydown', escape); };
+  }, [moreOpen, composerId]);
+  useEffect(() => { if (!phone) setMoreOpen(false); }, [phone]);
   const publicComposer = useComposerDraft(me.user.id, project.id, conversation?.task ? `task:${conversation.task.workId}` : conversation ? `conversation:${conversation.id}` : 'new');
   const helperComposer = useComposerDraft(me.user.id, project.id, `helper:${conversation?.id ?? 'new'}`);
   const composer = asking ? helperComposer : publicComposer;
@@ -423,8 +434,11 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     };
   };
   const trayOpen = sourcesOpen || (writable && showMaterialForm);
+  const sourcesButton = <button type="button" className="composer__ask project-convo__sources-btn" aria-expanded={trayOpen} aria-controls={trayOpen ? `${conversation ? 'thread' : 'project'}-sources` : undefined} aria-label={`Sources${materialTotal ? `, ${materialTotal} saved` : ''}`} data-tip={writable ? 'Sources to cite' : 'Saved sources to read'} data-tip-align="start" onClick={() => { if (trayOpen) { setSourcesOpen(false); if (writable) setShowMaterialForm(false); } else setSourcesOpen(true); }}><Icon name="doc" /><span className="project-convo__sources-t" aria-hidden="true">Sources</span>{materialTotal ? <span className="project-convo__sources-n" aria-hidden="true">{materialTotal > 99 ? '99+' : materialTotal}</span> : null}</button>;
   const title = conversation ? conversation.firstMessageBody.split('\n')[0] || 'Conversation' : project.name;
   let lastDay = '';
+  // Phones (F-025 PA-4): the author's name heads a run of their messages and is not repeated inside it.
+  let lastAuthor = '';
   const discussedRow = discussedTask ? referenceWork.rows.get(`work:${discussedTask}`) ?? null : null;
   return <div className={conversation ? 'thread__pane' : 'project-convo'} data-project-id={conversation ? undefined : project.id}
     data-associations-observed-at={conversation ? messageWork.page?.observedAt : undefined} data-associations-phase={conversation ? messageWork.state.phase : undefined}
@@ -439,7 +453,9 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
               const label = day(entry.at);
               const divider = label !== lastDay ? <li className="project-convo__day" key={`day-${entry.key}`}><span>{label}</span></li> : null;
               lastDay = label;
+              if (divider) lastAuthor = '';
               if (entry.type === 'answer') {
+                lastAuthor = '';
                 const answer = entry.answer;
                 const proposal = answer.proposalId ? assistant.proposals.get(answer.proposalId) ?? null : null;
                 const workTitle = proposal?.change.finishes ? referenceWork.rows.get(`work:${proposal.change.finishes.workId}`)?.title ?? 'a work item' : null;
@@ -456,9 +472,14 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
               const message = entry.message;
               const mine = message.authorId === me.user.id;
               const agent = phone && message.authorId === null ? message.author : null;
-              return [divider, <li key={message.id} id={`message-${message.id}`} data-message-id={message.id} tabIndex={-1} className={`project-convo__message${mine ? ' is-mine' : ''}${arrived === message.id ? ' is-arrived' : ''}`}>
+              const authorKey = authorOf(message);
+              const continues = phone && authorKey === lastAuthor;
+              lastAuthor = authorKey;
+              const shownName = mine ? `${messageAuthor(message)} · you` : agent ? agentDisplayName(agent) : messageAuthor(message);
+              return [divider, <li key={message.id} id={`message-${message.id}`} data-message-id={message.id} data-run={continues ? 'continues' : undefined} tabIndex={-1} className={`project-convo__message${mine ? ' is-mine' : ''}${arrived === message.id ? ' is-arrived' : ''}${continues ? ' is-cont' : ''}`}>
                 <Avatar name={messageAuthor(message)} size="md" tone={mine ? 'me' : 'neutral'} />
-                <div className="project-convo__message-meta">{agent ? <AgentOrb agentId={agent.id} /> : null}<strong>{mine ? `${messageAuthor(message)} · you` : agent ? agentDisplayName(agent) : message.authorId === null ? messageAuthor(message) : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${messageAuthor(message)} directly`}>{messageAuthor(message)}</Link>}</strong>{agent ? <AiBadge /> : null}<time dateTime={message.createdAt} title={when(message.createdAt)}>{clock(message.createdAt)}</time><span>#{message.sequence}</span></div>
+                {continues ? <span className="ui-vh">{shownName}{agent ? ', AI' : ''}, <time dateTime={message.createdAt}>{clock(message.createdAt)}</time></span>
+                  : <div className="project-convo__message-meta">{agent ? <AgentOrb agentId={agent.id} /> : null}<strong>{mine || agent || message.authorId === null ? shownName : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${messageAuthor(message)} directly`}>{messageAuthor(message)}</Link>}</strong>{agent ? <AiBadge /> : null}<time dateTime={message.createdAt} title={when(message.createdAt)}>{clock(message.createdAt)}</time>{phone ? null : <span>#{message.sequence}</span>}</div>}
                 {message.body ? <p>{message.body}</p> : null}
                 <MessageFiles files={message.files} />
                 {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={(resultId) => openDetails({ kind: 'result', id: resultId })} /> : null}
@@ -499,8 +520,14 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
       </div>}
       {writable && !asking ? <ComposerFiles state={publicComposer} attach="none" /> : null}
       {/* A tap on the card's empty space goes to the field, as in a messenger (#266 PF-3). */}
-      <div className="composer__box" onClick={(event) => { if (event.target === event.currentTarget) document.getElementById(composerId)?.focus(); }}>{writable && !asking ? <AttachButton state={publicComposer} /> : null}<button type="button" className="composer__ask project-convo__sources-btn" aria-expanded={trayOpen} aria-controls={trayOpen ? `${conversation ? 'thread' : 'project'}-sources` : undefined} aria-label={`Sources${materialTotal ? `, ${materialTotal} saved` : ''}`} data-tip={writable ? 'Sources to cite' : 'Saved sources to read'} data-tip-align="start" onClick={() => { if (trayOpen) { setSourcesOpen(false); if (writable) setShowMaterialForm(false); } else setSourcesOpen(true); }}><Icon name="doc" /><span className="project-convo__sources-t" aria-hidden="true">Sources</span>{materialTotal ? <span className="project-convo__sources-n" aria-hidden="true">{materialTotal > 99 ? '99+' : materialTotal}</span> : null}</button>{conversation && writable ? <button type="button" className="composer__ask" aria-pressed={asking} aria-label="Ask my assistant" aria-controls={asking ? 'project-ask' : undefined} data-tip="Ask my assistant · /ai" data-tip-align="start"
-        onClick={() => { if (asking) exitAsk(); else { setAsking(true); document.getElementById(composerId)?.focus(); } }}><Icon name="spark" /></button> : null}{writable ? <><label className="ui-vh" htmlFor={composerId}>{asking ? 'Ask your assistant' : conversation ? 'Reply' : 'Write a message'}</label><textarea id={composerId} value={draft} onChange={(event) => changeDraft(event.target.value)} onBlur={typing.stop} onKeyDown={onComposerKey} disabled={!writable || busy || askBusy} aria-describedby={asking ? 'project-ask' : assistantInStream ? `${composerId}-ai-hint` : undefined} placeholder={asking ? 'Ask your assistant…' : conversation ? replyHint : 'Write a message…'} rows={1} /><button className="composer__send" aria-label={asking ? 'Send to your assistant' : conversation ? 'Send reply' : 'Send message'} aria-disabled={!composer.canSend || !writable || busy || askBusy || assistantInStream || (asking && ask.kind !== 'ready')} type="button" onClick={() => void send()}><Icon name="send" /></button></> : <p className="project-convo__read-only">Read-only · <span>You have read access to this project.</span></p>}</div>
+      {/* Phones (F-025 PA-7): one pill. "+" opens the existing Attach and Sources (cite); the assistant is its orb. */}
+      {phone ? <div id={`${composerId}-more`} role="group" aria-label="Attach and cite" className="composer__menu" hidden={!(moreOpen || trayOpen) || undefined}>
+        {writable && !asking ? <AttachButton state={publicComposer} label="Attach files" onPicked={() => setMoreOpen(false)} /> : null}{sourcesButton}
+      </div> : null}
+      <div className="composer__box" onClick={(event) => { if (event.target === event.currentTarget) document.getElementById(composerId)?.focus(); }}>{phone
+        ? <button type="button" id={`${composerId}-plus`} className="composer__plus" aria-label="Attach or cite" aria-expanded={moreOpen || trayOpen} aria-controls={`${composerId}-more`} onClick={() => { if (moreOpen || trayOpen) { setMoreOpen(false); setSourcesOpen(false); if (writable) setShowMaterialForm(false); } else setMoreOpen(true); }}><Icon name="plus" size={20} /></button>
+        : <>{writable && !asking ? <AttachButton state={publicComposer} /> : null}{sourcesButton}</>}{conversation && writable ? <button type="button" className={`composer__ask${phone ? ' composer__ask--orb' : ''}`} aria-pressed={asking} aria-label="Ask my assistant" aria-controls={asking ? 'project-ask' : undefined} data-tip="Ask my assistant · /ai" data-tip-align="start"
+        onClick={() => { if (asking) exitAsk(); else { setAsking(true); document.getElementById(composerId)?.focus(); } }}>{phone ? <AgentOrb assistant size="md" /> : <Icon name="spark" />}</button> : null}{writable ? <><label className="ui-vh" htmlFor={composerId}>{asking ? 'Ask your assistant' : conversation ? 'Reply' : 'Write a message'}</label><textarea id={composerId} value={draft} onChange={(event) => changeDraft(event.target.value)} onBlur={typing.stop} onKeyDown={onComposerKey} disabled={!writable || busy || askBusy} aria-describedby={asking ? 'project-ask' : assistantInStream ? `${composerId}-ai-hint` : undefined} placeholder={asking ? 'Ask your assistant…' : conversation ? replyHint : 'Write a message…'} rows={1} /><button className="composer__send" aria-label={asking ? 'Send to your assistant' : conversation ? 'Send reply' : 'Send message'} aria-disabled={!composer.canSend || !writable || busy || askBusy || assistantInStream || (asking && ask.kind !== 'ready')} type="button" onClick={() => void send()}><Icon name="send" /></button></> : <p className="project-convo__read-only">Read-only · <span>You have read access to this project.</span></p>}</div>
       {conversation && !accessLost ? <TypingNotice {...typing} /> : null}
       {writable && assistantInStream ? <p id={`${composerId}-ai-hint`} className="project-convo__hint" role="status">Your assistant answers inside a conversation. Open one and type /ai there. This text is not posted.</p> : null}
       {readFailure ? <p className="project-convo__error" role="alert">{readFailure.message} <button type="button" onClick={readFailure.retry}>Retry read</button></p> : null}

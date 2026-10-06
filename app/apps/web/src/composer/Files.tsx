@@ -23,14 +23,14 @@ export function MessageFiles({ files }: { files?: MessageFile[] }) {
  * The attach control as one quiet paperclip, for composers that keep their tools inside the box
  * (#266 PF-3). Its accessible name stays "Attach files"; picked files join the same private draft.
  */
-export function AttachButton({ state, disabled = false, className }: { state: ComposerState; disabled?: boolean; className?: string }) {
+export function AttachButton({ state, disabled = false, className, label, onPicked }: { state: ComposerState; disabled?: boolean; className?: string; label?: string; onPicked?: () => void }) {
   const input = useRef<HTMLInputElement>(null);
   const blocked = disabled || state.sending;
   return <>
     <input ref={input} className="ui-vh" type="file" multiple tabIndex={-1} aria-hidden="true" disabled={blocked}
       onChange={(event) => { if (!blocked) state.addFiles([...event.currentTarget.files ?? []]); event.currentTarget.value = ''; }} />
-    <button type="button" className={['composer__attach', className].filter(Boolean).join(' ')} disabled={blocked} onClick={() => input.current?.click()}
-      aria-label="Attach files" data-tip="Attach files · private until sent" data-tip-align="start"><Icon name="clip" size={17} /></button>
+    <button type="button" className={['composer__attach', className].filter(Boolean).join(' ')} disabled={blocked} onClick={() => { input.current?.click(); onPicked?.(); }}
+      aria-label="Attach files" data-tip={label ? undefined : 'Attach files · private until sent'} data-tip-align="start"><Icon name="clip" size={17} />{label ? <span aria-hidden="true">{label}</span> : null}</button>
   </>;
 }
 

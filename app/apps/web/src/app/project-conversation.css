@@ -154,3 +154,37 @@ button.project-convo__contribution { cursor: pointer; }
 
 
 .project-convo__material-read { text-decoration: underline; text-underline-offset: 2px; }
+
+/* Phones (F-025 PA-4, PA-7). Messages: your own in the action colour with inverse text, everyone else's (people
+   and agents) in the bubble colour, radius 20; the name heads a run of one author's messages (`is-cont` follows
+   it); results, notices, files and task chips are soft cards on the quiet fill, with no coloured side rule, and
+   keep their status colours. Composer: one pill — "+" (Attach and Sources open above it), the field, the
+   assistant's orb in a thread, Send in the action colour — with the audience line under it. */
+@media (max-width: 640px) {
+  .project-convo__message > p { border-radius: 20px; }
+  .project-convo__message.is-mine > p { border-radius: 20px; background: var(--action); color: var(--on-action); }
+  .project-convo__message.is-open > p { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--text-2); }
+  .project-convo__message + .project-convo__message.is-cont,
+  .thread .project-convo__message + .project-convo__message.is-cont { margin-top: 6px; }
+  .project-convo__message.is-arrived, .project-convo__message.is-mine.is-arrived,
+  .thread .project-convo__message.is-arrived, .thread .project-convo__message.is-mine.is-arrived { box-shadow: none; padding-left: 0; padding-right: 0; }
+  .project-convo__message .message-files a { padding: 6px 12px; border-radius: 14px; background: var(--bg-side); }
+  .project-convo__message .ws-chip { border-radius: 14px; background: var(--bg-side); box-shadow: none; }
+  .project-convo__source { border-radius: 12px; }
+
+  .project-convo__composer .composer__menu { order: 1; display: flex; flex-direction: column; align-self: flex-start; min-width: 200px; margin: 0 0 6px; padding: 4px;
+    border-radius: 18px; background: var(--bg-raised); box-shadow: inset 0 0 0 1px var(--line); }
+  .project-convo__composer .composer__menu[hidden] { display: none; }
+  .project-convo__composer .composer__menu :is(.composer__attach, .project-convo__sources-btn) { display: flex; align-items: center; justify-content: flex-start; gap: 12px;
+    width: 100%; height: auto; min-height: 44px; margin: 0; padding: 0 14px; border-radius: 14px; font-size: 16px; font-weight: 400; color: var(--text); }
+  .project-convo__composer .composer__box { flex-wrap: nowrap; align-items: flex-end; gap: 2px; padding: 4px; border-radius: 24px; background: var(--bg-raised);
+    box-shadow: inset 0 0 0 1px var(--line); }
+  .project-convo__composer .composer__box textarea { order: 0; flex: 1 1 auto; min-width: 0; padding: 10px 4px; font-size: 16px; }
+  .project-convo__composer .project-convo__read-only { flex: 1 1 auto; min-height: 44px; margin: 0; padding: 12px 4px; }
+  .composer__plus { display: grid; place-items: center; flex: none; width: 44px; height: 44px; border-radius: 50%; color: var(--text); transition: var(--tr); }
+  .composer__plus:hover, .composer__plus[aria-expanded="true"] { background: var(--bg-side); }
+  .composer__plus:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .project-convo__composer .composer__ask--orb { width: 44px; height: 44px; margin: 0; border-radius: 50%; }
+  .project-convo__composer .composer__ask--orb[aria-pressed="true"] { background: var(--bg-side); box-shadow: inset 0 0 0 2px var(--text); }
+  .project-convo__composer .composer__send { width: 44px; height: 44px; border-radius: 50%; }
+}

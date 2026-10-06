@@ -175,8 +175,8 @@
    every name stays, so no component forks. No accent in navigation, selection, links, focus or unread: those
    roles take the text colour, and selected or current fills take the quiet fill. The person's #148 accent and
    the 11.6 values still apply above 640 px. --ok, --warning, --danger and --attention keep their 11.6 values.
-   --bubble-own stays the bubble neutral until slice 4 (PA-4) gives own messages the action colour with inverse
-   text. --nav-current and --bg-selected are F-023's (#275) names, set here so its phone bar and segments stay
+   --bubble-own stays the bubble neutral: on phones your own messages take --action with --on-action text
+   directly (PA-4, project-conversation.css). --nav-current and --bg-selected are F-023's (#275) names, set here so its phone bar and segments stay
    monochrome when it lands. scripts/check_contrast.py checks both phone palettes. */
 @media (max-width: 640px) {
   :root {

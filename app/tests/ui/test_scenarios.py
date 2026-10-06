@@ -635,6 +635,8 @@ class ScenarioJourney:
         jonas = self.page("jonas")
         jonas.goto(f"/projects/{lamp}")
         jonas.get_by_label("Write a message", exact=True).fill(RUN_ROOT)
+        if self.phone:  # F-025 PA-7: on a phone, Attach opens from the composer's "+".
+            self.tap(jonas.get_by_role("button", name="Attach or cite", exact=True))
         with jonas.expect_file_chooser() as chooser:
             self.tap(jonas.get_by_role("button", name="Attach files", exact=True))
         chooser.value.set_files([{"name": "lux-readings.csv", "mimeType": "text/csv", "buffer": CSV}])

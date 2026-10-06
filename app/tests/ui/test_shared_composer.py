@@ -14,7 +14,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 from playwright.sync_api import expect, sync_playwright
-from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
+from test_app_shell import ORIGIN, UPSTREAM, open_plus, shot, start_forwarder
 
 STAMP = int(time.time() * 1000)
 PASSWORD = "the same thread keeps exact private files"
@@ -83,6 +83,7 @@ class SharedComposerJourney(unittest.TestCase):
 
     def choose(self, page, files, container=None):
         target = container or page
+        open_plus(target)
         with page.expect_file_chooser() as chooser:
             target.get_by_role("button", name="Attach files", exact=True).click()
         chooser.value.set_files(files)
@@ -103,6 +104,7 @@ class SharedComposerJourney(unittest.TestCase):
     def cite(self, page, project, conversation):
         page.goto(f"/projects/{project['id']}/conversations/{conversation}")
         pane = page.get_by_role("complementary", name="Replies")
+        open_plus(pane)
         pane.get_by_role("button", name=re.compile("^Sources")).click()
         pane.get_by_role("button", name="Discuss this version").click()
         return pane
@@ -398,6 +400,7 @@ class SharedComposerJourney(unittest.TestCase):
                 expect(pane).to_have_count(0)
                 self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), width)
                 shot(page, f"shared-published-{width}")
+                open_plus(page)
                 sources = page.locator('.project-convo__sources-t')
                 expect(sources).to_be_visible()
                 expect(sources).to_have_text('Sources')
@@ -408,6 +411,7 @@ class SharedComposerJourney(unittest.TestCase):
                 expect(pane.locator('.composer-files__ref')).to_contain_text('Source: Verified measurements · v1')
                 self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'), width)
                 shot(page, f'shared-reply-draft-{width}')
+                open_plus(pane)
                 pane.get_by_role('button', name=re.compile('^Sources')).click()
                 expect(page.get_by_role('heading', name=f"Sources · saved for {project['name']}", exact=True)).to_be_visible()
                 shot(page, f'shared-sources-{width}')

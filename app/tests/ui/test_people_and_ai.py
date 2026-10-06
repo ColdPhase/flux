@@ -19,6 +19,16 @@ from the page, which entries an agent wrote.
   animation at all under reduced motion. `live` is wired to nothing yet (slice 3), so the test sets the class
   the component sets for `live` (orbClassName, unit-tested in tests/app/orb-palette.test.ts).
 
+- test_06, slice 4 (PA-4) at 390×844 and 375×667 with touch, light and dark: own bubbles are the action colour
+  with inverse text at 4.5:1 or more; everyone else's are the bubble colour; radius 20; the name heads a run of
+  one author's messages and is not repeated inside it (people and agents; an agent's run head keeps orb, name and
+  AI); one date line above the day; no message IDs; no coloured side rule on bubbles, notices or cards.
+- test_07, slice 4 (PA-7), same sizes: the composer is one pill, and every function is reachable by name and
+  works: "+" opens Attach (a file chooser) and Sources (the tray), the assistant's violet orb toggles ask mode in
+  a thread (absent in the stream, as today), the 16 px field, Send in the action colour, the audience line under
+  the pill; Escape closes the menu back to "+".
+- test_08, 1440: the composer, bubbles, names and thread IDs are as before.
+
 Each check also runs once against a planted fault (an injected style or element) and must report it.
 Screenshots (people-ai-*.png) go to FLUX_UI_SCREENSHOTS.
 """
@@ -52,6 +62,10 @@ TASK = "Order a VL53L1X breakout board"
 JONAS_TASK_NOTE = "Two boards, one spare. Ask about shipping to the workshop."
 AGENT_TASK_REPLY = "Found a seller with next-day shipping; the link is in the shopping list."
 ANSWER = "Short answer: the ToF sensor keeps working in the dark, the camera does not."
+ADA_RUN = ["Batteries are in the drawer under the bench.", "And the spare USB-C cable is in the blue box."]
+AGENT_RUN = ["Logged run one: 2.1 lux at 40 cm, gestures detected 19 of 20 times.", "Logged run two: 0.4 lux, gestures detected 20 of 20 times."]
+JONAS_AFTER = "Great, the ToF board it is."
+SIZES = ({"width": 390, "height": 844}, {"width": 375, "height": 667})
 
 # The accent families of #148 in both themes (accent, hover, pressed, soft) and their tinted own bubbles: on a phone
 # no chrome may paint any of them (F-025 PA-1).
@@ -191,7 +205,7 @@ class PeopleAndAiPhone(unittest.TestCase):
                          "service_workers": "block", "storage_state": self.states[who],
                          "reduced_motion": "reduce" if reduced else "no-preference"}
         if phone:
-            options.update(viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
+            options.update(viewport=viewport or PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
         else:
             options.update(viewport=viewport or DESKTOP, device_scale_factor=1)
         context = self.browser.new_context(**options)
@@ -334,6 +348,7 @@ class PeopleAndAiPhone(unittest.TestCase):
             self.assertIn(root_id, by_id)
         for root_id, message in by_id.items():
             self.assertEqual(authors.get(root_id), "agent" if message["authorId"] is None else "person", message)
+        cls.s["act"] = act
         cls.ids.update(task=task["id"], agent=agent["id"], codex=codex["id"], jonas_root=jonas_root["id"], agent_root=started["conversationId"])
         cls.s.update(authors=authors, assistant_label=answers[0]["assistant"]["label"],
                      stream=list(by_id),
@@ -519,6 +534,304 @@ class PeopleAndAiPhone(unittest.TestCase):
         forced = calm.evaluate(self.LIVE, selector)
         self.assertEqual((forced["name"], forced["running"]), ("ui-orb-turn", 1), forced)
 
+
+    # ---------------------------------------------------------------- slice 4: messages and composer (PA-4, PA-7)
+
+    # The stream's entries in order: whether each continues a run and whether it shows a name.
+    RUNS = r"""(scope) => [...document.querySelectorAll(`${scope} > li`)].map((li) => {
+      const shown = (el) => !!el && el.getBoundingClientRect().width > 1 && getComputedStyle(el).visibility !== 'hidden' && getComputedStyle(el).display !== 'none';
+      const meta = li.querySelector(':scope > .project-convo__message-meta');
+      if (!li.dataset.messageId) return { id: null, kind: li.className };
+      return { id: li.dataset.messageId, continues: li.dataset.run === 'continues', named: shown(meta) && shown(meta.querySelector('strong')),
+               day: li.previousElementSibling?.classList.contains('project-convo__day') ? li.previousElementSibling.textContent : null,
+               spoken: li.textContent };
+    })"""
+
+    # Every bubble: its colours, WCAG contrast and radius, and the action / bubble tokens as computed colours.
+    BUBBLES = r"""(scope) => {
+      const lum = (colour) => { const [r, g, b] = colour.match(/[\d.]+/g).slice(0, 3).map(Number).map((v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; });
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+      const token = (name) => { const probe = document.createElement('i'); probe.style.color = `var(${name})`; document.body.append(probe);
+        const value = getComputedStyle(probe).color; probe.remove(); return value; };
+      const bubbles = [...document.querySelectorAll(`${scope} li[data-message-id] > p`)].map((p) => { const style = getComputedStyle(p); const a = lum(style.color), b = lum(style.backgroundColor);
+        return { id: p.parentElement.dataset.messageId, mine: p.parentElement.classList.contains('is-mine'), bg: style.backgroundColor, color: style.color,
+                 ratio: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05), radius: [style.borderTopLeftRadius, style.borderTopRightRadius, style.borderBottomRightRadius, style.borderBottomLeftRadius] }; });
+      return { bubbles, action: token('--action'), onAction: token('--on-action'), bubble: token('--bubble'), own: token('--bubble-own') };
+    }"""
+
+    # Coloured side rules (a thick one-sided border or inset bar) and visible IDs inside the messages.
+    MARKS = r"""(scope) => {
+      const out = [];
+      for (const el of document.querySelectorAll(`${scope} .project-convo__messages *`)) {
+        const style = getComputedStyle(el); const box = el.getBoundingClientRect();
+        if (!box.width || !box.height || style.display === 'none' || style.visibility === 'hidden') continue;
+        const name = `${el.tagName.toLowerCase()}.${[...el.classList].join('.')}`;
+        for (const side of ['Left', 'Right']) {
+          const width = parseFloat(style[`border${side}Width`]);
+          if (width >= 2 && style[`border${side}Style`] !== 'none' && !/rgba\([^)]*,\s*0\)/.test(style[`border${side}Color`]) && parseFloat(style[`border${side === 'Left' ? 'Right' : 'Left'}Width`]) < width)
+            out.push(`${name} has a ${side.toLowerCase()} rule`);
+        }
+        for (const shadow of style.boxShadow.split(/,(?![^(]*\))/)) {
+          const lengths = (shadow.replace(/rgba?\([^)]*\)/, '').match(/-?[\d.]+px/g) || []).map(parseFloat);
+          if (/inset/.test(shadow) && Math.abs(lengths[0] || 0) >= 2 && !lengths[1] && !lengths[2]) out.push(`${name} has an inset side bar`);
+        }
+        const own = [...el.childNodes].filter((node) => node.nodeType === 3).map((node) => node.textContent).join('');
+        if (/(^|\s)#\d+\b|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}/.test(own)) out.push(`${name} shows an id: ${own.trim()}`);
+      }
+      return out;
+    }"""
+
+    def ensure_runs(self) -> None:
+        """Ada writes two more roots after her own, then the agent two, then Jonas one: three runs in the stream."""
+        if "runs" in self.s:
+            return
+        pid, authors, act = self.ids["project"], self.s["authors"], self.s["act"]
+        added = []
+        for body in ADA_RUN:
+            root = self.api("ada", "POST", f"/api/v1/projects/{pid}/conversations", {"body": body, "clientMessageId": str(uuid.uuid4())}, status=201)
+            authors[root["messages"][0]["id"]] = "person"
+            added.append(root["messages"][0]["id"])
+        for body in AGENT_RUN:
+            started = act("flux_start_conversation", "conversation.create", message={"body": body})
+            authors[started["messageId"]] = "agent"
+            added.append(started["messageId"])
+        after = self.api("jonas", "POST", f"/api/v1/projects/{pid}/conversations", {"body": JONAS_AFTER, "clientMessageId": str(uuid.uuid4())}, status=201)
+        authors[after["messages"][0]["id"]] = "person"
+        added.append(after["messages"][0]["id"])
+        roots = self.api("ada", "GET", f"/api/v1/projects/{pid}/conversation-roots?limit=100", status=200)["roots"]
+        order = [root["message"] for root in sorted(roots, key=lambda root: (root["message"]["createdAt"], root["conversationId"]))]
+        type(self).s.update(runs=[message["id"] for message in order],
+                            keys={message["id"]: message["authorId"] or f"agent:{message['author']['id']}" for message in order},
+                            mine={message["id"] for message in order if message["authorId"] == self.ids["ada"]})
+        self.assertEqual(added, type(self).s["runs"][-5:], "the new roots are the last five, in order")
+
+    def run_problems(self, rows: list[dict]) -> list[str]:
+        problems, previous = [], None
+        for row in rows:
+            if row["id"] is None:  # a date line or a task notice ends a run
+                previous = None
+                continue
+            key = self.s["keys"].get(row["id"])
+            continues = key is not None and key == previous
+            previous = key
+            if row["continues"] != continues:
+                problems.append(f"{row['id']} continues={row['continues']}, expected {continues}")
+            if continues and row["named"]:
+                problems.append(f"{row['id']} repeats the name inside a run")
+            if not continues and not row["named"]:
+                problems.append(f"{row['id']} starts a run without a name")
+        return problems
+
+    def bubble_problems(self, read: dict) -> list[str]:
+        problems = []
+        for bubble in read["bubbles"]:
+            if bubble["radius"] != ["20px"] * 4:
+                problems.append(f"{bubble['id']} radius {bubble['radius']}")
+            if bubble["mine"]:
+                if bubble["bg"] != read["action"] or bubble["color"] != read["onAction"]:
+                    problems.append(f"{bubble['id']} (own) is {bubble['color']} on {bubble['bg']}, expected {read['onAction']} on {read['action']}")
+                if bubble["ratio"] < 4.5:
+                    problems.append(f"{bubble['id']} (own) contrast {bubble['ratio']:.2f}")
+            elif bubble["bg"] != read["bubble"]:
+                problems.append(f"{bubble['id']} is on {bubble['bg']}, expected the bubble {read['bubble']}")
+        return problems
+
+    def test_06_phone_messages_own_in_the_action_colour_runs_named_once_no_ids_or_side_rules(self) -> None:
+        self.assertIn("authors", self.s, "test_01 ran")
+        self.ensure_runs()
+        mine = self.s["mine"]
+        for size in SIZES:
+            for scheme in ("light", "dark"):
+                label = f"{size['width']}x{size['height']} {scheme}"
+                page = self.page("ada", scheme=scheme, viewport=size)
+                page.goto(f"/projects/{self.ids['project']}")
+                list_ = ".project-convo__message-list"
+                for message_id in self.s["runs"]:
+                    expect(page.locator(f"{list_} [data-message-id='{message_id}']")).to_have_count(1)
+                every = page.evaluate(self.RUNS, list_)
+                self.assertEqual(self.run_problems(every), [], label)
+                rows = [row for row in every if row["id"]]
+                runs = self.s["runs"]
+                self.assertEqual([next(row for row in rows if row["id"] == runs[i])["continues"] for i in (-4, -3, -2, -1)], [True, False, True, False], label)
+                # One date line heads the day; a continuation still says who wrote it to a screen reader.
+                self.assertEqual(every[0]["kind"], "project-convo__day", label)
+                self.assertEqual(rows[0]["day"], "Today", label)
+                self.assertEqual(page.locator(f"{list_} .project-convo__day").count(), 1, label)
+                cont = next(row for row in rows if row["id"] == self.s["runs"][-2])
+                self.assertIn(f"{AGENT}, AI", cont["spoken"], label)
+                # PA-2 on every run head: agents keep orb, name and AI; people have none.
+                heads = [entry for entry in self.entries(page, list_) if not next(row for row in rows if row["id"] == entry["id"])["continues"]]
+                self.assertEqual(self.entry_problems(heads, set()), [], label)
+                read = page.evaluate(self.BUBBLES, list_)
+                self.assertEqual(self.bubble_problems(read), [], label)
+                self.assertEqual({bubble["id"] for bubble in read["bubbles"] if bubble["mine"]}, mine & {bubble["id"] for bubble in read["bubbles"]}, label)
+                self.assertTrue(any(bubble["mine"] for bubble in read["bubbles"]), label)
+                self.assertEqual(page.evaluate(self.MARKS, ".project-convo"), [], f"{label} stream")
+                if size["width"] == 390:
+                    shot(page, f"people-ai-390-{scheme}-messages")
+                # Jonas's thread: no "#n" on replies; the same bubbles and rules.
+                self.open_thread(page, self.ids["jonas_root"], self.s["jonas_thread"])
+                self.assertEqual(page.evaluate(self.MARKS, "#thread"), [], f"{label} thread")
+                self.assertEqual(self.bubble_problems(page.evaluate(self.BUBBLES, "#thread")), [], f"{label} thread")
+
+        # Negative controls: a low-contrast own bubble, a repeated name, a side rule and a visible id are reported.
+        page = self.page("ada")
+        page.goto(f"/projects/{self.ids['project']}")
+        expect(page.locator(f"[data-message-id='{self.s['runs'][-1]}']")).to_be_visible()
+        page.add_style_tag(content="@media (max-width: 640px) { .project-convo__message.is-mine > p { color: #555 !important; } }")
+        self.assertTrue(any("(own)" in problem and "contrast" in problem for problem in self.bubble_problems(page.evaluate(self.BUBBLES, ".project-convo__message-list"))))
+        page.evaluate("""(id) => { const li = document.querySelector(`[data-message-id="${id}"]`); delete li.dataset.run;
+          li.insertAdjacentHTML('afterbegin', '<div class="project-convo__message-meta"><strong>Ada Kowalska</strong></div>'); }""", self.s["runs"][-4])
+        self.assertIn(f"{self.s['runs'][-4]} continues=False, expected True", self.run_problems(page.evaluate(self.RUNS, ".project-convo__message-list")))
+        page.add_style_tag(content=".convo-notice, .project-convo__message > p { border-left: 3px solid var(--danger) !important; }")
+        page.evaluate("""(id) => document.querySelector(`[data-message-id="${id}"] > p`).insertAdjacentText('beforebegin', '#12')""", self.s["runs"][-1])
+        marks = page.evaluate(self.MARKS, ".project-convo")
+        self.assertTrue(any("left rule" in mark for mark in marks), marks)
+        self.assertTrue(any("shows an id: #12" in mark for mark in marks), marks)
+
+    def composer_problems(self, scope, thread: bool) -> list[str]:
+        """PA-7: every composer function reachable by name, as a 44 px target, in one pill with the audience under it."""
+        problems: list[str] = []
+
+        def reach(name: str, locator):
+            if not locator.count() or not locator.first.is_visible():
+                problems.append(f"{name} is not reachable")
+                return None
+            box = locator.first.bounding_box()
+            if box["width"] < 44 or box["height"] < 44:
+                problems.append(f"{name} is {box['width']:.0f}x{box['height']:.0f}")
+            return locator.first
+
+        pill = scope.locator(".composer__box")
+        plus = reach("Attach or cite", pill.get_by_role("button", name="Attach or cite", exact=True))
+        if plus:
+            if plus.get_attribute("aria-expanded") != "false":
+                problems.append("the menu starts open")
+            plus.tap()
+            reach("Attach files", scope.get_by_role("button", name="Attach files", exact=True))
+            reach("Sources", scope.get_by_role("button", name=re.compile("^Sources")))
+            plus.tap()
+        field = reach("the field", scope.get_by_label("Reply" if thread else "Write a message", exact=True))
+        if field and float(field.evaluate("el => parseFloat(getComputedStyle(el).fontSize)")) < 16:
+            problems.append("the field is under 16 px")
+        send = reach("Send", pill.get_by_role("button", name="Send reply" if thread else "Send message", exact=True))
+        if send:
+            fill = send.evaluate("""(el) => { const probe = document.createElement('i'); probe.style.color = 'var(--action)'; document.body.append(probe);
+              const action = getComputedStyle(probe).color; probe.remove(); return [getComputedStyle(el, '::before').backgroundColor, action]; }""")
+            if fill[0] != fill[1]:
+                problems.append(f"Send is {fill[0]}, not the action colour {fill[1]}")
+        ask = pill.get_by_role("button", name="Ask my assistant", exact=True)
+        if thread:
+            if reach("Ask my assistant", ask) and ask.locator(".ui-orb").get_attribute("data-orb") != "violet":
+                problems.append("the assistant is not its violet orb")
+        elif ask.count():
+            problems.append("the stream offers an assistant it does not have")
+        audience = scope.locator(".composer__audience")
+        if not audience.count() or not audience.first.is_visible():
+            problems.append("the audience line is not shown")
+        elif audience.first.bounding_box()["y"] < pill.bounding_box()["y"] + pill.bounding_box()["height"] - 1:
+            problems.append("the audience line is not under the pill")
+        rows = pill.evaluate("(el) => new Set([...el.children].filter((c) => c.getBoundingClientRect().width > 1).map((c) => Math.round(c.getBoundingClientRect().bottom))).size")
+        if rows != 1:
+            problems.append(f"the pill has {rows} rows")
+        return problems
+
+    def test_07_phone_composer_is_one_pill_and_every_function_is_reachable_by_name(self) -> None:
+        self.assertIn("authors", self.s, "test_01 ran")
+        for size in SIZES:
+            for scheme in ("light", "dark"):
+                label = f"{size['width']}x{size['height']} {scheme}"
+                page = self.page("ada", scheme=scheme, viewport=size)
+                page.goto(f"/projects/{self.ids['project']}")
+                stream = page.locator(".project-convo")
+                expect(stream.get_by_label("Write a message", exact=True)).to_be_visible()
+                self.assertEqual(self.composer_problems(stream, thread=False), [], f"{label} stream")
+                if size["width"] == 390:
+                    shot(page, f"people-ai-390-{scheme}-composer")
+
+                self.open_thread(page, self.ids["jonas_root"], self.s["jonas_thread"])
+                pane = page.get_by_role("complementary", name="Replies")
+                self.assertEqual(self.composer_problems(pane, thread=True), [], f"{label} thread")
+                # Each function works: Attach opens a file chooser, Sources the tray, the orb ask mode.
+                plus = pane.get_by_role("button", name="Attach or cite", exact=True)
+                plus.tap()
+                with page.expect_file_chooser() as chooser:
+                    pane.get_by_role("button", name="Attach files", exact=True).tap()
+                chooser.value.set_files([])
+                expect(plus).to_have_attribute("aria-expanded", "false")
+                plus.tap()
+                pane.get_by_role("button", name=re.compile("^Sources")).tap()
+                expect(page.get_by_role("region", name="Project materials")).to_be_visible()
+                plus.tap()
+                expect(page.get_by_role("region", name="Project materials")).to_have_count(0)
+                plus.tap()
+                page.keyboard.press("Escape")
+                expect(plus).to_have_attribute("aria-expanded", "false")
+                expect(plus).to_be_focused()
+                ask = pane.get_by_role("button", name="Ask my assistant", exact=True)
+                ask.tap()
+                expect(ask).to_have_attribute("aria-pressed", "true")
+                expect(pane.get_by_label("Ask your assistant", exact=True)).to_be_visible()
+                if size["width"] == 390:
+                    shot(page, f"people-ai-390-{scheme}-composer-ask")
+                ask.tap()
+                expect(ask).to_have_attribute("aria-pressed", "false")
+                field = pane.get_by_label("Reply", exact=True)
+                field.fill("Thanks, both runs look good.")
+                with page.expect_response(lambda response: response.request.method == "POST" and "/messages" in response.url) as posted:
+                    pane.get_by_role("button", name="Send reply", exact=True).tap()
+                self.assertEqual(posted.value.status, 201)
+                expect(field).to_have_value("")
+
+        # Negative controls: a hidden "+" and an assistant without its orb are reported.
+        page = self.page("ada")
+        self.open_thread(page, self.ids["jonas_root"], self.s["jonas_thread"])
+        pane = page.get_by_role("complementary", name="Replies")
+        page.add_style_tag(content=".composer__plus { display: none !important; } .composer__ask--orb .ui-orb { display: none !important; }")
+        problems = self.composer_problems(pane, thread=True)
+        self.assertIn("Attach or cite is not reachable", problems)
+        page.evaluate("() => document.querySelector('.composer__ask--orb .ui-orb').dataset.orb = 'ember'")
+        self.assertIn("the assistant is not its violet orb", self.composer_problems(pane, thread=True))
+
+    def test_08_desktop_keeps_the_11_6_composer_bubbles_names_and_thread_numbers(self) -> None:
+        self.assertIn("authors", self.s, "test_01 ran")
+        self.ensure_runs()
+        page = self.page("ada", phone=False)
+        page.goto(f"/projects/{self.ids['project']}")
+        list_ = ".project-convo__message-list"
+        expect(page.locator(f"{list_} [data-message-id='{self.s['runs'][-1]}']")).to_be_visible()
+
+        def problems() -> list[str]:
+            found = []
+            rows = [row for row in page.evaluate(self.RUNS, list_) if row["id"]]
+            found += [f"{row['id']} has no name" for row in rows if row["continues"] or not row["named"]]
+            read = page.evaluate(self.BUBBLES, list_)
+            for bubble in read["bubbles"]:
+                expected = read["own"] if bubble["mine"] else read["bubble"]
+                if bubble["bg"] != expected:
+                    found.append(f"{bubble['id']} is on {bubble['bg']}, expected {expected}")
+                if bubble["radius"] == ["20px"] * 4:
+                    found.append(f"{bubble['id']} has the phone radius")
+            box = page.locator(".project-convo .composer__box")
+            if page.get_by_role("button", name="Attach or cite", exact=True).count():
+                found.append("a phone + on desktop")
+            for name in ("Attach files", "Sources"):
+                if not box.get_by_role("button", name=re.compile(f"^{name}")).first.is_visible():
+                    found.append(f"{name} is not in the composer")
+            return found
+
+        self.assertEqual(problems(), [])
+        self.open_thread(page, self.ids["jonas_root"], self.s["jonas_thread"])
+        pane = page.get_by_role("complementary", name="Replies")
+        expect(pane.get_by_role("button", name="Ask my assistant", exact=True).locator("svg")).to_have_count(1)
+        expect(pane.locator(".ui-orb")).to_have_count(0)
+        self.assertTrue(page.evaluate("""() => [...document.querySelectorAll('#thread .project-convo__message-meta span')].some((el) => /^#\\d+$/.test(el.textContent))"""),
+                        "replies keep their number on desktop")
+        # Negative control: the phone bubble leaking to desktop is reported.
+        page.goto(f"/projects/{self.ids['project']}")
+        expect(page.locator(f"{list_} [data-message-id='{self.s['runs'][-1]}']")).to_be_visible()
+        page.add_style_tag(content=".project-convo__message.is-mine > p { background: var(--action) !important; border-radius: 20px !important; }")
+        self.assertTrue(any("phone radius" in problem for problem in problems()))
 
 if __name__ == "__main__":
     unittest.main()

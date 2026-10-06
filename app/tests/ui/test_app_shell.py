@@ -85,12 +85,21 @@ def start_forwarder(origin: str, upstream: str) -> None:
     threading.Thread(target=accept, daemon=True).start()
 
 
+def open_plus(scope) -> None:
+    """On a phone, Attach and Sources open from the composer's "+" (F-025 PA-7); elsewhere this does nothing."""
+    for plus in scope.get_by_role("button", name="Attach or cite", exact=True).all():
+        if plus.is_visible() and plus.get_attribute("aria-expanded") != "true":
+            plus.click()
+            return
+
+
 def open_sources(page: Page, scope=None) -> None:
     """Opens the project's sources above a composer (#117), where materials are saved and cited.
 
     With a thread open (UI116-1) both the stream's and the thread's composer have Sources: pass the
     thread as `scope` to use its composer."""
     within = scope or page
+    open_plus(within)
     button = within.get_by_role("button", name=re.compile("^Sources"))
     if button.get_attribute("aria-expanded") != "true":
         button.click()

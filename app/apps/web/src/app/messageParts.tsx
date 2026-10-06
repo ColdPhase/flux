@@ -74,3 +74,8 @@ export function SourceCitation({ materialId, version, onDenied }: { materialId: 
   useEffect(() => { const controller = new AbortController(); getMaterialVersion(materialId, version, controller.signal).then((item) => setTitle(item.title)).catch((cause: unknown) => { if (!controller.signal.aborted) { onDeniedRef.current(cause); setTitle('Material unavailable'); } }); return () => controller.abort(); }, [materialId, version]);
   return <Link to={`/materials/${materialId}/versions/${version}`} className="project-convo__source">Source: {title} · v{version}</Link>;
 }
+
+/** Who wrote a message, for runs (F-025 PA-4): a person by id; an agent (no person id) by its own id. */
+export function authorOf(message: ConversationMessage) {
+  return message.authorId ?? `agent:${message.author?.id ?? ''}`;
+}

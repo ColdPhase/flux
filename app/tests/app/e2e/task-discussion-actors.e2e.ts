@@ -146,6 +146,9 @@ test('agent root renders without a human DM link, real human reply persists, and
       await thread.getByText('You have read access to this project.', { exact: true }).waitFor();
       assert.equal(await view.getByRole('textbox', { name: 'Reply', exact: true }).count(), 0);
       assert.equal(await view.getByRole('button', { name: 'Send reply', exact: true }).count(), 0);
+      // F-025 PA-7: on a phone, Sources opens from the composer's "+".
+      const plus = thread.getByRole('button', { name: 'Attach or cite', exact: true });
+      if (await plus.count()) await plus.click();
       const sources = thread.getByRole('button', { name: 'Sources', exact: true });
       await sources.focus();
       await sources.press('Enter');

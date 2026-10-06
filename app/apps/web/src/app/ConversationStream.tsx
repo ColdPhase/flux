@@ -10,7 +10,7 @@ import { useProjectWorkSummary } from '../work/WorkReadContext';
 import { MessageWorkPages } from '../work/MessageWorkPages';
 import { useShellActions } from './shellContext';
 import { listConversationRoots, listTaskNotices } from './conversation-api';
-import { ContributionMark, OPENING_REVEAL_MS, SourceCitation, clock, day, openOnWholeMessages, when } from './messageParts';
+import { ContributionMark, OPENING_REVEAL_MS, SourceCitation, authorOf, clock, day, openOnWholeMessages, when } from './messageParts';
 import { MessageFiles } from '../composer/Files';
 import { agentAuthorLabel, agentDisplayName } from '../docs/format';
 
@@ -488,7 +488,10 @@ export function ConversationStream({ project, meId, roots: stream, notices, auth
                 const divider = index === 0 || dayOf[index - 1] !== label ? <li className="project-convo__day" key={`day-${entry.key}`}><span>{label}</span></li> : null;
                 if (entry.kind === 'notice') return [divider, <NoticeItem key={entry.key} notice={entry.notice} meId={meId} row={referenceWork.rows.get(`work:${entry.notice.workId}`) ?? null} onOpenTask={(id) => openDetails({ kind: 'work', id })} />];
                 const { root } = entry;
-                return [divider, <RootItem key={entry.key} root={root} project={project} meId={meId} author={author} phone={phone} messageWork={messageWork}
+                // Phones (F-025 PA-4): a run of one author's roots on one day shows their name once.
+                const before = index > 0 && !divider ? entries[index - 1]! : null;
+                const continues = phone && before?.kind === 'root' && authorOf(before.root.message) === authorOf(root.message);
+                return [divider, <RootItem key={entry.key} root={root} project={project} meId={meId} author={author} phone={phone} continues={continues} messageWork={messageWork}
                   taskRow={root.task ? referenceWork.rows.get(`work:${root.task.workId}`) ?? null : null}
                   open={root.conversationId === openId} arrived={arrived === root.message.id} makeWork={makeWork} onOpen={openRoot}
                   onOpenResult={(resultId) => openDetails({ kind: 'result', id: resultId })} onDenied={onDenied} />];
@@ -537,8 +540,8 @@ function NoticeItem({ notice, meId, row, onOpenTask }: { notice: TaskCreationNot
   );
 }
 
-function RootItem({ root, project, meId, author, phone, messageWork, taskRow, open, arrived, makeWork, onOpen, onOpenResult, onDenied }: {
-  root: ConversationRoot; project: Project; meId: string; author: (message: ConversationMessage) => string; phone: boolean;
+function RootItem({ root, project, meId, author, phone, continues, messageWork, taskRow, open, arrived, makeWork, onOpen, onOpenResult, onDenied }: {
+  root: ConversationRoot; project: Project; meId: string; author: (message: ConversationMessage) => string; phone: boolean; continues: boolean;
   messageWork: MessageWorkRead; taskRow: NativeWorkRow | null;
   open: boolean; arrived: boolean; makeWork: ReturnType<typeof useCreateWorkFromMessage>;
   onOpen: (root: ConversationRoot, reply: boolean) => void; onOpenResult: (resultId: string) => void; onDenied: (cause: unknown) => void;
@@ -550,15 +553,15 @@ function RootItem({ root, project, meId, author, phone, messageWork, taskRow, op
   const agent = phone && message.authorId === null ? message.author : null;
   const name = agent ? agentDisplayName(agent) : author(message);
   return (
-    <li id={`message-${message.id}`} data-message-id={message.id} tabIndex={-1} data-conversation-id={root.conversationId}
-      className={`project-convo__message${mine ? ' is-mine' : ''}${arrived ? ' is-arrived' : ''}${open ? ' is-open' : ''}`}>
+    <li id={`message-${message.id}`} data-message-id={message.id} data-run={continues ? 'continues' : undefined} tabIndex={-1} data-conversation-id={root.conversationId}
+      className={`project-convo__message${mine ? ' is-mine' : ''}${arrived ? ' is-arrived' : ''}${open ? ' is-open' : ''}${continues ? ' is-cont' : ''}`}>
       <Avatar name={name} size="md" tone={mine ? 'me' : 'neutral'} />
-      <div className="project-convo__message-meta">
+      {continues ? <span className="ui-vh">{mine ? `${name} · you` : name}{agent ? ', AI' : ''}, <time dateTime={message.createdAt}>{clock(message.createdAt)}</time></span> : <div className="project-convo__message-meta">
         {agent ? <AgentOrb agentId={agent.id} /> : null}
         <strong>{mine ? `${name} · you` : message.authorId === null ? name : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</Link>}</strong>
         {agent ? <AiBadge /> : null}
         <time dateTime={message.createdAt} title={when(message.createdAt)}>{clock(message.createdAt)}</time>
-      </div>
+      </div>}
       {message.body ? <p>{message.body}</p> : null}
       <MessageFiles files={message.files} />
       {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={onOpenResult} /> : null}
