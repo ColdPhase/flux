@@ -139,6 +139,9 @@ export function useSketchDoc(sketchId: string, me: Me) {
   const ref = useRef<SketchDetail | null>(null);
   const queue = useRef<Promise<void>>(Promise.resolve());
   const inFlight = useRef(0);
+  // Counts writes that have finished (#271). A read that was out while one finished may have been
+  // answered before that write committed, so it is never adopted over the confirmed change.
+  const finishedWrites = useRef(0);
   const staleRef = useRef(false);
   const undoStack = useRef<Entry[]>([]);
   const moveBuffer = useRef<{ moves: Map<string, { x: number; y: number }>; timer: number | null }>({ moves: new Map(), timer: null });
@@ -165,8 +168,17 @@ export function useSketchDoc(sketchId: string, me: Me) {
 
   const reload = useCallback(async (signal?: AbortSignal) => {
     try {
-      const fresh = await api.getSketch(sketchId, signal);
-      if (inFlight.current) { staleRef.current = true; return; }
+      let fresh: SketchDetail;
+      let finished: number;
+      do {
+        finished = finishedWrites.current;
+        fresh = await api.getSketch(sketchId, signal);
+        // A write still out: read again once every write has finished (see enqueue).
+        if (inFlight.current) { staleRef.current = true; return; }
+        // #271: a write finished while this read was out, whether it began before or after the
+        // read was sent. The answer may predate it and would hide a confirmed thought until the
+        // next event, so read again.
+      } while (finishedWrites.current !== finished);
       adopt(fresh);
       setLoad('ready');
     } catch (error) {
@@ -293,6 +305,7 @@ export function useSketchDoc(sketchId: string, me: Me) {
       staleRef.current = true;
     }).finally(() => {
       inFlight.current -= 1;
+      finishedWrites.current += 1;
       if (inFlight.current) return;
       setSaving(false);
       if (staleRef.current) { staleRef.current = false; void reload(); }
@@ -414,6 +427,7 @@ export function useSketchDoc(sketchId: string, me: Me) {
         setUndoLabel(label);
       }
       inFlight.current -= 1;
+      finishedWrites.current += 1;
       if (inFlight.current) return;
       setSaving(false);
       if (staleRef.current) { staleRef.current = false; void reload(); }
@@ -469,6 +483,7 @@ export function useSketchDoc(sketchId: string, me: Me) {
       return false;
     }).finally(() => {
       inFlight.current -= 1;
+      finishedWrites.current += 1;
       if (inFlight.current) return;
       setSaving(false);
       if (staleRef.current) { staleRef.current = false; void reload(); }

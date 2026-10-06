@@ -6,6 +6,7 @@ import type { Conversation, Decision, Dm, Draft, Material, Project, SearchRespon
 import { pool } from './support/db.js';
 import { type ClientResponse } from './support/http.js';
 import { addMember, draft as createDraft, expectStatus, grant, person, project as createProject, workspace, type Person } from './support/people.js';
+import { inBatches } from './support/batches.js';
 
 // Search across Flux (issue #114): one query over project and direct messages, materials and
 // their versions, work, decisions, results, sketches and thoughts, drafts and people. The access
@@ -354,12 +355,9 @@ describe('search: hidden matches never change the answer or the work', () => {
     const insiderBefore = await explain(nia, query);
     assert.equal(baseline.items.length, 2);
 
-    for (let start = 0; start < 300; start += 25)
-      await Promise.all(Array.from({ length: 25 }, (_, index) => say(ari, hiddenThread.id, `Prototype launch step ${start + index + 1}`)));
-    for (let start = 0; start < 100; start += 25)
-      await Promise.all(Array.from({ length: 25 }, (_, index) => thought(ari, hiddenSketch.id, `Prototype idea ${start + index + 1}`, (start + index) * 200)));
-    for (let start = 0; start < 60; start += 20)
-      await Promise.all(Array.from({ length: 20 }, (_, index) => dmSay(ari, privateDm.id, `Prototype secret ${start + index + 1}`)));
+    await inBatches(300, (index) => say(ari, hiddenThread.id, `Prototype launch step ${index + 1}`));
+    await inBatches(100, (index) => thought(ari, hiddenSketch.id, `Prototype idea ${index + 1}`, index * 200));
+    await inBatches(60, (index) => dmSay(ari, privateDm.id, `Prototype secret ${index + 1}`));
     const hidden = await pool.query("SELECT count(*)::int AS n FROM search_documents WHERE workspace_id = $1 AND tsv @@ to_tsquery('simple', 'prototype')", [ws.id]);
     assert.ok(hidden.rows[0]!.n > 450, 'hundreds of matches the reader cannot see');
     await settle();
