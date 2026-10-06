@@ -46,7 +46,9 @@ trap cleanup EXIT HUP INT TERM
 
 step "Copy the working tree (tracked and new files, no .env) to $copy"
 mkdir -p "$copy"
-(cd "$here" && git ls-files -z --cached --others --exclude-standard | xargs -0 tar -cf - 2>/dev/null) | (cd "$copy" && tar -xf -)
+# One tar reading the names from stdin: xargs would split a long list into several archives.
+(cd "$here" && git ls-files -z --cached --others --exclude-standard | tar --null -T - -cf - 2>/dev/null) | (cd "$copy" && tar -xf -)
+[ -x "$copy/flux" ] || fail "the copy is incomplete"
 [ ! -e "$copy/docker/.env" ] || fail ".env was copied"
 cd "$copy"
 # The operator override: the test overlay's services, then the documented fifth slot's block.
