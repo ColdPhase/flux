@@ -137,8 +137,16 @@ live pool-full F
 step "5. Escape attempts from inside a slot"
 slot_cid=$(cid "$a_slot")
 other=runtime-2; [ "$a_slot" != runtime-2 ] || other=runtime-3
-# The address Docker would give the host on this bridge; slot networks inhibit it, so nothing answers.
-gateway=$(docker network inspect -f '{{ range .IPAM.Config }}{{ .Subnet }}{{ end }}' "${project}_$a_slot" | python3 -c 'import ipaddress,sys; print(next(ipaddress.ip_network(sys.stdin.read().strip()).hosts()))')
+# The host's own address on the project's default bridge: a slot must not reach the host there either.
+gateway=$(docker network inspect -f '{{ range .IPAM.Config }}{{ .Gateway }}{{ end }}' "${project}_default")
+# The slot networks give the host no address at all (com.docker.network.bridge.inhibit_ipv4).
+for slot in runtime-1 runtime-2 runtime-3 runtime-4 runtime-5; do
+  bridge="br-$(docker network inspect -f '{{ .Id }}' "${project}_$slot" | cut -c1-12)"
+  [ -z "$(ip -4 -o addr show "$bridge" 2>/dev/null)" ] || fail "the host has an address on $slot's bridge: $(ip -4 -o addr show "$bridge")"
+done
+# Control: the project's default bridge does carry a host address.
+[ -n "$(ip -4 -o addr show "br-$(docker network inspect -f '{{ .Id }}' "${project}_default" | cut -c1-12)")" ] || fail "control: no host address on the default bridge"
+printf 'no host address on any slot bridge\n'
 docker exec -i -u 1000:1000 \
   -e FLUX_PROBE_DB="$(ip_on "$(compose ps -q db)" default)" \
   -e FLUX_PROBE_API_DEFAULT="$(ip_on "$(compose ps -q api)" default)" \

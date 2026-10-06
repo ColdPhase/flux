@@ -56,8 +56,8 @@ const targets = [
   ['the extra slot', env.FLUX_PROBE_EXTRA_SLOT, 7700],
   ['the cloud metadata address', '169.254.169.254', 80],
   ['the internet without the proxy', '1.1.1.1', 443],
-  ['the host through the bridge address', env.FLUX_PROBE_GATEWAY, 22],
-  ['the Docker API through the bridge address', env.FLUX_PROBE_GATEWAY, 2375],
+  ['the host on its default-bridge address', env.FLUX_PROBE_GATEWAY, 22],
+  ['the Docker API on the host', env.FLUX_PROBE_GATEWAY, 2375],
 ];
 for (const [name, host, port] of targets) {
   if (!host) { record(`${name}: target known`, false, 'missing'); continue; }
