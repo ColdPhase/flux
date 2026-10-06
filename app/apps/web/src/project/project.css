@@ -94,12 +94,13 @@ button.top__goal:hover { background: var(--bg-hover); color: var(--text); }
 @media (pointer: coarse) {
   .ov-row { min-height: 44px; }
   .top__audience { position: relative; min-height: 32px; }
-  /* A 44 px touch target without growing the 52 px header (#266 review item 13): the hit area extends past the line,
-     to 44 px whatever the line's height. */
-  .top__audience::after { content: ""; position: absolute; inset: min(-2px, calc(50% - 22px)) -2px; }
-  /* The line under the title clips what overflows it, hit areas too: on touch its clip box reaches as far as they
-     do, and only its controls take a tap, so the title above keeps its own. */
-  .top__meta { margin: -11px -4px; padding: 11px 4px; pointer-events: none; }
+  /* A 44 px touch target without growing the header (#266 review item 13): the hit area reaches up from the line
+     into the title row, which takes no tap, and never down into the row under the header (the state line, the
+     tabs), which has its own and would cover it. */
+  .top__audience::after { content: ""; position: absolute; left: -2px; right: -2px; bottom: 0; height: max(44px, 100%); }
+  /* The line under the title clips what overflows it, hit areas too: on touch its clip box reaches up as far as
+     they do, and only its controls take a tap. */
+  .top__meta { margin: -24px -4px -4px; padding: 24px 4px 4px; pointer-events: none; }
   .top__meta > * { pointer-events: auto; }
 }
 
@@ -125,7 +126,7 @@ button.top__goal:hover { background: var(--bg-hover); color: var(--text); }
 /* Touch (HIG-14): the goal and "Add a goal" are 44 px targets, and the goal field is a 44 px, 16 px field that
    iOS does not zoom into. On a phone, editing takes the whole line under the title. */
 @media (pointer: coarse) {
-  button.top__goal::after { content: ""; position: absolute; inset: min(-2px, calc(50% - 22px)) -4px; }
+  button.top__goal::after { content: ""; position: absolute; left: -4px; right: -4px; bottom: 0; height: max(44px, 100%); }
   .top__goal-input { height: 44px; font-size: 1rem; }
 }
 @media (max-width: 680px) {
