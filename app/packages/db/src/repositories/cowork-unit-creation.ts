@@ -3,6 +3,7 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { CoWorkTaskLockInput } from './cowork.js';
 import type { DbExecutor } from './push.js';
+import { taskUseRows } from './task-use.js';
 
 // Authorized unit creation (#153). Storage only: the server composition has already run #152 preparation
 // (current bearer/runtime/grant/command ledger) in this same outer transaction. No grant, receipt, request
@@ -59,10 +60,8 @@ export function coworkUnitCreationRows(tx: DbExecutor) {
         inputs.push({ id: parent.id, taskId: parent.taskId, projectId: parent.projectId, lineageTaskId: parent.lineageTaskId });
       const additional = await prepareTasks(inputs);
       const taskIds = [...new Set([...inputs.flatMap((input) => [input.taskId, input.lineageTaskId]), ...additional])].sort();
-      const tasks = await tx.select({ id: schema.projectWorkItems.id }).from(schema.projectWorkItems)
-        .where(and(eq(schema.projectWorkItems.workspaceId, scope.workspaceId), inArray(schema.projectWorkItems.id, taskIds)))
-        .orderBy(asc(schema.projectWorkItems.id)).for('update');
-      if (tasks.length !== taskIds.length) throw new Error('The complete native task lock set is unavailable');
+      // #238: the one sorted task pass is the shared use fence; it refuses a missing or creation-undone task.
+      const taskFence = await taskUseRows(tx).lockPrepared(taskIds);
       const [lockedParent] = parent ? await tx.select().from(units).where(and(inProject(scope), eq(units.id, parent.id),
         eq(units.assignmentConnectionId, scope.creatorConnectionId))).for('update') : [];
       const [task] = await tx.select({ id: schema.projectWorkItems.id, version: schema.projectWorkItems.version,
@@ -91,7 +90,7 @@ export function coworkUnitCreationRows(tx: DbExecutor) {
         assignee: assignee && !assignee.revokedAt && assignee.scopes.includes('flux.action.execute') && selected
           ? { id: assignee.id, ownerUserId: assignee.ownerUserId } : null,
         existing: existing ? unit(existing) : null,
-        runUnits, openTaskUnits, now: time!.now,
+        runUnits, openTaskUnits, now: time!.now, taskFence,
       };
     },
     /** Insert under the retained locks; null only if the exact intent appeared without them (caller refuses). */

@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { and, desc, eq, sql, type SQL } from 'drizzle-orm';
 import * as schema from '../schema.js';
+import { TaskUseRefusal, type TaskUseFence } from './task-use.js';
+import { prepareReferencedTaskUse, referencedTaskIds } from './task-targets.js';
 import type { DbExecutor } from './push.js';
 
 /**
@@ -64,6 +66,16 @@ export function docRows(db: DbExecutor) {
     return row ? map([row])[0]! : null;
   }
 
+
+  const previousMentions = (docId: string) => db.select({ type: l.toType, id: l.toId }).from(l)
+    .where(and(eq(l.fromId, docId), eq(l.fromType, 'doc'), eq(l.role, 'mentions')));
+
+  /** #238: the previous and the new mention targets must already be inside the retained task fence. */
+  async function assertTaskUse(docId: string, refs: readonly Ref[], retained: Pick<TaskUseFence, 'ids'>) {
+    const actual = await referencedTaskIds(db, [...await previousMentions(docId), ...refs]);
+    const held = new Set(retained.ids);
+    if (actual.some((id) => !held.has(id))) throw new TaskUseRefusal('TASK_TARGET_SET_CHANGED');
+  }
   return {
     async locate(id: string) {
       const [row] = await db.select({ projectId: m.projectId }).from(m).where(and(eq(m.id, id), eq(m.kind, 'doc')));
@@ -105,13 +117,24 @@ export function docRows(db: DbExecutor) {
       return (await find(id))!;
     },
 
-    async replaceMentions(scope: { workspaceId: string; projectId: string }, docId: string, targets: Ref[], by: Actor) {
+    /** Graph locks, then one sorted task pass over the previous mentions and these references; no link changes yet. */
+    async prepareTaskUse(scope: { workspaceId: string; projectId: string }, docId: string, refs: readonly Ref[]) {
+      return prepareReferencedTaskUse(db, scope.projectId, [...await previousMentions(docId), ...refs]);
+    },
+
+    assertTaskUse,
+
+    async replaceMentions(scope: { workspaceId: string; projectId: string }, docId: string, targets: Ref[], by: Actor, retained?: Pick<TaskUseFence, 'ids' | 'mark'>) {
+      // The doc row is already retained by the caller. Removed targets are part of the fence, so a later removal
+      // cannot erase the evidence of use; the final saved targets are checked against it without a late lock.
+      const fence = retained ?? await prepareReferencedTaskUse(db, scope.projectId, [...await previousMentions(docId), ...targets]);
+      await assertTaskUse(docId, targets, fence);
       await db.delete(l).where(and(eq(l.fromId, docId), eq(l.fromType, 'doc'), eq(l.role, 'mentions')));
-      if (!targets.length) return;
-      await db.insert(l).values(targets.map((to) => ({
+      if (targets.length) await db.insert(l).values(targets.map((to) => ({
         id: randomUUID(), workspaceId: scope.workspaceId, projectId: scope.projectId, role: 'mentions' as const, fromType: 'doc' as const, fromId: docId,
         toType: to.type, toId: to.id, toVersion: to.type === 'material' ? to.version : null, createdByKind: by.kind, createdById: by.id,
       }))).onConflictDoNothing();
+      await fence.mark();
     },
   };
 }

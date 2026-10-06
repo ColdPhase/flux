@@ -2,6 +2,7 @@ import type { FastifyError, FastifyInstance } from 'fastify';
 import type { ConversationRootQuery, ConversationWindowQuery, CreateMaterialCommand, PageQuery, SendMessageCommand, UpdateMaterialCommand } from '@flux/contracts';
 import { conversationUseCases, DomainError, InvalidInputError, type Database, type FileStorage } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
+import { taskUseDomainError } from '../work/task-use-errors.js';
 import { conversationStore } from './store.js';
 
 interface Options { db: Database; sessions: SessionResolver; storage: FileStorage }
@@ -36,6 +37,7 @@ export async function conversationRoutes(app: FastifyInstance, { db, sessions, s
   const store = conversationUseCases(conversationStore(db, { storage }));
   const principal = async (request: Parameters<SessionResolver['requirePrincipal']>[0]) => (await sessions.requirePrincipal(request)).principal;
   app.setErrorHandler((error: FastifyError | DomainError, _request, reply) => {
+    error = taskUseDomainError(error) as typeof error;
     if (error instanceof DomainError) return reply.code(error.status).send({ error: error.message, code: error.code });
     if ((error as FastifyError).statusCode === 401)
       return reply.code(401).send({ error: 'Authentication required', code: 'UNAUTHENTICATED' });
