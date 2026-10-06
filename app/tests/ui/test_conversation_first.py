@@ -233,8 +233,7 @@ class ConversationFirstJourney(unittest.TestCase):
         expect(page.locator("#thread")).to_have_count(0)
         expect(opener).to_be_focused()
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}$"))
-        # Reopened with a click: right after the emulated drags a tap is sometimes delivered without its click in this
-        # harness (a probe tapping the same button after the same drags reopened it 3 times out of 3).
+        # Reopening at once works: the thread is no longer "closing" even if the way back is still loading.
         opener.click()
         expect(page.locator("#thread")).to_be_visible()
         expect(page).to_have_url(re.compile(r"/conversations/"))

@@ -115,6 +115,9 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   const opener = useRef<string | null>(null);
   const open = useCallback((item: ConversationRoot, reply: boolean) => {
     opener.current = item.message.id;
+    // Reopened before its closing has finished (the way back still loading): it is not closing any more, or it
+    // would stay hidden although its address is open again (#296).
+    if (closing === item.conversationId) setClosing(null);
     if (thread && item.conversationId === thread.id) {
       document.getElementById(reply && writable ? 'thread-composer' : 'thread')?.focus();
       return;
@@ -123,7 +126,7 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
     const backToStream = thread ? state?.backToStream === true : true;
     navigate(`/projects/${project.id}/conversations/${item.conversationId}`,
       { state: { fromStream: true, backToStream, focusComposer: reply } satisfies NavState, replace: !!thread && backToStream });
-  }, [navigate, project.id, state?.backToStream, thread, writable]);
+  }, [navigate, project.id, state?.backToStream, thread, writable, closing]);
   const close = useCallback(() => {
     if (!thread) return;
     if (!opener.current) opener.current = root?.message.id ?? null;
