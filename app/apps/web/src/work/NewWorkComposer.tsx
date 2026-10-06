@@ -6,7 +6,8 @@ import { Button } from '../ui';
 import { createWork } from './api';
 
 /** Private account/project draft; editing this component does not reconcile the task list. */
-export function NewWorkComposer({ userId, projectId }: { userId: string; projectId: string }) {
+/** `folded`: shown only once asked for ("+" on a phone, #318) or while it holds a draft, a pending add or an error. */
+export function NewWorkComposer({ userId, projectId, folded = false }: { userId: string; projectId: string; folded?: boolean }) {
   const draft = useDraft(userId, `project-work:${projectId}`);
   // An uncertain native response can be retried after source/back or reload with the same key.
   const pending = useDraft(userId, `project-work:${projectId}:pending`);
@@ -46,6 +47,7 @@ export function NewWorkComposer({ userId, projectId }: { userId: string; project
     } finally { if (mounted.current) setBusy(false); }
   }
 
+  if (folded && !draft.text && !busy && !error) return null;
   return <>
     <form className="ws-add" onSubmit={(event) => void add(event)}>
       <label className="ui-vh" htmlFor="ws-add">New task</label>

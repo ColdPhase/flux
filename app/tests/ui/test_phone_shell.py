@@ -195,7 +195,8 @@ class PhoneShellJourney(unittest.TestCase):
             expect(button).to_be_visible()
             size = self.box(button)
             self.assertGreaterEqual(min(size["width"], size["height"]), 44, name)
-        expect(header.get_by_role("button", name="Details", exact=True)).to_have_text("Details")
+        # Inside a project it is the round "…" (F-025 PA-9), still named Details.
+        expect(header.locator(".top__more")).to_have_accessible_name("Details")
         state = page.locator(".state-row")
         expect(state).to_be_visible()
         self.assertLessEqual(self.box(state)["height"], 45, "one 44px state line")

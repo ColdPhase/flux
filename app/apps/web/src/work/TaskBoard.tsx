@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Link, useRevalidator } from 'react-router';
 import type { ObjectLink, Project, ProjectWorkView, WorkGroup, WorkItem, WorkRelations, WorkRowProjection, WorkStatus } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
-import { Button, Icon, IconButton, initials, type IconName } from '../ui';
+import { Button, Icon, IconButton, MEDIA, initials, useMediaQuery, type IconName } from '../ui';
 import { createWork, updateWork } from './api';
 import { isFinished } from './format';
 import { getProjectWorkView, getWorkRelations, workRelationReadUrl, workViewReadUrl } from './read-api';
@@ -299,6 +299,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
   const [notice, setNotice] = useState<Notice | null>(null);
   const [spoken, setSpoken] = useState('');
   const [arrived, setArrived] = useState<string | null>(null);
+  const phone = useMediaQuery(MEDIA.phone);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [picked, setPicked] = useState<ColumnId | null>(null);
   const [dragging, setDragging] = useState<{ id: string; title: string; width: number; x: number; y: number } | null>(null);
@@ -651,7 +652,15 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
               <div className={`tb-col__cards${highlight === column.id ? ' is-over' : ''}`}>
                 {adding === column.id ? (
                   <NewTask key={column.id} projectId={project.id} column={column} onCancel={dismissAdding}
-                    onDone={(item) => { onAdding(null); refresh(); openWork(item.id); }} />
+                    onDone={(item) => {
+                      onAdding(null); refresh();
+                      // On a phone the person stays on the board, where the new card arrives (#318, F-025 PA-10).
+                      if (!phone) { openWork(item.id); return; }
+                      window.clearTimeout(timers.current.arrived);
+                      setArrived(item.id);
+                      timers.current.arrived = window.setTimeout(() => setArrived(null), 1200);
+                      show({ tone: 'ok', text: `Added “${item.title}” to ${column.label}.` });
+                    }} />
                 ) : null}
                 {list.length ? (
                   <ol className="tb-col__list">

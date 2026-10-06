@@ -526,3 +526,4 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 .pv-item__n { flex: none; font-size: var(--fs-sm); color: var(--text-3); }
 .pv-item.is-need .pv-item__n { color: var(--accent-selected-text); font-weight: 600; }
 .pv-item__on { flex: none; color: var(--text); }
+.top__more.ui-icon-btn { width: 44px; height: 44px; border-radius: 50%; background: var(--bg-side); }

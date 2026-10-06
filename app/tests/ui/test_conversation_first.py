@@ -1,7 +1,7 @@
 """Phone conversation first (#296, HIG findings 2/3/7/12/14 on #264, F-023 FF-10).
 
-On a phone the conversation gets the room: reading back through the stream, the view chips and the state line
-step aside and come back toward the newest; the thread sheet has a grabber and closes on a drag down or Escape;
+On a phone the conversation gets the room: reading back through the stream, the state line steps aside and comes
+back toward the newest (the project's views are in its title, #318); the thread sheet has a grabber and closes on a drag down or Escape;
 search is one tap away from every top-level place; and the stream never opens on a blank gap above the message
 box. Real sign-up through the UI, data through the API, Chromium through Playwright with touch emulation.
 """
@@ -94,7 +94,7 @@ class ConversationFirstJourney(unittest.TestCase):
         page.goto(f"/projects/{self.ids['project']}")
         expect(page.locator(".project-convo__feed.is-stream")).to_be_visible()
         expect(page.locator(".project-convo__feed.is-opening")).to_have_count(0)
-        expect(page.get_by_role("navigation", name="Project views")).to_be_visible()
+        expect(page.locator("header.top h1")).to_be_visible()
 
     def wheel(self, page, dy):
         feed = self.box(page.locator(".project-convo__feed.is-stream"))
@@ -136,54 +136,54 @@ class ConversationFirstJourney(unittest.TestCase):
 
     # ------------------------------------------------------------------ finding 3: the conversation gets the room
 
-    def test_02_reading_back_the_chips_and_state_line_step_aside(self):
+    def test_02_reading_back_the_state_line_steps_aside(self):
+        # The project's views are in its title on a phone (#318), so only the state line stands between the
+        # header and the stream; reading back, it steps aside.
         page = self.page(SE)
         self.open_project(page)
-        chips = page.get_by_role("navigation", name="Project views")
+        expect(page.get_by_role("navigation", name="Project views")).to_have_count(0)
         state = page.locator(".state-row")
         expect(state).to_be_visible()
         before = self.box(page.locator(".project-convo__feed.is-stream"))["height"]
         self.wheel(page, -400)
-        expect(chips).to_be_hidden()
         expect(state).to_be_hidden()
         page.wait_for_timeout(300)
-        self.assertGreater(self.box(page.locator(".project-convo__feed.is-stream"))["height"], before + 60, "the stream takes the room")
+        self.assertGreater(self.box(page.locator(".project-convo__feed.is-stream"))["height"], before + 30, "the stream takes the room")
         shot(page, "296-reading-back-phone-375")
-        # Toward the newest they come back; the bottom bar of places stays throughout.
+        # Toward the newest it comes back; the header with its title and the bottom bar of places stay throughout.
+        expect(page.locator("header.top .top__switch")).to_be_visible()
         expect(page.get_by_role("navigation", name="Main places")).to_be_visible()
         self.wheel(page, 150)
-        expect(chips).to_be_visible()
         expect(state).to_be_visible()
-        # Reading back again, then reaching the newest, brings them back too.
+        # Reading back again, then reaching the newest, brings it back too.
         self.wheel(page, -400)
-        expect(chips).to_be_hidden()
+        expect(state).to_be_hidden()
         page.locator(".project-convo__feed.is-stream").evaluate("(feed) => feed.scrollTo(0, feed.scrollHeight)")
         self.wheel(page, 60)
-        expect(chips).to_be_visible()
-        # Another view starts with its chips in view.
+        expect(state).to_be_visible()
+        # Another visit starts with it in view.
         self.wheel(page, -400)
-        expect(chips).to_be_hidden()
+        expect(state).to_be_hidden()
         page.get_by_role("navigation", name="Main places").get_by_role("link", name=re.compile("^Home")).tap()
         page.go_back()
-        expect(chips).to_be_visible()
+        expect(state).to_be_visible()
 
-    def test_03_under_reduced_motion_the_chips_stay(self):
+    def test_03_under_reduced_motion_the_state_line_stays(self):
         page = self.page(SE, reduced=True)
         self.open_project(page)
         self.wheel(page, -400)
         page.wait_for_timeout(200)
-        expect(page.get_by_role("navigation", name="Project views")).to_be_visible()
         expect(page.locator(".state-row")).to_be_visible()
 
-    def test_04_the_stream_writes_alone_never_hide_the_chips(self):
-        # Opening, settling and new arrivals scroll the stream without the person: the chips stay.
+    def test_04_the_stream_writes_alone_never_hide_the_state_line(self):
+        # Opening, settling and new arrivals scroll the stream without the person: the state line stays.
         page = self.page(SE)
         self.open_project(page)
         page.wait_for_timeout(1200)
-        expect(page.get_by_role("navigation", name="Project views")).to_be_visible()
+        expect(page.locator(".state-row")).to_be_visible()
         page.locator(".project-convo__feed.is-stream").evaluate("(feed) => { feed.scrollTop = 0; }")
         page.wait_for_timeout(300)
-        expect(page.get_by_role("navigation", name="Project views")).to_be_visible()
+        expect(page.locator(".state-row")).to_be_visible()
 
     # ------------------------------------------------------------------ finding 14: no blank gap above the message box
 
@@ -218,8 +218,8 @@ class ConversationFirstJourney(unittest.TestCase):
         expect(thread).to_have_class(re.compile(r"\bthread--sheet\b"))
         grabber = thread.locator(".thread__grabber")
         expect(grabber).to_be_visible()
-        # The project's views and "What matters" stay reachable while a thread is open.
-        expect(page.get_by_role("navigation", name="Project views")).to_be_visible()
+        # The project's views stay reachable from its title while a thread is open.
+        expect(page.locator("header.top .top__switch")).to_be_visible()
         shot(page, "296-thread-sheet-phone-390")
         # A short drag settles back; a long one closes it.
         head = self.box(thread.locator(".thread__head"))

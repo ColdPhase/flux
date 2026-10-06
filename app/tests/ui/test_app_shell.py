@@ -102,6 +102,17 @@ def thread_of(page: Page):
     return page.get_by_role("complementary", name="Replies")
 
 
+def project_view(page: Page, name: str) -> None:
+    """Switch a project's view by name: its tabs beside the sheet, or on a phone the views sheet behind its title (#318)."""
+    switch = page.locator("header.top .top__switch")
+    if switch.count() and switch.is_visible():
+        switch.click()
+        page.get_by_role("dialog", name="Views").get_by_role("link", name=re.compile(f"^{name}")).click()
+        expect(page.get_by_role("dialog", name="Views")).to_have_count(0)
+    else:
+        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile(f"^{name}")).click()
+
+
 def shot(page: Page, name: str) -> None:
     if not SHOTS:
         return

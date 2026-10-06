@@ -213,6 +213,7 @@ export function ProjectTasks() {
   // On a phone Tasks has one row, the status (#318, F-025 PA-10): search and "+" sit in the header.
   const phone = useMediaQuery(MEDIA.phone);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [listAdding, setListAdding] = useState(false);
   const phoneSearchId = useId();
   const revalidator = useRevalidator();
   const [search] = useSearchParams();
@@ -348,8 +349,9 @@ export function ProjectTasks() {
   const refreshBoard = () => { refreshPage(); setBoardRevision((current) => current + 1); };
   // "+ Task" starts the same creation: the List's field, or a field at the top of the board's Open column.
   const startNew = () => {
-    if (mode === 'list') document.getElementById('ws-add')?.focus();
-    else setAdding('open');
+    if (mode !== 'list') { setAdding('open'); return; }
+    setListAdding(true);
+    requestAnimationFrame(() => document.getElementById('ws-add')?.focus());
   };
 
   useEffect(() => {
@@ -402,7 +404,10 @@ export function ProjectTasks() {
   const openSearch = () => { setSearchOpen(true); requestAnimationFrame(() => document.getElementById(phoneSearchId)?.focus()); };
   const closeSearch = () => { setSearchOpen(false); setBoardSearch(''); if (mine) setView({ mine: false }); };
   const headerActions = phone && actionSlot ? createPortal(<>
-    {mode === 'board' ? <IconButton icon="search" label="Search tasks" className="tb-hd" aria-expanded={searching} onClick={openSearch} /> : null}
+    {/* The List (decisions, parked work, one status) is reached from the board and the views sheet; from it the
+        header leads back to the board, so the phone needs no Kanban | List switch. */}
+    {mode === 'board' ? <IconButton icon="search" label="Search tasks" className="tb-hd" aria-expanded={searching} onClick={openSearch} />
+      : <IconButton icon="board" label="Show the board" className="tb-hd" onClick={() => setView({ mode: 'board', status: null })} />}
     {writable ? <IconButton icon="plus" label="New task" className="tb-hd tb-hd--add" onClick={startNew} /> : null}
   </>, actionSlot) : null;
 
@@ -442,7 +447,7 @@ export function ProjectTasks() {
         </div>
       ) : (
       <div className="pane-in ws-tasks" data-shift data-work-observed-at={data?.summary.observedAt}>
-        {writable ? <NewWorkComposer key={`${me.user.id}:${project.id}`} userId={me.user.id} projectId={project.id} /> : null}
+        {writable ? <NewWorkComposer key={`${me.user.id}:${project.id}`} userId={me.user.id} projectId={project.id} folded={phone && !listAdding} /> : null}
         {proposals}
         <div className="ws-task-controls">
           <TaskViews counts={counts} status={status} mine={mine} writable={writable} onStatus={(next) => setView({ status: next })} onMine={(next) => setView({ mine: next })} />

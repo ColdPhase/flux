@@ -585,7 +585,11 @@ function AppLayoutContent() {
             {activeProject ? <LiveEntry /> : null}
             {/* The inbox and its settings have nothing to show in Details. */}
             {/* Labelled on every size (#264: icons alone left people unsure what to tap). */}
-            {'noDetails' in place ? null : <Button ref={detailsButtonRef} variant="quiet" icon="panel" className="top__details" aria-expanded={detailsOpen && !recapOpen}
+            {/* Inside a project on a phone it is the round "…" (F-025 PA-9), still named Details. */}
+            {'noDetails' in place ? null : phone && activeProject ? <IconButton ref={detailsButtonRef} icon="more" label="Details" size={18} className="top__details top__more"
+              aria-expanded={detailsOpen && !recapOpen} aria-controls={detailsOpen ? 'details' : undefined} aria-keyshortcuts="]"
+              onClick={() => { setDetailsView('place'); if (!recapOpen) toggleDetails(); }} />
+              : <Button ref={detailsButtonRef} variant="quiet" icon="panel" className="top__details" aria-expanded={detailsOpen && !recapOpen}
               aria-controls={detailsOpen ? 'details' : undefined} aria-keyshortcuts="]" data-tip={'Toggle details   ]'}
               onClick={() => { setDetailsView('place'); if (!recapOpen) toggleDetails(); }}>
               Details
