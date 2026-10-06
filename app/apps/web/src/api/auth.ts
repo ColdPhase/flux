@@ -25,6 +25,17 @@ export function signIn(input: { email: string; password: string; oauth_query?: s
   return request<unknown>(`${AUTH_BASE_PATH}/sign-in/email`, { method: 'POST', body: { ...input, rememberMe: true } });
 }
 
+/**
+ * Starts the operator's single sign-on (#113). The identity provider returns to `next` on success
+ * and to the sign-in page with `sso=failed` otherwise; the browser follows the returned address.
+ */
+export function startSso(providerId: string, next: string) {
+  return request<{ url: string }>(`${AUTH_BASE_PATH}/sign-in/social`, {
+    method: 'POST',
+    body: { provider: providerId, callbackURL: next, errorCallbackURL: '/sign-in?sso=failed', newUserCallbackURL: next, disableRedirect: true },
+  });
+}
+
 /** The mailed link returns to `${origin}/reset-password?token=…` (or `?error=INVALID_TOKEN`). */
 export function requestPasswordReset(email: string) {
   return request<unknown>(`${AUTH_BASE_PATH}/request-password-reset`, {

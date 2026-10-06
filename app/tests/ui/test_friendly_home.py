@@ -616,5 +616,21 @@ class FriendlyHomeJourney(unittest.TestCase):
                 if viewport["width"] == 375: shot(phone, "272-conversation-phone-375")
 
 
+    def test_13_on_a_tablet_the_project_header_stays_one_line(self):
+        # The header's second line (audience, goal, state) stays one line at tablet widths (#136: at most 90 px);
+        # a narrow state line once broke after every letter and grew the header a screen tall.
+        for viewport in ({"width": 768, "height": 1024}, {"width": 1024, "height": 768}):
+            with self.subTest(width=viewport["width"]):
+                page = self.page(viewport)
+                page.goto(f"/projects/{self.project['id']}")
+                header = page.locator("header.top")
+                expect(header.get_by_role("heading", level=1)).to_be_visible()
+                expect(header.get_by_label("Current state")).to_be_visible()
+                self.assertLessEqual(self.box(header)["height"], 90, "the header stays compact")
+                tallest = page.evaluate("() => Math.max(...[...document.querySelectorAll('header.top .ws-seg span')].map((el) => el.getBoundingClientRect().height))")
+                self.assertLessEqual(tallest, 24, "each part of the state line is one line")
+                self.assertGreaterEqual(self.box(header.get_by_label("Current state"))["width"], 120, "the state keeps room before the goal does")
+
+
 if __name__ == "__main__":
     unittest.main()
