@@ -619,7 +619,10 @@ writes, immutable journal, retained thought versions/link epochs, cleared gestur
 leases, original intent receipt and identifier-only NOTIFY commit together;
 ordinary identifier events are flushed after native/coordination writes. Separate
 API replicas re-read the journal immediately on transactional NOTIFY; periodic
-catch-up is recovery only. Each protected callback hands off at most one frame.
+catch-up is recovery only. Each protected callback hands off at most one ordered
+delta or chunk; a map callback also hands off every transient frame (cleared lease,
+preview, presence) its read observed, under the same held fence and output window
+(2026-10-06, below).
 
 The source bounds each room to 32 expiring gestures and 32 presence leases,
 and each category to 2048 across the database. A producer reaches a truthful
@@ -644,3 +647,30 @@ rebase. Exact original inverse UUID retry reads its stored receipt. Journal inpu
 is counted and size-checked before SQL result allocation; the complete preparation
 remains under the shared reservation. Required rollback/retry/conflict/ABA cases
 and actual reader/drag/full-path two-API measurements remain unverified.
+
+### Map delivery cost (2026-10-06, #239 latency work)
+
+The 2026-10-04 diagnostic on `2e179041` spent p50 57 ms between a preview's
+publication and the peer's receipt. Each preview took one movement transaction and,
+per connection, two confirmed reads (one per transient frame, then a read that found
+nothing), and every confirmed read charged the 24 MiB worst case of a delta, so the
+shared 32 MiB budget admitted one read at a time across the whole API. Two changes,
+with the common cap, FIFO, deadlines and per-room row limits unchanged:
+
+- A confirmed read first charges 2 MiB. Under its session, policy and room locks,
+  before loading rows, it counts what it would load (a pending delta; current
+  previews, their positions and presence; actor name bytes). The conservative
+  object/UTF-16 charge of such a read without a delta is at most
+  `8192 + 4096·previews + 1200·positions + 8192·presence + 4·name bytes`
+  (`transientCharge`, checked against the actual charge of the largest shapes in
+  `live-map-preparation.test.ts`). A delta, or a larger count, grows the charge to
+  the 24 MiB worst case when the budget has room and nobody waits; otherwise the read
+  rolls back and is admitted again through the FIFO with the worst case charged.
+  Nothing larger than its charge is loaded first.
+- A map read hands off all transient frames it observed (cleared leases first,
+  then changed previews and presence) instead of one per read. A full output window
+  ends the read and the 250 ms timer retries, as before; a later change arrives as a
+  new read through its NOTIFY.
+
+The browser sends the first preview after 40 ms without one at once, and later
+ones at most every 40 ms as before.

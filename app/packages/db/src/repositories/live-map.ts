@@ -118,6 +118,18 @@ export function liveMapRows<Change extends Record<string,unknown>>(db:DbExecutor
         .innerJoin(schema.authSessions,and(eq(schema.authSessions.id,g.sessionId),gt(schema.authSessions.expiresAt,sql`clock_timestamp()`)))
         .where(and(eq(g.sketchId,sketchId),eq(g.generation,generation),gt(g.expiresAt,sql`clock_timestamp()`))).orderBy(asc(g.leaseId)).limit(32);
     },
+    /** Counts what a confirmed read would load (current rows, positions, actor name bytes), before loading it. */
+    async deliveryNeed(sketchId:string,generation:string) {
+      const result=await db.execute<{gestures:number;positions:number;presence:number;nameBytes:number}>(sql`
+        WITH moves AS (SELECT actor_id,positions FROM map_live_gestures WHERE sketch_id=${sketchId} AND generation=${generation} AND expires_at>clock_timestamp()),
+        people AS (SELECT actor_id FROM map_live_presence WHERE sketch_id=${sketchId} AND generation=${generation} AND expires_at>clock_timestamp())
+        SELECT (SELECT count(*)::int FROM moves) AS gestures,
+          (SELECT COALESCE(sum(jsonb_array_length(positions)),0)::int FROM moves) AS positions,
+          (SELECT count(*)::int FROM people) AS presence,
+          (SELECT COALESCE(sum(octet_length(u.name)),0)::int FROM (SELECT actor_id FROM moves UNION ALL SELECT actor_id FROM people) x JOIN auth_users u ON u.id=x.actor_id) AS "nameBytes"`);
+      const row=result.rows[0]!;
+      return {gestures:Number(row.gestures),positions:Number(row.positions),presence:Number(row.presence),nameBytes:Number(row.nameBytes)};
+    },
     async gesture(leaseId:string) { const [row]=await db.select().from(g).where(eq(g.leaseId,leaseId)).for('update');return row??null; },
     async capacity(kind:'gesture'|'presence',sketchId:string) {
       await db.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${'flux.map.'+kind+'.capacity'},0))`);

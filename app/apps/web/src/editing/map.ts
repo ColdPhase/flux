@@ -20,6 +20,7 @@ export class SharedMap {
   private abort = new AbortController();
   private timer: number;
   private previewTimer: number | null = null;
+  private lastPreviewSentAt = -Infinity;
   private reconnectTimer: number | null = null;
   private selected: string[] = [];
   private leaving = () => this.cancel(true);
@@ -139,15 +140,20 @@ export class SharedMap {
     if (!gesture?.active || positions.length !== gesture.base.size || positions.some((position) => !gesture.base.has(position.id))) return;
     gesture.latest = positions; gesture.lastPositions = positions.map((position) => ({ ...position })); gesture.sequence++; this.schedulePreview(); this.changed();
   }
+  /** At most one preview per 40 ms; the first movement after a quiet interval goes out at once. */
   private schedulePreview() {
     if (this.previewTimer !== null) return;
-    this.previewTimer = window.setTimeout(() => {
-      this.previewTimer = null;
-      const gesture = this.gesture;
-      if (!gesture?.active || !gesture.serverLease || !gesture.latest) return;
-      if (this.connection?.send({ type: 'map-move', generation: gesture.serverLease.generation, gestureId: gesture.id, leaseId: gesture.serverLease.leaseId, sequence: gesture.sequence, positions: gesture.latest })) gesture.lastPreviewAt = Date.now();
-      gesture.latest = null;
-    }, 40);
+    const wait = Math.max(0, this.lastPreviewSentAt + 40 - performance.now());
+    if (!wait) { this.sendPreview(); return; }
+    this.previewTimer = window.setTimeout(() => { this.previewTimer = null; this.sendPreview(); }, wait);
+  }
+  private sendPreview() {
+    const gesture = this.gesture;
+    if (!gesture?.active || !gesture.serverLease || !gesture.latest) return;
+    if (this.connection?.send({ type: 'map-move', generation: gesture.serverLease.generation, gestureId: gesture.id, leaseId: gesture.serverLease.leaseId, sequence: gesture.sequence, positions: gesture.latest })) {
+      gesture.lastPreviewAt = Date.now(); this.lastPreviewSentAt = performance.now();
+    }
+    gesture.latest = null;
   }
   finish() {
     const gesture = this.gesture;

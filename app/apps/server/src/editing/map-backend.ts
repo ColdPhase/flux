@@ -125,7 +125,11 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
     deliver(who,sketchId,generation,afterSequence,handoff,options={}){return run(who,sketchId,false,async c=>{
       if(id(generation)!==c.room.generation)throw new ConflictError('The map generation changed','EDITING_GENERATION_CHANGED');
       const after=sequence(afterSequence);if(after>c.room.sequence)throw new ConflictError('The confirmed map sequence has a gap','EDITING_SEQUENCE_GAP');
-      const rows=liveMapRows(c.db,decodeMapChange);const record=options.includeDelta===false?null:await rows.after(sketchId,generation,after);
+      const rows=liveMapRows(c.db,decodeMapChange);
+      // Room and policy locks are held: no other transaction changes these rows before they load.
+      if(options.prepare){const need=await rows.deliveryNeed(sketchId,generation);
+        options.prepare({...need,delta:options.includeDelta!==false&&after<c.room.sequence,nameBytes:need.nameBytes+Buffer.byteLength(c.actor.name)});}
+      const record=options.includeDelta===false?null:await rows.after(sketchId,generation,after);
       if(options.includeDelta!==false&&after<c.room.sequence&&record?.sequence!==after+1)throw new ConflictError('The confirmed map sequence has a gap','EDITING_SEQUENCE_GAP');
       const transient:MapTransient[]=[];const access=policySketchAccess(c.db);
       for(const {lease:current,name} of await rows.gestures(sketchId,generation)) {

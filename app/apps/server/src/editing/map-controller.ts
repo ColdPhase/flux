@@ -103,12 +103,12 @@ export function mapController(authority: MapAuthority, outputBudget: EditingOutp
               () => { c.sequence = sequence; void catchup(c); });
             c.pendingRead = c.output.canPump; return;
           }
+          // Every transient change this protected read observed goes out from it: cleared leases
+          // first, then changed previews and presence. A later change arrives as a new read (its
+          // NOTIFY, or the 250 ms timer); a full output window ends this read and the timer retries.
           const active = new Set(result.transient.map(transientKey));
-          for (const key of c.transient.keys()) if (!active.has(key)) {
-            if (key.startsWith('lease:')) {
-              c.output.sendJSON({ type: 'map-clear', generation: result.generation, leaseId: key.slice(6) });
-              c.transient.get(key)!.release(); c.transient.delete(key); c.pendingRead = true; return;
-            }
+          for (const key of [...c.transient.keys()]) if (!active.has(key)) {
+            if (key.startsWith('lease:')) c.output.sendJSON({ type: 'map-clear', generation: result.generation, leaseId: key.slice(6) });
             c.transient.get(key)!.release(); c.transient.delete(key);
           }
           for (const item of result.transient) {
@@ -118,7 +118,6 @@ export function mapController(authority: MapAuthority, outputBudget: EditingOutp
             const release = old?.release ?? outputBudget.reserve(512);
             try { c.output.sendJSON(item); c.transient.set(key, { hash, release }); }
             catch (error) { if (!old) release(); throw error; }
-            c.pendingRead = true; return;
           }
         });
       } while (c.pendingRead && !c.closed);

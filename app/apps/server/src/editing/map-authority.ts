@@ -1,5 +1,5 @@
 import { EDITING_LIMITS, type LiveMapBootstrap, type LiveMapGesture, type LiveMapLease, type UndoLiveMap, type UndoneLiveMap } from '@flux/contracts';
-import { ServiceUnavailableError, type LiveMapBackend, type MapCancel, type MapConfirmed, type MapIdentity, type MapMove, type MapPresence } from '@flux/core';
+import { ServiceUnavailableError, type LiveMapBackend, type MapCancel, type MapConfirmed, type MapDeliveryNeed, type MapIdentity, type MapMove, type MapPresence } from '@flux/core';
 import type { SessionContext } from '../identity/session.js';
 import { editingMapContextCharge, editingMapResultCharge } from './context-charge.js';
 import { EditingOutputBudget, EditingOutputError } from './output.js';
@@ -14,6 +14,20 @@ export interface MapPreparation {
 const LARGE_RESULT = 24 * 1024 * 1024;
 const SMALL_RESULT = 2 * 1024 * 1024;
 const capacity = () => new ServiceUnavailableError('The finite live map capacity is busy', 'EDITING_MAP_CAPACITY');
+/** A confirmed read without a delta first takes this smaller charge, so reads of different
+ * connections overlap instead of each holding the 24 MiB worst case of a delta. */
+const TRANSIENT_RESULT = 2 * 1024 * 1024;
+/**
+ * Upper bound of `editingMapResultCharge` for a read without a delta: the head fields, then each
+ * preview (its envelope, actor and up to 200 positions) and presence (up to 16 selected thoughts).
+ * Per position: array index 134, object 256, five properties of at most 140 each, five values of
+ * 16; names count twice per UTF-8 byte for each row that repeats them. The 2 KiB/4 KiB envelopes
+ * cover the fixed UUID/time/enum strings and keys with room to spare (test: live-map-preparation).
+ */
+export function transientCharge(need: Pick<MapDeliveryNeed, 'gestures' | 'positions' | 'presence' | 'nameBytes'>) {
+  return 8192 + need.gestures * 4096 + need.positions * 1200 + need.presence * 8192 + need.nameBytes * 4;
+}
+class PreparationTooSmall extends Error {}
 
 /** Count the exact JSON wire/text size without first allocating an escaped copy. */
 function jsonSize(value: unknown) {
@@ -164,10 +178,22 @@ export function mapAuthority(backend: LiveMapBackend, outputBudget: EditingOutpu
       return run({ session, sketchId, commandId }, 0, LARGE_RESULT, (lease, bytes) => backend.deliverUndo(identity(session), sketchId, commandId,
         (receipt) => protectedResult(lease, bytes, receipt, handoff)));
     },
-    deliver(session: SessionContext, sketchId: string, generation: string, afterSequence: number,
+    async deliver(session: SessionContext, sketchId: string, generation: string, afterSequence: number,
       handoff: (result: MapConfirmed, preparation: MapPreparation) => void, options: { includeDelta?: boolean } = {}) {
-      return run({ session, sketchId, generation, afterSequence, options }, 0, LARGE_RESULT, (lease, bytes) => backend.deliver(identity(session), sketchId, generation, afterSequence,
-        (result) => protectedResult(lease, bytes, result, handoff), options));
+      const read = (worst: number) => run({ session, sketchId, generation, afterSequence, options }, 0, worst, (lease, bytes) => backend.deliver(identity(session), sketchId, generation, afterSequence,
+        (result) => protectedResult(lease, bytes, result, handoff), { ...options,
+          // Under the read's locks and before it loads anything sizeable. A delta, or more current
+          // rows than the small charge covers, first grows this charge to the worst case when the
+          // shared budget has room and nobody is queued; otherwise the read rolls back and retries
+          // through the ordinary FIFO admission with the worst case charged.
+          ...(worst < LARGE_RESULT ? { prepare: (need: MapDeliveryNeed) => {
+            const needed = need.delta ? LARGE_RESULT : transientCharge(need);
+            if (needed <= worst) return;
+            if (waiting.length) throw new PreparationTooSmall();
+            try { lease.resize(bytes + LARGE_RESULT); } catch { throw new PreparationTooSmall(); }
+          } } : {}) }));
+      try { return await read(TRANSIENT_RESULT); }
+      catch (error) { if (error instanceof PreparationTooSmall) return read(LARGE_RESULT); throw error; }
     },
     disconnect(session: SessionContext, sketchId: string, connectionId: string) {
       return run({ session, sketchId, connectionId }, 0, SMALL_RESULT, () => backend.disconnect(identity(session), sketchId, connectionId));
