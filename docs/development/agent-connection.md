@@ -407,14 +407,35 @@ Not yet agent tools:
 Since 1.2.0 the built-in playbook declares these four tools and the map tools in its
 execute/checkpoint module, and the conversation, wiki and map reads in orient/plan (#160).
 
-Co-work operations remain registry entries without tools. #153's claim adapter,
-the #160 playbook and real Codex/Claude model-driven activation are still required
-before agent decomposition counts as delivered.
+### Co-work tools (#153)
+
+Eight co-work compositions are MCP tools: three since 2026-10-05 and five since
+2026-10-06. Each call is one transaction that runs the composition unchanged;
+the composition does its own #152 `prepare`/`complete`, so these tools do not use
+`nativeActionExecutor`.
+
+| Tool | Operation | Classes | Change |
+| --- | --- | --- | --- |
+| `flux_create_unit` | `cowork.unit.create` | execute, review, plan | One co-work unit on a task. A root unit is the atomic way to take a task, or to be its sole plan writer |
+| `flux_claim_unit` | `cowork.claim` | execute, review, plan | A live lease on the caller's own unit (one per connection, 300 seconds). Returns the unit's last checkpoint |
+| `flux_renew_unit` | `cowork.renew` | execute, review, plan | Extend that live lease |
+| `flux_release_unit` | `cowork.release` | execute, review, plan | Park the unit with a typed checkpoint written in the same transaction |
+| `flux_complete_unit` | `cowork.unit.complete` | execute, review, plan | Finish the unit with one exact native outcome reference |
+| `flux_transfer_unit` | `cowork.unit.transfer` | execute, review, plan | Hand the unit to another eligible connection, which claims it with its own grant |
+| `flux_claim_request` | `cowork.request.claim` | execute, review, plan | Pick up a request addressed to the caller's unit, under its live unit claim |
+| `flux_decline_request` | `cowork.request.respond` | execute, review, plan | Decline a picked-up request with a bounded reason; resolving with a response is not exposed |
+
+Request admission, recovery and the inbox are not tools yet, and resolving a
+request with a response is not exposed. Bootstrap therefore keeps reporting
+`coordination_unavailable`. The contract and the reasons are in
+[co-work coordination](cowork-coordination.md#unit-claims-over-mcp-2026-10-06-proposed-amendment-peer-review-required).
+Real Codex/Claude model-driven activation is still required before agent
+decomposition counts as delivered.
 
 ## Built-in co-work playbook (#160)
 
 The server ships one versioned instruction bundle, `COWORK_PLAYBOOK`
-(`flux.cowork` 1.2.0, in `app/packages/core/src/agent-connection/playbook.ts`). It
+(`flux.cowork` 1.3.0, in `app/packages/core/src/agent-connection/playbook.ts`). It
 has a core part and five role modules: start/resume, orient/plan,
 execute/checkpoint, request/review/fix and block/transfer/stop. Each module
 declares the MCP tools and server providers it needs. The bundle names only tools
@@ -426,11 +447,16 @@ that step as unavailable rather than simulate it. Since 1.1.0 the orient/plan mo
 tells the agent to read the approved project policy (below) before planning. Since
 1.2.0 every registered tool is declared by a module: orient/plan lists the wiki,
 conversation, map and result reads, and execute/checkpoint the doc, conversation and
-map writes with the standing-grant operation each needs.
+map writes with the standing-grant operation each needs. Since 1.3.0 (2026-10-06,
+#153) the execute/checkpoint module takes a task with `flux_create_unit`, then
+claims, renews, releases and completes the unit; the block/transfer module
+transfers it; and the request/review/fix module names `flux_claim_request` and
+`flux_decline_request`. The text says that the inbox, sending requests and
+resolving with a response are not available yet.
 
 Every authenticated MCP connection delivers it in three ways:
 
-- **Resource:** `flux://playbook/flux.cowork/1.2.0` (Markdown) returns the
+- **Resource:** `flux://playbook/flux.cowork/1.3.0` (Markdown) returns the
   rendered bundle with its digest.
 - **Prompts:** `start_work` and `resume_work` are the host-invoked Start and
   Resume actions. Claude Code, for example, lists MCP prompts as slash commands.
