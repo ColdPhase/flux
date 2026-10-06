@@ -2,6 +2,8 @@
 
 **Status:** O-005 recommendation for independent agent evaluation. This is feasibility research, not a supplier choice, an integration promise or an accepted decision. Under the [founder delegation](autonomy.md), the decision belongs to the agents after peer review.
 
+> **2026-10-04 reconciliation, revised 2026-10-05 ([F-022](ai-modes.md), accepted 2026-10-05).** Flux has exactly two AI modes. Mode A below is mode (b), your agent app over MCP; modes B and C are both mode (a), the agent in Flux. §7's "no consumer-subscription path" is superseded: an owner's Claude or ChatGPT plan works in mode (a) only through the unmodified official CLI in the owner's runtime, under the owner's own sign-in. Flux still never holds plan credentials. Fresh evidence: [agent runtime research](research/2026-10-05-agent-runtime.md) and [two AI modes research](research/2026-10-04-two-ai-modes.md).
+
 **Contract:** [issue #9, accepted v4](https://github.com/ColdPhase/flux/issues/9#issuecomment-5851902448), accepted in [5851917250](https://github.com/ColdPhase/flux/issues/9#issuecomment-5851917250).
 **Research / access date:** 2026-09-27 for every source below.
 **Labels:** *vendor claim* (provider documentation or terms), *observed* (something the author checked directly, such as a repository date or an API response), *community report (unverified / corroborated)*, and *Flux inference*. No Flux application exists, so no row is observed Flux behavior. This repository's developer harness, which runs personal Codex/Claude CLIs, is not evidence for product integration.

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import { COWORK_PLAYBOOK, coworkPlaybookReference, coworkPlaybookTools, coworkPlaybookUri, renderCoworkPlaybook } from '@flux/core';
+import { COWORK_PLAYBOOK, coworkPlaybookReference, coworkPlaybookTools, coworkPlaybookUri, renderCoworkPlaybook, type CoworkPlaybook } from '@flux/core';
 import { pool } from './support/db.js';
 import { publicOrigin, register, uniqueEmail } from './support/http.js';
 import { beginOauth, expect, mcp, oauthToken, toolValue } from './support/mcp.js';
@@ -123,6 +123,29 @@ test('the authenticated MCP connection serves the playbook as a resource and bin
   expect(await f.owner.request('DELETE', `/api/v1/agent-connections/${f.connectionId}`), 204);
   assert.equal((await mcp(f.token, 301, 'resources/read', { uri: coworkPlaybookUri() })).status, 403);
   assert.equal((await mcp(f.token, 302, 'prompts/get', { name: 'start_work', arguments: {} })).status, 403);
+});
+
+/** Registered tools that no playbook module declares. */
+function undeclared(registered: readonly string[], playbook: CoworkPlaybook = COWORK_PLAYBOOK) {
+  const declared = new Set(playbook.modules.flatMap((module) => module.tools));
+  return registered.filter((name) => !declared.has(name)).sort();
+}
+
+test('every tool the MCP server registers is declared by a playbook module (#160)', async () => {
+  // All three scopes, so the list cannot shrink to the tools of one scope.
+  const f = await connected(1, ['flux.context.read', 'flux.proposal.write', 'flux.action.execute']);
+  const registered = (await f.call('tools/list') as { tools: { name: string }[] }).tools.map((tool) => tool.name).sort();
+  assert.ok(registered.length >= 37, `the full tool list is served (${registered.length})`);
+  assert.deepEqual(undeclared(registered), [], 'a registered tool that no module declares is missing from the playbook');
+  assert.deepEqual(coworkPlaybookTools(), registered, 'the playbook names exactly the registered tools, in both directions');
+  // Bootstrap's tool catalog is the same set the agent is told about.
+  const bootstrap = toolValue((await mcp(f.token, 400, 'tools/call', { name: 'flux_bootstrap',
+    arguments: { projectId: f.ids[0], clientSessionId: randomUUID() } })).message);
+  const catalog = (bootstrap.capabilities as { name: string }[]).map((tool) => tool.name).sort();
+  assert.deepEqual(catalog, registered, 'the catalog lists exactly the registered tools');
+  // Negative control: dropping one registered tool from every module is reported, by name.
+  const withoutMap = { ...COWORK_PLAYBOOK, modules: COWORK_PLAYBOOK.modules.map((module) => ({ ...module, tools: module.tools.filter((name) => name !== 'flux_get_map') })) };
+  assert.deepEqual(undeclared(registered, withoutMap), ['flux_get_map']);
 });
 
 test('with several selected projects an unqualified Start asks which one instead of guessing', async () => {

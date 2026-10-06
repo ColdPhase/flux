@@ -1,0 +1,14 @@
+# ./scripts/check_ui.sh test_people at fdb70955 (FLUX_UI_PORT=19158), 2026-10-05
+test_01_owner_adds_people_by_email_with_the_keyboard (test_people.PeopleJourney.test_01_owner_adds_people_by_email_with_the_keyboard) ... ok
+test_02_not_found_and_already_member_say_what_to_do (test_people.PeopleJourney.test_02_not_found_and_already_member_say_what_to_do) ... ok
+test_03_owner_changes_a_role (test_people.PeopleJourney.test_03_owner_changes_a_role) ... ok
+test_04_members_and_guests_see_people_read_only (test_people.PeopleJourney.test_04_members_and_guests_see_people_read_only) ... ok
+test_05_a_new_project_opens_who_can_see_this_and_gives_access (test_people.PeopleJourney.test_05_a_new_project_opens_who_can_see_this_and_gives_access) ... ok
+test_06_change_and_remove_a_grant (test_people.PeopleJourney.test_06_change_and_remove_a_grant) ... ok
+test_07_keep_someone_out_from_the_header_audience_line (test_people.PeopleJourney.test_07_keep_someone_out_from_the_header_audience_line) ... ok
+test_08_promote_a_dm_sketch_with_and_without_giving_access (test_people.PeopleJourney.test_08_promote_a_dm_sketch_with_and_without_giving_access) ... ok
+test_09_remove_someone_and_leave (test_people.PeopleJourney.test_09_remove_someone_and_leave) ... ok
+test_10_phone_people_and_project_access (test_people.PeopleJourney.test_10_phone_people_and_project_access) ... ok
+Ran 10 tests in 32.238s
+OK
+exit=0
