@@ -59,15 +59,17 @@
   /* Type: the system UI stack, no web font */
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  --fs-xs: 10px;   /* timestamps, metadata */
-  --fs-sm: 11px;   /* names, chips, small buttons, section labels */
-  --fs-md: 12px;   /* navigation, tabs, controls */
-  --fs-base: 14px; /* reading text, bubbles, inputs */
-  --fs-lg: 16px;
-  --fs-xl: 20px;
-  --fs-2xl: 24px;
-  --fs-title: 21px;     /* project title */
-  --fs-doc-title: 30px; /* wiki document title */
+  /* In rem, so a person's own text size scales the whole app (HIG-11); the values are the earlier px at
+     the default 16 px root. Phones get a larger scale below (HIG-08/09). */
+  --fs-xs: .625rem;    /* 10px: timestamps, metadata */
+  --fs-sm: .6875rem;   /* 11px: names, chips, small buttons, section labels */
+  --fs-md: .75rem;     /* 12px: navigation, tabs, controls */
+  --fs-base: .875rem;  /* 14px: reading text, bubbles, inputs */
+  --fs-lg: 1rem;
+  --fs-xl: 1.25rem;
+  --fs-2xl: 1.5rem;
+  --fs-title: 1.3125rem;    /* 21px: project title */
+  --fs-doc-title: 1.875rem; /* 30px: wiki document title */
   --lh: 1.55;
   --lh-tight: 1.35;
   --tracking: 0;
@@ -169,4 +171,18 @@
 
 @media (prefers-reduced-motion: reduce) {
   :root { --dur-1: 0ms; --dur-2: 0ms; --dur-3: 0ms; --dur-4: 0ms; }
+}
+
+/* Phones (#272, Apple HIG-08/09): nothing below 11 pt, and reading text close to the 17 pt default. The
+   compact desktop scale stays for pointers and wide screens. */
+@media (max-width: 640px) and (pointer: coarse) {
+  :root {
+    --fs-xs: .75rem;     /* 12px */
+    --fs-sm: .8125rem;   /* 13px */
+    --fs-md: .875rem;    /* 14px */
+    --fs-base: 1rem;     /* 16px */
+    --fs-lg: 1.125rem;   /* 18px */
+    --fs-xl: 1.375rem;   /* 22px */
+    --fs-title: 1.25rem; /* 20px */
+  }
 }
