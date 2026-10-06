@@ -29,7 +29,7 @@ shapes, mapped forms, mixed answers, empty/error results and an HTTPS connection
 refusal before a protected listener receives any request. Existing push,
 revocation and preference regressions must still pass. A new genuine provider
 attempt records the exact clean source/image and provider result; lookup success
-alone is insufficient. Physical Android/iPhone/iPad installation, OS display,
+alone is insufficient. Android/iPhone/iPad installation, OS display,
 background/lock-screen delivery and authorized taps remain separate requirements
 under [MOB-1–MOB-7](../product/mobile-pwa.md).
 

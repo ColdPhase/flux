@@ -162,7 +162,8 @@ class MotionJourney(unittest.TestCase):
         self.stream_ready(page)
         glide = page.locator(".side__glide")
         expect(glide).to_have_attribute("data-target", self.projects[0])
-        self.assertEqual(glide.evaluate("el => getComputedStyle(el).transitionDuration.split(',').map(s => s.trim())[0]"), "0.16s")
+        # --dur-2, 180 ms since the #266 PF-4 motion tokens.
+        self.assertEqual(glide.evaluate("el => getComputedStyle(el).transitionDuration.split(',').map(s => s.trim())[0]"), "0.18s")
         composer = page.locator("#project-composer")
         composer.fill("PRIVATE draft kept while choosing projects")
         scroll = page.locator(".side__scroll").evaluate("el => el.scrollTop")
