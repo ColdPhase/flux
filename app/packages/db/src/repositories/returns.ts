@@ -120,6 +120,15 @@ export function returnRows(db: DbExecutor) {
       })));
     },
 
+    /** Work a decision parks now, looked up by project first (`project_work_items_project_idx`). */
+    async parkedWork(projectIds: string[], decisionIds: string[]) {
+      if (!projectIds.length || !decisionIds.length) return [];
+      const w = schema.projectWorkItems;
+      const rows = await db.select({ id: w.id, projectId: w.projectId, decisionId: w.parkedByDecisionId }).from(w)
+        .where(and(inArray(w.projectId, projectIds), inArray(w.parkedByDecisionId, decisionIds)));
+      return rows.map((row) => ({ id: row.id, projectId: row.projectId, decisionId: row.decisionId! }));
+    },
+
     async decisions(ids: string[]) {
       if (!ids.length) return new Map();
       const d = schema.projectDecisions;
