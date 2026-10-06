@@ -43,3 +43,4 @@
 .proj-index__lead { flex: 1 1 16em; margin: 0; font-size: var(--fs-sm); color: var(--text-3); line-height: 1.5; }
 .proj-index__dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--accent); }
 .proj-index__empty { display: grid; gap: 12px; justify-items: start; padding: 20px 2px; color: var(--text-2); font-size: var(--fs-md); }
+.set-sec__empty { margin: 0; padding: 0 4px; font-size: var(--fs-sm); color: var(--text-3); }

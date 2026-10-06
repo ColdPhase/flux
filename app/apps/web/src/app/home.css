@@ -84,7 +84,7 @@
   .home-work__go, .home-project__go { opacity: 1; transform: none; }
 }
 @media (pointer: coarse) {
-  .home-seg__b { min-height: 40px; }
+  .home-seg__b { min-height: 44px; }
   .home__waiting { min-height: 44px; }
   .home-sec__all, .home-project__recap { min-height: 44px; }
 }

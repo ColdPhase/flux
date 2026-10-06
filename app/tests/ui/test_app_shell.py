@@ -1086,11 +1086,11 @@ class AppShellJourney(unittest.TestCase):
         phone.goto(f"/projects/{project_id}/conversations/{conversation_id}")
         expect(phone.get_by_text("Agreed. Test low light too.", exact=True)).to_be_visible()
         phone.get_by_label("Reply", exact=True).fill("Phone draft survives a view switch")
-        # A project has its own context; leave through the top-left way back to all projects (#272) and
-        # return without losing text.
-        phone.locator("header.top").get_by_role("button", name="All projects").click()
-        expect(phone).to_have_url(f"{ORIGIN}/projects")
-        phone.go_back()
+        # Back from a thread opened directly leads to its conversation (#272, HIG-26); coming back to the thread
+        # finds the text where it was left.
+        phone.locator("header.top").get_by_role("button", name="Back", exact=True).click()
+        expect(phone).to_have_url(f"{ORIGIN}/projects/{project_id}")
+        phone.goto(f"/projects/{project_id}/conversations/{conversation_id}")
         expect(phone.get_by_label("Reply", exact=True)).to_have_value("Phone draft survives a view switch")
         expect(phone.locator(".project-convo__current-thread")).to_contain_text("Try a PIR sensor before considering a camera")
         phone.set_viewport_size({"width": 390, "height": 500})

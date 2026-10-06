@@ -80,6 +80,10 @@ export function Sidebar({ projects, directMessages, user, onClose, onCollapse, t
             <Icon name="edit" className="side__ic" /><span className="side__label">My sketchbook</span>
             <Icon name="lock" size={12} className="side__trail" />
           </Link>
+          {/* Every project's pages in one list (#272: no function removed when Home's Wiki view went). */}
+          <Link to="/docs" className="side__item" aria-current={location.pathname === '/docs' ? 'page' : undefined} onClick={navigate}>
+            <Icon name="doc" className="side__ic" /><span className="side__label">Wiki pages</span>
+          </Link>
         </nav>
 
         <nav className="side__sec" aria-labelledby="side-projects">

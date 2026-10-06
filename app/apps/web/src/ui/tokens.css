@@ -177,9 +177,9 @@
   :root { --dur-1: 0ms; --dur-2: 0ms; --dur-3: 0ms; --dur-4: 0ms; }
 }
 
-/* Phones (#272, Apple HIG-08/09): nothing below 11 pt, and reading text close to the 17 pt default. The
-   compact desktop scale stays for pointers and wide screens. */
-@media (max-width: 640px) and (pointer: coarse) {
+/* Touch screens, phones and tablets alike (#272, Apple HIG-08/09): nothing below 11 pt, and reading text close
+   to the 17 pt default. The compact desktop scale stays for mouse and trackpad pointers. */
+@media (pointer: coarse) {
   :root {
     --fs-xs: .75rem;     /* 12px */
     --fs-sm: .8125rem;   /* 13px */

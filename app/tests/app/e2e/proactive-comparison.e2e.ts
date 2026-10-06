@@ -259,8 +259,9 @@ test('real project UI presents sourced quiet suggestions, then persists edits, u
 test('owner-only background setup persists consent, clears keys and preserves another person without a connection', async () => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  await page.getByRole('button', { name: /account and sign out/ }).click();
-  await page.getByRole('link', { name: 'Your background suggestions', exact: true }).focus();
+  // Settings is a page reached from the person row (F-023 FF-4); background suggestions are one row there.
+  await page.getByRole('link', { name: /Settings and sign out/ }).click();
+  await page.getByRole('link', { name: /^Background suggestions/ }).focus();
   await page.keyboard.press('Enter');
   await page.getByRole('heading', { name: 'Your background suggestions', exact: true }).waitFor();
   assert.equal(await page.getByRole('dialog', { name: 'Account', exact: true }).count(), 0);

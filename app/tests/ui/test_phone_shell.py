@@ -126,7 +126,7 @@ class PhoneShellJourney(unittest.TestCase):
                 expect(inside).to_be_visible()
                 expect(inside.locator('[aria-current="page"]')).to_have_count(1)
                 expect(inside.locator('[aria-current="page"]')).to_contain_text("Projects")
-                expect(page.locator("header.top").get_by_role("button", name="All projects")).to_be_visible()
+                expect(page.locator("header.top").get_by_role("button", name="Back", exact=True)).to_be_visible()
                 expect(page.get_by_role("button", name="Open navigation")).to_have_count(0)
                 header = self.box(page.locator("header.top"))
                 self.assertLessEqual(header["y"] + header["height"], 60, "a single compact header")
@@ -177,7 +177,7 @@ class PhoneShellJourney(unittest.TestCase):
             expect(chips.locator('[aria-current="page"]')).to_have_count(1)
         shot(page, "266-chips-after-switching")
         # The top-left control leads back to all projects (#272), and the bar is still there.
-        back = page.locator("header.top").get_by_role("button", name="All projects")
+        back = page.locator("header.top").get_by_role("button", name="Back", exact=True)
         self.assertGreaterEqual(min(self.box(back)["width"], self.box(back)["height"]), 44)
         back.click()
         expect(page).to_have_url(f"{ORIGIN}/projects")
@@ -190,7 +190,7 @@ class PhoneShellJourney(unittest.TestCase):
         header = page.locator("header.top")
         # Inside a project the top-left control leads back to all projects (#272); Details stays labelled.
         expect(header.get_by_role("button", name="Open navigation")).to_have_count(0)
-        for name in ("All projects", "Details"):
+        for name in ("Back", "Details"):
             button = header.get_by_role("button", name=name, exact=True)
             expect(button).to_be_visible()
             size = self.box(button)
@@ -329,7 +329,7 @@ class PhoneShellJourney(unittest.TestCase):
         expect(page).to_have_url(re.compile("/map$"))
         self.assertEqual(page.evaluate("document.getAnimations().filter((a) => a.playState === 'running').length"), 0)
         # Back to all projects, then the drawer: still no animation.
-        page.locator("header.top").get_by_role("button", name="All projects").click()
+        page.locator("header.top").get_by_role("button", name="Back", exact=True).click()
         expect(page).to_have_url(f"{ORIGIN}/projects")
         page.get_by_role("button", name="Open navigation").click()
         expect(page.get_by_role("dialog", name="Flux")).to_be_visible()

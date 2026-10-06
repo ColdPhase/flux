@@ -3,6 +3,7 @@ import { Avatar, Icon, Spinner, type IconName } from '../ui';
 import { NotificationsButton } from '../pwa';
 import { AppearanceControls } from './AppearanceControls';
 import { useShellData } from './data';
+import { useShellActions } from './shellContext';
 import './settings.css';
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -23,8 +24,16 @@ function Row({ to, icon, title, sub }: { to: string; icon: IconName; title: stri
  * Settings (#266 PF-5): one place for this account, this device and personal AI. Every earlier
  * settings address keeps working; this list is how a person finds them, on a phone in two taps.
  */
+const PEOPLE_LINE = {
+  owner: 'You’re an owner · add and manage people',
+  admin: 'You’re an admin · add and manage people',
+  member: 'You’re a member · see who’s here',
+  guest: 'You’re a guest · you see only projects given to you',
+} as const;
+
 export function SettingsHome() {
-  const { me } = useShellData();
+  const { me, workspaces } = useShellData();
+  const { openDetails } = useShellActions();
   const navigation = useNavigation();
   const signingOut = navigation.state !== 'idle' && navigation.formAction === '/sign-out';
   const expires = new Date(me.session.expiresAt);
@@ -49,6 +58,24 @@ export function SettingsHome() {
               <NotificationsButton />
             </div>
           </div>
+        </section>
+
+        {/* Each workspace's people (#188): who is here, and for owners and admins, adding and managing them. */}
+        <section className="set-sec" aria-labelledby="set-people">
+          <h2 className="set-sec__h" id="set-people">People</h2>
+          {workspaces.length ? (
+            <ul className="set-card">
+              {workspaces.map((space) => (
+                <li key={space.id}>
+                  <button type="button" className="set-row" onClick={() => openDetails({ kind: 'people', workspaceId: space.id })} aria-haspopup="dialog">
+                    <span className="set-row__ic" aria-hidden="true"><Icon name="people" size={16} /></span>
+                    <span className="set-row__b"><span className="set-row__t">{space.name}</span><span className="set-row__s">{space.role ? PEOPLE_LINE[space.role] : 'See who is here'}</span></span>
+                    <Icon name="chevron-right" size={14} className="set-row__go" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="set-sec__empty">Start a project to create your own space; then you can add people to it.</p>}
         </section>
 
         <section className="set-sec" aria-labelledby="set-notify">

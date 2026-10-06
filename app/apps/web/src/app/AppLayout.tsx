@@ -372,6 +372,27 @@ function AppLayoutContent() {
   ] : null;
   const homeViews: TabItem[] = VIEWS.map((view) => ({ id: view.id, label: view.label, to: view.path, end: false }));
   const places = mainPlaces(location.pathname, inboxUnread);
+  // The way this visit came, by history index, so the phone's Back returns to where the person was before this
+  // place (HIG-26: back is back), and only replaces this entry with the place's list when there is no such page.
+  const trail = useRef<string[]>([]);
+  useEffect(() => {
+    const index = (window.history.state as { idx?: number } | null)?.idx ?? 0;
+    trail.current[index] = location.pathname;
+    trail.current.length = index + 1;
+  }, [location.pathname, location.key]);
+  const goBack = (list: string) => {
+    const index = (window.history.state as { idx?: number } | null)?.idx ?? 0;
+    // A thread is its own step back to its conversation; otherwise the whole place (a project, a DM, a sketch) is.
+    const thread = /^\/projects\/[^/]+\/conversations\//.test(location.pathname);
+    const scope = thread ? location.pathname : location.pathname.match(/^\/(projects|dm|map)\/[^/]+/)?.[0] ?? location.pathname;
+    for (let step = index - 1; step >= 0; step -= 1) {
+      const path = trail.current[step];
+      if (!path) break;
+      if (path !== scope && !path.startsWith(`${scope}/`)) { navigate(step - index); return; }
+    }
+    // Opened directly: the thread's own conversation, or the place's list, in place of this entry.
+    navigate(thread ? location.pathname.replace(/\/conversations\/.*$/, '') : list, { replace: true });
+  };
   const backTo = !phone ? null
     : /^\/projects\/(?!new$)[^/]+/.test(location.pathname) ? { to: '/projects', label: 'All projects' }
       : /^\/dm\/(?!new$)[^/]+/.test(location.pathname) ? { to: '/dm', label: 'All messages' }
@@ -438,6 +459,9 @@ function AppLayoutContent() {
   // A place without its own Details (Search, Inbox, the DM list) never keeps the generic panel open.
   if ('noDetails' in place && detailsOpen && detailsView === 'place') setDetailsOpen(false);
 
+  // The tab and the app switcher say where the person is (#272, HIG-26): "Inbox · Flux", a project's name.
+  useEffect(() => { document.title = place.title && place.title !== 'Home' ? `${place.title} · Flux` : 'Flux'; }, [place.title]);
+
   return (
     <ShellContext.Provider value={shell}>
     {/* One live session per tab, above the routes, so navigation keeps it (#62). */}
@@ -457,8 +481,8 @@ function AppLayoutContent() {
           {phone && backTo ? (
             // Inside a place on the phone, the top-left control leads back to its list, as in a messenger
             // (#272 FF-3, visual review of #267); the lists keep the menu and the bar of main places.
-            <IconButton icon="chevron-left" label={backTo.label} size={20} className="top__back" data-tip-align="start"
-              onClick={() => navigate(backTo.to)} />
+            <IconButton icon="chevron-left" label="Back" data-tip={`Back · ${backTo.label}`} size={20} className="top__back" data-tip-align="start"
+              onClick={() => goBack(backTo.to)} />
           ) : phone && settingsPage ? (
             <IconButton icon="chevron-left" label="Back" size={20} className="top__back" data-tip-align="start"
               onClick={() => { if (location.key !== 'default') navigate(-1); else navigate('/settings'); }} />

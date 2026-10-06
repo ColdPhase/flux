@@ -492,3 +492,10 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 }
 @media (max-width: 640px) and (pointer: coarse) { .views--chips .ui-tabs__tab { min-height: 44px; padding: 0 14px; } .views--chips .ui-tabs__bar { padding-block: 4px; } }
 .state-row .views__recap { flex: none; margin-left: auto; }
+/* Touch: the count badges read at 11 pt at least (HIG-08). */
+@media (pointer: coarse) { .top__badge { min-width: 19px; height: 19px; font-size: 11px; line-height: 19px; } }
+@media (pointer: coarse) {
+  .project-convo__message > .ui-avatar, .thread .project-convo__message > .ui-avatar, .lv-faces--room .ui-avatar, .lv-face--more { font-size: 11px; }
+}
+/* Touch (HIG-14): the Projects and Messages headings that open their lists are 44 px targets. */
+@media (pointer: coarse) { .side__hl { display: inline-flex; align-items: center; min-height: 44px; } }

@@ -415,10 +415,10 @@ class ProjectSurfaceJourney(unittest.TestCase):
         self.assertTrue(bar["inside"], f"the bar lies inside the sidebar's scroll box: {bar}")
         self.assertTrue(bar["hit"], "the bar is painted, not clipped")
         # On a phone every sidebar control is a 44px target: +, Jump to, places and projects.
-        # Inside a project the phone's top-left control leads back to all projects (#272), a 44px target too;
-        # the drawer opens from there.
+        # Inside a project the phone's top-left control is Back (#272, HIG-26), a 44px target too; opened directly,
+        # it leads to all projects, where the drawer opens.
         phone = self.open_project("ada", phone=True)
-        back = phone.locator("header.top").get_by_role("button", name="All projects")
+        back = phone.locator("header.top").get_by_role("button", name="Back", exact=True)
         back_box = back.bounding_box()
         assert back_box
         self.assertGreaterEqual(min(back_box["width"], back_box["height"]), 44, "the way back is a touch target")
