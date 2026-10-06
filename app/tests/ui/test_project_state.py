@@ -11,7 +11,7 @@ import uuid
 
 from playwright.sync_api import expect, sync_playwright
 
-from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
+from test_app_shell import BACK, ORIGIN, UPSTREAM, shot, start_forwarder
 from test_project_surface import LONG_NAME
 
 
@@ -206,7 +206,7 @@ class ProjectStateJourney(unittest.TestCase):
         expect(reader.locator(".material-view__body")).to_have_text(material["body"])
         reader.goto(f"/projects/{project['id']}")
         # On a phone the drawer opens from the list of projects; inside one the top-left control leads there (#272).
-        reader.locator("header.top").get_by_role("button", name="Back", exact=True).click()
+        reader.locator("header.top").get_by_role("button", name=BACK).click()
         expect(reader).to_have_url(re.compile(r"/projects$"))
         reader.get_by_role("button", name="Open navigation", exact=True).click()
         expect(reader.get_by_role("link", name="New conversation", exact=True)).to_have_count(0)

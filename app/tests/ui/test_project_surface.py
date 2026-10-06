@@ -18,7 +18,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import BACK, DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "a lamp that reads the room"
 STAMP = int(time.time() * 1000)
@@ -418,14 +418,14 @@ class ProjectSurfaceJourney(unittest.TestCase):
         # Inside a project the phone's top-left control is Back (#272, HIG-26), a 44px target too; opened directly,
         # it leads to all projects, where the drawer opens.
         phone = self.open_project("ada", phone=True)
-        back = phone.locator("header.top").get_by_role("button", name="Back", exact=True)
+        back = phone.locator("header.top").get_by_role("button", name=BACK)
         back_box = back.bounding_box()
         assert back_box
         self.assertGreaterEqual(min(back_box["width"], back_box["height"]), 44, "the way back is a touch target")
         back.tap()
         # Opened directly, a thread steps back to its conversation, and the project then to all projects.
         expect(phone).to_have_url(re.compile(rf"/projects/{self.ids['project']}$"))
-        phone.locator("header.top").get_by_role("button", name="Back", exact=True).tap()
+        phone.locator("header.top").get_by_role("button", name=BACK).tap()
         expect(phone).to_have_url(re.compile(r"/projects$"))
         phone.get_by_role("button", name="Open navigation").tap()
         drawer = phone.get_by_role("dialog")

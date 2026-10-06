@@ -80,6 +80,16 @@ function areaOf(pathname: string) {
 }
 
 /** The desktop sidebar's hidden state is remembered on this device (#272 FF-5). */
+/** What a page is called where Back names it ("Back to All projects"); a page it does not know is "the previous page". */
+const BACK_NAMES: [RegExp, string][] = [
+  [/^\/$/, 'Home'], [/^\/inbox\/?$/, 'Inbox'], [/^\/projects\/?$/, 'All projects'], [/^\/dm\/?$/, 'All messages'],
+  [/^\/(notes|map)\/?$/, 'My sketchbook'], [/^\/settings(\/|$)/, 'Settings'], [/^\/search(\/|$)/, 'Search'], [/^\/docs\/?$/, 'Wiki pages'],
+  [/^\/projects\/[^/]+\/conversations\//, 'the thread'], [/^\/projects\/[^/]+\/tasks/, 'Tasks'], [/^\/projects\/[^/]+\/map/, 'the map'],
+  [/^\/projects\/[^/]+\/docs/, 'the wiki'], [/^\/projects\/[^/]+\/agents/, 'Agents'], [/^\/projects\/[^/]+\/?$/, 'the conversation'],
+  [/^\/dm\/[^/]+/, 'the conversation'], [/^\/map\/[^/]+/, 'the sketch'],
+];
+const backName = (path: string) => BACK_NAMES.find(([pattern]) => pattern.test(path))?.[1] ?? 'the previous page';
+
 const SIDE_KEY = 'flux.sidebar';
 function readSideHidden() {
   try { return localStorage.getItem(SIDE_KEY) === 'hidden'; } catch { return false; }
@@ -418,29 +428,37 @@ function AppLayoutContent() {
   const places = mainPlaces(location.pathname, inboxUnread);
   // The way this visit came, by history index, so the phone's Back returns to where the person was before this
   // place (HIG-26: back is back), and only replaces this entry with the place's list when there is no such page.
-  const trail = useRef<string[]>([]);
-  useEffect(() => {
-    const index = (window.history.state as { idx?: number } | null)?.idx ?? 0;
-    trail.current[index] = location.pathname;
-    trail.current.length = index + 1;
-  }, [location.pathname, location.key]);
-  const goBack = (list: string) => {
-    const index = (window.history.state as { idx?: number } | null)?.idx ?? 0;
+  const historyIndex = () => (window.history.state as { idx?: number } | null)?.idx ?? 0;
+  const [trail, setTrail] = useState<{ key: string; paths: string[] }>({ key: '', paths: [] });
+  if (trail.key !== location.key) {
+    const index = historyIndex();
+    const paths = trail.paths.slice(0, index);
+    paths[index] = location.pathname;
+    setTrail({ key: location.key, paths });
+  }
+  const backTo = !phone ? null
+    : /^\/projects\/(?!new$)[^/]+/.test(location.pathname) ? '/projects'
+      : /^\/dm\/(?!new$)[^/]+/.test(location.pathname) ? '/dm'
+        : /^\/map\/[^/]+/.test(location.pathname) ? '/map' : null;
+  /** Where Back goes: the page before this place in history, or, opened directly, the place's list (a thread: its conversation). */
+  const backStep = (list: string): { path: string; delta?: number } => {
+    const index = historyIndex();
     // A thread is its own step back to its conversation; otherwise the whole place (a project, a DM, a sketch) is.
     const thread = /^\/projects\/[^/]+\/conversations\//.test(location.pathname);
     const scope = thread ? location.pathname : location.pathname.match(/^\/(projects|dm|map)\/[^/]+/)?.[0] ?? location.pathname;
     for (let step = index - 1; step >= 0; step -= 1) {
-      const path = trail.current[step];
+      const path = trail.paths[step];
       if (!path) break;
-      if (path !== scope && !path.startsWith(`${scope}/`)) { navigate(step - index); return; }
+      if (path !== scope && !path.startsWith(`${scope}/`)) return { path, delta: step - index };
     }
-    // Opened directly: the thread's own conversation, or the place's list, in place of this entry.
-    navigate(thread ? location.pathname.replace(/\/conversations\/.*$/, '') : list, { replace: true });
+    return { path: thread ? location.pathname.replace(/\/conversations\/.*$/, '') : list };
   };
-  const backTo = !phone ? null
-    : /^\/projects\/(?!new$)[^/]+/.test(location.pathname) ? { to: '/projects', label: 'All projects' }
-      : /^\/dm\/(?!new$)[^/]+/.test(location.pathname) ? { to: '/dm', label: 'All messages' }
-        : /^\/map\/[^/]+/.test(location.pathname) ? { to: '/map', label: 'My sketchbook' } : null;
+  const back = backTo ? backStep(backTo) : null;
+  const goBack = (list: string) => {
+    const step = backStep(list);
+    if (step.delta) navigate(step.delta);
+    else navigate(step.path, { replace: true });
+  };
   const audienceOpen = project?.project.visibility === 'workspace';
   const audience = project ? audienceLine(project.people, me.user.id, audienceOpen) : 'People with project access';
   // The audience line leads to "Who can see this", where managers change it (#188).
@@ -503,8 +521,8 @@ function AppLayoutContent() {
   // A place without its own Details (Search, Inbox, the DM list) never keeps the generic panel open.
   if ('noDetails' in place && detailsOpen && detailsView === 'place') setDetailsOpen(false);
 
-  // The tab and the app switcher say where the person is (#272, HIG-26): "Inbox · Flux", a project's name.
-  useEffect(() => { document.title = place.title && place.title !== 'Home' ? `${place.title} · Flux` : 'Flux'; }, [place.title]);
+  // The tab and the app switcher say where the person is (#272, HIG-26): "Home · Flux", "Inbox · Flux", a project's name.
+  useEffect(() => { document.title = place.title ? `${place.title} · Flux` : 'Flux'; }, [place.title]);
 
   return (
     <ShellContext.Provider value={shell}>
@@ -525,11 +543,11 @@ function AppLayoutContent() {
           {phone && backTo ? (
             // Inside a place on the phone, the top-left control leads back to its list, as in a messenger
             // (#272 FF-3, visual review of #267); the lists keep the menu and the bar of main places.
-            <IconButton icon="chevron-left" label="Back" data-tip={`Back · ${backTo.label}`} size={20} className="top__back" data-tip-align="start"
-              onClick={() => goBack(backTo.to)} />
+            <IconButton icon="chevron-left" label={`Back to ${backName(back!.path)}`} size={20} className="top__back" data-tip-align="start"
+              onClick={() => goBack(backTo)} />
           ) : phone && settingsPage ? (
-            <IconButton icon="chevron-left" label="Back" size={20} className="top__back" data-tip-align="start"
-              onClick={() => { if (location.key !== 'default') navigate(-1); else navigate('/settings'); }} />
+            <IconButton icon="chevron-left" label={`Back to ${location.key === 'default' ? 'Settings' : backName(trail.paths[historyIndex() - 1] ?? '')}`} size={20} className="top__back"
+              data-tip-align="start" onClick={() => { if (location.key !== 'default') navigate(-1); else navigate('/settings'); }} />
           ) : !navDrawer && sideOut ? (
             <IconButton icon="panel" label="Show sidebar" size={18} className="top__menu top__show-side" aria-keyshortcuts="[" data-tip={'Show sidebar   ['}
               data-tip-align="start" onClick={showSide} />

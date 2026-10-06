@@ -28,7 +28,7 @@ import unittest
 from playwright.sync_api import Locator, Page, expect, sync_playwright
 
 import adaptive_fixture as fx
-from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
+from test_app_shell import BACK, ORIGIN, UPSTREAM, shot, start_forwarder
 
 # Width × height fixtures (CSS px). Phones and tablets use a coarse (touch) pointer.
 MATRIX = [(320, 568), (390, 844), (768, 1024), (1024, 768), (1440, 900), (1920, 1080), (2560, 1440), (3840, 2160), (5120, 1440)]
@@ -280,7 +280,7 @@ class AdaptiveMatrix(AdaptiveBase):
             self.primary(page, self.tabs(page).get_by_role("link", name=re.compile(f"^{name}")), f"the {name} tab")
         if width <= 640:
             # Inside a project a phone's top-left control leads back to all projects (#272 FF-3, HIG-26).
-            self.primary(page, page.locator("header.top").get_by_role("button", name="Back", exact=True), "Back")
+            self.primary(page, page.locator("header.top").get_by_role("button", name=BACK), "Back")
         elif width <= 680:
             self.primary(page, page.get_by_role("button", name="Open navigation"), "Open navigation")
         if width <= 640:

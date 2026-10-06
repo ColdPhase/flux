@@ -265,7 +265,10 @@ svg { flex: none; }
 :is(a, button, [role="button"], [role="tab"], [role="radio"], [role="menuitem"], [role="option"], label, summary, input, select, textarea) { touch-action: manipulation; }
 
 /* Press states (HIG-16, #272): every control answers a press, on touch as well as with a mouse, whatever view it
-   is in. Primary buttons and Send keep their own darker press above; links inside running text keep theirs. */
-:is(button, a[href], summary, [role="button"], [role="tab"], [role="radio"], [role="menuitem"], [role="option"], [role="switch"], [role="checkbox"]):active:not(.ui-btn--primary, .composer__send, :disabled, [aria-disabled="true"], p a, li > p a) {
-  background-color: var(--bg-hover);
+   is in, one step past its hover. Primary buttons and Send keep their own darker press above; links inside running
+   text keep theirs. The current or chosen item keeps its accent fill and dims instead; a map thought shows its own
+   lift while held or dragged. */
+:is(button, a[href], summary, [role="button"], [role="tab"], [role="radio"], [role="menuitem"], [role="option"], [role="switch"], [role="checkbox"]):active:not(.ui-btn--primary, .composer__send, :disabled, [aria-disabled="true"], p a, li > p a, .sk-node, [aria-current="page"], [aria-checked="true"], [aria-selected="true"]) {
+  background-color: var(--bg-press);
 }
+:is(a[href], button, [role="tab"], [role="radio"], [role="option"], [role="menuitemradio"]):is([aria-current="page"], [aria-checked="true"], [aria-selected="true"]):active:not(:disabled) { opacity: .78; }
