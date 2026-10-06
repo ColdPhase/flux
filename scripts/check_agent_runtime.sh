@@ -108,6 +108,9 @@ json.dump(cs, sys.stdout)" "$work/inspect.json" | python3 "$here/scripts/agent-r
   fi
 done
 printf 'inspect.py refuses each of the 5 mutated slots\n'
+# Measured footprint of idle runtime services (F-022 "Limits": T3 records them).
+# shellcheck disable=SC2046
+docker stats --no-stream --format '{{ .Name }}\t{{ .MemUsage }}\t{{ .PIDs }} pids' $(docker ps -q --filter "label=com.docker.compose.project=$project")
 # The fifth slot (the documented override block) has exactly the anchor's settings.
 compose --profile runtime config --format json | python3 -c '
 import json, sys

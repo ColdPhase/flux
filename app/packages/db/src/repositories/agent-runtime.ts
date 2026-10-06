@@ -1,17 +1,46 @@
 import { sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import type { AgentRuntimeReleaseReason } from '@flux/contracts';
-import type { AgentRuntimeStore, RuntimeBindingRow, RuntimeSlotRow } from '@flux/core';
+import type { AgentRuntimeBindingState, AgentRuntimeReleaseReason } from '@flux/contracts';
 import type { Pool } from 'pg';
 import type * as schema from '../schema.js';
 
 // PostgreSQL adapter of the `runtime` transport's store (F-022 T3, migration 0056). Each method is one
 // short transaction; the use cases call runtime-manager only between them, never inside one.
 
+// Structurally core's AgentRuntimeStore port (@flux/core agent-runtime/ports.ts); @flux/db cannot import
+// @flux/core, which depends on it. The API and worker pass this adapter where the port is expected.
+export type RuntimeSlotState = 'unknown' | 'ready' | 'held' | 'wiping' | 'out_of_pool';
+export type RuntimeOutOfPoolReason = 'data_not_empty' | 'release_failed' | 'missing';
+export interface RuntimeSlotRow { slot: string; state: RuntimeSlotState; bootId: string | null; wipeBootId: string | null; outOfPoolReason: RuntimeOutOfPoolReason | null }
+export interface RuntimeBindingRow {
+  id: string; ownerUserId: string; slot: string; state: AgentRuntimeBindingState; createdAt: Date; lastUsedAt: Date | null;
+  releaseReason: AgentRuntimeReleaseReason | null;
+}
+type ReserveOutcome = { kind: 'reserved' | 'existing'; binding: RuntimeBindingRow } | { kind: 'full' } | { kind: 'starting' };
+export interface AgentRuntimeRows {
+  ownerView(ownerUserId: string): Promise<{
+    binding: RuntimeBindingRow | null;
+    lastRelease: { reason: AgentRuntimeReleaseReason; at: Date; signOutFailed: boolean } | null;
+    slots: { ready: number; held: number; total: number };
+    commercialTerms: { agreedOn: string; recordedAt: Date } | null;
+  }>;
+  reserve(ownerUserId: string, bindingId: string): Promise<ReserveOutcome>;
+  activate(bindingId: string): Promise<void>;
+  abandon(bindingId: string, slot: { state: 'unknown' } | { state: 'out_of_pool'; reason: RuntimeOutOfPoolReason }): Promise<void>;
+  requestRelease(target: { ownerUserId: string } | { slot: string }, reason: AgentRuntimeReleaseReason): Promise<RuntimeBindingRow | null>;
+  recordCommercialTerms(agreedOn: string): Promise<void>;
+  slotsWithBindings(): Promise<{ slot: RuntimeSlotRow; binding: RuntimeBindingRow | null }[]>;
+  saveSlot(slot: RuntimeSlotRow): Promise<void>;
+  markSignInAgain(bindingId: string): Promise<void>;
+  completeRelease(bindingId: string, slot: RuntimeSlotRow, logoutFailed: boolean): Promise<void>;
+  dropStaleReservation(bindingId: string, olderThan: Date): Promise<boolean>;
+  idleBindings(before: Date): Promise<RuntimeBindingRow[]>;
+}
+
 type Handle = Pick<NodePgDatabase<typeof schema>, 'execute' | 'transaction'>;
 type Exec = Pick<NodePgDatabase<typeof schema>, 'execute'>;
 
-type BindingRecord = { id: string; owner_user_id: string; slot: string; state: RuntimeBindingRow['state']; created_at: Date | string;
+type BindingRecord = { id: string; owner_user_id: string; slot: string; state: AgentRuntimeBindingState; created_at: Date | string;
   last_used_at: Date | string | null; release_reason: AgentRuntimeReleaseReason | null };
 type SlotRecord = { slot: string; state: RuntimeSlotRow['state']; boot_id: string | null; wipe_boot_id: string | null; out_of_pool_reason: RuntimeSlotRow['outOfPoolReason'] };
 
@@ -34,7 +63,7 @@ async function revokeConnections(tx: Exec, bindingId: string) {
     WHERE binding_id = ${bindingId} AND revoked_at IS NULL`);
 }
 
-export function agentRuntimeStore(db: Handle): AgentRuntimeStore {
+export function agentRuntimeStore(db: Handle): AgentRuntimeRows {
   return {
     async ownerView(ownerUserId) {
       const live = await db.execute<BindingRecord>(sql`SELECT ${BINDING_COLUMNS} FROM agent_runtime_bindings
