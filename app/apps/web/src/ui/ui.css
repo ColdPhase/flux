@@ -153,7 +153,7 @@ svg { flex: none; }
 .ui-bottomnav__item:focus-visible { outline-offset: -3px; }
 .ui-bottomnav__pill { position: relative; display: grid; place-items: center; width: 56px; height: 30px; border-radius: var(--r-pill); }
 .ui-bottomnav__pill::before {
-  content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--accent-soft);
+  content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--nav-current);
   opacity: 0; transform: scaleX(.45); transition: transform var(--dur-3) var(--ease-glide), opacity var(--dur-2) ease;
 }
 .ui-bottomnav__pill { isolation: isolate; }

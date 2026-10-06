@@ -19,9 +19,14 @@ export function day(iso: string) {
 /** Longest a feed waits for its first chips, references and state line before it shows (#155). */
 export const OPENING_REVEAL_MS = 1000;
 
+/** The most of a feed's height that opening on a whole message may leave empty below the newest entry. */
+const MAX_OPENING_ROOM = 0.25;
+
 /**
  * Opens a feed on whole messages at its latest: when the latest screen would start mid-message, it begins at
- * the next message instead, with a little room below the last one (direction C "return anchor"). Layout
+ * the next message instead, with a little room below the last one (direction C "return anchor"). That room is
+ * at most a quarter of the feed (F-023 FF-10): the newest entry stays next to the message box, so a tall
+ * message above it stays partly visible rather than leaving an empty gap (HIG-64). Layout
  * settles as lines, fonts and late message previews arrive, so this repeats until the reader acts. Only
  * genuine reader input ends it (readerIntent.ts, #155), or a scroll settle() did not write that follows such
  * input; layout growth, scroll anchoring and other writers never end it. Returns the cleanup.
@@ -39,7 +44,7 @@ export function openOnWholeMessages(feed: HTMLElement, column: HTMLElement, sele
     const next = list[index + 1];
     if (!next) { list[index]!.scrollIntoView({ block: 'start' }); written = feed.scrollTop; return; }
     const delta = next.getBoundingClientRect().top - top;
-    if (delta <= 0) return;
+    if (delta <= 0 || delta > feed.clientHeight * MAX_OPENING_ROOM) return;
     column.style.paddingBottom = `${parseFloat(getComputedStyle(column).paddingBottom) + delta}px`;
     feed.scrollTop = feed.scrollHeight;
     written = feed.scrollTop;

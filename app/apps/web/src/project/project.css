@@ -50,6 +50,14 @@ button.top__goal:hover { background: var(--bg-hover); color: var(--text); }
   .top--project .top__crumb { display: none; }
   .top--project .top__audience { max-width: 100%; min-height: 22px; font-size: var(--fs-xs); }
   .top--project .top__head { padding-left: 2px; gap: 2px; }
+  /* Under the title, one line at any phone width (visual review of #275): the audience and the goal
+     shorten with an ellipsis; their full text is in the title attribute and in Details. */
+  .top--project .top__meta { flex-wrap: nowrap; column-gap: 17px; }
+  .top--project .top__audience { flex: 0 1 auto; max-width: 60%; }
+  .top--project .top__audience > span:not(.ui-vh) { display: block; white-space: nowrap; text-overflow: ellipsis; }
+  .top--project .top__goal { flex: 0 1 auto; min-width: 3.5em; }
+  .top--project .top__goal--add { flex: none; }
+  .top--project .top__goal::before { left: -9px; }
 }
 
 /* ---------- Details overview ---------- */

@@ -142,3 +142,9 @@
 .nset__problem b { font-weight: 600; color: var(--text); }
 .inbox__caught { margin: 18px 0 0; font-size: var(--fs-sm); color: var(--text-3); }
 .unsub__link .ui-btn { margin-top: 0; }
+/* On phones a row stays short enough to scan (visual review of #275): the title takes at most two lines
+   and the preview one; the whole text is still the link's name and opens in full. */
+@media (max-width: 640px) {
+  .inbox__title { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .inbox__body { -webkit-line-clamp: 1; line-clamp: 1; }
+}

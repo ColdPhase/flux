@@ -14,6 +14,7 @@ import { listConversationRoots, listTaskNotices } from './conversation-api';
 import { ContributionMark, OPENING_REVEAL_MS, SourceCitation, clock, day, openOnWholeMessages, when } from './messageParts';
 import { MessageFiles } from '../composer/Files';
 import { agentAuthorLabel } from '../docs/format';
+import { STATUS_LABEL } from '../work/format';
 
 // One project conversation (UI116-1, 2026-10-02): a chronological stream of roots. Each root is the
 // opening message of a stored conversation; its replies open beside it in a one-level thread.
@@ -529,15 +530,18 @@ function creatorName(creator: NamedPrincipal, meId: string) {
  */
 function NoticeItem({ notice, meId, row, continued = false, onOpenTask }: { notice: TaskCreationNotice; meId: string; row: NativeWorkRow | null; continued?: boolean; onOpenTask: (workId: string) => void }) {
   // The task's current title from the visible reference read (#155); the announced title until it answers.
-  const title = row?.kind === 'work' && row.id === notice.workId ? row.title : notice.workTitle;
+  const current = row?.kind === 'work' && row.id === notice.workId ? row : null;
+  const title = current?.title ?? notice.workTitle;
+  // Where the task stands now, so the run reads as work rather than a log (F-023 FF-10).
+  const state = current ? `${STATUS_LABEL[current.status]}${current.owner ? ` · ${current.owner.id === meId ? 'you' : current.owner.kind === 'agent' ? agentAuthorLabel(current.owner) : current.owner.name ?? 'Member'}` : ''}` : '';
   return (
     <li className={`convo-notice${continued ? ' convo-notice--more' : ''}`} id={`notice-${notice.id}`} data-work-id={notice.workId}>
       <span className="convo-notice__icon" aria-hidden="true"><Icon name="tasks" size={14} /></span>
       <span className="convo-notice__body">
         {/* In a run, who and when are said once, above; assistive technology still hears them for each task. */}
         <span className={`convo-notice__meta${continued ? ' ui-vh' : ''}`}>New task · {creatorName(notice.createdBy, meId)}</span>
-        <button type="button" className="convo-notice__task" data-native-ref={`work:${notice.workId}`} onClick={() => onOpenTask(notice.workId)} aria-label={`Open task: ${title}`}>
-          <span className="convo-notice__title">{title}</span><Icon name="chevron-right" size={14} />
+        <button type="button" className="convo-notice__task" data-native-ref={`work:${notice.workId}`} onClick={() => onOpenTask(notice.workId)} aria-label={`Open task: ${title}${state ? ` · ${state}` : ''}`}>
+          <span className="convo-notice__text"><span className="convo-notice__title">{title}</span>{state ? <span className={`convo-notice__state is-${current!.status}`}>{state}</span> : null}</span><Icon name="chevron-right" size={14} />
         </button>
       </span>
       <time dateTime={notice.createdAt} title={when(notice.createdAt)}>{clock(notice.createdAt)}</time>

@@ -107,7 +107,7 @@ export function DmSketches() {
         {typeof state === 'object' && !state.items.length ? (
           <div className="view-empty">
             <EmptyState icon="map" title="Sketch it out together" action={action}>
-              <p>In Messages, choose <b>Select to sketch</b>, pick a few messages and choose <b>Start sketch from these messages</b>: each one becomes a thought you can move and connect.</p>
+              <p>In Messages, choose <b>Sketch from messages</b>, pick a few messages and choose <b>Start sketch from these messages</b>: each one becomes a thought you can move and connect.</p>
               <p>{who} can see a sketch made here. It stays in this conversation.</p>
             </EmptyState>
           </div>

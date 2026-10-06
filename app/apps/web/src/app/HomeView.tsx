@@ -53,6 +53,14 @@ export function HomeView() {
     const proposal = state?.access !== 'viewer' ? state?.state.proposal : null;
     return proposal && !listed.has(`decision:${proposal.id}`) ? [{ project, proposal }] : [];
   });
+  const waiting = (summary?.needsYou ?? 0) + decisions.length;
+  const toForYou = () => {
+    const heading = document.getElementById('home-for-you');
+    if (!heading) return;
+    heading.setAttribute('tabindex', '-1');
+    heading.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    heading.focus({ preventScroll: true });
+  };
   const needsByProject = new Map<string, number>();
   for (const item of summary?.items ?? []) if (item.needsYou && item.project) needsByProject.set(item.project.id, (needsByProject.get(item.project.id) ?? 0) + 1);
 
@@ -62,7 +70,11 @@ export function HomeView() {
         <div className="home__hello">
           <p className="home__date">{dateLine.format(new Date())}</p>
           <h2 className="home__hi">Hi, {firstName}.</h2>
-          <p className="home__lead">Your place to get back to work.</p>
+          {/* What waits for the reader is said at once, on every size (visual review of #275): For you can be
+              below the first screen on a phone, so this line goes there. */}
+          <p className="home__lead">{waiting
+            ? <button type="button" className="home__waiting" onClick={toForYou}><span className="since__dot since__dot--need" aria-hidden="true" />{waitingText(summary?.needsYou ?? 0, decisions.length)}<Icon name="chevron-down" size={14} /></button>
+            : 'Your place to get back to work.'}</p>
         </div>
 
         <ReturnCard summaryStep={summary?.nextStep ?? null} moving={moving[0] ?? null} projectName={(id) => projects.find((project) => project.id === id)?.name ?? 'Project'} />
@@ -73,7 +85,7 @@ export function HomeView() {
           <section className="home-sec" aria-labelledby="home-for-you">
             <div className="home-sec__head">
               <h3 id="home-for-you" className="home-sec__h">For you</h3>
-              {(summary?.needsYou ?? 0) + decisions.length ? <span className="home-sec__count" aria-label={`${(summary?.needsYou ?? 0) + decisions.length} ${(summary?.needsYou ?? 0) + decisions.length === 1 ? 'needs' : 'need'} you`}>{(summary?.needsYou ?? 0) + decisions.length}</span> : null}
+              {waiting ? <span className="home-sec__count" aria-label={`${waiting} ${waiting === 1 ? 'needs' : 'need'} you`}>{waiting}</span> : null}
             </div>
             <p className="home-sec__why">Replies, mentions and requests that wait for you, across your projects.</p>
             {decisions.length ? (
@@ -200,6 +212,13 @@ function ReturnCard({ summaryStep, moving, projectName }: {
   );
 }
 
+/** "1 decision needs you", "3 things need you": what For you holds, in one line. */
+function waitingText(needs: number, decisions: number) {
+  const total = needs + decisions;
+  const what = needs ? (total === 1 ? 'thing' : 'things') : (total === 1 ? 'decision' : 'decisions');
+  return `${total} ${what} ${total === 1 ? 'needs' : 'need'} you`;
+}
+
 function MyWork({ items, moving, loading, failed, total, projectName }: {
   items: WorkItem[]; moving: WorkItem[]; loading: boolean; failed: boolean; total: number; projectName: (id: string) => string;
 }) {
@@ -210,7 +229,7 @@ function MyWork({ items, moving, loading, failed, total, projectName }: {
       <div className="home-sec__head">
         <h3 id="home-work" className="home-sec__h">My work</h3>
         <div className="home-seg" role="group" aria-label="Which tasks">
-          <button type="button" className="home-seg__b" aria-pressed={!all} onClick={() => setAll(false)}>Moving · {moving.length}</button>
+          <button type="button" className="home-seg__b" aria-pressed={!all} onClick={() => setAll(false)}>Active · {moving.length}</button>
           <button type="button" className="home-seg__b" aria-pressed={all} onClick={() => setAll(true)}>All · {total || items.length}</button>
         </div>
       </div>

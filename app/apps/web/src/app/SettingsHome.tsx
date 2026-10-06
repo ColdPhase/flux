@@ -62,7 +62,7 @@ export function SettingsHome() {
           <h2 className="set-sec__h" id="set-ai">AI</h2>
           <ul className="set-card">
             <Row to="/settings/assistant" icon="spark" title="Agent in Flux" sub="Your own AI connection inside Flux · only you can use it" />
-            <Row to="/connect-agent" icon="terminal" title="Agent connections (MCP)" sub="Claude Code, Codex or any MCP client on your computer" />
+            <Row to="/connect-agent" icon="terminal" title="Agent connections" sub="Claude Code, Codex or any MCP client on your computer" />
             <Row to="/settings/background-compute" icon="leaf" title="Background suggestions" sub="Optional comparisons from your own connection and allowance" />
           </ul>
         </section>

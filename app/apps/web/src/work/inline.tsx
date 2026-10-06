@@ -86,13 +86,14 @@ export function ProjectStateRow({ summary, phase }: { summary: ProjectWorkSummar
   const need = parts.find((part) => part.tone === 'need');
   // Keep blocking work readable even when the rest of the phone summary is clipped.
   const blocked = parts.length > 1 ? parts.find((part) => part.key === 'blocked') : undefined;
-  const compactParts = blocked ? parts.filter((part) => part !== blocked) : parts;
+  // One fact, whole, at phone width (visual review of #275): the lead part; Details names the rest.
+  const [lead, ...rest] = blocked ? parts.filter((part) => part !== blocked) : parts;
   return (
     <button type="button" className="ws-state-row" onClick={() => openDetails('place')} aria-haspopup="dialog" aria-busy={phase === 'refreshing'}>
       {need ? <span className="ws-dot ws-dot--need" aria-hidden="true" /> : <Icon name={parts[0]?.icon ?? 'tasks'} size={13} />}
-      <span className="ws-state-row__t">{!summary ? phase === 'unavailable' ? 'Current work unavailable' : 'Loading current work…' : compactParts.length ? compactParts.map((part) => part.short).join(' · ') : summaryEmptyCaption(summary)}</span>
+      <span className="ws-state-row__t">{!summary ? phase === 'unavailable' ? 'Current work unavailable' : 'Loading current work…' : lead ? lead.short : summaryEmptyCaption(summary)}</span>
       {blocked ? <span className="ws-state-row__blocked">{blocked.short}</span> : null}
-      <span className="ui-vh">, open project details</span>
+      <span className="ui-vh">{rest.map((part) => `, ${part.short}`).join('')}, open project details</span>
       <Icon name="chevron-right" size={16} />
     </button>
   );

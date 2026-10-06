@@ -177,14 +177,20 @@ class OneConversationJourney(unittest.TestCase):
         sidebar = page.get_by_role("complementary", name="Sidebar")
         expect(sidebar.get_by_role("link", name="Night lamp")).to_be_visible()
         expect(sidebar.get_by_role("link", name=re.compile("Should the lamp react"))).to_have_count(0)
-        # The stream opens on whole messages with the latest fully visible.
+        # The stream opens on whole messages with the latest fully visible, unless a whole message would leave
+        # more than a quarter of the stream empty below the newest (F-023 FF-10).
         page.wait_for_timeout(600)
-        clipped = page.evaluate("""() => {
-          const feed = document.querySelector('.project-convo__feed');
-          const top = feed.getBoundingClientRect().top;
-          return [...feed.querySelectorAll('.project-convo__message')].filter((el) => { const r = el.getBoundingClientRect(); return r.top < top - 1 && r.bottom > top + 1; }).length;
+        cut = page.evaluate("""() => {
+          const feed = document.querySelector('.project-convo__feed'), box = feed.getBoundingClientRect();
+          const list = [...feed.querySelectorAll('.project-convo__message, .convo-notice')];
+          const index = list.findIndex((el) => { const r = el.getBoundingClientRect(); return r.top < box.top - 1 && r.bottom > box.top + 1; });
+          if (index < 0) return null;
+          const next = list[index + 1];
+          return { room: next ? next.getBoundingClientRect().top - box.top : null, height: box.height };
         }""")
-        self.assertEqual(clipped, 0, "no root is cut off at the top of the opening screen")
+        if cut is not None:
+            self.assertIsNotNone(cut["room"], "the newest root is not cut off at the top")
+            self.assertGreater(cut["room"], cut["height"] / 4 - 1, "a root is cut off only when showing it whole would leave more than a quarter empty")
         last, feed = self.root(page, "r3").bounding_box(), page.locator(".project-convo__feed").bounding_box()
         assert last and feed
         self.assertLessEqual(last["y"] + last["height"], feed["y"] + feed["height"] + 1, "the newest root is fully visible")

@@ -112,7 +112,7 @@ class DmSketchJourney(unittest.TestCase):
         page = self.page("jo")
         page.goto(f"/dm/{self.dm_id}")
         expect(page.locator(".dm-msg__body", has_text="gestures")).to_be_visible()
-        select = page.get_by_role("button", name="Select to sketch", exact=True)
+        select = page.get_by_role("button", name="Sketch from messages", exact=True)
         select.click()
         expect(select).to_have_attribute("aria-pressed", "true")
         bar = page.get_by_role("region", name="Selected messages")
@@ -189,7 +189,7 @@ class DmSketchJourney(unittest.TestCase):
     def test_03_phone_selection_bar(self) -> None:
         page = self.page("kai", phone=True)
         page.goto(f"/dm/{self.dm_id}")
-        select = page.get_by_role("button", name="Select to sketch", exact=True)
+        select = page.get_by_role("button", name="Sketch from messages", exact=True)
         select.tap()
         self.message(page, 1).locator(".dm-msg__body").tap()
         bar = page.get_by_role("region", name="Selected messages")
@@ -326,7 +326,7 @@ class DmSketchJourney(unittest.TestCase):
         expect(jo.get_by_role("toolbar", name="Sketch tools")).to_have_count(0)
         jo.goto(f"/dm/{self.dm_id}")
         expect(jo.locator(".dm__notice")).to_contain_text("left this conversation")
-        expect(jo.get_by_role("button", name="Select to sketch", exact=True)).to_have_count(0)
+        expect(jo.get_by_role("button", name="Sketch from messages", exact=True)).to_have_count(0)
         shot(jo, "dm-sketch-left")
 
 

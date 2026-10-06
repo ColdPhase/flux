@@ -196,16 +196,23 @@ class ProjectSurfaceJourney(unittest.TestCase):
         shot(small, "project-conversation-desktop-1280")
 
     def assert_whole_messages(self, page: Page) -> None:
-        """The stream and the open thread (UI116-1) each open on whole messages: none starts above the
-        top edge of its feed, and its latest message is fully visible."""
+        """The stream and the open thread (UI116-1) each open on whole messages at the latest, which is fully
+        visible: none starts above the top edge of its feed, unless showing it whole would leave more than a
+        quarter of the feed empty below the newest entry (F-023 FF-10)."""
         page.wait_for_timeout(600)
-        for selector in (".project-convo__feed", ".thread__feed"):
-            clipped = page.evaluate("""(selector) => {
-              const feed = document.querySelector(selector);
-              const top = feed.getBoundingClientRect().top;
-              return [...feed.querySelectorAll('.project-convo__message')].filter((el) => { const r = el.getBoundingClientRect(); return r.top < top - 1 && r.bottom > top + 1; }).length;
-            }""", selector)
-            self.assertEqual(clipped, 0, f"{selector}: no message is cut off at the top of the opening screen")
+        for selector, items in ((".project-convo__feed", ".project-convo__message, .convo-notice"), (".thread__feed", ".project-convo__message")):
+            cut = page.evaluate("""([selector, items]) => {
+              const feed = document.querySelector(selector), box = feed.getBoundingClientRect();
+              const list = [...feed.querySelectorAll(items)];
+              const index = list.findIndex((el) => { const r = el.getBoundingClientRect(); return r.top < box.top - 1 && r.bottom > box.top + 1; });
+              if (index < 0) return null;
+              const next = list[index + 1];
+              return { room: next ? next.getBoundingClientRect().top - box.top : null, height: box.height };
+            }""", [selector, items])
+            if cut is not None:
+                self.assertIsNotNone(cut["room"], f"{selector}: the newest entry is not cut off at the top")
+                self.assertGreater(cut["room"], cut["height"] / 4 - 1,
+                                   f"{selector}: a message is cut off at the top only when showing it whole would leave more than a quarter of the feed empty")
             last = page.locator(f"{selector} .project-convo__message").last.bounding_box()
             feed = page.locator(selector).bounding_box()
             assert last and feed

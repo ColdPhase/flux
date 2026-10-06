@@ -505,9 +505,6 @@ function AppLayoutContent() {
             </Button>}
           </div>
         </header>
-        {/* The project's state line (needs you, rule, blocked) with "What matters" stays on the phone's
-            Conversation, where people orient themselves (#266 PF-2). */}
-        {project && phone && !onOtherView ? <div className="state-row"><ProjectStateRow summary={workSummary.summary} phase={workSummary.phase} />{recapEntry}</div> : null}
         {/* A place's views: tabs on wider screens, a row of chips with the current one filled on the phone
             (#266 PF-1), so where you are is never a guess. */}
         {place.views
@@ -517,6 +514,10 @@ function AppLayoutContent() {
             : dmViews
               ? <Tabs className={`views${phone ? ' views--chips' : ''}`} label="Direct message views" items={dmViews} />
               : <div className="views views--none" aria-hidden="true" />}
+        {/* The project's state line (what needs you, blocked) with "What matters" stays on the phone's
+            Conversation, where people orient themselves (#266 PF-2). It sits under the chips, so they keep
+            their place when the person switches views (visual review of #275). */}
+        {project && phone && !onOtherView ? <div className="state-row"><ProjectStateRow summary={workSummary.summary} phase={workSummary.phase} />{recapEntry}</div> : null}
         <LiveBar />
         <div className="app__pane" id="content" ref={paneRef} tabIndex={-1}>
           <Outlet />

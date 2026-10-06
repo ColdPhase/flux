@@ -119,10 +119,10 @@ class FriendlyHomeJourney(unittest.TestCase):
         self.within_first_screen(page, work.get_by_role("heading", name="My work"), DESKTOP["height"], "My work")
         self.within_first_screen(page, for_you.get_by_role("heading", name="For you", exact=True), DESKTOP["height"], "For you")
 
-        # My work: Moving shows the task in progress with its project and status; All shows every open task.
-        moving = work.get_by_role("button", name=re.compile("^Moving"))
+        # My work: Active shows the task in progress with its project and status; All shows every open task.
+        moving = work.get_by_role("button", name=re.compile("^Active"))
         expect(moving).to_have_attribute("aria-pressed", "true")
-        expect(moving).to_have_text("Moving · 1")
+        expect(moving).to_have_text("Active · 1")
         row = work.get_by_role("link", name=re.compile(MOVING))
         expect(row).to_contain_text(f"{PROJECT} · In progress")
         expect(row).to_have_attribute("href", f"/projects/{self.project['id']}/tasks?open=work:{self.moving['id']}")
@@ -130,7 +130,7 @@ class FriendlyHomeJourney(unittest.TestCase):
         work.get_by_role("button", name=re.compile("^All")).click()
         expect(work.get_by_role("button", name=re.compile("^All"))).to_have_attribute("aria-pressed", "true")
         expect(work.get_by_role("link", name=re.compile(WAITING))).to_contain_text(f"{PROJECT} · Open")
-        work.get_by_role("button", name=re.compile("^Moving")).click()
+        work.get_by_role("button", name=re.compile("^Active")).click()
 
         # For you: nothing waits for Ada yet, and the empty state says what will show here.
         expect(for_you).to_contain_text("Nothing needs you right now. When someone replies to you, mentions you or asks for your decision, it shows here and in your Inbox.")
@@ -520,6 +520,18 @@ class FriendlyHomeJourney(unittest.TestCase):
         expect(for_you.locator(".home-sec__count")).to_have_attribute("aria-label", re.compile(r"^\d+ needs? you$"))
         expect(page.get_by_role("region", name="Your projects", exact=True).get_by_role("link", name=re.compile(f"^{PROJECT}"))).to_contain_text("A decision needs you")
         shot(page, "272-home-decision-desktop-1440")
+        # On a phone For you is below the first screen, so the greeting says what waits and goes there
+        # (visual review of #275).
+        phone = self.page(PHONE, touch=True)
+        phone.goto("/")
+        waiting = phone.locator(".home__hello").get_by_role("button", name=re.compile(r"^\d+ (decision|thing)s? needs? you$"))
+        expect(waiting).to_be_visible()
+        self.within_first_screen(phone, waiting, PHONE["height"], "what waits for you")
+        self.assertGreaterEqual(self.box(waiting)["height"], 44, "a 44px target")
+        waiting.tap()
+        heading = phone.get_by_role("heading", name="For you", exact=True)
+        expect(heading).to_be_focused()
+        phone.wait_for_function("() => { const h = document.getElementById('home-for-you'); const r = h.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }")
         row.click()
         expect(page.locator("#details").get_by_role("heading", name=title)).to_be_visible()
         expect(page.locator("#details .wd-eyebrow")).to_contain_text("Proposed decision")
@@ -543,6 +555,53 @@ class FriendlyHomeJourney(unittest.TestCase):
         everything.click()
         expect(page).to_have_url(f"{ORIGIN}/projects")
         expect(page.get_by_role("heading", level=1, name="Projects")).to_be_visible()
+
+
+    # ------------------------------------------------------------------ FF-10 a conversation opens on what was said last
+
+    def test_12_a_phone_conversation_opens_next_to_the_message_box(self):
+        page = self.page()
+        project = self.call(page, "POST", f"/api/v1/workspaces/{self.workspace['id']}/projects", {"name": "Rain barrel monitor", "visibility": "restricted"}, 201)
+        say = lambda body: self.call(page, "POST", f"/api/v1/projects/{project['id']}/conversations", {"body": body, "clientMessageId": str(uuid.uuid4())}, 201)  # noqa: E731
+        say("Where should the overflow sensor go?")
+        say("The barrel by the shed fills first, so I would start there.")
+        # A tall message before the newest entries: opening on it whole would leave most of the phone's stream empty.
+        say(" ".join(["The float switch reads full at 180 litres, but the lid leaks when it rains hard, so the reading jumps."] * 7))
+        mine = {"kind": "human", "id": self.me["id"]}
+        titles = ["Seal the barrel lid", "Mount the float switch", "Log levels every hour"]
+        for index, title in enumerate(titles):
+            body = {"title": title, "clientCommandId": str(uuid.uuid4())}
+            if index == 0: body.update(status="in_progress", owner=mine)
+            self.call(page, "POST", f"/api/v1/projects/{project['id']}/work", body, 201)
+        for viewport in ({"width": 375, "height": 667}, PHONE):
+            with self.subTest(viewport=viewport["width"]):
+                phone = self.page(viewport, touch=True)
+                phone.goto(f"/projects/{project['id']}")
+                notices = phone.locator(".convo-notice")
+                expect(notices).to_have_count(len(titles))
+                # Each announced task says where it stands now.
+                expect(notices.first).to_contain_text("In progress · you")
+                expect(notices.first.get_by_role("button", name=re.compile(f"^Open task: {titles[0]} · In progress · you$"))).to_be_visible()
+                phone.wait_for_timeout(600)
+                feed = self.box(phone.locator(".project-convo__feed.is-stream"))
+                last = self.box(notices.last)
+                self.assertGreaterEqual(feed["y"] + feed["height"] + 1, last["y"] + last["height"], "the newest entry is fully visible")
+                self.assertLessEqual(feed["y"] + feed["height"] - (last["y"] + last["height"]), feed["height"] / 4 + 1, "the newest entry sits next to the message box")
+                # The header is one block: back, the title with one line under it, and Details.
+                header = self.box(phone.locator("header.top"))
+                self.assertLessEqual(header["height"], 64, "the header does not wrap")
+                state = phone.locator(".state-row .ws-state-row")
+                expect(state).to_contain_text("Work in progress")
+                self.assertLessEqual(self.box(state)["height"], 45, "one state line")
+                chips = phone.get_by_role("navigation", name="Project views")
+                top = self.box(chips)["y"]
+                self.assertLess(top, self.box(state)["y"], "the chips come before the state line")
+                chips.get_by_role("link", name=re.compile("^Tasks")).tap()
+                expect(phone).to_have_url(re.compile("/tasks"))
+                expect(phone.locator(".state-row")).to_have_count(0)
+                self.settle(phone)
+                self.assertAlmostEqual(self.box(chips)["y"], top, delta=1, msg="the chips keep their place between views")
+                if viewport["width"] == 375: shot(phone, "272-conversation-phone-375")
 
 
 if __name__ == "__main__":
