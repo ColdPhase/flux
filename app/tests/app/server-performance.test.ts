@@ -4,6 +4,7 @@ import { describe, test } from 'node:test';
 import type { Conversation } from '@flux/contracts';
 import { conversationUseCases } from '@flux/core';
 import { conversationStore } from '../../apps/server/src/conversation/store.js';
+import { comparisonOutcomeReads } from '../../apps/server/src/proactive-comparison/outcome-adapter.js';
 import { notificationRepository } from '../../apps/server/src/push/adapters.js';
 import { pool } from './support/db.js';
 import { addMember, expectStatus, person, project, workspace } from './support/people.js';
@@ -85,8 +86,18 @@ describe('conversation and material pages (#298)', () => {
   });
 });
 
-describe('reading the conversation stream (#298)', () => {
-  test('takes no row locks: one read-only snapshot, so the read writes no WAL and waits for no flush', async () => {
+/** A read that holds one read-only snapshot and sends no row-locking clause. */
+function assertSnapshotRead(sent: { text: string }[]) {
+  const begin = sent.find((statement) => /^begin\b/i.test(statement.text.trim()));
+  assert.match(begin?.text ?? '', /repeatable read/i, 'access and page share one snapshot');
+  assert.match(begin?.text ?? '', /read only/i);
+  // Before #298 these reads share-locked the project, grant and membership rows: each lock is a WAL
+  // record, and the commit then waits for the WAL flush, on every open and 15 s refresh.
+  assert.deepEqual(sent.filter((statement) => /\bfor (share|update|no key update|key share)\b/i.test(statement.text)).map((statement) => statement.text), []);
+}
+
+describe('reads the project views refresh (#298)', () => {
+  test('the conversation stream takes no row locks: one read-only snapshot, no WAL, no flush wait', async () => {
     const owner = await person('Stream reader');
     const space = await workspace(owner, 'Stream');
     const place = await project(owner, space.id, 'Stream project', 'workspace');
@@ -95,11 +106,15 @@ describe('reading the conversation stream (#298)', () => {
     const store = conversationUseCases(conversationStore(db));
     const { result, sent } = await statements(() => store.listRoots({ id: owner.id, kind: 'human' }, place.id, {}));
     assert.equal(result.roots.length, 1);
-    const begin = sent.find((statement) => /^begin\b/i.test(statement.text.trim()));
-    assert.match(begin?.text ?? '', /repeatable read/i, 'access and page share one snapshot');
-    assert.match(begin?.text ?? '', /read only/i);
-    // Before #298 the read share-locked the project, grant and membership rows: each lock is a WAL
-    // record, and the commit then waits for the WAL flush, on every open and 15 s refresh.
-    assert.deepEqual(sent.filter((statement) => /\bfor (share|update|no key update|key share)\b/i.test(statement.text)).map((statement) => statement.text), []);
+    assertSnapshotRead(sent);
+  });
+
+  test('the comparison outcome page (Tasks) takes no row locks either', async () => {
+    const owner = await person('Outcome reader');
+    const space = await workspace(owner, 'Outcomes');
+    const place = await project(owner, space.id, 'Outcomes project', 'workspace');
+    const { result, sent } = await statements(() => comparisonOutcomeReads(db).list({ id: owner.id, kind: 'human' }, place.id, 100, 0));
+    assert.deepEqual({ items: result.items, total: result.total }, { items: [], total: 0 });
+    assertSnapshotRead(sent);
   });
 });
