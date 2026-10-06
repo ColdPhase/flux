@@ -18,9 +18,24 @@ export interface AgentConnection {
   createdAt: string;
 }
 
+/**
+ * Where an approved authorization goes: the signed request's redirect URI (#287). `loopback` is
+ * 127.0.0.1, [::1] or localhost on the person's own computer; `web` is any other http(s) host;
+ * `app` is a native app's private-use scheme, shown as the whole URI because it has no host.
+ */
+export interface AgentOauthRedirect {
+  kind: 'loopback' | 'web' | 'app';
+  /** Host and port of an http(s) redirect, or the whole private-use URI. */
+  host: string;
+}
+
 /** Current owner-only display projection of a provider-signed authorization request. */
 export interface AgentOauthConsentContext {
+  /** Self-asserted by the client; never proof of who runs it. */
   clientName: string;
+  /** The client_id's host when the client_id is an https URL (a Client ID Metadata Document); null for a client registered on this server. */
+  clientIdHost: string | null;
+  redirect: AgentOauthRedirect;
   scopes: string[];
   connection: AgentConnection;
   agentName: string;

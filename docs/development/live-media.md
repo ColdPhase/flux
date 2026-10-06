@@ -56,9 +56,16 @@ interrupts current media; Flux's room-generation recovery is tested by
 
 For k3s, follow the separate
 [operator deployment contract](live-media-k3s.md). It records inputs, port
-ownership, security and external validation gates. This is a topology
-requirement, not a verified chart/install path; #63 still requires a real
-deployment run.
+ownership, security and external validation gates. It also holds the
+checked-in chart values in `docker/k3s/` and their Docker render check,
+`./scripts/check_live_k3s.sh`. That check validates the rendered manifests and
+their consistency with this Compose profile. It is not an installation, and
+#63 still requires a real deployment run.
+
+What each hop encrypts, which parties can read media, and the DTLS evidence
+are recorded in [live-media-encryption.md](live-media-encryption.md). Media is
+encrypted in transit and decrypted in the SFU; it is not end-to-end
+encrypted.
 
 ## Local restrictive-network proof
 
@@ -74,7 +81,10 @@ The test obtains metrics inside the SFU container and retains them as artifacts;
 it never opens the internal signaling network to browsers. The existing real-SFU
 revocation and sign-out cases also run under the restrictive relay profile.
 The assertion reads the selected WebRTC candidate pair on both clients and
-requires relay over TLS with received bytes. The temporary certificate is
+requires relay over TLS with received bytes. It also requires completed DTLS
+with an SRTP profile and the signaled certificate on every transport that
+carried RTP. A negative control with a tampered fingerprint must fail DTLS
+(see [live-media-encryption.md](live-media-encryption.md#automated-evidence)). The temporary certificate is
 accepted only by this test browser; it does not prove a real public CA or NAT.
 The script removes its volumes, images and certificate on exit. It is a local
 heavy check, not a per-push GitHub Action.

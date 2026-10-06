@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
-import { arrivalShouldAnimate, arrivals, loopShouldRun } from './motion-rules';
+import { arrivalShouldAnimate, arrivals, cssTimeToMs, loopShouldRun } from './motion-rules';
 
 /**
  * Motion helpers. Durations and easings come from the CSS tokens, which are 0ms under
@@ -13,7 +13,7 @@ export function token(name: string): string {
 
 export function duration(name: '--dur-1' | '--dur-2' | '--dur-3' | '--dur-4'): number {
   if (reduceQuery?.matches) return 0;
-  return parseFloat(token(name)) || 0;
+  return cssTimeToMs(token(name));
 }
 
 export type Easing = '--ease-out' | '--ease-in' | '--ease-sheet';

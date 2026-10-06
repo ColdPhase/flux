@@ -1,0 +1,76 @@
+{
+ "dtlsSrtp": {
+  "owner": [
+   {
+    "pc": 0,
+    "dtlsState": "connected",
+    "tlsVersion": "FEFD",
+    "dtlsCipher": "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
+    "srtpCipher": "SRTP_AES128_CM_HMAC_SHA1_80",
+    "dtlsRole": "server",
+    "remoteFingerprintAlgorithm": "sha-256",
+    "fingerprintMatchesSignalling": true,
+    "rtpBytes": 5206
+   }
+  ],
+  "member": [
+   {
+    "pc": 0,
+    "dtlsState": "connected",
+    "tlsVersion": "FEFD",
+    "dtlsCipher": "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
+    "srtpCipher": "SRTP_AES128_CM_HMAC_SHA1_80",
+    "dtlsRole": "server",
+    "remoteFingerprintAlgorithm": "sha-256",
+    "fingerprintMatchesSignalling": true,
+    "rtpBytes": 2632
+   }
+  ]
+ },
+ "dtlsNegativeControl": {
+  "connectOutcome": "Error: Browser ICE connection failed: Error: page.evaluate: ConnectionError: could not establish pc connection",
+  "states": [
+   {
+    "pc": 0,
+    "dtls": "new"
+   },
+   {
+    "pc": 0,
+    "ice": "checking"
+   },
+   {
+    "pc": 0,
+    "connection": "connecting"
+   },
+   {
+    "pc": 0,
+    "dtls": "connecting"
+   },
+   {
+    "pc": 0,
+    "ice": "connected"
+   },
+   {
+    "pc": 0,
+    "dtls": "failed"
+   },
+   {
+    "pc": 0,
+    "connection": "failed"
+   },
+   {
+    "pc": 0,
+    "dtls": "closed"
+   }
+  ],
+  "failedTransports": [
+   {
+    "pc": 0,
+    "id": "T01",
+    "dtlsState": "failed",
+    "iceState": "connected",
+    "inboundRtpBytes": 0
+   }
+  ]
+ }
+}
