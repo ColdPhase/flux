@@ -90,3 +90,13 @@ button.top__goal:hover { background: var(--bg-hover); color: var(--text); }
 /* ---------- Map and Docs tabs ---------- */
 .pv-lead { display: flex; align-items: center; gap: 6px; margin-top: 2px; font-size: var(--fs-sm); color: var(--text-3); }
 .pv-note { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); max-width: 560px; font-size: var(--fs-sm); line-height: 1.55; color: var(--text-3); }
+
+/* On narrow desktops and tablets the header's second line stays one line (#136: at most 90 px), now that it
+   also holds the goal (#272 FF-6): the audience stays whole, and the goal and the state line shorten with an
+   ellipsis; their full text is in the title and in Details. */
+@media (min-width: 641px) and (max-width: 1100px) {
+  .top--project .top__meta { flex-wrap: nowrap; }
+  .top--project .top__goal { flex: 0 1 auto; min-width: 3.5em; }
+  .top--project .top__goal--add { flex: none; }
+  .top--project .ws-state { flex: 1 1 0; min-width: 0; flex-wrap: nowrap; overflow: hidden; white-space: nowrap; }
+}

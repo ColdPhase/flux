@@ -25,6 +25,14 @@ export function HomeView() {
   const { me, projects } = useShellData();
   const firstName = me.user.name.trim().split(/\s+/)[0] || me.user.name;
   const { summary, ack, acknowledge } = useReturn({ type: 'home' });
+  // After "I have the context" the list closes and focus moves to the Home heading (#190 A1.3); the status
+  // line in For you says what happened.
+  useEffect(() => {
+    if (ack !== 'done') return;
+    const heading = document.querySelector<HTMLElement>('header.top h1');
+    if (heading && !heading.hasAttribute('tabindex')) heading.setAttribute('tabindex', '-1');
+    heading?.focus();
+  }, [ack]);
   const work = useAssignedWork();
   const mine = work?.items ?? [];
   const moving = mine.filter((item) => item.status === 'in_progress' || item.status === 'blocked');
