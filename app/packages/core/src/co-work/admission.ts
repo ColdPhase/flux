@@ -61,9 +61,11 @@ export function requireCoWorkAdmission(context: CoWorkContext, facts: CoWorkAdmi
     throw new ConflictError('The sender claim is no longer live; recover before requesting', 'COWORK_CLAIM_LOST');
   if (input.request.recipientConnectionId === context.connectionId)
     throw new ConflictError('A connection cannot address a request to itself', 'COWORK_SELF_REQUEST');
+  // A completed or stopped unit can never be claimed again, so a request to it could never be answered (#153 0054).
   if (!recipientConnection || recipientConnection.id !== input.request.recipientConnectionId || !recipient
     || recipient.id !== input.request.unitId || recipient.projectId !== context.projectId
-    || recipient.lineageTaskId !== sender.lineageTaskId || recipient.runId !== sender.runId)
+    || recipient.lineageTaskId !== sender.lineageTaskId || recipient.runId !== sender.runId
+    || recipient.state === 'completed' || recipient.state === 'stopped')
     throw new NotFoundError('Request recipient', 'COWORK_REQUEST_UNAVAILABLE');
   const { target, sourceRefs, criteriaRefs } = input.request;
   if (github([target, ...sourceRefs, ...criteriaRefs]))

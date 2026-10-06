@@ -2,6 +2,8 @@ import { Outlet, createBrowserRouter } from 'react-router';
 import { ToastProvider } from './ui';
 import { UpdatePrompt } from './pwa';
 import { AppLayout } from './app/AppLayout';
+import { SettingsHome } from './app/SettingsHome';
+import { ProjectsIndex } from './app/ProjectsIndex';
 import { appLoader } from './app/data';
 import { ProjectConversation, projectConversationLoader, shouldRevalidateProjectConversation } from './app/ProjectConversation';
 import { ProjectSetup } from './app/ProjectSetup';
@@ -75,6 +77,7 @@ export const router = createBrowserRouter([
         ErrorBoundary: RouteErrorPage,
         children: [
           { index: true, Component: ConversationView },
+          { path: 'projects', Component: ProjectsIndex },
           { path: 'projects/new', Component: ProjectSetup },
           {
             // One project (#117): its header, audience, state line and view tabs share this data.
@@ -125,6 +128,7 @@ export const router = createBrowserRouter([
           { path: 'dm/:dmId/sketches/:sketchId', Component: SketchRoute },
           { path: 'inbox', Component: InboxView },
           { path: 'inbox/:id', Component: InboxOpen },
+          { path: 'settings', Component: SettingsHome },
           { path: 'settings/notifications', Component: NotificationSettings },
           { path: 'settings/background-compute', loader: backgroundComputeLoader, Component: BackgroundComputeSettings },
           { path: 'settings/notifications/verify', Component: VerifyAddress },

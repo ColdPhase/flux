@@ -12,6 +12,13 @@ The owner operates an official Claude Code client and its compute account. Flux 
 OAuth consent, narrow MCP tools, current project policy and sourced proposals. No
 provider credential or model request passes through Flux.
 
+**Proposed amendment, 2026-10-05:** [F-024](../product/mcp-identity.md) defines
+how this OAuth flow works when people sign in through an external OIDC provider:
+the provider on `/login`, issuer-and-subject identities, a standing check with
+the provider, a confirmation age for managed accounts, step-up for sensitive
+grants and opt-in connection access keys. Until its slices land, the rules below
+are the implemented behaviour.
+
 ## Identities and consent
 
 The browser session belongs to a person. A connection selects an existing,
@@ -40,6 +47,38 @@ choice; use a new browser session to authorize a different selection. The
 signed consent screen shows the same connection, client, project names and
 requested scopes. OAuth carries the server-owned connection ID in its signed
 token; it never accepts project or agent IDs from the external client.
+
+**Proposed amendment, 2026-10-06 ([#287](https://github.com/ColdPhase/flux/issues/287),
+pending independent acceptance):** client registration and the consent screen.
+
+- **How clients arrive.** Flux registers an OAuth client only from a Client ID Metadata
+  Document: an `https` `client_id` whose document the server fetches and validates. RFC 7591
+  dynamic registration (`/api/auth/oauth2/register`) stays off. No browser session can create,
+  read, list, update, rotate or delete an OAuth client through the provider's
+  `/api/auth/oauth2/*-client` routes: the provider's `clientPrivileges` hook refuses every
+  action, and its `/admin/oauth2/*` routes are server-only. O-005's optional
+  pre-registration is an operator step with database access; Flux has no web route for it.
+- **Test deployments.** They register clients through the integration fixture
+  `POST /api/v1/integration/oauth-clients`. It needs the `FLUX_FIXTURE_TOKEN` bearer and
+  exists only with `FLUX_TEST_FAILURE_INJECTION=true`, which `./flux up` never sets.
+- **What consent shows.** The client name is self-asserted, so the consent screen also shows:
+  - where access goes: the host of the signed request's `redirect_uri`, which the provider
+    matched to the client's registration before signing;
+  - for a metadata-document client, the `client_id` host; otherwise "Registered on this
+    Flux server".
+  It warns when the redirect is not loopback (`127.0.0.1`, `[::1]` or `localhost`), and for
+  an app's private-use scheme. The MCP 2026-07-28 security considerations, as quoted in the
+  [#274 review (finding A2)](https://github.com/ColdPhase/flux/pull/274), require the
+  authorization server to "clearly display the redirect URI hostname during authorization".
+- **Framing.** Every response sends `X-Frame-Options: DENY`, and
+  `Content-Security-Policy: frame-ancestors 'none'` unless the route sets its own policy
+  (stored files keep `sandbox`). Flux frames none of its own pages, and the installed PWA is
+  a top-level window. The Vite dev server (`./flux dev`) serves the page without these headers.
+- **Tests.** `app/tests/app/oauth-clients.test.ts` covers refused registration, the fixture,
+  the consent hosts and the framing headers. `app/tests/app/oauth-flow.test.ts` covers the
+  redirect and `client_id` host rules, and `app/tests/app/fixture-routes.test.ts` shows the
+  fixture is absent without its switches. `app/tests/ui/test_oauth_consent.py` covers the
+  consent page at 1440 and on a 390 touch phone, and a refused framed load.
 
 The browser setup presents personal-agent creation before client commands and
 reveals project selection after a personal agent exists. The
@@ -368,14 +407,35 @@ Not yet agent tools:
 Since 1.2.0 the built-in playbook declares these four tools and the map tools in its
 execute/checkpoint module, and the conversation, wiki and map reads in orient/plan (#160).
 
-Co-work operations remain registry entries without tools. #153's claim adapter,
-the #160 playbook and real Codex/Claude model-driven activation are still required
-before agent decomposition counts as delivered.
+### Co-work tools (#153)
+
+Eight co-work compositions are MCP tools: three since 2026-10-05 and five since
+2026-10-06. Each call is one transaction that runs the composition unchanged;
+the composition does its own #152 `prepare`/`complete`, so these tools do not use
+`nativeActionExecutor`.
+
+| Tool | Operation | Classes | Change |
+| --- | --- | --- | --- |
+| `flux_create_unit` | `cowork.unit.create` | execute, review, plan | One co-work unit on a task. A root unit is the atomic way to take a task, or to be its sole plan writer |
+| `flux_claim_unit` | `cowork.claim` | execute, review, plan | A live lease on the caller's own unit (one per connection, 300 seconds). Returns the unit's last checkpoint |
+| `flux_renew_unit` | `cowork.renew` | execute, review, plan | Extend that live lease |
+| `flux_release_unit` | `cowork.release` | execute, review, plan | Park the unit with a typed checkpoint written in the same transaction |
+| `flux_complete_unit` | `cowork.unit.complete` | execute, review, plan | Finish the unit with one exact native outcome reference |
+| `flux_transfer_unit` | `cowork.unit.transfer` | execute, review, plan | Hand the unit to another eligible connection, which claims it with its own grant |
+| `flux_claim_request` | `cowork.request.claim` | execute, review, plan | Pick up a request addressed to the caller's unit, under its live unit claim |
+| `flux_decline_request` | `cowork.request.respond` | execute, review, plan | Decline a picked-up request with a bounded reason; resolving with a response is not exposed |
+
+Request admission, recovery and the inbox are not tools yet, and resolving a
+request with a response is not exposed. Bootstrap therefore keeps reporting
+`coordination_unavailable`. The contract and the reasons are in
+[co-work coordination](cowork-coordination.md#unit-claims-over-mcp-2026-10-06-proposed-amendment-peer-review-required).
+Real Codex/Claude model-driven activation is still required before agent
+decomposition counts as delivered.
 
 ## Built-in co-work playbook (#160)
 
 The server ships one versioned instruction bundle, `COWORK_PLAYBOOK`
-(`flux.cowork` 1.2.0, in `app/packages/core/src/agent-connection/playbook.ts`). It
+(`flux.cowork` 1.3.0, in `app/packages/core/src/agent-connection/playbook.ts`). It
 has a core part and five role modules: start/resume, orient/plan,
 execute/checkpoint, request/review/fix and block/transfer/stop. Each module
 declares the MCP tools and server providers it needs. The bundle names only tools
@@ -387,11 +447,16 @@ that step as unavailable rather than simulate it. Since 1.1.0 the orient/plan mo
 tells the agent to read the approved project policy (below) before planning. Since
 1.2.0 every registered tool is declared by a module: orient/plan lists the wiki,
 conversation, map and result reads, and execute/checkpoint the doc, conversation and
-map writes with the standing-grant operation each needs.
+map writes with the standing-grant operation each needs. Since 1.3.0 (2026-10-06,
+#153) the execute/checkpoint module takes a task with `flux_create_unit`, then
+claims, renews, releases and completes the unit; the block/transfer module
+transfers it; and the request/review/fix module names `flux_claim_request` and
+`flux_decline_request`. The text says that the inbox, sending requests and
+resolving with a response are not available yet.
 
 Every authenticated MCP connection delivers it in three ways:
 
-- **Resource:** `flux://playbook/flux.cowork/1.2.0` (Markdown) returns the
+- **Resource:** `flux://playbook/flux.cowork/1.3.0` (Markdown) returns the
   rendered bundle with its digest.
 - **Prompts:** `start_work` and `resume_work` are the host-invoked Start and
   Resume actions. Claude Code, for example, lists MCP prompts as slash commands.

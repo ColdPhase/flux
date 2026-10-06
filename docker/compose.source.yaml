@@ -100,6 +100,11 @@ services:
       FLUX_SMTP_URL: ${FLUX_SMTP_URL:-}
       FLUX_MAIL_FROM: ${FLUX_MAIL_FROM:-}
       FLUX_PASSWORD_RESET_TTL_SECONDS: ${FLUX_PASSWORD_RESET_TTL_SECONDS:-3600}
+      # Optional single sign-on (#113): issuer and client id switch it on; the secret is a file.
+      FLUX_OIDC_ISSUER: ${FLUX_OIDC_ISSUER:-}
+      FLUX_OIDC_CLIENT_ID: ${FLUX_OIDC_CLIENT_ID:-}
+      FLUX_OIDC_CLIENT_SECRET_FILE: /run/secrets/flux_oidc_client_secret
+      FLUX_OIDC_LABEL: ${FLUX_OIDC_LABEL:-}
       FLUX_AUTH_RATE_LIMIT: ${FLUX_AUTH_RATE_LIMIT:-true}
       # Web Push (issue #41). The API only needs the public key; empty reports push unavailable.
       FLUX_VAPID_PUBLIC_KEY: ${FLUX_VAPID_PUBLIC_KEY:-}
@@ -129,6 +134,8 @@ services:
       - files:/data/files:z
       # Optional 32-byte operator secret; empty tracked placeholder means unavailable.
       - ${FLUX_BACKGROUND_KEY_HOST_FILE:-./background-key-unavailable}:/run/secrets/flux_background_key:ro,z
+      # Optional single sign-on client secret (#113); the empty placeholder is unused while sign-on is off.
+      - ${FLUX_OIDC_CLIENT_SECRET_HOST_FILE:-./oidc-client-secret-unavailable}:/run/secrets/flux_oidc_client_secret:ro,z
     ports:
       - 127.0.0.1:${FLUX_PORT:-8081}:8080
     depends_on:
@@ -351,6 +358,9 @@ services:
       FLUX_ANTHROPIC_MOCK_URL: http://anthropic-mock:8090
       # TEST ONLY (#179): an OpenAI-compatible endpoint for the connection settings form.
       FLUX_OPENAI_MOCK_URL: http://openai-mock:8091
+      # TEST ONLY (#287): browser sessions cannot register OAuth clients, so the browser tests
+      # register theirs through the integration fixture with this token.
+      FLUX_FIXTURE_TOKEN: ${FLUX_FIXTURE_TOKEN:?Set FLUX_FIXTURE_TOKEN}
     volumes:
       # Tests are baked into the image (see docker/ui-tests.Dockerfile). Only the screenshot
       # output is mounted; "z" relabels it for SELinux hosts and is ignored elsewhere.

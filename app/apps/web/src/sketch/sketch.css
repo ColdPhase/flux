@@ -160,7 +160,7 @@
 
 .sk-first, .sk-empty-list { font-size: var(--fs-sm); color: var(--text-3); }
 .sk-first b, .sk-empty-list b { font-weight: 500; color: var(--text-2); }
-.sk-help { font-size: var(--fs-xs); color: var(--text-3); line-height: 1.7; }
+.sk-help { max-width: 66ch; font-size: var(--fs-xs); color: var(--text-3); line-height: 1.7; }
 
 .sk-list { list-style: none; margin: 0; padding: 0; }
 .sk-list > li { padding: 6px 0 8px; }
@@ -240,7 +240,7 @@
   .sk-plus--labelled { width: auto; gap: 6px; padding: 0 16px 0 14px; border-radius: var(--r-pill); font-size: var(--fs-md); font-weight: 500; }
 .sk-edit-btn { min-height: 44px; min-width: 44px; padding: 0 16px; font-size: var(--fs-md); }
   .sk-li-t, .sk-li-edit, .sk-title { min-height: 44px; }
-  .sk-zoom button { min-width: 44px; height: 44px; }
+  .sk-zoom button, .sk-zoom .sk-zoom__fit { min-width: 44px; height: 44px; }
   /* The count stays compact inside the thought; its touch target reaches 44px around it. */
   .sk { --sk-work-h: 28px; }
   .sk-work--map::before { content: ''; position: absolute; inset: -8px -4px; }
@@ -264,13 +264,14 @@
   .sk-promote { order: 3; flex: 1 1 auto; justify-content: center; }
   .sk-origin__long { display: none; }
   .sk-bar { flex-direction: column; align-items: stretch; padding: 2px; gap: 0; }
-  .sk-tools { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 2px; }
-  /* A project map adds Create work: four columns keep two rows, with its short label. */
-  .sk-tools--seven { grid-template-columns: repeat(4, auto); justify-content: space-between; }
+  /* One row of tools, each an icon over a short label (#266 PF-6): the canvas gets the second row
+     back. Below about 340px the row scrolls sideways instead of wrapping. */
+  .sk-tools, .sk-tools--seven { display: flex; flex-wrap: nowrap; justify-content: space-between; gap: 0; overflow-x: auto; scrollbar-width: none; }
+  .sk-tools::-webkit-scrollbar { display: none; }
   .sk-tools--seven .sk-bl--long { display: none; }
   .sk-tools--seven .sk-bl--short { display: inline; }
   .sk-div { display: none; }
-  .sk-bar .ui-btn { padding: 0 6px; justify-content: flex-start; }
+  .sk-bar .sk-tools .ui-btn { flex: 1 0 auto; min-width: 44px; flex-direction: column; justify-content: center; gap: 1px; padding: 3px 2px; font-size: 10.5px; line-height: 1.2; }
   .sk-status { flex: none; padding: 0 8px 6px; white-space: normal; }
   .sk-status:empty { display: none; }
   .sk-canvas { height: clamp(360px, calc(100dvh - 250px), 620px); }

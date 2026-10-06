@@ -96,8 +96,8 @@ this repository, and no release workflow has been dispatched.
   and lists no other patterns. `docker/*` and `anchore/sbom-action` show as verified creators on
   their Marketplace pages; only a run proves that GitHub accepts them.
 - **Complete application acceptance.** Both agents' exact-SHA `ACCEPTED RELEASE CANDIDATE`
-  comments, including the real Android/iPhone/iPad installation and push evidence required by
-  [the mobile PWA contract](../product/mobile-pwa.md).
+  comments, including the Android/iPhone/iPad installation and push evidence required by
+  [the mobile PWA contract](../product/mobile-pwa.md#acceptance-evidence).
 - **First candidate run.** Untested until dispatched: the amd64/arm64 build under QEMU within its
   90-minute limit (a native arm64 runner is the alternative), the attestation push, the SBOM scope
   (inferred, not observed: Syft resolves the multi-platform index for the amd64 runner, while

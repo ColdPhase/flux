@@ -121,7 +121,7 @@ class OperatorComposeTest(unittest.TestCase):
         # One executable template also serves the source launcher/dev profile.
         source_only = {"FLUX_MAILPIT_PORT", "FLUX_DEV_PORT", "FLUX_DEMO_OWNER_PASSWORD", "FLUX_DEMO_PARTNER_PASSWORD",
                        "FLUX_BACKGROUND_KEY_HOST_FILE", "FLUX_AI_PRIVATE_TARGETS", "FLUX_PERSONAL_RUNS",
-                       "FLUX_BACKGROUND_COMPARISONS", "FLUX_AGENT_RUNTIME", "FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS",
+                       "FLUX_BACKGROUND_COMPARISONS", "FLUX_OIDC_CLIENT_SECRET_HOST_FILE", "FLUX_AGENT_RUNTIME", "FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS",
                        "FLUX_AGENT_RUNTIME_IDLE_DAYS", "FLUX_RUNTIME_MANAGER_SECRET", "FLUX_RUNTIME_SECRET_1",
                        "FLUX_RUNTIME_SECRET_2", "FLUX_RUNTIME_SECRET_3", "FLUX_RUNTIME_SECRET_4"}
         self.assertEqual(set(self.env) - referenced, source_only, "unexpected unconsumed template variable")

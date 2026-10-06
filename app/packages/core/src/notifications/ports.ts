@@ -172,8 +172,13 @@ export interface ClaimableEmail {
 }
 
 export interface EmailDeliveryPorts {
-  /** Locks the email row (FOR UPDATE) in this transaction. */
+  /**
+   * Locks every email row of the same notification (FOR UPDATE, in id order) and returns this one,
+   * so the account and extra copies of one notification are claimed one after the other.
+   */
   lockEmail(id: string): Promise<ClaimableEmail | null>;
+  /** Whether another copy of this notification is already sending or sent to the same mailbox. */
+  mailboxClaimed(notificationId: string, exceptId: string, address: string): Promise<boolean>;
   authorizer: SourceReadAuthorizer;
   preferences: PreferenceRepository;
   /** The sign-in address, or null when the account is gone. */

@@ -1513,6 +1513,8 @@ export const coworkUnits = pgTable('cowork_units', {
   leaseSessionId: text('lease_session_id'),
   leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
   checkpointId: uuid('checkpoint_id'),
+  /** 0054: the exact native outcome reference of a completed unit; null otherwise. */
+  outcomeRef: jsonb('outcome_ref').$type<CoWorkSourceRef>(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table): PgTableExtraConfigValue[] => [
@@ -1640,3 +1642,34 @@ export const githubBridgeOutbox = pgTable('github_bridge_outbox', {
   headSha: text('head_sha').notNull(), event: text('event').notNull(), providerObjectId: text('provider_object_id'), correlationKey: text('correlation_key').notNull(),
   state: text('state').notNull().default('pending_audience_adapter'), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [unique().on(t.deliveryId, t.bindingId, t.linkId), unique().on(t.bindingId, t.linkId, t.correlationKey)]);
+// "Let linked PRs move this task" (#74 G-1a, migration 0052): one rule per task, its automatic changes and the project default.
+const WORK_STATUS = ['open', 'in_progress', 'blocked', 'done', 'not_pursued'] as const;
+export const githubTaskRules = pgTable('github_task_rules', {
+  taskId: uuid('task_id').primaryKey(), workspaceId: uuid('workspace_id').notNull(), projectId: uuid('project_id').notNull(),
+  mode: text('mode', { enum: ['complete', 'ready'] }).notNull(),
+  state: text('state', { enum: ['active', 'suspended', 'off'] }).notNull(),
+  suspendedReason: text('suspended_reason', { enum: ['manual_change', 'author_access', 'repository_unavailable'] }),
+  authorUserId: text('author_user_id').references(() => authUsers.id, { onDelete: 'set null' }),
+  authorGithubUserId: text('author_github_user_id').notNull(), authorGeneration: uuid('author_generation').notNull(), appId: text('app_id').notNull(),
+  expectedVersion: integer('expected_version').notNull(), expectedStatus: text('expected_status', { enum: WORK_STATUS }).notNull(),
+  expectedBlocker: text('expected_blocker'), blockedBy: text('blocked_by', { enum: ['check', 'closed'] }),
+  readyToClose: boolean('ready_to_close').notNull().default(false),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [foreignKey({ columns: [t.workspaceId, t.projectId, t.taskId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade')]);
+export const githubTaskRuleChanges = pgTable('github_task_rule_changes', {
+  id: uuid('id').primaryKey(), workspaceId: uuid('workspace_id').notNull(), projectId: uuid('project_id').notNull(), taskId: uuid('task_id').notNull(),
+  code: text('code', { enum: ['pull_open', 'pull_reopened', 'check_failed', 'checks_passed', 'pull_closed', 'merged_done', 'merged_ready', 'suspended_manual', 'suspended_access', 'suspended_repository'] }).notNull(),
+  fromStatus: text('from_status', { enum: WORK_STATUS }).notNull(), toStatus: text('to_status', { enum: WORK_STATUS }).notNull(),
+  blocker: text('blocker'), readyToClose: boolean('ready_to_close').notNull(),
+  authorUserId: text('author_user_id').references(() => authUsers.id, { onDelete: 'set null' }),
+  linkId: uuid('link_id'), pullNumber: integer('pull_number'), headSha: text('head_sha'), checkName: text('check_name'),
+  deliveryId: text('delivery_id'), bindingId: uuid('binding_id').notNull(), origin: text('origin', { enum: ['webhook', 'reconcile', 'binding'] }).notNull(),
+  taskVersion: integer('task_version').notNull(), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [unique().on(t.taskId, t.deliveryId, t.bindingId), index('github_task_rule_changes_task_idx').on(t.taskId, t.createdAt, t.id),
+  foreignKey({ columns: [t.workspaceId, t.projectId, t.taskId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade')]);
+export const githubRuleDefaults = pgTable('github_rule_defaults', {
+  projectId: uuid('project_id').primaryKey(), workspaceId: uuid('workspace_id').notNull(),
+  mode: text('mode', { enum: ['complete', 'ready'] }),
+  setByUserId: text('set_by_user_id').references(() => authUsers.id, { onDelete: 'set null' }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [foreignKey({ columns: [t.workspaceId, t.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade')]);

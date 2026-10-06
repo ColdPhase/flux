@@ -105,6 +105,13 @@ There is no web font. The root is 14px/1.55 with no body tracking, and headings 
 
 ## Components (the #136 implementation checklist)
 
+**2026-10-05 amendment ([phone-first](phone-first.md), #266):** the current place is stronger than below.
+- The active sidebar row is accent-tinted, with accent text and a 3×20 accent bar.
+- The tab mark spans the whole current label.
+- On phones, the views move to a bottom bar.
+
+Where this checklist differs, the phone-first contract wins.
+
 1. **Shell.**
    - Remove the dark identity rail and lime.
    - Use one 220px sidebar drawn on `--bg-chrome`, containing:
