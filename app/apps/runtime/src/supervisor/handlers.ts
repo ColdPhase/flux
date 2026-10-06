@@ -1,15 +1,17 @@
 import { access, constants } from 'node:fs/promises';
 import {
-  RUNTIME_CLIENTS, type RuntimeClient, type StepOutcome, type SupervisorError, type SupervisorFrame, type SupervisorRequest, type SupervisorResult,
+  RUNTIME_CLIENTS, type ClientStatus, type RuntimeClient, type StepOutcome, type SupervisorError, type SupervisorFrame, type SupervisorRequest, type SupervisorResult,
 } from '@flux/runtime-protocol';
 import { bindingBytes, clearClientFiles, createBinding, credentialFileState, dataEntries, isEmpty, openBinding, removeBinding, tmpIsEmpty } from './data.js';
 import { runFixed } from './process.js';
+import type { ConsoleClock, SpawnPty } from './pty.js';
+import { statusFacts } from './status.js';
 import { cliEnvironment, LOGOUT_TEMPLATES, STATUS_TEMPLATES } from './templates.js';
 
 // One handler per request of the closed set. A handler answers with zero or more `step` frames and
-// exactly one `result` or `error`. Login (the sign-in console) arrives in T4 and run in T5: both are
-// already checked here against the closed set, the operator's switch and the binding directory, and
-// then refused as `not_available`.
+// exactly one `result` or `error`. Login runs only in the sign-in console (console.ts, T4): as a plain
+// request it is refused. Run arrives in T5: it is already checked here against the closed set, the
+// operator's switch and the binding directory, and then refused as `not_available`.
 
 export interface SupervisorConfig {
   slot: string;
@@ -24,12 +26,17 @@ export interface SupervisorConfig {
   /** F-022 "Limits": the supervisor refuses a run while the binding directory exceeds this. */
   bindingLimitBytes: number;
   cliTimeoutMs: number;
+  /** The sign-in console's PTY and timers; tests inject them (defaults: node-pty, real timers, 15 min). */
+  spawnPty?: SpawnPty;
+  clock?: ConsoleClock;
+  consoleLifetimeMs?: number;
 }
 
 export type Send = (frame: SupervisorFrame) => void;
 export type Outcome = { result: SupervisorResult } | { error: SupervisorError };
 
 const installed = (path: string) => access(path, constants.X_OK).then(() => true, () => false);
+export const installedClient = (config: SupervisorConfig, client: RuntimeClient) => installed(config.cliPaths[client]);
 
 export async function installedClients(config: SupervisorConfig): Promise<Record<RuntimeClient, boolean>> {
   return { claude_code: await installed(config.cliPaths.claude_code), codex: await installed(config.cliPaths.codex) };
@@ -57,6 +64,20 @@ async function cliStep(config: SupervisorConfig, client: RuntimeClient, dir: str
   return run.code === 0 ? 'ok' : 'failed';
 }
 
+/**
+ * The CLI's own status in its binding directory: signed in only when its status command says so, with
+ * the display facts the slot reduces its output to (status.ts). The output is never logged.
+ */
+export async function clientStatus(config: SupervisorConfig, client: RuntimeClient, dir: string): Promise<ClientStatus> {
+  let reported: { signedIn: boolean; facts: ClientStatus['facts'] } = { signedIn: false, facts: null };
+  if (await installed(config.cliPaths[client])) {
+    const run = await runFixed(config.cliPaths[client], STATUS_TEMPLATES[client], { env: cliEnvironment(client, dir, config.egressHost), cwd: dir, timeoutMs: config.cliTimeoutMs });
+    reported = statusFacts(client, run.timedOut ? null : run.code, run.stdout);
+  }
+  const size = await bindingBytes(dir, config.bindingLimitBytes);
+  return { client, signedIn: reported.signedIn, facts: reported.facts, credentialFile: await credentialFileState(dir, client), bindingBytes: size.bytes, bindingOverLimit: size.overLimit };
+}
+
 /** Runs one request already parsed against the closed set. `busy` is the lane's state for slot reports. */
 export async function handle(config: SupervisorConfig, request: SupervisorRequest, send: Send): Promise<Outcome> {
   switch (request.kind) {
@@ -77,20 +98,11 @@ export async function handle(config: SupervisorConfig, request: SupervisorReques
       const open = await openBinding(config.dataDir, request.bindingId);
       if (!open.ok) return { error: open.code };
       if (!(await installed(config.cliPaths[request.client]))) return { error: 'not_installed' };
-      const signedIn = (await cliStep(config, request.client, open.dir, STATUS_TEMPLATES[request.client])) === 'ok';
-      const size = await bindingBytes(open.dir, config.bindingLimitBytes);
-      return { result: { kind: 'status', client: {
-        client: request.client, signedIn, credentialFile: await credentialFileState(open.dir, request.client),
-        bindingBytes: size.bytes, bindingOverLimit: size.overLimit,
-      } } };
+      return { result: { kind: 'status', client: await clientStatus(config, request.client, open.dir) } };
     }
-    case 'login': {
-      if (!config.enabled.includes(request.client)) return { error: 'client_off' };
-      const open = await openBinding(config.dataDir, request.bindingId);
-      if (!open.ok) return { error: open.code };
-      if (!(await installed(config.cliPaths[request.client]))) return { error: 'not_installed' };
-      return { error: 'not_available' };
-    }
+    case 'login':
+      // Only in the sign-in console, where the command runs in a PTY the owner's session is attached to.
+      return { error: 'invalid_request' };
     case 'run': {
       if (!config.enabled.includes(request.client)) return { error: 'client_off' };
       const open = await openBinding(config.dataDir, request.bindingId);

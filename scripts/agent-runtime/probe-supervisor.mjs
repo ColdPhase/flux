@@ -34,8 +34,8 @@ const refused = [
   ['/v1/bind', { bindingId: '../../etc' }],
   ['/v1/logout', { bindingId, client: 'claude_code', env: { PATH: '/tmp' } }],
   ['/v1/logout', { bindingId, client: '/bin/sh' }],
-  ['/v1/login', { bindingId, client: 'claude_code', method: 'setup_token' }],
-  ['/v1/login', { bindingId, client: 'claude_code', method: 'sso', flags: ['--api-key'] }],
+  ['/v1/login', { bindingId, client: 'claude_code', method: 'setup_token', cols: 80, rows: 24 }],
+  ['/v1/login', { bindingId, client: 'claude_code', method: 'sso', cols: 80, rows: 24, flags: ['--api-key'] }],
   ['/v1/status', { bindingId, client: 'claude_code', path: '/data' }],
   ['/v1/run', { bindingId, client: 'claude_code', runId: crypto.randomUUID(), prompt: 'x', runToken: 'a.b.c', tools: ['mcp__flux__*'],
     caps: { maxTurns: 1, wallClockSeconds: 10, idleSeconds: 5, maxAnswerBytes: 1024 } }],
@@ -52,8 +52,8 @@ const report = answer.last?.result?.slot;
 record('the slot report names this slot and its binding only', report?.slot === slot && report.data.bindings.length === 1 && report.data.bindings[0] === bindingId, JSON.stringify(report?.data));
 answer = await post(slot, '/v1/status', { bindingId, client: 'claude_code' });
 record('client status runs the fixed template', answer.status === 200 && answer.last?.t === 'result' && typeof answer.last.result.client.signedIn === 'boolean', JSON.stringify(answer.last));
-answer = await post(slot, '/v1/login', { bindingId, client: 'claude_code', method: 'console' });
-record('login waits for the sign-in console (T4)', answer.last?.code === 'not_available', JSON.stringify(answer.last));
+answer = await post(slot, '/v1/login', { bindingId, client: 'claude_code', method: 'console', cols: 80, rows: 24 });
+record('login runs only in the sign-in console, never as a plain request (T4)', answer.status === 200 && answer.last?.code === 'invalid_request', JSON.stringify(answer.last));
 
 // The manager's own API checks the closed set before anything reaches a supervisor.
 const manager = (path, body) => fetch(`http://runtime-manager-control:7600${path}`, { method: 'POST', body: JSON.stringify(body),
@@ -61,6 +61,7 @@ const manager = (path, body) => fetch(`http://runtime-manager-control:7600${path
 record('manager: unknown slot', (await manager('/v1/slots/runtime-99/status', {})).status === 404, '');
 record('manager: unknown request', (await manager(`/v1/slots/${slot}/exec`, { command: 'id' })).status === 400, '');
 record('manager: smuggled field', (await manager(`/v1/slots/${slot}/logout`, { bindingId, client: 'claude_code', argv: ['x'] })).status === 400, '');
+record('manager: a plain login request is refused (console only)', (await manager(`/v1/slots/${slot}/login`, { bindingId, client: 'claude_code', method: 'sso', cols: 80, rows: 24 })).status === 400, '');
 
 console.log(JSON.stringify(results, null, 1));
 const failed = results.filter((result) => !result.ok);

@@ -41,6 +41,31 @@ export const LOGIN_TEMPLATES: { [C in RuntimeClient]: Record<string, readonly st
   },
 };
 
+/**
+ * Every option the pinned `claude auth login --help` lists, and what the console does with it (F-022:
+ * the console offers every method of the CLI's own login command). Claude Code 2.1.285 (2026-10-06)
+ * lists `--claudeai` ("Use Claude subscription (default)": the Claude account method, which runs
+ * without a flag as the decision's table says), `--console`, `--sso`, `--email` (pre-fills an address
+ * on the vendor's page; not a method) and `-h, --help`. The opt-in contract check fails on any other
+ * option, so a new method cannot appear without the console offering it.
+ */
+export const CLAUDE_LOGIN_HELP_OPTIONS: Record<string, { method: RuntimeLoginMethod | null; note: string }> = {
+  '--claudeai': { method: 'claude_account', note: 'the default method; the console runs it as `claude auth login`' },
+  '--console': { method: 'console', note: 'offered' },
+  '--sso': { method: 'sso', note: 'offered' },
+  '--email': { method: null, note: 'pre-fills an address on the sign-in page; not a sign-in method' },
+  '--help': { method: null, note: 'help' },
+  '-h': { method: null, note: 'help' },
+};
+
+/** The options a CLI help text lists (lines that start with a flag; `-h, --help` gives both). */
+export function helpOptions(text: string): string[] {
+  return [...text.matchAll(/^\s+(-[A-Za-z0-9-]+(?:,\s*-[A-Za-z0-9-]+)*)/gm)].flatMap((match) => match[1]!.split(/,\s*/));
+}
+
+/** Options of `claude auth login --help` that the console neither offers nor knows to be a non-method. */
+export const unofferedLoginOptions = (text: string) => helpOptions(text).filter((option) => !Object.hasOwn(CLAUDE_LOGIN_HELP_OPTIONS, option));
+
 export function loginArgv(client: RuntimeClient, method: RuntimeLoginMethod): readonly string[] {
   const argv = LOGIN_TEMPLATES[client][method];
   if (!argv) throw new Error('No login template for this client and method');

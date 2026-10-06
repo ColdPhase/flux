@@ -3,6 +3,10 @@ ARG TARGETARCH
 FROM node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS build
 WORKDIR /app
 RUN corepack enable && corepack install -g pnpm@12.6.0
+# node-pty (the agent runtime's sign-in console, F-022 T4 #279) has no Linux prebuild, so it compiles
+# here against this Node's own headers. Only this stage has the compiler; later images copy the addon.
+RUN apk add --no-cache python3 make g++ linux-headers
+ENV npm_config_nodedir=/usr/local
 # Cache the locked dependency download independently of source edits. No production-only
 # filter: the build/type/lint/test stages need the full locked workspace toolchain.
 COPY pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -23,6 +27,13 @@ CMD ["sh", "-c", "exec node_modules/.bin/tsx --test --test-concurrency=1 tests/a
 
 FROM build AS production-dependencies
 RUN pnpm install --prod --offline --frozen-lockfile
+# The slot image needs node-pty's JavaScript, its licence and the addon built above, not its 60 MB of
+# Windows and macOS prebuilds and sources: the link becomes a directory with exactly those files, and
+# the store copy is dropped, so the application image does not carry it either.
+RUN set -eu; d=apps/runtime/node_modules/node-pty; t=$(readlink -f "$d"); rm "$d"; mkdir -p "$d/build/Release"; \
+  cp "$t/package.json" "$t/LICENSE" "$d/"; cp -R "$t/lib" "$d/"; cp "$t/build/Release/pty.node" "$d/build/Release/"; \
+  find "$d/lib" \( -name '*.test.js' -o -name '*.map' \) -delete; rm -rf "$t"; \
+  node -e "require('/app/$d')"
 
 # Browser checks only (issue #41): the built workspace on the official Playwright image,
 # whose bundled Chromium matches the pinned playwright 1.63.0 package. Never deployed.
@@ -31,8 +42,8 @@ WORKDIR /app
 COPY --from=build /app /app
 CMD ["node_modules/.bin/tsx", "--test", "tests/app/e2e/pwa.e2e.ts"]
 
-# --- The agent runtime slot image (F-022 AIM-3, T3 #278): the supervisor (Node built-ins only) on the
-# same pinned Node base, and nothing of the application. Claude Code is never in an image: the
+# --- The agent runtime slot image (F-022 AIM-3, T3 #278): the supervisor (Node built-ins, and node-pty
+# for the sign-in console's terminal, T4 #279) on the same pinned Node base, and nothing of the application. Claude Code is never in an image: the
 # `runtime-install` service puts the pinned, signature-checked release into the tools volume.
 FROM node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS agent-runtime-base
 WORKDIR /opt/flux-runtime

@@ -37,8 +37,9 @@ export const LAYERS: Layer[] = [
   // so the slot image carries nothing else.
   { name: 'runtime-protocol', paths: ['packages/runtime-protocol/'], allow: ['node:*'] },
   // Supervisor, manager, egress and installer of the runtime slots: no database, queue, HTTP framework,
-  // domain package or app; only the protocol and Node built-ins.
-  { name: 'runtime', paths: ['apps/runtime/'], allow: ['@flux/runtime-protocol', 'node:*'] },
+  // domain package or app; only the protocol, Node built-ins and node-pty, the sign-in console's PTY
+  // (F-022 T4: Node has no PTY of its own).
+  { name: 'runtime', paths: ['apps/runtime/'], allow: ['@flux/runtime-protocol', 'node-pty', 'node:*'] },
   // Browser application: talks to the server only through HTTP/WebSocket contracts. UI
   // libraries are its own choice; server-side packages and Node built-ins are not.
   { name: 'web', paths: ['apps/web/src/'], deny: ['@flux/core', '@flux/db', '@flux/agent-runtime', '@flux/runtime-protocol', ...APPS, ...PERSISTENCE, ...HTTP, 'web-push', 'nodemailer', 'node:*'] },

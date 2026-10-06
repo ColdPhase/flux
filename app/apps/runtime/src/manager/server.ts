@@ -4,12 +4,14 @@ import {
   type ManagedSlot, type ManagerError, type SupervisorCallOutcome, type SupervisorRequest, type SupervisorTarget,
 } from '@flux/runtime-protocol';
 import { authorized } from '../shared/auth.js';
+import { relayConsole } from './console.js';
 
 // The runtime manager (F-022 "The manager"): no database and no Docker access. The API and the worker
 // reach it on `runtime-control` with the service secret; it reaches each supervisor on that slot's own
 // network with that slot's secret, and listens on none of the slot networks. It checks every request
 // against the supervisor's closed set before forwarding it, and reads every answer with the bounded
-// stream reader. It never logs request bodies or CLI output.
+// stream reader. It never logs request bodies or CLI output. The sign-in console (T4) is its one
+// upgrade: console.ts relays it to the slot's supervisor.
 
 export interface ManagerConfig {
   secret: string;
@@ -71,12 +73,15 @@ export function createManagerServer(config: ManagerConfig): Server {
     if (!target) { json(res, 404, { error: 'unknown_slot' }); return; }
     const parsed = parseSupervisorRequest(kind, await readJson(req));
     if (!parsed.ok) { json(res, STATUS[parsed.code]!, { error: parsed.code }); return; }
+    // A sign-in runs only in the console, which is an upgrade (console.ts), never a plain request.
+    if (parsed.request.kind === 'login') { json(res, 400, { error: 'invalid_request' }); return; }
     const started = Date.now();
     const outcome = await call(target, parsed.request);
     log({ event: 'request', slot, kind: parsed.request.kind, outcome: outcome.ok ? 'ok' : outcome.code, ms: Date.now() - started });
     if (outcome.ok) json(res, 200, { result: outcome.result });
     else json(res, STATUS[outcome.code] ?? 502, { error: outcome.code });
   });
+  server.on('upgrade', (req, socket, head) => relayConsole({ secret: config.secret, slots: config.slots, log }, req, socket, head));
   server.on('clientError', (_error, socket) => { socket.destroy(); });
   return server;
 }

@@ -16,6 +16,8 @@ export type ManagedSlot = { slot: string; reachable: true; report: SlotReport } 
 
 export const managerSlotsPath = '/v1/slots';
 export const managerRequestPath = (slot: string, kind: SupervisorRequest['kind']) => `/v1/slots/${slot}/${kind}`;
+/** The sign-in console of a slot (F-022 T4): an upgrade to `flux-console/1`, never a plain request. */
+export const managerConsolePath = (slot: string) => `/v1/slots/${slot}/login`;
 
 const managerError = oneOf(MANAGER_ERRORS);
 const exactly = <T extends boolean>(expected: T): Check<T> => (value): value is T => value === expected;

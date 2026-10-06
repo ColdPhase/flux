@@ -166,10 +166,11 @@ describe('fixed command templates and a clean CLI environment', () => {
     }
   });
 
-  test('a client the operator did not enable is refused; login and run wait for T4 and T5', async () => {
+  test('a client the operator did not enable is refused; login runs only in the console and run waits for T5', async () => {
     assert.deepEqual(await call(slot, { kind: 'status', bindingId, client: 'codex' }), { ok: false, code: 'client_off' });
-    assert.deepEqual(await call(slot, { kind: 'login', bindingId, client: 'codex', method: 'device_code' }), { ok: false, code: 'client_off' });
-    assert.deepEqual(await call(slot, { kind: 'login', bindingId, client: 'claude_code', method: 'sso' }), { ok: false, code: 'not_available' });
+    // A sign-in is never a plain request: only the console's upgrade runs `auth login` (T4).
+    assert.deepEqual(await call(slot, { kind: 'login', bindingId, client: 'codex', method: 'device_code', cols: 80, rows: 24 }), { ok: false, code: 'invalid_request' });
+    assert.deepEqual(await call(slot, { kind: 'login', bindingId, client: 'claude_code', method: 'sso', cols: 80, rows: 24 }), { ok: false, code: 'invalid_request' });
     const run: SupervisorRequest = { kind: 'run', bindingId, client: 'claude_code', runId: randomUUID(), prompt: 'Hello', runToken: 'aa.bb.cc', tools: ['flux_get_doc'],
       caps: { maxTurns: 10, wallClockSeconds: 300, idleSeconds: 60, maxAnswerBytes: 16384 } };
     assert.deepEqual(await call(slot, run), { ok: false, code: 'not_available' });
