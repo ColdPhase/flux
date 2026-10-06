@@ -408,7 +408,7 @@ export function ProjectTasks() {
         header leads back to the board, so the phone needs no Kanban | List switch. */}
     {mode === 'board' ? <IconButton icon="search" label="Search tasks" className="tb-hd" aria-expanded={searching} onClick={openSearch} />
       : <IconButton icon="board" label="Show the board" className="tb-hd" onClick={() => setView({ mode: 'board', status: null })} />}
-    {writable ? <IconButton icon="plus" label="New task" className="tb-hd tb-hd--add" onClick={startNew} /> : null}
+    {writable ? <IconButton icon="plus" label="Add a task" className="tb-hd tb-hd--add" onClick={startNew} /> : null}
   </>, actionSlot) : null;
 
   return (

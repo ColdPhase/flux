@@ -14,7 +14,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 from playwright.sync_api import expect, sync_playwright
-from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
+from test_app_shell import ORIGIN, UPSTREAM, project_view, shot, start_forwarder
 
 STAMP = int(time.time() * 1000)
 PASSWORD = "the same thread keeps exact private files"
@@ -159,7 +159,7 @@ class SharedComposerJourney(unittest.TestCase):
         pane.get_by_label("Reply", exact=True).fill("Shared command keeps this reference and attachment")
         self.choose(page, [self.file()], pane)
         expect(pane.get_by_text("Ready, private", exact=False)).to_have_count(1)
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Agents")).click()
+        project_view(page, "Agents")
         page.get_by_label("Task", exact=True).select_option(a["id"])
         expect(page.get_by_label("Write to this task")).to_have_value("Shared command keeps this reference and attachment")
         lost = []
@@ -738,7 +738,7 @@ class SharedComposerJourney(unittest.TestCase):
                 expect(page.get_by_role("heading", name="Sign in to Flux", exact=True)).to_have_count(0)
                 # Use the app's project link so the visit-local store survives the login round trip.
                 page.locator(f'a[href^="/projects/{project["id"]}"]').first.click()
-                page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Agents")).click()
+                project_view(page, "Agents")
                 page.get_by_label("Task", exact=True).select_option(task['id'])
                 expect(page.get_by_label("Write to this task", exact=True)).to_have_value("")
                 expect(page.get_by_role("list", name="Files in your draft")).to_have_count(0)

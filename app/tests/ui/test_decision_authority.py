@@ -17,7 +17,7 @@ import unittest
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder, task_list
 
 PASSWORD = "a person decides here"
 STAMP = int(time.time() * 1000)
@@ -86,7 +86,7 @@ class DecisionAuthorityJourney(unittest.TestCase):
         """Opens the decision from the Tasks list, where a proposal sits in its own group."""
         page = self.page(who, **kwargs)
         page.goto(f"/projects/{self.project_id}/tasks")
-        page.get_by_role("radio", name="List", exact=True).click()
+        task_list(page)
         region = page.get_by_role("region", name=re.compile(f"^{group}"))
         region.get_by_role("button", name=re.compile(f"^{re.escape(TITLE)}")).click()
         return page
@@ -141,7 +141,7 @@ class DecisionAuthorityJourney(unittest.TestCase):
     def test_03_on_a_phone_the_viewer_reads_the_same_note(self) -> None:
         page = self.page("vic", phone=True)
         page.goto(f"/projects/{self.project_id}/tasks")
-        page.get_by_role("radio", name="List", exact=True).tap()
+        task_list(page)
         page.get_by_role("region", name=re.compile("^Waiting for a decision")).get_by_role("button", name=re.compile(f"^{re.escape(TITLE)}")).tap()
         sheet = self.details(page, phone=True)
         expect(sheet.get_by_role("region", name="Who decides")).to_contain_text("A person who can edit Gesture lamp accepts it")
@@ -164,7 +164,7 @@ class DecisionAuthorityJourney(unittest.TestCase):
         # The viewer now reads a current rule, with no pending note.
         viewer = self.page("vic")
         viewer.goto(f"/projects/{self.project_id}/tasks")
-        viewer.get_by_role("radio", name="List", exact=True).click()
+        task_list(viewer)
         viewer.get_by_role("region", name=re.compile("^Decisions")).get_by_role("button", name=re.compile(f"^{re.escape(TITLE)}")).click()
         sheet = self.details(viewer)
         expect(sheet.locator(".wd-eyebrow")).to_contain_text("Current rule")

@@ -22,7 +22,7 @@ from pathlib import Path
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, project_view, shot, start_forwarder
 from test_theme_accents import MEASURE
 
 PASSWORD = "wiki pages keep their place"
@@ -213,7 +213,7 @@ class WikiPanesJourney(unittest.TestCase):
     def test_02_wiki_tab_opens_a_page_with_a_quiet_accessible_selection(self) -> None:
         page = self.page("owner")
         page.goto(f"/projects/{self.project_id}")
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name="Wiki").click()
+        project_view(page, "Wiki")
         expect(page, "the Wiki tab opens the latest page").to_have_url(re.compile(re.escape(self.url("lamp")) + "$"))
         expect(page.get_by_role("heading", level=2, name=LAMP)).to_be_visible()
         index = self.index(page)
@@ -265,9 +265,9 @@ class WikiPanesJourney(unittest.TestCase):
         # The doc link inside the lamp page shows up as a backlink here.
         expect(page.get_by_role("region", name=re.compile("^Linked from"))).to_contain_text(LAMP)
         # Moving to another tab and back returns to the page last open here.
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks")).click()
+        project_view(page, "Tasks")
         expect(page).to_have_url(re.compile(r"/tasks"))
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name="Wiki").click()
+        project_view(page, "Wiki")
         expect(page).to_have_url(re.compile(re.escape(self.url("parts")) + "$"))
 
     def test_03_index_search(self) -> None:

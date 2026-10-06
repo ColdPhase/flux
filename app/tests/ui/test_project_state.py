@@ -11,7 +11,7 @@ import uuid
 
 from playwright.sync_api import expect, sync_playwright
 
-from test_app_shell import BACK, ORIGIN, UPSTREAM, shot, start_forwarder
+from test_app_shell import BACK, ORIGIN, UPSTREAM, project_view, shot, start_forwarder, task_list
 from test_project_surface import LONG_NAME
 
 
@@ -94,8 +94,8 @@ class ProjectStateJourney(unittest.TestCase):
         state.locator('[data-seg="open"]').click()
         expect(page.locator("#details").get_by_role("heading", name=task["title"], exact=True)).to_be_visible()
         page.get_by_role("button", name="Close details", exact=True).click()
-        page.locator('[data-tab="tasks"]').click()
-        page.get_by_role("radio", name="List", exact=True).click()
+        project_view(page, "Tasks")
+        task_list(page)
         expect(page.locator(".ws-item").filter(has_text=task["title"])).to_be_visible()
         self.assertEqual(self.call(page, "GET", f"/api/v1/projects/{project['id']}/work")["total"], 1)
 
@@ -161,12 +161,12 @@ class ProjectStateJourney(unittest.TestCase):
                     expect(page.get_by_role("link", name="New conversation", exact=True)).to_have_count(0)
                 self.assertLessEqual(page.locator("body").evaluate("el => el.scrollWidth"), width)
                 shot(page, f"136-state-reader-{width}-{'dark' if dark else 'light'}")
-                page.locator('[data-tab="tasks"]').click()
+                project_view(page, "Tasks")
                 # A reader's board has no way to add or move a task (#136).
                 expect(page.locator(".tb-card").filter(has_text=task["title"])).to_have_count(1)
                 expect(page.get_by_role("button", name="New Task")).to_have_count(0)
                 expect(page.get_by_role("button", name="Move to…")).to_have_count(0)
-                page.get_by_role("radio", name="List", exact=True).click()
+                task_list(page)
                 expect(page.locator(".ws-item").filter(has_text=task["title"])).to_be_visible()
                 expect(page.get_by_role("button", name="Add task", exact=True)).to_have_count(0)
         self.call(owner, "POST", f"/api/v1/projects/{project['id']}/grants",

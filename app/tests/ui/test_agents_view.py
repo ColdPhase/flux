@@ -16,7 +16,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, project_view, shot, start_forwarder
 
 PASSWORD = "two agents share one lamp"
 STAMP = int(time.time() * 1000)
@@ -308,8 +308,8 @@ class AgentsViewJourney(unittest.TestCase):
     def test_04_a_draft_survives_leaving_the_view(self) -> None:
         page = self.open_agents("hubert")
         page.get_by_label("Write to this task").fill("Half-written note about the firmware")
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks")).click()
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Agents")).click()
+        project_view(page, "Tasks")
+        project_view(page, "Agents")
         expect(page.get_by_label("Write to this task")).to_have_value("Half-written note about the firmware")
 
     def test_04b_a_draft_belongs_to_its_account(self) -> None:

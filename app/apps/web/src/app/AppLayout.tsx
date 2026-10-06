@@ -423,17 +423,22 @@ function AppLayoutContent() {
   const projectViews = projectId ? [
     { id: 'conversation', label: 'Conversation', to: onOtherView ? lastConversationPath(me.user.id, projectId) : `${location.pathname}${location.search}` },
     { id: 'map', label: 'Map', to: onMap ? location.pathname : lastMapPath(me.user.id, projectId, project?.sketches), end: false },
-    { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks${phone ? '' : lastTasksSearch(me.user.id, projectId)}`, ...(openWork ? { countLabel: `, ${openWork} open` } : {}) },
+    { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks${lastTasksSearch(me.user.id, projectId)}`, ...(openWork ? { countLabel: `, ${openWork} open` } : {}) },
     { id: 'docs', label: 'Wiki', to: `/projects/${projectId}/docs`, end: false },
     { id: 'agents', label: 'Agents', to: `/projects/${projectId}/agents` },
   ] : null;
   const currentView = !projectId ? null : !onOtherView ? 'conversation'
     : (location.pathname.match(/^\/projects\/[^/]+\/(map|tasks|docs|agents)(\/|$)/)?.[1] ?? null);
+  // Decisions and results are a view of their own on a phone (F-025 PA-10), always listed as the toolbar's "Decisions &
+  // results" is beside the sheet, so the grouped List is two taps away; it says when a decision waits for the reader.
   const needsDecision = workSummary.summary?.all.needs ?? 0;
   const decided = workSummary.summary?.all.rules ?? 0;
-  const decisionsEntry = projectId && (needsDecision || decided) ? {
-    to: `/projects/${projectId}/tasks?view=list&status=${needsDecision ? 'needs' : 'rules'}`,
-    text: needsDecision ? `${needsDecision} ${needsDecision === 1 ? 'needs' : 'need'} you` : `${decided} decided`, need: !!needsDecision,
+  const learned = workSummary.summary?.all.results ?? 0;
+  const decisionsEntry = projectId ? {
+    to: `/projects/${projectId}/tasks?view=list${needsDecision ? '&status=needs' : decided ? '&status=rules' : learned ? '&status=results' : ''}`,
+    text: needsDecision ? `${needsDecision} ${needsDecision === 1 ? 'needs' : 'need'} you` : decided ? `${decided} decided`
+      : learned ? `${learned} ${learned === 1 ? 'result' : 'results'}` : 'None yet',
+    need: !!needsDecision,
   } : null;
   const homeViews: TabItem[] = VIEWS.map((view) => ({ id: view.id, label: view.label, to: view.path, end: false }));
   const places = mainPlaces(location.pathname, inboxUnread);

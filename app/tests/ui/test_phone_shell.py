@@ -13,7 +13,7 @@ import uuid
 
 from playwright.sync_api import expect, sync_playwright
 
-from test_app_shell import BACK, ORIGIN, UPSTREAM, shot, start_forwarder
+from test_app_shell import BACK, ORIGIN, UPSTREAM, project_view, shot, start_forwarder
 
 VIEWS = ("Conversation", "Map", "Tasks", "Wiki", "Agents")
 # The phone's main places, in order (#272 FF-3).
@@ -89,7 +89,7 @@ class PhoneShellJourney(unittest.TestCase):
 
     # ------------------------------------------------------------------ PF-1 and PF-2
 
-    def test_01_main_places_sit_in_a_bottom_bar_and_views_are_chips(self):
+    def test_01_main_places_sit_in_a_bottom_bar_and_views_open_from_the_title(self):
         for width, height in ((320, 568), (375, 667), (390, 844)):
             with self.subTest(width=width):
                 page = self.page({"width": width, "height": height})
@@ -118,10 +118,9 @@ class PhoneShellJourney(unittest.TestCase):
                 shot(page, f"266-home-phone-{width}")
 
                 # Inside a project the places bar stays, with Projects current (Apple HIG tab bars, #272 FF-3);
-                # the views are chips under the header and the top-left control leads back to all projects.
+                # the views open from the title (#318, F-025 PA-9), so no row of chips stacks under the header.
                 page.goto(f"/projects/{self.project['id']}/tasks")
-                chips = page.get_by_role("navigation", name="Project views")
-                expect(chips).to_be_visible()
+                expect(page.get_by_role("navigation", name="Project views")).to_have_count(0)
                 inside = page.get_by_role("navigation", name="Main places")
                 expect(inside).to_be_visible()
                 expect(inside.locator('[aria-current="page"]')).to_have_count(1)
@@ -130,28 +129,27 @@ class PhoneShellJourney(unittest.TestCase):
                 expect(page.get_by_role("button", name="Open navigation")).to_have_count(0)
                 header = self.box(page.locator("header.top"))
                 self.assertLessEqual(header["y"] + header["height"], 60, "a single compact header")
-                chips_box = self.box(chips)
-                self.assertLessEqual(chips_box["y"] + chips_box["height"], 120, "the work starts within 120px (PF-2)")
-                current = chips.locator('[aria-current="page"]')
+                expect(page.locator("header.top .top__view")).to_have_text("Tasks")
+                status = self.box(page.get_by_role("navigation", name="Task status"))
+                self.assertLessEqual(status["y"] + status["height"], 120, "the work starts within 120px (PF-2)")
+                page.locator("header.top .top__switch").click()
+                views = page.get_by_role("dialog", name="Views").get_by_role("navigation", name="Project views")
+                current = views.locator('[aria-current="page"]')
                 expect(current).to_have_count(1)
                 expect(current).to_contain_text("Tasks")
                 self.settle(page)
                 filled = current.evaluate("el => getComputedStyle(el).backgroundColor")
-                self.assertNotIn(filled, ("rgba(0, 0, 0, 0)", "transparent"), "the current chip is filled")
-                self.assertEqual(chips.get_by_role("link", name="Map").evaluate("el => getComputedStyle(el).backgroundColor"),
-                    "rgba(0, 0, 0, 0)", "other chips are outlined, not filled")
-                current_box = self.box(current)
-                self.assertGreaterEqual(current_box["x"], 0)
-                self.assertLessEqual(current_box["x"] + current_box["width"], width, "the current chip is in view")
+                self.assertNotIn(filled, ("rgba(0, 0, 0, 0)", "transparent"), "the current view is filled")
                 for name in VIEWS:
-                    chip = chips.get_by_role("link", name=re.compile(f"^{name}"))
-                    self.assertGreaterEqual(self.box(chip)["height"], 44, f"44px chip: {name}")
-                    self.assertTrue(chip.locator(".ui-tabs__label").evaluate("el => el.scrollWidth <= el.clientWidth + 1"), f"{name} is not clipped")
+                    entry = views.get_by_role("link", name=re.compile(f"^{name}"))
+                    self.assertGreaterEqual(self.box(entry)["height"], 44, f"44px entry: {name}")
+                    self.assertTrue(entry.locator(".pv-item__t").evaluate("el => el.scrollWidth <= el.clientWidth + 1"), f"{name} is not clipped")
+                page.keyboard.press("Escape")
                 expect(page.locator(".state-row")).to_have_count(0)
                 self.assertEqual(page.evaluate("document.documentElement.scrollWidth"), width, "no sideways scroll")
                 shot(page, f"266-tasks-phone-{width}")
 
-    def test_02_places_and_chips_move_the_current_mark(self):
+    def test_02_places_and_views_move_the_current_mark(self):
         page = self.page()
         page.goto("/")
         bar = page.get_by_role("navigation", name="Main places")
@@ -168,14 +166,20 @@ class PhoneShellJourney(unittest.TestCase):
         # The bar stays inside the project, with Projects current (#272 FF-3, Apple HIG).
         expect(bar.get_by_role("link", name=re.compile("^Projects"))).to_have_attribute("aria-current", "page")
         expect(bar.locator('[aria-current="page"]')).to_have_count(1)
-        chips = page.get_by_role("navigation", name="Project views")
-        expect(chips.get_by_role("link", name="Conversation")).to_have_attribute("aria-current", "page")
+        # The title names the current view and opens the others (#318, F-025 PA-9).
+        title = page.locator("header.top .top__switch")
+        expect(page.locator("header.top .top__view")).to_have_text("Conversation")
         for name, path in (("Map", "/map"), ("Wiki", "/docs"), ("Agents", "/agents"), ("Tasks", "/tasks")):
-            chips.get_by_role("link", name=re.compile(f"^{name}")).click()
+            title.click()
+            sheet = page.get_by_role("dialog", name="Views")
+            sheet.get_by_role("link", name=re.compile(f"^{name}")).click()
             expect(page).to_have_url(re.compile(f"/projects/{self.project['id']}{path}"))
-            expect(chips.get_by_role("link", name=re.compile(f"^{name}"))).to_have_attribute("aria-current", "page")
-            expect(chips.locator('[aria-current="page"]')).to_have_count(1)
-        shot(page, "266-chips-after-switching")
+            expect(page.locator("header.top .top__view")).to_have_text(name)
+            title.click()
+            expect(sheet.get_by_role("link", name=re.compile(f"^{name}"))).to_have_attribute("aria-current", "page")
+            expect(sheet.locator('[aria-current="page"]')).to_have_count(1)
+            page.keyboard.press("Escape")
+        shot(page, "318-views-after-switching")
         # The top-left control leads back to all projects (#272), and the bar is still there.
         back = page.locator("header.top").get_by_role("button", name=BACK)
         self.assertGreaterEqual(min(self.box(back)["width"], self.box(back)["height"]), 44)
@@ -210,8 +214,8 @@ class PhoneShellJourney(unittest.TestCase):
         expect(sheet.get_by_text("Now in this project")).to_be_visible()
         expect(sheet.get_by_text("Order six capacitive probes")).to_be_visible()
         page.keyboard.press("Escape")
-        # The state line is for orientation on Conversation; the other views start right under the chips.
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name="Map").click()
+        # The state line is for orientation on Conversation; the other views start right under the header.
+        project_view(page, "Map")
         expect(page).to_have_url(re.compile("/map$"))
         expect(page.locator(".state-row")).to_have_count(0)
 
@@ -258,7 +262,7 @@ class PhoneShellJourney(unittest.TestCase):
         self.assertEqual(field.evaluate("el => getComputedStyle(el).fontSize"), "16px", "no iOS zoom on focus")
         self.assertGreaterEqual(self.box(field)["height"], 44, "a 44px field")
         # A tap on the card's empty space focuses the field.
-        page.locator("header.top h1").click()
+        page.locator("header.top .top__view").click()
         card = self.box(box)
         page.mouse.click(card["x"] + card["width"] - 6, card["y"] + 4)
         expect(field).to_be_focused()
@@ -269,7 +273,7 @@ class PhoneShellJourney(unittest.TestCase):
 
         # The places bar steps aside while a text field has focus, and comes back after.
         bar = page.get_by_role("navigation", name="Main places")
-        page.locator("header.top h1").click()
+        page.locator("header.top .top__view").click()
         expect(bar).to_be_visible()
         page.get_by_label("Write a message", exact=True).focus()
         expect(bar).to_be_hidden()
@@ -280,7 +284,7 @@ class PhoneShellJourney(unittest.TestCase):
         note.focus()
         expect(bar).to_be_hidden()
         note.fill("Ask about the hedge")
-        page.locator("header.top h1").click()
+        page.locator("header.top .top__view").click()
         expect(bar).to_be_visible()
         expect(note).to_have_value("Ask about the hedge")
 
@@ -326,7 +330,7 @@ class PhoneShellJourney(unittest.TestCase):
         page = self.page(reduced=True)
         page.goto(f"/projects/{self.project['id']}")
         self.assertIn(page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--dur-4').trim()"), ("0ms", "0s"))
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name="Map").click()
+        project_view(page, "Map")
         expect(page).to_have_url(re.compile("/map$"))
         self.assertEqual(page.evaluate("document.getAnimations().filter((a) => a.playState === 'running').length"), 0)
         # Back to all projects, then the drawer: still no animation.
@@ -383,35 +387,37 @@ class PhoneShellJourney(unittest.TestCase):
 
     # ------------------------------------------------------------------ PF-6
 
-    def test_10_phone_tasks_toolbar_is_one_row_and_search_opens_to_the_full_row(self):
+    def test_10_phone_tasks_have_one_row_and_search_opens_from_the_header(self):
+        # #318 (F-025 PA-10): the status is the one row; search and "+" sit in the header.
         page = self.page()
         page.goto(f"/projects/{self.project['id']}/tasks")
-        toolbar = page.locator(".tb-bar")
-        expect(toolbar).to_be_visible()
-        self.assertLessEqual(self.box(toolbar)["height"], 60, "one row of tools")
+        expect(page.locator(".tb-bar")).to_have_count(0)
+        status = page.get_by_role("navigation", name="Task status")
+        expect(status).to_be_visible()
+        self.assertLessEqual(self.box(status)["height"], 60, "one row")
         first = page.locator(".tb-card:visible").first
         expect(first).to_be_visible()
-        self.assertLessEqual(self.box(first)["y"], 320, "the first card starts within 320px")
+        self.assertLessEqual(self.box(first)["y"], 200, "the first card starts within 200px")
         page.locator(".tb-ov", has_text="In progress").click()
-        search = page.get_by_label("Search tasks")
-        # Every tool names itself; Search is a target as wide as its tile.
-        for tool in ("Search", "Decisions"):
-            expect(toolbar.get_by_text(tool, exact=True)).to_be_visible()
-        tile = self.box(page.locator(".tb-search"))
-        self.assertGreaterEqual(min(tile["width"], tile["height"]), 44)
-        page.mouse.click(tile["x"] + tile["width"] - 4, tile["y"] + tile["height"] - 4)
+        header = page.locator("header.top")
+        # Every tool names itself to assistive technology; each is a 44 px target.
+        for name in ("Search tasks", "Add a task"):
+            tool = header.get_by_role("button", name=name, exact=True)
+            self.assertGreaterEqual(min(self.box(tool)["width"], self.box(tool)["height"]), 44, name)
+        header.get_by_role("button", name="Search tasks", exact=True).click()
+        search = page.get_by_role("search").get_by_label("Search tasks")
         expect(search).to_be_focused()
         self.settle(page)
-        self.assertGreater(self.box(page.locator(".tb-search"))["width"], 250, "search takes the row while in use")
+        self.assertGreater(self.box(search)["width"], 150, "the search field takes the row while in use")
         search.fill("probes")
         expect(page.locator(".tb-card:visible")).to_have_count(1)
-        page.locator("header.top h1").click()
+        page.locator("header.top .top__view").click()
         expect(search).to_have_value("probes")
-        # A filter in use keeps the field open and marked beside the tools, which come back.
-        self.assertGreater(self.box(page.locator(".tb-search"))["width"], 80, "a filter in use stays visible")
-        expect(page.locator(".tb-search.has-query")).to_have_count(1)
-        expect(page.get_by_role("button", name=re.compile("Task$"))).to_be_visible()
-        shot(page, "266-tasks-search-phone")
+        # A filter in use keeps its row, marked, with the status row and the header tools still there.
+        expect(page.locator(".tb-find__field.has-query")).to_have_count(1)
+        expect(status).to_be_visible()
+        expect(header.get_by_role("button", name="Add a task", exact=True)).to_be_visible()
+        shot(page, "318-tasks-search-phone")
 
     # ------------------------------------------------------------------ PF-3 and PF-7: keyboard and type size
 

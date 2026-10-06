@@ -14,7 +14,7 @@ import uuid
 
 from playwright.sync_api import expect, sync_playwright
 
-from test_app_shell import BACK, ORIGIN, UPSTREAM, shot, start_forwarder
+from test_app_shell import BACK, ORIGIN, UPSTREAM, project_view, shot, start_forwarder
 
 DESKTOP = {"width": 1440, "height": 900}
 PHONE = {"width": 390, "height": 844}
@@ -313,7 +313,7 @@ class FriendlyHomeJourney(unittest.TestCase):
         self.assertLessEqual(composer["y"] + composer["height"], self.box(bar)["y"] + 1, "the message box sits above the bar")
         field.tap()
         expect(bar).to_be_hidden()
-        page.locator("header.top h1").tap()
+        page.locator("header.top .top__view").tap()
         expect(bar).to_be_visible()
         shot(page, "272-places-bar-in-project-phone-390")
 
@@ -609,14 +609,14 @@ class FriendlyHomeJourney(unittest.TestCase):
                 state = phone.locator(".state-row .ws-state-row")
                 expect(state).to_contain_text("Work in progress")
                 self.assertLessEqual(self.box(state)["height"], 45, "one state line")
-                chips = phone.get_by_role("navigation", name="Project views")
-                top = self.box(chips)["y"]
-                self.assertLess(top, self.box(state)["y"], "the chips come before the state line")
-                chips.get_by_role("link", name=re.compile("^Tasks")).tap()
+                # The views open from the title (#318, F-025 PA-9); the header keeps its size between views.
+                expect(phone.get_by_role("navigation", name="Project views")).to_have_count(0)
+                before = self.box(phone.locator("header.top"))["height"]
+                project_view(phone, "Tasks")
                 expect(phone).to_have_url(re.compile("/tasks"))
                 expect(phone.locator(".state-row")).to_have_count(0)
                 self.settle(phone)
-                self.assertAlmostEqual(self.box(chips)["y"], top, delta=1, msg="the chips keep their place between views")
+                self.assertAlmostEqual(self.box(phone.locator("header.top"))["height"], before, delta=1, msg="the header keeps its size between views")
                 if viewport["width"] == 375: shot(phone, "272-conversation-phone-375")
 
 

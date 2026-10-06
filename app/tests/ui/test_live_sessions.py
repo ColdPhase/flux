@@ -24,7 +24,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, project_view, shot, start_forwarder
 
 LIVE = os.environ.get("FLUX_UI_LIVE") == "1"
 PASSWORD = "work on it together calmly"
@@ -345,7 +345,7 @@ class LiveJourney(LiveBase):
         expect(self.bar(jonas).get_by_role("button", name="Stop following")).to_be_visible()
         expect(jonas.locator(f'.sk-node[data-id="{self.ids["filter"]}"]')).to_have_attribute("aria-pressed", "true")
         # Independent navigation ends following, calmly.
-        jonas.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks")).click()
+        project_view(jonas, "Tasks")
         expect(jonas.get_by_text("Stopped following Nia Okafor")).to_be_visible()
         expect(self.bar(jonas).get_by_role("button", name="Stop following")).to_have_count(0)
         self.assertEqual(jonas.evaluate("window.__live.sockets"), 1)
@@ -593,8 +593,8 @@ class LiveJourney(LiveBase):
         # Typing with the session open keeps the draft through navigation.
         composer_box = phone.get_by_role("textbox").last
         composer_box.fill("Filter out gives 18 of 20 at 5 lux, writing it up now")
-        phone.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Wiki")).click()
-        phone.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Conversation")).click()
+        project_view(phone, "Wiki")
+        project_view(phone, "Conversation")
         expect(phone.get_by_role("textbox").last).to_have_value("Filter out gives 18 of 20 at 5 lux, writing it up now")
         expect(self.bar(phone)).to_be_visible()
         self.assertEqual(phone.evaluate("window.__live.sockets"), 1)

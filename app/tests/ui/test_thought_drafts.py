@@ -9,7 +9,7 @@ import uuid
 
 from playwright.sync_api import expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, SHOTS, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, SHOTS, UPSTREAM, project_view, shot, start_forwarder
 from test_theme_accents import MEASURE
 
 STAMP = int(time.time() * 1000)
@@ -505,7 +505,7 @@ class ThoughtDraftJourney(unittest.TestCase):
         # sketch lives in its project's Map, not in the private sketchbook (#189).
         # Each test makes its own "Quiet gesture lamp", so this one is chosen by its address.
         page.get_by_role("navigation", name="Projects").locator(f'a[href="/projects/{self.project}"]').click()
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).click()
+        project_view(page, "Map")
         # The Map tab returns to its last place (#189): the sketch itself, or the list it is in.
         page.wait_for_url(re.compile(rf"/projects/{self.project}/map(/{self.sketch})?$"))
         if not page.url.endswith(f"/map/{self.sketch}"):
@@ -616,8 +616,8 @@ class ThoughtDraftJourney(unittest.TestCase):
         return writes
 
     def tab(self, page, name, *, touch=False):
-        link = page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile(f"^{name}"))
-        link.tap() if touch else link.click()
+        # Beside the sheet the views are tabs; on a phone they open from the title (#318).
+        project_view(page, name)
 
     def back_to_map(self, page, *, touch=False):
         """The Map tab returns to its last place (#189): this sketch, or the project's list of maps."""

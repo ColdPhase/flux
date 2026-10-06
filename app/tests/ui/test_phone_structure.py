@@ -172,7 +172,7 @@ class PhoneStructureJourney(unittest.TestCase):
                 expect(page.get_by_role("radiogroup", name="Show tasks as")).to_have_count(0)
                 status = page.get_by_role("navigation", name="Task status")
                 expect(status).to_be_visible()
-                for name in ("Search tasks", "New task"):
+                for name in ("Search tasks", "Add a task"):
                     button = header.get_by_role("button", name=name, exact=True)
                     size = self.box(button)
                     self.assertGreaterEqual(min(size["width"], size["height"]), 44, f"{name} is a 44 px target")
@@ -191,7 +191,7 @@ class PhoneStructureJourney(unittest.TestCase):
                 if viewport is not PHONE:
                     continue
                 # "+" opens the new-task field in place, in Open, and the task is added without leaving Tasks.
-                header.get_by_role("button", name="New task", exact=True).click()
+                header.get_by_role("button", name="Add a task", exact=True).click()
                 field = page.get_by_label("New task in Open")
                 expect(field).to_be_focused()
                 expect(status.get_by_role("button", name=re.compile("^Open"))).to_have_attribute("aria-pressed", "true")
@@ -247,7 +247,7 @@ class PhoneStructureJourney(unittest.TestCase):
         # The List has one row (its views); "+" opens its new-task field, and the header leads back to the board.
         expect(page.get_by_role("navigation", name="Task views")).to_be_visible()
         expect(page.locator("#ws-add")).to_have_count(0)
-        page.locator("header.top").get_by_role("button", name="New task", exact=True).click()
+        page.locator("header.top").get_by_role("button", name="Add a task", exact=True).click()
         expect(page.locator("#ws-add")).to_be_focused()
         page.locator("header.top").get_by_role("button", name="Show the board").click()
         expect(page.locator(".tb-board")).to_be_visible()

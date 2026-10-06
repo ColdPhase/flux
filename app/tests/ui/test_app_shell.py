@@ -112,7 +112,17 @@ def project_view(page: Page, name: str) -> None:
         page.get_by_role("dialog", name="Views").get_by_role("link", name=re.compile(f"^{name}")).click()
         expect(page.get_by_role("dialog", name="Views")).to_have_count(0)
     else:
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile(f"^{name}")).click()
+        project_view(page, name)
+
+
+def task_list(page: Page) -> None:
+    """Show a project's Tasks as the List: Kanban | List beside the sheet, or on a phone, where Tasks has no such
+    switch (#318, F-025 PA-10), Decisions in the views menu and then All."""
+    if page.locator("header.top .top__switch").count():
+        project_view(page, "Decisions")
+        page.get_by_role("navigation", name="Task views").get_by_role("button", name="All", exact=True).click()
+    else:
+        page.get_by_role("radio", name="List", exact=True).click()
 
 
 def shot(page: Page, name: str) -> None:

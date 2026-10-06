@@ -234,7 +234,16 @@ class AdaptiveBase(unittest.TestCase):
     def tabs(self, page: Page) -> Locator:
         return page.get_by_role("navigation", name="Project views")
 
+    def phone_views(self, page: Page) -> bool:
+        """On a phone the project's views open from its title (#318, F-025 PA-9)."""
+        return page.locator("header.top .top__switch").count() > 0
+
     def tab(self, page: Page, name: str) -> None:
+        if self.phone_views(page):
+            page.locator("header.top .top__switch").click()
+            page.get_by_role("dialog", name="Views").get_by_role("link", name=re.compile(f"^{name}")).click()
+            expect(page.locator("header.top .top__view")).to_have_text(name)
+            return
         self.tabs(page).get_by_role("link", name=re.compile(f"^{name}")).click()
         expect(self.tabs(page).get_by_role("link", name=re.compile(f"^{name}"))).to_have_attribute("aria-current", "page")
 
@@ -273,11 +282,24 @@ class AdaptiveMatrix(AdaptiveBase):
         # Conversation: the same places, labels and order at every width (ADAPT-3).
         composer = page.get_by_label("Write a message", exact=True)
         expect(composer).to_be_visible()
-        expect(self.tabs(page).get_by_role("link")).to_have_count(len(TABS))
-        names = [re.sub(r",.*$", "", label).strip() for label in self.tabs(page).get_by_role("link").all_inner_texts()]
-        self.assertEqual(names, TABS, f"project views keep their names and order at {size}")
+        phone_views = self.phone_views(page)
+        if phone_views:
+            # A phone opens the same views, in the same order, from the title (#318, F-025 PA-9), then Decisions.
+            switch = page.locator("header.top .top__switch")
+            self.primary(page, switch, "the title's views menu")
+            switch.click()
+            views = page.get_by_role("dialog", name="Views").get_by_role("navigation", name="Project views")
+        else:
+            views = self.tabs(page)
+        links = views.get_by_role("link")
+        expect(links).to_have_count(len(TABS) + (1 if phone_views else 0))
+        names = [re.sub(r"\s+\d.*$|,.*$", "", label.split("\n")[0]).strip() for label in links.all_inner_texts()]
+        self.assertEqual(names[:len(TABS)], TABS, f"project views keep their names and order at {size}")
         for name in TABS:
-            self.primary(page, self.tabs(page).get_by_role("link", name=re.compile(f"^{name}")), f"the {name} tab")
+            self.primary(page, views.get_by_role("link", name=re.compile(f"^{name}")), f"the {name} tab")
+        if phone_views:
+            page.keyboard.press("Escape")
+            expect(page.get_by_role("dialog", name="Views")).to_have_count(0)
         if width <= 640:
             # Inside a project a phone's top-left control leads back to all projects (#272 FF-3, HIG-26).
             self.primary(page, page.locator("header.top").get_by_role("button", name=BACK), "Back")
@@ -353,9 +375,15 @@ class AdaptiveMatrix(AdaptiveBase):
         # Tasks: a readable active/blocked route on narrow boards, every column on wide ones.
         self.tab(page, "Tasks")
         expect(page.locator(".tb-board")).to_be_visible()
-        self.primary(page, page.get_by_role("button", name="New Task", exact=True), "New Task")
-        for name in ("Kanban", "List"):
-            self.primary(page, page.get_by_role("radiogroup", name="Show tasks as").get_by_role("radio", name=name, exact=True), f"the {name} switch")
+        if self.phone_views(page):
+            # A phone's Tasks keep one row, the status; search and adding sit in the header (#318, F-025 PA-10).
+            for name in ("Search tasks", "Add a task"):
+                self.primary(page, page.locator("header.top").get_by_role("button", name=name, exact=True), name)
+            expect(page.locator(".tb-bar")).to_have_count(0)
+        else:
+            self.primary(page, page.get_by_role("button", name="New Task", exact=True), "New Task")
+            for name in ("Kanban", "List"):
+                self.primary(page, page.get_by_role("radiogroup", name="Show tasks as").get_by_role("radio", name=name, exact=True), f"the {name} switch")
         overview = page.get_by_role("navigation", name="Task status")
         board_width = page.locator(".tb").bounding_box()["width"]
         if board_width < 700:

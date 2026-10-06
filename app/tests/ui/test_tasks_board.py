@@ -18,7 +18,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Locator, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder, task_list
 from test_theme_accents import FAMILIES, MEASURE
 
 PASSWORD = "boards keep the work moving"
@@ -456,7 +456,7 @@ class TasksBoardJourney(unittest.TestCase):
 
     def test_08_the_list_stays_and_is_remembered_per_person(self) -> None:
         page = self.board("ada")
-        page.get_by_role("radio", name="List", exact=True).click()
+        task_list(page)
         views = page.get_by_role("navigation", name="Task views")
         expect(views.get_by_role("button", name="All", exact=True)).to_have_attribute("aria-pressed", "true")
         expect(page.get_by_role("region", name=re.compile("^Blocked"))).to_contain_text(SOLDER)
@@ -516,8 +516,10 @@ class TasksBoardJourney(unittest.TestCase):
         assert column
         self.assertLessEqual(column["x"] + column["width"], PHONE["width"], "the column fits the phone")
         self.no_sideways_scroll(page, PHONE["width"], "phone")
-        for control in (*overview.get_by_role("button").all(), page.get_by_role("radio", name="List", exact=True),
-                        page.get_by_role("button", name="Mine", exact=True), page.get_by_role("button", name="New Task", exact=True),
+        # Search (with Mine behind it) and adding sit in the header on a phone (#318, F-025 PA-10).
+        header = page.locator("header.top")
+        for control in (*overview.get_by_role("button").all(), header.get_by_role("button", name="Search tasks", exact=True),
+                        header.get_by_role("button", name="Add a task", exact=True),
                         page.get_by_role("button", name="New task in In progress"),
                         self.card(page, SOLDER).get_by_role("button", name="Move to…")):
             box = control.bounding_box()

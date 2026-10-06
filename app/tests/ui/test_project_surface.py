@@ -18,7 +18,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import BACK, DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import BACK, DESKTOP, ORIGIN, PHONE, UPSTREAM, project_view, shot, start_forwarder
 
 PASSWORD = "a lamp that reads the room"
 STAMP = int(time.time() * 1000)
@@ -271,16 +271,16 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(page).to_have_url(re.compile(r"/map$"))
         expect(page.locator("header.top").get_by_label("Current state")).to_contain_text("In progress")
         expect(page.locator("header.top").get_by_label("Current state")).not_to_contain_text("Current rule")
-        # At 320px the tab strip scrolls sideways; the current tab is brought into view.
+        # At 320px the views open from the title (#318, F-025 PA-9): no strip to scroll, the current one named.
         page.set_viewport_size({"width": 320, "height": 640})
-        tabs.get_by_role("link", name=re.compile("^Wiki")).click()
+        expect(tabs).to_have_count(0)
+        project_view(page, "Wiki")
         expect(page).to_have_url(re.compile(rf"/docs/{self.ids['doc']}$"))
-        current = tabs.get_by_role("link", name=re.compile("^Wiki"))
-        expect(current).to_have_attribute("aria-current", "page")
-        box = current.bounding_box()
-        assert box
-        self.assertGreaterEqual(box["x"], 0)
-        self.assertLessEqual(box["x"] + box["width"], 320, "the current tab is visible in the strip")
+        expect(page.locator("header.top .top__view")).to_have_text("Wiki")
+        page.locator("header.top .top__switch").click()
+        expect(page.get_by_role("dialog", name="Views").get_by_role("link", name=re.compile("^Wiki"))).to_have_attribute("aria-current", "page")
+        page.keyboard.press("Escape")
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), 320, "nothing scrolls sideways")
 
     # ---------------------------------------------------------------- Details overview
 
@@ -375,13 +375,14 @@ class ProjectSurfaceJourney(unittest.TestCase):
         sheet.get_by_role("region", name="Linked in this conversation").get_by_role("button", name=re.compile("Use a ToF sensor")).tap()
         expect(sheet.get_by_role("heading", name="Use a ToF sensor, not the camera, for gestures")).to_be_visible()
         sheet.get_by_role("button", name="Close details").tap()
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).tap()
+        project_view(page, "Map")
         expect(page.get_by_role("list", name="Sketches in Gesture lamp")).to_be_visible()
         shot(page, "project-map-phone-390")
 
         # A title too long for the phone truncates; its audience stays visible and opens the people.
         page.goto(f"/projects/{self.ids['long_project']}")
-        title = page.locator("header.top h1")
+        # On a phone the title is the views menu (#318); its text truncates inside it.
+        title = page.locator("header.top .top__switch-t")
         expect(title).to_have_text(LONG_NAME)
         self.assertTrue(title.evaluate("el => el.scrollWidth > el.clientWidth"), "the long title truncates")
         audience = page.locator("header.top .top__audience")
@@ -492,12 +493,23 @@ class ProjectSurfaceJourney(unittest.TestCase):
     # ---------------------------------------------------------------- private native work drafts (#155)
 
     def tasks(self, page: Page, project: str | None = None) -> None:
-        link = page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks"))
+        # The List holds the private "New task" draft field; Kanban is the default view (#136). On a phone the views
+        # open from the title and the List has no toggle (#318): its address opens it, and "+" unfolds the field.
+        phone = page.locator("header.top .top__switch").count() > 0
+        if phone:
+            page.locator("header.top .top__switch").click()
+            link = page.get_by_role("dialog", name="Views").get_by_role("link", name=re.compile("^Tasks"))
+        else:
+            link = page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks"))
         if project:
             expect(link).to_have_attribute("href", re.compile(rf"^/projects/{project}/tasks"))
         link.click()
-        # The List holds the private "New task" draft field; Kanban is the default view (#136).
-        page.get_by_role("radio", name="List", exact=True).click()
+        expect(page).to_have_url(re.compile(r"/tasks"))
+        if phone:
+            page.goto(re.sub(r"[?#].*$", "", page.url) + "?view=list")
+            page.locator("header.top").get_by_role("button", name="Add a task", exact=True).click()
+        else:
+            page.get_by_role("radio", name="List", exact=True).click()
         expect(page.get_by_label("New task", exact=True)).to_be_visible()
         if project:
             expect(page).to_have_url(re.compile(rf"/projects/{project}/tasks"))
@@ -548,7 +560,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         }""", key)
         newest = "Newer text despite full browser storage"
         field.fill(newest)
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).click()
+        project_view(page, "Map")
         self.tasks(page)
         expect(field).to_have_value(newest)
         expect(page.locator("#ws-draft-state")).to_contain_text("Draft kept for this visit")
@@ -557,7 +569,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         page.get_by_role("button", name="Add task", exact=True).click()
         expect(self.details(page).get_by_role("heading", name=newest)).to_be_visible()
         expect(field).to_have_value("")
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).click()
+        project_view(page, "Map")
         self.tasks(page)
         expect(field).to_have_value("")
         self.assertEqual(page.evaluate("key => localStorage.getItem(key)", key), "Older saved text", "failed removal remains stale, but cannot resurrect in this visit")
@@ -585,7 +597,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         page.get_by_role("button", name="Add task", exact=True).click()
         expect(page.get_by_role("alert")).to_have_text("The native response was lost")
         expect(field).to_have_value(draft)
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).click()
+        project_view(page, "Map")
         self.tasks(page)
         expect(field).to_have_value(draft)
         page.get_by_role("button", name="Add task", exact=True).click()
@@ -612,7 +624,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         page.route(f"**/api/v1/projects/{self.ids['project']}/work", hold)
         page.get_by_role("button", name="Add task", exact=True).click()
         expect(field).to_be_disabled()
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).click()
+        project_view(page, "Map")
         self.tasks(page)
         field.fill("A different private draft after returning")
         newest = "Submitted before following a source"
@@ -622,7 +634,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         with page.expect_request_finished(lambda request: request.method == "POST" and request.url.endswith("/work")):
             route.fulfill(response=response)
         # Execute another real navigation after completion, not a fixed sleep.
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).click()
+        project_view(page, "Map")
         self.tasks(page)
         expect(field).to_have_value(newest)
         expect(self.details(page).get_by_role("heading", name="Submitted before following a source")).to_have_count(0)
@@ -701,7 +713,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
             held.append((route, response))
         page.route(f"**/api/v1/projects/{self.ids['project']}/work", hold)
         page.get_by_role("button", name="Add task", exact=True).click()
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).click()
+        project_view(page, "Map")
         self.tasks(page)
         expect(field).to_have_value(title)
         self.assertEqual(len(held), 1)
@@ -732,7 +744,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
                 page.route(f"**/api/v1/projects/{self.ids['project']}/work", hold)
                 page.get_by_role("button", name="Add task", exact=True).click()
                 if unmounted:
-                    page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).click()
+                    project_view(page, "Map")
                 page.evaluate("""key => { window.observedDraftWrites = 0;
                   window.addEventListener('storage', event => { if(event.key === key) window.observedDraftWrites++; });
                 }""", key)
