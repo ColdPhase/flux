@@ -620,9 +620,9 @@ leases, original intent receipt and identifier-only NOTIFY commit together;
 ordinary identifier events are flushed after native/coordination writes. Separate
 API replicas re-read the journal immediately on transactional NOTIFY; periodic
 catch-up is recovery only. Each protected callback hands off at most one ordered
-delta or chunk; a map callback also hands off every transient frame (cleared lease,
-preview, presence) its read observed, under the same held fence and output window
-(2026-10-06, below).
+delta or chunk; it also hands off every transient frame its read observed (map:
+cleared lease, preview, presence; wiki: cursor presence), under the same held fence
+and output window (2026-10-06, below).
 
 The source bounds each room to 32 expiring gestures and 32 presence leases,
 and each category to 2048 across the database. A producer reaches a truthful
@@ -668,9 +668,14 @@ with the common cap, FIFO, deadlines and per-room row limits unchanged:
   rolls back and is admitted again through the FIFO with the worst case charged.
   Nothing larger than its charge is loaded first.
 - A map read hands off all transient frames it observed (cleared leases first,
-  then changed previews and presence) instead of one per read. A full output window
-  ends the read and the 250 ms timer retries, as before; a later change arrives as a
-  new read through its NOTIFY.
+  then changed previews and presence) instead of one per read; a wiki read likewise
+  hands off every changed cursor before its next ordered update or preview. A full
+  output window ends the read and the timer retries, as before; a later change
+  arrives as a new read through its NOTIFY.
+- A wiki confirmed read locks the same head row without transferring or decoding its
+  codec state (up to 8 MiB), which it never sends.
+- Up to two codec workers stay between text updates instead of a fresh worker per
+  update (see the [server codec](live-editing-server-codec.md) note).
 
 The browser sends the first preview after 40 ms without one at once, and later
 ones at most every 40 ms as before.

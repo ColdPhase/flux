@@ -81,8 +81,10 @@ export function wikiController(authority: ControllerAuthority, outputBudget: Edi
             c.output.sendJSON({ type: 'saved', generation: head.generation, sequence: head.sequence, hash: head.hash,
               savedVersion: head.savedVersion, savedSequence: head.savedSequence }); c.lastSaved = savedSignature; c.pendingRead = true; return;
           }
+          // Every changed cursor this read observed goes out under its fence, then the next
+          // ordered update or preview in the same callback (contract amendment 2026-10-06).
           const active = new Set(result.presence.map((peer) => peer.connectionId));
-          for (const key of c.presence.keys()) if (!active.has(key)) { c.presence.get(key)!.release(); c.presence.delete(key); }
+          for (const key of [...c.presence.keys()]) if (!active.has(key)) { c.presence.get(key)!.release(); c.presence.delete(key); }
           for (const peer of result.presence) {
             const value = { type: 'presence', generation: head.generation, ...peer };
             const currentSignature = signature(JSON.stringify(value));
@@ -90,7 +92,6 @@ export function wikiController(authority: ControllerAuthority, outputBudget: Edi
               const old = c.presence.get(peer.connectionId); const release = old?.release ?? outputBudget.reserve(512);
               try { c.output.sendJSON(value); c.presence.set(peer.connectionId, { hash: currentSignature, release }); }
               catch (error) { if (!old) release(); throw error; }
-              c.pendingRead = true; return;
             }
           }
           if (!c.output.busy) {
@@ -111,7 +112,7 @@ export function wikiController(authority: ControllerAuthority, outputBudget: Edi
             }
             c.pendingRead = c.output.canPump;
           } else c.pendingRead = c.output.pump() && c.output.canPump;
-          // Each callback hands off at most one frame. Every next chunk repeats current SQL clock/access checks.
+          // Each callback hands off at most one ordered update chunk. Every next chunk repeats current SQL clock/access checks.
         }, { previewAfterSequence: c.previewSequence, includeContent: true });} finally {releasePreparation();}
       } while (c.pendingRead && !c.closed);
     } catch (error) {
