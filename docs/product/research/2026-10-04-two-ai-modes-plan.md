@@ -183,8 +183,9 @@ T11 issue text updates                       after T0
   - `codex` is accepted by the switch and shown as pending: Codex stays off until
     T6 records its hosts.
   - The automated checks use fake CLIs. The flag contract test against the pinned
-    real CLIs is `scripts/check_runtime_cli_contract.sh`, opt-in and outside CI;
-    until it runs it is **unverified**.
+    real CLIs is `scripts/check_runtime_cli_contract.sh`, opt-in and outside CI. It
+    passed on 2026-10-06 (Claude Code 2.1.285, codex-cli 0.160.1); `--max-turns` is
+    not in `claude --help` but is accepted, which T5 should keep checking.
 
 ### T4 — Claude Code sign-in console (new issue; minimum viable slice, part 2)
 

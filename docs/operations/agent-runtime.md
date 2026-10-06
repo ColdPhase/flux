@@ -84,7 +84,7 @@ and `runtime-egress` about 18 MiB.
 **Sizing:** four slots by default, one per owner who uses the runtime. Budget up to 2 GiB of memory and
 one CPU per slot in use, 256 MiB of disk per binding directory, plus the tools volume: Anthropic's signed
 manifest lists the Linux x64 binary of 2.1.289 at 246 MB (retrieved 2026-10-05); the installed size of the
-pinned 2.1.285 is **unverified** until the opt-in contract check runs.
+pinned 2.1.285 was not measured.
 
 ## More slots
 
@@ -154,8 +154,12 @@ Each Flux release pins the CLI versions its flag contract check passed: Claude C
 (`DISABLE_UPDATES=1`).
 
 `./scripts/check_runtime_cli_contract.sh` is the opt-in flag contract check against these real CLIs
-(no account needed; internet access to github.com and downloads.claude.ai). It is not part of CI. **As of
-T3 it has not been run, so the real-CLI contract is unverified**; the automated checks use fake CLIs.
+(no account needed; internet access to github.com and downloads.claude.ai). It is not part of CI; the
+automated checks use fake CLIs. **Run on 2026-10-06 at `5a9a2cf9`:** `runtime-install` verified and
+installed Claude Code 2.1.285 (`linux-x64-musl`, SHA-256 `7b4414af…eaf102` from the signed manifest), and
+every flag and subcommand of the templates is in the help of Claude Code 2.1.285 and codex-cli 0.160.1,
+except `--max-turns`, which `claude --help` does not list but the CLI accepts (a made-up flag is refused).
+Run it again whenever a pin changes. It proves the flags exist, not how the CLIs behave in a run (T5, T6).
 
 ## Checks
 
