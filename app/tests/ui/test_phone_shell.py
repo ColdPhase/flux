@@ -13,7 +13,7 @@ import uuid
 
 from playwright.sync_api import expect, sync_playwright
 
-from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
+from test_app_shell import BACK, ORIGIN, UPSTREAM, shot, start_forwarder
 
 VIEWS = ("Conversation", "Map", "Tasks", "Wiki", "Agents")
 # The phone's main places, in order (#272 FF-3).
@@ -126,7 +126,7 @@ class PhoneShellJourney(unittest.TestCase):
                 expect(inside).to_be_visible()
                 expect(inside.locator('[aria-current="page"]')).to_have_count(1)
                 expect(inside.locator('[aria-current="page"]')).to_contain_text("Projects")
-                expect(page.locator("header.top").get_by_role("button", name="Back", exact=True)).to_be_visible()
+                expect(page.locator("header.top").get_by_role("button", name=BACK)).to_be_visible()
                 expect(page.get_by_role("button", name="Open navigation")).to_have_count(0)
                 header = self.box(page.locator("header.top"))
                 self.assertLessEqual(header["y"] + header["height"], 60, "a single compact header")
@@ -177,7 +177,7 @@ class PhoneShellJourney(unittest.TestCase):
             expect(chips.locator('[aria-current="page"]')).to_have_count(1)
         shot(page, "266-chips-after-switching")
         # The top-left control leads back to all projects (#272), and the bar is still there.
-        back = page.locator("header.top").get_by_role("button", name="Back", exact=True)
+        back = page.locator("header.top").get_by_role("button", name=BACK)
         self.assertGreaterEqual(min(self.box(back)["width"], self.box(back)["height"]), 44)
         back.click()
         expect(page).to_have_url(f"{ORIGIN}/projects")
@@ -190,11 +190,11 @@ class PhoneShellJourney(unittest.TestCase):
         header = page.locator("header.top")
         # Inside a project the top-left control leads back to all projects (#272); Details stays labelled.
         expect(header.get_by_role("button", name="Open navigation")).to_have_count(0)
-        for name in ("Back", "Details"):
+        for name in (BACK, "Details"):
             button = header.get_by_role("button", name=name, exact=True)
             expect(button).to_be_visible()
             size = self.box(button)
-            self.assertGreaterEqual(min(size["width"], size["height"]), 44, name)
+            self.assertGreaterEqual(min(size["width"], size["height"]), 44, str(name))
         # Inside a project it is the round "…" (F-025 PA-9), still named Details.
         expect(header.locator(".top__more")).to_have_accessible_name("Details")
         state = page.locator(".state-row")
@@ -330,7 +330,7 @@ class PhoneShellJourney(unittest.TestCase):
         expect(page).to_have_url(re.compile("/map$"))
         self.assertEqual(page.evaluate("document.getAnimations().filter((a) => a.playState === 'running').length"), 0)
         # Back to all projects, then the drawer: still no animation.
-        page.locator("header.top").get_by_role("button", name="Back", exact=True).click()
+        page.locator("header.top").get_by_role("button", name=BACK).click()
         expect(page).to_have_url(f"{ORIGIN}/projects")
         page.get_by_role("button", name="Open navigation").click()
         expect(page.get_by_role("dialog", name="Flux")).to_be_visible()
@@ -358,7 +358,7 @@ class PhoneShellJourney(unittest.TestCase):
             page.get_by_role("link", name=re.compile(f"^{title}")).click()
             expect(page).to_have_url(f"{ORIGIN}{url}")
             expect(page.get_by_role("heading", level=1, name=heading)).to_be_visible()
-            back = page.locator("header.top").get_by_role("button", name="Back", exact=True)
+            back = page.locator("header.top").get_by_role("button", name=BACK)
             self.assertGreaterEqual(min(self.box(back)["width"], self.box(back)["height"]), 44)
             back.click()
             expect(page).to_have_url(f"{ORIGIN}/settings")

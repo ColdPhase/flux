@@ -14,7 +14,7 @@ import uuid
 
 from playwright.sync_api import expect, sync_playwright
 
-from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
+from test_app_shell import BACK, ORIGIN, UPSTREAM, shot, start_forwarder
 
 DESKTOP = {"width": 1440, "height": 900}
 PHONE = {"width": 390, "height": 844}
@@ -178,6 +178,7 @@ class FriendlyHomeJourney(unittest.TestCase):
         current = bar.locator('[aria-current="page"]')
         expect(current).to_have_count(1)
         expect(current).to_contain_text("Home")
+        expect(page).to_have_title("Home · Flux")
         # The same order stacks in one column: the return card, My work, For you, Your projects.
         tops = [self.box(page.get_by_role("region", name=name, exact=True))["y"] for name in ("My work", "For you", "Your projects")]
         self.assertLess(self.box(page.locator(".home-return"))["y"], tops[0])
@@ -194,7 +195,8 @@ class FriendlyHomeJourney(unittest.TestCase):
         # top-left control is a real Back (HIG-26): it returns Home, where she came from, without a new entry.
         expect(bar.get_by_role("link", name=re.compile("^Projects"))).to_have_attribute("aria-current", "page")
         entries = page.evaluate("history.length")
-        page.locator("header.top").get_by_role("button", name="Back", exact=True).tap()
+        # Its name and tooltip say where it goes.
+        page.locator("header.top").get_by_role("button", name="Back to Home", exact=True).tap()
         expect(page).to_have_url(f"{ORIGIN}/")
         self.assertEqual(page.evaluate("history.length"), entries, "Back does not add a history entry")
 
@@ -276,7 +278,7 @@ class FriendlyHomeJourney(unittest.TestCase):
         expect(page).to_have_url(re.compile(r"/map/[0-9a-f-]{36}$"))
         expect(bar.get_by_role("link", name=re.compile("^Sketchbook"))).to_have_attribute("aria-current", "page")
         expect(page.get_by_role("button", name="Open navigation")).to_have_count(0)
-        back = page.locator("header.top").get_by_role("button", name="Back", exact=True)
+        back = page.locator("header.top").get_by_role("button", name="Back to My sketchbook", exact=True)
         self.assertGreaterEqual(min(self.box(back)["width"], self.box(back)["height"]), 44, "a 44px way back")
         back.tap()
         expect(page).to_have_url(f"{ORIGIN}/map")
@@ -618,20 +620,46 @@ class FriendlyHomeJourney(unittest.TestCase):
                 if viewport["width"] == 375: shot(phone, "272-conversation-phone-375")
 
 
+    # How tall a control's hit area is at its middle, by hit-testing (HIG-14): what a tap there reaches.
+    HIT_HEIGHT = """(el) => {
+      const box = el.getBoundingClientRect();
+      const x = box.left + Math.min(box.width / 2, 12);
+      let top = box.top + box.height / 2, bottom = top;
+      while (top > 0 && el.contains(document.elementFromPoint(x, top - 1))) top -= 1;
+      while (bottom < innerHeight - 1 && el.contains(document.elementFromPoint(x, bottom + 1))) bottom += 1;
+      return bottom - top + 1;
+    }"""
+
     def test_13_on_a_tablet_the_project_header_stays_one_line(self):
         # The header's second line (audience, goal, state) stays one line at tablet widths (#136: at most 90 px);
-        # a narrow state line once broke after every letter and grew the header a screen tall.
+        # a narrow state line once broke after every letter and grew the header a screen tall. On touch the
+        # larger type applies too, and the audience and goal take a 44 px tap.
         for viewport in ({"width": 768, "height": 1024}, {"width": 1024, "height": 768}):
+            for touch in (False, True):
+                with self.subTest(width=viewport["width"], touch=touch):
+                    page = self.page(viewport, touch=touch)
+                    page.goto(f"/projects/{self.project['id']}")
+                    header = page.locator("header.top")
+                    expect(header.get_by_role("heading", level=1)).to_be_visible()
+                    expect(header.get_by_label("Current state")).to_be_visible()
+                    self.assertLessEqual(self.box(header)["height"], 90, "the header stays compact")
+                    tallest = page.evaluate("() => Math.max(...[...document.querySelectorAll('header.top .ws-seg span')].map((el) => el.getBoundingClientRect().height))")
+                    self.assertLessEqual(tallest, 26 if touch else 24, "each part of the state line is one line")
+                    self.assertGreaterEqual(self.box(header.get_by_label("Current state"))["width"], 120, "the state keeps room before the goal does")
+                    if touch:
+                        for what in (".top__audience", "button.top__goal"):
+                            self.assertGreaterEqual(header.locator(what).evaluate(self.HIT_HEIGHT), 43, f"{what} takes a 44 px tap")
+
+    def test_13b_on_a_phone_the_audience_and_goal_take_a_44_px_tap(self):
+        # The line under the title clips what overflows it; the hit areas that reach past it must not be cut.
+        for viewport in ({"width": 375, "height": 667}, PHONE):
             with self.subTest(width=viewport["width"]):
-                page = self.page(viewport)
+                page = self.page(viewport, touch=True)
                 page.goto(f"/projects/{self.project['id']}")
                 header = page.locator("header.top")
-                expect(header.get_by_role("heading", level=1)).to_be_visible()
-                expect(header.get_by_label("Current state")).to_be_visible()
-                self.assertLessEqual(self.box(header)["height"], 90, "the header stays compact")
-                tallest = page.evaluate("() => Math.max(...[...document.querySelectorAll('header.top .ws-seg span')].map((el) => el.getBoundingClientRect().height))")
-                self.assertLessEqual(tallest, 24, "each part of the state line is one line")
-                self.assertGreaterEqual(self.box(header.get_by_label("Current state"))["width"], 120, "the state keeps room before the goal does")
+                expect(header.locator(".top__audience")).to_be_visible()
+                for what in (".top__audience", "button.top__goal"):
+                    self.assertGreaterEqual(header.locator(what).evaluate(self.HIT_HEIGHT), 43, f"{what} takes a 44 px tap")
 
 
     # ------------------------------------------------------------------ HIG-08/09/11 type, HIG-16 press states
@@ -640,7 +668,8 @@ class FriendlyHomeJourney(unittest.TestCase):
       let min = Infinity, where = '';
       for (const el of document.querySelectorAll('body *')) {
         if (![...el.childNodes].some((node) => node.nodeType === 3 && node.textContent.trim())) continue;
-        if (el.closest('.ui-vh, [aria-hidden="true"], [hidden]')) continue;
+        // Visible text counts whether or not assistive technology reads it (HIG-08 is about what people see).
+        if (el.closest('.ui-vh, [hidden]')) continue;
         const style = getComputedStyle(el);
         if (style.visibility === 'hidden' || style.display === 'none' || Number(style.opacity) === 0) continue;
         const box = el.getBoundingClientRect();
@@ -649,6 +678,23 @@ class FriendlyHomeJourney(unittest.TestCase):
         if (size < min) { min = size; where = `${el.tagName.toLowerCase()}.${String(el.className).slice(0, 40)} "${el.textContent.trim().slice(0, 30)}"`; }
       }
       return { min, where };
+    }"""
+
+    # Every visible text's size before and after doubling the default text size: what does not follow it (HIG-11).
+    FIXED_TEXT = """() => {
+      const texts = [...document.querySelectorAll('body *')].filter((el) => {
+        if (![...el.childNodes].some((node) => node.nodeType === 3 && node.textContent.trim())) return false;
+        if (el.closest('.ui-vh, [hidden], .sk-canvas, .map-canvas')) return false;
+        const box = el.getBoundingClientRect();
+        return box.width >= 2 && box.height >= 2 && getComputedStyle(el).visibility !== 'hidden';
+      });
+      const before = texts.map((el) => parseFloat(getComputedStyle(el).fontSize));
+      document.documentElement.style.fontSize = '200%';
+      const fixed = texts.map((el, index) => ({ el, before: before[index], after: parseFloat(getComputedStyle(el).fontSize) }))
+        .filter(({ before, after }) => after < before * 1.8)
+        .map(({ el, before, after }) => `${el.tagName.toLowerCase()}.${String(el.className).slice(0, 30)} "${el.textContent.trim().slice(0, 20)}" ${before}→${after}`);
+      document.documentElement.style.fontSize = '';
+      return fixed;
     }"""
 
     def test_14_touch_screens_read_at_11_pt_or_more_and_text_follows_the_default_size(self):
@@ -662,6 +708,14 @@ class FriendlyHomeJourney(unittest.TestCase):
                     page.wait_for_timeout(400)
                     smallest = page.evaluate(self.SMALLEST_TEXT)
                     self.assertGreaterEqual(smallest["min"], 11, f"no visible text under 11 px (HIG-08): {smallest['where']}")
+        # Doubling the default text size doubles every text on these pages (HIG-11: sizes in rem, not px).
+        for path in paths:
+            with self.subTest(path=path, check="follows the default size"):
+                page = self.page(PHONE, touch=True)
+                page.goto(path)
+                expect(page.locator("header.top h1")).to_be_visible()
+                page.wait_for_timeout(400)
+                self.assertEqual(page.evaluate(self.FIXED_TEXT), [], "text that keeps its size when the default size doubles")
         # Reading text is 16 px on touch (HIG-09), and doubling the default text size doubles it (HIG-11, rem).
         page = self.page(PHONE, touch=True)
         page.goto("/notes")
@@ -676,18 +730,24 @@ class FriendlyHomeJourney(unittest.TestCase):
     def test_15_every_control_answers_a_press(self):
         page = self.page(PHONE, touch=True)
 
-        def pressed(locator, what):
+        def held(locator):
+            """The control's fill under the pointer, then while pressed: a press shows past the hover."""
             locator.scroll_into_view_if_needed()
             box = self.box(locator)
-            rest = locator.evaluate("(el) => getComputedStyle(el).backgroundColor")
             page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+            # Read once the control's own transition has had time to show it, as a person would see it.
+            page.wait_for_timeout(300)
+            rest = locator.evaluate("(el) => getComputedStyle(el).backgroundColor")
             page.mouse.down()
-            # Read once the control's own transition has had time to show the press, as a person would see it.
             page.wait_for_timeout(300)
             during = locator.evaluate("(el) => getComputedStyle(el).backgroundColor")
-            page.mouse.move(1, 1)
             page.mouse.up()
-            self.assertNotEqual(during, rest, f"{what} changes when pressed (HIG-16)")
+            page.mouse.move(1, 1)
+            return rest, during
+
+        def pressed(locator, what):
+            rest, during = held(locator)
+            self.assertNotEqual(during, rest, f"{what} changes when pressed, beyond its hover (HIG-16)")
 
         page.goto("/")
         bar = page.get_by_role("navigation", name="Main places")
@@ -696,8 +756,23 @@ class FriendlyHomeJourney(unittest.TestCase):
         page.goto("/settings")
         pressed(page.get_by_role("link", name=re.compile("^What reaches you")), "a Settings row")
         page.goto(f"/projects/{self.project['id']}")
-        pressed(page.locator("header.top .top__audience"), "the audience in the header")
+        audience = page.locator("header.top .top__audience")
+        pressed(audience, "the audience in the header")
         pressed(page.get_by_role("button", name=re.compile("^Cite something saved")), "Cite in the message box")
+        # Negative control: with a press that looks like the hover, the same check sees no change.
+        page.add_style_tag(content=":root, :root[data-theme] { --bg-press: var(--bg-hover) !important; }")
+        rest, during = held(audience)
+        self.assertEqual(during, rest, "the check tells a press from a hover")
+        # The current place keeps its accent while pressed and dims instead of turning grey.
+        current = bar.locator('[aria-current="page"]')
+        before = current.evaluate("(el) => getComputedStyle(el).backgroundColor")
+        box = self.box(current)
+        page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+        page.mouse.down()
+        page.wait_for_timeout(300)
+        self.assertEqual(current.evaluate("(el) => getComputedStyle(el).backgroundColor"), before, "the current place keeps its fill")
+        self.assertLess(float(current.evaluate("(el) => getComputedStyle(el).opacity")), 1, "and dims while pressed")
+        page.mouse.up()
 
 
 if __name__ == "__main__":

@@ -29,6 +29,8 @@ SHOTS = Path(os.environ["FLUX_UI_SCREENSHOTS"]) if os.environ.get("FLUX_UI_SCREE
 
 DESKTOP = {"width": 1440, "height": 900}
 PHONE = {"width": 390, "height": 844}
+# The phone header's Back names where it goes ("Back to All projects", HIG-26).
+BACK = re.compile(r"^Back to ")
 PASSWORD = "a calm long passphrase"
 NEW_PASSWORD = "another calm passphrase"
 EMAIL = f"jo.marsh+{int(time.time() * 1000)}@example.test"
@@ -1099,7 +1101,7 @@ class AppShellJourney(unittest.TestCase):
         phone.get_by_label("Reply", exact=True).fill("Phone draft survives a view switch")
         # Back from a thread opened directly leads to its conversation (#272, HIG-26); coming back to the thread
         # finds the text where it was left.
-        phone.locator("header.top").get_by_role("button", name="Back", exact=True).click()
+        phone.locator("header.top").get_by_role("button", name=BACK).click()
         expect(phone).to_have_url(f"{ORIGIN}/projects/{project_id}")
         phone.goto(f"/projects/{project_id}/conversations/{conversation_id}")
         expect(phone.get_by_label("Reply", exact=True)).to_have_value("Phone draft survives a view switch")
