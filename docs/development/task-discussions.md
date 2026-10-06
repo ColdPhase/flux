@@ -316,7 +316,7 @@ and the body-or-attachments invariant without backfilling old messages. Its
 refuses file or deletion-queue use. Operational recovery uses paired DB/files
 backup. Shared composer drafts and rendered UI acceptance remain the separate
 #136 integration; #152/#153 must compose real grant checks before agent file writes
-can be enabled. Real client and device evidence is still required for release.
+can be enabled. Real client and mobile evidence is still required for release.
 
 ## Shared structured composer slice (#154/#136, 2026-10-03)
 

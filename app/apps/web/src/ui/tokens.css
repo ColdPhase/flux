@@ -89,12 +89,15 @@
   --panel-w: 408px;
   --col: 790px;      /* reading column */
 
-  /* Motion. Only colour, opacity and transform animate. Every duration is 0ms under reduced motion.
-     --dur-1 colour and small feedback, --dur-2 content changes, --dur-3 panels, sheets and drawers. */
-  --dur-1: 130ms; --dur-2: 160ms; --dur-3: 200ms;
-  --ease-out: cubic-bezier(.2, .8, .2, 1);
+  /* Motion (#266 PF-4). Only colour, opacity and transform animate. Every duration is 0ms under reduced
+     motion. --dur-1 colour and small feedback, --dur-2 content changes, --dur-3 indicators, panels and
+     drawers, --dur-4 full-screen sheets on the phone. */
+  --dur-1: 120ms; --dur-2: 180ms; --dur-3: 260ms; --dur-4: 340ms;
+  --ease-out: cubic-bezier(.22, 1, .36, 1);
   --ease-in: cubic-bezier(.4, 0, 1, 1);
   --ease-sheet: cubic-bezier(.32, .72, 0, 1);
+  /* Indicators glide into place with a barely perceptible settle (≤2% past the target, no bounce). */
+  --ease-glide: cubic-bezier(.3, 1.25, .5, 1);
   --tr: background-color var(--dur-1) ease, color var(--dur-1) ease, border-color var(--dur-1) ease,
         box-shadow var(--dur-1) ease, opacity var(--dur-1) ease, outline-color var(--dur-1) ease,
         outline-offset var(--dur-1) ease;
@@ -165,5 +168,5 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  :root { --dur-1: 0ms; --dur-2: 0ms; --dur-3: 0ms; }
+  :root { --dur-1: 0ms; --dur-2: 0ms; --dur-3: 0ms; --dur-4: 0ms; }
 }
