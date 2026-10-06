@@ -276,3 +276,39 @@ test('prepared MCP-composition native port keeps exact common metadata until its
     assert.ok((await bootstrap(backend,f.peerSession,f.sketch.id)).sketch.thoughts.some(thought=>thought.id===result.thought.id));
   } finally {release();await transaction.catch(()=>{});for(const callback of retainers)callback();releasePreparation();await backend.close();assert.equal(apiEditingOutputBudget.bytes,0);}
 });
+
+test('a stale final drop never moves the thought: cleared, expired, foreign or already consumed leases are refused', {timeout:20000},async()=>{
+  const f=await scene(3);const backend=mapBackend({pool});const authority=mapAuthority(backend,apiEditingOutputBudget);
+  const thought=async(id:string)=>(await pool.query('SELECT x,y,version FROM sketch_thoughts WHERE id=$1',[id])).rows[0] as {x:number;y:number;version:number};
+  const journal=async()=>(await pool.query('SELECT count(*)::int n FROM map_live_journal WHERE sketch_id=$1',[f.sketch.id])).rows[0].n as number;
+  const drop=(session:SessionContext,id:string,leaseId:string,x:number,version=1)=>native(session,f.sketch.id,randomUUID(),{id,x,leaseId}).moveThoughts(session.principal,f.sketch.id,{leaseId,moves:[{id,x,y:40,expectedVersion:version}]});
+  try {
+    const head=await bootstrap(backend,f.ownerSession,f.sketch.id);const [a,b,c]=f.ids as [string,string,string];
+    // 1. A peer's native change to the leased thought clears the lease: the late final drop is refused.
+    const cleared=await authority.acquire(f.ownerSession,f.sketch.id,{gestureId:randomUUID(),thoughts:[{id:a,expectedVersion:1}]});
+    await authority.move(f.ownerSession,f.sketch.id,randomUUID(),{generation:head.generation,gestureId:cleared.gestureId,leaseId:cleared.leaseId,sequence:1,positions:[{id:a,x:30,y:30}]});
+    await native(f.peerSession,f.sketch.id,randomUUID(),{id:a,text:'Peer'}).updateThought(f.peerSession.principal,f.sketch.id,a,{text:'Peer edit during the drag',expectedVersion:1});
+    const afterPeer=await thought(a);let entries=await journal();
+    await assert.rejects(drop(f.ownerSession,a,cleared.leaseId,99,afterPeer.version),refused('EDITING_LEASE_CHANGED'));
+    assert.deepEqual(await thought(a),afterPeer,'The stale drop changed nothing');assert.equal(await journal(),entries);
+    // 2. An expired lease is refused at the final drop, even with the current version.
+    const expired=await authority.acquire(f.ownerSession,f.sketch.id,{gestureId:randomUUID(),thoughts:[{id:b,expectedVersion:1}]});
+    await pool.query("UPDATE map_live_gestures SET expires_at=clock_timestamp()-interval'1 second' WHERE lease_id=$1",[expired.leaseId]);
+    await assert.rejects(drop(f.ownerSession,b,expired.leaseId,77),refused('EDITING_LEASE_CHANGED'));
+    assert.deepEqual(await thought(b),{x:1,y:1,version:1});assert.equal(await journal(),entries);
+    // 3. Another person cannot finish someone else's lease.
+    const owned=await authority.acquire(f.ownerSession,f.sketch.id,{gestureId:randomUUID(),thoughts:[{id:c,expectedVersion:1}]});
+    await assert.rejects(drop(f.peerSession,c,owned.leaseId,55),refused('EDITING_LEASE_CHANGED'));
+    assert.deepEqual(await thought(c),{x:2,y:2,version:1});
+    // 4. Two concurrent final drops of one lease: exactly one moves the thought, once, and clears the lease.
+    const outcomes=await Promise.allSettled([drop(f.ownerSession,c,owned.leaseId,60),drop(f.ownerSession,c,owned.leaseId,70)]);
+    const won=outcomes.filter(o=>o.status==='fulfilled');assert.equal(won.length,1,JSON.stringify(outcomes.map(o=>o.status==='rejected'?String((o.reason as {code?:string}).code):'ok')));
+    const lost=outcomes.find(o=>o.status==='rejected') as PromiseRejectedResult;
+    assert.ok(['EDITING_LEASE_CHANGED','VERSION_CONFLICT'].includes(String((lost.reason as {code?:string}).code)),String(lost.reason));
+    const moved=await thought(c);assert.equal(moved.version,2);assert.ok(moved.x===60||moved.x===70);assert.equal(await journal(),entries+1);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM map_live_gestures WHERE lease_id=$1',[owned.leaseId])).rows[0].n,0,'The consumed lease is cleared');
+    entries=await journal();
+    await assert.rejects(drop(f.ownerSession,c,owned.leaseId,80,2),refused('EDITING_LEASE_CHANGED'));
+    assert.deepEqual(await thought(c),moved);assert.equal(await journal(),entries);
+  } finally {await authority.close();assert.equal(apiEditingOutputBudget.bytes,0);}
+});
