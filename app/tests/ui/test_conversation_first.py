@@ -224,6 +224,8 @@ class ConversationFirstJourney(unittest.TestCase):
         self.swipe(page, (x, y), (x, y + 420))
         expect(page.locator("#thread")).to_have_count(0)
         expect(opener).to_be_focused()
+        # Closing goes back in history to the stream; the next open starts from there.
+        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}$"))
         # Escape closes it from the reply box too.
         opener.tap()
         expect(page.locator("#thread")).to_be_visible()

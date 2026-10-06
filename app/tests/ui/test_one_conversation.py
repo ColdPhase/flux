@@ -584,9 +584,13 @@ class OneConversationJourney(unittest.TestCase):
         thread = self.thread(tablet)
         expect(thread).to_be_visible()
         tablet.wait_for_timeout(400)
-        box, pane = thread.bounding_box(), tablet.locator(".app__pane").bounding_box()
-        assert box and pane
-        self.assertAlmostEqual(box["width"], pane["width"], delta=2, msg="too narrow to dock: the thread is a sheet over the stream")
+        # On a tablet the sidebar steps aside while the thread is open, so it docks beside the stream (F-023 FF-11, #296).
+        expect(tablet.locator(".app")).to_have_attribute("data-side", "hidden")
+        expect(thread).to_have_class(re.compile(r"\bthread--docked\b"))
+        box, stream = thread.bounding_box(), tablet.locator(".convo-split__stream").bounding_box()
+        assert box and stream
+        self.assertGreaterEqual(stream["width"], 380, "the stream stays readable beside the thread")
+        self.assertLessEqual(stream["x"] + stream["width"], box["x"] + 1, "side by side, not covered")
         self.no_sideways_scroll(tablet)
         shot(tablet, "one-conversation-tablet-820-thread-light")
 
