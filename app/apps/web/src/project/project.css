@@ -107,9 +107,11 @@ button.top__goal:hover { background: var(--bg-hover); color: var(--text); }
    ellipsis; their full text is in the title and in Details. */
 @media (min-width: 641px) and (max-width: 1100px) {
   .top--project .top__meta { flex-wrap: nowrap; }
-  .top--project .top__goal { flex: 0 1 auto; min-width: 3.5em; }
-  .top--project .top__goal--add { flex: none; }
-  .top--project .ws-state { flex: 1 1 0; min-width: 0; flex-wrap: nowrap; overflow: hidden; white-space: nowrap; }
+  /* Room goes to the audience, then the state (what needs you), then the goal, which gives way first, down to
+     its sparkle; the full goal is in Details. */
+  .top--project .top__goal { flex: 0 20 auto; min-width: 1.5em; }
+  .top--project .top__goal--add { flex: 0 20 auto; min-width: 1.5em; overflow: hidden; white-space: nowrap; }
+  .top--project .ws-state { flex: 1 1 auto; min-width: 0; flex-wrap: nowrap; overflow: hidden; white-space: nowrap; }
   /* Each part stays on its line and shortens: without this a narrow state line broke after every letter and
      grew the header a screen tall (#265's adaptive matrix at 768 and 1024). */
   .top--project .ws-seg { flex: 0 1 auto; min-width: 0; }

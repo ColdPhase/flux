@@ -629,6 +629,7 @@ class FriendlyHomeJourney(unittest.TestCase):
                 self.assertLessEqual(self.box(header)["height"], 90, "the header stays compact")
                 tallest = page.evaluate("() => Math.max(...[...document.querySelectorAll('header.top .ws-seg span')].map((el) => el.getBoundingClientRect().height))")
                 self.assertLessEqual(tallest, 24, "each part of the state line is one line")
+                self.assertGreaterEqual(self.box(header.get_by_label("Current state"))["width"], 120, "the state keeps room before the goal does")
 
 
 if __name__ == "__main__":
