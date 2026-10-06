@@ -32,6 +32,7 @@
 - [8. The 15 changes with the most effect](#8-the-15-changes-with-the-most-effect)
 - [9. Open decisions and contract amendments](#9-open-decisions-and-contract-amendments)
 - [10. Uncertain or unverified](#10-uncertain-or-unverified)
+- [11. Founder choice: people and AI together (v5)](#11-founder-choice-people-and-ai-together-v5)
 - [Sources](#sources)
 
 ## Summary
@@ -157,7 +158,7 @@ WWDC25's design-system session names three principles: **hierarchy, harmony and 
    The Toolbars page (2025-12-16): "Choose items deliberately to avoid overcrowding", "Minimize the
    number of groups … aim for a maximum of three", and "Keep actions with text labels separate"
    because a text button beside a symbol reads as one control [A11]. *vendor claim*
-4. **Symbols for chrome, words where a symbol is ambiguous.** "Bars now rely more on symbols than
+4. **Symbols for chrome, words where a symbol is ambiguous.** "…bars now rely more on symbols than
    text, and this shift is happening across the platform, including menus." But: "A pencil might
    suggest annotate, and a checkmark can look like confirm … When there's no clear shorthand, a
    text label is always the better choice." [A3] The Toolbars page: "Prefer simple, recognizable
@@ -210,15 +211,15 @@ WWDC25's design-system session names three principles: **hierarchy, harmony and 
   button that opened them [A4]. *vendor claim*
 - **Materials.** Two Liquid Glass variants: Regular, "the most versatile … provides legibility
   regardless of context", and Clear, which "should only be used" over media-rich content with a
-  dimming layer. "Always avoid glass on glass." Reduce Transparency makes it "frostier", Increase
-  Contrast makes elements "predominantly black or white" with a border, Reduce Motion "disables any
-  elastic properties". [A2, A15] *vendor claim*
+  dimming layer [A2]. Apple adds "…always avoid glass on glass". Reduce Transparency makes it
+  "frostier", Increase Contrast makes elements "predominantly black or white" with a border, Reduce
+  Motion "disables any elastic properties". [A2, A15] *vendor claim*
 - **Motion.** "Add motion purposefully, supporting the experience without overshadowing it",
   "Aim for brevity and precision in feedback animations", "generally avoid adding motion to UI
   interactions that occur frequently", and "Let people cancel motion" (Motion, 2025-09-09) [A16].
   Liquid Glass "dynamically morphs between the controls in each context", keeping "a singular
   floating plane" [A2]. *vendor claim*
-- **Springs.** Apple animates with springs because "a spring can start with any initial velocity, so
+- **Springs.** Apple animates with springs because "A spring can start with any initial velocity, so
   we get a natural feeling where our animation picks up right where the gesture ends." Two
   parameters, duration and bounce; "When you're not sure, use a spring with bounce 0"; bounce suits
   "the end of a gesture" [A6]. SwiftUI's default `spring(duration: 0.5, bounce: 0.0)`; the
@@ -393,7 +394,7 @@ keeping it, and taking the **structure** instead of the **material**:
 | Key | Revision | Evidence |
 | --- | --- | --- |
 | **P** | Studio 11.6 prototype (`supplied/flux-studio-v11.6.html`) | `references/studio-v11.6/inspection/*-390*.png`: chat, tasks, map, agents (Polish UI) |
-| **M** | `main` at `e68c39c6` | The #267 phone-shell review capture of 2026-10-05 (scratchpad, not committed) for Thread, Map and Wiki, plus a code inventory of `main`. That capture predates the tab bar on every page, so 4 tab-bar labels and 4 controls are added to its counts. |
+| **M** | `main` at `e68c39c6` | The #267 phone-shell review capture of 2026-10-05 on `main` at `fdb70955`, now committed in [the renders folder](2026-10-06-calm-renders/README.md#before) (Conversation, Thread, Map, Wiki), plus a code inventory of `main` at `e68c39c6`. That capture predates the tab bar on every page, so 4 tab-bar labels and 4 controls are added to its counts. |
 | **B** | PR #275 at `af1468a9` (F-023) | `docs/agents/evidence/272-friendly-flux/phone-390-*.png` on the PR branch, plus a code inventory of `claude-hubert/296-conversation-first` at `4fa1463c` |
 
 The founder called P itself "terribly cluttered, too dense", so an "after" has to land clearly
@@ -407,8 +408,9 @@ state line below the chips (no change in the counts).
 Findings from the code inventory that the screenshots do not show (*observed*, code reading at
 the revisions above):
 
-- There is no long press, context menu or swipe action anywhere in the web app. The only gesture is
-  the drag that dismisses the drawer and bottom sheets.
+- There is no long press, context menu or swipe action anywhere in the web app. Apart from the map
+  canvas (pointer drag, pan and resize, `SketchMap.tsx`) and the live stage's drag handlers
+  (`LiveStage.tsx`), the only gesture is the drag that dismisses the drawer and bottom sheets.
 - On a phone the thread sheet covers only the stream: the header, chips, state line and tab bar stay
   on screen. UI116-1 already asks for "a full-screen sheet on the phone".
 - People who cannot write see a "Details" text button under **every** message.
@@ -639,7 +641,7 @@ Today (`app/apps/web/src/ui/tokens.css` on `main`): `--dur-1` 120 ms (colour), `
 | Moment | Proposal | Basis |
 | --- | --- | --- |
 | Push and Back (list → conversation) | ~350 ms, no bounce; the incoming view slides from the trailing edge, the outgoing one moves a third of the way and dims | iOS navigation feel. *Inference from use; no primary source states the numbers.* |
-| Sheet open and drag | Opens in ~400 ms with no bounce. While dragged it follows the finger 1:1. On release it carries the finger's velocity: a spring, approximated with CSS `linear()` | "a spring can start with any initial velocity" [A6]; bounce 0 by default [A6, A7]; `linear()` from Safari 17.2 [W1] |
+| Sheet open and drag | Opens in ~400 ms with no bounce. While dragged it follows the finger 1:1. On release it carries the finger's velocity: a spring, approximated with CSS `linear()` | "A spring can start with any initial velocity" [A6]; bounce 0 by default [A6, A7]; `linear()` from Safari 17.2 [W1] |
 | Large title and chips collapsing | Tied to scroll position, not a timer; where a timer is unavoidable, 200–250 ms ease-out, transform and opacity only | [A11]; UI116-5 "no animated layout reflow" |
 | Press | The pressed look appears on touch-down in the same frame and fades out over 120 ms; no scale bounce on frequent controls | "avoid adding motion to UI interactions that occur frequently" [A16] |
 | New message | Keep UI116-5: 4 px rise and fade, only for arrivals | [A16] "brevity and precision" |
@@ -788,6 +790,71 @@ styles, one control layer, metadata on demand); desktop keeps the 11.6 density.
   2026-10-01) [W1], so any translucency Flux adds cannot follow that setting.
 - **Community coverage.** No Reddit and no X threads (blocked); Daring Fireball only from
   2026-09-24; NN/g had nothing in the window.
+
+## 11. Founder choice: people and AI together (v5)
+
+**What happened (2026-10-06).** Maurycy reviewed five phone directions on a design canvas. The
+renders and their sources are in [2026-10-06-calm-renders](2026-10-06-calm-renders/README.md).
+
+- **v2**, calm and iOS-like with floating controls, he liked.
+- **v3** put the desktop 11.6 look onto the phone (rules, frames, dark slate buttons, tab row).
+  He rejected it as heavy.
+- For the v4 compromise he asked for something "more ElevenLabs-like": visibly people and AI
+  together, AI with its own mark, and visible work.
+- He chose **v5**. *founder direction*
+
+**What ElevenLabs does.** *observed*: elevenlabs.io, elevenlabs.io/agents and
+ui.elevenlabs.io (Message, Shimmering Text and Orb components), viewed 2026-10-06.
+
+- **Monochrome surfaces.** Warm white page, black text, black pill primary buttons, white pill
+  secondary buttons with a hairline, and large headings in regular weight.
+- **Colour belongs to the AI.** Every agent is a grainy gradient sphere, the "orb", in its own
+  colours. A small orb stands next to the agent's name, as in "ElevenLabs Concierge" or the
+  floating "Try an ElevenLabs agent" pill.
+- **Agent state is visible.**
+  - The Orb component has idle, listening and talking states.
+  - Shimmering Text shows "Agent is thinking…" with a moving gradient.
+  - Bar visualizers and waveforms show live audio.
+- **Messages separate the two sides.** The person's message is a black bubble; the assistant's is
+  light grey with the orb as its avatar.
+
+**What v5 takes for Flux.** *proposal*
+
+- **Colour.** The page stays monochrome (warm white, near-black text, black pill for the one
+  primary action). Colour appears only in agent orbs, one palette per connection. People are
+  neutral grey initials.
+- **Messages.** Your own messages are black bubbles. Other people's are light grey. An agent's
+  are light grey, with its orb and an "AI" badge.
+- **Header.** A project header names both groups, for example "2 people · 2 AI", with faces and
+  orbs.
+- **Working state.**
+  - An agent's orb turns slowly and its status line shimmers **only while the run is truly
+    executing**. This is UI116-5's "small activity mark only for authenticated active
+    execution/review"; a queued, waiting or offline agent stays still.
+  - The status text comes from the run's own reported activity (task, file, step), never from
+    invented "thoughts". This follows UI116-2: "no fictional progress percent, model thoughts".
+  - Reduced motion shows everything still.
+- **Agents view.** Each connection is shown with its owner and true state. A consent request
+  gets the one black action ("Allow"). This is UI116-2's "Hubert: Codex + Claude; Marek: one
+  connection".
+
+**Contracts this would change.** This must be recorded as its own decision, with peer review,
+before any code:
+
+- **F-017 / 11.6 design system:** the mint accent for selection and unread, the slate
+  `--action`, the mint own-bubble and the radii.
+- **PF-2:** "every control labelled". v5 keeps words for navigation and uses symbols for
+  actions, as principle 3 does.
+- **D1:** v5 has no tab bar inside a conversation.
+
+**Unverified.**
+
+- The orb grain uses an SVG noise filter with blend modes; its cost on low-end Android is
+  unmeasured.
+- Contrast of text over orbs is not needed, since no text sits on an orb, but each orb palette
+  still needs a non-colour cue for colour-blind people. The agent's name next to the orb is
+  that cue.
+- The renders use a substitute font.
 
 ## Sources
 
