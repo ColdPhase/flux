@@ -278,9 +278,10 @@ class SharedComposerJourney(unittest.TestCase):
         page.route(f"**/api/v1/work/{a['id']}/discussion", hold_send)
         page.get_by_role("button", name="Send to task").click()
         page.wait_for_function("() => window.__fluxHeldSendReady === true", timeout=10000)
-        # Sending is instant (#264): A's field empties at once while its message is held, marked "Sending…".
+        # Sending is instant (#264): A's field empties at once while its message is held. The server already
+        # stored it, so the live refresh may show the stored copy in place of the queued one: never both.
         expect(page.get_by_label("Write to this task")).to_have_value("")
-        expect(page.locator("[data-client-message-id]").filter(has_text="A's held private bytes")).to_contain_text("Sending…")
+        expect(page.get_by_role("region", name=re.compile("^Thread of")).get_by_text("A's held private bytes")).to_have_count(1)
         page.get_by_label("Task", exact=True).select_option(b["id"])
         expect(page.get_by_label("Write to this task")).to_have_value("B's distinct draft")
         expect(page.get_by_text("A's held private bytes")).to_have_count(0)

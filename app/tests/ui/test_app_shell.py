@@ -898,6 +898,8 @@ class AppShellJourney(unittest.TestCase):
         owner.get_by_label("Write a message").fill("Try a PIR sensor before considering a camera")
         owner.get_by_role("button", name="Send message").click()
         expect(owner.locator(".project-convo__message > p").filter(has_text="Try a PIR sensor before considering a camera")).to_be_visible()
+        # Sending is instant (#264): the root shows at once and gets its conversation when it is stored.
+        expect(owner.locator("[data-client-message-id]")).to_have_count(0)
         # One project conversation (UI116-1): the root joins the stream; its replies open beside it.
         expect(owner).to_have_url(f"{ORIGIN}/projects/{project_id}")
         opening = owner.locator(".project-convo__message").filter(has_text="Try a PIR sensor before considering a camera")
