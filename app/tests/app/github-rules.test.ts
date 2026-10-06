@@ -112,6 +112,8 @@ async function setup(label: string, criteria: string[] = []) {
 describe('linked PRs move the same Flux task (#74 G-1a)', () => {
   test('open, draft, failed check, re-run, merge: one rule moves the task from current facts, idempotently, with sourced history', async () => {
     const { owner, viewer, outsider, task, binding } = await setup('Flow');
+    // Another project's lost repository must not make this rule look paused.
+    const unrelated = await setup('Unrelated'); await github.disconnect(actor(unrelated.owner), unrelated.binding.id);
     fixture.set(REPO, 42, { draft: true, checks: [check('pending')] });
     await github.link(actor(owner), task.id, { bindingId: binding.id, number: 42, role: 'required_output' });
     assert.equal((await work(owner, task)).githubRule, null, 'nothing moves a task before someone turns its rule on');

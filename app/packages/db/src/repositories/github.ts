@@ -191,8 +191,9 @@ export function githubRows(db: DbExecutor) {
      */
     async taskRules(taskIds: readonly string[]) {
       if (!taskIds.length) return new Map<string, Rule & { repositoryUnavailable: boolean }>();
+      // Qualified by name: in a single-table selection Drizzle renders a column unqualified, which would bind to `gl`.
       const rows = await db.select({ rule: r, repositoryUnavailable: sql<boolean>`EXISTS (SELECT 1 FROM github_task_links gl
-        JOIN github_bindings gb ON gb.id = gl.binding_id WHERE gl.task_id = ${r.taskId} AND gl.role = 'required_output' AND gb.state <> 'active')` })
+        JOIN github_bindings gb ON gb.id = gl.binding_id WHERE gl.task_id = github_task_rules.task_id AND gl.role = 'required_output' AND gb.state <> 'active')` })
         .from(r).where(inArray(r.taskId, [...taskIds]));
       return new Map(rows.map(({ rule, repositoryUnavailable }) => [rule.taskId, { ...ruleView(rule), repositoryUnavailable: !!repositoryUnavailable }]));
     },
@@ -201,7 +202,7 @@ export function githubRows(db: DbExecutor) {
     },
     async activeRules(bindingId: string) {
       return (await db.select().from(r).where(and(eq(r.state, 'active'), sql`EXISTS (SELECT 1 FROM github_task_links gl
-        WHERE gl.task_id=${r.taskId} AND gl.binding_id=${bindingId} AND gl.role='required_output')`)).orderBy(asc(r.taskId))).map(ruleView);
+        WHERE gl.task_id=github_task_rules.task_id AND gl.binding_id=${bindingId} AND gl.role='required_output')`)).orderBy(asc(r.taskId))).map(ruleView);
     },
     async recordRuleChange(change: RuleChange) { await db.insert(c).values(change).onConflictDoNothing(); },
     async ruleChanges(taskId: string, limit: number) {
