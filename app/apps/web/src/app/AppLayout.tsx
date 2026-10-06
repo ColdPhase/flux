@@ -327,7 +327,11 @@ function AppLayoutContent() {
     previousArea.current = area;
     // Moving to another place (Home, a project, a conversation) rises in gently, so the change of place is
     // felt as well as seen (#272 FF-9); views within a place keep their sideways slide.
-    if (!direction && area !== before) {
+    // Opening one exact item (a search result or a source link: #message-…, #draft-…) lands on it at once:
+    // the page does not slide or rise, and the item takes focus (#114; an entry animation on the pane kept
+    // the arrived message from taking focus in Chromium, found by bisecting test_search).
+    const toItem = /^#(message|draft|answer|notice)-/.test(location.hash);
+    if (!direction && area !== before && !toItem) {
       // A list opening one of its places pushes in from the right, and going back to the list slides in
       // from the left, as a phone's navigation does (#264: "push in, swipe back"); other moves rise in.
       const depth = (key: string) => (/^\/(projects|dm)\//.test(key) ? 2 : 1);
@@ -337,9 +341,9 @@ function AppLayoutContent() {
         : [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], duration('--dur-2'), '--ease-out', { fill: 'backwards' });
       return;
     }
-    if (!direction) return;
+    if (!direction || toItem) return;
     void play(paneRef.current, [{ opacity: 0, transform: `translateX(${direction * distance}px)` }, { opacity: 1, transform: 'none' }], duration('--dur-2'), '--ease-out', { fill: 'backwards' });
-  }, [location.pathname]);
+  }, [location.pathname, location.hash]);
 
   const sidebarProps = { workspace, projects, directMessages, user: me.user, session: me.session, inboxUnread };
   const where = placeOf(location.pathname);
