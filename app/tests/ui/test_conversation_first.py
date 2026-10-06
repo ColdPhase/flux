@@ -230,9 +230,10 @@ class ConversationFirstJourney(unittest.TestCase):
         self.swipe(page, (x, y), (x, y + 420))
         expect(page.locator("#thread")).to_have_count(0)
         expect(opener).to_be_focused()
-        # Closing goes back in history to the stream.
+        # Closing goes back in history to the stream; that traversal is asynchronous, so the next tap waits for it.
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}$"))
         expect(opener).to_have_attribute("aria-expanded", "false")
+        page.wait_for_timeout(600)
         # Escape closes it from the reply box too.
         opener.tap()
         expect(page.locator("#thread")).to_be_visible()
