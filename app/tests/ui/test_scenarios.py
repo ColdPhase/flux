@@ -1,8 +1,9 @@
 """Integrated founder scenarios of #44, played end to end across features (release row R-9; #136 AC-4, T136-F).
 
 Runs with the other tests/ui journeys through scripts/check_ui.sh (`./scripts/check_ui.sh test_scenarios`).
-Each viewport class (desktop 1440 and phone 390) creates its own people, workspace and projects and plays
-the scenarios in order, as the people in them would, in the browser:
+Each viewport class (desktop 1440, and a 390 touch phone that moves between places with the bottom bar
+of #266 PF-1) creates its own people, workspace and projects and plays the scenarios in order, as the
+people in them would, in the browser:
 
 1. Idea to collaboration (test_1): Ada signs up, starts Riverside Makers with a four-person
    "Marketplace stall" project and adds the people. In a DM, Ada and Jonas discuss a gesture-controlled
@@ -28,8 +29,8 @@ the scenarios in order, as the people in them would, in the browser:
    project but not Ada's private note or the DM and cannot accept a decision; a non-member gets 404.
 
 Where the product cannot do a step yet, that step is its own small method marked
-@unittest.expectedFailure with the reason (test_2a, test_2b), and the scenario continues through the
-API so that the later steps still run. Every outcome is read back from the API. Screenshots
+@unittest.expectedFailure with the reason (test_2a, test_2b, test_4a), and the scenario continues through
+the API so that the later steps still run; an unexpected success fails the run once the product is fixed. Every outcome is read back from the API. Screenshots
 (scenario-*.png) go to FLUX_UI_SCREENSHOTS when it is set.
 """
 
@@ -259,12 +260,23 @@ class ScenarioJourney:
             page.get_by_role("button", name="Close details").tap()
             expect(page.get_by_role("dialog", name="Details")).to_have_count(0)
 
-    def navigation(self, page: Page, name: str):
-        """A sidebar navigation; on the phone it sits in the drawer."""
+    def go_to_place(self, page: Page, name: str) -> None:
+        """A main place. Phones have them in the bottom bar (#266 PF-1: Home, Inbox, Messages, Projects); the
+        desktop sidebar has Home, Inbox and Direct messages under Places, and the projects themselves."""
         if self.phone:
-            page.get_by_role("button", name="Open navigation").tap()
-            return page.get_by_role("dialog", name="Flux").get_by_role("navigation", name=name)
-        return page.get_by_role("navigation", name=name)
+            bar = page.get_by_role("navigation", name="Main places")
+            bar.get_by_role("link", name=re.compile(f"^{name}")).tap()
+            expect(bar.get_by_role("link", name=re.compile(f"^{name}"))).to_have_attribute("aria-current", "page")
+        else:
+            page.get_by_role("navigation", name="Places").get_by_role("link", name=re.compile(f"^{'Direct messages' if name == 'Messages' else name}")).click()
+
+    def project_list(self, page: Page):
+        """The projects a person can open: the sidebar on a desktop, the Projects place on a phone."""
+        if self.phone:
+            self.go_to_place(page, "Projects")
+            expect(page.get_by_role("heading", level=1, name="Projects")).to_be_visible()
+            return page.get_by_role("list", name="Projects")
+        return page.get_by_role("navigation", name="Projects")
 
     def no_sideways_scroll(self, page: Page) -> None:
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"), "no horizontal page scroll")
@@ -389,7 +401,12 @@ class ScenarioJourney:
         self.tap(page.get_by_role("button", name="Create account"))
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         self.keep("ada", page)
-        self.tap(self.navigation(page, "Projects").get_by_role("link", name="New project"))
+        if self.phone:
+            self.go_to_place(page, "Projects")
+            expect(page.get_by_text("No projects yet.")).to_be_visible()
+            page.get_by_role("link", name="Create a project").tap()
+        else:
+            page.get_by_role("navigation", name="Projects").get_by_role("link", name="New project").click()
         page.get_by_label("Your space").fill(WORKSPACE)
         page.get_by_label("Project name").fill(MARKET)
         self.tap(page.get_by_role("button", name="Create project"))
@@ -422,12 +439,9 @@ class ScenarioJourney:
 
         # A private conversation with Jonas, independent of any project.
         page.goto("/")
-        if self.phone:
-            page.get_by_role("button", name="Open navigation").tap()
-            page.get_by_role("dialog", name="Flux").get_by_role("link", name="New message").tap()
-        else:
-            page.get_by_role("navigation", name="Places").get_by_role("link", name="Direct messages").click()
-            page.get_by_role("navigation", name="Messages").get_by_role("link", name="New message").click()
+        self.go_to_place(page, "Messages")
+        expect(page.get_by_role("heading", name="No direct messages yet")).to_be_visible()
+        self.tap(page.locator(".pane-scroll").get_by_role("link", name="New message"))
         expect(page.get_by_role("heading", level=1, name="New message")).to_be_visible()
         page.get_by_placeholder("Find people by name or email").fill("jonas")
         self.tap(page.get_by_role("list", name="People").get_by_text(NAMES["jonas"]))
@@ -508,7 +522,7 @@ class ScenarioJourney:
         self.tap(jonas.get_by_role("button", name="Sign in"))
         expect(jonas.get_by_role("heading", level=1, name="Home")).to_be_visible()
         self.keep("jonas", jonas)
-        self.tap(self.navigation(jonas, "Projects").get_by_role("link", name=LAMP))
+        self.tap(self.project_list(jonas).get_by_role("link", name=re.compile(f"^{LAMP}")))
         expect(jonas.get_by_role("heading", level=1, name=LAMP)).to_be_visible()
         expect(jonas.locator(".composer__audience").first).to_contain_text("Ada and you")
         expect(jonas.locator(".composer").get_by_role("checkbox")).to_have_count(0)
@@ -546,8 +560,8 @@ class ScenarioJourney:
             self.assertEqual(found["items"], [], f"{key} finds nothing about the lamp")
             other = self.page(key)
             other.goto("/")
-            projects = self.navigation(other, "Projects")
-            expect(projects.get_by_role("link", name=MARKET)).to_be_visible()
+            projects = self.project_list(other)
+            expect(projects.get_by_role("link", name=re.compile(f"^{MARKET}"))).to_be_visible()
             expect(projects.get_by_text(LAMP)).to_have_count(0)
             other.goto("/search?q=gestures")
             expect(other.get_by_role("heading", name="Nothing matches “gestures”")).to_be_visible()
@@ -700,7 +714,7 @@ class ScenarioJourney:
         self.tap(page.get_by_role("radio", name="Published"))
         page.get_by_label("What changed").fill("First notes after the low-light run")
         if self.phone:
-            page.get_by_role("button", name="Save version").tap()
+            page.get_by_role("button", name="Create page").tap()
         else:
             text.press("Control+s")
         expect(page.get_by_role("heading", level=2, name=DOC_TITLE)).to_be_visible()
@@ -835,7 +849,8 @@ class ScenarioJourney:
         title = f"Decision to review: {D2}"
         self.wait_for("Jonas's review notification", lambda: title in self.inbox_titles("jonas"))
         jonas = self.page("jonas")
-        jonas.goto("/inbox")
+        jonas.goto(f"/projects/{lamp}")
+        self.go_to_place(jonas, "Inbox")
         expect(jonas.get_by_role("heading", level=1, name="Inbox")).to_be_visible()
         self.tap(jonas.locator(".inbox__row", has_text=title).get_by_role("link"))
         expect(jonas).to_have_url(re.compile(rf"/projects/{lamp}/tasks"))
@@ -924,6 +939,9 @@ class ScenarioJourney:
         page.goto("/")
         region = page.get_by_role("region", name=re.compile("^Since you left"))
         expect(region).to_be_visible()
+        expect(region.get_by_role("link", name=re.compile(f"Current rule changed: {re.escape(D2)}"))).to_be_visible()
+        items = self.api("ada", "GET", f"/api/v1/return?place=project&id={self.s['lamp']}", status=200)["items"]
+        self.assertIn(f"Parked: {CAMERA_TASK}", [item["text"] for item in items], "the return summary names the parked work")
         expect(region.get_by_role("link", name=re.compile(f"^Parked: {re.escape(CAMERA_TASK)}"))).to_be_visible(timeout=3000)
 
     # ---------------------------------------------------------------- inbox, search and the wiki
@@ -937,7 +955,8 @@ class ScenarioJourney:
         for who, titles in expected.items():
             self.wait_for(f"{who}'s notifications", lambda who=who, titles=titles: all(any(t.startswith(title) for t in self.inbox_titles(who)) for title in titles))
         page = self.page("ada")
-        page.goto("/inbox")
+        page.goto("/")
+        self.go_to_place(page, "Inbox")
         expect(page.get_by_role("heading", level=1, name="Inbox")).to_be_visible()
         for title in expected["ada"]:
             expect(page.locator(".inbox__row", has_text=title).first).to_be_visible()
