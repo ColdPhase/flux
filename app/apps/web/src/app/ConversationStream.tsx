@@ -13,7 +13,6 @@ import { listConversationRoots, listTaskNotices } from './conversation-api';
 import { ContributionMark, OPENING_REVEAL_MS, SourceCitation, clock, day, openOnWholeMessages, when } from './messageParts';
 import { MessageFiles } from '../composer/Files';
 import { agentAuthorLabel } from '../docs/format';
-import { taskNumber } from '../work/format';
 
 // One project conversation (UI116-1, 2026-10-02): a chronological stream of roots. Each root is the
 // opening message of a stored conversation; its replies open beside it in a one-level thread.
@@ -528,9 +527,9 @@ function NoticeItem({ notice, meId, row, onOpenTask }: { notice: TaskCreationNot
       <span className="convo-notice__icon" aria-hidden="true"><Icon name="tasks" size={14} /></span>
       <span className="convo-notice__body">
         <span className="convo-notice__meta">New task · {creatorName(notice.createdBy, meId)}</span>
-        <button type="button" className="convo-notice__task" data-native-ref={`work:${notice.workId}`} onClick={() => onOpenTask(notice.workId)} aria-label={`Open task: ${title}${current ? `, ${taskNumber(current)}` : ''}`}>
-          {/* The task's name in the project (#276), once the reference read answers. */}
-          {current ? <span className="convo-notice__num">{taskNumber(current)}</span> : null}<span className="convo-notice__title">{title}</span><Icon name="chevron-right" size={14} />
+        <button type="button" className="convo-notice__task" data-native-ref={`work:${notice.workId}`} onClick={() => onOpenTask(notice.workId)} aria-label={`Open task: ${title}, #${notice.workNumber}`}>
+          {/* The task's name in the project (#276), from the announcement itself, so nothing shifts when rows arrive. */}
+          <span className="convo-notice__num">#{notice.workNumber}</span><span className="convo-notice__title">{title}</span><Icon name="chevron-right" size={14} />
         </button>
       </span>
       <time dateTime={notice.createdAt} title={when(notice.createdAt)}>{clock(notice.createdAt)}</time>

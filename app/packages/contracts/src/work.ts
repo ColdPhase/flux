@@ -210,6 +210,8 @@ export interface TaskCreationNotice {
   kind: 'task.created';
   /** Current task label; the exact historical identity/creator/sources below are retained. */
   workTitle: string;
+  /** The task's number in its project, "#12" (#276), so the announcement names it from the start. */
+  workNumber: number;
   createdBy: NamedPrincipal;
   sources: ObjectRef[];
   createdAt: string;

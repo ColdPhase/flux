@@ -147,11 +147,11 @@ export function workRows(db: DbExecutor) {
     async listTaskNotices(projectId: string, window: Window) {
       const n = schema.projectTaskNotices;
       const [count] = await db.select({ total: sql<number>`count(*)::int` }).from(n).where(eq(n.projectId, projectId));
-      const rows = await db.select({ notice: n, workTitle: w.title }).from(n)
+      const rows = await db.select({ notice: n, workTitle: w.title, workNumber: w.number }).from(n)
         .innerJoin(w, and(eq(w.id, n.workId), eq(w.projectId, n.projectId), eq(w.workspaceId, n.workspaceId)))
         .where(eq(n.projectId, projectId)).orderBy(desc(n.createdAt), desc(n.id)).limit(window.limit).offset(window.offset);
-      return { total: count?.total ?? 0, items: rows.map(({ notice, workTitle }) => ({ id: notice.id,
-        workspaceId: notice.workspaceId, projectId: notice.projectId, workId: notice.workId, workTitle,
+      return { total: count?.total ?? 0, items: rows.map(({ notice, workTitle, workNumber }) => ({ id: notice.id,
+        workspaceId: notice.workspaceId, projectId: notice.projectId, workId: notice.workId, workTitle, workNumber,
         createdBy: { kind: notice.createdByKind, id: notice.createdById }, sources: notice.sources, createdAt: notice.createdAt })) };
     },
     async updateWork(id: string, changes: { title?: string; outcome?: string; status?: WorkRow['status']; blocker?: string | null; owner?: Actor | null; parked?: { decisionId: string; at: Date } | null; criteria?: string[] }) {

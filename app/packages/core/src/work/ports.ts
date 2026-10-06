@@ -88,6 +88,7 @@ export interface TaskCreationNoticeRecord {
   projectId: string;
   workId: string;
   workTitle: string;
+  workNumber: number;
   createdBy: ActorRef;
   sources: ObjectRef[];
   createdAt: Date;
