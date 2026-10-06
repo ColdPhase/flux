@@ -1,0 +1,1177 @@
+{
+  "bundle": {
+    "contentType": "application/gzip",
+    "manifestFileKeys": [
+      "bytes",
+      "path",
+      "sha256"
+    ],
+    "manifestFormat": "flux.project-export-bundle",
+    "manifestFormatVersion": 1,
+    "manifestKeys": [
+      "exportedAt",
+      "files",
+      "format",
+      "formatVersion",
+      "projectId"
+    ],
+    "paths": [
+      "README.md",
+      "docs/{docId}.md",
+      "files/{fileId}",
+      "manifest.json",
+      "project.json",
+      "schema/project-export.v1.schema.json"
+    ],
+    "root": "flux-project-{projectIdPrefix}-{exportedAt}"
+  },
+  "bundleQuery": "format=bundle",
+  "contract": "flux.project-export",
+  "format": "flux.project-export",
+  "formatVersion": 1,
+  "path": "/api/v1/projects/{projectId}/export",
+  "schema": {
+    "$id": "https://flux.coldphase.dev/schemas/project-export.v1.json",
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "additionalProperties": false,
+    "definitions": {
+      "actor": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "human",
+              "agent"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "kind"
+        ],
+        "type": "object"
+      },
+      "conversation": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdBy": {
+            "$ref": "#/definitions/actor"
+          },
+          "id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/definitions/message"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "createdAt",
+          "createdBy",
+          "id",
+          "messages"
+        ],
+        "type": "object"
+      },
+      "decision": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "decidedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "decidedBy": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/actor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "proposedBy": {
+            "$ref": "#/definitions/actor"
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "proposed",
+              "accepted",
+              "superseded"
+            ]
+          },
+          "supersededById": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "supersedesId": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "createdAt",
+          "decidedAt",
+          "decidedBy",
+          "id",
+          "proposedBy",
+          "rationale",
+          "status",
+          "supersededById",
+          "supersedesId",
+          "title",
+          "updatedAt",
+          "version"
+        ],
+        "type": "object"
+      },
+      "doc": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdBy": {
+            "$ref": "#/definitions/actor"
+          },
+          "currentVersion": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "file": {
+            "pattern": "^docs/[^/]+\\.md$",
+            "type": "string"
+          },
+          "id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/definitions/docVersion"
+            },
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "createdAt",
+          "createdBy",
+          "currentVersion",
+          "file",
+          "id",
+          "versions"
+        ],
+        "type": "object"
+      },
+      "docVersion": {
+        "additionalProperties": false,
+        "properties": {
+          "author": {
+            "$ref": "#/definitions/actor"
+          },
+          "body": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "draft",
+              "published"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "author",
+          "body",
+          "createdAt",
+          "reason",
+          "state",
+          "title",
+          "version"
+        ],
+        "type": "object"
+      },
+      "link": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdBy": {
+            "$ref": "#/definitions/actor"
+          },
+          "from": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "work",
+                  "decision",
+                  "result",
+                  "doc"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "type"
+            ],
+            "type": "object"
+          },
+          "id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "source",
+              "affects",
+              "still_applies",
+              "about",
+              "related",
+              "mentions"
+            ]
+          },
+          "to": {
+            "$ref": "#/definitions/objectRef"
+          }
+        },
+        "required": [
+          "createdAt",
+          "createdBy",
+          "from",
+          "id",
+          "role",
+          "to"
+        ],
+        "type": "object"
+      },
+      "material": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdBy": {
+            "$ref": "#/definitions/actor"
+          },
+          "currentVersion": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/definitions/materialVersion"
+            },
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "createdAt",
+          "createdBy",
+          "currentVersion",
+          "id",
+          "versions"
+        ],
+        "type": "object"
+      },
+      "materialVersion": {
+        "additionalProperties": false,
+        "properties": {
+          "author": {
+            "$ref": "#/definitions/actor"
+          },
+          "body": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "author",
+          "body",
+          "createdAt",
+          "title",
+          "url",
+          "version"
+        ],
+        "type": "object"
+      },
+      "message": {
+        "additionalProperties": false,
+        "properties": {
+          "author": {
+            "$ref": "#/definitions/actor"
+          },
+          "body": {
+            "type": "string"
+          },
+          "contribution": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "blocker",
+                      "handoff"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "result"
+                  },
+                  "resultId": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "resultId"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "files": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "size": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "size"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "sequence": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "materialId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "version": {
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "materialId",
+                  "version"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "author",
+          "body",
+          "createdAt",
+          "id",
+          "sequence",
+          "source"
+        ],
+        "type": "object"
+      },
+      "namedActor": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "human",
+              "agent"
+            ]
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name"
+        ],
+        "type": "object"
+      },
+      "objectRef": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "message",
+                  "thought",
+                  "doc",
+                  "sketch",
+                  "work",
+                  "decision",
+                  "result"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "type"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": {
+                "const": "material"
+              },
+              "version": {
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "type",
+              "version"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "result": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdBy": {
+            "$ref": "#/definitions/actor"
+          },
+          "evidence": {
+            "type": "string"
+          },
+          "finding": {
+            "enum": [
+              "positive",
+              "negative"
+            ]
+          },
+          "id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "createdAt",
+          "createdBy",
+          "evidence",
+          "finding",
+          "id",
+          "title"
+        ],
+        "type": "object"
+      },
+      "sketch": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdBy": {
+            "$ref": "#/definitions/actor"
+          },
+          "id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "links": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "createdAt": {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "fromId": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "label": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "toId": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "createdAt",
+                "fromId",
+                "id",
+                "label",
+                "toId"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "thoughts": {
+            "items": {
+              "$ref": "#/definitions/thought"
+            },
+            "type": "array"
+          },
+          "title": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "createdAt",
+          "createdBy",
+          "id",
+          "links",
+          "thoughts",
+          "title",
+          "updatedAt",
+          "version"
+        ],
+        "type": "object"
+      },
+      "thought": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdBy": {
+            "$ref": "#/definitions/actor"
+          },
+          "height": {
+            "type": "integer"
+          },
+          "id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "shape": {
+            "enum": [
+              "card",
+              "pill",
+              "circle"
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "width": {
+            "type": "integer"
+          },
+          "x": {
+            "type": "integer"
+          },
+          "y": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "createdAt",
+          "createdBy",
+          "height",
+          "id",
+          "shape",
+          "text",
+          "version",
+          "width",
+          "x",
+          "y"
+        ],
+        "type": "object"
+      },
+      "work": {
+        "additionalProperties": false,
+        "properties": {
+          "blocker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdBy": {
+            "$ref": "#/definitions/actor"
+          },
+          "id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/actor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "parked": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "at": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "decisionId": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "at",
+                  "decisionId"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "enum": [
+              "open",
+              "in_progress",
+              "blocked",
+              "done",
+              "not_pursued"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "blocker",
+          "createdAt",
+          "createdBy",
+          "id",
+          "outcome",
+          "owner",
+          "parked",
+          "status",
+          "title",
+          "updatedAt",
+          "version"
+        ],
+        "type": "object"
+      }
+    },
+    "properties": {
+      "$schema": {
+        "const": "https://flux.coldphase.dev/schemas/project-export.v1.json"
+      },
+      "actors": {
+        "items": {
+          "$ref": "#/definitions/namedActor"
+        },
+        "type": "array"
+      },
+      "conversations": {
+        "items": {
+          "$ref": "#/definitions/conversation"
+        },
+        "type": "array"
+      },
+      "decisions": {
+        "items": {
+          "$ref": "#/definitions/decision"
+        },
+        "type": "array"
+      },
+      "docs": {
+        "items": {
+          "$ref": "#/definitions/doc"
+        },
+        "type": "array"
+      },
+      "excluded": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "exportedAt": {
+        "format": "date-time",
+        "type": "string"
+      },
+      "files": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "conversationId": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "messageId": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "path": {
+              "pattern": "^files/[0-9a-f-]+$",
+              "type": "string"
+            },
+            "position": {
+              "maximum": 9,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "sha256": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "size": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "conversationId",
+            "id",
+            "messageId",
+            "name",
+            "path",
+            "position",
+            "sha256",
+            "size"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "format": {
+        "const": "flux.project-export"
+      },
+      "formatVersion": {
+        "const": 1
+      },
+      "grants": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "createdAt": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "principal": {
+              "$ref": "#/definitions/actor"
+            },
+            "role": {
+              "enum": [
+                "contributor",
+                "viewer",
+                "denied"
+              ]
+            }
+          },
+          "required": [
+            "createdAt",
+            "principal",
+            "role"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "links": {
+        "items": {
+          "$ref": "#/definitions/link"
+        },
+        "type": "array"
+      },
+      "materials": {
+        "items": {
+          "$ref": "#/definitions/material"
+        },
+        "type": "array"
+      },
+      "people": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "access": {
+              "enum": [
+                "manager",
+                "contributor",
+                "viewer"
+              ]
+            },
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "human",
+                "agent"
+              ]
+            },
+            "name": {
+              "type": "string"
+            },
+            "workspaceRole": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "owner",
+                    "admin",
+                    "member",
+                    "guest"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "access",
+            "id",
+            "kind",
+            "name",
+            "workspaceRole"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "project": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "visibility": {
+            "enum": [
+              "workspace",
+              "restricted"
+            ]
+          },
+          "workspace": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "createdAt",
+          "id",
+          "name",
+          "visibility",
+          "workspace"
+        ],
+        "type": "object"
+      },
+      "provenance": {
+        "additionalProperties": false,
+        "properties": {
+          "exportedBy": {
+            "$ref": "#/definitions/namedActor"
+          },
+          "instanceOrigin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reimportSupported": {
+            "const": false
+          },
+          "schemaVersion": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "exportedBy",
+          "instanceOrigin",
+          "reimportSupported",
+          "schemaVersion"
+        ],
+        "type": "object"
+      },
+      "results": {
+        "items": {
+          "$ref": "#/definitions/result"
+        },
+        "type": "array"
+      },
+      "sketches": {
+        "items": {
+          "$ref": "#/definitions/sketch"
+        },
+        "type": "array"
+      },
+      "work": {
+        "items": {
+          "$ref": "#/definitions/work"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "$schema",
+      "actors",
+      "conversations",
+      "decisions",
+      "docs",
+      "excluded",
+      "exportedAt",
+      "format",
+      "formatVersion",
+      "grants",
+      "links",
+      "materials",
+      "people",
+      "project",
+      "provenance",
+      "results",
+      "sketches",
+      "work"
+    ],
+    "title": "Flux project export, format version 1",
+    "type": "object"
+  },
+  "schemaId": "https://flux.coldphase.dev/schemas/project-export.v1.json"
+}

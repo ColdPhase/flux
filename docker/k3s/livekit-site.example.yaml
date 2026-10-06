@@ -1,0 +1,37 @@
+# Example site values for docker/k3s/livekit-values.yaml. Every value is a placeholder:
+# documentation addresses (RFC 1918, RFC 5737) and reserved `.example` names. Copy this file
+# outside the repository, replace each value, and check it before installing:
+#   FLUX_K3S_SITE_VALUES=/path/to/site.yaml ./scripts/check_live_k3s.sh
+# That run refuses documentation addresses and `.example` names left in a site file.
+
+# The dedicated media node: nothing else listens on its TCP/443, UDP/3478, UDP/7882 or
+# TCP/7881 (keep it out of the k3s ServiceLB pool that serves Traefik).
+nodeSelector:
+  flux.example/live-media: "true"
+
+# Existing Secret in the release namespace, created by the operator, e.g.
+#   kubectl -n <namespace> create secret generic flux-livekit-keys --from-file=keys.yaml
+storeKeysInSecret:
+  existingSecret: flux-livekit-keys
+
+livekit:
+  # Signaling (7880) and metrics (6789) listen only here: the media node's private InternalIP,
+  # which is also its host-network PodIP and the `livekit` Service endpoint, plus loopback.
+  bind_addresses:
+    - 10.20.0.10
+    - 127.0.0.1
+  rtc:
+    # The public media address browsers reach directly; advertised in ICE candidates.
+    node_ip: 198.51.100.10
+    stun_servers:
+      - turn.flux.example:3478
+  turn:
+    # TURN DNS name that resolves to rtc.node_ip and matches the certificate's SAN.
+    domain: turn.flux.example
+    # kubernetes.io/tls Secret with that certificate, in the release namespace.
+    secretName: flux-turn-tls
+  webhook:
+    # The key ID from flux-livekit-keys, equal to the API's FLUX_LIVEKIT_API_KEY.
+    api_key: flux-livekit-key-id
+    urls:
+      - http://flux-api.flux.svc.cluster.local:8080/api/v1/internal/livekit/webhook

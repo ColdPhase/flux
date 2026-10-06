@@ -1,0 +1,13 @@
+diff --git a/app/apps/web/src/agent-connection/StandingGrants.tsx b/app/apps/web/src/agent-connection/StandingGrants.tsx
+index 171a52c2..4a43acce 100644
+--- a/app/apps/web/src/agent-connection/StandingGrants.tsx
++++ b/app/apps/web/src/agent-connection/StandingGrants.tsx
+@@ -279,7 +279,7 @@ function AddGrant({ connection, projects, name, busy, existing, onCancel, onCrea
+     <fieldset className="grants__changes" disabled={busy}>
+       <legend>Allowed changes</legend>
+       {GRANTABLE.map((group) => {
+-        const offered = group.operations.filter(([operation]) => allowed(operation));
++        const offered = group.operations;
+         return offered.length ? <div className="grants__area" key={group.area} role="group" aria-label={group.area}>
+           <span className="grants__area-name">{group.area}</span>
+           <span className="grants__area-options">{offered.map(([operation, label]) => {

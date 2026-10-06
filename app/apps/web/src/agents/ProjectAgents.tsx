@@ -1,17 +1,22 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { flushSync } from 'react-dom';
 import { Link, useLoaderData, useLocation, useNavigation, useSearchParams, type LoaderFunctionArgs } from 'react-router';
-import type { AgentOperation, ConversationMessage, ProjectAgentConnection, ProjectAgents as ProjectAgentsData, TaskDiscussion, WorkItem } from '@flux/contracts';
+import type { AgentOperation, ConversationMessage, ProjectAgentConnection, ProjectAgents as ProjectAgentsData, TaskDiscussion, WorkStatus } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
 import { useComposerDraft, useComposerScope } from '../composer/draft';
-import { ComposerFiles, MessageFiles } from '../composer/Files';
+import { AttachButton, ComposerFiles, MessageFiles } from '../composer/Files';
 import { contributeToTask, getTaskDiscussion } from '../composer/api';
 import { useProjectShell } from '../project/data';
 import { Button, Icon } from '../ui';
-import { STATUS_LABEL, isFinished } from '../work/format';
+import { STATUS_LABEL } from '../work/format';
+import { useNativeOwn, useWorkChoices } from '../work/useDetailReads';
+import { WorkPagination } from '../work/WorkPagination';
+import { AGENT_SUFFIX, agentDisplayName } from '../docs/format';
 import { getProjectAgents } from './api';
+import { useTyping } from '../typing/useTyping';
+import { TypingNotice } from '../typing/TypingNotice';
 import './agents.css';
 
 /**
@@ -35,6 +40,8 @@ const OPERATION_LABEL: Record<AgentOperation, string> = {
   'doc.create': 'created a doc', 'doc.update': 'edited a doc',
   'conversation.create': 'started a conversation', 'conversation.reply': 'replied in a conversation',
   'cowork.claim': 'took a task', 'cowork.renew': 'is still on a task', 'cowork.release': 'released a task', 'cowork.request': 'asked for help',
+  'cowork.request.claim': 'picked up a request', 'cowork.request.respond': 'answered a request',
+  'cowork.unit.create': 'set up work on a task',
 };
 
 const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
@@ -84,7 +91,7 @@ function Connection({ connection, now }: { connection: ProjectAgentConnection; n
 }
 
 function authorName(message: ConversationMessage, names: Map<string, string>) {
-  if (message.authorId === null) return `${message.author.name ?? 'Agent'}`;
+  if (message.authorId === null) return agentDisplayName(message.author);
   return names.get(message.authorId) ?? 'Someone';
 }
 
@@ -129,7 +136,10 @@ function paneAtEnd(marker: HTMLElement | null) {
 }
 
 /** The task's one thread: the real first contribution as root, then its replies. */
-function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: { task: WorkItem; projectId: string; meId: string; names: Map<string, string>; canWrite: boolean; changingScope: boolean }) {
+/** The task a thread belongs to: its identity and title, from a bounded native read. */
+interface ThreadTask { id: string; title: string; status: WorkStatus }
+
+function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: { task: ThreadTask; projectId: string; meId: string; names: Map<string, string>; canWrite: boolean; changingScope: boolean }) {
   const [discussion, setDiscussion] = useState<TaskDiscussion | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [accessLost, setAccessLost] = useState(false);
@@ -145,6 +155,10 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
   const captureScope = useComposerScope(composer.key);
   const sending = composer.sending;
   const blocked = changingScope || !discussion || !canWrite || accessLost;
+  // Typing (#155 AC-2) is the task thread's: the same canonical conversation as the task's thread in
+  // Conversation, so a person writing in both views is one person typing. A task without a genuine first
+  // contribution has no thread yet, so it has no typing scope (nothing is created to show it).
+  const typing = useTyping(meId, discussion?.conversationId && !accessLost && !changingScope ? { kind: 'conversation', id: discussion.conversationId } : null, canWrite && !blocked && !sending);
   const box = useRef<HTMLTextAreaElement>(null);
   const end = useRef<HTMLDivElement>(null);
 
@@ -223,6 +237,7 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
 
   const send = async (event?: FormEvent) => {
     event?.preventDefault();
+    typing.stop();
     if (blocked) return;
     const command = composer.begin();
     if (!command) return;
@@ -259,7 +274,7 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
           return (
             <li key={message.id} className={`agents-msg${own ? ' agents-msg--own' : ''}${agent ? ' agents-msg--agent' : ''}`}>
               <span className="agents-msg__meta">
-                <b>{own ? 'You' : authorName(message, names)}</b>{agent ? <span className="agents-msg__kind"> · agent</span> : null}
+                <b>{own ? 'You' : authorName(message, names)}</b>{agent ? <span className="agents-msg__kind">{AGENT_SUFFIX}</span> : null}
                 <time dateTime={message.createdAt}>{when(message.createdAt)}</time>
                 {message.contribution ? <span className="agents-msg__kind"> · {message.contribution.kind}</span> : null}
               </span>
@@ -275,11 +290,13 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
         <label className="ui-vh" htmlFor="agents-draft">Write to this task</label>
         <textarea id="agents-draft" ref={box} value={composer.draft.body} rows={2} readOnly={sending || changingScope} aria-busy={sending || changingScope}
           placeholder={canWrite ? 'Add to this work…' : 'You can read this task but not write to it.'} disabled={blocked}
-          onChange={(event) => { if (!blocked) composer.setBody(event.target.value); }} onKeyDown={onKeyDown} />
-        <ComposerFiles state={composer} disabled={blocked} />
+          onChange={(event) => { if (!blocked) { composer.setBody(event.target.value); typing.input(Boolean(event.target.value.trim())); } }} onBlur={typing.stop} onKeyDown={onKeyDown} />
+        <ComposerFiles state={composer} disabled={blocked} attach="none" />
+        {discussion?.conversationId && !accessLost ? <TypingNotice {...typing} /> : null}
         {changingScope ? <p className="agents-composer__hint" role="status">Opening your selection… Your current draft is kept.</p> : null}
         <div className="agents-composer__row">
-          <span className="agents-composer__hint">Goes to the task thread · Enter sends, Shift+Enter new line</span>
+          <AttachButton state={composer} disabled={blocked} />
+          <span className="agents-composer__hint">Goes to the task thread<span className="composer__keys"> · Enter sends, Shift+Enter new line</span></span>
           <Button type="submit" variant="primary" icon="send" busy={sending} disabled={!composer.canSend || blocked} aria-label="Send to task">Send</Button>
         </div>
       </form>
@@ -337,18 +354,29 @@ export function ProjectAgents() {
   const location = useLocation();
   const navigation = useNavigation();
   const [search, setSearch] = useSearchParams();
-  const tasks = useMemo(() => (shell?.work.work ?? []).filter((item) => !item.parked && !isFinished(item)), [shell]);
-  // A `?task=` that is not one of this project's tasks falls back to the first open one.
-  const requested = (shell?.work.work ?? []).find((item) => item.id === search.get('task'));
-  const task = requested ?? tasks[0] ?? null;
+  const projectId = shell?.project.id ?? data.projectId;
+  // Open, unparked tasks come one bounded native page at a time (#155), never the whole project.
+  const choices = useWorkChoices(me.user.id, projectId, { purpose: 'choices', choice: 'pivot_work' });
+  const tasks = useMemo<ThreadTask[]>(() => (choices.page?.items ?? []).flatMap((row) => row.kind === 'work' ? [{ id: row.id, title: row.title, status: row.status }] : []), [choices.page]);
+  // A `?task=` outside this page is read by itself; one that is not this project's task (or
+  // cannot be read) falls back to the first open one.
+  const wanted = search.get('task');
+  const onPage = tasks.find((item) => item.id === wanted) ?? null;
+  const own = useNativeOwn(me.user.id, projectId, 'work', wanted && !onPage ? wanted : undefined);
+  const ownTask = own.value?.object.kind === 'work' && own.value.object.id === wanted && own.value.object.projectId === projectId
+    ? { id: own.value.object.id, title: own.value.object.title, status: own.value.object.status } : null;
+  // While that read (or the first page) is still on its way, nothing is chosen yet, so a
+  // thread never opens on a fallback task and then jumps.
+  const settling = (!!wanted && !onPage && (own.read.phase === 'loading' || !choices.page)) || (!wanted && !choices.page);
+  const task = settling ? null : onPage ?? ownTask ?? tasks[0] ?? null;
   const names = useMemo(() => new Map((shell?.people ?? []).map((person) => [person.id, person.name])), [shell]);
   const changingScope = navigation.state !== 'idle' && !!navigation.location
     && (navigation.location.pathname !== location.pathname || navigation.location.search !== location.search);
-  const pendingTask = changingScope && navigation.location?.pathname === location.pathname
-    ? (shell?.work.work ?? []).find((item) => item.id === new URLSearchParams(navigation.location!.search).get('task')) : null;
+  // The task a pending `?task=` change selects, among the choices shown (the select offers only those).
+  const pendingId = changingScope && navigation.location?.pathname === location.pathname ? new URLSearchParams(navigation.location!.search).get('task') : null;
+  const pendingTask = pendingId ? tasks.find((item) => item.id === pendingId) ?? (task?.id === pendingId ? task : null) : null;
   // Flush the pending navigation guard before a fast next input can reach the old keyed thread.
   const select = (id: string) => setSearch((current) => { const next = new URLSearchParams(current); next.set('task', id); return next; }, { replace: true, flushSync: true });
-  const projectId = shell?.project.id ?? data.projectId;
   const connections = useConnections(projectId, me.user.id, data.connections);
 
   // The view scrolls in its own pane like every other view, so a long thread stays reachable
@@ -367,21 +395,24 @@ export function ProjectAgents() {
       ) : (
         <p className="agents__no-connections">No agents connected. You can still discuss tasks here.</p>
       )}
-      {tasks.length ? (
+      {task ? (
         <>
           <div className="agents__task">
             <label className="agents__task-label" htmlFor="agents-task">Task</label>
-            <select id="agents-task" value={pendingTask?.id ?? task?.id ?? ''} onChange={(event) => select(event.target.value)}>
-              {task && !tasks.some((item) => item.id === task.id) ? <option value={task.id}>{task.title}</option> : null}
+            <select id="agents-task" value={pendingTask?.id ?? task.id} onChange={(event) => select(event.target.value)}>
+              {!tasks.some((item) => item.id === task.id) ? <option value={task.id}>{task.title} · {STATUS_LABEL[task.status]}</option> : null}
               {tasks.map((item) => <option key={item.id} value={item.id}>{item.title} · {STATUS_LABEL[item.status]}</option>)}
             </select>
-            {task ? <Link className="ui-link agents__open" to={`/projects/${projectId}/tasks?open=work:${task.id}`}>Open task<Icon name="chevron-right" size={12} /></Link> : null}
+            <Link className="ui-link agents__open" to={`/projects/${projectId}/tasks?open=work:${task.id}`}>Open task<Icon name="chevron-right" size={12} /></Link>
           </div>
-          {task ? <TaskThread key={`${me.user.id}:${projectId}:${task.id}`} task={task} projectId={projectId} meId={me.user.id} names={names} canWrite={shell?.project.access !== 'viewer'} changingScope={changingScope} /> : null}
+          {choices.page && (choices.page.previousCursor || choices.page.nextCursor) ? <WorkPagination {...choices} label="Open task choices" noun="open tasks" /> : null}
+          <TaskThread key={`${me.user.id}:${projectId}:${task.id}`} task={task} projectId={projectId} meId={me.user.id} names={names} canWrite={shell?.project.access !== 'viewer'} changingScope={changingScope} />
         </>
-      ) : (
+      ) : choices.read.phase === 'unavailable' ? (
+        <p className="agents__no-tasks" role="alert">Open tasks could not be loaded. <button type="button" className="ui-link" onClick={choices.onRefresh}>Refresh tasks</button></p>
+      ) : choices.page && !settling ? (
         <p className="agents__no-tasks">No open tasks. Create one in Tasks; agents and people then work on it here.</p>
-      )}
+      ) : null}
     </div>
     </div>
   );

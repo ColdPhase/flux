@@ -4,14 +4,15 @@ import { before, describe, test } from 'node:test';
 import { createAssistantProposalUseCases, createPersonalRunProcessor, recoverPersonalRuns, type PersonalRunHooks, type Principal, type Transaction } from '@flux/core';
 import {
   PERSONAL_RUN_CONSENT_VERSION,
-  type AssistantAnswer, type AssistantProposal, type AssistantRun, type Conversation, type Page, type PersonalAssistantStatus,
+  type AssistantAnswer, type AssistantProposal, type AssistantRun, type Conversation, type Decision, type Page, type PersonalAssistantStatus,
   type Project, type TaskDiscussion, type WorkItem, type WorkResult, type Workspace,
 } from '@flux/contracts';
 import { assistantProposalUseCases, personalRunUseCases, proposalUnitOfWork } from '../../apps/server/src/personal-runs/adapters.js';
+import { workUseCases } from '../../apps/server/src/work/adapters.js';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
 import { db, pool } from './support/db.js';
 import { addMember, expectStatus, person, project as createProject, removeMember, workspace as createWorkspace, type Person } from './support/people.js';
-import { echo, FakeCompute, FakeConnections, FakeQueue } from './support/personal-runs.js';
+import { echo, FakeCompute, FakeConnections, FakeQueue, type Responder } from './support/personal-runs.js';
 import { StreamClient } from './support/stream.js';
 import { waitFor } from './support/wait.js';
 import { guardFinalEventPhase } from './support/final-events.js';
@@ -622,6 +623,65 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
       connections.disconnect(hubert.id, latest);
       await enable(hubert, 'hubert', hubertConnection);
     }
+  });
+
+  test('#250 AC-3: an assistant proposal never accepts a decision; only a person with authority decides either', async () => {
+    // O-009 DA-1/DA-4: the assistant writes no decision rows. A proposal block shaped like a decision, or one that
+    // claims it is already accepted, never makes a rule current, and the drafted result waits for a person.
+    const pending = await post<Decision>(kai, `/api/v1/projects/${lamp.id}/decisions`, { title: 'Use the ToF sensor', rationale: 'It works in the dark' });
+    const decisionState = async () => {
+      const current = expectStatus(await viewer.browser.request('GET', `/api/v1/decisions/${pending.id}`), 200) as Decision;
+      const accepted = (await pool.query("SELECT count(*)::int AS n FROM events WHERE kind = 'project.decision_accepted.v1' AND data->>'decisionId' = $1", [pending.id])).rows[0].n as number;
+      return [current.status, current.version, current.decidedBy, accepted];
+    };
+    const untouched = ['proposed', pending.version, null, 0];
+    const counts = async () => (await pool.query(`SELECT (SELECT count(*)::int FROM project_decisions WHERE project_id = $1) AS decisions,
+      (SELECT count(*)::int FROM project_decisions WHERE project_id = $1 AND status <> 'proposed') AS decided,
+      (SELECT count(*)::int FROM project_results WHERE project_id = $1) AS results`, [lamp.id])).rows[0] as { decisions: number; decided: number; results: number };
+    const before = await counts();
+    const answer = (proposal: Record<string, unknown>): Responder => async () => ({ kind: 'completed', stopReason: 'end_turn', usage: { inputTokens: 800, outputTokens: 90 },
+      text: `Fact: Kai proposed the ToF sensor [S1].\n<proposal>${JSON.stringify(proposal)}</proposal>` });
+    const previous = compute.respond;
+    try {
+      // A decision-shaped block that says it accepts the pending decision is not a proposal at all.
+      compute.respond = answer({ type: 'decision', decisionId: pending.id, status: 'accepted', title: 'Use the ToF sensor', rationale: 'Accepted for the team' });
+      const decisionShaped = await ask(hubert, 'Accept the ToF decision for us');
+      assert.equal(await processor.process(decisionShaped.run.id), 'completed');
+      assert.equal((await runs.get(human(hubert), decisionShaped.run.id)).answer?.proposalId, null, 'a decision-shaped block is dropped');
+      assert.deepEqual(await decisionState(), untouched);
+
+      // A well-formed result proposal that claims acceptance is stored as a proposal, and nothing is decided.
+      compute.respond = answer({ fact: 'ToF tracked 19 of 20 gestures at 1 lux', interpretation: 'The sensor suits a dark bedroom',
+        title: 'ToF works in the dark', finding: 'positive', evidence: '19/20 gestures at 1 lux', finishes: null,
+        status: 'accepted', decidedBy: hubert.id, decisionId: pending.id });
+      const claimed = await ask(hubert, 'Record the ToF result and accept the decision');
+      assert.equal(await processor.process(claimed.run.id), 'completed');
+      const proposalId = (await runs.get(human(hubert), claimed.run.id)).answer!.proposalId!;
+      assert.ok(proposalId);
+      const drafted = await proposals.get(human(viewer), proposalId);
+      assert.deepEqual([drafted.status, drafted.decidedBy, drafted.resultId, drafted.change.type], ['proposed', null, null, 'result'], 'a status the model writes is ignored');
+      assert.deepEqual(await decisionState(), untouched);
+      assert.deepEqual(await counts(), before, 'no decision, acceptance or result was written by the assistant');
+
+      // Neither the assistant's agent identity nor a person who can only read decides the proposal or the decision.
+      const assistant: Principal = { kind: 'agent', id: agents.hubert! };
+      await assert.rejects(proposals.accept(assistant, proposalId, {}, drafted.version));
+      await assert.rejects(workUseCases(db).acceptDecision(assistant, pending.id, {}, pending.version), { code: 'DECISION_NEEDS_PERSON' });
+      assert.equal((await viewer.browser.request('POST', `/api/v1/assistant-proposals/${proposalId}/accept`, { body: { expectedVersion: drafted.version } })).status, 403);
+      assert.equal((await viewer.browser.request('POST', `/api/v1/decisions/${pending.id}/accept`, { body: { expectedVersion: pending.version } })).status, 403);
+      assert.equal((await proposals.get(human(kai), proposalId)).status, 'proposed');
+      assert.deepEqual(await decisionState(), untouched);
+      assert.deepEqual(await counts(), before);
+
+      // A person with authority accepts the drafted result: that records the result, and still decides nothing.
+      const accepted = await proposals.accept(human(kai), proposalId, {}, drafted.version);
+      assert.deepEqual([accepted.status, accepted.decidedBy?.id], ['accepted', kai.id]);
+      assert.deepEqual(await decisionState(), untouched, 'accepting an assistant proposal never accepts a decision');
+      assert.deepEqual(await counts(), { ...before, results: before.results + 1 });
+      // Only that person's own explicit acceptance makes the decision current.
+      const decided = expectStatus(await kai.browser.request('POST', `/api/v1/decisions/${pending.id}/accept`, { body: { expectedVersion: pending.version } }), 200) as Decision;
+      assert.deepEqual([decided.status, decided.decidedBy?.id, decided.proposedBy.id], ['accepted', kai.id, kai.id]);
+    } finally { compute.respond = previous; }
   });
 
 });

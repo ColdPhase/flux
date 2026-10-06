@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { Outlet, useLocation, useNavigate, useRevalidator } from 'react-router';
+import { Outlet, useLocation, useNavigate, useParams, useRevalidator } from 'react-router';
 import { useStreamEvents } from '../api/stream';
-import { Button, Drawer, Icon, IconButton, MEDIA, SidePanel, Tabs, duration, flip, play, useMediaQuery, useSidePanelMode } from '../ui';
+import { BottomNav, Button, Drawer, Icon, IconButton, MEDIA, SidePanel, Tabs, duration, flip, play, useMediaQuery, useSidePanelMode, type BottomNavItem, type TabItem } from '../ui';
 import { useShellData } from './data';
 import { registerServiceWorker, syncPushSubscription } from '../pwa';
 import { Details } from './Details';
@@ -21,6 +21,8 @@ import { LiveStage } from '../live/LiveStage';
 import '../live/live.css';
 import { JumpTo } from '../search/JumpTo';
 import { useNeedsYou } from '../returns/useNeedsYou';
+import { WorkReadProvider, useProjectWorkSummary } from '../work/WorkReadContext';
+import { OverviewContext } from '../project/ProjectOverview';
 import { remember, remembered } from './remembered';
 
 const lastConversationPath = (userId: string, projectId: string) => remembered('conversation', userId, projectId) ?? `/projects/${projectId}`;
@@ -45,6 +47,26 @@ function viewOrder(pathname: string) {
   return viewIndex(pathname);
 }
 
+/**
+ * The phone's bottom bar of main places (#266 PF-1, founder feedback on #264): Home, Inbox, Messages
+ * and Projects. It stays on every page, so people always see which area they are in and can reach
+ * the others with a thumb (Apple HIG, Tab bars: "Make sure the tab bar is visible when people navigate
+ * to different sections of your app"). Inside a project or a conversation its section stays current.
+ * Only a modal sheet or the on-screen keyboard covers it.
+ */
+function mainPlaces(pathname: string, inboxUnread: boolean): BottomNavItem[] {
+  const home = /^\/(map|tasks|docs)?(\/|$)/.test(pathname);
+  const inbox = /^\/inbox(\/|$)/.test(pathname);
+  const messages = /^\/dm(\/|$)/.test(pathname);
+  const projects = /^\/projects(\/|$)/.test(pathname);
+  return [
+    { id: 'home', label: 'Home', to: '/', icon: 'home', current: home },
+    { id: 'inbox', label: 'Inbox', to: '/inbox', icon: 'inbox', current: inbox, ...(inboxUnread ? { countLabel: ', something new', dot: true } : {}) },
+    { id: 'messages', label: 'Messages', to: '/dm', icon: 'chat', current: messages },
+    { id: 'projects', label: 'Projects', to: '/projects', icon: 'spark', current: projects },
+  ];
+}
+
 function isTyping(target: EventTarget | null) {
   const el = target as HTMLElement | null;
   return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName));
@@ -57,15 +79,25 @@ function isTyping(target: EventTarget | null) {
  * overlays below 1000px and becomes a full-screen sheet on the phone.
  */
 export function AppLayout() {
+  const { me } = useShellData();
+  const { projectId } = useParams();
+  return <WorkReadProvider accountId={me.user.id} projectId={projectId ?? null}><AppLayoutContent /></WorkReadProvider>;
+}
+
+function AppLayoutContent() {
   const { me, workspace, projects, directMessages } = useShellData();
   const location = useLocation();
   const backgroundSettings = location.pathname === '/settings/background-compute';
+  // A page inside Settings (#266 PF-5): on the phone its header leads back instead of opening the drawer.
+  const settingsPage = /^\/settings\/./.test(location.pathname);
   const navDrawer = useMediaQuery(MEDIA.navDrawer);
   const phone = useMediaQuery(MEDIA.phone);
   const panelMode = useSidePanelMode();
   const [navOpen, setNavOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsView, setDetailsView] = useState<DetailsView>('place');
+  const [detailsAccount, setDetailsAccount] = useState(me.user.id);
+  if (detailsAccount !== me.user.id) { setDetailsAccount(me.user.id); setDetailsView('place'); setDetailsOpen(false); }
   const [jumpOpen, setJumpOpen] = useState(false);
   const detailsButtonRef = useRef<HTMLButtonElement>(null);
   const paneRef = useRef<HTMLDivElement>(null);
@@ -100,16 +132,21 @@ export function AppLayout() {
 
   const inboxUnread = useInboxDot(me.user.id, location.pathname);
 
+  const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
+  const detailsOwner = useMemo(() => ({ accountId: me.user.id, projectId }), [me.user.id, projectId]);
+  const detailsScope = useRef<typeof detailsOwner | null>(detailsOwner);
+  useLayoutEffect(() => { detailsScope.current = detailsOwner; return () => { detailsScope.current = null; }; }, [detailsOwner]);
   const [actionSlot, setActionSlot] = useState<HTMLElement | null>(null);
   const shell = useMemo(() => ({
     openDetails(view: DetailsView = 'place') {
-      setDetailsView(view);
+      if (detailsScope.current !== detailsOwner) return;
+      setDetailsView(typeof view === 'object' && 'id' in view ? { ...view, projectId: view.projectId ?? projectId } : view);
       toggleDetails(true);
     },
     openSearch() { setNavOpen(false); setJumpOpen(true); },
     openNavigation() { setDetailsOpen(false); setNavOpen(true); },
     actionSlot,
-  }), [toggleDetails, actionSlot]);
+  }), [toggleDetails, actionSlot, projectId, detailsOwner]);
 
   // A link inside an overlaid panel or sheet (#117 overview) leads to its destination.
   const [shownPath, setShownPath] = useState(location.pathname);
@@ -166,18 +203,75 @@ export function AppLayout() {
   }, [toggleDetails, detailsOpen]);
 
 
-  // A new view slides in from the side its tab sits on.
+  // Typing on a touch phone (#266 PF-3): the view bar steps aside for the keyboard once a text field
+  // takes focus, stays aside while focus moves to the same composer's buttons (Send, Attach,
+  // Sources), and comes back shortly after focus leaves it, so no tap lands on a moved control.
+  const appRef = useRef<HTMLDivElement>(null);
+  const touch = useMediaQuery(MEDIA.touch);
+  useEffect(() => {
+    const app = appRef.current;
+    const pane = paneRef.current;
+    if (!phone || !touch || !app || !pane) return;
+    let timer = 0;
+    const field = (el: EventTarget | null) => el instanceof HTMLTextAreaElement || (el instanceof HTMLElement && el.isContentEditable)
+      || (el instanceof HTMLInputElement && !['checkbox', 'radio', 'file', 'range', 'button', 'submit', 'reset', 'color'].includes(el.type));
+    const group = (el: EventTarget | null) => (el instanceof Element ? el.closest('.composer, .agents-composer, form') : null);
+    const onIn = (event: FocusEvent) => {
+      if (field(event.target)) { window.clearTimeout(timer); app.dataset.typing = 'true'; }
+      else if (app.dataset.typing && group(event.target)) window.clearTimeout(timer);
+    };
+    const onOut = (event: FocusEvent) => {
+      if (!app.dataset.typing) return;
+      const next = event.relatedTarget;
+      if (next instanceof Node && pane.contains(next) && (field(next) || (group(next) && group(next) === group(event.target)))) return;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => { delete app.dataset.typing; }, 200);
+    };
+    pane.addEventListener('focusin', onIn);
+    pane.addEventListener('focusout', onOut);
+    return () => { window.clearTimeout(timer); delete app.dataset.typing; pane.removeEventListener('focusin', onIn); pane.removeEventListener('focusout', onOut); };
+  }, [phone, touch]);
+
+  // iOS Safari does not shrink the layout for the on-screen keyboard (no interactive-widget support),
+  // so on touch screens the app follows the visual viewport while the keyboard is up, keeping the
+  // composer and Send above it (#266 PF-3, #268). Chromium already resizes; there this never applies.
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    const app = appRef.current;
+    if (!viewport || !app || !touch) return;
+    const update = () => {
+      if (window.innerHeight - viewport.height > 120) {
+        app.style.setProperty('--app-h', `${Math.round(viewport.height)}px`);
+        app.style.setProperty('--app-top', `${Math.round(viewport.offsetTop)}px`);
+      } else {
+        app.style.removeProperty('--app-h');
+        app.style.removeProperty('--app-top');
+      }
+    };
+    viewport.addEventListener('resize', update);
+    viewport.addEventListener('scroll', update);
+    update();
+    return () => { viewport.removeEventListener('resize', update); viewport.removeEventListener('scroll', update); app.style.removeProperty('--app-h'); app.style.removeProperty('--app-top'); };
+  }, [touch]);
+
+  // A new view slides in from the side its tab sits on; a Settings page slides in from the right
+  // and back from the left, like a pushed page (#266 PF-4).
+  const previousPath = useRef(location.pathname);
   useLayoutEffect(() => {
     const index = viewOrder(location.pathname);
-    const direction = Math.sign(index - previousView.current);
+    const settingsDepth = (path: string) => (path === '/settings' ? 1 : /^\/settings\/./.test(path) ? 2 : 0);
+    const from = settingsDepth(previousPath.current);
+    const to = settingsDepth(location.pathname);
+    previousPath.current = location.pathname;
+    const direction = from && to && from !== to ? Math.sign(to - from) : Math.sign(index - previousView.current);
+    const distance = from && to && from !== to ? 28 : 12;
     previousView.current = index;
     if (!direction) return;
-    void play(paneRef.current, [{ opacity: 0, transform: `translateX(${direction * 12}px)` }, { opacity: 1, transform: 'none' }], duration('--dur-2'), '--ease-out', { fill: 'backwards' });
+    void play(paneRef.current, [{ opacity: 0, transform: `translateX(${direction * distance}px)` }, { opacity: 1, transform: 'none' }], duration('--dur-2'), '--ease-out', { fill: 'backwards' });
   }, [location.pathname]);
 
   const sidebarProps = { workspace, projects, directMessages, user: me.user, session: me.session, inboxUnread };
   const where = placeOf(location.pathname);
-  const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const activeProject = projects.find((project) => project.id === projectId);
   // The Conversation tab returns to the conversation that was open before Tasks, Map, Docs or project
   // settings (GitHub), and the
@@ -190,9 +284,10 @@ export function AppLayout() {
   }, [me.user.id, projectId, onOtherView, onMap, location.pathname, location.search]);
   const shellProject = useProjectShell();
   const project = shellProject && shellProject.project.id === projectId ? shellProject : undefined;
-  const openWork = project?.work.work.filter((item) => !item.parked && (item.status === 'open' || item.status === 'in_progress' || item.status === 'blocked')).length;
+  const workSummary = useProjectWorkSummary();
+  const openWork = project ? workSummary.summary?.unfinishedTotal : undefined;
   // Conversation · Map · Tasks · Wiki · Agents in the Studio 11.6 order (#117, #136); quiet tabs without
-  // counts. The open work count stays readable to assistive technology on the Tasks tab.
+  // counts. The unfinished work count stays readable to assistive technology on the Tasks tab.
   const projectViews = projectId ? [
     { id: 'conversation', label: 'Conversation', to: onOtherView ? lastConversationPath(me.user.id, projectId) : `${location.pathname}${location.search}` },
     { id: 'map', label: 'Map', to: onMap ? location.pathname : lastMapPath(me.user.id, projectId, project?.sketches), end: false },
@@ -200,6 +295,8 @@ export function AppLayout() {
     { id: 'docs', label: 'Wiki', to: `/projects/${projectId}/docs`, end: false },
     { id: 'agents', label: 'Agents', to: `/projects/${projectId}/agents` },
   ] : null;
+  const homeViews: TabItem[] = VIEWS.map((view) => ({ id: view.id, label: view.label, to: view.path, end: view.path === '/' }));
+  const places = mainPlaces(location.pathname, inboxUnread);
   const audienceOpen = project?.project.visibility === 'workspace';
   const audience = project ? audienceLine(project.people, me.user.id, audienceOpen) : 'People with project access';
   // The audience line leads to "Who can see this", where managers change it (#188).
@@ -217,6 +314,7 @@ export function AppLayout() {
       {needsYou ? <span className="views__recap-n">{needsYou}<span className="ui-vh"> {needsYou === 1 ? 'needs' : 'need'} you</span></span> : null}
     </Button>
   ) : null;
+
   const dmId = location.pathname.match(/^\/dm\/([^/]+)/)?.[1];
   const activeDm = directMessages.find((dm) => dm.id === dmId);
   // Messages · Sketches: a DM's sketches stay inside it, for exactly its people (#96).
@@ -225,7 +323,11 @@ export function AppLayout() {
     { id: 'messages', label: 'Messages', to: `/dm/${activeDm.id}` },
     { id: 'sketches', label: 'Sketches', to: `/dm/${activeDm.id}/sketches`, end: false, ...(dmSketches ? { count: dmSketches, countLabel: `, ${dmSketches} ${dmSketches === 1 ? 'sketch' : 'sketches'}` } : {}) },
   ] : null;
-  const place = backgroundSettings
+  const place = location.pathname === '/projects'
+    ? { crumb: null, title: 'Projects', topic: 'Every project you can open', views: false, noDetails: true }
+    : location.pathname === '/settings'
+    ? { crumb: null, title: 'Settings', topic: 'Your account, this device and your AI', views: false, noDetails: true }
+    : backgroundSettings
     ? { crumb: null, title: 'Background suggestions', topic: 'Your connection and allowance', views: false, noDetails: true }
     : location.pathname === '/search'
     ? { crumb: null, title: 'Search', topic: 'Only what you can open is searched', views: false, noDetails: true }
@@ -253,7 +355,7 @@ export function AppLayout() {
     <ShellContext.Provider value={shell}>
     {/* One live session per tab, above the routes, so navigation keeps it (#62). */}
     <LiveProvider meId={me.user.id}>
-    <div className="app">
+    <div className="app" ref={appRef}>
       <a className="ui-skip" href="#content">Skip to content</a>
       {navDrawer ? (
         <Drawer open={navOpen && navDrawer} onClose={() => setNavOpen(false)} labelledBy={drawerTitleId} id="nav-drawer" className="nav-drawer">
@@ -265,7 +367,10 @@ export function AppLayout() {
 
       <div className="app__main">
         <header className={`top${activeProject ? ' top--project' : ''}`}>
-          {navDrawer ? (
+          {phone && settingsPage ? (
+            <IconButton icon="chevron-left" label="Back" size={20} className="top__back" data-tip-align="start"
+              onClick={() => { if (location.key !== 'default') navigate(-1); else navigate('/settings'); }} />
+          ) : navDrawer ? (
             <IconButton icon="menu" label="Open navigation" size={18} aria-expanded={navOpen} aria-controls={navOpen ? 'nav-drawer' : undefined}
               aria-haspopup="dialog" data-tip-align="start" onClick={() => { setDetailsOpen(false); setNavOpen(true); }} className="top__menu" />
           ) : null}
@@ -280,7 +385,7 @@ export function AppLayout() {
                 <button type="button" className="top__audience" onClick={openAudience} aria-haspopup="dialog" title={audience}>
                   <Icon name={audienceOpen ? 'people' : 'lock'} size={12} /><span>{audience}</span><span className="ui-vh">, who can see this project</span>
                 </button>
-                {project && !phone ? <ProjectStateLine lists={project.work} canDecide={project.project.access !== 'viewer'} /> : null}
+                {project && !phone ? <ProjectStateLine summary={workSummary.summary} phase={workSummary.phase} /> : null}
               </div>
             </div>
           ) : (
@@ -295,6 +400,7 @@ export function AppLayout() {
             <span className="top__actions" ref={setActionSlot} />
             {activeProject ? <LiveEntry /> : null}
             {/* The inbox and its settings have nothing to show in Details. */}
+            {/* Labelled on every size (#264: icons alone left people unsure what to tap). */}
             {'noDetails' in place ? null : <Button ref={detailsButtonRef} variant="quiet" icon="panel" className="top__details" aria-expanded={detailsOpen && !recapOpen}
               aria-controls={detailsOpen ? 'details' : undefined} aria-keyshortcuts="]" data-tip={'Toggle details   ]'}
               onClick={() => { setDetailsView('place'); if (!recapOpen) toggleDetails(); }}>
@@ -302,24 +408,29 @@ export function AppLayout() {
             </Button>}
           </div>
         </header>
-        {/* On a phone the tab row has no room: the entry joins the one-line project state row. */}
-        {project && phone ? <div className="state-row"><ProjectStateRow lists={project.work} canDecide={project.project.access !== 'viewer'} />{recapEntry}</div> : null}
+        {/* The project's state line (needs you, rule, blocked) with "What matters" stays on the phone's
+            Conversation, where people orient themselves (#266 PF-2). */}
+        {project && phone && !onOtherView ? <div className="state-row"><ProjectStateRow summary={workSummary.summary} phase={workSummary.phase} />{recapEntry}</div> : null}
+        {/* A place's views: tabs on wider screens, a row of chips with the current one filled on the phone
+            (#266 PF-1), so where you are is never a guess. */}
         {place.views
-          ? <Tabs className="views" label="Views" items={VIEWS.map((view) => ({ id: view.id, label: view.label, to: view.path, end: view.path === '/' }))} />
+          ? <Tabs className={`views${phone ? ' views--chips' : ''}`} label="Views" items={homeViews} />
           : activeProject && projectViews
-            ? <div className="views views--project"><Tabs className="views__tabs" label="Project views" items={projectViews} />{phone ? null : recapEntry}</div>
+            ? <div className={`views views--project${phone ? ' views--chips' : ''}`}><Tabs className="views__tabs" label="Project views" items={projectViews} />{phone ? null : recapEntry}</div>
             : dmViews
-              ? <Tabs className="views" label="Direct message views" items={dmViews} />
+              ? <Tabs className={`views${phone ? ' views--chips' : ''}`} label="Direct message views" items={dmViews} />
               : <div className="views views--none" aria-hidden="true" />}
         <LiveBar />
         <div className="app__pane" id="content" ref={paneRef} tabIndex={-1}>
           <Outlet />
           <LiveStage />
         </div>
+        {phone ? <BottomNav className="app__viewbar" label="Main places" items={places} /> : null}
       </div>
 
       <JumpTo open={jumpOpen} onClose={() => setJumpOpen(false)} userId={me.user.id} />
-      <SidePanel open={detailsOpen} onClose={() => toggleDetails(false)} title={recapOpen ? 'What matters' : 'Details'} id="details">
+      <SidePanel open={detailsOpen} onClose={() => toggleDetails(false)} title={recapOpen ? 'What matters' : 'Details'} id="details"
+        context={phone && (detailsView === 'place' || typeof detailsView === 'object' && detailsView.kind === 'overview') ? <OverviewContext /> : undefined}>
         <Details view={detailsView} workspace={workspace} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} onClose={() => toggleDetails(false)} />
       </SidePanel>
     </div>

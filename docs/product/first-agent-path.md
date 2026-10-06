@@ -81,7 +81,10 @@ grows. An embedded/API/local Flux-operated agent requires a separately accepted
 compute owner, secret handling, payer consent, budget and runtime contract.
 Third-party claude.ai login or routing Free/Pro/Max credentials through Flux is
 excluded. A manually invoked MCP tool is a transport slice, not completion of
-the required proactive AI path.
+the required proactive AI path. Under [F-022](ai-modes.md) (accepted 2026-10-05) this path is
+mode (b) of exactly two AI modes. Flux still never offers claude.ai login or holds
+plan credentials; mode (a)'s `runtime` instead runs the unmodified Claude Code
+binary under the owner's own sign-in.
 
 ## Evidence checked on 2026-09-27
 

@@ -1,0 +1,18 @@
+{
+  "tested_source_commit": "a47985a056fe9df9315f94b0bd7c10434097e6e4",
+  "inputs": {
+    "app/apps/web/src/project/ProjectOverview.tsx": "9b26e6142131ca0044a71929d13ede211794c30a4bef9716eb8d5ecf872205e9",
+    "app/apps/web/src/work/state-summary.ts": "afc232c1037571f13395a8571f58ccd796263f562b03b318b588d3977d8d2bf9",
+    "app/packages/contracts/src/work-read.ts": "5aa5c91c56e5733f89b590370e994a112586225b1c8279b588e236fe0489ebc0",
+    "app/packages/core/src/work-read/service.ts": "dd1a35e77db7c34d400439ab174b7e4fe75a576b847e6d3909ca323fec750ae7",
+    "app/packages/db/src/repositories/work-read-summary.ts": "1f2c90ba5377802f0cf662373e593ecd8b20750d51b2df0334f76b7f2ff4bbec",
+    "app/tests/app/work-read-client.test.ts": "40ea03d490f66e903cd77d50be9aadfc85630b07eab3abd51a0b80c9249b7709",
+    "app/tests/app/work-read-native.test.ts": "57bd00b4c8e5ef4c153b67eaf09f3a8d953f4ef8dda3da3a27eed771a90af2b3",
+    "app/tests/app/work-read-service.test.ts": "05d5de67c6b2626a86a778551864232cd934ebaf2626bf8a659fcba7119967b9"
+  },
+  "outputs": {
+    "docker-focused-pass.log": "393086db92b1c8175424eab86f90f9d2dac9273ecd285daeb58fe6ca653001d7",
+    "run-focused.sh": "186cc63a1f714ab2fdc44e2f77c12afef56b71fd71caecf41fc3cfc15ffb054f",
+    "fixture-pivot-failure.log": "81e94ac73d07777b945933ddfca3ebc1abe3dfc8a3744b1280cfdfa0e101d2e3"
+  }
+}

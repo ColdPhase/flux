@@ -1,0 +1,30 @@
+ Container flux155browser-mailpit-1  Running
+ Container flux155browser-db-1  Running
+ Container flux155browser-anthropic-mock-1  Recreate
+ Container flux155browser-worker-1  Running
+ Container flux155browser-api-1  Running
+ Container flux155browser-anthropic-mock-1  Recreated
+ Container flux155browser-anthropic-mock-1  Starting
+ Container flux155browser-db-1  Waiting
+ Container flux155browser-anthropic-mock-1  Started
+ Container flux155browser-db-1  Healthy
+ Container flux155browser-migrate-1  Starting
+ Container flux155browser-migrate-1  Started
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Exited
+ Container flux155browser-migrate-1  Exited
+test_01_project_input_blur_expiry_and_unchanged_renewal (test_typing.TypingJourney.test_01_project_input_blur_expiry_and_unchanged_renewal) ... ok
+test_02_scope_navigation_restores_draft_without_activity_and_send_stops (test_typing.TypingJourney.test_02_scope_navigation_restores_draft_without_activity_and_send_stops) ... ok
+test_03_dm_is_exact_scope_and_send_is_durable_once (test_typing.TypingJourney.test_03_dm_is_exact_scope_and_send_is_durable_once) ... ok
+test_04_reader_observes_and_current_access_revocation_clears (test_typing.TypingJourney.test_04_reader_observes_and_current_access_revocation_clears) ... ok
+test_05_receiver_loses_application_frames_and_expires (test_typing.TypingJourney.test_05_receiver_loses_application_frames_and_expires) ... ok
+test_06_viewport_matrix_static_notice_keeps_layout_and_focus (test_typing.TypingJourney.test_06_viewport_matrix_static_notice_keeps_layout_and_focus) ... ok
+test_07_reconnect_acknowledges_cookie_account_before_any_new_pulse (test_typing.TypingJourney.test_07_reconnect_acknowledges_cookie_account_before_any_new_pulse) ... ok
+test_08_failed_stop_retires_generation_before_late_real_frames (test_typing.TypingJourney.test_08_failed_stop_retires_generation_before_late_real_frames) ... ok
+test_09_private_assistant_composer_never_publishes_human_typing (test_typing.TypingJourney.test_09_private_assistant_composer_never_publishes_human_typing) ... ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 60.171s
+
+OK

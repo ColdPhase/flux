@@ -1,0 +1,52 @@
+ Container flux155browser-mailpit-1  Running
+ Container flux155browser-db-1  Running
+ Container flux155browser-anthropic-mock-1  Recreate
+ Container flux155browser-api-1  Running
+ Container flux155browser-worker-1  Running
+ Container flux155browser-anthropic-mock-1  Recreated
+ Container flux155browser-anthropic-mock-1  Starting
+ Container flux155browser-db-1  Waiting
+ Container flux155browser-anthropic-mock-1  Started
+ Container flux155browser-db-1  Healthy
+ Container flux155browser-migrate-1  Starting
+ Container flux155browser-migrate-1  Started
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Exited
+ Container flux155browser-migrate-1  Exited
+test_01_all_native_object_and_relation_pages_are_reachable_on_desktop_and_phone (test_work_overview.OverviewWorkJourney.test_01_all_native_object_and_relation_pages_are_reachable_on_desktop_and_phone) ... ok
+test_02_required_relation_failure_is_unavailable_then_retries_without_touching_private_reply (test_work_overview.OverviewWorkJourney.test_02_required_relation_failure_is_unavailable_then_retries_without_touching_private_reply) ... ok
+test_03_held_old_relations_cannot_replace_a_new_object_window_or_erase_selection (test_work_overview.OverviewWorkJourney.test_03_held_old_relations_cannot_replace_a_new_object_window_or_erase_selection) ... ok
+test_04_details_of_an_older_loaded_message_keeps_exact_source_scope_and_pinned_citation (test_work_overview.OverviewWorkJourney.test_04_details_of_an_older_loaded_message_keeps_exact_source_scope_and_pinned_citation) ... ERROR
+
+======================================================================
+ERROR: test_04_details_of_an_older_loaded_message_keeps_exact_source_scope_and_pinned_citation (test_work_overview.OverviewWorkJourney.test_04_details_of_an_older_loaded_message_keeps_exact_source_scope_and_pinned_citation)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/work/tests/ui/test_work_overview.py", line 170, in test_04_details_of_an_older_loaded_message_keeps_exact_source_scope_and_pinned_citation
+    for _ in range(2): earlier.click(); expect(earlier).to_be_enabled()
+                       ^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/playwright/sync_api/_generated.py", line 17876, in click
+    self._sync(
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_sync_base.py", line 115, in _sync
+    return task.result()
+           ^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_locator.py", line 165, in click
+    return await self._frame._click(self._selector, strict=True, **params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_frame.py", line 593, in _click
+    await self._channel.send("click", self._timeout, locals_to_params(locals()))
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_connection.py", line 76, in send
+    return await self._connection.wrap_api_call(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_connection.py", line 632, in wrap_api_call
+    raise rewrite_error(error, f"{parsed_st['apiName']}: {error}") from None
+playwright._impl._errors.TimeoutError: Locator.click: Timeout 30000ms exceeded.
+Call log:
+  - waiting for get_by_role("button", name="Load earlier messages", exact=True)
+
+
+----------------------------------------------------------------------
+Ran 4 tests in 39.483s
+
+FAILED (errors=1)
