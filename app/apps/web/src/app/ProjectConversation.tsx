@@ -119,7 +119,6 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     document.addEventListener('keydown', escape);
     return () => { document.removeEventListener('pointerdown', away); document.removeEventListener('keydown', escape); };
   }, [moreOpen, composerId]);
-  useEffect(() => { if (!phone) setMoreOpen(false); }, [phone]);
   const publicComposer = useComposerDraft(me.user.id, project.id, conversation?.task ? `task:${conversation.task.workId}` : conversation ? `conversation:${conversation.id}` : 'new');
   const helperComposer = useComposerDraft(me.user.id, project.id, `helper:${conversation?.id ?? 'new'}`);
   const composer = asking ? helperComposer : publicComposer;
