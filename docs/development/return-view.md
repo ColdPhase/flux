@@ -52,12 +52,19 @@ conversation points are deleted with their place.
    `{ conversationId, messageId }` and `{ materialId, version }`; see
    [conversations](conversations.md#authorized-project-refresh-events-36--47). Messages recorded
    earlier have no ids, so they cannot link to a source and are left out.
+   **Work a pivot parked (#290, #44 scenario 3).** Accepting a pivot parks work under
+   `project.decision_accepted.v1` alone; the work gets no event of its own and the payload stays
+   `{ decisionId }`. The summary therefore also joins each accepted decision to the work it parks
+   **now** in the decision's own project (`parked_by_decision_id`) and groups that work with the
+   acceptance. A person whose point is after the task's last own event still sees
+   "Parked: …" with the rule that set it aside. A later change of the same task stays one item.
+   Work that was brought back or finished since is not called parked.
 
 | Kind | Text (examples) | Needs you |
 | --- | --- | --- |
 | decision | "Current rule changed: …" with "Previously: …"; "New rule: …"; "Proposed rule: …"; "Rule replaced: …". A rule made and replaced in the same absence is told once, by its replacement. | A proposal by someone else in a project you can write. |
 | result | "Ari recorded a result: …", "It did not work out, about “…”". | It is about work you own or created. |
-| work | "Ari added a task for you: …", "Blocked: …", "Parked: …" (with the rule that set it aside), "Done: …", "In progress: …". | Unfinished, unparked work you own. |
+| work | "Ari added a task for you: …", "Blocked: …", "Parked: …" with "Set aside when the rule changed to “…”" (also for work a pivot parked while you were away, from the acceptance), "Done: …", "In progress: …". | Unfinished, unparked work you own. |
 | question | "Ari asked you: “…”" when a message addresses you (`@Name`, or starts with "Name," / "Name:"), or asks a question in a conversation you started or posted in. | Until you post in that conversation after it. |
 | message | "Ari and Kai replied in “…”", grouped per conversation, opening on the first new message. A task thread opened by a saved blocker, a published result or a public handoff (#154) is an ordinary conversation here: its opening is announced beside the result or blocked-work item it came from. | Never. |
 | material | "New material: …", "Updated material: …, now version N". | Never. |
@@ -127,7 +134,9 @@ Details (a quiet count of `needsYou`), which opens a private view of the Details
 `app/tests/app/returns.test.ts` covers the API with two people and an outsider: the return point,
 the grouping and sources, the next step and how it changes when the question is answered,
 forward-only saving and restore, revoked access, and a restricted project leaking nothing (no
-items, ids, names or counts). `app/tests/app/return-recap.test.ts` covers #133's scope, period, `until` snapshot, digest, privacy
+items, ids, names or counts). It also covers work a pivot parked after the reader's point (#290): one
+"Parked: …" item on the project and Home, none for a task in a project the reader cannot read, a
+revoked reader or a plain (non-pivot) acceptance. `app/tests/app/return-recap.test.ts` covers #133's scope, period, `until` snapshot, digest, privacy
 (per person, no shared event, outsider and revoked 404) and refused parameters.
 `app/tests/ui/test_return_view.py` (Playwright) covers Home's return view (a reload keeps the list,
 only "I have the context" clears it, a project's acknowledgement removes its items from Home, the

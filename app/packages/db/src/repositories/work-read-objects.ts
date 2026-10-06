@@ -17,6 +17,8 @@ const audience = (record: { projectId: string; createdAt: Date }) => ({ audience
 const actorKey = (ref: PrincipalRef) => `${ref.kind}:${ref.id}`;
 
 /** Bounded native row/detail projection; not the legacy full object/link presenter. */
+/** The composing adapter adds a task's "Let linked PRs move this task" rule (#74 G-1a), presented by core. */
+export type NativeWorkDetailObject = Exclude<WorkDetailObject, { kind: 'work' }> | Omit<Extract<WorkDetailObject, { kind: 'work' }>, 'githubRule'>;
 export function nativeWorkObjectRows(db: DbExecutor) {
   async function names(refs: PrincipalRef[]) {
     const found = await workRows(db).names(refs);
@@ -96,7 +98,7 @@ export function nativeWorkObjectRows(db: DbExecutor) {
       return ordered.flatMap((id) => { const ref = refs.find((ref) => ref.id === id); return ref ? [{ kind: 'decision' as const, ...ref }] : []; });
     },
     /** Full own fields for exactly one native object. No links are implicitly loaded. */
-    async detail(projectId: string, object: NativeWorkReadObject): Promise<WorkDetailObject | null> {
+    async detail(projectId: string, object: NativeWorkReadObject): Promise<NativeWorkDetailObject | null> {
       const requested = { ...object };
       const table = requested.kind === 'work' ? w : requested.kind === 'decision' ? d : r;
       const exists = await db.select({ id: table.id }).from(table).where(and(eq(table.projectId, projectId), eq(table.id, requested.id)));
