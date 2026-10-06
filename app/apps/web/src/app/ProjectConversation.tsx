@@ -114,11 +114,16 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   useEffect(() => {
     if (!moreOpen) return;
     const away = (event: PointerEvent) => { if (!(event.target instanceof Element) || !event.target.closest('.composer__menu, .composer__plus')) setMoreOpen(false); };
-    const escape = (event: globalThis.KeyboardEvent) => { if (event.key === 'Escape') { setMoreOpen(false); document.getElementById(`${composerId}-plus`)?.focus(); } };
     document.addEventListener('pointerdown', away);
-    document.addEventListener('keydown', escape);
-    return () => { document.removeEventListener('pointerdown', away); document.removeEventListener('keydown', escape); };
-  }, [moreOpen, composerId]);
+    return () => document.removeEventListener('pointerdown', away);
+  }, [moreOpen]);
+  // Escape closes the open menu only (not the thread around it) and returns to "+".
+  const menuKey = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key !== 'Escape' || !moreOpen || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    setMoreOpen(false);
+    document.getElementById(`${composerId}-plus`)?.focus();
+  };
   const publicComposer = useComposerDraft(me.user.id, project.id, conversation?.task ? `task:${conversation.task.workId}` : conversation ? `conversation:${conversation.id}` : 'new');
   const helperComposer = useComposerDraft(me.user.id, project.id, `helper:${conversation?.id ?? 'new'}`);
   const composer = asking ? helperComposer : publicComposer;
@@ -520,11 +525,11 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
       {writable && !asking ? <ComposerFiles state={publicComposer} attach="none" /> : null}
       {/* A tap on the card's empty space goes to the field, as in a messenger (#266 PF-3). */}
       {/* Phones (F-025 PA-7): one pill. "+" opens the existing Attach and Sources (cite); the assistant is its orb. */}
-      {phone ? <div id={`${composerId}-more`} role="group" aria-label="Attach and cite" className="composer__menu" hidden={!(moreOpen || trayOpen) || undefined}>
+      {phone ? <div id={`${composerId}-more`} role="group" aria-label="Attach and cite" className="composer__menu" hidden={!(moreOpen || trayOpen) || undefined} onKeyDown={menuKey}>
         {writable && !asking ? <AttachButton state={publicComposer} label="Attach files" onPicked={() => setMoreOpen(false)} /> : null}{sourcesButton}
       </div> : null}
       <div className="composer__box" onClick={(event) => { if (event.target === event.currentTarget) document.getElementById(composerId)?.focus(); }}>{phone
-        ? <button type="button" id={`${composerId}-plus`} className="composer__plus" aria-label="Attach or cite" aria-expanded={moreOpen || trayOpen} aria-controls={`${composerId}-more`} onClick={() => { if (moreOpen || trayOpen) { setMoreOpen(false); setSourcesOpen(false); if (writable) setShowMaterialForm(false); } else setMoreOpen(true); }}><Icon name="plus" size={20} /></button>
+        ? <button type="button" id={`${composerId}-plus`} className="composer__plus" aria-label="Attach or cite" aria-expanded={moreOpen || trayOpen} aria-controls={`${composerId}-more`} onKeyDown={menuKey} onClick={() => { if (moreOpen || trayOpen) { setMoreOpen(false); setSourcesOpen(false); if (writable) setShowMaterialForm(false); } else setMoreOpen(true); }}><Icon name="plus" size={20} /></button>
         : <>{writable && !asking ? <AttachButton state={publicComposer} /> : null}{sourcesButton}</>}{conversation && writable ? <button type="button" className={`composer__ask${phone ? ' composer__ask--orb' : ''}`} aria-pressed={asking} aria-label="Ask my assistant" aria-controls={asking ? 'project-ask' : undefined} data-tip="Ask my assistant · /ai" data-tip-align="start"
         onClick={() => { if (asking) exitAsk(); else { setAsking(true); document.getElementById(composerId)?.focus(); } }}>{phone ? <AgentOrb assistant size="md" /> : <Icon name="spark" />}</button> : null}{writable ? <><label className="ui-vh" htmlFor={composerId}>{asking ? 'Ask your assistant' : conversation ? 'Reply' : 'Write a message'}</label><textarea id={composerId} value={draft} onChange={(event) => changeDraft(event.target.value)} onBlur={typing.stop} onKeyDown={onComposerKey} disabled={!writable || busy || askBusy} aria-describedby={asking ? 'project-ask' : assistantInStream ? `${composerId}-ai-hint` : undefined} placeholder={asking ? 'Ask your assistant…' : conversation ? replyHint : 'Write a message…'} rows={1} /><button className="composer__send" aria-label={asking ? 'Send to your assistant' : conversation ? 'Send reply' : 'Send message'} aria-disabled={!composer.canSend || !writable || busy || askBusy || assistantInStream || (asking && ask.kind !== 'ready')} type="button" onClick={() => void send()}><Icon name="send" /></button></> : <p className="project-convo__read-only">Read-only · <span>You have read access to this project.</span></p>}</div>
       {conversation && !accessLost ? <TypingNotice {...typing} /> : null}
