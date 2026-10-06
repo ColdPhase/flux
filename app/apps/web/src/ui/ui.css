@@ -263,3 +263,10 @@ svg { flex: none; }
   :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]), textarea, select, [contenteditable="true"]) { font-size: max(16px, 1em) !important; }
 }
 :is(a, button, [role="button"], [role="tab"], [role="radio"], [role="menuitem"], [role="option"], label, summary, input, select, textarea) { touch-action: manipulation; }
+
+/* Press states (HIG-16, #272): every custom control answers a press, on touch as well as with a mouse.
+   Primary buttons and Send keep their own darker press above. */
+:is(.ui-btn, .ui-icon-btn, .side__item, .side__hl, .ui-tabs__tab, .home-project__open, .home-project__recap, .home-work__item, .home-seg__b,
+  .since__item, .note__act, .note__pick-p, .set-row, .tb-card__open, .convo-notice__task, .ws-chip, .ws-seg, .me__btn, .top__goal, .agents__mode-go):active:not(.ui-btn--primary):not(:disabled):not([aria-disabled="true"]) {
+  background-color: var(--bg-active);
+}

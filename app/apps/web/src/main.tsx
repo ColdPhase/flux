@@ -10,6 +10,9 @@ import { router } from './router';
 
 applyStoredTheme();
 
+// iOS Safari applies :active only on pages that listen for touches; press states (HIG-16) need it.
+document.addEventListener('touchstart', () => undefined, { passive: true });
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <RouterProvider router={router} />
