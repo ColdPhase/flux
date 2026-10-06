@@ -117,6 +117,7 @@ repository was created on 2026-09-26.
 
 ### Fixed
 
+- When someone's sign-in and extra address are one mailbox and the notification email Flux sent there fails for good, the other copy is now sent instead, once, after rechecking access and preferences ([#334](https://github.com/ColdPhase/flux/pull/334)).
 - The shared files volume works on SELinux hosts ([#67](https://github.com/ColdPhase/flux/pull/67)).
 - Check scripts remove the images they built, so test runs no longer fill the
   disk ([#73](https://github.com/ColdPhase/flux/pull/73)).
