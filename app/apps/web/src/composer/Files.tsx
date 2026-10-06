@@ -19,17 +19,35 @@ export function MessageFiles({ files }: { files?: MessageFile[] }) {
 }
 
 /** Staged files remain private until the exact message is confirmed. No bytes enter a helper prompt. */
-export function ComposerFiles({ state, disabled = false }: { state: ComposerState; disabled?: boolean }) {
+/**
+ * The attach control as one quiet paperclip, for composers that keep their tools inside the box
+ * (#266 PF-3). Its accessible name stays "Attach files"; picked files join the same private draft.
+ */
+export function AttachButton({ state, disabled = false, className }: { state: ComposerState; disabled?: boolean; className?: string }) {
+  const input = useRef<HTMLInputElement>(null);
+  const blocked = disabled || state.sending;
+  return <>
+    <input ref={input} className="ui-vh" type="file" multiple tabIndex={-1} aria-hidden="true" disabled={blocked}
+      onChange={(event) => { if (!blocked) state.addFiles([...event.currentTarget.files ?? []]); event.currentTarget.value = ''; }} />
+    <button type="button" className={['composer__attach', className].filter(Boolean).join(' ')} disabled={blocked} onClick={() => input.current?.click()}
+      aria-label="Attach files" data-tip="Attach files · private until sent" data-tip-align="start"><Icon name="clip" size={17} /></button>
+  </>;
+}
+
+/** `attach="none"` when the composer shows an {@link AttachButton} inside its box instead of the "Attach files" row. */
+export function ComposerFiles({ state, disabled = false, attach = 'row' }: { state: ComposerState; disabled?: boolean; attach?: 'row' | 'none' }) {
   const input = useRef<HTMLInputElement>(null);
   const recovery = useRef<HTMLInputElement>(null);
   const recoverId = useRef<string | null>(null);
   const blocked = disabled || state.sending;
-  return <div className="composer-files">
+  const empty = attach === 'none' && !state.draft.files.length && !state.draft.references.length && state.storage !== 'visit'
+    && !(state.draft.unconfirmed && !state.sending && !state.error) && !state.error;
+  return <div className="composer-files" hidden={empty || undefined}>
     <input ref={input} className="ui-vh" type="file" multiple tabIndex={-1} aria-hidden="true" disabled={blocked}
       onChange={(event) => { if (!blocked) state.addFiles([...event.currentTarget.files ?? []]); event.currentTarget.value = ''; }} />
     <input ref={recovery} className="ui-vh" type="file" tabIndex={-1} aria-hidden="true" disabled={blocked}
       onChange={(event) => { const file = event.currentTarget.files?.[0]; if (!blocked && file && recoverId.current) state.retryFile(recoverId.current, file); event.currentTarget.value = ''; }} />
-    <button type="button" className="composer-files__add" disabled={blocked} onClick={() => input.current?.click()} aria-label="Attach files"><Icon name="plus" size={14} />Attach files</button>
+    {attach === 'row' ? <button type="button" className="composer-files__add" disabled={blocked} onClick={() => input.current?.click()} aria-label="Attach files"><Icon name="plus" size={14} />Attach files</button> : null}
     {state.draft.files.length ? <>
       <span className="composer-files__privacy">Private until sent · 5 MiB each · 10 files / 20 MiB per message</span>
       <ol className="composer-files__list" aria-label="Files in your draft">{state.draft.files.map((file) => <li key={file.uploadId}>

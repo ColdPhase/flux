@@ -354,7 +354,7 @@ function HomeNotes() {
           </div>
           <p className="composer__hint" id={hintId}>
             <span className="composer__keys">Enter saves · Shift+Enter for a new line · </span>
-            <span className="composer__state" aria-live="polite">
+            <span className={`composer__state${hasDraft ? '' : ' composer__state--idle'}`} aria-live="polite">
               {hasDraft
                 ? (draft.storage === 'device' ? 'Draft kept on this device' : 'Draft kept until you close this tab')
                 : 'Private until you explicitly publish a selected version'}
