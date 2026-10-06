@@ -1,7 +1,6 @@
 import { after } from 'node:test';
-import pg from 'pg';
-import { drizzle } from 'drizzle-orm/node-postgres';
-import { schema } from '@flux/db';
+import type pg from 'pg';
+import { createDatabase } from '@flux/db';
 import { connectionString, pool as observer } from './db.js';
 
 /** One statement as a client sent it. */
@@ -13,23 +12,24 @@ export interface SentStatement {
 /**
  * A Flux database handle (#298) that records every statement its clients send, BEGIN and COMMIT
  * included, so a test can assert how many round trips a use case costs and explain the exact SQL
- * it ran. It is `createDatabase`'s pool and Drizzle setup with a recording client class; nothing
- * in the application is instrumented.
+ * it ran. It is `createDatabase` itself; each pooled connection's `query` is wrapped when the pool
+ * opens it, so pool queries and transactions are recorded once each. Nothing in the application
+ * is instrumented.
  */
 export function recordingDatabase() {
   const sent: SentStatement[] = [];
-  class RecordingClient extends pg.Client {
-    override query(...args: unknown[]): never {
+  const { db, pool } = createDatabase(connectionString);
+  pool.on('connect', (client: pg.PoolClient) => {
+    const query = client.query.bind(client) as (...args: unknown[]) => unknown;
+    (client as unknown as { query: (...args: unknown[]) => unknown }).query = (...args: unknown[]) => {
       const [config, values] = args;
       const text = typeof config === 'string' ? config : (config as { text?: string } | null)?.text ?? '';
       const params = Array.isArray(values) ? values : (config as { values?: unknown[] } | null)?.values ?? [];
       sent.push({ text, values: [...params] });
-      return (super.query as (...rest: unknown[]) => never)(...args);
-    }
-  }
-  const pool = new pg.Pool({ connectionString, Client: RecordingClient, connectionTimeoutMillis: 1500, query_timeout: 2000 });
+      return query(...args);
+    };
+  });
   after(() => pool.end());
-  const db = drizzle({ client: pool, schema });
   /** Runs `work` and returns its result with the statements it sent, in order. */
   async function statements<T>(work: () => Promise<T>): Promise<{ result: T; sent: SentStatement[] }> {
     const start = sent.length;
