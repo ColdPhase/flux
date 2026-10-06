@@ -110,4 +110,8 @@ button.top__goal:hover { background: var(--bg-hover); color: var(--text); }
   .top--project .top__goal { flex: 0 1 auto; min-width: 3.5em; }
   .top--project .top__goal--add { flex: none; }
   .top--project .ws-state { flex: 1 1 0; min-width: 0; flex-wrap: nowrap; overflow: hidden; white-space: nowrap; }
+  /* Each part stays on its line and shortens: without this a narrow state line broke after every letter and
+     grew the header a screen tall (#265's adaptive matrix at 768 and 1024). */
+  .top--project .ws-seg { flex: 0 1 auto; min-width: 0; }
+  .top--project .ws-seg span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }
 }
