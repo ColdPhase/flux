@@ -4,6 +4,8 @@ import { describe, test } from 'node:test';
 import Fastify from 'fastify';
 import { loadIdentityConfig, registerIdentity, type IdentityConfig } from '../../apps/server/src/identity/index.js';
 import { originViolation } from '../../apps/server/src/identity/origin.js';
+import { loadOidcConfig, oidcProviderId } from '../../apps/server/src/identity/config.js';
+import { oidcUser } from '../../apps/server/src/identity/auth.js';
 import { verifiedOauthQuery } from '../../apps/server/src/identity/oauth-query.js';
 import { registerMcpRoute } from '../../apps/server/src/agent-connection/mcp-route.js';
 import { database } from './support/db.js';
@@ -55,6 +57,48 @@ describe('identity configuration', () => {
     assert.deepEqual(loaded.trustedProxies, ['10.0.0.1', '172.16.0.0/12', '::1']);
     assert.equal(loaded.smtp, null);
     assert.equal(loaded.rateLimit, true, 'rate limiting is on unless explicitly disabled');
+  });
+
+  test('single sign-on is all or nothing, https, secret from a file and bound to its issuer (#113)', () => {
+    const secret = () => 'client-secret-value\n';
+    const oidc = { FLUX_OIDC_ISSUER: 'https://id.example.org/realms/flux/', FLUX_OIDC_CLIENT_ID: 'flux', FLUX_OIDC_CLIENT_SECRET_FILE: '/run/secrets/oidc' };
+    assert.equal(loadOidcConfig({}, secret), null, 'unset keeps email/password sign-in only');
+    assert.equal(loadIdentityConfig(base).oidc, null);
+    for (const missing of ['FLUX_OIDC_ISSUER', 'FLUX_OIDC_CLIENT_ID'] as const) {
+      const partial: Record<string, string> = { ...oidc }; delete partial[missing];
+      assert.throws(() => loadOidcConfig(partial, secret), /together, or neither/, missing);
+    }
+    assert.equal(loadOidcConfig({ FLUX_OIDC_CLIENT_SECRET_FILE: '/run/secrets/x' }, secret), null, 'the always-set secret path alone keeps sign-on off');
+    assert.throws(() => loadOidcConfig({ FLUX_OIDC_ISSUER: oidc.FLUX_OIDC_ISSUER, FLUX_OIDC_CLIENT_ID: 'flux' }, secret), /SECRET_FILE is required/);
+    const loaded = loadOidcConfig(oidc, secret)!;
+    assert.deepEqual(loaded, { providerId: oidcProviderId('https://id.example.org/realms/flux'), issuer: 'https://id.example.org/realms/flux',
+      clientId: 'flux', clientSecret: 'client-secret-value', label: 'single sign-on' });
+    assert.match(loaded.providerId, /^oidc-[0-9a-f]{12}$/);
+    assert.notEqual(oidcProviderId('https://id.example.org/realms/other'), loaded.providerId, 'another issuer is another identity namespace');
+    assert.equal(loadOidcConfig({ ...oidc, FLUX_OIDC_LABEL: 'Acme login' }, secret)!.label, 'Acme login');
+    assert.throws(() => loadOidcConfig({ ...oidc, FLUX_OIDC_ISSUER: 'http://id.example.org/realms/flux' }, secret), /must use https/);
+    assert.equal(loadOidcConfig({ ...oidc, FLUX_OIDC_ISSUER: 'http://127.0.0.1:8080/realms/flux' }, secret)!.issuer, 'http://127.0.0.1:8080/realms/flux');
+    assert.equal(loadOidcConfig({ ...oidc, FLUX_OIDC_ISSUER: 'http://keycloak:8080/realms/flux', FLUX_OIDC_ALLOW_HTTP_ISSUER: 'true' }, secret)!.issuer,
+      'http://keycloak:8080/realms/flux', 'an isolated test IdP can be explicitly allowed');
+    assert.throws(() => loadOidcConfig({ ...oidc, FLUX_OIDC_ISSUER: 'https://id.example.org/?x=1' }, secret), /query, fragment or credentials/);
+    assert.throws(() => loadOidcConfig({ ...oidc, FLUX_OIDC_ISSUER: 'not a url' }, secret), /absolute URL/);
+    assert.throws(() => loadOidcConfig(oidc, () => '  \n'), /is empty/);
+    assert.throws(() => loadOidcConfig(oidc, () => { throw new Error('ENOENT'); }), /cannot be read/);
+    assert.throws(() => loadOidcConfig({ ...oidc, FLUX_OIDC_LABEL: 'x'.repeat(61) }, secret), /at most 60/);
+  });
+
+  test('only a verified email from the configured issuer signs in; groups and roles are ignored (#113)', () => {
+    const issuer = { issuer: 'https://id.example.org/realms/flux' };
+    const claims = { iss: 'https://id.example.org/realms/flux', sub: 'abc', email: ' Ada@Example.ORG ', email_verified: true,
+      name: 'Ada Kowalska', groups: ['flux-admins'], realm_access: { roles: ['admin'] } };
+    assert.deepEqual(oidcUser(issuer, claims), { id: 'abc', sub: 'abc', email: 'ada@example.org', emailVerified: true, name: 'Ada Kowalska' });
+    assert.equal(oidcUser(issuer, { ...claims, name: undefined, preferred_username: 'ada' })!.name, 'ada');
+    assert.equal(oidcUser(issuer, { ...claims, iss: 'https://id.example.org/realms/flux/' })!.email, 'ada@example.org');
+    for (const [label, change] of [['unverified', { email_verified: false }], ['string flag', { email_verified: 'true' }], ['no email', { email: '' }],
+      ['no subject', { sub: '' }], ['other issuer', { iss: 'https://evil.example.org/realms/flux' }], ['no issuer', { iss: undefined }]] as const) {
+      assert.equal(oidcUser(issuer, { ...claims, ...change }), null, label);
+    }
+    assert.equal(oidcUser(issuer, null), null, 'no ID token');
   });
 
   test('origin policy accepts only the configured origin for state changes', () => {
@@ -115,7 +159,7 @@ describe('identity server behaviour', () => {
   test('password reset reports unavailable when SMTP is not configured', async () => {
     const server = await app(config());
     try {
-      assert.deepEqual((await server.inject({ method: 'GET', url: '/api/v1/auth/capabilities' })).json(), { passwordReset: 'unavailable' });
+      assert.deepEqual((await server.inject({ method: 'GET', url: '/api/v1/auth/capabilities' })).json(), { passwordReset: 'unavailable', sso: null });
       const response = await server.inject({
         method: 'POST', url: '/api/auth/request-password-reset',
         headers: { origin: 'https://flux.example.org' },

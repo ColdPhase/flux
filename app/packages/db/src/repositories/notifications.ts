@@ -333,6 +333,10 @@ export function notificationAddressRows(db: DbExecutor) {
 export function notificationEmailRows(db: DbExecutor) {
   return {
     async lockEmail(id: string) {
+      const [target] = await db.select({ notificationId: ob.notificationId }).from(ob).where(eq(ob.id, id));
+      if (!target) return null;
+      // Lock the notification's copies in one order, so concurrent account/extra sends serialize.
+      await db.select({ id: ob.id }).from(ob).where(eq(ob.notificationId, target.notificationId)).orderBy(ob.id).for('update');
       const [row] = await db.select({ email: ob, notification: n }).from(ob)
         .innerJoin(n, and(eq(n.id, ob.notificationId), eq(n.userId, ob.userId))).where(eq(ob.id, id)).for('update', { of: ob });
       if (!row) return null;
@@ -340,6 +344,11 @@ export function notificationEmailRows(db: DbExecutor) {
         id: row.email.id, userId: row.email.userId, addressKind: row.email.addressKind, status: row.email.status,
         notification: { id: row.notification.id, reason: row.notification.reason ?? null, source: { workspaceId: row.notification.workspaceId, type: row.notification.sourceType, id: row.notification.sourceId } },
       };
+    },
+    async mailboxClaimed(notificationId: string, exceptId: string, address: string) {
+      const [row] = await db.select({ id: ob.id }).from(ob).where(and(eq(ob.notificationId, notificationId), ne(ob.id, exceptId),
+        inArray(ob.status, ['sending', 'sent']), sql`lower(${ob.address}) = lower(${address})`)).limit(1);
+      return !!row;
     },
     async accountAddress(userId: string) {
       const [row] = await db.select({ email: schema.authUsers.email }).from(schema.authUsers).where(eq(schema.authUsers.id, userId));

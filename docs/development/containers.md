@@ -164,6 +164,7 @@ next request. The API reads these variables (see `docker/.env.example`):
 | `FLUX_TRUSTED_PROXIES` | Comma-separated proxy IPs/CIDRs. Only a request whose socket peer is listed may supply `X-Forwarded-For` as the client address. Empty (default) trusts no proxy. |
 | `FLUX_SMTP_URL`, `FLUX_MAIL_FROM` | SMTP transport URL (e.g. `smtp://user:pass@mail.example.org:587`) and sender for password reset mail and notification email (#116). Set them on the API and the worker. TLS: `smtps://…:465` or `smtp://…:587?requireTLS=true`; certificates are verified (`NODE_EXTRA_CA_CERTS` for a private CA). If unset, password reset answers `503 PASSWORD_RESET_UNAVAILABLE`, `/api/v1/auth/capabilities` reports `unavailable`, and notification settings show email delivery unavailable while the inbox and push keep working ([notifications](notifications.md#email)). |
 | `FLUX_PASSWORD_RESET_TTL_SECONDS` | Reset token lifetime, 60–86400, default 3600. Tokens are single use and stored hashed. |
+| `FLUX_OIDC_ISSUER`, `FLUX_OIDC_CLIENT_ID`, `FLUX_OIDC_CLIENT_SECRET_HOST_FILE`, `FLUX_OIDC_LABEL` | Optional single sign-on with one OpenID Connect provider ([operations guide](../operations/single-sign-on.md), #113). Set issuer and client id together; the client secret is a host file mounted at `/run/secrets/flux_oidc_client_secret` (`FLUX_OIDC_CLIENT_SECRET_FILE` inside the container). The issuer must be `https`. The label names the sign-in button. Unset keeps email/password sign-in only. |
 | `FLUX_AUTH_RATE_LIMIT` | `true` (default) enables Better Auth's in-memory login rate limit. Only the test script turns it off. |
 | `FLUX_STREAM_HEARTBEAT_MS` | WebSocket stream ping, session revalidation and polling interval in milliseconds (default `25000`, minimum `100`). The test script uses `1000`. See [access policy](access-policy.md#websocket-stream). |
 
@@ -177,7 +178,8 @@ docker compose --env-file docker/.env -p flux28 -f docker/compose.source.yaml --
 ```
 
 Endpoints: Better Auth under `/api/auth/*` (`sign-up/email`, `sign-in/email`,
-`sign-out`, `request-password-reset`, `reset-password`); Flux session routes
+`sign-out`, `request-password-reset`, `reset-password`, and with single sign-on
+`sign-in/social` with the provider id and `callback/<provider id>`; a raw `idToken` sign-in is refused); Flux session routes
 `GET /api/v1/me`, `GET /api/v1/sessions` (never returns tokens),
 `DELETE /api/v1/sessions/:id` and `POST /api/v1/sessions/revoke-others`.
 Server code resolves the caller with `requirePrincipal(request)` from

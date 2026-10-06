@@ -90,6 +90,9 @@ export async function deliverNotificationEmail(options: EmailDeliveryOptions, jo
     if (!emailKinds(preferences.emailDestination).includes(row.addressKind)) return skip('address no longer chosen');
     const address = row.addressKind === 'account' ? await ports.accountAddress(row.userId) : await ports.verifiedExtraAddress(row.userId);
     if (!address) return skip('no verified address');
+    // One message per actual mailbox: the account and the extra address can be the same one,
+    // including after an identity email change between queueing and sending (#113).
+    if (await ports.mailboxClaimed(notification.id, row.id, address)) return skip('this mailbox already gets this notification');
     // Quiet hours are the person's current choice, not the one at enqueue time.
     const now = options.now?.() ?? new Date();
     const until = deliverableAt(preferences, now);
