@@ -107,6 +107,8 @@ class SharedComposerJourney(unittest.TestCase):
         open_plus(pane)
         pane.get_by_role("button", name=re.compile("^Sources")).click()
         pane.get_by_role("button", name="Discuss this version").click()
+        # Citing closes the sources once the version is read (and, on a phone, the "+" menu with them).
+        expect(pane.get_by_role("region", name="Project materials")).to_have_count(0)
         return pane
 
     def test_01_file_only_first_root_and_reply_keep_authors_order_and_exact_downloads(self):
