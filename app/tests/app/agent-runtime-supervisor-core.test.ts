@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { chmod, lstat, mkdir, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
-import { callSupervisor, NdjsonReader, parseSupervisorFrame, type SupervisorRequest } from '@flux/runtime-protocol';
+import { callSupervisor, NdjsonReader, parseSupervisorFrame, type ClientStatus, type SupervisorCallOutcome, type SupervisorRequest } from '@flux/runtime-protocol';
 import { Lane } from '../../apps/runtime/src/supervisor/server.js';
 import { LOGOUT_TEMPLATES, STATUS_TEMPLATES } from '../../apps/runtime/src/supervisor/templates.js';
 import { portOf, startTestSlot, type TestSlot } from './support/runtime-slot.js';
@@ -13,6 +13,12 @@ import { portOf, startTestSlot, type TestSlot } from './support/runtime-slot.js'
 
 const target = (slot: TestSlot) => ({ host: '127.0.0.1', port: portOf(slot.url), secret: slot.config.secret });
 const call = (slot: TestSlot, request: SupervisorRequest) => callSupervisor(target(slot), request, { timeoutMs: 20_000 });
+
+/** The client status of a successful status request, or a failed assertion. */
+function clientStatus(out: SupervisorCallOutcome): ClientStatus {
+  assert.ok(out.ok && out.result.kind === 'status' && 'client' in out.result, JSON.stringify(out));
+  return (out.result as { client: ClientStatus }).client;
+}
 
 async function raw(slot: TestSlot, path: string, body: string, headers: Record<string, string> = {}) {
   const response = await fetch(`${slot.url}${path}`, { method: 'POST', body,
@@ -137,16 +143,14 @@ describe('fixed command templates and a clean CLI environment', () => {
   after(async () => { await slot.close(); });
 
   test('status runs exactly the template, in the binding directory, with only Flux\'s fixed variables', async () => {
-    const out = await call(slot, { kind: 'status', bindingId, client: 'claude_code' });
-    assert.ok(out.ok && out.result.kind === 'status' && 'client' in out.result);
-    assert.equal(out.result.client.signedIn, false);
-    assert.equal(out.result.client.credentialFile, 'missing');
+    const first = clientStatus(await call(slot, { kind: 'status', bindingId, client: 'claude_code' }));
+    assert.equal(first.signedIn, false);
+    assert.equal(first.credentialFile, 'missing');
     const file = await signIn(slot, bindingId);
-    const signed = await call(slot, { kind: 'status', bindingId, client: 'claude_code' });
-    assert.ok(signed.ok && 'client' in signed.result && signed.result.client.signedIn && signed.result.client.credentialFile === 'ok');
+    const signed = clientStatus(await call(slot, { kind: 'status', bindingId, client: 'claude_code' }));
+    assert.ok(signed.signedIn && signed.credentialFile === 'ok');
     await chmod(file, 0o644);
-    const loose = await call(slot, { kind: 'status', bindingId, client: 'claude_code' });
-    assert.ok(loose.ok && 'client' in loose.result && loose.result.client.credentialFile === 'loose_mode');
+    assert.equal(clientStatus(await call(slot, { kind: 'status', bindingId, client: 'claude_code' })).credentialFile, 'loose_mode');
     const recorded = await calls(slot, bindingId);
     assert.equal(recorded.length, 3);
     const dir = join(slot.config.dataDir, bindingId);
@@ -183,8 +187,7 @@ describe('fixed command templates and a clean CLI environment', () => {
       const run: SupervisorRequest = { kind: 'run', bindingId: id, client: 'claude_code', runId: randomUUID(), prompt: 'Hello', runToken: 'aa.bb.cc', tools: ['flux_get_doc'],
         caps: { maxTurns: 10, wallClockSeconds: 300, idleSeconds: 60, maxAnswerBytes: 16384 } };
       assert.deepEqual(await call(small, run), { ok: false, code: 'binding_too_large' });
-      const status = await call(small, { kind: 'status', bindingId: id, client: 'claude_code' });
-      assert.ok(status.ok && 'client' in status.result && status.result.client.bindingOverLimit);
+      assert.ok(clientStatus(await call(small, { kind: 'status', bindingId: id, client: 'claude_code' })).bindingOverLimit);
     } finally { await small.close(); }
   });
 

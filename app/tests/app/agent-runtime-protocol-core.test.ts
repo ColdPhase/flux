@@ -63,7 +63,7 @@ describe('the supervisor\'s closed request set', () => {
       assert.equal(parseSupervisorRequest(kind, JSON.parse(`{"__proto__":{"admin":true},${JSON.stringify(valid[kind]).slice(1)}`.replace(',}', '}'))).ok, false);
     }
     const id = binding();
-    const refused: [string, Record<string, unknown>][] = [
+    const refused: [string, unknown][] = [
       ['bind', { bindingId: '../etc' }], ['bind', { bindingId: `/data/${id}` }], ['bind', { bindingId: id.toUpperCase() }],
       ['bind', { bindingId: `${id}/..` }], ['bind', { bindingId: '00000000-0000-0000-0000-000000000000' }],
       ['login', { bindingId: id, client: 'bash', method: 'console' }], ['login', { bindingId: id, client: 'codex', method: 'console' }],
