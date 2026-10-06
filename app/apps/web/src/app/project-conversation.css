@@ -171,6 +171,13 @@ button.project-convo__contribution { cursor: pointer; }
   .project-convo__message .message-files a { padding: 6px 12px; border-radius: 14px; background: var(--bg-side); }
   .project-convo__message .ws-chip { border-radius: 14px; background: var(--bg-side); box-shadow: none; }
   .project-convo__source { border-radius: 12px; }
+  /* The "more" button sits in the gutter beside the bubble, not on it (a run's later messages have no name row). */
+  .project-convo__message, .project-convo__message.is-mine,
+  .thread .project-convo__message, .thread .project-convo__message.is-mine { max-width: calc(100% - 44px); }
+  .project-convo__message .ws-acts--more, .thread .project-convo__message .ws-acts--more { top: 0; right: -44px; left: auto; }
+  .project-convo__message.is-mine .ws-acts--more, .thread .project-convo__message.is-mine .ws-acts--more { right: auto; left: -44px; }
+  .project-convo__message:has(.ws-acts--more) .project-convo__message-meta,
+  .project-convo__message.is-mine:has(.ws-acts--more) .project-convo__message-meta { padding-left: 0; padding-right: 0; }
 
   .project-convo__composer .composer__menu { order: 1; display: flex; flex-direction: column; align-self: flex-start; min-width: 200px; margin: 0 0 6px; padding: 4px;
     border-radius: 18px; background: var(--bg-raised); box-shadow: inset 0 0 0 1px var(--line); }
