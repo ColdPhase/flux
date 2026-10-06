@@ -201,16 +201,22 @@ class MapTaskCountJourney(unittest.TestCase):
     def appearance(self, page: Page, theme: str, family: str) -> None:
         page.locator(".app").wait_for(state="visible")
         if not page.locator(".me__btn").is_visible():
+            # The phone drawer's account row opens Settings, with the same choices (#266 PF-5).
             page.get_by_role("button", name="Open navigation").click()
-        page.locator(".me__btn").click()
-        pop = page.get_by_role("dialog", name="Account", exact=True)
+            page.locator(".me__btn").click()
+            pop = page.locator(".set")
+            expect(pop.get_by_role("radiogroup", name="Appearance")).to_be_visible()
+        else:
+            page.locator(".me__btn").click()
+            pop = page.get_by_role("dialog", name="Account", exact=True)
         pop.get_by_role("radio", name=theme, exact=True).click()
         pop.get_by_role("radio", name=family, exact=True).click()
         expect(pop.get_by_role("radio", name=family, exact=True)).to_have_attribute("aria-checked", "true")
         page.keyboard.press("Escape")
         if page.get_by_role("button", name="Close navigation").is_visible():
             page.get_by_role("button", name="Close navigation").click()
-        expect(pop).to_have_count(0)
+        if not page.url.endswith("/settings"):
+            expect(pop).to_have_count(0)
 
     def expected_counts(self, page: Page) -> dict[str, int]:
         """Tasks per thought from the API's own links, many-to-many."""

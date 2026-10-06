@@ -90,7 +90,7 @@ Human handoff follows Journey A's return and uses the same in-progress W-1, D-2,
 | H3 | Ari comments and records a result or hands W-1 back to Nia. | Author, version, open question, and next owner remain on W-1/H-1. | Project. Nia can continue without treating Ari's comment as an accepted decision. |
 | H4 | Ari loses project membership. Authorized members reassign H-1. | Ari's old link shows no project content; search, files, and notification target do not reveal it. | Current membership is checked at read and action time. An old link or cached view cannot restore access. |
 
-An **optional agent path** could use an officially supported external tool or an approved embedded/API/local execution mode, depending on the independent [#9 O-005 decision](https://github.com/ColdPhase/flux/issues/9). No personal subscription, provider login, or embedded run is promised here.
+An **optional agent path** could use an officially supported external tool or an approved embedded/API/local execution mode, depending on the independent [#9 O-005 decision](https://github.com/ColdPhase/flux/issues/9). No personal subscription, provider login, or embedded run is promised here. [F-022](ai-modes.md) (accepted 2026-10-05) now defines the two AI modes and how a subscription is connected.
 
 | Step | Actor, visible state, and source links | Authorization, cost, and failure boundary |
 | --- | --- | --- |

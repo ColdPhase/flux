@@ -11,7 +11,7 @@ export function token(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
-export function duration(name: '--dur-1' | '--dur-2' | '--dur-3'): number {
+export function duration(name: '--dur-1' | '--dur-2' | '--dur-3' | '--dur-4'): number {
   if (reduceQuery?.matches) return 0;
   return parseFloat(token(name)) || 0;
 }
@@ -90,11 +90,22 @@ export function useArrivals(feed: RefObject<HTMLElement | null>, ids: readonly s
     if (!arrived.length || !pane) return;
     const ms = duration('--dur-2');
     const box = pane.getBoundingClientRect();
+    // A reader at the end follows it (#170's position owner may scroll after this runs): entries that
+    // only extend the feed below that reader arrive where they are looking (#266). Arrivals are always
+    // the newest entries, so what they add runs from the bottom of the entry that ended the feed before
+    // them to the bottom of the last one, the space between entries included.
+    const current = previous.current;
+    const lastSeen = current[current.length - arrived.length - 1];
+    const end = lastSeen ? elementFor(lastSeen)?.getBoundingClientRect().bottom : undefined;
+    const added = end === undefined
+      ? arrived.reduce((sum, id) => sum + (elementFor(id)?.getBoundingClientRect().height ?? 0), 0)
+      : Math.max(0, ...arrived.map((id) => (elementFor(id)?.getBoundingClientRect().bottom ?? end) - end));
+    const following = pane.scrollHeight - pane.scrollTop - pane.clientHeight <= added + 8;
     for (const id of arrived) {
       const el = elementFor(id);
       if (!el) continue;
       const rect = el.getBoundingClientRect();
-      const animate = arrivalShouldAnimate({ reduced: !ms, hidden: document.visibilityState === 'hidden', visible: rect.bottom > box.top && rect.top < box.bottom, obscured: isObscured(el) });
+      const animate = arrivalShouldAnimate({ reduced: !ms, hidden: document.visibilityState === 'hidden', visible: (rect.bottom > box.top && rect.top < box.bottom) || following, obscured: isObscured(el) });
       el.dataset.arrival = animate ? 'animated' : 'static';
       if (animate) void play(el, [{ opacity: 0, transform: 'translateY(4px)' }, { opacity: 1, transform: 'none' }], ms, '--ease-out');
     }

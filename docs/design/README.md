@@ -62,7 +62,7 @@ The later [F-015 adaptive-workspace requirement](adaptive-workspaces.md),
 2026-09-30, makes responsive design a product capability. Use additional space
 for useful work and related context while preserving familiar navigation,
 object/source identity and active work during transitions. #151 implements the
-bounded adaptive slice under #136; #20 keeps real mobile/device acceptance.
+bounded adaptive slice under #136; #20 keeps mobile acceptance (emulation plus documented platform requirements).
 Use the full CSS-viewport/scaling/input matrix and measurable wide-screen gains,
 not only a desktop and phone screenshot.
 
