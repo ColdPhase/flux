@@ -15,13 +15,15 @@ import { agentAuthorLabel } from '../docs/format';
  * Before anyone has written, a person who can write starts it here. The structured draft and its
  * retry identity belong to the account/project/task, as in every place that writes to it.
  */
-export function TaskDiscussionSection({ workId, project, members, me }: {
+export function TaskDiscussionSection({ workId, project, members, me, readOnly = false }: {
   workId: string; project: Project; members: WorkspaceMember[]; me: { id: string; name: string };
+  /** A task whose creation was undone (#238) keeps its discussion as read-only history. */
+  readOnly?: boolean;
 }) {
   const headingId = useId();
   const fieldId = useId();
   const navigate = useNavigate();
-  const writable = project.access !== 'viewer';
+  const writable = project.access !== 'viewer' && !readOnly;
   // People the project shell already knows, for a reader who cannot list the workspace's members.
   const people = useProjectShell()?.people ?? null;
   const [discussion, setDiscussion] = useState<Discussion | null>(null);
@@ -84,7 +86,7 @@ export function TaskDiscussionSection({ workId, project, members, me }: {
                 placeholder="Write about this task…" onChange={(event) => composer.setBody(event.target.value)} onKeyDown={onKeyDown} />
               <ComposerFiles state={composer} />
               <div className="wd-actions"><Button type="submit" variant="secondary" icon="send" busy={sending} disabled={!composer.canSend}>{root ? 'Send to task' : 'Start the discussion'}</Button></div>
-            </form> : !root ? <p className="wd-muted">Nobody has written about this task yet.</p> : null}
+            </form> : !root ? <p className="wd-muted">{readOnly ? 'Creation was undone. This history is read-only; your unsent draft is kept.' : 'Nobody has written about this task yet.'}</p> : null}
           </>}
     </section>
   );

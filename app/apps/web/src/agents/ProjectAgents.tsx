@@ -33,7 +33,7 @@ const CLIENT_LABEL: Record<ProjectAgentConnection['clientDesignation'], string> 
 };
 
 const OPERATION_LABEL: Record<AgentOperation, string> = {
-  'work.create': 'created a task', 'work.update': 'updated a task', 'result.record': 'recorded a result',
+  'work.create': 'created a task', 'work.update': 'updated a task', 'work.creation.revert': 'undid a task creation', 'result.record': 'recorded a result',
   'decision.propose': 'proposed a decision', 'map.create': 'created a map', 'map.rename': 'renamed a map',
   'map.thought.create': 'added a thought', 'map.thought.update': 'edited a thought', 'map.thought.delete': 'removed a thought',
   'map.positions.update': 'arranged the map', 'map.link.create': 'linked thoughts', 'map.link.delete': 'unlinked thoughts',
@@ -364,7 +364,9 @@ export function ProjectAgents() {
   const wanted = search.get('task');
   const onPage = tasks.find((item) => item.id === wanted) ?? null;
   const own = useNativeOwn(me.user.id, projectId, 'work', wanted && !onPage ? wanted : undefined);
+  // A task whose creation was undone (#238) is history: it opens in Details, never as a thread to work on here.
   const ownTask = own.value?.object.kind === 'work' && own.value.object.id === wanted && own.value.object.projectId === projectId
+    && own.value.object.lifecycle?.state !== 'creation_reverted'
     ? { id: own.value.object.id, title: own.value.object.title, status: own.value.object.status } : null;
   // While that read (or the first page) is still on its way, nothing is chosen yet, so a
   // thread never opens on a fallback task and then jumps.
