@@ -108,6 +108,7 @@ repository was created on 2026-09-26.
 
 ### Changed
 
+- On phones the chrome is calm warm white and near-black with no accent colour, people are neutral initials, and every agent has its own orb with its name and an AI badge; tablet and desktop are unchanged ([#332](https://github.com/ColdPhase/flux/pull/332)).
 - The Studio 11.6 interface: a sidebar with workspace and project names, a calmer
   header, Conversation · Map · Tasks · Wiki tabs and a reworked conversation
   ([#184](https://github.com/ColdPhase/flux/pull/184)).
