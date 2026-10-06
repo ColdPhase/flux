@@ -162,10 +162,14 @@ token-reuse paths ([research §1](research/2026-10-05-agent-runtime.md#1-how-her
 - The `ghcr.io/coldphase/flux-agent-runtime` image holds the supervisor and a
   pinned official Codex release (Apache-2.0).
 - **Flux does not bundle Claude Code in any image.** When the operator enables
-  `claude_code`, `runtime-install` runs Anthropic's official installer:
-  - at the version Flux's flag contract test covers (the installer accepts a
-    version);
-  - checked against Anthropic's signed release manifest;
+  `claude_code`, `runtime-install` installs Anthropic's official release:
+  - at the version Flux's flag contract test covers;
+  - checked against Anthropic's signed release manifest. T3 follows Anthropic's
+    documented "Verify the manifest signature" steps (the key fingerprint from
+    the setup page, then the binary's SHA-256 from the signed manifest) and
+    downloads the pinned binary from the same release bucket. It does not pipe
+    `install.sh`, which first downloads and runs the latest binary and checks
+    only an unsigned checksum;
   - into a tools volume that slots mount read-only, with `DISABLE_UPDATES=1` so it
     stays on that version.
 - **Why not bundle it:**
@@ -206,8 +210,9 @@ root on the host or every owner's credentials.
   the database. One slot holds both the owner's Claude Code and Codex logins. When
   every slot is bound, *Agent in Flux* says so; the owner can still use `server`
   connections and mode (b). A workspace role gives no access to any slot.
-- **Bindings do not last for ever.** The operator can release a binding from the
-  admin view; it signs out first, and the owner is told. An optional idle policy
+- **Bindings do not last for ever.** The operator can release a binding (T3: with
+  `./flux runtime release runtime-<n>`, because Flux has no in-app instance
+  administrator yet); it signs out first, and the owner is told. An optional idle policy
   releases a binding after a set number of days without a run (operator setting,
   off by default; the owner is told first). Without one of these, a pool of four
   fills for good.
@@ -595,7 +600,7 @@ T3 publishes these as an operator guide in `docs/operations/`.
   Code's install size, measured in T3). More slots come from the documented
   override, which also attaches `runtime-manager` and `runtime-egress` to the new
   slot's network and adds its secret to `docker/.env`.
-- **Bindings:** release idle bindings from the admin view, or set the idle policy,
+- **Bindings:** release idle bindings with `./flux runtime release`, or set the idle policy,
   so the pool does not fill for good.
 - **CLI versions:** each Flux release pins the Claude Code and Codex versions that
   its flag contract test passed. `./flux upgrade` reinstalls Claude Code at the

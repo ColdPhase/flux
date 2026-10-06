@@ -1,0 +1,15 @@
+# TEST ONLY (F-022 T3 #278): the agent runtime with the fake `claude` and `codex` of the
+# `agent-runtime-test` image instead of the vendors' CLIs, and a fast reconciliation loop. Layered by
+# scripts/check_agent_runtime.sh over compose.source.yaml with the `runtime` profile. Never deploy it.
+services:
+  runtime-1:
+    build:
+      target: agent-runtime-test
+  runtime-install:
+    build:
+      target: agent-runtime-test
+    environment:
+      FLUX_RUNTIME_INSTALL_SOURCE: test-fakes
+  worker:
+    environment:
+      FLUX_AGENT_RUNTIME_RECONCILE_MS: "1000"

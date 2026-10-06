@@ -1,6 +1,45 @@
 # The pinned PostgreSQL image, shared by the database and the backup helper (issue #123).
 x-postgres-image: &postgres-image postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
 
+# --- The agent runtime (F-022 AIM-3, T3 #278): profile `runtime`, started by ./flux only when the
+# operator sets FLUX_AGENT_RUNTIME (empty, the default, is off). No service here, or anywhere in Flux,
+# mounts a Docker or Podman socket: the slots are a fixed pool declared below, and every container
+# setting is static. See docs/operations/agent-runtime.md.
+# Internal runtime networks get no address on the host's bridge, so nothing in them reaches the host
+# itself either (Docker otherwise gives the bridge the network's gateway address).
+x-runtime-network-opts: &runtime-network-opts
+  com.docker.network.bridge.inhibit_ipv4: "true"
+x-runtime-logging: &runtime-logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+x-runtime-hardening: &runtime-hardening
+  profiles: ["runtime"]
+  user: "1000:1000"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  init: true
+  logging: *runtime-logging
+# One slot. Extra slots repeat this block with their own number in an operator override; see the guide.
+x-runtime-slot: &runtime-slot
+  <<: *runtime-hardening
+  image: flux-agent-runtime:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
+  mem_limit: 2g
+  memswap_limit: 2g
+  cpus: 1
+  pids_limit: 256
+  tmpfs:
+    - /tmp:rw,nosuid,nodev,size=128m,mode=1777
+  # A release ends with the supervisor exiting; this starts a fresh one with an empty /tmp.
+  restart: always
+  depends_on:
+    runtime-install:
+      condition: service_completed_successfully
+    runtime-egress:
+      condition: service_started
+
 services:
   db:
     image: *postgres-image
@@ -86,7 +125,15 @@ services:
       FLUX_GITHUB_APP_SLUG: ${FLUX_GITHUB_APP_SLUG:-}
       FLUX_GITHUB_WEBHOOK_SECRET: ${FLUX_GITHUB_WEBHOOK_SECRET:-}
       FLUX_GITHUB_ENCRYPTION_KEY: ${FLUX_GITHUB_ENCRYPTION_KEY:-}
+      # The agent runtime (F-022 AIM-3): empty is off. See docs/operations/agent-runtime.md.
+      FLUX_AGENT_RUNTIME: ${FLUX_AGENT_RUNTIME:-}
+      FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS: ${FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS:-}
+      FLUX_AGENT_RUNTIME_IDLE_DAYS: ${FLUX_AGENT_RUNTIME_IDLE_DAYS:-}
+      FLUX_RUNTIME_MANAGER_SECRET: ${FLUX_RUNTIME_MANAGER_SECRET:-}
       PORT: 8080
+    # runtime-control reaches runtime-manager; runtime-api is where runtime-egress forwards /mcp.
+    # Neither network holds the database.
+    networks: [default, runtime-control, runtime-api]
     volumes:
       - files:/data/files:z
       # Optional 32-byte operator secret; empty tracked placeholder means unavailable.
@@ -126,12 +173,129 @@ services:
       FLUX_AI_PRIVATE_TARGETS: ${FLUX_AI_PRIVATE_TARGETS:-}
       FLUX_PERSONAL_RUNS: ${FLUX_PERSONAL_RUNS:-}
       FLUX_BACKGROUND_COMPARISONS: ${FLUX_BACKGROUND_COMPARISONS:-}
+      # The agent runtime (F-022 AIM-3): the worker reconciles slot bindings through runtime-manager.
+      FLUX_AGENT_RUNTIME: ${FLUX_AGENT_RUNTIME:-}
+      FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS: ${FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS:-}
+      FLUX_AGENT_RUNTIME_IDLE_DAYS: ${FLUX_AGENT_RUNTIME_IDLE_DAYS:-}
+      FLUX_RUNTIME_MANAGER_SECRET: ${FLUX_RUNTIME_MANAGER_SECRET:-}
+    networks: [default, runtime-control]
     volumes:
       - files:/data/files:z
       - ${FLUX_BACKGROUND_KEY_HOST_FILE:-./background-key-unavailable}:/run/secrets/flux_background_key:ro,z
     depends_on:
       migrate:
         condition: service_completed_successfully
+  # --- Agent runtime services (profile `runtime`; see the x-runtime-* blocks at the top).
+  runtime-install:
+    # One-shot: installs the pinned, signature-checked Claude Code into the tools volume when
+    # FLUX_AGENT_RUNTIME includes claude_code (Flux never ships it in an image); otherwise a no-op.
+    <<: *runtime-hardening
+    build:
+      context: ../app
+      dockerfile: ../docker/Dockerfile
+      target: agent-runtime-install
+    image: flux-agent-runtime-install:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
+    command: ["node", "apps/runtime/dist/install/main.js"]
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=64m,mode=1777
+    environment:
+      FLUX_AGENT_RUNTIME: ${FLUX_AGENT_RUNTIME:-}
+      # Only downloads.claude.ai, through runtime-egress's installer proxy on this service's network.
+      HTTPS_PROXY: http://runtime-egress-install:3129
+      NODE_USE_ENV_PROXY: "1"
+    volumes:
+      - runtime-tools:/opt/flux-tools:z
+    networks: [runtime-install]
+    depends_on:
+      runtime-egress:
+        condition: service_started
+    restart: "no"
+  runtime-manager:
+    # No database and no Docker access. Listens only on runtime-control (its alias there); on the slot
+    # networks it only connects out to each supervisor with that slot's secret.
+    <<: *runtime-hardening
+    image: flux-foundation:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
+    command: ["node", "apps/runtime/dist/manager/main.js"]
+    mem_limit: 256m
+    pids_limit: 64
+    restart: unless-stopped
+    environment:
+      FLUX_RUNTIME_MANAGER_SECRET: ${FLUX_RUNTIME_MANAGER_SECRET:-}
+      FLUX_RUNTIME_SLOT_1: ${FLUX_RUNTIME_SECRET_1:-}
+      FLUX_RUNTIME_SLOT_2: ${FLUX_RUNTIME_SECRET_2:-}
+      FLUX_RUNTIME_SLOT_3: ${FLUX_RUNTIME_SECRET_3:-}
+      FLUX_RUNTIME_SLOT_4: ${FLUX_RUNTIME_SECRET_4:-}
+    networks:
+      runtime-control:
+        aliases: [runtime-manager-control]
+      runtime-1: {}
+      runtime-2: {}
+      runtime-3: {}
+      runtime-4: {}
+  runtime-egress:
+    # The slots' only way out: CONNECT to the enabled CLIs' documented hosts, and the API's /mcp only.
+    <<: *runtime-hardening
+    image: flux-foundation:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
+    command: ["node", "apps/runtime/dist/egress/main.js"]
+    mem_limit: 256m
+    pids_limit: 128
+    restart: unless-stopped
+    environment:
+      FLUX_AGENT_RUNTIME: ${FLUX_AGENT_RUNTIME:-}
+      FLUX_RUNTIME_EGRESS_API: api:8080
+    networks:
+      runtime-api: {}
+      runtime-egress-out: {}
+      runtime-install:
+        aliases: [runtime-egress-install]
+      runtime-1: {}
+      runtime-2: {}
+      runtime-3: {}
+      runtime-4: {}
+  runtime-1:
+    <<: *runtime-slot
+    build:
+      context: ../app
+      dockerfile: ../docker/Dockerfile
+      target: agent-runtime
+    environment:
+      FLUX_AGENT_RUNTIME: ${FLUX_AGENT_RUNTIME:-}
+      FLUX_RUNTIME_SLOT: runtime-1
+      FLUX_RUNTIME_SLOT_SECRET: ${FLUX_RUNTIME_SECRET_1:-}
+    volumes:
+      - runtime-1-data:/data
+      - runtime-tools:/opt/flux-tools:ro,z
+    networks: [runtime-1]
+  runtime-2:
+    <<: *runtime-slot
+    environment:
+      FLUX_AGENT_RUNTIME: ${FLUX_AGENT_RUNTIME:-}
+      FLUX_RUNTIME_SLOT: runtime-2
+      FLUX_RUNTIME_SLOT_SECRET: ${FLUX_RUNTIME_SECRET_2:-}
+    volumes:
+      - runtime-2-data:/data
+      - runtime-tools:/opt/flux-tools:ro,z
+    networks: [runtime-2]
+  runtime-3:
+    <<: *runtime-slot
+    environment:
+      FLUX_AGENT_RUNTIME: ${FLUX_AGENT_RUNTIME:-}
+      FLUX_RUNTIME_SLOT: runtime-3
+      FLUX_RUNTIME_SLOT_SECRET: ${FLUX_RUNTIME_SECRET_3:-}
+    volumes:
+      - runtime-3-data:/data
+      - runtime-tools:/opt/flux-tools:ro,z
+    networks: [runtime-3]
+  runtime-4:
+    <<: *runtime-slot
+    environment:
+      FLUX_AGENT_RUNTIME: ${FLUX_AGENT_RUNTIME:-}
+      FLUX_RUNTIME_SLOT: runtime-4
+      FLUX_RUNTIME_SLOT_SECRET: ${FLUX_RUNTIME_SECRET_4:-}
+    volumes:
+      - runtime-4-data:/data
+      - runtime-tools:/opt/flux-tools:ro,z
+    networks: [runtime-4]
   mailpit:
     # Local SMTP catcher for development and tests only. Never a production mail relay.
     profiles: ["dev", "test", "ui"]
@@ -244,3 +408,38 @@ volumes:
   files:
   teststate:
   uishots:
+  # Agent runtime: one volume per slot (owners' CLI logins; never in ./flux backup) and the tools volume.
+  runtime-tools:
+  runtime-1-data:
+  runtime-2-data:
+  runtime-3-data:
+  runtime-4-data:
+networks:
+  default: {}
+  # API, worker and runtime-manager only; no database.
+  runtime-control:
+    internal: true
+    driver_opts: *runtime-network-opts
+  # API and runtime-egress only, for /mcp.
+  runtime-api:
+    internal: true
+    driver_opts: *runtime-network-opts
+  # runtime-egress's way to the internet (vendor hosts it allows, checked to be public addresses).
+  runtime-egress-out: {}
+  # runtime-install and runtime-egress's installer proxy.
+  runtime-install:
+    internal: true
+    driver_opts: *runtime-network-opts
+  # One internal network per slot, shared only with runtime-manager and runtime-egress.
+  runtime-1:
+    internal: true
+    driver_opts: *runtime-network-opts
+  runtime-2:
+    internal: true
+    driver_opts: *runtime-network-opts
+  runtime-3:
+    internal: true
+    driver_opts: *runtime-network-opts
+  runtime-4:
+    internal: true
+    driver_opts: *runtime-network-opts
