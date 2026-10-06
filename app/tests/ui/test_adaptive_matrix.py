@@ -278,12 +278,15 @@ class AdaptiveMatrix(AdaptiveBase):
         self.assertEqual(names, TABS, f"project views keep their names and order at {size}")
         for name in TABS:
             self.primary(page, self.tabs(page).get_by_role("link", name=re.compile(f"^{name}")), f"the {name} tab")
-        if width <= 680:
+        if width <= 640:
+            # Inside a project a phone's top-left control leads back to all projects (#272 FF-3, HIG-26).
+            self.primary(page, page.locator("header.top").get_by_role("button", name="All projects"), "All projects")
+        elif width <= 680:
             self.primary(page, page.get_by_role("button", name="Open navigation"), "Open navigation")
         if width <= 640:
-            # #266 PF-1: the phone's bottom bar keeps the main places at hand, the current one marked.
+            # #266 PF-1 / #272 PF-1: the phone's bottom bar keeps the five main places at hand, the current one marked.
             places = page.get_by_role("navigation", name="Main places")
-            expect(places.get_by_role("link")).to_have_count(4)
+            expect(places.get_by_role("link")).to_have_count(5)
             expect(places.locator('[aria-current="page"]')).to_have_count(1)
             for place in places.get_by_role("link").all():
                 self.primary(page, place, f"the bottom bar's {place.inner_text().strip()}")
