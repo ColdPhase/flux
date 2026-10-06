@@ -267,6 +267,51 @@ class FriendlyHomeJourney(unittest.TestCase):
         expect(bar.get_by_role("link", name=re.compile("^Sketchbook"))).to_have_attribute("aria-current", "page")
         expect(page.get_by_label("Private note", exact=True)).to_be_visible()
         self.assertEqual(page.evaluate("document.documentElement.scrollWidth"), PHONE["width"], "no sideways scroll")
+        # A private sketch opens full width; its top-left control leads back to My sketchbook's Map, and
+        # the places bar stays with Sketchbook current.
+        page.goto("/map")
+        page.get_by_role("button", name="New sketch").tap()
+        expect(page).to_have_url(re.compile(r"/map/[0-9a-f-]{36}$"))
+        expect(bar.get_by_role("link", name=re.compile("^Sketchbook"))).to_have_attribute("aria-current", "page")
+        expect(page.get_by_role("button", name="Open navigation")).to_have_count(0)
+        back = page.locator("header.top").get_by_role("button", name="My sketchbook")
+        self.assertGreaterEqual(min(self.box(back)["width"], self.box(back)["height"]), 44, "a 44px way back")
+        back.tap()
+        expect(page).to_have_url(f"{ORIGIN}/map")
+        expect(page.get_by_role("button", name="Open navigation")).to_be_visible()
+
+    def test_04b_the_places_bar_stays_on_every_phone_page(self):
+        # Apple HIG tab bars, as the founder directed on #266: the bar stays on every phone page with its
+        # section current, and steps aside only while a text field has focus.
+        page = self.page(PHONE, touch=True)
+        bar = page.get_by_role("navigation", name="Main places")
+        project = self.project["id"]
+        for path, current in (("/", "Home"), ("/tasks", "Home"), ("/docs", "Home"), ("/projects", "Projects"),
+                              (f"/projects/{project}", "Projects"), (f"/projects/{project}/tasks", "Projects"),
+                              ("/dm", "Messages"), ("/dm/new", "Messages"), ("/inbox", "Inbox"),
+                              ("/notes", "Sketchbook"), ("/map", "Sketchbook"), ("/settings", None)):
+            with self.subTest(path=path):
+                page.goto(path)
+                expect(bar).to_be_visible()
+                bar_box = self.box(bar)
+                self.assertAlmostEqual(bar_box["y"] + bar_box["height"], PHONE["height"], delta=1, msg="the bar sits at the bottom")
+                marked = bar.locator('[aria-current="page"]')
+                if current:
+                    expect(marked).to_have_count(1)
+                    expect(marked).to_contain_text(current)
+                else:
+                    expect(marked).to_have_count(0)
+                self.assertEqual(page.evaluate("document.documentElement.scrollWidth"), PHONE["width"], "no sideways scroll")
+        # Inside a project the message box sits right above the bar; the bar steps aside while typing.
+        page.goto(f"/projects/{project}")
+        field = page.get_by_label("Write a message", exact=True)
+        composer = self.box(page.locator(".project-convo__composer").first)
+        self.assertLessEqual(composer["y"] + composer["height"], self.box(bar)["y"] + 1, "the message box sits above the bar")
+        field.tap()
+        expect(bar).to_be_hidden()
+        page.locator("header.top h1").tap()
+        expect(bar).to_be_visible()
+        shot(page, "272-places-bar-in-project-phone-390")
 
     # ------------------------------------------------------------------ FF-4 Settings is a page
 
@@ -478,6 +523,26 @@ class FriendlyHomeJourney(unittest.TestCase):
         row.click()
         expect(page.locator("#details").get_by_role("heading", name=title)).to_be_visible()
         expect(page.locator("#details .wd-eyebrow")).to_contain_text("Proposed decision")
+
+    # ------------------------------------------------------------------ FF-2 at most eight project cards
+
+    def test_11_home_shows_eight_project_cards_and_links_to_all(self):
+        # Last in the journey: it adds projects the other tests do not expect.
+        page = self.page()
+        for index in range(8):
+            self.call(page, "POST", f"/api/v1/workspaces/{self.workspace['id']}/projects",
+                      {"name": f"Garden bed {index + 1:02d}", "visibility": "restricted"}, 201)
+        total = len(self.call(page, "GET", f"/api/v1/workspaces/{self.workspace['id']}/projects?limit=100")["items"])
+        self.assertEqual(total, 9)
+        page.goto("/")
+        projects = page.get_by_role("region", name="Your projects", exact=True)
+        expect(projects.locator(".home-project")).to_have_count(8)
+        everything = projects.get_by_role("link", name=re.compile(rf"^All {total} projects"))
+        expect(everything).to_have_attribute("href", "/projects")
+        expect(projects.get_by_role("link", name="New project")).to_be_visible()
+        everything.click()
+        expect(page).to_have_url(f"{ORIGIN}/projects")
+        expect(page.get_by_role("heading", level=1, name="Projects")).to_be_visible()
 
 
 if __name__ == "__main__":
