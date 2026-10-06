@@ -50,6 +50,9 @@ export async function oauthToken(browser: Browser, connectionId: string, clientI
       `/api/v1/agent-oauth/consent-context?oauth_query=${encodeURIComponent(oauthQuery)}`), 200);
     assert.equal(display.clientName, 'Flux HTTP test client');
     assert.equal((display.connection as { id: string }).id, connectionId);
+    // Consent names where access goes (#287): these fixtures redirect to this computer.
+    assert.deepEqual(display.redirect, { kind: 'loopback', host: new URL(redirectUri).host });
+    assert.equal(display.clientIdHost, null);
     const consent = expect(await browser.request('POST', '/api/auth/oauth2/consent',
       { body: { accept: true, oauth_query: oauthQuery } }), 200);
     callback = new URL(String(consent.url ?? consent.redirect_uri));

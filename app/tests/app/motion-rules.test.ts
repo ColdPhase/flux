@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { arrivalShouldAnimate, arrivals, loopShouldRun, newBelowText } from '../../apps/web/src/ui/motion-rules.js';
+import { arrivalShouldAnimate, arrivals, cssTimeToMs, loopShouldRun, newBelowText } from '../../apps/web/src/ui/motion-rules.js';
 
 test('only entries after the newest one already shown are arrivals (#155 UI116-5)', () => {
   // The first render is restored history: nothing arrives.
@@ -42,4 +42,13 @@ test('the new-below line names messages and tasks exactly', () => {
   assert.equal(newBelowText(3, 0), '3 new messages');
   assert.equal(newBelowText(0, 1), '1 new task');
   assert.equal(newBelowText(2, 2), '2 new messages · 2 new tasks');
+});
+
+test('CSS times read in milliseconds whatever unit the minifier chose (#264)', () => {
+  assert.equal(cssTimeToMs('180ms'), 180);
+  assert.equal(cssTimeToMs('.18s'), 180);
+  assert.equal(cssTimeToMs('0.2s'), 200);
+  assert.equal(cssTimeToMs(' 130ms '), 130);
+  assert.equal(cssTimeToMs('1S'), 1000);
+  for (const off of ['0ms', '0s', '', 'none', 'auto', '12', '-5ms', 'calc(1s)']) assert.equal(cssTimeToMs(off), 0, off);
 });
