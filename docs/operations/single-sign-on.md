@@ -98,7 +98,7 @@ own policies (MFA, conditional access), which stay the provider's responsibility
 - **Microsoft Entra ID (unverified, 2026-10-06).** Flux accepts an identity only when the ID token says
   `email_verified: true`. Entra's ID token and optional-claims references and its `claims_supported`
   list don't include `email_verified`, so Entra sign-in is expected to be refused until a provider
-  profile for it exists (F-024 S5, [#274](https://github.com/ColdPhase/flux/pull/274)). This is an
+  profile for it exists (F-024 S5b, [#274](https://github.com/ColdPhase/flux/pull/274)). This is an
   inference from Microsoft's documentation; it was not tested against a real Entra tenant.
 - **Agent (MCP) authorization.** The page an agent client opens for authorization (`/login`, for
   example from `claude mcp login`) offers email and password only, not single sign-on. Single sign-on
