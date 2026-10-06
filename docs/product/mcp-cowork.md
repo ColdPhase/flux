@@ -40,6 +40,16 @@ periodically scanning all GitHub issues/PRs/comments. Coordination stays in Flux
 formal GitHub approval/check gates stay real. #160 packages content/onboarding;
 #152/#153/#74/#136 implement their existing domains against this amendment.
 
+## Sign-in through an identity provider — F-024 (proposed)
+
+When people sign in to Flux through an operator's OIDC provider (Keycloak, Entra
+ID and others), [F-024](mcp-identity.md) keeps Flux as the only authorization
+server for `/mcp`. The provider signs the person in during Flux's authorization
+step. Its standing check suspends the person's MCP access, agent runs and owner
+compute when the provider stops confirming them. Header-only clients and CI can
+use connection access keys when the operator turns them on. The CO-1 connection
+model is unchanged.
+
 ## Connections and owner-authorized autonomy — CO-1
 
 The in-product helper (#57/#68, O-007/O-008) remains: chat, research, finding
@@ -147,6 +157,18 @@ changes. Existing task statuses stay `open`, `in_progress`, `blocked`, `done`,
 `not_pursued`; parking remains separate. Execution/review/CI states are projections,
 not additional board columns unless a later contract deliberately changes them.
 
+**Publication of rule effects (G-1a, [O-011](decisions.md), 2026-10-05).** A rule is turned on for one task, by a
+person who can edit it. With a manager's project default on, the writer who links a required PR turns it on, and the
+link form says so first. Turning it on is the explicit publication.
+- Everyone who can read the task sees the rule's status changes, the blocker it writes, and the PR number, short head
+  commit and check name behind each change.
+- PR titles, repository names and URLs stay behind each reader's own repository access. Events carry identifiers and an
+  automation marker, never the author's own action.
+- Merge finishes a task only in Complete mode, when the task has no written criteria, every prerequisite is done and
+  every merged head's checks passed. Otherwise the task shows Ready to close, and only where Done is allowed.
+- Losing the author's access, or a required repository's binding (disconnect, uninstall, removal or revoked
+  authorization), pauses the rule with a history line. Only an explicit Resume restarts it, also after re-binding.
+
 Verify signed webhooks, persist before processing, deduplicate deliveries and
 reconcile out-of-order/missed events against the provider. A failure for one
 binding must not lose another binding's delivery. Retry with current access;
@@ -194,6 +216,7 @@ human-confirm-every-step rule. Reserved actions still require their authority.
 | Same-task creation notice and first real discussion message | [#154](https://github.com/ColdPhase/flux/issues/154), amends #36/#101 behavior without rewriting history |
 | Studio 11.6 / Agents tab and responsive integration | #136 with #151; consumes the domain contracts above |
 | Subtle motion and real typing presence | [#155](https://github.com/ColdPhase/flux/issues/155), coordinated with #136 |
+| MCP sign-in with external identity providers, offboarding and access keys | [F-024](mcp-identity.md), [#273](https://github.com/ColdPhase/flux/issues/273); slices S1–S7 (S5 split into S5a and S5b), S1 after #240 and #294 |
 | Public tool contract: versioning, compatibility and snapshot | [O-010 EXT-1](extension-contracts.md#ext-1--mcp-tool-contract-1), [#251](https://github.com/ColdPhase/flux/issues/251); a new tool from these rows joins tool contract 1 additively with an updated snapshot |
 
 Required integrated fixture: two owners/three connections, distinct grants and
