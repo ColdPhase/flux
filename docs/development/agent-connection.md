@@ -16,8 +16,8 @@ provider credential or model request passes through Flux.
 how this OAuth flow works when people sign in through an external OIDC provider:
 the provider on `/login`, issuer-and-subject identities, a standing check with
 the provider, a confirmation age for managed accounts, step-up for sensitive
-grants and connection access keys. Until its slices land, the rules below are
-the implemented behaviour.
+grants and opt-in connection access keys. Until its slices land, the rules below
+are the implemented behaviour.
 
 ## Identities and consent
 

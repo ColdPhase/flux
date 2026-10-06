@@ -45,9 +45,10 @@ formal GitHub approval/check gates stay real. #160 packages content/onboarding;
 When people sign in to Flux through an operator's OIDC provider (Keycloak, Entra
 ID and others), [F-024](mcp-identity.md) keeps Flux as the only authorization
 server for `/mcp`. The provider signs the person in during Flux's authorization
-step, and its standing check ends MCP access when the provider stops confirming
-the person. Header-only clients and CI use connection access keys. The CO-1
-connection model is unchanged.
+step. Its standing check suspends the person's MCP access, agent runs and owner
+compute when the provider stops confirming them. Header-only clients and CI can
+use connection access keys when the operator turns them on. The CO-1 connection
+model is unchanged.
 
 ## Connections and owner-authorized autonomy — CO-1
 
@@ -203,7 +204,7 @@ human-confirm-every-step rule. Reserved actions still require their authority.
 | Same-task creation notice and first real discussion message | [#154](https://github.com/ColdPhase/flux/issues/154), amends #36/#101 behavior without rewriting history |
 | Studio 11.6 / Agents tab and responsive integration | #136 with #151; consumes the domain contracts above |
 | Subtle motion and real typing presence | [#155](https://github.com/ColdPhase/flux/issues/155), coordinated with #136 |
-| MCP sign-in with external identity providers, offboarding and access keys | [F-024](mcp-identity.md), [#273](https://github.com/ColdPhase/flux/issues/273); slices S1–S7, S1 after #240 |
+| MCP sign-in with external identity providers, offboarding and access keys | [F-024](mcp-identity.md), [#273](https://github.com/ColdPhase/flux/issues/273); slices S1–S7 (S5 split into S5a and S5b), S1 after #240 and #294 |
 | Public tool contract: versioning, compatibility and snapshot | [O-010 EXT-1](extension-contracts.md#ext-1--mcp-tool-contract-1), [#251](https://github.com/ColdPhase/flux/issues/251); a new tool from these rows joins tool contract 1 additively with an updated snapshot |
 
 Required integrated fixture: two owners/three connections, distinct grants and
