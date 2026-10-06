@@ -85,6 +85,7 @@ These are drafted in the repository and reviewed like code. Publication follows
 - **The story, as drafts in English and Polish for the founders:** two founders and two agents
   built Flux in public, with dated evidence from the build log. The founders choose where to
   publish it (for example Show HN, r/selfhosted, LinkedIn) and when.
+  The drafts are in [launch-story.md](launch-story.md).
 - **The changelog:** `[Unreleased]` moves under `0.1.0` with its date. The build log gets a
   release entry.
 

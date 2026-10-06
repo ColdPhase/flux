@@ -128,3 +128,6 @@ repository was created on 2026-09-26.
   member cannot pass off a look-alike client with their own redirect. The agent consent
   page shows where access goes and warns when that is not this computer, and no Flux
   page can be framed by another site ([#287](https://github.com/ColdPhase/flux/issues/287)).
+- The agent connection page no longer asks for an HTTPS address on the quick start's
+  local `http://` address, and the README shows how to connect your own agent
+  ([#328](https://github.com/ColdPhase/flux/pull/328)).
