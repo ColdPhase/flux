@@ -131,6 +131,18 @@
   .nset > .inbox__head .nset__saved:empty { display: none; }
   .inbox__tools { margin-left: 0; width: 100%; justify-content: space-between; }
   .inbox__item { padding-right: 44px; }
+  /* F-025 PA-1 / PA-2: a calm list. Who acted leads the row (an agent's orb, a person's initials), every line is
+     one line, and unread is a dot in the text colour. */
+  .inbox__item { grid-template-columns: 36px minmax(0, 1fr) 8px; min-height: 44px; padding-top: 12px; padding-bottom: 12px; }
+  .inbox__face { display: grid; place-items: center; width: 36px; height: 36px; }
+  .inbox__ic, .is-unread .inbox__ic { width: 36px; height: 36px; color: var(--text-2); background: var(--bg-side); box-shadow: none; }
+  .inbox__who { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--fs-sm); line-height: 1.4; white-space: nowrap; }
+  .inbox__who b { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 600; color: var(--text); }
+  .inbox__who .ui-ai-badge { flex: none; }
+  .inbox__who .inbox__meta { flex: none; font-size: inherit; color: var(--text-2); }
+  .inbox__title, .inbox__meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .inbox__body { -webkit-line-clamp: 1; line-clamp: 1; color: var(--text-2); }
+  .inbox__dot { margin-top: 14px; background: var(--text); }
   .nset__table thead th { width: 48px; }
   .nset__table tbody th span { display: none; }
   .nset__times { margin-left: 0; }

@@ -1,4 +1,4 @@
-import type { NotificationReason, NotificationSourceRef, NotificationSourceType, PushPayload } from '@flux/contracts';
+import type { InboxActor, NotificationReason, NotificationSourceRef, NotificationSourceType, PushPayload } from '@flux/contracts';
 
 /**
  * Ports of the notification and Web Push use cases (issues #41, #46). Core defines what it
@@ -38,9 +38,11 @@ export interface NotificationRecord {
   readAt: Date | null;
   /** Why it exists (#116); null for notifications created directly through `createNotification`. */
   reason: NotificationReason | null;
+  /** Who caused it, from its event (F-025 PA-2); only the inbox reads it. */
+  actor?: InboxActor | null;
 }
 
-export type NewNotification = Omit<NotificationRecord, 'createdAt' | 'readAt' | 'reason'>;
+export type NewNotification = Omit<NotificationRecord, 'createdAt' | 'readAt' | 'reason' | 'actor'>;
 
 export interface NotificationRepository {
   insert(notification: NewNotification): Promise<void>;

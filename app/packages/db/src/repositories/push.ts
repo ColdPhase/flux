@@ -1,4 +1,4 @@
-import { and, count, desc, eq, isNull, sql, type SQL } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import * as schema from '../schema.js';
 
@@ -47,6 +47,42 @@ export function toNotificationRecord(row: NotificationRow) {
   };
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+type Actor = { kind: 'human' | 'agent'; id: string; name: string };
+
+/**
+ * Who caused each notification (F-025 PA-2): the actor of the event it came from (`human:<id>` or
+ * `agent:<id>`), named as they are now. Rows without an event, and actors that no longer exist, get null.
+ */
+async function withActors(db: DbExecutor, rows: NotificationRow[]) {
+  const eventIds = [...new Set(rows.flatMap((row) => (row.eventId ? [row.eventId] : [])))];
+  const actorOf = new Map<string, { kind: 'human' | 'agent'; id: string }>();
+  if (eventIds.length) {
+    const events = await db.select({ id: schema.events.id, actorId: schema.events.actorId }).from(schema.events).where(inArray(schema.events.id, eventIds));
+    for (const event of events) {
+      const at = event.actorId.indexOf(':');
+      const kind = event.actorId.slice(0, at);
+      const id = event.actorId.slice(at + 1);
+      if (kind === 'human' && id) actorOf.set(event.id, { kind, id });
+      else if (kind === 'agent' && UUID.test(id)) actorOf.set(event.id, { kind, id: id.toLowerCase() });
+    }
+  }
+  const humans = [...new Set([...actorOf.values()].filter((actor) => actor.kind === 'human').map((actor) => actor.id))];
+  const agents = [...new Set([...actorOf.values()].filter((actor) => actor.kind === 'agent').map((actor) => actor.id))];
+  const names = new Map<string, string>();
+  if (humans.length) {
+    for (const row of await db.select({ id: schema.authUsers.id, name: schema.authUsers.name }).from(schema.authUsers).where(inArray(schema.authUsers.id, humans))) names.set(`human:${row.id}`, row.name);
+  }
+  if (agents.length) {
+    for (const row of await db.select({ id: schema.agents.id, name: schema.agents.name }).from(schema.agents).where(inArray(schema.agents.id, agents))) names.set(`agent:${row.id}`, row.name);
+  }
+  return rows.map((row) => {
+    const actor = row.eventId ? actorOf.get(row.eventId) : undefined;
+    const name = actor ? names.get(`${actor.kind}:${actor.id}`) : undefined;
+    return { ...toNotificationRecord(row), actor: actor && name ? { ...actor, name } satisfies Actor : null };
+  });
+}
+
 /** A session that still exists (not signed out or revoked) and has not expired. */
 const activeSession = (sessionId: SQL | typeof s.sessionId) =>
   sql`EXISTS (SELECT 1 FROM ${schema.authSessions} WHERE ${schema.authSessions.id} = ${sessionId} AND ${schema.authSessions.expiresAt} > now())`;
@@ -89,7 +125,7 @@ export function notificationRows(db: DbExecutor) {
     },
     async findForRecipient(userId: string, id: string) {
       const [row] = await db.select().from(n).where(and(eq(n.id, id), eq(n.userId, userId)));
-      return row ? toNotificationRecord(row) : null;
+      return row ? (await withActors(db, [row]))[0]! : null;
     },
     async workspaceIdsForRecipient(userId: string) {
       return (await db.selectDistinct({ id: n.workspaceId }).from(n).where(eq(n.userId, userId))).map((row) => row.id);
@@ -98,7 +134,7 @@ export function notificationRows(db: DbExecutor) {
       // Rows kept only for push or email (the person turned the inbox off for that reason) stay out.
       const rows = await db.select().from(n).where(and(eq(n.userId, userId), eq(n.inInbox, true), audience))
         .orderBy(desc(n.createdAt), desc(n.id)).limit(limit);
-      return rows.map(toNotificationRecord);
+      return withActors(db, rows);
     },
     async countUnread(userId: string, audience: SQL) {
       const [row] = await db.select({ unread: count() }).from(n).where(and(eq(n.userId, userId), eq(n.inInbox, true), isNull(n.readAt), audience));

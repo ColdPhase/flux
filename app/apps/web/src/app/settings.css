@@ -35,6 +35,13 @@
 @media (max-width: 640px) {
   .set { padding-top: 14px; }
   .set-sec { margin-top: 18px; }
+  /* F-025 PA-1: the projects list as a calm list of hairline rows; unread is a dot in the text colour. */
+  .proj-index { border-radius: 0; background: none; box-shadow: none; }
+  .proj-index li + li .set-row { border-top-color: var(--line); }
+  .proj-index .set-row { min-height: 56px; padding-inline: 2px; }
+  .proj-index .set-row__ic { width: 36px; height: 36px; border-radius: 50%; background: var(--bg-side); color: var(--text-2); }
+  .proj-index .set-row__t, .proj-index .set-row__s { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .proj-index__dot { background: var(--text); }
 }
 /* The header's way back from a settings page to the list (#266 PF-5). */
 .top__back { flex: none; }

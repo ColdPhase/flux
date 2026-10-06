@@ -180,6 +180,7 @@ describe('notifications from committed events', () => {
     assert.equal(question.body, '@Ada Quill can you check the October proofs?');
     assert.deepEqual(question.source, { workspaceId, type: 'project', id: projectId });
     assert.equal(question.url, `/projects/${projectId}/conversations/${thread.id}#message-${asked.id}`);
+    assert.deepEqual(question.actor, { kind: 'human', id: ben.id, name: 'Ben Oduya' }, 'the inbox names who acted (F-025 PA-2)');
 
     const mention = await waitForItem(ben, (item) => item.url?.endsWith(mentioned.id) === true, 'Ben\'s mention');
     assert.equal(mention.reason, 'mention');
@@ -199,6 +200,7 @@ describe('notifications from committed events', () => {
     assert.equal(direct.title, 'Ada Quill sent you a message');
     assert.deepEqual(direct.source, { workspaceId, type: 'dm', id: dmId });
     assert.equal(direct.url, `/dm/${dmId}#message-${message.id}`);
+    assert.deepEqual(direct.actor, { kind: 'human', id: ada.id, name: 'Ada Quill' });
 
     const work = expectStatus(await ada.browser.request('POST', `/api/v1/projects/${projectId}/work`, { body: { title: 'Proofread the October page', owner: { kind: 'human', id: ben.id } } }), 201) as { id: string };
     const own = expectStatus(await ada.browser.request('POST', `/api/v1/projects/${projectId}/work`, { body: { title: 'Ada keeps this', owner: { kind: 'human', id: ada.id } } }), 201) as { id: string };
@@ -215,6 +217,34 @@ describe('notifications from committed events', () => {
     assert.equal(resultItem.reason, 'review');
     await generatorCaughtUp();
     assert.equal((await inbox(ada)).items.filter((item) => item.url?.includes(own.id)).length, 0, 'assigning yourself notifies nobody');
+  });
+
+  test('an agent\'s notification names the agent; a direct one and a vanished actor name nobody (F-025 PA-2)', async () => {
+    const agentId = randomUUID();
+    await pool.query('INSERT INTO agents (id, workspace_id, name, owner_user_id, created_by) VALUES ($1, $2, $3, $4, $5)', [agentId, workspaceId, 'Tide Scout', ada.id, `human:${ada.id}`]);
+    const rows: { actorId: string | null; title: string }[] = [
+      { actorId: `agent:${agentId.toUpperCase()}`, title: 'Tide Scout (agent) replied' },
+      { actorId: `agent:${randomUUID()}`, title: 'A removed agent replied' },
+      { actorId: null, title: 'Created directly' },
+    ];
+    const ids: string[] = [];
+    for (const row of rows) {
+      let eventId: string | null = null;
+      if (row.actorId) {
+        eventId = randomUUID();
+        await pool.query('INSERT INTO events (id, kind, object_id, actor_id, data, workspace_id) VALUES ($1, $2, $3, $4, $5, $6)', [eventId, 'test.inbox_actor.v1', projectId, row.actorId, '{}', workspaceId]);
+      }
+      const id = randomUUID();
+      ids.push(id);
+      await pool.query(`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, title, url, reason, event_id)
+        VALUES ($1, $2, $3, 'project', $4, $5, $6, 'reply', $7)`, [id, ben.id, workspaceId, projectId, row.title, `/projects/${projectId}`, eventId]);
+    }
+    const listed = new Map((await inbox(ben)).items.map((item) => [item.id, item]));
+    assert.deepEqual(listed.get(ids[0]!)?.actor, { kind: 'agent', id: agentId, name: 'Tide Scout' });
+    assert.equal(listed.get(ids[1]!)?.actor, null, 'an agent that no longer exists is not named');
+    assert.equal(listed.get(ids[2]!)?.actor, null, 'a direct notification has no actor');
+    const one = expectStatus(await ben.browser.request('GET', `/api/v1/inbox/${ids[0]}`), 200) as InboxItem;
+    assert.deepEqual(one.actor, { kind: 'agent', id: agentId, name: 'Tide Scout' }, 'one item answers the same actor');
   });
 
   test('each (person, event) is stored once, even when the generator processes events again', async () => {

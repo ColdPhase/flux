@@ -107,6 +107,10 @@
   .dm__composer .composer__hint:not(.dm__error) { display: none; }
   .dm-index__head { align-items: center; }
   .dm-index__head p { display: none; }
+  /* F-025 PA-1: people as neutral initials, hairline rows, a one-line preview. */
+  .dm-index li + li .dm-index__item { border-top: 1px solid var(--line); border-radius: 0; }
+  .dm-index__text span { color: var(--text-2); }
+  .dm-index__item time { color: var(--text-2); }
 }
 .dm-msg.is-arrived { box-shadow: inset 3px 0 0 var(--accent); border-radius: 2px; }
 .dm-msg:focus { outline: none; }

@@ -17,7 +17,7 @@ export function ProjectsIndex() {
           <Link to="/projects/new" className="ui-btn ui-btn--secondary"><Icon name="plus" />New project</Link>
         </div>
         {projects.length ? (
-          <ul className="set-card" aria-label="Projects">
+          <ul className="set-card proj-index" aria-label="Projects">
             {projects.map((project) => (
               <li key={project.id}>
                 <Link to={`/projects/${project.id}`} className="set-row" aria-label={project.hasNew ? `${project.name}, new activity` : undefined}>

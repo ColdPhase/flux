@@ -59,6 +59,16 @@ export interface NotificationSourceRef {
   id: string;
 }
 
+/**
+ * Who caused a notification (F-025 PA-2), read from the event it came from: a person or an agent, with
+ * their current name. The phone inbox shows an agent's orb, name and "AI" badge, and a person's initials.
+ */
+export interface InboxActor {
+  kind: 'human' | 'agent';
+  id: string;
+  name: string;
+}
+
 export interface InboxItem {
   id: string;
   source: NotificationSourceRef;
@@ -69,6 +79,8 @@ export interface InboxItem {
   url: string | null;
   createdAt: string;
   readAt: string | null;
+  /** Null for notifications created directly (#41) and when the actor no longer exists. */
+  actor: InboxActor | null;
 }
 
 export interface InboxResponse {

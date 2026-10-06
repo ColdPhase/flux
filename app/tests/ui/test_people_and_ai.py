@@ -28,6 +28,13 @@ from the page, which entries an agent wrote.
   a thread (absent in the stream, as today), the 16 px field, Send in the action colour, the audience line under
   the pill; Escape closes the menu back to "+".
 - test_08, 1440: the composer, bubbles, names and thread IDs are as before.
+- test_09, slice 6 lists (PA-1, PA-2) at 390×844 and 375×667 with touch, light and dark: in Jonas's Inbox every
+  notification an agent caused (the API's `actor`) leads with that agent's orb, in the stream's palette, its name
+  and an "AI" badge; a person's has their initials and no orb or badge; rows are 44 px or more, the preview is one
+  line and unread is a dot in the text colour. The projects and messages lists: people as initials, no orb,
+  44 px rows, one-line previews.
+- test_10, 1440: the Inbox keeps the reason icons and two-line previews, with no orb, badge or name line; the
+  projects list keeps its card.
 
 Each check also runs once against a planted fault (an injected style or element) and must report it.
 Screenshots (people-ai-*.png) go to FLUX_UI_SCREENSHOTS.
@@ -841,6 +848,174 @@ class PeopleAndAiPhone(unittest.TestCase):
         expect(page.locator(f"{list_} [data-message-id='{self.s['runs'][-1]}']")).to_be_visible()
         page.add_style_tag(content=".project-convo__message.is-mine > p { background: var(--action) !important; border-radius: 20px !important; }")
         self.assertTrue(any("phone radius" in problem for problem in problems()))
+
+    # ---------------------------------------------------------------- slice 6: lists (PA-1, PA-2)
+
+    LISTS = r"""(selector) => {
+      const probe = document.createElement('i'); probe.style.color = 'var(--text)'; document.body.append(probe);
+      const text = getComputedStyle(probe).color; probe.remove();
+      const shown = (el) => !!el && el.getBoundingClientRect().width > 0 && getComputedStyle(el).visibility !== 'hidden';
+      const lines = (el) => { if (!el) return 0; const style = getComputedStyle(el); const line = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.4;
+        return Math.round(el.getBoundingClientRect().height / line); };
+      return [...document.querySelectorAll(selector)].map((row) => {
+        const link = row.matches('a') ? row : row.querySelector('a');
+        const dot = row.querySelector('.inbox__dot, .proj-index__dot');
+        const avatar = row.querySelector('.ui-avatar');
+        return {
+          href: link ? link.getAttribute('href') : null,
+          height: link ? link.getBoundingClientRect().height : 0,
+          orbs: [...row.querySelectorAll('.ui-orb')].filter(shown).map((orb) => orb.dataset.orb),
+          badges: [...row.querySelectorAll('.ui-ai-badge')].filter(shown).map((badge) => badge.textContent.trim()),
+          name: row.querySelector('.inbox__who b, .dm-index__text > b')?.textContent.trim() ?? null,
+          initials: shown(avatar) ? avatar.textContent.trim() : null,
+          icon: shown(row.querySelector('.inbox__ic')),
+          lines: [...row.querySelectorAll('.inbox__title, .inbox__body, .dm-index__text > span, .set-row__t')].map(lines),
+          dot: dot ? { color: getComputedStyle(dot).backgroundColor, text } : null,
+        };
+      });
+    }"""
+
+    @staticmethod
+    def initials(name: str) -> str:
+        parts = name.split()
+        return (parts[0][0] + (parts[-1][0] if len(parts) > 1 else "")).upper()
+
+    def list_problems(self, rows: list[dict], actors: dict[str, dict | None], palette: str | None) -> list[str]:
+        """PA-1/PA-2 on a phone list: an agent's row has its orb, name and AI; a person's initials and no orb; calm rows."""
+        problems: list[str] = []
+        if not rows:
+            problems.append("no rows")
+        for row in rows:
+            where = row["href"]
+            if row["height"] < 44:
+                problems.append(f"{where} is {row['height']:.0f} px high")
+            if any(count > 1 for count in row["lines"]):
+                problems.append(f"{where} has a line that wraps: {row['lines']}")
+            if row["dot"] and row["dot"]["color"] != row["dot"]["text"]:
+                problems.append(f"{where} unread dot is {row['dot']['color']}, not the text colour")
+            actor = actors.get(where)
+            if actor and actor["kind"] == "agent":
+                if len(row["orbs"]) != 1 or (palette and row["orbs"][0] != palette):
+                    problems.append(f"{where} (agent) orbs {row['orbs']}, expected [{palette}]")
+                if row["badges"] != ["AI"]:
+                    problems.append(f"{where} (agent) badges {row['badges']}")
+                if row["name"] != actor["name"]:
+                    problems.append(f"{where} (agent) named {row['name']!r}")
+                if row["initials"]:
+                    problems.append(f"{where} (agent) has initials")
+            else:
+                if row["orbs"] or row["badges"]:
+                    problems.append(f"{where} (person) has an orb or badge: {row['orbs']} {row['badges']}")
+                if actor and (row["initials"] != self.initials(actor["name"]) or row["name"] != actor["name"]):
+                    problems.append(f"{where} (person) shows {row['initials']!r} {row['name']!r}")
+        return problems
+
+    def ensure_lists(self) -> dict[str, dict | None]:
+        """Ada writes to Jonas directly; Jonas's inbox has notifications from his agent-replied thread, Ada and her DM."""
+        if "inbox" in self.s:
+            return self.s["inbox"]
+        ws = self.ids["workspace"]
+        created = self.fetch("ada", "POST", f"/api/v1/workspaces/{ws}/dms", {"participantIds": [self.ids["jonas"]]})
+        self.assertIn(created.status, (200, 201), created.text())
+        dm = created.json()["id"]
+        self.api("ada", "POST", f"/api/v1/dms/{dm}/messages", {"body": "Bring the spare breakout board tomorrow? " * 4, "clientMessageId": str(uuid.uuid4())}, status=201)
+
+        def ready():
+            items = self.api("jonas", "GET", "/api/v1/inbox", status=200)["items"]
+            kinds = {(item.get("actor") or {}).get("kind") for item in items}
+            dms = [item for item in items if item["reason"] == "dm"]
+            return items if {"agent", "human"} <= kinds and dms else None
+        items = self.wait_for("Jonas's notifications from Ada and her agent", ready)
+        agents = [item for item in items if (item.get("actor") or {}).get("kind") == "agent"]
+        self.assertTrue(all(item["actor"] == {"kind": "agent", "id": self.ids["agent"], "name": AGENT} for item in agents), agents)
+        actors = {item["url"]: item.get("actor") for item in items}
+        type(self).s.update(inbox=actors, dm=dm)
+        return actors
+
+    def test_09_phone_lists_show_agents_as_orbs_and_people_as_initials(self) -> None:
+        self.assertIn("authors", self.s, "test_01 ran")
+        actors = self.ensure_lists()
+        palette = self.s.get("palette")
+        for size in SIZES:
+            for scheme in ("light", "dark"):
+                label = f"{size['width']}x{size['height']} {scheme}"
+                page = self.page("jonas", scheme=scheme, viewport=size)
+                page.goto("/inbox")
+                expect(page.locator(".inbox__row").first).to_be_visible()
+                rows = page.evaluate(self.LISTS, ".inbox__row")
+                self.assertEqual(self.list_problems(rows, actors, palette), [], f"{label} inbox")
+                self.assertTrue(any(len(row["orbs"]) == 1 for row in rows), f"{label}: an agent's row is listed")
+                self.assertTrue(any(row["initials"] for row in rows), f"{label}: a person's row is listed")
+                self.assertTrue(any(row["dot"] for row in rows), f"{label}: an unread row is listed")
+                # PA-11: the inbox's functions stay reachable by name as touch targets.
+                tools = page.locator(".inbox__tools")
+                for target in (tools.get_by_role("button", name="Mark all read"), tools.get_by_role("link", name="Settings", exact=True),
+                               page.get_by_role("button", name="Mark as read").first):
+                    expect(target).to_be_visible()
+                    self.assertGreaterEqual(target.bounding_box()["height"], 44, label)
+                if size["width"] == 390:
+                    shot(page, f"people-ai-390-{scheme}-inbox")
+                page.goto("/projects")
+                expect(page.get_by_role("list", name="Projects")).to_be_visible()
+                projects = page.evaluate(self.LISTS, ".proj-index > li")
+                self.assertEqual(self.list_problems(projects, {}, None), [], f"{label} projects")
+                if size["width"] == 390:
+                    shot(page, f"people-ai-390-{scheme}-projects")
+                page.goto("/dm")
+                expect(page.get_by_role("list", name="Conversations")).to_be_visible()
+                dms = page.evaluate(self.LISTS, ".dm-index > li")
+                self.assertEqual(self.list_problems(dms, {f"/dm/{self.s['dm']}": {"kind": "human", "name": NAMES["ada"]}}, None), [], f"{label} messages")
+                self.assertEqual(next(row for row in dms if row["href"] == f"/dm/{self.s['dm']}")["initials"], "AK", label)
+                if size["width"] == 390:
+                    shot(page, f"people-ai-390-{scheme}-messages-list")
+
+        # Negative controls: a person's row with an orb, an agent's row without its badge, a wrapping preview and an
+        # accent-coloured dot are each reported.
+        page = self.page("jonas")
+        page.goto("/inbox")
+        expect(page.locator(".inbox__row").first).to_be_visible()
+        page.evaluate("""() => {
+          const person = document.querySelector('.inbox__row[data-actor="human"] .inbox__face');
+          person.insertAdjacentHTML('beforeend', '<span class="ui-orb ui-orb--sm ui-orb--ember" data-orb="ember"></span>');
+          document.querySelector('.inbox__row[data-actor="agent"] .ui-ai-badge').remove();
+        }""")
+        page.add_style_tag(content=".inbox__body { white-space: normal !important; -webkit-line-clamp: 3 !important; line-clamp: 3 !important; } .inbox__body::after { content: ' Two boards, one spare, ask about shipping to the workshop, and bring both cables, the short one and the long one.'; } .inbox__dot { background: #28664f !important; }")
+        problems = self.list_problems(page.evaluate(self.LISTS, ".inbox__row"), actors, palette)
+        self.assertTrue(any("(person) has an orb" in problem for problem in problems), problems)
+        self.assertTrue(any("(agent) badges []" in problem for problem in problems), problems)
+        self.assertTrue(any("wraps" in problem for problem in problems), problems)
+        self.assertTrue(any("not the text colour" in problem for problem in problems), problems)
+
+    def test_10_desktop_lists_keep_the_11_6_rows(self) -> None:
+        self.assertIn("authors", self.s, "test_01 ran")
+        self.ensure_lists()
+        page = self.page("jonas", phone=False)
+        page.goto("/inbox")
+        expect(page.locator(".inbox__row").first).to_be_visible()
+
+        def problems() -> list[str]:
+            found = []
+            for row in page.evaluate(self.LISTS, ".inbox__row"):
+                if row["orbs"] or row["badges"] or row["name"] or row["initials"]:
+                    found.append(f"{row['href']} shows who acted: {row}")
+                if not row["icon"]:
+                    found.append(f"{row['href']} has no reason icon")
+            clamp = page.evaluate("""() => [...document.querySelectorAll('.inbox__body')].map((el) => getComputedStyle(el).webkitLineClamp)""")
+            if any(value != "2" for value in clamp):
+                found.append(f"previews clamp at {clamp}")
+            return found
+
+        self.assertEqual(problems(), [])
+        page.goto("/projects")
+        expect(page.get_by_role("list", name="Projects")).to_be_visible()
+        self.assertNotEqual(page.locator(".proj-index").evaluate("(el) => getComputedStyle(el).boxShadow"), "none", "the projects card keeps its line")
+        self.assertEqual(page.locator(".proj-index .ui-orb, .dm-index .ui-orb").count(), 0)
+        # Negative control: an orb leaking into the desktop inbox is reported.
+        page.goto("/inbox")
+        expect(page.locator(".inbox__row").first).to_be_visible()
+        page.evaluate("""() => document.querySelector('.inbox__item').insertAdjacentHTML('afterbegin', '<span class="ui-orb ui-orb--lg ui-orb--violet" data-orb="violet"></span>')""")
+        self.assertTrue(any("shows who acted" in problem for problem in problems()))
+
 
 if __name__ == "__main__":
     unittest.main()

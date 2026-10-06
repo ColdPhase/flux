@@ -110,6 +110,7 @@ repository was created on 2026-09-26.
 
 - On phones the chrome is calm warm white and near-black with no accent colour, people are neutral initials, and every agent has its own orb with its name and an AI badge; tablet and desktop are unchanged ([#332](https://github.com/ColdPhase/flux/pull/332)).
 - On phones your own messages are dark (light in dark mode) bubbles, everyone else's are soft grey, a name shows once per run with no reply numbers, and the composer is one pill: "+" for Attach and Sources, the field, the assistant's orb in a thread and Send; tablet and desktop are unchanged ([#333](https://github.com/ColdPhase/flux/pull/333)).
+- On phones the Inbox leads each notification with who caused it: an agent's orb, name and AI badge, or a person's initials; the Inbox, projects and messages lists are calm one-line rows with unread as a dot in the text colour; tablet and desktop are unchanged ([#PR](https://github.com/ColdPhase/flux/pull/PR)).
 - The Studio 11.6 interface: a sidebar with workspace and project names, a calmer
   header, Conversation · Map · Tasks · Wiki tabs and a reworked conversation
   ([#184](https://github.com/ColdPhase/flux/pull/184)).

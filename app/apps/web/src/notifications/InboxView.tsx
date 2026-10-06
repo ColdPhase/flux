@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import type { InboxItem, NotificationReason } from '@flux/contracts';
-import { Button, EmptyState, ErrorState, Icon, IconButton, Spinner, useToast, type IconName } from '../ui';
+import { AgentOrb, AiBadge, Avatar, Button, EmptyState, ErrorState, Icon, IconButton, MEDIA, Spinner, useMediaQuery, useToast, type IconName } from '../ui';
 import { announceInboxChange, getInbox, getInboxItem, markAllInboxRead, markInboxRead } from './api';
 import './notifications.css';
 
@@ -28,21 +28,30 @@ export function when(iso: string, now = new Date()) {
   return day.format(date);
 }
 
-function Row({ item, onRead }: { item: InboxItem; onRead: (id: string) => void }) {
+/**
+ * One notification. On phones (F-025 PA-2) a row an agent caused leads with the agent's orb and names it with an
+ * "AI" badge; a person's row leads with their neutral initials. Tablet and desktop keep the reason's icon.
+ */
+function Row({ item, onRead, phone }: { item: InboxItem; onRead: (id: string) => void; phone: boolean }) {
   const reason = item.reason ? REASONS[item.reason] : { label: 'Update', icon: 'bell' as IconName };
   const unread = !item.readAt;
+  const actor = phone ? item.actor : null;
   const open = (event: MouseEvent<HTMLAnchorElement>) => {
     if (event.button !== 0) return;
     if (unread) onRead(item.id);
   };
+  const meta = <>{reason.label}<span aria-hidden="true"> · </span><time dateTime={item.createdAt}>{when(item.createdAt)}</time></>;
   return (
-    <li className={`inbox__row${unread ? ' is-unread' : ''}`}>
+    <li className={`inbox__row${unread ? ' is-unread' : ''}`} data-actor={actor?.kind}>
       <Link to={item.url ?? `/inbox/${item.id}`} className="inbox__item" onClick={open}>
-        <span className={`inbox__ic inbox__ic--${item.reason ?? 'other'}`} aria-hidden="true"><Icon name={reason.icon} size={14} /></span>
+        {actor?.kind === 'agent' ? <span className="inbox__face"><AgentOrb agentId={actor.id} size="lg" /></span>
+          : actor ? <span className="inbox__face"><Avatar name={actor.name} size="lg" /></span>
+            : <span className={`inbox__ic inbox__ic--${item.reason ?? 'other'}`} aria-hidden="true"><Icon name={reason.icon} size={14} /></span>}
         <span className="inbox__text">
+          {actor ? <span className="inbox__who"><b>{actor.name}</b>{actor.kind === 'agent' ? <AiBadge /> : null}<span className="inbox__meta"><span aria-hidden="true"> · </span>{meta}</span></span> : null}
           <span className="inbox__title">{item.title}</span>
           {item.body ? <span className="inbox__body">{item.body}</span> : null}
-          <span className="inbox__meta">{reason.label}<span aria-hidden="true"> · </span><time dateTime={item.createdAt}>{when(item.createdAt)}</time></span>
+          {actor ? null : <span className="inbox__meta">{meta}</span>}
         </span>
         {unread ? <span className="inbox__dot"><span className="ui-vh">, unread</span></span> : null}
       </Link>
@@ -59,6 +68,7 @@ export function InboxView() {
   const [items, setItems] = useState<InboxItem[] | null>(null);
   const [failed, setFailed] = useState(false);
   const toast = useToast();
+  const phone = useMediaQuery(MEDIA.phone);
   const fetchInbox = useCallback((signal?: AbortSignal) => {
     getInbox(signal).then((inbox) => { setFailed(false); setItems(inbox.items); }, (error: unknown) => {
       if (!(error instanceof DOMException && error.name === 'AbortError')) setFailed(true);
@@ -114,14 +124,14 @@ export function InboxView() {
           {fresh.length ? (
             <section aria-labelledby="inbox-new">
               <h3 className="inbox__h" id="inbox-new">New</h3>
-              <ul className="inbox__list">{fresh.map((item) => <Row key={item.id} item={item} onRead={read} />)}</ul>
+              <ul className="inbox__list">{fresh.map((item) => <Row key={item.id} item={item} onRead={read} phone={phone} />)}</ul>
             </section>
           ) : null}
           {earlier.length ? (
             <section aria-labelledby="inbox-earlier">
               {fresh.length ? null : <p className="inbox__caught">All caught up. Everything below stays here as long as you can open it.</p>}
               <h3 className="inbox__h" id="inbox-earlier">Earlier</h3>
-              <ul className="inbox__list">{earlier.map((item) => <Row key={item.id} item={item} onRead={read} />)}</ul>
+              <ul className="inbox__list">{earlier.map((item) => <Row key={item.id} item={item} onRead={read} phone={phone} />)}</ul>
             </section>
           ) : null}
         </>

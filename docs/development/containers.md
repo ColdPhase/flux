@@ -249,7 +249,9 @@ Endpoints, all resolved with `requirePrincipal` and limited to the caller's rows
 `GET|POST /api/v1/push/subscriptions` (idempotent per endpoint; a browser that
 signs in to another account moves its subscription to that account),
 `DELETE /api/v1/push/subscriptions/:id`, `GET /api/v1/inbox?limit=`,
-`GET /api/v1/inbox/:id` and `POST /api/v1/inbox/:id/read`.
+`GET /api/v1/inbox/:id` and `POST /api/v1/inbox/:id/read`. Each inbox item carries
+`actor` (F-025 PA-2): the person or agent whose event caused it (`kind`, `id`, current
+`name`), or `null` for a notification created directly or an actor that no longer exists.
 
 **Audience.** Every notification names its source (`workspace`, `project` or
 `draft`, with its `workspace_id`). Server code creates one with `createNotifier(db,
