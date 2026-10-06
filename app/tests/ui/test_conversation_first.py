@@ -78,6 +78,8 @@ class ConversationFirstJourney(unittest.TestCase):
             reduced_motion="reduce" if reduced else "no-preference", locale="en-GB", timezone_id="Europe/Warsaw")
         self.addCleanup(context.close)
         page = context.new_page()
+        # The touch helper's DevTools session exists before the first tap (see swipe()).
+        self.cdp[id(page)] = context.new_cdp_session(page)
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
         self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught browser errors"))
@@ -101,9 +103,10 @@ class ConversationFirstJourney(unittest.TestCase):
         page.wait_for_timeout(250)
 
     def swipe(self, page, start, end, steps=10, pause=16):
-        # One DevTools session per page for every touch: touches sent from separate sessions leave Chrome's touch
-        # emulation out of step with Playwright's own taps, so a later tap fires pointerdown but no click (probed).
-        cdp = self.cdp.get(id(page)) or self.cdp.setdefault(id(page), page.context.new_cdp_session(page))
+        # One DevTools session per page, opened with the page, for every touch: sessions opened per swipe, after
+        # Playwright's own taps, left Chrome's touch emulation out of step, so a later tap fired pointerdown but no
+        # click (probed: with the session opened first, the same sequence reopens the thread).
+        cdp = self.cdp[id(page)]
         cdp.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": start[0], "y": start[1]}]})
         for step in range(1, steps + 1):
             x = start[0] + (end[0] - start[0]) * step / steps
