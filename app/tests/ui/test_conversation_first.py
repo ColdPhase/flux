@@ -52,10 +52,10 @@ class ConversationFirstJourney(unittest.TestCase):
         start = lambda body: cls.call(page, "POST", f"/api/v1/projects/{pid}/conversations", {"body": body, "clientMessageId": str(uuid.uuid4())}, 201)  # noqa: E731
         question = start(QUESTION)
         for reply in ("The apricots, they bloom first.", "And one in the low corner, where the cold air sits.", "Agreed, three apricots and the corner."):
-            cls.call(page, "POST", f"/api/v1/conversations/{question['conversationId']}/messages", {"body": reply, "clientMessageId": str(uuid.uuid4())}, 201)
+            cls.call(page, "POST", f"/api/v1/conversations/{question['id']}/messages", {"body": reply, "clientMessageId": str(uuid.uuid4())}, 201)
         for index in range(1, 19):
             start(LONG if index % 3 == 0 else f"Note {index:02}: checked row {index}, buds still closed.")
-        cls.ids.update(project=pid, question=question["messages"][0]["id"] if "messages" in question else question["id"])
+        cls.ids.update(project=pid, question=question["messages"][0]["id"])
         context.close()
 
     @classmethod
