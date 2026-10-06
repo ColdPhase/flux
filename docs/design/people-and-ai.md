@@ -172,10 +172,13 @@ and the bottom bar of places. No screen adds a second stacked row.
 ## PA-10. Tasks on the phone
 
 - **The one control row** is the status segmented control: Open, In progress and Done, each with
-  its count. On a phone, Kanban *is* this control, one column at a time, so the Kanban/List
-  toggle goes. Phones show the list; tablet and desktop keep both.
-- **New task** is the header's round "+". It opens the new-task sheet in place, with one field;
-  Enter adds the task and the person stays in the list.
+  its count. On a phone, Kanban *is* this control: it shows one status at a time as a list of
+  cards, so the Kanban/List toggle goes. The grouped List view (decisions, parked work, results)
+  stays reachable from the quiet "needs you" row and from Decisions in the views menu. Tablet and
+  desktop keep both toggles.
+- **New task** is the header's round "+". It opens the existing new-task field at the top of the
+  Open column, in place, with no sheet. Enter adds the task, the new card arrives, and the person
+  stays on the board.
 - **Search and Mine** sit behind the header's magnifier. It reveals a search field over the list
   (the iOS search pattern), with a "Mine" toggle beside it.
 - **Decisions** are their own kind of object, not a Tasks tool. They get their own entry in the
@@ -217,7 +220,7 @@ claude-hubert.
    [H, who owns the agent runtime]
 4. **Conversation:** messages, header and composer on phones (PA-4, PA-5, PA-7). [Mz]
 5. **Structure:** the views menu in the header, Decisions as a view, and Tasks on the phone
-   (PA-9, PA-10), with PA-11 tests. [H for the header (#296/#301), Mz for Tasks]
+   (PA-9, PA-10), with PA-11 tests. This is #318 in full. [H; Mz evaluates]
 6. **Agents and lists:** the Agents view, the projects list and notifications on phones (PA-6,
    PA-2). [H for Agents, Mz for the lists]
 
