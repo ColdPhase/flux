@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import { flushSync } from 'react-dom';
 import { Outlet, useLocation, useNavigate, useParams, useRevalidator } from 'react-router';
 import { useStreamEvents } from '../api/stream';
+import { readerActive, watchReaderInput } from '../work/readerIntent';
 import { BottomNav, Button, Drawer, Icon, IconButton, MEDIA, SidePanel, Tabs, duration, flip, play, useMediaQuery, useSidePanelMode, type BottomNavItem, type TabItem } from '../ui';
 import { useShellData } from './data';
 import { registerServiceWorker, syncPushSubscription } from '../pwa';
@@ -88,6 +89,9 @@ function isTyping(target: EventTarget | null) {
   const el = target as HTMLElement | null;
   return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName));
 }
+
+/** How far the person scrolls in one direction before the phone's view chips step aside or come back (#296). */
+const STEP_ASIDE_PX = 48;
 
 /**
  * Authenticated frame, Studio 11.6 (#136): one sidebar on the chrome and a rounded sheet with
@@ -286,6 +290,38 @@ function AppLayoutContent() {
     pane.addEventListener('focusout', onOut);
     return () => { window.clearTimeout(timer); delete app.dataset.typing; pane.removeEventListener('focusin', onIn); pane.removeEventListener('focusout', onOut); };
   }, [phone, touch]);
+
+  // Reading back through a conversation on a phone, the view chips and the project's state line step aside so
+  // the stream has the room; scrolling toward the newest, or reaching it, brings them back (HIG-02/03, #296).
+  // Only the person's own scrolling counts, never the stream's own writes (readerIntent). CSS does the rest:
+  // nothing moves under reduced motion, and chips holding keyboard focus stay.
+  useEffect(() => {
+    const app = appRef.current;
+    const pane = paneRef.current;
+    if (!phone || !app || !pane) return;
+    const last = new WeakMap<HTMLElement, number>();
+    let travel = 0;
+    const onScroll = (event: Event) => {
+      const feed = event.target;
+      if (!(feed instanceof HTMLElement) || !feed.matches('.project-convo__feed.is-stream, .dm__feed')) return;
+      const top = feed.scrollTop;
+      const before = last.get(feed);
+      last.set(feed, top);
+      if (before === undefined) { watchReaderInput(feed); return; }
+      if (feed.scrollHeight - top - feed.clientHeight < 24) { travel = 0; delete app.dataset.reading; return; }
+      if (!readerActive(feed)) return;
+      const delta = top - before;
+      if (!delta) return;
+      if (Math.sign(delta) !== Math.sign(travel)) travel = 0;
+      travel += delta;
+      if (travel < -STEP_ASIDE_PX) app.dataset.reading = 'back';
+      else if (travel > STEP_ASIDE_PX) delete app.dataset.reading;
+    };
+    pane.addEventListener('scroll', onScroll, { capture: true, passive: true });
+    return () => { pane.removeEventListener('scroll', onScroll, { capture: true }); delete app.dataset.reading; };
+  }, [phone]);
+  // Another place or view starts with its chips in view.
+  useEffect(() => { delete appRef.current?.dataset.reading; }, [location.pathname]);
 
   // iOS Safari does not shrink the layout for the on-screen keyboard (no interactive-widget support),
   // so on touch screens the app follows the visual viewport while the keyboard is up, keeping the
@@ -493,6 +529,9 @@ function AppLayoutContent() {
           </div>
           )}
           <div className="top__right" data-shift>
+            {/* On a phone's top-level places search is one tap away (HIG-50, #296); inside a place the menu has it. */}
+            {phone && !backTo && !settingsPage && !activeProject
+              ? <Button variant="quiet" icon="search" className="top__search" aria-haspopup="dialog" onClick={() => setJumpOpen(true)}>Search</Button> : null}
             {/* A view can put one quiet action here (a DM's Select, #96). */}
             <span className="top__actions" ref={setActionSlot} />
             {activeProject ? <LiveEntry /> : null}

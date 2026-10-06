@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { ConversationMessage, NativeWorkRow } from '@flux/contracts';
-import { Avatar, Icon, IconButton, useMediaQuery } from '../ui';
+import { Avatar, Icon, IconButton, useDismissDrag, useMediaQuery } from '../ui';
 import { DiscussedTask, MessageObjects } from '../work/inline';
 import type { MessageWorkPreview } from '../work/message-associations';
 import { SourceCitation, clock, day, when } from './messageParts';
@@ -15,12 +15,27 @@ export type ThreadMode = 'docked' | 'sheet';
  */
 export function ThreadDrawer({ mode, count, focusOnOpen, onClose, children }: { mode: ThreadMode; count: number; focusOnOpen: boolean; onClose: () => void; children: ReactNode }) {
   const ref = useRef<HTMLElement>(null);
+  const none = useRef<HTMLElement>(null);
   const titleId = useId();
+  // As a sheet it follows a drag down from its grabber or header and closes past a third of the way (HIG-34–37, #296).
+  const drag = useDismissDrag(mode === 'sheet' ? 'bottom' : 'center', ref, none, onClose, '.thread__head');
   useEffect(() => {
     if (focusOnOpen && !ref.current?.contains(document.activeElement)) ref.current?.focus({ preventScroll: true });
     // When it opens; the composer may take focus first when the person chose Reply.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // As a sheet it covers the stream, so Escape closes it wherever focus is, unless a dialog above it takes Escape.
+  const closeRef = useRef(onClose);
+  useEffect(() => { closeRef.current = onClose; });
+  useEffect(() => {
+    if (mode !== 'sheet') return;
+    const onEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || document.querySelector('[aria-modal="true"]')) return;
+      closeRef.current();
+    };
+    document.addEventListener('keydown', onEscape);
+    return () => document.removeEventListener('keydown', onEscape);
+  }, [mode]);
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     // Escape that ends an input method's composition is not a request to close.
     if (event.key !== 'Escape' || event.defaultPrevented || event.nativeEvent.isComposing) return;
@@ -28,8 +43,9 @@ export function ThreadDrawer({ mode, count, focusOnOpen, onClose, children }: { 
     onClose();
   };
   return (
-    <aside ref={ref} id="thread" className={`thread thread--${mode}`} aria-labelledby={titleId} tabIndex={-1} onKeyDown={onKeyDown}>
+    <aside ref={ref} id="thread" className={`thread thread--${mode}`} aria-labelledby={titleId} tabIndex={-1} onKeyDown={onKeyDown} {...drag}>
       <div className="thread__head">
+        {mode === 'sheet' ? <span className="thread__grabber" aria-hidden="true" /> : null}
         <h2 className="thread__title" id={titleId}>Replies</h2>
         <span className="thread__n"><span className="ui-vh">, </span>{count}</span>
         <IconButton icon={mode === 'sheet' ? 'chevron-left' : 'x'} label="Close replies" className="thread__close" onClick={onClose} />

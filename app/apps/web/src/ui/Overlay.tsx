@@ -62,11 +62,11 @@ const offstage: Record<OverlayPlacement, string> = {
 
 /**
  * Touch dismissal (#266 PF-4): the drawer follows a finger dragging it back to the left and the
- * phone sheet follows a drag down from its header. Released past a third of the way, or with a
- * flick, it closes from where it is; otherwise it settles back. Mouse input and keyboard keep
+ * phone sheet follows a drag down from its header (`handle`; the thread sheet passes its own, #296).
+ * Released past a third of the way, or with a flick, it closes from where it is; otherwise it settles back. Mouse input and keyboard keep
  * their own paths (scrim, close button, Esc), and vertical scrolling inside the drawer is untouched.
  */
-function useDismissDrag(placement: OverlayPlacement, surfaceRef: RefObject<HTMLDivElement | null>, scrimRef: RefObject<HTMLDivElement | null>, close: () => void) {
+export function useDismissDrag(placement: OverlayPlacement, surfaceRef: RefObject<HTMLElement | null>, scrimRef: RefObject<HTMLElement | null>, close: () => void, handle = '.ui-panel__head') {
   const state = useRef<{ id: number; x: number; y: number; t: number; moving: boolean; prev: number; prevT: number; last: number; lastT: number } | null>(null);
   if (placement !== 'left' && placement !== 'bottom') return {};
   const axis = placement === 'left' ? 'x' : 'y';
@@ -87,14 +87,14 @@ function useDismissDrag(placement: OverlayPlacement, surfaceRef: RefObject<HTMLD
     if (!duration('--dur-2')) { if (surface) surface.style.transform = ''; if (scrim) scrim.style.opacity = ''; }
   };
   return {
-    onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    onPointerDown(event: ReactPointerEvent<HTMLElement>) {
       if (event.pointerType === 'mouse' || !event.isPrimary) return;
       // The sheet drags only from its header, so its body keeps scrolling normally.
-      if (placement === 'bottom' && !(event.target as HTMLElement).closest('.ui-panel__head')) return;
+      if (placement === 'bottom' && !(event.target as HTMLElement).closest(handle)) return;
       if ((event.target as HTMLElement).closest('input, textarea, select, [contenteditable="true"]')) return;
       state.current = { id: event.pointerId, x: event.clientX, y: event.clientY, t: event.timeStamp, moving: false, prev: 0, prevT: event.timeStamp, last: 0, lastT: event.timeStamp };
     },
-    onPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    onPointerMove(event: ReactPointerEvent<HTMLElement>) {
       const drag = state.current;
       if (!drag || drag.id !== event.pointerId) return;
       const dx = event.clientX - drag.x;
@@ -111,7 +111,7 @@ function useDismissDrag(placement: OverlayPlacement, surfaceRef: RefObject<HTMLD
       drag.prev = drag.last; drag.prevT = drag.lastT; drag.last = along; drag.lastT = event.timeStamp;
       apply(Math.sign(along) === sign ? along : along / 6);
     },
-    onPointerUp(event: ReactPointerEvent<HTMLDivElement>) {
+    onPointerUp(event: ReactPointerEvent<HTMLElement>) {
       const drag = state.current;
       state.current = null;
       if (!drag || drag.id !== event.pointerId || !drag.moving) return;

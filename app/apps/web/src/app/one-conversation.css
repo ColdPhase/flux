@@ -40,6 +40,10 @@
 /* As a sheet the way back sits first, where a phone's back control is expected. */
 .thread--sheet .thread__head { padding-left: 6px; }
 .thread--sheet .thread__close { order: -1; margin-left: 0; }
+/* The sheet's grabber says it can be dragged down to close (HIG-35, #296); the whole header is the handle. */
+.thread--sheet { box-shadow: var(--shadow); }
+.thread--sheet .thread__head { position: relative; touch-action: none; }
+.thread__grabber { position: absolute; top: 5px; left: 50%; width: 36px; height: 5px; margin-left: -18px; border-radius: 3px; background: var(--line-strong); }
 .thread__pane { display: flex; flex: 1; flex-direction: column; min-height: 0; }
 .thread__feed { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
 /* Laid out but hidden until its first bounded reads settle (#155, at most 1 s), so nothing shifts as they arrive. */

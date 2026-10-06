@@ -413,6 +413,7 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
   .top__crumb { order: 2; font-size: var(--fs-xs); }
   .top__slash { display: none; }
   .top__details { padding: 0 12px; }
+  .top__search { gap: 6px; min-height: 44px; padding: 0 12px; font-size: var(--fs-sm); }
   .views .ui-tabs__bar { padding: 0 4px; gap: 0; justify-content: space-between; }
   .pane-in { padding-left: 16px; padding-right: 16px; }
   .composer { padding: 6px 10px 10px; padding-bottom: max(10px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
@@ -488,3 +489,12 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 }
 @media (max-width: 640px) and (pointer: coarse) { .views--chips .ui-tabs__tab { min-height: 44px; padding: 0 14px; } .views--chips .ui-tabs__bar { padding-block: 4px; } }
 .state-row .views__recap { flex: none; margin-left: auto; }
+/* Reading back through a phone conversation (#296): the chips and the state line step aside so the stream has
+   the room, and come back toward the newest. Nothing moves under reduced motion; chips holding keyboard focus stay. */
+@media (max-width: 640px) and (prefers-reduced-motion: no-preference) {
+  .views--chips, .state-row { max-height: 64px; transition: max-height var(--dur-2) var(--ease-out), opacity var(--dur-2) ease, border-color var(--dur-2) ease; }
+  .app[data-reading] .views--chips:not(:focus-within), .app[data-reading] .state-row:not(:focus-within) {
+    max-height: 0; overflow: hidden; opacity: 0; border-bottom-color: transparent; visibility: hidden;
+    transition: max-height var(--dur-2) var(--ease-out), opacity var(--dur-1) ease, border-color var(--dur-2) ease, visibility 0s linear var(--dur-2);
+  }
+}
