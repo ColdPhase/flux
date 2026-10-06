@@ -12,12 +12,14 @@ workflow copies. Record version/digest, compatible tool contract and change note
 
 **Shipped content (2026-10-02).** The canonical bundle the server delivers is
 `COWORK_PLAYBOOK` in `app/packages/core/src/agent-connection/playbook.ts`
-(`flux.cowork` 1.2.0). It adapts this seed to the tools that actually exist and
+(`flux.cowork` 1.3.0). It adapts this seed to the tools that actually exist and
 declares, per module, the tools and providers it needs; coordination and verified
 repository context are named as requirements, never as working features. Since 1.1.0
 (2026-10-03) the approved project policy exists and orient/plan reads it. Since 1.2.0
 (2026-10-05) every tool the server registers is declared by a module, including the
-wiki, conversation and map reads and writes. This page remains the design rationale; change the shipped text in
+wiki, conversation and map reads and writes. Since 1.3.0 (2026-10-06) agents take a task with the co-work unit tool,
+claim, renew, release (with a checkpoint), complete and transfer their units, and pick up or decline a request addressed
+to them; the inbox, sending requests and server recovery are still named as gaps. This page remains the design rationale; change the shipped text in
 that module, with a new version. Delivery is described in
 [agent connection](../development/agent-connection.md#built-in-co-work-playbook-160).
 

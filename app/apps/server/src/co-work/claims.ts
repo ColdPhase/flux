@@ -1,7 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import type { AgentExecutionCommand, AgentJsonValue, AuthenticatedAgentRuntime } from '@flux/contracts';
 import { coworkUnitRows, type CoWorkTaskLockInput } from '@flux/db';
-import { agentOutcomeFingerprint, coWorkClaimPostcondition, coWorkClaimUseCases, ConflictError, DomainError, InvalidInputError,
-  normalizeAgentExecution, type ClaimInput, type ClaimOperation, type ClaimOutcome, type CoWorkContext,
+import { agentOutcomeFingerprint, coWorkCheckpointProgress, coWorkClaimPostcondition, coWorkClaimUseCases, ConflictError, DomainError,
+  InvalidInputError, normalizeAgentExecution, normalizeCoWorkCheckpointDraft, NotFoundError, parseCoWorkCheckpointProgress,
+  type ClaimInput, type ClaimOperation, type ClaimOutcome, type CoWorkCheckpointDraft, type CoWorkContext,
   type CoWorkUnit, type CoWorkClaimUnitOfWork, type LockedClaimScope, type Transaction } from '@flux/core';
 import { agentExecutionInTransaction } from '../agent-connection/execution.js';
 import type { FluxMcpClaims } from '../agent-connection/context.js';
@@ -20,26 +22,32 @@ export interface CoWorkClaimPolicy {
   /** Read under complete retained locks; no late upstream locks. Execute/review/plan differ. */
   requireEligible(tx: Transaction, context: AuthenticatedAgentRuntime, unit: CoWorkUnit,
     action: { operation: ClaimOperation; observation: boolean }): Promise<void>;
-  /** Require exact currently readable source coverage from the already prepared command.
-   * Never acquire an additional material/version/graph lock after task locks. */
+  /** A released checkpoint needs exact coverage by the already prepared command; a historical one needs current
+   * access to its sources. Never acquire an additional material/version/graph lock after task locks. */
   requireCheckpointSources(tx: Transaction, context: AuthenticatedAgentRuntime, checkpoint: Checkpoint, command: AgentExecutionCommand): Promise<void>;
 }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-function inputOf(command: AgentExecutionCommand): { operation: ClaimOperation; input: ClaimInput } {
+/** A release either names a checkpoint already persisted for this live claim, or carries a checkpoint draft that the
+ * composition writes under the same live fence (2026-10-06); the draft gets a server-generated ID. */
+function inputOf(command: AgentExecutionCommand): { operation: ClaimOperation; input: ClaimInput; draft: CoWorkCheckpointDraft | null } {
   if (!['cowork.claim', 'cowork.renew', 'cowork.release'].includes(command.operation) || !command.objectId)
     throw new InvalidInputError('An exact co-work claim operation and target are required');
   const operation = command.operation.slice('cowork.'.length) as ClaimOperation;
   const payload = command.payload;
   if (!payload || Array.isArray(payload) || typeof payload !== 'object') throw new InvalidInputError('A bounded claim payload is required');
+  const drafted = operation === 'release' && 'checkpoint' in payload;
   const fields = operation === 'claim' ? ['expectedVersion'] : operation === 'renew'
-    ? ['expectedVersion', 'generation', 'leaseId'] : ['expectedVersion', 'generation', 'leaseId', 'checkpointId'];
+    ? ['expectedVersion', 'generation', 'leaseId'] : ['expectedVersion', 'generation', 'leaseId', drafted ? 'checkpoint' : 'checkpointId'];
   if (Object.keys(payload).length !== fields.length || Object.keys(payload).some((key) => !fields.includes(key))
     || !Number.isSafeInteger(payload.expectedVersion) || (payload.expectedVersion as number) < 1
     || operation !== 'claim' && (!Number.isSafeInteger(payload.generation) || (payload.generation as number) < 1
       || typeof payload.leaseId !== 'string' || !UUID.test(payload.leaseId))
-    || operation === 'release' && (typeof payload.checkpointId !== 'string' || !UUID.test(payload.checkpointId)))
+    || operation === 'release' && !drafted && (typeof payload.checkpointId !== 'string' || !UUID.test(payload.checkpointId)))
     throw new InvalidInputError('Claim payload fields or fences are invalid');
-  return { operation, input: { ...payload, commandId: command.clientCommandId, unitId: command.objectId } as unknown as ClaimInput };
+  const draft = drafted ? normalizeCoWorkCheckpointDraft(payload.checkpoint) : null;
+  const fence = Object.fromEntries(Object.entries(payload).filter(([key]) => key !== 'checkpoint'));
+  return { operation, draft, input: { ...fence, ...(draft ? { checkpointId: randomUUID() } : {}),
+    commandId: command.clientCommandId, unitId: command.objectId } as unknown as ClaimInput };
 }
 function wire(outcome: ClaimOutcome): AgentJsonValue {
   return { unitId: outcome.unitId, generation: outcome.generation, version: outcome.version, state: outcome.state,
@@ -63,7 +71,7 @@ function restored(value: AgentJsonValue): ClaimOutcome {
 export async function coWorkClaimInTransaction(tx: Transaction, claims: FluxMcpClaims,
   raw: AgentExecutionCommand, policy: CoWorkClaimPolicy): Promise<ClaimOutcome> {
   const command = normalizeAgentExecution(raw);
-  const { operation, input } = inputOf(command);
+  const { operation, input, draft } = inputOf(command);
   policy = Object.freeze({ ...policy });
   if (!Number.isSafeInteger(policy.maximumConnectionUnits) || policy.maximumConnectionUnits < 1
     || !Number.isSafeInteger(policy.leaseSeconds) || policy.leaseSeconds < 1 || policy.leaseSeconds > 300
@@ -107,6 +115,13 @@ export async function coWorkClaimInTransaction(tx: Transaction, claims: FluxMcpC
       maximumConnectionUnits: policy.maximumConnectionUnits, leaseSeconds: policy.leaseSeconds,
       replay: prepared.replay ? restored(prepared.replay.value) : null,
       async requireCheckpoint(id, fence) {
+        // The core holder fence (unit, version, live claim) has passed: write the drafted checkpoint under that same
+        // live fence. A refused release later in this transaction rolls it back with everything else.
+        if (draft && id === (input as { checkpointId?: string }).checkpointId) {
+          const inserted = await locked!.insertCheckpoint({ id, generation: fence.generation, leaseId: fence.leaseId,
+            runtimeSessionId: runtime.id, progress: coWorkCheckpointProgress(draft, command.sources) as unknown as Record<string, unknown> });
+          if (inserted !== id) throw new ConflictError('The claim is no longer live; recover before continuing', 'COWORK_CLAIM_LOST');
+        }
         const checkpoint = await readable(runtime, id);
         if (checkpoint.connectionId !== runtime.connectionId || checkpoint.generation !== fence.generation || checkpoint.runtimeSessionId !== runtime.id)
           throw new ConflictError('Checkpoint does not belong to the live claim', 'COWORK_CHECKPOINT_STALE');
@@ -133,4 +148,18 @@ export async function coWorkClaimInTransaction(tx: Transaction, claims: FluxMcpC
   const postconditions = prepared.replay?.postconditions ?? [coWorkClaimPostcondition(saved)];
   await execution.complete(prepared, { value: prepared.replay?.value ?? wire(outcome), postconditions });
   return outcome;
+}
+
+/**
+ * The unit's current checkpoint for the claim tool, read in the same transaction after the composition checked its
+ * sources (2026-10-06): how a resumed or new holder reads where the work stopped. Only a typed checkpoint is shown.
+ */
+export async function coWorkClaimCheckpoint(tx: Transaction, scope: { projectId: string; unitId: string },
+  checkpointId: string | null) {
+  if (!checkpointId) return null;
+  const row = await coworkUnitRows(tx).unitCheckpoint(scope, checkpointId);
+  const progress = row ? parseCoWorkCheckpointProgress(row.progress) : null;
+  if (!row || !progress) throw new NotFoundError('Checkpoint', 'COWORK_CHECKPOINT_NOT_FOUND');
+  return { id: row.id, summary: progress.summary, nextAction: progress.nextAction, blocker: progress.blocker,
+    sources: progress.sources, createdAt: row.createdAt.toISOString() };
 }
