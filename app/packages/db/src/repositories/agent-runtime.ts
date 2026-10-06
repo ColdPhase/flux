@@ -1,11 +1,13 @@
+import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import type { AgentRuntimeBindingState, AgentRuntimeReleaseReason } from '@flux/contracts';
+import type { AgentRuntimeBindingState, AgentRuntimeClient, AgentRuntimeConnectionState, AgentRuntimeReleaseReason, AgentRuntimeSignInMethod } from '@flux/contracts';
 import type { Pool } from 'pg';
 import type * as schema from '../schema.js';
 
-// PostgreSQL adapter of the `runtime` transport's store (F-022 T3, migration 0056). Each method is one
-// short transaction; the use cases call runtime-manager only between them, never inside one.
+// PostgreSQL adapter of the `runtime` transport's store (F-022 T3, migration 0056; sign-in T4, 0057).
+// Each method is one short transaction; the use cases call runtime-manager only between them, never
+// inside one.
 
 // Structurally core's AgentRuntimeStore port (@flux/core agent-runtime/ports.ts); @flux/db cannot import
 // @flux/core, which depends on it. The API and worker pass this adapter where the port is expected.
@@ -17,6 +19,15 @@ export interface RuntimeBindingRow {
   releaseReason: AgentRuntimeReleaseReason | null;
 }
 type ReserveOutcome = { kind: 'reserved' | 'existing'; binding: RuntimeBindingRow } | { kind: 'full' } | { kind: 'starting' };
+export interface RuntimeConnectionRow {
+  client: AgentRuntimeClient; bindingId: string; state: AgentRuntimeConnectionState; signInMethod: AgentRuntimeSignInMethod | null;
+  authMethod: string | null; plan: string | null; accountLabel: string | null; signedInAt: Date | null;
+  accountChangedAt: Date | null; previousAccountLabel: string | null; signedOutAt: Date | null; signOutFailed: boolean | null;
+}
+export interface RuntimeSignInRecord {
+  ownerUserId: string; bindingId: string; client: AgentRuntimeClient; method: AgentRuntimeSignInMethod | null; signedIn: boolean;
+  facts: { authMethod: string; plan: string | null; accountLabel: string | null } | null; fingerprint: string | null;
+}
 export interface AgentRuntimeRows {
   ownerView(ownerUserId: string): Promise<{
     binding: RuntimeBindingRow | null;
@@ -29,6 +40,10 @@ export interface AgentRuntimeRows {
   abandon(bindingId: string, slot: { state: 'unknown' } | { state: 'out_of_pool'; reason: RuntimeOutOfPoolReason }): Promise<void>;
   requestRelease(target: { ownerUserId: string } | { slot: string }, reason: AgentRuntimeReleaseReason): Promise<RuntimeBindingRow | null>;
   recordCommercialTerms(agreedOn: string): Promise<void>;
+  connections(ownerUserId: string): Promise<RuntimeConnectionRow[]>;
+  recordSignIn(record: RuntimeSignInRecord): Promise<boolean>;
+  recordSignOut(ownerUserId: string, bindingId: string, client: AgentRuntimeClient, failed: boolean): Promise<void>;
+  dismissAccountNotice(ownerUserId: string, client: AgentRuntimeClient): Promise<void>;
   slotsWithBindings(): Promise<{ slot: RuntimeSlotRow; binding: RuntimeBindingRow | null }[]>;
   saveSlot(slot: RuntimeSlotRow): Promise<void>;
   markSignInAgain(bindingId: string): Promise<void>;
@@ -52,6 +67,18 @@ const binding = (row: BindingRecord): RuntimeBindingRow => ({
 const slotRow = (row: SlotRecord): RuntimeSlotRow => ({ slot: row.slot, state: row.state, bootId: row.boot_id, wipeBootId: row.wipe_boot_id, outOfPoolReason: row.out_of_pool_reason });
 
 const BINDING_COLUMNS = sql`id, owner_user_id, slot, state, created_at, last_used_at, release_reason`;
+
+type ConnectionRecord = { client: AgentRuntimeClient; binding_id: string; state: AgentRuntimeConnectionState; sign_in_method: AgentRuntimeSignInMethod | null;
+  auth_method: string | null; plan_label: string | null; account_label: string | null; signed_in_at: Date | string | null;
+  account_changed_at: Date | string | null; previous_account_label: string | null; signed_out_at: Date | string | null; sign_out_failed: boolean | null };
+const maybeDate = (value: Date | string | null) => (value === null ? null : date(value));
+const connection = (row: ConnectionRecord): RuntimeConnectionRow => ({
+  client: row.client, bindingId: row.binding_id, state: row.state, signInMethod: row.sign_in_method, authMethod: row.auth_method, plan: row.plan_label,
+  accountLabel: row.account_label, signedInAt: maybeDate(row.signed_in_at), accountChangedAt: maybeDate(row.account_changed_at),
+  previousAccountLabel: row.previous_account_label, signedOutAt: maybeDate(row.signed_out_at), signOutFailed: row.sign_out_failed,
+});
+const CONNECTION_COLUMNS = sql`client, binding_id, state, sign_in_method, auth_method, plan_label, account_label, signed_in_at,
+  account_changed_at, previous_account_label, signed_out_at, sign_out_failed`;
 
 async function ownerLock(tx: Exec, ownerUserId: string) {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`agent-runtime-owner:${ownerUserId}`}))`);
@@ -144,6 +171,79 @@ export function agentRuntimeStore(db: Handle): AgentRuntimeRows {
     async recordCommercialTerms(agreedOn) {
       await db.execute(sql`INSERT INTO agent_runtime_operator_statements(statement, agreed_on)
         VALUES ('anthropic_commercial_terms', ${agreedOn}::date) ON CONFLICT (statement, agreed_on) DO NOTHING`);
+    },
+
+    async connections(ownerUserId) {
+      const rows = await db.execute<ConnectionRecord>(sql`SELECT ${CONNECTION_COLUMNS} FROM agent_runtime_connections
+        WHERE owner_user_id = ${ownerUserId} AND revoked_at IS NULL ORDER BY client`);
+      return rows.rows.map(connection);
+    },
+
+    recordSignIn(record) {
+      return db.transaction(async (tx) => {
+        await ownerLock(tx, record.ownerUserId);
+        const live = await tx.execute<{ id: string }>(sql`SELECT id FROM agent_runtime_bindings
+          WHERE id = ${record.bindingId} AND owner_user_id = ${record.ownerUserId} AND state = 'active' FOR UPDATE`);
+        if (!live.rows[0]) return false;
+        const current = await tx.execute<{ id: string; state: AgentRuntimeConnectionState }>(sql`SELECT id, state FROM agent_runtime_connections
+          WHERE owner_user_id = ${record.ownerUserId} AND client = ${record.client} AND revoked_at IS NULL FOR UPDATE`);
+        const row = current.rows[0];
+        if (!record.signedIn || !record.facts) {
+          // Only the CLI's status can sign a connection in; anything else leaves it signed out (or
+          // *Sign in again* when it was signed in before and the CLI no longer says so).
+          if (row) {
+            await tx.execute(sql`UPDATE agent_runtime_connections SET binding_id = ${record.bindingId},
+              state = CASE WHEN state = 'signed_out' THEN 'signed_out' ELSE 'sign_in_again' END, signed_in_at = NULL,
+              sign_in_method = coalesce(${record.method}, sign_in_method) WHERE id = ${row.id}`);
+          } else {
+            await tx.execute(sql`INSERT INTO agent_runtime_connections(id, owner_user_id, binding_id, client, state, sign_in_method)
+              VALUES (${randomUUID()}, ${record.ownerUserId}, ${record.bindingId}, ${record.client}, 'signed_out', ${record.method})`);
+          }
+          return true;
+        }
+        // The owner's previous account for this CLI: the live connection's, or else the latest one's.
+        const previous = await tx.execute<{ account_label: string | null; account_fingerprint: string | null }>(sql`SELECT account_label, account_fingerprint
+          FROM agent_runtime_connections WHERE owner_user_id = ${record.ownerUserId} AND client = ${record.client}
+            AND (account_label IS NOT NULL OR account_fingerprint IS NOT NULL)
+          ORDER BY (revoked_at IS NULL) DESC, coalesce(signed_in_at, revoked_at, created_at) DESC LIMIT 1`);
+        const before = previous.rows[0];
+        const changed = Boolean(before) && (before!.account_fingerprint && record.fingerprint
+          ? before!.account_fingerprint !== record.fingerprint
+          : (before!.account_label ?? '') !== (record.facts.accountLabel ?? ''));
+        const { authMethod, plan, accountLabel } = record.facts;
+        const id = row?.id ?? randomUUID();
+        if (!row) {
+          await tx.execute(sql`INSERT INTO agent_runtime_connections(id, owner_user_id, binding_id, client, state)
+            VALUES (${id}, ${record.ownerUserId}, ${record.bindingId}, ${record.client}, 'signed_out')`);
+        }
+        await tx.execute(sql`UPDATE agent_runtime_connections SET binding_id = ${record.bindingId}, state = 'signed_in', signed_in_at = now(),
+          sign_in_method = coalesce(${record.method}, sign_in_method), auth_method = ${authMethod}, plan_label = ${plan}, account_label = ${accountLabel},
+          account_fingerprint = ${record.fingerprint},
+          account_changed_at = CASE WHEN ${changed}::boolean THEN now() ELSE account_changed_at END,
+          previous_account_label = CASE WHEN ${changed}::boolean THEN ${before?.account_label ?? null}::text ELSE previous_account_label END,
+          signed_out_at = NULL, sign_out_failed = NULL
+          WHERE id = ${id}`);
+        return true;
+      });
+    },
+
+    async recordSignOut(ownerUserId, bindingId, client, failed) {
+      await db.transaction(async (tx) => {
+        await ownerLock(tx, ownerUserId);
+        const updated = await tx.execute(sql`UPDATE agent_runtime_connections SET state = 'signed_out', signed_in_at = NULL,
+          signed_out_at = now(), sign_out_failed = ${failed}
+          WHERE owner_user_id = ${ownerUserId} AND client = ${client} AND binding_id = ${bindingId} AND revoked_at IS NULL RETURNING id`);
+        if (!updated.rows.length) {
+          await tx.execute(sql`INSERT INTO agent_runtime_connections(id, owner_user_id, binding_id, client, state, signed_out_at, sign_out_failed)
+            SELECT ${randomUUID()}::uuid, ${ownerUserId}::text, ${bindingId}::uuid, ${client}::text, 'signed_out', now(), ${failed}::boolean
+            WHERE NOT EXISTS (SELECT 1 FROM agent_runtime_connections WHERE owner_user_id = ${ownerUserId} AND client = ${client} AND revoked_at IS NULL)`);
+        }
+      });
+    },
+
+    async dismissAccountNotice(ownerUserId, client) {
+      await db.execute(sql`UPDATE agent_runtime_connections SET account_changed_at = NULL, previous_account_label = NULL
+        WHERE owner_user_id = ${ownerUserId} AND client = ${client} AND revoked_at IS NULL`);
     },
 
     async slotsWithBindings() {

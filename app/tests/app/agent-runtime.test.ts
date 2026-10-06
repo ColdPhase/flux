@@ -18,7 +18,7 @@ describe('the operator switch is off by default', () => {
     const ada = await person('Runtime Off Ada');
     const status = expectStatus(await ada.browser.request('GET', AGENT_RUNTIME_PATH), 200);
     assert.deepEqual(status, { enabled: false, clients: { claude_code: 'off', codex: 'off' }, commercialTerms: null, idleReleaseDays: null,
-      pool: 'off', binding: null, lastRelease: null });
+      pool: 'off', binding: null, lastRelease: null, connections: { claude_code: null, codex: null } });
     for (const method of ['POST', 'DELETE']) {
       const refused = expectStatus(await ada.browser.request(method, AGENT_RUNTIME_BINDING_PATH), 409) as { code: string };
       assert.equal(refused.code, 'AGENT_RUNTIME_OFF');
@@ -50,7 +50,11 @@ describe('runtime tables hold display facts only', () => {
     agent_runtime_bindings: ['id:uuid', 'owner_user_id:text', 'slot:text', 'state:text', 'created_at:timestamp with time zone', 'last_used_at:timestamp with time zone',
       'release_reason:text', 'release_requested_at:timestamp with time zone', 'released_at:timestamp with time zone', 'release_logout_failed:boolean'],
     agent_runtime_connections: ['id:uuid', 'owner_user_id:text', 'binding_id:uuid', 'transport:text', 'client:text', 'state:text', 'sign_in_method:text', 'auth_method:text',
-      'plan_label:text', 'account_label:text', 'signed_in_at:timestamp with time zone', 'created_at:timestamp with time zone', 'revoked_at:timestamp with time zone'],
+      'plan_label:text', 'account_label:text', 'signed_in_at:timestamp with time zone', 'created_at:timestamp with time zone', 'revoked_at:timestamp with time zone',
+      // 0057 (T4): a keyed HMAC of the account (exactly 64 hex digits by CHECK, too short for any vendor
+      // token), the previous masked label for the account-change notice, and the last sign-out.
+      'account_fingerprint:text', 'previous_account_label:text', 'account_changed_at:timestamp with time zone', 'signed_out_at:timestamp with time zone',
+      'sign_out_failed:boolean'],
     agent_runtime_operator_statements: ['statement:text', 'agreed_on:date', 'recorded_at:timestamp with time zone'],
   };
   // agent_runtime_sessions (0034) is unrelated: mode (b) MCP client sessions, outside the runtime transport.
@@ -107,6 +111,8 @@ describe('the PostgreSQL store under the owner use cases', () => {
     async slots() { return { ok: true, value: slots.map((slot) => ({ slot, reachable: true as const, bootId: boots.get(slot)!, bindings: [...dirs.get(slot)!], other: 0 })) }; },
     async bind(slot, id) { if (dirs.get(slot)!.length) return { ok: false, code: 'data_not_empty' }; dirs.get(slot)!.push(id); return { ok: true, value: undefined }; },
     async release(slot, id) { dirs.set(slot, dirs.get(slot)!.filter((dir) => dir !== id)); boots.set(slot, randomUUID()); return { ok: true, value: { dataEmpty: true, logoutFailed: true } }; },
+    async status() { return { ok: true, value: { signedIn: false, facts: null } }; },
+    async logout() { return { ok: true, value: { logout: 'ok' } }; },
   };
   const store = agentRuntimeStore(db);
 
@@ -163,6 +169,25 @@ describe('migration 0056 reverses only before use', () => {
       const left = await client.query(`SELECT count(*)::int AS n FROM information_schema.tables WHERE table_name = ANY($1)`,
         [['agent_runtime_slots', 'agent_runtime_bindings', 'agent_runtime_connections', 'agent_runtime_operator_statements']]);
       assert.equal(left.rows[0].n, 0);
+    } finally {
+      await client.query('ROLLBACK').catch(() => undefined);
+      client.release();
+    }
+  });
+});
+
+describe('migration 0057 reverses to the T3 columns', () => {
+  test('drops only the sign-in notice columns (inside a rolled-back transaction)', async () => {
+    const down = await readFile('packages/db/migrations/reverse/0057_agent_runtime_sign_in.down.sql', 'utf8');
+    const client = await pool.connect();
+    const columns = async () => (await client.query<{ column_name: string }>(`SELECT column_name FROM information_schema.columns
+      WHERE table_name = 'agent_runtime_connections' ORDER BY ordinal_position`)).rows.map((row) => row.column_name);
+    try {
+      await client.query('BEGIN');
+      assert.ok((await columns()).includes('account_fingerprint'));
+      await client.query(down);
+      assert.deepEqual(await columns(), ['id', 'owner_user_id', 'binding_id', 'transport', 'client', 'state', 'sign_in_method', 'auth_method', 'plan_label',
+        'account_label', 'signed_in_at', 'created_at', 'revoked_at']);
     } finally {
       await client.query('ROLLBACK').catch(() => undefined);
       client.release();

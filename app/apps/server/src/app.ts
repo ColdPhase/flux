@@ -177,7 +177,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await app.register(searchRoutes, { db, sessions: identity, cursorSecret: identityConfig.secret, exposeWork });
   await app.register(exportRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, storage: fileStorage });
   // The `runtime` transport (F-022 AIM-3): off unless the operator set FLUX_AGENT_RUNTIME.
-  await app.register(agentRuntimeRoutes, { db, sessions: identity, config: config.agentRuntime });
+  await app.register(agentRuntimeRoutes, { db, sessions: identity, config: config.agentRuntime, secret: identityConfig.secret, publicOrigin: identityConfig.publicOrigin });
 
   registerHealth(app, { pool, boss, manifest: migrationManifest, filesDir });
   registerFixtureRoutes(app, { config: config.fixture, db, boss, publicOrigin: identityConfig.publicOrigin });
