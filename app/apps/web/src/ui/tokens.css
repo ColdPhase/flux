@@ -11,6 +11,7 @@
   --bg-raised: #ffffff;
   --bg-side: #f4f5f7;   /* quiet fill inside the sheet (was the sidebar) */
   --bg-hover: #eceef2;
+  --bg-press: #e1e4ea; /* a control held down: a step past its hover (HIG-16) */
   --bg-active: #f4f5f7;
   --bg-selected: #ffffff; /* the chosen segment, raised above its track */
   --nav-current: var(--accent-soft); /* the current place's pill in the phone bar */
@@ -131,7 +132,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --bg-chrome: #191c21; --bg: #21252b; --bg-raised: #21252b; --bg-side: #282d35; --bg-hover: #303741; --bg-active: #282d35;
+    --bg-chrome: #191c21; --bg: #21252b; --bg-raised: #21252b; --bg-side: #282d35; --bg-hover: #303741; --bg-press: #3b4451; --bg-active: #282d35;
     --bg-selected: #3d4652; --nav-current: color-mix(in srgb, var(--accent) 28%, var(--bg));
     --sheet-edge: #363f49; --bubble: #2a3038; --bubble-own: #2e3742;
     --tint-danger: #402f2f; --tint-ok: #273b31; --tint-warning: #3a3328; --canvas: #1c2026; --canvas-dot: #3c4551;
@@ -148,7 +149,7 @@
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg-chrome: #191c21; --bg: #21252b; --bg-raised: #21252b; --bg-side: #282d35; --bg-hover: #303741; --bg-active: #282d35;
+  --bg-chrome: #191c21; --bg: #21252b; --bg-raised: #21252b; --bg-side: #282d35; --bg-hover: #303741; --bg-press: #3b4451; --bg-active: #282d35;
   --bg-selected: #3d4652; --nav-current: color-mix(in srgb, var(--accent) 28%, var(--bg));
   --sheet-edge: #363f49; --bubble: #2a3038; --bubble-own: #2e3742;
   --tint-danger: #402f2f; --tint-ok: #273b31; --tint-warning: #3a3328; --canvas: #1c2026; --canvas-dot: #3c4551;

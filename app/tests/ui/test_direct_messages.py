@@ -18,7 +18,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, box, shot, start_forwarder
+from test_app_shell import BACK, DESKTOP, ORIGIN, PHONE, UPSTREAM, box, shot, start_forwarder
 
 PASSWORD = "messages between friends"
 STAMP = int(time.time() * 1000)
@@ -241,7 +241,7 @@ class DirectMessageJourney(unittest.TestCase):
         expect(page).to_have_url(f"{ORIGIN}{self.dm_path}")
         expect(page.get_by_role("heading", level=1, name="Ada Kowalska")).to_be_visible()
         # Inside a conversation the top-left control leads back to all messages (#272).
-        expect(page.locator("header.top").get_by_role("button", name="Back", exact=True)).to_be_visible()
+        expect(page.locator("header.top").get_by_role("button", name=BACK)).to_be_visible()
         expect(page.locator(".composer__audience")).to_contain_text("Only you and Ada")
         send = page.get_by_role("button", name="Send message")
         size = box(page, send)
