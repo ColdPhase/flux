@@ -74,6 +74,10 @@ Apple Human Interface Guidelines. [The HIG checklist](apple-hig-mobile.md) turns
 Apple's words, how Flux applies them on the web, and a check in emulation. Cite rule IDs
 in phone and tablet issues, PRs and reviews.
 
+[Calm like Apple's own apps](research/2026-10-06-apple-native-calm.md) (research note,
+2026-10-06) analyses the visual language behind those rules after the founder found the phone UI
+too dense, and proposes a per-screen declutter list and ten principles for the phone UI.
+
 ## Separate visual and behavior evaluation
 
 1. Render and inspect the whole view before handoff. Record scenario, viewport,
