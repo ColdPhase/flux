@@ -190,6 +190,8 @@ class TypingJourney(unittest.TestCase):
         expect(bob.locator(".typing-notice")).to_contain_text("Alice Rivera", timeout=2000)
         self.measure("native-send-stop", lambda: self.composer(alice).press("Enter"), lambda: expect(bob.locator(".typing-notice")).not_to_contain_text("Alice Rivera", timeout=750), 750)
         expect(self.thread(alice).locator(".project-convo__message", has_text="A manual switch still works when the sensor is unavailable.")).to_have_count(1)
+        # Sending is instant (#264): the reply shows at once and is stored a moment later.
+        expect(self.thread(alice).locator("[data-client-message-id]")).to_have_count(0)
         native = alice.request.get(f"/api/v1/conversations/{self.conversations[0]}").json()
         self.assertEqual(sum(message["body"] == "A manual switch still works when the sensor is unavailable." for message in native["messages"]), 1)
         # The existing project feed refetches on focus and its 15-second fallback.

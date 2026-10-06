@@ -358,17 +358,25 @@ class TaskAnnouncements(unittest.TestCase):
             route.abort("connectionreset")
 
         page.route(path, lose)
+        # Flux's light reachability check gets no answer either, so the person's Retry is what sends it.
+        page.route("**/api/v1/me", lambda route: route.abort("failed"))
         section.get_by_role("button", name="Start the discussion").click()
-        expect(section.get_by_role("alert")).to_contain_text("Could not confirm the send")
-        expect(box).to_have_value(text)
+        # Sending is instant (#264): with no answer the message waits in Details, and its command stays
+        # in the task's record (its queue) rather than in the emptied field.
+        queued = section.locator("[data-client-message-id]")
+        expect(queued).to_contain_text("Waiting for connection")
+        expect(queued).to_contain_text(text)
+        expect(box).to_have_value("")
         kept = page.evaluate("key => JSON.parse(localStorage.getItem(key))", key)
-        self.assertEqual(kept, {**record, 'unconfirmed': True})
+        self.assertEqual(kept['body'], "")
+        self.assertEqual([(item['id'], item['body'], item['state']) for item in kept['pending']], [(record['commandId'], text, 'waiting')])
         self.assertEqual(sent, [record['commandId']])
         page.unroute(path)
         retried: list[str] = []
         page.on("request", lambda request: retried.append(json.loads(request.post_data or "{}").get("clientMessageId", ""))
                 if request.method == "POST" and request.url.endswith(f"/work/{self.ids['from_message']}/discussion") else None)
-        section.get_by_role("button", name="Start the discussion").click()
+        queued.get_by_role("button", name="Retry").click()
+        page.unroute("**/api/v1/me")
         expect(page).to_have_url(re.compile(r"/conversations/[0-9a-f-]+#message-"))
         self.assertEqual(retried, sent, "the retry reuses the first attempt's client message id")
         discussion = self.api(page, "GET", f"/api/v1/work/{self.ids['from_message']}/discussion", status=200)

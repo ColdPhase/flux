@@ -90,6 +90,10 @@ class SharedComposerJourney(unittest.TestCase):
     def file(self, name="measurements.bin", content=b"\x00\xff\x04\n\x80 exact bytes"):
         return {"name": name, "mimeType": "application/octet-stream", "buffer": content}
 
+    def stored(self, page):
+        """Sending is instant (#264): the field empties at once; this waits until no message is still queued."""
+        expect(page.locator("[data-client-message-id]")).to_have_count(0)
+
     def discussion(self, page, task):
         return self.api(page, "GET", f"/api/v1/work/{task['id']}/discussion")
 
@@ -121,6 +125,7 @@ class SharedComposerJourney(unittest.TestCase):
             self.assertEqual(writer.request.get(f"/api/v1/files/{item['staged']['id']}").status, 404, "private staging belongs only to uploader")
         owner.get_by_role("button", name="Send to task").click()
         expect(owner.get_by_role("list", name="Files in your draft")).to_have_count(0)
+        self.stored(owner)
         discussion = self.discussion(owner, a)
         root = discussion["root"]
         self.assertEqual(root["body"], "")
@@ -131,6 +136,7 @@ class SharedComposerJourney(unittest.TestCase):
         expect(writer.get_by_text("Ready, private", exact=False)).to_have_count(1)
         writer.get_by_role("button", name="Send to task").click()
         expect(writer.get_by_role("list", name="Files in your draft")).to_have_count(0)
+        self.stored(writer)
         discussion = self.discussion(owner, a)
         reply = discussion["messages"][1]
         self.assertEqual(reply["body"], "")
@@ -174,17 +180,24 @@ class SharedComposerJourney(unittest.TestCase):
                 route.continue_()
         page.route(path, lose)
         page.get_by_role("button", name="Send to task").click()
-        expect(page.get_by_role("alert")).to_contain_text("Could not confirm")
+        # Sending is instant (#264): the field empties and the message itself says it was not sent.
+        queued = page.locator("[data-client-message-id]")
+        expect(queued.get_by_role("alert")).to_contain_text("Not sent")
+        expect(page.get_by_label("Write to this task")).to_have_value("")
         page.reload()
-        expect(page.get_by_label("Write to this task")).to_have_value(lost[0]["body"])
-        expect(page.get_by_text("Source: Verified measurements · v1")).to_be_visible()
+        # The unsent message keeps its command, text, source and files across the reload.
+        expect(queued.get_by_role("alert")).to_contain_text("Not sent")
+        expect(queued).to_contain_text(lost[0]["body"])
+        expect(queued.get_by_text("Source: Verified measurements · v1")).to_be_visible()
+        expect(page.get_by_label("Write to this task")).to_have_value("")
         page.get_by_role("link", name="Open in Conversation", exact=True).click()
         pane = page.get_by_role("complementary", name="Replies")
-        expect(pane.get_by_label("Reply", exact=True)).to_have_value(lost[0]["body"])
+        expect(pane.get_by_label("Reply", exact=True)).to_have_value("")
         retries = []
         page.on("request", lambda request: retries.append(request.post_data_json) if request.method == "POST" and request.url.endswith(f"/work/{a['id']}/discussion") else None)
-        pane.get_by_role("button", name="Send reply").click()
-        expect(pane.get_by_label("Reply", exact=True)).to_have_value("")
+        # The same task's queue shows in its Conversation thread; Retry there repeats the command.
+        pane.locator("[data-client-message-id]").get_by_role("button", name="Retry").click()
+        self.stored(page)
         self.assertEqual(retries[-1], lost[0], "same operation, task, UUID, text, references and ordered files")
         discussion = self.discussion(page, a)
         matching = [item for item in discussion["messages"] if item["body"] == lost[0]["body"]]
@@ -265,11 +278,19 @@ class SharedComposerJourney(unittest.TestCase):
         page.route(f"**/api/v1/work/{a['id']}/discussion", hold_send)
         page.get_by_role("button", name="Send to task").click()
         page.wait_for_function("() => window.__fluxHeldSendReady === true", timeout=10000)
+        # Sending is instant (#264): A's field empties at once while its message is held, marked "Sending…".
+        expect(page.get_by_label("Write to this task")).to_have_value("")
+        expect(page.locator("[data-client-message-id]").filter(has_text="A's held private bytes")).to_contain_text("Sending…")
         page.get_by_label("Task", exact=True).select_option(b["id"])
         expect(page.get_by_label("Write to this task")).to_have_value("B's distinct draft")
+        expect(page.get_by_text("A's held private bytes")).to_have_count(0)
         page.get_by_label("Task", exact=True).select_option(a["id"])
-        expect(page.get_by_label("Write to this task")).to_have_value("A's held private bytes")
+        expect(page.get_by_label("Write to this task")).to_have_value("")
+        # Held after the server stored it: A's thread shows the message once, never twice.
+        expect(page.get_by_role("region", name=re.compile("^Thread of")).get_by_text("A's held private bytes")).to_have_count(1)
         pending[0][0].fulfill(response=pending[0][1])
+        self.stored(page)
+        expect(page.get_by_role("region", name=re.compile("^Thread of")).get_by_text("A's held private bytes")).to_have_count(1)
         expect(page.get_by_label("Write to this task")).to_have_value("")
         expect(page.get_by_label("Task", exact=True)).to_have_value(a["id"])
         page.get_by_label("Task", exact=True).select_option(b["id"])
@@ -333,6 +354,7 @@ class SharedComposerJourney(unittest.TestCase):
         self.assertEqual(after["files"][0]["staged"]["uploadId"], before["files"][0]["uploadId"])
         page.get_by_role("button", name="Send to task").click()
         expect(page.get_by_label("Write to this task")).to_have_value("")
+        self.stored(page)
         self.assertEqual(self.discussion(page, a)["root"]["files"][0]["id"], after["files"][0]["staged"]["id"])
 
     def test_07_account_project_and_private_helper_scopes_preserve_public_drafts(self):
@@ -389,6 +411,7 @@ class SharedComposerJourney(unittest.TestCase):
                 box.press("Enter")
                 expect(box).to_have_value("")
                 expect(box).to_be_focused()
+                self.stored(page)
                 discussion = self.discussion(page, a)
                 page.goto(f"/projects/{project['id']}/conversations/{discussion['conversationId']}")
                 pane = page.get_by_role("complementary", name="Replies")
@@ -453,6 +476,8 @@ class SharedComposerJourney(unittest.TestCase):
         writer.route(f"**/api/v1/work/{a['id']}/discussion", revoke_send)
         with writer.expect_response(lambda response: response.request.method == "POST" and response.url.endswith(f"/work/{a['id']}/discussion")):
             writer.get_by_role("button", name="Send to task").click()
+        # A refusal returns the complete draft, with its command, to the emptied field (#264).
+        expect(writer.get_by_label("Write to this task")).to_have_value(command_before["body"])
         writer.unroute(f"**/api/v1/work/{a['id']}/discussion", revoke_send)
         access("contributor")
         self.open_agents(writer, project, a)
@@ -464,6 +489,7 @@ class SharedComposerJourney(unittest.TestCase):
         self.assertEqual(len(self.discussion(owner, a)["messages"]), 1)
         writer.get_by_role("button", name="Send to task").click()
         expect(writer.get_by_label("Write to this task")).to_have_value("")
+        self.stored(writer)
         self.assertEqual(self.discussion(owner, a)["messages"][-1]["authorId"], self.people["writer"])
 
     def test_10_map_details_and_unloaded_old_conversation_retry_one_task_command(self):
@@ -493,7 +519,9 @@ class SharedComposerJourney(unittest.TestCase):
                 route.continue_()
         page.route(f"**/api/v1/work/{task['id']}/discussion", lose)
         details.get_by_role("button", name="Start the discussion").click()
-        expect(details.get_by_role("alert")).to_contain_text("Could not confirm")
+        # Sending is instant (#264): Details shows the message as not sent, with its command kept.
+        expect(details.locator("[data-client-message-id]").get_by_role("alert")).to_contain_text("Not sent")
+        expect(box).to_have_value("")
         discussion = self.discussion(page, task)
         self.api(page, "POST", f"/api/v1/projects/{project['id']}/conversations", {"body": "A newer unrelated root", "clientMessageId": str(uuid.uuid4())}, 201)
         # Return real bounded root pages, keeping the older seek in flight while its deep link sends.
@@ -512,12 +540,15 @@ class SharedComposerJourney(unittest.TestCase):
         page.route("**/api/v1/projects/*/conversation-roots*", bounded)
         page.goto(f"/projects/{project['id']}/conversations/{discussion['conversationId']}")
         pane = page.get_by_role("complementary", name="Replies")
-        expect(pane.get_by_label("Reply", exact=True)).to_have_value(lost[0]["body"])
+        expect(pane.get_by_label("Reply", exact=True)).to_have_value("")
+        queued = pane.locator("[data-client-message-id]")
+        expect(queued.get_by_role("alert")).to_contain_text("Not sent")
         self.assertTrue(first)
         self.assertNotIn(discussion["conversationId"], [root["conversationId"] for root in first[0]["roots"]])
         replay = []
         page.on("request", lambda request: replay.append(request.post_data_json) if request.method == "POST" and request.url.endswith(f"/work/{task['id']}/discussion") else None)
-        pane.get_by_role("button", name="Send reply").click()
+        queued.get_by_role("button", name="Retry").click()
+        self.stored(page)
         expect(pane.get_by_label("Reply", exact=True)).to_have_value("")
         self.assertEqual(replay[-1], lost[0])
         self.assertEqual(len(self.discussion(page, task)["messages"]), 1)
@@ -570,6 +601,7 @@ class SharedComposerJourney(unittest.TestCase):
         pane.get_by_label("Reply", exact=True).fill(recovered['body'] + " · confirmed revised intent")
         pane.get_by_role("button", name="Send reply").click()
         expect(pane.get_by_label("Reply", exact=True)).to_have_value("")
+        self.stored(page)
         self.assertEqual(self.discussion(page, a)["messages"][-1]["source"], {"materialId": recovered['references'][0]['materialId'], "version": 1})
 
     def test_12_delayed_task_selection_blocks_the_old_composer_and_preserves_scope_on_cancel_or_failure(self):

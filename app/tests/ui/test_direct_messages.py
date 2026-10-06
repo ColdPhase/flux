@@ -113,6 +113,8 @@ class DirectMessageJourney(unittest.TestCase):
             self.composer(page).press("Enter")
         expect(page.locator(".dm-msg__body", has_text=text)).to_be_visible()
         expect(self.composer(page)).to_have_value("")
+        # Sending is instant (#264): the message shows at once and is stored a moment later.
+        expect(page.locator("[data-client-message-id]")).to_have_count(0)
 
     # ---------------------------------------------------------------- start and reply
 
@@ -199,10 +201,12 @@ class DirectMessageJourney(unittest.TestCase):
         page.route(re.compile(r".*/api/v1/dms/[0-9a-f-]+/messages$"), lose_first_response)
         self.composer(page).fill("I’ll order two sensors today.")
         self.composer(page).press("Enter")
-        alert = page.get_by_role("alert")
-        expect(alert).to_contain_text("Not sent")
-        expect(self.composer(page)).to_have_value("I’ll order two sensors today.")
-        alert.get_by_role("button", name="Retry").click()
+        # Sending is instant (#264): no answer leaves the message waiting on the page with its id.
+        queued = page.locator("[data-client-message-id]").filter(has_text="I’ll order two sensors today.")
+        expect(queued).to_contain_text("Waiting for connection")
+        expect(self.composer(page)).to_have_value("")
+        queued.get_by_role("button", name="Retry").click()
+        expect(queued).to_have_count(0)
         expect(page.locator(".dm-msg__body", has_text="I’ll order two sensors today.")).to_have_count(1)
         expect(self.composer(page)).to_have_value("")
         status, dm = self.api(page, f"/api/v1/dms/{self.dm_id()}")

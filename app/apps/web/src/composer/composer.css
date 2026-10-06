@@ -22,3 +22,37 @@
   .composer-files button, .message-files a { min-height: 44px; }
   .composer-files__list li > button { min-width: 44px; }
 }
+/* Instant sending (#264): a sent message's state on the message itself, and the offline line. */
+.message-files.is-pending .message-files__name { display: flex; align-items: center; gap: 6px; color: var(--text-2); font-size: var(--fs-sm); min-height: 32px; }
+.message-files.is-pending .message-files__name span { overflow-wrap: anywhere; min-width: 0; }
+.message-files.is-pending small { flex: none; color: var(--text-3); font-size: var(--fs-sm); }
+.outbox-source { display: block; margin: 2px 0 0; color: var(--text-2); font-size: var(--fs-sm); }
+.outbox-status { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; margin: 4px 0 0; color: var(--text-3); font-size: var(--fs-sm); line-height: 1.4; }
+.outbox-status__dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .7; }
+.outbox-status.is-waiting .outbox-status__dot { background: transparent; box-shadow: inset 0 0 0 1.5px currentColor; }
+.outbox-status.is-failed { color: var(--danger); }
+.outbox-status.is-failed svg { flex: none; }
+.outbox-status__why { color: var(--text-2); }
+.outbox-status__acts { display: inline-flex; gap: 4px; }
+.outbox-status__b { font: inherit; font-weight: 550; color: var(--text); background: transparent; border: 0; border-radius: var(--r); min-height: 28px; padding: 2px 8px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; touch-action: manipulation; }
+.outbox-status__b:hover { background: var(--bg-hover, rgba(127, 127, 127, .12)); }
+.outbox-status__b:active { background: var(--bg-active, rgba(127, 127, 127, .2)); transform: scale(.97); }
+.outbox-status__b:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.is-pending > p, .is-pending .dm-msg__body, .is-pending .agents-msg__body { opacity: .82; }
+.is-pending.is-failed-send > p, .is-pending.is-failed-send .dm-msg__body, .is-pending.is-failed-send .agents-msg__body { opacity: 1; }
+/* Empty while online: kept in place as a live region, but out of the flow so it adds no gap. */
+.connection-line-region:empty { position: absolute; }
+.connection-line { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; padding: 6px 10px; border-radius: var(--r); background: var(--bg-active, rgba(127, 127, 127, .12)); color: var(--text-2); font-size: var(--fs-sm); line-height: 1.45; }
+.connection-line::before { content: ''; flex: none; width: 6px; height: 6px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px currentColor; }
+@media (pointer: coarse) {
+  .outbox-status, .message-files.is-pending .message-files__name, .message-files.is-pending small, .connection-line { font-size: 12px; }
+  .outbox-status__b { min-height: 44px; min-width: 44px; padding: 0 10px; }
+}
+@media (prefers-reduced-motion: reduce) { .outbox-status__b:active { transform: none; } }
+/* The stream's queued root holds the place of the reply row the stored root will show; in a thread the
+   status sits in the meta row, where the time will be. */
+.project-convo__message.is-pending-stream > .outbox-status { min-height: 26px; margin: 6px 0 0; }
+.project-convo__message.is-mine.is-pending-stream > .outbox-status { justify-content: flex-end; }
+.project-convo__message-meta > .outbox-status { margin: 0; }
+.project-convo__message-meta > .outbox-status span { visibility: visible; }
+@media (pointer: coarse) { .project-convo__message.is-pending-stream > .outbox-status { min-height: 44px; } }

@@ -250,12 +250,15 @@ test('required metadata retry preserves lost-response command UUID, native reply
     sends.push(route.request().postDataJSON().clientMessageId as string);
     if(first){first=false;const response=await route.fetch();assert.equal(response.status(),201);await route.abort('failed');}else await route.continue();
   });
+  // Flux's light reachability check gets no answer either, so the reply waits until the person retries (#264).
+  await page.route('**/api/v1/me',(route)=>route.abort('failed'));
   await page.locator('#thread-composer').fill(replyText);await page.getByRole('button',{name:'Send reply',exact:true}).click();
-  await expect(page.getByRole('button',{name:'Retry send',exact:true})).toBeVisible();
-  // The thread's reply draft (#195 shared composer) keeps the unconfirmed command's one UUID.
+  const queued=page.locator('#thread [data-client-message-id]').filter({hasText:replyText});
+  await expect(queued).toContainText('Waiting for connection');
+  // The thread's composer record (#195 shared composer, #264 queue) keeps the unconfirmed command's one UUID.
   const storageKey=`flux:composer:${owner.id}:${place.id}:conversation:${thread.id}`;
-  const pending=await page.evaluate((key)=>JSON.parse(localStorage.getItem(key)!),storageKey);
-  assert.equal(pending.commandId,sends[0]);assert.equal(pending.unconfirmed,true);
+  const pending=(await page.evaluate((key)=>JSON.parse(localStorage.getItem(key)!),storageKey)).pending[0];
+  assert.equal(pending.id,sends[0]);assert.equal(pending.attempted,true);
   await page.route(referencePattern,(route)=>route.fulfill({status:503,contentType:'application/json',body:'{"code":"WORK_READ_UNAVAILABLE","error":"Injected required read failure"}'}));
   // The committed reply may arrive over WS after its response was lost. Keep a
   // real citation focused so that arrival/viewport movement cannot retire the
@@ -271,13 +274,14 @@ test('required metadata retry preserves lost-response command UUID, native reply
   assert.ok(before>=view.top-2&&before<view.bottom,`reader still sees the answer before refresh: ${before} not in ${view.top}–${view.bottom}`);
   await page.unroute(referencePattern);await page.getByRole('button',{name:'Refresh task references',exact:true}).click();
   await expect(page.locator('.thread__pane')).toHaveAttribute('data-references-phase','ready');
-  await expect(page.locator('#thread-composer')).toHaveValue(replyText);
+  await expect(page.locator('#thread-composer')).toHaveValue('');
   const after=await anchor.evaluate((row)=>row.getBoundingClientRect().top);
   assert.ok(Math.abs(after-before)<=2,`reader retains answer anchor:${before}→${after}`);
-  const retained=await page.evaluate((key)=>JSON.parse(localStorage.getItem(key)!),storageKey);
-  assert.equal(retained.commandId,pending.commandId);
-  await page.getByRole('button',{name:'Retry send',exact:true}).click();await expect(page.locator('#thread-composer')).toHaveValue('');
-  assert.deepEqual(sends,[pending.commandId,pending.commandId]);
+  const retained=(await page.evaluate((key)=>JSON.parse(localStorage.getItem(key)!),storageKey)).pending[0];
+  assert.equal(retained.id,pending.id);
+  await queued.getByRole('button',{name:'Retry',exact:true}).click();await expect(queued).toHaveCount(0);
+  await page.unroute('**/api/v1/me');
+  assert.deepEqual(sends,[pending.id,pending.id]);
   const canonical=expectStatus(await owner.browser.request('GET',`/api/v1/conversations/${thread.id}`),200) as Conversation;
   const matches=canonical.messages.filter((message)=>message.body===replyText);assert.equal(matches.length,1);assert.equal(matches[0]!.authorId,owner.id);
   await capture(page,'references-phone-retry-reader');

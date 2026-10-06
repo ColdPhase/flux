@@ -99,6 +99,47 @@ left", What matters, task and doc sources, comparison sources, live invitations)
 therefore keeps working unchanged. The personal assistant is asked from a thread
 and answers there; its answers are not counted in `replyCount`.
 
+## Instant sending and the offline queue (#264, 2026-10-06)
+
+Apple HIG evaluation findings 4 and 13 on [#264](https://github.com/ColdPhase/flux/issues/264)
+(HIG-59, HIG-66, HIG-67, HIG-69, HIG-71 in the [checklist](../design/apple-hig-mobile.md)).
+This applies to every composer that publishes a message: the stream's root composer, the
+reply thread, a task's discussion (thread, Tasks/Map Details and Agents) and direct messages.
+Private assistant prompts keep their own send path.
+
+- **Send moves the message out of the field.** Send (or Enter) freezes the draft's text,
+  files and source with its existing `clientMessageId` into a per-composer queue, kept in the
+  same browser record as the draft (`pending`), and empties the field at once. The message
+  shows immediately at the end of its stream or thread, as the person's own message marked
+  "Sending…" (or "Uploading…" while one of its files is still uploading), announced once in a
+  polite live region. A second tap finds an empty draft, so it posts nothing.
+- **Confirmation swaps in place.** When the server confirms, the queued message is replaced by
+  the stored message in the same render, keeping the same list item, so nothing is shown
+  twice and nothing moves. A refreshed copy that arrives before the response hides the queued
+  one. No success message is shown (HIG-69).
+- **One command per message.** Every attempt for a queued message reuses its
+  `clientMessageId`, so retries, reloads, other tabs and automatic resends store it once; the
+  server's idempotency rule is unchanged. Messages of one composer are sent one at a time in
+  the order they were sent.
+- **Not sent.** When the server answers with an error, the message stays in place marked
+  "Not sent" (an alert) with **Retry** and **Remove**. Retry sends the same command again.
+  Remove takes it out of the conversation and, when the field is empty, puts its text, files
+  and source back into the field with the same command (a later edit gives it a new one).
+  An error that a retry cannot fix (`400`, `401`, `403`, `404`, `409`, `413`, `422`) returns
+  the message to an empty field at once with the existing explanation, so its files and
+  source can be fixed there; the draft is restored only when sending fails.
+- **Offline.** The browser being offline (`navigator.onLine` and its events) or a send or
+  upload failing to reach Flux shows one quiet line above the composer ("You’re offline…" or
+  "Flux isn’t responding…"). Messages sent then, and a send that could not reach Flux, wait
+  in the queue marked "Waiting for connection". When the browser is back online, or a light
+  check of `GET /api/v1/me` gets any answer (every 3 s, slowing to 30 s, only while Flux is
+  unreachable), the waiting messages are sent automatically in their order with their
+  original `clientMessageId`s.
+- **Reload.** A queued message survives a reload with its command; one whose outcome was
+  unknown is sent again (idempotently) when its composer opens. The record follows the
+  draft's storage and sign-out rules: `localStorage` per account, project and context for
+  project composers, `sessionStorage` for direct messages (their drafts stay in the tab).
+
 ## Stacked web surface (#36)
 
 The project conversation UI is developed on `codex-hubert/36-ui-integration`,
@@ -108,10 +149,11 @@ The shell loads only
 projects that the current person can see, and a selected project route loads its
 conversation and materials under the current session. A revoked project route
 returns an error instead of keeping old server content on screen. The active
-composer draft is kept per signed-in user and conversation in session storage;
-its pending command and UUID survive a reload or view switch after a failed send,
-until the message text or material citation changes. Starting a conversation and
-replying cannot reuse one another's UUID. A published
+composer draft is kept per signed-in user and conversation; a sent message waits
+in its queue with its command and UUID until it is confirmed (see [Instant sending
+and the offline queue](#instant-sending-and-the-offline-queue-264-2026-10-06)), and
+a draft returned after a failed send keeps that UUID until its text, files or
+citation change. Starting a conversation and replying cannot reuse one another's UUID. A published
 material from a private draft uses the chosen draft version and the exact edited
 public text. The private draft stays separate.
 

@@ -162,6 +162,8 @@ class AgentsViewJourney(unittest.TestCase):
         thread = page.get_by_role("region", name=f"Thread of {TASK}")
         expect(thread.get_by_text("I'll take the reconnect bug with Codex")).to_be_visible()
         expect(box).to_have_value("")
+        # Sending is instant (#264): the message shows at once and is stored a moment later.
+        expect(thread.locator("[data-client-message-id]")).to_have_count(0)
         discussion = self.api(page, "GET", f"/api/v1/work/{self.ids['task']}/discussion", status=200)
         self.assertEqual(discussion["root"]["body"], "I'll take the reconnect bug with Codex; Claude Code reviews it.")
         self.assertEqual(discussion["root"]["authorId"], HUBERT["id"])
@@ -171,6 +173,7 @@ class AgentsViewJourney(unittest.TestCase):
         reply.fill("OK. Workshop PC is offline until tonight.")
         marek.get_by_role("button", name="Send to task").click()
         expect(marek.get_by_role("region", name=f"Thread of {TASK}").get_by_text("Workshop PC is offline until tonight")).to_be_visible()
+        expect(marek.locator("[data-client-message-id]")).to_have_count(0)
         page.reload()
         expect(page.get_by_role("region", name=f"Thread of {TASK}").get_by_text("Workshop PC is offline until tonight")).to_be_visible()
         discussion = self.api(page, "GET", f"/api/v1/work/{self.ids['task']}/discussion", status=200)
@@ -334,12 +337,17 @@ class AgentsViewJourney(unittest.TestCase):
         box = page.get_by_label("Write to this task")
         box.fill("Firmware 1.4 fixes the reconnect loop.")
         box.press("Enter")
-        expect(page.get_by_role("alert")).to_contain_text("Your text is kept")
-        expect(box).to_have_value("Firmware 1.4 fixes the reconnect loop.")
-        page.reload()
-        expect(box).to_have_value("Firmware 1.4 fixes the reconnect loop.")
-        page.get_by_role("button", name="Send to task").click()
+        # Sending is instant (#264): the field empties at once and the message itself says it was not sent.
+        queued = self.thread(page).locator("[data-client-message-id]").filter(has_text="Firmware 1.4 fixes the reconnect loop.")
+        expect(queued.get_by_role("alert")).to_contain_text("Not sent")
         expect(box).to_have_value("")
+        page.reload()
+        # The unsent message and its command survive the reload.
+        expect(queued.get_by_role("alert")).to_contain_text("Not sent")
+        expect(box).to_have_value("")
+        queued.get_by_role("button", name="Retry").click()
+        expect(queued).to_have_count(0)
+        expect(self.thread(page).get_by_text("Firmware 1.4 fixes the reconnect loop.")).to_have_count(1)
         discussion = self.api(page, "GET", path, status=200)
         bodies = [discussion["root"]["body"], *[m["body"] for m in discussion["messages"] if m["id"] != discussion["root"]["id"]]]
         self.assertEqual(bodies.count("Firmware 1.4 fixes the reconnect loop."), 1, "the retry reused the first attempt's message id")
@@ -350,8 +358,13 @@ class AgentsViewJourney(unittest.TestCase):
         page.route(f"**/api/v1/work/{self.ids['task']}/discussion", lambda route: route.abort() if route.request.method == "POST" else route.continue_())
         page.get_by_label("Write to this task").fill("Battery check tonight")
         page.get_by_role("button", name="Send to task").click()
-        expect(page.get_by_role("alert")).to_be_visible()
-        expect(page.get_by_role("alert")).to_contain_text("Could not confirm the send")
+        # No answer from Flux (#264): the message waits on the page and the quiet line says why.
+        queued = self.thread(page).locator("[data-client-message-id]").filter(has_text="Battery check tonight")
+        expect(queued).to_contain_text("Waiting for connection")
+        expect(page.get_by_text("Flux isn’t responding. Messages wait here and send when it’s back.")).to_be_visible()
+        queued.get_by_role("button", name="Remove").click()
+        expect(page.get_by_label("Write to this task")).to_have_value("Battery check tonight")
+        page.get_by_label("Write to this task").fill("")
 
     def test_05_outsiders_cannot_open_the_view(self) -> None:
         outsider = self.page("outsider")
