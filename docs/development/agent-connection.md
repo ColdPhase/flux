@@ -12,6 +12,13 @@ The owner operates an official Claude Code client and its compute account. Flux 
 OAuth consent, narrow MCP tools, current project policy and sourced proposals. No
 provider credential or model request passes through Flux.
 
+**Proposed amendment, 2026-10-05:** [F-024](../product/mcp-identity.md) defines
+how this OAuth flow works when people sign in through an external OIDC provider:
+the provider on `/login`, issuer-and-subject identities, a standing check with
+the provider, a confirmation age for managed accounts, step-up for sensitive
+grants and opt-in connection access keys. Until its slices land, the rules below
+are the implemented behaviour.
+
 ## Identities and consent
 
 The browser session belongs to a person. A connection selects an existing,
