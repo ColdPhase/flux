@@ -11,6 +11,7 @@
 #   FLUX_PERF_COLD       cold passes, each after restarting PostgreSQL and the API (default 20)
 #   FLUX_PERF_IMAGE_TAG  reuse an already built flux-foundation:<tag> image instead of building
 #   FLUX_PERF_KEEP=1     leave the stack and its volumes running afterwards (remove them yourself)
+#   FLUX_PERF_PHASES     which phases to run (default: count warm concurrent plans cold profile)
 # Runs at most two clients at a time; keep it to one run at a time on a shared host.
 set -eu
 
@@ -22,6 +23,8 @@ out="${FLUX_PERF_OUT:-$root/perf-results/$(date -u +%Y%m%dT%H%M%SZ)}"
 case "$out" in /*) ;; *) echo "FLUX_PERF_OUT must be absolute" >&2; exit 1 ;; esac
 runs="${FLUX_PERF_RUNS:-20}"
 cold="${FLUX_PERF_COLD:-20}"
+phases=" ${FLUX_PERF_PHASES:-count warm concurrent plans cold profile} "
+phase() { case "$phases" in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 mkdir -p "$out"
 
 export POSTGRES_USER=flux POSTGRES_DB=flux
@@ -100,48 +103,59 @@ $compose exec -T -e FLUX_PERF_PASSWORD="$perf_password" -e FLUX_PERF_MODE=prepar
   < scripts/perf-measure.mjs > "$out/state.jsonl"
 perf_state=$(sed -n 's/^{"type":"state",/{/p' "$out/state.jsonl")
 [ -n "$perf_state" ] || { echo "The measurement could not sign in or find the seeded views" >&2; exit 1; }
-echo "Statement counts and isolated times (owner, then member)..."
-measure -e FLUX_PERF_MODE=count -e FLUX_PERF_PERSON=0
-measure -e FLUX_PERF_MODE=count -e FLUX_PERF_PERSON=1
-echo "Warm runs ($runs per view, owner, then member)..."
-measure -e FLUX_PERF_MODE=warm -e FLUX_PERF_PERSON=0
-measure -e FLUX_PERF_MODE=warm -e FLUX_PERF_PERSON=1
-echo "Two clients at once ($runs runs each)..."
-# Pool use: API connections to PostgreSQL by state, sampled while both clients run.
-( while [ ! -f "$out/.concurrent-done" ]; do
-    psql -c "SELECT count(*), count(*) FILTER (WHERE state = 'active'), count(*) FILTER (WHERE state LIKE 'idle in transaction%')
-      FROM pg_stat_activity WHERE datname = 'flux' AND backend_type = 'client backend' AND pid <> pg_backend_pid()
-      AND application_name NOT IN ('psql', 'pgboss') AND query NOT LIKE 'LISTEN%'" 2>/dev/null || true
-  done > "$out/pool-samples.txt" ) &
-sampler=$!
-measure -e FLUX_PERF_MODE=concurrent -e FLUX_PERF_CLIENTS=2
-touch "$out/.concurrent-done"
-wait "$sampler" || true
-rm -f "$out/.concurrent-done"
+if phase count; then
+  echo "Statement counts and isolated times (owner, then member)..."
+  measure -e FLUX_PERF_MODE=count -e FLUX_PERF_PERSON=0
+  measure -e FLUX_PERF_MODE=count -e FLUX_PERF_PERSON=1
+fi
+if phase warm; then
+  echo "Warm runs ($runs per view, owner, then member)..."
+  measure -e FLUX_PERF_MODE=warm -e FLUX_PERF_PERSON=0
+  measure -e FLUX_PERF_MODE=warm -e FLUX_PERF_PERSON=1
+fi
+if phase concurrent; then
+  echo "Two clients at once ($runs runs each)..."
+  # Pool use: API connections to PostgreSQL by state, sampled while both clients run.
+  ( while [ ! -f "$out/.concurrent-done" ]; do
+      psql -c "SELECT count(*), count(*) FILTER (WHERE state = 'active'), count(*) FILTER (WHERE state LIKE 'idle in transaction%')
+        FROM pg_stat_activity WHERE datname = 'flux' AND backend_type = 'client backend' AND pid <> pg_backend_pid()
+        AND application_name NOT IN ('psql', 'pgboss') AND query NOT LIKE 'LISTEN%'" 2>/dev/null || true
+    done > "$out/pool-samples.txt" ) &
+  sampler=$!
+  measure -e FLUX_PERF_MODE=concurrent -e FLUX_PERF_CLIENTS=2
+  touch "$out/.concurrent-done"
+  wait "$sampler" || true
+  rm -f "$out/.concurrent-done"
+fi
 
-# Plans: auto_explain logs every statement of one pass per person that runs 2 ms or longer.
-psql -c "ALTER SYSTEM SET auto_explain.log_min_duration = '2ms'" -c "ALTER SYSTEM SET auto_explain.log_analyze = on" \
-  -c "ALTER SYSTEM SET auto_explain.log_buffers = on" -c "SELECT pg_reload_conf()" >/dev/null
-since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-measure -e FLUX_PERF_MODE=once
-psql -c "ALTER SYSTEM RESET auto_explain.log_min_duration" -c "ALTER SYSTEM RESET auto_explain.log_analyze" \
-  -c "ALTER SYSTEM RESET auto_explain.log_buffers" -c "SELECT pg_reload_conf()" >/dev/null
-$compose logs --no-color --no-log-prefix --since "$since" db > "$out/plans.log"
+# Plans: auto_explain logs every statement (EXPLAIN ANALYZE, BUFFERS) of one pass per person.
+if phase plans; then
+  echo "Plans..."
+  psql -c "ALTER SYSTEM SET auto_explain.log_min_duration = 0" -c "ALTER SYSTEM SET auto_explain.log_analyze = on" \
+    -c "ALTER SYSTEM SET auto_explain.log_buffers = on" -c "SELECT pg_reload_conf()" >/dev/null
+  since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  measure -e FLUX_PERF_MODE=once
+  psql -c "ALTER SYSTEM RESET auto_explain.log_min_duration" -c "ALTER SYSTEM RESET auto_explain.log_analyze" \
+    -c "ALTER SYSTEM RESET auto_explain.log_buffers" -c "SELECT pg_reload_conf()" >/dev/null
+  $compose logs --no-color --no-log-prefix --since "$since" db > "$out/plans.log"
+fi
 
-echo "Cold passes ($cold per person, each after restarting PostgreSQL and the API)..."
-i=0
-while [ "$i" -lt $((cold * 2)) ]; do
-  $compose restart db >/dev/null
-  $compose up -d --wait db >/dev/null
-  $compose restart api >/dev/null
-  $compose up -d --wait api >/dev/null
-  measure -e FLUX_PERF_MODE=pass -e FLUX_PERF_FIRST=$((i / 2)) -e FLUX_PERF_PERSON=$((i % 2))
-  i=$((i + 1))
-done
+if phase cold; then
+  echo "Cold passes ($cold per person, each after restarting PostgreSQL and the API)..."
+  i=0
+  while [ "$i" -lt $((cold * 2)) ]; do
+    $compose restart db >/dev/null
+    $compose up -d --wait db >/dev/null
+    $compose restart api >/dev/null
+    $compose up -d --wait api >/dev/null
+    measure -e FLUX_PERF_MODE=pass -e FLUX_PERF_FIRST=$((i / 2)) -e FLUX_PERF_PERSON=$((i % 2))
+    i=$((i + 1))
+  done
+fi
 $compose logs --no-color --no-log-prefix api > "$out/api.log"
 
 # CPU profile of the API over two warm passes per person (sampling adds overhead, so it is not timed).
-if [ "${FLUX_PERF_PROFILE:-1}" = 1 ]; then
+if phase profile; then
   echo "CPU profile..."
   FLUX_PERF_NODE_OPTIONS="--cpu-prof --cpu-prof-dir=/tmp/flux-prof --import=data:text/javascript,process.on(%22SIGTERM%22,()=%3Eprocess.exit(0))" \
     $compose up -d --wait api >/dev/null
@@ -152,5 +166,7 @@ if [ "${FLUX_PERF_PROFILE:-1}" = 1 ]; then
 fi
 
 python3 scripts/perf_report.py "$out/measure.jsonl" "$out/api.log" --json "$out/report.json" | tee "$out/report.md"
-awk -F'|' 'NF >= 3 { if ($1 + 0 > max) max = $1 + 0 } END { print "Most API connections seen at once: " max + 0 " (pool max 10)" }' "$out/pool-samples.txt" | tee -a "$out/report.md"
+if [ -f "$out/pool-samples.txt" ]; then
+  awk -F'|' 'NF >= 3 { if ($1 + 0 > max) max = $1 + 0 } END { print "Most API connections seen at once: " max + 0 " (pool max 10)" }' "$out/pool-samples.txt" | tee -a "$out/report.md"
+fi
 echo "Results: $out"

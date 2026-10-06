@@ -251,7 +251,7 @@ if (mode === 'prepare' || mode === 'plan') {
 }
 const sessions = state.cookies.map((cookies) => Object.assign(new Session(), { cookies: new Map(cookies) }));
 const plan = viewPlan(state.ids);
-if (mode === 'plan' || mode === 'count') emit({ type: 'plan', views: flatten(plan) });
+if (mode !== 'prepare') emit({ type: 'plan', views: flatten(plan) });
 
 // FLUX_PERF_PERSON: 0 is the workspace owner (Ada), 1 a member (Jonas); their access paths differ.
 const person = Number(process.env.FLUX_PERF_PERSON ?? 0);
