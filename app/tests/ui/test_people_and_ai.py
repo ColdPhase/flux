@@ -648,6 +648,7 @@ class PeopleAndAiPhone(unittest.TestCase):
                 list_ = ".project-convo__message-list"
                 for message_id in self.s["runs"]:
                     expect(page.locator(f"{list_} [data-message-id='{message_id}']")).to_have_count(1)
+                expect(page.locator(".project-convo__feed")).not_to_have_attribute("aria-busy", "true")
                 every = page.evaluate(self.RUNS, list_)
                 self.assertEqual(self.run_problems(every), [], label)
                 rows = [row for row in every if row["id"]]
@@ -715,11 +716,14 @@ class PeopleAndAiPhone(unittest.TestCase):
         if field and float(field.evaluate("el => parseFloat(getComputedStyle(el).fontSize)")) < 16:
             problems.append("the field is under 16 px")
         send = reach("Send", pill.get_by_role("button", name="Send reply" if thread else "Send message", exact=True))
-        if send:
+        if send and field:
+            field.fill("Draft")  # Send takes the action colour once there is something to send
+            expect(send).to_have_attribute("aria-disabled", "false")
             fill = send.evaluate("""(el) => { const probe = document.createElement('i'); probe.style.color = 'var(--action)'; document.body.append(probe);
               const action = getComputedStyle(probe).color; probe.remove(); return [getComputedStyle(el, '::before').backgroundColor, action]; }""")
             if fill[0] != fill[1]:
                 problems.append(f"Send is {fill[0]}, not the action colour {fill[1]}")
+            field.fill("")
         ask = pill.get_by_role("button", name="Ask my assistant", exact=True)
         if thread:
             if reach("Ask my assistant", ask) and ask.locator(".ui-orb").get_attribute("data-orb") != "violet":
@@ -800,6 +804,7 @@ class PeopleAndAiPhone(unittest.TestCase):
         page.goto(f"/projects/{self.ids['project']}")
         list_ = ".project-convo__message-list"
         expect(page.locator(f"{list_} [data-message-id='{self.s['runs'][-1]}']")).to_be_visible()
+        expect(page.locator(".project-convo__feed")).not_to_have_attribute("aria-busy", "true")
 
         def problems() -> list[str]:
             found = []

@@ -87,6 +87,8 @@ def start_forwarder(origin: str, upstream: str) -> None:
 
 def open_plus(scope) -> None:
     """On a phone, Attach and Sources open from the composer's "+" (F-025 PA-7); elsewhere this does nothing."""
+    # The composer is there once its Sources or Attach button is (shown, or inside the closed "+" menu on a phone).
+    scope.get_by_role("button", name=re.compile("^(Sources|Attach files$)"), include_hidden=True).first.wait_for(state="attached")
     for plus in scope.get_by_role("button", name="Attach or cite", exact=True).all():
         if plus.is_visible() and plus.get_attribute("aria-expanded") != "true":
             plus.click()
