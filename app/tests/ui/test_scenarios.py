@@ -467,7 +467,7 @@ class ScenarioJourney:
         s.update(dm=dm)
 
         # Only the camera, sensor and privacy messages seed a shared sketch; no project yet.
-        self.tap(page.get_by_role("button", name="Select", exact=True))
+        self.tap(page.get_by_role("button", name="Sketch from messages", exact=True))
         bar = page.get_by_role("region", name="Selected messages")
         expect(bar).to_contain_text("No project is created.")
         for index in (1, 2, 3):

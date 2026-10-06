@@ -682,6 +682,8 @@ class FriendlyHomeJourney(unittest.TestCase):
             rest = locator.evaluate("(el) => getComputedStyle(el).backgroundColor")
             page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
             page.mouse.down()
+            # Read once the control's own transition has had time to show the press, as a person would see it.
+            page.wait_for_timeout(300)
             during = locator.evaluate("(el) => getComputedStyle(el).backgroundColor")
             page.mouse.move(1, 1)
             page.mouse.up()
