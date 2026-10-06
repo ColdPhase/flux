@@ -64,6 +64,15 @@ idempotent replay and queued output. Token or session caching cannot restore a
 revoked grant. Do not reveal an inaccessible project's existence, count, title,
 event cursor or summary.
 
+**Proposed amendment, 2026-10-06 ([F-024](mcp-identity.md#connection-access-keys-header-only-clients-and-ci),
+[#273](https://github.com/ColdPhase/flux/issues/273), pending independent acceptance):**
+the MCP server stays an OAuth 2.1 resource server for every OAuth client. When the
+operator turns on connection access keys (`FLUX_MCP_ACCESS_KEYS=on`, off by
+default), `/mcp` also accepts a Flux-issued key for one connection, for clients
+that can only send a fixed header and for CI. A key is not an OAuth token: it is
+checked against its stored hash, and then gets the same connection, grant, owner
+and standing checks as a token.
+
 The first tool set is deliberately small: list authorized current contexts,
 read a selected source with revision, and create a **sourced proposal** for
 human review. An agent cannot accept a decision, change audience, assign work

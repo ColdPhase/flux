@@ -101,7 +101,8 @@ export function githubProvider(credentials: Pick<GithubCredentials, 'token'> & P
       if (checkRuns.some((row) => row.head_sha !== headSha) || statusReply.data.sha !== headSha) throw new ServiceUnavailableError('GitHub checks do not describe the current commit', 'GITHUB_INVALID_RESPONSE');
       const checks: GithubCheck[] = checkRuns.map((row) => ({ id: githubId(row.id), name: providerText(row.name),
         appId: row.app ? githubId(object(row.app).id) : null,
-        state: row.status !== 'completed' ? 'pending' : row.conclusion === 'success' ? 'success' : ['failure', 'cancelled', 'timed_out', 'action_required', 'startup_failure'].includes(String(row.conclusion)) ? 'failure' : 'neutral',
+        // A stale run must be re-run before it means anything: it never counts as passing (#74 G-1a).
+        state: row.status !== 'completed' || row.conclusion === 'stale' ? 'pending' : row.conclusion === 'success' ? 'success' : ['failure', 'cancelled', 'timed_out', 'action_required', 'startup_failure'].includes(String(row.conclusion)) ? 'failure' : 'neutral',
         sourceUpdatedAt: providerDate(row.completed_at ?? row.started_at ?? row.created_at) }));
       for (const row of list(statusReply.data.statuses)) checks.push({ id: githubId(row.id), name: providerText(row.context), appId: null,
         state: row.state === 'success' ? 'success' : row.state === 'pending' ? 'pending' : 'failure', sourceUpdatedAt: providerDate(row.updated_at) });

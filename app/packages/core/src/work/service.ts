@@ -24,6 +24,7 @@ import type { ActorRef, DecisionRecord, NativeCommandReceipt, ObjectLinkRecord, 
 import { assertNoDependencyCycle, assertPrerequisitesMet, creationFingerprint, decidePlanIntent, directPrerequisiteIds, ELIGIBLE_STATUSES,
   lockProjectGraphs, sortedIds } from './task-graph.js';
 import * as valid from './validation.js';
+import { presentGithubRule, type GithubRuleReading } from '../github/rules.js';
 
 // Work, decision and result use cases (issue #101). Each runs in one unit of work: it asks the
 // access port first (reads: project read; changes: project write with the access rows locked),
@@ -96,9 +97,11 @@ const NO_PLAN: TaskPlanRecord = { prerequisites: [], planIntent: null };
 
 /** Links and names needed to present a set of records to one reader. `plans` adds the task graph of work. */
 async function presenter(ports: WorkPorts, ids: string[], actors: (ActorRef | null)[], plans = false) {
+  const rules = plans && ids.length ? await ports.work.githubRules(ids) : new Map<string, GithubRuleReading>();
+  const ruleAuthors = [...rules.values()].flatMap((rule): ActorRef[] => rule.authorUserId ? [{ kind: 'human', id: rule.authorUserId }] : []);
   const [linksOf, names, planOf] = await Promise.all([
     linkReader(ports.work, ids),
-    ports.work.names(actors.filter((item): item is ActorRef => item !== null)),
+    ports.work.names([...actors.filter((item): item is ActorRef => item !== null), ...ruleAuthors]),
     plans && ids.length ? ports.work.taskPlans(ids) : Promise.resolve(new Map<string, TaskPlanRecord>()),
   ]);
   const named = (ref: ActorRef): NamedPrincipal => ({ ...ref, name: names.get(key(ref)) ?? (ref.kind === 'agent' ? 'Agent' : 'Former member') });
@@ -106,6 +109,11 @@ async function presenter(ports: WorkPorts, ids: string[], actors: (ActorRef | nu
     id: record.id, projectId: record.projectId, workspaceId: record.workspaceId,
     audience: { kind: 'project' as const, projectId: record.projectId }, links: linksOf(record.id), createdAt: iso(record.createdAt),
   });
+  const githubRule = (record: WorkRecord): WorkItem['githubRule'] => {
+    const rule = rules.get(record.id);
+    return rule ? { ...presentGithubRule(rule, { ...record, parked: !!record.parked }),
+      setUpBy: rule.authorUserId ? named({ kind: 'human', id: rule.authorUserId }) : null } : null;
+  };
   return {
     work: (record: WorkRecord): WorkItem => {
       const plan = planOf.get(record.id) ?? NO_PLAN;
@@ -116,7 +124,7 @@ async function presenter(ports: WorkPorts, ids: string[], actors: (ActorRef | nu
         planIntent: plan.planIntent,
         owner: record.owner ? named(record.owner) : null,
         parked: record.parked ? { decisionId: record.parked.decisionId, at: iso(record.parked.at) } : null,
-        createdBy: named(record.createdBy), version: record.version, updatedAt: iso(record.updatedAt),
+        createdBy: named(record.createdBy), githubRule: githubRule(record), version: record.version, updatedAt: iso(record.updatedAt),
       };
     },
     decision: (record: DecisionRecord): Decision => ({
