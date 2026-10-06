@@ -619,7 +619,7 @@ class TasksBoardJourney(unittest.TestCase):
                     if family == "Mint":
                         shot(page, f"tasks-board-1440-{theme.lower()}")
                     shot(page, f"tasks-board-1440-{theme.lower()}-{family.lower()}")
-        self.assertEqual(len(measured), 2 * len(FAMILIES) * 17)
+        self.assertEqual(len(measured), 2 * len(FAMILIES) * 16)
 
 
 if __name__ == "__main__":

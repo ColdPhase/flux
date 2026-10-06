@@ -120,6 +120,11 @@ class ReturnViewJourney(unittest.TestCase):
         """Home's "For you" (#272 FF-2): what waits for you, then the other changes since your last visit."""
         return page.get_by_role("region", name="For you", exact=True)
 
+    def returned(self, page: Page, which: str = ""):
+        """The return view's own rows in For you: what changed since the last visit, without the separate
+        list of decisions waiting for the reader (#272 FF-2). `which` narrows them, e.g. ".is-need"."""
+        return self.for_you(page).locator(f'ul.since__list:not([aria-label="Decisions waiting for you"]) .since__item{which}')
+
     def return_card(self, page: Page):
         """Home's return card (#272 FF-2): Flux's next step with its reason and "Back to work"."""
         return page.locator(".home-return")
@@ -216,8 +221,9 @@ class ReturnViewJourney(unittest.TestCase):
         region = self.for_you(page)
         expect(region).to_be_visible()
         expect(region.locator(".home-sec__count")).to_have_attribute("aria-label", "3 need you")
-        expect(region.locator(".since__item.is-need")).to_have_count(2)
-        expect(region.locator(".since__item:not(.is-need)")).to_have_count(5)
+        expect(region.get_by_role("list", name="Decisions waiting for you")).to_have_count(0)
+        expect(self.returned(page, ".is-need")).to_have_count(2)
+        expect(self.returned(page, ":not(.is-need)")).to_have_count(5)
         self.assertEqual(len(self.summary(page, "home")["items"]), 9, "nine updates since Nia's last visit")
         expect(region.get_by_role("heading", level=4, name="Other changes since you were last here")).to_be_visible()
         # Each row says which project it comes from.
@@ -235,7 +241,7 @@ class ReturnViewJourney(unittest.TestCase):
         # Visiting acknowledges nothing (HOME-1, #190): a reload shows the same list, and only
         # "I have the context" moves Home's point.
         page.reload()
-        expect(region.locator(".since__item")).to_have_count(7)
+        expect(self.returned(page)).to_have_count(7)
         self.assertTrue(self.summary(page, "home")["items"], "the visit saved nothing")
         expect(region).to_contain_text("Last caught up")
         region.get_by_role("button", name="I have the context").click()
@@ -243,7 +249,7 @@ class ReturnViewJourney(unittest.TestCase):
         expect(done).to_be_visible()
         # Focus moves to the Home heading (#190 A1.3); the status line says what happened.
         expect(page.locator("header.top").get_by_role("heading", level=1, name="Home")).to_be_focused()
-        expect(region.locator(".since__item")).to_have_count(0)
+        expect(self.returned(page)).to_have_count(0)
         expect(region.get_by_role("button", name="I have the context")).to_have_count(0)
         self.wait_saved(page, "home")
 
@@ -551,11 +557,12 @@ class ReturnViewJourney(unittest.TestCase):
         expect(home.locator(".since__item").first).to_be_visible()
         home.get_by_role("button", name="I have the context").click()
         expect(home.get_by_role("status")).to_have_text("You’re caught up. New things for you will show here.")
-        expect(home.locator(".since__item")).to_have_count(0)
+        expect(self.returned(page)).to_have_count(0)
         page.reload()
         expect(page.get_by_role("heading", name="Hi, Nia.")).to_be_visible()
-        expect(self.for_you(page)).to_contain_text("Nothing needs you right now.")
-        expect(self.for_you(page).locator(".since__item")).to_have_count(0)
+        # What still waits stays: the decision Ari proposed above is not a change Nia has caught up on.
+        expect(self.for_you(page).get_by_role("list", name="Decisions waiting for you")).to_contain_text("Decide: Route the cable through the lamp stem")
+        expect(self.returned(page)).to_have_count(0)
         expect(self.return_card(page)).not_to_contain_text("Answer Ari's question")
 
         # Phone composer: after reading the line, the reply box is reachable, keeps its audience and sends.
@@ -614,7 +621,7 @@ class ReturnViewJourney(unittest.TestCase):
         self.assertTrue(held, "the Home summary request was made")
         # Before the answer: nothing of Nia's return view is on the page.
         self.assertNotIn("14 Nov", page.content())
-        expect(self.for_you(page).locator(".since__item")).to_have_count(0)
+        expect(self.returned(page)).to_have_count(0)
         expect(self.return_card(page)).not_to_contain_text("14 Nov")
         for route in held:
             route.continue_()
@@ -646,7 +653,7 @@ class ReturnViewJourney(unittest.TestCase):
         expect(page.get_by_role("heading", name="Hi, Nia.")).to_be_visible()
         page.wait_for_timeout(600)
         self.assertNotIn("confirm the lens order", page.content())
-        expect(self.for_you(page).locator(".since__item")).to_have_count(0)
+        expect(self.returned(page)).to_have_count(0)
         page.reload()
         expect(page.get_by_role("heading", name="Hi, Nia.")).to_be_visible()
         page.wait_for_timeout(600)
