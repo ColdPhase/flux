@@ -37,11 +37,14 @@ async function inboxAudience(db: DbExecutor, userId: string): Promise<SQL> {
     const projects = await visibleFilter(principal, workspaceId, 'project', db);
     const drafts = await visibleFilter(principal, workspaceId, 'draft', db);
     const dms = await visibleFilter(principal, workspaceId, 'dm', db);
+    // Each source set is an uncorrelated `IN (SELECT …)`: PostgreSQL decides it once per query and
+    // probes a hash per row (a "hashed SubPlan"). A correlated EXISTS under these ORs re-ran the
+    // policy's grant checks for every notification counted (#298).
     const sources: SQL[] = [
-      sql`(${n.sourceType} = 'project' AND EXISTS (SELECT 1 FROM ${schema.projects} WHERE ${schema.projects.id} = ${n.sourceId} AND ${projects}))`,
-      sql`(${n.sourceType} = 'draft' AND EXISTS (SELECT 1 FROM ${schema.drafts} WHERE ${schema.drafts.id} = ${n.sourceId} AND ${drafts}))`,
+      sql`(${n.sourceType} = 'project' AND ${n.sourceId} IN (SELECT ${schema.projects.id} FROM ${schema.projects} WHERE ${projects}))`,
+      sql`(${n.sourceType} = 'draft' AND ${n.sourceId} IN (SELECT ${schema.drafts.id} FROM ${schema.drafts} WHERE ${drafts}))`,
       // Direct messages (#116): only while the recipient is a participant (#107).
-      sql`(${n.sourceType} = 'dm' AND EXISTS (SELECT 1 FROM ${schema.dms} WHERE ${schema.dms.id} = ${n.sourceId} AND ${dms}))`,
+      sql`(${n.sourceType} = 'dm' AND ${n.sourceId} IN (SELECT ${schema.dms.id} FROM ${schema.dms} WHERE ${dms}))`,
     ];
     if (workspace.allowed) sources.push(sql`(${n.sourceType} = 'workspace' AND ${n.sourceId} = ${workspaceId})`);
     conditions.push(and(eq(n.workspaceId, workspaceId), or(...sources))!);

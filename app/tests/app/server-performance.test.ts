@@ -1,0 +1,105 @@
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { describe, test } from 'node:test';
+import type { Conversation } from '@flux/contracts';
+import { conversationUseCases } from '@flux/core';
+import { conversationStore } from '../../apps/server/src/conversation/store.js';
+import { notificationRepository } from '../../apps/server/src/push/adapters.js';
+import { pool } from './support/db.js';
+import { addMember, expectStatus, person, project, workspace } from './support/people.js';
+import { explainAnalyze, recordingDatabase, subplans } from './support/statements.js';
+
+// Regression tests for the slow paths measured in #298 (docs/development/performance-2026-10.md).
+// They assert work that grows with the data (how often a subplan runs, how many statements a
+// request sends) rather than wall-clock time, so they hold on a loaded host.
+
+const { db, statements } = recordingDatabase();
+
+describe('inbox unread count (#298)', () => {
+  test('decides which sources the reader can see once per query, not once per notification', async () => {
+    const owner = await person('Inbox owner');
+    const member = await person('Inbox member');
+    const space = await workspace(owner, 'Inbox volume');
+    await addMember(owner, space.id, member, 'member');
+    const open = await project(owner, space.id, 'Open project', 'workspace');
+    const hidden = await project(owner, space.id, 'Restricted project', 'restricted');
+    const insert = (projectId: string, count: number) => pool.query(`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, title, reason)
+      SELECT gen_random_uuid(), $1, $2, 'project', $3, 'Reply ' || i, 'reply' FROM generate_series(1, $4::int) AS i`, [member.id, space.id, projectId, count]);
+    await insert(open.id, 300);
+    // Rows about a project the member cannot read stay out of the count, as before.
+    await insert(hidden.id, 5);
+
+    const { result, sent } = await statements(() => notificationRepository(db).listReadable(member.id, 1));
+    assert.equal(result.unread, 300, 'only notifications about readable projects are counted');
+    assert.equal(result.items.length, 1);
+    const count = sent.find((statement) => /^select count\(\*\) from "notifications"/i.test(statement.text));
+    assert.ok(count, 'the unread count is one statement');
+    const runs = subplans(await explainAnalyze(count));
+    assert.ok(runs.length > 0, 'the source checks are subplans of the count');
+    // Before #298 the project check was a correlated EXISTS under an OR: PostgreSQL ran it, and the
+    // grant checks inside it, once for each of the 305 rows. Now the set of readable projects is
+    // built once (its own grant checks run once per project of the workspace, here two).
+    assert.deepEqual(runs.filter((run) => run.loops > 2), [], `no source subplan runs per notification: ${JSON.stringify(runs)}`);
+  });
+});
+
+describe('conversation and material pages (#298)', () => {
+  test('one page costs the same statements for one conversation or material as for six', async () => {
+    const owner = await person('Pages owner');
+    const space = await workspace(owner, 'Pages');
+    const place = await project(owner, space.id, 'Pages project', 'workspace');
+    const principal = { id: owner.id, kind: 'human' as const };
+    const store = conversationUseCases(conversationStore(db));
+    const start = async (body: string) => expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`,
+      { body: { body, clientMessageId: randomUUID() } }), 201) as Conversation;
+    const reply = async (conversationId: string, body: string) => expectStatus(await owner.browser.request('POST',
+      `/api/v1/conversations/${conversationId}/messages`, { body: { body, clientMessageId: randomUUID() } }), 201);
+    const material = async (title: string) => expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/materials`,
+      { body: { clientMutationId: randomUUID(), title, body: `${title} notes` } }), 201);
+    const pages = async () => ({
+      conversations: await statements(() => store.listConversations(principal, place.id, { limit: 100 })),
+      materials: await statements(() => store.listMaterials(principal, place.id, { limit: 100 })),
+    });
+
+    const first = await start('Which probe survives a winter outside?');
+    await reply(first.id, 'The capacitive one, if the housing is sealed.');
+    await reply(first.id, 'Then we order six.');
+    await material('Probe datasheet');
+    const one = await pages();
+    for (let index = 0; index < 5; index += 1) {
+      await reply((await start(`Thread ${index}`)).id, `Reply ${index}`);
+      await material(`Source ${index}`);
+    }
+    const six = await pages();
+
+    assert.equal(six.conversations.result.items.length, 6);
+    assert.equal(six.materials.result.items.length, 6);
+    const summary = six.conversations.result.items.find((item) => item.id === first.id)!;
+    assert.equal(summary.firstMessageBody, 'Which probe survives a winter outside?');
+    assert.equal(summary.lastMessageBody, 'Then we order six.');
+    assert.deepEqual(six.materials.result.items.map((item) => item.title).sort(), ['Probe datasheet', ...[0, 1, 2, 3, 4].map((index) => `Source ${index}`)].sort());
+    // Before #298 each conversation added two queries (its first and last message) and each
+    // material one (its current version), all sent at once on the shared pool.
+    assert.equal(six.conversations.sent.length, one.conversations.sent.length, 'conversation page statements do not grow with its rows');
+    assert.equal(six.materials.sent.length, one.materials.sent.length, 'material page statements do not grow with its rows');
+  });
+});
+
+describe('reading the conversation stream (#298)', () => {
+  test('takes no row locks: one read-only snapshot, so the read writes no WAL and waits for no flush', async () => {
+    const owner = await person('Stream reader');
+    const space = await workspace(owner, 'Stream');
+    const place = await project(owner, space.id, 'Stream project', 'workspace');
+    expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`,
+      { body: { body: 'Is the gateway on the shed roof yet?', clientMessageId: randomUUID() } }), 201);
+    const store = conversationUseCases(conversationStore(db));
+    const { result, sent } = await statements(() => store.listRoots({ id: owner.id, kind: 'human' }, place.id, {}));
+    assert.equal(result.roots.length, 1);
+    const begin = sent.find((statement) => /^begin\b/i.test(statement.text.trim()));
+    assert.match(begin?.text ?? '', /repeatable read/i, 'access and page share one snapshot');
+    assert.match(begin?.text ?? '', /read only/i);
+    // Before #298 the read share-locked the project, grant and membership rows: each lock is a WAL
+    // record, and the commit then waits for the WAL flush, on every open and 15 s refresh.
+    assert.deepEqual(sent.filter((statement) => /\bfor (share|update|no key update|key share)\b/i.test(statement.text)).map((statement) => statement.text), []);
+  });
+});
