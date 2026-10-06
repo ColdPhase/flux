@@ -125,6 +125,10 @@
   .inbox__head { align-items: center; padding-top: 4px; }
   .inbox__head p { display: none; }
   .inbox__head > div:first-child { display: none; }
+  /* A settings page's head holds only the "Saved" status there: no empty bordered band (#266 PF-5). */
+  .nset > .inbox__head { position: sticky; top: 0; z-index: 2; min-height: 0; padding: 0; border-bottom: 0; justify-content: flex-end; pointer-events: none; }
+  .nset > .inbox__head .nset__saved { min-height: 24px; margin-top: 4px; padding: 0 8px; border-radius: var(--r-pill); background: var(--bg); }
+  .nset > .inbox__head .nset__saved:empty { display: none; }
   .inbox__tools { margin-left: 0; width: 100%; justify-content: space-between; }
   .inbox__item { padding-right: 44px; }
   .nset__table thead th { width: 48px; }

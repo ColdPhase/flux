@@ -181,7 +181,7 @@ function Card({ item, from, column, meId, writable, hintId, saving, dragged, lif
         <button type="button" className="tb-card__open" onClick={onOpen} onKeyDown={onKeyDown} onKeyUp={onKeyUp} onBlur={onBlur}
           aria-describedby={writable ? hintId : undefined}><span className="tb-card__title">{item.title}</span></button>
       </h3>
-      {blocked ? <p className="tb-card__blocker">{item.blocker ? `Waiting for ${item.blocker}` : 'Blocked; nobody wrote down what it waits for yet.'}</p> : null}
+      {blocked ? <p className="tb-card__blocker">{item.blocker ? (/^(waiting|blocked)\b/i.test(item.blocker.trim()) ? item.blocker : `Waiting for ${item.blocker}`) : 'Blocked; nobody wrote down what it waits for yet.'}</p> : null}
       {from ? (
         <Link className="tb-card__from" to={from.to} draggable={false} title={`${from.kind}: ${from.title}`}>
           <Icon name={from.icon} size={12} /><span><span className="ui-vh">{from.kind}: </span>{from.title}</span>

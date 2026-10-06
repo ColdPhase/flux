@@ -1,0 +1,27 @@
+✔ two authorized Chromium clients exchange media when UDP and direct ICE/TCP are blocked (18090.385384ms)
+✔ negative control: DTLS fails and no media key exists when the SFU certificate is not the signalled one (15825.150382ms)
+✔ four authorized clients receive two simultaneous code-sized screen tracks through TURN/TLS (11526.822214ms)
+✔ isolated headed Chromium publishes real display capture and virtual camera/mic through TURN/TLS (2485.575293ms)
+ℹ tests 4
+ℹ pass 4
+ℹ fail 0
+✔ on-demand video row uses interval loss and decoded fps, not lifetime loss or configured fps (0.928334ms)
+✔ missing, partial and reset reports cannot display invented zero loss/gaps or negative rates (0.231292ms)
+✔ partial advancing reports and discarded track histories remain unmeasured (0.207667ms)
+✔ actual locked SDK audio raw-report boundary retains RTP counters and stream identity (32.704208ms)
+✔ actual production pending diagnostic read cannot resurrect removed or disconnected tracks (2.011125ms)
+✔ observed idle counters warn for expected flow; intentional pause does not warn (0.160792ms)
+✔ receiver sample derives actual interval bitrate, loss, fps, jitter and selected ICE RTT (1.066ms)
+✔ fixed delay yields an explicit network warning; high loss and jitter become poor (0.223959ms)
+✔ counter reset or absent receiver stats cannot fabricate healthy throughput (0.127083ms)
+✔ cumulative packets and healthy RTT cannot hide a stalled expected receiver (0.107625ms)
+✔ interval decoded frames override a stale instantaneous browser fps report (0.058708ms)
+ℹ tests 11
+ℹ pass 11
+ℹ fail 0
+✔ Flux revocation retires the real SFU room, rejects original and refreshed grants, and rejoins a remaining member (1048.149043ms)
+✔ sign-out ends the signed-out session media, refuses its grants at the gate and leaves others connected (8624.474003ms)
+ℹ tests 2
+ℹ pass 2
+ℹ fail 0
+exit 0
