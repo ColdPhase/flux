@@ -253,6 +253,17 @@ export function createReturnUseCases(ports: ReturnPorts) {
         default: break;
       }
     }
+    // A pivot parks work under its acceptance event alone, with no event of the work's own (#290).
+    // The work it parks now, in the decision's own project, joins that event, so a person away
+    // since the task's last change still learns it was set aside. With any change of the task
+    // itself it stays one item.
+    const accepted = events.filter((event) => event.kind === 'project.decision_accepted.v1' && str(event.data.decisionId) && projectOf(event));
+    if (accepted.length) {
+      const parked = await returns.parkedWork([...new Set(accepted.map((event) => projectOf(event)!))], [...new Set(accepted.map((event) => str(event.data.decisionId)!))]);
+      for (const event of accepted) {
+        for (const row of parked) if (row.decisionId === str(event.data.decisionId) && row.projectId === projectOf(event)) add(`work:${row.id}`, 'work', event);
+      }
+    }
     const ids = (prefix: string) => [...groups.keys()].filter((item) => item.startsWith(`${prefix}:`)).map((item) => item.slice(prefix.length + 1));
     const [work, decisions, results, resultWork, messages, materials, sketches, docs] = await Promise.all([
       returns.work(ids('work')), returns.decisions(ids('decision')), returns.results(ids('result')), returns.resultWork(ids('result')),
