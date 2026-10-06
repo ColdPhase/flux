@@ -218,6 +218,9 @@ class ConversationFirstJourney(unittest.TestCase):
         expect(thread).to_have_class(re.compile(r"\bthread--sheet\b"))
         grabber = thread.locator(".thread__grabber")
         expect(grabber).to_be_visible()
+        # The chips and state line step aside, so the sheet takes most of the screen (HIG-37).
+        expect(page.get_by_role("navigation", name="Project views")).to_be_hidden()
+        self.assertGreaterEqual(self.box(thread)["height"], PHONE["height"] * 0.8, "the sheet takes most of the screen")
         shot(page, "296-thread-sheet-phone-390")
         # A short drag settles back; a long one closes it.
         head = self.box(thread.locator(".thread__head"))
