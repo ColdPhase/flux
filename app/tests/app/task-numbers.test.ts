@@ -3,10 +3,10 @@ import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import type { WorkItem } from '@flux/contracts';
+import type { SearchResponse, WorkItem } from '@flux/contracts';
 import { createDatabase, FLUX_SCHEMA_VERSION, readMigrationManifest } from '@flux/db';
 import { guardFixturePool } from './support/fixture-database.js';
-import { expectStatus, person, project, workspace } from './support/people.js';
+import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
 
 // #276 (F-023 FF-1): each project numbers its tasks "#1", "#2", … in creation order; a number is never reused or
 // changed. Migration 0055 numbers existing tasks by creation time, and a trigger numbers every new one.
@@ -64,8 +64,9 @@ test('0055 numbers existing tasks in creation order per project, numbers new one
     assert.deepEqual(await numbers(), expected);
 
     const insert = (projectId: string, title: string) => history!.query(`INSERT INTO project_work_items(id,workspace_id,project_id,title,created_by_kind,created_by_id)
-      VALUES($1,$2,$3,$4,'human',$5) RETURNING number`, [randomUUID(), ws, projectId, title, user]);
-    assert.equal((await insert(garden, 'Fourth')).rows[0].number, 4, 'a new task takes the next number');
+      VALUES($1,$2,$3,$4,'human',$5) RETURNING id, number`, [randomUUID(), ws, projectId, title, user]);
+    const fourth = (await insert(garden, 'Fourth')).rows[0];
+    assert.equal(fourth.number, 4, 'a new task takes the next number');
     assert.equal((await insert(empty, 'A first task')).rows[0].number, 1, 'each project counts on its own');
     // A number given by the caller is replaced; a number is never changed afterwards.
     const chosen = await history.query(`INSERT INTO project_work_items(id,workspace_id,project_id,title,created_by_kind,created_by_id,number)
@@ -74,7 +75,9 @@ test('0055 numbers existing tasks in creation order per project, numbers new one
     await assert.rejects(history.query('UPDATE project_work_items SET number = 7 WHERE id = $1', [tasks[1]!.id]), /a task number never changes/);
     await history.query('UPDATE project_work_items SET title = $1 WHERE id = $2', ['First, renamed', tasks[1]!.id]);
     assert.equal((await history.query('SELECT number FROM project_work_items WHERE id = $1', [tasks[1]!.id])).rows[0].number, 1);
-    await assert.rejects(history.query('UPDATE project_work_items SET project_id = $1 WHERE id = $2', [bikes, tasks[1]!.id]));
+    await assert.rejects(history.query('UPDATE project_work_items SET project_id = $1 WHERE id = $2', [bikes, tasks[1]!.id]), /never moves to another project/);
+    // Refused for itself, not by the unique index: #4 is free in the project it would move to.
+    await assert.rejects(history.query('UPDATE project_work_items SET project_id = $1 WHERE id = $2', [empty, fourth.id]), /never moves to another project/);
   } finally {
     guard?.cleanup();
     await history?.end();
@@ -102,4 +105,27 @@ test('tasks created over the API get distinct consecutive numbers, also when cre
   const changed = expectStatus(await owner.browser.request('PATCH', `/api/v1/work/${first.id}`,
     { body: { title: 'Order six probes', clientCommandId: randomUUID() }, headers: { 'if-match': `"${read.version}"` } }), 200) as WorkItem;
   assert.equal(changed.number, 1, 'a change keeps the number');
+});
+
+test('"#n" finds the task in search, only for people who can open it', async () => {
+  const owner = await person('Number search owner');
+  const member = await person('Number search member');
+  const reader = await person('Number search reader');
+  const ws = await workspace(owner, 'Number search');
+  await addMember(owner, ws.id, member, 'member');
+  await addMember(owner, ws.id, reader, 'member');
+  const place = await project(owner, ws.id, 'Hedge sensors', 'restricted');
+  await grant(owner, place.id, reader, 'viewer');
+  const titles = ['Order walnut probes', 'Seal the barrel lid', 'Log the hedge readings'];
+  const made: WorkItem[] = [];
+  for (const title of titles) made.push(expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`,
+    { body: { title }, headers: { 'idempotency-key': randomUUID() } }), 201) as WorkItem);
+  const found = async (who: typeof owner, q: string) => (expectStatus(await who.browser.request('GET', `/api/v1/search?${new URLSearchParams({ q })}`), 200) as SearchResponse)
+    .items.filter((item) => item.kind === 'work').map((item) => item.id);
+  const second = `work:${made[1]!.id}`;
+  for (const q of ['#2', '2', ' #2 ']) assert.ok((await found(owner, q)).includes(second), `${JSON.stringify(q)} finds task #2`);
+  assert.equal((await found(owner, '#2'))[0], second, 'the numbered task leads');
+  assert.ok((await found(reader, '#2')).includes(second), 'a viewer of the project finds it too');
+  assert.deepEqual(await found(member, '#2'), [], 'a workspace member without access to the project finds nothing');
+  assert.ok(!(await found(owner, '#9')).length, 'a number no task has finds no task');
 });

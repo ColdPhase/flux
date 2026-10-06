@@ -5,7 +5,7 @@ import type { ObjectLink, Project, ProjectWorkView, WorkGroup, WorkItem, WorkRel
 import { ApiError, NetworkError } from '../api/client';
 import { Button, Icon, IconButton, initials, type IconName } from '../ui';
 import { createWork, updateWork } from './api';
-import { isFinished } from './format';
+import { isFinished, taskNumber } from './format';
 import { getProjectWorkView, getWorkRelations, workRelationReadUrl, workViewReadUrl } from './read-api';
 import type { ReadState } from './read-state';
 import { useWorkRead } from './useWorkRead';
@@ -40,7 +40,6 @@ export const columnOf = (status: WorkStatus): ColumnId =>
 /** A short, stable label of the task's own id; the full id is its title and in Details. */
 export const shortId = (id: string) => id.replace(/-/g, '').slice(0, 8).toUpperCase();
 /** How people name a task in its project: "#12" (#276). */
-export const taskNumber = (item: { number: number }) => `#${item.number}`;
 
 /** One card: a bounded native task row, not a full WorkItem. */
 type BoardTask = WorkRowProjection;

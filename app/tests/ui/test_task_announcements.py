@@ -114,7 +114,7 @@ class TaskAnnouncements(unittest.TestCase):
         short, _ = board("Short board", SHORT_NOTES, False)
         for context in contexts.values():
             context.close()
-        cls.ids.update(project=pid, early=early["id"], question=question["messages"][0]["id"], from_message=from_message["id"],
+        cls.ids.update(project=pid, early=early["id"], question=question["messages"][0]["id"], from_message=from_message["id"], from_message_number=from_message["number"],
                        measure=measure["id"], first=first["id"], thread=first["conversationId"], later=later["messages"][0]["id"],
                        busy=bid, linked=linked["conversationId"], linked_root=linked["id"], short=short)
 
@@ -175,6 +175,8 @@ class TaskAnnouncements(unittest.TestCase):
         expect(made).to_have_count(1)
         expect(made.locator(".convo-notice__meta")).to_have_text("New task · Jonas Berg")
         expect(made.get_by_role("button", name=f"Open task: {FROM_MESSAGE}")).to_be_visible()
+        # The announcement names the task by its number in the project (#276).
+        expect(made.locator(".convo-notice__num")).to_have_text(f"#{self.ids['from_message_number']}")
         expect(self.notice(page, self.ids["measure"]).locator(".convo-notice__meta")).to_have_text("New task · Ada Kowalska · you")
         # An announcement is not a message: no replies, no actions, no avatar.
         for work_id in (self.ids["from_message"], self.ids["measure"]):

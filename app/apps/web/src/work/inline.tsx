@@ -6,7 +6,7 @@ import { Icon, useMediaQuery } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { useShellData } from '../app/data';
 import { createWork, type ProjectWork } from './api';
-import { decisionLine, firstLine, resultLine, workLine } from './format';
+import { decisionLine, firstLine, resultLine, workLine, taskNumber } from './format';
 import type { MessageWorkPreview } from './message-associations';
 import { summaryEmptyCaption, summaryStateParts, type StatePart } from './state-summary';
 import './work.css';
@@ -107,7 +107,7 @@ export function ProjectStateRow({ summary, phase }: { summary: ProjectWorkSummar
 export function DiscussedTask({ task, row }: { task: { workId: string; title: string }; row: NativeWorkRow | null }) {
   const { openDetails } = useShellActions();
   const item = row?.kind === 'work' && row.id === task.workId ? row : null;
-  return <ObjectChip icon="tasks" kind={item ? rest(workLine(item)) : 'Task'} title={item?.title ?? task.title} label="Discussion of task"
+  return <ObjectChip icon="tasks" kind={item ? `${taskNumber(item)} · ${rest(workLine(item))}` : 'Task'} title={item?.title ?? task.title} label="Discussion of task"
     objectKind="work" objectId={task.workId} nativeRef={`work:${task.workId}`} onOpen={() => openDetails({ kind: 'work', id: task.workId })} />;
 }
 
@@ -142,7 +142,7 @@ export function MessageObjects({ message, projectId, preview, thread = null, thr
   return (
     <div className="ws-attach">
       {discussed ? <DiscussedTask task={discussed} row={threadRow} /> : null}
-      {items.map((item) => <ObjectChip key={`${item.kind}:${item.id}`} objectKind={item.kind} objectId={item.id} icon={item.kind === 'work' ? 'tasks' : item.kind === 'decision' ? 'rule' : 'result'} kind={item.kind === 'work' ? rest(workLine(item)) : item.kind === 'decision' ? decisionLine(item) : resultLine(item)} title={item.title} need={item.kind === 'decision' && item.status === 'proposed'} label={item.kind === 'work' ? 'Work' : item.kind === 'decision' ? 'Decision' : 'Result'} onOpen={() => openDetails({ kind: item.kind, id: item.id })} />)}
+      {items.map((item) => <ObjectChip key={`${item.kind}:${item.id}`} objectKind={item.kind} objectId={item.id} icon={item.kind === 'work' ? 'tasks' : item.kind === 'decision' ? 'rule' : 'result'} kind={item.kind === 'work' ? `${taskNumber(item)} · ${rest(workLine(item))}` : item.kind === 'decision' ? decisionLine(item) : resultLine(item)} title={item.title} need={item.kind === 'decision' && item.status === 'proposed'} label={item.kind === 'work' ? 'Work' : item.kind === 'decision' ? 'Decision' : 'Result'} onOpen={() => openDetails({ kind: item.kind, id: item.id })} />)}
       {items.length < total ? <button type="button" className="ws-attach__more" onClick={() => openDetails({ kind: 'overview', messageId: message.id, selection: { accountId: me.user.id, projectId, message } })}>{[counts.work ? `${counts.work} work` : null, counts.decisions ? `${counts.decisions} ${counts.decisions === 1 ? 'decision' : 'decisions'}` : null, counts.results ? `${counts.results} ${counts.results === 1 ? 'result' : 'results'}` : null].filter(Boolean).join(' · ')} · view linked objects</button> : null}
     </div>
   );

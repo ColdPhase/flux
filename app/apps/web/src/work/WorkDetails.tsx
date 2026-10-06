@@ -10,7 +10,7 @@ import { useRegisterLiveHere } from '../live/LiveProvider';
 import { LiveEntry } from '../live/LiveEntry';
 import { useShellActions, type ObjectView, type WorkFormView } from '../app/shellContext';
 import { acceptDecision, createResult, listAgents, proposeDecision, updateWork } from './api';
-import { STATUS_LABEL, decisionLine, firstLine, isFinished, linked, resultLine, shortDate } from './format';
+import { STATUS_LABEL, decisionLine, firstLine, isFinished, linked, resultLine, shortDate, taskNumber } from './format';
 import { docsLinking } from '../docs/AddToDoc';
 import { useProjectShell } from '../project/data';
 import { useWorkRead } from './useWorkRead';
@@ -239,7 +239,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
 
   return (
     <div className="details wd" data-detail-kind="work" data-detail-id={item.id}>
-      <p className="details__eyebrow wd-eyebrow"><span className={`wd-dot wd-dot--${item.status}`} aria-hidden="true" />{STATUS_LABEL[item.status]}{item.parked ? ' · parked, not done' : ''}</p>
+      <p className="details__eyebrow wd-eyebrow"><span className={`wd-dot wd-dot--${item.status}`} aria-hidden="true" />Task {taskNumber(item)} · {STATUS_LABEL[item.status]}{item.parked ? ' · parked, not done' : ''}</p>
       <h3 className="details__title">{item.title}</h3>
       {item.outcome ? <p className="details__lead">{item.outcome}</p> : null}
       {item.status === 'blocked' && item.blocker ? <p className="wd-blocker"><Icon name="alert" size={14} />Blocked: {item.blocker}</p> : null}

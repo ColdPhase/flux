@@ -138,6 +138,8 @@ class WorkDecisionsJourney(unittest.TestCase):
         # The panel's controls change the stored work (If-Match under the hood).
         panel.get_by_label("Status").select_option("in_progress")
         expect(panel.locator(".wd-eyebrow")).to_contain_text("In progress")
+        # Details names the task by its number in the project (#276).
+        expect(panel.locator(".wd-eyebrow")).to_have_text(re.compile(r"^Task #[1-9]\d* · In progress"))
         panel.get_by_label("Owner").select_option(f"human:{PARTNER['id']}")
         expect(message.get_by_role("button", name=f"Work: {IDEA}")).to_contain_text("Kai Berg")
         stored = self.work(page)["work"]

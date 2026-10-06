@@ -141,7 +141,7 @@ export function projectExportRows(db: DbExecutor) {
     async work(projectId: string) {
       const rows = await db.select().from(w).where(eq(w.projectId, projectId)).orderBy(asc(w.createdAt), asc(w.id));
       return rows.map((row) => ({
-        id: row.id, title: row.title, outcome: row.outcome, status: row.status, blocker: row.blocker,
+        id: row.id, number: row.number, title: row.title, outcome: row.outcome, status: row.status, blocker: row.blocker,
         owner: row.ownerUserId ? human(row.ownerUserId) : row.ownerAgentId ? { kind: 'agent' as const, id: row.ownerAgentId } : null,
         parked: row.parkedByDecisionId && row.parkedAt ? { decisionId: row.parkedByDecisionId, at: iso(row.parkedAt) } : null,
         createdBy: { kind: row.createdByKind, id: row.createdById }, version: row.version, createdAt: iso(row.createdAt), updatedAt: iso(row.updatedAt),

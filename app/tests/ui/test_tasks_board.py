@@ -54,6 +54,7 @@ class TasksBoardJourney(unittest.TestCase):
     browser: Browser
     states: dict[str, dict] = {}
     ids: dict[str, str] = {}
+    numbers: dict[str, int] = {}
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -178,6 +179,7 @@ class TasksBoardJourney(unittest.TestCase):
         type(self).ids = {"workspace": ws["id"], "project": pid, "study": study["id"], "agent": agent["id"], "conversation": thread["id"],
                           "message": message["id"], "sketch": sketch["id"], "thought": thought["thought"]["id"],
                           **{key: item["id"] for key, item in made.items()}}
+        type(self).numbers = {key: item["number"] for key, item in made.items()}
 
     # ---------------------------------------------------------------- columns and cards
 
@@ -203,8 +205,10 @@ class TasksBoardJourney(unittest.TestCase):
         # The ID, the title, where it came from, the owner and the agent that owns a task.
         order = self.card(open_, ORDER)
         # A task is named by its number in the project, "#12" (#276); the id stays in the tooltip.
-        expect(order.locator(".tb-card__id")).to_have_text(re.compile(r"^Task #\d+$"))
-        expect(order.locator(".tb-card__id")).to_have_attribute("title", re.compile(rf"^Task #\d+ · {self.ids['order']}$"))
+        self.assertEqual(self.numbers["order"], 1, "the project's first task is #1")
+        expect(order.locator(".tb-card__id")).to_have_text("Task #1")
+        expect(order.locator(".tb-card__id")).to_have_attribute("title", f"Task #1 · {self.ids['order']}")
+        expect(self.card(doing, SOLDER).locator(".tb-card__id")).to_have_text(f"Task #{self.numbers['solder']}")
         expect(order.get_by_role("button", name=ORDER, exact=True)).to_be_visible()
         source = order.get_by_role("link", name=re.compile("^From a message: If we agree on the ToF route"))
         expect(source).to_have_attribute("href", f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}#message-{self.ids['message']}")
@@ -241,6 +245,12 @@ class TasksBoardJourney(unittest.TestCase):
         search.fill("solder")
         expect(page.locator(".tb-card")).to_have_count(1)
         expect(open_).to_contain_text("Nothing here matches.")
+        # "#n" finds exactly that task; a number no task has finds none (#276).
+        search.fill(f"#{self.numbers['solder']}")
+        expect(page.locator(".tb-card")).to_have_count(1)
+        expect(self.card(page, SOLDER)).to_be_visible()
+        search.fill("#99")
+        expect(page.locator(".tb-card")).to_have_count(0)
         search.press("Escape")
         expect(search).to_have_value("")
         expect(page.locator(".tb-card")).to_have_count(8)
