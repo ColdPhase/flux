@@ -429,7 +429,7 @@ class PeopleAndAiPhone(unittest.TestCase):
             self.open_agents(page)
             self.assertEqual(self.accent_problems(page, theme), [], f"{label} Agents")
             page.goto(f"/projects/{self.ids['project']}/tasks")
-            expect(page.locator(".tb-col__head").first).to_be_visible()
+            expect(page.locator(".tb-bar")).to_be_visible()
             self.assertEqual(self.accent_problems(page, theme), [], f"{label} Tasks")
 
         # Negative controls: an accent painted in the bottom bar, and the accent token leaking back, are reported.
