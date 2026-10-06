@@ -875,6 +875,12 @@ cmd_restore() {
   fi
   compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" api worker \
     || { compose_main logs --no-color --tail 60 api worker >&2 || true; die "Flux did not become healthy after the restore."; }
+  # Slot volumes are not in the backup and were not replaced; the worker reconciles the restored
+  # bindings with them at its start (F-022: Sign in again, or sign out and delete an unbound directory).
+  if runtime_on; then
+    # shellcheck disable=SC2046
+    compose_main --profile runtime up -d runtime-manager runtime-egress $(runtime_slots) >/dev/null || warn "The agent runtime did not start after the restore; run ./flux up."
+  fi
   verify_running || die "The restored instance failed its health or schema check."
   say "Restored $archive into $PROJECT: $(public_origin)"
 }
