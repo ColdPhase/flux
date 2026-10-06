@@ -29,6 +29,7 @@ class ConversationFirstJourney(unittest.TestCase):
     """Ada owns one project with a long conversation and one thread; tests share her account and run in name order."""
 
     ids: dict = {}
+    cdp: dict = {}
 
     @classmethod
     def setUpClass(cls):
@@ -100,7 +101,9 @@ class ConversationFirstJourney(unittest.TestCase):
         page.wait_for_timeout(250)
 
     def swipe(self, page, start, end, steps=10, pause=16):
-        cdp = page.context.new_cdp_session(page)
+        # One DevTools session per page for every touch: touches sent from separate sessions leave Chrome's touch
+        # emulation out of step with Playwright's own taps, so a later tap fires pointerdown but no click (probed).
+        cdp = self.cdp.get(id(page)) or self.cdp.setdefault(id(page), page.context.new_cdp_session(page))
         cdp.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": start[0], "y": start[1]}]})
         for step in range(1, steps + 1):
             x = start[0] + (end[0] - start[0]) * step / steps
@@ -224,11 +227,9 @@ class ConversationFirstJourney(unittest.TestCase):
         self.swipe(page, (x, y), (x, y + 420))
         expect(page.locator("#thread")).to_have_count(0)
         expect(opener).to_be_focused()
-        # Closing goes back in history to the stream; the next open starts once that navigation has settled
-        # (a probe showed the same tap opens the thread a moment later; a person cannot tap within it).
+        # Closing goes back in history to the stream.
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}$"))
         expect(opener).to_have_attribute("aria-expanded", "false")
-        page.wait_for_timeout(500)
         # Escape closes it from the reply box too.
         opener.tap()
         expect(page.locator("#thread")).to_be_visible()
