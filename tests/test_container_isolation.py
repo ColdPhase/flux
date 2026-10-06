@@ -75,6 +75,12 @@ class ContainerIsolationTest(unittest.TestCase):
         example = (ROOT / "docker" / "runtime-slot.example.yaml").read_text(encoding="utf-8")
         self.assertIn('  runtime-5:\n    internal: true\n    driver_opts:\n      com.docker.network.bridge.inhibit_ipv4: "true"', example)
 
+    def test_the_application_image_stays_the_last_dockerfile_stage(self) -> None:
+        # Builds without --target (Compose's migrate service, the release workflow) take the last stage.
+        stages = re.findall(r"^FROM \S+ AS (\S+)$", (ROOT / "docker" / "Dockerfile").read_text(encoding="utf-8"), re.M)
+        self.assertEqual(stages[-1], "runtime")
+        self.assertIn("agent-runtime", stages)
+
     def test_the_release_compose_file_keeps_the_runtime_off(self) -> None:
         text = (ROOT / "docker" / "compose.yaml").read_text(encoding="utf-8")
         self.assertNotIn("FLUX_AGENT_RUNTIME", text)

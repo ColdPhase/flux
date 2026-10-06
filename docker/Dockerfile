@@ -31,42 +31,6 @@ WORKDIR /app
 COPY --from=build /app /app
 CMD ["node_modules/.bin/tsx", "--test", "tests/app/e2e/pwa.e2e.ts"]
 
-FROM node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS runtime
-WORKDIR /app
-ENV NODE_ENV=production
-COPY --from=production-dependencies /app/node_modules ./node_modules
-COPY --from=production-dependencies /app/apps/server/node_modules ./apps/server/node_modules
-COPY --from=production-dependencies /app/apps/worker/node_modules ./apps/worker/node_modules
-COPY --from=production-dependencies /app/packages/core/node_modules ./packages/core/node_modules
-COPY --from=production-dependencies /app/packages/db/node_modules ./packages/db/node_modules
-COPY --from=production-dependencies /app/packages/agent-runtime/node_modules ./packages/agent-runtime/node_modules
-COPY --from=production-dependencies /app/apps/runtime/node_modules ./apps/runtime/node_modules
-COPY --from=build /app/package.json ./package.json
-COPY --from=build /app/apps/server/package.json ./apps/server/package.json
-COPY --from=build /app/apps/worker/package.json ./apps/worker/package.json
-COPY --from=build /app/packages/contracts/package.json ./packages/contracts/package.json
-COPY --from=build /app/packages/core/package.json ./packages/core/package.json
-COPY --from=build /app/packages/db/package.json ./packages/db/package.json
-COPY --from=build /app/packages/agent-runtime/package.json ./packages/agent-runtime/package.json
-COPY --from=build /app/packages/runtime-protocol/package.json ./packages/runtime-protocol/package.json
-COPY --from=build /app/apps/runtime/package.json ./apps/runtime/package.json
-COPY --from=build /app/apps/server/dist ./apps/server/dist
-COPY --from=build /app/apps/worker/dist ./apps/worker/dist
-COPY --from=build /app/apps/web/dist ./apps/web/dist
-COPY --from=build /app/packages/contracts/dist ./packages/contracts/dist
-COPY --from=build /app/packages/core/dist ./packages/core/dist
-COPY --from=build /app/packages/db/dist ./packages/db/dist
-COPY --from=build /app/packages/agent-runtime/dist ./packages/agent-runtime/dist
-# runtime-manager and runtime-egress (F-022 AIM-3) run on this image; the slots use agent-runtime below.
-COPY --from=build /app/packages/runtime-protocol/dist ./packages/runtime-protocol/dist
-COPY --from=build /app/apps/runtime/dist ./apps/runtime/dist
-COPY --from=build /app/packages/db/migrations ./packages/db/migrations
-COPY --from=build /app/tooling/dist ./tooling/dist
-RUN mkdir -p /data/files && chown -R node:node /data
-USER node
-EXPOSE 8080
-CMD ["node", "apps/server/dist/index.js"]
-
 # --- The agent runtime slot image (F-022 AIM-3, T3 #278): the supervisor (Node built-ins only) on the
 # same pinned Node base, and nothing of the application. Claude Code is never in an image: the
 # `runtime-install` service puts the pinned, signature-checked release into the tools volume.
@@ -111,3 +75,41 @@ USER root
 RUN apk add --no-cache gnupg
 USER node
 CMD ["node", "apps/runtime/dist/install/main.js"]
+
+# The application image. It stays the LAST stage: builds without --target (Compose's migrate, the
+# release workflow) produce it.
+FROM node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=production-dependencies /app/node_modules ./node_modules
+COPY --from=production-dependencies /app/apps/server/node_modules ./apps/server/node_modules
+COPY --from=production-dependencies /app/apps/worker/node_modules ./apps/worker/node_modules
+COPY --from=production-dependencies /app/packages/core/node_modules ./packages/core/node_modules
+COPY --from=production-dependencies /app/packages/db/node_modules ./packages/db/node_modules
+COPY --from=production-dependencies /app/packages/agent-runtime/node_modules ./packages/agent-runtime/node_modules
+COPY --from=production-dependencies /app/apps/runtime/node_modules ./apps/runtime/node_modules
+COPY --from=build /app/package.json ./package.json
+COPY --from=build /app/apps/server/package.json ./apps/server/package.json
+COPY --from=build /app/apps/worker/package.json ./apps/worker/package.json
+COPY --from=build /app/packages/contracts/package.json ./packages/contracts/package.json
+COPY --from=build /app/packages/core/package.json ./packages/core/package.json
+COPY --from=build /app/packages/db/package.json ./packages/db/package.json
+COPY --from=build /app/packages/agent-runtime/package.json ./packages/agent-runtime/package.json
+COPY --from=build /app/packages/runtime-protocol/package.json ./packages/runtime-protocol/package.json
+COPY --from=build /app/apps/runtime/package.json ./apps/runtime/package.json
+COPY --from=build /app/apps/server/dist ./apps/server/dist
+COPY --from=build /app/apps/worker/dist ./apps/worker/dist
+COPY --from=build /app/apps/web/dist ./apps/web/dist
+COPY --from=build /app/packages/contracts/dist ./packages/contracts/dist
+COPY --from=build /app/packages/core/dist ./packages/core/dist
+COPY --from=build /app/packages/db/dist ./packages/db/dist
+COPY --from=build /app/packages/agent-runtime/dist ./packages/agent-runtime/dist
+# runtime-manager and runtime-egress (F-022 AIM-3) run on this image; the slots use agent-runtime below.
+COPY --from=build /app/packages/runtime-protocol/dist ./packages/runtime-protocol/dist
+COPY --from=build /app/apps/runtime/dist ./apps/runtime/dist
+COPY --from=build /app/packages/db/migrations ./packages/db/migrations
+COPY --from=build /app/tooling/dist ./tooling/dist
+RUN mkdir -p /data/files && chown -R node:node /data
+USER node
+EXPOSE 8080
+CMD ["node", "apps/server/dist/index.js"]
