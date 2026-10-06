@@ -2,14 +2,14 @@ import { randomUUID } from 'node:crypto';
 import { betterAuth } from 'better-auth';
 import { APIError } from 'better-auth/api';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
-import { jwt } from 'better-auth/plugins';
+import { genericOAuth, jwt } from 'better-auth/plugins';
 import { cimd } from '@better-auth/cimd';
 import { fetchClientMetadataResource } from '@better-auth/cimd/node';
 import { mcp } from '@better-auth/mcp';
 import { schema } from '@flux/db';
 import { agentOauthUseCases, type Database } from '@flux/core';
 import { createAgentConnectionStore } from '../agent-connection/store.js';
-import type { IdentityConfig } from './config.js';
+import type { IdentityConfig, OidcConfig } from './config.js';
 import type { Mailer } from './mailer.js';
 import type { OauthRequests } from './oauth-flow.js';
 
@@ -24,6 +24,35 @@ export interface AuthDependencies {
   mailer: Mailer | null;
   onMailError?: (error: unknown) => void;
   oauthRequests: OauthRequests;
+}
+
+/**
+ * The person an ID token names (#113). The plugin has already verified the token's signature,
+ * audience, expiry and nonce against the discovery JWKS; this accepts only claims from the exact
+ * configured issuer with a verified email, and ignores groups, roles and domains (Flux access comes
+ * from Flux grants). Null refuses the sign-in, which Better Auth turns into the error redirect.
+ */
+export function oidcUser(oidc: Pick<OidcConfig, 'issuer'>, claims: Record<string, unknown> | null) {
+  if (!claims) return null;
+  const issuer = typeof claims.iss === 'string' ? claims.iss.replace(/\/$/, '') : '';
+  const subject = typeof claims.sub === 'string' ? claims.sub : '';
+  const email = typeof claims.email === 'string' ? claims.email.trim().toLowerCase() : '';
+  if (issuer !== oidc.issuer || !subject || !email || claims.email_verified !== true) return null;
+  const name = [claims.name, claims.preferred_username].find((value): value is string => typeof value === 'string' && !!value.trim());
+  // The plugin keys the Flux account by `sub` (the stable OIDC subject), never by email.
+  return { id: subject, sub: subject, email, emailVerified: true, name: (name ?? email).trim().slice(0, 200) };
+}
+
+/** The payload of an ID token the plugin verified before calling getUserInfo. */
+function idTokenClaims(idToken: string | undefined): Record<string, unknown> | null {
+  const payload = idToken?.split('.')[1];
+  if (!payload) return null;
+  try {
+    const value: unknown = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    return value && typeof value === 'object' ? value as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
 }
 
 export function createAuth({ db, config, mailer, onMailError, oauthRequests }: AuthDependencies) {
@@ -65,7 +94,8 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests }: A
     user: { modelName: 'authUsers' },
     // No cookie cache: every request reads the session row, so revocation applies immediately.
     session: { modelName: 'authSessions', cookieCache: { enabled: false } },
-    account: { modelName: 'authAccounts' },
+    // A new identity never acquires an existing account by asserting the same email (#113).
+    account: { modelName: 'authAccounts', accountLinking: { disableImplicitLinking: true } },
     verification: { modelName: 'authVerifications', storeIdentifier: 'hashed' },
     plugins: [
       jwt(),
@@ -73,6 +103,12 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests }: A
         loginPage: '/login', consentPage: '/consent', resource,
         scopes: ['flux.context.read', 'flux.proposal.write', 'flux.action.execute', 'offline_access'],
         grantTypes: ['authorization_code', 'refresh_token'],
+        // Clients arrive only through Client ID Metadata Documents (the cimd plugin below, which does
+        // not consult this hook). No browser session may create, read, list, update, rotate or delete
+        // an OAuth client, so a member cannot register a look-alike client with their own redirect
+        // (#287). RFC 7591 dynamic registration at /oauth2/register stays off.
+        clientPrivileges: () => false,
+        allowDynamicClientRegistration: false,
         postLogin: {
           page: '/connect-agent',
           shouldRedirect: async ({ user, session }) => {
@@ -95,6 +131,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests }: A
         },
       }),
       cimd({ fetchClientMetadataResource, metadataProfile: 'mcp-2026-07-28' }),
+      ...(config.oidc ? [oidcPlugin(config.oidc)] : []),
     ],
     emailAndPassword: {
       enabled: true,
@@ -134,3 +171,22 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests }: A
 }
 
 export type FluxAuth = ReturnType<typeof createAuth>;
+
+/** One operator-configured OpenID Connect provider for human sign-in (#113). */
+function oidcPlugin(oidc: OidcConfig) {
+  return genericOAuth({
+    config: [{
+      providerId: oidc.providerId,
+      discoveryUrl: `${oidc.issuer}/.well-known/openid-configuration`,
+      clientId: oidc.clientId,
+      clientSecret: oidc.clientSecret,
+      scopes: ['openid', 'email', 'profile'],
+      pkce: true,
+      // Fail closed when discovery publishes no usable issuer/JWKS: claims must come from a verified ID token.
+      requireIdTokenVerification: true,
+      // The same subject keeps the same Flux person; a changed (verified) email updates it.
+      overrideUserInfo: true,
+      getUserInfo: async (tokens) => oidcUser(oidc, idTokenClaims(tokens.idToken)),
+    }],
+  });
+}

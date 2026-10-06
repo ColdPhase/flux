@@ -1,11 +1,11 @@
 import type { IncomingHttpHeaders } from 'node:http';
-import { nativeWorkReadKeys, nativeWorkObjectRows, nativeWorkReferenceRows, nativeWorkThoughtRows, nativeWorkVisibilityRows, nativeWorkSummaryRows, nativeWorkAssociationRows, type DbExecutor, type NativeReadKeyPage } from '@flux/db';
+import { githubRows, nativeWorkReadKeys, nativeWorkObjectRows, nativeWorkReferenceRows, nativeWorkThoughtRows, nativeWorkVisibilityRows, nativeWorkSummaryRows, nativeWorkAssociationRows, workRows, type DbExecutor, type NativeReadKeyPage, type NativeWorkDetailObject } from '@flux/db';
 import {
-  accessName, createBoundedWorkReads, DomainError, enforce, evaluateProject, NotFoundError,
+  accessName, createBoundedWorkReads, DomainError, enforce, evaluateProject, NotFoundError, presentGithubRule,
   type Database, type Principal, type WorkReadAccess, type WorkReadFinalFence,
   type WorkReadRepository, type WorkReadUnitOfWork,
 } from '@flux/core';
-import type { WorkObjectType } from '@flux/contracts';
+import type { WorkDetailObject, WorkObjectType } from '@flux/contracts';
 import type { SessionContext, SessionResolver } from '../identity/index.js';
 
 export function nativeWorkReadAccess(db: DbExecutor): WorkReadAccess {
@@ -17,6 +17,17 @@ export function nativeWorkReadAccess(db: DbExecutor): WorkReadAccess {
   } };
 }
 const boundary = (key: { rank: number; createdAt: string; id: string }) => ({ rank: key.rank, createdAt: key.createdAt, id: key.id });
+
+/** A task's "Let linked PRs move this task" rule (#74 G-1a) is part of its native detail, presented as for every reader. */
+async function withGithubRule(db: DbExecutor, object: NativeWorkDetailObject): Promise<WorkDetailObject> {
+  if (object.kind !== 'work') return object;
+  const rule = (await githubRows(db).taskRules([object.id])).get(object.id);
+  if (!rule) return { ...object, githubRule: null };
+  const author = rule.authorUserId;
+  const names = author ? await workRows(db).names([{ kind: 'human', id: author }]) : new Map<string, string>();
+  return { ...object, githubRule: { ...presentGithubRule(rule, { version: object.version, status: object.status, blocker: object.blocker, parked: !!object.parked }),
+    setUpBy: author ? { kind: 'human', id: author, name: names.get(`human:${author}`) ?? 'Former member' } : null } };
+}
 
 /** No legacy links()/whole-list presenter: only bounded keys and native scalar/batch queries. */
 export function nativeWorkReadRepository(db: DbExecutor): WorkReadRepository {
@@ -52,8 +63,9 @@ export function nativeWorkReadRepository(db: DbExecutor): WorkReadRepository {
     },
     thoughtTasks: (projectId, thoughtIds) => nativeWorkThoughtRows(db).observe(projectId, thoughtIds),
     async detail(projectId, ref) {
-      const object = await objects.detail(projectId, ref);
-      if (!object) throw new NotFoundError('Work object', 'WORK_OBJECT_NOT_FOUND');
+      const own = await objects.detail(projectId, ref);
+      if (!own) throw new NotFoundError('Work object', 'WORK_OBJECT_NOT_FOUND');
+      const object = await withGithubRule(db, own);
       const [facts] = await visibility.relations(projectId, [ref]);
       if (!facts) throw new Error('Missing native detail counts');
       const refs = object.kind === 'decision' ? [object.supersedes, object.supersededBy] : object.kind === 'work' ? [object.parked?.decisionId ?? null] : [];

@@ -1,3 +1,5 @@
+import { GITHUB_RULE_AUTOMATION } from '../github/rules.js';
+
 /** Accepted #58 source-change window; shared by event collection and readiness. */
 export const COMPARISON_QUIET_WINDOW_MS = 2 * 60_000;
 export const COMPARISON_MAX_WAIT_MS = 15 * 60_000;
@@ -55,6 +57,8 @@ const sourceKinds = new Set([
 ]);
 const thoughtContent = new Set(['thought_added', 'thought_updated', 'thought_removed']);
 function humanSourceEvent(event: ComparisonSourceEvent) {
+  // A task rule's automatic change (#74 G-1a) is recorded under its author but is not their activity.
+  if (event.data.automation === GITHUB_RULE_AUTOMATION) return false;
   return event.actorId.startsWith('human:') && (sourceKinds.has(event.kind)
     || (event.kind === 'sketch.changed.v1' && typeof event.data.op === 'string' && thoughtContent.has(event.data.op)));
 }

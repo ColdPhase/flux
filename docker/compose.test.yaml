@@ -73,9 +73,13 @@ services:
     environment:
       # The operator allowlist lets owner endpoints reach the local provider mock only.
       FLUX_AI_PRIVATE_TARGETS: providermock
+      # Pool connection wait for this suite (#271, docs/development/containers.md): new connections and
+      # short waits while other stacks share the host. Production keeps 1.5 s.
+      FLUX_DB_CONNECT_TIMEOUT_MS: ${FLUX_DB_CONNECT_TIMEOUT_MS:-10000}
   worker:
     environment:
       FLUX_AI_PRIVATE_TARGETS: providermock
+      FLUX_DB_CONNECT_TIMEOUT_MS: ${FLUX_DB_CONNECT_TIMEOUT_MS:-10000}
       FLUX_PUSH_ALLOW_PRIVATE_NETWORK: "true"
       NODE_EXTRA_CA_CERTS: /tls/cert.pem
     volumes:
@@ -86,6 +90,8 @@ services:
   test:
     environment:
       FLUX_TEST_FILES_DIR: /data/files
+      # The suite's own pools too, including the fresh databases of the migration tests.
+      FLUX_DB_CONNECT_TIMEOUT_MS: ${FLUX_DB_CONNECT_TIMEOUT_MS:-10000}
       FLUX_VAPID_PUBLIC_KEY: ${FLUX_VAPID_PUBLIC_KEY:-}
       FLUX_VAPID_PRIVATE_KEY: ${FLUX_VAPID_PRIVATE_KEY:-}
       FLUX_VAPID_SUBJECT: ${FLUX_VAPID_SUBJECT:-}
@@ -115,6 +121,7 @@ services:
     environment:
       # Only the protocol browser fixture seeds its registered OAuth client (#152).
       DATABASE_URL: postgres://${POSTGRES_USER:-flux}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-flux}
+      FLUX_DB_CONNECT_TIMEOUT_MS: ${FLUX_DB_CONNECT_TIMEOUT_MS:-10000}
       FLUX_AUTH_SECRET: ${FLUX_AUTH_SECRET:?Set FLUX_AUTH_SECRET}
       FLUX_API_URL: http://api:8080
       FLUX_PUBLIC_ORIGIN: ${FLUX_PUBLIC_ORIGIN:?Set FLUX_PUBLIC_ORIGIN}

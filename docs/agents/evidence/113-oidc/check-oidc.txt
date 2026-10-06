@@ -1,0 +1,467 @@
+#1 [internal] load local bake definitions
+#1 reading from stdin 672B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 3.10kB done
+#2 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#3 DONE 1.5s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 191B done
+#4 DONE 0.0s
+
+#5 [build 1/9] FROM docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#5 resolve docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 0.0s done
+#5 DONE 0.0s
+
+#6 [internal] load build context
+#6 transferring context: 5.94MB 0.1s done
+#6 DONE 0.2s
+
+#7 [runtime 17/25] COPY --from=build /app/apps/worker/dist ./apps/worker/dist
+#7 CACHED
+
+#8 [runtime 23/25] COPY --from=build /app/packages/db/migrations ./packages/db/migrations
+#8 CACHED
+
+#9 [runtime 21/25] COPY --from=build /app/packages/db/dist ./packages/db/dist
+#9 CACHED
+
+#10 [runtime 22/25] COPY --from=build /app/packages/agent-runtime/dist ./packages/agent-runtime/dist
+#10 CACHED
+
+#11 [runtime  3/25] COPY --from=production-dependencies /app/node_modules ./node_modules
+#11 CACHED
+
+#12 [runtime 16/25] COPY --from=build /app/apps/server/dist ./apps/server/dist
+#12 CACHED
+
+#13 [build 4/9] COPY pnpm-lock.yaml pnpm-workspace.yaml ./
+#13 CACHED
+
+#14 [runtime 24/25] COPY --from=build /app/tooling/dist ./tooling/dist
+#14 CACHED
+
+#15 [build 5/9] COPY patches ./patches
+#15 CACHED
+
+#16 [runtime 15/25] COPY --from=build /app/packages/agent-runtime/package.json ./packages/agent-runtime/package.json
+#16 CACHED
+
+#17 [runtime 18/25] COPY --from=build /app/apps/web/dist ./apps/web/dist
+#17 CACHED
+
+#18 [runtime  5/25] COPY --from=production-dependencies /app/apps/worker/node_modules ./apps/worker/node_modules
+#18 CACHED
+
+#19 [runtime  8/25] COPY --from=production-dependencies /app/packages/agent-runtime/node_modules ./packages/agent-runtime/node_modules
+#19 CACHED
+
+#20 [runtime 14/25] COPY --from=build /app/packages/db/package.json ./packages/db/package.json
+#20 CACHED
+
+#21 [runtime 11/25] COPY --from=build /app/apps/worker/package.json ./apps/worker/package.json
+#21 CACHED
+
+#22 [runtime  6/25] COPY --from=production-dependencies /app/packages/core/node_modules ./packages/core/node_modules
+#22 CACHED
+
+#23 [production-dependencies 1/1] RUN pnpm install --prod --offline --frozen-lockfile
+#23 CACHED
+
+#24 [runtime 13/25] COPY --from=build /app/packages/core/package.json ./packages/core/package.json
+#24 CACHED
+
+#25 [build 9/9] RUN pnpm build && pnpm typecheck && pnpm lint
+#25 CACHED
+
+#26 [runtime  9/25] COPY --from=build /app/package.json ./package.json
+#26 CACHED
+
+#27 [runtime 19/25] COPY --from=build /app/packages/contracts/dist ./packages/contracts/dist
+#27 CACHED
+
+#28 [runtime  7/25] COPY --from=production-dependencies /app/packages/db/node_modules ./packages/db/node_modules
+#28 CACHED
+
+#29 [build 2/9] WORKDIR /app
+#29 CACHED
+
+#30 [build 7/9] COPY . .
+#30 CACHED
+
+#31 [runtime  4/25] COPY --from=production-dependencies /app/apps/server/node_modules ./apps/server/node_modules
+#31 CACHED
+
+#32 [build 6/9] RUN pnpm fetch
+#32 CACHED
+
+#33 [build 8/9] RUN pnpm install --offline --frozen-lockfile
+#33 CACHED
+
+#34 [runtime 12/25] COPY --from=build /app/packages/contracts/package.json ./packages/contracts/package.json
+#34 CACHED
+
+#35 [build 3/9] RUN corepack enable && corepack install -g pnpm@12.6.0
+#35 CACHED
+
+#36 [runtime 20/25] COPY --from=build /app/packages/core/dist ./packages/core/dist
+#36 CACHED
+
+#37 [runtime 10/25] COPY --from=build /app/apps/server/package.json ./apps/server/package.json
+#37 CACHED
+
+#38 [runtime 25/25] RUN mkdir -p /data/files && chown -R node:node /data
+#38 CACHED
+
+#39 exporting to image
+#39 exporting layers 0.0s done
+#39 exporting manifest sha256:36842d0bd225f34b3b46e6189dcacd36aca1c5165882ede0a1edc6be702a0574 0.0s done
+#39 exporting config sha256:25b256348379842c9295ced31f0c4cd3d09db306d15f7b25539c9cff1d0b74aa done
+#39 exporting attestation manifest sha256:844b58c7212971f826050a6797638960163640a59d5945cf4e844939b39819cb 0.0s done
+#39 exporting manifest list sha256:a6812eb1e2364fb66d89f84b4639664fb1b307b9a399aa32acef480abf53b066 done
+#39 naming to docker.io/library/flux-foundation:flux-oidc-1791114824-93108 done
+#39 unpacking to docker.io/library/flux-foundation:flux-oidc-1791114824-93108
+#39 unpacking to docker.io/library/flux-foundation:flux-oidc-1791114824-93108 4.0s done
+#39 DONE 4.2s
+
+#40 resolving provenance for metadata file
+#40 DONE 0.0s
+ flux-foundation:flux-oidc-1791114824-93108  Built
+ Network flux-oidc-1791114824-93108_default  Creating
+ Network flux-oidc-1791114824-93108_default  Created
+ Volume flux-oidc-1791114824-93108_pgdata  Creating
+ Volume flux-oidc-1791114824-93108_pgdata  Created
+ Container flux-oidc-1791114824-93108-db-1  Creating
+ Container flux-oidc-1791114824-93108-db-1  Created
+ Container flux-oidc-1791114824-93108-migrate-1  Creating
+ Container flux-oidc-1791114824-93108-migrate-1  Created
+ Container flux-oidc-1791114824-93108-db-1  Starting
+ Container flux-oidc-1791114824-93108-db-1  Started
+ Container flux-oidc-1791114824-93108-db-1  Waiting
+ Container flux-oidc-1791114824-93108-db-1  Healthy
+ Container flux-oidc-1791114824-93108-migrate-1  Starting
+ Container flux-oidc-1791114824-93108-migrate-1  Started
+ Volume flux-oidc-1791114824-93108_files  Creating
+ Volume flux-oidc-1791114824-93108_files  Created
+time="2026-10-04T13:53:58+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ oidc-mock Pulling 
+ pushmock Pulling 
+ pushmock Warning pull access denied for flux-e2e, repository does not exist or may require 'docker login'
+ oidc-mock Error pull access denied for flux-e2e, repository does not exist or may require 'docker login'
+#1 [internal] load local bake definitions
+#1 reading from stdin 1.22kB done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 3.10kB 0.0s done
+#2 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#3 DONE 0.0s
+
+#4 [internal] load metadata for mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
+#4 DONE 0.1s
+
+#5 [internal] load .dockerignore
+#5 transferring context: 191B 0.0s done
+#5 DONE 0.1s
+
+#6 [internal] load build context
+#6 DONE 0.0s
+
+#7 [e2e 1/3] FROM mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
+#7 resolve mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27 0.0s done
+#7 DONE 0.0s
+
+#8 [build 1/9] FROM docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#8 resolve docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#8 resolve docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 0.0s done
+#8 DONE 0.0s
+
+#6 [internal] load build context
+#6 transferring context: 42.92kB 0.1s done
+#6 DONE 0.1s
+
+#9 [build 5/9] COPY patches ./patches
+#9 CACHED
+
+#10 [build 8/9] RUN pnpm install --offline --frozen-lockfile
+#10 CACHED
+
+#11 [build 2/9] WORKDIR /app
+#11 CACHED
+
+#12 [build 4/9] COPY pnpm-lock.yaml pnpm-workspace.yaml ./
+#12 CACHED
+
+#13 [build 7/9] COPY . .
+#13 CACHED
+
+#14 [build 9/9] RUN pnpm build && pnpm typecheck && pnpm lint
+#14 CACHED
+
+#15 [e2e 2/3] WORKDIR /app
+#15 CACHED
+
+#16 [build 3/9] RUN corepack enable && corepack install -g pnpm@12.6.0
+#16 CACHED
+
+#17 [build 6/9] RUN pnpm fetch
+#17 CACHED
+
+#18 [e2e 3/3] COPY --from=build /app /app
+#18 CACHED
+
+#19 exporting to image
+#19 exporting layers done
+#19 exporting manifest sha256:a4a8effd6bf65e73fb9ee6ebbbaadbe93067a510a6a83ae19d718ffc25a4a7df done
+#19 exporting config sha256:0c0f0ab26228f66537296cc3379ed23922160e9f94ff087a1f327689c71fdc0f done
+#19 exporting attestation manifest sha256:049bfd647ff9b758b29d101160959153f0f4288de63374d9662952e784e3eaf0 0.0s done
+#19 exporting manifest list sha256:5a53fda21e13f39a7f2ab7e81bc0d7cee3daac60b4d8b7c03ec49b7d418107b4 done
+#19 naming to docker.io/library/flux-e2e:flux-oidc-1791114824-93108 done
+#19 unpacking to docker.io/library/flux-e2e:flux-oidc-1791114824-93108
+#19 unpacking to docker.io/library/flux-e2e:flux-oidc-1791114824-93108 5.1s done
+#19 DONE 5.2s
+
+#20 resolving provenance for metadata file
+#20 DONE 0.0s
+ flux-e2e:flux-oidc-1791114824-93108  Built
+ Volume flux-oidc-1791114824-93108_pushtls  Creating
+ Volume flux-oidc-1791114824-93108_pushtls  Created
+ Container flux-oidc-1791114824-93108-keycloak-1  Creating
+ Container flux-oidc-1791114824-93108-pushmock-1  Creating
+ Container flux-oidc-1791114824-93108-oidc-mock-1  Creating
+ Container flux-oidc-1791114824-93108-db-1  Running
+ Container flux-oidc-1791114824-93108-mailpit-1  Creating
+ Container flux-oidc-1791114824-93108-mailpit-1  Created
+ Container flux-oidc-1791114824-93108-oidc-mock-1  Created
+ Container flux-oidc-1791114824-93108-api-mock-1  Creating
+time="2026-10-04T13:54:07+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-oidc-1791114824-93108-keycloak-1  Created
+ Container flux-oidc-1791114824-93108-api-1  Creating
+time="2026-10-04T13:54:07+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-oidc-1791114824-93108-pushmock-1  Created
+ Container flux-oidc-1791114824-93108-worker-1  Creating
+time="2026-10-04T13:54:07+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-oidc-1791114824-93108-worker-1  Created
+ Container flux-oidc-1791114824-93108-api-mock-1  Created
+ Container flux-oidc-1791114824-93108-api-1  Created
+ Container flux-oidc-1791114824-93108-pushmock-1  Starting
+ Container flux-oidc-1791114824-93108-db-1  Waiting
+ Container flux-oidc-1791114824-93108-oidc-mock-1  Starting
+ Container flux-oidc-1791114824-93108-keycloak-1  Starting
+ Container flux-oidc-1791114824-93108-mailpit-1  Starting
+ Container flux-oidc-1791114824-93108-db-1  Healthy
+ Container flux-oidc-1791114824-93108-migrate-1  Starting
+ Container flux-oidc-1791114824-93108-mailpit-1  Started
+ Container flux-oidc-1791114824-93108-pushmock-1  Started
+ Container flux-oidc-1791114824-93108-oidc-mock-1  Started
+ Container flux-oidc-1791114824-93108-keycloak-1  Started
+ Container flux-oidc-1791114824-93108-migrate-1  Started
+ Container flux-oidc-1791114824-93108-migrate-1  Waiting
+ Container flux-oidc-1791114824-93108-oidc-mock-1  Waiting
+ Container flux-oidc-1791114824-93108-migrate-1  Waiting
+ Container flux-oidc-1791114824-93108-keycloak-1  Waiting
+ Container flux-oidc-1791114824-93108-pushmock-1  Waiting
+ Container flux-oidc-1791114824-93108-migrate-1  Waiting
+ Container flux-oidc-1791114824-93108-oidc-mock-1  Healthy
+ Container flux-oidc-1791114824-93108-pushmock-1  Healthy
+ Container flux-oidc-1791114824-93108-migrate-1  Exited
+ Container flux-oidc-1791114824-93108-migrate-1  Exited
+ Container flux-oidc-1791114824-93108-api-mock-1  Starting
+ Container flux-oidc-1791114824-93108-migrate-1  Exited
+ Container flux-oidc-1791114824-93108-worker-1  Starting
+ Container flux-oidc-1791114824-93108-api-mock-1  Started
+ Container flux-oidc-1791114824-93108-worker-1  Started
+ Container flux-oidc-1791114824-93108-keycloak-1  Healthy
+ Container flux-oidc-1791114824-93108-api-1  Starting
+ Container flux-oidc-1791114824-93108-api-1  Started
+ Container flux-oidc-1791114824-93108-oidc-mock-1  Waiting
+ Container flux-oidc-1791114824-93108-api-1  Waiting
+ Container flux-oidc-1791114824-93108-worker-1  Waiting
+ Container flux-oidc-1791114824-93108-db-1  Waiting
+ Container flux-oidc-1791114824-93108-api-mock-1  Waiting
+ Container flux-oidc-1791114824-93108-migrate-1  Waiting
+ Container flux-oidc-1791114824-93108-keycloak-1  Waiting
+ Container flux-oidc-1791114824-93108-pushmock-1  Waiting
+ Container flux-oidc-1791114824-93108-mailpit-1  Waiting
+ Container flux-oidc-1791114824-93108-mailpit-1  Healthy
+ Container flux-oidc-1791114824-93108-api-mock-1  Healthy
+ Container flux-oidc-1791114824-93108-keycloak-1  Healthy
+ Container flux-oidc-1791114824-93108-db-1  Healthy
+ Container flux-oidc-1791114824-93108-oidc-mock-1  Healthy
+ Container flux-oidc-1791114824-93108-migrate-1  Exited
+ Container flux-oidc-1791114824-93108-worker-1  Healthy
+ Container flux-oidc-1791114824-93108-pushmock-1  Healthy
+ Container flux-oidc-1791114824-93108-api-1  Healthy
+ Volume flux-oidc-1791114824-93108_teststate  Creating
+ Volume flux-oidc-1791114824-93108_teststate  Created
+ Container flux-oidc-1791114824-93108-keycloak-1  Running
+ Container flux-oidc-1791114824-93108-db-1  Running
+ Container flux-oidc-1791114824-93108-api-1  Running
+ Container flux-oidc-1791114824-93108-db-1  Waiting
+ Container flux-oidc-1791114824-93108-db-1  Healthy
+ Container flux-oidc-1791114824-93108-migrate-1  Starting
+ Container flux-oidc-1791114824-93108-migrate-1  Started
+ Container flux-oidc-1791114824-93108-migrate-1  Waiting
+ Container flux-oidc-1791114824-93108-keycloak-1  Waiting
+ Container flux-oidc-1791114824-93108-keycloak-1  Healthy
+ Container flux-oidc-1791114824-93108-migrate-1  Exited
+✔ a person signs in with the operator identity provider and gets a Flux account without any grants (4687.64696ms)
+✔ mail goes to the chosen mailboxes of a single sign-on person (2869.961418ms)
+✔ each single sign-on person gets exactly the mailboxes they chose: account only, extra only, in-app only (6448.688835ms)
+✔ another single sign-on person cannot claim or receive at someone else's verified private address (2344.888626ms)
+✔ a single sign-on session can be revoked or signed out, and an email link opens only while its reader is authorized (8609.92413ms)
+✔ the same subject keeps the same person, grants and verified address when the provider changes the email (3527.270627ms)
+✔ a new identity with an existing account's email cannot take that account (1377.057417ms)
+✔ an email the provider has not verified does not sign in (1153.705876ms)
+✔ a replayed or forged callback signs nobody in (1546.335084ms)
+✔ a raw ID token presented directly does not sign in (8.919042ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 34691.507349
+ Container flux-oidc-1791114824-93108-db-1  Running
+ Container flux-oidc-1791114824-93108-keycloak-1  Running
+ Container flux-oidc-1791114824-93108-api-1  Running
+ Container flux-oidc-1791114824-93108-db-1  Waiting
+ Container flux-oidc-1791114824-93108-db-1  Healthy
+ Container flux-oidc-1791114824-93108-migrate-1  Starting
+ Container flux-oidc-1791114824-93108-migrate-1  Started
+ Container flux-oidc-1791114824-93108-keycloak-1  Waiting
+ Container flux-oidc-1791114824-93108-migrate-1  Waiting
+ Container flux-oidc-1791114824-93108-keycloak-1  Healthy
+ Container flux-oidc-1791114824-93108-migrate-1  Exited
+✔ a valid ID token from the mock provider signs in through the same callback (control) (1632.235334ms)
+✔ an ID token with a bad nonce is refused on the callback: no session, no linking, no grants, no address (2078.215584ms)
+✔ an ID token with a bad signature is refused on the callback: no session, no linking, no grants, no address (2113.417542ms)
+✔ an ID token with a bad issuer is refused on the callback: no session, no linking, no grants, no address (2057.046626ms)
+✔ an ID token with a bad audience is refused on the callback: no session, no linking, no grants, no address (2104.99921ms)
+✔ after the refused tokens a valid one still signs in the same person with her grants and address (1118.054626ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 12645.148798
+api-mock refused 8 ID tokens in its verifier
+ Container flux-oidc-1791114824-93108-keycloak-1  Running
+ Container flux-oidc-1791114824-93108-db-1  Running
+ Container flux-oidc-1791114824-93108-api-1  Running
+ Container flux-oidc-1791114824-93108-db-1  Waiting
+ Container flux-oidc-1791114824-93108-db-1  Healthy
+ Container flux-oidc-1791114824-93108-migrate-1  Starting
+ Container flux-oidc-1791114824-93108-migrate-1  Started
+ Container flux-oidc-1791114824-93108-keycloak-1  Waiting
+ Container flux-oidc-1791114824-93108-migrate-1  Waiting
+ Container flux-oidc-1791114824-93108-keycloak-1  Healthy
+ Container flux-oidc-1791114824-93108-migrate-1  Exited
+✔ prepare: bob signs in with single sign-on and the browser state is saved (1222.705125ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1837.429834
+ Container flux-oidc-1791114824-93108-api-1  Restarting
+ Container flux-oidc-1791114824-93108-api-1  Started
+ Container flux-oidc-1791114824-93108-db-1  Running
+ Container flux-oidc-1791114824-93108-keycloak-1  Running
+ Container flux-oidc-1791114824-93108-api-1  Running
+ Container flux-oidc-1791114824-93108-db-1  Waiting
+ Container flux-oidc-1791114824-93108-db-1  Healthy
+ Container flux-oidc-1791114824-93108-migrate-1  Starting
+ Container flux-oidc-1791114824-93108-migrate-1  Started
+ Container flux-oidc-1791114824-93108-migrate-1  Waiting
+ Container flux-oidc-1791114824-93108-keycloak-1  Waiting
+ Container flux-oidc-1791114824-93108-keycloak-1  Healthy
+ Container flux-oidc-1791114824-93108-migrate-1  Exited
+ Container flux-oidc-1791114824-93108-migrate-1  Waiting
+ Container flux-oidc-1791114824-93108-keycloak-1  Waiting
+ Container flux-oidc-1791114824-93108-db-1  Waiting
+ Container flux-oidc-1791114824-93108-api-1  Waiting
+ Container flux-oidc-1791114824-93108-migrate-1  Exited
+ Container flux-oidc-1791114824-93108-db-1  Healthy
+ Container flux-oidc-1791114824-93108-keycloak-1  Healthy
+ Container flux-oidc-1791114824-93108-api-1  Healthy
+ Container flux-oidc-1791114824-93108-keycloak-1  Running
+ Container flux-oidc-1791114824-93108-db-1  Running
+ Container flux-oidc-1791114824-93108-api-1  Running
+ Container flux-oidc-1791114824-93108-db-1  Waiting
+ Container flux-oidc-1791114824-93108-db-1  Healthy
+ Container flux-oidc-1791114824-93108-migrate-1  Starting
+ Container flux-oidc-1791114824-93108-migrate-1  Started
+ Container flux-oidc-1791114824-93108-keycloak-1  Waiting
+ Container flux-oidc-1791114824-93108-migrate-1  Waiting
+ Container flux-oidc-1791114824-93108-keycloak-1  Healthy
+ Container flux-oidc-1791114824-93108-migrate-1  Exited
+✔ verify: after the API restart the same browser state is still signed in as bob (673.117001ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1371.742125
+Single sign-on check passed.
+ Container flux-oidc-1791114824-93108-mailpit-1  Stopping
+ Container flux-oidc-1791114824-93108-api-1  Stopping
+ Container flux-oidc-1791114824-93108-api-mock-1  Stopping
+ Container flux-oidc-1791114824-93108-worker-1  Stopping
+ Container flux-oidc-1791114824-93108-worker-1  Stopped
+ Container flux-oidc-1791114824-93108-worker-1  Removing
+ Container flux-oidc-1791114824-93108-worker-1  Removed
+ Container flux-oidc-1791114824-93108-pushmock-1  Stopping
+ Container flux-oidc-1791114824-93108-mailpit-1  Stopped
+ Container flux-oidc-1791114824-93108-mailpit-1  Removing
+ Container flux-oidc-1791114824-93108-pushmock-1  Stopped
+ Container flux-oidc-1791114824-93108-pushmock-1  Removing
+ Container flux-oidc-1791114824-93108-mailpit-1  Removed
+ Container flux-oidc-1791114824-93108-pushmock-1  Removed
+ Container flux-oidc-1791114824-93108-api-mock-1  Stopped
+ Container flux-oidc-1791114824-93108-api-mock-1  Removing
+ Container flux-oidc-1791114824-93108-api-1  Stopped
+ Container flux-oidc-1791114824-93108-api-1  Removing
+ Container flux-oidc-1791114824-93108-api-mock-1  Removed
+ Container flux-oidc-1791114824-93108-oidc-mock-1  Stopping
+ Container flux-oidc-1791114824-93108-api-1  Removed
+ Container flux-oidc-1791114824-93108-migrate-1  Stopping
+ Container flux-oidc-1791114824-93108-keycloak-1  Stopping
+ Container flux-oidc-1791114824-93108-migrate-1  Stopped
+ Container flux-oidc-1791114824-93108-migrate-1  Removing
+ Container flux-oidc-1791114824-93108-migrate-1  Removed
+ Container flux-oidc-1791114824-93108-db-1  Stopping
+ Container flux-oidc-1791114824-93108-oidc-mock-1  Stopped
+ Container flux-oidc-1791114824-93108-oidc-mock-1  Removing
+ Container flux-oidc-1791114824-93108-oidc-mock-1  Removed
+ Container flux-oidc-1791114824-93108-db-1  Stopped
+ Container flux-oidc-1791114824-93108-db-1  Removing
+ Container flux-oidc-1791114824-93108-db-1  Removed
+ Container flux-oidc-1791114824-93108-keycloak-1  Stopped
+ Container flux-oidc-1791114824-93108-keycloak-1  Removing
+ Container flux-oidc-1791114824-93108-keycloak-1  Removed
+ Volume flux-oidc-1791114824-93108_teststate  Removing
+ Volume flux-oidc-1791114824-93108_files  Removing
+ Volume flux-oidc-1791114824-93108_pgdata  Removing
+ Network flux-oidc-1791114824-93108_default  Removing
+ Volume flux-oidc-1791114824-93108_pushtls  Removing
+ Volume flux-oidc-1791114824-93108_teststate  Removed
+ Volume flux-oidc-1791114824-93108_files  Removed
+ Volume flux-oidc-1791114824-93108_pgdata  Removed
+ Volume flux-oidc-1791114824-93108_pushtls  Removed
+ Network flux-oidc-1791114824-93108_default  Removed
+Removed 2 per-run image(s) tagged :flux-oidc-1791114824-93108
+EXIT 0

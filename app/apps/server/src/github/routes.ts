@@ -9,7 +9,8 @@ import type { GithubConfig } from './config.js';
 import { githubProvider } from './provider.js';
 import { githubOauth } from './oauth.js';
 import { githubTransport, type GithubTransport } from './http.js';
-import { createGithubUseCases } from './adapters.js';
+import { createGithubRuleUseCases, createGithubUseCases, unavailableGithubProvider } from './adapters.js';
+import { githubRuleRoutes } from './rule-routes.js';
 import { githubWebhookRoutes } from './webhook.js';
 interface Options { db: Database; sessions: SessionResolver; config: GithubConfig | null; transport?: GithubTransport; provider?: GithubProvider; background?: boolean }
 const bindBody = { type: 'object', additionalProperties: false, required: ['installationId', 'repositoryId'], properties: { installationId: { type: 'string', pattern: '^[1-9][0-9]{0,24}$' }, repositoryId: { type: 'string', pattern: '^[1-9][0-9]{0,24}$' } } } as const;
@@ -22,6 +23,7 @@ export async function githubRoutes(app: FastifyInstance, options: Options) {
   const provider = config ? githubProvider(credentials!, config, transport) : null;
   const useCases = config ? createGithubUseCases(db, options.provider ?? provider!) : null;
   const oauth = config ? githubOauth(db, config, credentials!, transport) : null;
+  const rules = createGithubRuleUseCases(db, options.provider ?? provider ?? unavailableGithubProvider);
   const unavailable = () => { if (!config) throw new ServiceUnavailableError('GitHub App integration is unavailable', 'GITHUB_UNAVAILABLE'); };
   const principal = async (request: Parameters<SessionResolver['requirePrincipal']>[0]) => (await sessions.requirePrincipal(request)).principal;
   async function project(request: Parameters<SessionResolver['requirePrincipal']>[0], id: string, manage = false) {
@@ -29,7 +31,8 @@ export async function githubRoutes(app: FastifyInstance, options: Options) {
   }
   app.get<{ Params: { projectId: string } }>('/api/v1/projects/:projectId/github/capabilities', async (request): Promise<GithubCapabilities> => {
     const actor = await project(request, request.params.projectId);
-    return { status: config ? 'configured' : 'unavailable', authorization: credentials ? await credentials.state(actor.id) : 'required', taskAutomation: 'unavailable', agentDelivery: 'unavailable' };
+    return { status: config ? 'configured' : 'unavailable', authorization: credentials ? await credentials.state(actor.id) : 'required',
+      taskAutomation: config ? 'available' : 'unavailable', agentDelivery: 'unavailable', ruleDefault: await rules.ruleDefault(actor, request.params.projectId) };
   });
   app.post<{ Params: { projectId: string } }>('/api/v1/projects/:projectId/github/authorize', async (request) => {
     unavailable(); return oauth!.start(await sessions.requirePrincipal(request), request.params.projectId, 'authorize');
@@ -75,6 +78,7 @@ export async function githubRoutes(app: FastifyInstance, options: Options) {
     unavailable(); await useCases!.reconcile(await principal(request), request.params.bindingId);
     return reply.code(202).send({ pending: true });
   });
+  githubRuleRoutes(app, rules, principal);
   if (!config) return;
   await app.register(githubWebhookRoutes, { secret: config.webhookSecret, appId: config.appId, admit: useCases!.admit });
   if (options.background === false) return;
