@@ -14,19 +14,25 @@
   - On scope: "desktopu wyglądu nie zmieniamy, tylko mobile miał być taki, z funkcjonalnościami,
     które mamy" ("we don't change the desktop's look; only mobile should look like this, with the
     features we have").
+- **Founder direction** (Hubert, PelikanFix16, 2026-10-06, relayed by claude-hubert on #304,
+  translated): the design is "clean, neat and aesthetic", but the phone Tasks screen is "a good
+  example of a badly cluttered interface". On structure: "We can't keep adding toolbars: we already
+  have Conversation, Map, Tasks and Wiki; we can't keep stacking them vertically forever." That is
+  why the structure rules PA-9 to PA-11 are part of this contract.
 - **Evidence:** the renders, the earlier directions (v2–v4) and what ElevenLabs does (observed
   2026-10-06) are on [#302](https://github.com/ColdPhase/flux/pull/302), in
   `docs/design/research/2026-10-06-calm-renders/` and section 11 of the calm research note. The
   renders are illustrations. Where they show something Flux does not have (a consent request on
   Agents, an "N min" work card, a per-agent colour setting), this contract does **not** adopt it.
 - **Keeps:**
-  - the 11.6 structure: one project conversation, the views, the places;
+  - the 11.6 information architecture: one project conversation, the same views and places. PA-9
+    changes only how a phone reaches the views;
   - PF-1 and PF-3 to PF-7;
   - the [HIG checklist](apple-hig-mobile.md);
   - UI116-2 and UI116-5;
   - every access rule.
-- **Amends, once accepted, on phones only:** the 11.6 colour roles and PF-2's label rule; see
-  [Amendments](#amendments).
+- **Amends, once accepted, on phones only:** the 11.6 colour roles, PF-2's label and chip rules,
+  D1, and F-023 FF-3, FF-10 and FF-11; see [Amendments](#amendments).
 
 ## The idea
 
@@ -52,6 +58,10 @@ media query only. The token names stay the same, so components need no forks.
 | Secondary text | `#6b6660` | `#a39e97` |
 | Hairline | `#e9e6e2` | `#2e2d2b` |
 | Action (primary pill, Send, own bubble) / on action | `#111111` / `#ffffff` | `#f2f0ed` / `#141414` |
+| Selected and current navigation (F-023's `--bg-selected`, `--nav-current`) | quiet fill, text colour | quiet fill, text colour |
+
+F-023 (#275) makes touch type rem-based on every touch screen. PA-1 keeps that scale and changes
+only colours, so slice 1 takes the F-023 tokens as they are and does not fork them.
 
 - **Selection:** a current place, tab or segment uses the quiet fill and a heavier weight, never
   colour alone.
@@ -125,9 +135,13 @@ UI116-5 counts as active execution, mapped from today's data:
 
 ## PA-5. The phone header names both groups
 
-The header shows the title, then "N people · M AI", using up to four faces and orbs. Both counts
-come from the project's current members and agent connections. Tapping it opens the existing
-Details.
+The header has two taps:
+
+- **The title** ("Arduino + AI ▾") opens the views menu (PA-9). Its second line names the
+  current view and shows "N people · M AI", using up to four faces and orbs.
+- **The round "…" button** opens the existing Details.
+
+Both counts come from the project's current members and agent connections.
 
 ## PA-6. Agents on phones
 
@@ -138,8 +152,45 @@ today's text. Nothing new is added.
 ## PA-7. Composer on phones
 
 The existing composer becomes one pill: attach (+), the field, ask the assistant (its orb, where
-the assistant is available today), and Send in the action colour. PF-3's quiet audience line stays
-under the pill; the v5 renders leave it out.
+the assistant is available today), and Send in the action colour. The "+" opens the existing
+Attach and Cite (saved materials, F-023). PF-3's quiet audience line stays under the pill; the v5
+renders leave it out.
+
+## PA-9. At most one bar under the header
+
+A phone screen has these layers, in order: the header, at most **one** control row, the content
+and the bottom bar of places. No screen adds a second stacked row.
+
+- **Views:** the project's views move into the header. The title is a menu: it opens a sheet
+  listing Conversation, Map, Tasks, Wiki, Agents and Decisions, each with its count, and marks the
+  current one. This follows the HIG pattern for switching between peer views of one place from the
+  navigation bar.
+- **Details** moves to the header's round "…".
+- **D1 is decided:** there is no view bar inside a project on the phone.
+- **The bottom bar of places stays** (PF-1, HIG tab bars).
+
+## PA-10. Tasks on the phone
+
+- **The one control row** is the status segmented control: Open, In progress and Done, each with
+  its count. On a phone, Kanban *is* this control, one column at a time, so the Kanban/List
+  toggle goes. Phones show the list; tablet and desktop keep both.
+- **New task** is the header's round "+". It opens the new-task sheet in place, with one field;
+  Enter adds the task and the person stays in the list.
+- **Search and Mine** sit behind the header's magnifier. It reveals a search field over the list
+  (the iOS search pattern), with a "Mine" toggle beside it.
+- **Decisions** are their own kind of object, not a Tasks tool. They get their own entry in the
+  views menu ("Decisions · 1 needs you"). A decision that needs you also shows as one quiet row at
+  the top of the Tasks list.
+- **Nothing is removed:** every function of today's toolbar stays reachable within two taps.
+
+## PA-11. Functional acceptance, not only visual
+
+- **Every function stays reachable.** For each phone screen F-025 restyles, the slice's UI tests
+  reach, by name, every function the 11.6 screen reaches today. They run at 390×844 and 375×667
+  with touch.
+- **No hiding:** a slice cannot land by hiding a function.
+- **Existing tests keep passing:** #275's `test_14` and `test_15` (type and press states) and
+  #301's FF-11 (reading back).
 
 ## Amendments
 
@@ -149,8 +200,11 @@ These apply to phones only.
 | --- | --- | --- |
 | F-017, [11.6 design system](studio-v11.6-design-system.md) tokens | Mint accent for selection, links, focus and unread; slate `--action`; mint-tinted own bubble | PA-1 values under the phone query; tablet and desktop unchanged |
 | #148, [theme accents](theme-accents.md) | The chosen accent colours the chrome on every size | It still does on tablet and desktop; phone chrome is monochrome |
-| PF-2, [phone-first](phone-first.md) | "No control is a bare icon" | Navigation keeps words; actions may be symbols with accessible names, as in principle 3 of #302 and HIG-26 |
-| D1 (#302) | Open | Unchanged. The v5 renders leave out the tab bar inside a conversation, but F-025 does not decide D1 |
+| PF-2, [phone-first](phone-first.md) | "No control is a bare icon"; a place's views are a row of chips under the header | Navigation keeps words; actions may be symbols with accessible names, as in principle 3 of #302 and HIG-26. The views move into the title menu (PA-9) |
+| D1 (#302) | Open | Decided by PA-9: no view bar inside a project on the phone; the bottom bar of places stays |
+| F-023 FF-3 (#275), Back | Back leads to the place's list | Unchanged in behaviour; it sits in the header beside the title menu |
+| F-023 FF-10 (#275), header line | The header's second line holds the audience and the goal | It names the current view and "N people · M AI" (PA-5); the goal stays in Details |
+| F-023 FF-11 (#301), chips step aside | The chips row steps aside while reading | Moot on phones, which have no chips row (PA-9); the state line keeps the behaviour |
 
 ## Delivery slices
 
@@ -162,7 +216,9 @@ claude-hubert.
 3. **Working state:** PA-3 on the assistant's run states, and on connections' claims after #261.
    [H, who owns the agent runtime]
 4. **Conversation:** messages, header and composer on phones (PA-4, PA-5, PA-7). [Mz]
-5. **Agents and lists:** the Agents view, the projects list and notifications on phones (PA-6,
+5. **Structure:** the views menu in the header, Decisions as a view, and Tasks on the phone
+   (PA-9, PA-10), with PA-11 tests. [H for the header (#296/#301), Mz for Tasks]
+6. **Agents and lists:** the Agents view, the projects list and notifications on phones (PA-6,
    PA-2). [H for Agents, Mz for the lists]
 
 ## Revisit when
