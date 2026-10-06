@@ -100,11 +100,11 @@
 }
 @media (max-width: 640px) {
   .jump__field { padding-top: env(safe-area-inset-top); min-height: calc(56px + env(safe-area-inset-top)); }
-  .jump__input { font-size: 16px; }
+  .jump__input { font-size: 1rem; }
   .jump__foot { display: none; }
   .jump__close { min-height: 44px; padding: 0 8px; }
   .search { padding-top: 12px; }
-  .search__input { font-size: 16px; }
+  .search__input { font-size: 1rem; }
   .search__filters { flex-wrap: nowrap; overflow-x: auto; margin: 10px -16px 8px; padding: 0 16px 2px; scrollbar-width: none; }
   .search__chip { flex: none; }
   .search__place { flex: none; }

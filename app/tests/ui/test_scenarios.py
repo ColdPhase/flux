@@ -421,7 +421,7 @@ class ScenarioJourney:
         # She adds the others to the space by email (Settings → People, F-023 FF-4).
         page.goto("/settings")
         self.tap(page.get_by_role("region", name="People").get_by_role("button", name=re.compile(f"^{WORKSPACE}")))
-        expect(page.get_by_role("heading", name="People", exact=True)).to_be_visible()
+        expect(page.locator("#details").get_by_role("heading", name="People", exact=True)).to_be_visible()
         for key in ("jonas", "mia", "lee"):
             form = page.get_by_role("region", name="Add someone")
             form.get_by_label("Email").fill(self.emails[key])

@@ -321,8 +321,8 @@ class AppShellJourney(unittest.TestCase):
         places = sidebar.get_by_role("navigation", name="Places")
         expect(places.get_by_role("link", name="Home")).to_have_attribute("aria-current", "page")
         expect(places.get_by_role("link", name="My sketchbook")).not_to_have_attribute("aria-current", "page")
-        # Three places (#272 FF-3): direct messages open from the Messages heading.
-        self.assertEqual(places.get_by_role("link").all_inner_texts(), ["Home", "Inbox", "My sketchbook"])
+        # Four places (#272 FF-3): direct messages open from the Messages heading; every project's pages from Wiki pages.
+        self.assertEqual(places.get_by_role("link").all_inner_texts(), ["Home", "Inbox", "My sketchbook", "Wiki pages"])
         # Search and personal settings have their own header; Home is not current there (#184 delta review S1).
         for path, title in (("/search", "Search"), ("/settings/assistant", "Your assistant"), ("/settings/background-compute", "Background suggestions")):
             page.goto(path)

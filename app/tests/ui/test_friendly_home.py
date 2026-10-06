@@ -204,8 +204,8 @@ class FriendlyHomeJourney(unittest.TestCase):
         page = self.page()
         page.goto("/")
         places = page.get_by_role("navigation", name="Places")
-        expect(places.get_by_role("link")).to_have_count(3)
-        self.assertEqual(places.get_by_role("link").all_inner_texts(), ["Home", "Inbox", "My sketchbook"])
+        expect(places.get_by_role("link")).to_have_count(4)
+        self.assertEqual(places.get_by_role("link").all_inner_texts(), ["Home", "Inbox", "My sketchbook", "Wiki pages"])
         places.get_by_role("link", name="My sketchbook").click()
         expect(page).to_have_url(f"{ORIGIN}/notes")
         header = page.locator("header.top")
@@ -677,6 +677,7 @@ class FriendlyHomeJourney(unittest.TestCase):
         page = self.page(PHONE, touch=True)
 
         def pressed(locator, what):
+            locator.scroll_into_view_if_needed()
             box = self.box(locator)
             rest = locator.evaluate("(el) => getComputedStyle(el).backgroundColor")
             page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)

@@ -4,7 +4,7 @@
 .home { max-width: 1040px; margin: 0 auto; padding: 36px 40px 48px; }
 .home__hello { margin-bottom: 24px; }
 .home__date { font-size: var(--fs-sm); color: var(--text-3); }
-.home__hi { margin-top: 6px; font-size: 32px; line-height: 1.15; letter-spacing: -0.02em; font-weight: 650; }
+.home__hi { margin-top: 6px; font-size: 2rem; line-height: 1.15; letter-spacing: -0.02em; font-weight: 650; }
 .home__lead { margin-top: 8px; font-size: var(--fs-md); color: var(--text-2); max-width: 46ch; }
 .home__waiting { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; margin-left: -8px; padding: 0 10px 0 8px; border-radius: var(--r); color: var(--accent-selected-text); font-weight: 600; transition: var(--tr); }
 .home__waiting:hover { background: var(--bg-hover); }
@@ -76,7 +76,7 @@
 }
 @media (max-width: 640px) {
   .home { padding: 18px 16px 28px; }
-  .home__hi { font-size: 26px; }
+  .home__hi { font-size: 1.625rem; }
   .home__hello { margin-bottom: 18px; }
   .home-return { grid-template-columns: minmax(0, 1fr); grid-template-areas: "k" "title" "why" "where" "go"; padding: 18px; margin-bottom: 28px; }
   .home-return__go, .home-return__row { justify-self: start; justify-content: flex-start; margin-top: 14px; }

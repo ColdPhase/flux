@@ -43,7 +43,7 @@
   display: flex; flex-wrap: wrap; gap: var(--s-4) var(--s-6);
   border-bottom: 1px solid var(--line);
 }
-.agents-conn { display: flex; gap: var(--s-2); align-items: flex-start; min-width: 0; max-width: 100%; }
+.agents-conn { display: flex; flex: 1 1 12rem; gap: var(--s-2); align-items: flex-start; min-width: 0; max-width: 100%; }
 .agents-conn__icon { flex: none; width: 25px; height: 25px; display: grid; place-items: center; color: var(--text-3); }
 .agents-conn__body { display: flex; flex-direction: column; min-width: 0; gap: 1px; font-size: var(--fs-xs); line-height: var(--lh-tight); }
 .agents-conn__who b { font-weight: 500; color: var(--text); }

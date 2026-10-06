@@ -75,7 +75,7 @@
 .ws-item__s { display: block; font-size: var(--fs-sm); color: var(--text-3); line-height: 1.5; }
 .ws-item--muted .ws-item__t { color: var(--text-2); font-weight: 400; }
 .ws-item__r { display: flex; align-items: center; gap: 8px; flex: none; font-size: var(--fs-sm); color: var(--text-3); font-variant-numeric: tabular-nums; }
-.ws-av { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--bg-active); color: var(--text-2); font-size: 11px; font-weight: 600; }
+.ws-av { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--bg-active); color: var(--text-2); font-size: .6875rem; font-weight: 600; }
 
 /* ---------- Details panel ---------- */
 .wd .details__title { overflow-wrap: anywhere; }
@@ -141,8 +141,8 @@
   .ws-act, .ws-seg, .wd-pivot__c { min-height: 44px; }
   .wd-link { min-height: 44px; }
   .wd-seg__b { min-height: 44px; }
-  .wd-controls select, .wd-form select { min-height: 44px; font-size: 16px; }
-  .wd-form textarea { font-size: 16px; }
+  .wd-controls select, .wd-form select { min-height: 44px; font-size: 1rem; }
+  .wd-form textarea { font-size: 1rem; }
 }
 @media (max-width: 640px) {
   .ws-state { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-right: -16px; padding-right: 16px; }
@@ -207,7 +207,7 @@
 @media (pointer: coarse) {
   .ws-proposal__sources a, .ws-proposal__sources button, .ws-proposals__jumps button { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 44px; min-height: 44px; }
   .ws-proposal__evidence summary { min-height: 44px; }
-  .ws-proposal textarea { font-size: 16px; }
+  .ws-proposal textarea { font-size: 1rem; }
 }
 
 /* Task views (#136 AC-2): one row of whole labels with an unmistakable current view. On a phone

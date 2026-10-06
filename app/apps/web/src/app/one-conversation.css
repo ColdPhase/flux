@@ -57,7 +57,7 @@
 .thread .project-convo__message.is-mine { padding-left: 0; padding-right: 33px; }
 .thread .project-convo__message.is-arrived { padding-left: 45px; }
 .thread .project-convo__message.is-mine.is-arrived { padding-left: 0; padding-right: 45px; }
-.thread .project-convo__message > .ui-avatar { width: 24px; height: 24px; font-size: 9px; }
+.thread .project-convo__message > .ui-avatar { width: 24px; height: 24px; font-size: .5625rem; }
 .thread .project-convo__message > p { padding: 10px 13px; }
 .thread .project-convo__message + .project-convo__message { margin-top: 18px; }
 .thread .project-convo__day { margin: 4px 0 18px; }

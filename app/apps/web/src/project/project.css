@@ -46,7 +46,7 @@ button.top__goal:hover { background: var(--bg-hover); color: var(--text); }
 @media (max-width: 680px) {
   .top--project { min-height: calc(56px + env(safe-area-inset-top)); padding: max(18px, env(safe-area-inset-top)) 12px 0 8px; align-items: center; }
   .top--project .top__title--project { flex-direction: column; align-items: flex-start; gap: 0; text-align: left; line-height: 1.25; }
-  .top--project .top__title--project h1 { max-width: 100%; font-size: 18px; }
+  .top--project .top__title--project h1 { max-width: 100%; font-size: 1.125rem; }
   .top--project .top__crumb { display: none; }
   .top--project .top__audience { max-width: 100%; min-height: 22px; font-size: var(--fs-xs); }
   .top--project .top__head { padding-left: 2px; gap: 2px; }
@@ -121,7 +121,7 @@ button.top__goal:hover { background: var(--bg-hover); color: var(--text); }
    iOS does not zoom into. On a phone, editing takes the whole line under the title. */
 @media (pointer: coarse) {
   button.top__goal::after { content: ""; position: absolute; inset: -11px -4px; }
-  .top__goal-input { height: 44px; font-size: 16px; }
+  .top__goal-input { height: 44px; font-size: 1rem; }
 }
 @media (max-width: 680px) {
   .top--project .top__meta:has(.top__goal--edit) .top__audience { display: none; }

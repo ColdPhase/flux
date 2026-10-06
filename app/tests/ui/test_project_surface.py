@@ -423,6 +423,9 @@ class ProjectSurfaceJourney(unittest.TestCase):
         assert back_box
         self.assertGreaterEqual(min(back_box["width"], back_box["height"]), 44, "the way back is a touch target")
         back.tap()
+        # Opened directly, a thread steps back to its conversation, and the project then to all projects.
+        expect(phone).to_have_url(re.compile(rf"/projects/{self.ids['project']}$"))
+        phone.locator("header.top").get_by_role("button", name="Back", exact=True).tap()
         expect(phone).to_have_url(re.compile(r"/projects$"))
         phone.get_by_role("button", name="Open navigation").tap()
         drawer = phone.get_by_role("dialog")

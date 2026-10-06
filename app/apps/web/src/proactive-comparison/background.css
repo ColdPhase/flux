@@ -53,8 +53,8 @@
   .background-settings__metadata > div { grid-template-columns: 1fr; gap: 1px; }
 }
 @media (pointer: coarse) {
-  .background-settings__fields input:not([type=checkbox]), .background-settings__price input { font-size: 16px; min-height: 44px; }
-  .background-settings__select input, .background-settings__select select, .background-settings__fields select { font-size: 16px; min-height: 44px; }
+  .background-settings__fields input:not([type=checkbox]), .background-settings__price input { font-size: 1rem; min-height: 44px; }
+  .background-settings__select input, .background-settings__select select, .background-settings__fields select { font-size: 1rem; min-height: 44px; }
   .background-settings__fields .background-settings__check, .background-settings__back { min-height: 44px; }
   .background-settings__agent-option summary { min-height: 44px; }
   .background-usage__history summary { min-height: 44px; }
