@@ -94,7 +94,10 @@ pooled client whose `BEGIN` or `ROLLBACK` failed instead of leaking it or return
 it to the pool with an open transaction ([#234](https://github.com/ColdPhase/flux/issues/234)).
 Each connection also sets `idle_in_transaction_session_timeout` to 60 s, so PostgreSQL
 ends any session abandoned inside a transaction. Flux code does not wait on
-anything outside the database inside a transaction. pg-boss keeps its own pool.
+anything outside the database inside a transaction. Each connection also sets `jit=off`:
+Flux's statements are short, and when an access filter inflated a plan's estimate past
+`jit_above_cost`, PostgreSQL compiled for 50–300 ms to run a few milliseconds
+([#298](performance-2026-10.md)). pg-boss keeps its own pool.
 
 The connection timeout bounds the whole wait for a client: queued behind the pool's
 10 busy clients (the `pg` default size) or opening a new connection.
