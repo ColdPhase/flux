@@ -1,0 +1,132 @@
+{
+  "build-initial-failure.log": {
+    "saved_raw_sha256": "9fe3e36269bbb08ef8e119e44cbe9b783f9811f1bbb3d8528f7ca3848f343a4b",
+    "gzip": "build-initial-failure.log.gz",
+    "gzip_sha256": "fba28516f3f5e2b1612dbd2ee26c319e043fec8e5ffef8a563682665d45756d4",
+    "owner_observed_exit": 1,
+    "tested_source": "uncommitted intermediate; final manifest does not pin this variant",
+    "authentication_cookie_redactions": 0
+  },
+  "browser-initial-failure.log": {
+    "saved_raw_sha256": "7a69038930ba1312845e21e677be33968ad3b54231705462d61c5a39abc910cf",
+    "gzip": "browser-initial-failure.log.gz",
+    "gzip_sha256": "c83d9a28e859b46e5e90f26b427b1dd629c7507a183c00751cbe0583253a5462",
+    "owner_observed_exit": 1,
+    "tested_source": "uncommitted intermediate; final manifest does not pin this variant",
+    "authentication_cookie_redactions": 0
+  },
+  "browser-recovery-failure.log": {
+    "saved_raw_sha256": "2239d95077a8af9fc34498ffa6b844517ccdfa90d225769c4977f37bd7eb5201",
+    "gzip": "browser-recovery-failure.log.gz",
+    "gzip_sha256": "ae262d1e6ceeb7beab437b3a2b4b052c8803588d2d46f2fd8b639f689371ac49",
+    "owner_observed_exit": 1,
+    "tested_source": "uncommitted intermediate; final manifest does not pin this variant",
+    "authentication_cookie_redactions": 0
+  },
+  "browser-lifecycle-failure.log": {
+    "saved_raw_sha256": "a63a2f73cd65641eaaf956dec15644c44b71655ce1372cc45fc1b610c16b39f3",
+    "gzip": "browser-lifecycle-failure.log.gz",
+    "gzip_sha256": "7b5de153f4812ba23b4d008ac6ce94ff9f22fc29c7f6b7f1fd532b335c1a2317",
+    "owner_observed_exit": 1,
+    "tested_source": "uncommitted intermediate; final manifest does not pin this variant",
+    "authentication_cookie_redactions": 0
+  },
+  "browser-motion-failure.log": {
+    "saved_raw_sha256": "701c27968ddaae2a71732e305d53963f030209743ab48285f835b78bfd055135",
+    "gzip": "browser-motion-failure.log.gz",
+    "gzip_sha256": "b552b367b40d7d1ddecd327eca96c441af9deff596e40662fb9f0729a7ae64b8",
+    "owner_observed_exit": 1,
+    "tested_source": "uncommitted intermediate; final manifest does not pin this variant",
+    "authentication_cookie_redactions": 0
+  },
+  "browser-concurrent-prepare-attempt.log": {
+    "saved_raw_sha256": "e5ad31d98afed1790d530f04693dc9b930b76baa674bacfdb6f225dcae4b2e5d",
+    "gzip": "browser-concurrent-prepare-attempt.log.gz",
+    "gzip_sha256": "9de8b80a8ee74c041ebe41c169c27eeda8866210105cb9c3666161d72392a19c",
+    "owner_observed_exit": 1,
+    "tested_source": "uncommitted intermediate; final manifest does not pin this variant",
+    "authentication_cookie_redactions": 0,
+    "limitation": "Started while prepare was still running; excluded from final verification."
+  },
+  "browser-title-motion-failure.log": {
+    "saved_raw_sha256": "00f2700cde075bcfa1d87861e51408308eddfe4a9f13e44ff0a9f8bd65b60c3f",
+    "gzip": "browser-title-motion-failure.log.gz",
+    "gzip_sha256": "f7f0bddd9eab51178dda8abc998818fd970bb5593c6c1663cce46a9155e000f0",
+    "owner_observed_exit": 1,
+    "tested_source": "uncommitted intermediate; final manifest does not pin this variant",
+    "authentication_cookie_redactions": 0
+  },
+  "browser-focused-pass.log": {
+    "saved_raw_sha256": "47e31c84a48c8beddb2fd6dacb8dcafb799760a9ca3abcf1be88f435dc2a7f29",
+    "gzip": "browser-focused-pass.log.gz",
+    "gzip_sha256": "ca73942f8b357998cdc5dfd8db586abed0b8c07a19320319c0740ca653387005",
+    "owner_observed_exit": 0,
+    "tested_source": "uncommitted intermediate; final manifest does not pin this variant",
+    "authentication_cookie_redactions": 0
+  },
+  "browser-wider-failure.log": {
+    "saved_raw_sha256": "e3382eb35863ccc7f83c625d3013800ae2db1e141f82f7eab42b2bed769a7cd0",
+    "gzip": "browser-wider-failure.log.gz",
+    "gzip_sha256": "5706a08a281f369e55284903735ce7b60a30ea66bae25aed500309654e2a4536",
+    "owner_observed_exit": 1,
+    "tested_source": "8e9ae10ec9c644c095e284d6287291bec64b350a",
+    "authentication_cookie_redactions": 0
+  },
+  "browser-route-order-failure.log": {
+    "saved_raw_sha256": "834515f0b6243dcb7f9bf90debd9125ad9e7b0c1a372a2dd3a07efe28f390dbb",
+    "gzip": "browser-route-order-failure.log.gz",
+    "gzip_sha256": "637376b4f9439c58533a014ea553edc9f3554188b1af0faad5c964661a8945c0",
+    "owner_observed_exit": 1,
+    "tested_source": "uncommitted intermediate; final manifest does not pin this variant",
+    "authentication_cookie_redactions": 0
+  },
+  "browser-missing-auth-setup-failure.log": {
+    "saved_raw_sha256": "2b897e5cbfc8c017d4981003d37c2bcc4da389e5b284259a6b584fba5d1a67f4",
+    "gzip": "browser-missing-auth-setup-failure.log.gz",
+    "gzip_sha256": "0c7d861e19f37030f267837bf4bc25ff5304965515437b1aa9adc8c381d44382",
+    "owner_observed_exit": 1,
+    "tested_source": "uncommitted intermediate; final manifest does not pin this variant",
+    "authentication_cookie_redactions": 0
+  },
+  "browser-router-wait-stopped.log": {
+    "saved_raw_sha256": "bff69560e0979a2a10958822db33aaea2052c02611049af1b640b2d641311a0a",
+    "gzip": "browser-router-wait-stopped.log.gz",
+    "gzip_sha256": "740d1713a378642e970364b2e615743db03b5115d08eb4a0fbc5d9e0ec702e15",
+    "owner_observed_exit": 137,
+    "tested_source": "uncommitted intermediate; final manifest does not pin this variant",
+    "authentication_cookie_redactions": 0,
+    "limitation": "Wait-for-all routing teardown stalled; only the identified own ui-test one-off was stopped. No pass claimed."
+  },
+  "browser-native-coverage.log": {
+    "saved_raw_sha256": "aded615194ff97a48ed8d0ac18d9b53ec1987ebad2b2d60aea1d9bc80134f933",
+    "gzip": "browser-native-coverage.log.gz",
+    "gzip_sha256": "9e521e515fb74fd26cac59796dee004595ea048eabed619e158dcfeed0493e24",
+    "owner_observed_exit": 0,
+    "tested_source": "2a848c4bc19aa27ceb8d094b1da3703d481c9be7",
+    "authentication_cookie_redactions": 0
+  },
+  "build-final.log": {
+    "saved_raw_sha256": "4706972f097e6a35cfa99f4203af09eedba6fb89509dd215b96e079558bc5a19",
+    "gzip": "build-final.log.gz",
+    "gzip_sha256": "00972e22c6ad26be9de77171eac02acb17656fcf4682908b43089409d0e87f91",
+    "owner_observed_exit": 0,
+    "tested_source": "8e9ae10ec9c644c095e284d6287291bec64b350a",
+    "authentication_cookie_redactions": 0
+  },
+  "client-final.log": {
+    "saved_raw_sha256": "3e7de16a69de7ccf0ae357206906fc37682cffcbd99d0ddde5f32b5b05b343aa",
+    "gzip": "client-final.log.gz",
+    "gzip_sha256": "4cc1795c92cbb5224516513ac6e3252b2e2aca840f190c6dc5ab758c4dafd6c2",
+    "owner_observed_exit": 0,
+    "tested_source": "8e9ae10ec9c644c095e284d6287291bec64b350a",
+    "authentication_cookie_redactions": 0
+  },
+  "browser-final.log": {
+    "saved_raw_sha256": "ed810bace25952c5c839ae6b2b3933b04baf253e948c5abe5cd95e1c6f6a8860",
+    "gzip": "browser-final.log.gz",
+    "gzip_sha256": "7c7b5b6345e3a123838d2580ccf3789cc699e4b386ca8530c6bcde8a15c25da8",
+    "owner_observed_exit": 0,
+    "tested_source": "2a848c4bc19aa27ceb8d094b1da3703d481c9be7",
+    "authentication_cookie_redactions": 0
+  }
+}

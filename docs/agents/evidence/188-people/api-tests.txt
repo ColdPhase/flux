@@ -1,0 +1,78 @@
+# targeted API run at fdb70955 (FLUX_TEST_PORT=19158), 2026-10-05: tsx --test --test-concurrency=1 tests/app/sketch-promotion-participants.test.ts tests/app/access.test.ts tests/app/access-policy.test.ts tests/app/dm-sketches.test.ts tests/app/sketches.test.ts
+▶ agent principals
+  ✔ an agent with a scoped grant reads only its project
+  ✔ a person-owned agent is capped by its owner and stops when the owner leaves
+✔ agent principals
+▶ agents stay inside current project grants
+  ✔ an agent without a writable grant cannot create drafts
+  ✔ revoking or narrowing a grant removes the agent access to its own drafts
+  ✔ an explicit deny hides the agent own drafts
+✔ agents stay inside current project grants
+▶ access changes are serialized with draft writes (two connections)
+  ✔ (a) revoking an agent contributor grant — write first
+  ✔ (b) inserting a denied grant for a member without a grant row — write first
+  ✔ (b) replacing an agent grant with denied — write first
+  ✔ (c) narrowing a member's default access with a viewer grant — write first
+  ✔ (c) changing a member to guest removes default project access — write first
+  ✔ (c) removing the member — write first
+  ✔ (a) revoking an agent contributor grant — change first
+  ✔ (b) inserting a denied grant for a member without a grant row — change first
+  ✔ (b) replacing an agent grant with denied — change first
+  ✔ (c) narrowing a member's default access with a viewer grant — change first
+  ✔ (c) changing a member to guest removes default project access — change first
+  ✔ (c) removing the member — change first
+✔ access changes are serialized with draft writes (two connections)
+▶ policy contract
+  ✔ authorize distinguishes invisible from forbidden and visibleFilter matches list results
+✔ policy contract
+▶ database integrity
+  ✔ composite foreign keys reject cross-workspace links
+✔ database integrity
+▶ workspace access policy over HTTP
+  ✔ the creator owns a new workspace and non-members cannot see it
+  ✔ a new draft is private: other members, admins and guests cannot see it
+  ✔ sharing to a restricted project reveals the draft only to project grantees
+  ✔ a restricted project is invisible to a member without a grant in get, list and count
+  ✔ a viewer can read but not write; a contributor can write
+  ✔ a guest sees only explicitly granted projects and no workspace-wide drafts
+  ✔ owners and admins differ in authority over members
+  ✔ cross-workspace share, move and link are rejected
+  ✔ removing a membership or a grant applies on the very next request
+  ✔ list counts and pages exclude rows the caller cannot see
+  ✔ an explicit deny wins over membership and admin roles
+  ✔ a project names exactly the people who can read it, for everyone who can read it (#117)
+✔ workspace access policy over HTTP
+▶ DM sketches
+  ✔ starting a sketch from selected messages binds it to the DM with provenance; outsiders get 404
+  ✔ leaving or removal ends access on the next request and in the stream
+  ✔ a 1:1 whose other person left is read-only: nothing is started or copied until they reopen it
+  ✔ promotion previews the exact audience, copies only the sketch, and never syncs the DM
+  ✔ search finds DM sketches and thoughts under the DM, opens them in the DM, and only for participants
+  ✔ promotion locks its audience: a leave waits for the copy, and a leave before it makes the preview stale
+  ✔ promotion into an existing project locks its grants: a grant change waits, or makes the preview stale
+  ✔ a member copies into a project they can change; the preview names who is left out
+✔ DM sketches
+▶ DM sketch promotion with an explicit participant choice
+  ✔ without the choice, a new project is the promoter’s and its managers’ only
+  ✔ with the choice, the other participants become contributors and nobody else
+  ✔ an existing project’s audience is the same either way, and unknown choices are refused
+✔ DM sketch promotion with an explicit participant choice
+▶ sketch access
+  ✔ a project sketch follows project access: members change it, viewers read it, outsiders get 404
+  ✔ a private sketch is visible only to its author: never through the project, to admins or to agents
+  ✔ cross-workspace references are rejected
+  ✔ placements show only what the reader may open, and removing one never deletes the object
+  ✔ links are many-to-many, undirected and unique per pair
+  ✔ versioned changes: If-Match, concurrent moves conflict or merge
+  ✔ an idempotent retry replays the stored answer without a second change
+  ✔ input is validated
+✔ sketch access
+ℹ tests 50
+ℹ suites 9
+ℹ pass 50
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 33954.428432
+exit=0

@@ -25,6 +25,13 @@ caller can read in the same workspace (`404` or `422 CROSS_WORKSPACE`). The titl
 placement is returned only to readers who can open the object now; for anyone else it
 is `null`.
 
+A thought of a project sketch can also show an image (#252): a stored file of the
+project published to that thought (`project_files.thought_id`, migration 0051), returned
+as `file { id, name, size }`. The thought keeps its text as the caption. The
+[stored-files amendment](task-discussions.md#map-thought-images-252-migration-0051) has
+the publication and access rules, and [paste on the map](../design/thought-drafts.md#paste-on-the-map-252)
+the draft lifecycle.
+
 Migrations `0007_sketches.sql` and `0025_dm_sketches.sql` (#96). `app/tooling/migrate.ts` applies
 every unapplied file in order and checks that the highest version equals `FLUX_SCHEMA_VERSION`
 (25). The ledger is contiguous from 1 to 25; `0025_dm_sketches.sql` took the next free number by merge order.
@@ -101,6 +108,9 @@ author receives the events of a private sketch. The stream's `objectType` is `sk
     several, drag empty space to pan, and zoom with Ctrl/⌘-wheel or the corner controls.
   - Keyboard: arrows move (Shift for bigger steps, Alt to resize), Enter edits, Space
     selects, `+` adds a connected thought, Delete removes, and Ctrl/⌘ Z undoes.
+  - Paste (#252): Ctrl/⌘ V on the map or list turns lines, a link or an image into a
+    private draft that is saved only on confirmation; on touch devices the empty new-thought
+    draft offers Paste.
   - Selecting or dragging never opens a panel.
   - **List** shows each thought once in a personal, stable outline with named
     clickable relations. Fresh browsers start with top-level thoughts; **Group in
@@ -176,6 +186,10 @@ author and time from the message itself. `GET …/sketches?dmId=` lists one DM's
       the workspace's owners and admins, who manage every project, and the other participants
       are `leftOut`. The web app asks for `none` until the person ticks "Also give … access",
       which is unchecked by default, so nobody joins a project they were not explicitly given.
+      The `grant` default only keeps the #96 API compatible: clients should always send
+      `participants`, and a future v2 API defaults to `none` (#236). A `none` preview's token
+      used by a request that omits `participants` gets `409 PROMOTION_CHANGED` if the default
+      grant changes the previewed audience; when both audiences are equal the token still applies.
     - For an existing project the caller can change (`project.write`; a viewer gets `403`), the
       readers are `listProjectPeople`.
   - `leftOut`: participants who would not see the copy.

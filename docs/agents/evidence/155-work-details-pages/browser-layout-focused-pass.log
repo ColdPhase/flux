@@ -1,0 +1,41 @@
+ Container flux155browser-db-1  Running
+ Container flux155browser-mailpit-1  Running
+ Container flux155browser-anthropic-mock-1  Recreate
+ Container flux155browser-worker-1  Running
+ Container flux155browser-api-1  Running
+ Container flux155browser-anthropic-mock-1  Recreated
+ Container flux155browser-anthropic-mock-1  Starting
+ Container flux155browser-db-1  Waiting
+ Container flux155browser-anthropic-mock-1  Started
+ Container flux155browser-db-1  Healthy
+ Container flux155browser-migrate-1  Starting
+ Container flux155browser-migrate-1  Started
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Exited
+ Container flux155browser-migrate-1  Exited
+test_01_complete_native_relations_own_fields_and_other_destinations_on_desktop_and_phone (test_work_details.NativeDetailsJourney.test_01_complete_native_relations_own_fields_and_other_destinations_on_desktop_and_phone) ... ok
+test_02_required_relation_failure_retains_blocker_draft_and_has_no_false_empty (test_work_details.NativeDetailsJourney.test_02_required_relation_failure_retains_blocker_draft_and_has_no_false_empty) ... ok
+test_03_finished_deep_selection_survives_all_result_choice_pages_and_failure (test_work_details.NativeDetailsJourney.test_03_finished_deep_selection_survives_all_result_choice_pages_and_failure) ... ok
+test_04_all_current_rules_reachable_and_selected_rule_persists_on_another_page (test_work_details.NativeDetailsJourney.test_04_all_current_rules_reachable_and_selected_rule_persists_on_another_page) ... ok
+test_05_native_pivot_keeps_off_page_choices_and_earlier_full_reason (test_work_details.NativeDetailsJourney.test_05_native_pivot_keeps_off_page_choices_and_earlier_full_reason) ... ok
+test_06_native_version_conflict_retains_result_text_and_requires_explicit_finish_change (test_work_details.NativeDetailsJourney.test_06_native_version_conflict_retains_result_text_and_requires_explicit_finish_change) ... ok
+test_07_held_native_result_cannot_replace_fresh_draft_after_a_b_a (test_work_details.NativeDetailsJourney.test_07_held_native_result_cannot_replace_fresh_draft_after_a_b_a) ... ok
+test_08_docked_object_links_keep_their_own_project_after_route_navigation (test_work_details.NativeDetailsJourney.test_08_docked_object_links_keep_their_own_project_after_route_navigation) ... ok
+test_09_doc_source_link_does_not_promise_a_missing_section_or_new_version (test_work_details.NativeDetailsJourney.test_09_doc_source_link_does_not_promise_a_missing_section_or_new_version) ... ok
+test_10_pivot_selection_limit_is_enforced_across_pages_and_native_command (test_work_details.NativeDetailsJourney.test_10_pivot_selection_limit_is_enforced_across_pages_and_native_command) ... ok
+test_01_two_people_share_a_project (test_work_decisions.WorkDecisionsJourney.test_01_two_people_share_a_project) ... ok
+test_02_create_work_from_a_message_in_one_action (test_work_decisions.WorkDecisionsJourney.test_02_create_work_from_a_message_in_one_action) ... ok
+test_03_propose_and_accept_a_decision_with_the_keyboard (test_work_decisions.WorkDecisionsJourney.test_03_propose_and_accept_a_decision_with_the_keyboard) ... ok
+test_04_attach_a_negative_result_that_finishes_the_experiment (test_work_decisions.WorkDecisionsJourney.test_04_attach_a_negative_result_that_finishes_the_experiment) ... ok
+test_05_pivot_keeps_history_and_parks_obsolete_work (test_work_decisions.WorkDecisionsJourney.test_05_pivot_keeps_history_and_parks_obsolete_work) ... ok
+test_06_phone_creates_work_and_reads_the_tasks_tab (test_work_decisions.WorkDecisionsJourney.test_06_phone_creates_work_and_reads_the_tasks_tab) ... ok
+test_07_more_than_a_hundred_records_remain_reachable_through_native_pages (test_work_decisions.WorkDecisionsJourney.test_07_more_than_a_hundred_records_remain_reachable_through_native_pages) ... ok
+test_08_phone_finds_own_blocked_work_and_returns_to_the_same_view (test_work_decisions.WorkDecisionsJourney.test_08_phone_finds_own_blocked_work_and_returns_to_the_same_view) ... ok
+test_09_own_messages_sit_right_and_others_left (test_work_decisions.WorkDecisionsJourney.test_09_own_messages_sit_right_and_others_left) ... ok
+test_10_each_task_view_keeps_its_reading_position (test_work_decisions.WorkDecisionsJourney.test_10_each_task_view_keeps_its_reading_position) ... ok
+
+----------------------------------------------------------------------
+Ran 20 tests in 39.045s
+
+OK

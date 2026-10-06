@@ -50,9 +50,15 @@ export async function agentConnection(pool: Pool, owner: Browser, agentId: strin
     assert.equal(response.status, 200, `MCP ${name} returned ${response.status}`);
     return response.message;
   };
+  /** The names of the tools the server actually registers for this bearer (`tools/list`). */
+  const toolNames = async () => {
+    const response = await mcp(tokens.access_token, call++, 'tools/list');
+    assert.equal(response.status, 200, `MCP tools/list returned ${response.status}`);
+    return (response.message?.result as { tools: { name: string }[] }).tools.map((item) => item.name);
+  };
   const bootstrap = toolValue(await tool('flux_bootstrap', { projectId, clientSessionId: randomUUID() }));
   const runtimeSessionId = (bootstrap.runtime as { id: string }).id;
-  return { connectionId, grant, tool, raw, bootstrap, runtimeSessionId };
+  return { connectionId, grant, tool, raw, toolNames, bootstrap, runtimeSessionId };
 }
 
 export async function actionScene(pool: Pool) {
@@ -70,10 +76,10 @@ export async function actionScene(pool: Pool) {
   const source = { materialId: String(plan.materialId), version: Number(plan.version) };
   const prerequisite = expect(await owner.request('POST', `/api/v1/projects/${projectId}/work`,
     { body: { title: 'Measure the baseline' } }), 201);
-  const { connectionId, grant, tool, raw, bootstrap, runtimeSessionId } = await agentConnection(pool, owner, String(agent.id), [projectId]);
+  const { connectionId, grant, tool, raw, toolNames, bootstrap, runtimeSessionId } = await agentConnection(pool, owner, String(agent.id), [projectId]);
   const read = async (workId: string) => expect(await owner.request('GET', `/api/v1/work/${workId}`), 200);
   const used = async (grantId: string) => (await pool.query('SELECT used FROM agent_standing_grants WHERE id=$1', [grantId])).rows[0].used as number;
   const tasks = async () => (await pool.query('SELECT count(*)::int AS n FROM project_work_items WHERE project_id=$1', [projectId])).rows[0].n as number;
   return { owner, workspaceId: String(workspace.id), projectId, agentId: String(agent.id), connectionId, source, prerequisiteId: String(prerequisite.id), bootstrap,
-    runtimeSessionId, grant, tool, raw, read, used, tasks };
+    runtimeSessionId, grant, tool, raw, toolNames, read, used, tasks };
 }

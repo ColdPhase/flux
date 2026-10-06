@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { DEFAULT_THOUGHT_SIZE, type SketchDetail, type Thought, type ThoughtLink, type ThoughtShape } from '@flux/contracts';
+import { DEFAULT_THOUGHT_SIZE, type SketchDetail, type Thought, type ThoughtFile, type ThoughtLink, type ThoughtShape } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import * as api from '../api/sketches';
 import { useStreamEvents } from '../api/stream';
@@ -26,6 +26,8 @@ export interface NewThought {
   placement?: { type: 'draft'; id: string; title: string | null } | null;
   /** The message it came from (#96); only a message of the sketch's own DM is restored on the server. */
   source?: Thought['source'];
+  /** Its image (#252): a staged file on first save, or the same published file when Undo restores the thought. */
+  file?: ThoughtFile;
 }
 
 export type Op =
@@ -47,7 +49,8 @@ function localThought(me: Me, sketchId: string, input: NewThought): Thought {
   return {
     id: input.id, sketchId, text: input.text, x: input.x, y: input.y, width: input.width ?? DEFAULT_THOUGHT_SIZE.width,
     height: input.height ?? DEFAULT_THOUGHT_SIZE.height, shape: input.shape ?? 'card', placement: input.placement ?? null,
-    source: input.source ?? null, createdBy: { kind: 'human', id: me.id, name: me.name }, version: 0, createdAt: now, updatedAt: now,
+    source: input.source ?? null, ...(input.file ? { file: input.file } : {}),
+    createdBy: { kind: 'human', id: me.id, name: me.name }, version: 0, createdAt: now, updatedAt: now,
   };
 }
 
@@ -92,7 +95,7 @@ export function inverse(before: SketchDetail, op: Op): Op[] {
     case 'remove': {
       const t = before.thoughts.find((x) => x.id === op.id);
       if (!t) return [];
-      const restore: Op = { kind: 'add', thought: { id: t.id, text: t.text, x: t.x, y: t.y, width: t.width, height: t.height, shape: t.shape, placement: t.placement, source: t.source } };
+      const restore: Op = { kind: 'add', thought: { id: t.id, text: t.text, x: t.x, y: t.y, width: t.width, height: t.height, shape: t.shape, placement: t.placement, source: t.source, ...(t.file ? { file: t.file } : {}) } };
       const links = before.links.filter((l) => l.fromId === t.id || l.toId === t.id).map((l): Op => ({ kind: 'link', link: { id: l.id, fromId: l.fromId, toId: l.toId, label: l.label } }));
       return [restore, ...links];
     }
@@ -156,7 +159,7 @@ export function useSketchDoc(sketchId: string, me: Me) {
     const current = ref.current;
     if (!current) return;
     // The local thought may be ahead (a later change is queued); keep its intent, take the server's facts.
-    const merge = (t: Thought): Thought => (replace ? thought : { ...t, version: thought.version, createdBy: thought.createdBy, createdAt: thought.createdAt, updatedAt: thought.updatedAt, placement: thought.placement, source: thought.source });
+    const merge = (t: Thought): Thought => (replace ? thought : { ...t, version: thought.version, createdBy: thought.createdBy, createdAt: thought.createdAt, updatedAt: thought.updatedAt, placement: thought.placement, source: thought.source, ...(thought.file ? { file: thought.file } : {}) });
     commit({ ...current, thoughts: current.thoughts.map((t) => (t.id === thought.id ? merge(t) : t)) });
   }, [commit]);
 
@@ -213,7 +216,7 @@ export function useSketchDoc(sketchId: string, me: Me) {
           id: op.thought.id, text: op.thought.text, x: op.thought.x, y: op.thought.y, width: op.thought.width, height: op.thought.height,
           shape: op.thought.shape, placement: op.thought.placement ? { type: op.thought.placement.type, id: op.thought.placement.id } : undefined,
           linkFrom: op.link ? { thoughtId: op.link.fromId, label: op.link.label, linkId: op.link.id } : undefined,
-          sourceMessageId: op.thought.source?.dmMessageId ?? undefined,
+          sourceMessageId: op.thought.source?.dmMessageId ?? undefined, fileId: op.thought.file?.id,
         }, k));
         patchThought(created.thought);
         return;
@@ -354,55 +357,74 @@ export function useSketchDoc(sketchId: string, me: Me) {
     return entry.label;
   }, [commit, enqueue, flushMoves]);
 
-  /** Explicit draft save: no optimistic shared thought or undo step before confirmation. */
-  const saveThought = useCallback(async (thought: NewThought, parent: { id: string; linkId: string } | null, key: string): Promise<boolean> => {
+  /**
+   * Explicit draft save: no optimistic shared thought or undo step before confirmation. Several thoughts (a pasted
+   * list, #252) are sent in order and stop at the first failure; only the confirmed ones join the document, as one
+   * undo step. Returns the confirmed thought IDs; the caller keeps the rest of its draft with their IDs and keys.
+   */
+  const saveThoughts = useCallback(async (items: { thought: NewThought; parent: { id: string; linkId: string } | null; key: string }[]): Promise<string[]> => {
     flushMoves();
     inFlight.current += 1;
     setSaving(true);
     setProblem(null);
+    const saved: string[] = [];
     const operation = queue.current.then(async () => {
-      let created: { thought: Thought; link: ThoughtLink | null };
-      try {
-        created = await withRetry(() => api.addThought(sketchId, {
-          id: thought.id, text: thought.text, x: thought.x, y: thought.y,
-          ...(parent ? { linkFrom: { thoughtId: parent.id, linkId: parent.linkId } } : {}),
-        }, key));
-      } catch (error) {
-        // The draft's stable ID already exists: an earlier save of this draft committed although every response was
-        // lost, and its text may predate edits made since. Finish that save instead of failing forever: the newer
-        // text becomes an ordinary edit at the version just read, so another author's change still conflicts.
-        if (!(error instanceof ApiError && error.status === 409 && error.code === 'THOUGHT_EXISTS')) throw error;
-        const saved = await api.getSketch(sketchId);
-        const existing = saved.thoughts.find((item) => item.id === thought.id);
-        if (!existing) throw error;
-        const text = existing.text === thought.text ? existing
-          : await withRetry(() => api.updateThought(sketchId, existing.id, { text: thought.text }, existing.version, `${key}-text`));
-        created = { thought: text, link: parent ? saved.links.find((item) => item.id === parent.linkId) ?? null : null };
+      for (const { thought, parent, key } of items) {
+        let created: { thought: Thought; link: ThoughtLink | null };
+        try {
+          created = await withRetry(() => api.addThought(sketchId, {
+            id: thought.id, text: thought.text, x: thought.x, y: thought.y, width: thought.width, height: thought.height,
+            ...(thought.file ? { fileId: thought.file.id } : {}),
+            ...(parent ? { linkFrom: { thoughtId: parent.id, linkId: parent.linkId } } : {}),
+          }, key));
+        } catch (error) {
+          // The draft's stable ID already exists: an earlier save of this draft committed although every response was
+          // lost, and its text may predate edits made since. Finish that save instead of failing forever: the newer
+          // text becomes an ordinary edit at the version just read, so another author's change still conflicts.
+          if (!(error instanceof ApiError && error.status === 409 && error.code === 'THOUGHT_EXISTS')) throw error;
+          const current = await api.getSketch(sketchId);
+          const existing = current.thoughts.find((item) => item.id === thought.id);
+          if (!existing) throw error;
+          const text = existing.text === thought.text ? existing
+            : await withRetry(() => api.updateThought(sketchId, existing.id, { text: thought.text }, existing.version, `${key}-text`));
+          created = { thought: text, link: parent ? current.links.find((item) => item.id === parent.linkId) ?? null : null };
+        }
+        const current = ref.current;
+        if (!current) break;
+        versions.current.set(created.thought.id, created.thought.version);
+        commit({ ...current,
+          thoughts: [...current.thoughts.filter((item) => item.id !== created.thought.id), created.thought],
+          links: created.link ? [...current.links.filter((item) => item.id !== created.link!.id), created.link] : current.links,
+        });
+        saved.push(created.thought.id);
       }
-      const current = ref.current;
-      if (!current) return false;
-      versions.current.set(created.thought.id, created.thought.version);
-      commit({ ...current,
-        thoughts: [...current.thoughts.filter((item) => item.id !== created.thought.id), created.thought],
-        links: created.link ? [...current.links.filter((item) => item.id !== created.link!.id), created.link] : current.links,
-      });
-      undoStack.current.push({ label: 'added a thought', ops: [{ kind: 'remove', id: created.thought.id }], at: Date.now() });
-      if (undoStack.current.length > 50) undoStack.current.shift();
-      setUndoLabel('added a thought');
-      return true;
     }).catch(() => {
-      setProblem('The thought could not be saved. Your draft is kept; check access and its parent, then try again.');
+      const rest = items.length - saved.length;
+      setProblem(items.length === 1
+        ? 'The thought could not be saved. Your draft is kept; check access and its parent, then try again.'
+        : saved.length
+          ? `Saved ${saved.length} of ${items.length} thoughts. The other ${rest} are kept in your draft; check access and their parent, then try again.`
+          : 'The pasted thoughts could not be saved. Your draft is kept; check access and their parent, then try again.');
       staleRef.current = true;
-      return false;
     }).finally(() => {
+      if (saved.length) {
+        const label = saved.length === 1 ? 'added a thought' : `added ${saved.length} thoughts`;
+        undoStack.current.push({ label, ops: [...saved].reverse().map((id): Op => ({ kind: 'remove', id })), at: Date.now() });
+        if (undoStack.current.length > 50) undoStack.current.shift();
+        setUndoLabel(label);
+      }
       inFlight.current -= 1;
       if (inFlight.current) return;
       setSaving(false);
       if (staleRef.current) { staleRef.current = false; void reload(); }
     });
-    queue.current = operation.then(() => undefined);
-    return operation;
+    queue.current = operation;
+    await operation;
+    return saved;
   }, [commit, flushMoves, reload, sketchId]);
+
+  const saveThought = useCallback(async (thought: NewThought, parent: { id: string; linkId: string } | null, key: string): Promise<boolean> =>
+    (await saveThoughts([{ thought, parent, key }])).length === 1, [saveThoughts]);
 
   /**
    * Text belongs to the version opened by the editor, even if the stream learns a newer one.
@@ -457,7 +479,7 @@ export function useSketchDoc(sketchId: string, me: Me) {
 
   useEffect(() => () => flushMoves(), [flushMoves]);
 
-  return { sketch, load, saving, problem, clearProblem: () => setProblem(null), canUndo: undoLabel !== null, perform, saveThought, saveText, undo, reload, newId: uuid };
+  return { sketch, load, saving, problem, clearProblem: () => setProblem(null), canUndo: undoLabel !== null, perform, saveThought, saveThoughts, saveText, undo, reload, newId: uuid };
 }
 
 export type SketchDoc = ReturnType<typeof useSketchDoc>;

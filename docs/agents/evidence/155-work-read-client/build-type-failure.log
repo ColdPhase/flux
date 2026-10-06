@@ -1,0 +1,200 @@
+#1 [internal] load local bake definitions
+#1 reading from stdin 1.78kB done
+#1 DONE 0.0s
+
+#2 [ui-test internal] load build definition from ui-tests.Dockerfile
+#2 transferring dockerfile: 941B done
+#2 DONE 0.0s
+
+#3 [test internal] load build definition from Dockerfile
+#3 transferring dockerfile: 2.99kB done
+#3 DONE 0.0s
+
+#4 [ui-test internal] load metadata for mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d
+#4 DONE 0.1s
+
+#5 [ui-test internal] load .dockerignore
+#5 transferring context: 191B done
+#5 DONE 0.0s
+
+#6 [ui-test internal] load build context
+#6 transferring context: 939B done
+#6 DONE 0.0s
+
+#7 [ui-test 1/5] FROM mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d
+#7 resolve mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d
+#7 resolve mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d done
+#7 DONE 0.0s
+
+#8 [ui-test 2/5] COPY tests/ui/requirements.txt /tmp/ui-requirements.txt
+#8 CACHED
+
+#9 [ui-test 3/5] RUN pip install --no-cache-dir --break-system-packages --only-binary=:all: --require-hashes -r /tmp/ui-requirements.txt
+#9 CACHED
+
+#10 [ui-test 4/5] WORKDIR /work
+#10 CACHED
+
+#11 [ui-test 5/5] COPY tests/ui tests/ui
+#11 CACHED
+
+#12 [ui-test] exporting to image
+#12 exporting layers done
+#12 exporting manifest sha256:0d0fbfc1e6d5911adf48e34559717083469f1e8cfcb6fafc76df797908b263f5 done
+#12 exporting config sha256:ec99d0891a377d2e3d42b1686e9a159a5cb54a0f2805b72f4864b5707646d0ec done
+#12 exporting attestation manifest sha256:f12aafbebfaf2ba49608e3475ae85f241fc6083cedcd78dd29c14eb0e76b98fe done
+#12 exporting manifest list sha256:05c75bafd49387293c9c2c440d8ae2116a9f1168404e458e1afe60559a9b7898 done
+#12 naming to docker.io/library/flux-ui-tests:flux155browser done
+#12 unpacking to docker.io/library/flux-ui-tests:flux155browser done
+#12 DONE 0.0s
+
+#13 [ui-test] resolving provenance for metadata file
+#13 DONE 0.0s
+
+#14 [migrate internal] load metadata for docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#14 DONE 1.5s
+
+#5 [migrate internal] load .dockerignore
+#5 CACHED
+
+#15 [test build 1/8] FROM docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#15 resolve docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 done
+#15 DONE 0.0s
+
+#16 [test internal] load build context
+#16 transferring context: 3.66MB 0.1s done
+#16 DONE 0.1s
+
+#17 [test build 4/8] COPY pnpm-lock.yaml pnpm-workspace.yaml ./
+#17 CACHED
+
+#18 [test build 2/8] WORKDIR /app
+#18 CACHED
+
+#19 [test build 3/8] RUN corepack enable && corepack install -g pnpm@12.6.0
+#19 CACHED
+
+#20 [migrate build 5/8] RUN pnpm fetch
+#20 CACHED
+
+#21 [test build 6/8] COPY . .
+#21 DONE 0.1s
+
+#22 [migrate build 7/8] RUN pnpm install --offline --frozen-lockfile
+#22 0.254 Scope: all 10 workspace projects
+#22 0.300 ✓ Lockfile passes supply-chain policies (verified 12h ago)
+#22 0.300 Lockfile is up to date, resolution step is skipped
+#22 0.544 Already up to date
+#22 0.901
+#22 0.901 dependencies:
+#22 0.901 + @flux/contracts link:packages/contracts
+#22 0.901 + @flux/core link:packages/core
+#22 0.901 + @flux/db link:packages/db
+#22 0.901 + pg-boss 12.35.0
+#22 0.901
+#22 0.901 devDependencies:
+#22 0.901 + @eslint/js 9.37.0
+#22 0.901 + @types/node 24.6.2
+#22 0.901 + @types/nodemailer 8.0.2
+#22 0.901 + @types/pg 8.15.5
+#22 0.901 + @types/sanitize-html 2.16.1
+#22 0.901 + @types/ws 8.18.1
+#22 0.901 + drizzle-orm 0.45.3
+#22 0.901 + eslint 9.37.0
+#22 0.901 + eslint-plugin-react-hooks 7.1.1
+#22 0.901 + fastify 5.6.1
+#22 0.901 + playwright 1.63.0
+#22 0.901 + tsx 4.20.5
+#22 0.901 + typescript 5.9.2
+#22 0.901 + typescript-eslint 8.44.1
+#22 0.901 + ws 8.22.0
+#22 0.901
+#22 0.902 Done in 657ms using pnpm v12.6.0
+#22 DONE 0.9s
+
+#23 [test build 8/8] RUN pnpm build && pnpm typecheck && pnpm lint
+#23 0.246 $ pnpm -r --if-present build && tsc -p tooling/tsconfig.build.json
+#23 0.330 packages/contracts build$ tsc -p tsconfig.build.json
+#23 1.905 packages/contracts build: Done
+#23 1.905 packages/sdk build$ tsc -p tsconfig.build.json
+#23 1.905 apps/web build$ vite build
+#23 1.905 packages/db build$ tsc -p tsconfig.build.json
+#23 2.108 apps/web build: vite v8.3.1 building client environment for production...
+#23 2.122 apps/web build: transforming...
+#23 2.220 apps/web build: ✓ 258 modules transformed.
+#23 2.287 apps/web build: rendering chunks...
+#23 2.359 apps/web build: computing gzip size...
+#23 2.366 apps/web build: dist/index.html                                              1.21 kB │ gzip:   0.53 kB
+#23 2.366 apps/web build: dist/sw.js                                                   6.70 kB
+#23 2.366 apps/web build: dist/assets/inter-vietnamese-wght-normal-CBcvBZtf.woff2     10.25 kB
+#23 2.366 apps/web build: dist/assets/inter-greek-ext-wght-normal-DlzME5K_.woff2      11.23 kB
+#23 2.366 apps/web build: dist/assets/inter-cyrillic-wght-normal-DqGufNeO.woff2       18.74 kB
+#23 2.366 apps/web build: dist/assets/inter-greek-wght-normal-CkhJZR-_.woff2          18.99 kB
+#23 2.366 apps/web build: dist/assets/inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2   25.96 kB
+#23 2.366 apps/web build: dist/assets/inter-latin-wght-normal-Dx4kXJAl.woff2          48.25 kB
+#23 2.366 apps/web build: dist/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2      85.06 kB
+#23 2.366 apps/web build: dist/assets/index-BBWqxtmm.css                             157.42 kB │ gzip:  27.82 kB
+#23 2.366 apps/web build: dist/assets/media-DGoeMNke.js                              419.65 kB │ gzip: 108.68 kB
+#23 2.366 apps/web build: dist/assets/index-D8VYSIlv.js                              753.63 kB │ gzip: 223.45 kB
+#23 2.366 apps/web build:
+#23 2.367 apps/web build: [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "use client" in "../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/index.js" may not be preserved when bundling.
+#23 2.367 apps/web build:     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m ../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/index.js:11:1 [38;5;246m][0m
+#23 2.367 apps/web build:     [38;5;246m│[0m
+#23 2.367 apps/web build:  [38;5;246m11 │[0m "use client";
+#23 2.367 apps/web build:  [38;5;240m   │[0m ──────┬──────
+#23 2.367 apps/web build:  [38;5;240m   │[0m       ╰──────── module level directive may not be preserved
+#23 2.367 apps/web build:  [38;5;240m   │[0m
+#23 2.367 apps/web build:  [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+#23 2.367 apps/web build: [38;5;246m────╯[0m
+#23 2.367 apps/web build:
+#23 2.367 apps/web build: [plugin builtin:vite-reporter]
+#23 2.367 apps/web build: (!) Some chunks are larger than 500 kB after minification. Consider:
+#23 2.367 apps/web build: - Using dynamic import() to code-split the application
+#23 2.367 apps/web build: - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+#23 2.367 apps/web build: - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+#23 2.367 apps/web build: ✓ built in 258ms
+#23 2.382 apps/web build: Done
+#23 3.473 packages/sdk build: Done
+#23 4.547 packages/db build: Done
+#23 4.548 packages/core build$ tsc -p tsconfig.build.json
+#23 6.088 packages/core build: Done
+#23 6.089 packages/agent-runtime build$ tsc -p tsconfig.build.json
+#23 6.089 apps/server build$ tsc -p tsconfig.build.json
+#23 6.858 packages/agent-runtime build: Done
+#23 6.859 apps/worker build$ tsc -p tsconfig.build.json
+#23 7.723 apps/worker build: Done
+#23 8.773 apps/server build: Done
+#23 9.451 $ tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json
+#23 14.61 apps/web/src/work/read-api.ts(8,25): error TS2835: Relative import paths need explicit file extensions in ECMAScript imports when '--moduleResolution' is 'node16' or 'nodenext'. Did you mean '../api/client.js'?
+#23 14.65 [ELIFECYCLE] Command failed with exit code 2.
+#23 ERROR: process "/bin/sh -c pnpm build && pnpm typecheck && pnpm lint" did not complete successfully: exit code: 2
+------
+ > [test build 8/8] RUN pnpm build && pnpm typecheck && pnpm lint:
+6.088 packages/core build: Done
+6.089 packages/agent-runtime build$ tsc -p tsconfig.build.json
+6.089 apps/server build$ tsc -p tsconfig.build.json
+6.858 packages/agent-runtime build: Done
+6.859 apps/worker build$ tsc -p tsconfig.build.json
+7.723 apps/worker build: Done
+8.773 apps/server build: Done
+9.451 $ tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json
+14.61 apps/web/src/work/read-api.ts(8,25): error TS2835: Relative import paths need explicit file extensions in ECMAScript imports when '--moduleResolution' is 'node16' or 'nodenext'. Did you mean '../api/client.js'?
+14.65 [ELIFECYCLE] Command failed with exit code 2.
+------
+Dockerfile:10
+
+--------------------
+
+   8 |     COPY . .
+
+   9 |     RUN pnpm install --offline --frozen-lockfile
+
+  10 | >>> RUN pnpm build && pnpm typecheck && pnpm lint
+
+  11 |
+
+  12 |     FROM build AS test
+
+--------------------
+
+target test: failed to solve: process "/bin/sh -c pnpm build && pnpm typecheck && pnpm lint" did not complete successfully: exit code: 2

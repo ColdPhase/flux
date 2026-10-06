@@ -161,7 +161,9 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(panel.get_by_label("Decision")).to_have_value(IDEA)
         panel.get_by_label("Decision").fill("Use a camera for gesture control")
         panel.get_by_label("Why").fill("It recognises the richest set of gestures")
-        panel.get_by_label("Why").press("Tab")
+        # Native rule choices and their page controls are now keyboard reachable.
+        expect(panel.get_by_role("button", name="Propose decision", exact=True)).to_be_enabled()
+        panel.get_by_role("button", name="Propose decision", exact=True).focus()
         page.keyboard.press("Enter")
         expect(panel.locator(".wd-eyebrow")).to_contain_text("Proposed decision")
         expect(page.get_by_label("Current state")).to_contain_text("Needs you: a proposed decision")
@@ -288,25 +290,39 @@ class WorkDecisionsJourney(unittest.TestCase):
 
     # ---------------------------------------------------------------- beyond one page
 
-    def test_07_more_than_a_hundred_records_are_all_shown(self) -> None:
+    def test_07_more_than_a_hundred_records_remain_reachable_through_native_pages(self) -> None:
         page = self.page("owner")
         spaces = self.api(page, "GET", "/api/v1/workspaces", status=200)
         project = self.api(page, "POST", f"/api/v1/workspaces/{spaces[0]['id']}/projects", {"name": "Big lamp", "visibility": "restricted"}, status=201)
         base = f"/api/v1/projects/{project['id']}"
         rule = self.api(page, "POST", f"{base}/decisions", {"title": "Oldest rule: battery powered"}, status=201)
         self.api(page, "POST", f"/api/v1/decisions/{rule['id']}/accept", {"expectedVersion": 1}, status=200)
+        expected={("decision",rule["id"])}
         for index in range(1, 102):
-            self.api(page, "POST", f"{base}/decisions", {"title": f"Idea {index:03d}"}, status=201)
+            item=self.api(page, "POST", f"{base}/decisions", {"title": f"Idea {index:03d}"}, status=201)
+            expected.add(("decision",item["id"]))
         for index in range(1, 102):
-            self.api(page, "POST", f"{base}/work", {"title": f"Work item {index:03d}"}, status=201)
+            item=self.api(page, "POST", f"{base}/work", {"title": f"Work item {index:03d}"}, status=201)
+            expected.add(("work",item["id"]))
         self.assertEqual(self.api(page, "GET", f"{base}/work?limit=1", status=200)["total"], 101)
         page.goto(f"/projects/{project['id']}/tasks")
         page.get_by_role("radio", name="List", exact=True).click()
-        # Item 101 counted from the newest is the oldest one, beyond the first page of 100.
-        expect(page.get_by_role("region", name=re.compile("^Open")).get_by_role("button", name=re.compile("^Work item 001"))).to_be_visible()
-        expect(page.get_by_role("region", name=re.compile("^Open")).locator(".ws-group__h")).to_contain_text("101")
         expect(page.get_by_label("Current state")).to_contain_text("Current rule: Oldest rule: battery powered")
-        expect(page.get_by_role("region", name=re.compile("^Needs you")).locator(".ws-group__h")).to_contain_text("101")
+        views=page.get_by_role("navigation",name="Task views")
+        expect(views.get_by_role("button",name=re.compile("^Open"))).to_contain_text("101")
+        expect(views.get_by_role("button",name=re.compile("^Needs you"))).to_contain_text("101")
+        pager=page.get_by_role("navigation",name="Work pages");seen=set();sizes=[]
+        for index in range(5):
+            before=index*50
+            expect(pager).to_contain_text(f"{before+1}–{min(before+50,203)} of 203 objects")
+            rows=page.locator(".ws-tasks [data-work-id]").evaluate_all("els=>els.map(el=>[el.dataset.workKind,el.dataset.workId])")
+            self.assertLessEqual(len(rows),50);sizes.append(len(rows));seen.update(tuple(row) for row in rows)
+            if index<4:pager.get_by_role("button",name="Next",exact=True).click()
+        self.assertEqual(sizes,[50,50,50,50,3])
+        self.assertEqual(seen,expected,"every native work and decision remains reachable beyond the first hundred")
+        expect(pager.get_by_role("button",name="Next",exact=True)).to_be_disabled()
+        pager.get_by_role("button",name="Previous",exact=True).click()
+        expect(pager).to_contain_text("151–200 of 203 objects")
 
     # ---------------------------------------------------------------- phone task views (#136 AC-2)
 

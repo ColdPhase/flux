@@ -1,0 +1,49 @@
+#1 [internal] load local bake definitions
+#1 reading from stdin 1.20kB done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from ui-tests.Dockerfile
+#2 transferring dockerfile: 941B done
+#2 DONE 0.0s
+
+#3 [internal] load metadata for mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d
+#3 DONE 0.0s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 191B done
+#4 DONE 0.0s
+
+#5 [internal] load build context
+#5 transferring context: 24.34kB done
+#5 DONE 0.0s
+
+#6 [1/5] FROM mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d
+#6 resolve mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d done
+#6 DONE 0.0s
+
+#7 [2/5] COPY tests/ui/requirements.txt /tmp/ui-requirements.txt
+#7 CACHED
+
+#8 [3/5] RUN pip install --no-cache-dir --break-system-packages --only-binary=:all: --require-hashes -r /tmp/ui-requirements.txt
+#8 CACHED
+
+#9 [4/5] WORKDIR /work
+#9 CACHED
+
+#10 [5/5] COPY tests/ui tests/ui
+#10 DONE 0.0s
+
+#11 exporting to image
+#11 exporting layers 0.0s done
+#11 exporting manifest sha256:6bd0723a06fe7e153a019d5734658b8451b9b30eb660ace8ca81a6eb38f831f7
+#11 exporting manifest sha256:6bd0723a06fe7e153a019d5734658b8451b9b30eb660ace8ca81a6eb38f831f7 done
+#11 exporting config sha256:4d20f362463bf5bf4ab9f76cfb9bd9e3dd3acb70fc42ffb06ff7d4cc70fd8a74 done
+#11 exporting attestation manifest sha256:8b9fa4d23cf8d0a45da34161a6e3eba2c40279ada62350075e663124dbbf0993 done
+#11 exporting manifest list sha256:2547ffaade4081439e79bf631f84f4b26847706d4abc96fa6f951e7c015e8998 done
+#11 naming to docker.io/library/flux-ui-tests:flux155browser done
+#11 unpacking to docker.io/library/flux-ui-tests:flux155browser done
+#11 DONE 0.1s
+
+#12 resolving provenance for metadata file
+#12 DONE 0.1s
+ flux-ui-tests:flux155browser  Built

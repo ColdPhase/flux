@@ -1,0 +1,51 @@
+{
+  "browser": "151.0.7922.34",
+  "origin": "http://127.0.0.1:18581",
+  "observations": [
+    {
+      "case": "project-input-visible",
+      "milliseconds": 299.619,
+      "maximum": 2000
+    },
+    {
+      "case": "project-blur-stop",
+      "milliseconds": 34.905,
+      "maximum": 750
+    },
+    {
+      "case": "project-idle-expiry",
+      "milliseconds": 5323.957,
+      "maximum": 6000
+    },
+    {
+      "case": "navigation-stop",
+      "milliseconds": 66.084,
+      "maximum": 750
+    },
+    {
+      "case": "native-send-stop",
+      "milliseconds": 24.984,
+      "maximum": 750
+    },
+    {
+      "case": "dm-input-visible",
+      "milliseconds": 311.466,
+      "maximum": 2000
+    },
+    {
+      "case": "dm-send-stop",
+      "milliseconds": 44.031,
+      "maximum": 750
+    },
+    {
+      "case": "reader-revocation-request-to-dom",
+      "milliseconds": 866.821,
+      "maximum": 2000
+    },
+    {
+      "case": "receiver-frame-stall",
+      "milliseconds": 3320.912,
+      "maximum": 6000
+    }
+  ]
+}

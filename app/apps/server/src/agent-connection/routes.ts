@@ -1,5 +1,5 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
-import { AGENT_OPERATIONS, AGENT_PEER_REQUEST_CLASSES, type CreateAgentConnectionCommand, type CreateAgentStandingGrantCommand, type PageQuery } from '@flux/contracts';
+import { AGENT_OPERATIONS, AGENT_PEER_REQUEST_CLASSES, type CreateAgentConnectionCommand, type CreateAgentStandingGrantCommand, type NarrowAgentStandingGrantCommand, type PageQuery } from '@flux/contracts';
 import { agentProposalRepository } from '@flux/db';
 import { agentConnectionUseCases, agentOauthUseCases, agentProposalUseCases, DomainError, enforce, evaluateProject, recordEvent, type Database } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
@@ -63,6 +63,17 @@ export async function agentProposalRoutes(app: FastifyInstance, { db, sessions, 
       await actionGrants.revoke((await sessions.requirePrincipal(request)).principal, request.params.connectionId, request.params.grantId);
       return reply.code(204).send();
     });
+  app.patch<{ Params: { connectionId: string; grantId: string }; Body: NarrowAgentStandingGrantCommand }>('/api/v1/agent-connections/:connectionId/action-grants/:grantId', {
+    preValidation: async (request) => {
+      // AJV strips unknown fields; an attempt to change what a grant covers is refused, not silently dropped.
+      if (request.body && typeof request.body === 'object' && Object.keys(request.body).some((key) => key !== 'maximumUses' && key !== 'expiresAt'))
+        throw new DomainError(400, 'GRANT_NOT_NARROWER', 'Only a grant\'s uses and end can be narrowed; grant a new one for another project, change or class');
+    },
+    schema: { body: { type: 'object', additionalProperties: false, minProperties: 1, properties: {
+      maximumUses: { type: 'integer', minimum: 1, maximum: 1000 }, expiresAt: { type: 'string', maxLength: 40 },
+    } } },
+  }, async (request) => actionGrants.narrow((await sessions.requirePrincipal(request)).principal,
+    request.params.connectionId, request.params.grantId, request.body));
   app.delete<{ Params: { connectionId: string } }>('/api/v1/agent-connections/:connectionId', async (request, reply) => {
     await connections.revoke((await sessions.requirePrincipal(request)).principal, request.params.connectionId);
     return reply.code(204).send();

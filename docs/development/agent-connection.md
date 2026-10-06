@@ -138,6 +138,80 @@ transaction with the project/grant rows locked. A later revocation hides the
 proposal through current project policy. Any published material derived from a
 proposal remains a separate human action.
 
+## Standing grants and the owner's controls (#152)
+
+A standing grant lets one connection make one exact operation, in one class, in
+one selected project (optionally on one object), up to a number of uses, until
+it ends. The owner manages them over HTTP; every route answers only the
+connection's owner, and another person (even a workspace owner or project
+manager) gets the same `404` as for a missing connection or grant:
+
+| Route | Rule |
+| --- | --- |
+| `POST /api/v1/agent-connections/:id/action-grants` | Create. Needs the connection's `flux.action.execute` scope, a selected project, the owner's current project management, a class the operation has, 1–1000 uses and an end within 30 days. A durable `clientCommandId` makes retries idempotent |
+| `GET …/action-grants` | The owner's grant history, newest first, 50 per page, with no project or object titles |
+| `PATCH …/action-grants/:grantId` | Narrow (below) |
+| `DELETE …/action-grants/:grantId` | Revoke now; the generation is bumped |
+
+Each MCP action rechecks the grant's live row under a lock: revoked, expired or
+used up is `AGENT_EXECUTION_UNAVAILABLE` before any effect, and a replay of an
+earlier command is refused once the grant is revoked or expired.
+
+### Narrowing — proposed amendment, 2026-10-05 (peer review required)
+
+The Connect page needs "narrow" as its own verb, so that the agent's current grant
+ID keeps working under the smaller limits instead of failing and having to be
+re-granted. `PATCH /api/v1/agent-connections/:id/action-grants/:grantId` takes
+`{ maximumUses?, expiresAt? }` (`NarrowAgentStandingGrantCommand`), at least one:
+
+- `maximumUses` may only go down, and not below the uses already made (or 1).
+  Narrowing to exactly the uses made leaves the grant used up.
+- `expiresAt` may only move earlier, and must stay in the future by the database
+  clock. Stopping now is revoking, so "expired" and "revoked" stay distinct.
+- Anything else (operation, class, project, object or an unknown field) is
+  `400 GRANT_NOT_NARROWER`, as is a wider value; the route refuses those fields
+  before AJV could strip them. A revoked or expired grant is `404 GRANT_NOT_FOUND`.
+- Like revocation, narrowing only removes authority, so it needs the owner but
+  not current project management.
+- Values are absolute, so a retried request is idempotent; there is no command ID.
+- The generation is **not** bumped. A receipt replay requires the grant's
+  generation to match, so bumping it would turn every replay of an earlier
+  successful command into `IDEMPOTENCY_CONFLICT`. No bump is needed: `prepare`,
+  `recheck` and `debit` read `used`, `maximumUses` and `expiresAt` from the live
+  row under `FOR UPDATE`, so the next call already uses the narrower limits.
+
+The response is the updated grant. `flux_bootstrap` lists the narrower limits
+(`remainingUses`) on the agent's next call.
+
+### The Connect page
+
+`/connect-agent` shows, under each of the person's own connections, its
+**Standing grants**: the current ones by project, with the operation, class,
+uses left and end, and the ended ones (revoked or past their end) behind a toggle.
+Whether a grant is current is derived from its saved `revokedAt`, `expiresAt` and
+uses. The owner can:
+
+- **Add a grant:** a project among the connection's selected projects that the
+  owner manages, a class (doing the work or planning), one or more changes the
+  class allows, uses for each change (default 100) and an end (1, 7 or 30 days;
+  default 7, as the server requires an end). One grant is created per change; a
+  retry after a partial failure reuses each change's command ID.
+- **Narrow** a current grant: fewer uses left and/or an earlier end.
+- **Revoke** a grant after a confirmation.
+
+Only operations with a Flux MCP tool are offered: tasks, results, decisions,
+maps, wiki docs and conversations. Co-work operations (#153) are granted with
+their units through the API; the page lists and revokes them with a fallback
+label, so operations added later need no page change. A connection without
+`flux.action.execute` shows that it reads and suggests only. The project Agents
+view lists everyone's connections but has no grant controls. The OAuth chooser
+does not load grants.
+
+Tests: `app/tests/app/agent-grant-controls.test.ts` (real OAuth bearer and MCP
+tools), `app/tests/app/e2e/agent-grant-controls.e2e.ts` (browser controls
+deciding the agent's next MCP call) and `app/tests/ui/test_grant_controls.py`
+(desktop 1440 and phone 390, another member).
+
 ## Native work actions (#152)
 
 With the `flux.action.execute` scope, an owner-created standing grant and the
@@ -291,7 +365,8 @@ Not yet agent tools:
 - A task's first discussion contribution and explicit blocker, result or handoff
   contributions. Once a task thread exists, a reply joins it.
 
-The built-in playbook 1.0.0 does not name these tools yet; its revision belongs to #160.
+Since 1.2.0 the built-in playbook declares these four tools and the map tools in its
+execute/checkpoint module, and the conversation, wiki and map reads in orient/plan (#160).
 
 Co-work operations remain registry entries without tools. #153's claim adapter,
 the #160 playbook and real Codex/Claude model-driven activation are still required
@@ -300,18 +375,23 @@ before agent decomposition counts as delivered.
 ## Built-in co-work playbook (#160)
 
 The server ships one versioned instruction bundle, `COWORK_PLAYBOOK`
-(`flux.cowork` 1.1.0, in `app/packages/core/src/agent-connection/playbook.ts`). It
+(`flux.cowork` 1.2.0, in `app/packages/core/src/agent-connection/playbook.ts`). It
 has a core part and five role modules: start/resume, orient/plan,
 execute/checkpoint, request/review/fix and block/transfer/stop. Each module
 declares the MCP tools and server providers it needs. The bundle names only tools
-the MCP server registers, and a test pins this. Where a provider does not exist
+the MCP server registers, and every registered tool is declared by at least one
+module; `mcp-playbook.test.ts` pins both directions against `tools/list` and the
+bootstrap catalog. Where a provider does not exist
 yet (coordination, verified repository context), the text tells the agent to treat
 that step as unavailable rather than simulate it. Since 1.1.0 the orient/plan module
-tells the agent to read the approved project policy (below) before planning.
+tells the agent to read the approved project policy (below) before planning. Since
+1.2.0 every registered tool is declared by a module: orient/plan lists the wiki,
+conversation, map and result reads, and execute/checkpoint the doc, conversation and
+map writes with the standing-grant operation each needs.
 
 Every authenticated MCP connection delivers it in three ways:
 
-- **Resource:** `flux://playbook/flux.cowork/1.1.0` (Markdown) returns the
+- **Resource:** `flux://playbook/flux.cowork/1.2.0` (Markdown) returns the
   rendered bundle with its digest.
 - **Prompts:** `start_work` and `resume_work` are the host-invoked Start and
   Resume actions. Claude Code, for example, lists MCP prompts as slash commands.
