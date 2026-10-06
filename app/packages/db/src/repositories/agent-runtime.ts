@@ -39,7 +39,7 @@ export function agentRuntimeStore(db: Handle): AgentRuntimeStore {
     async ownerView(ownerUserId) {
       const live = await db.execute<BindingRecord>(sql`SELECT ${BINDING_COLUMNS} FROM agent_runtime_bindings
         WHERE owner_user_id = ${ownerUserId} AND state <> 'released'`);
-      const last = await db.execute<{ release_reason: AgentRuntimeReleaseReason; released_at: Date | string }>(sql`SELECT release_reason, released_at
+      const last = await db.execute<{ release_reason: AgentRuntimeReleaseReason; released_at: Date | string; release_logout_failed: boolean | null }>(sql`SELECT release_reason, released_at, release_logout_failed
         FROM agent_runtime_bindings WHERE owner_user_id = ${ownerUserId} AND state = 'released' AND release_reason <> 'bind_failed'
         ORDER BY released_at DESC, id LIMIT 1`);
       const counts = await db.execute<{ ready: number; held: number; total: number }>(sql`SELECT
@@ -51,7 +51,7 @@ export function agentRuntimeStore(db: Handle): AgentRuntimeStore {
         FROM agent_runtime_operator_statements WHERE statement = 'anthropic_commercial_terms' ORDER BY recorded_at DESC LIMIT 1`);
       return {
         binding: live.rows[0] ? binding(live.rows[0]) : null,
-        lastRelease: last.rows[0] ? { reason: last.rows[0].release_reason, at: date(last.rows[0].released_at) } : null,
+        lastRelease: last.rows[0] ? { reason: last.rows[0].release_reason, at: date(last.rows[0].released_at), signOutFailed: last.rows[0].release_logout_failed === true } : null,
         slots: counts.rows[0] ?? { ready: 0, held: 0, total: 0 },
         commercialTerms: terms.rows[0] ? { agreedOn: terms.rows[0].agreed_on, recordedAt: date(terms.rows[0].recorded_at) } : null,
       };
@@ -59,13 +59,15 @@ export function agentRuntimeStore(db: Handle): AgentRuntimeStore {
 
     reserve(ownerUserId, bindingId) {
       return db.transaction(async (tx) => {
+        // Reservations are rare: one at a time, so "full" is never answered while another commits.
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('agent-runtime-reserve'))`);
         await ownerLock(tx, ownerUserId);
         const existing = await tx.execute<BindingRecord>(sql`SELECT ${BINDING_COLUMNS} FROM agent_runtime_bindings
           WHERE owner_user_id = ${ownerUserId} AND state <> 'released' FOR UPDATE`);
         if (existing.rows[0]) return { kind: 'existing' as const, binding: binding(existing.rows[0]) };
         const free = await tx.execute<{ slot: string }>(sql`SELECT s.slot FROM agent_runtime_slots s
           WHERE s.state = 'ready' AND NOT EXISTS (SELECT 1 FROM agent_runtime_bindings b WHERE b.slot = s.slot AND b.state <> 'released')
-          ORDER BY length(s.slot), s.slot FOR UPDATE SKIP LOCKED LIMIT 1`);
+          ORDER BY length(s.slot), s.slot LIMIT 1 FOR UPDATE`);
         const slot = free.rows[0]?.slot;
         if (!slot) {
           const counts = await tx.execute<{ held: number; total: number }>(sql`SELECT
@@ -138,9 +140,10 @@ export function agentRuntimeStore(db: Handle): AgentRuntimeStore {
       });
     },
 
-    async completeRelease(bindingId, slot) {
+    async completeRelease(bindingId, slot, logoutFailed) {
       await db.transaction(async (tx) => {
-        await tx.execute(sql`UPDATE agent_runtime_bindings SET state = 'released', released_at = now() WHERE id = ${bindingId} AND state = 'releasing'`);
+        await tx.execute(sql`UPDATE agent_runtime_bindings SET state = 'released', released_at = now(), release_logout_failed = ${logoutFailed}
+          WHERE id = ${bindingId} AND state = 'releasing'`);
         await revokeConnections(tx, bindingId);
         await tx.execute(sql`UPDATE agent_runtime_slots SET state = ${slot.state}, boot_id = ${slot.bootId}, wipe_boot_id = ${slot.wipeBootId},
           out_of_pool_reason = ${slot.outOfPoolReason}, reported_at = now(), updated_at = now() WHERE slot = ${slot.slot}`);

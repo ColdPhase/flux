@@ -36,8 +36,12 @@ CREATE TABLE agent_runtime_bindings (
   release_reason text CHECK (release_reason IN ('owner', 'operator', 'idle', 'purge', 'bind_failed')),
   release_requested_at timestamptz,
   released_at timestamptz,
+  -- Whether a CLI's own sign-out failed during the release (the files were deleted anyway), so the
+  -- owner is told to end the session in their vendor account.
+  release_logout_failed boolean,
   CONSTRAINT agent_runtime_bindings_release_check CHECK ((state IN ('releasing', 'released')) = (release_reason IS NOT NULL)
-    AND (release_reason IS NULL) = (release_requested_at IS NULL) AND (state = 'released') = (released_at IS NOT NULL))
+    AND (release_reason IS NULL) = (release_requested_at IS NULL) AND (state = 'released') = (released_at IS NOT NULL)
+    AND (state = 'released' OR release_logout_failed IS NULL))
 );
 CREATE UNIQUE INDEX agent_runtime_bindings_owner_live_idx ON agent_runtime_bindings(owner_user_id) WHERE state <> 'released';
 CREATE UNIQUE INDEX agent_runtime_bindings_slot_live_idx ON agent_runtime_bindings(slot) WHERE state <> 'released';

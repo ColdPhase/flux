@@ -17,6 +17,8 @@ import type { AgentRuntimeStore, RuntimeManagerPort, RuntimeSlotRow } from './po
 export interface ReconcileReport {
   error?: string;
   released: string[];
+  /** Released bindings whose CLI sign-out failed or timed out (files deleted anyway; the owner is told). */
+  logoutFailed: string[];
   orphans: number;
   signInAgain: string[];
   ready: string[];
@@ -29,7 +31,7 @@ const STALE_RESERVATION_MS = 2 * 60_000;
 export async function reconcileAgentRuntime({ config, store, manager, now = () => new Date(), log = () => undefined }: {
   config: AgentRuntimeConfig; store: AgentRuntimeStore; manager: RuntimeManagerPort; now?: () => Date; log?: (event: Record<string, unknown>) => void;
 }): Promise<ReconcileReport> {
-  const report: ReconcileReport = { released: [], orphans: 0, signInAgain: [], ready: [], outOfPool: [], idle: 0 };
+  const report: ReconcileReport = { released: [], logoutFailed: [], orphans: 0, signInAgain: [], ready: [], outOfPool: [], idle: 0 };
   if (config.idleDays) {
     for (const binding of await store.idleBindings(new Date(now().getTime() - config.idleDays * 86_400_000))) {
       if (await store.requestRelease({ slot: binding.slot }, 'idle')) report.idle += 1;
@@ -63,8 +65,9 @@ export async function reconcileAgentRuntime({ config, store, manager, now = () =
       const released = await manager.release(sighting.slot, binding.id);
       if (!released.ok) { log({ event: 'release_pending', slot: sighting.slot, code: released.code }); await store.saveSlot(seen); continue; }
       const slot = released.value.dataEmpty ? wiping(sighting.bootId) : outOfPool('data_not_empty');
-      await store.completeRelease(binding.id, slot);
+      await store.completeRelease(binding.id, slot, released.value.logoutFailed);
       report.released.push(binding.id);
+      if (released.value.logoutFailed) report.logoutFailed.push(binding.id);
       if (slot.state === 'out_of_pool') report.outOfPool.push(slot.slot);
       continue;
     }

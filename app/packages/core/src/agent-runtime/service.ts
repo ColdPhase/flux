@@ -48,7 +48,7 @@ export function agentRuntimeUseCases(config: AgentRuntimeConfig, store: AgentRun
       idleReleaseDays: config.idleDays,
       pool,
       binding: view.binding ? bindingView(view.binding, config.idleDays) : null,
-      lastRelease: view.lastRelease && { reason: view.lastRelease.reason, at: view.lastRelease.at.toISOString() },
+      lastRelease: view.lastRelease && { reason: view.lastRelease.reason, at: view.lastRelease.at.toISOString(), signOutFailed: view.lastRelease.signOutFailed },
     };
   }
 

@@ -47,7 +47,7 @@ export type ReserveOutcome =
 
 export interface RuntimeOwnerView {
   binding: RuntimeBindingRow | null;
-  lastRelease: { reason: AgentRuntimeReleaseReason; at: Date } | null;
+  lastRelease: { reason: AgentRuntimeReleaseReason; at: Date; signOutFailed: boolean } | null;
   slots: { ready: number; held: number; total: number };
   commercialTerms: { agreedOn: string; recordedAt: Date } | null;
 }
@@ -68,7 +68,7 @@ export interface AgentRuntimeStore {
   saveSlot(slot: RuntimeSlotRow): Promise<void>;
   markSignInAgain(bindingId: string): Promise<void>;
   /** The binding is released (its connections stay revoked); the slot becomes `wiping` or `out_of_pool`. */
-  completeRelease(bindingId: string, slot: RuntimeSlotRow): Promise<void>;
+  completeRelease(bindingId: string, slot: RuntimeSlotRow, logoutFailed: boolean): Promise<void>;
   /** Drops a `binding` reservation older than `olderThan` (an interrupted bind). */
   dropStaleReservation(bindingId: string, olderThan: Date): Promise<boolean>;
   idleBindings(before: Date): Promise<RuntimeBindingRow[]>;

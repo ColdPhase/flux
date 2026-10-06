@@ -49,7 +49,7 @@ function memoryStore() {
       const all = [...slots.values()];
       return {
         binding,
-        lastRelease: last ? { reason: last.releaseReason!, at: last.releasedAt! } : null,
+        lastRelease: last ? { reason: last.releaseReason!, at: last.releasedAt!, signOutFailed: false } : null,
         slots: { ready: all.filter((s) => s.state === 'ready' && !live().some((b) => b.slot === s.slot)).length, held: live().length,
           total: all.filter((s) => s.state !== 'out_of_pool').length },
         commercialTerms: null,

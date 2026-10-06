@@ -36,8 +36,11 @@ export interface AgentRuntimeStatus {
   /** `full`: every slot is bound to someone; `server` connections and mode (b) still work. */
   pool: 'off' | 'available' | 'full' | 'starting';
   binding: AgentRuntimeBinding | null;
-  /** The caller's last released binding, so they are told when the operator or the idle policy released it. */
-  lastRelease: { reason: AgentRuntimeReleaseReason; at: string } | null;
+  /**
+   * The caller's last released binding, so they are told when the operator or the idle policy released
+   * it, and when a CLI's sign-out failed (the files were deleted; end the session at the vendor).
+   */
+  lastRelease: { reason: AgentRuntimeReleaseReason; at: string; signOutFailed: boolean } | null;
 }
 
 export const AGENT_RUNTIME_ERRORS = {
