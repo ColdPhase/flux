@@ -39,30 +39,50 @@ export function recordingDatabase() {
   return { db, pool, statements };
 }
 
-interface PlanNode {
+export interface PlanNode {
   'Node Type': string;
+  'Relation Name'?: string;
   'Parent Relationship'?: string;
   'Subplan Name'?: string;
   'Total Cost': number;
   'Actual Loops'?: number;
   'Actual Rows'?: number;
+  'Rows Removed by Filter'?: number;
   Plans?: PlanNode[];
 }
 
-/** EXPLAIN (ANALYZE, FORMAT JSON) of a recorded statement, run again with the same parameters. */
-export async function explainAnalyze(statement: SentStatement): Promise<{ Plan: PlanNode; JIT?: { Functions: number } }> {
-  const { rows } = await observer.query<{ 'QUERY PLAN': [{ Plan: PlanNode; JIT?: { Functions: number } }] }>(
-    `EXPLAIN (ANALYZE, FORMAT JSON) ${statement.text}`, statement.values);
-  return rows[0]!['QUERY PLAN'][0];
+export interface ExplainedPlan {
+  Plan: PlanNode;
+  JIT?: { Functions: number };
+  'Execution Time': number;
+  'Planning Time': number;
 }
 
-/** Every subplan of a plan (a `SubPlan` relationship) with how often it ran. */
-export function subplans(plan: PlanNode): { name: string; loops: number }[] {
-  const found: { name: string; loops: number }[] = [];
+/**
+ * EXPLAIN (ANALYZE, FORMAT JSON) of a recorded statement, run again with the same parameters on
+ * one connection, inside a transaction whose `settings` apply with SET LOCAL (for example
+ * `{ jit: 'on' }`, to see what the plan costs whatever the pool's own settings are).
+ */
+export async function explainAnalyze(statement: SentStatement, settings: Record<string, string> = {}): Promise<ExplainedPlan> {
+  const client = await observer.connect();
+  try {
+    await client.query('BEGIN');
+    for (const [name, value] of Object.entries(settings)) await client.query(`SELECT set_config($1, $2, true)`, [name, value]);
+    const { rows } = await client.query<{ 'QUERY PLAN': [ExplainedPlan] }>(`EXPLAIN (ANALYZE, FORMAT JSON) ${statement.text}`, statement.values);
+    return rows[0]!['QUERY PLAN'][0];
+  } finally {
+    await client.query('ROLLBACK').catch(() => undefined);
+    client.release();
+  }
+}
+
+/** Rows a plan read from a table: rows each scan of it returned plus those its filter removed, over all loops. */
+export function rowsRead(plan: PlanNode, table: string): number {
+  let total = 0;
   const visit = (node: PlanNode) => {
-    if (node['Parent Relationship'] === 'SubPlan') found.push({ name: node['Subplan Name'] ?? '', loops: node['Actual Loops'] ?? 0 });
+    if (node['Relation Name'] === table) total += ((node['Actual Rows'] ?? 0) + (node['Rows Removed by Filter'] ?? 0)) * (node['Actual Loops'] ?? 0);
     for (const child of node.Plans ?? []) visit(child);
   };
   visit(plan);
-  return found;
+  return Math.round(total);
 }

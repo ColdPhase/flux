@@ -7,8 +7,9 @@ import { conversationStore } from '../../apps/server/src/conversation/store.js';
 import { comparisonOutcomeReads } from '../../apps/server/src/proactive-comparison/outcome-adapter.js';
 import { notificationRepository } from '../../apps/server/src/push/adapters.js';
 import { pool } from './support/db.js';
-import { addMember, expectStatus, person, project, workspace } from './support/people.js';
-import { explainAnalyze, recordingDatabase, subplans } from './support/statements.js';
+import { expectStatus, person, project, workspace } from './support/people.js';
+import { explainAnalyze, recordingDatabase, rowsRead } from './support/statements.js';
+import { inboxVolume } from './support/inbox-volume.js';
 
 // Regression tests for the slow paths measured in #298 (docs/development/performance-2026-10.md).
 // They assert work that grows with the data (how often a subplan runs, how many statements a
@@ -17,36 +18,38 @@ import { explainAnalyze, recordingDatabase, subplans } from './support/statement
 const { db, statements } = recordingDatabase();
 
 describe('inbox unread count (#298)', () => {
-  test('stays a cheap plan however many notifications a member has: no JIT compilation per count', async () => {
-    const owner = await person('Inbox owner');
-    const member = await person('Inbox member');
-    const space = await workspace(owner, 'Inbox volume');
-    await addMember(owner, space.id, member, 'member');
-    const open = await project(owner, space.id, 'Open project', 'workspace');
-    const hidden = await project(owner, space.id, 'Restricted project', 'restricted');
-    const insert = (projectId: string, count: number) => pool.query(`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, title, reason)
-      SELECT gen_random_uuid(), $1, $2, 'project', $3, 'Reply ' || i, 'reply' FROM generate_series(1, $4::int) AS i`, [member.id, space.id, projectId, count]);
-    await insert(open.id, 3000);
-    // Rows about a project the member cannot read stay out of the count, as before.
-    await insert(hidden.id, 5);
-    // Current statistics, so the planner estimates these rows as PostgreSQL would in use.
-    await pool.query('ANALYZE notifications');
-
-    const { result, sent } = await statements(() => notificationRepository(db).listReadable(member.id, 1));
-    assert.equal(result.unread, 3000, 'only notifications about readable projects are counted');
-    assert.equal(result.items.length, 1);
+  test('follows the reader\'s own notifications, not the workspace\'s drafts, DMs and projects, and compiles no JIT', async () => {
+    const volume = await inboxVolume();
+    const { result, sent } = await statements(() => notificationRepository(db).listReadable(volume.member.id, 1));
+    const total = volume.notifications.project + volume.notifications.draft + volume.notifications.dm;
+    assert.equal(result.unread, total, 'every notification about a readable source is counted');
     const count = sent.find((statement) => /^select count\(\*\) from "notifications"/i.test(statement.text));
     assert.ok(count, 'the unread count is one statement');
-    const explained = await explainAnalyze(count);
+    // JIT on for this check, whatever the application's connections use: the plan itself must stay
+    // below the JIT thresholds.
+    const explained = await explainAnalyze(count, { jit: 'on' });
     const threshold = Number((await pool.query<{ jit_above_cost: string }>('SHOW jit_above_cost')).rows[0]!.jit_above_cost);
-    // Before #298 the draft and DM checks were correlated subplans whose estimated cost the planner
-    // multiplied by every notification: from about a thousand notifications the estimate crossed
-    // jit_above_cost, and every count (the inbox dot, on each navigation) compiled JIT code for
-    // about 50 ms to run a query of about 1 ms. As uncorrelated IN (SELECT ...) sets they are
-    // hashed once and the estimate stays small.
-    assert.ok(explained.Plan['Total Cost'] < threshold, `estimated cost ${explained.Plan['Total Cost']} stays below jit_above_cost ${threshold}`);
-    assert.equal(explained.JIT, undefined, 'no JIT compilation');
-    assert.deepEqual(subplans(explained.Plan).filter((run) => run.loops > 2), [], 'no source subplan runs per notification');
+    // Before #298 the draft and DM checks were correlated subplans costed once per notification (JIT
+    // compiled from about a thousand notifications); 3f6b3207 built the set of every readable draft
+    // and DM of the workspace (20,000 drafts: 313 ms, mostly JIT). Each set now starts from the
+    // reader's own notifications of that kind. All three facts are reported together.
+    assert.deepEqual({
+      jitFunctions: explained.JIT?.Functions ?? 0,
+      costBelowJitThreshold: explained.Plan['Total Cost'] < threshold,
+      draftsRead: rowsRead(explained.Plan, 'drafts') <= volume.notifications.draft,
+      dmsRead: rowsRead(explained.Plan, 'dms') <= volume.notifications.dm,
+    }, { jitFunctions: 0, costBelowJitThreshold: true, draftsRead: true, dmsRead: true },
+    `cost ${explained.Plan['Total Cost']} (jit_above_cost ${threshold}), drafts read ${rowsRead(explained.Plan, 'drafts')} of ${volume.workspaceRows.drafts}, `
+      + `DMs read ${rowsRead(explained.Plan, 'dms')} of ${volume.workspaceRows.dms}`);
+  });
+});
+
+describe('application database connections (#298)', () => {
+  test('never JIT-compile: a short statement with an inflated estimate is not compiled', async () => {
+    // createDatabase is what the API, the worker and these tests connect with.
+    const { rows } = await pool.query<{ jit: string; idle: string }>(
+      "SELECT current_setting('jit') AS jit, current_setting('idle_in_transaction_session_timeout') AS idle");
+    assert.deepEqual(rows[0], { jit: 'off', idle: '1min' });
   });
 });
 

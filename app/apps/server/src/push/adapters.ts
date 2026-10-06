@@ -37,15 +37,22 @@ async function inboxAudience(db: DbExecutor, userId: string): Promise<SQL> {
     const projects = await visibleFilter(principal, workspaceId, 'project', db);
     const drafts = await visibleFilter(principal, workspaceId, 'draft', db);
     const dms = await visibleFilter(principal, workspaceId, 'dm', db);
-    // Each source set is an uncorrelated `IN (SELECT …)`, which PostgreSQL decides once per query
-    // and probes as a hash per row. As correlated EXISTS (#298) the draft and DM checks were costed
-    // once per notification: past about a thousand of them the estimate crossed jit_above_cost and
-    // every unread count compiled JIT code for ~50 ms to run a ~1 ms query.
+    // Each set is built from the reader's own notifications of that kind in this workspace, then
+    // passed through the policy's filter: an uncorrelated `IN (SELECT …)` that PostgreSQL decides
+    // once per query and probes as a hash per row. Its size and estimate follow the reader's
+    // notifications, never the workspace's projects, drafts or DMs (#298). As correlated EXISTS
+    // the checks were costed once per notification and crossed jit_above_cost at about a thousand
+    // of them; as sets of every readable draft they grew with the workspace.
+    const own = (type: 'project' | 'draft' | 'dm') => sql`SELECT mine.source_id FROM notifications mine
+      WHERE mine.user_id = ${userId} AND mine.workspace_id = ${workspaceId} AND mine.source_type = ${type}`;
     const sources: SQL[] = [
-      sql`(${n.sourceType} = 'project' AND ${n.sourceId} IN (SELECT ${schema.projects.id} FROM ${schema.projects} WHERE ${projects}))`,
-      sql`(${n.sourceType} = 'draft' AND ${n.sourceId} IN (SELECT ${schema.drafts.id} FROM ${schema.drafts} WHERE ${drafts}))`,
+      sql`(${n.sourceType} = 'project' AND ${n.sourceId} IN (SELECT ${schema.projects.id} FROM ${schema.projects}
+        WHERE ${schema.projects.id} IN (${own('project')}) AND ${projects}))`,
+      sql`(${n.sourceType} = 'draft' AND ${n.sourceId} IN (SELECT ${schema.drafts.id} FROM ${schema.drafts}
+        WHERE ${schema.drafts.id} IN (${own('draft')}) AND ${drafts}))`,
       // Direct messages (#116): only while the recipient is a participant (#107).
-      sql`(${n.sourceType} = 'dm' AND ${n.sourceId} IN (SELECT ${schema.dms.id} FROM ${schema.dms} WHERE ${dms}))`,
+      sql`(${n.sourceType} = 'dm' AND ${n.sourceId} IN (SELECT ${schema.dms.id} FROM ${schema.dms}
+        WHERE ${schema.dms.id} IN (${own('dm')}) AND ${dms}))`,
     ];
     if (workspace.allowed) sources.push(sql`(${n.sourceType} = 'workspace' AND ${n.sourceId} = ${workspaceId})`);
     conditions.push(and(eq(n.workspaceId, workspaceId), or(...sources))!);
