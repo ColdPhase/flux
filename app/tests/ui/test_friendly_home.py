@@ -562,6 +562,11 @@ class FriendlyHomeJourney(unittest.TestCase):
     def test_12_a_phone_conversation_opens_next_to_the_message_box(self):
         page = self.page()
         project = self.call(page, "POST", f"/api/v1/workspaces/{self.workspace['id']}/projects", {"name": "Rain barrel monitor", "visibility": "restricted"}, 201)
+        # A long goal, so the header's second line has to shorten something.
+        response = page.request.fetch(f"{ORIGIN}/api/v1/projects/{project['id']}", method="PATCH",
+            headers={"origin": ORIGIN, "content-type": "application/json", "if-match": f"\"{project['version']}\""},
+            data=json.dumps({"goal": "Know when each raised bed needs water before the seedlings wilt in a dry week"}))
+        self.assertEqual(response.status, 200, response.text())
         say = lambda body: self.call(page, "POST", f"/api/v1/projects/{project['id']}/conversations", {"body": body, "clientMessageId": str(uuid.uuid4())}, 201)  # noqa: E731
         say("Where should the overflow sensor go?")
         say("The barrel by the shed fills first, so I would start there.")
@@ -590,6 +595,9 @@ class FriendlyHomeJourney(unittest.TestCase):
                 # The header is one block: back, the title with one line under it, and Details.
                 header = self.box(phone.locator("header.top"))
                 self.assertLessEqual(header["height"], 64, "the header does not wrap")
+                # The short audience stays whole; a long goal shortens first.
+                audience = phone.locator("header.top .top__audience > span:not(.ui-vh)")
+                self.assertFalse(audience.evaluate("el => el.scrollWidth > el.clientWidth"), "the audience is not cut")
                 state = phone.locator(".state-row .ws-state-row")
                 expect(state).to_contain_text("Work in progress")
                 self.assertLessEqual(self.box(state)["height"], 45, "one state line")
