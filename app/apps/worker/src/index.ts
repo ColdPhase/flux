@@ -1,6 +1,7 @@
 import { PgBoss } from 'pg-boss';
 import { assertExactMigrationLedger, createDatabase, FLUX_SCHEMA_VERSION, loadBackgroundMasterKey, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
-import { backgroundComparisonsEnabled } from '@flux/core';
+import { backgroundComparisonsEnabled, loadAgentRuntimeConfig } from '@flux/core';
+import { startAgentRuntimeReconciler } from './agent-runtime/index.js';
 import { registerDraftSummaryWorker } from './jobs/draft-summary.js';
 import { registerIdempotencyCleanup } from './jobs/idempotency-cleanup.js';
 import { registerSampleWorker } from './jobs/sample.js';
@@ -34,7 +35,9 @@ const personalRunRecovery = await registerPersonalRunWorker(boss, db, personalRu
 const comparisonsOn = backgroundComparisonsEnabled(process.env);
 await registerComparisonWorker(boss, db, { enabled: comparisonsOn, masterKey: comparisonsOn ? loadBackgroundMasterKey() : null, provider: comparisonProviders(process.env) });
 await registerIdempotencyCleanup(boss, db);
+// The `runtime` transport (F-022 T3): reconciles slot bindings at start and periodically; off by default.
+const agentRuntime = startAgentRuntimeReconciler({ config: loadAgentRuntimeConfig(process.env), db, pool, env: process.env });
 console.log('Flux worker ready');
-const stop = async () => { await personalRunRecovery.stop(); await generator.stop(); await boss.stop(); email.close(); await pool.end(); process.exit(0); };
+const stop = async () => { await agentRuntime.stop(); await personalRunRecovery.stop(); await generator.stop(); await boss.stop(); email.close(); await pool.end(); process.exit(0); };
 process.on('SIGTERM', stop);
 process.on('SIGINT', stop);

@@ -15,6 +15,7 @@ import { useNativeOwn, useWorkChoices } from '../work/useDetailReads';
 import { WorkPagination } from '../work/WorkPagination';
 import { AGENT_SUFFIX, agentDisplayName } from '../docs/format';
 import { getProjectAgents } from './api';
+import { ProjectPolicy } from './ProjectPolicy';
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
 import './agents.css';
@@ -400,6 +401,8 @@ export function ProjectAgents() {
       ) : (
         <p className="agents__no-connections">No agents connected. You can still discuss tasks here.</p>
       )}
+      <ProjectPolicy key={projectId} projectId={projectId} meId={me.user.id} canEdit={shell?.project.access === 'manager'}
+        managers={(shell?.people ?? []).filter((person) => person.kind === 'human' && person.access === 'manager').map((person) => person.name)} />
       {task ? (
         <>
           <div className="agents__task">
