@@ -1,0 +1,53 @@
+# Agent runtime: one more slot (F-022 AIM-3; docs/operations/agent-runtime.md "More slots").
+# Put this in docker/compose.override.yaml (create it, or add these keys to the one you have; ./flux
+# reads it when it exists) and replace every 5 with the next free number: runtime-5, runtime-5-data,
+# FLUX_RUNTIME_SLOT_5 and FLUX_RUNTIME_SECRET_5. On the next `./flux up`, ./flux adds the slot's own
+# secret to docker/.env. Keep every other line as it is: these are the same limits and isolation as
+# runtime-1 to runtime-4 (scripts/check_agent_runtime.sh compares them).
+services:
+  runtime-manager:
+    environment:
+      FLUX_RUNTIME_SLOT_5: ${FLUX_RUNTIME_SECRET_5:-}
+    networks:
+      runtime-5: {}
+  runtime-egress:
+    networks:
+      runtime-5: {}
+  runtime-5:
+    profiles: ["runtime"]
+    image: flux-agent-runtime:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    init: true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    mem_limit: 2g
+    memswap_limit: 2g
+    cpus: 1
+    pids_limit: 256
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=128m,mode=1777
+    restart: always
+    depends_on:
+      runtime-install:
+        condition: service_completed_successfully
+      runtime-egress:
+        condition: service_started
+    environment:
+      FLUX_AGENT_RUNTIME: ${FLUX_AGENT_RUNTIME:-}
+      FLUX_RUNTIME_SLOT: runtime-5
+      FLUX_RUNTIME_SLOT_SECRET: ${FLUX_RUNTIME_SECRET_5:-}
+    volumes:
+      - runtime-5-data:/data
+      - runtime-tools:/opt/flux-tools:ro,z
+    networks: [runtime-5]
+volumes:
+  runtime-5-data:
+networks:
+  runtime-5:
+    internal: true
