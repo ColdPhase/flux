@@ -99,7 +99,7 @@ evaluation is still required. #160 stays open (see "What remains").
 | Run | Code | Result |
 | --- | --- | --- |
 | UI, `check_ui.sh test_project_policy test_agents_view test_grant_controls test_shared_composer test_typing test_app_shell test_phone_shell test_agents_accents` (image build ran build, typecheck and lint; these screenshots) | `f0e397cf` | 90/90 OK (10 + 17 + 4 + 14 + 11 + 20 + 12 + 2) |
-| `./scripts/check_application.sh` (build, typecheck, lint, app tests including both policy suites, every browser/e2e phase) | `f0e397cf` | Not run yet. It is queued behind the slot lock's disk guard: the host has 13–14 GB free, under 15 GB. The CI "Application validation" check passes on the evidence head. |
+| `./scripts/check_application.sh` (build, typecheck, lint, app tests including both policy suites, every browser/e2e phase) | `f0e397cf` | exit 1. All 990 application tests passed, including both policy suites, and the next 4 phases passed (6/6). Then `tests/app/e2e/github.e2e.ts` timed out waiting for "Linked pull requests". At that moment the API logged `Query read timeout` from PostgreSQL, including on the session lookup, and returned 500 for the project and docs reads. Other sessions' Docker runs were active, and the host was under the disk guard. This branch does not change the GitHub settings page; the same test passed in this branch's full check at `97ba7e36` and in 10 other recent full runs on other heads. The remaining later phases did not run. A targeted rerun of that phase is queued behind the slot lock. |
 | Earlier heads | `97ba7e36`; `8f0ba3f3` and `e4b63298` | UI 86/86 and full check exit 0 (969/969, then 20/20); before the first merge, UI 72/72 and full check exit 0 (943/943, then 20/20) |
 
 ## Negative controls
