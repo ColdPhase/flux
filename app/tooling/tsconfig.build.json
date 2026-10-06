@@ -1,1 +1,1 @@
-{"compilerOptions":{"target":"ES2022","module":"NodeNext","moduleResolution":"NodeNext","outDir":"dist","rootDir":".","strict":true,"skipLibCheck":true,"esModuleInterop":true,"types":["node"]},"include":["migrate.ts","rotate-background-key.ts","operations.ts"]}
+{"compilerOptions":{"target":"ES2022","module":"NodeNext","moduleResolution":"NodeNext","outDir":"dist","rootDir":".","strict":true,"skipLibCheck":true,"esModuleInterop":true,"types":["node"]},"include":["migrate.ts","reverse-task-creation-undo.ts","rotate-background-key.ts","operations.ts"]}
