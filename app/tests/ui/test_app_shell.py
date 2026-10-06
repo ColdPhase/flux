@@ -85,14 +85,18 @@ def start_forwarder(origin: str, upstream: str) -> None:
     threading.Thread(target=accept, daemon=True).start()
 
 
-def open_plus(scope) -> None:
-    """On a phone, Attach and Sources open from the composer's "+" (F-025 PA-7); elsewhere this does nothing."""
-    # The composer is there once its Sources or Attach button is (shown, or inside the closed "+" menu on a phone).
-    scope.get_by_role("button", name=re.compile("^(Sources|Attach files$)"), include_hidden=True).first.wait_for(state="attached")
-    for plus in scope.get_by_role("button", name="Attach or cite", exact=True).all():
-        if plus.is_visible() and plus.get_attribute("aria-expanded") != "true":
-            plus.click()
-            return
+def open_plus(scope, name: str = "Sources") -> None:
+    """On a phone, Attach and Sources open from the composer's "+" (F-025 PA-7): tap it until the named button shows.
+    Elsewhere the button is already in the composer and this does nothing."""
+    target = scope.get_by_role("button", name=re.compile("^Sources") if name == "Sources" else name, exact=name != "Sources", include_hidden=True)
+    target.first.wait_for(state="attached")
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline and not any(button.is_visible() for button in target.all()):
+        for plus in scope.get_by_role("button", name="Attach or cite", exact=True).all():
+            if plus.is_visible() and plus.get_attribute("aria-expanded") != "true":
+                plus.click()
+                break
+        time.sleep(0.2)
 
 
 def open_sources(page: Page, scope=None) -> None:

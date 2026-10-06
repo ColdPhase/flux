@@ -719,8 +719,12 @@ class PeopleAndAiPhone(unittest.TestCase):
         if send and field:
             field.fill("Draft")  # Send takes the action colour once there is something to send
             expect(send).to_have_attribute("aria-disabled", "false")
-            fill = send.evaluate("""(el) => { const probe = document.createElement('i'); probe.style.color = 'var(--action)'; document.body.append(probe);
+            for _ in range(20):  # past the press and colour transition
+                fill = send.evaluate("""(el) => { const probe = document.createElement('i'); probe.style.color = 'var(--action)'; document.body.append(probe);
               const action = getComputedStyle(probe).color; probe.remove(); return [getComputedStyle(el, '::before').backgroundColor, action]; }""")
+                if fill[0] == fill[1]:
+                    break
+                time.sleep(0.1)
             if fill[0] != fill[1]:
                 problems.append(f"Send is {fill[0]}, not the action colour {fill[1]}")
             field.fill("")

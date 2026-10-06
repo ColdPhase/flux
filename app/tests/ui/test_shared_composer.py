@@ -83,7 +83,7 @@ class SharedComposerJourney(unittest.TestCase):
 
     def choose(self, page, files, container=None):
         target = container or page
-        open_plus(target)
+        open_plus(target, "Attach files")
         with page.expect_file_chooser() as chooser:
             target.get_by_role("button", name="Attach files", exact=True).click()
         chooser.value.set_files(files)
