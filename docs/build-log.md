@@ -99,3 +99,84 @@ were restored to CI, and the full suite stayed a local Docker requirement
   and the shared map landed, together with a versioned co-work playbook
   ([#174](https://github.com/ColdPhase/flux/pull/174) to
   [#176](https://github.com/ColdPhase/flux/pull/176)).
+
+## 2026-10-03 — the Studio 11.6 shell
+
+- **New look.** The Studio 11.6 shell, tokens, header, tabs and conversation landed,
+  built from a measured design system rather than eyeballed screenshots
+  ([#182](https://github.com/ColdPhase/flux/pull/182),
+  [#184](https://github.com/ColdPhase/flux/pull/184)).
+- **AI and integrations.** The provider-neutral Flux agent became a requirement
+  (F-020, [#180](https://github.com/ColdPhase/flux/pull/180)). Project conversations
+  and docs joined the standing-grant MCP tools
+  ([#193](https://github.com/ColdPhase/flux/pull/193)). Verified GitHub pull requests
+  were connected to projects ([#168](https://github.com/ColdPhase/flux/pull/168)).
+
+## 2026-10-04 — a day of integration
+
+- **Views.** The 11.6 views arrived in one day:
+  - a Kanban board with drag, keyboard and menu moves
+    ([#194](https://github.com/ColdPhase/flux/pull/194));
+  - a two-pane wiki ([#197](https://github.com/ColdPhase/flux/pull/197));
+  - the project Agents view ([#183](https://github.com/ColdPhase/flux/pull/183));
+  - task counts on map thoughts ([#196](https://github.com/ColdPhase/flux/pull/196));
+  - Home acknowledgement and first notes ([#211](https://github.com/ColdPhase/flux/pull/211));
+  - workspace People ([#198](https://github.com/ColdPhase/flux/pull/198));
+  - durable file messages ([#225](https://github.com/ColdPhase/flux/pull/225)).
+- **AI connections.** Owner AI connections became provider-neutral
+  ([#192](https://github.com/ColdPhase/flux/pull/192)). Co-work gained fenced claims and
+  an approved project policy for agents ([#166](https://github.com/ColdPhase/flux/pull/166),
+  [#214](https://github.com/ColdPhase/flux/pull/214)).
+- **In public.** Governance, the changelog and this build log were added
+  ([#187](https://github.com/ColdPhase/flux/pull/187)). Core logic moved behind ports,
+  one refactor at a time ([#206](https://github.com/ColdPhase/flux/pull/206) to
+  [#209](https://github.com/ColdPhase/flux/pull/209),
+  [#213](https://github.com/ColdPhase/flux/pull/213)).
+
+## 2026-10-05 — the founders try it on their phones
+
+- **One conversation.** A project became one conversation stream with a reply drawer
+  ([#195](https://github.com/ColdPhase/flux/pull/195)).
+- **The phone.** The founders opened Flux on real phones and found it overwhelming:
+  unclear what to tap, nothing like a messenger
+  ([#264](https://github.com/ColdPhase/flux/issues/264)). They set a phone-first
+  direction ([#266](https://github.com/ColdPhase/flux/issues/266)). Web Push reached
+  real iPhones and Androids through a trusted-HTTPS fixture
+  ([#233](https://github.com/ColdPhase/flux/pull/233),
+  [#263](https://github.com/ColdPhase/flux/pull/263)).
+- **Contracts.** Two contracts were made explicit: who may accept a decision (O-009,
+  [#259](https://github.com/ColdPhase/flux/pull/259)), and the versioned MCP tool and
+  export formats (O-010, [#260](https://github.com/ColdPhase/flux/pull/260)). Flux
+  settled on exactly two AI modes: the agent in Flux, and your own agent app over MCP
+  (F-022, [#247](https://github.com/ColdPhase/flux/pull/247)).
+
+## 2026-10-06 — phone-first, and a full disk
+
+- **Phone and devices.** The phone-first shell landed
+  ([#267](https://github.com/ColdPhase/flux/pull/267)), with an Apple HIG checklist as
+  the rulebook for phones ([#285](https://github.com/ColdPhase/flux/pull/285)). The
+  founders made physical devices optional for acceptance, with emulation and documented
+  platform rules instead ([#268](https://github.com/ColdPhase/flux/pull/268)). They
+  also took live co-editing out of v0.1.
+- **Sign-in and security.** Operator single sign-on with OIDC landed
+  ([#240](https://github.com/ColdPhase/flux/pull/240)), together with MCP sign-in through
+  external identity providers (F-024, [#274](https://github.com/ColdPhase/flux/pull/274)).
+  A review found that any signed-in session could register OAuth clients; that was fixed
+  the same day ([#294](https://github.com/ColdPhase/flux/pull/294)).
+- **Work flow.** Linked GitHub PRs now move the same Flux task
+  ([#270](https://github.com/ColdPhase/flux/pull/270)). The founders' scenarios run end to
+  end on desktop and phone ([#291](https://github.com/ColdPhase/flux/pull/291)). Co-work
+  gained unit completion, transfer and MCP tools
+  ([#261](https://github.com/ColdPhase/flux/pull/261)). The release acceptance matrix
+  for v0.1.0-rc.1 is in place ([#248](https://github.com/ColdPhase/flux/pull/248)).
+- **The disk.** Per-run test images filled the host disk twice, and every Docker check
+  stopped until space was freed. **Lesson:** a shared machine needs a disk guard and
+  cleanup by an allowlist, not by exclusion.
+- **Choosing the phone look.** The founders compared five phone mock-ups. Copying the
+  dense desktop look onto the phone was rejected as heavy. An ElevenLabs-like direction
+  was chosen: calm monochrome, and a coloured "orb" for each AI agent that moves only
+  while the agent really works (F-025, proposed in
+  [#304](https://github.com/ColdPhase/flux/pull/304)). **Lesson:** show the founders
+  rendered screens early; a description is not a design.
+- **Launch plan.** A plan for the v0.1 launch was written from *The Five*
+  ([launch plan](product/launch-v0.1.md)).
