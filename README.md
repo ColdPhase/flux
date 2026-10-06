@@ -55,7 +55,14 @@ cd flux
 <p align="center"><sub>The <code>./flux demo</code> data in the running app: return view, conversation, sketch, task and
 decision (<a href="docs/assets/demo/README.md">how this was recorded</a>).</sub></p>
 
-Then open <http://127.0.0.1:8081/>. `./flux up` never overwrites an existing `docker/.env`. An older root `.env` is moved once with its secrets and project name intact; if both files exist, choose the intended one before continuing. `app/.env.example` documents variables and is never loaded.
+Then open the URL that `./flux up` prints, <http://127.0.0.1:8081/> by default. If port 8081 is
+taken, start the first time with `FLUX_PORT=8090 ./flux up`. The first `./flux up` takes a few
+minutes, because it downloads the dependencies and builds Flux
+([measured times](docs/development/time-to-first-run.md)). To connect your own MCP client, such
+as Claude Code or Codex, sign in, open Settings and choose Agent connections (MCP). The page
+shows the commands for this server.
+
+`./flux up` never overwrites an existing `docker/.env`. An older root `.env` is moved once with its secrets and project name intact; if both files exist, choose the intended one before continuing. `app/.env.example` documents variables and is never loaded.
 Other commands: `./flux dev` (hot reload in Docker), `./flux down`, `./flux logs`,
 `./flux reset` (deletes data after confirmation), `./flux clean` (also removes the
 images this checkout built) and `./flux help`. Backups, restore, project export and
