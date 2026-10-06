@@ -1,0 +1,41 @@
+{
+  "tested_source": "5776fc48531c2b0b0241a6c5ff51ded26cc6a857",
+  "owner_compose_project": "flux155browser",
+  "owner_api_port": 18581,
+  "owner_mailpit_port": 18585,
+  "docker_version": "29.1.2",
+  "docker_resources": "14 CPUs 8216887296 bytes aarch64",
+  "images": [
+    {
+      "tags": [
+        "flux-foundation:flux155browser"
+      ],
+      "id": "sha256:4e362156c0302fe2605bd28ba54c597dd3205d297563ade1bae0c5cd9419347c"
+    },
+    {
+      "tags": [
+        "flux-test-tools:flux155browser"
+      ],
+      "id": "sha256:9252b208fe5077aec44bae9ee57fcd683cb71eb8295f60fc1f4e79fac4a587e0"
+    },
+    {
+      "tags": [
+        "flux-ui-tests:flux155browser"
+      ],
+      "id": "sha256:386f915829d9bf2a5e744c62bcba55ad6cd21f21035fa5f84a08d5e0ce2fecab"
+    }
+  ],
+  "invocations": {
+    "initial_prepare_exit": 1,
+    "final_prepare_exit": 0,
+    "client_test_exit": 0
+  },
+  "tests": {
+    "pass": 21,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "duration_ms": 377.364709
+  },
+  "runtime_scope": "Pure client state/protocol tests and architecture checks; no consumer, mounted React, browser, native API or performance remeasurement claim"
+}

@@ -1,10 +1,16 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { LiveSession, ProjectPerson } from '@flux/contracts';
-import { Avatar, Button, Icon } from '../ui';
+import { Avatar, Button, Icon, useLoopPause } from '../ui';
 import { useProjectShell } from '../project/data';
 import { anchorLabel, KIND_WORD, sameContext, type LiveAnchor } from './anchors';
 import { sessionAt, useLive, useLiveHere, useProjectSessions } from './LiveProvider';
 import { Popover } from './Popover';
+
+/** The live mark; its breathing ring runs only while it can be seen (#155 AC-4) and never with reduced motion. */
+export function LiveDot({ on }: { on: boolean }) {
+  const loop = useLoopPause<HTMLSpanElement>();
+  return <span ref={on ? loop : undefined} className={`lv-dot${on ? ' lv-dot--on' : ''}`} aria-hidden="true" />;
+}
 
 function firstName(name: string) { return name.trim().split(/\s+/)[0] || name; }
 
@@ -116,7 +122,7 @@ export function LiveEntry({ variant = 'header', anchor: given }: { variant?: 'he
       <Button variant={joinable ? 'primary' : 'quiet'} icon={joinable ? undefined : 'together'} busy={busy} className={`lv-entry__btn${joinable ? ' lv-entry__btn--join' : ''}`}
         onClick={act} data-tip={joinable ? 'Join with microphone and camera off' : `${audience}. Nothing turns on until you choose.`} aria-describedby={noteId}
         aria-label={joinable ? 'Join' : 'Together'}>
-        {joinable ? <span className="lv-dot lv-dot--on" aria-hidden="true" /> : null}
+        {joinable ? <LiveDot on /> : null}
         {joinable && present.length ? <span className="lv-faces" aria-hidden="true">{present.slice(0, 3).map((id) => <Avatar key={id} name={live.fullName(id)} size="sm" />)}</span> : null}
         <span className="lv-entry__label">{joinable ? 'Join' : 'Together'}</span>
       </Button>

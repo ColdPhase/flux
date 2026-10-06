@@ -1,0 +1,75 @@
+{
+  "tested_source": "5fd93e17c3e26ce8e3b472c68c04e03d123d0f49",
+  "owner_compose_project": "flux155browser",
+  "owner_api_port": 18581,
+  "owner_mailpit_port": 18585,
+  "docker_version": "29.1.2",
+  "docker_resources": "14 CPUs 8216887296 bytes aarch64",
+  "images": [
+    {
+      "tags": [
+        "flux-foundation:flux155browser"
+      ],
+      "id": "sha256:bd75ab38b99b287cbb7fcc5a2ba1e8a3a422f60cc687f876ce9d6acb401c75c0"
+    },
+    {
+      "tags": [
+        "flux-test-tools:flux155browser"
+      ],
+      "id": "sha256:9b25eb1440169fe163965aff5088fd1a9c2e52739d19e8a87e13bf7c4a34bf52"
+    },
+    {
+      "tags": [
+        "flux-ui-tests:flux155browser"
+      ],
+      "id": "sha256:b597b664f05b4581d265835928af9fd1eda200324927f503215148c8074b2ca8"
+    }
+  ],
+  "invocations": {
+    "final_prepare_exit": 0,
+    "final_client_exit": 0,
+    "final_browser_exit": 0,
+    "initial_browser_exit": 1,
+    "focus_check_exit": 1,
+    "padding_check_exit": 1,
+    "intermediate_anchor_browser_exit": 0
+  },
+  "tests": {
+    "client": {
+      "pass": 23,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "duration_ms": 364.385875
+    },
+    "browser": {
+      "pass": 23,
+      "fail": 0,
+      "errors": 0,
+      "skipped": 0,
+      "duration_seconds": 37.697,
+      "composition": "6 new native pagination journeys plus17 existing ProjectSurface journeys; several desktop/phone subtests"
+    }
+  },
+  "screenshots": {
+    "bounded-work-page-desktop.png": {
+      "viewport_css": [
+        1500,
+        900
+      ],
+      "device_scale_factor": 1,
+      "zoom": "100%",
+      "state": "scrolled second All page, light theme"
+    },
+    "bounded-work-page-phone.png": {
+      "viewport_css": [
+        412,
+        915
+      ],
+      "device_scale_factor": 3,
+      "zoom": "100%",
+      "state": "scrolled second All page, light theme"
+    }
+  },
+  "scope": "Native Tasks/page+header integration only. Legacy parent, MessageObjects, Overview, Details and LinkPicker still fetch full collections. No original1000-work benchmark remeasurement or whole-task/release completion."
+}

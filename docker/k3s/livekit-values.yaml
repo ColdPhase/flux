@@ -1,0 +1,67 @@
+# Flux live media on k3s (#63): values for the official LiveKit chart `livekit-server` 1.9.0
+# from https://helm.livekit.io, archive SHA-256
+# 4fafb11011747552803061ce41480c7d2b4fa58d3471f6d3579d988c53399109.
+#
+# The same server image, room limits and media ports as docker/compose.live.yaml plus
+# docker/compose.live.turn.yaml; scripts/check_live_k3s.sh renders both and compares them.
+# Layer a site file modelled on livekit-site.example.yaml (addresses, names, Secrets, webhook).
+# Route and operator gates: docs/development/live-media-k3s.md.
+# This file holds no key, secret or certificate.
+
+# The Flux API reaches signaling as http://livekit:7880: a Service named `livekit` in the API's
+# own namespace (the API accepts plain HTTP only for that private service name).
+fullnameOverride: livekit
+replicaCount: 1
+# Media needs the node's own addresses (LiveKit Kubernetes guide): one pod per node.
+podHostNetwork: true
+# A host-network pod holds fixed host ports, so a rolling update's new pod could never start
+# beside the old one. Recreate lets the old pod drain (the chart's 5-hour grace period) first.
+deploymentStrategy:
+  type: Recreate
+image:
+  repository: livekit/livekit-server
+  tag: v1.13.7@sha256:6fd3b7088874c4d119160dd688798dfec852bc014786d392caad15f6f63912a3
+  pullPolicy: IfNotPresent
+# API key and secret come from an existing Secret with one entry `keys.yaml`
+# (`<key id>: <secret>`), mounted with mode 0600; they are never in the ConfigMap.
+storeKeysInSecret:
+  enabled: true
+  existingSecret: flux-livekit-keys
+# No signaling load balancer, ingress or TURN load balancer: browsers signal through Flux's
+# /media gate, and ICE/TURN reach the host-network pod directly on the media node.
+loadBalancer:
+  type: disable
+  servicePort: 7880
+turnLoadbalancer:
+  enable: false
+autoscaling:
+  enabled: false
+serviceMonitor:
+  create: false
+
+livekit:
+  port: 7880
+  prometheus_port: 6789
+  log_level: info
+  key_file: keys.yaml
+  keys: {}
+  room:
+    auto_create: false
+    max_participants: 16
+    empty_timeout: 420
+    departure_timeout: 180
+  rtc:
+    tcp_port: 7881
+    udp_port: 7882
+    # The chart defaults to the range 50000-60000, which LiveKit prefers over udp_port.
+    # Both ends at 0 keep the single UDP mux port of the Compose deployment.
+    port_range_start: 0
+    port_range_end: 0
+    use_external_ip: false
+  turn:
+    enabled: true
+    udp_port: 3478
+    tls_port: 443
+    # No turn.bind_addresses: relay sockets bind to those addresses while advertising
+    # rtc.node_ip, so TURN keeps LiveKit's default 0.0.0.0 on its dedicated node.
+    # No allow_restricted_peer_cidrs: production keeps LiveKit's private-peer denial.

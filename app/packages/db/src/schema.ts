@@ -590,12 +590,15 @@ export const projectFiles = pgTable('project_files', {
   messageId: uuid('message_id'),
   position: smallint('position'),
   publishedAt: timestamp('published_at', { withTimezone: true }),
+  /** #252: the map thought this file is the image of (no foreign key, like a placement); null unless published there. */
+  thoughtId: uuid('thought_id'),
 }, (table) => [
   unique().on(table.messageId, table.position),
+  uniqueIndex('project_files_thought_idx').on(table.thoughtId).where(sql`${table.thoughtId} IS NOT NULL`),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.messageId], foreignColumns: [projectMessages.workspaceId, projectMessages.projectId, projectMessages.id] }),
   uniqueIndex('project_files_human_upload_idx').on(table.projectId, table.uploaderId, table.uploadId).where(sql`${table.uploaderId} IS NOT NULL`),
   uniqueIndex('project_files_agent_upload_idx').on(table.projectId, table.uploaderAgentId, table.uploadId).where(sql`${table.uploaderAgentId} IS NOT NULL`),
-  index('project_files_expiry_idx').on(table.expiresAt).where(sql`${table.messageId} IS NULL`),
+  index('project_files_expiry_idx').on(table.expiresAt).where(sql`${table.publishedAt} IS NULL`),
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
   foreignKey({ columns: [table.workspaceId, table.uploaderAgentId], foreignColumns: [agents.workspaceId, agents.id] }),
   check('project_file_exact_uploader', sql`num_nonnulls(${table.uploaderId}, ${table.uploaderAgentId}) = 1`),

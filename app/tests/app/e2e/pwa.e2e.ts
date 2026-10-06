@@ -26,9 +26,12 @@ const proxy = https.createServer({ key: readFileSync(join(dir, 'key.pem')), cert
     request.socket.destroy();
     return;
   }
+  // The rewrite below edits the worker as text, so that request asks for the uncompressed file;
+  // every other request keeps the browser's encodings (the build ships .br/.gz copies, #266).
+  const rewriting = state.nextServiceWorker && request.url?.split('?')[0] === '/sw.js';
   const forward = http.request({
     host: upstream.hostname, port: upstream.port, method: request.method, path: request.url,
-    headers: { ...request.headers, host: upstream.host },
+    headers: { ...request.headers, host: upstream.host, ...(rewriting ? { 'accept-encoding': 'identity' } : {}) },
   }, (answer) => {
     if (state.nextServiceWorker && request.url?.split('?')[0] === '/sw.js') {
       // A new deployment: same rules, different version, so the browser installs a new worker.

@@ -1,13 +1,18 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
-import type { Conversation, ConversationMessage, ConversationRoot, ConversationRootWindow, NamedPrincipal, Page, Project, TaskCreationNotice } from '@flux/contracts';
-import { Avatar, Button, EmptyState, Icon } from '../ui';
+import type { Conversation, ConversationMessage, ConversationRoot, ConversationRootWindow, NamedPrincipal, NativeWorkRow, Page, Project, TaskCreationNotice } from '@flux/contracts';
+import { Avatar, Button, EmptyState, Icon, useArrivals } from '../ui';
+import { newBelowText } from '../ui/motion-rules';
 import { MessageActions, MessageObjects, useCreateWorkFromMessage } from '../work/inline';
-import type { ProjectWork } from '../work/api';
+import { useMessageWorkRead, type MessageWorkRead } from '../work/useMessageWork';
+import { useReferenceWork } from '../work/useReferenceWork';
+import { useProjectWorkSummary } from '../work/WorkReadContext';
+import { MessageWorkPages } from '../work/MessageWorkPages';
 import { useShellActions } from './shellContext';
 import { listConversationRoots, listTaskNotices } from './conversation-api';
-import { ContributionMark, SourceCitation, clock, day, openOnWholeMessages, when } from './messageParts';
+import { ContributionMark, OPENING_REVEAL_MS, SourceCitation, clock, day, openOnWholeMessages, when } from './messageParts';
 import { MessageFiles } from '../composer/Files';
+import { agentAuthorLabel } from '../docs/format';
 
 // One project conversation (UI116-1, 2026-10-02): a chronological stream of roots. Each root is the
 // opening message of a stored conversation; its replies open beside it in a one-level thread.
@@ -224,7 +229,6 @@ export interface StreamProps {
   roots: ConversationRoots;
   /** The loaded task announcements (UI116-3), oldest first. */
   notices: TaskCreationNotice[];
-  work: ProjectWork;
   author: (message: ConversationMessage) => string;
   audience: string;
   /** The root whose thread is open beside the stream. */
@@ -240,11 +244,38 @@ export interface StreamProps {
 }
 
 /** The project's stream of roots, oldest first, with day dividers, each root's thread size and reply action. */
-export function ConversationStream({ project, meId, roots: stream, notices, work, author, audience, openId, reveal, arrived, endToken, onOpen, onDenied }: StreamProps) {
+export function ConversationStream({ project, meId, roots: stream, notices, author, audience, openId, reveal, arrived, endToken, onOpen, onDenied }: StreamProps) {
   const { roots } = stream;
   const entries = streamEntries(roots, notices, stream.hasOlder);
   const writable = project.access !== 'viewer';
   const feedRef = useRef<HTMLDivElement>(null);
+  const [feedNode, setFeedNode] = useState<HTMLDivElement | null>(null);
+  const attachFeed = useCallback((node: HTMLDivElement | null) => { feedRef.current = node; setFeedNode(node); }, []);
+  // Bounded native reads (#155), never the project's work collection: the chips of the roots around the
+  // viewport (at most 100), and the current title and state of the tasks that visible announcements and
+  // discussed-task chips name. This view keeps its own reading position (below); the reads never move it.
+  const rootIds = useMemo(() => roots.map((root) => root.message.id), [roots]);
+  const messageWork = useMessageWorkRead(meId, project.id, `stream:${project.id}`, rootIds, feedRef, feedNode);
+  const referenceIds = useMemo(() => [...new Set([...notices.map((notice) => `work:${notice.workId}`),
+    ...roots.flatMap((root) => root.task ? [`work:${root.task.workId}`] : [])])].sort(), [notices, roots]);
+  const referenceWork = useReferenceWork(meId, project.id, referenceIds, feedNode, true);
+  // A read refused because access ended reloads the route (onDenied); other failures keep the stream readable.
+  const deniedRef = useRef(onDenied);
+  useEffect(() => { deniedRef.current = onDenied; });
+  useEffect(() => {
+    if (messageWork.state.phase === 'unavailable') deniedRef.current(messageWork.state.error);
+  }, [messageWork.state]);
+  useEffect(() => {
+    if (referenceWork.state.phase === 'unavailable') deniedRef.current(referenceWork.state.error);
+  }, [referenceWork.state]);
+  // Opening (#155): the stream is laid out but hidden until the first chips, references and the header's
+  // state line have settled (at most OPENING_REVEAL_MS), so nothing shifts under the reader as they arrive.
+  const workSummary = useProjectWorkSummary();
+  const openingSettled = messageWork.state.phase !== 'loading' && referenceWork.state.phase !== 'loading' && workSummary.phase !== 'loading';
+  const [openingTimedOut, setOpeningTimedOut] = useState(false);
+  useEffect(() => { const timer = window.setTimeout(() => setOpeningTimedOut(true), OPENING_REVEAL_MS); return () => window.clearTimeout(timer); }, []);
+  const [revealed, setRevealed] = useState(false);
+  if (!revealed && (openingSettled || openingTimedOut)) setRevealed(true);
   const columnRef = useRef<HTMLDivElement>(null);
   const pinRef = useRef<{ id: string; offset: number } | null>(null);
   /** The first entry in view and its offset from the top, as the reader last left it. */
@@ -276,7 +307,8 @@ export function ConversationStream({ project, meId, roots: stream, notices, work
   // A linked root comes into view once it is loaded, and takes focus when the link named it exactly.
   const revealRoot = reveal ? roots.find((root) => root.conversationId === reveal.conversationId) ?? null : null;
   useEffect(() => {
-    if (!revealRoot) return;
+    // A hidden stream (still opening) cannot give focus: the link is followed once it shows.
+    if (!revealRoot || !revealed) return;
     const element = document.getElementById(`message-${revealRoot.message.id}`);
     if (!element) return;
     stickRef.current = false;
@@ -292,7 +324,7 @@ export function ConversationStream({ project, meId, roots: stream, notices, work
     if (arrived === revealRoot.message.id) element.focus({ preventScroll: true });
     // Once per link: later refreshes of the same root never move the reader.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reveal?.key, !!revealRoot]);
+  }, [reveal?.key, !!revealRoot, revealed]);
 
   // New entries follow the reader only while they are at the end. Anything else that joins the stream
   // (earlier roots from "Load earlier" or a link, or announcements that arrive on their own between roots
@@ -321,6 +353,26 @@ export function ConversationStream({ project, meId, roots: stream, notices, work
     feed.scrollTop = feed.scrollHeight;
   }, [endToken]);
 
+  // Genuine arrivals (#155, UI116-5): a short rise for new entries the reader sees arrive. A reader who is
+  // with earlier content is never moved; a quiet line says what is new below until they reach the end.
+  const [newBelow, setNewBelow] = useState({ messages: 0, tasks: 0 });
+  const entryIds = entries.map((entry) => entry.kind === 'root' ? `message-${entry.root.message.id}` : `notice-${entry.notice.id}`);
+  useArrivals(feedRef, entryIds, (id) => document.getElementById(id), (arrived) => {
+    const feed = feedRef.current;
+    if (!feed || stickRef.current) return;
+    const bottom = feed.getBoundingClientRect().bottom;
+    const below = arrived.filter((id) => (document.getElementById(id)?.getBoundingClientRect().top ?? 0) >= bottom - 1);
+    const tasks = below.filter((id) => id.startsWith('notice-')).length;
+    if (below.length) setNewBelow((current) => ({ messages: current.messages + below.length - tasks, tasks: current.tasks + tasks }));
+  });
+  const toEnd = () => {
+    const feed = feedRef.current;
+    if (!feed) return;
+    stickRef.current = true;
+    feed.scrollTop = feed.scrollHeight;
+    setNewBelow({ messages: 0, tasks: 0 });
+  };
+
   // The thread docks beside the stream and leaves again: the root whose replies the person opened stays
   // at the same place (otherwise the first root in view, or the end when they were reading the end).
   useEffect(() => {
@@ -343,6 +395,7 @@ export function ConversationStream({ project, meId, roots: stream, notices, work
       frame = 0;
       const { top, bottom } = feed.getBoundingClientRect();
       stickRef.current = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 48;
+      if (stickRef.current) setNewBelow((current) => current.messages || current.tasks ? { messages: 0, tasks: 0 } : current);
       if (performance.now() - personAt < 500) {
         const pinned = pinRef.current ? document.getElementById(pinRef.current.id)?.getBoundingClientRect() : null;
         pinRef.current = pinned && pinned.bottom > top && pinned.top < bottom ? { id: pinRef.current!.id, offset: pinned.top - top } : null;
@@ -416,8 +469,12 @@ export function ConversationStream({ project, meId, roots: stream, notices, work
   }
 
   const dayOf = entries.map((entry) => day(entry.at));
-  return (
-    <div className="project-convo__feed is-stream" ref={feedRef}>
+  const below = newBelowText(newBelow.messages, newBelow.tasks);
+  return (<>
+    <div className="convo-stream">
+    <div className={`project-convo__feed is-stream${revealed ? '' : ' is-opening'}`} ref={attachFeed} aria-busy={revealed ? undefined : true}
+      data-associations-observed-at={messageWork.page?.observedAt} data-associations-phase={messageWork.state.phase}
+      data-references-observed-at={referenceWork.observation?.observedAt} data-references-phase={referenceWork.state.phase}>
       <div className="project-convo__in" data-shift ref={columnRef}>
         <section aria-label="Messages" className="project-convo__messages">
           {stream.hasOlder ? <Button variant="quiet" busy={stream.olderBusy} onClick={() => void loadOlder()}>Load earlier messages</Button> : null}
@@ -427,9 +484,10 @@ export function ConversationStream({ project, meId, roots: stream, notices, work
               {entries.map((entry, index) => {
                 const label = dayOf[index]!;
                 const divider = index === 0 || dayOf[index - 1] !== label ? <li className="project-convo__day" key={`day-${entry.key}`}><span>{label}</span></li> : null;
-                if (entry.kind === 'notice') return [divider, <NoticeItem key={entry.key} notice={entry.notice} meId={meId} work={work} onOpenTask={(id) => openDetails({ kind: 'work', id })} />];
+                if (entry.kind === 'notice') return [divider, <NoticeItem key={entry.key} notice={entry.notice} meId={meId} row={referenceWork.rows.get(`work:${entry.notice.workId}`) ?? null} onOpenTask={(id) => openDetails({ kind: 'work', id })} />];
                 const { root } = entry;
-                return [divider, <RootItem key={entry.key} root={root} project={project} meId={meId} author={author} work={work}
+                return [divider, <RootItem key={entry.key} root={root} project={project} meId={meId} author={author} messageWork={messageWork}
+                  taskRow={root.task ? referenceWork.rows.get(`work:${root.task.workId}`) ?? null : null}
                   open={root.conversationId === openId} arrived={arrived === root.message.id} makeWork={makeWork} onOpen={openRoot}
                   onOpenResult={(resultId) => openDetails({ kind: 'result', id: resultId })} onDenied={onDenied} />];
               })}
@@ -442,12 +500,16 @@ export function ConversationStream({ project, meId, roots: stream, notices, work
         </section>
       </div>
     </div>
-  );
+    {/* Static and announced once per change; it takes no layout space and moves nobody. */}
+    <p className="convo-newbelow" role="status" aria-live="polite">{below ? <button type="button" className="convo-newbelow__b" onClick={toEnd}><Icon name="chevron-down" size={14} />{below}</button> : null}</p>
+    </div>
+    <MessageWorkPages read={messageWork} />
+  </>);
 }
 
-/** Who created a task, as the stream names people: "Ada · you", "Ada", "Scout · agent". */
+/** Who created a task, as the stream names people: "Ada · you", "Ada", or an agent via agentAuthorLabel. */
 function creatorName(creator: NamedPrincipal, meId: string) {
-  if (creator.kind === 'agent') return `${creator.name ?? 'Agent'} · agent`;
+  if (creator.kind === 'agent') return agentAuthorLabel(creator);
   const name = creator.name ?? 'Member';
   return creator.id === meId ? `${name} · you` : name;
 }
@@ -456,14 +518,15 @@ function creatorName(creator: NamedPrincipal, meId: string) {
  * One compact announcement that a task was created (UI116-3): who created it, its current title and a
  * link that opens exactly that task. It is not a message, so it has no replies or actions of its own.
  */
-function NoticeItem({ notice, meId, work, onOpenTask }: { notice: TaskCreationNotice; meId: string; work: ProjectWork; onOpenTask: (workId: string) => void }) {
-  const title = work.work.find((item) => item.id === notice.workId)?.title ?? notice.workTitle;
+function NoticeItem({ notice, meId, row, onOpenTask }: { notice: TaskCreationNotice; meId: string; row: NativeWorkRow | null; onOpenTask: (workId: string) => void }) {
+  // The task's current title from the visible reference read (#155); the announced title until it answers.
+  const title = row?.kind === 'work' && row.id === notice.workId ? row.title : notice.workTitle;
   return (
     <li className="convo-notice" id={`notice-${notice.id}`} data-work-id={notice.workId}>
       <span className="convo-notice__icon" aria-hidden="true"><Icon name="tasks" size={14} /></span>
       <span className="convo-notice__body">
         <span className="convo-notice__meta">New task · {creatorName(notice.createdBy, meId)}</span>
-        <button type="button" className="convo-notice__task" onClick={() => onOpenTask(notice.workId)} aria-label={`Open task: ${title}`}>
+        <button type="button" className="convo-notice__task" data-native-ref={`work:${notice.workId}`} onClick={() => onOpenTask(notice.workId)} aria-label={`Open task: ${title}`}>
           <span className="convo-notice__title">{title}</span><Icon name="chevron-right" size={14} />
         </button>
       </span>
@@ -472,8 +535,9 @@ function NoticeItem({ notice, meId, work, onOpenTask }: { notice: TaskCreationNo
   );
 }
 
-function RootItem({ root, project, meId, author, work, open, arrived, makeWork, onOpen, onOpenResult, onDenied }: {
-  root: ConversationRoot; project: Project; meId: string; author: (message: ConversationMessage) => string; work: ProjectWork;
+function RootItem({ root, project, meId, author, messageWork, taskRow, open, arrived, makeWork, onOpen, onOpenResult, onDenied }: {
+  root: ConversationRoot; project: Project; meId: string; author: (message: ConversationMessage) => string;
+  messageWork: MessageWorkRead; taskRow: NativeWorkRow | null;
   open: boolean; arrived: boolean; makeWork: ReturnType<typeof useCreateWorkFromMessage>;
   onOpen: (root: ConversationRoot, reply: boolean) => void; onOpenResult: (resultId: string) => void; onDenied: (cause: unknown) => void;
 }) {
@@ -482,7 +546,7 @@ function RootItem({ root, project, meId, author, work, open, arrived, makeWork, 
   const mine = message.authorId === meId;
   const name = author(message);
   return (
-    <li id={`message-${message.id}`} tabIndex={-1} data-conversation-id={root.conversationId}
+    <li id={`message-${message.id}`} data-message-id={message.id} tabIndex={-1} data-conversation-id={root.conversationId}
       className={`project-convo__message${mine ? ' is-mine' : ''}${arrived ? ' is-arrived' : ''}${open ? ' is-open' : ''}`}>
       <Avatar name={name} size="md" tone={mine ? 'me' : 'neutral'} />
       <div className="project-convo__message-meta">
@@ -493,7 +557,7 @@ function RootItem({ root, project, meId, author, work, open, arrived, makeWork, 
       <MessageFiles files={message.files} />
       {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={onOpenResult} /> : null}
       {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
-      <MessageObjects messageId={message.id} lists={work} thread={root.task ?? null} />
+      <MessageObjects message={message} projectId={project.id} preview={messageWork.previews?.get(message.id) ?? null} thread={root.task ?? null} threadRow={taskRow} />
       <Replies root={root} open={open} writable={writable} onOpen={(reply) => onOpen(root, reply)} />
       <MessageActions projectId={project.id} message={message} writable={writable} busy={makeWork.busy === message.id} onCreateWork={() => void makeWork.create(message)} />
       {makeWork.failed?.messageId === message.id ? <p className="ws-act-error" role="alert">{makeWork.failed.text} <button type="button" onClick={() => void makeWork.create(message)}>Retry</button></p> : null}

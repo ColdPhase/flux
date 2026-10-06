@@ -4,6 +4,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { createDatabase } from '@flux/db';
+import { guardFixturePool } from './support/fixture-database.js';
 
 test('actual pre-notice human rows and search provenance survive notice and agent migrations without backfill', async () => {
   const name = `flux_actor_history_${randomUUID().replaceAll('-', '')}`;
@@ -11,10 +12,12 @@ test('actual pre-notice human rows and search provenance survive notice and agen
   const url = new URL(process.env.DATABASE_URL!);
   url.pathname = `/${name}`;
   let history: ReturnType<typeof createDatabase>['pool'] | undefined;
+  let guard: ReturnType<typeof guardFixturePool> | undefined;
   try {
     const createFixture = { text: `CREATE DATABASE "${name}"`, query_timeout: 60_000 };
     await admin.query(createFixture);
     history = createDatabase(url.toString()).pool;
+    guard = guardFixturePool(history);
     const dir = 'packages/db/migrations';
     const files = (await readdir(dir)).filter((file) => /^\d{4}_.*\.sql$/.test(file)).sort();
     for (const file of files.filter((file) => Number(file.slice(0, 4)) < 33))
@@ -62,6 +65,7 @@ test('actual pre-notice human rows and search provenance survive notice and agen
     await assert.rejects(history.query('UPDATE project_conversations SET created_by=NULL WHERE id=$1', [conversation]), /check constraint/);
     assert.deepEqual(await snapshot(), before);
   } finally {
+    guard?.cleanup();
     await history?.end();
     // Database administration/fsync can outlast the API's 2 s read deadline, and on a busy host even
     // 10 s (twice observed, 2026-10-03); the assertions above keep the ordinary runtime deadlines.
@@ -69,4 +73,5 @@ test('actual pre-notice human rows and search provenance survive notice and agen
     const cleanup = { text: `DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`, query_timeout: 60_000 };
     await admin.query(cleanup).finally(() => admin.end());
   }
+  guard?.assertNoEarlyErrors();
 });

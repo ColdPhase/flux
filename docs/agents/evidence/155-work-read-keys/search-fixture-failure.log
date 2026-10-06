@@ -1,0 +1,106 @@
+ Container flux155browser-mailpit-1  Running
+ Container flux155browser-db-1  Running
+ Container flux155browser-worker-1  Running
+ Container flux155browser-api-1  Running
+ Container flux155browser-db-1  Waiting
+ Container flux155browser-db-1  Healthy
+ Container flux155browser-migrate-1  Starting
+ Container flux155browser-migrate-1  Started
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Exited
+ Container flux155browser-migrate-1  Exited
+▶ architecture boundaries
+  ✔ the repository has no dependency violation outside the recorded allowlist (101.69675ms)
+  ✔ every allowlist entry names its tracking issue and a reason (1.650875ms)
+  ✔ the push use cases in core stay free of adapters, including through helpers (1.0615ms)
+  ✔ the sketch use cases in core stay free of adapters, including through helpers (#69) (1.467875ms)
+  ✔ the direct-message use cases in core stay free of adapters, including through helpers (#107) (0.672ms)
+  ✔ the bounded work read use cases stay free of persistence and transport adapters (#155) (0.768625ms)
+  ✔ the rules reject each kind of boundary violation (self-test) (0.718792ms)
+  ✔ the allowlist comparison reports new and fixed violations (0.186375ms)
+✔ architecture boundaries (110.181292ms)
+▶ bounded native PostgreSQL work key selection
+  ✔ all native bands remain reachable through bounded forward and direct previous pages (32.32175ms)
+  ✔ mine uses native owner/result creator while keeping proposals and excluding rules (4.129291ms)
+  ✔ choice predicates retain parked result choices, full native kinds and literal wildcard search (7.295416ms)
+  ✖ a surviving boundary alone yields no false strict escape; an older/newer scope retains its actual opposite (9.433959ms)
+  ✖ held actual SQL keeps its original cursor for empty-page counts despite caller mutation (7.867917ms)
+✖ bounded native PostgreSQL work key selection (430.758334ms)
+✔ task URL fields default explicitly and reject duplicates/unknown/coerced selectors (1.474625ms)
+✔ native choices stay disjoint; parked result choices keep a separate deep selection (0.342791ms)
+✔ source batch bounds apply before deduplication and conversation/source cursors are exclusive (0.63525ms)
+✔ relationship batches retain kind identities and reject malformed/oversized selectors (0.296167ms)
+✔ cursor survives direct reload/previous direction with all PostgreSQL microseconds (0.595333ms)
+✔ cursor cannot transfer between account/project/endpoint/selector/limit/object window (0.430667ms)
+✔ normalized 100-source selector produces a fixed-size scoped cursor without source identities (0.542792ms)
+✔ unknown/noncanonical/duplicate cursor JSON cannot bypass the closed envelope (0.301417ms)
+✔ page metadata emits both native directions and keeps an empty changed-page escape (1.217042ms)
+✔ combined view and summary share one observation and use access checked after its transaction (3.154166ms)
+✔ caller and query are captured before asynchronous work; result deep selection never changes its eligible page (4.986084ms)
+✔ invalid requests and scope-mismatched cursors do no policy or repository work (4.234417ms)
+✔ project denial precedes reads; failed required data becomes unavailable, never zero or a partial result (1.055708ms)
+✔ revocation at the final fence suppresses the whole assembled response (0.376042ms)
+✔ every required message is validated even when it has no edges, before association counts and hydration (0.923666ms)
+✔ required final-fence failures become unavailable; native session and scope rejection stay exact (1.080792ms)
+✔ association rows, all-source counts and global edges keep independent bounded scopes (0.686583ms)
+✔ an edge continuation fails on a changed object window before any edge or source hydration (0.666917ms)
+ℹ tests 31
+ℹ suites 2
+ℹ pass 29
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1458.623959
+
+✖ failing tests:
+
+test at tests/app/work-read-keys.test.ts:1:6114
+✖ a surviving boundary alone yields no false strict escape; an older/newer scope retains its actual opposite (9.433959ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+
+    [
+  +   '941c4c05-9191-4dfa-b0a7-e417c772e665'
+  -   '49004107-39f1-48bf-8496-6bfc3fc4cea2'
+    ]
+
+      at TestContext.<anonymous> (/app/tests/app/work-read-keys.test.ts:107:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ '941c4c05-9191-4dfa-b0a7-e417c772e665' ],
+    expected: [ '49004107-39f1-48bf-8496-6bfc3fc4cea2' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at tests/app/work-read-keys.test.ts:1:7102
+✖ held actual SQL keeps its original cursor for empty-page counts despite caller mutation (7.867917ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+
+  + [
+  +   {
+  +     createdAt: '2026-10-01T06:00:00.123456Z',
+  +     id: '49004107-39f1-48bf-8496-6bfc3fc4cea2',
+  +     kind: 'work',
+  +     rank: 0
+  +   }
+  + ]
+  - []
+
+      at TestContext.<anonymous> (/app/tests/app/work-read-keys.test.ts:135:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ { kind: 'work', id: '49004107-39f1-48bf-8496-6bfc3fc4cea2', rank: 0, createdAt: '2026-10-01T06:00:00.123456Z' } ],
+    expected: [],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

@@ -8,7 +8,8 @@ import type { Conversation, LiveJoinGrant, LiveSession } from '@flux/contracts';
 import { assessReceiverQuality, readReceiverSample, RECEIVER_QUALITY_LIMITS } from '../../../apps/web/src/live/receiver-quality.js';
 import { addMember, expectStatus, grant, person, project, workspace } from '../support/people.js';
 import { mediaPage } from '../support/live-sfu.js';
-import { connect, markResourcePhase, receiverReports, selectedCandidates } from '../support/live-turn.js';
+import { connect, dtlsSrtpViolations, dtlsTransports, markResourcePhase, receiverReports,
+  selectedCandidates } from '../support/live-turn.js';
 
 let browser: Browser | undefined;
 after(async () => browser?.close());
@@ -118,6 +119,12 @@ test('two authorized Chromium clients exchange media when UDP and direct ICE/TCP
     }
     assert.ok(memberCandidates.some((candidate) => candidate.bytesReceived > 0),
       'receiver must get data from the SFU through the relay');
+    // The relay carries DTLS-SRTP that ends at the SFU, not at TURN: each transport that
+    // carried RTP completed DTLS with the certificate named in the signalled fingerprint.
+    const ownerDtls = await dtlsTransports(ownerPage);
+    const memberDtls = await dtlsTransports(memberPage);
+    assert.deepEqual(dtlsSrtpViolations(ownerDtls), [], JSON.stringify(ownerDtls));
+    assert.deepEqual(dtlsSrtpViolations(memberDtls), [], JSON.stringify(memberDtls));
     // Initial simulcast negotiation can replace the inbound RTP id. A new
     // stream has no valid decoded-frame interval yet: wait for actual fresh
     // frames on a stable stream rather than borrowing instantaneous browser fps.
@@ -243,6 +250,14 @@ test('two authorized Chromium clients exchange media when UDP and direct ICE/TCP
       assert.equal(candidate.candidateType, 'relay', JSON.stringify(candidate));
       assert.equal(candidate.relayProtocol, 'tls', JSON.stringify(candidate));
     }
+    const transportSecurity = (transports: typeof ownerDtls) => transports.filter((item) => item.rtpBytes > 0)
+      .map(({ pc, dtlsState, tlsVersion, dtlsCipher, srtpCipher, dtlsRole, remoteFingerprintAlgorithm,
+        remoteFingerprint, signalledFingerprints, rtpBytes }) =>
+        ({ pc, dtlsState, tlsVersion, dtlsCipher, srtpCipher, dtlsRole, remoteFingerprintAlgorithm,
+          fingerprintMatchesSignalling: signalledFingerprints.includes(
+            `${remoteFingerprintAlgorithm?.toLowerCase()} ${remoteFingerprint?.toUpperCase()}`), rtpBytes }));
+    console.log(JSON.stringify({ dtlsSrtp: { owner: transportSecurity(ownerDtls),
+      member: transportSecurity(memberDtls) } }));
     console.log(JSON.stringify({ ownerCandidates, memberCandidates, subscribedAudio: true,
       receivedAudioPackets: true, receivedVideo: true, baseline, weak, quality, betweenProfiles,
       lossy, lossyQuality, netemOutboundDropped: Number(qdisc.match(/dropped (\d+)/)?.[1] ?? 0),
@@ -250,6 +265,67 @@ test('two authorized Chromium clients exchange media when UDP and direct ICE/TCP
       fixedClientDelayMs: 450, configuredLossPercent: 15, variableDelayMs: [350, 80],
       blocked: ['UDP to SFU', 'TCP/7881 direct ICE'], participants: 2 }));
     await Promise.all([ownerPage.close(), memberPage.close()]);
+  });
+
+test('negative control: DTLS fails and no media key exists when the SFU certificate is not the signalled one',
+  { timeout: 120_000 }, async () => {
+    const owner = await person('dtls-owner');
+    const probe = await person('dtls-probe');
+    const ws = await workspace(owner, 'DTLS control');
+    await addMember(owner, ws.id, probe, 'member');
+    const place = await project(owner, ws.id, 'Fingerprint control', 'restricted');
+    await grant(owner, place.id, probe, 'viewer');
+    const conversation = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`, {
+      body: { body: 'DTLS control anchor', clientMessageId: randomUUID() },
+    }), 201) as Conversation;
+    const session = expectStatus(await owner.browser.request('POST', '/api/v1/live-sessions', {
+      body: { context: { type: 'conversation', id: conversation.id }, clientSessionId: randomUUID() },
+    }), 201) as LiveSession;
+    const probeMedia = expectStatus(await probe.browser.request('POST',
+      `/api/v1/live-sessions/${session.id}/join`), 200) as LiveJoinGrant;
+
+    browser ??= await chromium.launch({ args: ['--no-sandbox', '--autoplay-policy=no-user-gesture-required'] });
+    const page = await mediaPage(browser, probe.browser);
+    // Same authorized grant, signaling gate, firewall and TURN/TLS path as the positive case;
+    // only the fingerprint the browser expects is wrong, as when something on the media path
+    // presents its own certificate. The SDK's own connect timeout bounds this attempt.
+    let connectOutcome = 'resolved';
+    try { await connect(page, probeMedia, undefined, false, { tamperRemoteFingerprint: true }); }
+    catch (error) { connectOutcome = String(error).slice(0, 600); }
+    type Observed = { states: { pc: number; ice?: string; connection?: string; dtls?: string }[];
+      failedTransports: { pc: number; dtlsState?: string; srtpCipher?: string; inboundRtpBytes: number }[] };
+    await page.waitForFunction(() => ((window as Window & { fluxPcStates?: { connection?: string }[] })
+      .fluxPcStates ?? []).some((state) => state.connection === 'failed'), undefined, { timeout: 30_000 });
+    let observed: Observed = { states: [], failedTransports: [] };
+    for (let attempt = 0; attempt < 20 && !observed.failedTransports.length; attempt++) {
+      await delay(250);
+      observed = await page.evaluate(() => {
+        const w = window as Window & { fluxPcStates?: Observed['states'];
+          fluxFailedTransports?: Observed['failedTransports'] };
+        return { states: w.fluxPcStates ?? [], failedTransports: w.fluxFailedTransports ?? [] };
+      });
+    }
+    const evidence = JSON.stringify({ connectOutcome, ...observed });
+    const iceConnected = new Set(observed.states.filter((state) =>
+      state.ice === 'connected' || state.ice === 'completed').map((state) => state.pc));
+    assert.ok(observed.states.some((state) => state.connection === 'failed' && iceConnected.has(state.pc)),
+      `ICE must reach the SFU before the connection fails, so the failure is DTLS: ${evidence}`);
+    assert.ok(observed.states.some((state) => state.dtls === 'failed'), `DTLS transport must fail: ${evidence}`);
+    assert.equal(observed.states.some((state) => state.connection === 'connected' || state.dtls === 'connected'),
+      false, `no connection may complete with a certificate other than the signalled one: ${evidence}`);
+    assert.ok(observed.failedTransports.length > 0, `failed transport stats must be captured: ${evidence}`);
+    for (const transport of observed.failedTransports) {
+      assert.notEqual(transport.dtlsState, 'connected', evidence);
+      assert.ok(!transport.srtpCipher, `no SRTP keys may be derived: ${evidence}`);
+      assert.equal(transport.inboundRtpBytes, 0, `no media may be received: ${evidence}`);
+    }
+    // The positive check's predicate rejects what this browser can still report.
+    assert.notDeepEqual(dtlsSrtpViolations(await dtlsTransports(page)), [], evidence);
+    console.log(JSON.stringify({ dtlsNegativeControl: { connectOutcome, ...observed } }));
+    await page.evaluate(async () => {
+      await (window as Window & { fluxRoom?: { disconnect(): Promise<void> } }).fluxRoom?.disconnect();
+    }).catch(() => undefined);
+    await page.close();
   });
 
 test('four authorized clients receive two simultaneous code-sized screen tracks through TURN/TLS',

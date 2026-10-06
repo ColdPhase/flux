@@ -46,6 +46,7 @@ export * from './conversation.js';
 export * from './files.js';
 export * from './sketch.js';
 export * from './work.js';
+export * from './work-read.js';
 export * from './live.js';
 export * from './agent-proposals.js';
 export * from './returns.js';
@@ -59,6 +60,8 @@ export * from './notifications.js';
 export * from './search.js';
 export * from './personal-runs.js';
 export * from './export.js';
+
+export * from './typing.js';
 export * from './cowork.js';
 export * from './github.js';
 export * from './agent-execution.js';

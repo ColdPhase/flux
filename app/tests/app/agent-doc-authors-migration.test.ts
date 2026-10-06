@@ -3,10 +3,16 @@ import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { AGENT_OPERATIONS } from '@flux/contracts';
+import { AGENT_OPERATIONS, type AgentOperation } from '@flux/contracts';
 import { assertExactMigrationLedger, assertMigrationSqlLedgerChange, assertMigrationStepLedger,
   FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
 import { pool } from './support/db.js';
+
+/** Exactly the list 0043 writes. Later migrations (0049) widen it; 0043 itself stays frozen. */
+const OPERATIONS_AT_0043: readonly AgentOperation[] = ['work.create', 'work.update', 'result.record', 'decision.propose',
+  'map.create', 'map.rename', 'map.thought.create', 'map.thought.update', 'map.thought.delete', 'map.positions.update',
+  'map.link.create', 'map.link.delete', 'doc.create', 'doc.update', 'conversation.create', 'conversation.reply',
+  'cowork.claim', 'cowork.renew', 'cowork.release', 'cowork.request'];
 
 // 0043 (#152): agent-written docs and the doc/conversation standing-grant operations. The previous ledger (last file
 // 0041; 0042 is left to an open branch) upgrades in place, every material, doc, version, search row and grant survives
@@ -146,7 +152,8 @@ test('0043 lets only docs name a genuine agent author, keeps every historical ro
       [randomUUID(), workspace, project, connection, owner, randomUUID(), 'a'.repeat(64), operation])).constraint, 'agent_standing_grants_operation_check', operation);
     const definition = (await client.query(
       "SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid='agent_standing_grants'::regclass AND conname='agent_standing_grants_operation_check'")).rows[0].definition as string;
-    assert.deepEqual([...definition.matchAll(/'([^']*)'::text/g)].map((match) => match[1]).sort(), [...AGENT_OPERATIONS].sort());
+    assert.deepEqual([...definition.matchAll(/'([^']*)'::text/g)].map((match) => match[1]).sort(), [...OPERATIONS_AT_0043].sort());
+    assert.ok(OPERATIONS_AT_0043.every((operation) => AGENT_OPERATIONS.includes(operation)), 'every 0043 operation is still a contract operation');
 
     // Idempotent: a second application keeps every row, constraint and the ledger.
     const counts = async () => (await client.query(`SELECT (SELECT count(*)::int FROM project_materials) AS m, (SELECT count(*)::int FROM project_material_versions) AS v,

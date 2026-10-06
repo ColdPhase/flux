@@ -1,0 +1,17 @@
+ Container flux155browser-db-1  Running
+ Container flux155browser-anthropic-mock-1  Recreate
+ Container flux155browser-mailpit-1  Running
+ Container flux155browser-api-1  Running
+ Container flux155browser-worker-1  Running
+ Container flux155browser-anthropic-mock-1  Recreated
+ Container flux155browser-anthropic-mock-1  Starting
+ Container flux155browser-db-1  Waiting
+ Container flux155browser-anthropic-mock-1  Started
+ Container flux155browser-db-1  Healthy
+ Container flux155browser-migrate-1  Starting
+ Container flux155browser-migrate-1  Started
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Exited
+ Container flux155browser-migrate-1  Exited
+test_07_restored_feed_observes_older_and_newer_native_batches (test_work_associations.MessageWorkJourney.test_07_restored_feed_observes_older_and_newer_native_batches) ...

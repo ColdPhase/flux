@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Avatar, Button, Icon, IconButton, MEDIA, Sheet, Spinner, useMediaQuery } from '../ui';
+import { Avatar, Button, duration, Icon, IconButton, MEDIA, Sheet, Spinner, useMediaQuery } from '../ui';
 import { anchorPath, KIND_WORD } from './anchors';
 import { useLive, useLiveHere, type LiveValue } from './LiveProvider';
 import { canPublishScreen } from './capture';
@@ -8,7 +8,7 @@ import type { MediaPerson } from './media';
 import { DeviceButton } from './DeviceButton';
 import { LivePanel } from './LivePanel';
 import { Popover } from './Popover';
-import { namesLine } from './LiveEntry';
+import { LiveDot, namesLine } from './LiveEntry';
 
 function Face({ person, name }: { person: MediaPerson; name: string }) {
   return (
@@ -100,7 +100,7 @@ export function LiveBar() {
     <section className={`lv-bar${live.quiet ? ' is-quiet' : ''}${reconnecting ? ' is-reconnecting' : ''}`} aria-label="Live session">
       <div className="lv-row">
         <span className="lv-row__lead" role="status" aria-live="polite">
-          {connecting || reconnecting ? <Spinner /> : <span className={`lv-dot${live.quiet ? '' : ' lv-dot--on'}`} aria-hidden="true" />}
+          {connecting || reconnecting ? <Spinner /> : <LiveDot on={!live.quiet} />}
           <span className="lv-status">{status}</span>
         </span>
         <button type="button" className="lv-where" onClick={() => navigate(anchorPath(where), { state: { liveFollow: true } })}
@@ -177,7 +177,7 @@ function ShownLine({ live }: { live: LiveValue }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     // Arrives calmly: a short fade and rise, no sound and no focus change.
-    ref.current?.animate?.([{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'none' }], { duration: parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--dur-2')) || 0, easing: 'ease-out' });
+    ref.current?.animate?.([{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'none' }], { duration: duration('--dur-2'), easing: 'ease-out' });
   }, [shown.presentation.id]);
   const following = live.following === shown.presentation.createdBy;
   return (
