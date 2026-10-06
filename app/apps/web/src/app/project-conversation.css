@@ -125,8 +125,9 @@ button.project-convo__contribution { cursor: pointer; }
 .project-convo__composer .composer__box:focus-within { box-shadow: inset 0 0 0 1px var(--accent); }
 .project-convo__composer .composer__box textarea { order: -1; flex: 1 1 100%; min-height: 36px; max-height: 135px; padding: 0; line-height: 1.65; }
 .project-convo__composer .composer__send { margin-left: auto; }
-/* Touch (#151): the field keeps its 36px line but its own hit area reaches 44px into the card's padding. */
-@media (pointer: coarse) { .project-convo__composer .composer__box textarea { min-height: 44px; margin-block: -4px; padding-block: 4px; } }
+/* Touch above phone width (#151): the field keeps its 36px line but its own hit area reaches 44px into
+   the card's padding. Phones have their own 44px field below (#266 PF-3). */
+@media (pointer: coarse) and (min-width: 641px) { .project-convo__composer .composer__box textarea { min-height: 44px; margin-block: -4px; padding-block: 4px; } }
 .project-convo__composer .project-convo__to { order: 2; display: flex; align-items: baseline; gap: 4px 10px; margin: 7px 4px 0; }
 .project-convo__composer .project-convo__to .composer__audience { margin: 0; font-size: var(--fs-xs); font-weight: 400; color: var(--text-2); }
 .project-convo__composer .project-convo__error, .project-convo__composer .project-convo__hint { order: 3; }

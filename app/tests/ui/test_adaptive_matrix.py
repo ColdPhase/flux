@@ -280,6 +280,13 @@ class AdaptiveMatrix(AdaptiveBase):
             self.primary(page, self.tabs(page).get_by_role("link", name=re.compile(f"^{name}")), f"the {name} tab")
         if width <= 680:
             self.primary(page, page.get_by_role("button", name="Open navigation"), "Open navigation")
+        if width <= 640:
+            # #266 PF-1: the phone's bottom bar keeps the main places at hand, the current one marked.
+            places = page.get_by_role("navigation", name="Main places")
+            expect(places.get_by_role("link")).to_have_count(4)
+            expect(places.locator('[aria-current="page"]')).to_have_count(1)
+            for place in places.get_by_role("link").all():
+                self.primary(page, place, f"the bottom bar's {place.inner_text().strip()}")
         self.primary(page, self.details_button(page), "Details")
         self.no_sideways_scroll(page, "Conversation")
         self.primary(page, composer, "the message field")
@@ -497,12 +504,13 @@ class AdaptiveTransitions(AdaptiveBase):
         return page.evaluate(CAMERA)
 
     def in_canvas(self, page: Page, thought: str, what: str) -> None:
-        inside = page.evaluate("""(id) => {
+        where = page.evaluate("""(id) => {
           const c = document.querySelector('.sk-canvas').getBoundingClientRect();
           const n = document.querySelector(`.sk-node[data-id="${id}"]`).getBoundingClientRect();
-          return n.left >= c.left - 1 && n.right <= c.right + 1 && n.top >= c.top - 1 && n.bottom <= c.bottom + 1;
+          const box = (b) => [b.left, b.top, b.right, b.bottom].map(Math.round);
+          return {inside: n.left >= c.left - 1 && n.right <= c.right + 1 && n.top >= c.top - 1 && n.bottom <= c.bottom + 1, canvas: box(c), thought: box(n)};
         }""", self.ids["thoughts"][thought])
-        self.check(inside, what)
+        self.check(where["inside"], f"{what}: {where}")
 
     def test_10_the_map_camera_survives_crossing_the_phone_breakpoint(self) -> None:
         """T151-E: the continuous resize series from #223 keeps the desktop camera, zoom and selection."""

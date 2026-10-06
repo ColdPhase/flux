@@ -65,7 +65,9 @@ canvas actually has. A narrowed desktop canvas, for example with Details docked,
   The message and reply fields keep their 36 px line, and their own hit area reaches 44 px into
   the card padding. Inline links in cards and messages are not primary targets. Neither are
   compact header state links or the map's task-count pill, which already has a pseudo-element
-  extension. Those links are recorded as smaller and left for #136 design review.
+  extension. Those links are listed with their measured sizes in the
+  [slice evidence](../agents/evidence/151-adaptive-matrix/README.md#remaining-for-151) and left for
+  #136 design review.
 - **`hover: none`** (or ≤ 680 px): Enter adds a line and the send button sends (#189).
 - **`hover: hover`**: the Reply action under a message appears on hover or focus.
   Without hover it is always visible.
@@ -101,8 +103,9 @@ remain reachable. Own messages stay on the right and other people's on the left.
 ## Transitions
 
 - **Map camera** (T151-E): each projection keeps its own camera and zoom.
-  - The plane keeps its scroll position. On the phone, the thought at the top keeps its offset,
-    and a zoomed-in phone map also keeps its sideways scroll.
+  - The plane keeps its scroll position. On the phone, the thought at the top keeps its offset
+    (a thought that was wholly in view stays wholly in view when a narrower phone makes it
+    taller), and a zoomed-in phone map also keeps its sideways scroll.
   - When a layout change clamps the scroll position, the camera is put back. Only a scroll the
     layout did not cause moves it: a person, a pan, or a moved thought scrolled into view.
   - While a person drags or resizes a thought, the view stays still.

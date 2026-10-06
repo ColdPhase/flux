@@ -49,7 +49,7 @@ const zoomOut = (z: number) => [...ZOOMS].reverse().find((step) => step < z - 0.
 
 type Mode = 'plane' | 'compact';
 /** Where a person is looking: scroll pixels on the plane; on the phone, a thought and its offset from the top. */
-interface Camera { left: number; top: number; id?: string | null }
+interface Camera { left: number; top: number; id?: string | null; whole?: boolean }
 const near = (a: { left: number; top: number }, b: { left: number; top: number }) => Math.abs(a.left - b.left) < 1 && Math.abs(a.top - b.top) < 1;
 
 interface Drag {
@@ -159,19 +159,24 @@ export function SketchMap(props: SketchMapProps) {
     const { rects: all, origin: o, zoom: z } = geometry.current;
     if (at === 'plane') return { left: camera.left, top: camera.top };
     const r = camera.id ? all.get(camera.id) : undefined;
+    // A narrower phone makes the anchored thought taller: one that was wholly in view stays so.
+    const room = canvasRef.current && r ? canvasRef.current.clientHeight - r.h * z : -1;
+    const offset = camera.whole && room >= 0 ? Math.min(camera.top, room) : camera.top;
     // Zoomed in, the two columns are wider than the canvas: keep the sideways place too.
-    return { left: camera.left, top: Math.max(0, r ? (r.y - o.y) * z - camera.top : camera.top) };
+    return { left: camera.left, top: Math.max(0, r ? (r.y - o.y) * z - offset : camera.top) };
   }, []);
   /** The camera for a scroll position: on the phone, the first thought in view keeps its place. */
   const cameraAt = useCallback((pos: { left: number; top: number }, at: Mode): Camera => {
     if (at === 'plane') return { left: pos.left, top: pos.top };
     const { rects: all, origin: o, zoom: z } = geometry.current;
-    let best: { id: string; y: number } | null = null;
+    let best: { id: string; y: number; h: number } | null = null;
     for (const [id, r] of all) {
       const y = (r.y - o.y) * z;
-      if (y + r.h * z > pos.top + 1 && (!best || y < best.y)) best = { id, y };
+      if (y + r.h * z > pos.top + 1 && (!best || y < best.y)) best = { id, y, h: r.h * z };
     }
-    return best ? { left: pos.left, top: best.y - pos.top, id: best.id } : { left: pos.left, top: pos.top, id: null };
+    const height = canvasRef.current?.clientHeight ?? 0;
+    return best ? { left: pos.left, top: best.y - pos.top, id: best.id, whole: best.y >= pos.top && best.y + best.h <= pos.top + height }
+      : { left: pos.left, top: pos.top, id: null };
   }, []);
   const apply = useCallback(() => {
     const el = canvasRef.current;
@@ -247,7 +252,7 @@ export function SketchMap(props: SketchMapProps) {
       if (id && before && after) {
         const fit = (offset: number, room: number) => Math.max(0, Math.min(offset, room));
         const top = fit((before.y - old.origin.y) * old.zoom - view.top, el.clientHeight - after.h * zoom);
-        if (mode === 'compact') cameras.current.compact = { left: 0, top, id };
+        if (mode === 'compact') cameras.current.compact = { left: 0, top, id, whole: top + after.h * zoom <= el.clientHeight };
         else {
           const left = fit((before.x - old.origin.x) * old.zoom - view.left, el.clientWidth - after.w * zoom);
           cameras.current.plane = { left: Math.max(0, (after.x - origin.x) * zoom - left), top: Math.max(0, (after.y - origin.y) * zoom - top) };
