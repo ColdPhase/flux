@@ -449,9 +449,42 @@ class InstantSendJourney(unittest.TestCase):
         dm = self.api(page, "GET", f"/api/v1/dms/{self.ids['dm']}")
         self.assertEqual(sum(message["body"] == body for message in dm["messages"]), 1)
 
+    def test_11_a_message_sent_while_its_file_uploads_shows_uploading_then_the_stored_file(self) -> None:
+        for width in WIDTHS:
+            with self.subTest(width=width):
+                page = self.page("jonas", width)
+                page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
+                thread = page.get_by_role("complementary", name="Replies")
+                expect(thread.get_by_text("Yes, after nine.")).to_be_visible()
+                uploads = self.hold(page, "**/api/v1/projects/*/files?*")
+                name = f"night-readings-{width}.bin"
+                with page.expect_file_chooser() as chooser:
+                    thread.get_by_role("button", name="Attach files", exact=True).click()
+                chooser.value.set_files({"name": name, "mimeType": "application/octet-stream", "buffer": b"\x00\x04 lux at nine"})
+                expect(thread.get_by_role("list", name="Files in your draft")).to_contain_text("Uploading…")
+                field = thread.get_by_label("Reply", exact=True)
+                body = f"Readings at {width} attached."
+                field.fill(body)
+                # Sent before its file is staged: the message shows at once with the file, marked "Uploading…".
+                thread.get_by_role("button", name="Send reply").click()
+                bubble = self.pending(thread, body)
+                expect(bubble).to_contain_text("Uploading…")
+                expect(bubble).to_contain_text(name)
+                expect(field).to_have_value("")
+                expect(thread.get_by_role("list", name="Files in your draft")).to_have_count(0)
+                shot(page, f"instant-send-uploading-{width}")
+                self.assertEqual(len(uploads), 1)
+                uploads[0].continue_()
+                stored = thread.locator(".project-convo__message:not(.is-pending)").filter(has_text=body)
+                expect(stored).to_have_count(1)
+                expect(stored.get_by_role("link", name=re.compile(re.escape(name)))).to_have_count(1)
+                expect(self.pending(thread, body)).to_have_count(0)
+                reply = next(message for message in self.replies(page) if message["body"] == body)
+                self.assertEqual([file["name"] for file in reply["files"]], [name], "stored once, with its file")
+
     # ---------------------------------------------------------------- server idempotency
 
-    def test_10_the_same_client_message_id_posted_twice_stores_one_message(self) -> None:
+    def test_12_the_same_client_message_id_posted_twice_stores_one_message(self) -> None:
         page = self.page("ada", 1440)
         pid, cid, wid, dmid = self.ids["project"], self.ids["conversation"], self.ids["task"], self.ids["dm"]
         cases = [
