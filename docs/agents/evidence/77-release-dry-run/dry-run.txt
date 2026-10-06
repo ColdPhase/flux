@@ -1,0 +1,181 @@
+
+== Tools
+2026-10-04T21:30:18Z
+Docker server 29.1.2 linux/arm64; client 29.1.2
+github.com/docker/buildx v0.30.1-desktop.1 792b8327a475a5d8c9d5f4ea6ce866e7da39ae8b
+Docker Compose version v2.40.3-desktop.1
+source 662aec62e2e05c3d944053a5b35771986900b9e3 is on origin/main (feat(files): durable project attachments and file-only messages (#154) (#225))
+
+== Source: git archive of the exact SHA (the workflow checks out the same commit)
+docker/compose.yaml and docker/.env.example present
+
+== Build the runtime target with the workflow's context, Dockerfile and labels (host platform linux/arm64 only, loaded locally, not pushed)
+build took 4 s
+#37 CACHED
+#38 CACHED
+#39 DONE 4.0s
+image id sha256:374302c330a7008aa083f8bfe04b0de469cb03d2fcfc63bf1c47112a8f682244; linux/arm64; 130524618 bytes; user node; cmd [node apps/server/dist/index.js]
+org.opencontainers.image.revision=662aec62e2e05c3d944053a5b35771986900b9e3
+org.opencontainers.image.source=https://github.com/ColdPhase/flux
+org.opencontainers.image.version=v0.1.0-rc.1
+
+== Image content: migration manifest parsed by the image's own #118 ledger code
+FLUX_MIGRATIONS 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45
+
+== SBOM: anchore/syft:latest on a docker-archive of the image (the workflow uses anchore/sbom-action on the pushed digest)
+syft image anchore/syft@sha256:0356562f495d432056237fbea5cbc2d4839c9c75cd500784a66de2e7cc95ca7c
+Application:   syft
+Version:       1.54.0
+BuildDate:     2026-10-01T20:48:12Z
+GitCommit:     cc326e45a6213360266dda4b30cc68095946d676
+SPDX SPDX-2.3 604 packages
+
+== Release assets: prepare_assets.py with a PLACEHOLDER digest (sha256:0000000000000000000000000000000000000000000000000000000000000000), not a registry manifest digest
+Python 3.12.14
+total 1712
+-rw-r--r-- 1 root root    9860 Oct  4 21:30 INSTALL.md
+-rw-r--r-- 1 root root   34523 Oct  4 21:30 LICENSE
+-rw-r--r-- 1 root root     559 Oct  4 21:30 SHA256SUMS
+-rw-r--r-- 1 root root  101024 Oct  4 21:30 THIRD_PARTY_NOTICES.json
+-rw-r--r-- 1 root root    5020 Oct  4 21:30 compose.yaml
+-rw-r--r-- 1 root root    4368 Oct  4 21:30 env.example
+-rw-r--r-- 1 root root     259 Oct  4 21:30 release.json
+-rw-r--r-- 1 root root 1575817 Oct  4 21:30 sbom.spdx.json
+INSTALL.md: OK
+LICENSE: OK
+THIRD_PARTY_NOTICES.json: OK
+compose.yaml: OK
+env.example: OK
+release.json: OK
+sbom.spdx.json: OK
+asset set matches SHA256SUMS
+19:    image: postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+35:    image: ghcr.io/coldphase/flux@sha256:0000000000000000000000000000000000000000000000000000000000000000
+44:    image: ghcr.io/coldphase/flux@sha256:0000000000000000000000000000000000000000000000000000000000000000
+84:    image: ghcr.io/coldphase/flux@sha256:0000000000000000000000000000000000000000000000000000000000000000
+{
+  "version": "v0.1.0-rc.1",
+  "source_sha": "662aec62e2e05c3d944053a5b35771986900b9e3",
+  "image": "ghcr.io/coldphase/flux@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "platforms": [
+    "linux/amd64",
+    "linux/arm64"
+  ]
+}
+
+== Negative controls (each must fail)
+refused (tampered env.example): sha256sum: WARNING: 1 computed checksum did NOT match
+refused (unlisted asset): release assets differ from SHA256SUMS: unlisted ['notes.txt'], missing []
+refused (marker on two services only): ValueError: operator Compose must use the image marker for api, worker and migrate
+refused (version without rc/patch form): ValueError: version must be vX.Y.Z or vX.Y.Z-rc.N
+refused (abbreviated source SHA): ValueError: source SHA must be 40 lowercase hex characters
+refused (non-empty destination): ValueError: destination must be empty to prevent stale assets
+
+== docker compose config of the rendered release compose.yaml with a test env written from env.example
+config --quiet: valid
+ghcr.io/coldphase/flux@sha256:0000000000000000000000000000000000000000000000000000000000000000
+ghcr.io/coldphase/flux@sha256:0000000000000000000000000000000000000000000000000000000000000000
+ghcr.io/coldphase/flux@sha256:0000000000000000000000000000000000000000000000000000000000000000
+postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+api db migrate worker
+
+== Packaged install, paired backup and restore (scripts/release/smoke_artifacts.sh) with the local image in place of the placeholder digest
+Harness change, recorded: compose.yaml's image line points at the local tag flux-release-dryrun:662aec62e2e0 and the script's 'pull' is skipped;
+the GHCR pull by digest is exercised only by the dispatched workflow.
+3
+41d40
+< source_compose pull
+ Network fluxdryrunsrc_default  Creating
+ Network fluxdryrunsrc_default  Created
+ Volume fluxdryrunsrc_files  Creating
+ Volume fluxdryrunsrc_files  Created
+ Volume fluxdryrunsrc_pgdata  Creating
+ Volume fluxdryrunsrc_pgdata  Created
+ Container fluxdryrunsrc-db-1  Creating
+ Container fluxdryrunsrc-db-1  Created
+ Container fluxdryrunsrc-migrate-1  Creating
+ Container fluxdryrunsrc-migrate-1  Created
+ Container fluxdryrunsrc-worker-1  Creating
+ Container fluxdryrunsrc-api-1  Creating
+time="2026-10-04T23:31:00+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+time="2026-10-04T23:31:00+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container fluxdryrunsrc-worker-1  Created
+ Container fluxdryrunsrc-api-1  Created
+ Container fluxdryrunsrc-db-1  Starting
+ Container fluxdryrunsrc-db-1  Started
+ Container fluxdryrunsrc-db-1  Waiting
+ Container fluxdryrunsrc-db-1  Healthy
+ Container fluxdryrunsrc-migrate-1  Starting
+ Container fluxdryrunsrc-migrate-1  Started
+ Container fluxdryrunsrc-migrate-1  Waiting
+ Container fluxdryrunsrc-migrate-1  Waiting
+ Container fluxdryrunsrc-migrate-1  Exited
+ Container fluxdryrunsrc-api-1  Starting
+ Container fluxdryrunsrc-migrate-1  Exited
+ Container fluxdryrunsrc-worker-1  Starting
+ Container fluxdryrunsrc-api-1  Started
+ Container fluxdryrunsrc-worker-1  Started
+ Container fluxdryrunsrc-migrate-1  Waiting
+ Container fluxdryrunsrc-api-1  Waiting
+ Container fluxdryrunsrc-worker-1  Waiting
+ Container fluxdryrunsrc-db-1  Waiting
+ Container fluxdryrunsrc-worker-1  Healthy
+ Container fluxdryrunsrc-db-1  Healthy
+ Container fluxdryrunsrc-migrate-1  Exited
+ Container fluxdryrunsrc-api-1  Healthy
+Release account and workspace created
+time="2026-10-04T23:31:16+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container fluxdryrunsrc-worker-1  Stopping
+ Container fluxdryrunsrc-api-1  Stopping
+ Container fluxdryrunsrc-worker-1  Stopped
+ Container fluxdryrunsrc-api-1  Stopped
+time="2026-10-04T23:31:20+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Network fluxdryrunrst_default  Creating
+ Network fluxdryrunrst_default  Created
+ Volume fluxdryrunrst_pgdata  Creating
+ Volume fluxdryrunrst_pgdata  Created
+ Container fluxdryrunrst-db-1  Creating
+ Container fluxdryrunrst-db-1  Created
+ Container fluxdryrunrst-db-1  Starting
+ Container fluxdryrunrst-db-1  Started
+ Container fluxdryrunrst-db-1  Waiting
+ Container fluxdryrunrst-db-1  Healthy
+ Volume fluxdryrunrst_files  Creating
+ Volume fluxdryrunrst_files  Created
+time="2026-10-04T23:31:34+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container fluxdryrunrst-db-1  Running
+ Container fluxdryrunrst-migrate-1  Creating
+ Container fluxdryrunrst-migrate-1  Created
+ Container fluxdryrunrst-worker-1  Creating
+ Container fluxdryrunrst-api-1  Creating
+time="2026-10-04T23:31:35+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+time="2026-10-04T23:31:35+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container fluxdryrunrst-api-1  Created
+ Container fluxdryrunrst-worker-1  Created
+ Container fluxdryrunrst-db-1  Waiting
+ Container fluxdryrunrst-db-1  Healthy
+ Container fluxdryrunrst-migrate-1  Starting
+ Container fluxdryrunrst-migrate-1  Started
+ Container fluxdryrunrst-migrate-1  Waiting
+ Container fluxdryrunrst-migrate-1  Waiting
+ Container fluxdryrunrst-migrate-1  Exited
+ Container fluxdryrunrst-worker-1  Starting
+ Container fluxdryrunrst-migrate-1  Exited
+ Container fluxdryrunrst-api-1  Starting
+ Container fluxdryrunrst-worker-1  Started
+ Container fluxdryrunrst-api-1  Started
+ Container fluxdryrunrst-worker-1  Waiting
+ Container fluxdryrunrst-db-1  Waiting
+ Container fluxdryrunrst-migrate-1  Waiting
+ Container fluxdryrunrst-api-1  Waiting
+ Container fluxdryrunrst-worker-1  Healthy
+ Container fluxdryrunrst-db-1  Healthy
+ Container fluxdryrunrst-migrate-1  Exited
+ Container fluxdryrunrst-api-1  Healthy
+Restored account and workspace verified
+time="2026-10-04T23:31:47+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+time="2026-10-04T23:31:49+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+Packaged clean install, backup and restore passed.
+smoke took 63 s
+DRY RUN PASS: 662aec62e2e05c3d944053a5b35771986900b9e3 built for linux/arm64, assets rendered and checked, compose config valid, packaged install/backup/restore passed; nothing published.
+EXIT 0

@@ -41,7 +41,8 @@ const OPERATION_LABEL: Record<AgentOperation, string> = {
   'conversation.create': 'started a conversation', 'conversation.reply': 'replied in a conversation',
   'cowork.claim': 'took a task', 'cowork.renew': 'is still on a task', 'cowork.release': 'released a task', 'cowork.request': 'asked for help',
   'cowork.request.claim': 'picked up a request', 'cowork.request.respond': 'answered a request',
-  'cowork.unit.create': 'set up work on a task',
+  'cowork.unit.create': 'set up work on a task', 'cowork.unit.complete': 'finished its work on a task',
+  'cowork.unit.transfer': 'handed work on a task to another agent',
 };
 
 const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });

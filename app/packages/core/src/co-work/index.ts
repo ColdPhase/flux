@@ -12,3 +12,10 @@ export type { CoWorkDeclineReason, CoWorkRequestClaimInput, CoWorkResponseInput,
 export { coWorkRootRunId, normalizeCoWorkUnitCreate, requireCoWorkUnitCreation, validateCoWorkUnitPolicy } from './units.js';
 export type { CoWorkUnitParentFence, CoWorkUnitCreateInput, CoWorkUnitPolicy, CoWorkCreationUnit, CoWorkUnitCreationFacts,
   CoWorkUnitDecision } from './units.js';
+export { normalizeCoWorkUnitTransition, requireCoWorkUnitTransition, validateCoWorkUnitTransitionPolicy } from './transitions.js';
+export type { CoWorkHolderFence, CoWorkUnitTransitionInput, CoWorkUnitTransitionPolicy, CoWorkTransitionUnit,
+  CoWorkUnitTransitionFacts } from './transitions.js';
+export { COWORK_CHECKPOINT_LIMITS, COWORK_CHECKPOINT_SCHEMA, coWorkCheckpointProgress, normalizeCoWorkCheckpointDraft,
+  parseCoWorkCheckpointProgress, requireCoWorkCheckpointSources, requireCoWorkClaimEligibility } from './checkpoints.js';
+export type { CoWorkCheckpointDraft, CoWorkCheckpointSource, CoWorkCheckpointProgress, CoWorkClaimEligibilityReader,
+  CoWorkCheckpointSourceReader } from './checkpoints.js';

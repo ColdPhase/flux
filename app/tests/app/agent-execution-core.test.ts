@@ -150,6 +150,10 @@ test('every operation has a registered postcondition entry; an incomplete sample
       requestId: uuid(), role: 'review', version: 3, state: 'resolved' }],
     'cowork.unit.create': [{ kind: 'cowork.unit_state', workspaceId: uuid(), projectId: uuid(), unitId: uuid(), taskId: uuid(),
       lineageTaskId: uuid(), runId: uuid(), role: 'review', assignmentConnectionId: uuid(), version: 1, state: 'pending' }],
+    'cowork.unit.complete': [{ kind: 'cowork.unit_state', workspaceId: uuid(), projectId: uuid(), unitId: uuid(), taskId: uuid(),
+      lineageTaskId: uuid(), runId: uuid(), role: 'execute', assignmentConnectionId: uuid(), version: 3, state: 'completed' }],
+    'cowork.unit.transfer': [{ kind: 'cowork.unit_state', workspaceId: uuid(), projectId: uuid(), unitId: uuid(), taskId: uuid(),
+      lineageTaskId: uuid(), runId: uuid(), role: 'execute', assignmentConnectionId: uuid(), version: 3, state: 'pending' }],
   };
   for (const operation of AGENT_OPERATIONS) validateAgentPostconditions(operation, samples[operation]);
   // @ts-expect-error a table without its cowork.request entry must not satisfy the exhaustive operation record
@@ -202,4 +206,27 @@ test('cowork.unit.create targets the native task; its class is the created role 
   // A unit post-state proves no claim or request, and they prove no creation.
   assert.throws(() => validateAgentPostconditions('cowork.claim', [unit]), { code: 'COMMAND_POSTSTATE_INVALID' });
   assert.throws(() => validateAgentPostconditions('cowork.request', [unit]), { code: 'COMMAND_POSTSTATE_INVALID' });
+});
+
+test('cowork.unit.complete/.transfer target the holder\'s unit; their class is its role and their post-state is the unit state', () => {
+  const projectId = randomUUID(), unitId = randomUUID();
+  for (const operation of ['cowork.unit.complete', 'cowork.unit.transfer'] as const) {
+    assert.deepEqual(AGENT_OPERATION_CLASSES[operation], ['execute', 'review', 'plan']);
+    const base: AgentExecutionCommand = { runtimeSessionId: randomUUID(), grantId: randomUUID(), clientCommandId: randomUUID(), projectId,
+      operation, peerRequestClass: 'execute', audience: { kind: 'project', projectId }, objectId: unitId, sources: [],
+      payload: { expectedVersion: 2, generation: 1, leaseId: randomUUID(), assignmentConnectionId: randomUUID() } };
+    assert.equal(normalizeAgentExecution(base).objectId, unitId, 'the object is the holder\'s own unit');
+    assert.throws(() => normalizeAgentExecution({ ...base, objectId: null }), invalidInput);
+    const unit = { kind: 'cowork.unit_state', workspaceId: randomUUID(), projectId, unitId, taskId: randomUUID(), lineageTaskId: randomUUID(),
+      runId: randomUUID(), role: 'execute', assignmentConnectionId: randomUUID(), version: 3,
+      state: operation === 'cowork.unit.complete' ? 'completed' : 'pending' };
+    validateAgentPostconditions(operation, [unit]);
+    for (const changed of [{ ...unit, state: 'done' }, { ...unit, outcomeRef: { type: 'result', id: randomUUID() } }, { ...unit, generation: 2 }])
+      assert.throws(() => validateAgentPostconditions(operation, [changed]), { code: 'COMMAND_POSTSTATE_INVALID' });
+    // A claim post-state proves no transition, and a transition post-state proves no claim.
+    const claimed = { kind: 'cowork.claim_state', workspaceId: unit.workspaceId, projectId, connectionId: randomUUID(), unitId, role: 'execute',
+      version: 3, generation: 2, state: 'paused', leaseId: null, leaseSessionId: null, leaseExpiresAt: null, checkpointId: null };
+    assert.throws(() => validateAgentPostconditions(operation, [claimed]), { code: 'COMMAND_POSTSTATE_INVALID' });
+    assert.throws(() => validateAgentPostconditions('cowork.claim', [unit]), { code: 'COMMAND_POSTSTATE_INVALID' });
+  }
 });

@@ -160,7 +160,7 @@
 
 .sk-first, .sk-empty-list { font-size: var(--fs-sm); color: var(--text-3); }
 .sk-first b, .sk-empty-list b { font-weight: 500; color: var(--text-2); }
-.sk-help { font-size: var(--fs-xs); color: var(--text-3); line-height: 1.7; }
+.sk-help { max-width: 66ch; font-size: var(--fs-xs); color: var(--text-3); line-height: 1.7; }
 
 .sk-list { list-style: none; margin: 0; padding: 0; }
 .sk-list > li { padding: 6px 0 8px; }
@@ -240,7 +240,7 @@
   .sk-plus--labelled { width: auto; gap: 6px; padding: 0 16px 0 14px; border-radius: var(--r-pill); font-size: var(--fs-md); font-weight: 500; }
 .sk-edit-btn { min-height: 44px; min-width: 44px; padding: 0 16px; font-size: var(--fs-md); }
   .sk-li-t, .sk-li-edit, .sk-title { min-height: 44px; }
-  .sk-zoom button { min-width: 44px; height: 44px; }
+  .sk-zoom button, .sk-zoom .sk-zoom__fit { min-width: 44px; height: 44px; }
   /* The count stays compact inside the thought; its touch target reaches 44px around it. */
   .sk { --sk-work-h: 28px; }
   .sk-work--map::before { content: ''; position: absolute; inset: -8px -4px; }
