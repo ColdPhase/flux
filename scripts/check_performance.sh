@@ -68,7 +68,10 @@ if [ -z "${FLUX_PERF_IMAGE_TAG:-}" ]; then $compose build migrate; fi
 $compose up -d db migrate
 $compose --profile setup run --rm files-init >/dev/null
 $compose up -d --wait api worker
-git rev-parse HEAD > "$out/commit.txt" 2>/dev/null || true
+# What was measured: the scripts' commit, and the image (built here from it, or given).
+{ echo "scripts $(git rev-parse HEAD 2>/dev/null || echo unknown)$(git diff --quiet HEAD 2>/dev/null || echo ' (with uncommitted changes)')"
+  echo "image flux-foundation:${FLUX_IMAGE_TAG:-$project}$( [ -n "${FLUX_PERF_IMAGE_TAG:-}" ] && echo ' (prebuilt, see FLUX_PERF_IMAGE_TAG)' || echo ' (built from the scripts commit)')"
+} > "$out/commit.txt"
 
 echo "Seeding through the public API (a few minutes)..."
 $compose exec -T -e FLUX_PERF_PASSWORD="$perf_password" api node --input-type=module - < scripts/perf-seed.mjs | tee "$out/seed.log"
