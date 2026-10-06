@@ -437,6 +437,10 @@ class FriendlyHomeJourney(unittest.TestCase):
         # The state line no longer repeats a decision; the goal says what the project is for.
         expect(header.get_by_label("Current state")).not_to_contain_text("Current rule")
         shot(page, "272-project-goal-desktop-1440")
+        # Details carries the goal in full, for a phone header that shortens it.
+        header.get_by_role("button", name="Details", exact=True).click()
+        expect(page.locator("#details .ov-goal")).to_contain_text("Know when each garden bed needs water")
+        page.keyboard.press("Escape")
         # Home's project card shows the goal too.
         page.goto("/")
         expect(page.get_by_role("region", name="Your projects", exact=True).get_by_role("link", name=re.compile(f"^{PROJECT}"))).to_contain_text(

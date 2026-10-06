@@ -541,7 +541,9 @@ function NoticeItem({ notice, meId, row, continued = false, onOpenTask }: { noti
         {/* In a run, who and when are said once, above; assistive technology still hears them for each task. */}
         <span className={`convo-notice__meta${continued ? ' ui-vh' : ''}`}>New task · {creatorName(notice.createdBy, meId)}</span>
         <button type="button" className="convo-notice__task" data-native-ref={`work:${notice.workId}`} onClick={() => onOpenTask(notice.workId)} aria-label={`Open task: ${title}${state ? ` · ${state}` : ''}`}>
-          <span className="convo-notice__text"><span className="convo-notice__title">{title}</span>{state ? <span className={`convo-notice__state is-${current!.status}`}>{state}</span> : null}</span><Icon name="chevron-right" size={14} />
+          <span className="convo-notice__text"><span className="convo-notice__title">{title}</span>
+            {/* The line is there from the start, so an announcement never grows when its task's state arrives (#155). */}
+            <span className={`convo-notice__state${current ? ` is-${current.status}` : ''}`} aria-hidden={state ? undefined : true}>{state || '\u00a0'}</span></span><Icon name="chevron-right" size={14} />
         </button>
       </span>
       <time dateTime={notice.createdAt} title={when(notice.createdAt)}>{clock(notice.createdAt)}</time>
