@@ -55,3 +55,14 @@ export async function explainAnalyze(statement: SentStatement): Promise<{ Plan: 
     `EXPLAIN (ANALYZE, FORMAT JSON) ${statement.text}`, statement.values);
   return rows[0]!['QUERY PLAN'][0];
 }
+
+/** Every subplan of a plan (a `SubPlan` relationship) with how often it ran. */
+export function subplans(plan: PlanNode): { name: string; loops: number }[] {
+  const found: { name: string; loops: number }[] = [];
+  const visit = (node: PlanNode) => {
+    if (node['Parent Relationship'] === 'SubPlan') found.push({ name: node['Subplan Name'] ?? '', loops: node['Actual Loops'] ?? 0 });
+    for (const child of node.Plans ?? []) visit(child);
+  };
+  visit(plan);
+  return found;
+}
