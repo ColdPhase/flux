@@ -54,11 +54,13 @@ export interface ShellActions {
   openNavigation(): void;
   /** Asks the sidebar beside the sheet to step aside while a view needs the width (a docked thread on a tablet, #296). */
   makeRoom(asked: boolean): void;
+  /** Whether the sidebar has stepped aside for a view that asked (#296); false once the person shows it again. */
+  roomGiven: boolean;
   /** A place in the header where the current view can put one quiet action (a DM's Select, #96). */
   actionSlot: HTMLElement | null;
 }
 
-export const ShellContext = createContext<ShellActions>({ openDetails: () => undefined, openSearch: () => undefined, openNavigation: () => undefined, makeRoom: () => undefined, actionSlot: null });
+export const ShellContext = createContext<ShellActions>({ openDetails: () => undefined, openSearch: () => undefined, openNavigation: () => undefined, makeRoom: () => undefined, roomGiven: false, actionSlot: null });
 
 export function useShellActions(): ShellActions {
   return useContext(ShellContext);

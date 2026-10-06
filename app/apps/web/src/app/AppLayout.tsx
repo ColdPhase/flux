@@ -182,8 +182,9 @@ function AppLayoutContent() {
     openSearch() { setNavOpen(false); setJumpOpen(true); },
     openNavigation() { setDetailsOpen(false); setNavOpen(true); },
     makeRoom,
+    roomGiven: roomAsked && !navDrawer,
     actionSlot,
-  }), [toggleDetails, actionSlot, projectId, detailsOwner, makeRoom]);
+  }), [toggleDetails, actionSlot, projectId, detailsOwner, makeRoom, roomAsked, navDrawer]);
 
   // A link inside an overlaid panel or sheet (#117 overview) leads to its destination.
   const [shownPath, setShownPath] = useState(location.pathname);

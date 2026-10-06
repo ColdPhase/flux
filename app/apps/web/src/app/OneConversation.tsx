@@ -97,15 +97,16 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
     observer.observe(split);
     return () => observer.disconnect();
   }, []);
-  const mode: ThreadMode = phone || !wide ? 'sheet' : 'docked';
   // On a tablet the sidebar steps aside while a thread is open, so the thread docks beside the stream instead
-  // of covering it (HIG-07, #296); it comes back when the thread closes. Asked once per open thread.
+  // of covering it (HIG-07, #296); it comes back when the thread closes. Asked once per open thread, and the
+  // thread docks at once rather than opening as a sheet first; showing the sidebar again makes it a sheet.
   const tablet = useMediaQuery('(min-width: 768px)');
-  const { makeRoom } = useShellActions();
+  const { makeRoom, roomGiven } = useShellActions();
   const [roomFor, setRoomFor] = useState<string | null>(null);
   if (thread && !phone && tablet && !wide && roomFor !== thread.id) setRoomFor(thread.id);
   if (!thread && roomFor) setRoomFor(null);
-  useEffect(() => {
+  const mode: ThreadMode = phone ? 'sheet' : wide || (!!roomFor && roomFor === thread?.id && roomGiven) ? 'docked' : 'sheet';
+  useLayoutEffect(() => {
     if (!roomFor) return;
     makeRoom(true);
     return () => makeRoom(false);
