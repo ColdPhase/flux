@@ -6,7 +6,7 @@ import { ApiError, NetworkError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
 import { useComposerDraft, useComposerScope } from '../composer/draft';
-import { ComposerFiles, MessageFiles } from '../composer/Files';
+import { AttachButton, ComposerFiles, MessageFiles } from '../composer/Files';
 import { contributeToTask, getTaskDiscussion } from '../composer/api';
 import { useProjectShell } from '../project/data';
 import { Button, Icon } from '../ui';
@@ -41,6 +41,7 @@ const OPERATION_LABEL: Record<AgentOperation, string> = {
   'conversation.create': 'started a conversation', 'conversation.reply': 'replied in a conversation',
   'cowork.claim': 'took a task', 'cowork.renew': 'is still on a task', 'cowork.release': 'released a task', 'cowork.request': 'asked for help',
   'cowork.request.claim': 'picked up a request', 'cowork.request.respond': 'answered a request',
+  'cowork.unit.create': 'set up work on a task',
 };
 
 const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
@@ -290,11 +291,12 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
         <textarea id="agents-draft" ref={box} value={composer.draft.body} rows={2} readOnly={sending || changingScope} aria-busy={sending || changingScope}
           placeholder={canWrite ? 'Add to this work…' : 'You can read this task but not write to it.'} disabled={blocked}
           onChange={(event) => { if (!blocked) { composer.setBody(event.target.value); typing.input(Boolean(event.target.value.trim())); } }} onBlur={typing.stop} onKeyDown={onKeyDown} />
-        <ComposerFiles state={composer} disabled={blocked} />
+        <ComposerFiles state={composer} disabled={blocked} attach="none" />
         {discussion?.conversationId && !accessLost ? <TypingNotice {...typing} /> : null}
         {changingScope ? <p className="agents-composer__hint" role="status">Opening your selection… Your current draft is kept.</p> : null}
         <div className="agents-composer__row">
-          <span className="agents-composer__hint">Goes to the task thread · Enter sends, Shift+Enter new line</span>
+          <AttachButton state={composer} disabled={blocked} />
+          <span className="agents-composer__hint">Goes to the task thread<span className="composer__keys"> · Enter sends, Shift+Enter new line</span></span>
           <Button type="submit" variant="primary" icon="send" busy={sending} disabled={!composer.canSend || blocked} aria-label="Send to task">Send</Button>
         </div>
       </form>

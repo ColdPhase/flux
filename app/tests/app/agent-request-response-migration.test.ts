@@ -3,12 +3,17 @@ import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { AGENT_OPERATIONS, AGENT_PEER_REQUEST_CLASSES } from '@flux/contracts';
+import { AGENT_OPERATIONS, AGENT_PEER_REQUEST_CLASSES, type AgentOperation } from '@flux/contracts';
 import { assertExactMigrationLedger, assertMigrationSqlLedgerChange, assertMigrationStepLedger,
   FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
 import { pool } from './support/db.js';
 
 const migrationsDir = 'packages/db/migrations';
+/** Exactly the list 0049 writes. Later migrations (0050) widen it; 0049 itself stays frozen. */
+const OPERATIONS_AT_0049: readonly AgentOperation[] = ['work.create', 'work.update', 'result.record', 'decision.propose',
+  'map.create', 'map.rename', 'map.thought.create', 'map.thought.update', 'map.thought.delete', 'map.positions.update',
+  'map.link.create', 'map.link.delete', 'doc.create', 'doc.update', 'conversation.create', 'conversation.reply',
+  'cowork.claim', 'cowork.renew', 'cowork.release', 'cowork.request', 'cowork.request.claim', 'cowork.request.respond'];
 
 test('0049 widens only the closed grant operation CHECK to the recipient request operations: rows survive and it is idempotent', async () => {
   const client = await pool.connect();
@@ -75,12 +80,14 @@ test('0049 widens only the closed grant operation CHECK to the recipient request
     assertMigrationStepLedger(before, after, migration!);
     assertExactMigrationLedger(upToCurrent, after);
 
-    // After: rows are untouched; the database list is exactly the contract list, i.e. the prior list plus the two operations.
+    // After: rows are untouched; the database list is exactly the 0049 list, i.e. the prior list plus the two operations.
+    // The exact contract-list equality now lives in the 0050 test.
     assert.deepEqual((await client.query('SELECT * FROM agent_standing_grants WHERE id=$1', [historicGrant])).rows[0], historic);
     const definition = (await constraint())[0]!.definition as string;
-    assert.deepEqual(listed(definition), [...AGENT_OPERATIONS].sort());
+    assert.deepEqual(listed(definition), [...OPERATIONS_AT_0049].sort());
     assert.deepEqual(listed(definition), [...prior, 'cowork.request.claim', 'cowork.request.respond'].sort());
-    for (const operation of AGENT_OPERATIONS) for (const peerRequestClass of AGENT_PEER_REQUEST_CLASSES) await insert(randomUUID(), operation, peerRequestClass);
+    assert.ok(OPERATIONS_AT_0049.every((operation) => AGENT_OPERATIONS.includes(operation)), 'every 0049 operation is still a contract operation');
+    for (const operation of OPERATIONS_AT_0049) for (const peerRequestClass of AGENT_PEER_REQUEST_CLASSES) await insert(randomUUID(), operation, peerRequestClass);
     for (const operation of ['cowork.request.ack', 'cowork.respond', 'cowork.request.review', 'COWORK.REQUEST.CLAIM', 'cowork.request.claim ', '']) {
       const error = await refused(operation);
       assert.equal(error.code, '23514', `${JSON.stringify(operation)} stays refused`); assert.equal(error.constraint, 'agent_standing_grants_operation_check');

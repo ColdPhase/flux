@@ -298,7 +298,8 @@ class TaskAnnouncements(unittest.TestCase):
                 title = made.locator(".convo-notice__title")
                 height = title.evaluate("node => node.getBoundingClientRect().height")
                 line = title.evaluate("node => parseFloat(getComputedStyle(node).lineHeight) || node.getBoundingClientRect().height")
-                self.assertLessEqual(height, line + 1, "a long title stays on one line")
+                # #266 PF-6: a long title wraps to at most two lines instead of being cut to one.
+                self.assertLessEqual(height, 2 * line + 1, "a long title takes at most two lines")
                 self.assertEqual(page.evaluate("document.documentElement.scrollWidth <= innerWidth"), True)
                 shot(page, f"task-announcements-phone-{viewport['width']}{'-dark' if dark else ''}")
 
