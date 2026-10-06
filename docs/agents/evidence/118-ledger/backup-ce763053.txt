@@ -1,0 +1,273 @@
+
+== Preflight: Docker is reachable and there are at least 20 GB free
+Docker 29.1.2, 25 GB free
+
+== Copy the working tree to /private/var/folders/g8/y_7wkct94vnd9hdqtn1y7l_40000gn/T/flux-backup-check.ze4Ajh/a/flux and /private/var/folders/g8/y_7wkct94vnd9hdqtn1y7l_40000gn/T/flux-backup-check.ze4Ajh/b/flux
+
+== Checkout A: ./flux up, ./flux demo and the real-data fixture
+ flux-foundation:flux-72a6f24f  Built
+ Volume flux-72a6f24f_files  Creating
+ Volume flux-72a6f24f_files  Created
+time="2026-10-05T09:00:56+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-72a6f24f-db-1  Creating
+ Container flux-72a6f24f-db-1  Created
+ Container flux-72a6f24f-migrate-1  Creating
+ Container flux-72a6f24f-migrate-1  Created
+ Container flux-72a6f24f-worker-1  Creating
+ Container flux-72a6f24f-api-1  Creating
+time="2026-10-05T09:00:58+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+time="2026-10-05T09:00:58+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-72a6f24f-worker-1  Created
+ Container flux-72a6f24f-api-1  Created
+ Container flux-72a6f24f-db-1  Starting
+ Container flux-72a6f24f-db-1  Started
+ Container flux-72a6f24f-db-1  Waiting
+ Container flux-72a6f24f-db-1  Healthy
+ Container flux-72a6f24f-migrate-1  Starting
+ Container flux-72a6f24f-migrate-1  Started
+ Container flux-72a6f24f-migrate-1  Waiting
+ Container flux-72a6f24f-migrate-1  Waiting
+ Container flux-72a6f24f-migrate-1  Exited
+ Container flux-72a6f24f-worker-1  Starting
+ Container flux-72a6f24f-migrate-1  Exited
+ Container flux-72a6f24f-api-1  Starting
+ Container flux-72a6f24f-worker-1  Started
+ Container flux-72a6f24f-api-1  Started
+ Container flux-72a6f24f-migrate-1  Waiting
+ Container flux-72a6f24f-api-1  Waiting
+ Container flux-72a6f24f-worker-1  Waiting
+ Container flux-72a6f24f-db-1  Waiting
+ Container flux-72a6f24f-worker-1  Healthy
+ Container flux-72a6f24f-db-1  Healthy
+ Container flux-72a6f24f-migrate-1  Exited
+ Container flux-72a6f24f-api-1  Healthy
+time="2026-10-05T09:01:31+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+seeded fixture 5db71aad and a 300 kB file (sha256 4dcf7d2e7306237a89675f306ba45fc8c367c6e77303a178d96e72717232dfcd)
+
+== ./flux export writes the project bundle without DMs, private notes or other projects
+(node:147) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+Exported "Community garden sensors" (a2c1df55-b00d-41eb-89d5-c3212968b268) as Ada Kowalska: 3 conversations, 2 docs, 2 sketches, 1 work items, 1 decisions, 1 results.
+Export written: /private/var/folders/g8/y_7wkct94vnd9hdqtn1y7l_40000gn/T/flux-backup-check.ze4Ajh/export.tar.gz (7397 bytes, sha256 3231305b25c0542e34f9dfc739c36c71029b18cc766a2215c640f95eb1adc27a)
+
+== ./flux backup refuses when the writers cannot be confirmed stopped, and restarts nothing it did not stop
+
+== ./flux backup (twice in one second, then --keep 1) stops the writers, writes checked archives and restarts them
+time="2026-10-05T09:01:46+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-72a6f24f-db-1  Running
+ Container flux-72a6f24f-db-1  Waiting
+ Container flux-72a6f24f-db-1  Healthy
+ Container flux-72a6f24f-migrate-1  Starting
+ Container flux-72a6f24f-migrate-1  Started
+ Container flux-72a6f24f-migrate-1  Waiting
+ Container flux-72a6f24f-migrate-1  Waiting
+ Container flux-72a6f24f-migrate-1  Exited
+ Container flux-72a6f24f-migrate-1  Exited
+ Container flux-72a6f24f-worker-1  Starting
+ Container flux-72a6f24f-api-1  Starting
+ Container flux-72a6f24f-worker-1  Started
+ Container flux-72a6f24f-api-1  Started
+ Container flux-72a6f24f-worker-1  Waiting
+ Container flux-72a6f24f-migrate-1  Waiting
+ Container flux-72a6f24f-api-1  Waiting
+ Container flux-72a6f24f-db-1  Waiting
+ Container flux-72a6f24f-db-1  Healthy
+ Container flux-72a6f24f-migrate-1  Exited
+ Container flux-72a6f24f-worker-1  Healthy
+ Container flux-72a6f24f-api-1  Healthy
+Stopping api worker so the database and files are captured at one point in time...
+Dumping the database (schema 45, PostgreSQL 18.6)...
+Archiving the files volume...
+Restarting api worker...
+Backup written: /private/var/folders/g8/y_7wkct94vnd9hdqtn1y7l_40000gn/T/flux-backup-check.ze4Ajh/backups/flux-backup-flux-72a6f24f-20260101T000000Z-50f61305.tar (775680 bytes, schema 45)
+It holds all data and the secrets of docker/.env: keep it private and copy it off this machine.
+time="2026-10-05T09:02:03+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-72a6f24f-db-1  Running
+ Container flux-72a6f24f-db-1  Waiting
+ Container flux-72a6f24f-db-1  Healthy
+ Container flux-72a6f24f-migrate-1  Starting
+ Container flux-72a6f24f-migrate-1  Started
+ Container flux-72a6f24f-migrate-1  Waiting
+ Container flux-72a6f24f-migrate-1  Waiting
+ Container flux-72a6f24f-migrate-1  Exited
+ Container flux-72a6f24f-migrate-1  Exited
+ Container flux-72a6f24f-worker-1  Starting
+ Container flux-72a6f24f-api-1  Starting
+ Container flux-72a6f24f-worker-1  Started
+ Container flux-72a6f24f-api-1  Started
+ Container flux-72a6f24f-worker-1  Waiting
+ Container flux-72a6f24f-migrate-1  Waiting
+ Container flux-72a6f24f-db-1  Waiting
+ Container flux-72a6f24f-api-1  Waiting
+ Container flux-72a6f24f-migrate-1  Exited
+ Container flux-72a6f24f-worker-1  Healthy
+ Container flux-72a6f24f-db-1  Healthy
+ Container flux-72a6f24f-api-1  Healthy
+time="2026-10-05T09:02:17+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-72a6f24f-db-1  Running
+ Container flux-72a6f24f-db-1  Waiting
+ Container flux-72a6f24f-db-1  Healthy
+ Container flux-72a6f24f-migrate-1  Starting
+ Container flux-72a6f24f-migrate-1  Started
+ Container flux-72a6f24f-migrate-1  Waiting
+ Container flux-72a6f24f-migrate-1  Waiting
+ Container flux-72a6f24f-migrate-1  Exited
+ Container flux-72a6f24f-api-1  Starting
+ Container flux-72a6f24f-migrate-1  Exited
+ Container flux-72a6f24f-worker-1  Starting
+ Container flux-72a6f24f-worker-1  Started
+ Container flux-72a6f24f-api-1  Started
+ Container flux-72a6f24f-migrate-1  Waiting
+ Container flux-72a6f24f-worker-1  Waiting
+ Container flux-72a6f24f-db-1  Waiting
+ Container flux-72a6f24f-api-1  Waiting
+ Container flux-72a6f24f-worker-1  Healthy
+ Container flux-72a6f24f-db-1  Healthy
+ Container flux-72a6f24f-migrate-1  Exited
+ Container flux-72a6f24f-api-1  Healthy
+revoked the live agent connection after the backup
+
+== ./flux restore asks first, and refuses damaged archives and other versions
+
+== A backup whose ledger has a version this image lacks is refused before any data is replaced
+
+== Destroy A's volumes, then restore the archive into a fresh checkout B
+ Container flux-72a6f24f-api-1  Stopping
+ Container flux-72a6f24f-worker-1  Stopping
+ Container flux-72a6f24f-worker-1  Stopped
+ Container flux-72a6f24f-worker-1  Removing
+ Container flux-72a6f24f-worker-1  Removed
+ Container flux-72a6f24f-api-1  Stopped
+ Container flux-72a6f24f-api-1  Removing
+ Container flux-72a6f24f-api-1  Removed
+ Container flux-72a6f24f-migrate-1  Stopping
+ Container flux-72a6f24f-migrate-1  Stopped
+ Container flux-72a6f24f-migrate-1  Removing
+ Container flux-72a6f24f-migrate-1  Removed
+ Container flux-72a6f24f-db-1  Stopping
+ Container flux-72a6f24f-db-1  Stopped
+ Container flux-72a6f24f-db-1  Removing
+ Container flux-72a6f24f-db-1  Removed
+ Network flux-72a6f24f_default  Removing
+ Volume flux-72a6f24f_files  Removing
+ Volume flux-72a6f24f_pgdata  Removing
+ Volume flux-72a6f24f_files  Removed
+ Volume flux-72a6f24f_pgdata  Removed
+ Network flux-72a6f24f_default  Removed
+ Container flux-7a903183-db-1  Healthy
+ Container flux-7a903183-worker-1  Healthy
+ Container flux-7a903183-api-1  Healthy
+ Container flux-7a903183-db-1  Running
+ Container flux-7a903183-db-1  Running
+Health: {"status":"ok","schemaVersion":45} (migration ledger matches this image: 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45)
+Restored /private/var/folders/g8/y_7wkct94vnd9hdqtn1y7l_40000gn/T/flux-backup-check.ze4Ajh/backups/flux-backup-flux-72a6f24f-20261005T070214Z-9c4f3e37.tar into flux-7a903183: http://127.0.0.1:19571
+verified: 3 conversations, 2 docs, 2 sketches, 1 work items, 4 links, 5 DM messages, sessions and permissions
+time="2026-10-05T09:06:16+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+time="2026-10-05T09:06:17+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+verified --revoke-agent-connections: both bearers denied, every connection revoked
+ Container flux-7a903183-worker-1  Stopping
+ Container flux-7a903183-api-1  Stopping
+ Container flux-7a903183-worker-1  Stopped
+ Container flux-7a903183-worker-1  Removing
+ Container flux-7a903183-worker-1  Removed
+ Container flux-7a903183-api-1  Stopped
+ Container flux-7a903183-api-1  Removing
+ Container flux-7a903183-api-1  Removed
+ Container flux-7a903183-migrate-1  Stopping
+ Container flux-7a903183-migrate-1  Stopped
+ Container flux-7a903183-migrate-1  Removing
+ Container flux-7a903183-migrate-1  Removed
+ Container flux-7a903183-db-1  Stopping
+ Container flux-7a903183-db-1  Stopped
+ Container flux-7a903183-db-1  Removing
+ Container flux-7a903183-db-1  Removed
+ Volume flux-7a903183_pgdata  Removing
+ Volume flux-7a903183_files  Removing
+ Network flux-7a903183_default  Removing
+ Network flux-7a903183_default  Removed
+ Volume flux-7a903183_pgdata  Removed
+ Volume flux-7a903183_files  Removed
+
+== Upgrade from the previous main's schema
+upgrading from 6f742eba feat(cowork): live request admission and recipient slot ordering (#153) (#246) (schema 44) to this tree (schema 45); new migrations: 0045_stored_files.sql
+flux: NOTE: FLUX_PROJECT=flux-upgrade-check-93652 from the environment overrides this checkout's project (flux-15ba50dc).
+ flux-foundation:flux-upgrade-check-93652  Built
+ Volume flux-upgrade-check-93652_files  Creating
+ Volume flux-upgrade-check-93652_files  Created
+time="2026-10-05T09:08:51+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-upgrade-check-93652-db-1  Creating
+ Container flux-upgrade-check-93652-db-1  Created
+ Container flux-upgrade-check-93652-migrate-1  Creating
+ Container flux-upgrade-check-93652-migrate-1  Created
+ Container flux-upgrade-check-93652-api-1  Creating
+ Container flux-upgrade-check-93652-worker-1  Creating
+time="2026-10-05T09:08:52+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+time="2026-10-05T09:08:52+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-upgrade-check-93652-worker-1  Created
+ Container flux-upgrade-check-93652-api-1  Created
+ Container flux-upgrade-check-93652-db-1  Starting
+ Container flux-upgrade-check-93652-db-1  Started
+ Container flux-upgrade-check-93652-db-1  Waiting
+ Container flux-upgrade-check-93652-db-1  Healthy
+ Container flux-upgrade-check-93652-migrate-1  Starting
+ Container flux-upgrade-check-93652-migrate-1  Started
+ Container flux-upgrade-check-93652-migrate-1  Waiting
+ Container flux-upgrade-check-93652-migrate-1  Waiting
+ Container flux-upgrade-check-93652-migrate-1  Exited
+ Container flux-upgrade-check-93652-worker-1  Starting
+ Container flux-upgrade-check-93652-migrate-1  Exited
+ Container flux-upgrade-check-93652-api-1  Starting
+ Container flux-upgrade-check-93652-worker-1  Started
+ Container flux-upgrade-check-93652-api-1  Started
+ Container flux-upgrade-check-93652-migrate-1  Waiting
+ Container flux-upgrade-check-93652-api-1  Waiting
+ Container flux-upgrade-check-93652-worker-1  Waiting
+ Container flux-upgrade-check-93652-db-1  Waiting
+ Container flux-upgrade-check-93652-migrate-1  Exited
+ Container flux-upgrade-check-93652-worker-1  Healthy
+ Container flux-upgrade-check-93652-db-1  Healthy
+ Container flux-upgrade-check-93652-api-1  Healthy
+Health: {"status":"ok","schemaVersion":45} (migration ledger matches this image: 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45)
+
+Upgraded flux-upgrade-check-93652 from schema 44 to 45: http://127.0.0.1:19577
+The backup from before the upgrade stays in /private/var/folders/g8/y_7wkct94vnd9hdqtn1y7l_40000gn/T/flux-backup-check.ze4Ajh/u/flux/backups/flux-backup-flux-upgrade-check-93652-20261005T070912Z-f2efa2d2.tar.
+verified upgraded demo: 4 messages, 4 DM messages, private note, sketch, new doc and export (schema 45)
+
+== The pre-upgrade backup (a subset of this image's migrations) restores only with --migrate
+verified upgraded demo: 4 messages, 4 DM messages, private note, sketch, new doc and export (schema 45)
+
+== A failing upgrade prints restore instructions that work
+verified upgraded demo: 4 messages, 4 DM messages, private note, sketch, new doc and export (schema 45)
+
+== A failure after the new version started stops the writers and says work may be missing
+
+== Roll back the actual source layout, keep the original custom project, then upgrade again
+ Container flux-upgrade-check-93652-worker-1  Stopping
+ Container flux-upgrade-check-93652-api-1  Stopping
+ Container flux-upgrade-check-93652-worker-1  Stopped
+ Container flux-upgrade-check-93652-api-1  Stopped
+ Container flux-upgrade-check-93652-api-1  Stopping
+ Container flux-upgrade-check-93652-worker-1  Stopping
+ Container flux-upgrade-check-93652-worker-1  Stopped
+ Container flux-upgrade-check-93652-worker-1  Removing
+ Container flux-upgrade-check-93652-worker-1  Removed
+ Container flux-upgrade-check-93652-api-1  Stopped
+ Container flux-upgrade-check-93652-api-1  Removing
+ Container flux-upgrade-check-93652-api-1  Removed
+ Container flux-upgrade-check-93652-migrate-1  Stopping
+ Container flux-upgrade-check-93652-migrate-1  Stopped
+ Container flux-upgrade-check-93652-migrate-1  Removing
+ Container flux-upgrade-check-93652-migrate-1  Removed
+ Container flux-upgrade-check-93652-db-1  Stopping
+ Container flux-upgrade-check-93652-db-1  Stopped
+ Container flux-upgrade-check-93652-db-1  Removing
+ Container flux-upgrade-check-93652-db-1  Removed
+ Volume flux-upgrade-check-93652_files  Removing
+ Network flux-upgrade-check-93652_default  Removing
+ Volume flux-upgrade-check-93652_pgdata  Removing
+ Volume flux-upgrade-check-93652_files  Removed
+ Volume flux-upgrade-check-93652_pgdata  Removed
+ Network flux-upgrade-check-93652_default  Removed
+
+== PASS: backup, restore into a fresh project, agent access, export, upgrade from 6f742eba (+1 migrations) and failed-upgrade recovery
+exit=0
