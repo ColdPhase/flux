@@ -218,6 +218,13 @@ class AiConnectionSettings(unittest.TestCase):
         expect(guide).to_contain_text(f"claude mcp add --transport http flux {ORIGIN}/mcp")
         expect(guide).to_contain_text(f"codex mcp add flux --url {ORIGIN}/mcp")
         expect(guide).to_contain_text("codex mcp login flux")
+        # #320: the quick start's loopback http:// address is the one to use; HTTPS is needed only
+        # for a client on another computer, so the guide must not ask for it here.
+        self.assertRegex(ORIGIN, r"^http://(127\.\d+\.\d+\.\d+|localhost)(:\d+)?$", "this suite runs on a loopback http origin")
+        expect(guide).to_contain_text("Add this Flux address to the client you already use.")
+        expect(guide).to_contain_text("This address works only on this computer.")
+        expect(guide).not_to_contain_text("Use your self-hosted Flux HTTPS address")
+        expect(guide).to_contain_text("run only the actions you grant")
         shot(page, "ai-connection-1440-connect-guide")
         page.goto("/settings/assistant")
         expect(page.get_by_role("heading", level=1, name="Your assistant")).to_be_visible()
