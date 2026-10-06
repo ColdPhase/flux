@@ -316,6 +316,28 @@ export function AgentConnectionPage() {
   </section>;
 }
 
+/** Where an approved request goes (#287): the redirect host, the client_id host and a warning off this computer. */
+function ConsentDestination({ context }: { context: ConsentContext }) {
+  const { redirect, clientIdHost } = context;
+  return <section className="connection__destination" aria-labelledby="consent-destination">
+    <h2 id="consent-destination">Where access goes</h2>
+    <dl>
+      <div><dt>Sends access to</dt><dd className="connection__host">{redirect.host}</dd></div>
+      <div><dt>Client details from</dt>{clientIdHost
+        ? <dd className="connection__host">{clientIdHost}</dd>
+        : <dd>Registered on this Flux server</dd>}</div>
+    </dl>
+    {redirect.kind === 'loopback'
+      ? <p>This address is on your own computer, where your agent client runs.</p>
+      : <p className="connection__warning" role="note">
+        <Icon name="alert" size={16} />
+        {redirect.kind === 'app'
+          ? <span><strong>This access goes to an app link.</strong> Flux will hand it to whichever app on this device opens that link. Allow only if you set up this client and trust that app.</span>
+          : <span><strong>This address is not on your computer.</strong> Flux will send access to {redirect.host}, and whoever controls that address can use this connection. Allow only if you set up this client and trust that address.</span>}
+      </p>}
+  </section>;
+}
+
 export function AgentConsentPage() {
   const { context, oauthQuery } = useLoaderData() as { context: ConsentContext; oauthQuery: string };
   const [busy, setBusy] = useState(false);
@@ -331,9 +353,10 @@ export function AgentConsentPage() {
   }
   return <section className="connection connection--consent" aria-label="Agent access consent">
     <FlowHeader step="Agent connection · 2 of 2" title="Review access before connecting">
-      <strong>{context.clientName}</strong> is asking to connect to Flux. Check the selected projects and actions below.
+      <strong>{context.clientName}</strong> is asking to connect to Flux. Check where access goes, the selected projects and the actions below.
     </FlowHeader>
     {error ? <div className="connection__alert" role="alert">{error}</div> : null}
+    <ConsentDestination context={context} />
     <ConnectionSummary connection={context.connection} agentName={context.agentName ?? `Agent ${context.connection.agentId.slice(0, 8)}`} projectNames={projectNames} showScopes={false} />
     <div className="connection__requested">
       <h2>Requested by this client</h2>
