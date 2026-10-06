@@ -4,7 +4,8 @@
 - design the GitHub integration properly, starting with whether a GitHub App is needed at all;
 - Flux must read GitHub, specifically so that PRs move tasks.
 
-**Status:** proposed, 2026-10-05, by claude-hubert. Peer review on the implementing PR (#74).
+**Status:** proposed, 2026-10-05, by claude-hubert, recorded as [O-011](../../product/decisions.md) and in
+[CO-3](../../product/mcp-cowork.md#github-binding-and-board-behavior--co-3). Peer review on the implementing PR (#270).
 **Amends:** "Disclosed deterministic task rules" in the [accepted design](2026-09-30-design.md).
 Everything else in that design and its [independent conditions](2026-09-30-independent-design-review.md) stays.
 
@@ -71,6 +72,10 @@ accepted design for task rules only.
 publishes, to everyone who can read the task, the status changes its required PRs cause, and with them the PR
 numbers, head commits and check names. The one-line explanation next to the toggle says so. Repository names, PR
 titles, links and other provider facts stay behind each reader's own GitHub access, and events carry identifiers only.
+- With a manager's project default on, the writer who links a required PR to a task without a rule turns it on, and
+  the link form discloses that before linking.
+- Rule-caused events carry `automation: 'github_rule'`. Return/Home show them to the author too, as made by the
+  GitHub rule rather than by that person. The comparison scheduler does not count them as human activity.
 
 **Who the rule acts as.** The person who turns it on, changes its mode or resumes it becomes its author. They need
 current write access to the task and their own GitHub access to the repository of every required link. The rule
@@ -79,20 +84,37 @@ captures their GitHub identity and authorization generation. Each processing re-
 - A GitHub outage only skips that delivery.
 - Turning the rule off needs no GitHub access.
 
+**Losing a repository pauses the rule.** These revocations suspend, in the same transaction, every active rule with a
+required link through the affected binding, and record a history line:
+- a manager's disconnect;
+- the App uninstalled or suspended;
+- the repository removed from the installation;
+- the binding author's authorization revoked (signed or explicit) — a revoked authorization also suspends the rules
+  its person set up;
+- a restore.
+
+Readers also see a rule as paused while any required link's binding is inactive. Re-binding the repository never
+restarts a rule; a person resumes it.
+
 **What counts as a manual change.** A change of status or blocker since the rule last acted suspends it. Other
 edits (title, owner, criteria) only move the version it expects. Readers see the suspension at once, and the next
-delivery records it. The rule never clears a blocker a person wrote. Resuming keeps a block the rule itself wrote,
-even if a person reworded it.
+delivery records it. The rule never clears a blocker a person wrote. Resuming keeps a block only while the task still
+shows exactly the blocker the rule wrote; a reworded blocker is the person's.
 
 **Checks.** The rule reads every check run and commit status on the PR's current head.
 - One failure blocks the task.
 - A task blocked by a failed check is unblocked only when every check on each open required PR has passed. A
-  pending or truncated list does not count.
+  pending, stale or truncated list does not count.
 - Choosing specific required checks is a later refinement.
 
-**Completion.** Flux never records a written criterion as met, so "Complete" marks the task done only when it has
-no written criteria and its prerequisites are done. Otherwise the task shows **Ready to close**. Done is then an
-ordinary versioned change by a person. A required link that cannot be read now (unavailable binding or failed
+**Completion.** Merged alone never finishes a task, as in the accepted design. "Complete" marks it done only when
+all of these hold:
+- the task has no written criteria (Flux never records a criterion as met);
+- its prerequisites are done;
+- every merged PR's head has current verified checks: at least one success and nothing failing, pending or truncated.
+
+Otherwise the task shows **Ready to close**, and only while its prerequisites are done, so the one-tap Done can
+succeed. Done is then an ordinary versioned change by a person. A required link that cannot be read now (unavailable binding or failed
 refresh) stops the rule from acting at all.
 
 **Where it runs.** In the existing per-binding processing unit, after the facts are saved, for the tasks whose links

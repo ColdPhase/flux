@@ -68,10 +68,23 @@ describe('GitHub task rule evaluation (#74 G-1a)', () => {
     assert.deepEqual([criteria.code, criteria.status, criteria.readyToClose], ['merged_ready', 'in_progress', true], 'written criteria are never checked off by a merge');
     const ready = effect(evaluateGithubRule(rule({ mode: 'ready', expectedStatus: 'in_progress' }), task({ status: 'in_progress' }), [merged(42)]));
     assert.deepEqual([ready.code, ready.status, ready.readyToClose], ['merged_ready', 'in_progress', true]);
-    const waiting = evaluateGithubRule(rule(), task({ prerequisitesMet: false }), [merged(42)]);
-    assert.deepEqual([effect(waiting).status, effect(waiting).readyToClose], ['open', true], 'unmet prerequisites keep it from starting or finishing');
+    assert.deepEqual(evaluateGithubRule(rule(), task({ prerequisitesMet: false }), [merged(42)]), { kind: 'none', repin: false },
+      'unmet prerequisites keep it from starting or finishing, and Ready to close is not offered where Done would fail');
+    const reopened = evaluateGithubRule(rule({ expectedStatus: 'in_progress', readyToClose: true }), task({ status: 'in_progress', prerequisitesMet: false }), [merged(42)]);
+    assert.deepEqual([effect(reopened).code, effect(reopened).readyToClose, effect(reopened).status], ['merged_ready', false, 'in_progress'], 'a prerequisite reopened later withdraws it');
     assert.deepEqual(evaluateGithubRule(rule(), task({ prerequisitesMet: false }), [pull(42)]), { kind: 'none', repin: false });
     assert.equal(defaultGithubRuleMode([]), 'complete'); assert.equal(defaultGithubRuleMode(['A criterion']), 'ready');
+  });
+
+  test('merged alone never finishes: Complete needs current verified checks on every merged head', () => {
+    const inProgress = { expectedStatus: 'in_progress' as const };
+    const failed = effect(evaluateGithubRule(rule(inProgress), task({ status: 'in_progress' }), [merged(41), pull(42, { state: 'closed', merged: true, checks: [{ name: 'ci', state: 'failure' }] })]));
+    assert.deepEqual([failed.code, failed.status, failed.readyToClose], ['merged_ready', 'in_progress', true], 'a failed check on a merged head only offers Ready to close');
+    for (const checks of [[], [{ name: 'ci', state: 'pending' as const }], [{ name: 'lint', state: 'neutral' as const }]])
+      assert.equal(effect(evaluateGithubRule(rule(inProgress), task({ status: 'in_progress' }), [pull(42, { state: 'closed', merged: true, checks })])).code, 'merged_ready',
+        `checks ${JSON.stringify(checks)} are not verified`);
+    assert.equal(effect(evaluateGithubRule(rule(inProgress), task({ status: 'in_progress' }), [pull(42, { state: 'closed', merged: true, truncated: true })])).code, 'merged_ready');
+    assert.equal(effect(evaluateGithubRule(rule(inProgress), task({ status: 'in_progress' }), [merged(42)])).code, 'merged_done');
   });
 
   test('closed without merge blocks and is never completion, even with another PR merged; reopening clears it', () => {
@@ -101,7 +114,11 @@ describe('GitHub task rule evaluation (#74 G-1a)', () => {
       'a title, owner or criteria edit keeps the rule active');
     assert.equal(manuallyChanged(rule(), task({ status: 'done', version: 9 })), false, 'finished work is not the rule\'s to suspend over');
     const shown = presentGithubRule(rule({ readyToClose: true, expectedStatus: 'in_progress' }), task({ status: 'blocked', blocker: 'x', version: 2 }));
-    assert.deepEqual([shown.state, shown.suspendedReason, shown.readyToClose], ['suspended', 'manual_change', true], 'readers see the suspension before the next delivery');
+    assert.deepEqual([shown.state, shown.suspendedReason, shown.readyToClose], ['suspended', 'manual_change', false],
+      'readers see the suspension before the next delivery, and a paused rule offers no Ready to close');
+    const lost = presentGithubRule({ ...rule({ readyToClose: true }), repositoryUnavailable: true }, task());
+    assert.deepEqual([lost.state, lost.suspendedReason, lost.readyToClose], ['suspended', 'repository_unavailable', false], 'an inactive required binding shows as paused');
+    assert.equal(presentGithubRule({ ...rule({ state: 'off' }), repositoryUnavailable: true }, task()).state, 'off');
     assert.equal(presentGithubRule(rule({ readyToClose: true }), task({ status: 'done', version: 2 })).readyToClose, false, 'done work is not ready to close');
   });
 });

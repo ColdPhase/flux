@@ -118,7 +118,7 @@ test('task Details: turn the rule on, see sourced automatic changes, resume afte
   const toggle = details(page).getByRole('switch', { name: 'Let linked PRs move this task' });
   await details(page).getByRole('link', { name: '#42 · Keep a manual off switch when calibration fails' }).waitFor();
   assert.equal(await toggle.isChecked(), false);
-  await details(page).getByText('Everyone who can see this task sees these changes.', { exact: false }).waitFor();
+  await details(page).getByText('Everyone who can see this task sees these changes, with PR numbers, check names and commits.', { exact: false }).waitFor();
   await evidence(page, 'desktop-off');
   await toggle.click(); // controlled by the server's answer, so not Playwright's check()
   await details(page).getByText('Set up by Ada Lind.', { exact: false }).waitFor();
@@ -136,7 +136,7 @@ test('task Details: turn the rule on, see sourced automatic changes, resume afte
 
   // A person changes the status by hand: the rule pauses until someone resumes it.
   await details(page).getByLabel('Status', { exact: true }).selectOption('in_progress');
-  await details(page).getByText('Paused because the status or blocker was changed by hand.', { exact: false }).waitFor();
+  await details(page).getByText('Paused because someone changed the status or blocker by hand.', { exact: false }).waitFor();
   await evidence(page, 'desktop-paused');
   await details(page).getByRole('button', { name: 'Resume' }).click();
   await details(page).getByText('Paused because', { exact: false }).waitFor({ state: 'detached' });

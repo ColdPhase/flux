@@ -16,9 +16,54 @@ const bindingView = (row: Binding) => ({ ...row, host: 'github.com' as const });
 const ruleView = (row: Rule) => row;
 const changeView = (row: RuleChange) => row;
 const linkView = (row: Link) => { const { id, workspaceId, projectId, taskId, bindingId, role, facts, verifiedAt, state } = row; return { id, workspaceId, projectId, taskId, bindingId, role, facts, verifiedAt, state }; };
+const LOCAL = { origin: 'binding' as const, deliveryId: null };
+const ids = (rows: { id: string }[]) => rows.map((row) => row.id);
 export function githubRows(db: DbExecutor) {
   const b = s.githubBindings; const l = s.githubTaskLinks; const p = s.githubProcessing; const d = s.githubDeliveries;
-  const r = s.githubTaskRules; const c = s.githubTaskRuleChanges; const f = s.githubRuleDefaults;
+  const r = s.githubTaskRules; const c = s.githubTaskRuleChanges; const f = s.githubRuleDefaults; const w = s.projectWorkItems;
+  /**
+   * A disconnected, uninstalled, removed or de-authorized binding suspends every active task rule that reads it
+   * (#74 G-1a, AC-3), and a revoked authorization suspends the rules its person set up: the rule shows as paused with
+   * a history line, never acts on a later delivery, and re-binding or reconnecting does not restart it; a person
+   * resumes it. Lock order as in processing: the caller's credential/binding rows, then the affected task rows
+   * ascending (key share, for the history row), then their rule rows ascending.
+   */
+  async function suspendRules(scope: { bindingIds: string[] } | { authorUserId: string } | { authorGithubUserId: string; appId: string },
+    cause: { origin: 'webhook' | 'binding'; deliveryId: string | null }) {
+    const reason = 'bindingIds' in scope ? 'repository_unavailable' as const : 'author_access' as const;
+    const ours = (rule: Rule) => 'bindingIds' in scope || ('authorUserId' in scope ? rule.authorUserId === scope.authorUserId
+      : rule.authorGithubUserId === scope.authorGithubUserId && rule.appId === scope.appId);
+    let taskIds: string[];
+    if ('bindingIds' in scope) {
+      if (!scope.bindingIds.length) return 0;
+      taskIds = (await db.select({ taskId: l.taskId }).from(l).where(and(inArray(l.bindingId, scope.bindingIds), eq(l.role, 'required_output')))).map((row) => row.taskId);
+    } else {
+      taskIds = (await db.select({ taskId: r.taskId }).from(r).where(and(eq(r.state, 'active'), 'authorUserId' in scope ? eq(r.authorUserId, scope.authorUserId)
+        : and(eq(r.authorGithubUserId, scope.authorGithubUserId), eq(r.appId, scope.appId))))).map((row) => row.taskId);
+    }
+    taskIds = [...new Set(taskIds)].sort();
+    if (!taskIds.length) return 0;
+    const reads = await db.select({ taskId: l.taskId, bindingId: l.bindingId }).from(l).where(and(inArray(l.taskId, taskIds), eq(l.role, 'required_output')))
+      .orderBy(asc(l.taskId), asc(l.bindingId));
+    const bindingOf = new Map<string, string>();
+    for (const read of reads) if (!bindingOf.has(read.taskId) && (!('bindingIds' in scope) || scope.bindingIds.includes(read.bindingId))) bindingOf.set(read.taskId, read.bindingId);
+    const tasks = new Map((await db.select({ id: w.id, status: w.status, version: w.version }).from(w)
+      .where(inArray(w.id, taskIds)).orderBy(asc(w.id)).for('key share')).map((task) => [task.id, task]));
+    const rules = (await db.select().from(r).where(and(inArray(r.taskId, taskIds), eq(r.state, 'active'))).orderBy(asc(r.taskId)).for('update')).filter(ours);
+    if (!rules.length) return 0;
+    const now = new Date();
+    await db.update(r).set({ state: 'suspended', suspendedReason: reason, readyToClose: false, updatedAt: now })
+      .where(inArray(r.taskId, rules.map((rule) => rule.taskId)));
+    const history = rules.flatMap((rule) => {
+      const task = tasks.get(rule.taskId); const bindingId = bindingOf.get(rule.taskId);
+      return task && bindingId ? [{ id: randomUUID(), workspaceId: rule.workspaceId, projectId: rule.projectId, taskId: rule.taskId,
+        code: reason === 'repository_unavailable' ? 'suspended_repository' as const : 'suspended_access' as const, fromStatus: task.status, toStatus: task.status,
+        blocker: null, readyToClose: false, authorUserId: rule.authorUserId, linkId: null, pullNumber: null, headSha: null, checkName: null,
+        deliveryId: cause.deliveryId, bindingId, origin: cause.origin, taskVersion: task.version, createdAt: now }] : [];
+    });
+    if (history.length) await db.insert(c).values(history).onConflictDoNothing();
+    return rules.length;
+  }
   return {
     async binding(id: string, lock = false) {
       const query = db.select().from(b).where(eq(b.id, id));
@@ -39,6 +84,7 @@ export function githubRows(db: DbExecutor) {
     async disconnect(id: string) {
       await db.update(b).set({ state: 'disconnected' }).where(eq(b.id, id));
       await db.update(l).set({ state: 'unavailable' }).where(eq(l.bindingId, id));
+      await suspendRules({ bindingIds: [id] }, LOCAL);
     },
     async task(id: string) {
       const [row] = await db.select({ id: s.projectWorkItems.id, workspaceId: s.projectWorkItems.workspaceId, projectId: s.projectWorkItems.projectId })
@@ -56,6 +102,7 @@ export function githubRows(db: DbExecutor) {
     async saveFacts(id: string, facts: GithubPullFacts) { await db.update(l).set({ facts, state: 'current', verifiedAt: new Date() }).where(eq(l.id, id)); },
     async admit(input: Delivery): Promise<'created' | 'duplicate' | 'conflict'> {
       const inserted = await db.insert(d).values(input).onConflictDoNothing().returning({ id: d.id });
+      const signed = { origin: 'webhook' as const, deliveryId: input.id };
       if (!inserted.length) {
         const [old] = await db.select({ digest: d.digest, event: d.event }).from(d).where(eq(d.id, input.id));
         return old?.digest === input.digest && old.event === input.event ? 'duplicate' : 'conflict';
@@ -64,16 +111,18 @@ export function githubRows(db: DbExecutor) {
         const userId = input.providerObjectId;
         if (input.payload.action === 'revoked' && userId) {
           await db.update(s.githubCredentials).set({ state: 'revoked', encryptedTokens: null }).where(and(eq(s.githubCredentials.githubUserId, userId), eq(s.githubCredentials.appId, input.appId)));
-          await db.update(b).set({ state: 'revoked' }).where(and(eq(b.authorGithubUserId, userId), eq(b.appId, input.appId)));
+          await suspendRules({ bindingIds: ids(await db.update(b).set({ state: 'revoked' }).where(and(eq(b.authorGithubUserId, userId), eq(b.appId, input.appId))).returning({ id: b.id })) }, signed);
+          await suspendRules({ authorGithubUserId: userId, appId: input.appId }, signed);
         }
       }
       if (input.event === 'installation' && ['deleted', 'suspend', 'suspended'].includes(String(input.payload.action)))
-        await db.update(b).set({ state: 'revoked' }).where(and(eq(b.installationId, input.installationId ?? ''), eq(b.appId, input.appId)));
+        await suspendRules({ bindingIds: ids(await db.update(b).set({ state: 'revoked' }).where(and(eq(b.installationId, input.installationId ?? ''), eq(b.appId, input.appId))).returning({ id: b.id })) }, signed);
       if (input.event === 'installation_repositories' && input.payload.action === 'removed') {
         const removed = Array.isArray(input.payload.repositories_removed) ? input.payload.repositories_removed as { id?: unknown }[] : [];
-        const ids = removed.flatMap((repo) => typeof repo.id === 'string' && /^[1-9]\d{0,24}$/.test(repo.id) ? [repo.id]
+        const repositories = removed.flatMap((repo) => typeof repo.id === 'string' && /^[1-9]\d{0,24}$/.test(repo.id) ? [repo.id]
           : typeof repo.id === 'number' && Number.isSafeInteger(repo.id) && repo.id > 0 ? [String(repo.id)] : []);
-        if (ids.length) await db.update(b).set({ state: 'revoked' }).where(and(eq(b.installationId, input.installationId ?? ''), inArray(b.repositoryId, ids), eq(b.appId, input.appId)));
+        if (repositories.length) await suspendRules({ bindingIds: ids(await db.update(b).set({ state: 'revoked' })
+          .where(and(eq(b.installationId, input.installationId ?? ''), inArray(b.repositoryId, repositories), eq(b.appId, input.appId))).returning({ id: b.id })) }, signed);
       }
       if (input.repositoryId && input.installationId) {
         const bindings = await db.select({ id: b.id }).from(b).where(and(eq(b.repositoryId, input.repositoryId), eq(b.installationId, input.installationId), eq(b.state, 'active'), eq(b.appId, input.appId),
@@ -83,6 +132,11 @@ export function githubRows(db: DbExecutor) {
       return 'created';
     },
     async delivery(id: string) { const [row] = await db.select().from(d).where(eq(d.id, id)); return row ?? null; },
+    /** Unlocked: lets a duplicate skip provider calls; the locked read below still decides. */
+    async processingState(deliveryId: string, bindingId: string) {
+      const [row] = await db.select({ state: p.state }).from(p).where(and(eq(p.deliveryId, deliveryId), eq(p.bindingId, bindingId)));
+      return row?.state ?? null;
+    },
     async processing(deliveryId: string, bindingId: string) {
       const [row] = await db.select().from(p).where(and(eq(p.deliveryId, deliveryId), eq(p.bindingId, bindingId))).for('update');
       return row?.state ?? null;
@@ -108,7 +162,7 @@ export function githubRows(db: DbExecutor) {
       const bindings = await db.update(b).set({ state: 'revoked' }).returning({ id: b.id });
       await db.update(l).set({ state: 'unavailable' });
       // Restored standing task rules never act on restored authority; a person resumes them after reconnecting.
-      await db.update(s.githubTaskRules).set({ state: 'suspended', suspendedReason: 'author_access', updatedAt: new Date() }).where(eq(s.githubTaskRules.state, 'active'));
+      await suspendRules({ bindingIds: ids(bindings) }, LOCAL);
       await db.update(s.githubOauthFlows).set({ consumedAt: new Date(), encryptedVerifier: null });
       await db.update(p).set({ state: 'completed', errorCode: 'GITHUB_RESTORED_AUTHORIZATION_REVOKED' });
       return { credentials: credentials.length, bindings: bindings.length };
@@ -122,15 +176,25 @@ export function githubRows(db: DbExecutor) {
         taskId: link.taskId, workspaceId: binding.workspaceId, projectId: binding.projectId, headSha: facts.headSha,
         event: delivery.event, providerObjectId: delivery.providerObjectId, correlationKey, state: 'pending_audience_adapter' }).onConflictDoNothing();
     },
+    /** After an explicit authorization revoke: the rules reading its bindings and the rules this person set up (see `suspendRules`). */
+    async suspendRulesFor(bindingIds: string[], authorUserId: string) {
+      return await suspendRules({ bindingIds }, LOCAL) + await suspendRules({ authorUserId }, LOCAL);
+    },
     async rule(taskId: string, lock = false) {
       const query = db.select().from(r).where(eq(r.taskId, taskId));
       const [row] = lock ? await query.for('update') : await query;
       return row ? ruleView(row) : null;
     },
-    /** Rules of these tasks for the native task read model; ids are not authorized here. */
+    /**
+     * Rules of these tasks for the native task read model, each with whether a required link's repository binding is
+     * no longer active (shown as paused even before anything suspended it). Ids are not authorized here.
+     */
     async taskRules(taskIds: readonly string[]) {
-      if (!taskIds.length) return new Map<string, Rule>();
-      return new Map((await db.select().from(r).where(inArray(r.taskId, [...taskIds]))).map((row) => [row.taskId, ruleView(row)]));
+      if (!taskIds.length) return new Map<string, Rule & { repositoryUnavailable: boolean }>();
+      const rows = await db.select({ rule: r, repositoryUnavailable: sql<boolean>`EXISTS (SELECT 1 FROM github_task_links gl
+        JOIN github_bindings gb ON gb.id = gl.binding_id WHERE gl.task_id = ${r.taskId} AND gl.role = 'required_output' AND gb.state <> 'active')` })
+        .from(r).where(inArray(r.taskId, [...taskIds]));
+      return new Map(rows.map(({ rule, repositoryUnavailable }) => [rule.taskId, { ...ruleView(rule), repositoryUnavailable: !!repositoryUnavailable }]));
     },
     async saveRule(rule: Rule) {
       await db.insert(r).values(rule).onConflictDoUpdate({ target: r.taskId, set: { ...rule } });

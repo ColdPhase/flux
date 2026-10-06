@@ -6,7 +6,7 @@ import Fastify from 'fastify';
 import { createDatabase, githubRows } from '@flux/db';
 import type { GithubBinding, GithubPullFacts, WorkItem } from '@flux/contracts';
 import { DomainError, githubId, NotFoundError, type GithubProvider, type Principal } from '@flux/core';
-import { createGithubUseCases } from '../../apps/server/src/github/adapters.js';
+import { createGithubRuleUseCases, createGithubUseCases } from '../../apps/server/src/github/adapters.js';
 import { githubWebhookRoutes } from '../../apps/server/src/github/webhook.js';
 import { githubRoutes } from '../../apps/server/src/github/routes.js';
 import { githubCredentials } from '../../apps/server/src/github/credentials.js';
@@ -368,6 +368,7 @@ test('restore maintenance revokes provider credentials, flows and processing whi
   const binding = await cases.bind(actor(owner), place.id, { installationId: INSTALL, repositoryId: REPO });
   const work = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, { body: { title: 'Survives restore' } }), 201) as WorkItem;
   const linked = await cases.link(actor(owner), work.id, { bindingId: binding.id, number: 42, role: 'required_output' }); await cases.reconcile(actor(owner), binding.id);
+  assert.equal((await createGithubRuleUseCases(db, provider).set(actor(owner), work.id, { enabled: true, expectedVersion: work.version })).rule?.state, 'active');
   const app = Fastify({ logger: false }); const identity = registerIdentity(app, { db, config: loadIdentityConfig({ FLUX_PUBLIC_ORIGIN: publicOrigin, FLUX_AUTH_SECRET: process.env.FLUX_AUTH_SECRET, FLUX_AUTH_RATE_LIMIT: 'false' }), mailer: null });
   await app.register(githubRoutes, { db, sessions: identity, config, transport, background: false }); await app.ready();
   try {
@@ -379,6 +380,10 @@ test('restore maintenance revokes provider credentials, flows and processing whi
     assert.equal(await credentials.state(owner.id), 'required'); assert.equal((await githubRows(db).binding(binding.id))?.state, 'revoked');
     assert.equal((await pool.query('SELECT state,facts FROM github_task_links WHERE id=$1', [linked.id])).rows[0].facts.pullId, linked.facts.pullId);
     assert.equal((await pool.query('SELECT state FROM github_task_links WHERE id=$1', [linked.id])).rows[0].state, 'unavailable');
+    assert.deepEqual((await pool.query('SELECT state,suspended_reason FROM github_task_rules WHERE task_id=$1', [work.id])).rows[0],
+      { state: 'suspended', suspended_reason: 'repository_unavailable' }, 'a restored task rule never acts until a person resumes it (#74 G-1a)');
+    assert.deepEqual((await pool.query(`SELECT code,origin,delivery_id FROM github_task_rule_changes WHERE task_id=$1`, [work.id])).rows,
+      [{ code: 'suspended_repository', origin: 'binding', delivery_id: null }]);
     assert.equal((await githubRows(db).due()).length, 0, 'restored jobs cannot resume authority');
     assert.equal((await app.inject({ method: 'GET', url: `/api/v1/integrations/github/callback?state=${state}&code=fixture-code`, headers })).statusCode, 400);
     assert.equal(transport.exchanges, 0, 'restored OAuth flow cannot exchange');

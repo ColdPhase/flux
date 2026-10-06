@@ -142,6 +142,18 @@ changes. Existing task statuses stay `open`, `in_progress`, `blocked`, `done`,
 `not_pursued`; parking remains separate. Execution/review/CI states are projections,
 not additional board columns unless a later contract deliberately changes them.
 
+**Publication of rule effects (G-1a, [O-011](decisions.md), 2026-10-05).** A rule is turned on for one task, by a
+person who can edit it. With a manager's project default on, the writer who links a required PR turns it on, and the
+link form says so first. Turning it on is the explicit publication.
+- Everyone who can read the task sees the rule's status changes, the blocker it writes, and the PR number, short head
+  commit and check name behind each change.
+- PR titles, repository names and URLs stay behind each reader's own repository access. Events carry identifiers and an
+  automation marker, never the author's own action.
+- Merge finishes a task only in Complete mode, when the task has no written criteria, every prerequisite is done and
+  every merged head's checks passed. Otherwise the task shows Ready to close, and only where Done is allowed.
+- Losing the author's access, or a required repository's binding (disconnect, uninstall, removal or revoked
+  authorization), pauses the rule with a history line. Only an explicit Resume restarts it, also after re-binding.
+
 Verify signed webhooks, persist before processing, deduplicate deliveries and
 reconcile out-of-order/missed events against the provider. A failure for one
 binding must not lose another binding's delivery. Retry with current access;

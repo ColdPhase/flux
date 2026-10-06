@@ -152,6 +152,8 @@ export function githubUseCases(uow: GithubUnitOfWork) {
         await ports.access.requireProject(principal, 'read', located.projectId);
         const binding = await ports.rows.binding(bindingId);
         if (!binding) throw new NotFoundError('Binding');
+        // A duplicate of finished work makes no provider calls; the locked read below still decides.
+        if (await ports.rows.processingState(deliveryId, bindingId) !== 'pending') return 'already_completed';
         // Standing task rules act on their authors' current authority, checked before the binding lock (#74 G-1a).
         const authority = await githubRuleAuthority(ports, binding);
         const proof = await current(ports, principal, binding);

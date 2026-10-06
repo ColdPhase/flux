@@ -3,10 +3,12 @@ import { createHmac, randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import Fastify from 'fastify';
 import { createDatabase } from '@flux/db';
-import type { GithubBinding, GithubCapabilities, GithubCheck, GithubPullFacts, GithubTaskLink, GithubTaskRuleView, WorkItem } from '@flux/contracts';
+import type { GithubBinding, GithubCapabilities, GithubCheck, GithubPullFacts, GithubTaskLink, GithubTaskRuleView, ReturnSummary, WorkItem } from '@flux/contracts';
 import { NotFoundError, type GithubProvider, type Principal } from '@flux/core';
 import { createGithubUseCases } from '../../apps/server/src/github/adapters.js';
 import { githubRoutes } from '../../apps/server/src/github/routes.js';
+import { githubCredentials } from '../../apps/server/src/github/credentials.js';
+import { githubTransport } from '../../apps/server/src/github/http.js';
 import type { GithubConfig } from '../../apps/server/src/github/config.js';
 import { loadIdentityConfig, registerIdentity } from '../../apps/server/src/identity/index.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
@@ -28,15 +30,18 @@ const check = (state: GithubCheck['state'], name = 'firmware / test'): GithubChe
 type Pull = { state: 'open' | 'closed'; draft: boolean; merged: boolean; headSha: string; checks: GithubCheck[] };
 
 class RuleProvider implements GithubProvider {
-  allowed = new Map<string, Set<string>>(); generations = new Map<string, string>(); pulls = new Map<string, Pull>();
-  authorize(p: Person, repositories = [REPO, REPO2]) { this.allowed.set(p.id, new Set(repositories)); this.generations.set(p.id, randomUUID()); }
+  allowed = new Map<string, Set<string>>(); generations = new Map<string, string>(); pulls = new Map<string, Pull>(); githubIds = new Map<string, string>();
+  authorize(p: Person, repositories = [REPO, REPO2]) {
+    this.allowed.set(p.id, new Set(repositories)); this.generations.set(p.id, randomUUID());
+    if (!this.githubIds.has(p.id)) this.githubIds.set(p.id, String(7000 + this.githubIds.size)); // one GitHub account per person
+  }
   set(repositoryId: string, number: number, change: Partial<Pull>) {
     this.pulls.set(`${repositoryId}:${number}`, { state: 'open', draft: false, merged: false, headSha: SHA1, checks: [check('success')], ...this.pulls.get(`${repositoryId}:${number}`), ...change });
   }
   async repository(principal: Principal, installationId: string, repositoryId: string) {
     if (!this.allowed.get(principal.id)?.has(repositoryId) || installationId !== INSTALL) throw new NotFoundError('Repository', 'GITHUB_ACCESS_UNAVAILABLE');
     return { host: 'github.com' as const, installationId, repositoryId, owner: 'lamp-team', name: `repo-${repositoryId}`, private: true,
-      url: `https://github.com/lamp-team/repo-${repositoryId}`, githubUserId: `9${principal.id.length}`, appId: APP, authorizationGeneration: this.generations.get(principal.id)! };
+      url: `https://github.com/lamp-team/repo-${repositoryId}`, githubUserId: this.githubIds.get(principal.id)!, appId: APP, authorizationGeneration: this.generations.get(principal.id)! };
   }
   async pull(principal: Principal, repository: { repositoryId: string; url: string }, number: number): Promise<GithubPullFacts> {
     if (!this.allowed.get(principal.id)?.has(repository.repositoryId)) throw new NotFoundError('Pull request', 'GITHUB_ACCESS_UNAVAILABLE');
@@ -122,6 +127,9 @@ describe('linked PRs move the same Flux task (#74 G-1a)', () => {
     assert.deepEqual([history[0]!.code, history[0]!.from, history[0]!.to, history[0]!.pullNumber, history[0]!.headSha, history[0]!.cause.origin],
       ['pull_open', 'open', 'in_progress', 42, SHA1, 'reconcile']);
 
+    // The author learns of what the rule did on their behalf, shown as the rule's doing, not as their own.
+    const mark = (await expectStatus(await owner.browser.request('GET', `/api/v1/return?place=project&id=${current.projectId}`), 200) as ReturnSummary).mark;
+    expectStatus(await owner.browser.request('PUT', '/api/v1/return-points', { body: { place: { type: 'project', id: current.projectId }, mark } }), 200);
     fixture.set(REPO, 42, { draft: false, checks: [check('success', 'lint'), check('failure')] });
     const failed = randomUUID();
     assert.equal((await webhook('check_run', checkEvent(REPO, 42), failed)).statusCode, 202);
@@ -130,6 +138,9 @@ describe('linked PRs move the same Flux task (#74 G-1a)', () => {
     assert.deepEqual([current.status, current.blocker], ['blocked', 'Check “firmware / test” failed on PR #42']);
     history = await changes(viewer, task);
     assert.deepEqual([history[0]!.code, history[0]!.checkName, history[0]!.cause], ['check_failed', 'firmware / test', { origin: 'webhook', deliveryId: failed }]);
+    const back = expectStatus(await owner.browser.request('GET', `/api/v1/return?place=project&id=${current.projectId}`), 200) as ReturnSummary;
+    assert.ok(back.items.some((item) => item.kind === 'work' && item.text === 'Blocked: Keep a manual off switch' && item.actor === 'GitHub rule'),
+      `the author sees the CI-caused block: ${JSON.stringify(back.items.map((item) => [item.kind, item.text, item.actor]))}`);
     assert.equal((await webhook('check_run', checkEvent(REPO, 42), failed)).statusCode, 202, 'the same delivery again is a no-op');
     await webhook('check_run', checkEvent(REPO, 42)); await webhook('pull_request', pullEvent('synchronize', REPO, 42)); await settle(binding);
     assert.equal((await work(viewer, task)).version, current.version, 'redeliveries of the same facts change nothing');
@@ -161,9 +172,12 @@ describe('linked PRs move the same Flux task (#74 G-1a)', () => {
     assert.equal((await call(viewer, 'PUT', rulePath(task), { enabled: false, expectedVersion: current.version })).status, 403);
     assert.equal((await call(outsider, 'GET', rulePath(task))).status, 404);
     assert.equal((await call(outsider, 'PUT', rulePath(task), { enabled: false, expectedVersion: current.version })).status, 404);
-    const events = await pool.query(`SELECT actor_id,data FROM events WHERE kind='project.work_updated.v1' AND data->>'workId'=$1`, [task.id]);
-    assert.ok(events.rowCount! >= 4); assert.ok(events.rows.every((row) => Object.keys(row.data).join() === 'workId'), 'events carry identifiers only');
-    assert.ok(events.rows.some((row) => row.actor_id === `human:${owner.id}`), 'the rule acts as the person who set it up');
+    const events = await pool.query(`SELECT actor_id,data FROM events WHERE kind='project.work_updated.v1' AND data->>'workId'=$1 ORDER BY seq`, [task.id]);
+    assert.ok(events.rows.every((row) => Object.keys(row.data).every((key) => key === 'workId' || key === 'automation')), 'events carry identifiers only');
+    const automated = events.rows.filter((row) => row.data.automation === 'github_rule');
+    assert.equal(automated.length, 4, 'every rule-caused change is marked as automation');
+    assert.ok(automated.every((row) => row.actor_id === `human:${owner.id}`), 'on behalf of the person who set it up');
+    assert.equal(events.rows[0].data.automation, undefined, 'turning the rule on is the person\'s own action');
   });
 
   test('Ready to close, two required PRs across repositories, closed unmerged and related-only links', async () => {
@@ -285,5 +299,77 @@ describe('linked PRs move the same Flux task (#74 G-1a)', () => {
     assert.equal((await changes(viewer, task))[0]!.linkId, link.id);
     assert.equal((await call(owner, 'PUT', path, { enabled: false })).status, 200);
     assert.equal(((await call(owner, 'GET', `/api/v1/projects/${place.id}/github/capabilities`)).json as GithubCapabilities).ruleDefault, null);
+  });
+
+  // Runs last: uninstalling the App revokes every binding of this test App's installation.
+  test('losing a repository or authorization pauses the rule truthfully; re-binding never restarts it without Resume', async () => {
+    const running = async (label: string, number: number, author: 'owner' | 'writer' = 'owner', repositoryId = REPO) => {
+      const scene = await setup(label);
+      const binding = repositoryId === REPO ? scene.binding : await github.bind(actor(scene.owner), scene.place.id, { installationId: INSTALL, repositoryId });
+      fixture.set(repositoryId, number, {});
+      await github.link(actor(scene.owner), scene.task.id, { bindingId: binding.id, number, role: 'required_output' });
+      await enable(scene[author], scene.task); await settle(binding);
+      assert.equal((await work(scene.viewer, scene.task)).status, 'in_progress');
+      return { ...scene, binding };
+    };
+    const paused = async (scene: { viewer: Person; task: WorkItem }, reason: string, cause: GithubTaskRuleView['changes'][number]['cause']['origin']) => {
+      const current = await work(scene.viewer, scene.task);
+      assert.deepEqual([current.status, current.githubRule?.state, current.githubRule?.suspendedReason], ['in_progress', 'suspended', reason]);
+      const [latest] = await changes(scene.viewer, scene.task);
+      assert.deepEqual([latest!.code, latest!.cause.origin, latest!.from, latest!.to], [reason === 'author_access' ? 'suspended_access' : 'suspended_repository', cause, 'in_progress', 'in_progress']);
+      const row = (await pool.query('SELECT state,suspended_reason FROM github_task_rules WHERE task_id=$1', [scene.task.id])).rows[0];
+      assert.deepEqual(row, { state: 'suspended', suspended_reason: reason }, 'persisted, not only presented');
+      return current;
+    };
+
+    // A manager's disconnect, then re-binding the same repository: no autorun until a person resumes.
+    const disconnected = await running('Unbound', 80);
+    await github.disconnect(actor(disconnected.owner), disconnected.binding.id);
+    let current = await paused(disconnected, 'repository_unavailable', 'binding');
+    assert.equal((await github.bind(actor(disconnected.owner), disconnected.place.id, { installationId: INSTALL, repositoryId: REPO })).id, disconnected.binding.id);
+    fixture.set(REPO, 80, { checks: [check('failure')] });
+    await webhook('check_run', checkEvent(REPO, 80)); await settle(disconnected.binding);
+    assert.deepEqual([(await work(disconnected.viewer, disconnected.task)).status, (await work(disconnected.viewer, disconnected.task)).githubRule?.state], ['in_progress', 'suspended']);
+    assert.equal((await call(disconnected.owner, 'POST', `${rulePath(disconnected.task)}/resume`, { expectedVersion: current.version })).status, 200);
+    await settle(disconnected.binding);
+    current = await work(disconnected.viewer, disconnected.task);
+    assert.deepEqual([current.status, current.blocker], ['blocked', 'Check “firmware / test” failed on PR #80'], 'resumed: it acts on current facts');
+    // Out of order on unfinished work: a late failure event after the checks passed re-reads current facts.
+    fixture.set(REPO, 80, { checks: [check('success')] });
+    const late = JSON.stringify(checkEvent(REPO, 80));
+    await webhook('check_run', checkEvent(REPO, 80)); await settle(disconnected.binding);
+    assert.equal((await work(disconnected.viewer, disconnected.task)).status, 'in_progress');
+    await webhook('check_run', JSON.parse(late)); await settle(disconnected.binding);
+    assert.equal((await work(disconnected.viewer, disconnected.task)).status, 'in_progress', 'a late failure event cannot restore an old block');
+
+    // An explicit authorization revoke: the binding author's revokes their bindings, the rule author's their rules.
+    const credentials = githubCredentials(db, config, githubTransport());
+    const byWriter = await running('Revoked author', 81, 'writer');
+    await credentials.revoke(byWriter.writer.id);
+    await paused(byWriter, 'author_access', 'binding');
+    const byOwner = await running('Revoked binding', 82, 'writer');
+    await credentials.revoke(byOwner.owner.id);
+    await paused(byOwner, 'repository_unavailable', 'binding');
+
+    // A signed authorization revocation, and a repository removed from the installation.
+    const signed = await running('Signed revocation', 83);
+    const revoked = randomUUID();
+    assert.equal((await webhook('github_app_authorization', { action: 'revoked', sender: { id: Number(fixture.githubIds.get(signed.owner.id)) } }, revoked)).statusCode, 202);
+    await paused(signed, 'repository_unavailable', 'webhook');
+    assert.equal((await changes(signed.viewer, signed.task))[0]!.cause.deliveryId, revoked);
+    const removed = await running('Removed repository', 84, 'owner', REPO2);
+    assert.equal((await webhook('installation_repositories', { action: 'removed', installation: { id: Number(INSTALL), app_id: Number(APP) },
+      repositories_removed: [{ id: Number(REPO2) }] })).statusCode, 202);
+    await paused(removed, 'repository_unavailable', 'webhook');
+
+    // The App uninstalled: paused, and a manager re-binding afterwards starts nothing.
+    const uninstalled = await running('Uninstalled', 85);
+    assert.equal((await webhook('installation', { action: 'deleted', installation: { id: Number(INSTALL), app_id: Number(APP) } })).statusCode, 202);
+    current = await paused(uninstalled, 'repository_unavailable', 'webhook');
+    await github.bind(actor(uninstalled.owner), uninstalled.place.id, { installationId: INSTALL, repositoryId: REPO });
+    fixture.set(REPO, 85, { checks: [check('failure')] });
+    await webhook('check_run', checkEvent(REPO, 85)); await settle(uninstalled.binding);
+    const after = await work(uninstalled.viewer, uninstalled.task);
+    assert.deepEqual([after.status, after.version, after.githubRule?.state], ['in_progress', current.version, 'suspended'], 'no autorun after re-binding');
   });
 });

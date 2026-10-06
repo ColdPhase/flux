@@ -97,8 +97,11 @@ requires explicit repository reconnection by a manager.
 move this task** and picks what happens once every required PR is merged: **Ready to close** (default when the task
 has written criteria) or **Mark it done**. A manager can make that the project default for new required links.
 - An open required PR starts the task, a failing check blocks it and checks passing again unblock it.
-- A PR closed without merge blocks it.
-- A manual change of status or blocker pauses the rule until someone resumes it.
+- A PR closed without merge blocks it. Done needs Complete mode, no written criteria, done prerequisites and passing
+  checks on every merged head; otherwise the task shows Ready to close.
+- A manual change of status or blocker pauses the rule until someone resumes it. So does losing the author's access
+  or a required repository: disconnect, uninstall, removal from the installation, revoked authorization or restore.
+  Re-binding never restarts it.
 - Each automatic change appears in the task's history as "by GitHub rule · set up by <name>", with the PR, its
   head commit and the delivery or reconciliation behind it.
 - Routes: `GET`/`PUT /api/v1/work/<taskId>/github-rule`, `POST …/github-rule/resume`, and `PUT

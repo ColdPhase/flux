@@ -9,7 +9,8 @@ import type { GithubRuleChangeCode, GithubRuleMode, GithubTaskRule, WorkStatus }
  * | A required PR is open (also a draft)         | open -> in_progress                                               |
  * | A check fails on an open required PR's head  | open/in_progress -> blocked, "Check “ci” failed on PR #42"        |
  * | Every check passes again                     | blocked by this rule -> in_progress                               |
- * | Every required PR is merged                  | done (mode complete, no written criteria) or Ready to close       |
+ * | Every required PR is merged                  | done (Complete, no written criteria, every merged head's checks   |
+ * |                                              | passed, prerequisites done) or Ready to close                     |
  * | A required PR is closed without merge        | blocked, "PR #42 closed without merge"; never done                |
  *
  * It never touches parked, done or not-pursued work, never clears a blocker a person wrote, never reassigns and never
@@ -18,6 +19,11 @@ import type { GithubRuleChangeCode, GithubRuleMode, GithubTaskRule, WorkStatus }
  */
 
 export type GithubRuleBlock = 'check' | 'closed';
+/**
+ * `data.automation` of a `project.work_updated.v1` event a task rule caused on its author's behalf. Return/Home, the
+ * comparison scheduler and other consumers treat it as automation, never as that person's own action.
+ */
+export const GITHUB_RULE_AUTOMATION = 'github_rule';
 
 export interface GithubRuleRecord {
   taskId: string;
@@ -38,6 +44,8 @@ export interface GithubRuleRecord {
   readyToClose: boolean;
   updatedAt: Date;
 }
+/** A rule as read for presentation: whether a required link's repository binding is no longer active. */
+export type GithubRuleReading = GithubRuleRecord & { repositoryUnavailable?: boolean };
 
 export interface GithubRuleTask {
   status: WorkStatus;
@@ -92,13 +100,17 @@ export function manuallyChanged(rule: Pick<GithubRuleRecord, 'expectedVersion' |
   return task.status !== rule.expectedStatus || task.blocker !== rule.expectedBlocker;
 }
 
-/** The rule as its readers see it: a manual change shows as suspended before the next delivery persists it. */
-export function presentGithubRule(rule: GithubRuleRecord, task: Pick<GithubRuleTask, 'version' | 'status' | 'blocker' | 'parked'>): Omit<GithubTaskRule, 'setUpBy'> {
-  const manual = rule.state === 'active' && manuallyChanged(rule, task);
+/**
+ * The rule as its readers see it: a manual change, or a required repository whose binding is no longer active, shows
+ * as suspended before anything persists it. Ready to close is offered only by an active rule on unfinished work.
+ */
+export function presentGithubRule(rule: GithubRuleReading, task: Pick<GithubRuleTask, 'version' | 'status' | 'blocker' | 'parked'>): Omit<GithubTaskRule, 'setUpBy'> {
+  const derived = rule.state !== 'active' ? null : rule.repositoryUnavailable ? 'repository_unavailable' as const : manuallyChanged(rule, task) ? 'manual_change' as const : null;
+  const state = derived ? 'suspended' : rule.state;
   return {
-    mode: rule.mode, state: manual ? 'suspended' : rule.state, suspendedReason: manual ? 'manual_change' : rule.suspendedReason,
+    mode: rule.mode, state, suspendedReason: derived ?? rule.suspendedReason,
     expectedVersion: rule.expectedVersion, updatedAt: rule.updatedAt.toISOString(),
-    readyToClose: rule.state !== 'off' && rule.readyToClose && !task.parked && !FINISHED.has(task.status),
+    readyToClose: state === 'active' && rule.readyToClose && !task.parked && !FINISHED.has(task.status),
   };
 }
 
@@ -106,6 +118,8 @@ const clip = (name: string) => name.length > GITHUB_CHECK_NAME_LIMIT ? `${name.s
 const byNumber = (a: GithubRulePull, b: GithubRulePull) => a.number - b.number;
 const passed = (pull: GithubRulePull) => !pull.truncated && pull.checks.length > 0
   && pull.checks.every((check) => check.state === 'success' || check.state === 'neutral');
+/** Merged with current verified checks: at least one success and nothing failing, pending or cut off. */
+const verified = (pull: GithubRulePull) => passed(pull) && pull.checks.some((check) => check.state === 'success');
 
 /** The text the rule writes as the task's blocker; it never includes PR titles or repository names. */
 export function githubRuleBlocker(code: 'check_failed' | 'pull_closed', pull: number, check?: string) {
@@ -135,9 +149,12 @@ export function evaluateGithubRule(rule: Pick<GithubRuleRecord, 'state' | 'mode'
       readyToClose: false, pull: closed, checkName: null } : keep('pull_closed', false, closed);
   } else if (pulls.every((pull) => pull.merged)) {
     const last = pulls.at(-1)!;
-    const finish = rule.mode === 'complete' && task.criteria.length === 0 && task.prerequisitesMet && movable;
+    // Merge alone never finishes: Complete also needs no written criteria and every merged head's checks verified.
+    const finish = rule.mode === 'complete' && task.criteria.length === 0 && task.prerequisitesMet && movable && pulls.every(verified);
+    // Ready to close only where Done is allowed now: every prerequisite done and unparked.
+    const ready = task.prerequisitesMet;
     effect = finish ? { code: 'merged_done', status: 'done', blocker: null, blockedBy: null, readyToClose: false, pull: last, checkName: null }
-      : movable ? start('merged_ready', last, true) : keep('merged_ready', true, last);
+      : movable ? start('merged_ready', last, ready) : keep('merged_ready', ready, last);
   } else {
     const open = pulls.filter((pull) => pull.state === 'open');
     const failing = open.flatMap((pull) => pull.checks.filter((check) => check.state === 'failure').map((check) => ({ pull, check })))[0];

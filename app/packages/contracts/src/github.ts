@@ -59,9 +59,13 @@ export const githubRuleDefaultPath = (projectId: string) => `/api/v1/projects/${
  */
 export interface GithubTaskRule {
   mode: GithubRuleMode;
-  /** `suspended` after a person changed the status or blocker by hand, or when the person who set it up lost access. */
+  /**
+   * `suspended` after a person changed the status or blocker by hand, when the person who set it up lost access, or
+   * when a required PR's repository was disconnected, uninstalled or its authorization revoked. Only an explicit
+   * Resume restarts it, also after the repository is connected again.
+   */
   state: 'active' | 'suspended' | 'off';
-  suspendedReason: 'manual_change' | 'author_access' | null;
+  suspendedReason: 'manual_change' | 'author_access' | 'repository_unavailable' | null;
   /** The person on whose authority the rule acts; the last one to turn it on, change its mode or resume it. */
   setUpBy: NamedPrincipal | null;
   /** The task version the rule last saw. A later manual change of status or blocker suspends it. */
@@ -71,7 +75,7 @@ export interface GithubTaskRule {
   updatedAt: string;
 }
 export type GithubRuleChangeCode = 'pull_open' | 'pull_reopened' | 'check_failed' | 'checks_passed' | 'pull_closed'
-  | 'merged_done' | 'merged_ready' | 'suspended_manual' | 'suspended_access';
+  | 'merged_done' | 'merged_ready' | 'suspended_manual' | 'suspended_access' | 'suspended_repository';
 /** One automatic change, shown in the task's history as "by GitHub rule · set up by <name>". */
 export interface GithubRuleChange {
   id: string;
@@ -86,8 +90,11 @@ export interface GithubRuleChange {
   linkId: string | null;
   headSha: string | null;
   checkName: string | null;
-  /** The signed delivery or local reconciliation whose current provider facts caused the change. */
-  cause: { origin: 'webhook' | 'reconcile'; deliveryId: string };
+  /**
+   * The signed delivery or local reconciliation whose current provider facts caused the change; `binding` is a local
+   * disconnect, authorization revocation or restore, which has no delivery.
+   */
+  cause: { origin: 'webhook' | 'reconcile' | 'binding'; deliveryId: string | null };
   setUpBy: NamedPrincipal | null;
   at: string;
 }

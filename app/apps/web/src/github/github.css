@@ -17,6 +17,7 @@
 .github-settings a { color: var(--accent); }
 .github-settings .github-settings__error { color: var(--danger); }
 .github-settings__note { max-width: 75ch; }
+.github-settings .github-settings__disclose { grid-column: 2; margin: 0; color: var(--text); }
 .github-settings__check { display: flex; align-items: center; gap: 10px; min-height: var(--ctl); font-size: var(--fs-md) !important; color: var(--text) !important; }
 .github-settings__check input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
-@media(max-width: 640px) { .github-settings__head { flex-direction: column; gap: 6px; } .github-settings__form { grid-template-columns: 1fr; gap: 6px; } .github-settings__form > .ui-btn, .github-settings__form > .github-settings__actions { grid-column: 1; } .github-settings select, .github-settings input:not([type=checkbox]) { min-height: 44px; } .github-settings__check { min-height: 44px; } .github-settings__repos li { flex-wrap: wrap; } }
+@media(max-width: 640px) { .github-settings__head { flex-direction: column; gap: 6px; } .github-settings__form { grid-template-columns: 1fr; gap: 6px; } .github-settings__form > .ui-btn, .github-settings__form > .github-settings__actions, .github-settings .github-settings__disclose { grid-column: 1; } .github-settings select, .github-settings input:not([type=checkbox]) { min-height: 44px; } .github-settings__check { min-height: 44px; } .github-settings__repos li { flex-wrap: wrap; } }

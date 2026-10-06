@@ -7,6 +7,10 @@ import { InvalidInputError } from '../access/errors.js';
 import { isQuestion, mentions } from '../notifications/addressing.js';
 import type { Principal } from '../principal.js';
 import type { AudienceEvent, ResolvedPlace, ReturnMessage, ReturnPorts, ReturnSketch, StoredReturnPoint } from './ports.js';
+import { GITHUB_RULE_AUTOMATION } from '../github/rules.js';
+
+/** A change a task rule made on its author's behalf (#74 G-1a) is news to that author too, and never shown as theirs. */
+const automated = (event: AudienceEvent) => event.data?.automation === GITHUB_RULE_AUTOMATION;
 
 // "Since you left" (issue #106, foundation 8.8). The summary is built only from the reader's own
 // `event_audience` rows after their return point: the events they could read when each change
@@ -164,7 +168,7 @@ export function createReturnUseCases(ports: ReturnPorts) {
     for (;;) {
       const page = await returns.audienceAfter(recipient, base.seq, SCAN, before);
       read += page.length;
-      const candidates = page.filter((event) => RELEVANT.has(event.kind) && event.actorId !== recipient && event.workspaceId);
+      const candidates = page.filter((event) => RELEVANT.has(event.kind) && (event.actorId !== recipient || automated(event)) && event.workspaceId);
       const newSketches = [...new Set(candidates.filter((event) => event.kind.startsWith('sketch.') && !sketches.has(event.objectId)).map((event) => event.objectId))];
       for (const [id, sketch] of await returns.sketches(newSketches)) sketches.set(id, sketch);
       const events = candidates.filter((event) => {
@@ -301,7 +305,8 @@ export function createReturnUseCases(ports: ReturnPorts) {
     for (const group of groups.values()) {
       const latest = group.events.reduce((a, b) => (b.seq > a.seq ? b : a));
       const at = latest.createdAt.toISOString();
-      const actor = nameOf(latest.actorId);
+      const byRule = automated(latest);
+      const actor = byRule ? 'GitHub rule' : nameOf(latest.actorId);
       const objectId = group.key.slice(group.key.indexOf(':') + 1);
       const base = { id: group.key, at, actor, project: place(group.projectId) };
       // An object must still exist in the project its event was recorded for.
@@ -336,7 +341,7 @@ export function createReturnUseCases(ports: ReturnPorts) {
         const needsYou = mine && !finished && !item.parkedByDecisionId;
         const step = !needsYou ? undefined : item.status === 'blocked'
           ? { priority: 5, text: `See what blocks ${quote(item.title)}`, reason: `It is yours. ${detail}` }
-          : { priority: 6, text: `Pick up ${quote(item.title)}`, reason: created ? `${actor} added it for you.` : `It is yours, and ${actor} changed it.` };
+          : { priority: 6, text: `Pick up ${quote(item.title)}`, reason: created ? `${actor} added it for you.` : byRule ? 'It is yours, and its linked PRs changed it.' : `It is yours, and ${actor} changed it.` };
         items.push({ ...base, kind: 'work', text, detail, needsYou, source, step, relevant: mine || item.createdByKey === me });
         continue;
       }

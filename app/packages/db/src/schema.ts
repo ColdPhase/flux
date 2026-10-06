@@ -1646,7 +1646,7 @@ export const githubTaskRules = pgTable('github_task_rules', {
   taskId: uuid('task_id').primaryKey(), workspaceId: uuid('workspace_id').notNull(), projectId: uuid('project_id').notNull(),
   mode: text('mode', { enum: ['complete', 'ready'] }).notNull(),
   state: text('state', { enum: ['active', 'suspended', 'off'] }).notNull(),
-  suspendedReason: text('suspended_reason', { enum: ['manual_change', 'author_access'] }),
+  suspendedReason: text('suspended_reason', { enum: ['manual_change', 'author_access', 'repository_unavailable'] }),
   authorUserId: text('author_user_id').references(() => authUsers.id, { onDelete: 'set null' }),
   authorGithubUserId: text('author_github_user_id').notNull(), authorGeneration: uuid('author_generation').notNull(), appId: text('app_id').notNull(),
   expectedVersion: integer('expected_version').notNull(), expectedStatus: text('expected_status', { enum: WORK_STATUS }).notNull(),
@@ -1656,12 +1656,12 @@ export const githubTaskRules = pgTable('github_task_rules', {
 }, (t) => [foreignKey({ columns: [t.workspaceId, t.projectId, t.taskId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade')]);
 export const githubTaskRuleChanges = pgTable('github_task_rule_changes', {
   id: uuid('id').primaryKey(), workspaceId: uuid('workspace_id').notNull(), projectId: uuid('project_id').notNull(), taskId: uuid('task_id').notNull(),
-  code: text('code', { enum: ['pull_open', 'pull_reopened', 'check_failed', 'checks_passed', 'pull_closed', 'merged_done', 'merged_ready', 'suspended_manual', 'suspended_access'] }).notNull(),
+  code: text('code', { enum: ['pull_open', 'pull_reopened', 'check_failed', 'checks_passed', 'pull_closed', 'merged_done', 'merged_ready', 'suspended_manual', 'suspended_access', 'suspended_repository'] }).notNull(),
   fromStatus: text('from_status', { enum: WORK_STATUS }).notNull(), toStatus: text('to_status', { enum: WORK_STATUS }).notNull(),
   blocker: text('blocker'), readyToClose: boolean('ready_to_close').notNull(),
   authorUserId: text('author_user_id').references(() => authUsers.id, { onDelete: 'set null' }),
   linkId: uuid('link_id'), pullNumber: integer('pull_number'), headSha: text('head_sha'), checkName: text('check_name'),
-  deliveryId: text('delivery_id').notNull(), bindingId: uuid('binding_id').notNull(), origin: text('origin', { enum: ['webhook', 'reconcile'] }).notNull(),
+  deliveryId: text('delivery_id'), bindingId: uuid('binding_id').notNull(), origin: text('origin', { enum: ['webhook', 'reconcile', 'binding'] }).notNull(),
   taskVersion: integer('task_version').notNull(), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [unique().on(t.taskId, t.deliveryId, t.bindingId), index('github_task_rule_changes_task_idx').on(t.taskId, t.createdAt, t.id),
   foreignKey({ columns: [t.workspaceId, t.projectId, t.taskId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade')]);

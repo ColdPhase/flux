@@ -35,7 +35,7 @@ function expecting(rule: GithubRuleRecord, task: GithubTaskState): GithubRuleRec
 }
 
 async function presentView(ports: GithubPorts, task: GithubTaskState): Promise<GithubTaskRuleView> {
-  const rule = await ports.rows.rule(task.id);
+  const rule = (await ports.rows.taskRules([task.id])).get(task.id);
   const changes = await ports.rows.ruleChanges(task.id, CHANGE_LIMIT);
   const names = await ports.tasks.names([rule?.authorUserId, ...changes.map((change) => change.authorUserId)].filter((value): value is string => !!value));
   const named = (userId: string | null): NamedPrincipal | null => userId ? { kind: 'human', id: userId, name: names.get(userId) ?? 'Former member' } : null;
@@ -60,8 +60,9 @@ function activeRule(task: GithubTaskState, principal: Principal, proof: GithubRe
   return { taskId: task.id, workspaceId: task.workspaceId, projectId: task.projectId, mode: chosen, state: 'active', suspendedReason: null,
     authorUserId: principal.id, authorGithubUserId: proof.githubUserId, authorGeneration: proof.authorizationGeneration, appId: proof.appId,
     expectedVersion: task.version, expectedStatus: task.status, expectedBlocker: task.blocker,
-    // Resuming keeps a block this rule wrote (a person may have reworded it); it never adopts a person's own block.
-    blockedBy: task.status === 'blocked' && existing?.state !== 'off' ? existing?.blockedBy ?? null : null,
+    // Resuming keeps a block only while the task still shows exactly the blocker this rule wrote; a person's own or
+    // reworded blocker is never adopted, so the rule never clears text a person wrote.
+    blockedBy: task.status === 'blocked' && existing?.state !== 'off' && existing?.blockedBy && task.blocker === existing.expectedBlocker ? existing.blockedBy : null,
     readyToClose: existing?.state === 'off' ? false : existing?.readyToClose ?? false, updatedAt: new Date() };
 }
 
@@ -276,7 +277,7 @@ export async function applyGithubRules(ports: GithubPorts, context: { delivery: 
         fromStatus: task.status, toStatus: change.to.status, blocker: change.blocker, readyToClose: next.readyToClose, authorUserId: rule.authorUserId,
         linkId: change.pull?.linkId ?? null, pullNumber: change.pull?.number ?? null, headSha: change.pull?.headSha ?? null, checkName: change.checkName,
         deliveryId: delivery.id, bindingId: binding.id, origin: delivery.origin, taskVersion: change.to.version, createdAt: new Date() });
-      await ports.tasks.updated(actor, change.to);
+      await ports.tasks.updated(actor, change.to, true);
     };
     if (granted.verdict === 'lost') {
       await record({ ...rule, state: 'suspended', suspendedReason: 'author_access', updatedAt: new Date() },

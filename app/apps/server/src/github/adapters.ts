@@ -1,6 +1,6 @@
 import { githubRows } from '@flux/db';
 import {
-  directPrerequisiteIds, enforce, evaluateProject, githubRuleUseCases, githubUseCases, lockProjectGraphs, ServiceUnavailableError, sortedIds,
+  directPrerequisiteIds, enforce, evaluateProject, GITHUB_RULE_AUTOMATION, githubRuleUseCases, githubUseCases, lockProjectGraphs, ServiceUnavailableError, sortedIds,
   unmetPrerequisites, type Database, type GithubProvider, type GithubTasks, type GithubTaskState, type GithubUnitOfWork, type Transaction, type WorkRecord,
 } from '@flux/core';
 import { workRepository } from '../work/adapters.js';
@@ -29,7 +29,9 @@ function githubTasks(tx: Transaction, events: TransactionEventSession): GithubTa
       return tasks;
     },
     async move(taskId, change) { return state(await work.updateWork(taskId, change)); },
-    async updated(principal, task) { await events.record(principal, task.workspaceId, 'project.work_updated.v1', task.projectId, { workId: task.id }); },
+    async updated(principal, task, automated = false) {
+      await events.record(principal, task.workspaceId, 'project.work_updated.v1', task.projectId, { workId: task.id, ...(automated ? { automation: GITHUB_RULE_AUTOMATION } : {}) });
+    },
     async names(userIds) {
       const names = await work.names(userIds.map((id) => ({ kind: 'human' as const, id })));
       return new Map(userIds.flatMap((id) => names.has(`human:${id}`) ? [[id, names.get(`human:${id}`)!] as const] : []));

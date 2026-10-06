@@ -18,6 +18,9 @@ export function GithubSettings() {
 function GithubProjectSettings({ shell }: { shell: ProjectShell }) {
   const projectId = shell.project.id; const prefix = `/api/v1/projects/${projectId}/github`;
   const [capabilities, setCapabilities] = useState<GithubCapabilities | null>(null);
+  // The default as last saved here; the link form discloses it (#74 G-1a).
+  const [savedDefault, setSavedDefault] = useState<{ value: GithubRuleDefault | null } | null>(null);
+  const ruleDefault = savedDefault ? savedDefault.value : capabilities?.ruleDefault ?? null;
   const [bindings, setBindings] = useState<GithubBinding[]>([]); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
   const loadRequest = useRef<AbortController | null>(null);
   const load = useCallback(() => {
@@ -61,22 +64,22 @@ function GithubProjectSettings({ shell }: { shell: ProjectShell }) {
             <a href={binding.url} target="_blank" rel="noreferrer">{binding.owner}/{binding.name}</a><span>{binding.private ? 'Private' : 'Public'}</span>
             {shell.project.access === 'manager' ? <Button variant="secondary" disabled={busy} onClick={() => void disconnect(binding.id)}>Disconnect</Button> : null}</li>)}</ul> : <p>{error ? 'Repository access could not be verified. Refresh access or reconnect your account.' : 'No repositories connected to this project yet.'}</p>}</section>
           {shell.project.access === 'manager' ? <RepositoryPicker prefix={prefix} onBound={refresh} /> : null}
-          {shell.project.access === 'manager' && bindings.length ? <RuleDefault projectId={projectId} current={capabilities.ruleDefault} /> : null}
-          {bindings.length ? <PullReferences projectId={projectId} bindings={bindings} canLink={shell.project.access !== 'viewer'} /> : null}
+          {shell.project.access === 'manager' && bindings.length ? <RuleDefault projectId={projectId} current={ruleDefault} onSaved={(value) => setSavedDefault({ value })} /> : null}
+          {bindings.length ? <PullReferences projectId={projectId} bindings={bindings} canLink={shell.project.access !== 'viewer'} ruleDefault={ruleDefault} /> : null}
         </>}
-    <p className="github-settings__note">Linked PRs move a task only after someone who can edit it turns that on in the task’s Details. A merge never checks off written criteria. Agent event delivery is not available yet.</p>
+    <p className="github-settings__note">Linked PRs move a task only when someone who can edit it turns that on in the task’s Details, or links a required PR while this project’s default below is on. A merge never checks off written criteria. Agent event delivery is not available yet.</p>
   </div></div>;
 }
 /** A manager's default (#74 G-1a): whoever links a required PR to a task without a rule turns its rule on. */
-function RuleDefault({ projectId, current }: { projectId: string; current: GithubRuleDefault | null }) {
-  const id = useId(); const [value, setValue] = useState(current); const [busy, setBusy] = useState(false); const [error, setError] = useState('');
+function RuleDefault({ projectId, current, onSaved }: { projectId: string; current: GithubRuleDefault | null; onSaved: (value: GithubRuleDefault | null) => void }) {
+  const id = useId(); const value = current; const [busy, setBusy] = useState(false); const [error, setError] = useState('');
   async function save(enabled: boolean, mode: GithubRuleDefault['mode']) {
     setBusy(true); setError('');
-    try { setValue((await request<{ ruleDefault: GithubRuleDefault | null }>(githubRuleDefaultPath(projectId), { method: 'PUT', body: { enabled, mode } })).ruleDefault); }
+    try { onSaved((await request<{ ruleDefault: GithubRuleDefault | null }>(githubRuleDefaultPath(projectId), { method: 'PUT', body: { enabled, mode } })).ruleDefault); }
     catch (cause) { setError(failure(cause)); } finally { setBusy(false); }
   }
   return <section><h3>New required pull requests</h3>
-    <p>When someone links a required PR to a task, Flux can turn on “Let linked PRs move this task” for it, on that person’s behalf. Everyone who can see the task sees the changes.</p>
+    <p>When someone links a required PR to a task that has no rule yet, Flux turns on “Let linked PRs move this task” for it, on that person’s behalf. Everyone who can see the task then sees its status changes, with PR numbers, check names and commits.</p>
     <label className="github-settings__check"><input type="checkbox" checked={!!value} disabled={busy} onChange={(event) => void save(event.target.checked, value?.mode ?? null)} /> Turn it on for new required links</label>
     {value ? <div className="github-settings__form"><label htmlFor={`${id}-mode`}>When every PR is merged</label>
       <select id={`${id}-mode`} value={value.mode ?? ''} disabled={busy} onChange={(event) => void save(true, (event.target.value || null) as GithubRuleDefault['mode'])}>
@@ -108,7 +111,7 @@ function RepositoryPicker({ prefix, onBound }: { prefix: string; onBound: () => 
     </form> : null}{error ? <p role="alert" className="github-settings__error">{error}</p> : null}
   </section>;
 }
-function PullReferences({ projectId, bindings, canLink }: { projectId: string; bindings: GithubBinding[]; canLink: boolean }) {
+function PullReferences({ projectId, bindings, canLink, ruleDefault }: { projectId: string; bindings: GithubBinding[]; canLink: boolean; ruleDefault: GithubRuleDefault | null }) {
   const { me } = useShellData();
   const [search, setSearch] = useState('');
   const navigation = useNavigation();
@@ -137,6 +140,7 @@ function PullReferences({ projectId, bindings, canLink }: { projectId: string; b
       <label htmlFor={`${id}-binding`}>Repository</label><select id={`${id}-binding`} value={binding} disabled={busy} onChange={(event) => setBinding(event.target.value)}><option value="">Choose repository…</option>{bindings.map((row) => <option key={row.id} value={row.id}>{row.owner}/{row.name}</option>)}</select>
       <label htmlFor={`${id}-number`}>Pull request number</label><input id={`${id}-number`} type="number" min="1" required disabled={busy} value={number} onChange={(event) => setNumber(event.target.value)} />
       <label htmlFor={`${id}-role`}>Relationship</label><select id={`${id}-role`} value={role} disabled={busy} onChange={(event) => setRole(event.target.value as typeof role)}><option value="required_output">Required output</option><option value="related">Related context</option></select>
+      {ruleDefault && role === 'required_output' ? <p className="github-settings__disclose" role="note">This project’s default turns on “Let linked PRs move this task” for a task without a rule, on your behalf. Everyone who can see the task then sees its status changes, with PR numbers, check names and commits.</p> : null}
       <Button type="submit" busy={busy} disabled={!task || !binding || !number || !canCommit}>Verify and link PR</Button>
     </form> : <div className="github-settings__form">{taskPicker}</div>}{error ? <p role="alert" className="github-settings__error">{error}</p> : null}
     {links.length ? <ul className="github-settings__pulls">{links.map((row) => <li key={row.id}><a href={row.facts.url} target="_blank" rel="noreferrer">#{row.facts.number} · {row.facts.title}</a>

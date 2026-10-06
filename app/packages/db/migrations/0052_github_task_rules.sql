@@ -1,7 +1,8 @@
 -- #74 G-1a: "Let linked PRs move this task". A person who can edit a task turns its rule on; the rule then moves
 -- the same native task from current provider facts of its required PR links (opened, failing checks, merged, closed
--- without merge). Additive: new tables only. Sparse after 0045 (0046-0051 and 0054 are other open branches, 0055 is
--- reserved for #152); recorded on #153.
+-- without merge). Additive: new tables only. Number recorded on #153; 0053 stays unused and 0054 is #261's.
+-- A binding that is disconnected, uninstalled, removed from the installation or loses its authorization suspends
+-- every active rule that reads it; only an explicit Resume restarts it, also after the repository is bound again.
 
 -- One rule per task. The author is the person on whose current Flux and GitHub authority it acts; their GitHub
 -- identity and authorization generation are captured so a reconnect as another account never inherits it.
@@ -13,7 +14,7 @@ CREATE TABLE github_task_rules (
   project_id uuid NOT NULL,
   mode text NOT NULL CHECK (mode IN ('complete', 'ready')),
   state text NOT NULL CHECK (state IN ('active', 'suspended', 'off')),
-  suspended_reason text CHECK (suspended_reason IN ('manual_change', 'author_access')),
+  suspended_reason text CHECK (suspended_reason IN ('manual_change', 'author_access', 'repository_unavailable')),
   author_user_id text REFERENCES auth_users(id) ON DELETE SET NULL,
   author_github_user_id text NOT NULL CHECK (author_github_user_id ~ '^[1-9][0-9]*$'),
   author_generation uuid NOT NULL,
@@ -29,14 +30,15 @@ CREATE TABLE github_task_rules (
 );
 
 -- Every automatic change and suspension, with the PR, head commit, check and the delivery or local reconciliation
--- whose current facts caused it. Delivery ids are kept as text: raw deliveries expire after seven days.
+-- whose current facts caused it. Delivery ids are kept as text: raw deliveries expire after seven days. A local
+-- disconnect, authorization revocation or restore (`binding`) has no delivery.
 CREATE TABLE github_task_rule_changes (
   id uuid PRIMARY KEY,
   workspace_id uuid NOT NULL,
   project_id uuid NOT NULL,
   task_id uuid NOT NULL,
   code text NOT NULL CHECK (code IN ('pull_open', 'pull_reopened', 'check_failed', 'checks_passed', 'pull_closed',
-    'merged_done', 'merged_ready', 'suspended_manual', 'suspended_access')),
+    'merged_done', 'merged_ready', 'suspended_manual', 'suspended_access', 'suspended_repository')),
   from_status text NOT NULL CHECK (from_status IN ('open', 'in_progress', 'blocked', 'done', 'not_pursued')),
   to_status text NOT NULL CHECK (to_status IN ('open', 'in_progress', 'blocked', 'done', 'not_pursued')),
   blocker text,
@@ -46,11 +48,12 @@ CREATE TABLE github_task_rule_changes (
   pull_number integer CHECK (pull_number >= 1),
   head_sha text CHECK (head_sha ~ '^[a-f0-9]{40}([a-f0-9]{24})?$'),
   check_name text CHECK (char_length(check_name) <= 200),
-  delivery_id text NOT NULL,
+  delivery_id text,
   binding_id uuid NOT NULL,
-  origin text NOT NULL CHECK (origin IN ('webhook', 'reconcile')),
+  origin text NOT NULL CHECK (origin IN ('webhook', 'reconcile', 'binding')),
   task_version integer NOT NULL CHECK (task_version >= 1),
   created_at timestamptz NOT NULL DEFAULT now(),
+  CHECK ((origin = 'binding') = (delivery_id IS NULL)),
   UNIQUE (task_id, delivery_id, binding_id),
   FOREIGN KEY (workspace_id, project_id, task_id) REFERENCES project_work_items(workspace_id, project_id, id) ON DELETE CASCADE
 );

@@ -26,8 +26,9 @@ function reason(change: GithubRuleChange) {
     case 'pull_closed': return `${pr} closed without merge`;
     case 'merged_done': return 'Every required PR is merged';
     case 'merged_ready': return 'Every required PR is merged · ready to close';
-    case 'suspended_manual': return 'Paused: the status was changed by hand';
-    case 'suspended_access': return `Paused: ${change.setUpBy?.name ?? 'the person who set it up'} can no longer use it`;
+    case 'suspended_manual': return 'Paused: the status or blocker was changed by hand';
+    case 'suspended_access': return `Paused: ${change.setUpBy?.name ?? 'the person who set it up'} no longer has access to this task or its repository`;
+    case 'suspended_repository': return 'Paused: a linked repository was disconnected or its GitHub access was revoked';
   }
 }
 
@@ -97,7 +98,9 @@ export function TaskPullRequests({ item, project, writable, reload }: { item: Ru
       ) : null}
       {rule?.state === 'suspended' ? (
         <div className="wd-gh-note" role="status">
-          <p>{rule.suspendedReason === 'manual_change' ? 'Paused because the status or blocker was changed by hand.' : `Paused because ${rule.setUpBy?.name ?? 'the person who set it up'} can no longer use it.`} Linked PRs do not move this task until someone resumes it.</p>
+          <p>{rule.suspendedReason === 'manual_change' ? 'Paused because someone changed the status or blocker by hand.'
+            : rule.suspendedReason === 'repository_unavailable' ? 'Paused because a linked repository was disconnected or its GitHub access was revoked.'
+              : `Paused because ${rule.setUpBy?.name ?? 'the person who set it up'} no longer has access to this task or its repository.`} Linked PRs do not move this task until someone resumes it.</p>
           {writable ? <Button variant="secondary" busy={busy} onClick={() => void send(githubTaskRuleResumePath(item.id), 'POST', {})}>Resume</Button> : null}
         </div>
       ) : null}
@@ -108,7 +111,7 @@ export function TaskPullRequests({ item, project, writable, reload }: { item: Ru
               onChange={(event) => void send(githubTaskRulePath(item.id), 'PUT', { enabled: event.target.checked })} />
             <span>Let linked PRs move this task</span>
           </label>
-          <p className="wd-muted">A required PR that opens starts it, a failing check blocks it and merging {mode === 'complete' ? 'finishes it' : 'makes it ready to close'}. Everyone who can see this task sees these changes.</p>
+          <p className="wd-muted">A required PR that opens starts it, a failing check blocks it and {mode === 'complete' && !item.criteria.length ? 'merging with passing checks finishes it' : 'merging makes it ready to close'}. Everyone who can see this task sees these changes, with PR numbers, check names and commits.</p>
           {on ? (
             <div className="wd-gh-mode">
               <label htmlFor={modeId}>When every required PR is merged</label>
