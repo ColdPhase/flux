@@ -197,6 +197,9 @@ describe('publishing from the policy editor reaches the agent\'s next bootstrap'
   };
   const reference = (policy: AgentProjectPolicy): AgentPolicyReference => ({ policyId: `${projectId}:agent-policy`, revision: policy.revision,
     digest: policy.digest, retrievalReference: agentProjectPolicyUri(projectId, policy.revision) });
+  /** The approved policy, publishing a first revision if none exists yet, so each test after the first stands alone. */
+  const startingPoint = async () => (await current())
+    ?? (expect(await publish(owner, edit(0, 'A starting point.')), 201) as unknown as AgentProjectPolicy);
 
   before(async () => {
     owner = (await register(uniqueEmail('editor-owner'), password)).browser;
@@ -259,44 +262,44 @@ describe('publishing from the policy editor reaches the agent\'s next bootstrap'
   });
 
   test('a contributor, a viewer, a member without access and the agent itself are refused and change nothing', async () => {
-    const before = await current();
+    const before = await startingPoint();
     const told = await bootstrap();
     for (const [who, label] of [[contributor, 'contributor'], [viewer, 'viewer']] as const) {
-      const refused = await publish(who, edit(before!.revision, `A ${label}'s scope`));
+      const refused = await publish(who, edit(before.revision, `A ${label}'s scope`));
       assert.deepEqual([refused.status, (refused.json as { code: string }).code], [403, 'FORBIDDEN'], `a ${label} reads the policy but cannot publish it`);
     }
     // A workspace member with no grant on this restricted project learns nothing about it.
     assert.equal((await member.request('GET', path())).status, 404);
-    assert.equal((await publish(member, edit(before!.revision, 'A member\'s scope'))).status, 404);
+    assert.equal((await publish(member, edit(before.revision, 'A member\'s scope'))).status, 404);
     // The agent's own bearer is not a session: the HTTP publish refuses it before any policy check.
     const asAgent = await fetch(new URL(path(), apiUrl), { method: 'PUT', headers: { authorization: `Bearer ${accessToken}`, origin: publicOrigin,
-      'content-type': 'application/json' }, body: JSON.stringify(edit(before!.revision, 'An agent\'s own scope')) });
+      'content-type': 'application/json' }, body: JSON.stringify(edit(before.revision, 'An agent\'s own scope')) });
     assert.equal(asAgent.status, 401);
     assert.deepEqual(await current(), before, 'the approved policy is unchanged');
     assert.deepEqual((await bootstrap()).approved, told.approved, 'and the agent is told the same revision');
     const stored = await pool.query('SELECT count(*)::int AS n FROM agent_project_policies WHERE project_id=$1', [projectId]);
-    assert.equal(stored.rows[0].n, before!.revision, 'no revision was added');
+    assert.equal(stored.rows[0].n, before.revision, 'no revision was added');
   });
 
   test('an invalid policy is refused with a specific reason and changes nothing', async () => {
-    const before = await current();
+    const before = await startingPoint();
     const told = await bootstrap();
-    const blank = await publish(owner, { scope: '  ', priorities: '\n', reviewCriteria: '', allowedWork: '\t', expectedRevision: before!.revision });
+    const blank = await publish(owner, { scope: '  ', priorities: '\n', reviewCriteria: '', allowedWork: '\t', expectedRevision: before.revision });
     assert.deepEqual([blank.status, (blank.json as { code: string }).code], [400, 'POLICY_EMPTY'], 'whitespace is not a policy');
-    const long = await publish(owner, { ...edit(before!.revision, 'Fine'), priorities: 'p'.repeat(4001) });
+    const long = await publish(owner, { ...edit(before.revision, 'Fine'), priorities: 'p'.repeat(4001) });
     assert.equal(long.status, 400);
     assert.match(String((long.json as { message: string }).message), /priorities.*4000 characters/, 'the reason names the part and the limit');
-    const missing: Partial<ReturnType<typeof edit>> = edit(before!.revision, 'unused');
+    const missing: Partial<ReturnType<typeof edit>> = edit(before.revision, 'unused');
     delete missing.scope;
     assert.equal((await publish(owner, missing)).status, 400, 'every part is sent, even an empty one');
-    assert.equal((await publish(owner, { ...edit(before!.revision, 'Negative'), expectedRevision: -1 })).status, 400);
-    assert.equal((await publish(owner, { ...edit(before!.revision, 'Fraction'), expectedRevision: 1.5 })).status, 400);
+    assert.equal((await publish(owner, { ...edit(before.revision, 'Negative'), expectedRevision: -1 })).status, 400);
+    assert.equal((await publish(owner, { ...edit(before.revision, 'Fraction'), expectedRevision: 1.5 })).status, 400);
     assert.deepEqual(await current(), before);
     assert.deepEqual((await bootstrap()).approved, told.approved);
   });
 
   test('two managers editing the same revision: the second gets a version conflict with the newer policy, then publishes over it knowingly', async () => {
-    const loaded = (await current())!;
+    const loaded = await startingPoint();
     // Both opened the editor on the same revision. The admin publishes first.
     const theirs = expect(await publish(admin, edit(loaded.revision, 'The admin\'s scope')), 201) as unknown as AgentProjectPolicy;
     const stale = await publish(owner, edit(loaded.revision, 'The owner\'s scope'));

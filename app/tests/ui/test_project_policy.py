@@ -37,6 +37,14 @@ FIRST = {
 }
 FIELD = {"Scope": "scope", "Priorities": "priorities", "Review criteria": "reviewCriteria", "Allowed work": "allowedWork"}
 COARSE = "() => matchMedia('(pointer: coarse)').matches"
+# One line of purpose in every state (#272, PR #292 B1): what the policy is, who writes it, whether to act.
+WHAT = "Rules connected agents read before they plan work in this project."
+FOR_READERS = f"{WHAT} Only Hubert Nowak or Ola Kowalska write them; you don\u2019t need to do anything."
+FOR_MANAGERS_BEFORE = f"{WHAT} They\u2019re optional: write them when agents here should keep to certain work or meet review rules."
+FOR_MANAGERS_AFTER = f"{WHAT} You can change them at any time."
+PUBLISHED = "Published. Agents use it from their next task."
+# Words of Flux's internals that people should not need (PR #292 S3).
+INTERNAL = ("checkpoint", "grants", "bootstrap")
 FONT_SIZE = "el => parseFloat(getComputedStyle(el).fontSize)"
 # The smallest visible text in an element (Apple HIG checklist HIG-08: none under 11 px on a touch screen).
 SMALLEST_TEXT = """el => {
@@ -169,11 +177,34 @@ class ProjectPolicyJourney(unittest.TestCase):
         type(self).ids = {"workspace": workspace["id"], "project": pid}
         self.assertIsNone(self.saved(hubert), "no policy yet")
 
-    def test_01b_before_the_first_publish_a_contributor_is_offered_nothing_to_write(self) -> None:
-        marek = self.open_agents("marek")
-        expect(self.policy(marek)).to_contain_text("None yet")
-        expect(self.policy(marek).get_by_role("button")).to_have_count(0)
-        shot(marek, "policy-none-reader-desktop-1440")
+    def assert_plain_words(self, locator) -> None:
+        text = locator.inner_text().lower()
+        for word in INTERNAL:
+            self.assertNotIn(word, text, f"no internal vocabulary: {word!r}")
+
+    def test_01b_before_the_first_publish_everyone_learns_what_it_is_and_whether_to_act(self) -> None:
+        for phone in (False, True):
+            size = "phone-390" if phone else "desktop-1440"
+            # A contributor: what it is, who writes it, and that there is nothing to do; nothing to press.
+            marek = self.open_agents("marek", phone=phone)
+            policy = self.policy(marek)
+            expect(policy.locator(".agents-policy__meta")).to_have_text("None yet")
+            expect(policy.locator(".agents-policy__purpose")).to_have_text(FOR_READERS)
+            expect(policy.locator(".agents-policy__purpose")).to_be_visible()
+            expect(policy.get_by_role("button")).to_have_count(0)
+            self.assert_plain_words(policy)
+            shot(marek, f"policy-none-reader-{size}")
+            # A manager: why one might write it, and that it is optional.
+            hubert = self.open_agents("hubert", phone=phone)
+            policy = self.policy(hubert)
+            expect(policy.locator(".agents-policy__purpose")).to_have_text(FOR_MANAGERS_BEFORE)
+            expect(policy.locator(".agents-policy__purpose")).to_be_visible()
+            expect(policy.get_by_role("button", name="Write policy")).to_be_visible()
+            self.assert_plain_words(policy)
+            if phone:
+                self.assertGreaterEqual(policy.evaluate(SMALLEST_TEXT), 11)
+                self.assert_no_sideways_scroll(hubert)
+            shot(hubert, f"policy-none-manager-{size}")
 
     def test_02_desktop_manager_writes_and_publishes_the_first_revision(self) -> None:
         page = self.open_agents("hubert")
@@ -183,7 +214,7 @@ class ProjectPolicyJourney(unittest.TestCase):
         policy.get_by_role("button", name="Write policy").click()
         form = self.editor(page)
         expect(form.get_by_label("Scope", exact=True)).to_be_focused()
-        expect(form).to_contain_text("never gives them more access")
+        expect(form).to_contain_text("It only narrows what agents do; it never gives them more access.")
 
         # Nothing written: a specific message, and nothing reaches the server.
         form.get_by_role("button", name="Publish revision 1").click()
@@ -205,14 +236,19 @@ class ProjectPolicyJourney(unittest.TestCase):
         priorities.fill(FIRST["Priorities"])
         expect(form).not_to_contain_text("over the 4,000 limit")
         expect(form.get_by_role("alert")).to_have_count(0, timeout=2000)
-        expect(form).to_contain_text("Agents load revision 1 at their next start or safe checkpoint.")
+        expect(form).to_contain_text("Agents use revision 1 from their next task.")
+        self.assert_plain_words(form)
         self.to_top(policy)
         shot(page, "policy-edit-desktop-1440")
 
         form.get_by_role("button", name="Publish revision 1").click()
-        expect(policy.get_by_role("status")).to_have_text("Published revision 1. Agents pick it up at their next start or safe checkpoint.")
+        expect(policy.get_by_role("status")).to_have_text(PUBLISHED)
         expect(form).to_have_count(0)
         expect(policy).to_contain_text("Revision 1 · Hubert Nowak")
+        # The revision is named once, in the line under the title (PR #292 nit).
+        self.assertEqual(policy.inner_text().count("Revision 1"), 1)
+        expect(policy.locator(".agents-policy__purpose")).to_have_text(FOR_MANAGERS_AFTER)
+        self.assert_plain_words(policy)
         saved = self.saved(page)
         self.assertEqual(saved["revision"], 1)
         self.assertEqual({label: saved[field] for label, field in FIELD.items()}, FIRST, "the server saved exactly what was typed")
@@ -233,6 +269,66 @@ class ProjectPolicyJourney(unittest.TestCase):
         # The thread and the connection list are still there below and above it.
         expect(page.get_by_role("list", name="Agent connections in this project").get_by_role("listitem")).to_have_count(1)
         expect(page.get_by_label("Write to this task")).to_be_visible()
+
+    def lose_answers(self, page: Page, state: dict) -> None:
+        """The next PUT is saved by the server but its answer never arrives; GETs fail while `offline` is set."""
+        def handle(route) -> None:
+            if route.request.method == "PUT" and state["lose"]:
+                state["lose"] -= 1
+                route.fetch()  # the server publishes
+                route.abort()  # the answer is lost
+            elif route.request.method == "GET" and state["offline"]:
+                route.abort()
+            else:
+                route.continue_()
+        page.route("**/agent-policy", handle)
+        self.addCleanup(lambda: page.unroute_all(behavior="ignoreErrors"))
+
+    def test_02b_a_lost_answer_is_reported_truthfully_and_never_shown_as_someone_else(self) -> None:
+        # Flux is reachable again at once: the page asks, finds the revision it made, and is done.
+        base = self.publish_through_api("hubert", {"scope": FIRST["Scope"]})["revision"]
+        page = self.open_agents("hubert")
+        self.lose_answers(page, state := {"lose": 1, "offline": False})
+        policy = self.policy(page)
+        policy.get_by_role("button", name="Show policy").click()
+        policy.get_by_role("button", name="Edit policy").click()
+        form = self.editor(page)
+        form.get_by_label("Scope", exact=True).fill("Firmware and the PIR mount.")
+        form.get_by_role("button", name=f"Publish revision {base + 1}").click()
+        expect(policy.get_by_role("status")).to_have_text(PUBLISHED)
+        expect(form).to_have_count(0)
+        expect(policy).not_to_contain_text("while you were editing")
+        expect(policy).not_to_contain_text("another tab")
+        self.assertEqual(state["lose"], 0, "the answer was lost")
+        saved = self.saved(page)
+        self.assertEqual((saved["revision"], saved["scope"], saved["publishedBy"]["id"]), (base + 1, "Firmware and the PIR mount.", PEOPLE["hubert"]["id"]))
+
+        # Flux stays unreachable for a moment: the page says only what it knows, keeps the text, and a changed text
+        # published later continues from the revision the lost publish made, not as a conflict with oneself.
+        base = saved["revision"]
+        page = self.open_agents("hubert")
+        self.lose_answers(page, state := {"lose": 1, "offline": True})
+        policy = self.policy(page)
+        policy.get_by_role("button", name="Show policy").click()
+        policy.get_by_role("button", name="Edit policy").click()
+        form = self.editor(page)
+        form.get_by_label("Scope", exact=True).fill("Firmware, the PIR mount and the enclosure.")
+        form.get_by_role("button", name=f"Publish revision {base + 1}").click()
+        expect(form.get_by_role("alert")).to_have_text("Flux couldn\u2019t confirm the publish. Your text is kept; publishing again won\u2019t publish it twice.")
+        expect(form.get_by_label("Scope", exact=True)).to_have_value("Firmware, the PIR mount and the enclosure.")
+        self.assertEqual(self.saved(page)["revision"], base + 1, "it was saved after all")
+        shot(page, "policy-lost-answer-desktop-1440")
+        state["offline"] = False
+        form.get_by_label("Scope", exact=True).fill("Firmware, the PIR mount and the enclosure lid.")
+        form.get_by_role("button", name=f"Publish revision {base + 1}").click()
+        expect(form.get_by_role("status")).to_have_text(f"Your earlier publish went through as revision {base + 1}. Your later changes aren\u2019t published yet.")
+        expect(form.get_by_role("alert")).to_have_count(0)
+        expect(policy).not_to_contain_text("while you were editing")
+        expect(policy).not_to_contain_text("another tab")
+        form.get_by_role("button", name=f"Publish revision {base + 2}").click()
+        expect(policy.get_by_role("status")).to_have_text(PUBLISHED)
+        saved = self.saved(page)
+        self.assertEqual((saved["revision"], saved["scope"]), (base + 2, "Firmware, the PIR mount and the enclosure lid."))
 
     def publish_through_api(self, who: str, changes: dict[str, str]) -> dict:
         """Publishes the next revision from the saved one, with these parts changed: a known starting point."""
@@ -272,21 +368,21 @@ class ProjectPolicyJourney(unittest.TestCase):
         # He still edits revision {base}. Publishing does not overwrite Ola's: it shows her revision and keeps his text.
         form.get_by_role("button", name=f"Publish revision {base + 1}").click()
         conflict = form.get_by_role("alert")
-        expect(conflict).to_contain_text(f"Ola Kowalska published revision {base + 1} while you were editing.")
-        expect(conflict).to_contain_text("Your text is still here. They changed Allowed work.")
+        expect(conflict).to_have_text(f"Ola Kowalska published revision {base + 1} while you were editing. "
+                                      "Your text is kept; the changes are shown under Allowed work. Publishing yours replaces them.")
         expect(form.get_by_label("Scope", exact=True)).to_have_value(mine)
         saved = self.saved(hubert)
         self.assertEqual((saved["revision"], saved["scope"], saved["allowedWork"]), (base + 1, FIRST["Scope"], theirs), "Hubert's edit was not published")
-        # Only the part she changed is shown, so he can keep it.
-        changed = form.get_by_role("list", name=f"Changed in revision {base + 1}").get_by_role("listitem")
-        expect(changed).to_have_count(1)
+        # Only the part she changed is shown, under its own field, so he can keep it (PR #292 S2).
+        changed = self.their_part(form, "Allowed work")
+        expect(form.get_by_role("group")).to_have_count(1)
         expect(changed).to_contain_text("Their allowed work")
         expect(changed).to_contain_text(theirs)
         self.to_top(policy)
         shot(hubert, "policy-conflict-desktop-1440")
         changed.get_by_role("button", name="Use their allowed work").click()
         expect(form.get_by_label("Allowed work", exact=True)).to_have_value(theirs)
-        expect(changed).to_contain_text("Your allowed work now matches theirs.")
+        expect(changed).to_contain_text("Yours now matches it.")
         expect(form.get_by_label("Scope", exact=True)).to_have_value(mine)
         publish = form.get_by_role("button", name=f"Publish mine as revision {base + 2}")
         publish.scroll_into_view_if_needed()
@@ -294,12 +390,54 @@ class ProjectPolicyJourney(unittest.TestCase):
 
         # He has read hers and kept her part; publishing now replaces her revision as the next one, knowingly.
         publish.click()
-        expect(policy.get_by_role("status")).to_contain_text(f"Published revision {base + 2}.")
+        expect(policy.get_by_role("status")).to_have_text(PUBLISHED)
         saved = self.saved(hubert)
         self.assertEqual((saved["revision"], saved["scope"], saved["allowedWork"], saved["publishedBy"]["id"]),
                          (base + 2, mine, theirs, PEOPLE["hubert"]["id"]))
         # Ola's open view follows without a reload.
         expect(ola_policy).to_contain_text(f"Revision {base + 2} · Hubert Nowak")
+
+    def their_part(self, form, label: str):
+        """The other revision's text for one part; it sits right under that part's own field."""
+        group = form.get_by_role("group", name=f"Their {label.lower()}")
+        field = form.get_by_label(label, exact=True).bounding_box()
+        box = group.bounding_box()
+        self.assertGreater(box["y"], field["y"] + field["height"], f"under the {label} field")
+        self.assertLess(box["y"] - (field["y"] + field["height"]), 90, f"right under the {label} field, after its hint only")
+        return group
+
+    def test_03b_phone_conflict_shows_their_text_under_the_changed_field(self) -> None:
+        base = self.publish_through_api("hubert", {field: FIRST[label] for label, field in FIELD.items()})["revision"]
+        for width, height in ((390, 844), (320, 568)):
+            hubert = self.open_agents("hubert", phone=True)
+            hubert.set_viewport_size({"width": width, "height": height})
+            policy = self.policy(hubert)
+            policy.get_by_role("button", name="Show policy").click()
+            policy.get_by_role("button", name="Edit policy").click()
+            form = self.editor(hubert)
+            form.get_by_label("Scope", exact=True).fill(f"Firmware only ({width} px).")
+            theirs = f"Results only, no tasks this week ({width} px)."
+            base = self.publish_through_api("ola", {"allowedWork": theirs})["revision"] - 1
+            publish = form.get_by_role("button", name=re.compile(r"^Publish revision \d+$"))
+            publish.scroll_into_view_if_needed()
+            publish.click()
+            banner = form.get_by_role("alert")
+            expect(banner).to_contain_text(f"Ola Kowalska published revision {base + 1} while you were editing.")
+            # A short banner: four lines at most at 390 px, five at 320 px.
+            lines = banner.evaluate("el => Math.round((el.clientHeight - 16) / parseFloat(getComputedStyle(el).lineHeight))")
+            self.assertLessEqual(lines, 4 if width == 390 else 5, f"banner lines at {width} px")
+            changed = self.their_part(form, "Allowed work")
+            changed.scroll_into_view_if_needed()
+            use = changed.get_by_role("button", name="Use their allowed work")
+            self.assertGreaterEqual(use.bounding_box()["height"], 44)
+            self.assert_no_sideways_scroll(hubert)
+            shot(hubert, f"policy-conflict-phone-{width}")
+            use.click()
+            expect(form.get_by_label("Allowed work", exact=True)).to_have_value(theirs)
+            form.get_by_role("button", name=f"Publish mine as revision {base + 2}").click()
+            expect(policy.get_by_role("status")).to_have_text(PUBLISHED)
+            saved = self.saved(hubert)
+            self.assertEqual((saved["revision"], saved["scope"], saved["allowedWork"]), (base + 2, f"Firmware only ({width} px).", theirs))
 
     def test_04_phone_manager_edits_with_touch_sized_controls(self) -> None:
         base = self.publish_through_api("hubert", {"reviewCriteria": FIRST["Review criteria"]})["revision"]
@@ -338,7 +476,7 @@ class ProjectPolicyJourney(unittest.TestCase):
         self.assert_no_sideways_scroll(page)
         shot(page, "policy-edit-phone-390")
         publish.click()
-        expect(policy.get_by_role("status")).to_contain_text(f"Published revision {base + 1}.")
+        expect(policy.get_by_role("status")).to_have_text(PUBLISHED)
         saved = self.saved(page)
         self.assertEqual((saved["revision"], saved["reviewCriteria"], saved["publishedBy"]["id"]), (base + 1, criteria, PEOPLE["ola"]["id"]))
         self.assert_no_sideways_scroll(page)
@@ -374,7 +512,7 @@ class ProjectPolicyJourney(unittest.TestCase):
                 expect(policy).to_contain_text(f"Revision {before['revision']} · {before['publishedBy']['name']}")
                 policy.get_by_role("button", name="Show policy").click()
                 expect(policy.get_by_role("definition").filter(has_text=before["reviewCriteria"])).to_have_count(1)
-                expect(policy).to_contain_text("Only Hubert Nowak or Ola Kowalska can change it.")
+                expect(policy.locator(".agents-policy__purpose")).to_have_text(FOR_READERS)
                 expect(policy.get_by_role("button", name="Edit policy")).to_have_count(0)
                 expect(policy.get_by_role("button", name="Write policy")).to_have_count(0)
                 expect(policy.get_by_role("form")).to_have_count(0)
