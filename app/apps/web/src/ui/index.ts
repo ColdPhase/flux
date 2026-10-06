@@ -7,5 +7,5 @@ export { Input } from './Input';
 export { MEDIA, choosesInPlace, duration, flip, isObscured, play, sendsOnEnter, useArrivals, useLoopPause, useMediaQuery, useTravelingHighlight } from './motion';
 export { Drawer, Overlay, Sheet, focusableIn, trapTab } from './Overlay';
 export { SidePanel, useSidePanelMode, type SidePanelMode } from './SidePanel';
-export { Tabs, type TabItem } from './Tabs';
+export { BottomNav, Tabs, type BottomNavItem, type TabItem } from './Tabs';
 export { ToastProvider, useToast, type ToastOptions } from './Toast';

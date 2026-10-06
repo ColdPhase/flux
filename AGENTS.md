@@ -103,8 +103,9 @@ Keep procedures in one place and use the guides below when relevant.
 - For functional UI changes, exercise the running application and applicable
   API/persistence paths. Report unavailable checks as unverified.
 - Deliver the required phone/tablet PWA and Web Push under
-  `docs/product/mobile-pwa.md`; include real Android/iPhone/iPad installation and
-  notification evidence in final acceptance. A responsive screenshot is insufficient.
+  `docs/product/mobile-pwa.md`. Accept it on Chromium/WebKit emulation in Docker
+  plus documented platform requirements with dated sources; physical devices are
+  optional (founder direction #266, 2026-10-05). A screenshot alone is insufficient.
 - Render UI on realistic content. Compare initial directions at consistent
   viewport/zoom, preserve compact readable work surfaces, and obtain a separate
   visual review with a neutral brief and screenshots. Screenshots do not prove
