@@ -32,6 +32,12 @@ export interface WorkRecord {
   version: number;
   createdAt: Date;
   updatedAt: Date;
+  creationOrigin?: 'native_agent' | 'ai_proposal' | 'human' | null;
+  creationBaselineVersion?: number | null;
+  firstPersistedUseAt?: Date | null;
+  creationRevertedAt?: Date | null;
+  creationRevertedBy?: ActorRef | null;
+  creationReversionNoticeId?: string | null;
 }
 
 export interface DecisionRecord {
@@ -86,6 +92,7 @@ export interface TaskCreationNoticeRecord {
   projectId: string;
   workId: string;
   workTitle: string;
+  kind: 'task.created' | 'task.creation_reverted';
   createdBy: ActorRef;
   sources: ObjectRef[];
   createdAt: Date;
@@ -163,6 +170,15 @@ export interface WorkRepository extends TaskGraphReader {
   nativeCommand(projectId: string, by: ActorRef, operation: NativeOperation, commandId: string): Promise<NativeCommandReceipt | null>;
   /** Called in the same transaction as the command's effects, after its contributions. */
   recordNativeCommand(scope: { workspaceId: string; projectId: string }, by: ActorRef, receipt: NativeCommandReceipt): Promise<void>;
+  /** Same task-use fence as every persisted writer; no independently owned transaction. */
+  taskUseTargets(refs: readonly ObjectRef[]): Promise<readonly string[]>;
+  prepareTaskUse(ids: readonly string[]): Promise<{ ids: readonly string[]; mark(ids?: readonly string[]): Promise<void> }>;
+  lockPreparedTaskUse(ids: readonly string[]): Promise<{ ids: readonly string[]; projectIds: readonly string[]; mark(ids?: readonly string[]): Promise<void> }>;
+  creatorAgentOwner(agentId: string, options?: { lock?: boolean }): Promise<string | null>;
+  creationUndoReceipt(projectId: string, by: ActorRef, commandId: string): Promise<{ workId: string; fingerprint: string; noticeId: string } | null>;
+  revertCreation(work: WorkRecord, by: ActorRef, commandId: string, fingerprint: string): Promise<{ work: WorkRecord; noticeId: string }>;
+  creationBaselineMatches(workId: string): Promise<boolean>;
+  recordCreationBaseline(work: WorkRecord, proposalId?: string): Promise<void>;
   /** Applies the changes and increments the version; the caller has checked the version. */
   updateWork(id: string, changes: WorkChanges): Promise<WorkRecord>;
   /**
@@ -190,7 +206,8 @@ export interface WorkRepository extends TaskGraphReader {
   /** Links from or to any of these ids, oldest first. */
   links(ids: string[]): Promise<ObjectLinkRecord[]>;
   /** Inserts links; an identical existing link is kept. */
-  insertLinks(links: NewObjectLink[]): Promise<void>;
+  /** IDs of newly inserted links only; an exact existing link is an observation. */
+  insertLinks(links: NewObjectLink[]): Promise<string[]>;
   /** Whether the referenced message, material version or object exists in the project. */
   targetExists(projectId: string, ref: ObjectRef): Promise<boolean>;
   /**
@@ -263,6 +280,8 @@ export interface WorkPorts {
   events: WorkEventLog;
   contributions: WorkContributions;
   backgroundComparison: {
+    prepareHumanNegative(projectId: string, authorId: string): Promise<void>;
+    taskTargets(resultId: string): Promise<readonly string[]>;
     /** A candidate only: the outbox never grants permission to call a provider. */
     enqueueHumanNegative(resultId: string, projectId: string, authorId: string): Promise<number>;
   };

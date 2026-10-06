@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { and, desc, eq, lt, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { MessageFile } from '@flux/contracts';
+import { taskUseRows } from './task-use.js';
 import { fileRows } from './files.js';
 import type { DbExecutor } from './push.js';
 
@@ -68,6 +69,7 @@ export function taskDiscussionRows(db: DbExecutor) {
     async append(conversation: Pick<ConversationRow, 'id' | 'workspaceId' | 'projectId'>, author: Actor,
       input: { body: string; clientMessageId: string; fingerprint: string; source: Source | null;
         kind?: MessageRow['contributionKind']; resultId?: string | null; files?: MessageFile[] }) {
+      const [bound] = await db.select({ workId: b.workId }).from(b).where(eq(b.conversationId, conversation.id));
       const [updated] = await db.update(c).set({ nextSequence: sql`${c.nextSequence} + 1` })
         .where(eq(c.id, conversation.id)).returning({ nextSequence: c.nextSequence });
       if (!updated) throw new Error('Conversation disappeared under contribution lock');
@@ -83,6 +85,7 @@ export function taskDiscussionRows(db: DbExecutor) {
           .returning({ id: schema.projectFiles.id });
         if (updated.length !== 1) throw new Error('Locked attachment publication invariant failed');
       }
+      if (bound) await db.update(schema.projectWorkItems).set({ firstPersistedUseAt: sql`COALESCE(${schema.projectWorkItems.firstPersistedUseAt}, clock_timestamp())` }).where(eq(schema.projectWorkItems.id, bound.workId));
       return message(row!, input.files);
     },
     /**
@@ -91,8 +94,7 @@ export function taskDiscussionRows(db: DbExecutor) {
      */
     async lockBoundTask(conversationId: string) {
       const [bound] = await db.select({ workId: b.workId }).from(b).where(eq(b.conversationId, conversationId));
-      if (bound) await db.select({ id: schema.projectWorkItems.id }).from(schema.projectWorkItems)
-        .where(eq(schema.projectWorkItems.id, bound.workId)).for('update');
+      if (bound) await taskUseRows(db).prepare([bound.workId]);
       return bound?.workId ?? null;
     },
     async bind(input: { workId: string; workspaceId: string; projectId: string; conversationId: string; rootMessageId: string }) {

@@ -1,4 +1,4 @@
-import { githubRows, proactiveOutboxRows, workRows, type DbExecutor } from '@flux/db';
+import { githubRows, proactiveOutboxRows, referencedTaskIds, workRows, type DbExecutor } from '@flux/db';
 import {
   evaluateProject,
   visibleFilter,
@@ -38,20 +38,33 @@ export function workRepository(tx: DbExecutor): WorkRepository {
  * task thread atomically and its events join the one final batch. There is no adapter without the hook.
  */
 function workPorts(tx: Transaction, events: TransactionEventSession): WorkPorts {
+  const eligibleComparisons: string[] = [];
   return {
     access: policyWorkAccess(tx),
     work: workRepository(tx),
     events,
     contributions: createWorkContributions(taskDiscussionPorts(tx, events)),
-    backgroundComparison: { async enqueueHumanNegative(resultId, projectId, authorId) {
+    backgroundComparison: { async prepareHumanNegative(projectId, authorId) {
+      void authorId;
       const rows = proactiveOutboxRows(tx);
-      const eligible: string[] = [];
-      for (const rule of await rows.enabledRules(projectId)) {
+      eligibleComparisons.length = 0;
+      const rules = await rows.enabledRules(projectId);
+      const authorized: typeof rules = [];
+      for (const rule of rules) {
         const owner = await evaluateProject({ kind: 'human', id: rule.ownerUserId }, 'project.write', projectId, tx, { lock: true });
         const agent = await evaluateProject({ kind: 'agent', id: rule.agentId }, 'project.write', projectId, tx, { lock: true });
-        if (owner.allowed && agent.allowed && agent.actor?.agent?.ownerUserId === rule.ownerUserId) eligible.push(rule.id);
+        if (owner.allowed && agent.allowed && agent.actor?.agent?.ownerUserId === rule.ownerUserId) authorized.push(rule);
       }
-      return rows.enqueueHumanNegative(resultId, projectId, authorId, eligible, new Date(Date.now() + COMPARISON_QUIET_WINDOW_MS));
+      for (const rule of [...authorized].sort((a, b) => a.id.localeCompare(b.id))) {
+        const retained = await rows.rule(rule.id);
+        if (retained?.status === 'enabled' && retained.ownerUserId === rule.ownerUserId && retained.agentId === rule.agentId && retained.projectId === projectId) eligibleComparisons.push(rule.id);
+      }
+    }, async taskTargets(resultId) {
+      const rows = proactiveOutboxRows(tx);
+      const refs = (await Promise.all(eligibleComparisons.map((ruleId) => rows.sourceSnapshot(resultId, ruleId)))).flatMap((snapshot) => snapshot.sources);
+      return referencedTaskIds(tx, refs);
+    }, async enqueueHumanNegative(resultId, projectId, authorId) {
+      return proactiveOutboxRows(tx).enqueueHumanNegative(resultId, projectId, authorId, eligibleComparisons, new Date(Date.now() + COMPARISON_QUIET_WINDOW_MS));
     } },
   };
 }
