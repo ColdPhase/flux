@@ -1,0 +1,9 @@
+Agent foundation checks passed: shared instructions, skills, and local document links.
+This does not verify live GitHub gates or application behavior.
+check_agent_setup exit 0
+----------------------------------------------------------------------
+Ran 67 tests in 5.955s
+
+OK
+unittest exit 0
+diff-check exit 0

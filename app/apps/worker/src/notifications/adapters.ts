@@ -62,6 +62,7 @@ export function emailUnitOfWork(db: Database): EmailDeliveryUnitOfWork {
       const rows = notificationEmailRows(tx);
       return work({
         lockEmail: (id) => rows.lockEmail(id),
+        mailboxClaimed: (notificationId, exceptId, address) => rows.mailboxClaimed(notificationId, exceptId, address),
         authorizer: policySourceReader(tx),
         preferences: preferenceRepository(notificationPreferenceRows(tx)),
         accountAddress: (userId) => rows.accountAddress(userId),

@@ -8,6 +8,15 @@ import { oauthRequestContext, type OauthRequests } from './oauth-flow.js';
 // from Fastify's request.ip, which honours only the configured trusted proxies.
 const UNTRUSTED_FORWARDING_HEADERS = ['forwarded', 'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'x-forwarded-port', 'x-real-ip', 'x-client-ip', 'cf-connecting-ip', 'true-client-ip', CLIENT_IP_HEADER];
 const PASSWORD_RESET_REQUEST_PATHS = new Set([`${AUTH_BASE_PATH}/request-password-reset`, `${AUTH_BASE_PATH}/forget-password`]);
+const SOCIAL_SIGN_IN_PATH = `${AUTH_BASE_PATH}/sign-in/social`;
+
+/** Whether a sign-in body carries a raw ID token (Better Auth's direct ID-token sign-in branch). */
+function carriesIdToken(body: unknown): boolean {
+  if (typeof body === 'string') {
+    try { return carriesIdToken(JSON.parse(body)); } catch { return body.includes('idToken'); }
+  }
+  return !!body && typeof body === 'object' && 'idToken' in body;
+}
 
 /**
  * Better Auth echoes the raw session token in sign-in/sign-up and get-session bodies. The
@@ -40,6 +49,11 @@ export function registerAuthBridge(app: FastifyInstance, { auth, publicOrigin, p
       // Build the URL from the configured origin, never from Host or an absolute-form target.
       const target = new URL(request.url, publicOrigin);
       const url = new URL(`${target.pathname}${target.search}`, publicOrigin);
+      // Single sign-on uses only the browser authorization-code flow (#113): a client may not
+      // present a raw ID token it obtained elsewhere.
+      if (url.pathname === SOCIAL_SIGN_IN_PATH && carriesIdToken(request.body)) {
+        return reply.code(400).send({ error: 'Sign-in with a raw ID token is not accepted', code: 'ID_TOKEN_SIGN_IN_DISABLED' } satisfies ApiError);
+      }
       if (passwordReset === 'unavailable' && PASSWORD_RESET_REQUEST_PATHS.has(url.pathname)) {
         return reply.code(503).send({ error: 'Password reset is unavailable', code: 'PASSWORD_RESET_UNAVAILABLE' } satisfies ApiError);
       }
