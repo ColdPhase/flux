@@ -30,6 +30,7 @@ Keep procedures in one place and use the guides below when relevant.
 | Development environment, services, tests, or packaging | `docs/development/containers.md` |
 | Module boundaries, dependency direction, or where code/tests go | `docs/development/architecture.md` |
 | Responsive/adaptive UI, small phones, 4K or ultrawide | `docs/design/adaptive-workspaces.md` |
+| Phone/tablet UX | `docs/design/apple-hig-mobile.md` |
 | Mobile/tablet UX, PWA installation or push notifications | `docs/product/mobile-pwa.md` |
 | Ordinary contribution or prototype change | `docs/CONTRIBUTING.md` |
 | Agent collaboration and task lifecycle | `docs/agents/workflow.md` |
@@ -102,8 +103,9 @@ Keep procedures in one place and use the guides below when relevant.
 - For functional UI changes, exercise the running application and applicable
   API/persistence paths. Report unavailable checks as unverified.
 - Deliver the required phone/tablet PWA and Web Push under
-  `docs/product/mobile-pwa.md`; include real Android/iPhone/iPad installation and
-  notification evidence in final acceptance. A responsive screenshot is insufficient.
+  `docs/product/mobile-pwa.md`. Accept it on Chromium/WebKit emulation in Docker
+  plus documented platform requirements with dated sources; physical devices are
+  optional (founder direction #266, 2026-10-05). A screenshot alone is insufficient.
 - Render UI on realistic content. Compare initial directions at consistent
   viewport/zoom, preserve compact readable work surfaces, and obtain a separate
   visual review with a neutral brief and screenshots. Screenshots do not prove

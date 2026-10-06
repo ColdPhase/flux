@@ -4,13 +4,18 @@ import type { AgentScope } from './agent-proposals.js';
 export const AGENT_OPERATIONS = ['work.create', 'work.update', 'result.record', 'decision.propose',
   'map.create', 'map.rename', 'map.thought.create', 'map.thought.update', 'map.thought.delete',
   'map.positions.update', 'map.link.create', 'map.link.delete', 'doc.create', 'doc.update', 'conversation.create', 'conversation.reply',
-  'cowork.claim', 'cowork.renew', 'cowork.release', 'cowork.request'] as const;
+  'cowork.claim', 'cowork.renew', 'cowork.release', 'cowork.request', 'cowork.request.claim', 'cowork.request.respond',
+  'cowork.unit.create'] as const;
 export type AgentOperation = typeof AGENT_OPERATIONS[number];
 export const AGENT_PEER_REQUEST_CLASSES = ['execute', 'review', 'plan'] as const;
 export type AgentPeerRequestClass = typeof AGENT_PEER_REQUEST_CLASSES[number];
 /** Review authority applies only to actual review units, never native execution commands.
  * `cowork.request` reserves queued sender intent only: its class is the SENDER unit's actual role, never the
- * recipient's class or the request kind. It authorizes no receiver claim, review or execution. */
+ * recipient's class or the request kind. It authorizes no receiver claim, review or execution.
+ * `cowork.request.claim` / `cowork.request.respond` are the RECIPIENT's: their target and class are the recipient's
+ * own unit and its actual role, under that unit's live claim. Neither is a general publication right.
+ * `cowork.unit.create` targets the native TASK; its class is the role of the unit it CREATES. It gives the creator no
+ * claim on that unit and the assignee no authority: the assignee still needs its own `cowork.claim` grant. */
 export const AGENT_OPERATION_CLASSES: Record<AgentOperation, readonly AgentPeerRequestClass[]> = {
   'work.create': ['execute', 'plan'], 'work.update': ['execute', 'plan'],
   'result.record': ['execute'], 'decision.propose': ['execute', 'plan'],
@@ -22,6 +27,8 @@ export const AGENT_OPERATION_CLASSES: Record<AgentOperation, readonly AgentPeerR
   'conversation.create': ['execute', 'plan'], 'conversation.reply': ['execute', 'plan'],
   'cowork.claim': ['execute', 'review', 'plan'], 'cowork.renew': ['execute', 'review', 'plan'], 'cowork.release': ['execute', 'review', 'plan'],
   'cowork.request': ['execute', 'review', 'plan'],
+  'cowork.request.claim': ['execute', 'review', 'plan'], 'cowork.request.respond': ['execute', 'review', 'plan'],
+  'cowork.unit.create': ['execute', 'review', 'plan'],
 };
 export type AgentJsonValue = null | boolean | number | string | AgentJsonValue[] | { [key: string]: AgentJsonValue };
 
@@ -90,10 +97,16 @@ export type AgentPostcondition =
       unitId: string; role: AgentPeerRequestClass; version: number; generation: number;
       state: 'pending' | 'claimed' | 'paused' | 'completed' | 'stopped'; leaseId: string | null;
       leaseSessionId: string | null; leaseExpiresAt: string | null; checkpointId: string | null }
-  /** Content-free identity of the sender's queued request; `unitId` is the sender unit and `role` its actual class. */
+  /** Content-free request identity for the ACTING connection: for `cowork.request` the sender and its unit, for
+   * `cowork.request.claim`/`.respond` the recipient and its unit; `role` is that unit's actual class. */
   | { kind: 'cowork.request_state'; workspaceId: string; projectId: string; connectionId: string;
       unitId: string; requestId: string; role: AgentPeerRequestClass; version: number;
-      state: 'queued' | 'deferred' | 'claimed' | 'resolved' | 'declined' | 'superseded' | 'expired' | 'cancelled' };
+      state: 'queued' | 'deferred' | 'claimed' | 'resolved' | 'declined' | 'superseded' | 'expired' | 'cancelled' }
+  /** A unit created by `cowork.unit.create`: its task (the command target), canonical lineage/run, actual role (the
+   * class) and assignment, which may be another connection; the receipt itself records the creating connection. */
+  | { kind: 'cowork.unit_state'; workspaceId: string; projectId: string; unitId: string; taskId: string;
+      lineageTaskId: string; runId: string; role: AgentPeerRequestClass; assignmentConnectionId: string; version: number;
+      state: 'pending' | 'claimed' | 'paused' | 'completed' | 'stopped' };
 
 export interface AgentExecutionCommand {
   runtimeSessionId: string;

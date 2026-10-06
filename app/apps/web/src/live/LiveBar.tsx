@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Avatar, Button, Icon, IconButton, MEDIA, Sheet, Spinner, useMediaQuery } from '../ui';
+import { Avatar, Button, duration, Icon, IconButton, MEDIA, Sheet, Spinner, useMediaQuery } from '../ui';
 import { anchorPath, KIND_WORD } from './anchors';
 import { useLive, useLiveHere, type LiveValue } from './LiveProvider';
 import { canPublishScreen } from './capture';
@@ -177,7 +177,7 @@ function ShownLine({ live }: { live: LiveValue }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     // Arrives calmly: a short fade and rise, no sound and no focus change.
-    ref.current?.animate?.([{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'none' }], { duration: parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--dur-2')) || 0, easing: 'ease-out' });
+    ref.current?.animate?.([{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'none' }], { duration: duration('--dur-2'), easing: 'ease-out' });
   }, [shown.presentation.id]);
   const following = live.following === shown.presentation.createdBy;
   return (
