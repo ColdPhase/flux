@@ -43,6 +43,11 @@ LATER_NOTES = 52
 SHORT_NOTES = 20
 
 
+def opens_task(title: str):
+    """A task notice's button: "Open task #12 Title", the visible "#12 Title" in order (#276)."""
+    return re.compile(rf"^Open task #\d+ {re.escape(title)}$")
+
+
 class TaskAnnouncements(unittest.TestCase):
     """Tests run in name order and share three accounts and one project."""
 
@@ -174,7 +179,7 @@ class TaskAnnouncements(unittest.TestCase):
         made = self.notice(page, self.ids["from_message"])
         expect(made).to_have_count(1)
         expect(made.locator(".convo-notice__meta")).to_have_text("New task · Jonas Berg")
-        expect(made.get_by_role("button", name=f"Open task: {FROM_MESSAGE}")).to_be_visible()
+        expect(made.get_by_role("button", name=opens_task(FROM_MESSAGE))).to_be_visible()
         # The announcement names the task by its number in the project (#276).
         expect(made.locator(".convo-notice__num")).to_have_text(f"#{self.ids['from_message_number']}")
         expect(self.notice(page, self.ids["measure"]).locator(".convo-notice__meta")).to_have_text("New task · Ada Kowalska · you")
@@ -198,7 +203,7 @@ class TaskAnnouncements(unittest.TestCase):
         page = self.page("ada")
         page.goto(f"/projects/{self.ids['project']}")
         made = self.notice(page, self.ids["from_message"])
-        made.get_by_role("button", name=f"Open task: {FROM_MESSAGE}").click()
+        made.get_by_role("button", name=opens_task(FROM_MESSAGE)).click()
         details = page.locator("#details")
         expect(details.get_by_role("heading", name=FROM_MESSAGE)).to_be_visible()
         # The task made from the question also shows under the question itself, as before.
@@ -236,7 +241,7 @@ class TaskAnnouncements(unittest.TestCase):
         before = self.counts(page)
         page.goto(f"/projects/{self.ids['project']}")
         expect(self.notice(page, self.ids["measure"])).to_be_visible()
-        self.notice(page, self.ids["measure"]).get_by_role("button", name=f"Open task: {MEASURE}").click()
+        self.notice(page, self.ids["measure"]).get_by_role("button", name=opens_task(MEASURE)).click()
         expect(page.locator("#details").get_by_role("heading", name=MEASURE)).to_be_visible()
         for _ in range(2):
             page.reload()
@@ -281,7 +286,7 @@ class TaskAnnouncements(unittest.TestCase):
         page.goto(f"/projects/{self.ids['project']}")
         made = self.notice(page, self.ids["measure"])
         expect(made.locator(".convo-notice__meta")).to_have_text("New task · Ada Kowalska")
-        made.get_by_role("button", name=f"Open task: {MEASURE}").click()
+        made.get_by_role("button", name=opens_task(MEASURE)).click()
         expect(page.locator("#details").get_by_role("heading", name=MEASURE)).to_be_visible()
         expect(page.get_by_role("button", name="Task", exact=True)).to_have_count(0)
 
@@ -292,7 +297,7 @@ class TaskAnnouncements(unittest.TestCase):
                 page.goto(f"/projects/{self.ids['project']}")
                 made = self.notice(page, self.ids["from_message"])
                 made.scroll_into_view_if_needed()
-                button = made.get_by_role("button", name=f"Open task: {FROM_MESSAGE}")
+                button = made.get_by_role("button", name=opens_task(FROM_MESSAGE))
                 box, row = button.bounding_box(), made.bounding_box()
                 assert box and row
                 self.assertGreaterEqual(box["height"], 44, "the link is a full touch target")
@@ -307,7 +312,7 @@ class TaskAnnouncements(unittest.TestCase):
 
 
     def open_task_from_stream(self, page: Page, work_id: str, title: str):
-        self.notice(page, work_id).get_by_role("button", name=f"Open task: {title}").click()
+        self.notice(page, work_id).get_by_role("button", name=opens_task(title)).click()
         details = page.locator("#details")
         expect(details.get_by_role("heading", name=title)).to_be_visible()
         return details.get_by_role("region", name="Discussion")
