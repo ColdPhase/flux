@@ -114,7 +114,8 @@ describe('search: one query across Flux, only what you may read', () => {
     const workHit = byKind('work')[0]!;
     assert.equal(workHit.label, 'Task');
     assert.deepEqual(workHit.target, { type: 'work', projectId: lamp.id, id: work.id });
-    assert.equal(text(workHit.snippet), 'Numbers for the low-light case');
+    // The task's number in its project leads its text, so "#n" finds it (#276); the outcome follows.
+    assert.equal(text(workHit.snippet), `#${work.number}\nNumbers for the low-light case`);
     assert.equal(byKind('thought')[0]!.label, 'Thought in “Lamp shapes”');
     assert.equal(byKind('draft')[0]!.label, 'Private draft');
     assert.deepEqual(byKind('draft')[0]!.target, { type: 'draft', draftId: niaDraft.id });
