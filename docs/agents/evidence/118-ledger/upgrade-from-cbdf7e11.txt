@@ -1,0 +1,95 @@
+Baseline cbdf7e11 -> candidate 868de2103fc0000c0b6756f362b9ac4c7bb49028; isolated same-volume rehearsal
+ Container flux-9a209cac-worker-1  Stopping
+ Container flux-9a209cac-api-1  Stopping
+ Container flux-9a209cac-worker-1  Stopped
+ Container flux-9a209cac-api-1  Stopped
+migrate-1  | Applied migration 0035_cowork_coordination.sql
+migrate-1  | Applied migration 0042_ai_provider_connections.sql
+migrate-1  | Applied migration 0043_agent_doc_authors.sql
+migrate-1  | Applied migration 0044_agent_project_policies.sql
+migrate-1  | Applied migration 0045_stored_files.sql
+workspaces:1:854bdd2743255e1f9f960405b83db00e
+workspace_members:2:3ff2035526e2d1ba557d0c5096f4a466
+projects:2:99a982c31f2d505b06c6bf8addd44b4d
+project_grants:1:aca19659b0e1c450bd896a62a8715d57
+drafts:2:e480bc69d05542b4e653321a3d920aa4
+project_materials:3:e17c59350cb6a8f182dee6894f7ea278
+project_material_versions:5:d068b927865a5a73401877d128796310
+project_conversations:3:44263192dcb084175d911e0482429726
+project_messages:6:a675c20961143507799f79dd5ea63563
+sketches:1:627e4f9a53b192209a6368f55d41f85f
+sketch_thoughts:4:a914c716986e6754fff1a47abbfb8950
+sketch_links:3:8f16d1a00f474cd9b63dd957858d17e1
+project_work_items:1:e56e3f30418b24e8c6e1a010cb549275
+project_decisions:1:af6a9467daa7b37ac8e5e03d6c4bf5ff
+project_results:1:0e5d404855cb9bad9ae64da225021fb9
+project_object_links:6:82bfe8a674699c3d82d10de2d7aabc08
+agents:1:91120d71cd2315182b12c0a951a519fc
+background_compute_connections:1:01a5a597a151cb035e09129a2ec14d62
+Verified original session, material revisions, historical citation, private draft, work/decision/result links, the baseline AI connection after 0042, new rule/key storage and manual continuation; no provider invoked.
+ Container flux-9a209cac-api-1  Stopping
+ Container flux-9a209cac-worker-1  Stopping
+ Container flux-9a209cac-worker-1  Stopped
+ Container flux-9a209cac-api-1  Stopped
+ Container flux-9a209cac-db-1  Running
+Flux schema 45 and pg-boss ready
+ Container flux-9a209cac-db-1  Running
+ Container flux-9a209cac-db-1  Waiting
+ Container flux-9a209cac-db-1  Healthy
+ Container flux-9a209cac-migrate-1  Starting
+ Container flux-9a209cac-migrate-1  Started
+ Container flux-9a209cac-migrate-1  Waiting
+ Container flux-9a209cac-migrate-1  Waiting
+ Container flux-9a209cac-migrate-1  Exited
+ Container flux-9a209cac-api-1  Starting
+ Container flux-9a209cac-migrate-1  Exited
+ Container flux-9a209cac-worker-1  Starting
+ Container flux-9a209cac-api-1  Started
+ Container flux-9a209cac-worker-1  Started
+ Container flux-9a209cac-migrate-1  Waiting
+ Container flux-9a209cac-worker-1  Waiting
+ Container flux-9a209cac-api-1  Waiting
+ Container flux-9a209cac-db-1  Waiting
+ Container flux-9a209cac-migrate-1  Exited
+ Container flux-9a209cac-worker-1  Healthy
+ Container flux-9a209cac-db-1  Healthy
+ Container flux-9a209cac-api-1  Healthy
+NOTICE:  database "flux_fresh_install" does not exist, skipping
+Fresh install and upgraded volume have the same public schema (2839 DDL lines) and ledger {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45}
+#118 fault injection on the upgraded volume
+refused (phantom row, running API): health 503
+refused (phantom row, migrator): versions without files in this image: 9999
+refused (phantom row, API start): versions without files in this image: 9999
+refused (phantom row, worker start): versions without files in this image: 9999
+refused (unrecorded 0035, running API): health 503
+refused (unrecorded 0035, API start): ledger is missing files: 0035_cowork_coordination.sql
+refused (unrecorded 0035, worker start): ledger is missing files: 0035_cowork_coordination.sql
+refused (unrecorded 0035, migrator re-run): already exists
+refused (duplicate prefix, migrator): Duplicate Flux migration version 45: 0045_duplicate_probe
+refused (duplicate prefix, API start): Duplicate Flux migration version 45: 0045_duplicate_probe
+refused (misnamed file, migrator): Invalid Flux migration filename: 0035-skipped_probe.sql
+refused (image without applied 0035, migrator): versions without files in this image: 35
+refused (image without applied 0035, API start): versions without files in this image: 35
+refused (foreign ledger insert, migrator): 0045_stored_files.sql changed unrelated ledger versions (added: 9998; removed: none)
+ Container flux-9a209cac-db-1  Running
+ Container flux-9a209cac-db-1  Running
+ Container flux-9a209cac-api-1  Running
+ Container flux-9a209cac-worker-1  Running
+ Container flux-9a209cac-db-1  Waiting
+ Container flux-9a209cac-db-1  Healthy
+ Container flux-9a209cac-migrate-1  Starting
+ Container flux-9a209cac-migrate-1  Started
+ Container flux-9a209cac-migrate-1  Waiting
+ Container flux-9a209cac-migrate-1  Waiting
+ Container flux-9a209cac-migrate-1  Exited
+ Container flux-9a209cac-migrate-1  Exited
+ Container flux-9a209cac-db-1  Waiting
+ Container flux-9a209cac-migrate-1  Waiting
+ Container flux-9a209cac-worker-1  Waiting
+ Container flux-9a209cac-api-1  Waiting
+ Container flux-9a209cac-worker-1  Healthy
+ Container flux-9a209cac-api-1  Healthy
+ Container flux-9a209cac-migrate-1  Exited
+ Container flux-9a209cac-db-1  Healthy
+PASS: same PostgreSQL volume, exact ledger {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,36,37,38,39,40,41} -> {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45}, immutable content/session retention, usable new schema, idempotent migration, a schema equal to a fresh install, and fail-closed phantom/unrecorded/duplicate/misnamed/missing-file/foreign-insert faults with the data kept.
+EXIT 0
