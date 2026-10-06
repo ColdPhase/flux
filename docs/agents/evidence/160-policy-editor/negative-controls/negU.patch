@@ -6,21 +6,24 @@ index 34df1c1..1a1b229 100644
 -      <ProjectPolicy key={projectId} projectId={projectId} meId={me.user.id} canEdit={shell?.project.access === 'manager'}
 +      <ProjectPolicy key={projectId} projectId={projectId} meId={me.user.id} canEdit={true}
 diff --git a/app/apps/web/src/agents/ProjectPolicy.tsx b/app/apps/web/src/agents/ProjectPolicy.tsx
-index 6abfb47..8f4a83b 100644
+index 56c4a06..199c37b 100644
 --- a/app/apps/web/src/agents/ProjectPolicy.tsx
 +++ b/app/apps/web/src/agents/ProjectPolicy.tsx
-@@ -175 +175 @@ export function ProjectPolicy({ projectId, meId, canEdit, managers }: { projectI
+@@ -41 +41 @@ const wentThrough = (fresh: AgentProjectPolicy, command: PublishAgentProjectPoli
+-  fresh.publishedBy.id === meId && fresh.revision === command.expectedRevision + 1 && PARTS.every(({ part }) => fresh[part] === command[part]);
++  fresh.publishedBy.id !== meId && fresh.revision === command.expectedRevision + 1 && PARTS.every(({ part }) => fresh[part] === command[part]);
+@@ -210 +210 @@ export function ProjectPolicy({ projectId, meId, canEdit, managers }: { projectI
 -    if (tooLong.length) {
 +    if (tooLong.length < 0) {
-@@ -189 +189,2 @@ export function ProjectPolicy({ projectId, meId, canEdit, managers }: { projectI
+@@ -224 +224,2 @@ export function ProjectPolicy({ projectId, meId, canEdit, managers }: { projectI
 -    const command: PublishAgentProjectPolicyCommand = { ...draft, expectedRevision: base?.revision ?? 0 };
 +    const fresh = (await getAgentPolicy(projectId)).policy;
 +    const command: PublishAgentProjectPolicyCommand = { ...draft, expectedRevision: fresh?.revision ?? 0 };
 diff --git a/app/apps/web/src/agents/policy.css b/app/apps/web/src/agents/policy.css
-index eb9351f..797259d 100644
+index d27a4b4..7752705 100644
 --- a/app/apps/web/src/agents/policy.css
 +++ b/app/apps/web/src/agents/policy.css
-@@ -69 +68,0 @@
+@@ -68 +67,0 @@
 -.agents-policy .ui-btn:not(.ui-btn--primary):active:not(:disabled):not([aria-disabled="true"]) { background: var(--bg-active); }
-@@ -77 +75,0 @@
+@@ -76 +74,0 @@
 -  .agents-policy__section dd { font-size: 16px; }

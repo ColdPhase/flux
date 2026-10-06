@@ -1,9 +1,12 @@
 # Agent policy editor in the Agents view (#160, T160-b)
 
-Tested code: `97ba7e36`, branch `claude-maurycy/160-policy-editor`. It started from protected main
-`698313b3`, and current main `4e99d223` (#267, #268, #283, #285) was merged in at `1bee689a`
-without conflicts. The commit that adds this evidence changes only this directory and the editor
-note in `docs/development/agent-connection.md`. Owner of the slice:
+Tested code: `f0e397cf`, branch `claude-maurycy/160-policy-editor`. That commit answers
+claude-hubert's review of `c6ac24e3` on PR #292; see "Review of PR #292" below. Main has been
+merged in twice without conflicts:
+- `4e99d223` (#267, #268, #283, #285) at `1bee689a`;
+- `e68c39c6` (#284, #286, #294, #293, #274, #270, #291) at `626386cb`.
+
+The commit that adds this evidence changes only this directory. Owner of the slice:
 Zamojski5 (claude-maurycy), taking over from PelikanFix16
 ([claim](https://github.com/ColdPhase/flux/issues/160#issuecomment-6002521933)). Independent
 evaluation is still required. #160 stays open (see "What remains").
@@ -19,12 +22,20 @@ evaluation is still required. #160 stays open (see "What remains").
   - The editor checks the server's rules before sending and names the part at fault: no part over
     4,000 characters (counted as code points, like the server) and at least one part written.
   - A newer revision published by someone else shows in an open editor at once. Publishing then
-    answers `409 VERSION_CONFLICT`. The manager's text is kept, the parts the other manager changed
-    are named, each can be taken over with "Use their …", and only pressing Publish again replaces
-    that revision.
-  - Everyone else who can read the project sees the parts read-only, with the managers named when
-    there are three or fewer. An open view follows `project.agent_policy_published.v1` without a
-    reload.
+    answers `409 VERSION_CONFLICT`. The manager's text is kept and one short line says who
+    published which revision. Under each field the other revision changed, its text appears with
+    "Use their …". Only pressing Publish again replaces that revision.
+  - Every state has one line saying what the policy is, who writes it and whether the reader needs
+    to act. Readers see "Only Hubert Nowak or Ola Kowalska write them; you don't need to do
+    anything" (the managers are named when there are three or fewer). Managers see that it is
+    optional and why they might write one.
+  - Everyone else who can read the project sees the parts read-only. An open view follows
+    `project.agent_policy_published.v1` without a reload.
+  - A publish whose answer is lost says "Flux couldn't confirm the publish. Your text is kept;
+    publishing again won't publish it twice" and asks again. A revision that the person's own
+    unconfirmed publish made is recognised as theirs: the edit ends, or carries on from it if the
+    text changed since. It is never shown as another person's revision and never causes a conflict
+    with oneself.
   - On touch screens it follows the [Apple HIG checklist](../../../design/apple-hig-mobile.md):
     - fields at 16 px (HIG-41; the shared #267 rule enforces this too);
     - 44 px targets (HIG-14) with 12 px between the form's buttons (HIG-15);
@@ -45,7 +56,8 @@ evaluation is still required. #160 stays open (see "What remains").
     refusing them. This is unchanged here and is not part of this slice.
 - **Tests.**
   - `app/tests/app/agent-policy.test.ts` keeps #214's 5 tests and adds a second suite of 4 that
-    follows one agent's bootstrap, in one resumed client session, across publishes:
+    follows one agent's bootstrap, in one resumed client session, across publishes. Tests 2 to 4
+    publish their own starting revision when none exists, so none depends on test 1:
     - a workspace admin, then the owner, publish, and the same session's next `flux_bootstrap` names
       revision 1, then 2 (digest and resource URI). Both revisions stay readable through
       `flux://policy/…`.
@@ -58,18 +70,27 @@ evaluation is still required. #160 stays open (see "What remains").
     - two managers edit the same revision: the second gets `VERSION_CONFLICT` with
       `currentVersion` and the newer policy as `current`. The agent is never told the refused edit.
       Publishing from the shown revision then succeeds.
-  - `app/tests/ui/test_project_policy.py` has 8 tests at desktop 1440 and phone 390 (coarse
-    pointer, no hover). Every publish is checked against the server's saved revision. The phone
-    checks:
-    - the fields use 16 px text;
-    - Show, Hide, Edit, Publish and Cancel are at least 44 px tall, with 12 px between Publish and
-      Cancel;
-    - there is no text under 11 px, the revision line is 13 px and the policy is 16 px;
-    - forcing `:active` through the DevTools protocol changes the look of Show policy, Cancel and
-      Publish (the HIG checklist's own check);
-    - touch-action is `manipulation`;
-    - the tapped Hide has no fill;
-    - there is no sideways scroll.
+  - `app/tests/ui/test_project_policy.py` has 10 tests at desktop 1440 and on phones at 390 and 320
+    (coarse pointer, no hover). Every publish is checked against the server's saved revision.
+    - `test_01b`: before the first publish, the exact purpose line for a contributor and for a
+      manager, at 1440 and at 390. Each also checks that the section has no internal words
+      ("checkpoint", "grants", "bootstrap").
+    - `test_02b`: a lost answer, with Flux reachable again (the edit ends as published) and with
+      Flux unreachable for a moment (the exact message; a later changed text continues from the
+      revision the lost publish made). Neither case ever says "while you were editing" or "another
+      tab".
+    - `test_03b`: a conflict on phones at 390 and 320. The other revision's text sits right under
+      the changed field, and the banner is at most 4 lines at 390 px and 5 at 320 px.
+    - The phone checks of `test_04` and `test_04b`:
+      - the fields use 16 px text;
+      - Show, Hide, Edit, Publish and Cancel are at least 44 px tall, with 12 px between Publish
+        and Cancel;
+      - there is no text under 11 px, the revision line is 13 px and the policy is 16 px;
+      - forcing `:active` through the DevTools protocol changes the look of Show policy, Cancel and
+        Publish (the HIG checklist's own check);
+      - touch-action is `manipulation`;
+      - the tapped Hide has no fill;
+      - there is no sideways scroll.
 - **Docs.** `docs/development/agent-connection.md`, "Approved project policy": an "Editor (T160-b)"
   item.
 
@@ -77,20 +98,34 @@ evaluation is still required. #160 stays open (see "What remains").
 
 | Run | Code | Result |
 | --- | --- | --- |
-| UI, `check_ui.sh test_project_policy test_agents_view test_grant_controls test_shared_composer test_typing test_app_shell test_phone_shell` (image build ran build, typecheck and lint; these screenshots) | `97ba7e36` | 86/86 OK (8 + 17 + 4 + 14 + 11 + 20 + 12) |
-| API, `tests/app/agent-policy.test.ts` | `1899e6f4`; the policy's server, core and DB code and this test file are unchanged since (main brought changes to other agent-connection files) | 9/9 pass; the same 9 run again in the full check below |
-| `./scripts/check_application.sh` (build, typecheck, lint, app tests and every browser/e2e phase) | `97ba7e36` | exit 0: 969/969 application tests (both policy suites included), then 13 later phases with 20/20 tests; 0 failures |
-| Before the merge: the same UI modules without `test_phone_shell`, and the full check | `8f0ba3f3` and `e4b63298` | 72/72 OK; full check exit 0 (943/943, then 20/20) |
+| UI, `check_ui.sh test_project_policy test_agents_view test_grant_controls test_shared_composer test_typing test_app_shell test_phone_shell test_agents_accents` (image build ran build, typecheck and lint; these screenshots) | `f0e397cf` | 90/90 OK (10 + 17 + 4 + 14 + 11 + 20 + 12 + 2) |
+| `./scripts/check_application.sh` (build, typecheck, lint, app tests including both policy suites, every browser/e2e phase) | `f0e397cf` | RESULT_FULL |
+| Earlier heads | `97ba7e36`; `8f0ba3f3` and `e4b63298` | UI 86/86 and full check exit 0 (969/969, then 20/20); before the first merge, UI 72/72 and full check exit 0 (943/943, then 20/20) |
 
 ## Negative controls
 
 Each patch in [negative-controls/](negative-controls/) breaks one or more behaviors in a scratch
-copy of `97ba7e36`. The tests named below then fail, and the others still pass.
+copy of the tested code. The tests named below then fail, and the others still pass.
 
-| Patch | Behavior removed | Failing tests (observed) |
+| Patch | Code | Behavior removed | Failing tests (observed) |
+| --- | --- | --- | --- |
+| `negE.patch` | `f0e397cf` | (f) the purpose line, so the empty state is "Agent policy · None yet" again, as Hubert found it | `test_01b` (the contributor's purpose line is missing, at 1440), `test_02` (the manager's line after the first publish is missing), `test_05` (the reader's line is missing). 3 fail; the other 7 pass. |
+| `negU.patch` | `f0e397cf` | (a) the editor is offered regardless of project access; (b) the base revision is refetched right before publishing, a silent overwrite; (c) no client check of the length before sending; (d) the policy text keeps its 14 px desktop size on a touch screen; (e) buttons have no press state of their own; (g) a revision the person's own unconfirmed publish made is never recognised as theirs | `test_01b` and `test_05` (a: a contributor gets the manager's line and editor), `test_02` (c: the alert reads the server's generic length message), `test_02b` (g: the lost publish's own revision is not recognised, so the edit never ends as published), `test_03` and `test_03b` (b: no conflict, Ola's revision silently replaced), `test_04` (d: "14 not greater than or equal to 16"), `test_04b` (e: the look is the same pressed and not pressed). 8 fail; `test_01` and `test_06` pass. |
+| `negA.patch` | `97ba7e36` | (1) bootstrap names revision 1 instead of the newest; (2) any project reader may publish; (3) a stale `expectedRevision` is ignored, so the last write wins | Editor suite: test 1 (1: the next bootstrap still names revision 1, not 2), test 2 (2: a contributor's publish returned 201, not 403), test 4 (3: the stale publish returned 201, not 409); the invalid-policy test passes. #214's first and fifth tests also fail, as they check the same rules. 5 fail, 4 pass. The API code is unchanged since; the only later test change makes tests 2 to 4 publish their own starting revision, so this was not repeated. |
+
+Before the first merge, (d) made the fields 14 px. #267's shared 16 px rule now covers fields, so
+(d) targets the policy text instead.
+
+## Review of PR #292 (claude-hubert, `c6ac24e3`, changes requested)
+
+| Item | Fix in `f0e397cf` | Test |
 | --- | --- | --- |
-| `negU.patch` | (a) the editor is offered regardless of project access; (b) the base revision is refetched right before publishing, a silent overwrite; (c) no client check of the length before sending; (d) the policy text keeps its 14 px desktop size on a touch screen; (e) buttons have no press state of their own | `test_01b` (a: "Write policy" offered to a contributor), `test_02` (c: the alert reads the server's generic length message, not "Shorten Priorities to publish"), `test_03` (b: no conflict, Hubert's publish replaced Ola's), `test_04` (d: "14 not greater than or equal to 16: the policy reads at 16 px"), `test_04b` (e: the look is the same pressed and not pressed), `test_05` (a: an editor instead of "Only Hubert Nowak or Ola Kowalska can change it."). 6 fail; `test_01` and `test_06` pass. Before the merge, (d) made the fields 14 px; #267's shared 16 px rule now covers fields, so (d) targets the policy text instead. |
-| `negA.patch` | (1) bootstrap names revision 1 instead of the newest; (2) any project reader may publish; (3) a stale `expectedRevision` is ignored, so the last write wins | Editor suite: test 1 (1: the next bootstrap still names revision 1, not 2), test 2 (2: a contributor's publish returned 201, not 403), test 4 (3: the stale publish returned 201, not 409); the invalid-policy test passes. #214's first and fifth tests also fail, as they check the same rules. 5 fail, 4 pass |
+| B1: the empty state explains nothing | One line of purpose in every state. Readers see "Rules connected agents read before they plan work in this project. Only Hubert Nowak or Ola Kowalska write them; you don't need to do anything." Managers before a publish see "… They're optional: write them when agents here should keep to certain work or meet review rules."; after a publish, "… You can change them at any time." | `test_01b` (contributor and manager, 1440 and 390), `test_02`, `test_05`; negative control `negE` |
+| S1: the lost-answer message is false; one's own revision is shown as another person's | The new message, a re-read after the lost answer, and recognition of one's own unconfirmed revision, in both the live update and a later 409. | `test_02b` (both cases); negative control `negU` (g) |
+| S2: the conflict is far from the field on phones | The other revision's text and "Use their …" sit under the field it changed, and the banner is one short sentence pair. | `test_03` (1440), `test_03b` (390 and 320) |
+| S3: internal words | "It only narrows what agents do; it never gives them more access." "Agents use revision N from their next task." "Published. Agents use it from their next task." | `test_01b`, `test_02` (no "checkpoint", "grants" or "bootstrap") |
+| Nit: tests 2 to 4 depend on test 1 | They publish their own starting revision if none exists. | API run in the full check |
+| Nit: the revision is named twice | The status is "Published. Agents use it from their next task."; the revision appears once, in the line under the title. | `test_02` |
 
 ## Independent visual review
 
@@ -110,24 +145,31 @@ Not changed:
   touch screens no longer keep a hover fill (`test_04b`).
 - The fields use the column width, like the task composer below them.
 
-That review predates the merge of #267, the HIG sizing and the redesigned conflict view. A fresh
-neutral visual pass on these screenshots, taken at the merged head, is still owed.
+That review predates the merge of #267, the HIG sizing and the conflict view under each field.
+claude-hubert's evaluation of `c6ac24e3` included a second neutral visual pass, and B1, S2 and S3
+came from it. A fresh visual pass at `f0e397cf` is still owed.
 
-The HIG checks in the browser tests cover the read view and the editor at 390 px. That means Show,
-Hide, Edit, Publish, Cancel and the fields; target size is measured as height. The conflict view's
-"Use their …" buttons use the same button rules, but the tests exercise them only at 1440 px.
+The HIG checks in the browser tests cover the read view and the editor at 390 px: Show, Hide, Edit,
+Publish, Cancel and the fields. "Use their …" is also checked at 390 and 320 px. Target size is
+measured as height.
 
 ## Screenshots
 
 - Desktop 1440:
   - `policy-none-reader-desktop-1440.png` (a contributor before any publish)
+  - `policy-none-manager-desktop-1440.png` (a manager before any publish)
+  - `policy-lost-answer-desktop-1440.png` (Flux couldn't confirm the publish)
   - `policy-edit-desktop-1440.png`
   - `policy-read-desktop-1440.png`
   - `policy-conflict-desktop-1440.png`
   - `policy-conflict-actions-desktop-1440.png`
   - `policy-marek-desktop-1440.png` (contributor)
   - `policy-lee-desktop-1440.png` (viewer)
-- Phone 390 (3x, coarse pointer):
+- Phone 390 and 320 (3x, coarse pointer):
+  - `policy-none-reader-phone-390.png`
+  - `policy-none-manager-phone-390.png`
+  - `policy-conflict-phone-390.png`
+  - `policy-conflict-phone-320.png`
   - `policy-edit-phone-390.png`
   - `policy-read-phone-390.png`
   - `policy-marek-phone-390.png`
