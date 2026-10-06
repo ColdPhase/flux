@@ -20,6 +20,12 @@ They are not alternative current targets. Do not restart direction discovery or
 use older PNGs as the final appearance baseline. Compare realistic complete
 11.6-aligned views at matched viewport/zoom and refine specific visible friction.
 
+## People and AI (proposed F-025)
+
+[People and AI, visibly together](people-and-ai.md) proposes v5, the founder's 2026-10-06
+choice. It keeps 11.6's structure and changes its colour roles: chrome is monochrome, each agent
+has its own gradient orb, and real work is visible. Until it is accepted, 11.6 governs.
+
 ## Live collaboration reference
 
 The founder's [live collaboration requirements](../product/live-collaboration.md)
