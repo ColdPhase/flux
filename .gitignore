@@ -24,3 +24,6 @@ coverage/
 /backups/
 /exports/
 /.flux-backup-lock-*/
+
+# Server measurement results written by scripts/check_performance.sh (#298).
+/perf-results/
