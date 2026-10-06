@@ -43,6 +43,40 @@ class FailuresOnlyTest(unittest.TestCase):
         self.assertTrue(any("--text-3 on --bg" in line for line in lines[:-1]), result.stdout)
         self.assertRegex(lines[-1], r"^\d+ pairs checked, [1-9]\d* failed$")
 
+    def run_broken(self, original: str, replacement: str, after: str) -> subprocess.CompletedProcess[str]:
+        """The script on a copy whose first `original` after `after` is replaced."""
+        css = TOKENS.read_text()
+        start = css.index(after)
+        at = css.index(original, start)
+        with tempfile.TemporaryDirectory() as tmp:
+            broken = Path(tmp) / "tokens.css"
+            broken.write_text(css[:at] + replacement + css[at + len(original):])
+            return run("--failures-only", "--tokens", str(broken))
+
+    def test_the_phone_palette_is_checked_in_both_themes(self) -> None:
+        """F-025 PA-1: the phone values (≤640 px) are their own palettes, light and dark."""
+        result = run()
+        self.assertEqual(result.returncode, 0, result.stdout)
+        for theme in ("phone/light", "phone/dark"):
+            self.assertIn(f"ok   {theme} ", result.stdout)
+        self.assertIn("a person's initials on the quiet fill", result.stdout)
+
+    def test_a_weak_phone_token_fails_only_on_phones(self) -> None:
+        result = self.run_broken("--text-2: #6b6660;", "--text-2: #b5b0a9;", "@media (max-width: 640px) {")
+        self.assertEqual(result.returncode, 1, result.stdout)
+        failing = result.stdout.strip().splitlines()[:-1]
+        self.assertTrue(failing and all("phone/light" in line for line in failing), result.stdout)
+
+    def test_phone_chrome_that_follows_the_accent_fails(self) -> None:
+        result = self.run_broken("--accent: #151515;", "--accent: var(--accent-light);", "@media (max-width: 640px) {")
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("FAIL phone/light chrome follows the person's accent family", result.stdout)
+
+    def test_the_two_phone_dark_blocks_must_match(self) -> None:
+        result = self.run_broken("--bubble: #262524;", "--bubble: #2a2928;", "@media (max-width: 640px) and (prefers-color-scheme: dark)")
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("FAIL phone dark tokens differ between the media query and [data-theme=dark]", result.stdout)
+
     def test_default_output_is_unchanged(self) -> None:
         result = run()
         self.assertEqual(result.returncode, 0, result.stderr)

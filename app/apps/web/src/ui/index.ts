@@ -1,3 +1,4 @@
+export { AgentOrb, AiBadge } from './AgentOrb';
 export { Avatar, initials } from './Avatar';
 export { Button, IconButton, Spinner, type ButtonProps, type ButtonVariant } from './Button';
 export { EmptyState } from './EmptyState';

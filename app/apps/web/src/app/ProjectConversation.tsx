@@ -5,7 +5,7 @@ import { ApiError } from '../api/client';
 import { useComposerDraft, useComposerScope } from '../composer/draft';
 import { AttachButton, ComposerFiles, MessageFiles } from '../composer/Files';
 import { contributeToTask } from '../composer/api';
-import { Avatar, Button, Icon, Input, MEDIA, sendsOnEnter, useArrivals, useMediaQuery } from '../ui';
+import { AgentOrb, AiBadge, Avatar, Button, Icon, Input, MEDIA, sendsOnEnter, useArrivals, useMediaQuery } from '../ui';
 import { getConversation, getMaterialVersion, getProject, listConversationRoots, listDrafts, listMaterials, listTaskNotices, listWorkspaceMembers, olderMessages, publishMaterial, reply, startConversation } from './conversation-api';
 import { pageBackTo } from './seekMessage';
 import { useShellData } from './data';
@@ -20,7 +20,7 @@ import { useConversationAssistant } from '../assistant/useConversationAssistant'
 import { AnswerItem, AskBar, ProposalCard, WorkingLine } from '../assistant/ConversationParts';
 import { askError as askErrorText, askState } from '../assistant/format';
 import { grantAgentProject } from '../agent-connection/api';
-import { agentAuthorLabel } from '../docs/format';
+import { agentAuthorLabel, agentDisplayName } from '../docs/format';
 import { ContributionMark, OPENING_REVEAL_MS, SourceCitation, clock, day, openOnWholeMessages, when } from './messageParts';
 import { OneConversation, type PaneProps } from './OneConversation';
 import { ThreadMessageActions } from './ThreadDrawer';
@@ -89,6 +89,8 @@ export function ProjectConversation() {
 function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessageId = null, onPosted, onThreadSize, focusComposer = false }: PaneProps) {
   // Touch devices add a line with Enter and send with the button (#189).
   const touch = useMediaQuery(MEDIA.touch);
+  // On phones an agent's reply and an assistant's answer show the orb, the name and "AI" (F-025 PA-2).
+  const phone = useMediaQuery(MEDIA.phone);
   const { project, materials, members } = data;
   const conversation = variant === 'thread' ? data.conversation : null;
   const shell = useProjectShell();
@@ -441,7 +443,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
                 const answer = entry.answer;
                 const proposal = answer.proposalId ? assistant.proposals.get(answer.proposalId) ?? null : null;
                 const workTitle = proposal?.change.finishes ? referenceWork.rows.get(`work:${proposal.change.finishes.workId}`)?.title ?? 'a work item' : null;
-                return [divider, <AnswerItem key={entry.key} answer={answer} mine={answer.assistant.ownerUserId === me.user.id} lookups={lookups} when={when} clock={clock}
+                return [divider, <AnswerItem key={entry.key} answer={answer} mine={answer.assistant.ownerUserId === me.user.id} phone={phone} lookups={lookups} when={when} clock={clock}
                   proposal={proposal}
                   proposalControls={proposal ? <ProposalCard proposal={proposal} workTitle={workTitle} {...proposalAuthority(proposal.change.finishes)} onRefreshTarget={referenceWork.refresh} meId={me.user.id}
                     onDecide={async (decision) => {
@@ -453,9 +455,10 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
               }
               const message = entry.message;
               const mine = message.authorId === me.user.id;
+              const agent = phone && message.authorId === null ? message.author : null;
               return [divider, <li key={message.id} id={`message-${message.id}`} data-message-id={message.id} tabIndex={-1} className={`project-convo__message${mine ? ' is-mine' : ''}${arrived === message.id ? ' is-arrived' : ''}`}>
                 <Avatar name={messageAuthor(message)} size="md" tone={mine ? 'me' : 'neutral'} />
-                <div className="project-convo__message-meta"><strong>{mine ? `${messageAuthor(message)} · you` : message.authorId === null ? messageAuthor(message) : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${messageAuthor(message)} directly`}>{messageAuthor(message)}</Link>}</strong><time dateTime={message.createdAt} title={when(message.createdAt)}>{clock(message.createdAt)}</time><span>#{message.sequence}</span></div>
+                <div className="project-convo__message-meta">{agent ? <AgentOrb agentId={agent.id} /> : null}<strong>{mine ? `${messageAuthor(message)} · you` : agent ? agentDisplayName(agent) : message.authorId === null ? messageAuthor(message) : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${messageAuthor(message)} directly`}>{messageAuthor(message)}</Link>}</strong>{agent ? <AiBadge /> : null}<time dateTime={message.createdAt} title={when(message.createdAt)}>{clock(message.createdAt)}</time><span>#{message.sequence}</span></div>
                 {message.body ? <p>{message.body}</p> : null}
                 <MessageFiles files={message.files} />
                 {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={(resultId) => openDetails({ kind: 'result', id: resultId })} /> : null}

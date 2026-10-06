@@ -1,10 +1,11 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { ConversationMessage, NativeWorkRow } from '@flux/contracts';
-import { Avatar, Icon, IconButton, useMediaQuery } from '../ui';
+import { AgentOrb, AiBadge, Avatar, Icon, IconButton, MEDIA, useMediaQuery } from '../ui';
 import { DiscussedTask, MessageObjects } from '../work/inline';
 import type { MessageWorkPreview } from '../work/message-associations';
 import { SourceCitation, clock, day, when } from './messageParts';
 import { MessageFiles } from '../composer/Files';
+import { agentDisplayName } from '../docs/format';
 
 export type ThreadMode = 'docked' | 'sheet';
 
@@ -67,13 +68,18 @@ export function ThreadRoot({ message, projectId, body, author, meId, writable, r
   preview?: MessageWorkPreview | null; onDenied: (cause: unknown) => void;
 }) {
   const mine = !!message && message.authorId === meId;
+  // An agent on a phone: its orb, its name and "AI" instead of "<name> · agent" (F-025 PA-2).
+  const phone = useMediaQuery(MEDIA.phone);
+  const agent = phone && message && message.authorId === null ? message.author : null;
   return (
     <>
       <article className={`thread__root${mine ? ' is-mine' : ''}`} id={message ? `thread-root-${message.id}` : undefined} data-message-id={message?.id} aria-label={author ? `Message from ${mine ? 'you' : author}` : 'Opening message'}>
         {message && author ? (
           <div className="thread__root-meta">
             <Avatar name={author} size="sm" tone={mine ? 'me' : 'neutral'} />
-            <strong>{mine ? `${author} · you` : author}</strong>
+            {agent ? <AgentOrb agentId={agent.id} /> : null}
+            <strong>{mine ? `${author} · you` : agent ? agentDisplayName(agent) : author}</strong>
+            {agent ? <AiBadge /> : null}
             <time dateTime={message.createdAt} title={when(message.createdAt)}>{day(message.createdAt)} · {clock(message.createdAt)}</time>
           </div>
         ) : null}

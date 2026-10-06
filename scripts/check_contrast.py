@@ -3,6 +3,8 @@
 
 Reads app/apps/web/src/ui/tokens.css (light/dark roles and each family override) and
 fails when a text pair is below 4.5:1 or a UI boundary/indicator pair is below 3:1.
+The phone palette (F-025 PA-1, ≤640 px) is checked in both themes as well: the same pairs
+plus the phone-only roles, and it must not follow the person's accent family.
 `--failures-only` prints only failing pairs and a one-line summary; the exit code is the same.
 """
 from __future__ import annotations
@@ -66,6 +68,21 @@ PAIRS = [
     ("--map-guide", "--canvas", 3.0, "map relationship guide on the canvas"),
 ]
 
+# Roles that exist or matter only in the monochrome phone palette (F-025 PA-1).
+PHONE_PAIRS = [
+    ("--text", "--bg-active", 4.5, "a person's initials on the quiet fill"),
+    ("--text-2", "--bg-side", 4.5, "secondary text on the quiet fill"),
+    ("--accent-selected-text", "--nav-current", 4.5, "current place in the phone bar"),
+    ("--text", "--bg-selected", 4.5, "chosen segment label"),
+    ("--text-2", "--bg-selected", 4.5, "other segment labels beside the chosen one"),
+    ("--line-input", "--bg-raised", 3.0, "input boundary on a card or sheet"),
+    ("--focus", "--bubble", 3.0, "focus ring on a message"),
+    ("--focus", "--bg-active", 3.0, "focus ring on the current place"),
+]
+# The roles through which the person's accent reaches the chrome; on phones none may follow it.
+ACCENT_ROLES = ("--accent", "--accent-hover", "--accent-pressed", "--accent-soft", "--on-accent", "--accent-selected-bg",
+                "--accent-selected-text", "--accent-selected-border", "--link", "--focus", "--bubble-own")
+
 
 def parse(block: str) -> dict[str, str]:
     return dict(re.findall(r"(--[a-z0-9-]+):\s*(#[0-9a-fA-F]{6}|var\(--[a-z0-9-]+\))", block))
@@ -106,26 +123,52 @@ def main(argv: list[str] | None = None) -> int:
             start = css.index(f':root[data-accent="{family}"]')
             override = parse(css[start:css.index("}", start)])
         palettes.extend((f"{theme}/{family}", {**tokens, **override}) for theme, tokens in (("light", light), ("dark", dark)))
+    # Phone (F-025 PA-1): the light block, and the dark one twice (system dark and the toggle), like the base tokens.
+    phone_start = css.index("@media (max-width: 640px) {")
+    phone_light_start = css.index(":root {", phone_start)
+    phone_light = parse(css[phone_light_start:css.index("}", phone_light_start)])
+    phone_media_start = css.index(":root:not", css.index("@media (max-width: 640px) and (prefers-color-scheme: dark)"))
+    phone_media = parse(css[phone_media_start:css.index("}", phone_media_start)])
+    phone_dark_start = css.index(':root[data-theme="dark"] {', phone_light_start)
+    phone_dark = parse(css[phone_dark_start:css.index("}", phone_dark_start)])
     failures = 0
+    phones = []
+    for theme, base, phone in (("light", light, phone_light), ("dark", dark, phone_dark)):
+        resolved = {}
+        for family in ("mint", "sky", "copper"):
+            override = {}
+            if family != "mint":
+                start = css.index(f':root[data-accent="{family}"]')
+                override = parse(css[start:css.index("}", start)])
+            tokens = {**base, **override, **phone}
+            resolved[family] = {role: resolve(tokens, role).lower() for role in ACCENT_ROLES}
+            if family == "mint":
+                phones.append((f"phone/{theme}", tokens))
+        if not resolved["mint"] == resolved["sky"] == resolved["copper"]:
+            print(f"FAIL phone/{theme} chrome follows the person's accent family")
+            failures += 1
     mint_start = css.index('.me-accent__option[data-accent-option="mint"] {')
     mint_sample = parse(css[mint_start:css.index("}", mint_start)])
     if any(light.get(k) != v for k, v in mint_sample.items()):
         print("FAIL Mint sample differs from the default family primitives")
         failures += 1
     checked = 0
-    for theme, tokens in palettes:
-        for fg, bg, minimum, purpose in PAIRS:
+    for theme, tokens, pairs in [(theme, tokens, PAIRS) for theme, tokens in palettes] + [(theme, tokens, PAIRS + PHONE_PAIRS) for theme, tokens in phones]:
+        for fg, bg, minimum, purpose in pairs:
             value = ratio(resolve(tokens, fg), resolve(tokens, bg))
             ok = value >= minimum
             failures += not ok
             checked += 1
             if not (quiet and ok):
-                print(f"{'ok  ' if ok else 'FAIL'} {theme:10} {value:5.2f}:1 (min {minimum}) {fg} on {bg}: {purpose}")
+                print(f"{'ok  ' if ok else 'FAIL'} {theme:11} {value:5.2f}:1 (min {minimum}) {fg} on {bg}: {purpose}")
     # The dark tokens are duplicated for prefers-color-scheme; they must match the toggle block.
     media_start = css.index("@media (prefers-color-scheme: dark)")
     media = parse(css[media_start:css.index("}", css.index("{", css.index("{", media_start) + 1))])
     if {k: v.lower() for k, v in media.items()} != {k: v.lower() for k, v in parse(css[dark_start:css.index("}", dark_start)]).items()}:
         print("FAIL dark tokens differ between the media query and [data-theme=dark]")
+        failures += 1
+    if {k: v.lower() for k, v in phone_media.items()} != {k: v.lower() for k, v in phone_dark.items()}:
+        print("FAIL phone dark tokens differ between the media query and [data-theme=dark]")
         failures += 1
     if quiet:
         print(f"{checked} pairs checked, {failures} failed")

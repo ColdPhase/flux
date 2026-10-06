@@ -1,7 +1,7 @@
 /* Flux theme tokens: Studio 11.6 (F-017), measured from the supplied prototype (#136), with
    Mint (default), Sky and Copper accent families (#148). See docs/design/studio-v11.6-design-system.md.
    Accent marks selection, links, focus and unread only; primary actions use the neutral --action.
-   scripts/check_contrast.py checks all six palettes. */
+   scripts/check_contrast.py checks all six palettes and the two phone palettes of F-025 PA-1 (at the end). */
 :root {
   color-scheme: light;
 
@@ -169,4 +169,48 @@
 
 @media (prefers-reduced-motion: reduce) {
   :root { --dur-1: 0ms; --dur-2: 0ms; --dur-3: 0ms; --dur-4: 0ms; }
+}
+
+/* F-025 PA-1 (docs/design/people-and-ai.md): monochrome chrome on phones (≤640 px, PF-1). Only values change;
+   every name stays, so no component forks. No accent in navigation, selection, links, focus or unread: those
+   roles take the text colour, and selected or current fills take the quiet fill. The person's #148 accent and
+   the 11.6 values still apply above 640 px. --ok, --warning, --danger and --attention keep their 11.6 values.
+   --bubble-own stays the bubble neutral until slice 4 (PA-4) gives own messages the action colour with inverse
+   text. --nav-current and --bg-selected are F-023's (#275) names, set here so its phone bar and segments stay
+   monochrome when it lands. scripts/check_contrast.py checks both phone palettes. */
+@media (max-width: 640px) {
+  :root {
+    --bg-chrome: #fcfbfa; --bg: #fcfbfa; --bg-raised: #ffffff; --bg-side: #f4f2ef; --bg-hover: #eeebe7; --bg-active: #f4f2ef;
+    --sheet-edge: #e9e6e2; --bubble: #f2f0ed; --bubble-own: #f2f0ed; --canvas: #f7f5f2; --canvas-dot: #dcd8d3;
+    --text: #151515; --text-2: #6b6660; --text-3: #6b6660;
+    --line: #e9e6e2; --line-strong: #dcd8d3; --line-input: #8c867f;
+    --action: #111111; --on-action: #ffffff;
+    --accent: #151515; --accent-hover: #2b2b2b; --accent-pressed: #000000; --accent-soft: #f4f2ef; --on-accent: #fcfbfa;
+    --accent-selected-bg: #f4f2ef; --accent-selected-text: #151515; --accent-selected-border: #151515; --link: #151515; --focus: #151515;
+    --nav-current: #f4f2ef; --bg-selected: #ffffff;
+  }
+}
+@media (max-width: 640px) and (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg-chrome: #141414; --bg: #141414; --bg-raised: #1c1b1a; --bg-side: #242322; --bg-hover: #2b2a28; --bg-active: #242322;
+    --sheet-edge: #2e2d2b; --bubble: #262524; --bubble-own: #262524; --canvas: #181817; --canvas-dot: #3a3836;
+    --text: #f2f0ed; --text-2: #a39e97; --text-3: #a39e97;
+    --line: #2e2d2b; --line-strong: #3a3836; --line-input: #77726b;
+    --action: #f2f0ed; --on-action: #141414;
+    --accent: #f2f0ed; --accent-hover: #ffffff; --accent-pressed: #dcd8d2; --accent-soft: #242322; --on-accent: #141414;
+    --accent-selected-bg: #242322; --accent-selected-text: #f2f0ed; --accent-selected-border: #f2f0ed; --link: #f2f0ed; --focus: #f2f0ed;
+    --nav-current: #242322; --bg-selected: #33312e;
+  }
+}
+@media (max-width: 640px) {
+  :root[data-theme="dark"] {
+    --bg-chrome: #141414; --bg: #141414; --bg-raised: #1c1b1a; --bg-side: #242322; --bg-hover: #2b2a28; --bg-active: #242322;
+    --sheet-edge: #2e2d2b; --bubble: #262524; --bubble-own: #262524; --canvas: #181817; --canvas-dot: #3a3836;
+    --text: #f2f0ed; --text-2: #a39e97; --text-3: #a39e97;
+    --line: #2e2d2b; --line-strong: #3a3836; --line-input: #77726b;
+    --action: #f2f0ed; --on-action: #141414;
+    --accent: #f2f0ed; --accent-hover: #ffffff; --accent-pressed: #dcd8d2; --accent-soft: #242322; --on-accent: #141414;
+    --accent-selected-bg: #242322; --accent-selected-text: #f2f0ed; --accent-selected-border: #f2f0ed; --link: #f2f0ed; --focus: #f2f0ed;
+    --nav-current: #242322; --bg-selected: #33312e;
+  }
 }

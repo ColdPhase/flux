@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { aiConnectionLabel, type AssistantAnswer, type AssistantProposal, type AssistantRun, type AssistantSourceRef, type ConversationMessage, type NativeWorkRow } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { Button, Icon, IconButton, useLoopPause } from '../ui';
+import { AgentOrb, AiBadge, Button, Icon, IconButton, useLoopPause } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { canRetry, endedText, isWorking, workingText, type AskState } from './format';
 import { agentAuthorLabel } from '../docs/format';
@@ -114,9 +114,11 @@ function sourceSummary(count: number) {
   return `${count} ${count === 1 ? 'source' : 'sources'} from this project`;
 }
 
-export function AnswerItem({ answer, mine, lookups, when, clock, proposal, proposalControls, onRetry, onContinue, onAskAbout }: {
+export function AnswerItem({ answer, mine, phone = false, lookups, when, clock, proposal, proposalControls, onRetry, onContinue, onAskAbout }: {
   answer: AssistantAnswer;
   mine: boolean;
+  /** On a phone the header is the assistant's violet orb, its name and "AI" (F-025 PA-2). */
+  phone?: boolean;
   lookups: SourceLookups;
   when: (iso: string) => string;
   clock: (iso: string) => string;
@@ -137,8 +139,9 @@ export function AnswerItem({ answer, mine, lookups, when, clock, proposal, propo
     <li id={`answer-${answer.runId}`} tabIndex={-1} className="project-convo__message assistant-answer" data-answer-run={answer.runId}>
       <AssistantAvatar />
       <div className="project-convo__message-meta">
+        {phone ? <AgentOrb assistant /> : null}
         <strong>{answer.assistant.label}</strong>
-        <span className="assistant-tag">Assistant</span>
+        {phone ? <AiBadge /> : <span className="assistant-tag">Assistant</span>}
         <span className="assistant-answer__asked">asked by {mine ? 'you' : answer.askedBy.name}</span>
         <time dateTime={answer.committedAt} title={when(answer.committedAt)}>{clock(answer.committedAt)}</time>
       </div>

@@ -9,7 +9,7 @@ import { useComposerDraft, useComposerScope } from '../composer/draft';
 import { AttachButton, ComposerFiles, MessageFiles } from '../composer/Files';
 import { contributeToTask, getTaskDiscussion } from '../composer/api';
 import { useProjectShell } from '../project/data';
-import { Button, Icon } from '../ui';
+import { AgentOrb, AiBadge, Button, Icon, MEDIA, useMediaQuery } from '../ui';
 import { STATUS_LABEL } from '../work/format';
 import { useNativeOwn, useWorkChoices } from '../work/useDetailReads';
 import { WorkPagination } from '../work/WorkPagination';
@@ -73,11 +73,12 @@ function activityLine(connection: ProjectAgentConnection) {
   return `Last: ${label} · ${when(last.at)}`;
 }
 
-function Connection({ connection, now }: { connection: ProjectAgentConnection; now: number }) {
+function Connection({ connection, now, phone }: { connection: ProjectAgentConnection; now: number; phone: boolean }) {
   const activity = activityLine(connection);
   return (
     <li className="agents-conn" data-state={shownState(connection, now)}>
-      <span className="agents-conn__icon" aria-hidden="true"><Icon name="terminal" size={16} /></span>
+      {/* On phones the connection's agent shows its orb, the same one as on its messages (F-025 PA-2). */}
+      <span className="agents-conn__icon" aria-hidden="true">{phone ? <AgentOrb agentId={connection.agent.id} size="md" /> : <Icon name="terminal" size={16} />}</span>
       <span className="agents-conn__body">
         <span className="agents-conn__who">
           <b>{CLIENT_LABEL[connection.clientDesignation]}</b>
@@ -140,7 +141,7 @@ function paneAtEnd(marker: HTMLElement | null) {
 /** The task a thread belongs to: its identity and title, from a bounded native read. */
 interface ThreadTask { id: string; title: string; status: WorkStatus }
 
-function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: { task: ThreadTask; projectId: string; meId: string; names: Map<string, string>; canWrite: boolean; changingScope: boolean }) {
+function TaskThread({ task, projectId, meId, names, canWrite, changingScope, phone }: { task: ThreadTask; projectId: string; meId: string; names: Map<string, string>; canWrite: boolean; changingScope: boolean; phone: boolean }) {
   const [discussion, setDiscussion] = useState<TaskDiscussion | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [accessLost, setAccessLost] = useState(false);
@@ -272,10 +273,12 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
         {messages.map((message) => {
           const own = message.authorId === meId;
           const agent = message.authorId === null;
+          // On phones an agent's message shows its orb, its name and "AI" instead of "· agent" (F-025 PA-2).
+          const orb = phone && message.authorId === null ? <AgentOrb agentId={message.author.id} /> : null;
           return (
-            <li key={message.id} className={`agents-msg${own ? ' agents-msg--own' : ''}${agent ? ' agents-msg--agent' : ''}`}>
+            <li key={message.id} className={`agents-msg${own ? ' agents-msg--own' : ''}${agent ? ' agents-msg--agent' : ''}`} data-message-id={message.id}>
               <span className="agents-msg__meta">
-                <b>{own ? 'You' : authorName(message, names)}</b>{agent ? <span className="agents-msg__kind">{AGENT_SUFFIX}</span> : null}
+                {orb}<b>{own ? 'You' : authorName(message, names)}</b>{orb ? <AiBadge /> : agent ? <span className="agents-msg__kind">{AGENT_SUFFIX}</span> : null}
                 <time dateTime={message.createdAt}>{when(message.createdAt)}</time>
                 {message.contribution ? <span className="agents-msg__kind"> · {message.contribution.kind}</span> : null}
               </span>
@@ -379,6 +382,7 @@ export function ProjectAgents() {
   // Flush the pending navigation guard before a fast next input can reach the old keyed thread.
   const select = (id: string) => setSearch((current) => { const next = new URLSearchParams(current); next.set('task', id); return next; }, { replace: true, flushSync: true });
   const connections = useConnections(projectId, me.user.id, data.connections);
+  const phone = useMediaQuery(MEDIA.phone);
 
   // The view scrolls in its own pane like every other view, so a long thread stays reachable
   // above the sticky composer on any screen.
@@ -391,7 +395,7 @@ export function ProjectAgents() {
       </header>
       {connections.list.length ? (
         <ul className="agents__connections" aria-label="Agent connections in this project">
-          {connections.list.map((connection) => <Connection key={connection.id} connection={connection} now={connections.now} />)}
+          {connections.list.map((connection) => <Connection key={connection.id} connection={connection} now={connections.now} phone={phone} />)}
         </ul>
       ) : (
         <p className="agents__no-connections">No agents connected. You can still discuss tasks here.</p>
@@ -407,7 +411,7 @@ export function ProjectAgents() {
             <Link className="ui-link agents__open" to={`/projects/${projectId}/tasks?open=work:${task.id}`}>Open task<Icon name="chevron-right" size={12} /></Link>
           </div>
           {choices.page && (choices.page.previousCursor || choices.page.nextCursor) ? <WorkPagination {...choices} label="Open task choices" noun="open tasks" /> : null}
-          <TaskThread key={`${me.user.id}:${projectId}:${task.id}`} task={task} projectId={projectId} meId={me.user.id} names={names} canWrite={shell?.project.access !== 'viewer'} changingScope={changingScope} />
+          <TaskThread key={`${me.user.id}:${projectId}:${task.id}`} task={task} projectId={projectId} meId={me.user.id} names={names} canWrite={shell?.project.access !== 'viewer'} changingScope={changingScope} phone={phone} />
         </>
       ) : choices.read.phase === 'unavailable' ? (
         <p className="agents__no-tasks" role="alert">Open tasks could not be loaded. <button type="button" className="ui-link" onClick={choices.onRefresh}>Refresh tasks</button></p>

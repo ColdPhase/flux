@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import type { Conversation, ConversationMessage, ConversationRoot, ConversationRootWindow, NamedPrincipal, NativeWorkRow, Page, Project, TaskCreationNotice } from '@flux/contracts';
-import { Avatar, Button, EmptyState, Icon, useArrivals } from '../ui';
+import { AgentOrb, AiBadge, Avatar, Button, EmptyState, Icon, MEDIA, useArrivals, useMediaQuery } from '../ui';
 import { newBelowText } from '../ui/motion-rules';
 import { MessageActions, MessageObjects, useCreateWorkFromMessage } from '../work/inline';
 import { useMessageWorkRead, type MessageWorkRead } from '../work/useMessageWork';
@@ -12,7 +12,7 @@ import { useShellActions } from './shellContext';
 import { listConversationRoots, listTaskNotices } from './conversation-api';
 import { ContributionMark, OPENING_REVEAL_MS, SourceCitation, clock, day, openOnWholeMessages, when } from './messageParts';
 import { MessageFiles } from '../composer/Files';
-import { agentAuthorLabel } from '../docs/format';
+import { agentAuthorLabel, agentDisplayName } from '../docs/format';
 
 // One project conversation (UI116-1, 2026-10-02): a chronological stream of roots. Each root is the
 // opening message of a stored conversation; its replies open beside it in a one-level thread.
@@ -248,6 +248,8 @@ export function ConversationStream({ project, meId, roots: stream, notices, auth
   const { roots } = stream;
   const entries = streamEntries(roots, notices, stream.hasOlder);
   const writable = project.access !== 'viewer';
+  // On phones an agent's message shows its orb, its name and "AI" (F-025 PA-2); larger screens are unchanged.
+  const phone = useMediaQuery(MEDIA.phone);
   const feedRef = useRef<HTMLDivElement>(null);
   const [feedNode, setFeedNode] = useState<HTMLDivElement | null>(null);
   const attachFeed = useCallback((node: HTMLDivElement | null) => { feedRef.current = node; setFeedNode(node); }, []);
@@ -486,7 +488,7 @@ export function ConversationStream({ project, meId, roots: stream, notices, auth
                 const divider = index === 0 || dayOf[index - 1] !== label ? <li className="project-convo__day" key={`day-${entry.key}`}><span>{label}</span></li> : null;
                 if (entry.kind === 'notice') return [divider, <NoticeItem key={entry.key} notice={entry.notice} meId={meId} row={referenceWork.rows.get(`work:${entry.notice.workId}`) ?? null} onOpenTask={(id) => openDetails({ kind: 'work', id })} />];
                 const { root } = entry;
-                return [divider, <RootItem key={entry.key} root={root} project={project} meId={meId} author={author} messageWork={messageWork}
+                return [divider, <RootItem key={entry.key} root={root} project={project} meId={meId} author={author} phone={phone} messageWork={messageWork}
                   taskRow={root.task ? referenceWork.rows.get(`work:${root.task.workId}`) ?? null : null}
                   open={root.conversationId === openId} arrived={arrived === root.message.id} makeWork={makeWork} onOpen={openRoot}
                   onOpenResult={(resultId) => openDetails({ kind: 'result', id: resultId })} onDenied={onDenied} />];
@@ -535,8 +537,8 @@ function NoticeItem({ notice, meId, row, onOpenTask }: { notice: TaskCreationNot
   );
 }
 
-function RootItem({ root, project, meId, author, messageWork, taskRow, open, arrived, makeWork, onOpen, onOpenResult, onDenied }: {
-  root: ConversationRoot; project: Project; meId: string; author: (message: ConversationMessage) => string;
+function RootItem({ root, project, meId, author, phone, messageWork, taskRow, open, arrived, makeWork, onOpen, onOpenResult, onDenied }: {
+  root: ConversationRoot; project: Project; meId: string; author: (message: ConversationMessage) => string; phone: boolean;
   messageWork: MessageWorkRead; taskRow: NativeWorkRow | null;
   open: boolean; arrived: boolean; makeWork: ReturnType<typeof useCreateWorkFromMessage>;
   onOpen: (root: ConversationRoot, reply: boolean) => void; onOpenResult: (resultId: string) => void; onDenied: (cause: unknown) => void;
@@ -544,13 +546,17 @@ function RootItem({ root, project, meId, author, messageWork, taskRow, open, arr
   const { message } = root;
   const writable = project.access !== 'viewer';
   const mine = message.authorId === meId;
-  const name = author(message);
+  // An agent on a phone: its orb, its name and "AI" instead of "<name> · agent" (F-025 PA-2).
+  const agent = phone && message.authorId === null ? message.author : null;
+  const name = agent ? agentDisplayName(agent) : author(message);
   return (
     <li id={`message-${message.id}`} data-message-id={message.id} tabIndex={-1} data-conversation-id={root.conversationId}
       className={`project-convo__message${mine ? ' is-mine' : ''}${arrived ? ' is-arrived' : ''}${open ? ' is-open' : ''}`}>
       <Avatar name={name} size="md" tone={mine ? 'me' : 'neutral'} />
       <div className="project-convo__message-meta">
+        {agent ? <AgentOrb agentId={agent.id} /> : null}
         <strong>{mine ? `${name} · you` : message.authorId === null ? name : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</Link>}</strong>
+        {agent ? <AiBadge /> : null}
         <time dateTime={message.createdAt} title={when(message.createdAt)}>{clock(message.createdAt)}</time>
       </div>
       {message.body ? <p>{message.body}</p> : null}
