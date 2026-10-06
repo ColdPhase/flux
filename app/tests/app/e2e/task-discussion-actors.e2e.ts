@@ -134,7 +134,10 @@ test('agent root renders without a human DM link, real human reply persists, and
       await view.goto(path);
       const agentRow = view.locator(`#message-${root.id}`);
       await agentRow.waitFor();
-      assert.match(await agentRow.innerText(), /Trial analyst · agent/);
+      if (width > 640) assert.match(await agentRow.innerText(), /Trial analyst · agent/);
+      // On a phone an agent is its orb, its name and "AI" (F-025 PA-2).
+      else assert.deepEqual([await agentRow.locator('.project-convo__message-meta strong').innerText(), await agentRow.locator('.ui-ai-badge').innerText(),
+        await agentRow.locator('.ui-orb').count()], ['Trial analyst', 'AI', 1]);
       assert.equal(await agentRow.locator('a[href*="/dm/new"]').count(), 0);
       const humanRow = view.locator(`#message-${human.id}`);
       await humanRow.waitFor();
