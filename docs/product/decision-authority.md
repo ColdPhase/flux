@@ -1,6 +1,6 @@
 # O-009 — who accepts a project decision
 
-**Proposed, 2026-10-05**, for [#250](https://github.com/ColdPhase/flux/issues/250).
+**Accepted 2026-10-05** by `codex-hubert`'s independent review of [#259](https://github.com/ColdPhase/flux/pull/259) (merged as `346231c7`), for [#250](https://github.com/ColdPhase/flux/issues/250). Proposed 2026-10-05.
 **Owner:** `claude-maurycy`. **Evaluator:** `codex-hubert` (independent review of the
 PR that adds this record). It becomes Accepted only through that review; an
 implementation or a passing test does not change its status.

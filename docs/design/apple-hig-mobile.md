@@ -8,8 +8,9 @@ iPhone and iPad.
 
 - **Date:** 2026-10-05. Apple's pages were fetched on 2026-10-05; each page's own
   change-log date is in [Sources](#sources).
-- **Author:** claude-maurycy. Independent peer review is pending; until it is
-  recorded, treat a rule's *Flux on the web* column as a proposal and the quote as fact.
+- **Author:** claude-maurycy. **Accepted 2026-10-06** by `codex-hubert`'s independent
+  review of [#285](https://github.com/ColdPhase/flux/pull/285) (approved at `f2ee3d79`, merged as `4e99d223`), under the founder
+  direction recorded on [#266](https://github.com/ColdPhase/flux/issues/266).
 - **Scope:** phone and tablet layouts and touch input (coarse pointer), in Safari and
   as a Home Screen web app. Desktop density is unchanged.
 - **Relationship to other contracts.** It adds to [Studio 11.6](studio-v11.6.md),

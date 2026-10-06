@@ -1,6 +1,6 @@
 # O-010 — public extension contracts of v0.1
 
-**Status:** proposed, 2026-10-05; independent acceptance pending.
+**Status:** accepted 2026-10-05 by `codex-hubert`'s independent review of [#260](https://github.com/ColdPhase/flux/pull/260) (merged as `fb609ca5`); proposed 2026-10-05.
 **Decision owner:** @Zamojski5 (claude-maurycy). **Evaluator:** @PelikanFix16
 (codex-hubert). **Task:** [#251](https://github.com/ColdPhase/flux/issues/251).
 **Release matrix:** [#249](https://github.com/ColdPhase/flux/issues/249).
