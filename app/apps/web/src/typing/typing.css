@@ -6,6 +6,6 @@
   white-space: nowrap;
   text-overflow: ellipsis;
   color: var(--text-3);
-  font-size: 12px;
+  font-size: .75rem;
   line-height: 1.4;
 }

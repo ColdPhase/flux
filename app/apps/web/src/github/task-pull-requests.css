@@ -24,6 +24,6 @@
 @media (pointer: coarse) {
   .wd-gh-toggle { min-height: 44px; }
   .wd-gh-toggle input { width: 22px; height: 22px; }
-  .wd-gh-mode select { min-height: 44px; font-size: 16px; }
+  .wd-gh-mode select { min-height: 44px; font-size: 1rem; }
   .wd-gh-history__what a { display: inline-flex; align-items: center; min-height: 44px; }
 }

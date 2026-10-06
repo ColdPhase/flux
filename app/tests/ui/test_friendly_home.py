@@ -191,10 +191,12 @@ class FriendlyHomeJourney(unittest.TestCase):
         page.keyboard.press("Escape")
         expect(sheet).to_have_count(0)
         # Inside the project the places bar stays with Projects current (Apple HIG tab bars), and the
-        # top-left control leads back to all projects.
+        # top-left control is a real Back (HIG-26): it returns Home, where she came from, without a new entry.
         expect(bar.get_by_role("link", name=re.compile("^Projects"))).to_have_attribute("aria-current", "page")
-        page.locator("header.top").get_by_role("button", name="All projects").tap()
-        expect(page).to_have_url(f"{ORIGIN}/projects")
+        entries = page.evaluate("history.length")
+        page.locator("header.top").get_by_role("button", name="Back", exact=True).tap()
+        expect(page).to_have_url(f"{ORIGIN}/")
+        self.assertEqual(page.evaluate("history.length"), entries, "Back does not add a history entry")
 
     # ------------------------------------------------------------------ FF-3 My sketchbook
 
@@ -202,8 +204,8 @@ class FriendlyHomeJourney(unittest.TestCase):
         page = self.page()
         page.goto("/")
         places = page.get_by_role("navigation", name="Places")
-        expect(places.get_by_role("link")).to_have_count(3)
-        self.assertEqual(places.get_by_role("link").all_inner_texts(), ["Home", "Inbox", "My sketchbook"])
+        expect(places.get_by_role("link")).to_have_count(4)
+        self.assertEqual(places.get_by_role("link").all_inner_texts(), ["Home", "Inbox", "My sketchbook", "Wiki pages"])
         places.get_by_role("link", name="My sketchbook").click()
         expect(page).to_have_url(f"{ORIGIN}/notes")
         header = page.locator("header.top")
@@ -274,7 +276,7 @@ class FriendlyHomeJourney(unittest.TestCase):
         expect(page).to_have_url(re.compile(r"/map/[0-9a-f-]{36}$"))
         expect(bar.get_by_role("link", name=re.compile("^Sketchbook"))).to_have_attribute("aria-current", "page")
         expect(page.get_by_role("button", name="Open navigation")).to_have_count(0)
-        back = page.locator("header.top").get_by_role("button", name="My sketchbook")
+        back = page.locator("header.top").get_by_role("button", name="Back", exact=True)
         self.assertGreaterEqual(min(self.box(back)["width"], self.box(back)["height"]), 44, "a 44px way back")
         back.tap()
         expect(page).to_have_url(f"{ORIGIN}/map")
@@ -630,6 +632,72 @@ class FriendlyHomeJourney(unittest.TestCase):
                 tallest = page.evaluate("() => Math.max(...[...document.querySelectorAll('header.top .ws-seg span')].map((el) => el.getBoundingClientRect().height))")
                 self.assertLessEqual(tallest, 24, "each part of the state line is one line")
                 self.assertGreaterEqual(self.box(header.get_by_label("Current state"))["width"], 120, "the state keeps room before the goal does")
+
+
+    # ------------------------------------------------------------------ HIG-08/09/11 type, HIG-16 press states
+
+    SMALLEST_TEXT = """() => {
+      let min = Infinity, where = '';
+      for (const el of document.querySelectorAll('body *')) {
+        if (![...el.childNodes].some((node) => node.nodeType === 3 && node.textContent.trim())) continue;
+        if (el.closest('.ui-vh, [aria-hidden="true"], [hidden]')) continue;
+        const style = getComputedStyle(el);
+        if (style.visibility === 'hidden' || style.display === 'none' || Number(style.opacity) === 0) continue;
+        const box = el.getBoundingClientRect();
+        if (box.width < 2 || box.height < 2 || box.bottom < 0 || box.top > innerHeight || box.right < 0 || box.left > innerWidth) continue;
+        const size = parseFloat(style.fontSize);
+        if (size < min) { min = size; where = `${el.tagName.toLowerCase()}.${String(el.className).slice(0, 40)} "${el.textContent.trim().slice(0, 30)}"`; }
+      }
+      return { min, where };
+    }"""
+
+    def test_14_touch_screens_read_at_11_pt_or_more_and_text_follows_the_default_size(self):
+        paths = ("/", "/inbox", "/settings", "/notes", f"/projects/{self.project['id']}", f"/projects/{self.project['id']}/tasks")
+        for viewport in (PHONE, {"width": 820, "height": 1180}):
+            for path in paths:
+                with self.subTest(width=viewport["width"], path=path):
+                    page = self.page(viewport, touch=True)
+                    page.goto(path)
+                    expect(page.locator("header.top h1")).to_be_visible()
+                    page.wait_for_timeout(400)
+                    smallest = page.evaluate(self.SMALLEST_TEXT)
+                    self.assertGreaterEqual(smallest["min"], 11, f"no visible text under 11 px (HIG-08): {smallest['where']}")
+        # Reading text is 16 px on touch (HIG-09), and doubling the default text size doubles it (HIG-11, rem).
+        page = self.page(PHONE, touch=True)
+        page.goto("/notes")
+        lead = page.get_by_label("Private note", exact=True)
+        expect(lead).to_be_visible()
+        base = page.evaluate("parseFloat(getComputedStyle(document.querySelector('header.top h1')).fontSize)")
+        page.evaluate("document.documentElement.style.fontSize = '200%'")
+        doubled = page.evaluate("parseFloat(getComputedStyle(document.querySelector('header.top h1')).fontSize)")
+        self.assertAlmostEqual(doubled, base * 2, delta=1, msg="text follows the default size")
+        self.assertGreaterEqual(page.evaluate("parseFloat(getComputedStyle(document.getElementById('composer')).fontSize)"), 16)
+
+    def test_15_every_control_answers_a_press(self):
+        page = self.page(PHONE, touch=True)
+
+        def pressed(locator, what):
+            locator.scroll_into_view_if_needed()
+            box = self.box(locator)
+            rest = locator.evaluate("(el) => getComputedStyle(el).backgroundColor")
+            page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+            page.mouse.down()
+            # Read once the control's own transition has had time to show the press, as a person would see it.
+            page.wait_for_timeout(300)
+            during = locator.evaluate("(el) => getComputedStyle(el).backgroundColor")
+            page.mouse.move(1, 1)
+            page.mouse.up()
+            self.assertNotEqual(during, rest, f"{what} changes when pressed (HIG-16)")
+
+        page.goto("/")
+        bar = page.get_by_role("navigation", name="Main places")
+        pressed(bar.get_by_role("link", name=re.compile("^Inbox")), "a place in the bottom bar")
+        pressed(page.get_by_role("link", name=re.compile("^All my tasks")), "All my tasks")
+        page.goto("/settings")
+        pressed(page.get_by_role("link", name=re.compile("^What reaches you")), "a Settings row")
+        page.goto(f"/projects/{self.project['id']}")
+        pressed(page.locator("header.top .top__audience"), "the audience in the header")
+        pressed(page.get_by_role("button", name=re.compile("^Cite something saved")), "Cite in the message box")
 
 
 if __name__ == "__main__":

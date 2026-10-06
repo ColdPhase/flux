@@ -262,14 +262,17 @@ class ScenarioJourney:
             expect(page.get_by_role("dialog", name="Details")).to_have_count(0)
 
     def go_to_place(self, page: Page, name: str) -> None:
-        """A main place. Phones have them in the bottom bar (#266 PF-1: Home, Inbox, Messages, Projects); the
-        desktop sidebar has Home, Inbox and Direct messages under Places, and the projects themselves."""
+        """A main place. Phones have them in the bottom bar (#272 PF-1: Home, Projects, Messages, Inbox, Sketchbook);
+        the desktop sidebar has Home, Inbox and My sketchbook under Places, and the Projects and Messages headings
+        lead to their full lists (F-023)."""
         if self.phone:
             bar = page.get_by_role("navigation", name="Main places")
             bar.get_by_role("link", name=re.compile(f"^{name}")).tap()
             expect(bar.get_by_role("link", name=re.compile(f"^{name}"))).to_have_attribute("aria-current", "page")
+        elif name in ("Messages", "Projects"):
+            page.get_by_role("navigation", name=name).get_by_role("link", name=name, exact=True).click()
         else:
-            page.get_by_role("navigation", name="Places").get_by_role("link", name=re.compile(f"^{'Direct messages' if name == 'Messages' else name}")).click()
+            page.get_by_role("navigation", name="Places").get_by_role("link", name=re.compile(f"^{name}")).click()
 
     def project_list(self, page: Page):
         """The projects a person can open: the sidebar on a desktop, the Projects place on a phone."""
@@ -415,11 +418,10 @@ class ScenarioJourney:
         market = re.search(r"/projects/([0-9a-f-]{36})", page.url).group(1)
         workspace = self.api("ada", "GET", f"/api/v1/projects/{market}", status=200)["workspaceId"]
 
-        # She adds the others to the space by email (Home → Details → People).
-        page.goto("/")
-        self.tap(page.get_by_role("button", name="Details", exact=True))
+        # She adds the others to the space by email (Settings → People, F-023 FF-4).
+        page.goto("/settings")
         self.tap(page.get_by_role("region", name="People").get_by_role("button", name=re.compile(f"^{WORKSPACE}")))
-        expect(page.get_by_role("heading", name="People", exact=True)).to_be_visible()
+        expect(page.locator("#details").get_by_role("heading", name="People", exact=True)).to_be_visible()
         for key in ("jonas", "mia", "lee"):
             form = page.get_by_role("region", name="Add someone")
             form.get_by_label("Email").fill(self.emails[key])
@@ -465,7 +467,7 @@ class ScenarioJourney:
         s.update(dm=dm)
 
         # Only the camera, sensor and privacy messages seed a shared sketch; no project yet.
-        self.tap(page.get_by_role("button", name="Select", exact=True))
+        self.tap(page.get_by_role("button", name="Sketch from messages", exact=True))
         bar = page.get_by_role("region", name="Selected messages")
         expect(bar).to_contain_text("No project is created.")
         for index in (1, 2, 3):
@@ -474,8 +476,10 @@ class ScenarioJourney:
         self.tap(bar.get_by_role("button", name="Start sketch from these messages"))
         page.wait_for_url(re.compile(rf"/dm/{dm}/sketches/[0-9a-f-]{{36}}$"))
         dm_sketch = page.url.rsplit("/", 1)[-1]
-        expect(page.get_by_label("Sketch name")).to_be_focused()
-        page.keyboard.press("Escape")
+        if not self.phone:
+            expect(page.get_by_label("Sketch name")).to_be_focused()
+            page.keyboard.press("Escape")
+        # On a touch screen a new sketch opens on its canvas, without the keyboard covering it (#272).
         expect(page.locator(".sk-status")).to_contain_text("Started from 3 messages · only you and Jonas can see it")
         sketch = self.sketch("ada", dm_sketch)
         self.assertEqual((sketch["scope"], sketch["dmId"], sketch["projectId"]), ("dm", dm, None))
@@ -764,7 +768,7 @@ class ScenarioJourney:
         home = self.api("ada", "GET", "/api/v1/return?place=home", status=200)
         page.goto("/")
         if home["items"]:
-            region = page.get_by_role("region", name=re.compile("^Since you left"))
+            region = page.get_by_role("region", name="For you", exact=True)
             self.tap(region.get_by_role("button", name="I have the context"))
             expect(page.get_by_role("status").filter(has_text="You’re caught up.")).to_be_visible()
         self.wait_for("Home's return point", lambda: not self.api("ada", "GET", "/api/v1/return?place=home", status=200)["items"])
@@ -893,15 +897,17 @@ class ScenarioJourney:
         s, lamp = self.s, self.s["lamp"]
         page = self.page("ada")
         page.goto("/")
-        region = page.get_by_role("region", name=re.compile("^Since you left"))
+        region = page.get_by_role("region", name="For you", exact=True)
         expect(region).to_be_visible()
         expect(region.get_by_role("link", name=re.compile(f"Current rule changed: {re.escape(D2)}"))).to_contain_text(f"Previously: {D1}")
-        expect(region.locator(".since__next")).to_contain_text("Answer Jonas's question")
+        # Flux's next step leads Home in the return card (F-023 FF-2).
+        expect(page.locator(".home-return")).to_contain_text("Answer Jonas's question")
         expect(page.get_by_role("button", name=re.compile("Mark all", re.I))).to_have_count(0)
-        # Ada has no AI of her own: the note composer's spark offers to connect one.
-        expect(page.locator(".composer__ask")).to_have_accessible_name("Connect your AI")
         self.no_sideways_scroll(page)
         self.shot(page, "4-home-return")
+        # Ada has no AI of her own: the note composer's spark offers to connect one (notes live in My sketchbook).
+        page.goto("/notes")
+        expect(page.locator(".composer__ask")).to_have_accessible_name("Connect your AI")
 
         # In the project, "What matters" works without AI.
         page.goto(f"/projects/{lamp}")
@@ -935,7 +941,7 @@ class ScenarioJourney:
         self.need("pivoted")
         page = self.page("ada")
         page.goto("/")
-        region = page.get_by_role("region", name=re.compile("^Since you left"))
+        region = page.get_by_role("region", name="For you", exact=True)
         expect(region).to_be_visible()
         expect(region.get_by_role("link", name=re.compile(f"Current rule changed: {re.escape(D2)}"))).to_be_visible()
         items = self.api("ada", "GET", f"/api/v1/return?place=project&id={self.s['lamp']}", status=200)["items"]
@@ -965,6 +971,8 @@ class ScenarioJourney:
         # Search: Jump to, then the full results, find the run, the result, the page and the map.
         page.goto(f"/projects/{lamp}")
         if self.phone:
+            # Inside a project a phone's top-left control leads back (#272 FF-3); search starts from a main place.
+            page.goto("/projects")
             page.get_by_role("button", name="Open navigation").tap()
             page.get_by_role("dialog", name="Flux").get_by_role("button", name=re.compile("Jump to")).tap()
         else:
@@ -1009,9 +1017,9 @@ class ScenarioJourney:
     def test_6_export_and_audience(self) -> None:
         self.need("pivoted", "doc", "file")
         s, lamp = self.s, self.s["lamp"]
-        # Ada keeps a private note; it stays hers.
+        # Ada keeps a private note in My sketchbook; it stays hers (F-023 FF-3).
         page = self.page("ada")
-        page.goto("/")
+        page.goto("/notes")
         note = page.get_by_label("Private note", exact=True)
         note.fill(DRAFT)
         if self.phone:

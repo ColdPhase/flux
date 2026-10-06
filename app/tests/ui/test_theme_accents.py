@@ -87,10 +87,14 @@ class ThemeAccentsJourney(unittest.TestCase):
             if not page.locator(".me__btn").is_visible():
                 # Inside a project a phone's top-left control leads back to all projects (#272); the
                 # drawer opens from there.
+                # Back steps out (a thread to its conversation, then the project to its list) until the menu shows.
                 back = page.locator("header.top .top__back")
-                if back.count():
+                for _ in range(3):
+                    if not back.count():
+                        break
                     back.click()
-                    expect(page.get_by_role("button", name="Open navigation")).to_be_visible()
+                    page.wait_for_timeout(200)
+                expect(page.get_by_role("button", name="Open navigation")).to_be_visible()
                 page.get_by_role("button", name="Open navigation").click()
             page.locator(".me__btn").click()
             expect(page).to_have_url(re.compile(r"/settings$"))

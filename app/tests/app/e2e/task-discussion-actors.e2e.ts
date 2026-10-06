@@ -143,10 +143,11 @@ test('agent root renders without a human DM link, real human reply persists, and
       await thread.getByText('You have read access to this project.', { exact: true }).waitFor();
       assert.equal(await view.getByRole('textbox', { name: 'Reply', exact: true }).count(), 0);
       assert.equal(await view.getByRole('button', { name: 'Send reply', exact: true }).count(), 0);
-      const sources = thread.getByRole('button', { name: 'Sources', exact: true });
+      // A reader's composer offers what is saved for the project (F-023 FF-7: "Saved"; writers see "Cite").
+      const sources = thread.getByRole('button', { name: /^Saved for this project/ });
       await sources.focus();
       await sources.press('Enter');
-      await view.getByRole('heading', { name: `Sources · saved for ${place.name}`, exact: true }).waitFor();
+      await view.getByRole('heading', { name: `Saved for ${place.name}`, exact: true }).waitFor();
       assert.equal(await view.getByRole('button', { name: 'Add material', exact: true }).count(), 0);
       await view.getByRole('button', { name: 'Close sources', exact: true }).click();
       expectStatus(await reader.browser.request('POST', `/api/v1/conversations/${root.conversationId}/messages`, {

@@ -241,7 +241,7 @@ class DirectMessageJourney(unittest.TestCase):
         expect(page).to_have_url(f"{ORIGIN}{self.dm_path}")
         expect(page.get_by_role("heading", level=1, name="Ada Kowalska")).to_be_visible()
         # Inside a conversation the top-left control leads back to all messages (#272).
-        expect(page.locator("header.top").get_by_role("button", name="All messages")).to_be_visible()
+        expect(page.locator("header.top").get_by_role("button", name="Back", exact=True)).to_be_visible()
         expect(page.locator(".composer__audience")).to_contain_text("Only you and Ada")
         send = page.get_by_role("button", name="Send message")
         size = box(page, send)

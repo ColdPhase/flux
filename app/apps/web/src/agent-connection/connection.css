@@ -132,9 +132,9 @@
 @media (pointer: coarse) {
   .connection--consent .connection__head p, .connection--consent .connection__requested p, .connection--consent .connection__help,
   .connection__destination dd, .connection__destination > p, .connection__destination > .connection__warning,
-  .connection--consent .connection__scopes li, .connection--consent .connection__summary > strong { font-size: 16px; }
+  .connection--consent .connection__scopes li, .connection--consent .connection__summary > strong { font-size: 1rem; }
   .connection__destination dt, .connection__destination h2, .connection--consent .connection__requested h2,
   .connection--consent .connection__meta, .connection--consent .connection__project-access > span,
-  .connection--consent .connection__projects li, .connection--consent .connection__scopes small { font-size: 13px; }
+  .connection--consent .connection__projects li, .connection--consent .connection__scopes small { font-size: .8125rem; }
   .connection--consent .connection__footer .ui-btn { min-height: 44px; }
 }

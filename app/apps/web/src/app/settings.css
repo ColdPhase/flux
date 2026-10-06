@@ -2,7 +2,7 @@
    row is a 56px target with an icon, a title, one line of what it holds and a chevron. */
 .set { max-width: 640px; padding-top: 24px; }
 .set-me { display: flex; align-items: center; gap: 14px; padding: 4px 2px 8px; }
-.set-me .ui-avatar--lg { width: 48px; height: 48px; font-size: 16px; }
+.set-me .ui-avatar--lg { width: 48px; height: 48px; font-size: 1rem; }
 .set-me__b { display: flex; flex-direction: column; min-width: 0; line-height: 1.35; }
 .set-me__b b { font-size: var(--fs-lg); font-weight: 600; letter-spacing: -.01em; color: var(--text); overflow-wrap: anywhere; }
 .set-me__b span { font-size: var(--fs-sm); color: var(--text-2); overflow-wrap: anywhere; }
@@ -43,3 +43,4 @@
 .proj-index__lead { flex: 1 1 16em; margin: 0; font-size: var(--fs-sm); color: var(--text-3); line-height: 1.5; }
 .proj-index__dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--accent); }
 .proj-index__empty { display: grid; gap: 12px; justify-items: start; padding: 20px 2px; color: var(--text-2); font-size: var(--fs-md); }
+.set-sec__empty { margin: 0; padding: 0 4px; font-size: var(--fs-sm); color: var(--text-3); }

@@ -271,7 +271,7 @@
   .sk-tools--seven .sk-bl--long { display: none; }
   .sk-tools--seven .sk-bl--short { display: inline; }
   .sk-div { display: none; }
-  .sk-bar .sk-tools .ui-btn { flex: 1 0 auto; min-width: 44px; flex-direction: column; justify-content: center; gap: 1px; padding: 3px 2px; font-size: 10.5px; line-height: 1.2; }
+  .sk-bar .sk-tools .ui-btn { flex: 1 0 auto; min-width: 44px; flex-direction: column; justify-content: center; gap: 1px; padding: 3px 2px; font-size: var(--fs-xs); line-height: 1.2; }
   .sk-status { flex: none; padding: 0 8px 6px; white-space: normal; }
   .sk-status:empty { display: none; }
   .sk-canvas { height: clamp(360px, calc(100dvh - 250px), 620px); }

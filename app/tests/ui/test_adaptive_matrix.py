@@ -280,7 +280,7 @@ class AdaptiveMatrix(AdaptiveBase):
             self.primary(page, self.tabs(page).get_by_role("link", name=re.compile(f"^{name}")), f"the {name} tab")
         if width <= 640:
             # Inside a project a phone's top-left control leads back to all projects (#272 FF-3, HIG-26).
-            self.primary(page, page.locator("header.top").get_by_role("button", name="All projects"), "All projects")
+            self.primary(page, page.locator("header.top").get_by_role("button", name="Back", exact=True), "Back")
         elif width <= 680:
             self.primary(page, page.get_by_role("button", name="Open navigation"), "Open navigation")
         if width <= 640:

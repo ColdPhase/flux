@@ -9,7 +9,7 @@
 /* The divider before the state line sits in the gap. When the state line wraps to its own row,
    the divider falls outside this box and is clipped; the 4px padding keeps focus rings visible. */
 .top__meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 25px; min-width: 0; overflow: hidden; margin: -4px; padding: 4px; }
-.top__audience { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; max-width: 55%; min-width: 0; min-height: 22px; margin-left: -4px; padding: 0 4px; border-radius: var(--r-sm); font-size: 10.5px; color: var(--text-2); white-space: normal; transition: var(--tr); }
+.top__audience { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; max-width: 55%; min-width: 0; min-height: 22px; margin-left: -4px; padding: 0 4px; border-radius: var(--r-sm); font-size: max(10.5px, var(--fs-xs)); color: var(--text-2); white-space: normal; transition: var(--tr); }
 .top__audience > span:not(.ui-vh) { min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .top__audience svg { flex: none; width: 10px; height: 10px; }
 .top__audience:hover { background: var(--bg-hover); color: var(--text); }
@@ -46,7 +46,7 @@ button.top__goal:hover { background: var(--bg-hover); color: var(--text); }
 @media (max-width: 680px) {
   .top--project { min-height: calc(56px + env(safe-area-inset-top)); padding: max(18px, env(safe-area-inset-top)) 12px 0 8px; align-items: center; }
   .top--project .top__title--project { flex-direction: column; align-items: flex-start; gap: 0; text-align: left; line-height: 1.25; }
-  .top--project .top__title--project h1 { max-width: 100%; font-size: 18px; }
+  .top--project .top__title--project h1 { max-width: 100%; font-size: 1.125rem; }
   .top--project .top__crumb { display: none; }
   .top--project .top__audience { max-width: 100%; min-height: 22px; font-size: var(--fs-xs); }
   .top--project .top__head { padding-left: 2px; gap: 2px; }
@@ -116,4 +116,15 @@ button.top__goal:hover { background: var(--bg-hover); color: var(--text); }
      grew the header a screen tall (#265's adaptive matrix at 768 and 1024). */
   .top--project .ws-seg { flex: 0 1 auto; min-width: 0; }
   .top--project .ws-seg span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }
+}
+/* Touch (HIG-14): the goal and "Add a goal" are 44 px targets, and the goal field is a 44 px, 16 px field that
+   iOS does not zoom into. On a phone, editing takes the whole line under the title. */
+@media (pointer: coarse) {
+  button.top__goal::after { content: ""; position: absolute; inset: -11px -4px; }
+  .top__goal-input { height: 44px; font-size: 1rem; }
+}
+@media (max-width: 680px) {
+  .top--project .top__meta:has(.top__goal--edit) .top__audience { display: none; }
+  .top--project .top__goal--edit { flex: 1 1 auto; max-width: none; }
+  .top--project .top__goal--edit::before { display: none; }
 }

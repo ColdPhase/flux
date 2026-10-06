@@ -6,7 +6,7 @@
 @keyframes rise { from { opacity: 0; transform: translateY(4px); } }
 
 .brand { display: inline-flex; align-items: center; gap: 10px; min-height: var(--ctl); padding: 0 6px; margin-left: -6px; border-radius: var(--r); text-decoration: none; font-weight: 600; font-size: var(--fs-md); color: var(--text); }
-.brand__name { font-size: 24px; font-weight: 650; letter-spacing: -1px; line-height: 1; }
+.brand__name { font-size: 1.5rem; font-weight: 650; letter-spacing: -1px; line-height: 1; }
 .brand__name span { color: var(--accent); }
 
 /* ---------- Sign-in and recovery ---------- */
@@ -72,7 +72,7 @@ body:has(.app) { background: var(--bg-chrome); }
 .side__brand { display: flex; align-items: center; gap: 8px; min-height: 46px; }
 .side__logo { display: inline-flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 4px; margin-left: -4px; color: var(--text); flex: 1; min-width: 0; }
 .side__glyph { display: grid; place-items: center; color: var(--text); }
-.side__word { font-size: 30px; font-weight: 650; letter-spacing: -1.3px; line-height: 1; }
+.side__word { font-size: 1.875rem; font-weight: 650; letter-spacing: -1.3px; line-height: 1; }
 .side__word span { color: var(--accent); }
 .side__jump {
   display: flex; align-items: center; gap: 8px; width: 100%; min-height: 39px; margin: 22px 0 18px; padding: 8px 4px;
@@ -349,7 +349,7 @@ a.me__btn[aria-current="page"] { background: var(--accent-selected-bg); }
 
 /* ---------- Details panel ---------- */
 .details__eyebrow { font-size: var(--fs-xs); font-weight: 500; color: var(--text-3); }
-.details__title { margin: 6px 0 10px; font-size: 19px; line-height: 1.35; letter-spacing: -0.015em; }
+.details__title { margin: 6px 0 10px; font-size: 1.1875rem; line-height: 1.35; letter-spacing: -0.015em; }
 .details__lead { font-size: var(--fs-md); color: var(--text-2); line-height: 1.6; }
 .details__sec { margin-top: 28px; }
 .details__sec h4 { margin: 0 0 8px; font-size: var(--fs-xs); font-weight: 500; color: var(--text-3); }
@@ -365,7 +365,7 @@ a.me__btn[aria-current="page"] { background: var(--accent-selected-bg); }
 .details__rows b { font-weight: 500; color: var(--text); }
 .details__rows span { font-size: var(--fs-sm); color: var(--text-3); }
 .details__rows li.details__person { flex-direction: row; align-items: center; gap: 10px; }
-.details__rows .details__person span.ui-avatar { font-size: 12px; color: var(--text-2); }
+.details__rows .details__person span.ui-avatar { font-size: .75rem; color: var(--text-2); }
 .details__rows .details__person span.ui-avatar--me { color: var(--bg); }
 .details__leave { color: var(--danger); margin-left: -8px; }
 .details__confirm p { margin-bottom: 10px; }
@@ -376,7 +376,7 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 /* ---------- ≤680: the sidebar becomes a 260px drawer on the chrome ---------- */
 .ui-overlay--left .nav-drawer { width: min(260px, 100%); background: var(--bg-chrome); }
 .nav-drawer .side { width: auto; padding: 24px 23px 0; padding-top: max(24px, env(safe-area-inset-top)); }
-.nav-drawer .side__item { font-size: 13px; min-height: 47px; }
+.nav-drawer .side__item { font-size: .8125rem; min-height: 47px; }
 .nav-drawer .me__pop { width: auto; right: 8px; }
 /* ---------- ≤1000: side panel overlays instead of docking ---------- */
 @media (max-width: 1000px) {
@@ -401,7 +401,7 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
   .composer__box textarea { min-height: 44px; padding: 10px 0; }
   .composer__send, .composer__ask, .composer__attach { width: 44px; height: 44px; }
   /* 16px text: iOS zooms the page into any smaller field on focus. */
-  .composer__box textarea { font-size: 16px; }
+  .composer__box textarea { font-size: 1rem; }
   .composer__ask { margin-left: -10px; }
   .details__back { min-height: 44px; }
   /* The chip stays small; its close button's hit area reaches 44px. */
@@ -413,7 +413,7 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 @media (max-width: 640px) {
   .top { height: calc(56px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 4px 0; }
   .top__title { flex-direction: column; align-items: center; gap: 0; line-height: 1.25; text-align: center; }
-  .top__title h1 { font-size: 16px; }
+  .top__title h1 { font-size: 1rem; }
   .top__crumb { order: 2; font-size: var(--fs-xs); }
   .top__slash { display: none; }
   .top__details { padding: 0 12px; }
@@ -435,7 +435,7 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 .top__badge {
   position: absolute; top: 5px; right: 3px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px;
   background: var(--attention); color: var(--bg); box-shadow: 0 0 0 2px var(--bg);
-  font-size: 10px; font-weight: 700; line-height: 17px; text-align: center; font-variant-numeric: tabular-nums;
+  font-size: .625rem; font-weight: 700; line-height: 17px; text-align: center; font-variant-numeric: tabular-nums;
   animation: badge-in var(--dur-3) var(--ease-glide) both;
 }
 @keyframes badge-in { from { opacity: 0; transform: scale(.4); } }
@@ -445,8 +445,8 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
     padding: env(safe-area-inset-top) 2px 0; border-bottom: 1px solid var(--line);
   }
   .top--project .top__head { gap: 0; padding-left: 0; }
-  .top--project .top__title--project h1 { font-size: 16px; letter-spacing: -.2px; }
-  .top--project .top__audience { min-height: 22px; font-size: 11px; }
+  .top--project .top__title--project h1 { font-size: 1rem; letter-spacing: -.2px; }
+  .top--project .top__audience { min-height: 22px; font-size: .6875rem; }
   .top--project .top__right { padding-top: 0; }
   .top__right { gap: 0; }
   .top__details.ui-icon-btn, .top__recap.ui-icon-btn { width: 44px; height: 44px; }
@@ -481,7 +481,7 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
   .views--chips.views--project { padding-right: 0; }
   .views--chips .ui-tabs__bar { gap: 6px; padding: 7px 10px; justify-content: flex-start; }
   .views--chips .ui-tabs__tab {
-    flex: none; min-height: 36px; padding: 0 13px; border-radius: var(--r-pill); font-size: 13px; font-weight: 500;
+    flex: none; min-height: 36px; padding: 0 13px; border-radius: var(--r-pill); font-size: .8125rem; font-weight: 500;
     color: var(--text-2); box-shadow: inset 0 0 0 1px var(--line-strong); transition: background-color var(--dur-2) ease, color var(--dur-1) ease, box-shadow var(--dur-1) ease;
   }
   .views--chips .ui-tabs__tab::after, .views--chips .ui-tabs__indicator { display: none; }
@@ -493,6 +493,13 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 }
 @media (max-width: 640px) and (pointer: coarse) { .views--chips .ui-tabs__tab { min-height: 44px; padding: 0 14px; } .views--chips .ui-tabs__bar { padding-block: 4px; } }
 .state-row .views__recap { flex: none; margin-left: auto; }
+/* Touch: the count badges read at 11 pt at least (HIG-08). */
+@media (pointer: coarse) { .top__badge { min-width: 19px; height: 19px; font-size: .6875rem; line-height: 19px; } }
+@media (pointer: coarse) {
+  .project-convo__message > .ui-avatar, .thread .project-convo__message > .ui-avatar, .lv-faces--room .ui-avatar, .lv-face--more { font-size: .6875rem; }
+}
+/* Touch (HIG-14): the Projects and Messages headings that open their lists are 44 px targets. */
+@media (pointer: coarse) { .side__hl { display: inline-flex; align-items: center; min-height: 44px; } }
 /* Reading back through a phone conversation (#296): the chips and the state line step aside so the stream has
    the room, and come back toward the newest. Nothing moves under reduced motion; chips holding keyboard focus stay. */
 @media (max-width: 640px) and (prefers-reduced-motion: no-preference) {
