@@ -77,11 +77,14 @@ time can change them:
 
 Docker's local volumes have no size quota, so the supervisor refuses a run while an owner's binding
 directory exceeds 256 MiB. An idle slot runs only the supervisor; a CLI process exists only during a
-sign-in or a run.
+sign-in or a run. Measured on 2026-10-06 with `docker stats` in `scripts/check_agent_runtime.sh` (Docker
+Engine 29.4, fake CLIs): an idle slot uses about 20 MiB and 12 processes; `runtime-manager` about 21 MiB
+and `runtime-egress` about 18 MiB.
 
 **Sizing:** four slots by default, one per owner who uses the runtime. Budget up to 2 GiB of memory and
-one CPU per slot in use, 256 MiB of disk per binding directory, plus the tools volume (Claude Code
-2.1.285 is about 250 MB).
+one CPU per slot in use, 256 MiB of disk per binding directory, plus the tools volume: Anthropic's signed
+manifest lists the Linux x64 binary of 2.1.289 at 246 MB (retrieved 2026-10-05); the installed size of the
+pinned 2.1.285 is **unverified** until the opt-in contract check runs.
 
 ## More slots
 
