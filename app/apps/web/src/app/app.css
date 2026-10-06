@@ -509,8 +509,3 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
     transition: max-height var(--dur-2) var(--ease-out), opacity var(--dur-1) ease, border-color var(--dur-2) ease, visibility 0s linear var(--dur-2);
   }
 }
-/* While a thread is a sheet on a phone, the chips and the state line step aside so the sheet takes most of the
-   screen (HIG-37, #296); the bottom bar of places stays. */
-@media (max-width: 640px) {
-  .app:has(.thread--sheet) :is(.views--chips, .state-row) { display: none; }
-}
