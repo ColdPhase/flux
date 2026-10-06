@@ -40,6 +40,7 @@ import base64
 import hashlib
 import io
 import json
+import os
 import re
 import secrets
 import tarfile
@@ -96,19 +97,19 @@ ACTION_SCOPES = ["flux.context.read", "flux.proposal.write", "flux.action.execut
 class McpAgent:
     """Ada's external agent: a real OAuth authorization-code/PKCE bearer and MCP-over-HTTP calls.
 
-    The UI harness has no database, so the client is registered through Better Auth's session-authenticated
-    client endpoint (as the signed-in owner) instead of the SQL fixture of tests/app/support/mcp-actions.ts;
-    authorize, connection selection, consent, token and MCP are the same real endpoints."""
+    The UI harness has no database, so the client is registered through the test-only fixture route
+    (`FLUX_FIXTURE_TOKEN` and failure injection; browser sessions cannot register clients since #287) instead of
+    the SQL fixture of tests/app/support/mcp-actions.ts; authorize, connection selection, consent, token and MCP
+    are the same real endpoints."""
 
     def __init__(self, test: "ScenarioJourney", owner: str, connection_id: str, project_id: str) -> None:
         self.test, self.project_id, self.call_id = test, project_id, 0
-        client = test.api(owner, "POST", "/api/auth/oauth2/create-client", {
-            "client_name": "Ada's Claude Code (scenario client)", "application_type": "native", "redirect_uris": [REDIRECT],
-            "token_endpoint_auth_method": "none", "grant_types": ["authorization_code", "refresh_token"], "response_types": ["code"],
-            "scope": " ".join(ACTION_SCOPES + ["offline_access"])}, status=201)
+        client = test.api(owner, "POST", "/api/v1/integration/oauth-clients", {
+            "name": "Ada's Claude Code (scenario client)", "redirectUris": [REDIRECT], "scopes": ACTION_SCOPES + ["offline_access"]},
+            status=201, headers={"authorization": f"Bearer {os.environ['FLUX_FIXTURE_TOKEN']}"})
         verifier = secrets.token_urlsafe(32)
         challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
-        query = urllib.parse.urlencode({"client_id": client["client_id"], "redirect_uri": REDIRECT, "response_type": "code",
+        query = urllib.parse.urlencode({"client_id": client["clientId"], "redirect_uri": REDIRECT, "response_type": "code",
                                         "code_challenge": challenge, "code_challenge_method": "S256", "state": str(uuid.uuid4()),
                                         "scope": " ".join(ACTION_SCOPES + ["offline_access"]), "resource": f"{ORIGIN}/mcp", "prompt": "consent"})
         start = test.req[owner].request.fetch(f"{ORIGIN}/api/auth/oauth2/authorize?{query}", headers={"origin": ORIGIN, "accept": "text/html"}, max_redirects=0)
@@ -127,7 +128,7 @@ class McpAgent:
         code = urllib.parse.parse_qs(callback.query)["code"][0]
         self.http = test.pw.request.new_context()
         token = self.http.post(f"{ORIGIN}/api/auth/oauth2/token", form={"grant_type": "authorization_code", "code": code,
-                                                                     "redirect_uri": REDIRECT, "client_id": client["client_id"], "code_verifier": verifier})
+                                                                     "redirect_uri": REDIRECT, "client_id": client["clientId"], "code_verifier": verifier})
         test.assertEqual(token.status, 200, token.text())
         self.bearer = token.json()["access_token"]
         boot = self.tool("flux_bootstrap", {"projectId": project_id, "clientSessionId": str(uuid.uuid4())})
