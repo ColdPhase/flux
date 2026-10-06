@@ -8,6 +8,7 @@ import { useRegisterLiveHere } from '../live/LiveProvider';
 import { excerpt } from '../live/anchors';
 import { audienceLine, useProjectShell } from '../project/data';
 import { useShellData } from './data';
+import { useShellActions } from './shellContext';
 import { agentAuthorLabel } from '../docs/format';
 import { ConversationStream, useConversationRoots, useTaskNotices } from './ConversationStream';
 import { ThreadDrawer, ThreadRoot, type ThreadMode } from './ThreadDrawer';
@@ -97,6 +98,18 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
     return () => observer.disconnect();
   }, []);
   const mode: ThreadMode = phone || !wide ? 'sheet' : 'docked';
+  // On a tablet the sidebar steps aside while a thread is open, so the thread docks beside the stream instead
+  // of covering it (HIG-07, #296); it comes back when the thread closes. Asked once per open thread.
+  const tablet = useMediaQuery('(min-width: 768px)');
+  const { makeRoom } = useShellActions();
+  const [roomFor, setRoomFor] = useState<string | null>(null);
+  if (thread && !phone && tablet && !wide && roomFor !== thread.id) setRoomFor(thread.id);
+  if (!thread && roomFor) setRoomFor(null);
+  useEffect(() => {
+    if (!roomFor) return;
+    makeRoom(true);
+    return () => makeRoom(false);
+  }, [roomFor, makeRoom]);
 
   const opener = useRef<string | null>(null);
   const open = useCallback((item: ConversationRoot, reply: boolean) => {

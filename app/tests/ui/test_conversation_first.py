@@ -215,11 +215,12 @@ class ConversationFirstJourney(unittest.TestCase):
         shot(page, "296-thread-sheet-phone-390")
         # A short drag settles back; a long one closes it.
         head = self.box(thread.locator(".thread__head"))
+        top = self.box(thread)["y"]
         x, y = head["x"] + head["width"] / 2, head["y"] + 10
-        self.swipe(page, (x, y), (x, y + 60))
-        page.wait_for_timeout(400)
+        self.swipe(page, (x, y), (x, y + 60), pause=40)
+        page.wait_for_timeout(500)
         expect(thread).to_be_visible()
-        self.assertLess(abs(self.box(thread)["y"] - head["y"] + (head["y"] - self.box(thread)["y"])), 2, "it settles back")
+        self.assertLess(abs(self.box(thread)["y"] - top), 2, "a short drag settles back")
         self.swipe(page, (x, y), (x, y + 420))
         expect(page.locator("#thread")).to_have_count(0)
         expect(opener).to_be_focused()
@@ -230,6 +231,36 @@ class ConversationFirstJourney(unittest.TestCase):
         reply.focus()
         page.keyboard.press("Escape")
         expect(page.locator("#thread")).to_have_count(0)
+
+
+    def test_07_on_a_tablet_the_thread_docks_beside_the_stream(self):
+        page = self.page({"width": 820, "height": 1180})
+        self.open_project(page)
+        app = page.locator(".app")
+        expect(app).not_to_have_attribute("data-side", "hidden")
+        root = page.locator(f"#message-{self.ids['question']}")
+        root.scroll_into_view_if_needed()
+        opener = root.get_by_role("button", name=re.compile(r"^3 replies"))
+        opener.tap()
+        # The sidebar steps aside for as long as the thread is open, and the thread docks beside the stream.
+        expect(app).to_have_attribute("data-side", "hidden")
+        expect(page.locator("#thread")).to_have_class(re.compile(r"\bthread--docked\b"))
+        stream, thread = self.box(page.locator(".convo-split__stream")), self.box(page.locator("#thread"))
+        self.assertGreaterEqual(stream["width"], 380, "the stream stays readable beside the thread")
+        self.assertLessEqual(stream["x"] + stream["width"], thread["x"] + 1, "side by side, not covered")
+        expect(page.get_by_role("button", name="Show sidebar")).to_be_visible()
+        shot(page, "296-thread-docked-tablet-820")
+        page.locator("#thread").get_by_role("button", name="Close replies").tap()
+        expect(page.locator("#thread")).to_have_count(0)
+        expect(app).not_to_have_attribute("data-side", "hidden")
+        # Showing the sidebar while a thread is open keeps it; the thread becomes a sheet again.
+        opener.tap()
+        expect(app).to_have_attribute("data-side", "hidden")
+        page.get_by_role("button", name="Show sidebar").tap()
+        expect(app).not_to_have_attribute("data-side", "hidden")
+        expect(page.locator("#thread")).to_have_class(re.compile(r"\bthread--sheet\b"))
+        page.wait_for_timeout(500)
+        expect(app).not_to_have_attribute("data-side", "hidden")
 
 
 if __name__ == "__main__":

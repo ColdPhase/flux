@@ -52,11 +52,13 @@ export interface ShellActions {
   openSearch(): void;
   /** Opens the navigation drawer on a narrow screen, where the projects are listed. */
   openNavigation(): void;
+  /** Asks the sidebar beside the sheet to step aside while a view needs the width (a docked thread on a tablet, #296). */
+  makeRoom(asked: boolean): void;
   /** A place in the header where the current view can put one quiet action (a DM's Select, #96). */
   actionSlot: HTMLElement | null;
 }
 
-export const ShellContext = createContext<ShellActions>({ openDetails: () => undefined, openSearch: () => undefined, openNavigation: () => undefined, actionSlot: null });
+export const ShellContext = createContext<ShellActions>({ openDetails: () => undefined, openSearch: () => undefined, openNavigation: () => undefined, makeRoom: () => undefined, actionSlot: null });
 
 export function useShellActions(): ShellActions {
   return useContext(ShellContext);

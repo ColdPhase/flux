@@ -124,6 +124,12 @@ function AppLayoutContent() {
       return next;
     });
   }, []);
+  // A view that needs the width for a while (a thread docked beside the stream on a tablet, #296) asks the
+  // sidebar to step aside until it is done. This is not remembered, and "Show sidebar" brings it back at once.
+  const [roomAsked, setRoomAsked] = useState(false);
+  const sideOut = sideHidden || (roomAsked && !navDrawer);
+  const showSide = useCallback(() => { setRoomAsked(false); toggleSide(false); }, [toggleSide]);
+  const makeRoom = useCallback((asked: boolean) => setRoomAsked(asked), []);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsView, setDetailsView] = useState<DetailsView>('place');
   const [detailsAccount, setDetailsAccount] = useState(me.user.id);
@@ -175,8 +181,9 @@ function AppLayoutContent() {
     },
     openSearch() { setNavOpen(false); setJumpOpen(true); },
     openNavigation() { setDetailsOpen(false); setNavOpen(true); },
+    makeRoom,
     actionSlot,
-  }), [toggleDetails, actionSlot, projectId, detailsOwner]);
+  }), [toggleDetails, actionSlot, projectId, detailsOwner, makeRoom]);
 
   // A link inside an overlaid panel or sheet (#117 overview) leads to its destination.
   const [shownPath, setShownPath] = useState(location.pathname);
@@ -241,11 +248,11 @@ function AppLayoutContent() {
       if (event.key !== '[' || event.metaKey || event.ctrlKey || event.altKey || isTyping(event.target)) return;
       if (document.getElementById('root')?.inert) return;
       event.preventDefault();
-      toggleSide();
+      if (sideOut) showSide(); else toggleSide(true);
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [navDrawer, toggleSide]);
+  }, [navDrawer, toggleSide, showSide, sideOut]);
 
   // "]" toggles Details, as in the header tooltip, only where the header offers Details.
   useEffect(() => {
@@ -478,14 +485,14 @@ function AppLayoutContent() {
     <ShellContext.Provider value={shell}>
     {/* One live session per tab, above the routes, so navigation keeps it (#62). */}
     <LiveProvider meId={me.user.id}>
-    <div className="app" ref={appRef} data-side={!navDrawer && sideHidden ? 'hidden' : undefined}>
+    <div className="app" ref={appRef} data-side={!navDrawer && sideOut ? 'hidden' : undefined}>
       <a className="ui-skip" href="#content">Skip to content</a>
       {navDrawer ? (
         <Drawer open={navOpen && navDrawer} onClose={() => setNavOpen(false)} labelledBy={drawerTitleId} id="nav-drawer" className="nav-drawer">
           <Sidebar {...sidebarProps} onClose={() => setNavOpen(false)} titleId={drawerTitleId} />
         </Drawer>
       ) : (
-        <aside className="app__side" aria-label="Sidebar" inert={sideHidden || undefined}><Sidebar {...sidebarProps} onCollapse={() => toggleSide(true)} /></aside>
+        <aside className="app__side" aria-label="Sidebar" inert={sideOut || undefined}><Sidebar {...sidebarProps} onCollapse={() => toggleSide(true)} /></aside>
       )}
 
       <div className="app__main">
@@ -498,9 +505,9 @@ function AppLayoutContent() {
           ) : phone && settingsPage ? (
             <IconButton icon="chevron-left" label="Back" size={20} className="top__back" data-tip-align="start"
               onClick={() => { if (location.key !== 'default') navigate(-1); else navigate('/settings'); }} />
-          ) : !navDrawer && sideHidden ? (
+          ) : !navDrawer && sideOut ? (
             <IconButton icon="panel" label="Show sidebar" size={18} className="top__menu top__show-side" aria-keyshortcuts="[" data-tip={'Show sidebar   ['}
-              data-tip-align="start" onClick={() => toggleSide(false)} />
+              data-tip-align="start" onClick={showSide} />
           ) : navDrawer ? (
             <IconButton icon="menu" label="Open navigation" size={18} aria-expanded={navOpen} aria-controls={navOpen ? 'nav-drawer' : undefined}
               aria-haspopup="dialog" data-tip-align="start" onClick={() => { setDetailsOpen(false); setNavOpen(true); }} className="top__menu" />
