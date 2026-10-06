@@ -162,7 +162,8 @@ class MotionJourney(unittest.TestCase):
         self.stream_ready(page)
         glide = page.locator(".side__glide")
         expect(glide).to_have_attribute("data-target", self.projects[0])
-        self.assertEqual(glide.evaluate("el => getComputedStyle(el).transitionDuration.split(',').map(s => s.trim())[0]"), "0.16s")
+        # --dur-2, 180 ms since the #266 PF-4 motion tokens.
+        self.assertEqual(glide.evaluate("el => getComputedStyle(el).transitionDuration.split(',').map(s => s.trim())[0]"), "0.18s")
         composer = page.locator("#project-composer")
         composer.fill("PRIVATE draft kept while choosing projects")
         scroll = page.locator(".side__scroll").evaluate("el => el.scrollTop")
@@ -291,6 +292,20 @@ class MotionJourney(unittest.TestCase):
           const r = document.querySelector(`#nav-drawer .side__project[data-glide-id="${id}"]`).getBoundingClientRect(); return [g.top - r.top, g.height - r.height]; }""", self.projects[2])
         self.assertTrue(all(abs(value) <= 1.01 for value in geo), geo)
         shot(phone, "motion-phone-drawer")
+
+    def test_06b_script_driven_motion_lasts_its_token_in_the_production_build(self):
+        # #264: the minifier turns `--dur-3: 200ms` into `.2s`; read as a bare number that made the drawer's
+        # slide 0.2 ms long, a jump in one frame. Slowed tenfold so the running animation can be read.
+        phone = self.page(viewport={"width": 390, "height": 844}, scale=3)
+        phone.goto(f"/projects/{self.projects[2]}")
+        cdp = phone.context.new_cdp_session(phone)
+        cdp.send("Animation.enable")
+        cdp.send("Animation.setPlaybackRate", {"playbackRate": 0.1})
+        token = phone.evaluate("() => getComputedStyle(document.documentElement).getPropertyValue('--dur-3').trim()")
+        phone.get_by_role("button", name="Open navigation").click()
+        phone.wait_for_function("() => document.querySelector('#nav-drawer')?.getAnimations().length > 0", timeout=5000)
+        durations = phone.evaluate("() => document.querySelector('#nav-drawer').getAnimations().map((a) => a.effect.getTiming().duration)")
+        self.assertTrue(durations and min(durations) >= 100, f"drawer slide lasts {durations} ms for --dur-3 = {token!r}")
 
     # ------------------------------------------------------------------ arrivals: gentle, only what is new and seen
 

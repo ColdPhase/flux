@@ -51,6 +51,7 @@ import { fixtureFlags, registerFixtureRoutes } from './fixture/index.js';
 import { registerHealth } from './health/routes.js';
 import { useDomainErrors } from './http/errors.js';
 import { useJsonCompression } from './http/compress.js';
+import { useFramingProtection } from './http/framing.js';
 
 /**
  * The API's composition root (#88): builds every route and background loop from one loaded
@@ -64,6 +65,8 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   // Domain errors and missing sessions are mapped once, here; route plugins inherit it (#85).
   useDomainErrors(app);
   useJsonCompression(app);
+  // Every response refuses framing, the OAuth consent page included (#287).
+  useFramingProtection(app);
   const { pool, db } = registerDatabase(app, connectionString);
   const migrationManifest = await readMigrationManifest(migrationsDir, FLUX_SCHEMA_VERSION);
   assertExactMigrationLedger(migrationManifest, await readAppliedMigrationVersions(pool));
@@ -174,7 +177,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await app.register(exportRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, storage: fileStorage });
 
   registerHealth(app, { pool, boss, manifest: migrationManifest, filesDir });
-  registerFixtureRoutes(app, { config: config.fixture, db, boss });
+  registerFixtureRoutes(app, { config: config.fixture, db, boss, publicOrigin: identityConfig.publicOrigin });
 
   // The build writes .br/.gz copies of the app's text files (#266 item 9); a client that accepts
   // them gets the smaller copy, everyone else the original.

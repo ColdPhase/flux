@@ -174,6 +174,9 @@ The owner revokes a connection on the **Connect agent** page.
 - **Proxy paths.** A reverse proxy must pass `/mcp`, `/api/auth/*` and the
   `/.well-known/oauth-*` and `/.well-known/openid-configuration/*` paths
   unchanged.
+- **Single sign-on.** When people sign in through an OIDC provider, MCP clients
+  still use Flux's own OAuth; the provider only signs the person in. Offboarding,
+  provider settings and the proposed variables are in [F-024](../product/mcp-identity.md#mcpid-6--operator-configuration).
 - **Access.** Only the owner of a connection can use it. Connections need nothing
   configured by the operator. Restoring a backup on another machine can revoke
   every connection: `./flux restore --revoke-agent-connections`

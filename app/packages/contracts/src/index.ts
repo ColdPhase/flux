@@ -11,6 +11,24 @@ export interface SampleAccepted {
   jobId: string;
 }
 
+/**
+ * Test deployments only (#287): registers a public PKCE OAuth client for the MCP resource. It
+ * exists only with `FLUX_FIXTURE_TOKEN` and `FLUX_TEST_FAILURE_INJECTION=true`; browser sessions
+ * cannot register clients.
+ */
+export const FIXTURE_OAUTH_CLIENT_PATH = '/api/v1/integration/oauth-clients';
+
+export interface FixtureOauthClientCommand {
+  name: string;
+  redirectUris: string[];
+  /** Defaults to every MCP scope and `offline_access`. */
+  scopes?: string[];
+}
+
+export interface FixtureOauthClientRegistered {
+  clientId: string;
+}
+
 /** Better Auth endpoints are mounted below this prefix (sign-up/email, sign-in/email, sign-out, request-password-reset, reset-password). */
 export const AUTH_BASE_PATH = '/api/auth';
 export const IDENTITY_CAPABILITIES_PATH = '/api/v1/auth/capabilities';

@@ -21,7 +21,10 @@ export function AuthLayout() {
   return (
     <div className="auth">
       <a className="ui-skip" href="#auth-main">Skip to content</a>
-      <header className="auth__top"><Brand /></header>
+      <header className="auth__top"><Brand />
+        {/* Opened from Settings rather than by an agent's sign-in: a way back (#266 PF-5). */}
+        {location.pathname === '/connect-agent' && !location.search ? <Link to="/settings" className="auth__back"><Icon name="chevron-left" size={14} />Settings</Link> : null}
+      </header>
       <main className="auth__main" id="auth-main" tabIndex={-1}>
         {/* Keyed by path so each page settles in when it replaces the previous one. */}
         <div className={`auth__col${connectionFlow ? ' auth__col--connection' : ''}`} key={location.pathname}>

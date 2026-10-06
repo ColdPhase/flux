@@ -2,9 +2,16 @@
 
 This implements the accepted [#232](https://github.com/ColdPhase/flux/issues/232)
 verification slice. [#20](https://github.com/ColdPhase/flux/issues/20) retains
-ownership of physical Android/iPhone/iPad acceptance under
+ownership of Android/iPhone/iPad acceptance under
 [MOB-1–MOB-7](../product/mobile-pwa.md). #63 and #151 still need the integrated
 mobile journeys. A provider's accepted HTTP send does not prove OS display.
+
+Founder direction [#266](https://github.com/ColdPhase/flux/issues/266) item 10,
+2026-10-05: MOB acceptance uses emulation plus
+[documented platform requirements](../product/mobile-pwa.md#acceptance-evidence).
+This fixture is optional tooling: its desktop real-provider check is Docker-side
+transport evidence, and physical-device sessions add extra evidence but never
+gate a release.
 
 ## Real-device session (one command)
 
@@ -293,7 +300,9 @@ consent or OS display:
 - headless or windowed containers;
 - emulated viewports.
 
-MOB-1–MOB-7 still require the complete independent integrated acceptance matrix.
+Under #266 those steps are accepted on the documented platform requirements
+instead. MOB-1–MOB-7 still require the complete independent integrated
+acceptance matrix.
 
 ## Optional desktop provider transport
 
@@ -386,8 +395,21 @@ The public half was not run at this head: no Quick Tunnel (`session` or
 `tunnel`), no desktop provider probe, and so no new provider result. `session`
 opens a tunnel only for a commit on `main`.
 
-**Physical devices: not verified.** No Android, iPhone or iPad session has run:
-installation, display in the background and on the lock screen, taps, opt-out,
-revocation and recovery are all unverified. These rows need Maurycy with the
-devices, through `session` above. #20, #63 and #151 and the integrated release
-acceptance stay open.
+**Physical devices at this checkpoint: not verified.** No Android, iPhone or iPad
+session had run.
+
+**Physical session 1, 2026-10-05** ([#20](https://github.com/ColdPhase/flux/issues/20),
+`main` `fdb70955`, Maurycy's devices, models and OS versions not recorded):
+
+- Android Chrome: installed and signed in, `fcm.googleapis.com` subscription,
+  provider 201; display and tap not recorded.
+- iPhone Home Screen app: installed and signed in, `web.push.apple.com`
+  subscription, provider 403. The fixture signed with
+  `mailto:mobile-fixture@example.test`; #263 now signs with the tunnel's https
+  origin and warns about contacts Apple may refuse.
+- iPad: not tested.
+
+No matrix case was recorded as pass. Since #266 item 10 this is retained extra
+evidence, not a blocker. The mobile criteria of #20, #63 and #151 close on
+emulation plus documented requirements; the integrated release acceptance stays
+open.

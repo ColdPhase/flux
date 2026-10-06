@@ -53,6 +53,18 @@
 .connection__actions, .connection__footer { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .connection__footer { padding-top: 18px; border-top: 1px solid var(--line); }
 .connection__alert { padding: 12px 14px; border-radius: var(--r); background: var(--tint-danger); color: var(--danger); font-size: var(--fs-md); line-height: 1.5; }
+/* Where an approved request goes (#287): the hosts read as plain values; a warning off this computer. */
+.connection__destination { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border: 1px solid var(--line-strong); border-radius: var(--r-lg); }
+.connection__destination h2 { color: var(--text-2); font-size: var(--fs-sm); }
+.connection__destination dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: baseline; gap: 6px 16px; margin: 0; }
+.connection__destination dl > div { display: contents; }
+.connection__destination dt { color: var(--text-3); font-size: var(--fs-md); }
+.connection__destination dd { margin: 0; min-width: 0; color: var(--text); font-size: var(--fs-base); overflow-wrap: anywhere; }
+.connection__destination .connection__host { font-family: var(--mono); font-weight: 600; }
+.connection__destination > p { color: var(--text-3); font-size: var(--fs-sm); line-height: 1.5; }
+.connection__destination > .connection__warning { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; border-radius: var(--r); background: var(--tint-warning); color: var(--warning); font-size: var(--fs-md); }
+.connection__warning svg { flex: none; margin-top: 2px; }
+.connection__warning strong { font-weight: 600; }
 /* Standing grants (#152): a quiet panel under each saved connection, one line per grant. */
 .grants { display: flex; flex-direction: column; gap: 10px; width: 100%; padding: 14px 16px; border-radius: var(--r-lg); background: var(--bg-side); }
 .grants__head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
@@ -99,6 +111,9 @@
 .grants__status { grid-column: 1; color: var(--text-2); font-size: var(--fs-sm); }
 .grants__list--ended .grants__what { color: var(--text-3); }
 @media (max-width: 600px) {
+  .connection__destination { padding: 13px; }
+  .connection__destination dl { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .connection__destination dl > div + div dt { margin-top: 8px; }
   .connection__choice, .connection__create { padding: 13px; }
   .connection__footer .ui-btn--primary { width: 100%; }
   .connection--consent { gap: 18px; }
@@ -112,4 +127,14 @@
   .grants__area { grid-template-columns: minmax(0, 1fr); }
   .grants__area-options label { min-height: 44px; }
   .grants__narrow .grants__form-actions { margin-left: 0; }
+}
+/* Touch (Apple HIG-08/09/14): the consent decision reads at 16px, secondary lines at 13px or more. */
+@media (pointer: coarse) {
+  .connection--consent .connection__head p, .connection--consent .connection__requested p, .connection--consent .connection__help,
+  .connection__destination dd, .connection__destination > p, .connection__destination > .connection__warning,
+  .connection--consent .connection__scopes li, .connection--consent .connection__summary > strong { font-size: 16px; }
+  .connection__destination dt, .connection__destination h2, .connection--consent .connection__requested h2,
+  .connection--consent .connection__meta, .connection--consent .connection__project-access > span,
+  .connection--consent .connection__projects li, .connection--consent .connection__scopes small { font-size: 13px; }
+  .connection--consent .connection__footer .ui-btn { min-height: 44px; }
 }
