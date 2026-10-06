@@ -11,15 +11,32 @@ import { CLI_PATHS, TEMPLATE_FLAGS } from '../supervisor/templates.js';
 
 const run = promisify(execFile);
 
-async function help(path: string, args: readonly string[], home: string): Promise<string> {
+async function invoke(path: string, args: readonly string[], home: string): Promise<{ code: number; text: string }> {
   try {
     const { stdout, stderr } = await run(path, [...args], { timeout: 30_000, maxBuffer: 4 * 1024 * 1024,
       env: { PATH: '/usr/local/bin:/usr/bin:/bin', HOME: home, CLAUDE_CONFIG_DIR: `${home}/claude`, CODEX_HOME: `${home}/codex`, DISABLE_UPDATES: '1' } });
-    return `${stdout}\n${stderr}`;
+    return { code: 0, text: `${stdout}\n${stderr}` };
   } catch (error) {
-    const failed = error as { stdout?: string; stderr?: string };
-    return `${failed.stdout ?? ''}\n${failed.stderr ?? ''}`;
+    const failed = error as { code?: number; stdout?: string; stderr?: string };
+    return { code: typeof failed.code === 'number' ? failed.code : 1, text: `${failed.stdout ?? ''}\n${failed.stderr ?? ''}` };
   }
+}
+const help = async (path: string, args: readonly string[], home: string) => (await invoke(path, args, home)).text;
+
+/**
+ * A flag the help does not list may still be a hidden option. It counts as accepted only when the CLI
+ * treats it differently from a made-up flag (the control): either `<flag> 1 --version` prints the
+ * version while the made-up flag does not, or a one-shot print run (no network here, so it fails
+ * later) does not report the flag as unknown while it reports the made-up one.
+ */
+async function acceptedHidden(path: string, flag: string, home: string, version: string): Promise<boolean> {
+  const unknown = /unknown option|unexpected argument|unrecognized/i;
+  const control = await invoke(path, ['--flux-no-such-flag', '1', '--version'], home);
+  const candidate = await invoke(path, [flag, '1', '--version'], home);
+  if (!(control.code === 0 && control.text.includes(version)) && candidate.code === 0 && candidate.text.includes(version)) return true;
+  const controlRun = await invoke(path, ['-p', 'x', '--flux-no-such-flag', '1'], home);
+  const candidateRun = await invoke(path, ['-p', 'x', flag, '1'], home);
+  return unknown.test(controlRun.text) && !unknown.test(candidateRun.text);
 }
 
 const documented = (textValue: string, flag: string) =>
@@ -33,9 +50,11 @@ try {
   for (const { client, help: args, flags, optional = [] } of TEMPLATE_FLAGS) {
     const textValue = await help(CLI_PATHS[client], args, home);
     for (const flag of flags) {
-      const ok = documented(textValue, flag);
-      if (!ok) missing += 1;
-      console.log(`${ok ? 'ok     ' : 'MISSING'} ${client} ${args.join(' ')}: ${flag}`);
+      if (documented(textValue, flag)) { console.log(`ok      ${client} ${args.join(' ')}: ${flag}`); continue; }
+      const version = String(report[`${client}Version`] ?? '').split(' ')[0] ?? '';
+      const hidden = flag.startsWith('--') && version !== '' && await acceptedHidden(CLI_PATHS[client], flag, home, version);
+      if (!hidden) missing += 1;
+      console.log(`${hidden ? 'hidden ' : 'MISSING'} ${client} ${args.join(' ')}: ${flag}${hidden ? ' (not in the help, but accepted; a made-up flag is refused)' : ''}`);
     }
     for (const flag of optional) console.log(`${documented(textValue, flag) ? 'present' : 'absent '} ${client} ${args.join(' ')}: ${flag} (optional)`);
   }
