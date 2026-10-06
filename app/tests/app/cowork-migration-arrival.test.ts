@@ -67,8 +67,11 @@ for (const order of arrivals) test(`co-work, runtime and genuine-actor migration
     });
     const before = await history();
     assert.equal(before.search.length, 1);
+    // Every original 0035 unit column; only columns added by later migrations are left out (0054's nullable outcome_ref).
     const coordination = async () => ({
-      unit: (await client.query('SELECT * FROM cowork_units WHERE id=$1', [unit])).rows,
+      unit: (await client.query(`SELECT id,workspace_id,project_id,work_id,lineage_work_id,run_id,unit_key,role,assignment_connection_id,
+        state,generation,version,lease_id,lease_session_id,lease_expires_at,checkpoint_id,created_at,updated_at
+        FROM cowork_units WHERE id=$1`, [unit])).rows,
       checkpoint: (await client.query('SELECT * FROM cowork_checkpoints WHERE id=$1', [checkpoint])).rows,
     });
     let retained: Awaited<ReturnType<typeof coordination>> | null = null;
@@ -98,6 +101,9 @@ for (const order of arrivals) test(`co-work, runtime and genuine-actor migration
       assert.deepEqual(await history(), before, `migration${file.version} must preserve original history`);
       assert.deepEqual(await coordination(), retained, `migration${file.version} must retain existing claim/checkpoint`);
     }
+    // 0054's added outcome column leaves the retained claim without an outcome.
+    assert.deepEqual((await client.query('SELECT outcome_ref FROM cowork_units WHERE id=$1', [unit])).rows, [{ outcome_ref: null }],
+      'an existing unit gains no inferred outcome');
     // 0043's added provenance column leaves the human-authored history as it was.
     assert.deepEqual((await client.query('SELECT author_agent_id FROM project_material_versions WHERE material_id=$1', [material])).rows,
       [{ author_agent_id: null }], 'the original human source gains no agent author');

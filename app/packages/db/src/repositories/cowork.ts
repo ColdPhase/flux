@@ -36,6 +36,28 @@ export function coworkUnitRows(tx: DbExecutor) {
         eq(units.assignmentConnectionId, scope.connectionId), eq(units.role, role))).for('share');
       return !!row;
     },
+    /** Claim eligibility (#153): the unit's task, already locked by the caller's complete task pass. Takes no lock. */
+    async claimTask(workspaceId: string, taskId: string) {
+      const table = schema.projectWorkItems;
+      const [row] = await tx.select({ id: table.id, projectId: table.projectId, status: table.status }).from(table)
+        .where(and(eq(table.workspaceId, workspaceId), eq(table.id, taskId)));
+      return row ?? null;
+    },
+    /** True when every material still exists in this project, whatever its version. A plain read: no late material lock. */
+    async materialsPresent(workspaceId: string, projectId: string, materialIds: readonly string[]) {
+      const ids = [...new Set(materialIds)];
+      if (!ids.length) return true;
+      const rows = await tx.select({ id: schema.projectMaterials.id }).from(schema.projectMaterials).where(and(
+        eq(schema.projectMaterials.workspaceId, workspaceId), eq(schema.projectMaterials.projectId, projectId),
+        inArray(schema.projectMaterials.id, ids)));
+      return rows.length === ids.length;
+    },
+    /** One checkpoint of this unit, for a caller that already passed the claim composition's source checks. */
+    async unitCheckpoint(scope: { projectId: string; unitId: string }, id: string) {
+      const [row] = await tx.select().from(checkpoints).where(and(eq(checkpoints.id, id),
+        eq(checkpoints.projectId, scope.projectId), eq(checkpoints.unitId, scope.unitId)));
+      return row ?? null;
+    },
     /** The caller holds current authorization/command locks in this same outer transaction. */
     async lock(scope: StorageScope, prepareTasks?: (units: readonly CoWorkTaskLockInput[]) => Promise<readonly string[]>) {
       await tx.insert(schema.coworkConnectionSlots).values({ workspaceId: scope.workspaceId, connectionId: scope.connectionId })
