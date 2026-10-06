@@ -80,6 +80,47 @@ Changes to the launcher or operations also have `./scripts/check_flux_cli.sh` an
 `./scripts/check_backup.sh`. [Contributing](docs/CONTRIBUTING.md) says which checks fit
 which change.
 
+## Connect your own agent
+
+Your own MCP client, such as Claude Code or Codex, can read the projects you choose and suggest
+next steps. It runs on your computer with your own model account, which Flux never sees. On the
+`./flux demo` data:
+
+1. Sign in as Ada, the workspace owner (`./flux demo` prints her password), and open
+   <http://127.0.0.1:8081/connect-agent> (Settings → Agent connections (MCP)).
+2. **Create your personal agent.** Keep the workspace "Riverside Makers (demo)", give the agent a
+   name and choose **Create personal agent**. The demo seeds no agent.
+3. **Grant it the project.** Under **New connection**, name the connection and pick your client.
+   Next to "Community garden sensors", keep **Read and propose** and choose **Grant**; only a
+   project manager can do this, and Ada is one. Tick the project and choose **Save connection**.
+4. **Add Flux to your client** with the commands the page shows:
+
+   ```sh
+   claude mcp add --transport http flux http://127.0.0.1:8081/mcp   # Claude Code
+   claude mcp login flux
+
+   codex mcp add flux --url http://127.0.0.1:8081/mcp               # Codex; adding may start the sign-in
+   codex mcp login flux
+   ```
+
+5. **Consent.** The login opens Flux in your browser. Choose the saved connection, then
+   **Continue to consent**. Check that access goes to an address on your own computer and to the
+   selected project only, and choose **Allow access**.
+6. **Ask it something**, for example: "Using Flux, what is the Community garden sensors project
+   working on, and what is still open?" The client reads the project's conversations, tasks and
+   docs, and answers in your client. A suggestion it makes waits in Flux for a person to review;
+   replying or creating tasks in Flux also needs **Approved actions** and a grant from you on the
+   same page.
+
+The loopback `http://` address works only for a client on the same computer. A client on another
+computer needs an HTTPS address: the operator sets `FLUX_PUBLIC_ORIGIN` behind a TLS reverse proxy
+([agent connection](docs/development/agent-connection.md),
+[integrations for operators](docs/integrations/README.md#for-operators)). Flux accepts clients
+only through their public client metadata documents, so the server needs outbound HTTPS when a
+client signs in. Claude Code completed this sign-in on a loopback install on 2026-09-28; the Codex
+commands come from Codex's own documentation and have not yet been run against Flux
+([#320](https://github.com/ColdPhase/flux/issues/320) times the whole path).
+
 ## Repository layout
 
 | Path | Contents |
