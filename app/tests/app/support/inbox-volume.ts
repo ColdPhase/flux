@@ -24,7 +24,7 @@ async function batched(total: number, insert: (from: number, to: number) => Prom
  * them. Rows are inserted directly (the access rules are exercised by the reads under test, not
  * by these fixtures), then analyzed, so the planner sees the volume as it would in use.
  */
-export async function inboxVolume(sizes = { projects: 300, drafts: 20_000, dms: 2_000 }): Promise<InboxVolume> {
+export async function inboxVolume(sizes = { projects: 300, drafts: 20_000, dms: 20_000 }): Promise<InboxVolume> {
   const owner = await person('Volume owner');
   const member = await person('Volume member');
   const space = await workspace(owner, 'Inbox volume');

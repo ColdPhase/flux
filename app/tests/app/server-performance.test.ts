@@ -32,7 +32,8 @@ describe('inbox unread count (#298)', () => {
     // Before #298 the draft and DM checks were correlated subplans costed once per notification (JIT
     // compiled from about a thousand notifications); 3f6b3207 built the set of every readable draft
     // and DM of the workspace (20,000 drafts: 313 ms, mostly JIT). Each set now starts from the
-    // reader's own notifications of that kind. All three facts are reported together.
+    // reader's own notifications of that kind, so with 20,000 drafts and 20,000 DMs the plan reads
+    // only the hundred of each they are about. All four facts are reported together.
     assert.deepEqual({
       jitFunctions: explained.JIT?.Functions ?? 0,
       costBelowJitThreshold: explained.Plan['Total Cost'] < threshold,
