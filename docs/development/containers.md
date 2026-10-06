@@ -96,6 +96,16 @@ Each connection also sets `idle_in_transaction_session_timeout` to 60 s, so Post
 ends any session abandoned inside a transaction. Flux code does not wait on
 anything outside the database inside a transaction. pg-boss keeps its own pool.
 
+### Server measurement
+
+`./scripts/check_performance.sh` measures the API on the seeded #298 volume: a production-mode
+stack with the measurement-only `docker/compose.perf.yaml` overlay (`pg_stat_statements`,
+`auto_explain`), the public-API seed `scripts/perf-seed.mjs`, the web app's per-view requests
+`scripts/perf-measure.mjs` and the report `scripts/perf_report.py`. It takes about 15 minutes, uses
+at most two clients and writes to `perf-results/` (ignored by git); `FLUX_PERF_PHASES`,
+`FLUX_PERF_IMAGE_TAG` and `FLUX_PERF_PORT` narrow or redirect a run. Method and results:
+[performance, October 2026](performance-2026-10.md).
+
 ### Disk hygiene
 
 Each `scripts/check_*.sh` run builds images tagged with its own Compose
