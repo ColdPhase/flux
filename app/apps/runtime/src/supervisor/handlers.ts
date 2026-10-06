@@ -4,7 +4,7 @@ import {
 } from '@flux/runtime-protocol';
 import { bindingBytes, clearClientFiles, createBinding, credentialFileState, dataEntries, isEmpty, openBinding, removeBinding, tmpIsEmpty } from './data.js';
 import { runFixed } from './process.js';
-import { CLI_PATHS, cliEnvironment, LOGOUT_TEMPLATES, STATUS_TEMPLATES } from './templates.js';
+import { cliEnvironment, LOGOUT_TEMPLATES, STATUS_TEMPLATES } from './templates.js';
 
 // One handler per request of the closed set. A handler answers with zero or more `step` frames and
 // exactly one `result` or `error`. Login (the sign-in console) arrives in T4 and run in T5: both are
