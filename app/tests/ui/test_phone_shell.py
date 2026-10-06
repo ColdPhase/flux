@@ -284,7 +284,7 @@ class PhoneShellJourney(unittest.TestCase):
         note.focus()
         expect(bar).to_be_hidden()
         note.fill("Ask about the hedge")
-        page.locator("header.top .top__view").click()
+        page.locator("header.top h1").click()
         expect(bar).to_be_visible()
         expect(note).to_have_value("Ask about the hedge")
 

@@ -129,7 +129,15 @@ class PhoneStructureJourney(unittest.TestCase):
                 expect(page.locator(".views--project")).to_have_count(0)
                 expect(header.locator(".top__view")).to_have_text("Conversation")
                 switch = header.get_by_role("button", name=re.compile(f"^{PROJECT}.*views"))
-                self.assertGreaterEqual(self.box(switch)["height"], 22)
+                # The title and the line under it are one tap of at least 44 px (HIG-14, F-025 PA-5).
+                reach = switch.evaluate("""(el) => {
+                  const box = el.getBoundingClientRect(), x = box.left + 12;
+                  let top = box.top + box.height / 2, bottom = top;
+                  while (top > 0 && el.contains(document.elementFromPoint(x, top - 1))) top -= 1;
+                  while (bottom < innerHeight - 1 && el.contains(document.elementFromPoint(x, bottom + 1))) bottom += 1;
+                  return bottom - top + 1;
+                }""")
+                self.assertGreaterEqual(reach, 44, "the title is a 44 px tap")
                 sheet = self.views_sheet(page)
                 expect(switch).to_have_attribute("aria-expanded", "true")
                 views = sheet.get_by_role("navigation", name="Project views")
@@ -181,7 +189,12 @@ class PhoneStructureJourney(unittest.TestCase):
                 expect(card).to_be_visible()
                 header_box = self.box(header)
                 self.assertLessEqual(self.box(status)["y"] - (header_box["y"] + header_box["height"]), 24, "the status row follows the header")
-                self.assertLessEqual(self.box(card)["y"] - (self.box(status)["y"] + self.box(status)["height"]), 64, "the tasks follow the status row")
+                # Under it, the tasks; a decision that waits is one quiet row at their top (F-025 PA-10).
+                also = page.get_by_role("navigation", name="Also in the List")
+                expect(also).to_be_visible()
+                self.assertGreater(self.box(also)["y"], self.box(status)["y"], "the quiet row sits under the status, not above it")
+                start = self.box(also)["y"] + self.box(also)["height"]
+                self.assertLessEqual(self.box(card)["y"] - start, 40, "the tasks follow")
                 if viewport is PHONE:
                     shot(page, "318-tasks-390")
                 # The status segments filter, one column at a time.

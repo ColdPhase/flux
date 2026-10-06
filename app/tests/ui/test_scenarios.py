@@ -740,6 +740,9 @@ class ScenarioJourney:
 
         # Task first, map later: Jonas adds the order in Tasks; it is linked to Variant B (test_2b).
         jonas.goto(f"/projects/{lamp}/tasks?view=list")
+        if self.phone:
+            # On a phone the List's new-task field opens from "+" in the header (#318, F-025 PA-10).
+            self.tap(jonas.locator("header.top").get_by_role("button", name="Add a task", exact=True))
         jonas.get_by_label("New task", exact=True).fill(ORDER_TASK)
         self.tap(jonas.get_by_role("button", name="Add task", exact=True))
         expect(self.details(jonas).get_by_role("heading", name=ORDER_TASK)).to_be_visible()

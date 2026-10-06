@@ -235,7 +235,7 @@ export function ProjectTasks() {
   };
   const [stored, setViewState] = useState(fromUrl);
   const [searched, setSearched] = useState({ routeKey: `${me.user.id}:${project.id}`, text: '' });
-  const [adding, setAdding] = useState<ColumnId | null>(null);
+  const [adding, setAdding] = useState<ColumnId | 'here' | null>(null);
   // A router POP, account switch or project switch selects its actual URL immediately.
   const view = stored.routeKey === routeKey ? stored : fromUrl();
   const { status, mine, cursor, mode } = view;
@@ -349,7 +349,8 @@ export function ProjectTasks() {
   const refreshBoard = () => { refreshPage(); setBoardRevision((current) => current + 1); };
   // "+ Task" starts the same creation: the List's field, or a field at the top of the board's Open column.
   const startNew = () => {
-    if (mode !== 'list') { setAdding('open'); return; }
+    // On a phone "+" adds to the status shown (#318); beside the sheet the toolbar's "+ Task" adds to Open.
+    if (mode !== 'list') { setAdding(phone ? 'here' : 'open'); return; }
     setListAdding(true);
     requestAnimationFrame(() => document.getElementById('ws-add')?.focus());
   };
@@ -399,6 +400,16 @@ export function ProjectTasks() {
     </div>
   );
 
+  // What the board leaves to the List. On a phone it is the quiet row at the top of the tasks, under the status (#318).
+  const alsoRow = elsewhere.length ? (
+    <nav className="tb-also" aria-label="Also in the List">
+      <span className="tb-also__k">In the List:</span>
+      {elsewhere.map((entry) => (
+        <button key={entry.id} type="button" className={`tb-also__b${entry.need ? ' tb-also__b--need' : ''}`} onClick={() => setView({ mode: 'list', status: entry.id })}>{entry.text}</button>
+      ))}
+    </nav>
+  ) : null;
+
   // Search stays shown while it is in use, so a filter never hides itself (#318).
   const searching = phone && mode === 'board' && (searchOpen || !!boardSearch || mine);
   const openSearch = () => { setSearchOpen(true); requestAnimationFrame(() => document.getElementById(phoneSearchId)?.focus()); };
@@ -430,20 +441,12 @@ export function ProjectTasks() {
       <div className="pane-scroll" ref={scroller}>
       {mode === 'board' ? (
         <div className="tb" data-work-observed-at={data?.summary.observedAt}>
-          {elsewhere.length ? (
-            <nav className="tb-also" aria-label="Also in the List">
-              <span className="tb-also__k">In the List:</span>
-              {elsewhere.map((entry) => (
-                <button key={entry.id} type="button" className={`tb-also__b${entry.need ? ' tb-also__b--need' : ''}`} onClick={() => setView({ mode: 'list', status: entry.id })}>{entry.text}</button>
-              ))}
-            </nav>
-          ) : null}
-          <div className="tb-aside">{proposals}</div>
+          {phone ? null : <>{alsoRow}<div className="tb-aside">{proposals}</div></>}
           <TaskBoard project={project} openRead={read} meId={me.user.id} mine={mine} query={boardSearch.trim().toLowerCase()} writable={writable}
             revision={boardRevision} adding={adding} onAdding={setAdding}
             openWork={(id) => { saveReading(); openDetails({ kind: 'work', id }); }} refresh={refreshBoard}
             showInList={(group) => setView({ mode: 'list', status: group })}
-            clearFilters={() => { setBoardSearch(''); setView({ mine: false }); }} />
+            clearFilters={() => { setBoardSearch(''); setView({ mine: false }); }} lead={phone ? <>{alsoRow}<div className="tb-aside">{proposals}</div></> : null} />
         </div>
       ) : (
       <div className="pane-in ws-tasks" data-shift data-work-observed-at={data?.summary.observedAt}>

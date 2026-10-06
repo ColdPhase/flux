@@ -104,21 +104,26 @@ def thread_of(page: Page):
     return page.get_by_role("complementary", name="Replies")
 
 
+def phone_views(page: Page) -> bool:
+    """Whether this project's views open from its title (a phone, #318): asked once its header has rendered."""
+    expect(page.locator("header.top h1")).to_be_visible()
+    return page.locator("header.top .top__switch").count() > 0
+
+
 def project_view(page: Page, name: str) -> None:
     """Switch a project's view by name: its tabs beside the sheet, or on a phone the views sheet behind its title (#318)."""
-    switch = page.locator("header.top .top__switch")
-    if switch.count() and switch.is_visible():
-        switch.click()
+    if phone_views(page):
+        page.locator("header.top .top__switch").click()
         page.get_by_role("dialog", name="Views").get_by_role("link", name=re.compile(f"^{name}")).click()
         expect(page.get_by_role("dialog", name="Views")).to_have_count(0)
     else:
-        project_view(page, name)
+        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile(f"^{name}")).click()
 
 
 def task_list(page: Page) -> None:
     """Show a project's Tasks as the List: Kanban | List beside the sheet, or on a phone, where Tasks has no such
     switch (#318, F-025 PA-10), Decisions in the views menu and then All."""
-    if page.locator("header.top .top__switch").count():
+    if phone_views(page):
         project_view(page, "Decisions")
         page.get_by_role("navigation", name="Task views").get_by_role("button", name="All", exact=True).click()
     else:

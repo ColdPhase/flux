@@ -520,11 +520,15 @@ class TasksBoardJourney(unittest.TestCase):
         header = page.locator("header.top")
         for control in (*overview.get_by_role("button").all(), header.get_by_role("button", name="Search tasks", exact=True),
                         header.get_by_role("button", name="Add a task", exact=True),
-                        page.get_by_role("button", name="New task in In progress"),
                         self.card(page, SOLDER).get_by_role("button", name="Move to…")):
             box = control.bounding_box()
             assert box
             self.assertGreaterEqual(box["height"], 44, "touch target")
+        # "+" adds to the status shown; the column needs no "+" of its own (#318).
+        expect(page.get_by_role("button", name=re.compile("^New task in"))).to_have_count(0)
+        header.get_by_role("button", name="Add a task", exact=True).tap()
+        expect(page.get_by_label("New task in In progress")).to_be_focused()
+        page.keyboard.press("Escape")
         shot(page, "tasks-board-390-dark")
         overview.get_by_role("button", name=re.compile("^Open")).tap()
         open_ = self.column(page, "Open")

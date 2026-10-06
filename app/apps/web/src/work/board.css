@@ -212,10 +212,8 @@ html.tb-is-dragging, html.tb-is-dragging * { cursor: grabbing !important; user-s
   .tb-add.ui-btn { margin-left: 4px; min-height: 48px; }
   .tb-also { padding-top: 8px; }
   .tb-col__head { min-height: 0; }
-  /* The count on Decisions & results says a decision waits; the List row stays only for parked work. */
   .tb-dr__n { position: absolute; top: 2px; right: 2px; box-shadow: 0 0 0 2px var(--bg); }
-  .tb-also__b--need { display: none; }
-  .tb-also:not(:has(.tb-also__b:not(.tb-also__b--need))) { display: none; }
+  /* A phone has no Decisions button (#318): the quiet "needs you" row at the top of the board says a decision waits. */
   .tb-card__id { font-size: var(--fs-xs); }
 }
 @media (max-width: 350px) { .tb-bar { gap: 0; padding-inline: 4px; } .tb-bar :is(.tb-search, .tb-dr, .tb-mode__b, .tb-mine) { padding-inline: 3px; } }
@@ -257,3 +255,18 @@ html.tb-is-dragging, html.tb-is-dragging * { cursor: grabbing !important; user-s
 .tb-find__field { display: flex; align-items: center; gap: 8px; }
 .tb-find__field input { position: static; flex: 1; min-width: 0; width: auto; height: 100%; padding: 0; opacity: 1; background: transparent; }
 .tb-find__field > svg { flex: none; position: static; }
+/* A phone's status row is a segmented control on one line, "Open 2" (#318, F-025 PA-10): it is the only row between
+   the header and the tasks. The blocked count keeps its mark; its word is still read out. */
+@media (max-width: 640px) {
+  .tb-overview { margin-top: 0; padding: 0 8px; }
+  .tb-ov { flex-direction: row; align-items: center; justify-content: center; gap: 5px; min-height: 44px; padding: 0 2px; }
+  .tb-ov .tb-ring { display: none; }
+  .tb-ov__l { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-sm); }
+  .tb-ov__n { flex-wrap: nowrap; gap: 0 4px; font-size: var(--fs-sm); line-height: 1.2; }
+  .tb-ov__bw { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .tb-board { padding-top: 10px; }
+  /* The status row already names the column and its count, and "+" in the header adds to it: the column's own
+     heading is kept for assistive technology only. */
+  .tb-col__head { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .tb-col__add { display: none; }
+}

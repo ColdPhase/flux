@@ -514,12 +514,17 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 /* The title and the line under it are one tap (F-025 PA-5): the button takes the header's width, and its hit area
    reaches over that line. */
 .top__switch { width: 100%; }
+/* The title's text shortens inside the button; the heading itself must not clip the button's hit area. */
+.top--project .top__title--project h1:has(.top__switch) { overflow: visible; }
 .top__switch::after { content: ""; position: absolute; inset: -8px -6px -28px; }
 .top__meta--sub { gap: 4px 8px; color: var(--text-2); font-size: var(--fs-xs); white-space: nowrap; }
 .top__meta--sub .top__view::after { content: "·"; margin-left: 8px; color: var(--text-3); font-weight: 400; }
 .top__sub-a { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
 .top__sub-a > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .top__sub-a svg { flex: none; width: 10px; height: 10px; }
+/* On the narrowest phones the line keeps who can read the project whole; the view is named in the views menu. */
+@media (max-width: 359px) { .top__meta--sub .top__view { display: none; } }
+.top__more.ui-icon-btn:hover { background: var(--bg-hover); }
 .top__switch-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .top__switch svg { flex: none; color: var(--text-3); }
 .top__switch:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--r-sm); }

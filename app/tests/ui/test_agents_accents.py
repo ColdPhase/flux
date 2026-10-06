@@ -70,6 +70,7 @@ BOUNDARIES = (
     (".agents-composer textarea", {"property": "borderTopColor"}),
     (".views .ui-tabs__indicator", {"property": "backgroundColor", "backgroundSelector": ".views"}),
 )
+PHONE_TEXT = ("header.top .top__switch-t", "header.top .top__view")
 SEND = ".agents-composer .ui-btn--primary"
 
 
@@ -216,9 +217,14 @@ class AgentsAccentsJourney(unittest.TestCase):
                         page.wait_for_timeout(150)
                         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), size["width"], f"{name}: no horizontal page scroll")
                         where = {"theme": theme, "family": family, "width": name}
-                        for selector in TEXT:
+                        # On a phone the views open from the title, so there is no tab strip; the line under the
+                        # title names the current view instead (#318, F-025 PA-9).
+                        phone = size["width"] <= 640
+                        for selector in (*TEXT, *(PHONE_TEXT if phone else ())):
                             self.measure(page, where, selector)
                         for selector, spec in BOUNDARIES:
+                            if phone and selector.startswith(".views"):
+                                continue
                             self.measure(page, where, selector, 3, **spec)
                         page.locator(".agents-scroll").evaluate("el => { el.scrollTop = el.scrollHeight; }")
                         shot(page, f"agents-accent-{theme}-{family}-{name}")

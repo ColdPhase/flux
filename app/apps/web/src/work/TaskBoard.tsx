@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useRevalidator } from 'react-router';
 import type { ObjectLink, Project, ProjectWorkView, WorkGroup, WorkItem, WorkRelations, WorkRowProjection, WorkStatus } from '@flux/contracts';
@@ -265,13 +265,16 @@ export interface TaskBoardProps {
   writable: boolean;
   /** Changes when the Tasks tab asks every board read to refresh. */
   revision: number;
-  adding: ColumnId | null;
+  /** The column whose new-task field is open; "here" is the one shown on a narrow board (a phone's "+", #318). */
+  adding: ColumnId | 'here' | null;
   onAdding: (column: ColumnId | null) => void;
   openWork: (id: string) => void;
   refresh: () => void;
   /** Opens one native group in the List, which pages through all of it. */
   showInList: (group: WorkGroup) => void;
   clearFilters: () => void;
+  /** A quiet row shown under a narrow board's status row (on a phone, what waits in the List, #318). */
+  lead?: ReactNode;
 }
 
 /** The first bounded page (newest 50) of one native Tasks group, for this account and project. */
@@ -288,7 +291,7 @@ const rowsOf = (page: ProjectWorkView | null) => page?.items.filter((item): item
 const beyond = (page: ProjectWorkView | null) => page ? Math.max(0, page.total - page.items.length) : 0;
 const SOURCE_EDGES = 100;
 
-export function TaskBoard({ project, openRead, meId, mine, query, writable, revision, adding, onAdding, openWork, refresh, showInList, clearFilters }: TaskBoardProps) {
+export function TaskBoard({ project, openRead, meId, mine, query, writable, revision, adding, onAdding, openWork, refresh, showInList, clearFilters, lead = null }: TaskBoardProps) {
   const hintId = useId();
   const boardRef = useRef<HTMLDivElement>(null);
   const ghostRef = useRef<HTMLDivElement>(null);
@@ -391,7 +394,10 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
   const hidden: Record<ColumnId, number> = { open: beyond(openPage), in_progress: beyond(progressPage) + beyond(blockedPage), done: beyond(finishedPage) };
   const blocked = cards.in_progress.filter((item) => item.status === 'blocked' && !(item.id in pending)).length + beyond(blockedPage);
   // On a narrow board one column shows at a time: the one chosen, else active work, else what is open.
-  const current: ColumnId = adding ?? picked ?? (cards.in_progress.length ? 'in_progress' : cards.open.length ? 'open' : 'in_progress');
+  const showing: ColumnId = picked ?? (cards.in_progress.length ? 'in_progress' : cards.open.length ? 'open' : 'in_progress');
+  // Done takes no new task; "+" over it adds to Open.
+  const addingTo: ColumnId | null = adding === 'here' ? (showing === 'done' ? 'open' : showing) : adding;
+  const current: ColumnId = addingTo ?? showing;
   const highlight = dragging ? over : lifted && lifted.to !== lifted.from ? lifted.to : null;
   const filtered = !!query || mine;
 
@@ -601,14 +607,15 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
       {/* A narrow board shows one column at a time; this overview names every status and what is blocked. */}
       <nav className="tb-overview" aria-label="Task status">
         {COLUMNS.map((column) => (
-          <button key={column.id} type="button" className="tb-ov" aria-pressed={current === column.id} onClick={() => { setPicked(column.id); if (adding && adding !== column.id) dismissAdding(); }}>
+          <button key={column.id} type="button" className="tb-ov" aria-pressed={current === column.id} onClick={() => { setPicked(column.id); if (addingTo && addingTo !== column.id) dismissAdding(); }}>
             <span className="tb-ov__l"><span className={`tb-ring tb-ring--${column.id}`} aria-hidden="true" />{column.label}</span>
             <span className="tb-ov__n">{totals[column.id]}<span className="ui-vh"> {totals[column.id] === 1 ? 'task' : 'tasks'}</span>
-              {column.id === 'in_progress' && blocked ? <span className="tb-ov__b"><Icon name="alert" size={12} />{blocked} blocked</span> : null}
+              {column.id === 'in_progress' && blocked ? <span className="tb-ov__b"><Icon name="alert" size={12} />{blocked}<span className="tb-ov__bw"> blocked</span></span> : null}
             </span>
           </button>
         ))}
       </nav>
+      {lead}
       {/* A confirmed move is confirmed in words; a refused one says why, calmly, until dismissed. */}
       <div className="tb-notes" role="status">
         {notice?.tone === 'ok' ? <p className="tb-note tb-note--ok"><Icon name="check" size={14} /><span>{notice.text}</span></p> : null}
@@ -650,7 +657,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
                 ) : null}
               </div>
               <div className={`tb-col__cards${highlight === column.id ? ' is-over' : ''}`}>
-                {adding === column.id ? (
+                {addingTo === column.id ? (
                   <NewTask key={column.id} projectId={project.id} column={column} onCancel={dismissAdding}
                     onDone={(item) => {
                       onAdding(null); refresh();
@@ -677,7 +684,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
                         onMove={(to) => void move(item, to, true)} />
                     ))}
                   </ol>
-                ) : adding === column.id ? null : <p className="tb-col__empty">{waitingFor[column.id] ? 'Loading…' : filtered ? 'Nothing here matches.' : 'Nothing here yet.'}</p>}
+                ) : addingTo === column.id ? null : <p className="tb-col__empty">{waitingFor[column.id] ? 'Loading…' : filtered ? 'Nothing here matches.' : 'Nothing here yet.'}</p>}
                 {more(column.id).filter((entry) => entry.count > 0).map((entry) => (
                   <button key={entry.group} type="button" className="ws-none__b tb-col__more" onClick={() => showInList(entry.group)}>
                     {entry.count} more {entry.label} in the List
