@@ -87,8 +87,8 @@ describe('conversation and material pages (#298)', () => {
     assert.deepEqual(six.materials.result.items.map((item) => item.title).sort(), ['Probe datasheet', ...[0, 1, 2, 3, 4].map((index) => `Source ${index}`)].sort());
     // Before #298 each conversation added two queries (its first and last message) and each
     // material one (its current version), all sent at once on the shared pool.
-    assert.equal(six.conversations.sent.length, one.conversations.sent.length, 'conversation page statements do not grow with its rows');
-    assert.equal(six.materials.sent.length, one.materials.sent.length, 'material page statements do not grow with its rows');
+    assert.deepEqual({ conversations: six.conversations.sent.length - one.conversations.sent.length, materials: six.materials.sent.length - one.materials.sent.length },
+      { conversations: 0, materials: 0 }, 'extra statements for five more rows: a page costs the same however many rows it has');
   });
 });
 
