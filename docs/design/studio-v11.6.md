@@ -223,7 +223,7 @@ beside permitted sources/PR review/context; phone keeps the same actions and
 vocabulary in focused views. No mandatory dashboard sprawl or long unreadable
 message rows. On very tall screens, keep a short work stream and its composer
 visually connected rather than separating them by a large empty region. Preserve 320px Android through 4K/ultrawide, zoom, rotation and
-virtual-keyboard requirements and actual #20 device acceptance.
+virtual-keyboard requirements and #20 mobile acceptance.
 
 Use the issue map in [F-016](../product/mcp-cowork.md#delivery-and-evidence--co-5).
 Review rendered realistic full views independently of behavior. Actual server

@@ -80,7 +80,12 @@ button.top__goal:hover { background: var(--bg-hover); color: var(--text); }
 .ov-note { margin-top: 8px; }
 .ov-more { margin-top: 6px; }
 .ov-person { display: flex; flex-direction: column; gap: 0; }
-@media (pointer: coarse) { .ov-row { min-height: 44px; } .top__audience { min-height: 32px; } }
+@media (pointer: coarse) {
+  .ov-row { min-height: 44px; }
+  .top__audience { position: relative; min-height: 32px; }
+  /* A 44 px touch target without growing the 52 px header (#266 review item 13): the hit area extends past the line. */
+  .top__audience::after { content: ""; position: absolute; inset: -6px -2px; }
+}
 
 /* ---------- Map and Docs tabs ---------- */
 .pv-lead { display: flex; align-items: center; gap: 6px; margin-top: 2px; font-size: var(--fs-sm); color: var(--text-3); }

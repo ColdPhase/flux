@@ -8,7 +8,9 @@ New root/child capture opens one private draft per account/workspace/place/map.
 It retains text, intended parent ID, client thought/link IDs, position and an
 idempotency key in this tab's session storage, with memory fallback. No shared
 thought, relation, event, outline grouping or API write exists before Save/Enter.
-List/Map and map navigation retain it; blur never saves. Empty Save leaves the
+List/Map and map navigation retain it; blur never saves. So do the Studio 11.6 task
+count chooser (opening it, Escape, Close and opening a task beside the map) and switching
+project views (Conversation, Agents, Tasks, Wiki) within the same visit. Empty Save leaves the
 draft open; Cancel/Escape discards it without a server mutation. Signing out
 clears the tab's thought drafts. A different account cannot restore them.
 

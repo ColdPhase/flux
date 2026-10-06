@@ -14,8 +14,8 @@ its advertised offer; it cannot establish user success or the absence of a
 competitor's feature. Say whether a product was actually used, its code inspected,
 or only its public description read. Mark inaccessible sources as unavailable.
 
-For AI integrations assess external official agents, embedded execution, and
-API/local models separately. Record authentication, supported plans/capabilities,
+For AI integrations assess the two [F-022](ai-modes.md) modes separately: the
+agent in Flux with each of its connections and transports, and your agent app over MCP. Record authentication, supported plans/capabilities,
 billing ownership, permissions, deployment constraints, and any required provider
 consent. Recheck changing terms before implementation and publication. The
 founders' own agent sessions using installed personal CLIs are separate from

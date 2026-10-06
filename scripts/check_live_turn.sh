@@ -75,13 +75,24 @@ test -s "$artifact_dir/livekit-metrics.prom"
 livekit_container=$($compose ps -q livekit)
 test -n "$livekit_container"
 stats_path="$artifact_dir/livekit-container-stats.jsonl"
+# UTC with milliseconds, comparable to the browser test's phase markers. BSD/macOS date has
+# no %N (it prints a literal "3N", an unparseable time that left the four-person interval
+# with no samples); perl's Time::HiRes gives the same format there.
+utc_ms() {
+  stamp=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
+  case "$stamp" in
+    *.[0-9][0-9][0-9]Z) printf '%s\n' "$stamp" ;;
+    *) perl -MPOSIX=strftime -MTime::HiRes=time -e \
+      '$t = time; printf "%s.%03dZ\n", strftime("%Y-%m-%dT%H:%M:%S", gmtime($t)), ($t - int($t)) * 1000' ;;
+  esac
+}
 # Sample the actual SFU container through both local browser profiles. Docker
 # reports container CPU, working-set memory and receive/transmit network bytes;
 # phase markers from the browser test identify the four-person interval.
 (
   while :; do
     snapshot=$(docker stats --no-stream --no-trunc --format '{{json .}}' "$livekit_container" 2>/dev/null) || exit 0
-    printf '{"timestampUtc":"%s","stats":%s}\n' "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)" "$snapshot" >> "$stats_path"
+    printf '{"timestampUtc":"%s","stats":%s}\n' "$(utc_ms)" "$snapshot" >> "$stats_path"
     sleep 1
   done
 ) &

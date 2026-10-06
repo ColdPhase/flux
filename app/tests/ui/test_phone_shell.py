@@ -73,7 +73,14 @@ class PhoneShellJourney(unittest.TestCase):
         return page
 
     def box(self, locator):
-        value = locator.bounding_box()
+        # A list that re-renders between the visibility check and the measurement (a fresh read arriving)
+        # briefly detaches the element; measure the settled element instead of failing on that moment.
+        value = None
+        for _ in range(10):
+            value = locator.bounding_box()
+            if value is not None:
+                break
+            locator.page.wait_for_timeout(100)
         self.assertIsNotNone(value, f"{locator} has a box")
         return value
 
@@ -153,13 +160,14 @@ class PhoneShellJourney(unittest.TestCase):
             expect(page).to_have_url(f"{ORIGIN}{path}")
             expect(bar.get_by_role("link", name=re.compile(f"^{name}"))).to_have_attribute("aria-current", "page")
             expect(bar.locator('[aria-current="page"]')).to_have_count(1)
-        # Projects lists every project; one tap opens it, full height.
+        # Projects lists every project; one tap opens it, and the bar keeps Projects current.
         bar.get_by_role("link", name="Projects").click()
         expect(page.get_by_role("heading", level=1, name="Projects")).to_be_visible()
         page.get_by_role("link", name=re.compile("^Community garden sensors")).click()
         expect(page).to_have_url(re.compile(f"/projects/{self.project['id']}$"))
         # The bar stays inside the project, with Projects current (#272 FF-3, Apple HIG).
         expect(bar.get_by_role("link", name=re.compile("^Projects"))).to_have_attribute("aria-current", "page")
+        expect(bar.locator('[aria-current="page"]')).to_have_count(1)
         chips = page.get_by_role("navigation", name="Project views")
         expect(chips.get_by_role("link", name="Conversation")).to_have_attribute("aria-current", "page")
         for name, path in (("Map", "/map"), ("Wiki", "/docs"), ("Agents", "/agents"), ("Tasks", "/tasks")):
@@ -258,7 +266,12 @@ class PhoneShellJourney(unittest.TestCase):
         self.assertTrue(field.evaluate("el => el.scrollHeight <= el.clientHeight + 1"), "all three lines show")
         shot(page, "266-composer-phone")
 
-        # On a top-level page the places bar steps aside while a text field has focus.
+        # The places bar steps aside while a text field has focus, and comes back after.
+        bar = page.get_by_role("navigation", name="Main places")
+        page.locator("header.top h1").click()
+        expect(bar).to_be_visible()
+        page.get_by_label("Write a message", exact=True).focus()
+        expect(bar).to_be_hidden()
         page.goto("/notes")
         bar = page.get_by_role("navigation", name="Main places")
         note = page.get_by_label("Private note", exact=True)
