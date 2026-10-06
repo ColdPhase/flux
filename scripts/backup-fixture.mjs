@@ -88,13 +88,13 @@ const oauthClient = process.env.FLUX_FIXTURE_OAUTH_CLIENT;
 const redirectUri = 'http://127.0.0.1:19737/callback';
 
 /** The #52 authorization-code flow with PKCE for one connection, in a fresh browser session. */
-async function bearerFor(connectionId) {
+async function bearerFor(connectionId, scope = 'flux.context.read') {
   const browser = await signIn(owner);
   const verifier = randomBytes(32).toString('base64url');
   const query = new URLSearchParams({
     client_id: oauthClient, redirect_uri: redirectUri, response_type: 'code',
     code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256',
-    state: ids(), scope: 'flux.context.read', resource: `${origin}/mcp`,
+    state: ids(), scope, resource: `${origin}/mcp`,
   });
   // The connection choice is bound to this exact signed OAuth request (#152): authorize first, choose, continue.
   const start = await browser.request('GET', `/api/auth/oauth2/authorize?${query}`, undefined, { accept: 'text/html' });
@@ -131,6 +131,25 @@ async function mcpStatus(bearer) {
   await response.text();
   return response.status;
 }
+/** One MCP tool call with a bearer; the parsed JSON value of a successful result. */
+async function mcpTool(bearer, name, args) {
+  const response = await fetch(new URL('/mcp', api), {
+    method: 'POST',
+    headers: { authorization: `Bearer ${bearer}`, 'content-type': 'application/json', accept: 'application/json',
+      'mcp-protocol-version': '2026-07-28', 'mcp-method': 'tools/call', 'mcp-name': name },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args, _meta: {
+      'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+      'io.modelcontextprotocol/clientInfo': { name: 'flux-backup-check', version: '1' },
+      'io.modelcontextprotocol/clientCapabilities': {},
+    } } }),
+  });
+  const text = await response.text();
+  assert.equal(response.status, 200, `MCP ${name} answered ${response.status}: ${text}`);
+  const body = text.startsWith('{') ? JSON.parse(text) : JSON.parse(text.split('\n').find((line) => line.startsWith('data: ')).slice(6));
+  assert.ok(!body.result?.isError, `MCP ${name} failed: ${JSON.stringify(body)}`);
+  return JSON.parse(body.result.content[0].text);
+}
+
 const all = async (session, path) => {
   const items = [];
   for (let offset = 0; ; offset += 100) {
@@ -175,7 +194,10 @@ async function snapshot(ada, jonas, state) {
   };
   const fileHex = (await ada.bytes(`/api/v1/files/${state.fileId}`)).toString('hex');
   assert.equal(fileHex, state.fileHex, 'exact stored attachment bytes');
-  return { exported, threads, docVersions, dmMessages, adaDrafts, jonasDrafts, push, members, connections, notifications, fileHex };
+  const undone = await ada.expect('GET', `/api/v1/work/${state.undo.workId}`);
+  const undoNotices = (await all(ada, `/api/v1/projects/${projectId}/task-notices`)).filter((notice) => notice.workId === state.undo.workId)
+    .map((notice) => [notice.id, notice.kind, notice.createdBy.kind, notice.createdBy.id, notice.createdAt]).sort();
+  return { exported, threads, docVersions, dmMessages, adaDrafts, jonasDrafts, push, members, connections, notifications, fileHex, undone, undoNotices };
 }
 
 async function seed() {
@@ -244,11 +266,31 @@ async function seed() {
   assert.equal(await mcpStatus(bearers.revoked), 403, 'a revoked connection denies its bearer');
   assert.equal(await mcpStatus(bearers.live), 200, 'the live connection works');
 
+  // Task creation Undo (#238): the agent creates a task natively; Ada undoes it before anyone used it. The reverted
+  // task, its two notices, its receipt and the agent's undo grant must all come back from the backup.
+  const actor = (await ada.expect('POST', '/api/v1/agent-connections', { agentId: agent.id, selectedProjectIds: [projectId],
+    scopes: ['flux.context.read', 'flux.action.execute'] })).id;
+  const actorBearer = await bearerFor(actor, 'flux.context.read flux.action.execute');
+  const expiresAt = new Date(Date.now() + 3_600_000).toISOString();
+  const createGrant = await ada.expect('POST', `/api/v1/agent-connections/${actor}/action-grants`,
+    { clientCommandId: ids(), projectId, operation: 'work.create', peerRequestClass: 'execute', maximumUses: 1, expiresAt });
+  await ada.expect('POST', `/api/v1/agent-connections/${actor}/action-grants`,
+    { clientCommandId: ids(), projectId, operation: 'work.creation.revert', peerRequestClass: 'execute', maximumUses: 1, expiresAt });
+  const runtime = (await mcpTool(actorBearer, 'flux_bootstrap', { projectId, clientSessionId: ids() })).runtime.id;
+  const created = await mcpTool(actorBearer, 'flux_create_task', { projectId, runtimeSessionId: runtime, grantId: createGrant.id,
+    clientCommandId: ids(), peerRequestClass: 'execute', sources: [], task: { title: token('BACKUP-undone-task') } });
+  const createdTask = await ada.expect('GET', `/api/v1/work/${created.workId}`);
+  assert.deepEqual(createdTask.creationUndo, { eligible: true, reason: 'eligible' }, 'the agent task is unused');
+  const undoCommand = ids();
+  const undone = await ada.expect('POST', `/api/v1/work/${created.workId}/creation-undo`, { clientCommandId: undoCommand, expectedVersion: createdTask.version }, [200]);
+  assert.equal(undone.work.lifecycle.state, 'creation_reverted');
+  const undo = { workId: created.workId, commandId: undoCommand, noticeId: undone.noticeId, version: createdTask.version, result: undone };
+
   // An outsider: an account that is not a member of the demo workspace.
   const outsider = { email: `outsider-${tag}@example.test`, password: `outsider-${tag}-password` };
   await new Session().expect('POST', '/api/auth/sign-up/email', { ...outsider, name: 'Olga Outsider' }, [200]);
 
-  const state = { tag, workspaceId, projectId, fileId: file.id, fileHex: fileBytes.toString('hex'), adaId, jonasId, dmId: dm.id, noteId: note.id, docId: doc.id, outsider, liveConnection, bearers };
+  const state = { tag, workspaceId, projectId, fileId: file.id, fileHex: fileBytes.toString('hex'), adaId, jonasId, dmId: dm.id, noteId: note.id, docId: doc.id, outsider, liveConnection, bearers, undo };
   const expected = await snapshot(ada, jonas, state);
   assert.ok(expected.adaDrafts.some(([id]) => id === note.id), 'Ada sees her private note');
   assert.ok(!expected.jonasDrafts.includes(note.id), 'Jonas cannot see Ada\'s private note');
@@ -285,6 +327,21 @@ async function verify() {
   // after the backup is live again (the documented caveat of restoring an older backup).
   assert.equal(await mcpStatus(state.bearers.revoked), 403, 'a connection revoked before the backup stays revoked');
   assert.equal(await mcpStatus(state.bearers.live), 200, 'a connection revoked only after the backup is live again');
+
+  // Task creation Undo (#238): the reverted task is history with both notices; the receipt is exact after the restore.
+  assert.equal(actual.undone.lifecycle.state, 'creation_reverted');
+  assert.deepEqual(actual.undone.creationUndo, { eligible: false, reason: 'already_reverted' });
+  assert.deepEqual(actual.undoNotices.map(([, kind]) => kind).sort(), ['task.created', 'task.creation_reverted']);
+  const exportedUndone = actual.exported.work.find((item) => item.id === state.undo.workId);
+  assert.equal(exportedUndone.lifecycle.state, 'creation_reverted'); assert.equal(exportedUndone.creationHistory.origin, 'native_agent');
+  assert.equal(exportedUndone.creationHistory.notices.length, 2);
+  const replay = await ada.expect('POST', `/api/v1/work/${state.undo.workId}/creation-undo`, { clientCommandId: state.undo.commandId, expectedVersion: state.undo.version }, [200]);
+  assert.equal(replay.noticeId, state.undo.noticeId, 'the same command returns its restored receipt');
+  assert.deepEqual(replay.work, state.undo.result.work);
+  assert.equal((await ada.request('POST', `/api/v1/work/${state.undo.workId}/creation-undo`, { clientCommandId: ids(), expectedVersion: state.undo.version })).status, 409,
+    'a new command cannot undo it again');
+  assert.equal((await ada.expect('GET', `/api/v1/work/${state.undo.workId}`)).version, actual.undone.version, 'the replay changed nothing');
+  assert.ok(!(await all(ada, `/api/v1/projects/${projectId}/work`)).some((item) => item.id === state.undo.workId), 'active work leaves it out');
 
   // Permissions: the private note is still private, and an outsider is still denied.
   assert.equal((await jonas.request('GET', `/api/v1/drafts/${noteId}`)).status, 404, 'Jonas cannot open Ada\'s private note');
