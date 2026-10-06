@@ -4,6 +4,9 @@
 #   ./scripts/check_live_editing.sh [module ...]
 #       Live-mode browser modules (default: test_live_editing test_live_map_projection
 #       test_live_map_selection) against an API with the development switch on.
+#   ./scripts/check_live_editing.sh --two-api
+#       The Gate 3 cross-process fixture (app/tests/app/live/two-api.test.ts) against two API
+#       processes of the same image, database and origin (docs/development/live-editing-two-api.md).
 #   ./scripts/check_live_editing.sh --latency /absolute/fresh/evidence/dir
 #       The Gate 4 latency driver (app/tests/ui/live_editing_latency.py, nine cohorts) with the
 #       bounded queue collector, inventory, runtime metadata, producer stop and seal described in
@@ -16,6 +19,8 @@ set -eu
 
 cd "$(dirname "$0")/.."
 latency=""
+two_api=""
+if [ "${1:-}" = "--two-api" ]; then two_api=1; shift; fi
 if [ "${1:-}" = "--latency" ]; then
   latency="${2:-}"
   case "$latency" in /*) ;; *) echo "--latency needs an absolute evidence directory" >&2; exit 2 ;; esac
@@ -58,6 +63,34 @@ trap cleanup EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
+
+if [ -n "$two_api" ]; then
+  compose="$compose --profile test --profile two-api"
+  $compose build migrate test
+  $compose up -d db migrate
+  $compose --profile setup run --rm files-init
+  $compose up -d --wait api api-two
+  inventory=$(mktemp -d)
+  # The fixture reads the actual container and image identities of both processes.
+  python3 - "$inventory/two-api-inventory.json" "$(git rev-parse HEAD)" "$($compose ps -q api)" "$($compose ps -q api-two)" <<'PY'
+import json, subprocess, sys
+path, sha, *containers = sys.argv[1:]
+apis = []
+for name, host, cid in (('api-one', 'api', containers[0]), ('api-two', 'api-two', containers[1])):
+    observed = json.loads(subprocess.check_output(['docker', 'inspect', cid], timeout=10))[0]
+    if not observed['State']['Running'] or 'FLUX_DEVELOPMENT_LIVE_EDITING=true' not in observed['Config']['Env']:
+        raise SystemExit(f'{name} is not a running enabled API process')
+    apis.append({'apiInstance': name, 'apiUrl': f'http://{host}:8080', 'containerId': observed['Id'], 'imageId': observed['Image']})
+with open(path, 'w') as out:
+    json.dump({'schema': 1, 'sourceSha': sha, 'apis': apis}, out)
+PY
+  chmod 0755 "$inventory"; chmod 0644 "$inventory/two-api-inventory.json"
+  status=0
+  $compose run --rm --no-deps -v "$inventory:/evidence:z,ro" -e FLUX_LIVE_TWO_API=1 -e FLUX_LIVE_TWO_API_INVENTORY=/evidence/two-api-inventory.json \
+    test node_modules/.bin/tsx --test --test-concurrency=1 tests/app/live/two-api.test.ts || status=$?
+  rm -rf "$inventory"
+  exit "$status"
+fi
 
 $compose build migrate ui-test
 $compose up -d db migrate

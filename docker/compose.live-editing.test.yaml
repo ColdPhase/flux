@@ -10,3 +10,14 @@ services:
       # Bounded development queue telemetry on stdout, only for the latency run (empty otherwise).
       FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY: ${FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY:-}
       FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE: ${FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE:-}
+  # A second API process on the same image, database, secret and public origin (Gate 3
+  # cross-process fixture, tests/app/live/two-api.test.ts). Only `--two-api` starts it.
+  api-two:
+    profiles: ["two-api"]
+    extends:
+      file: compose.source.yaml
+      service: api
+    restart: "no"
+    ports: !reset []
+    environment:
+      FLUX_DEVELOPMENT_LIVE_EDITING: "true"
