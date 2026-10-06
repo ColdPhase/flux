@@ -124,7 +124,11 @@ PAINTED = r"""(forbidden) => {
   return out;
 }"""
 
-TOKENS = r"""(names) => Object.fromEntries(names.map((name) => [name, getComputedStyle(document.documentElement).getPropertyValue(name).trim().toLowerCase()]))"""
+# Token values as six-digit hex: the production build shortens #111111 to #111.
+TOKENS = r"""(names) => Object.fromEntries(names.map((name) => {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim().toLowerCase();
+  return [name, /^#[0-9a-f]{3}$/.test(value) ? '#' + [...value.slice(1)].map((c) => c + c).join('') : value];
+}))"""
 
 
 def iso_in(hours: int) -> str:
