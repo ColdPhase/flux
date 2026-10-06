@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Form, Link, Outlet, useActionData, useLoaderData, useLocation, useNavigate, useNavigation, useSearchParams } from 'react-router';
-import { PASSWORD_MIN_LENGTH } from '../api/auth';
+import type { IdentityCapabilities } from '@flux/contracts';
+import { PASSWORD_MIN_LENGTH, getCapabilities, startSso } from '../api/auth';
 import { Button, ErrorState, FluxMark, Icon, Input, useToast } from '../ui';
-import type { FormResult, forgotPasswordLoader } from './logic';
+import { safeNext, type FormResult, type forgotPasswordLoader } from './logic';
 
 /** The app's own mark and wordmark, as in the sidebar (#189). */
 function Brand() {
@@ -78,6 +79,39 @@ const NOTICES: Record<string, string> = {
   'password-changed': 'Your password was changed. Sign in with the new one.',
 };
 
+/** The operator's single sign-on, when configured (#113). Hidden while unknown or unavailable. */
+function useSso() {
+  const [sso, setSso] = useState<IdentityCapabilities['sso']>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    getCapabilities(controller.signal).then((capabilities) => setSso(capabilities.sso ?? null)).catch(() => undefined);
+    return () => controller.abort();
+  }, []);
+  return sso;
+}
+
+function SsoSignIn({ sso, next }: { sso: NonNullable<IdentityCapabilities['sso']>; next: string | null }) {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState('');
+  const start = async () => {
+    setBusy(true); setFailed('');
+    try {
+      const { url } = await startSso(sso.providerId, safeNext(next));
+      window.location.assign(url);
+    } catch {
+      setBusy(false);
+      setFailed('Single sign-on can’t start right now. Try again, or sign in with your password.');
+    }
+  };
+  return (
+    <div className="auth__sso">
+      <Button variant="secondary" size="lg" block busy={busy} onClick={() => void start()}>{`Sign in with ${sso.label}`}</Button>
+      {failed ? <p className="auth__sso-error" role="alert">{failed}</p> : null}
+      <p className="auth__or" aria-hidden="true"><span>or</span></p>
+    </div>
+  );
+}
+
 export function SignInPage() {
   const result = useActionData() as FormResult | undefined;
   const submitting = useSubmitting();
@@ -89,6 +123,8 @@ export function SignInPage() {
   const location = useLocation();
   const next = location.pathname === '/login' ? `${location.pathname}${location.search}` : params.get('next');
   const shownRef = useRef<string | null>(null);
+  const sso = useSso();
+  const ssoFailed = params.get('sso') === 'failed';
 
   // One-time notices arrive as a query flag; show them once and drop the flag from the address.
   useEffect(() => {
@@ -104,8 +140,9 @@ export function SignInPage() {
   return (
     <>
       <Heading title="Sign in to Flux">Pick up your work where you left it.</Heading>
+      {sso && location.pathname !== '/login' ? <SsoSignIn sso={sso} next={next} /> : null}
       <Form method="post" className="auth__form" noValidate ref={formRef} aria-label="Sign in">
-        <FormError message={result?.formError} />
+        <FormError message={result?.formError ?? (ssoFailed ? 'Single sign-on didn’t complete, so you aren’t signed in. Try again, or sign in with your password.' : undefined)} />
         <Input label="Email" name="email" type="email" autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false}
           defaultValue={result?.values?.email} error={result?.fieldErrors?.email} autoFocus />
         <Input label="Password" name="password" type="password" autoComplete="current-password" error={result?.fieldErrors?.password}

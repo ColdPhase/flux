@@ -1,0 +1,9 @@
+{
+  "version": "v0.1.0-rc.1",
+  "source_sha": "662aec62e2e05c3d944053a5b35771986900b9e3",
+  "image": "ghcr.io/coldphase/flux@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "platforms": [
+    "linux/amd64",
+    "linux/arm64"
+  ]
+}
