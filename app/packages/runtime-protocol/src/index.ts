@@ -9,3 +9,4 @@ export * from './ndjson.js';
 export * from './supervisor-client.js';
 export * from './manager-api.js';
 export * from './redact.js';
+export * from './manager-port.js';

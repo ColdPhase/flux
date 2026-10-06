@@ -42,6 +42,7 @@ import { searchRoutes } from './search/routes.js';
 import { personalRunRoutes } from './personal-runs/routes.js';
 import { personalRunServerComposition } from './personal-runs/composition.js';
 import { exportRoutes } from './export/routes.js';
+import { agentRuntimeRoutes } from './agent-runtime/routes.js';
 import { typingRoutes } from './typing/routes.js';
 import { typingTaskDiscussion } from './typing/tasks.js';
 import { githubRoutes } from './github/routes.js';
@@ -172,6 +173,8 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await app.register(personalRunRoutes, { db, sessions: identity, boss, connections: personalRuns.connections, providerEnabled: personalRuns.providerEnabled });
   await app.register(searchRoutes, { db, sessions: identity, cursorSecret: identityConfig.secret, exposeWork });
   await app.register(exportRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, storage: fileStorage });
+  // The `runtime` transport (F-022 AIM-3): off unless the operator set FLUX_AGENT_RUNTIME.
+  await app.register(agentRuntimeRoutes, { db, sessions: identity, config: config.agentRuntime });
 
   registerHealth(app, { pool, boss, manifest: migrationManifest, filesDir });
   registerFixtureRoutes(app, { config: config.fixture, db, boss });

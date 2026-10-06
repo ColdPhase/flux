@@ -1,7 +1,7 @@
 import { isSlotReport, isSupervisorResult, SUPERVISOR_ERRORS, type SlotReport, type SupervisorResult } from './frames.js';
 import { RUNTIME_PORTS, SLOT_NAME } from './names.js';
 import { requestBody, type SupervisorRequest } from './requests.js';
-import { arrayOf, bool, literal, object, oneOf, str, type Check } from './shape.js';
+import { arrayOf, object, oneOf, str, type Check } from './shape.js';
 import { SUPERVISOR_TIMEOUTS_MS } from './supervisor-client.js';
 
 // The manager's HTTP API on the `runtime-control` network (F-022 "The manager"). Only the API and the
@@ -18,9 +18,10 @@ export const managerSlotsPath = '/v1/slots';
 export const managerRequestPath = (slot: string, kind: SupervisorRequest['kind']) => `/v1/slots/${slot}/${kind}`;
 
 const managerError = oneOf(MANAGER_ERRORS);
+const exactly = <T extends boolean>(expected: T): Check<T> => (value): value is T => value === expected;
 const isManagedSlot: Check<ManagedSlot> = (value): value is ManagedSlot =>
-  object({ slot: str(SLOT_NAME, 12), reachable: literal(true), report: isSlotReport })(value)
-  || object({ slot: str(SLOT_NAME, 12), reachable: bool, error: managerError })(value);
+  object({ slot: str(SLOT_NAME, 12), reachable: exactly(true), report: isSlotReport })(value)
+  || object({ slot: str(SLOT_NAME, 12), reachable: exactly(false), error: managerError })(value);
 export const isManagerSlots = object({ slots: arrayOf(isManagedSlot, 999) });
 export const isManagerResult = object({ result: isSupervisorResult });
 export const isManagerError = object({ error: managerError });
