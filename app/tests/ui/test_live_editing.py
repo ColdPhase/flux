@@ -504,3 +504,63 @@ class LiveEditingJourney(LiveFixture):
         await ada.reload()
         await expect(ada.locator('.editing-map-recovery')).to_be_visible()
         await expect(ada.locator(f'.sk-node[data-id="{thought["id"]}"]')).to_have_attribute('data-thought-x', str(thought['x']))
+
+    async def test_13_trusted_touch_drag_previews_before_release_on_a_phone(self):
+        # A real touch sequence (CDP touch events, so pointerType "touch") on a 390 px phone:
+        # tap selects, a finger drag on the selected thought moves it, the peer sees the
+        # movement before the finger lifts, and the release confirms one durable position.
+        await self.create_map(2)
+        kai = self.pages["kai"]
+        thought = self.thoughts[0]
+        phone = await self.browser.new_context(base_url=ORIGIN, storage_state=await self.pages["ada"].context.storage_state(),
+            viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True, reduced_motion="reduce")
+        self.contexts.append(phone)
+        page = await phone.new_page()
+        page.on("pageerror", lambda error: self.errors.append(str(error)))
+        await page.goto(f"/map/{self.map_id}")
+        await expect(page.locator('[data-live-map-status="live"]')).to_be_visible()
+        node = page.locator(f'.sk-node[data-id="{thought["id"]}"]')
+        await node.scroll_into_view_if_needed()
+        await node.tap()
+        await expect(node).to_have_attribute("aria-pressed", "true")
+        box = await node.bounding_box()
+        x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+        cdp = await phone.new_cdp_session(page)
+        await cdp.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": x, "y": y}]})
+        for step in range(1, 9):
+            await cdp.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": x + 6 * step, "y": y + 5 * step}]})
+            await page.wait_for_timeout(16)
+        peer = kai.locator(f'.sk-node[data-id="{thought["id"]}"]')
+        await expect(peer).to_have_attribute("data-live-mover", "Ada North")
+        await expect(peer).not_to_have_attribute("data-thought-x", str(thought["x"]))
+        unchanged = await self.api(kai, "GET", f"/api/v1/sketches/{self.map_id}")
+        self.assertEqual(unchanged["thoughts"][0]["version"], thought["version"], "The finger is still down: nothing is saved yet")
+        await cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+        await expect(page.locator(".sk-status")).to_contain_text("Saved")
+        await expect(peer).not_to_have_attribute("data-live-mover", "Ada North")
+        saved = next(item for item in (await self.api(kai, "GET", f"/api/v1/sketches/{self.map_id}"))["thoughts"] if item["id"] == thought["id"])
+        self.assertEqual(saved["version"], thought["version"] + 1)
+        self.assertGreater(saved["y"], thought["y"])
+        await expect(peer).to_have_attribute("data-thought-y", str(saved["y"]))
+
+    async def test_14_ime_composition_shares_the_committed_text_once(self):
+        # A real IME composition through CDP (composition updates, then the committed text): the
+        # peer receives the committed characters exactly once and both copies converge.
+        await self.create_doc()
+        ada, kai = self.pages["ada"], self.pages["kai"]
+        ada_field, kai_field = await self.editor("ada"), await self.editor("kai")
+        await ada_field.click()
+        await ada.keyboard.press("Control+End")
+        cdp = await ada.context.new_cdp_session(ada)
+        for text in ("に", "にほ", "にほん"):
+            await cdp.send("Input.imeSetComposition", {"text": text, "selectionStart": len(text), "selectionEnd": len(text)})
+            await ada.wait_for_timeout(30)
+        await cdp.send("Input.insertText", {"text": "日本"})
+        await ada.keyboard.type(" notes")
+        await expect(ada.get_by_role("status").filter(has_text="All changes shared")).to_be_visible()
+        await expect(kai_field).to_contain_text("日本 notes")
+        for page in (ada, kai):
+            text = await page.locator('.cm-content[aria-label="Shared Markdown"]').inner_text()
+            self.assertEqual(text.count("日本"), 1, text[-80:])
+            self.assertNotIn("にほん", text)
+        self.assertEqual(await ada_field.inner_text(), await kai_field.inner_text())
