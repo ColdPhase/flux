@@ -1,5 +1,5 @@
 import type { ProjectAccess } from './access.js';
-import type { Decision, NamedPrincipal, ObjectLink, ResultFinding, WorkItem, WorkObjectType, WorkResult, WorkStatus } from './work.js';
+import type { Decision, NamedPrincipal, ObjectLink, ResultFinding, TaskLifecycle, WorkItem, WorkObjectType, WorkResult, WorkStatus } from './work.js';
 
 /** Bounded native reads (#155/#151/#136). These projections are NOT full WorkItem DTOs. */
 export const projectWorkSummaryPath = (projectId: string) => `/api/v1/projects/${projectId}/work-summary`;
@@ -79,6 +79,8 @@ export interface WorkRowProjection extends NativeRowBase {
   parked: WorkItem['parked'];
   parkedBy: WorkReadRef | null;
   rule: WorkReadRef | null;
+  /** #238: a task whose creation was undone appears only as history (direct reads and existing references). */
+  lifecycle?: TaskLifecycle;
   version: number;
   updatedAt: string;
 }

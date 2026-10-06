@@ -114,7 +114,7 @@ export function returnRows(db: DbExecutor) {
       const w = schema.projectWorkItems;
       const rows = await db.select().from(w).where(inArray(w.id, ids));
       return byId(rows.map((row) => ({
-        id: row.id, projectId: row.projectId, title: row.title, status: row.status, blocker: row.blocker,
+        id: row.id, projectId: row.projectId, title: row.creationRevertedAt ? `${row.title} · creation undone` : row.title, status: row.status, blocker: row.blocker,
         ownerKey: row.ownerUserId ? actorKey('human', row.ownerUserId) : row.ownerAgentId ? actorKey('agent', row.ownerAgentId) : null,
         createdByKey: actorKey(row.createdByKind, row.createdById), parkedByDecisionId: row.parkedByDecisionId, createdAt: row.createdAt,
       })));

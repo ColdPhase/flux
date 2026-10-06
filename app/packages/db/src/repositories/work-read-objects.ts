@@ -9,7 +9,8 @@ import { nativeWorkVisibilityRows, type NativeWorkReadObject } from './work-read
 
 const w = schema.projectWorkItems, d = schema.projectDecisions, r = schema.projectResults;
 const base = (table: typeof w | typeof d | typeof r) => ({ id: table.id, workspaceId: table.workspaceId, projectId: table.projectId, title: table.title, createdAt: table.createdAt });
-const workFields = { ...base(w), status: w.status, blocker: w.blocker, ownerUserId: w.ownerUserId, ownerAgentId: w.ownerAgentId, parkedByDecisionId: w.parkedByDecisionId, parkedAt: w.parkedAt, version: w.version, updatedAt: w.updatedAt };
+const workFields = { ...base(w), status: w.status, blocker: w.blocker, ownerUserId: w.ownerUserId, ownerAgentId: w.ownerAgentId, parkedByDecisionId: w.parkedByDecisionId, parkedAt: w.parkedAt, version: w.version, updatedAt: w.updatedAt,
+  revertedAt: w.creationRevertedAt, revertedByKind: w.creationRevertedByKind, revertedById: w.creationRevertedById, reversionNoticeId: w.creationReversionNoticeId };
 const decisionFields = { ...base(d), status: d.status, proposedByKind: d.proposedByKind, proposedById: d.proposedById, decidedBy: d.decidedBy, decidedAt: d.decidedAt, supersedesId: d.supersedesId, supersededById: d.supersededById, supersededAt: d.supersededAt, version: d.version, updatedAt: d.updatedAt };
 const resultFields = { ...base(r), finding: r.finding, createdByKind: r.createdByKind, createdById: r.createdById };
 const iso = (date: Date) => date.toISOString();
@@ -39,6 +40,7 @@ export function nativeWorkObjectRows(db: DbExecutor) {
     for (const work of works) {
       if (work.ownerUserId) actors.push({ kind: 'human', id: work.ownerUserId });
       else if (work.ownerAgentId) actors.push({ kind: 'agent', id: work.ownerAgentId });
+      if (work.revertedByKind && work.revertedById) actors.push({ kind: work.revertedByKind, id: work.revertedById });
     }
     for (const decision of decisions) {
       actors.push({ kind: decision.proposedByKind, id: decision.proposedById });
@@ -62,7 +64,11 @@ export function nativeWorkObjectRows(db: DbExecutor) {
         prerequisiteCounts: prerequisites.get(work.id)!,
         owner: work.ownerUserId ? named({ kind: 'human', id: work.ownerUserId }) : work.ownerAgentId ? named({ kind: 'agent', id: work.ownerAgentId }) : null,
         parked: work.parkedAt && work.parkedByDecisionId ? { decisionId: work.parkedByDecisionId, at: iso(work.parkedAt) } : null,
-        parkedBy: ref ? { kind: 'decision', ...ref } : null, rule: facts.get(`work:${work.id}`)!.rule, updatedAt: iso(work.updatedAt) };
+        parkedBy: ref ? { kind: 'decision', ...ref } : null, rule: facts.get(`work:${work.id}`)!.rule, updatedAt: iso(work.updatedAt),
+        // An existing reference to a task whose creation was undone (#238) names it as history.
+        lifecycle: work.revertedAt && work.revertedByKind && work.revertedById && work.reversionNoticeId
+          ? { state: 'creation_reverted', noticeId: work.reversionNoticeId, revertedAt: iso(work.revertedAt), revertedBy: named({ kind: work.revertedByKind, id: work.revertedById }) }
+          : { state: 'active' } };
       byId.set(`work:${work.id}`, projected);
     }
     for (const decision of decisions) {

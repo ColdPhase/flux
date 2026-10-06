@@ -81,6 +81,7 @@ export async function deliverNotificationEmail(options: EmailDeliveryOptions, jo
     if (!row) return { skip: 'email no longer exists' } as const;
     if (row.status !== 'queued') return { skip: `already ${row.status}` } as const;
     const skip = async (reason: string) => { await ports.markSkipped(row.id, reason); return { skip: reason } as const; };
+    if (row.lifecycleActive === false) return skip('task creation was undone');
     if (!options.available) return skip('email is not configured');
     const { notification } = row;
     if (!readsSource(await ports.authorizer.canRead(row.userId, notification.source), notification.source)) return skip('recipient can no longer read the source');
@@ -106,7 +107,13 @@ export async function deliverNotificationEmail(options: EmailDeliveryOptions, jo
 
   const { row, address, token } = claim;
   const mail = buildNotificationEmail({ origin: options.origin, to: address, emailId: row.id, notificationId: row.notification.id, token });
-  const result = await options.mailer.send(mail);
+  const admission = await options.uow.admitSend(row.notification.id, () => options.mailer.send(mail));
+  if (admission.status !== 'started') {
+    const reason = admission.status === 'suppressed' ? 'task creation was undone before delivery' : 'delivery outcome unknown after provider admission';
+    await options.uow.run((ports) => ports.markSkipped(row.id, reason));
+    return { outcome: 'skipped', reason };
+  }
+  const result = admission.response;
   if (result.kind === 'failed') {
     await options.uow.run((ports) => ports.requeue(row.id, result.message));
     throw new RetryableEmailError(`SMTP did not accept the notification email: ${result.message}`);

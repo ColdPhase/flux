@@ -141,6 +141,12 @@ export interface ProjectExportSketch {
 }
 
 export interface ProjectExportWork {
+  lifecycle: { state: 'active' } | { state: 'creation_reverted'; noticeId: string; revertedAt: string; revertedBy: ExportActor };
+  creationHistory: {
+    origin: 'native_agent' | 'ai_proposal' | 'human' | null;
+    baselineVersion: number | null; baseline: unknown | null; proposalId: string | null; firstPersistedUseAt: string | null;
+    notices: { id: string; kind: 'task.created' | 'task.creation_reverted'; createdBy: ExportActor; sources: ObjectRef[]; createdAt: string }[];
+  };
   id: string;
   title: string;
   outcome: string;
@@ -298,6 +304,9 @@ const baseExportSchema = {
       links: list(object({ id, fromId: id, toId: id, label: nullable(text), createdAt: time })),
     }),
     work: object({
+      lifecycle: { oneOf: [object({ state: { const: 'active' } }), object({ state: { const: 'creation_reverted' }, noticeId: id, revertedAt: time, revertedBy: ref('actor') })] },
+      creationHistory: object({ origin: nullable({ enum: ['native_agent', 'ai_proposal', 'human'] }), baselineVersion: nullable(count), baseline: {}, proposalId: nullable(id), firstPersistedUseAt: nullable(time),
+        notices: list(object({ id, kind: { enum: ['task.created', 'task.creation_reverted'] }, createdBy: ref('actor'), sources: list(ref('objectRef')), createdAt: time })) }),
       id, title: text, outcome: text, status: { enum: ['open', 'in_progress', 'blocked', 'done', 'not_pursued'] }, blocker: nullable(text),
       owner: nullable(ref('actor')), parked: nullable(object({ decisionId: id, at: time })), createdBy: ref('actor'), version: count, createdAt: time, updatedAt: time,
     }),

@@ -164,6 +164,7 @@ export interface GeneratorUnitOfWork {
 
 /** The email row and its notification, read from current rows. */
 export interface ClaimableEmail {
+  lifecycleActive?: boolean;
   id: string;
   userId: string;
   addressKind: EmailAddressKind;
@@ -194,6 +195,8 @@ export interface EmailDeliveryPorts {
 
 export interface EmailDeliveryUnitOfWork {
   run<T>(work: (ports: EmailDeliveryPorts) => Promise<T>): Promise<T>;
+  /** Called after the sending claim commits and all async checks finish; never awaits SMTP inside SQL. */
+  admitSend(notificationId: string, send: () => Promise<MailResult>): Promise<import('../push/ports.js').ProviderDeliveryAdmission<MailResult>>;
 }
 
 export interface OutgoingMail {

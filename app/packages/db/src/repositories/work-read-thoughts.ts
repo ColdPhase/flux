@@ -13,7 +13,8 @@ const WINDOW = 100;
  * Tasks linked to selected thoughts of this project's project sketches (#170/#196). Thoughts
  * are checked structurally (central project.read is the caller's); a missing, foreign,
  * private or DM thought is simply not visible. Exact counts are scalars; pairs and rows are one
- * global window of at most 100. No project collection or link list leaves the database.
+ * global window of at most 100. No project collection or link list leaves the database. A task whose
+ * creation was undone (#238) is history, not a map task: it is neither counted nor listed here.
  */
 export function nativeWorkThoughtRows(db: DbExecutor) {
   const selected = (thoughtIds: readonly string[]) => {
@@ -36,7 +37,7 @@ export function nativeWorkThoughtRows(db: DbExecutor) {
         SELECT DISTINCT e.to_id::text AS thought_id, o.id::text AS work_id, (o.parked_at IS NOT NULL AND o.parked_by_decision_id IS NOT NULL) AS parked,
           CASE o.status WHEN 'in_progress' THEN 0 WHEN 'blocked' THEN 1 WHEN 'open' THEN 2 WHEN 'done' THEN 3 ELSE 4 END AS status_rank, o.created_at
         FROM project_object_links e JOIN thoughts t ON t.id = e.to_id
-        JOIN project_work_items o ON o.project_id = ${projectId}::uuid AND o.id = e.from_id
+        JOIN project_work_items o ON o.project_id = ${projectId}::uuid AND o.id = e.from_id AND o.creation_reverted_at IS NULL
         WHERE e.project_id = ${projectId}::uuid AND e.from_type = 'work' AND e.to_type = 'thought')`;
       const counts = await db.execute<{ thoughtId: string; tasks: number }>(sql`${pairs}
         SELECT thought_id AS "thoughtId", count(*)::int AS tasks FROM pairs GROUP BY thought_id ORDER BY thought_id COLLATE "C"`);

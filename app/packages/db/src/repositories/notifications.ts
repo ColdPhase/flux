@@ -1,6 +1,7 @@
 import { messagePreview } from '@flux/contracts';
 import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
+import { assignmentNotificationActive } from './notification-lifecycle.js';
 import type { DbExecutor } from './push.js';
 
 /**
@@ -150,7 +151,7 @@ export function notificationFactRows(db: DbExecutor) {
     },
     async work(workId: string) {
       const w = schema.projectWorkItems;
-      const [row] = await db.select({ id: w.id, projectId: w.projectId, title: w.title, ownerUserId: w.ownerUserId }).from(w).where(eq(w.id, workId));
+      const [row] = await db.select({ id: w.id, projectId: w.projectId, title: w.title, ownerUserId: w.ownerUserId }).from(w).where(and(eq(w.id, workId), isNull(w.creationRevertedAt)));
       return row ? { ...row, projectName: await projectName(row.projectId) } : null;
     },
     async decision(decisionId: string) {
@@ -341,6 +342,7 @@ export function notificationEmailRows(db: DbExecutor) {
         .innerJoin(n, and(eq(n.id, ob.notificationId), eq(n.userId, ob.userId))).where(eq(ob.id, id)).for('update', { of: ob });
       if (!row) return null;
       return {
+        lifecycleActive: await assignmentNotificationActive(db, row.notification),
         id: row.email.id, userId: row.email.userId, addressKind: row.email.addressKind, status: row.email.status,
         notification: { id: row.notification.id, reason: row.notification.reason ?? null, source: { workspaceId: row.notification.workspaceId, type: row.notification.sourceType, id: row.notification.sourceId } },
       };
