@@ -245,3 +245,15 @@ html.tb-is-dragging, html.tb-is-dragging * { cursor: grabbing !important; user-s
   .tb-card.is-arrived { animation: none; }
   .tb-card, .tb-col__cards, .tb-search { transition: none; }
 }
+/* A phone's Tasks has one row, the status (#318, F-025 PA-10): search and "+" sit in the header; the search row
+   shows above the status only while it is in use, like a search field with its scope bar. */
+.tb-hd.ui-icon-btn { width: 44px; height: 44px; }
+.tb-hd--add.ui-icon-btn { border-radius: 50%; background: var(--action); color: var(--on-action); }
+.tb-hd--add.ui-icon-btn:active { filter: brightness(.9); background: var(--action); }
+.tb-find { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--line); }
+.tb-find__field { flex: 1 1 auto; min-width: 0; height: 40px; padding: 0 12px; border-radius: var(--r-pill); background: var(--bg-side); }
+.tb-find .tb-mine { flex: none; min-height: 40px; padding: 0 10px; border-radius: var(--r-pill); }
+.tb-find__done { flex: none; min-height: 44px; padding: 0 8px; border: 0; background: none; color: var(--text); font: inherit; font-size: var(--fs-md); cursor: pointer; }
+.tb-find__field { display: flex; align-items: center; gap: 8px; }
+.tb-find__field input { position: static; flex: 1; min-width: 0; width: auto; height: 100%; padding: 0; opacity: 1; background: transparent; }
+.tb-find__field > svg { flex: none; position: static; }

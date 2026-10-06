@@ -509,3 +509,20 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
     transition: max-height var(--dur-2) var(--ease-out), opacity var(--dur-1) ease, border-color var(--dur-2) ease, visibility 0s linear var(--dur-2);
   }
 }
+/* A project's views open from its title on a phone (#318, F-025 PA-9): "Project ▾", then a sheet of views. */
+.top__switch { position: relative; display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-width: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; letter-spacing: inherit; text-align: left; cursor: pointer; }
+.top__switch::after { content: ""; position: absolute; inset: -8px -6px; }
+.top__switch-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.top__switch svg { flex: none; color: var(--text-3); }
+.top__switch:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--r-sm); }
+.top__view { flex: none; font-size: var(--fs-xs); font-weight: 600; color: var(--text); }
+.pv-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 8px 4px 20px; }
+.pv-title { margin: 0; font-size: var(--fs-lg); font-weight: 650; }
+.pv-list { list-style: none; margin: 0; padding: 4px 8px max(12px, env(safe-area-inset-bottom)); }
+.pv-item { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 12px; border-radius: var(--r-lg); color: var(--text); font-size: var(--fs-base); text-decoration: none; }
+.pv-item[aria-current="page"] { background: var(--bg-active); font-weight: 600; }
+.pv-item__ic { flex: none; color: var(--text-3); }
+.pv-item__t { flex: 1; min-width: 0; }
+.pv-item__n { flex: none; font-size: var(--fs-sm); color: var(--text-3); }
+.pv-item.is-need .pv-item__n { color: var(--accent-selected-text); font-weight: 600; }
+.pv-item__on { flex: none; color: var(--text); }

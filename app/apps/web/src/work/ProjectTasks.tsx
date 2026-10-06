@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useLoaderData, useLocation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { DecisionRowProjection, Project, ProactiveComparisonOutcome, ProjectWorkViewQuery, ResultRowProjection, WorkCounts, WorkObjectType, WorkRowProjection } from '@flux/contracts';
-import { Button, EmptyState, ErrorState, Icon } from '../ui';
+import { Button, EmptyState, ErrorState, Icon, IconButton, MEDIA, useMediaQuery } from '../ui';
 import { getProject } from '../app/conversation-api';
 import { useShellActions } from '../app/shellContext';
 import { useShellData } from '../app/data';
@@ -208,7 +209,11 @@ function keepCursor(key: string, cursor: string | null) {
 export function ProjectTasks() {
   const { project, outcomes } = useLoaderData() as TasksData;
   const shell = useProjectShell();
-  const { openDetails } = useShellActions();
+  const { openDetails, actionSlot } = useShellActions();
+  // On a phone Tasks has one row, the status (#318, F-025 PA-10): search and "+" sit in the header.
+  const phone = useMediaQuery(MEDIA.phone);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const phoneSearchId = useId();
   const revalidator = useRevalidator();
   const [search] = useSearchParams();
   const { me } = useShellData();
@@ -223,7 +228,8 @@ export function ProjectTasks() {
     const status = isGroup(search.get('status')) ? search.get('status') as GroupId : null;
     const cursor = search.get('cursor') || null;
     const asked = search.get('view');
-    const mode: Mode = asked === 'board' || asked === 'list' ? asked : status || cursor ? 'list' : preferredMode(me.user.id);
+    // A phone opens the board (one column at a time under the status row) unless the URL asks for the List.
+    const mode: Mode = asked === 'board' || asked === 'list' ? asked : status || cursor ? 'list' : phone ? 'board' : preferredMode(me.user.id);
     return { routeKey, status, mine: search.get('show') === 'mine', cursor: mode === 'list' ? cursor : null, mode };
   };
   const [stored, setViewState] = useState(fromUrl);
@@ -391,9 +397,31 @@ export function ProjectTasks() {
     </div>
   );
 
+  // Search stays shown while it is in use, so a filter never hides itself (#318).
+  const searching = phone && mode === 'board' && (searchOpen || !!boardSearch || mine);
+  const openSearch = () => { setSearchOpen(true); requestAnimationFrame(() => document.getElementById(phoneSearchId)?.focus()); };
+  const closeSearch = () => { setSearchOpen(false); setBoardSearch(''); if (mine) setView({ mine: false }); };
+  const headerActions = phone && actionSlot ? createPortal(<>
+    {mode === 'board' ? <IconButton icon="search" label="Search tasks" className="tb-hd" aria-expanded={searching} onClick={openSearch} /> : null}
+    {writable ? <IconButton icon="plus" label="New task" className="tb-hd tb-hd--add" onClick={startNew} /> : null}
+  </>, actionSlot) : null;
+
   return (
-    <div className="tb-root">
-      <Toolbar mode={mode} onMode={chooseMode} query={boardSearch} onQuery={setBoardSearch} mine={mine} onMine={(next) => setView({ mine: next })} writable={writable} onNew={startNew} onDecisions={toDecisions} needs={summaryCounts?.needs ?? 0} />
+    <div className={`tb-root${searching ? ' is-searching' : ''}`}>
+      {phone ? headerActions : <Toolbar mode={mode} onMode={chooseMode} query={boardSearch} onQuery={setBoardSearch} mine={mine} onMine={(next) => setView({ mine: next })} writable={writable} onNew={startNew} onDecisions={toDecisions} needs={summaryCounts?.needs ?? 0} />}
+      {searching ? (
+        <div className="tb-find" role="search">
+          <div className={`tb-search tb-find__field${boardSearch ? ' has-query' : ''}`}>
+            <Icon name="search" size={14} />
+            <label className="ui-vh" htmlFor={phoneSearchId}>Search tasks</label>
+            <input id={phoneSearchId} type="search" value={boardSearch} placeholder="Search tasks" autoComplete="off" maxLength={200}
+              onChange={(event) => setBoardSearch(event.target.value)}
+              onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeSearch(); } }} />
+          </div>
+          <button type="button" className="tb-mine" aria-pressed={mine} onClick={() => setView({ mine: !mine })}><Icon name="person" size={15} /><span>Mine</span></button>
+          <button type="button" className="tb-find__done" onClick={closeSearch}>Cancel</button>
+        </div>
+      ) : null}
       <div className="pane-scroll" ref={scroller}>
       {mode === 'board' ? (
         <div className="tb" data-work-observed-at={data?.summary.observedAt}>

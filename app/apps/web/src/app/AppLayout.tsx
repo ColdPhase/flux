@@ -25,6 +25,7 @@ import { useNeedsYou } from '../returns/useNeedsYou';
 import { WorkReadProvider, useProjectWorkSummary } from '../work/WorkReadContext';
 import { OverviewContext } from '../project/ProjectOverview';
 import { ProjectGoal } from '../project/ProjectGoal';
+import { ProjectViewSheet } from './ProjectViewSheet';
 import { remember, remembered } from './remembered';
 
 const lastConversationPath = (userId: string, projectId: string) => remembered('conversation', userId, projectId) ?? `/projects/${projectId}`;
@@ -115,6 +116,8 @@ function AppLayoutContent() {
   const phone = useMediaQuery(MEDIA.phone);
   const panelMode = useSidePanelMode();
   const [navOpen, setNavOpen] = useState(false);
+  // On a phone the project's views open from its title (#318, F-025 PA-9).
+  const [viewsOpen, setViewsOpen] = useState(false);
   // Beside the sheet the sidebar can be hidden, so the work takes the width (#272 FF-5).
   const [sideHidden, setSideHidden] = useState(readSideHidden);
   const toggleSide = useCallback((hidden?: boolean) => {
@@ -410,10 +413,18 @@ function AppLayoutContent() {
   const projectViews = projectId ? [
     { id: 'conversation', label: 'Conversation', to: onOtherView ? lastConversationPath(me.user.id, projectId) : `${location.pathname}${location.search}` },
     { id: 'map', label: 'Map', to: onMap ? location.pathname : lastMapPath(me.user.id, projectId, project?.sketches), end: false },
-    { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks${lastTasksSearch(me.user.id, projectId)}`, ...(openWork ? { countLabel: `, ${openWork} open` } : {}) },
+    { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks${phone ? '' : lastTasksSearch(me.user.id, projectId)}`, ...(openWork ? { countLabel: `, ${openWork} open` } : {}) },
     { id: 'docs', label: 'Wiki', to: `/projects/${projectId}/docs`, end: false },
     { id: 'agents', label: 'Agents', to: `/projects/${projectId}/agents` },
   ] : null;
+  const currentView = !projectId ? null : !onOtherView ? 'conversation'
+    : (location.pathname.match(/^\/projects\/[^/]+\/(map|tasks|docs|agents)(\/|$)/)?.[1] ?? null);
+  const needsDecision = workSummary.summary?.all.needs ?? 0;
+  const decided = workSummary.summary?.all.rules ?? 0;
+  const decisionsEntry = projectId && (needsDecision || decided) ? {
+    to: `/projects/${projectId}/tasks?view=list&status=${needsDecision ? 'needs' : 'rules'}`,
+    text: needsDecision ? `${needsDecision} ${needsDecision === 1 ? 'needs' : 'need'} you` : `${decided} decided`, need: !!needsDecision,
+  } : null;
   const homeViews: TabItem[] = VIEWS.map((view) => ({ id: view.id, label: view.label, to: view.path, end: false }));
   const places = mainPlaces(location.pathname, inboxUnread);
   // The way this visit came, by history index, so the phone's Back returns to where the person was before this
@@ -541,9 +552,14 @@ function AppLayoutContent() {
             <div className="top__head">
               <div className="top__title top__title--project">
                 {place.crumb ? <><span className="top__crumb">{place.crumb}</span><span className="top__slash" aria-hidden="true">/</span></> : null}
-                <h1 title={place.title}>{place.title}</h1>
+                {phone && projectViews ? (
+                  // The title opens the project's views: no row of chips stacks under the header (#318).
+                  <h1 title={place.title}><button type="button" className="top__switch" aria-haspopup="dialog" aria-expanded={viewsOpen}
+                    onClick={() => setViewsOpen(true)}><span className="top__switch-t">{place.title}</span><Icon name="chevron-down" size={14} /><span className="ui-vh">, views</span></button></h1>
+                ) : <h1 title={place.title}>{place.title}</h1>}
               </div>
               <div className="top__meta">
+                {phone && currentView ? <span className="top__view">{projectViews?.find((view) => view.id === currentView)?.label}</span> : null}
                 {/* Who can read the project, then its current state; Details retains the full names. */}
                 <button type="button" className="top__audience" onClick={openAudience} aria-haspopup="dialog" title={audience}>
                   <Icon name={audienceOpen ? 'people' : 'lock'} size={12} /><span>{audience}</span><span className="ui-vh">, who can see this project</span>
@@ -580,8 +596,8 @@ function AppLayoutContent() {
             (#266 PF-1), so where you are is never a guess. */}
         {place.views
           ? <Tabs className={`views${phone ? ' views--chips' : ''}`} label="Views" items={homeViews} />
-          : activeProject && projectViews
-            ? <div className={`views views--project${phone ? ' views--chips' : ''}`}><Tabs className="views__tabs" label="Project views" items={projectViews} />{phone ? null : recapEntry}</div>
+          : activeProject && projectViews && !phone
+            ? <div className="views views--project"><Tabs className="views__tabs" label="Project views" items={projectViews} />{recapEntry}</div>
             : dmViews
               ? <Tabs className={`views${phone ? ' views--chips' : ''}`} label="Direct message views" items={dmViews} />
               : <div className="views views--none" aria-hidden="true" />}
@@ -597,6 +613,7 @@ function AppLayoutContent() {
         {phone ? <BottomNav className="app__viewbar" label="Main places" items={places} /> : null}
       </div>
 
+      {phone && projectViews ? <ProjectViewSheet open={viewsOpen} onClose={() => setViewsOpen(false)} items={projectViews} current={currentView} decisions={decisionsEntry} /> : null}
       <JumpTo open={jumpOpen} onClose={() => setJumpOpen(false)} userId={me.user.id} />
       <SidePanel open={detailsOpen} onClose={() => toggleDetails(false)} title={recapOpen ? 'What matters' : 'Details'} id="details"
         context={phone && (detailsView === 'place' || typeof detailsView === 'object' && detailsView.kind === 'overview') ? <OverviewContext /> : undefined}>
