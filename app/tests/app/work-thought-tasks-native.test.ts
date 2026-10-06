@@ -10,6 +10,7 @@ import { createOauthRequests } from '../../apps/server/src/identity/oauth-flow.j
 import { loadIdentityConfig } from '../../apps/server/src/identity/config.js';
 import { createSessionResolver } from '../../apps/server/src/identity/session.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
+import { inBatches } from './support/batches.js';
 
 // #170/#196: tasks linked to selected project thoughts, without the project work collection.
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
@@ -97,7 +98,7 @@ describe('tasks linked to selected thoughts with exact counts, one bounded windo
     const isolated = (await project(owner, workspaceId, 'Thought scale', 'restricted')).id;
     const big = (await sketch('Scale map', 'project', isolated)).id;
     const [one, two] = [await thought(big, 'Many tasks'), await thought(big, 'One more')];
-    const made = await Promise.all(Array.from({ length: 103 }, (_, i) => createWork(`Scale task ${i}`, { sources: [ref(one)] }, isolated)));
+    const made = await inBatches(103, (i) => createWork(`Scale task ${i}`, { sources: [ref(one)] }, isolated));
     await createWork('Under the second thought', { sources: [ref(two)] }, isolated);
     const observed = await read([one, two], owner, isolated);
     assert.deepEqual(new Map(observed.counts.map((entry) => [entry.thoughtId, entry.tasks])), new Map([[one, 103], [two, 1]]));

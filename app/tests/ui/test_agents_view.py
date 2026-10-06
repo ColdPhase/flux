@@ -69,7 +69,12 @@ class AgentsViewJourney(unittest.TestCase):
         cls.pw.stop()
 
     def context(self, who: str | None, *, phone: bool = False) -> BrowserContext:
-        options: dict = {"base_url": ORIGIN, "color_scheme": "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw"}
+        # Tests 04c, 04d and 09 change requests with page.route, which Playwright does not apply reliably to a
+        # page controlled by a service worker: a send went to the server unrouted with the app's worker in
+        # control (#271). Playwright's documented remedy is blocking service workers; pwa.e2e.ts covers the
+        # worker itself, and nothing here depends on it.
+        options: dict = {"base_url": ORIGIN, "color_scheme": "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw",
+                         "service_workers": "block"}
         if phone:
             options.update(viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
         else:

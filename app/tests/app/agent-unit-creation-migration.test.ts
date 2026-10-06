@@ -3,14 +3,20 @@ import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { AGENT_OPERATIONS, AGENT_PEER_REQUEST_CLASSES } from '@flux/contracts';
+import { AGENT_OPERATIONS, AGENT_PEER_REQUEST_CLASSES, type AgentOperation } from '@flux/contracts';
 import { assertExactMigrationLedger, assertMigrationSqlLedgerChange, assertMigrationStepLedger,
   FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
 import { pool } from './support/db.js';
 
 const migrationsDir = 'packages/db/migrations';
+/** Exactly the list 0050 writes. Later migrations (0054) widen it; 0050 itself stays frozen. */
+const OPERATIONS_AT_0050: readonly AgentOperation[] = ['work.create', 'work.update', 'result.record', 'decision.propose',
+  'map.create', 'map.rename', 'map.thought.create', 'map.thought.update', 'map.thought.delete', 'map.positions.update',
+  'map.link.create', 'map.link.delete', 'doc.create', 'doc.update', 'conversation.create', 'conversation.reply',
+  'cowork.claim', 'cowork.renew', 'cowork.release', 'cowork.request', 'cowork.request.claim', 'cowork.request.respond',
+  'cowork.unit.create'];
 
-test('0050 widens only the closed grant operation CHECK to unit creation: rows survive, the list equals the contract and it is idempotent', async () => {
+test('0050 widens only the closed grant operation CHECK to unit creation: rows survive and it is idempotent', async () => {
   const client = await pool.connect();
   const schema = `flux153_units_${randomUUID().replaceAll('-', '')}`;
   const owner = randomUUID(); const workspace = randomUUID(); const project = randomUUID(); const agent = randomUUID(); const connection = randomUUID();
@@ -73,12 +79,14 @@ test('0050 widens only the closed grant operation CHECK to unit creation: rows s
     assertMigrationStepLedger(before, after, migration!);
     assertExactMigrationLedger(upToCurrent, after);
 
-    // After: rows are untouched; the database list is exactly the contract list, i.e. the prior list plus unit creation.
+    // After: rows are untouched; the database list is exactly the 0050 list, i.e. the prior list plus unit creation.
+    // The exact contract-list equality now lives in the 0054 test.
     assert.deepEqual((await client.query('SELECT * FROM agent_standing_grants WHERE id=$1', [historicGrant])).rows[0], historic);
     const definition = (await constraint())[0]!.definition as string;
-    assert.deepEqual(listed(definition), [...AGENT_OPERATIONS].sort());
+    assert.deepEqual(listed(definition), [...OPERATIONS_AT_0050].sort());
     assert.deepEqual(listed(definition), [...prior, 'cowork.unit.create'].sort());
-    for (const operation of AGENT_OPERATIONS) for (const peerRequestClass of AGENT_PEER_REQUEST_CLASSES) await insert(randomUUID(), operation, peerRequestClass);
+    assert.ok(OPERATIONS_AT_0050.every((operation) => AGENT_OPERATIONS.includes(operation)), 'every 0050 operation is still a contract operation');
+    for (const operation of OPERATIONS_AT_0050) for (const peerRequestClass of AGENT_PEER_REQUEST_CLASSES) await insert(randomUUID(), operation, peerRequestClass);
     for (const operation of ['cowork.unit', 'cowork.units.create', 'cowork.unit.assign', 'cowork.unit.transfer', 'COWORK.UNIT.CREATE', 'cowork.unit.create ', '']) {
       const error = await refused(operation);
       assert.equal(error.code, '23514', `${JSON.stringify(operation)} stays refused`); assert.equal(error.constraint, 'agent_standing_grants_operation_check');

@@ -7,6 +7,7 @@ import { db, pool } from './support/db.js';
 import { Browser } from './support/http.js';
 import { addMember, draft, expectStatus, grant, person, project, removeMember, secondSession, share, workspace, type Person } from './support/people.js';
 import { StreamClient, upgradeStatus } from './support/stream.js';
+import { inBatches } from './support/batches.js';
 
 // WebSocket stream: replay, live delivery and per-recipient policy (issue #29, AC-3).
 const heartbeatMs = Number(process.env.FLUX_STREAM_HEARTBEAT_MS ?? 25_000);
@@ -216,9 +217,7 @@ describe('event stream', () => {
     const erinKey: Principal = { kind: 'human', id: erin.id };
     // Keep the planner on the recipient index on both sides of the comparison. On an
     // almost empty table PostgreSQL can choose a sequential scan only for the baseline.
-    for (let i = 0; i < 250; i += 25) {
-      await Promise.all(Array.from({ length: 25 }, (_, offset) => draft(dave, vault.id, `Earlier private ${i + offset}`)));
-    }
+    await inBatches(250, (i) => draft(dave, vault.id, `Earlier private ${i}`));
     await pool.query('ANALYZE event_audience, events');
     const { rows: [{ n: eventsAtBaseline }] } = await pool.query('SELECT count(*)::int AS n FROM events WHERE workspace_id = $1', [vault.id]);
     const baseline = await head(erin);

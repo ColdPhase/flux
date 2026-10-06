@@ -20,7 +20,7 @@ export interface Layer {
 const UI = ['react', 'react-dom'];
 const PERSISTENCE = ['@flux/db', 'drizzle-orm', 'pg', 'pg-boss'];
 const HTTP = ['fastify', '@fastify/*'];
-const APPS = ['@flux/server', '@flux/worker', '@flux/web'];
+const APPS = ['@flux/server', '@flux/worker', '@flux/web', '@flux/runtime'];
 
 export const LAYERS: Layer[] = [
   // Public wire types, Apache-2.0: portable, no runtime dependencies at all.
@@ -33,9 +33,15 @@ export const LAYERS: Layer[] = [
   { name: 'db', paths: ['packages/db/'], allow: ['@flux/contracts', '@flux/core', 'drizzle-orm', 'pg', 'node:*'] },
   // Optional model/provider adapter: no direct database, queue, HTTP server or UI.
   { name: 'agent-runtime', paths: ['packages/agent-runtime/'], deny: [...PERSISTENCE, ...HTTP, ...APPS, ...UI] },
+  // The `runtime` transport's internal protocol and manager client (F-022 AIM-3): Node built-ins only,
+  // so the slot image carries nothing else.
+  { name: 'runtime-protocol', paths: ['packages/runtime-protocol/'], allow: ['node:*'] },
+  // Supervisor, manager, egress and installer of the runtime slots: no database, queue, HTTP framework,
+  // domain package or app; only the protocol and Node built-ins.
+  { name: 'runtime', paths: ['apps/runtime/'], allow: ['@flux/runtime-protocol', 'node:*'] },
   // Browser application: talks to the server only through HTTP/WebSocket contracts. UI
   // libraries are its own choice; server-side packages and Node built-ins are not.
-  { name: 'web', paths: ['apps/web/src/'], deny: ['@flux/core', '@flux/db', '@flux/agent-runtime', ...APPS, ...PERSISTENCE, ...HTTP, 'web-push', 'nodemailer', 'node:*'] },
+  { name: 'web', paths: ['apps/web/src/'], deny: ['@flux/core', '@flux/db', '@flux/agent-runtime', '@flux/runtime-protocol', ...APPS, ...PERSISTENCE, ...HTTP, 'web-push', 'nodemailer', 'node:*'] },
   // Web build tooling (Vite config and plugins, icon generation): never application code.
   { name: 'web-build', paths: ['apps/web/'], deny: ['@flux/core', '@flux/db', '@flux/server', '@flux/worker', 'drizzle-orm', 'pg', 'pg-boss', ...HTTP] },
   // Composition roots and adapters. They may wire everything except each other and the UI.

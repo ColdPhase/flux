@@ -10,6 +10,7 @@ import { createOauthRequests } from '../../apps/server/src/identity/oauth-flow.j
 import { loadIdentityConfig } from '../../apps/server/src/identity/config.js';
 import { createSessionResolver } from '../../apps/server/src/identity/session.js';
 import { addMember, expectStatus, grant, person, project, secondSession, workspace, type Person } from './support/people.js';
+import { inBatches } from './support/batches.js';
 
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
 const { db, pool } = createDatabase(process.env.DATABASE_URL);
@@ -83,7 +84,7 @@ describe('selected native reference rows with exact sessions and current members
   });
 
   test('100 different native identities are one global bound with no project enumeration', async () => {
-    const fixtures = await Promise.all(Array.from({ length: 105 }, (_, i) => createWork(`Reference scale ${i}`)));
+    const fixtures = await inBatches(105, (i) => createWork(`Reference scale ${i}`));
     const selected = fixtures.slice(0, 100);
     const observation = await read(selected.map(({ id }) => `work:${id}`).join(','));
     assert.equal(observation.items.length, 100); assert.deepEqual(observation.unavailable, []);

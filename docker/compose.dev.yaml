@@ -22,6 +22,7 @@ x-source: &source
   - ../app/packages/db/migrations:/app/packages/db/migrations:ro,z
   - ../app/packages/sdk/src:/app/packages/sdk/src:ro,z
   - ../app/packages/agent-runtime/src:/app/packages/agent-runtime/src:ro,z
+  - ../app/packages/runtime-protocol/src:/app/packages/runtime-protocol/src:ro,z
   - ../app/tooling/migrate.ts:/app/tooling/migrate.ts:ro,z
   - ../app/tooling/tsconfig.dev.json:/app/tooling/tsconfig.dev.json:ro,z
 services:

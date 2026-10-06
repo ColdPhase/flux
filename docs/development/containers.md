@@ -96,6 +96,31 @@ Each connection also sets `idle_in_transaction_session_timeout` to 60 s, so Post
 ends any session abandoned inside a transaction. Flux code does not wait on
 anything outside the database inside a transaction. pg-boss keeps its own pool.
 
+The connection timeout bounds the whole wait for a client: queued behind the pool's
+10 busy clients (the `pg` default size) or opening a new connection.
+`FLUX_DB_CONNECT_TIMEOUT_MS` (an integer from 100 to 60000) replaces the 1.5 s
+default; the production Compose files do not set it.
+
+Under concurrent Docker stacks the suite failed with `timeout exceeded when trying
+to connect` (the pool queue) or `Connection terminated due to connection timeout` (a
+new connection, such as a migration test's fresh database)
+([#271](https://github.com/ColdPhase/flux/issues/271)). The queue came from the
+suite's own fixture bursts, up to 105 concurrent requests, more than the API's 10
+clients. Every write ends with the stream's event insert, which holds one global
+advisory lock until commit so events get their commit-order `seq`. When the database
+is slow the burst waits on that lock and then for a client. Measured with only the database
+container's CPU limited (2026-10-06): at 0.15 CPU a 103-request burst passed at 1.5 s;
+at 0.1 CPU 64 of its 103 requests failed at 1.5 s and 17 at 10 s, the rest of those on
+the 2 s read timeout. Two changes follow:
+
+- Fixture bursts in `tests/app` run through `support/batches.ts`, at most 5 requests at
+  a time, so they never queue for a client. Concurrency tests keep their own bursts.
+- `docker/compose.test.yaml` sets 10 s for the API, worker, `test` and `e2e` containers,
+  for new connections and short waits while other stacks share the host. It does not
+  cover a database too slow for the 2 s read timeout, and it does not hide exhaustion:
+  PostgreSQL keeps the image default `max_connections` of 100 and the suite peaks near
+  21 client connections. A leaked client still fails the suite, after 10 s instead of 1.5 s.
+
 ### Disk hygiene
 
 Each `scripts/check_*.sh` run builds images tagged with its own Compose
@@ -139,6 +164,7 @@ next request. The API reads these variables (see `docker/.env.example`):
 | `FLUX_TRUSTED_PROXIES` | Comma-separated proxy IPs/CIDRs. Only a request whose socket peer is listed may supply `X-Forwarded-For` as the client address. Empty (default) trusts no proxy. |
 | `FLUX_SMTP_URL`, `FLUX_MAIL_FROM` | SMTP transport URL (e.g. `smtp://user:pass@mail.example.org:587`) and sender for password reset mail and notification email (#116). Set them on the API and the worker. TLS: `smtps://…:465` or `smtp://…:587?requireTLS=true`; certificates are verified (`NODE_EXTRA_CA_CERTS` for a private CA). If unset, password reset answers `503 PASSWORD_RESET_UNAVAILABLE`, `/api/v1/auth/capabilities` reports `unavailable`, and notification settings show email delivery unavailable while the inbox and push keep working ([notifications](notifications.md#email)). |
 | `FLUX_PASSWORD_RESET_TTL_SECONDS` | Reset token lifetime, 60–86400, default 3600. Tokens are single use and stored hashed. |
+| `FLUX_OIDC_ISSUER`, `FLUX_OIDC_CLIENT_ID`, `FLUX_OIDC_CLIENT_SECRET_HOST_FILE`, `FLUX_OIDC_LABEL` | Optional single sign-on with one OpenID Connect provider ([operations guide](../operations/single-sign-on.md), #113). Set issuer and client id together; the client secret is a host file mounted at `/run/secrets/flux_oidc_client_secret` (`FLUX_OIDC_CLIENT_SECRET_FILE` inside the container). The issuer must be `https`. The label names the sign-in button. Unset keeps email/password sign-in only. |
 | `FLUX_AUTH_RATE_LIMIT` | `true` (default) enables Better Auth's in-memory login rate limit. Only the test script turns it off. |
 | `FLUX_STREAM_HEARTBEAT_MS` | WebSocket stream ping, session revalidation and polling interval in milliseconds (default `25000`, minimum `100`). The test script uses `1000`. See [access policy](access-policy.md#websocket-stream). |
 
@@ -152,7 +178,8 @@ docker compose --env-file docker/.env -p flux28 -f docker/compose.source.yaml --
 ```
 
 Endpoints: Better Auth under `/api/auth/*` (`sign-up/email`, `sign-in/email`,
-`sign-out`, `request-password-reset`, `reset-password`); Flux session routes
+`sign-out`, `request-password-reset`, `reset-password`, and with single sign-on
+`sign-in/social` with the provider id and `callback/<provider id>`; a raw `idToken` sign-in is refused); Flux session routes
 `GET /api/v1/me`, `GET /api/v1/sessions` (never returns tokens),
 `DELETE /api/v1/sessions/:id` and `POST /api/v1/sessions/revoke-others`.
 Server code resolves the caller with `requirePrincipal(request)` from
@@ -328,3 +355,25 @@ worker. See [AI providers](ai-providers.md#endpoint-guard-ssrf).
 
 In `check_application.sh` the test overlay sets it to `providermock`, the local stand-in for both
 AI wire formats (`app/tests/app/support/provider-mock.ts`) that the adapter contract suite uses.
+
+## Agent runtime (F-022 T3)
+
+The `runtime` Compose profile ([operator guide](../operations/agent-runtime.md)) is off unless
+`FLUX_AGENT_RUNTIME` is set; `./flux up` then starts `runtime-install`, `runtime-manager`,
+`runtime-egress` and the slots `runtime-1` to `runtime-4`. No service mounts a Docker or Podman socket
+(`tests/test_container_isolation.py`). The slot image is the Dockerfile's `agent-runtime` target (the
+supervisor and the pinned Codex); `agent-runtime-test` replaces both CLIs with the TEST ONLY fakes from
+`app/apps/runtime/src/fakes`, and `docker/compose.runtime.test.yaml` selects it.
+
+| Variable | Service | Meaning |
+| --- | --- | --- |
+| `FLUX_AGENT_RUNTIME` | API, worker, slots, egress, install | Empty (off, default), `claude_code`, `codex` or `claude_code,codex`. Codex stays unavailable until F-022 T6. |
+| `FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS` | API, worker | Required with `claude_code`: the date the operator agreed to Anthropic's Commercial Terms. Recorded, not verified. |
+| `FLUX_AGENT_RUNTIME_IDLE_DAYS` | API, worker | Optional idle policy, 1–365 days; empty is off. |
+| `FLUX_RUNTIME_MANAGER_SECRET`, `FLUX_RUNTIME_SECRET_<n>` | API, worker, manager; slot `<n>` | Generated by `./flux`; each slot gets only its own. |
+| `FLUX_AGENT_RUNTIME_RECONCILE_MS` | worker | Reconciliation interval (default 10000); the test overlay uses 1000. |
+
+`./scripts/check_agent_runtime.sh` runs the whole runtime through `./flux` on an isolated copy with its own
+project and ports (`FLUX_RUNTIME_TEST_PORT`, default 19571). Run it alone, like the other Docker checks.
+`./scripts/check_runtime_cli_contract.sh` is the opt-in check against the pinned real CLIs; it needs
+internet access and is not part of CI.

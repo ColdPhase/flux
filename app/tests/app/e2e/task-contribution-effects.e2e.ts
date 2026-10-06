@@ -128,6 +128,9 @@ test('a saved blocker, a published result and a handoff appear as marked message
       assert.match(await blocker.innerText(), /Waiting for the replacement hinge/);
       assert.equal(await blocker.locator('[data-contribution="blocker"]').innerText(), 'Saved as the task blocker');
       const result = readerPage.locator(`#message-${afterResult.messages[1]!.id}`);
+      // The result is a reply: the thread beside the stream stays hidden until its own first reads settle
+      // (#155, up to 1 s), and innerText omits hidden text (#271). Read it once its finding is shown.
+      await result.getByText('The new hinge holds at 40 N').first().waitFor();
       assert.match(await result.innerText(), /The new hinge holds at 40 N/);
       const open = result.locator('[data-contribution="result"]');
       assert.match(await open.innerText(), /Result/);

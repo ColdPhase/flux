@@ -79,6 +79,8 @@ review stay, but they serve shipping and must not replace it.
 15. **Standard licenses avoid community distrust** (pp. 132–134). Flux: plain
     license texts, with no custom usage limits.
 
+The [v0.1 launch plan](launch-v0.1.md) applies rules 6, 12, 13, 14, 16, 17 and 20 to the first release.
+
 ## Feedback
 
 16. **Good design partners adopt early, match the problem and commit time. Do
