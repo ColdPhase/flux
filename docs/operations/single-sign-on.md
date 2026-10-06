@@ -61,8 +61,10 @@ provider can still sign in.
    services:
      api:
        volumes:
-         - /etc/flux/oidc_client_secret:/run/secrets/flux_oidc_client_secret:ro
+         - /etc/flux/oidc_client_secret:/run/secrets/flux_oidc_client_secret:ro,z
    ```
+
+   `z` lets the container read the file on an SELinux host (Fedora, RHEL); elsewhere it has no effect.
 
 4. **Restart:** `./flux up` (or `docker compose … up -d`). The sign-in page shows
    "Sign in with Acme login" once the API reads the provider's discovery document.
