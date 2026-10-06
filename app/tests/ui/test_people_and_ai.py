@@ -699,7 +699,7 @@ class PeopleAndAiPhone(unittest.TestCase):
                 problems.append(f"{name} is not reachable")
                 return None
             box = locator.first.bounding_box()
-            if box["width"] < 44 or box["height"] < 44:
+            if box["width"] < 43.5 or box["height"] < 43.5:  # sub-pixel layout at 3x
                 problems.append(f"{name} is {box['width']:.0f}x{box['height']:.0f}")
             return locator.first
 
