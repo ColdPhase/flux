@@ -2,6 +2,8 @@
 -- slot to one owner, the owner's runtime connections (Claude Code, Codex) and the operator's Commercial
 -- Terms statement. Sparse after 0051 (0052–0055 are reserved by open branches).
 --
+-- agent_runtime_sessions (0034) is unrelated to these tables: it holds mode (b) MCP client sessions.
+--
 -- No column here can hold a vendor credential: a login lives only in the slot's binding directory,
 -- written by the CLI's own flow. Only enumerated display facts are stored; the schema test
 -- agent-runtime-schema.test.ts fails if a runtime table gains any other column.

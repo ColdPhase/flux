@@ -53,11 +53,14 @@ describe('runtime tables hold display facts only', () => {
       'plan_label:text', 'account_label:text', 'signed_in_at:timestamp with time zone', 'created_at:timestamp with time zone', 'revoked_at:timestamp with time zone'],
     agent_runtime_operator_statements: ['statement:text', 'agreed_on:date', 'recorded_at:timestamp with time zone'],
   };
+  // agent_runtime_sessions (0034) is unrelated: mode (b) MCP client sessions, outside the runtime transport.
+  const RUNTIME_TABLES = Object.keys(REVIEWED);
   const TOKEN_LIKE = /token|secret|password|passwd|credential|cookie|session|bearer|jwt|refresh|api_?key|private|cipher|encrypted|auth_json|oauth|code_verifier|device_code/i;
 
   test('the columns are exactly the reviewed display facts, and none is token-shaped', async () => {
     const { rows } = await pool.query<{ table_name: string; column_name: string; data_type: string }>(`SELECT table_name, column_name, data_type
-      FROM information_schema.columns WHERE table_schema = 'public' AND (table_name LIKE 'agent\\_runtime\\_%' OR table_name LIKE 'runtime\\_%') ORDER BY table_name, ordinal_position`);
+      FROM information_schema.columns WHERE table_schema = 'public' AND (table_name = ANY($1) OR table_name LIKE 'runtime\\_%'
+        OR (table_name LIKE 'agent\\_runtime\\_%' AND table_name <> 'agent_runtime_sessions')) ORDER BY table_name, ordinal_position`, [RUNTIME_TABLES]);
     const actual: Record<string, string[]> = {};
     for (const row of rows) (actual[row.table_name] ??= []).push(`${row.column_name}:${row.data_type}`);
     assert.deepEqual(actual, REVIEWED);
@@ -157,7 +160,8 @@ describe('migration 0056 reverses only before use', () => {
       await client.query('DELETE FROM agent_runtime_bindings');
       await client.query('DELETE FROM agent_runtime_connections');
       await client.query(down);
-      const left = await client.query(`SELECT count(*)::int AS n FROM information_schema.tables WHERE table_name LIKE 'agent\\_runtime\\_%'`);
+      const left = await client.query(`SELECT count(*)::int AS n FROM information_schema.tables WHERE table_name = ANY($1)`,
+        [['agent_runtime_slots', 'agent_runtime_bindings', 'agent_runtime_connections', 'agent_runtime_operator_statements']]);
       assert.equal(left.rows[0].n, 0);
     } finally {
       await client.query('ROLLBACK').catch(() => undefined);
