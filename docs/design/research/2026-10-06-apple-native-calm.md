@@ -42,7 +42,7 @@
    bottom edges, "floating above your content … without ever stealing focus" [A3].
 2. **Apple drops chrome text, not navigation text.** Bar actions are standard symbols; tab bars
    keep one-word labels; actions with no clear symbol (Edit, Select, Done) keep words [A3, A11,
-   A12]. The founder's "they give up text" is right for toolbars and wrong for navigation.
+   A12]. "They give up text" holds for toolbars, not for navigation.
 3. **Hierarchy from space and type, not boxes and lines.** Dividers give way to a soft fade where
    content scrolls under controls; grouping uses space [A3, A13, A14].
 4. **Few bar items, grouped, one tinted.** At most three groups, the rest in a More menu,
@@ -247,7 +247,7 @@ claim*
 ## 2. Apple's own apps as worked examples
 
 **Method.** No iPhone was used. The descriptions come from Apple's *iPhone User Guide* for iOS 27
-[G1–G10], whose pages describe where each control is and include screenshot alt text; from WWDC and the
+[G1–G15], whose pages describe where each control is and include screenshot alt text; from WWDC and the
 HIG; and from Federico Viticci's MacStories reviews of iOS 26 (2025-09-15, background) [R1] and
 iOS 27 (2026-09-14) [C3]. iOS 27 changed no app's structure (the guide's "What's new" lists
 refinements only), so iOS 26 layouts are the baseline. Control counts are *inference*,
@@ -255,15 +255,15 @@ reconstructed from the guide's text, not counted on a device.
 
 | App | Main screen, at rest | Words kept | Symbols only | Where secondary things go |
 | --- | --- | --- | --- | --- |
-| **Messages** | List: Edit, Filter, search field at the bottom, Compose (about 4 controls). Conversation: Back, the person's picture and name (tap for details), FaceTime; composer: +, field, Dictate, Send | "Edit", the name, the search placeholder | Back, Filter, Compose, FaceTime, +, Send | Rows: swipe right marks unread, swipe left shows Delete and Mute, touch and hold pins. Bubbles: swipe right replies, touch and hold gives Tapbacks, Reply, Edit, Undo Send. "Swipe left on the message bubble to see timestamps for all messages in the conversation." [G1] |
-| **Mail** | Bottom toolbar: Filter on the leading side, Search and Compose on the trailing side [A4]; the unread count as the title's subtitle [A5]; More at the top | "Select" stays a word [R1] | Filter, Compose, Reply, Move, Delete | Swipe left and right, user-configurable; touch and hold previews. The inbox's context-menu items also appear in the message view's toolbar [A20]. Rows show two lines of preview by default [G2]. |
+| **Messages** | List: Edit, Filter, search field at the bottom, Compose (about 4 controls). Conversation: Back, the person's picture and name (tap for details), FaceTime; composer: +, field, Dictate, Send | "Edit", the name, the search placeholder | Back, Filter, Compose, FaceTime, +, Send | Rows: swipe right marks unread, swipe left deletes, touch and hold pins [G11, G14]. Bubbles: swipe right replies, touch and hold gives Reply and Tapbacks; Edit and Undo Send are on their own page [G1, G12, G13]. "Swipe left on the message bubble to see timestamps for all messages in the conversation." [G1] |
+| **Mail** | Bottom toolbar: Filter on the leading side, Search and Compose on the trailing side [A4]; the unread count as the title's subtitle [A5]; More at the top | "Select" stays a word [R1] | Filter, Compose, Reply, Move, Delete | Swipe left and right, user-configurable ("Settings > Apps > Mail > Swipe Options") [G15]; touch and hold previews. The inbox's context-menu items also appear in the message view's toolbar [A20]. Rows show two lines of preview by default [G2]. |
 | **Notes** | List grouped by date, More (view options), Search and New Note at the bottom. Editor: no title in the bar, "the first line of content typically supplies sufficient context" [A11]; Done, Share, Actions | Folder and note names | Compose, Done (✓), Share, format tools | Swipe to pin, move, delete; touch and hold; formatting in a non-modal sheet. An empty Recently Deleted folder is not shown [G3]. |
 | **Reminders** | A grid of smart lists with counts, then My Lists | List names, counts | More, Add | One More menu holds eight commands; completed items hidden until "Show Completed" [G4]; swipe to delete or indent |
 | **Photos** | Two labelled tabs (Library, Collections) and Search; an edge-to-edge grid; Years, Months, All appear as a segmented control when scrolling up [R1] | Tab labels; in Edit: Adjust, Filters, Crop, Cancel, Done | Share, Favorite, Delete, More | "tap it to hide the controls onscreen"; View Options hide screenshots and shared items, in Apple's words "to reduce clutter" [G5] |
 | **Freeform** | Canvas tools along the bottom (text, media, shapes, drawing); More and Share at the top | Board names | Every tool | Touch and hold on a board; no Save, "Your board is saved automatically" [G6] |
-| **Files** | Three labelled tabs (Recents, Shared, Browse) | Tab labels, names | More | One More menu with about ten commands; touch and hold holds about eleven actions; no swipe actions documented [G7] |
+| **Files** | Three labelled tabs, Recents, Shared and Browse (from a guide screenshot description; not re-checked) | Tab labels, names | More | Touch and hold offers "Copy, Move, Compress, Duplicate, or Delete" and more [G7]; one More menu for view and sort options (not re-checked) |
 | **Settings** | "a hierarchy of lists" [A20]; every row a word; in iOS 27 search sits at the bottom and an Appearance section holds the Liquid Glass slider [G8] | Every row | — | The next level down; each app's settings under Apps |
-| **Music** | Labelled tabs Home, New, Library and Search [G9]; the MiniPlayer; the tab bar minimises on scroll [A12] | Tab labels | Playback controls in Now Playing | Touch and hold on rows; "Who's going to guess that you can long-press on a minimized tab bar in the Music app to switch from Home to Library?" [R1] |
+| **Music** | Labelled tabs, including Library and Search [G9]; the MiniPlayer; the tab bar minimises on scroll [A12] | Tab labels | Playback controls in Now Playing | Touch and hold on rows; "Who's going to guess that you can long-press on a minimized tab bar in the Music app to switch from Home to Library?" [R1] |
 | **Phone** | iOS 26's unified list (favourites, then recents and voicemail), Calls, Contacts and Keypad at the bottom, a prominent Search [A9, G10] | "Edit", tab labels | Search, Filter | Tapping a recent call opens its details; calling on tap is opt-in [G10]. People could switch back to the Classic layout: "Apple learned its lesson" [R1]. |
 
 **Patterns across the apps** (*inference* from the table, each row *vendor claim* or *reviewer
@@ -690,7 +690,7 @@ in agent-days: **S** under one day, **M** one to three, **L** more. Owners as in
 | --- | --- | --- | --- | --- | --- |
 | 1 | **One quiet header inside a place:** Back, the title with one audience line, the title opens Details. Goal, "Details" text and the people button leave the header. No rules between header bands; one soft fade while content is underneath. | Conversation, Tasks, Map, Wiki, Agents, DM | H | S–M | PF-2 "a labelled Details button"; FF-10 header clause |
 | 2 | **Messages grouped like Messages and Messenger:** name on the first of a run, no "· you", time lines at gaps instead of per-message times, no "#n" on phones, "3 replies" as one link | Conversation, Thread, DM | Unassigned — proposed: Mz | M | none (UI116-1 kept) |
-| 3 | **Message actions on long press,** with an accessible "Actions" button and the same actions in the thread; no visible "…" or per-message "Details" on phones | Conversation, Thread | Unassigned — proposed: Mz | M | open decision D2 |
+| 3 | **Message actions on long press,** with an accessible "Actions" button and the same actions in the thread; no visible "…" or per-message "Details" on phones (pending D2) | Conversation, Thread | Unassigned — proposed: Mz | M | open decision D2 |
 | 4 | **One-row composer:** "+" (Attach, Cite, Ask the assistant), field, Send; no audience line under it | Conversation, Thread, DM | Mz after #299, with H | S–M | PF-3 "audience as one quiet line"; FF-7 "Attach, mention and AI are the composer's tools" (kept, behind "+") |
 | 5 | **The state line becomes a banner only when something waits** ("1 decision needs you ›"); "What matters" moves into Details | Conversation | H | S | PF-2 state line; FF-10 "the state line … on Conversation" |
 | 6 | **The thread is a real full-screen sheet** over header, chips and tab bar, entering from the bottom; its own meta stripped as in #2 | Thread | H (sheet), Mz (motion, meta) | M | none: implements UI116-1 "a full-screen sheet on the phone" |
@@ -852,13 +852,18 @@ The guide pages carry no date; they were read on 2026-10-06 with "iOS 27" select
 
 - [G1] "Send and reply to messages" (Messages; includes the swipe-left timestamps tip and the list's alt text). <https://support.apple.com/guide/iphone/send-and-reply-to-messages-iph82fb73ba3/ios>
 - [G2] Mail, reading email ("two lines of text for each email message by default"). <https://support.apple.com/guide/iphone/iph461684497/ios>
-- [G3] Notes, deleting and Recently Deleted. <https://support.apple.com/guide/iphone/iph904eee369/ios>
+- [G3] "Delete and recover notes in Notes" ("If you don't see Recently Deleted, you don't have any notes in that folder"). <https://support.apple.com/guide/iphone/iph904eee369/ios>
 - [G4] Reminders, completing items ("Completed items are hidden on your list"). <https://support.apple.com/guide/iphone/iph3fb74d597/ios>
 - [G5] Photos, viewing ("tap it to hide the controls onscreen") and View Options ("to reduce clutter"). <https://support.apple.com/guide/iphone/iph3d267610/ios>, <https://support.apple.com/guide/iphone/iph2e66e2f2c/ios>
 - [G6] Freeform, boards ("Your board is saved automatically"). <https://support.apple.com/guide/iphone/iph13127a9ed/ios>
-- [G7] Files, browsing and the More menu. <https://support.apple.com/guide/iphone/iphc61044c11/ios>
+- [G7] "Organize files and folders in Files" (touch and hold). <https://support.apple.com/guide/iphone/iphab82e0798/ios>
 - [G8] Settings, the list of sections (Appearance: "Light or Dark Mode, text size, display appearance, and Liquid Glass settings"; alt text: "the search field at the bottom of the Settings screen"). <https://support.apple.com/guide/iphone/iph079e1fe9d/ios>
-- [G9] Music, playing music. <https://support.apple.com/guide/iphone/iph676daac9b/ios>
+- [G9] "Get started with Music" (screenshot descriptions of the Search and Library tabs). <https://support.apple.com/guide/iphone/iph850be8527/ios>
 - [G10] Phone, the unified and classic layouts ("Tap Recents to Call" is opt-in). <https://support.apple.com/guide/iphone/iph3c993cbc/ios>
+- [G11] "Keep track of messages" ("Swipe right on a conversation to mark it as unread"; "Touch and hold a conversation, then tap Pin"). <https://support.apple.com/guide/iphone/iphe9b48b89e/ios>
+- [G12] "React with Tapbacks in Messages". <https://support.apple.com/guide/iphone/iph018d3c336/ios>
+- [G13] "Unsend or edit messages". <https://support.apple.com/guide/iphone/iphe67195653/ios>
+- [G14] "Delete messages and attachments in Messages" ("Swipe left on the conversation"). <https://support.apple.com/guide/iphone/iph2c9c4bfcb/ios>
+- [G15] "Organize email in mailboxes" ("Slowly drag a message to the left until the menu appears"; Swipe Options). <https://support.apple.com/guide/iphone/iph376ef8aa3/ios>
 - [R1] Federico Viticci, MacStories, "iOS and iPadOS 26: The MacStories Review", 2025-09-15 (background, before H2 2026). <https://www.macstories.net/stories/ios-and-ipados-26-the-macstories-review/>
 - [R2] Raluca Budiu, Nielsen Norman Group, on Liquid Glass in iOS 26, 2025-10-10 (background). <https://www.nngroup.com/articles/liquid-glass/>
