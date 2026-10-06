@@ -929,12 +929,9 @@ class ScenarioJourney:
         self.assertIsNotNone(summary["nextStep"], "a direct next action")
         self.assertTrue(any(item["kind"] == "decision" for item in summary["items"]))
 
-    @unittest.expectedFailure
     def test_4a_the_return_view_names_the_work_the_pivot_parked(self) -> None:
-        """#44 scenario 3: the returning person should see that the pivot parked the camera work. The return
-        service writes "Parked: <task>" only for work with its own work event, and accepting a pivot parks work
-        under project.decision_accepted.v1 alone, so the item never appears (Home or "What matters"); only the
-        decision's Details ("At this pivot") names it. Draft issue: "Return view omits work parked by a pivot"."""
+        """#44 scenario 3: the returning person sees that the pivot parked the camera work, on Home and in the
+        project summary, even though the task's own last event is before their return point (#290, fixed in #293)."""
         self.need("pivoted")
         page = self.page("ada")
         page.goto("/")
