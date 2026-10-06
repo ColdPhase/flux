@@ -88,6 +88,7 @@ const POSTCONDITIONS: Record<AgentExecutionCommand['operation'], readonly AgentP
   'cowork.claim': ['cowork.claim_state'], 'cowork.renew': ['cowork.claim_state'], 'cowork.release': ['cowork.claim_state'],
   'cowork.request': ['cowork.request_state'], 'cowork.request.claim': ['cowork.request_state'],
   'cowork.request.respond': ['cowork.request_state'], 'cowork.unit.create': ['cowork.unit_state'],
+  'cowork.unit.complete': ['cowork.unit_state'], 'cowork.unit.transfer': ['cowork.unit_state'],
 };
 function postconditionInvalid(): never {
   throw new DomainError(409, 'COMMAND_POSTSTATE_INVALID', 'A command needs its exact canonical produced post-state');

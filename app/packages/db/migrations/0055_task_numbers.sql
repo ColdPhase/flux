@@ -2,7 +2,7 @@
 -- never reused or changed. Each project has its own sequence, so numbering takes no row lock and never waits:
 -- creating tasks keeps the existing lock order (a counter on the project row deadlocked against writers that
 -- hold the project FOR SHARE). A rolled-back or idempotently skipped insert may leave a gap, which is fine:
--- numbers name tasks, they do not count them. 0052–0054 are reserved by open branches (#270, #275, #261).
+-- numbers name tasks, they do not count them. 0052 (#270) and 0054 (#261) are on main; 0053 is #275's.
 -- Creating a project creates its sequence as the role that inserts the project (the API's role in Compose);
 -- a deployment with a restricted application role must let it CREATE SEQUENCE in the schema.
 CREATE FUNCTION project_task_sequence(project uuid) RETURNS regclass LANGUAGE sql STABLE AS $$

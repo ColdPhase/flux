@@ -1518,6 +1518,8 @@ export const coworkUnits = pgTable('cowork_units', {
   leaseSessionId: text('lease_session_id'),
   leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
   checkpointId: uuid('checkpoint_id'),
+  /** 0054: the exact native outcome reference of a completed unit; null otherwise. */
+  outcomeRef: jsonb('outcome_ref').$type<CoWorkSourceRef>(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table): PgTableExtraConfigValue[] => [
