@@ -299,7 +299,8 @@ class MotionJourney(unittest.TestCase):
         # #264: the minifier turns `--dur-3: 200ms` into `.2s`; read as a bare number that made the drawer's
         # slide 0.2 ms long, a jump in one frame. Slowed tenfold so the running animation can be read.
         phone = self.page(viewport={"width": 390, "height": 844}, scale=3)
-        phone.goto(f"/projects/{self.projects[2]}")
+        # Inside a project the phone's top-left control leads back (#272); the drawer opens from a list page.
+        phone.goto("/projects")
         cdp = phone.context.new_cdp_session(phone)
         cdp.send("Animation.enable")
         cdp.send("Animation.setPlaybackRate", {"playbackRate": 0.1})

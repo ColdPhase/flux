@@ -7,7 +7,7 @@ import { AttachButton, ComposerFiles, MessageFiles } from '../composer/Files';
 import { contributeToTask } from '../composer/api';
 import { Avatar, Button, Icon, Input, MEDIA, sendsOnEnter, useArrivals, useMediaQuery } from '../ui';
 import { getConversation, getMaterialVersion, getProject, listConversationRoots, listDrafts, listMaterials, listTaskNotices, listWorkspaceMembers, olderMessages, publishMaterial, reply, startConversation } from './conversation-api';
-import { pageBackTo } from './seekMessage';
+import { focusArrivedMessage, pageBackTo } from './seekMessage';
 import { useShellData } from './data';
 import { MessageActions, MessageObjects, useCreateWorkFromMessage } from '../work/inline';
 import { useMessageWork } from '../work/useMessageWork';
@@ -288,7 +288,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     // It runs again when the thread is first shown: a hidden message cannot take focus.
     const feed = scrollRef.current;
     const anchor = arrived ? document.getElementById(`message-${arrived}`) : null;
-    if (anchor && feed?.contains(anchor)) { anchor.scrollIntoView({ block: 'start' }); if (revealed) anchor.focus({ preventScroll: true }); return; }
+    if (anchor && feed?.contains(anchor)) { anchor.scrollIntoView({ block: 'start' }); if (revealed) focusArrivedMessage(anchor); return; }
     const column = feed?.firstElementChild as HTMLElement | null;
     if (!feed || !column) return;
     return openOnWholeMessages(feed, column, '.project-convo__message');

@@ -22,3 +22,25 @@ export async function pageBackTo<T extends { id: string }, P extends MessagePage
   }
   return { pages, cursor: next, found: false };
 }
+
+/**
+ * Focuses the message a link opened (#114), retrying for a moment while it cannot take focus yet: a closing
+ * dialog keeps the page behind it inert until its exit animation ends, and then hands focus back to whatever
+ * it was opened from. Stops once the message has focus, when it leaves the page, or when the person moves
+ * focus somewhere new (a field or another dialog) while it waits.
+ */
+export function focusArrivedMessage(element: HTMLElement, frames = 90) {
+  const before = document.activeElement;
+  let left = frames;
+  const attempt = () => {
+    if (!element.isConnected) return;
+    const active = document.activeElement as HTMLElement | null;
+    const moved = active && active !== before && active !== element && active !== document.body && active.isConnected
+      && (active.closest('[role="dialog"]') || active.matches('input, textarea, select, [contenteditable="true"]'));
+    if (moved) return;
+    element.focus({ preventScroll: true });
+    if (document.activeElement === element || --left <= 0) return;
+    requestAnimationFrame(attempt);
+  };
+  attempt();
+}

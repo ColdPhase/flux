@@ -9,6 +9,7 @@ import { useReferenceWork } from '../work/useReferenceWork';
 import { useProjectWorkSummary } from '../work/WorkReadContext';
 import { MessageWorkPages } from '../work/MessageWorkPages';
 import { useShellActions } from './shellContext';
+import { focusArrivedMessage } from './seekMessage';
 import { listConversationRoots, listTaskNotices } from './conversation-api';
 import { ContributionMark, OPENING_REVEAL_MS, SourceCitation, clock, day, openOnWholeMessages, when } from './messageParts';
 import { MessageFiles } from '../composer/Files';
@@ -321,7 +322,7 @@ export function ConversationStream({ project, meId, roots: stream, notices, auth
       anchorRef.current = place;
       if (openRef.current === revealRoot.conversationId) pinRef.current = place;
     }
-    if (arrived === revealRoot.message.id) element.focus({ preventScroll: true });
+    if (arrived === revealRoot.message.id) focusArrivedMessage(element);
     // Once per link: later refreshes of the same root never move the reader.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reveal?.key, !!revealRoot, revealed]);
