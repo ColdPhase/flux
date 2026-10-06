@@ -133,3 +133,11 @@ button.top__goal:hover { background: var(--bg-hover); color: var(--text); }
   .top--project .top__goal--edit { flex: 1 1 auto; max-width: none; }
   .top--project .top__goal--edit::before { display: none; }
 }
+
+/* The goal in Details on a phone (F-025 PA-5, #318): a full-width row, read and changed in place. */
+.ov-goal-ed { margin: 2px 0 6px; }
+.ov-goal-ed .top__goal { display: flex; width: 100%; max-width: none; min-height: 44px; margin: 0; padding: 0 8px; font-size: var(--fs-sm); }
+.ov-goal-ed .top__goal::before { display: none; }
+.ov-goal-ed .top__goal-t { min-width: 0; overflow-wrap: anywhere; }
+.ov-goal-ed .top__goal--edit { padding: 0; }
+.ov-goal-ed .top__goal-input { flex: 1; min-width: 0; }

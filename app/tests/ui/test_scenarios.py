@@ -212,6 +212,13 @@ class ScenarioJourney:
         if missing:
             self.skipTest(f"an earlier scenario step did not complete ({', '.join(missing)} missing)")
 
+    def open_people(self, page: Page) -> None:
+        """Who can see the project: its audience in the header, or on a phone Details ("…"; F-025 PA-5, #318)."""
+        if self.phone:
+            self.tap(page.locator("header.top").get_by_role("button", name="Details", exact=True))
+        else:
+            self.tap(page.locator(".top__audience"))
+
     def page(self, who: str | None) -> Page:
         options: dict = {"base_url": ORIGIN, "color_scheme": "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw", "accept_downloads": True}
         if self.phone:
@@ -432,7 +439,7 @@ class ScenarioJourney:
 
         # Marketplace is for all four: Jonas and Lee write, Mia reads.
         page.goto(f"/projects/{market}")
-        self.tap(page.locator(".top__audience"))
+        self.open_people(page)
         for key, read_only in (("jonas", False), ("mia", True), ("lee", False)):
             self.give_access(page, key, read_only)
         grants = {grant["principal"]["id"]: grant["role"] for grant in self.api("ada", "GET", f"/api/v1/projects/{market}/grants", status=200)}
@@ -1033,7 +1040,7 @@ class ScenarioJourney:
 
         # Mia may follow the lamp project read-only.
         page.goto(f"/projects/{lamp}")
-        self.tap(page.locator(".top__audience"))
+        self.open_people(page)
         self.give_access(page, "mia", read_only=True)
         self.assertEqual(self.api("mia", "GET", f"/api/v1/projects/{lamp}", status=200)["access"], "viewer")
         d3 = self.api("ada", "POST", f"/api/v1/projects/{lamp}/decisions", {"title": D3}, status=201)

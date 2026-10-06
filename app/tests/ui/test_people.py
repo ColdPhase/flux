@@ -522,12 +522,13 @@ class PeopleJourney(unittest.TestCase):
 
             page.goto(f"/projects/{self.garden}")
             # Open to the workspace: never "only you two", since whoever joins Riverside Makers reads it too.
-            expect(page.locator(".top__audience")).to_have_text(re.compile("^Kai and you"))
-            expect(page.locator(".top__audience")).not_to_contain_text("only")
-            page.locator(".top__audience").click()
+            # On a phone the audience is in the line under the title, and "…" opens Details (F-025 PA-5, #318).
+            expect(page.locator("header.top .top__sub-a")).to_have_text(re.compile("^Kai and you"))
+            expect(page.locator("header.top .top__sub-a")).not_to_contain_text("only")
+            page.locator("header.top").get_by_role("button", name="Details", exact=True).click()
             region = self.access_region(page)
-            expect(page.locator(".ov-audience")).not_to_contain_text("only")
-            expect(region.get_by_role("heading", name="Who can see this")).to_be_focused()
+            expect(page.locator(".ov-audience").first).not_to_contain_text("only")
+            expect(region.get_by_role("heading", name="Who can see this")).to_be_visible()
             region.get_by_role("button", name="Change access for Kai Tanaka").click()
             expect(region.get_by_role("group", name="Change access for Kai Tanaka")).to_be_visible()
             self.no_horizontal_scroll(page, PHONE["width"])

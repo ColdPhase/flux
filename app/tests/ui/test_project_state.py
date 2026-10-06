@@ -140,7 +140,8 @@ class ProjectStateJourney(unittest.TestCase):
                 expect(page.locator(".project-convo__read-only")).to_be_visible()
                 expect(page.locator("#project-composer")).to_have_count(0)
                 expect(page.get_by_role("button", name="Send message", exact=True)).to_have_count(0)
-                self.assert_text_is_unclipped(page.locator("header.top .top__audience > span").first)
+                # Beside the sheet the audience is a button; on a phone it is in the line under the title (#318).
+                self.assert_text_is_unclipped(page.locator("header.top .top__audience > span, header.top .top__sub-a > span").first)
                 self.assert_text_is_unclipped(page.locator(".composer__audience > span").first)
                 if width <= 640:
                     row = page.get_by_role("button", name=re.compile("open project details"))

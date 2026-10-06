@@ -603,8 +603,8 @@ class FriendlyHomeJourney(unittest.TestCase):
                 # The header is one block: back, the title with one line under it, and Details.
                 header = self.box(phone.locator("header.top"))
                 self.assertLessEqual(header["height"], 64, "the header does not wrap")
-                # The short audience stays whole; a long goal shortens first.
-                audience = phone.locator("header.top .top__audience > span:not(.ui-vh)")
+                # The short audience stays whole in the line under the title (#318: the goal is in Details).
+                audience = phone.locator("header.top .top__sub-a > span")
                 self.assertFalse(audience.evaluate("el => el.scrollWidth > el.clientWidth"), "the audience is not cut")
                 state = phone.locator(".state-row .ws-state-row")
                 expect(state).to_contain_text("Work in progress")
@@ -650,16 +650,28 @@ class FriendlyHomeJourney(unittest.TestCase):
                         for what in (".top__audience", "button.top__goal"):
                             self.assertGreaterEqual(header.locator(what).evaluate(self.HIT_HEIGHT), 43, f"{what} takes a 44 px tap")
 
-    def test_13b_on_a_phone_the_audience_and_goal_take_a_44_px_tap(self):
-        # The line under the title clips what overflows it; the hit areas that reach past it must not be cut.
+    def test_13b_on_a_phone_the_title_and_its_line_are_one_44_px_tap(self):
+        # F-025 PA-5 (#318): on a phone the line under the title is part of the title's tap, which opens the views;
+        # "…" opens Details, where who can see the project and its goal are. Neither cuts the other's hit area.
         for viewport in ({"width": 375, "height": 667}, PHONE):
             with self.subTest(width=viewport["width"]):
                 page = self.page(viewport, touch=True)
                 page.goto(f"/projects/{self.project['id']}")
                 header = page.locator("header.top")
-                expect(header.locator(".top__audience")).to_be_visible()
-                for what in (".top__audience", "button.top__goal"):
-                    self.assertGreaterEqual(header.locator(what).evaluate(self.HIT_HEIGHT), 43, f"{what} takes a 44 px tap")
+                switch = header.locator(".top__switch")
+                expect(switch).to_be_visible()
+                self.assertGreaterEqual(switch.evaluate(self.HIT_HEIGHT), 44, "the title takes a 44 px tap")
+                expect(header.locator(".top__audience")).to_have_count(0)
+                expect(header.locator(".top__goal")).to_have_count(0)
+                line = self.box(header.locator(".top__meta--sub"))
+                self.assertTrue(switch.evaluate("(el, p) => el.contains(document.elementFromPoint(p.x, p.y))",
+                    {"x": line["x"] + line["width"] / 2, "y": line["y"] + line["height"] / 2}), "a tap on the line under the title opens the views")
+                more = header.get_by_role("button", name="Details", exact=True)
+                self.assertGreaterEqual(min(self.box(more)["width"], self.box(more)["height"]), 44, "Details is a 44 px target")
+                more.tap()
+                sheet = page.get_by_role("dialog", name="Details")
+                expect(sheet.get_by_role("button", name=re.compile("change the goal|^Add a goal"))).to_be_visible()
+                expect(sheet.get_by_role("region", name="Who can see this")).to_be_visible()
 
 
     # ------------------------------------------------------------------ HIG-08/09/11 type, HIG-16 press states
@@ -756,8 +768,8 @@ class FriendlyHomeJourney(unittest.TestCase):
         page.goto("/settings")
         pressed(page.get_by_role("link", name=re.compile("^What reaches you")), "a Settings row")
         page.goto(f"/projects/{self.project['id']}")
-        audience = page.locator("header.top .top__audience")
-        pressed(audience, "the audience in the header")
+        audience = page.locator("header.top").get_by_role("button", name="Details", exact=True)
+        pressed(audience, "Details in the header")
         pressed(page.get_by_role("button", name=re.compile("^Cite something saved")), "Cite in the message box")
         # Negative control: with a press that looks like the hover, the same check sees no change.
         page.add_style_tag(content=":root, :root[data-theme] { --bg-press: var(--bg-hover) !important; }")

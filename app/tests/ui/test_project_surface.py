@@ -379,20 +379,21 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(page.get_by_role("list", name="Sketches in Gesture lamp")).to_be_visible()
         shot(page, "project-map-phone-390")
 
-        # A title too long for the phone truncates; its audience stays visible and opens the people.
+        # A title too long for the phone truncates; its audience stays visible.
         page.goto(f"/projects/{self.ids['long_project']}")
         # On a phone the title is the views menu (#318); its text truncates inside it.
         title = page.locator("header.top .top__switch-t")
         expect(title).to_have_text(LONG_NAME)
         self.assertTrue(title.evaluate("el => el.scrollWidth > el.clientWidth"), "the long title truncates")
-        audience = page.locator("header.top .top__audience")
+        # Under it, who can read the project (F-025 PA-5, #318); "…" opens Details with the people.
+        audience = page.locator("header.top .top__sub-a")
         expect(audience).to_be_visible()
         expect(audience).to_contain_text("Jonas and you · only you two")
         abox = audience.bounding_box()
         assert abox
         self.assertLessEqual(abox["x"] + abox["width"], PHONE["width"])
         shot(page, "project-long-title-phone-390")
-        audience.tap()
+        page.locator("header.top").get_by_role("button", name="Details", exact=True).tap()
         expect(page.get_by_role("dialog", name="Details").get_by_role("region", name="Who can see this")).to_contain_text("Jonas Berg")
 
 

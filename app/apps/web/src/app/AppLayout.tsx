@@ -581,8 +581,15 @@ function AppLayoutContent() {
                     onClick={() => setViewsOpen(true)}><span className="top__switch-t">{place.title}</span><Icon name="chevron-down" size={14} /><span className="ui-vh">, views</span></button></h1>
                 ) : <h1 title={place.title}>{place.title}</h1>}
               </div>
+              {phone && projectViews ? (
+                // On a phone the line under the title is part of the title's tap (F-025 PA-5): the current view, then
+                // who can read the project. "…" opens Details, which has who can see it and the goal (#318).
+                <div className="top__meta top__meta--sub">
+                  {currentView ? <span className="top__view">{projectViews.find((view) => view.id === currentView)?.label}</span> : null}
+                  <span className="top__sub-a"><Icon name={audienceOpen ? 'people' : 'lock'} size={12} /><span>{audience}</span></span>
+                </div>
+              ) : (
               <div className="top__meta">
-                {phone && currentView ? <span className="top__view">{projectViews?.find((view) => view.id === currentView)?.label}</span> : null}
                 {/* Who can read the project, then its current state; Details retains the full names. */}
                 <button type="button" className="top__audience" onClick={openAudience} aria-haspopup="dialog" title={audience}>
                   <Icon name={audienceOpen ? 'people' : 'lock'} size={12} /><span>{audience}</span><span className="ui-vh">, who can see this project</span>
@@ -591,6 +598,7 @@ function AppLayoutContent() {
                 {project ? <ProjectGoal project={project.project} accountId={me.user.id} /> : null}
                 {project && !phone ? <ProjectStateLine summary={workSummary.summary} phase={workSummary.phase} /> : null}
               </div>
+              )}
             </div>
           ) : (
           <div className="top__title">

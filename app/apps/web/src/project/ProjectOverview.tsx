@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Link, useMatches } from 'react-router';
 import type { Conversation, ConversationRootWindow, DecisionRowProjection, Material, NativeWorkRow, WorkRowProjection, ResultRowProjection } from '@flux/contracts';
-import { Icon, type IconName } from '../ui';
+import { Icon, MEDIA, useMediaQuery, type IconName } from '../ui';
 import { useShellData } from '../app/data';
 import { useShellActions, type DetailsView, type OverviewView } from '../app/shellContext';
 import { STATUS_LABEL, decisionLine, resultLine } from '../work/format';
@@ -11,6 +11,7 @@ import { useOverviewWork } from '../work/useOverviewWork';
 import { WorkPagination } from '../work/WorkPagination';
 import { audienceLine, useProjectShell } from './data';
 import { ProjectAccess } from '../people/ProjectAccess';
+import { ProjectGoal } from './ProjectGoal';
 import { docUrl } from '../docs/api';
 import { agentAuthorLabel, authorLabel } from '../docs/format';
 
@@ -101,6 +102,8 @@ export function ProjectOverview({ messageId, selection, focusPeople = null, onBa
   const { me } = useShellData();
   const read = useOverviewWork(me.user.id, shell?.project.id ?? null, open?.conversation?.id ?? null, messageId);
   const current = useProjectWorkSummary();
+  // On a phone the header has no goal (F-025 PA-5, #318): it is read and changed here.
+  const phone = useMediaQuery(MEDIA.phone);
   if (!shell) return null;
   const { project, people, sketches, docs } = shell;
   const conversation = open?.conversation ?? null;
@@ -185,7 +188,8 @@ export function ProjectOverview({ messageId, selection, focusPeople = null, onBa
       {message ? <p className="details__lead ov-quote">{message.body.length > 280 ? `${message.body.slice(0, 279)}…` : message.body}</p> : null}
       <p className="ov-audience"><Icon name={project.visibility === 'workspace' ? 'people' : 'lock'} size={13} />{audienceLine(people, me.user.id, project.visibility === 'workspace')}</p>
       {/* The goal in full: on a phone the header may shorten it (#272 FF-6, FF-10). */}
-      {project.goal && !messageMode ? <p className="ov-audience ov-goal"><Icon name="spark" size={13} /><span><span className="ui-vh">Goal: </span>{project.goal}</span></p> : null}
+      {phone && !messageMode ? <div className="ov-goal-ed"><ProjectGoal project={project} accountId={me.user.id} /></div>
+        : project.goal && !messageMode ? <p className="ov-audience ov-goal"><Icon name="spark" size={13} /><span><span className="ui-vh">Goal: </span>{project.goal}</span></p> : null}
 
       <Rows label={messageMode ? 'Made from this message' : 'Linked in this conversation'} rows={linked}
         controls={read.objects.phase !== 'idle' ? <>
