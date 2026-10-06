@@ -10,9 +10,8 @@ them.
 
 - **Observed.** Before the changes every measured request already answered at p95 ≤ 300 ms server
   time in every phase. The slowest was the inbox for a workspace member: 87–94 ms isolated (two
-  runs), p95 80 ms
-  cold and 67 ms warm, on every navigation (the unread dot). PostgreSQL spent about 50 ms of it
-  compiling JIT code for a count that ran in under 1 ms.
+  runs), p95 80 ms cold and 67 ms warm, on every navigation (the unread dot). PostgreSQL spent
+  about 50 ms of it compiling JIT code for a count that ran in under 1 ms.
 - **Observed.** Four other defects grew with the data or made reads write: the conversation list
   sent 208 statements for one page, the material list one statement per material, and the
   conversation stream and the Tasks view's comparison outcomes share-locked rows, so every read
