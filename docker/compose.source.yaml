@@ -5,6 +5,10 @@ x-postgres-image: &postgres-image postgres@sha256:77f585114c32fbca283dc835b0596f
 # operator sets FLUX_AGENT_RUNTIME (empty, the default, is off). No service here, or anywhere in Flux,
 # mounts a Docker or Podman socket: the slots are a fixed pool declared below, and every container
 # setting is static. See docs/operations/agent-runtime.md.
+# Internal runtime networks get no address on the host's bridge, so nothing in them reaches the host
+# itself either (Docker otherwise gives the bridge the network's gateway address).
+x-runtime-network-opts: &runtime-network-opts
+  com.docker.network.bridge.inhibit_ipv4: "true"
 x-runtime-logging: &runtime-logging
   driver: json-file
   options:
@@ -415,20 +419,27 @@ networks:
   # API, worker and runtime-manager only; no database.
   runtime-control:
     internal: true
+    driver_opts: *runtime-network-opts
   # API and runtime-egress only, for /mcp.
   runtime-api:
     internal: true
+    driver_opts: *runtime-network-opts
   # runtime-egress's way to the internet (vendor hosts it allows, checked to be public addresses).
   runtime-egress-out: {}
   # runtime-install and runtime-egress's installer proxy.
   runtime-install:
     internal: true
+    driver_opts: *runtime-network-opts
   # One internal network per slot, shared only with runtime-manager and runtime-egress.
   runtime-1:
     internal: true
+    driver_opts: *runtime-network-opts
   runtime-2:
     internal: true
+    driver_opts: *runtime-network-opts
   runtime-3:
     internal: true
+    driver_opts: *runtime-network-opts
   runtime-4:
     internal: true
+    driver_opts: *runtime-network-opts

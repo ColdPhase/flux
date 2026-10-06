@@ -66,6 +66,15 @@ class ContainerIsolationTest(unittest.TestCase):
                      "      - /run/user/1000/docker.sock:/sock", "  - /run/containerd/containerd.sock:/c.sock"]:
             self.assertIsNotNone(SOCKET.search(line), line)
 
+    def test_runtime_networks_are_internal_without_a_host_address(self) -> None:
+        text = (ROOT / "docker" / "compose.source.yaml").read_text(encoding="utf-8")
+        networks = text.split("\nnetworks:\n", 1)[1]
+        for name in ("runtime-control", "runtime-api", "runtime-install", "runtime-1", "runtime-2", "runtime-3", "runtime-4"):
+            self.assertRegex(networks, rf"\n  {name}:\n    internal: true\n    driver_opts: \*runtime-network-opts\n", name)
+        self.assertIn('x-runtime-network-opts: &runtime-network-opts\n  com.docker.network.bridge.inhibit_ipv4: "true"', text)
+        example = (ROOT / "docker" / "runtime-slot.example.yaml").read_text(encoding="utf-8")
+        self.assertIn('  runtime-5:\n    internal: true\n    driver_opts:\n      com.docker.network.bridge.inhibit_ipv4: "true"', example)
+
     def test_the_release_compose_file_keeps_the_runtime_off(self) -> None:
         text = (ROOT / "docker" / "compose.yaml").read_text(encoding="utf-8")
         self.assertNotIn("FLUX_AGENT_RUNTIME", text)

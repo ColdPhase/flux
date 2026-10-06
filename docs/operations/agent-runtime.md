@@ -71,7 +71,9 @@ time can change them:
 - only its own volume at `/data` and the read-only tools volume;
 - only its own `internal` network, shared with `runtime-manager` and `runtime-egress` and nothing else, so
   a slot cannot reach another slot, the database, the worker, the API outside `/mcp`, the cloud metadata
-  address or your LAN.
+  address or your LAN. Docker would give the host an address on every bridge, which would let a slot
+  reach services the host itself listens on; the runtime's internal networks set
+  `com.docker.network.bridge.inhibit_ipv4`, so the host has none there.
 
 Docker's local volumes have no size quota, so the supervisor refuses a run while an owner's binding
 directory exceeds 256 MiB. An idle slot runs only the supervisor; a CLI process exists only during a

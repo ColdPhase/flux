@@ -35,6 +35,12 @@ function raw(port, text, ms = 15000) {
   });
 }
 
+// Controls: the probe does see what a slot may reach.
+const egressOpen = await tcp('runtime-egress', 3128);
+record('control: runtime-egress is reachable', egressOpen === 'open', egressOpen);
+const egressName = await lookup('runtime-egress').then(() => 'resolved', (error) => error.code);
+record('control: runtime-egress resolves', egressName === 'resolved', egressName);
+
 for (const name of ['db', 'api', 'worker', 'migrate', 'runtime-2', 'runtime-5', 'runtime-install', 'mailpit']) {
   const outcome = await lookup(name).then(() => 'resolved', (error) => error.code);
   record(`name ${name} does not resolve`, outcome !== 'resolved', outcome);
@@ -50,7 +56,8 @@ const targets = [
   ['the extra slot', env.FLUX_PROBE_EXTRA_SLOT, 7700],
   ['the cloud metadata address', '169.254.169.254', 80],
   ['the internet without the proxy', '1.1.1.1', 443],
-  ['the Docker host gateway', env.FLUX_PROBE_GATEWAY, 2375],
+  ['the host through the bridge address', env.FLUX_PROBE_GATEWAY, 22],
+  ['the Docker API through the bridge address', env.FLUX_PROBE_GATEWAY, 2375],
 ];
 for (const [name, host, port] of targets) {
   if (!host) { record(`${name}: target known`, false, 'missing'); continue; }

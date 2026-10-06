@@ -78,6 +78,8 @@ compose --profile test build test
 live off
 
 step "2. Switch on (claude_code with the Commercial Terms date); the fifth slot gets its secret"
+# The live steps sign the same test owners in many times from one address.
+env_set FLUX_AUTH_RATE_LIMIT false
 env_set FLUX_AGENT_RUNTIME claude_code
 if ./flux up 2>"$work/up.err"; then fail "claude_code started without the Commercial Terms statement"; fi
 grep -q 'FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS' "$work/up.err" || fail "the refusal does not name FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS"
@@ -91,7 +93,21 @@ compose --profile runtime logs --no-color runtime-install | grep -q 'TEST ONLY: 
 
 step "3. docker inspect: limits and security options on every slot; no engine socket anywhere"
 # shellcheck disable=SC2046
-docker inspect $(docker ps -q --filter "label=com.docker.compose.project=$project") | python3 "$here/scripts/agent-runtime/inspect.py" "$project"
+docker inspect $(docker ps -q --filter "label=com.docker.compose.project=$project") > "$work/inspect.json"
+python3 "$here/scripts/agent-runtime/inspect.py" "$project" < "$work/inspect.json"
+# Negative controls: the same check fails on a writable root, an added capability or a socket mount.
+for mutation in 'c["HostConfig"]["ReadonlyRootfs"] = False' 'c["HostConfig"]["CapAdd"] = ["NET_ADMIN"]' \
+  'c["Mounts"].append({"Type": "bind", "Source": "/var/run/docker.sock", "Destination": "/var/run/docker.sock", "RW": True})' \
+  'c["HostConfig"]["PidsLimit"] = 0' 'c["NetworkSettings"]["Networks"]["x_default"] = {}'; do
+  if python3 -c "import json, sys
+cs = json.load(open(sys.argv[1]))
+c = next(c for c in cs if c['Config']['Labels'].get('com.docker.compose.service') == 'runtime-3')
+$mutation
+json.dump(cs, sys.stdout)" "$work/inspect.json" | python3 "$here/scripts/agent-runtime/inspect.py" "$project" >/dev/null; then
+    fail "inspect.py accepted a slot with: $mutation"
+  fi
+done
+printf 'inspect.py refuses each of the 5 mutated slots\n'
 # The fifth slot (the documented override block) has exactly the anchor's settings.
 compose --profile runtime config --format json | python3 -c '
 import json, sys
@@ -116,7 +132,8 @@ live pool-full F
 step "5. Escape attempts from inside a slot"
 slot_cid=$(cid "$a_slot")
 other=runtime-2; [ "$a_slot" != runtime-2 ] || other=runtime-3
-gateway=$(docker network inspect -f '{{ range .IPAM.Config }}{{ .Gateway }}{{ end }}' "${project}_$a_slot")
+# The address Docker would give the host on this bridge; slot networks inhibit it, so nothing answers.
+gateway=$(docker network inspect -f '{{ range .IPAM.Config }}{{ .Subnet }}{{ end }}' "${project}_$a_slot" | python3 -c 'import ipaddress,sys; print(next(ipaddress.ip_network(sys.stdin.read().strip()).hosts()))')
 docker exec -i -u 1000:1000 \
   -e FLUX_PROBE_DB="$(ip_on "$(compose ps -q db)" default)" \
   -e FLUX_PROBE_API_DEFAULT="$(ip_on "$(compose ps -q api)" default)" \
@@ -181,6 +198,8 @@ live expect-release C operator
 
 step "10. ./flux backup contains no slot volume"
 docker exec -u 1000:1000 "$slot_cid" sh -c "umask 077; printf '{\"login\":\"$marker\"}' > /data/$g_binding/claude/.credentials.json"
+# Control: the login marker is in the slot volume, so finding it in the archive would be a leak.
+docker exec "$slot_cid" grep -q "$marker" "/data/$g_binding/claude/.credentials.json" || fail "the control login was not written"
 ./flux backup --output "$work/backups"
 archive=$(ls "$work"/backups/flux-backup-*.tar)
 [ "$(tar -tf "$archive" | sort | tr '\n' ' ')" = "database.dump files.tar.gz flux.env manifest.json " ] || fail "unexpected backup members: $(tar -tf "$archive")"

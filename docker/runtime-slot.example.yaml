@@ -51,3 +51,5 @@ volumes:
 networks:
   runtime-5:
     internal: true
+    driver_opts:
+      com.docker.network.bridge.inhibit_ipv4: "true"
