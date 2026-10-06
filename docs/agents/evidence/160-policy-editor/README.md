@@ -1,8 +1,9 @@
 # Agent policy editor in the Agents view (#160, T160-b)
 
-Tested code: `e4b63298`, branch `claude-maurycy/160-policy-editor`, based on protected main
-`698313b3`. The commit that adds this evidence changes only this directory and the wording of the
-editor note in `docs/development/agent-connection.md`. Owner of the slice:
+Tested code: `97ba7e36`, branch `claude-maurycy/160-policy-editor`. It started from protected main
+`698313b3`, and current main `4e99d223` (#267, #268, #283, #285) was merged in at `1bee689a`
+without conflicts. The commit that adds this evidence changes only this directory and the editor
+note in `docs/development/agent-connection.md`. Owner of the slice:
 Zamojski5 (claude-maurycy), taking over from PelikanFix16
 ([claim](https://github.com/ColdPhase/flux/issues/160#issuecomment-6002521933)). Independent
 evaluation is still required. #160 stays open (see "What remains").
@@ -24,6 +25,17 @@ evaluation is still required. #160 stays open (see "What remains").
   - Everyone else who can read the project sees the parts read-only, with the managers named when
     there are three or fewer. An open view follows `project.agent_policy_published.v1` without a
     reload.
+  - On touch screens it follows the [Apple HIG checklist](../../../design/apple-hig-mobile.md):
+    - fields at 16 px (HIG-41; the shared #267 rule enforces this too);
+    - 44 px targets (HIG-14) with 12 px between the form's buttons (HIG-15);
+    - a press state on every button (HIG-16), and no hover fill left after a tap;
+    - `touch-action: manipulation` (HIG-17, from #267's shared rule);
+    - no text under 11 px, secondary lines at 13 px and the policy itself at 16 px (HIG-08, HIG-09);
+    - labelled fields, with the over-length error under its field and linked by
+      `aria-describedby` (HIG-45, HIG-47);
+    - a busy Publish button that ignores a second tap (HIG-59).
+  - While the editor is open, Publish is the one enabled filled button (HIG-56). The task
+    composer's Send below it stays disabled until its own draft has text.
 - **API.** None. The editor uses #214's `GET`/`PUT /api/v1/projects/:id/agent-policy` and
   bootstrap's `trusted.approvedPolicy` unchanged, so no amendment was needed.
   - The brief's "required capabilities" and "allowed workflows/modules" are not project-policy
@@ -46,10 +58,18 @@ evaluation is still required. #160 stays open (see "What remains").
     - two managers edit the same revision: the second gets `VERSION_CONFLICT` with
       `currentVersion` and the newer policy as `current`. The agent is never told the refused edit.
       Publishing from the shown revision then succeeds.
-  - `app/tests/ui/test_project_policy.py` has 7 tests at desktop 1440 and phone 390 (coarse
-    pointer). The phone checks: the context's pointer is coarse; the fields use 16 px text; Show,
-    Hide, Edit, Publish and Cancel are at least 44 px tall; no sideways scroll. Every publish is
-    checked against the server's saved revision.
+  - `app/tests/ui/test_project_policy.py` has 8 tests at desktop 1440 and phone 390 (coarse
+    pointer, no hover). Every publish is checked against the server's saved revision. The phone
+    checks:
+    - the fields use 16 px text;
+    - Show, Hide, Edit, Publish and Cancel are at least 44 px tall, with 12 px between Publish and
+      Cancel;
+    - there is no text under 11 px, the revision line is 13 px and the policy is 16 px;
+    - forcing `:active` through the DevTools protocol changes the look of Show policy, Cancel and
+      Publish (the HIG checklist's own check);
+    - touch-action is `manipulation`;
+    - the tapped Hide has no fill;
+    - there is no sideways scroll.
 - **Docs.** `docs/development/agent-connection.md`, "Approved project policy": an "Editor (T160-b)"
   item.
 
@@ -57,19 +77,19 @@ evaluation is still required. #160 stays open (see "What remains").
 
 | Run | Code | Result |
 | --- | --- | --- |
-| API, `tests/app/agent-policy.test.ts` (image build ran build, typecheck and lint) | `1899e6f4`; server, core and this test file unchanged since | 9/9 pass |
-| UI, `check_ui.sh test_project_policy test_agents_view test_grant_controls test_shared_composer test_typing test_app_shell` | `8f0ba3f3`; application code unchanged since | 72/72 OK (6 + 17 + 4 + 14 + 11 + 20) |
-| UI, `check_ui.sh test_project_policy` (these screenshots) | `e4b63298` | 7/7 OK |
-| `./scripts/check_application.sh` (build, typecheck, lint, app tests and every browser/e2e phase) | `e4b63298` | exit 0: 943/943 application tests, then 13 later phases with 20/20 tests; 0 failures |
+| UI, `check_ui.sh test_project_policy test_agents_view test_grant_controls test_shared_composer test_typing test_app_shell test_phone_shell` (image build ran build, typecheck and lint; these screenshots) | `97ba7e36` | 86/86 OK (8 + 17 + 4 + 14 + 11 + 20 + 12) |
+| API, `tests/app/agent-policy.test.ts` | `1899e6f4`; the policy's server, core and DB code and this test file are unchanged since (main brought changes to other agent-connection files) | 9/9 pass; the same 9 run again in the full check below |
+| `./scripts/check_application.sh` (build, typecheck, lint, app tests and every browser/e2e phase) | `97ba7e36` | exit 0: 969/969 application tests (both policy suites included), then 13 later phases with 20/20 tests; 0 failures |
+| Before the merge: the same UI modules without `test_phone_shell`, and the full check | `8f0ba3f3` and `e4b63298` | 72/72 OK; full check exit 0 (943/943, then 20/20) |
 
 ## Negative controls
 
 Each patch in [negative-controls/](negative-controls/) breaks one or more behaviors in a scratch
-copy of `e4b63298`. The tests named below then fail, and the others still pass.
+copy of `97ba7e36`. The tests named below then fail, and the others still pass.
 
 | Patch | Behavior removed | Failing tests (observed) |
 | --- | --- | --- |
-| `negU.patch` | (a) the editor is offered regardless of project access; (b) the base revision is refetched right before publishing, a silent overwrite; (c) no client check of the length before sending; (d) the fields keep 14 px text on a coarse pointer | `test_01b` (a: "Write policy" offered to a contributor), `test_02` (c: the alert reads the server's generic length message, not "Shorten Priorities to publish"), `test_03` (b: no conflict, Hubert's publish replaced Ola's), `test_04` (d: 14 px, not 16), `test_05` (a: an editor instead of "Only Hubert Nowak or Ola Kowalska can change it."). 5 fail; `test_01` and `test_06` pass |
+| `negU.patch` | (a) the editor is offered regardless of project access; (b) the base revision is refetched right before publishing, a silent overwrite; (c) no client check of the length before sending; (d) the policy text keeps its 14 px desktop size on a touch screen; (e) buttons have no press state of their own | `test_01b` (a: "Write policy" offered to a contributor), `test_02` (c: the alert reads the server's generic length message, not "Shorten Priorities to publish"), `test_03` (b: no conflict, Hubert's publish replaced Ola's), `test_04` (d: "14 not greater than or equal to 16: the policy reads at 16 px"), `test_04b` (e: the look is the same pressed and not pressed), `test_05` (a: an editor instead of "Only Hubert Nowak or Ola Kowalska can change it."). 6 fail; `test_01` and `test_06` pass. Before the merge, (d) made the fields 14 px; #267's shared 16 px rule now covers fields, so (d) targets the policy text instead. |
 | `negA.patch` | (1) bootstrap names revision 1 instead of the newest; (2) any project reader may publish; (3) a stale `expectedRevision` is ignored, so the last write wins | Editor suite: test 1 (1: the next bootstrap still names revision 1, not 2), test 2 (2: a contributor's publish returned 201, not 403), test 4 (3: the stale publish returned 201, not 409); the invalid-policy test passes. #214's first and fifth tests also fail, as they check the same rules. 5 fail, 4 pass |
 
 ## Independent visual review
@@ -86,7 +106,8 @@ was "acceptable with changes", with nothing blocking. Changed in `8f0ba3f3`:
 Not changed:
 
 - The policy is already folded by default; the reader screenshots were taken after "Show policy".
-- The grey "Hide policy" is the shared button's hover state, left by the click.
+- The grey "Hide policy" was the shared button's hover state, left by the click. After the merge,
+  touch screens no longer keep a hover fill (`test_04b`).
 - The fields use the column width, like the task composer below them.
 
 ## Screenshots

@@ -1,8 +1,8 @@
 diff --git a/app/apps/web/src/agents/ProjectAgents.tsx b/app/apps/web/src/agents/ProjectAgents.tsx
-index dd04dc1..193ed48 100644
+index 34df1c1..1a1b229 100644
 --- a/app/apps/web/src/agents/ProjectAgents.tsx
 +++ b/app/apps/web/src/agents/ProjectAgents.tsx
-@@ -396 +396 @@ export function ProjectAgents() {
+@@ -399 +399 @@ export function ProjectAgents() {
 -      <ProjectPolicy key={projectId} projectId={projectId} meId={me.user.id} canEdit={shell?.project.access === 'manager'}
 +      <ProjectPolicy key={projectId} projectId={projectId} meId={me.user.id} canEdit={true}
 diff --git a/app/apps/web/src/agents/ProjectPolicy.tsx b/app/apps/web/src/agents/ProjectPolicy.tsx
@@ -17,9 +17,10 @@ index 6abfb47..8f4a83b 100644
 +    const fresh = (await getAgentPolicy(projectId)).policy;
 +    const command: PublishAgentProjectPolicyCommand = { ...draft, expectedRevision: fresh?.revision ?? 0 };
 diff --git a/app/apps/web/src/agents/policy.css b/app/apps/web/src/agents/policy.css
-index 2b18529..4626286 100644
+index eb9351f..797259d 100644
 --- a/app/apps/web/src/agents/policy.css
 +++ b/app/apps/web/src/agents/policy.css
-@@ -70 +70 @@
--  .agents-policy__field textarea { font-size: 16px; }
-+  .agents-policy__field textarea { font-size: var(--fs-base); }
+@@ -69 +68,0 @@
+-.agents-policy .ui-btn:not(.ui-btn--primary):active:not(:disabled):not([aria-disabled="true"]) { background: var(--bg-active); }
+@@ -77 +75,0 @@
+-  .agents-policy__section dd { font-size: 16px; }

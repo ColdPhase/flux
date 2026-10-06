@@ -464,6 +464,8 @@ anything; only this publish writes it, never message, PR, wiki or tool text.
   changed, each of which can be taken over; publishing again replaces that revision knowingly.
   Everyone else who can read the project sees the parts read-only. The view refetches on
   `project.agent_policy_published.v1`, so an open view, and an open editor, see a new revision.
+  On touch screens it follows the [Apple HIG checklist](../design/apple-hig-mobile.md): 16 px fields,
+  44 px targets, press states, and no text under 11 px.
   It uses the existing API; nothing was added to it. Tests: `agent-policy.test.ts` (a publish
   reaches the same session's next bootstrap; refusals and invalid policies change nothing; a
   conflict carries the newer policy) and `tests/ui/test_project_policy.py` (1440 and 390 px).
