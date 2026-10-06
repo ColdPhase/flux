@@ -11,6 +11,7 @@ import {
   encodeOpen, encodeOutput, encodeResize, openConsoleUpgrade, type ConsoleControl, type SupervisorResult,
 } from '@flux/runtime-protocol';
 import { createManagerServer } from '../../apps/runtime/src/manager/server.js';
+import { ConsoleTickets, parseClientMessage } from '../../apps/server/src/agent-runtime/console.js';
 import type { ConsoleClock } from '../../apps/runtime/src/supervisor/pty.js';
 import { CLAUDE_LOGIN_HELP_OPTIONS, LOGIN_TEMPLATES, unofferedLoginOptions } from '../../apps/runtime/src/supervisor/templates.js';
 import { maskAccount, statusFacts } from '../../apps/runtime/src/supervisor/status.js';
@@ -464,5 +465,58 @@ Options:
     for (const method of methods) assert.ok(LOGIN_TEMPLATES.claude_code[method!], `${method} has a command`);
     // Control: a new method in a later CLI fails the check.
     assert.deepEqual(unofferedLoginOptions(`${help}  --device-code    Sign in with a device code\n`), ['--device-code']);
+  });
+});
+
+describe('the API\'s console tickets and browser messages', () => {
+  test('a ticket works once, for its owner and session, for one minute', () => {
+    let now = Date.parse('2026-10-06T12:00:00Z');
+    const tickets = new ConsoleTickets('a'.repeat(48), () => now);
+    const issue = () => tickets.issue({ ownerUserId: 'ada', client: 'claude_code', method: 'sso' }, 'session-1').ticket;
+    assert.deepEqual(tickets.redeem(issue(), 'ada', 'session-1'), { ownerUserId: 'ada', client: 'claude_code', method: 'sso' }, 'control');
+    const ticket = issue();
+    assert.equal(tickets.redeem(ticket, 'bo', 'session-1'), null, 'another member');
+    assert.equal(tickets.redeem(ticket, 'ada', 'session-2'), null, 'another session of the owner');
+    assert.ok(tickets.redeem(ticket, 'ada', 'session-1'));
+    assert.equal(tickets.redeem(ticket, 'ada', 'session-1'), null, 'used once');
+    const late = issue();
+    now += 60_001;
+    assert.equal(tickets.redeem(late, 'ada', 'session-1'), null, 'expired after a minute');
+    const [body, mac] = issue().split('.');
+    const forged = Buffer.from(JSON.stringify({ ...JSON.parse(Buffer.from(body!, 'base64url').toString()), m: 'console' })).toString('base64url');
+    assert.equal(tickets.redeem(`${forged}.${mac}`, 'ada', 'session-1'), null, 'a changed method breaks the signature');
+    assert.equal(new ConsoleTickets('b'.repeat(48), () => now).redeem(issue(), 'ada', 'session-1'), null, 'another server secret');
+    for (const junk of [undefined, 7, '', 'x', 'a.b.c', 'x'.repeat(600)]) assert.equal(tickets.redeem(junk, 'ada', 'session-1'), null);
+  });
+
+  test('browser messages are exactly the closed shapes; nothing carries a credential', () => {
+    assert.deepEqual(parseClientMessage('{"t":"attach","ticket":"x","cols":80,"rows":24}'), { t: 'attach', ticket: 'x', cols: 80, rows: 24 });
+    assert.deepEqual(parseClientMessage('{"t":"in","d":"fake-code-1\\r"}'), { t: 'in', d: 'fake-code-1\r' });
+    assert.deepEqual(parseClientMessage('{"t":"size","cols":40,"rows":30}'), { t: 'size', cols: 40, rows: 30 });
+    for (const bad of ['{"t":"attach","ticket":"x","cols":80,"rows":24,"setupToken":"sk-ant-oat01"}', '{"t":"in","d":"x","apiKey":"sk"}',
+      '{"t":"login","method":"sso"}', '{"t":"exec","command":"sh"}', `{"t":"in","d":"${'x'.repeat(257)}"}`, '{"t":"in","d":""}', '{"t":"size","cols":10,"rows":30}',
+      '[]', 'null', 'not json']) {
+      assert.equal(parseClientMessage(bad), null, bad);
+    }
+  });
+
+  test('no field for a setup-token, auth.json, session or API key exists in the runtime\'s API contract or its pages', async () => {
+    const FORBIDDEN = /setup.?token|auth\.json|api.?key|session.?(key|token)|oauth.?token|access.?token|refresh.?token|credential|password/i;
+    // The request bodies and messages the browser may send, as the contract and the server define them.
+    const contract = await readFile('packages/contracts/src/agent-runtime.ts', 'utf8');
+    const requestTypes = [...contract.matchAll(/export (?:interface|type) (AgentRuntime(?:Console(?:Request|ClientMessage)|ClientRequest))\b[^{]*\{([^}]*)\}/g)];
+    assert.ok(requestTypes.length >= 2, 'the request types were found');
+    for (const [, name, body] of requestTypes) assert.doesNotMatch(body!, FORBIDDEN, name);
+    // Every field a person can type into on the runtime's pages: the sign-in method (radio) and the code
+    // for the CLI's own prompt. Nothing else.
+    const pages = await Promise.all(['RuntimeSection.tsx', 'ClaudeCodeSignIn.tsx', 'SignInConsole.tsx'].map((file) => readFile(`apps/web/src/agent-runtime/${file}`, 'utf8')));
+    const fields = pages.flatMap((page) => [...page.matchAll(/<(input|textarea|select)\b[^>]*>/g)].map((match) => match[0]));
+    assert.deepEqual(fields.map((field) => /type="radio"/.test(field) ? 'radio' : /id="rt-code"/.test(field) ? 'code' : field), ['radio', 'code']);
+    for (const field of fields) assert.doesNotMatch(field, FORBIDDEN);
+    const labels = pages.flatMap((page) => [...page.matchAll(/<label\b[^>]*>([^<]*)/g)].map((match) => match[1]!.trim()).filter(Boolean));
+    assert.ok(labels.includes('Paste the code from the sign-in page'), JSON.stringify(labels));
+    for (const label of labels) assert.doesNotMatch(label, FORBIDDEN);
+    // Control: the matcher catches such a field.
+    for (const name of ['setupToken', 'setup_token', 'CLAUDE_CODE_OAUTH_TOKEN', 'auth.json', 'apiKey', 'sessionKey', 'Paste your API key']) assert.match(name, FORBIDDEN);
   });
 });

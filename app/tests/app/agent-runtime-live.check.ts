@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
-import { AGENT_RUNTIME_BINDING_PATH, AGENT_RUNTIME_PATH, backgroundComputeConnectionsPath, type AgentRuntimeStatus } from '@flux/contracts';
+import WebSocket from 'ws';
+import {
+  AGENT_RUNTIME_BINDING_PATH, AGENT_RUNTIME_CONSOLE_PATH, AGENT_RUNTIME_PATH, AGENT_RUNTIME_SIGN_OUT_PATH, backgroundComputeConnectionsPath,
+  type AgentRuntimeConsoleServerMessage, type AgentRuntimeStatus,
+} from '@flux/contracts';
 import { createDatabase } from '@flux/db';
-import { signIn } from './support/http.js';
+import { apiUrl, publicOrigin, signIn } from './support/http.js';
 import { expectStatus, password, person, type Person } from './support/people.js';
 
 // F-022 T3 (#278): the API side of scripts/check_agent_runtime.sh, against a stack whose runtime profile
@@ -64,7 +68,115 @@ async function bind(label: string) {
   return { someone, binding };
 }
 
+// --- T4 (#279): the sign-in console through the API container, runtime-manager and a real slot.
+const PROMPT = 'Paste code here if prompted > ';
+type ConsoleRun = { messages: AgentRuntimeConsoleServerMessage[]; output: string; raw: string; code: number };
+
+async function ticket(someone: Person, method: string) {
+  return (expectStatus(await someone.browser.request('POST', AGENT_RUNTIME_CONSOLE_PATH, { body: { client: 'claude_code', method } }), 200) as { ticket: string }).ticket;
+}
+
+/** One console: attach with `ticketValue`, then type `input` at the prompt (or leave at the prompt). */
+function runConsole(someone: Person, ticketValue: string, input: string | null): Promise<ConsoleRun> {
+  const socket = new WebSocket(`${apiUrl.replace(/^http/, 'ws')}${AGENT_RUNTIME_CONSOLE_PATH}`, { headers: { origin: publicOrigin, cookie: someone.browser.cookieHeader() } });
+  const run: ConsoleRun = { messages: [], output: '', raw: '', code: 0 };
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { socket.terminate(); reject(new Error(`console timed out: ${JSON.stringify(run.messages)}`)); }, 30_000);
+    socket.on('open', () => socket.send(JSON.stringify({ t: 'attach', ticket: ticketValue, cols: 60, rows: 20 })));
+    let typed = false;
+    socket.on('message', (data, binary) => {
+      run.raw += data.toString();
+      if (!binary) { run.messages.push(JSON.parse(data.toString()) as AgentRuntimeConsoleServerMessage); return; }
+      run.output += data.toString();
+      if (!typed && run.output.includes(PROMPT)) {
+        typed = true;
+        if (input === null) socket.close(1000, 'left');
+        else socket.send(JSON.stringify({ t: 'in', d: `${input}\r` }));
+      }
+    });
+    socket.on('close', (code) => { clearTimeout(timer); run.code = code; resolve(run); });
+    socket.on('error', (error) => { clearTimeout(timer); reject(error); });
+  });
+}
+
+/** Every table of the database, searched for each value (the seeded-secret scan). */
+async function databaseHolds(values: string[]): Promise<string[]> {
+  const { rows: tables } = await pool.query<{ schema: string; name: string }>(`SELECT table_schema AS schema, table_name AS name FROM information_schema.tables
+    WHERE table_type = 'BASE TABLE' AND table_schema NOT IN ('pg_catalog', 'information_schema')`);
+  const found: string[] = [];
+  for (const { schema, name } of tables) {
+    for (const value of values) {
+      const { rows } = await pool.query<{ found: boolean }>(`SELECT EXISTS (SELECT 1 FROM "${schema}"."${name}" x WHERE x::text LIKE $1) AS found`, [`%${value}%`]);
+      if (rows[0]!.found) found.push(`${schema}.${name}`);
+    }
+  }
+  return found;
+}
+
 const steps: Record<string, (...args: string[]) => Promise<void>> = {
+  /** The owner's slot for the console, bound by asking for a ticket. */
+  async 'console-bind'(label) {
+    const someone = await owner(label!);
+    await ticket(someone, 'claude_account');
+    const binding = (await bindingOf(someone.id))!;
+    console.log(`SLOT=${binding.slot}`);
+    console.log(`BINDING=${binding.id}`);
+  },
+  /** A whole sign-in: the CLI's URL, the pasted code, then signed in from its status only; nothing secret anywhere. */
+  async 'console-sign-in'(label, method, code, secret) {
+    const someone = await owner(label!);
+    const run = await runConsole(someone, await ticket(someone, method!), code!);
+    const host = method === 'console' ? 'https://platform.claude.com/oauth/authorize?' : 'https://claude.com/cai/oauth/authorize?';
+    assert.ok(run.output.includes(`\u001b]8;;${host}`), 'the CLI\'s URL is shown');
+    const done = run.messages.at(-1);
+    assert.ok(done?.t === 'done' && done.signedIn, JSON.stringify(run.messages));
+    assert.equal(run.code, 1000);
+    const answer = await status(someone);
+    assert.equal(answer.connections.claude_code?.state, 'signed_in');
+    const seen = `${run.raw}${JSON.stringify(answer)}`;
+    assert.ok(!seen.includes(secret!), 'a frame or an API answer holds the login');
+    assert.ok(run.raw.includes(code!), 'control: the code the owner typed is echoed by the CLI');
+    assert.deepEqual(await databaseHolds([secret!, code!]), [], 'the database holds the login or the code');
+    console.log(`SIGNED_IN=${done.signedIn}`);
+    console.log(`ACCOUNT=${answer.connections.claude_code?.accountLabel ?? ''}`);
+    console.log(`PAYER=${answer.connections.claude_code?.payer ?? ''}`);
+  },
+  async 'console-sign-out'(label) {
+    const someone = await owner(label!);
+    const answer = expectStatus(await someone.browser.request('POST', AGENT_RUNTIME_SIGN_OUT_PATH, { body: { client: 'claude_code' } }), 200) as AgentRuntimeStatus;
+    assert.equal(answer.connections.claude_code?.state, 'signed_out');
+    console.log(`SIGN_OUT_FAILED=${answer.connections.claude_code?.signOut?.failed}`);
+  },
+  /** Another member's session cannot attach to an owner's console. */
+  async 'console-cross'(ownerLabel, otherLabel) {
+    const someone = await owner(ownerLabel!);
+    const other = await owner(otherLabel!);
+    const run = await runConsole(other, await ticket(someone, 'sso'), null);
+    assert.equal(run.code, 4403);
+    assert.deepEqual(run.messages, [{ t: 'error', code: 'refused' }]);
+    assert.equal(run.output, '');
+    console.log('CROSS=refused');
+  },
+  /** Leaving at the prompt ends the console; the next one starts at once (the slot's lane is free). */
+  async 'console-leave'(label) {
+    const someone = await owner(label!);
+    const left = await runConsole(someone, await ticket(someone, 'claude_account'), null);
+    assert.ok(left.output.includes(PROMPT));
+    await sleep(1000);
+    const next = await runConsole(someone, await ticket(someone, 'console'), null);
+    assert.ok(next.output.includes(PROMPT), JSON.stringify(next.messages));
+    await sleep(1000);
+    console.log('LEFT=yes');
+  },
+  /** No request accepts a setup-token, auth.json, session or API key. */
+  async 'console-no-fields'(label) {
+    const someone = await owner(label!);
+    for (const extra of [{ setupToken: 'sk-ant-oat01-x' }, { apiKey: 'sk-ant-api03-x' }, { authJson: '{}' }, { sessionKey: 'x' }]) {
+      expectStatus(await someone.browser.request('POST', AGENT_RUNTIME_CONSOLE_PATH, { body: { client: 'claude_code', method: 'sso', ...extra } }), 400);
+      expectStatus(await someone.browser.request('POST', AGENT_RUNTIME_SIGN_OUT_PATH, { body: { client: 'claude_code', ...extra } }), 400);
+    }
+    console.log('FIELDS=refused');
+  },
   /** Switch off: the API reports the feature disabled. */
   async off() {
     const someone = await owner(`off-${randomUUID().slice(0, 6)}`);
