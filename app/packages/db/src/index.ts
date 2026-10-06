@@ -20,9 +20,23 @@ export const PG_BOSS_SCHEMA_VERSION = 43;
 // waits on anything outside the database inside a transaction, so only an abandoned client hits it.
 export const IDLE_IN_TRANSACTION_TIMEOUT_MS = 60_000;
 
-export function createDatabase(connectionString: string) {
+/**
+ * How long a pool waits to hand out a connection, whether queued behind busy clients or opening a new
+ * one. 1.5 s by default; `FLUX_DB_CONNECT_TIMEOUT_MS` sets it. The Docker test stack sets 10 s for new
+ * connections and short waits while other stacks share the host (#271, docs/development/containers.md).
+ */
+export const DEFAULT_DB_CONNECT_TIMEOUT_MS = 1500;
+export function databaseConnectTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.FLUX_DB_CONNECT_TIMEOUT_MS;
+  if (raw === undefined || raw === '') return DEFAULT_DB_CONNECT_TIMEOUT_MS;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 100 || value > 60_000) throw new Error('FLUX_DB_CONNECT_TIMEOUT_MS must be an integer from 100 to 60000');
+  return value;
+}
+
+export function createDatabase(connectionString: string, connectTimeoutMs = databaseConnectTimeoutMs()) {
   // A client whose BEGIN or ROLLBACK fails is destroyed by the drizzle-orm patch in app/patches (#234).
-  const pool = new pg.Pool({ connectionString, connectionTimeoutMillis: 1500, query_timeout: 2000,
+  const pool = new pg.Pool({ connectionString, connectionTimeoutMillis: connectTimeoutMs, query_timeout: 2000,
     options: `-c idle_in_transaction_session_timeout=${IDLE_IN_TRANSACTION_TIMEOUT_MS}` });
   const db = drizzle({ client: pool, schema });
   return { pool, db };

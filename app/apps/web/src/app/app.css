@@ -20,6 +20,10 @@
 .auth__lead { margin-top: 8px; font-size: var(--fs-base); color: var(--text-3); line-height: 1.55; }
 .auth__form { display: flex; flex-direction: column; gap: 18px; }
 .auth__form .ui-btn--primary { margin-top: 6px; }
+.auth__sso { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
+.auth__sso-error { margin: 0; font-size: var(--fs-sm); color: var(--danger, var(--text)); }
+.auth__or { display: flex; align-items: center; gap: 12px; margin: 8px 0 0; font-size: var(--fs-sm); color: var(--text-3); }
+.auth__or::before, .auth__or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .auth__alt { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--line); font-size: var(--fs-md); color: var(--text-3); }
 .auth__error, .auth__notice {
   display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: var(--r-lg);

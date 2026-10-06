@@ -84,6 +84,7 @@
 .wiki-bar .ui-icon-btn:hover, .wiki-bar .ui-icon-btn[aria-pressed="true"] { color: var(--text); }
 .wiki-bar .ui-icon-btn[aria-pressed="true"] { background: var(--bg-active); }
 .wiki-bar__primary { margin-left: 4px; padding: 0 12px; font-size: 11.5px; }
+@media (pointer: coarse) { .wiki-bar__primary { min-width: 44px; justify-content: center; } }
 .wiki-bar__back { gap: 4px; padding: 0 8px; font-size: var(--fs-sm); color: var(--text-2); }
 
 /* Share and Download: a small card hanging from the bar's right end (the bar is its containing
@@ -130,6 +131,9 @@
 .doc-empty { padding: 12px 0 24px; }
 
 .doc-prose { font-size: var(--fs-base); line-height: 1.85; color: var(--text); overflow-wrap: anywhere; }
+/* A readable measure inside the 820px column (#151): running text keeps at most about 90
+   characters a line; tables, code and images keep the column's width. */
+.doc-prose > :is(p, ul, ol, blockquote, dl) { max-width: 66ch; }
 .doc-prose > * { margin-top: 0; margin-bottom: 0; }
 .doc-prose > * + * { margin-top: 13px; }
 .doc-prose h1, .doc-prose h2, .doc-prose h3, .doc-prose h4, .doc-prose h5, .doc-prose h6 { line-height: 1.5; font-weight: 600; letter-spacing: -0.025em; }

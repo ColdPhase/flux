@@ -39,6 +39,34 @@ BUTTONS_TAKE_NO_FOCUS = """document.addEventListener('mousedown', (event) => {
   event.preventDefault();
   if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
 });"""
+# A slow network for this sketch's reads only (#271). Each read is answered by the server at once, with
+# its state at that moment, and the answer reaches the page `window.__fluxSlowReads` ms later; writes are
+# not delayed. `__fluxReadsAsked` / `__fluxLastAnswered` number the reads sent and the newest one answered.
+# With `__fluxHoldNextSave`, the next new-thought request waits until a read sent after it began has been
+# answered: the save is out while that read is asked and answered, then commits.
+SLOW_SKETCH_READS = """(() => {
+  const send = window.fetch.bind(window);
+  window.__fluxReadsAsked = 0;
+  window.__fluxLastAnswered = 0;
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  window.fetch = async (input, init) => {
+    const method = String((init && init.method) || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+    const path = new URL(input instanceof Request ? input.url : String(input), location.href).pathname;
+    if (method === 'POST' && /^\\/api\\/v1\\/sketches\\/[^/]+\\/thoughts$/.test(path) && window.__fluxHoldNextSave) {
+      window.__fluxHoldNextSave = false;
+      const after = window.__fluxReadsAsked;
+      window.__fluxSaveHeld = true;
+      while (window.__fluxLastAnswered <= after) await wait(20);
+      window.__fluxHeldSaveReleasedByRead = true;
+    }
+    if (method !== 'GET' || !/^\\/api\\/v1\\/sketches\\/[^/]+$/.test(path)) return send(input, init);
+    const ticket = ++window.__fluxReadsAsked;
+    const response = await send(input, init);
+    window.__fluxLastAnswered = Math.max(window.__fluxLastAnswered, ticket);
+    if (window.__fluxSlowReads) await wait(window.__fluxSlowReads);
+    return response;
+  };
+})();"""
 STORED_DRAFT_TEXTS = "Object.keys(sessionStorage).filter(k => k.startsWith('flux:thought-draft:')).map(k => JSON.parse(sessionStorage.getItem(k)).text)"
 EARLIER = "Earlier persisted draft"
 LATEST = "Latest recoverable draft after quota exhaustion"
@@ -725,3 +753,51 @@ class ThoughtDraftJourney(unittest.TestCase):
         self.assertEqual(self.stored_drafts(page), [])
         self.assertEqual((self.stored(page), self.project_work(page)), (before, work))
         self.assertEqual(writes, [])
+
+    def assert_stays_listed(self, page, text, message):
+        """The thought's row stays for 4 s, past the moment a slow (3 s) earlier read reaches the page."""
+        row = page.locator(".sk-outline-list .sk-li-t", has_text=text)
+        expect(row).to_have_count(1)
+        for _ in range(40):
+            self.assertEqual(row.count(), 1, message)
+            page.wait_for_timeout(100)
+        self.assertTrue(any(t["text"] == text for t in self.stored(page)["thoughts"]))
+
+    def test_19_a_slow_earlier_read_never_hides_a_thought_saved_after_it(self):
+        page = self.owner
+        page.add_init_script(SLOW_SKETCH_READS)
+        self.open(page)
+        sketch_read = lambda request: request.method == "GET" and request.url.endswith(f"/api/v1/sketches/{self.sketch}")
+        page.evaluate("() => { window.__fluxSlowReads = 3000; }")
+        # The first save's own event makes the page read the sketch again; that read is slow.
+        with page.expect_request(sketch_read):
+            field = self.capture(page)
+            field.fill("First capture, then a slow read")
+            field.press("Enter")
+            expect(page.locator(".sk-status")).to_contain_text("Saved")
+        # The server has answered that read, without the next thought, before the next save begins.
+        page.wait_for_function("() => window.__fluxLastAnswered >= window.__fluxReadsAsked")
+        field = self.capture(page)
+        field.fill("Second capture, saved during the slow read")
+        field.press("Enter")
+        # The save is confirmed while the earlier answer is still on its way; when it arrives, the
+        # confirmed thought stays in the list.
+        self.assert_stays_listed(page, "Second capture, saved during the slow read",
+                                 "a read sent before a confirmed save never removes the saved thought")
+
+    def test_20_a_read_answered_while_a_save_is_out_never_hides_that_save(self):
+        page = self.owner
+        page.add_init_script(SLOW_SKETCH_READS)
+        self.open(page)
+        page.evaluate("() => { window.__fluxSlowReads = 3000; window.__fluxHoldNextSave = true; }")
+        field = self.capture(page)
+        field.fill("Saved while an earlier answer is on its way")
+        field.press("Enter")
+        page.wait_for_function("() => window.__fluxSaveHeld === true")
+        # A change from another tab makes the page read the sketch while this save is out. The server
+        # answers that read before the save commits; the answer reaches the page after the save is confirmed.
+        self.api(page, "POST", f"/api/v1/sketches/{self.sketch}/thoughts", {"text": "Added in another tab", "x": 400, "y": 0}, 201)
+        self.assert_stays_listed(page, "Saved while an earlier answer is on its way",
+                                 "a read answered while a save was out never removes the saved thought")
+        self.assertTrue(page.evaluate("() => window.__fluxHeldSaveReleasedByRead === true"), "the save waited for that read's answer")
+        expect(page.locator(".sk-outline-list .sk-li-t", has_text="Added in another tab")).to_have_count(1)
