@@ -96,7 +96,7 @@ export function HomeView() {
                       <span className="since__dot since__dot--need" aria-hidden="true" />
                       <span className="since__body">
                         <span className="since__text">Decide: {proposal.title}</span>
-                        <span className="since__detail">{project.name} · proposed, waiting for someone who can accept it</span>
+                        <span className="since__detail">{project.name} · proposed, waiting for your decision</span>
                       </span>
                       <Icon name="chevron-right" size={14} className="since__go" />
                     </Link>
