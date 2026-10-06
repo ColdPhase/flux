@@ -63,8 +63,9 @@ contract. Verify:
 - all promised outcomes, including linked children and follow-up fixes;
 - installation and startup from a clean environment with documented configuration;
 - complete user journeys across features, not only isolated component checks;
-- [mobile PWA criteria MOB-1–MOB-7](../product/mobile-pwa.md), including real
-  Android/iPhone/iPad installation, touch journeys and authorized push delivery;
+- [mobile PWA criteria MOB-1–MOB-7](../product/mobile-pwa.md), including
+  Android/iPhone/iPad installation, touch journeys and authorized push delivery,
+  on emulation plus documented platform requirements (physical devices optional);
 - relevant multi-user, persistence, access, error, and recovery behavior;
 - the actual configured release suite and agreed UI acceptance scenarios;
 - distributable artifacts built from the candidate, their installation/startup
