@@ -184,6 +184,8 @@ export function ProjectOverview({ messageId, selection, focusPeople = null, onBa
       <h3 className="details__title">{title}</h3>
       {message ? <p className="details__lead ov-quote">{message.body.length > 280 ? `${message.body.slice(0, 279)}…` : message.body}</p> : null}
       <p className="ov-audience"><Icon name={project.visibility === 'workspace' ? 'people' : 'lock'} size={13} />{audienceLine(people, me.user.id, project.visibility === 'workspace')}</p>
+      {/* The goal in full: on a phone the header may shorten it (#272 FF-6, FF-10). */}
+      {project.goal && !messageMode ? <p className="ov-audience ov-goal"><Icon name="spark" size={13} /><span><span className="ui-vh">Goal: </span>{project.goal}</span></p> : null}
 
       <Rows label={messageMode ? 'Made from this message' : 'Linked in this conversation'} rows={linked}
         controls={read.objects.phase !== 'idle' ? <>
