@@ -570,8 +570,8 @@ Default `FLUX_OIDC_STANDING=refresh`, interval 15 minutes.
    - owner compute stops ([below](#standing-governs-all-of-the-persons-automation));
    - nothing is revoked: MCP grants, connections and standing grants
      stay the owner's and are only refused.
-6. **A successful sign-in through that identity** clears the state. Keys work
-   again, a client that kept its refresh token can refresh, and a client that
+6. **A successful sign-in through that identity** clears the state. Retained MCP
+   grants become usable again, a client that kept its refresh token can refresh, and a client that
    re-authorizes finds its connection preselected.
 
 The 401's `error_description` names the provider: `Sign in again with <label>.`
