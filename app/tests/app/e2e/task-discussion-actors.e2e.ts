@@ -212,10 +212,20 @@ test('native agent owners retry failed reads, fence stale permission answers and
     await decision.locator('.agent-for').waitFor();
     assert.equal(await decision.locator('.agent-tag').innerText(), 'Agent');
     assert.equal((await decision.innerText()).includes('(agent)'), false);
+    await row.getByRole('button').click();
+    await page.locator('.wd-discussion .agent-for').waitFor();
+    assert.equal(await page.locator('.wd-discussion .agent-tag').innerText(), 'Agent');
+    assert.equal(await page.locator('.wd-discussion .agent-for').innerText(), 'for Scoped Casey');
+    await page.keyboard.press('Escape');
+    await decision.getByRole('button').click();
+    await page.locator('.details .agent-for').waitFor();
+    assert.equal(await page.locator('.details .agent-for').innerText(), 'for Scoped Casey');
+    await page.keyboard.press('Escape');
     // The same workspace has a second project with different agent rights. A workspace-keyed
     // owner cache would wrongly reuse the first project's authorized name here.
     await page.getByRole('link', { name: 'Other owner scope', exact: true }).click();
     await page.getByRole('link', { name: /^Tasks/ }).click();
+    await page.getByRole('radio', { name: 'Kanban', exact: true }).click();
     await page.locator(`[data-card-id="${otherTask.id}"]`).waitFor();
     assert.equal(await page.locator(`[data-card-id="${otherTask.id}"] .agent-for`).count(), 0);
     await page.getByRole('link', { name: 'Owner scope', exact: true }).click();
