@@ -13,7 +13,7 @@ import { SinceYouLeftHome } from '../returns/SinceYouLeft';
 import { HomeTasks } from './HomeTasks';
 import { getAssistantStatus } from '../assistant/api';
 
-/** Home's views in the same order and words as a project's (Studio 11.6, #136). */
+/** Home's views in the same order and words as a project's. */
 export const VIEWS = [
   { id: 'conversation', label: 'Conversation', path: '/' },
   { id: 'map', label: 'Map', path: '/map' },
