@@ -4,6 +4,7 @@ import { ApiError, NetworkError } from '../api/client';
 import { getMe } from '../api/auth';
 import { useThoughtDraft } from '../sketch/createdDraft';
 import { Button, ErrorState, Spinner } from '../ui';
+import { routeLabel } from './routeLabel';
 
 /** Full-page failure when the shell itself can't load (e.g. the server is unreachable). */
 export function RouteErrorPage() {
@@ -66,12 +67,7 @@ function PrivateThoughtRecovery({ sketchId }: { sketchId: string }) {
   </div>;
 }
 
-/** Shown while the session is restored on a full load; appears only if that takes a moment. */
+/** Initial navigation waits for the actual session and matched route; no authenticated shell is invented. */
 export function Booting() {
-  const [visible, setVisible] = useState(false);
-  useEffect(() => {
-    const timer = window.setTimeout(() => setVisible(true), 400);
-    return () => window.clearTimeout(timer);
-  }, []);
-  return <main className="page-center booting" aria-busy="true">{visible ? <p className="booting__msg"><Spinner /> Opening Flux…</p> : null}</main>;
+  return <main className="page-center booting" aria-busy="true"><p className="booting__msg" role="status"><Spinner /> Opening {routeLabel(window.location.pathname)}…</p></main>;
 }
