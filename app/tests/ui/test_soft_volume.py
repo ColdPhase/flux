@@ -69,6 +69,11 @@ class SoftVolume(unittest.TestCase):
         self.assertEqual(response.status, 201, response.text())
         return json.loads(response.text())
 
+    def assert_mono(self, node) -> None:
+        family = node.evaluate("e => getComputedStyle(e).fontFamily")
+        # CSSOM may serialize a family containing spaces with or without quotes.
+        self.assertEqual(family.split(",")[0].strip(" \"'"), "Geist Mono", family)
+
     def ensure_account(self) -> None:
         if self.state:
             return
@@ -161,19 +166,19 @@ class SoftVolume(unittest.TestCase):
         expect(timestamp).to_be_visible()
         expect(filename).to_have_text("calibration.csv")
         for node in (timestamp, filename):
-            self.assertTrue(node.evaluate("e => getComputedStyle(e).fontFamily").startswith('"Geist Mono"'))
+            self.assert_mono(node)
         # Exercise the actual upload draft, not an injected font demonstration.
         with page.expect_file_chooser() as chooser:
-            page.get_by_role("button", name="Attach files", exact=True).click()
+            page.locator(".project-convo__composer").get_by_role("button", name="Attach files", exact=True).click()
         chooser.value.set_files({"name": "delivery.csv", "mimeType": "text/csv", "buffer": b"batch,count\nnext,4\n"})
         draft = page.locator(".composer-files__name").first
         expect(draft).to_contain_text("delivery.csv")
-        self.assertTrue(draft.evaluate("e => getComputedStyle(e).fontFamily").startswith('"Geist Mono"'))
+        self.assert_mono(draft)
         page.goto(f"/projects/{self.ids['project']}/tasks")
         page.get_by_role("radio", name="List", exact=True).click()
         counter = page.locator(".ws-view__n").first
         expect(counter).to_be_visible()
-        self.assertTrue(counter.evaluate("e => getComputedStyle(e).fontFamily").startswith('"Geist Mono"'))
+        self.assert_mono(counter)
         page.wait_for_function("() => ['Geist', 'Geist Mono'].every(name => [...document.fonts].some(f => f.family.replace(/\"/g, '') === name && f.status === 'loaded'))")
         self.assertTrue(page.evaluate("getComputedStyle(document.body).fontFamily").startswith('Geist'))
         self.assertTrue(fonts, "the fonts are requested")
@@ -223,7 +228,7 @@ class SoftVolume(unittest.TestCase):
                     page = self.page(scheme=scheme, phone=phone)
                     page.goto(f"/dm/{self.ids['dm']}")
                     expect(page.locator(".dm-msg__meta time").first).to_be_visible()
-                    self.assertTrue(page.locator(".dm-msg__meta time").first.evaluate("e => getComputedStyle(e).fontFamily").startswith('"Geist Mono"'))
+                    self.assert_mono(page.locator(".dm-msg__meta time").first)
                     page.get_by_role("button", name="Details", exact=True).click()
                     avatar = page.locator(".details__person .ui-avatar--me")
                     expect(avatar).to_have_text("AS")
@@ -234,7 +239,7 @@ class SoftVolume(unittest.TestCase):
                     self.assertGreaterEqual(value["ratio"], 4.5, (scheme, phone, value))
                     shortcut = page.locator(".details__keys kbd").first
                     expect(shortcut).to_be_visible()
-                    self.assertTrue(shortcut.evaluate("e => getComputedStyle(e).fontFamily").startswith('"Geist Mono"'))
+                    self.assert_mono(shortcut)
                     shot(page, f"338-{self.engine}-dm-details-{'390' if phone else '1440'}-{scheme}")
 
     def test_07_details_title_scales_with_200_percent_text(self) -> None:
