@@ -67,7 +67,7 @@ def markdown_without_code(content: str) -> str:
     """Mask code without joining inline spans across paragraph or fence boundaries."""
     output: list[str] = []
     paragraph: list[str] = []
-    fence: tuple[str, int, int] | None = None
+    fence: tuple[str, int, int, int] | None = None
     quote_depth = 0
 
     def flush() -> None:
@@ -83,7 +83,11 @@ def markdown_without_code(content: str) -> str:
             quote_depth = depth
         if fence is not None and depth < fence[2]:
             fence = None
-        marker = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)", text)
+        if fence is not None and fence[3] and text.strip() and not text.startswith(" " * fence[3]):
+            fence = None
+        list_item = re.match(r"^ {0,3}(?:[-+*]|[0-9]{1,9}[.)])[ \t]+", text)
+        indent = fence[3] if fence is not None else list_item.end() if list_item else 0
+        marker = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)", text[indent:])
         if fence is not None:
             if (marker and depth == fence[2] and marker[1][0] == fence[0]
                     and len(marker[1]) >= fence[1] and not marker[2].strip()):
@@ -91,7 +95,7 @@ def markdown_without_code(content: str) -> str:
             output.append(re.sub(r"[^\r\n]", " ", line))
         elif marker and (marker[1][0] != "`" or "`" not in marker[2]):
             flush()
-            fence = (marker[1][0], len(marker[1]), depth)
+            fence = (marker[1][0], len(marker[1]), depth, indent)
             output.append(re.sub(r"[^\r\n]", " ", line))
         elif not text.strip():
             flush()

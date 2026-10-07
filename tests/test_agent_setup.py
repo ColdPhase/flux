@@ -155,5 +155,15 @@ class FoundationValidationTests(unittest.TestCase):
         self.assertEqual(CHECKER.undefined_numeric_references(
             "> > ~~~md\n> > [#33]\n> > ~~~\n\n[#34]\n"), [(5, "#34")])
 
+    def test_list_item_fences_ignore_code_but_not_following_references(self):
+        self.assertEqual(CHECKER.undefined_numeric_references(
+            "- ```md\n  [#35]\n  ```\n\n[#36]\n"), [(5, "#36")])
+        self.assertEqual(CHECKER.undefined_numeric_references(
+            "123. ~~~md\n     [#35]\n     ~~~\n\n[#36]\n"), [(5, "#36")])
+        self.assertEqual(CHECKER.undefined_numeric_references(
+            "> - ~~~md\n>   [#35]\n>   ~~~\n\n[#36]\n"), [(5, "#36")])
+        self.assertEqual(CHECKER.undefined_numeric_references(
+            "- ```md\n  [#35]\nOutside [#36]\n"), [(3, "#36")])
+
 if __name__ == "__main__":
     unittest.main()
