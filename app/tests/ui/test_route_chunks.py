@@ -176,6 +176,7 @@ class RouteChunksJourney(unittest.TestCase):
                 expect(page.locator(".app__side")).to_be_visible()
                 expect(page.get_by_role("button", name=re.compile(self.name))).to_be_visible()
                 expect(page.get_by_role("heading", name="Sign in to Flux")).to_have_count(0)
+                shot(page, f"route-chunks-code-error-{engine}-desktop")
                 page.get_by_role("link", name="Go to Home", exact=True).click()
                 expect(page.get_by_placeholder("Write a note…")).to_have_value(f"Private recovery after code failure {engine}")
 
@@ -204,6 +205,7 @@ class RouteChunksJourney(unittest.TestCase):
                 dialog = page.get_by_role("dialog", name="Jump to")
                 expect(dialog).to_contain_text("Opening search…")
                 self.request_is_held(page, held)
+                shot(page, f"route-chunks-search-pending-{engine}-desktop")
                 page.keyboard.press("Escape")
                 expect(dialog).to_have_count(0)
                 field.focus()
@@ -241,6 +243,7 @@ class RouteChunksJourney(unittest.TestCase):
                 opener = self.open_details_by_keyboard(page)
                 expect(page.locator("#details")).to_contain_text("Opening details…")
                 self.request_is_held(page, held)
+                shot(page, f"route-chunks-details-pending-{engine}-desktop")
                 page.keyboard.press("Escape")
                 expect(page.locator("#details")).to_have_count(0)
                 expect(opener).to_be_focused()
