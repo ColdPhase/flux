@@ -14,7 +14,7 @@ body:
     attributes:
       label: Version or commit
       description: Include the commit hash if available, or the downloaded file and date.
-      placeholder: "main, commit abc1234"
+      placeholder: "flux-ux-v8.html from main, commit abc1234"
     validations:
       required: true
   - type: input
@@ -29,8 +29,8 @@ body:
     attributes:
       label: How did you open Flux?
       options:
-        - ./flux up
-        - ./flux dev
+        - Opened the HTML file directly
+        - Used a local HTTP server
         - Another method (describe below)
     validations:
       required: true
@@ -40,7 +40,7 @@ body:
       label: Steps to reproduce
       description: Include whether you started with fresh sample data or imported existing data.
       placeholder: |
-        1. Start Flux with ./flux demo sample data.
+        1. Open the prototype with fresh sample data.
         2. Go to ...
         3. Click ...
     validations:
