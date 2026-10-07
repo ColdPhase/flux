@@ -24,6 +24,19 @@ Polish foundation remains the original source, not a second competing roadmap.
 
 ## Current authority
 
+**2026-10-07 release amendment:** [founder direction](https://github.com/ColdPhase/flux/issues/249#issuecomment-6042227715)
+requires #228/#231 live map/wiki, #238 safe unused AI-task Undo and #314
+back-channel logout in v0.1, retaining all existing technical and independent
+acceptance gates. One operator-configured SSO provider serves each installation;
+the [assessed identity amendment](https://github.com/ColdPhase/flux/issues/360#issuecomment-6042333778)
+is recorded in [F-024](mcp-identity.md), now superseded in part by
+[ordinary owner MCP switches and exclusive SSO/password modes](https://github.com/ColdPhase/flux/issues/360#issuecomment-6043340696).
+No recent-authentication/password-replay challenge or ordinary password login
+alongside active SSO; safe pre-cutover migration and current authority checks remain. The [final design Prostota](https://github.com/ColdPhase/flux/issues/336)
+(F-026; [reference import](https://github.com/ColdPhase/flux/pull/337)) supersedes
+the earlier appearance directions below. This amendment records required work,
+not implementation or release acceptance.
+
 **Latest additions, 2026-09-30:** [F-016 local MCP co-work](mcp-cowork.md)
 and [F-017 Studio 11.6](../design/studio-v11.6.md) are required milestone-2
 outcomes: one Flux backlog, project GitHub bindings, multiple personal external
@@ -76,11 +89,14 @@ journeys remain required. It specifies separate personal, DM and project audienc
 selected-content evolution from DM to sketch to project; fluid maps connected to
 work and results; return after a pivot; and bounded proactive help. The three
 integrated scenarios in #44 govern later design and application evaluation.
-**Current UI: [Studio 11.6 / F-017](../design/studio-v11.6.md).** Use the
+**Current UI: [Prostota / F-026](https://github.com/ColdPhase/flux/issues/336).** The
+[reference package](https://github.com/ColdPhase/flux/pull/337) supplies its guide/renders. The
 [11.6 originals and screenshots](../design/references/studio-v11.6/README.md)
-for appearance, with F-016 co-work and the required F-015 adaptation below.
-#136 integrates all surfaces; #148 supplies Mint/Sky/Copper and independent
-theme preferences, #149 draft-first capture. Preserve #133 explicit acknowledgment
+are historical appearance evidence; preserve F-016 co-work and F-015 adaptation
+while evaluating against F-026.
+#338–#352 implement the final surfaces. The earlier #136 shell and #148
+Mint/Sky/Copper themes are retained implementation history, not the current
+appearance target. #149's draft-first capture remains. Preserve #133 explicit acknowledgment
 and #134 personal ID-only outline. Earlier visual choices are
 [historical](../design/reference-history.md); their PNGs are not current targets.
 
@@ -116,8 +132,8 @@ Research serves a concrete code task; it does not replace shipping.
 | Founder direction | Global OSS, self-hosting, creative human collaboration, connected work, bounded AI participation, high UX quality, mobile PWA and a path to enterprise; see F-012 for the later concrete scenarios. |
 | Proposal | Initial personas, market entry, product mechanisms and commercial services remain research proposals. |
 | Accepted decision | O-002 React/Node/Fastify/PostgreSQL architecture and O-004 complete-product public release boundary; see the [register](decisions.md). |
-| Open decision | First niche/USP (O-001) and later commercial terms. O-003 and O-005 are accepted; current visual target is F-017 Studio 11.6. |
-| Existing implementation | Compose application and historical prototypes. #52 / PR #103 completes the narrow Claude MCP/OAuth foundation; #152/#153 extend it and remain planned. v8 is historical; Studio 11.6 is the current appearance target. Feature acceptance remains in the [ledger](foundation-coverage.md) and linked issues. |
+| Open decision | First niche/USP (O-001) and later commercial terms. O-003 and O-005 are accepted; current visual target is F-026 Prostota. |
+| Existing implementation | Compose application and historical prototypes. #52 / PR #103 completes the narrow Claude MCP/OAuth foundation; #152/#153 extend it and remain planned. v8 is historical; F-026 Prostota is the current appearance target. Feature acceptance remains in the [ledger](foundation-coverage.md) and linked issues. |
 
 Routine decisions within an accepted task belong to its owner. Record larger
 recommendations with evidence; only the named decision owner can accept them.

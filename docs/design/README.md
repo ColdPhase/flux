@@ -1,10 +1,22 @@
 # Design work in Flux
 
-**Current reference: Studio 11.6 (F-017, 2026-09-30).** Start with
-[the current contract](studio-v11.6.md), its
+**Current reference: Prostota (F-026, 2026-10-07).** The
+[founder's final design](https://github.com/ColdPhase/flux/issues/336) is the sole
+appearance and UX authority for computer and phone. Its
+[guide and render import](https://github.com/ColdPhase/flux/pull/337) are tracked
+separately; use that accepted reference while the package is not yet in this base.
+The earlier appearance descriptions below are historical, not competing targets.
+Their functional, privacy, accessibility and independent-evaluation rules remain.
+Live map/wiki is required in v0.1 again under the
+[2026-10-07 direction](https://github.com/ColdPhase/flux/issues/249#issuecomment-6042227715),
+so the [former map-agent-cursor release exception is superseded](https://github.com/ColdPhase/flux/issues/336#issuecomment-6042363834).
+Actual live presence, Kreska marking and existing technical gates still need evidence.
+
+**Historical reference: Studio 11.6 (F-017, 2026-09-30).** Its records are
+[the earlier contract](studio-v11.6.md), its
 [measured design system and production token mapping](studio-v11.6-design-system.md) and
 [the unchanged seven-file package and 11.6 screenshots](references/studio-v11.6/README.md).
-This is the full appearance direction. Apply it with
+This supplied the earlier full appearance direction. Preserve its compatible
 [F-016 local MCP co-work](../product/mcp-cowork.md) and
 [F-015 adaptive workspaces](adaptive-workspaces.md). #136 owns integration,
 #151 adaptation, #148 final themes, #149 map drafts and #155 motion/presence.
@@ -20,12 +32,13 @@ They are not alternative current targets. Do not restart direction discovery or
 use older PNGs as the final appearance baseline. Compare realistic complete
 11.6-aligned views at matched viewport/zoom and refine specific visible friction.
 
-## People and AI on the phone (proposed F-025)
+## Historical phone proposal — F-025
 
 [People and AI on the phone](people-and-ai.md) proposes v5, the founder's choice of 2026-10-06,
 for the **phone layout only**, using the features Flux already has. Phone chrome becomes
 monochrome, each agent gets its own gradient orb, and real work is visible. Tablet and desktop
-keep 11.6. Until F-025 is accepted, 11.6 governs every size.
+kept 11.6 in that proposal. F-026 supersedes this appearance proposal on every
+size; the linked research and renders are historical evidence.
 
 ## Live collaboration reference
 

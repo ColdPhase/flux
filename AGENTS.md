@@ -3,8 +3,9 @@
 Flux is a global open source, self-hostable workspace for people and agents.
 Read `docs/product/FLUX-FOUNDATION.md` in full when first joining; then use
 `docs/product/README.md`, current decisions, and relevant sections per task.
-The latest [Studio 11.6 direction](docs/design/studio-v11.6.md)
-(F-017, 2026-09-30) is the primary appearance/UX reference, with required
+The final [Prostota direction](https://github.com/ColdPhase/flux/issues/336)
+(F-026, 2026-10-07; [reference import](https://github.com/ColdPhase/flux/pull/337))
+is the sole appearance/UX reference, with required
 [local MCP co-work](docs/product/mcp-cowork.md) (F-016) and
 [adaptive workspaces](docs/design/adaptive-workspaces.md) (F-015).
 Preserve useful repo improvements and refine remaining friction.
