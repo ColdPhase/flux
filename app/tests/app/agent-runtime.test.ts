@@ -57,6 +57,13 @@ describe('runtime tables hold display facts only', () => {
       'account_fingerprint:text', 'previous_account_label:text', 'account_changed_at:timestamp with time zone', 'signed_out_at:timestamp with time zone',
       'sign_out_failed:boolean'],
     agent_runtime_operator_statements: ['statement:text', 'agreed_on:date', 'recorded_at:timestamp with time zone'],
+    // 0058: bounded operation identity/time/phase and digests; no raw ticket, session token or output.
+    agent_runtime_auth_operations: ['binding_id:uuid', 'client:text', 'owner_user_id:text', 'operation_id:uuid', 'revision:integer',
+      'boot_id:uuid', 'actor_digest:text', 'kind:text', 'phase:text', 'claimed_at:timestamp with time zone',
+      'lease_ends_at:timestamp with time zone', 'hard_ends_at:timestamp with time zone', 'settled_at:timestamp with time zone'],
+    agent_runtime_console_nonces: ['nonce_digest:text', 'owner_user_id:text', 'actor_digest:text', 'operation_id:uuid',
+      'expires_at:timestamp with time zone', 'consumed_at:timestamp with time zone'],
+    agent_runtime_auth_admission: ['singleton:boolean', 'blocked:boolean', 'purge_id:uuid', 'changed_at:timestamp with time zone'],
   };
   // agent_runtime_sessions (0034) is unrelated: mode (b) MCP client sessions, outside the runtime transport.
   const RUNTIME_TABLES = Object.keys(REVIEWED);
