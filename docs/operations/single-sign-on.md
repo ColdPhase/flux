@@ -1,5 +1,11 @@
 # Single sign-on
 
+**Implemented #240 baseline:** the setup and verified behavior below describe
+the current mixed-login implementation. The [required exclusive-mode target](#target-mode)
+and [bounded F-024 contract](../product/mcp-identity.md#exclusive-ordinary-sign-in-modes)
+supersede that ordinary login model; SSO-only mode and safe pre-cutover migration
+remain unimplemented.
+
 Flux can let people sign in with your organisation's OpenID Connect identity provider (Keycloak,
 Google Workspace, Okta, Authentik and others), next to email and password
 ([#113](https://github.com/ColdPhase/flux/issues/113)). Flux supports **one** provider per
@@ -92,13 +98,33 @@ token from the same mock still signs in.
 It uses its own Compose project and ports (`FLUX_OIDC_TEST_PORT`, default 18095, and the next port
 for Mailpit) and removes everything afterwards.
 
+<a id="target-mode"></a>
+**Target mode, superseding amendment 2026-10-07:**
+[F-024](../product/mcp-identity.md) requires password-only ordinary login without
+active SSO or SSO-only with the installation's sole IdP. Under active SSO, no
+ordinary Flux password sign-in/signup/reset or password-only authority remains;
+new accounts come through the verified IdP flow. This needs real backend/UI/
+session enforcement; the current #240 baseline has not delivered that mode.
+
+Existing accounts migrate explicitly before cutover: prepared provider,
+authenticated existing account/session and a verified callback bound to that
+account and intent, preserving Flux IDs/data/roles/memberships/applicable grants.
+Duplicate identity, substitution and email auto-linking are refused. Audited host
+recovery/re-key handles stranded accounts; it does not add an ordinary password
+fallback under SSO. Selected-provider claims/offboarding/verification remain.
+#316's ordinary per-connection capability controls have no ten-minute guard,
+password replay or secondary SSO challenge; live rights/grants/OAuth ceilings
+still apply. Neither these switches nor exclusive mode are claimed implemented.
+#317 opaque MCP keys remain canceled; supported OAuth/SSH/callback paths stay.
+
 Not covered: SAML, SCIM provisioning, several providers at once, and a production provider's
 own policies (MFA, conditional access), which stay the provider's responsibility.
 
 - **Microsoft Entra ID (unverified, 2026-10-06).** Flux accepts an identity only when the ID token says
   `email_verified: true`. Entra's ID token and optional-claims references and its `claims_supported`
   list don't include `email_verified`, so Entra sign-in is expected to be refused until a provider
-  profile for it exists (F-024 S5b, [#274](https://github.com/ColdPhase/flux/pull/274)). This is an
+  claim adapter for it exists (F-024 S5b, [#315](https://github.com/ColdPhase/flux/issues/315)). These
+  profiles describe provider compatibility, not personal profile pages. This is an
   inference from Microsoft's documentation; it was not tested against a real Entra tenant.
 - **Agent (MCP) authorization.** The page an agent client opens for authorization (`/login`, for
   example from `claude mcp login`) offers email and password only, not single sign-on. Single sign-on

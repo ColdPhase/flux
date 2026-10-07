@@ -1,0 +1,21 @@
+{
+  "origin": "https://localhost:19443",
+  "mode": "untrusted",
+  "browserLocalCertificateErrorsIgnored": true,
+  "accounts": [
+    {
+      "name": "Untrusted Proxy Probe",
+      "email": "proxy.untrusted+7206102c-1a42-4470-8956-79d1ba22b066@example.test",
+      "signupUI": true,
+      "cookie": {
+        "name": "__Secure-flux.session_token",
+        "secure": true,
+        "httpOnly": true,
+        "sameSite": "Lax"
+      },
+      "handshakes": [],
+      "frames": []
+    }
+  ],
+  "uncaughtErrors": []
+}

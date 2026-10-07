@@ -1,40 +1,35 @@
 # Design work in Flux
 
-**Current reference: Studio 11.6 (F-017, 2026-09-30).** Start with
-[the current contract](studio-v11.6.md), its
-[measured design system and production token mapping](studio-v11.6-design-system.md) and
-[the unchanged seven-file package and 11.6 screenshots](references/studio-v11.6/README.md).
-This is the full appearance direction. Apply it with
-[F-016 local MCP co-work](../product/mcp-cowork.md) and
-[F-015 adaptive workspaces](adaptive-workspaces.md). #136 owns integration,
-#151 adaptation, #148 final themes, #149 map drafts and #155 motion/presence.
+**The design is decided: [final design "Prostota"](final/README.md) (F-026, founder direction
+2026-10-07).** It is the only UI and UX for Flux on the computer and the phone. It covers
+tokens, Kreska (logo, agent icon and mascot), structure, navigation, behaviour rules
+S1–S22 and P1–P12, files and photos, and a render of every screen. Implement it as drawn and
+match its renders. A change to the design itself needs a founder; agents do not re-decide it or
+compare alternative directions. Epic [#336](https://github.com/ColdPhase/flux/issues/336)
+tracks the implementation issues.
 
-Read foundation sections 10, 17 D1–D4 and 21 in
-[FLUX-FOUNDATION.md](../product/FLUX-FOUNDATION.md). Preserve #44 creative
-journeys, #57/#68 embedded helper, #59 live work, current access and accepted
-architecture. #133's explicit acknowledgment and #134's personal map outline
-remain stronger production behavior. A reference import does not deliver UI.
+The design keeps the functional contracts: [F-016 local MCP co-work](../product/mcp-cowork.md),
+[F-015 adaptive workspaces](adaptive-workspaces.md), PWA and Web Push
+([F-010](../product/mobile-pwa.md)), personal-agent ownership, access and the accepted
+architecture. Where a functional document describes appearance or placement, the final design
+wins.
 
-[Design history](reference-history.md) records earlier C/v8/v11/11.1 inputs.
-They are not alternative current targets. Do not restart direction discovery or
-use older PNGs as the final appearance baseline. Compare realistic complete
-11.6-aligned views at matched viewport/zoom and refine specific visible friction.
+Live map/wiki is required in v0.1 again under the
+[2026-10-07 direction](https://github.com/ColdPhase/flux/issues/249#issuecomment-6042227715),
+so the [former map-agent-cursor release exception is superseded](https://github.com/ColdPhase/flux/issues/336#issuecomment-6042363834).
+Actual live presence, Kreska marking and the existing technical gates still need evidence.
 
-## People and AI on the phone (proposed F-025)
-
-[People and AI on the phone](people-and-ai.md) proposes v5, the founder's choice of 2026-10-06,
-for the **phone layout only**, using the features Flux already has. Phone chrome becomes
-monochrome, each agent gets its own gradient orb, and real work is visible. Tablet and desktop
-keep 11.6. Until F-025 is accepted, 11.6 governs every size.
+The feature folders in this directory (for example `conversation/`, `map-list-outline/`,
+`thought-drafts/`) record behaviour contracts and the evidence of past implementation work.
+Their screenshots show the application as it was then; they are not a visual target.
 
 ## Live collaboration reference
 
 The founder's [live collaboration requirements](../product/live-collaboration.md)
 add contextual human audio/video/screen sessions to existing work. The supplied
 [interactive reference and inspection](references/live/README.md) illustrate
-join, show/follow, quiet/return and durable outcomes. Preserve the current Studio 11.6
-direction, personal-agent ownership and compact working surfaces while designing
-this capability. The reference is simulated; it is not evidence of working media.
+join, show/follow, quiet/return and durable outcomes as interactions only; appearance follows
+the final design. The reference is simulated; it is not evidence of working media.
 
 ## Brief and continuity
 
@@ -43,21 +38,21 @@ states, constraints, and actual reference images when available. Explain what
 each reference contributes. Keep interaction references separate from aesthetic
 references. A marketing hero does not set the scale of a working screen.
 
-For initial direction compare at least two coherent alternatives on identical
-realistic content and states. After acceptance, record the direction under this
-directory with the corresponding tokens/components; keep them in sync. Focused
-iterations retain the accepted direction unless the task reopens it.
+A design task within the final design starts from its screens and rules. When a state is
+not drawn, compose it from the drawn components and rules, then verify its behaviour and
+obtain independent review of conformance before reusing it as a pattern. Escalate actual
+design changes or conflicts with a functional contract on #336; only the founders may
+change the accepted design.
 
 ## Compact, readable working surfaces
 
-Use 1440×900 and 1280×800 CSS-pixel desktop viewports at 100% zoom as initial
-comparison points, plus narrow layouts and enlarged text. Show long names,
+Compare against the final renders at 1440×900 (computer) and 390×844 (phone) CSS pixels at
+100% zoom, in light and dark, plus 1280×800, narrow layouts and enlarged text. Show long names,
 meaningful conversation, project material, multiple agents, errors, and missing
 sources. Record what fits, what is pushed below the fold, and whether an open
 agent panel still leaves a usable workspace.
 
-The foundation's type/control/spacing ranges are starting hypotheses, not fixed
-tokens. Improve density through grouping and removing unnecessary containers;
+The final design's tokens are fixed; use them rather than local values. Improve density through grouping and removing unnecessary containers;
 do not fake it through global scaling, browser zoom, or shrinking all text.
 Keep visible, usable controls. Check final color pairs and applicable WCAG
 requirements, including focus, keyboard access, zoom, and target size. A compact
@@ -69,7 +64,7 @@ The later [F-015 adaptive-workspace requirement](adaptive-workspaces.md),
 2026-09-30, makes responsive design a product capability. Use additional space
 for useful work and related context while preserving familiar navigation,
 object/source identity and active work during transitions. #151 implements the
-bounded adaptive slice under #136; #20 keeps mobile acceptance (emulation plus documented platform requirements).
+adaptive slice; #20 keeps mobile acceptance (emulation plus documented platform requirements).
 Use the full CSS-viewport/scaling/input matrix and measurable wide-screen gains,
 not only a desktop and phone screenshot.
 
@@ -79,11 +74,8 @@ not only a desktop and phone screenshot.
 Apple Human Interface Guidelines. [The HIG checklist](apple-hig-mobile.md) turns them into
 115 numbered rules (HIG-01 to HIG-115) for Flux as a web app on iPhone and iPad, each with
 Apple's words, how Flux applies them on the web, and a check in emulation. Cite rule IDs
-in phone and tablet issues, PRs and reviews.
-
-[Calm like Apple's own apps](research/2026-10-06-apple-native-calm.md) (research note,
-2026-10-06) analyses the visual language behind those rules after the founder found the phone UI
-too dense, and proposes a per-screen declutter list and ten principles for the phone UI.
+in phone and tablet issues, PRs and reviews. The final design already applies them; where a
+rule and a drawn screen seem to disagree, raise it on #336 instead of changing the screen.
 
 ## Separate visual and behavior evaluation
 

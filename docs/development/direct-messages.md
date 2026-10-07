@@ -6,7 +6,7 @@ admins who are not in a DM cannot read it, count it or learn that it exists. Age
 through an explicit participant grant, which is not part of this slice, so agents see no DMs.
 This follows the "DMs and growing an idea" requirement in
 [#44](https://github.com/ColdPhase/flux/issues/44) and the design rule that every place shows its
-audience ([direction](../design/direction.md), principle 5).
+audience ([final design](../design/final/README.md#1-principles)).
 
 ## Model
 
