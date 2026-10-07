@@ -22,7 +22,7 @@ import re
 import time
 import unittest
 
-from playwright.sync_api import Browser, BrowserContext, Page, Route, expect, sync_playwright
+from playwright.sync_api import Error as PlaywrightError, Browser, BrowserContext, Page, Route, expect, sync_playwright
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
@@ -263,12 +263,24 @@ class RuntimeConsole(unittest.TestCase):
         page.get_by_role("button", name="Start sign-in").click()
         expect(page.locator(".xterm-rows")).to_contain_text("Paste code here if prompted", use_inner_text=True)
         page.get_by_role("button", name="Cancel sign-in").click()
-        expect(page.locator(".rt-outcome")).to_contain_text("You cancelled the sign-in. Nothing was saved.")
-        self.assertEqual(self.api(page, "GET", "/api/v1/agent-runtime")["connections"]["claude_code"]["state"], "signed_out")
+        expect(page.locator(".rt-outcome")).to_contain_text("You cancelled the sign-in. Runtime access stays disabled until cleanup is confirmed")
+        current = self.api(page, "GET", "/api/v1/agent-runtime")
+        self.assertIsNone(current["connections"]["claude_code"])
+        if current["binding"] is not None:
+            self.assertEqual(current["binding"]["state"], "releasing")
+            self.assertTrue(current["binding"]["recovery"])
+        else:
+            self.assertEqual(current["lastRelease"]["reason"], "auth_recovery")
 
     @unittest.skipUnless(RUNTIME, "needs the runtime profile (scripts/check_agent_runtime.sh)")
     def test_08_remove_runtime_at_phone_width(self) -> None:
         page = self.page()
+        # The preceding cancelled console requires full recovery. Bind only after it is gone.
+        deadline = time.time() + 60
+        while self.api(page, "GET", "/api/v1/agent-runtime")["binding"] is not None and time.time() < deadline:
+            time.sleep(0.2)
+        self.assertIsNone(self.api(page, "GET", "/api/v1/agent-runtime")["binding"])
+        self.api(page, "POST", "/api/v1/agent-runtime/binding")
         page.goto("/settings/assistant")
         section = page.locator("section.rt")
         section.get_by_role("button", name="Remove runtime…").tap()
@@ -283,6 +295,112 @@ class RuntimeConsole(unittest.TestCase):
         while self.api(page, "GET", "/api/v1/agent-runtime")["binding"] is not None and time.time() < deadline:
             time.sleep(0.5)
         self.assertIsNone(self.api(page, "GET", "/api/v1/agent-runtime")["binding"])
+
+
+    def runtime_snapshot(self) -> dict:
+        return {
+            "enabled": True, "clients": {"claude_code": "available", "codex": "off"}, "commercialTerms": None,
+            "idleReleaseDays": None, "pool": "available", "lastRelease": None,
+            "binding": {"state": "active", "boundAt": "2026-10-07T10:00:00.000Z", "lastUsedAt": None, "idleReleaseAt": None},
+            "connections": {"codex": None, "claude_code": {
+                "state": "signed_in", "signInMethod": "sso", "authMethod": "claude.ai", "plan": "max",
+                "accountLabel": "a***@example.org", "signedInAt": "2026-10-07T10:00:00.000Z", "payer": "claude_plan",
+                "accountChange": None, "signOut": None,
+            }}, "auth": {},
+        }
+
+    def held_poll(self, *, remove: bool) -> None:
+        """Mounted component with a real fetch held before delivery, not an implementation mirror."""
+        page = self.page()
+        previous = self.runtime_snapshot()
+        initial = copy.deepcopy(previous)
+        initial["auth"] = {"claude_code": "checking"}  # causes the ordinary background poll
+        restrictive = copy.deepcopy(previous)
+        if remove:
+            restrictive["binding"].update(state="releasing", recovery=True)
+            restrictive["connections"]["claude_code"] = None
+        else:
+            restrictive["connections"]["claude_code"].update(state="signed_out", signedInAt=None,
+                signOut={"at": "2026-10-07T10:01:00.000Z", "failed": False})
+        held: list[Route] = []
+        completed = []
+        page.on("requestfinished", lambda request: completed.append(request))
+        page.on("requestfailed", lambda request: completed.append(request))
+        reads = 0
+        acted = False
+
+        def read(route: Route) -> None:
+            nonlocal reads
+            reads += 1
+            if reads == 2:
+                held.append(route)
+            else:
+                route.fulfill(status=200, content_type="application/json", body=json.dumps(restrictive if acted else initial))
+
+        def action(route: Route) -> None:
+            nonlocal acted
+            if route.request.method == ("DELETE" if remove else "POST"):
+                acted = True
+                route.fulfill(status=202 if remove else 200, content_type="application/json", body=json.dumps(restrictive))
+            else:
+                route.continue_()
+
+        page.route("**/api/v1/agent-runtime", read)
+        page.route("**/api/v1/agent-runtime/binding" if remove else "**/api/v1/agent-runtime/sign-out", action)
+        page.goto("/settings/assistant")
+        section = page.locator("section.rt")
+        expect(section.get_by_role("heading", name="Claude Code in Flux · signed in")).to_be_visible()
+        deadline = time.time() + 10
+        while not held and time.time() < deadline:
+            page.wait_for_timeout(20)
+        self.assertEqual(len(held), 1, "actual background GET reached the delivery barrier")
+        if remove:
+            section.get_by_role("button", name="Remove runtime…").tap()
+            page.get_by_role("group", name="Remove your runtime").get_by_role("button", name="Sign out and remove").tap()
+        else:
+            section.get_by_role("button", name="Sign out", exact=True).tap()
+        expected = "Claude Code in Flux · removing" if remove else "Claude Code in Flux · not signed in"
+        expect(section.get_by_role("heading", name=expected)).to_be_visible()
+        try:
+            held[0].fulfill(status=200, content_type="application/json", body=json.dumps(previous))
+        except PlaywrightError:
+            self.assertIn(held[0].request, completed, "only an actually aborted fetch may refuse delivery")
+        deadline = time.time() + 5
+        while held[0].request not in completed and time.time() < deadline:
+            page.wait_for_timeout(20)
+        self.assertIn(held[0].request, completed, "held fetch has finished or been aborted")
+        page.evaluate("async () => { await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame); }")
+        expect(section.get_by_role("heading", name=expected)).to_be_visible()
+        expect(section.get_by_role("button", name="Sign out", exact=True)).to_have_count(0)
+        self.phone_layout(page, "section.rt")
+        shot(page, "runtime-held-poll-remove-phone-390" if remove else "runtime-held-poll-signout-phone-390")
+
+    def test_09_held_poll_cannot_restore_signed_in_after_sign_out(self) -> None:
+        self.held_poll(remove=False)
+
+    def test_10_held_poll_cannot_restore_signed_in_after_remove(self) -> None:
+        self.held_poll(remove=True)
+
+    def test_11_unconfirmed_release_and_unknown_removal_never_claim_success(self) -> None:
+        page = self.page()
+        released = self.runtime_snapshot()
+        released.update(binding=None, connections={"claude_code": None, "codex": None},
+            lastRelease={"reason": "operator", "at": "2026-10-07T10:01:00.000Z", "signOutFailed": True})
+        page.route("**/api/v1/agent-runtime", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(released)))
+        page.goto("/settings/assistant")
+        section = page.locator("section.rt")
+        expect(section).to_contain_text("Vendor sign-out was not confirmed")
+        expect(section).not_to_contain_text("It signed out first")
+        page.unroute("**/api/v1/agent-runtime")
+        current = self.runtime_snapshot()
+        page.route("**/api/v1/agent-runtime", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(current)))
+        page.reload()
+        page.route("**/api/v1/agent-runtime/binding", lambda route: route.fulfill(status=503, content_type="application/json", body='{"error":"unavailable"}'))
+        section.get_by_role("button", name="Remove runtime…").tap()
+        page.get_by_role("group", name="Remove your runtime").get_by_role("button", name="Sign out and remove").tap()
+        expect(section.get_by_role("alert")).to_contain_text("Removal could not be confirmed")
+        expect(section).not_to_contain_text("Nothing changed")
+        self.phone_layout(page, "section.rt")
 
 
 if __name__ == "__main__":

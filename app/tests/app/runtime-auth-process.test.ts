@@ -4,13 +4,13 @@ import { randomUUID } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
-import type { Server } from 'node:http';
+import { createServer, type Server } from 'node:http';
 import { createSupervisorServer } from '../../apps/runtime/src/supervisor/server.js';
 import { createManagerServer } from '../../apps/runtime/src/manager/server.js';
 import { AGENT_RUNTIME_CONSOLE_PATH, AGENT_RUNTIME_PATH, type AgentRuntimeConsoleServerMessage, type AgentRuntimeStatus } from '@flux/contracts';
 import { agentRuntimeStore } from '@flux/db';
 import { reconcileAgentRuntime } from '@flux/core';
-import { callSupervisor, createRuntimeManagerClient, runtimeManagerPort } from '@flux/runtime-protocol';
+import { callSupervisor, createRuntimeManagerClient, runtimeManagerPort, CONSOLE_UPGRADE_ANSWER, ConsoleFrameReader, encodeControl, parseSupervisorRequest } from '@flux/runtime-protocol';
 import WebSocket from 'ws';
 import { Browser } from './support/http.js';
 import { pool,db,connectionString } from './support/db.js';
@@ -210,5 +210,58 @@ test('API crash with an undelivered old logout requires full recovery; late logo
     manager.closeAllConnections();await new Promise<void>(r=>manager.close(()=>r()));
     if(fresh){fresh.closeAllConnections();await new Promise<void>(r=>fresh!.close(()=>r()));}await slot.close();
     if(ownerId)await pool.query('DELETE FROM auth_users WHERE id=$1',[ownerId]);await pool.query('DELETE FROM agent_runtime_slots WHERE slot=$1',[slot.config.slot]);
+  }
+});
+
+
+test('well-shaped console result for another status client is refused without persistence; current-client control succeeds', {timeout:25_000},async()=>{
+  // Fault injection at the actual closed manager/API stream. No vendor CLI/account is represented.
+  let statusClient:'claude_code'|'codex'='codex';
+  const rogue=createServer();
+  rogue.on('upgrade',(_request,socket,head)=>{
+    socket.on('error',()=>socket.destroy());socket.write(CONSOLE_UPGRADE_ANSWER);
+    const reader=new ConsoleFrameReader('to_supervisor');
+    const frames=(chunk:Buffer)=>{
+      for(const frame of reader.push(chunk))if(frame.type==='open'){
+        const parsed=parseSupervisorRequest('login',frame.body);assert.ok(parsed.ok&&parsed.request.kind==='login');
+        socket.write(encodeControl({t:'accepted',kind:'login',bootId:parsed.request.bootId}));
+        socket.end(encodeControl({t:'result',result:{kind:'login',client:'claude_code',ended:'exited',exitCode:0,
+          status:{client:statusClient,signedIn:true,facts:{authMethod:'claude.ai',plan:'max',accountLabel:'a***@example.org',accountDigest:null},credentialFile:'ok',bindingBytes:0,bindingOverLimit:false}}}));
+      }
+    };
+    socket.on('data',frames);if(head.length)frames(head);
+  });
+  await new Promise<void>(r=>rogue.listen(0,'127.0.0.1',r));
+  const managerSecret=slotSecret(),target={host:'127.0.0.1',port:(rogue.address()as{port:number}).port,secret:slotSecret()};
+  const names=['runtime-997','runtime-998'],manager=createManagerServer({secret:managerSecret,log:()=>undefined,slots:new Map(names.map(name=>[name,target]))});
+  await new Promise<void>(r=>manager.listen(0,'127.0.0.1',r));
+  let child:ChildProcess|undefined;
+  const owners:string[]=[],sockets:WebSocket[]=[];
+  try{
+    const fixture=await api(`http://127.0.0.1:${(manager.address()as{port:number}).port}`,managerSecret);child=fixture.child;
+    for(const [index,client]of(['codex','claude_code']as const).entries()){
+      statusClient=client;const browser=new Browser(fixture.url,origin);
+      const signup=await browser.request('POST','/api/auth/sign-up/email',{body:{email:`client-frame-${randomUUID()}@example.test`,password:'correct horse battery staple',name:'Client frame owner'}});
+      assert.equal(signup.status,200);const owner=(signup.json as{user:{id:string}}).user.id;owners.push(owner);
+      const binding=randomUUID(),bootId=randomUUID();
+      await pool.query(`INSERT INTO agent_runtime_slots(slot,state,boot_id) VALUES($1,'held',$2)`,[names[index],bootId]);
+      await pool.query(`INSERT INTO agent_runtime_bindings(id,owner_user_id,slot,state) VALUES($1,$2,$3,'active')`,[binding,owner,names[index]]);
+      const issue=await browser.request('POST',AGENT_RUNTIME_CONSOLE_PATH,{body:{client:'claude_code',method:'sso'}});assert.equal(issue.status,200);
+      const view=await socket(browser);sockets.push(view.ws);view.ws.send(JSON.stringify({t:'attach',ticket:(issue.json as{ticket:string}).ticket,cols:60,rows:20}));
+      assert.equal(await view.closed,index===0?4503:1000);
+      if(index===0){
+        assert.deepEqual(view.messages.filter(message=>message.t==='error'),[{t:'error',code:'unavailable'}]);
+        assert.equal(view.messages.filter(message=>message.t==='done').length,0);
+        await until(async()=>((await browser.request('GET',AGENT_RUNTIME_PATH)).json as AgentRuntimeStatus).binding?.recovery===true);
+        assert.equal((await pool.query('SELECT count(*)::int n FROM agent_runtime_connections WHERE binding_id=$1',[binding])).rows[0].n,0);
+      }else{
+        const done=view.messages.at(-1);assert.ok(done?.t==='done'&&done.disposition==='accepted'&&done.signedIn);
+        assert.equal((await pool.query('SELECT state FROM agent_runtime_connections WHERE binding_id=$1',[binding])).rows[0].state,'signed_in');
+      }
+    }
+  }finally{
+    for(const ws of sockets)ws.terminate();if(child)await stop(child);manager.closeAllConnections();rogue.closeAllConnections();
+    await Promise.all([new Promise<void>(r=>manager.close(()=>r())),new Promise<void>(r=>rogue.close(()=>r()))]);
+    for(const owner of owners)await pool.query('DELETE FROM auth_users WHERE id=$1',[owner]);await pool.query('DELETE FROM agent_runtime_slots WHERE slot=ANY($1)',[names]);
   }
 });

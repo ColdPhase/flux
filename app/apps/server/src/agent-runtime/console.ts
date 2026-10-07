@@ -180,7 +180,7 @@ export function serveBrowserConsole(socket: WebSocket, owner: { userId: string; 
     if (frame.t === 'relay_error') { fail(frame.code === 'busy' ? 'busy' : 'unavailable', CONSOLE_CLOSE.unavailable); return; }
     if (frame.t === 'error') { fail(frame.code === 'busy' ? 'busy' : frame.code === 'internal' || frame.code === 'not_installed' ? 'unavailable' : 'refused', CONSOLE_CLOSE.unavailable); return; }
     const result = frame.result;
-    if (result.kind !== 'login' || !attachment || result.client !== attachment.ticket.client) { fail('unavailable', CONSOLE_CLOSE.unavailable); return; }
+    if (result.kind !== 'login' || !attachment || (result.client !== attachment.ticket.client || result.status.client !== attachment.ticket.client)) { fail('unavailable', CONSOLE_CLOSE.unavailable); return; }
     finishing = true;
     try {
       const completed = await deps.runtime.recordSignIn(owner.userId, { operation: attachment.operation, method: attachment.ticket.method },

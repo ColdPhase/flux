@@ -27,14 +27,14 @@ export function runtimeManagerPort(client: RuntimeManagerClient) {
     async status(slot: string, bindingId: string, cli: RuntimeClient, bootId: string): Promise<PortCall<ClientStatus & { bootId: string }>> {
       const answer = await client.request(slot, { kind: 'status', bindingId, client: cli, bootId });
       if (!answer.ok) return answer;
-      if (answer.result.kind !== 'status' || !('client' in answer.result)) return { ok: false, code: 'protocol' };
+      if (answer.result.kind !== 'status' || !('client' in answer.result) || answer.result.client.client !== cli) return { ok: false, code: 'protocol' };
       return { ok: true, value: { ...answer.result.client, bootId: answer.bootId } };
     },
     /** Sign out: the CLI's own logout first, then the supervisor deletes that CLI's files either way. */
     async logout(slot: string, bindingId: string, cli: RuntimeClient, bootId: string): Promise<PortCall<{ logout: StepOutcome; bootId: string }>> {
       const answer = await client.request(slot, { kind: 'logout', bindingId, client: cli, bootId });
       if (!answer.ok) return answer;
-      if (answer.result.kind !== 'logout') return { ok: false, code: 'protocol' };
+      if (answer.result.kind !== 'logout' || answer.result.client !== cli) return { ok: false, code: 'protocol' };
       return { ok: true, value: { logout: answer.result.logout, bootId: answer.bootId } };
     },
     async release(slot: string, bindingId: string): Promise<PortCall<{ dataEmpty: boolean; logoutFailed: boolean }>> {

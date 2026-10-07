@@ -156,3 +156,21 @@ describe('the manager\'s reader of a misbehaving supervisor', () => {
     }
   });
 });
+
+test('manager port refuses a well-shaped result for the wrong CLI; identical current-client control passes', async()=>{
+  const bootId=randomUUID(),bindingId=randomUUID(),secret=slotSecret();let resultClient:'claude_code'|'codex'='codex';
+  const server=createHttpServer((request,response)=>{
+    const result=request.url?.endsWith('/logout')?{kind:'logout',client:resultClient,logout:'ok'}:
+      {kind:'status',client:{client:resultClient,signedIn:true,facts:{authMethod:'claude.ai',plan:'max',accountLabel:'a***@example.org',accountDigest:null},credentialFile:'ok',bindingBytes:0,bindingOverLimit:false}};
+    response.writeHead(200,{'content-type':'application/json'});response.end(JSON.stringify({bootId,result}));
+  });
+  const url=await listen(server);
+  try{
+    const port=runtimeManagerPort(createRuntimeManagerClient({url,secret}));
+    assert.deepEqual(await port.status('runtime-1',bindingId,'claude_code',bootId),{ok:false,code:'protocol'});
+    assert.deepEqual(await port.logout('runtime-1',bindingId,'claude_code',bootId),{ok:false,code:'protocol'});
+    resultClient='claude_code';
+    const status=await port.status('runtime-1',bindingId,'claude_code',bootId);assert.ok(status.ok&&status.value.signedIn&&status.value.bootId===bootId);
+    assert.deepEqual(await port.logout('runtime-1',bindingId,'claude_code',bootId),{ok:true,value:{logout:'ok',bootId}});
+  }finally{server.closeAllConnections();await new Promise<void>(done=>server.close(()=>done()));}
+});

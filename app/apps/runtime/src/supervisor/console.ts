@@ -19,7 +19,7 @@ import { cliEnvironment, loginArgv } from './templates.js';
 
 export interface ConsoleLane { readonly busy: boolean; tryRun(task: () => Promise<void>): Promise<void> | null }
 
-/** A newer console of the same owner replaces an older one; the older PTY may need a moment to end. */
+/** Bounded physical lane wait only; API admission requires settled work or full recovery first. */
 const LANE_WAIT_MS = 3_000;
 
 type LoginRequest = Extract<SupervisorRequest, { kind: 'login' }>;

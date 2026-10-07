@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import type { AgentRuntimeConnection, AgentRuntimeStatus } from '@flux/contracts';
 import { ApiError } from '../api/client';
@@ -41,24 +41,57 @@ export function RuntimeSection() {
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const generation = useRef(0);
+  const acting = useRef(false);
+  const pendingRead = useRef<AbortController | null>(null);
   const load = useCallback((signal?: AbortSignal) => {
-    getRuntime(signal).then((next) => { setStatus(next); setFailed(false); }).catch(() => { if (!signal?.aborted) setFailed(true); });
+    if (acting.current) return;
+    const current = ++generation.current;
+    pendingRead.current?.abort();
+    const controller = new AbortController();
+    pendingRead.current = controller;
+    const abort = () => controller.abort();
+    signal?.addEventListener('abort', abort, { once: true });
+    if (signal?.aborted) controller.abort();
+    getRuntime(controller.signal).then((next) => {
+      if (current !== generation.current || controller.signal.aborted) return;
+      setStatus(next); setFailed(false);
+    }).catch(() => {
+      if (current === generation.current && !controller.signal.aborted) setFailed(true);
+    }).finally(() => {
+      signal?.removeEventListener('abort', abort);
+      if (pendingRead.current === controller) pendingRead.current = null;
+    });
   }, []);
   useEffect(() => {
     const controller = new AbortController();
     load(controller.signal);
-    return () => controller.abort();
+    return () => { controller.abort(); pendingRead.current?.abort(); generation.current += 1; };
   }, [load]);
-  // While the runtime is being removed, the worker signs out and frees the slot; look again shortly.
+  // Reads never replace a newer action result; while an action owns the view, skip polling.
   useEffect(() => {
-    if (status?.binding?.state !== 'releasing' && !status?.auth?.claude_code) return;
+    if (busy || (status?.binding?.state !== 'releasing' && !status?.auth?.claude_code)) return;
     const timer = window.setTimeout(() => load(), 2000);
     return () => window.clearTimeout(timer);
-  }, [status, load]);
+  }, [status, load, busy]);
 
   const act = async (key: string, action: () => Promise<AgentRuntimeStatus>, fallback: string) => {
+    const current = ++generation.current;
+    acting.current = true;
+    pendingRead.current?.abort();
     setBusy(key); setError('');
-    try { setStatus(await action()); setConfirmRemove(false); } catch (cause) { setError(failure(cause, fallback)); load(); } finally { setBusy(''); }
+    let refresh = false;
+    try {
+      const next = await action();
+      if (current === generation.current) { setStatus(next); setConfirmRemove(false); }
+    } catch (cause) {
+      if (current === generation.current) { setError(failure(cause, fallback)); refresh = true; }
+    } finally {
+      if (current === generation.current) {
+        acting.current = false; setBusy('');
+        if (refresh) load();
+      }
+    }
   };
 
   if (failed) return <section className="nset__sec rt" aria-labelledby="rt-h"><h3 id="rt-h">Claude Code in Flux</h3><p className="nset__note">This part couldn’t load. <button type="button" className="ui-link" onClick={() => { setFailed(false); load(); }}>Try again</button></p></section>;
@@ -101,7 +134,7 @@ export function RuntimeSection() {
         <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Your runtime was removed, but Anthropic didn’t confirm the sign-out.</b> Flux deleted the login anyway. End the session in your Claude account or Anthropic Console settings to be sure.</span></p>
       ) : null}
       {!binding && release && release.reason !== 'owner' ? (
-        <p className="nset__note">Your runtime was removed on {dateTime(release.at)} {release.reason === 'idle' ? 'because it wasn’t used for a while' : release.reason === 'auth_recovery' ? 'to recover safely after an unconfirmed operation; both clients need to sign in again' : 'by the person who runs this server'}. It signed out first.</p>
+        <p className="nset__note">Your runtime was removed on {dateTime(release.at)} {release.reason === 'idle' ? 'because it wasn’t used for a while' : release.reason === 'auth_recovery' ? 'to recover safely after an unconfirmed operation; both clients need to sign in again' : 'by the person who runs this server'}. {release.signOutFailed ? 'Vendor sign-out was not confirmed; end the session in your vendor account settings.' : 'It signed out first.'}</p>
       ) : null}
       {removing ? <p className="nset__note" role="status"><Spinner /> {binding?.recovery ? 'Recovering your runtime after an unconfirmed operation. Access is disabled; both clients may need to sign in again after cleanup.' : 'Signing out and removing your runtime…'}</p> : null}
       {authPending ? <p className="nset__note" role="status"><Spinner /> {authPending === 'signing_out' ? 'Sign-out requested. Access is disabled while Claude Code signs out and its files are removed.' : authPending === 'signing_in' ? 'A sign-in is still in progress.' : 'Checking the current sign-in…'}</p> : null}
@@ -125,7 +158,7 @@ export function RuntimeSection() {
         <div className="details__confirm" role="group" aria-label="Remove your runtime">
           <p>Flux signs Claude Code out first, then deletes your runtime’s files and frees it for someone else. You can set it up again later.</p>
           <div className="aset__actions">
-            <Button variant="danger" busy={busy === 'remove'} onClick={() => void act('remove', removeRuntime, 'Couldn’t remove it. Nothing changed; try again.')}>Sign out and remove</Button>
+            <Button variant="danger" busy={busy === 'remove'} onClick={() => void act('remove', removeRuntime, 'Removal could not be confirmed. Check the current runtime state before trying again.')}>Sign out and remove</Button>
             <Button variant="quiet" onClick={() => setConfirmRemove(false)}>Cancel</Button>
           </div>
         </div>
