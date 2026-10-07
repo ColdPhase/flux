@@ -53,6 +53,7 @@ async function fixture(developmentEditing = true) {
   const database = createDatabase(connectionString);
   let remaining = 0, lost = false;
   let reached = signal(), release = signal();
+  let roomReadTarget: string | null = null, roomReadReached = signal(), roomReadRelease = signal();
   const failure = new Error('fixture: response lost AFTER actual PostgreSQL COMMIT');
   database.pool.on('connect', client => {
     const query = client.query;
@@ -67,6 +68,14 @@ async function fixture(developmentEditing = true) {
             return result;
           });
         }
+      }
+      const values = Array.isArray(args[1]) ? args[1] : statement && typeof statement === 'object' && 'values' in statement ? statement.values : undefined;
+      if (roomReadTarget && typeof text === 'string' && text.startsWith('select "sketch_id" from "map_live_heads"') && Array.isArray(values) && values[0] === roomReadTarget) {
+        roomReadTarget = null;
+        return Promise.resolve(Reflect.apply(query, client, args)).then(async result => {
+          assert.equal(result.rows.length, 0, 'The actual non-locking room read must finish before the concurrent first join');
+          roomReadReached.resolve(); await roomReadRelease.promise; return result;
+        });
       }
       return Reflect.apply(query, client, args);
     } as typeof client.query;
@@ -137,8 +146,9 @@ async function fixture(developmentEditing = true) {
       database, app, backend, maps, wiki, browser, base, origin, sketch, thought, head, doc, actorId: me.user.id,
       watch(id = randomUUID()) { assert.ok(captures.size < 16); const value = capture(); captures.set(id, value); return { id, value }; },
       arm(commits: number, lose = false) { assert.equal(remaining, 0); remaining = commits; lost = lose; reached = signal(); release = signal(); return { reached: reached.promise, release: release.resolve, failure }; },
+      pauseRoomRead(sketchId: string) { assert.equal(roomReadTarget, null); roomReadTarget = sketchId; roomReadReached = signal(); roomReadRelease = signal(); return { reached: roomReadReached.promise, release: roomReadRelease.resolve }; },
       pauseHandoff(kind: 'map' | 'wiki') { handoffKind = kind;handoffReached = signal();handoffRelease = signal();return { reached: handoffReached.promise,release: handoffRelease.resolve }; },
-      async close() { release.resolve();handoffRelease.resolve(); await wiki.close(); await maps.close(); await app.close(); await database.pool.end(); },
+      async close() { release.resolve();roomReadRelease.resolve();handoffRelease.resolve(); await wiki.close(); await maps.close(); await app.close(); await database.pool.end(); },
     };
   } catch (error) {
     await wiki.close(); await maps.close(); await app.close(); await database.pool.end();
@@ -167,6 +177,94 @@ async function nativeState(f: Awaited<ReturnType<typeof fixture>>, uuid: string)
   const journal = (await pool.query('SELECT command_id,sequence FROM map_live_journal WHERE sketch_id=$1 AND command_id=$2', [f.sketch.id, uuid])).rows;
   return { thought, receipts, journal };
 }
+
+test('ordinary roomless HTTP creation and exact retry stay independent of the fully reserved live budget', { timeout: 15_000 }, async () => {
+  const f = await fixture(false); let releaseCapacity = () => {};
+  try {
+    const sketch = expectStatus(await f.browser.request('POST', `/api/v1/workspaces/${f.sketch.workspaceId}/sketches`, {
+      body: { title: 'Ordinary roomless map', scope: 'project', projectId: f.sketch.projectId },
+    }), 201) as Sketch;
+    assert.equal((await pool.query('SELECT count(*)::int n FROM map_live_heads WHERE sketch_id=$1', [sketch.id])).rows[0].n, 0);
+    await observed(() => apiEditingOutputBudget.bytes === 0, 'Ordinary setup must settle before holding capacity');
+    releaseCapacity = apiEditingOutputBudget.reserve(32 * 1024 * 1024);
+    const uuid = randomUUID(); const parameters = { text: 'Roomless creation under live pressure', x: 0, y: 0 };
+    let original: unknown;
+    for (const retry of [false, true]) {
+      const watch = f.watch(); const pending = client(f, 'POST', `/api/v1/sketches/${sketch.id}/thoughts`, watch.id, parameters, { 'idempotency-key': uuid });
+      try {
+        const response = await finite(pending.complete, 'Roomless native command must not wait for live capacity');
+        assert.equal(response.status, 201, response.text);
+        const value = JSON.parse(response.text) as { thought: Thought };
+        assert.equal(value.thought.text, parameters.text);
+        if (retry) { assert.equal(response.replayed, 'true'); assert.deepEqual(value, original); }
+        else original = value;
+        await finite(watch.value.settled.promise, 'Roomless HTTP work must settle');
+        await finite(watch.value.finish.promise, 'Roomless HTTP response must finish');
+        assert.equal(apiEditingOutputBudget.bytes, 32 * 1024 * 1024, 'No live owner, input or preparation may be charged');
+      } finally { pending.req.destroy(); await pending.complete.catch(() => {}); }
+    }
+    assert.equal((await pool.query('SELECT count(*)::int n FROM sketch_thoughts WHERE sketch_id=$1', [sketch.id])).rows[0].n, 1);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM map_live_heads WHERE sketch_id=$1', [sketch.id])).rows[0].n, 0);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM map_live_journal WHERE sketch_id=$1', [sketch.id])).rows[0].n, 0);
+  } finally { releaseCapacity(); await f.close(); assert.equal(apiEditingOutputBudget.bytes, 0); }
+});
+
+test('ordinary retained-room HTTP capacity refusal is retryable without effects and the same intent recovers', { timeout: 15_000 }, async () => {
+  const f = await fixture(false); let releaseCapacity = apiEditingOutputBudget.reserve(32 * 1024 * 1024);
+  const uuid = randomUUID(); const parameters = { text: 'Retained-room exact recovery', expectedVersion: f.thought.version };
+  const before = await nativeState(f, uuid);
+  try {
+    for (const pressure of [true, false]) {
+      if (!pressure) { releaseCapacity(); releaseCapacity = () => {}; }
+      const watch = f.watch(); const pending = client(f, 'PATCH', `/api/v1/sketches/${f.sketch.id}/thoughts/${f.thought.id}`, watch.id, parameters, { 'idempotency-key': uuid });
+      try {
+        const response = await finite(pending.complete, 'Retained-room native command must have a finite outcome');
+        assert.equal(response.status, pressure ? 503 : 200, response.text);
+        await finite(watch.value.settled.promise, 'Retained-room HTTP work must settle');
+        await finite(watch.value.finish.promise, 'Retained-room HTTP response must finish');
+        if (pressure) {
+          assert.deepEqual(JSON.parse(response.text), { code: 'EDITING_OUTPUT_CAPACITY', error: 'The finite native map capacity is busy', outcome: 'refused', retryable: true });
+          assert.deepEqual(await nativeState(f, uuid), before, 'Refused admission cannot alter thought, receipt or journal');
+          assert.equal(apiEditingOutputBudget.bytes, 32 * 1024 * 1024);
+        } else {
+          assert.equal((JSON.parse(response.text) as Thought).text, parameters.text);
+          await observed(() => apiEditingOutputBudget.bytes === 0, 'Recovered response ownership must retire');
+          const state = await nativeState(f, uuid); assert.equal(state.thought.version, f.thought.version + 1);
+          assert.equal(state.receipts.length, 1); assert.equal(state.journal.length, 1);
+        }
+      } finally { pending.req.destroy(); await pending.complete.catch(() => {}); }
+    }
+  } finally { releaseCapacity(); await f.close(); assert.equal(apiEditingOutputBudget.bytes, 0); }
+});
+
+test('a first live room after ordinary preflight charges ownership even after HTTP closes, until actual SQL settlement', { timeout: 15_000 }, async () => {
+  const f = await fixture(false); let pending: ReturnType<typeof client> | undefined;
+  let releaseCommit = () => {}; let roomRead: ReturnType<typeof f.pauseRoomRead> | undefined;
+  try {
+    const sketch = expectStatus(await f.browser.request('POST', `/api/v1/workspaces/${f.sketch.workspaceId}/sketches`, {
+      body: { title: 'First room during ordinary admission', scope: 'project', projectId: f.sketch.projectId },
+    }), 201) as Sketch;
+    await observed(() => apiEditingOutputBudget.bytes === 0, 'Roomless setup must settle');
+    roomRead = f.pauseRoomRead(sketch.id); const boundary = f.arm(1);
+    releaseCommit = boundary.release;
+    const watch = f.watch(); const uuid = randomUUID(); const parameters = { text: 'Created after the first room joined', x: 0, y: 0 };
+    pending = client(f, 'POST', `/api/v1/sketches/${sketch.id}/thoughts`, watch.id, parameters, { 'idempotency-key': uuid });
+    await finite(roomRead.reached, 'The actual ordinary preflight read must be observed');
+    assert.equal(apiEditingOutputBudget.bytes, 0, 'A scalar terminal observer before any live room must not take live capacity');
+    expectStatus(await f.browser.request('GET', `/api/v1/sketches/${sketch.id}/live`), 200);
+    await observed(() => apiEditingOutputBudget.bytes === 0 && f.backend.sqlActive === 0, 'The first join must finish independently');
+    pending.req.destroy(); await finite(watch.value.close.promise, 'The ordinary response must close before the new-room SQL work');
+    roomRead.release(); await finite(boundary.reached, 'The actual native COMMIT must finish, then its response is held');
+    assert.equal(watch.value.workSettled, false);
+    assert.ok(apiEditingOutputBudget.bytes >= preparationBytes + 4096, 'The new room must acquire its protected owner even after the observed close');
+    const thought = (await pool.query('SELECT text,version FROM sketch_thoughts WHERE sketch_id=$1', [sketch.id])).rows;
+    assert.deepEqual(thought, [{ text: parameters.text, version: 1 }]);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM map_live_journal WHERE sketch_id=$1 AND command_id=$2', [sketch.id, uuid])).rows[0].n, 1);
+    boundary.release(); await finite(watch.value.settled.promise, 'The native work must settle after its actual COMMIT response');
+    await observed(() => apiEditingOutputBudget.bytes === 0, 'Both prior close and later SQL settlement retire the protected owner');
+    noTerminalSerialization(watch.value);
+  } finally { releaseCommit(); roomRead?.release(); pending?.req.destroy(); await pending?.complete.catch(() => {}); await f.close(); assert.equal(apiEditingOutputBudget.bytes, 0); }
+});
 
 test('actual native HTTP abort before a PG-blocked command retains source through outer COMMIT then releases without another close', { timeout: 15_000 }, async () => {
   const f = await fixture(); const blocker = await pool.connect(); let locked = true;
