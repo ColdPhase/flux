@@ -66,6 +66,11 @@ time can change them:
 
 - non-root user `1000:1000`, read-only root filesystem, `cap_drop: ALL`, `no-new-privileges`, an init
   process, no host mounts, `restart: always`;
+- the Node supervisor sets Linux `PR_SET_DUMPABLE=0` before reading its secret. A CLI with the same
+  uid cannot read the supervisor's `/proc/<pid>/environ` or write `/proc/<pid>/mem`. Slots require
+  Linux Yama `kernel.yama.ptrace_scope` of 1 or higher; a missing policy or value 0 stops the supervisor
+  before it listens, so the worker cannot admit the slot. This is a Linux host requirement, including
+  the Linux VM used by Docker Desktop; Flux does not change host kernel settings;
 - 2 GiB memory (no swap), one CPU, 256 processes, a 128 MiB tmpfs `/tmp`;
 - container logs rotated at 3 × 10 MB;
 - only its own volume at `/data` and the read-only tools volume;
@@ -145,6 +150,12 @@ supervisor reports an empty `/data`.
 - If a sign-out fails (for example the vendor is unreachable), the files are deleted anyway. Whether a
   CLI's logout revokes the session at the vendor is **unverified**; owners should end such sessions in
   their Claude or ChatGPT account settings.
+- Cleanup can reach the recorded vendor hosts even with `FLUX_AGENT_RUNTIME` empty, so off → purge,
+  reset and clean can attempt vendor sign-out. This does not enable login or runs: the supervisor
+  continues to reject them while the switch is off. An HTTPS CONNECT proxy cannot distinguish the
+  vendor's logout path from its other paths; the host list stays restricted to those already recorded.
+- Skipped, missing, failed or timed-out CLI logout is **not confirmed**, even if local files were
+  deleted. The API reports `signOutFailed`, and operator output says `sign-out NOT confirmed`.
 
 ## Versions
 
@@ -152,6 +163,10 @@ Each Flux release pins the CLI versions its flag contract check passed: Claude C
 `app/apps/runtime/src/install/pins.ts`) and Codex rust-v0.160.1 (in `docker/Dockerfile`, by checksum).
 `./flux upgrade` reinstalls Claude Code at the new pin on its next start; nothing updates itself
 (`DISABLE_UPDATES=1`).
+
+The separate published runtime image and release-matched operator assets remain tracked by
+[#358](https://github.com/ColdPhase/flux/issues/358), alongside the application packaging in
+[#77](https://github.com/ColdPhase/flux/issues/77). A source-built slot is not a published runtime release.
 
 `./scripts/check_runtime_cli_contract.sh` is the opt-in flag contract check against these real CLIs
 (no account needed; internet access to github.com and downloads.claude.ai). It is not part of CI; the

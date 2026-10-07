@@ -136,6 +136,8 @@ live pool-full F
 
 step "5. Escape attempts from inside a slot"
 slot_cid=$(cid "$a_slot")
+docker exec -i -u 1000:1000 "$slot_cid" node --input-type=module - supervisor < "$here/scripts/agent-runtime/probe-process.mjs"
+docker exec -i -u 1000:1000 "$slot_cid" node --input-type=module - /opt/flux-runtime/apps/runtime/native/protect.node < "$here/scripts/agent-runtime/probe-process.mjs"
 other=runtime-2; [ "$a_slot" != runtime-2 ] || other=runtime-3
 # The host's own address on the project's default bridge: a slot must not reach the host there either.
 gateway=$(docker network inspect -f '{{ range .IPAM.Config }}{{ .Gateway }}{{ end }}' "${project}_default")
@@ -248,7 +250,8 @@ docker volume inspect "${project}_runtime-1-data" >/dev/null || fail "switching 
 live off
 
 step "14. ./flux runtime purge signs out and deletes every login"
-./flux runtime purge -y
+./flux runtime purge -y | tee "$work/purge.txt"
+grep -q 'signed out (claude_code ok, codex ok)' "$work/purge.txt" || fail "off→purge did not attempt sign-out successfully"
 [ -z "$(docker volume ls -q --filter "label=com.docker.compose.project=$project" | grep -E '_runtime-' || true)" ] || fail "purge left runtime volumes"
 ./flux runtime status | grep -q 'no binding' || true
 
