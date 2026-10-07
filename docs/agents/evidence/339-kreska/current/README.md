@@ -102,6 +102,22 @@ from `1987254e` to `f5f7c882`, and backend/contracts source has no diff from
 removed. A fresh independent source/test and visual delta review is required for
 this follow-up; the prior review is not represented as a pass for these captures.
 
+## Handoff verification follow-up
+
+The independent [visual follow-up](visual-followup.md) inspected all five replacement
+native PNGs at `a1b77de9d85a819c2037dca9e9cee3e76c22491c`. It found the earlier
+missing visible owner and fading Details panel resolved in those captures. This
+is bounded appearance evidence, not acceptance of the whole task or application.
+
+The root reviewer then checked the full diff against `origin/main`, which caught
+an inherited extra blank line at the end of `messageParts.tsx`. The handoff removes
+that final blank line only. Production files otherwise remain identical to the
+application snapshots above; stripping trailing newlines makes this file identical
+to the tested `1987254e` source. The earlier source/evidence assertions refer to
+their recorded commits, before this whitespace correction. The handoff repeats
+agent setup, all 76 foundation tests and the full-base diff whitespace check; it
+requires a fresh independent source/test review of the new head.
+
 ## Neutral visual review input
 
 A project collaborator needs to recognize an agent, its human/workspace owner

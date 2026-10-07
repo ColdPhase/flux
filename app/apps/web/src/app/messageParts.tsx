@@ -88,4 +88,3 @@ export function AuthorFace({ message, name, mine, size = 'md' }: { message: Pick
 export function AgentAuthor({ message, owner }: { message: Extract<ConversationMessage, { authorId: null }>; owner?: string | null }) {
   return <AgentIdentity name={message.author.name ?? 'Agent'} owner={owner} icon={false} />;
 }
-
