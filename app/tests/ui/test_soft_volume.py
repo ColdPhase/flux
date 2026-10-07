@@ -102,6 +102,9 @@ class SoftVolume(unittest.TestCase):
                          {"title": "Keep the measured enclosure", "supersedes": previous["id"], "affects": [parked["id"]]})
         self.api(page, "POST", f"/api/v1/decisions/{pivot['id']}/accept", {"expectedVersion": 1, "park": [parked["id"]]}, status=200)
         type(self).ids["parked"] = parked["id"]
+        preview = self.api(page, "POST", f"/api/v1/projects/{project['id']}/decisions",
+                           {"title": "Compare the next enclosure batch", "supersedes": pivot["id"]})
+        type(self).ids["pivot_preview"] = preview["id"]
         upload = page.request.post(f"/api/v1/projects/{project['id']}/files?uploadId={uuid.uuid4()}&name=calibration.csv",
                                    data=b"lux,temperature\n5,21\n", headers={"origin": ORIGIN, "content-type": "application/octet-stream"})
         self.assertEqual(upload.status, 201, upload.text())
@@ -280,6 +283,30 @@ class SoftVolume(unittest.TestCase):
                 self.assertLessEqual(bounds["x"] + bounds["width"], page.viewport_size["width"] + 1)
                 self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.viewport_size["width"])
                 shot(page, f"338-{self.engine}-title-200-{'390' if phone else '1440'}")
+
+    def test_08_native_radio_selection_and_keyboard_focus_are_neutral(self) -> None:
+        self.ensure_account()
+        for scheme, tokens in (("light", LIGHT), ("dark", DARK)):
+            for phone in (False, True):
+                with self.subTest(scheme=scheme, phone=phone):
+                    page = self.page(scheme=scheme, phone=phone)
+                    page.goto(f"/projects/{self.ids['project']}/tasks?open=decision:{self.ids['pivot_preview']}")
+                    group = page.locator(".wd-pivot__row").first
+                    selected = group.get_by_role("radio", name="Still applies", exact=True)
+                    selected.check()
+                    expect(selected).to_be_checked()
+                    self.assertEqual(selected.evaluate("e => getComputedStyle(e).accentColor"), RGB(tokens["--t1"]))
+                    # Native keyboard movement changes the actual choice, with the shared neutral focus ring.
+                    selected.press("ArrowRight")
+                    parked = group.get_by_role("radio", name="Park", exact=True)
+                    expect(parked).to_be_checked()
+                    expect(parked).to_be_focused()
+                    self.assertEqual(parked.evaluate("e => e.matches(':focus-visible')"), True)
+                    ring = parked.evaluate("e => { const s = getComputedStyle(e); return [s.outlineColor, s.outlineStyle, s.outlineWidth]; }")
+                    self.assertEqual(ring, [RGB(tokens["--t1"]), "solid", "2px"])
+                    value = page.evaluate(MEASURE, {"selector": ".wd-pivot__c input:checked", "property": "accentColor"})
+                    self.assertGreaterEqual(value["ratio"], 3, (scheme, phone, value))
+                    shot(page, f"338-{self.engine}-pivot-radio-{'390' if phone else '1440'}-{scheme}")
 
 
 class SoftVolumeWebKit(SoftVolume):
