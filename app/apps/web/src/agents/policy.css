@@ -37,7 +37,7 @@
 .agents-policy__field--invalid textarea { border-color: var(--t1); }
 .agents-policy__field-foot { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-3); }
 .agents-policy__hint { margin: 0; font-size: var(--fs-xs); line-height: 1.5; color: var(--t3); }
-.agents-policy__count { flex: none; font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
+.agents-policy__count { flex: none; font-family: var(--mono); font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
 .agents-policy__field--invalid .agents-policy__count { color: var(--t1); }
 .agents-policy__field-error, .agents-policy__error {
   margin: 0; display: flex; align-items: flex-start; gap: 6px;

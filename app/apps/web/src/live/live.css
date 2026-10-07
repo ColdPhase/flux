@@ -181,7 +181,7 @@
 .lv-stage__zoom { display: flex; align-items: center; gap: 2px; }
 .lv-stage__zoom .ui-btn { padding: 0 10px; }
 .lv-stage__zoom .ui-btn[aria-pressed="true"] { background: var(--sub); color: var(--t1); }
-.lv-stage__pct { min-width: 40px; text-align: center; font-size: var(--fs-sm); color: var(--t3); font-variant-numeric: tabular-nums; }
+.lv-stage__pct { min-width: 40px; text-align: center; font-family: var(--mono); font-size: var(--fs-sm); color: var(--t3); font-variant-numeric: tabular-nums; }
 .lv-stage__end { display: flex; gap: 6px; margin-left: auto; }
 .lv-stage__end .ui-btn[aria-pressed="true"] { color: var(--t1); }
 .lv-stage__body { flex: 1; min-height: 0; display: flex; gap: 12px; padding: 12px; background: var(--sub); }

@@ -104,6 +104,7 @@ function workSub(item: WorkRowProjection) {
   const fromMessage = item.relations.sourceMessages > 0;
   const waiting = isFinished(item) ? 0 : item.prerequisiteCounts.unmet;
   return [
+    item.parked ? null : STATUS_LABEL[item.status],
     item.owner ? item.owner.name : 'No owner',
     item.status === 'blocked' && item.blocker ? `waiting for ${item.blocker}` : null,
     waiting ? `waits for ${waiting} ${waiting === 1 ? 'task' : 'tasks'}` : null,
