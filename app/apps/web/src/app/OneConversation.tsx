@@ -60,7 +60,7 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   if ((conversation?.id ?? null) !== shownId) { setShownId(conversation?.id ?? null); setClosing(null); }
   const thread = conversation && conversation.id !== closing ? conversation : null;
   const writable = project.access !== 'viewer';
-  const owners = useAgentOwners(project.workspaceId);
+  const owners = useAgentOwners(project);
 
   const onDenied = useCallback((cause: unknown) => {
     // A lost project or session reloads the route, which shows why instead of stale content.

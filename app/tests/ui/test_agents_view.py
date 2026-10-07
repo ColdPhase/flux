@@ -458,6 +458,7 @@ class AgentsViewJourney(unittest.TestCase):
             target = next(item for item in body["connections"] if item["name"] == "Desk laptop")
             target["state"] = "session_open"
             target["session"] = {"startedAt": started, "expiresAt": expires}
+            target["lastActivity"] = {"operation": "work.create", "at": started}
             reads.append(route.request.url)
             route.fulfill(response=response, json=body)
 
@@ -472,6 +473,7 @@ class AgentsViewJourney(unittest.TestCase):
         desk = page.get_by_role("list", name="Agent connections in this project").get_by_role("listitem").filter(has_text="Desk laptop")
         expect(desk).to_contain_text("Session open since")
         expect(desk).to_have_attribute("data-state", "session_open")
+        expect(desk.locator(".agents-conn__icon")).to_have_attribute("data-expression", "idle")
         expect(desk).to_contain_text("Offline", timeout=25000)
         expect(desk).to_have_attribute("data-state", "offline")
         expect(desk).not_to_contain_text("Session open since")

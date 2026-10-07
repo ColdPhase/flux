@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser, type BrowserContext } from 'playwright';
 import { taskDiscussionPath, type ConversationMessage, type WorkItem } from '@flux/contracts';
+import { workUseCases } from '../../../apps/server/src/work/adapters.js';
 import { taskDiscussionUseCases } from '../../../apps/server/src/work/task-discussions.js';
 import { db, pool } from '../support/db.js';
 import { addMember, expectStatus, grant, password, person, project, workspace, type Person } from '../support/people.js';
@@ -50,7 +51,7 @@ after(async () => {
 });
 
 async function signedIn(who: Person, width: number) {
-  const context = await browser.newContext({ baseURL: origin.origin, viewport: { width, height: 900 } });
+  const context = await browser.newContext({ baseURL: origin.origin, viewport: { width, height: 900 }, serviceWorkers: 'block' });
   contexts.push(context);
   const signed = await context.request.post('/api/auth/sign-in/email', {
     data: { email: who.email, password }, headers: { origin: origin.origin },
@@ -160,4 +161,92 @@ test('agent root renders without a human DM link, real human reply persists, and
     }
     assert.deepEqual((await pool.query('SELECT * FROM project_messages WHERE id=$1', [root.id])).rows[0], stored);
     assert.deepEqual(errors, []);
+  });
+
+
+test('native agent owners retry failed reads, fence stale permission answers and survive same-tab account changes',
+  { timeout: 90_000 }, async () => {
+    const [owner, guest] = await Promise.all(['Scoped Casey', 'Scoped Guest'].map(person));
+    const ws = await workspace(owner, 'Owner projection');
+    await addMember(owner, ws.id, guest, 'guest');
+    const place = await project(owner, ws.id, 'Owner scope', 'restricted');
+    await grant(owner, place.id, guest, 'viewer');
+    const agent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, {
+      body: { name: 'Scoped analyst', owner: 'self' },
+    }), 201) as { id: string };
+    expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/grants`, {
+      body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' },
+    }), 201);
+    const work = workUseCases(db);
+    const actor = { kind: 'agent' as const, id: agent.id };
+    const task = await work.createWork({ kind: 'human', id: owner.id }, place.id, { title: 'Scoped owner task', owner: actor });
+    const proposal = await work.proposeDecision(actor, place.id, { title: 'Scoped agent decision', rationale: 'Measured by an actual authorized actor' });
+    await taskDiscussionUseCases(db).contribute(actor, task.id, { body: 'Current scoped agent reply', clientMessageId: randomUUID() });
+    const context = await signedIn(owner, 1440);
+    const page = await context.newPage();
+    const endpoint = `**/api/v1/projects/${place.id}/people`;
+    await page.route(endpoint, (route) => route.fulfill({ status: 503, contentType: 'application/json', body: '{"code":"TEMPORARY_UNAVAILABLE"}' }));
+    await page.goto(`/projects/${place.id}/tasks?view=board`);
+    const card = page.locator(`[data-card-id="${task.id}"]`);
+    await card.waitFor();
+    assert.equal(await card.locator('.agent-for').count(), 0, 'failed owner reads show no obsolete relation');
+    await page.unroute(endpoint);
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await card.locator('.agent-for').waitFor();
+    assert.equal(await card.locator('.agent-for').innerText(), 'for Scoped Casey', '503 was not cached');
+    await page.getByRole('button', { name: 'List', exact: true }).click();
+    const row = page.locator(`[data-work-id="${task.id}"]`);
+    await row.locator('.agent-for').waitFor();
+    assert.equal(await row.locator('.agent-tag').innerText(), 'Agent');
+    assert.equal(await row.locator('.ws-av').count(), 0);
+    const decision = page.locator(`[data-work-id="${proposal.id}"]`);
+    await decision.locator('.agent-for').waitFor();
+    assert.equal(await decision.locator('.agent-tag').innerText(), 'Agent');
+    assert.equal((await decision.innerText()).includes('(agent)'), false);
+    // A response completed under old authority is held while a real grant changes. The stream
+    // must fence the held response as well as clear the current label.
+    let release!: () => void;
+    let held!: () => void;
+    const gotHeld = new Promise<void>((resolve) => { held = resolve; });
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let once = true;
+    await page.route(endpoint, async (route) => {
+      if (!once) return route.continue();
+      once = false;
+      const response = await route.fetch();
+      held();
+      await gate;
+      await route.fulfill({ response }).catch(() => undefined);
+    });
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await gotHeld;
+    expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/grants`, {
+      body: { principal: { kind: 'agent', id: agent.id }, role: 'denied' },
+    }), 201);
+    await page.waitForFunction((id) => !document.querySelector(`[data-work-id="${id}"] .agent-for`), task.id);
+    release();
+    await page.unroute(endpoint);
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await page.waitForFunction((id) => !document.querySelector(`[data-work-id="${id}"] .agent-for`), task.id);
+    assert.equal(await row.locator('.agent-for').count(), 0, 'an old authorized response cannot reintroduce the relation');
+    // The same live document signs into a guest account after permissions changed.
+    await page.evaluate(() => { (window as unknown as { sameDocument: boolean }).sameDocument = true; });
+    await page.getByRole('button', { name: 'Scoped Casey' }).click();
+    await page.getByRole('dialog', { name: 'Account', exact: true }).getByRole('button', { name: 'Sign out', exact: true }).click();
+    await page.getByRole('heading', { name: 'Sign in to Flux' }).waitFor();
+    await page.getByLabel('Email').fill(guest.email); await page.getByLabel('Password', { exact: true }).fill(password);
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await page.getByRole('link', { name: 'Owner scope', exact: true }).click();
+    await page.getByRole('link', { name: 'Tasks', exact: true }).click();
+    await page.locator(`[data-card-id="${task.id}"]`).waitFor();
+    assert.equal(await page.locator(`[data-card-id="${task.id}"] .agent-for`).count(), 0);
+    assert.equal(await page.evaluate(() => (window as unknown as { sameDocument: boolean }).sameDocument), true);
+    assert.equal((await context.request.get(`/api/v1/workspaces/${ws.id}/members`)).status(), 403, 'guest cannot request the roster');
+    expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/grants`, {
+      body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' },
+    }), 201);
+    await page.locator(`[data-card-id="${task.id}"] .agent-for`).waitFor();
+    assert.equal(await page.locator(`[data-card-id="${task.id}"] .agent-for`).innerText(), 'for Scoped Casey', 'guest sees only project-authorized identity');
+    const evidence = process.env.FLUX_E2E_EVIDENCE_DIR;
+    if (evidence) { mkdirSync(evidence, { recursive: true }); await page.screenshot({ path: join(evidence, '339-scoped-agent-owner-board.png'), fullPage: true }); }
   });

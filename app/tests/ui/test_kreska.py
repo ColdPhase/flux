@@ -103,6 +103,7 @@ class KreskaJourney(unittest.TestCase):
         owner = agent_card.locator(".tb-card__owner")
         expect(owner.locator(":scope > .kreska")).to_have_count(1)
         expect(owner.locator(".agent-tag")).to_have_text("Agent")
+        expect(owner.locator(".agent-for")).to_have_text("for Ada Kreska")
         expect(agent_card.locator(".tb-av")).to_have_count(0)
         person_card = page.locator(".tb-card", has_text="Order the enclosures")
         expect(person_card.locator(".tb-av")).to_have_text("AK")
@@ -111,7 +112,7 @@ class KreskaJourney(unittest.TestCase):
         self.assertEqual(owner.locator(":scope > .kreska").get_attribute("class").strip(), "kreska")
         shot(page, "339-tasks-agent-owner")
 
-    def test_03_every_expression_is_a_complete_static_frame_under_reduced_motion(self) -> None:
+    def test_03_integrated_task_owner_is_static_under_reduced_motion(self) -> None:
         self.ensure_account()
         page = self.page(reduced=True)
         page.goto(f"/projects/{self.ids['project']}/tasks")
@@ -120,6 +121,32 @@ class KreskaJourney(unittest.TestCase):
         # The frame, both eyes and the brow are drawn, and nothing animates.
         self.assertGreaterEqual(face.locator("path").count(), 3)
         self.assertEqual(page.evaluate("document.getAnimations().filter(a => a.effect?.target?.closest?.('.kreska')).length"), 0)
+
+    def test_03b_native_list_and_phone_metadata_include_scoped_owner(self) -> None:
+        self.ensure_account()
+        webkit = self.pw.webkit.launch()
+        self.addCleanup(webkit.close)
+        for engine in (self.browser, webkit):
+            for scheme in ("light", "dark"):
+                context = engine.new_context(base_url=ORIGIN, storage_state=self.state, viewport=PHONE, is_mobile=True, has_touch=True, color_scheme=scheme, service_workers="block")
+                self.addCleanup(context.close)
+                page = context.new_page()
+                page.goto(f"/projects/{self.ids['project']}/tasks?view=list")
+                agent_row = page.locator(".ws-item", has_text="Calibrate the probes")
+                expect(agent_row.locator(".agent-for")).to_have_text("for Ada Kreska")
+                expect(agent_row.locator(".agent-tag")).to_have_text("Agent")
+                expect(agent_row.locator(".ws-av")).to_have_count(0)
+                human_row = page.locator(".ws-item", has_text="Order the enclosures")
+                expect(human_row.locator(".ws-av")).to_have_text("A")
+                expect(human_row.locator(".kreska")).to_have_count(0)
+                tag = agent_row.locator(".agent-tag")
+                self.assertGreaterEqual(tag.evaluate("e => parseFloat(getComputedStyle(e).fontSize)"), 12.5)
+                shot(page, f"339-native-list-{engine.browser_type.name}-phone-{scheme}")
+                page.evaluate("document.documentElement.style.fontSize = '32px'")
+                self.assertGreaterEqual(tag.evaluate("e => parseFloat(getComputedStyle(e).fontSize)"), 25)
+                expect(tag).to_be_visible()
+                expect(agent_row.locator(".agent-for")).to_be_visible()
+                shot(page, f"339-native-list-{engine.browser_type.name}-phone-{scheme}-text200")
 
     def test_04_install_icons_and_the_tab_icon_are_the_logo(self) -> None:
         page = self.page(signed_in=False)

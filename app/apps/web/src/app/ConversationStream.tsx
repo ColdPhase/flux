@@ -11,7 +11,7 @@ import { MessageWorkPages } from '../work/MessageWorkPages';
 import { useShellActions } from './shellContext';
 import { listConversationRoots, listTaskNotices } from './conversation-api';
 import { AgentAuthor, AuthorFace, ContributionMark, OPENING_REVEAL_MS, SourceCitation, clock, day, openOnWholeMessages, when } from './messageParts';
-import { useAgentOwners } from '../agents/owners';
+import { useAgentOwners, type AgentOwners } from '../agents/owners';
 import { MessageFiles } from '../composer/Files';
 import { agentAuthorLabel } from '../docs/format';
 
@@ -246,6 +246,7 @@ export interface StreamProps {
 
 /** The project's stream of roots, oldest first, with day dividers, each root's thread size and reply action. */
 export function ConversationStream({ project, meId, roots: stream, notices, author, audience, openId, reveal, arrived, endToken, onOpen, onDenied }: StreamProps) {
+  const owners = useAgentOwners(project);
   const { roots } = stream;
   const entries = streamEntries(roots, notices, stream.hasOlder);
   const writable = project.access !== 'viewer';
@@ -487,7 +488,7 @@ export function ConversationStream({ project, meId, roots: stream, notices, auth
                 const divider = index === 0 || dayOf[index - 1] !== label ? <li className="project-convo__day" key={`day-${entry.key}`}><span>{label}</span></li> : null;
                 if (entry.kind === 'notice') return [divider, <NoticeItem key={entry.key} notice={entry.notice} meId={meId} row={referenceWork.rows.get(`work:${entry.notice.workId}`) ?? null} onOpenTask={(id) => openDetails({ kind: 'work', id })} />];
                 const { root } = entry;
-                return [divider, <RootItem key={entry.key} root={root} project={project} meId={meId} author={author} messageWork={messageWork}
+                return [divider, <RootItem key={entry.key} owners={owners} root={root} project={project} meId={meId} author={author} messageWork={messageWork}
                   taskRow={root.task ? referenceWork.rows.get(`work:${root.task.workId}`) ?? null : null}
                   open={root.conversationId === openId} arrived={arrived === root.message.id} makeWork={makeWork} onOpen={openRoot}
                   onOpenResult={(resultId) => openDetails({ kind: 'result', id: resultId })} onDenied={onDenied} />];
@@ -536,8 +537,8 @@ function NoticeItem({ notice, meId, row, onOpenTask }: { notice: TaskCreationNot
   );
 }
 
-function RootItem({ root, project, meId, author, messageWork, taskRow, open, arrived, makeWork, onOpen, onOpenResult, onDenied }: {
-  root: ConversationRoot; project: Project; meId: string; author: (message: ConversationMessage) => string;
+function RootItem({ root, project, owners, meId, author, messageWork, taskRow, open, arrived, makeWork, onOpen, onOpenResult, onDenied }: {
+  root: ConversationRoot; project: Project; owners: AgentOwners; meId: string; author: (message: ConversationMessage) => string;
   messageWork: MessageWorkRead; taskRow: NativeWorkRow | null;
   open: boolean; arrived: boolean; makeWork: ReturnType<typeof useCreateWorkFromMessage>;
   onOpen: (root: ConversationRoot, reply: boolean) => void; onOpenResult: (resultId: string) => void; onDenied: (cause: unknown) => void;
@@ -546,7 +547,6 @@ function RootItem({ root, project, meId, author, messageWork, taskRow, open, arr
   const writable = project.access !== 'viewer';
   const mine = message.authorId === meId;
   const name = author(message);
-  const owners = useAgentOwners(project.workspaceId);
   return (
     <li id={`message-${message.id}`} data-message-id={message.id} tabIndex={-1} data-conversation-id={root.conversationId}
       className={`project-convo__message${mine ? ' is-mine' : ''}${arrived ? ' is-arrived' : ''}${open ? ' is-open' : ''}`}>

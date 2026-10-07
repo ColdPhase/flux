@@ -1,44 +1,57 @@
-import { useEffect, useState } from 'react';
-import type { Agent, WorkspaceMember } from '@flux/contracts';
-import { listWorkspaceMembers } from '../app/conversation-api';
-import { listAgents } from '../work/api';
+import { useEffect, useRef, useState } from 'react';
+import { useLocation, useRevalidator } from 'react-router';
+import type { Project } from '@flux/contracts';
+import { useShellData } from '../app/data';
+import { useStreamEvents } from '../api/stream';
+import { listProjectPeople } from '../project/data';
 
-/** Who each agent works for, by agent id: its owner's current name, or "the workspace". */
+/** Agent owners from this project's current authorized audience; no workspace roster or shared cache. */
 export type AgentOwners = ReadonlyMap<string, string>;
+const EMPTY: AgentOwners = new Map();
 
-const cache = new Map<string, Promise<AgentOwners>>();
-
-async function load(workspaceId: string): Promise<AgentOwners> {
-  const [agents, members] = await Promise.all([
-    listAgents(workspaceId).catch(() => [] as Agent[]),
-    listWorkspaceMembers(workspaceId).catch(() => [] as WorkspaceMember[]),
-  ]);
-  const names = new Map(members.map((member) => [member.userId, member.name]));
-  return new Map(agents.flatMap((agent) => {
-    if (agent.owner.kind === 'workspace') return [[agent.id, 'the workspace'] as const];
-    const name = names.get(agent.owner.id);
-    return name ? [[agent.id, name] as const] : [];
-  }));
-}
-
-/**
- * The owners of a workspace's agents, for "for <owner>" (F-026 P3). One read per workspace per visit;
- * a reader who may not list agents or members simply sees no owner line.
- */
-export function useAgentOwners(workspaceId: string | null | undefined): AgentOwners {
-  const [owners, setOwners] = useState<AgentOwners>(new Map());
+export function useAgentOwners(project: Pick<Project, 'id' | 'workspaceId'> | null | undefined): AgentOwners {
+  const { me } = useShellData();
+  const { key: visit } = useLocation();
+  const revalidator = useRevalidator();
+  const scope = project ? `${me.user.id}:${project.workspaceId}:${project.id}:${visit}` : null;
+  const [read, setRead] = useState<{ scope: string; owners: AgentOwners } | null>(null);
+  const [boundary, setBoundary] = useState({ scope, phase: revalidator.state });
+  if (boundary.scope !== scope || boundary.phase !== revalidator.state) {
+    setBoundary({ scope, phase: revalidator.state });
+    if (read) setRead(null);
+  }
+  const reload = useRef<() => void>(() => undefined);
   useEffect(() => {
-    if (!workspaceId) return;
-    let live = true;
-    let pending = cache.get(workspaceId);
-    if (!pending) {
-      pending = load(workspaceId);
-      cache.set(workspaceId, pending);
-      // A failed read is not remembered, so the next view tries again.
-      pending.catch(() => cache.delete(workspaceId));
-    }
-    void pending.then((map) => { if (live) setOwners(map); }, () => undefined);
-    return () => { live = false; };
-  }, [workspaceId]);
-  return owners;
+    if (!scope || !project || revalidator.state !== 'idle') return;
+    let current: AbortController | null = null;
+    const load = () => {
+      current?.abort();
+      const controller = new AbortController();
+      current = controller;
+      // An access change or failed read never leaves an obsolete owner name visible.
+      setRead(null);
+      void listProjectPeople(project.id, controller.signal).then((people) => {
+        if (controller.signal.aborted) return;
+        const owners = new Map(people.flatMap((person) => {
+          if (person.kind !== 'agent' || !person.agentOwner) return [];
+          return [[person.id, person.agentOwner.kind === 'workspace' ? 'the workspace' : person.agentOwner.name] as const];
+        }));
+        setRead({ scope, owners });
+      }, () => { if (!controller.signal.aborted) setRead(null); });
+    };
+    reload.current = load;
+    load();
+    window.addEventListener('focus', load);
+    window.addEventListener('online', load);
+    return () => {
+      current?.abort();
+      reload.current = () => undefined;
+      window.removeEventListener('focus', load);
+      window.removeEventListener('online', load);
+    };
+  }, [scope, project?.id, revalidator.state]);
+  useStreamEvents(me.user.id, (event) => {
+    if (event.workspaceId === project?.workspaceId) reload.current();
+  }, () => reload.current());
+  return boundary.scope === scope && boundary.phase === revalidator.state && revalidator.state === 'idle' && read?.scope === scope ? read.owners : EMPTY;
 }

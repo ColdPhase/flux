@@ -149,7 +149,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const conversationId = conversation?.id;
   const author = (id: string) => id === me.user.id ? me.user.name : members.find((member) => member.userId === id)?.name ?? 'Member';
   const messageAuthor = (item: ConversationMessage) => item.authorId !== null ? author(item.authorId) : agentAuthorLabel(item.author);
-  const owners = useAgentOwners(project.workspaceId);
+  const owners = useAgentOwners(project);
   // Replies reach the whole project audience. Name a reply target only while every voice in the thread is human;
   // with a genuine agent author the named people would not match the visible thread.
   const replyHint = messages.some((message) => message.authorId === null) ? 'Reply in this conversation…' : replyTo(people, me.user.id);

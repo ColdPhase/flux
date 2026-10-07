@@ -9,12 +9,13 @@ import { useComposerDraft, useComposerScope } from '../composer/draft';
 import { AttachButton, ComposerFiles, MessageFiles } from '../composer/Files';
 import { contributeToTask, getTaskDiscussion } from '../composer/api';
 import { useProjectShell } from '../project/data';
-import { AgentIdentity, AgentTag, Button, Icon, Kreska, agentHue, type KreskaExpression } from '../ui';
+import { AgentIdentity, Button, Icon, Kreska, agentHue, type KreskaExpression } from '../ui';
 import { STATUS_LABEL } from '../work/format';
 import { useNativeOwn, useWorkChoices } from '../work/useDetailReads';
 import { WorkPagination } from '../work/WorkPagination';
 import { agentDisplayName } from '../docs/format';
 import { getProjectAgents } from './api';
+import { useAgentOwners } from './owners';
 import { ProjectPolicy } from './ProjectPolicy';
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
@@ -67,13 +68,12 @@ function stateLine(connection: ProjectAgentConnection, now: number) {
   return connection.own ? 'Not signed in from your client yet' : 'Not signed in yet';
 }
 
-/** Kreska's face for a connection: only what Flux can prove (#155 AC-3). Recent action reads as working. */
+/** A session proves connection, and lastActivity is completed history. Neither proves current work. */
 function connectionExpression(connection: ProjectAgentConnection, now: number): KreskaExpression {
   const state = shownState(connection, now);
   if (connection.state === 'unavailable') return 'worried';
   if (state !== 'session_open') return 'asleep';
-  const last = connection.lastActivity ? Date.parse(connection.lastActivity.at) : 0;
-  return now - last < 2 * 60_000 ? 'working' : 'idle';
+  return 'idle';
 }
 
 function activityLine(connection: ProjectAgentConnection) {
@@ -151,6 +151,7 @@ function paneAtEnd(marker: HTMLElement | null) {
 interface ThreadTask { id: string; title: string; status: WorkStatus }
 
 function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: { task: ThreadTask; projectId: string; meId: string; names: Map<string, string>; canWrite: boolean; changingScope: boolean }) {
+  const owners = useAgentOwners(useProjectShell()?.project);
   const [discussion, setDiscussion] = useState<TaskDiscussion | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [accessLost, setAccessLost] = useState(false);
@@ -285,7 +286,7 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
           return (
             <li key={message.id} className={`agents-msg${own ? ' agents-msg--own' : ''}${agent ? ' agents-msg--agent' : ''}`}>
               <span className="agents-msg__meta">
-                <b>{own ? 'You' : authorName(message, names)}</b>{agent ? <AgentTag /> : null}
+                {agent ? <AgentIdentity name={authorName(message, names)} owner={message.author.kind === 'agent' ? owners.get(message.author.id) : undefined} /> : <b>{own ? 'You' : authorName(message, names)}</b>}
                 <time dateTime={message.createdAt}>{when(message.createdAt)}</time>
                 {message.contribution ? <span className="agents-msg__kind"> · {message.contribution.kind}</span> : null}
               </span>
