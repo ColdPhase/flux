@@ -429,7 +429,8 @@ class SearchJourney(unittest.TestCase):
                     expect(details.get_by_label("Owner", exact=True)).to_have_value("")
                     for name in ("Status", "Owner"):
                         field_box = details.get_by_label(name, exact=True).bounding_box()
-                        label_box = details.locator(".wd-controls > label", has_text=name).bounding_box()
+                        label_box = details.locator(".wd-controls > label", has_text=name).evaluate(
+                            "node => { const range = document.createRange(); range.selectNodeContents(node); return range.getBoundingClientRect().toJSON(); }")
                         self.assertGreaterEqual(field_box["x"] - label_box["x"] - label_box["width"], 11,
                                                 f"{name} keeps a readable label/value gap at default text size")
                     self.no_horizontal_scroll(page)
@@ -443,7 +444,8 @@ class SearchJourney(unittest.TestCase):
                 self.assertGreaterEqual(number_label.evaluate("node => parseFloat(getComputedStyle(node).fontSize)"), 20)
                 for name in ("Status", "Owner"):
                     field_box = details.get_by_label(name, exact=True).bounding_box()
-                    label_box = details.locator(".wd-controls > label", has_text=name).bounding_box()
+                    label_box = details.locator(".wd-controls > label", has_text=name).evaluate(
+                        "node => { const range = document.createRange(); range.selectNodeContents(node); return range.getBoundingClientRect().toJSON(); }")
                     self.assertGreaterEqual(field_box["x"] - label_box["x"] - label_box["width"], 11,
                                             f"{name} keeps a readable label/value gap with 200% text")
                 expect(details.get_by_role("navigation", name="Object relationship pages")).to_have_count(0)
