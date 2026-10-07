@@ -2,8 +2,8 @@
 
 Flux is in early development and not yet released. The application is a
 TypeScript monorepo run with Docker Compose (see the [README](../README.md) and
-[architecture](development/architecture.md)); `flux-ux-v8.html` is an earlier UX
-prototype with a Polish interface. Contributions to usability, accessibility,
+[architecture](development/architecture.md)). Its UI follows one design, the
+[final design "Prostota"](design/final/README.md). Contributions to usability, accessibility,
 documentation, and reproducible bug fixes are welcome.
 
 ## Choose the right place
@@ -74,19 +74,11 @@ issue.
 3. Start the application with `./flux up` (or `./flux dev` for hot reload) and, for
    sample data with two logins, `./flux demo`, as described in the
    [application foundation guide](development/application-foundation.md#one-command-start-flux-issue-72).
-   To work on the historical prototype instead, serve it with Python 3:
-
-   ```sh
-   python3 -m http.server 8080 --bind 127.0.0.1
-   ```
-
-   Open <http://127.0.0.1:8080/flux-ux-v8.html>. If your Python 3 executable is
-   named `python`, use it instead. You can also open the HTML file directly.
 
 4. Make a focused change. Put code in the layer that owns it
    ([architecture](development/architecture.md)) and tests under `app/tests/app`.
-   Prototype changes live in `flux-ux-v8.html`; avoid reformatting unrelated
-   parts of that large file.
+   A UI change matches the [final design](design/final/README.md): its tokens,
+   components, screens and rules.
 5. Run the checks below, commit your changes, and push your branch to your fork.
 6. Open a PR against `ColdPhase/flux:main` and complete the PR template. Use a
    draft PR if the change is still being developed.
@@ -121,20 +113,19 @@ git diff --check
 
 GitHub Actions runs the repository checks and a fast application check (build, type
 check, lint, architecture and core tests) on pull requests; it does not run the Docker
-suites above, so mention which ones you ran. For UI and prototype changes, also verify
+suites above, so mention which ones you ran. For UI changes, also verify
 the behavior in a browser and describe your checks:
 
 - Reproduce the issue before the fix and check the same steps afterward.
 - Check the browser console for new errors.
-- For UI changes, check keyboard use and both a wide and a narrow window. Attach
-  screenshots showing the change.
+- For UI changes, check keyboard use and both a wide and a narrow window, in light and
+  dark. Attach screenshots next to the matching [final design render](design/final/README.md#7-screens).
 - For changes to saved data, use disposable sample data and check export/import
   and reload behavior. Describe any compatibility impact in the PR.
 - For documentation changes, check that links, file names, and commands match the
   repository.
 
-The [prototype walkthrough](prototype/README.md) includes a manual scenario you
-can follow. Mention the browser, operating system, and manual checks you used. If
+The `./flux demo` data gives a realistic workspace to check against. Mention the browser, operating system, and manual checks you used. If
 you could not verify relevant behavior, state that in the PR.
 
 ## Review and project decisions

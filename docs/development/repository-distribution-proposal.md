@@ -80,8 +80,7 @@ repository root, while `docs/design/app-shell/README.md` and
 `docs/development/containers.md` document the UI checks and paths.
 The root `README.md`, `docs/development/containers.md`, `docs/CONTRIBUTING.md`,
 `.github/workflows/application-checks.yml`, `.dockerignore`, and the layer scan
-in `tests/app/support/architecture.ts` are part of this path contract. The
-prototype `flux-ux-v8.html` is a documented visual reference, not runtime code.
+in `tests/app/support/architecture.ts` are part of this path contract.
 The repository check still uses root `scripts/check_agent_setup.py`,
 `tests/test_agent_setup.py` and `.agents/` and should remain discoverable there.
 
@@ -117,7 +116,6 @@ docker/
 docs/                       # product, architecture, self-hosting and evidence
 flux                         # root one-command launcher for #72
 scripts/                    # repo-level checks and launcher implementation
-flux-ux-v8.html             # historical design reference until a reviewed link move
 .github/, .agents/, AGENTS.md, README.md, LICENSE
 ```
 

@@ -2,8 +2,8 @@
 
 **Direction F-016, 2026-09-30.** Hubert's later request makes this required
 milestone-2 work. This is a production contract and handoff, **not implemented
-capability**. [Source package](../design/references/studio-v11.6/README.md),
-[UI contract](../design/studio-v11.6.md), and the issue table below belong together.
+capability**. The [final design](../design/final/README.md) (F-026) draws its Agents view,
+hand-off and live agent states; this contract and the issue table below govern behaviour.
 
 ## One workspace experience, one task
 
@@ -38,7 +38,7 @@ clients load it through a tested Start/Resume path, and addressed durable reques
 survive busy/offline/context-reset states. Agents act at safe checkpoints without
 periodically scanning all GitHub issues/PRs/comments. Coordination stays in Flux;
 formal GitHub approval/check gates stay real. #160 packages content/onboarding;
-#152/#153/#74/#136 implement their existing domains against this amendment.
+#152/#153/#74 and the final design's Agents view (#347) implement their existing domains against this amendment.
 
 ## Sign-in through one identity provider — F-024
 
@@ -219,8 +219,8 @@ human-confirm-every-step rule. Reserved actions still require their authority.
 | Claims, local cooperation, handoffs and current-version review | [#153](https://github.com/ColdPhase/flux/issues/153), depends on connection contract; code path additionally #74 |
 | Ready playbooks and supported Start/Resume | [#160](https://github.com/ColdPhase/flux/issues/160), [CW-1–CW-5](cowork-workflow.md); consumes #152 bootstrap and #153 durable inbox/checkpoint interface |
 | Same-task creation notice and first real discussion message | [#154](https://github.com/ColdPhase/flux/issues/154), amends #36/#101 behavior without rewriting history |
-| Studio 11.6 / Agents tab and responsive integration | #136 with #151; consumes the domain contracts above |
-| Subtle motion and real typing presence | [#155](https://github.com/ColdPhase/flux/issues/155), coordinated with #136 |
+| Agents view, hand-off and responsive integration per the [final design](../design/final/README.md) | [#336](https://github.com/ColdPhase/flux/issues/336) with #151; consumes the domain contracts above |
+| Subtle motion and real typing presence | [#155](https://github.com/ColdPhase/flux/issues/155), coordinated with #336 |
 | MCP sign-in with one external identity provider, offboarding and owner capability controls | [F-024](mcp-identity.md), [#273](https://github.com/ColdPhase/flux/issues/273); required slices S1–S6 (S5a and narrowed S5b), S1 after #240/#294 and S3 after S4; S7 opaque keys canceled (#317) |
 | Public tool contract: versioning, compatibility and snapshot | [O-010 EXT-1](extension-contracts.md#ext-1--mcp-tool-contract-1), [#251](https://github.com/ColdPhase/flux/issues/251); a new tool from these rows joins tool contract 1 additively with an updated snapshot |
 
