@@ -1,0 +1,157 @@
+{
+  "origin": "https://localhost:19443",
+  "mode": "trusted",
+  "browserLocalCertificateErrorsIgnored": true,
+  "accounts": [
+    {
+      "name": "Ari HTTPS Probe",
+      "email": "proxy.trusted+64800e6a-fb08-457a-a586-74d39c05efe7@example.test",
+      "signupUI": true,
+      "cookie": {
+        "name": "__Secure-flux.session_token",
+        "secure": true,
+        "httpOnly": true,
+        "sameSite": "Lax"
+      },
+      "signoutUI": true,
+      "signinUI": true,
+      "userId": "080a4ba1-aa14-4a3f-90dc-762db8cbf40d",
+      "handshakes": [
+        {
+          "status": 101
+        },
+        {
+          "status": 101
+        },
+        {
+          "status": 101
+        }
+      ],
+      "frames": [
+        {
+          "type": "event",
+          "id": "54ce4269-cfa9-4424-8ad5-f676095bee19",
+          "kind": "workspace.created.v1",
+          "objectType": "workspace",
+          "objectId": "f5a8aa06-6880-4799-95c3-54515618c4b6"
+        },
+        {
+          "type": "event",
+          "id": "7ffb1ff8-06a3-4bc7-bb75-92778fe3b0d2",
+          "kind": "workspace.member_added.v1",
+          "objectType": "workspace",
+          "objectId": "f5a8aa06-6880-4799-95c3-54515618c4b6"
+        },
+        {
+          "type": "event",
+          "id": "4213850e-9bf7-4d07-826a-1bb7716aee24",
+          "kind": "project.created.v1",
+          "objectType": "project",
+          "objectId": "dc14c395-4a51-4dce-8910-6a5c12a6bae0"
+        },
+        {
+          "type": "event",
+          "id": "39b8d72c-9dbe-4db7-a7d5-4e53d583c52e",
+          "kind": "project.grant_set.v1",
+          "objectType": "project",
+          "objectId": "dc14c395-4a51-4dce-8910-6a5c12a6bae0"
+        },
+        {
+          "type": "event",
+          "id": "367b5398-4bfb-4ced-9526-b08fc49f0623",
+          "kind": "project.conversation_created.v1",
+          "objectType": "project",
+          "objectId": "dc14c395-4a51-4dce-8910-6a5c12a6bae0"
+        },
+        {
+          "type": "event",
+          "id": "e54f5646-9f7e-4e23-a4f3-a9fe0c2d46d9",
+          "kind": "project.message_sent.v1",
+          "objectType": "project",
+          "objectId": "dc14c395-4a51-4dce-8910-6a5c12a6bae0"
+        }
+      ]
+    },
+    {
+      "name": "Kai HTTPS Probe",
+      "email": "proxy.trusted+a3144459-c775-4873-a108-fcbba96a86d4@example.test",
+      "signupUI": true,
+      "cookie": {
+        "name": "__Secure-flux.session_token",
+        "secure": true,
+        "httpOnly": true,
+        "sameSite": "Lax"
+      },
+      "signoutUI": true,
+      "signinUI": true,
+      "userId": "5fab0849-e598-43f5-8455-ba84e12533bf",
+      "handshakes": [
+        {
+          "status": 101
+        },
+        {
+          "status": 101
+        },
+        {
+          "status": 101
+        },
+        {
+          "status": 101
+        }
+      ],
+      "frames": [
+        {
+          "type": "event",
+          "id": "7ffb1ff8-06a3-4bc7-bb75-92778fe3b0d2",
+          "kind": "workspace.member_added.v1",
+          "objectType": "workspace",
+          "objectId": "f5a8aa06-6880-4799-95c3-54515618c4b6"
+        },
+        {
+          "type": "event",
+          "id": "39b8d72c-9dbe-4db7-a7d5-4e53d583c52e",
+          "kind": "project.grant_set.v1",
+          "objectType": "project",
+          "objectId": "dc14c395-4a51-4dce-8910-6a5c12a6bae0"
+        },
+        {
+          "type": "event",
+          "id": "367b5398-4bfb-4ced-9526-b08fc49f0623",
+          "kind": "project.conversation_created.v1",
+          "objectType": "project",
+          "objectId": "dc14c395-4a51-4dce-8910-6a5c12a6bae0"
+        },
+        {
+          "type": "event",
+          "id": "e54f5646-9f7e-4e23-a4f3-a9fe0c2d46d9",
+          "kind": "project.message_sent.v1",
+          "objectType": "project",
+          "objectId": "dc14c395-4a51-4dce-8910-6a5c12a6bae0"
+        }
+      ]
+    }
+  ],
+  "uncaughtErrors": [],
+  "messageProof": {
+    "messageId": "c8b81bf9-1353-4058-b7e8-1d991485636a",
+    "projectId": "dc14c395-4a51-4dce-8910-6a5c12a6bae0",
+    "conversationId": "37a378c3-81d8-4777-865e-896ddba25472",
+    "uiRefreshMechanism": "Production thread refresh polls every 15 seconds; stream receipt independently proven",
+    "matchingFrames": [
+      {
+        "type": "event",
+        "id": "e54f5646-9f7e-4e23-a4f3-a9fe0c2d46d9",
+        "kind": "project.message_sent.v1",
+        "objectType": "project",
+        "objectId": "dc14c395-4a51-4dce-8910-6a5c12a6bae0"
+      }
+    ],
+    "receiverDocumentUnchanged": true,
+    "receiverNavigations": [],
+    "postStatus": 201
+  },
+  "spoofControl": {
+    "injectedXForwardedFor": "203.0.113.199",
+    "status": 200
+  }
+}
