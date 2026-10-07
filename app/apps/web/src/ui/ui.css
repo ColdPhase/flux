@@ -239,7 +239,7 @@ svg { flex: none; }
 /* ---------- Task state glyphs (StatusGlyph.tsx): shape, not colour ---------- */
 .ui-glyph { flex: none; color: var(--t1); vertical-align: -3px; }
 .ui-glyph--open, .ui-glyph--not_pursued { color: var(--t3); }
-.ui-glyph--parked { opacity: .55; }
+.ui-glyph--parked { color: var(--t3); }
 .ui-glyph__knock { fill: var(--el); }
 .ui-glyph__knock-line { stroke: var(--el); }
 .ui-state { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-sm); font-weight: 500; color: var(--t1); white-space: nowrap; }

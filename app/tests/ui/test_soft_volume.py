@@ -64,9 +64,9 @@ class SoftVolume(unittest.TestCase):
         self.addCleanup(context.close)
         return context.new_page()
 
-    def api(self, page: Page, method: str, path: str, body: dict) -> dict:
+    def api(self, page: Page, method: str, path: str, body: dict, *, status: int = 201) -> dict:
         response = page.request.fetch(f"{ORIGIN}{path}", method=method, headers={"origin": ORIGIN, "content-type": "application/json"}, data=json.dumps(body))
-        self.assertEqual(response.status, 201, response.text())
+        self.assertEqual(response.status, status, response.text())
         return json.loads(response.text())
 
     def assert_mono(self, node) -> None:
@@ -95,6 +95,13 @@ class SoftVolume(unittest.TestCase):
                 body["blocker"] = "The supplier has no stock"
             task = self.api(page, "POST", f"/api/v1/projects/{project['id']}/work", body)
             type(self).ids[status] = task["id"]
+        parked = self.api(page, "POST", f"/api/v1/projects/{project['id']}/work", {"title": "Compare the replacement enclosure"})
+        previous = self.api(page, "POST", f"/api/v1/projects/{project['id']}/decisions", {"title": "Use the original enclosure"})
+        self.api(page, "POST", f"/api/v1/decisions/{previous['id']}/accept", {"expectedVersion": 1}, status=200)
+        pivot = self.api(page, "POST", f"/api/v1/projects/{project['id']}/decisions",
+                         {"title": "Keep the measured enclosure", "supersedes": previous["id"], "affects": [parked["id"]]})
+        self.api(page, "POST", f"/api/v1/decisions/{pivot['id']}/accept", {"expectedVersion": 1, "park": [parked["id"]]}, status=200)
+        type(self).ids["parked"] = parked["id"]
         upload = page.request.post(f"/api/v1/projects/{project['id']}/files?uploadId={uuid.uuid4()}&name=calibration.csv",
                                    data=b"lux,temperature\n5,21\n", headers={"origin": ORIGIN, "content-type": "application/octet-stream"})
         self.assertEqual(upload.status, 201, upload.text())
@@ -157,33 +164,39 @@ class SoftVolume(unittest.TestCase):
 
     def test_03_geist_is_served_by_flux_and_used_for_text_and_numbers(self) -> None:
         self.ensure_account()
-        page = self.page()
-        fonts: list[str] = []
-        page.on("request", lambda request: fonts.append(request.url) if request.resource_type == "font" else None)
-        page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
-        timestamp = page.locator(".project-convo__message-meta time").first
-        filename = page.locator(".message-files a span").first
-        expect(timestamp).to_be_visible()
-        expect(filename).to_have_text("calibration.csv")
-        for node in (timestamp, filename):
-            self.assert_mono(node)
-        # Exercise the actual upload draft, not an injected font demonstration.
-        replies = page.get_by_role("complementary", name="Replies")
-        with page.expect_file_chooser() as chooser:
-            replies.get_by_role("button", name="Attach files", exact=True).click()
-        chooser.value.set_files({"name": "delivery.csv", "mimeType": "text/csv", "buffer": b"batch,count\nnext,4\n"})
-        draft = replies.locator(".composer-files__name")
-        expect(draft).to_contain_text("delivery.csv")
-        self.assert_mono(draft)
-        page.goto(f"/projects/{self.ids['project']}/tasks")
-        page.get_by_role("radio", name="List", exact=True).click()
-        counter = page.locator(".ws-view__n").first
-        expect(counter).to_be_visible()
-        self.assert_mono(counter)
-        page.wait_for_function("() => ['Geist', 'Geist Mono'].every(name => [...document.fonts].some(f => f.family.replace(/\"/g, '') === name && f.status === 'loaded'))")
-        self.assertTrue(page.evaluate("getComputedStyle(document.body).fontFamily").startswith('Geist'))
-        self.assertTrue(fonts, "the fonts are requested")
-        self.assertTrue(all(url.startswith(ORIGIN) for url in fonts), f"no third-party font host: {fonts}")
+        for scheme in ("light", "dark"):
+            for phone in (False, True):
+                with self.subTest(scheme=scheme, phone=phone):
+                    page = self.page(scheme=scheme, phone=phone)
+                    fonts: list[str] = []
+                    page.on("request", lambda request: fonts.append(request.url) if request.resource_type == "font" else None)
+                    page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
+                    replies = page.get_by_role("complementary", name="Replies")
+                    timestamp = replies.locator(".thread__root-meta time")
+                    filename = replies.locator(".message-files a span").first
+                    expect(timestamp).to_be_visible()
+                    expect(filename).to_have_text("calibration.csv")
+                    for node in (timestamp, filename):
+                        self.assert_mono(node)
+                    # Exercise the actual upload draft, not an injected font demonstration.
+                    with page.expect_file_chooser() as chooser:
+                        replies.get_by_role("button", name="Attach files", exact=True).click()
+                    chooser.value.set_files({"name": "delivery.csv", "mimeType": "text/csv", "buffer": b"batch,count\nnext,4\n"})
+                    draft = replies.locator(".composer-files__name")
+                    expect(draft).to_contain_text("delivery.csv")
+                    expect(draft).to_contain_text("Ready, private")
+                    self.assert_mono(draft)
+                    page.evaluate("document.fonts.ready")
+                    shot(page, f"338-{self.engine}-files-{'390' if phone else '1440'}-{scheme}")
+                    page.goto(f"/projects/{self.ids['project']}/tasks")
+                    page.get_by_role("radio", name="List", exact=True).click()
+                    counter = page.locator(".ws-view__n").first
+                    expect(counter).to_be_visible()
+                    self.assert_mono(counter)
+                    page.wait_for_function("() => ['Geist', 'Geist Mono'].every(name => [...document.fonts].some(f => f.family.replace(/\"/g, '') === name && f.status === 'loaded'))")
+                    self.assertTrue(page.evaluate("getComputedStyle(document.body).fontFamily").startswith('Geist'))
+                    self.assertTrue(fonts, "the fonts are requested")
+                    self.assertTrue(all(url.startswith(ORIGIN) for url in fonts), f"no third-party font host: {fonts}")
 
     def test_04_components_have_the_drawn_shape_and_press(self) -> None:
         self.ensure_account()
@@ -220,6 +233,12 @@ class SoftVolume(unittest.TestCase):
                         value = page.evaluate(MEASURE, {"selector": f".ui-glyph--{status}", "property": "color"})
                         self.assertGreaterEqual(value["ratio"], minimum, (scheme, status, value))
                     shot(page, f"338-{self.engine}-task-glyphs-{'390' if phone else '1440'}-{scheme}")
+                    parked = page.locator(f"li[data-work-id='{self.ids['parked']}']")
+                    parked.scroll_into_view_if_needed()
+                    expect(parked.locator(".ws-item__s")).to_contain_text("Parked · was open")
+                    value = page.evaluate(MEASURE, {"selector": ".ui-glyph--open.ui-glyph--parked"})
+                    self.assertGreaterEqual(value["ratio"], 3, (scheme, phone, value))
+                    shot(page, f"338-{self.engine}-task-parked-{'390' if phone else '1440'}-{scheme}")
 
     def test_06_own_dm_initials_and_real_shortcuts_are_readable(self) -> None:
         self.ensure_dm()
