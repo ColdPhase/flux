@@ -104,8 +104,8 @@ refused changes record none.
 
 ## Web
 
-`app/apps/web/src/docs/` is a project's **Wiki** tab (UI116-4, #136), two panes at the Studio 11.6
-measure:
+`app/apps/web/src/docs/` is a project's **Wiki** tab, two panes (appearance per the
+[final design](../design/final/README.md)):
 
 - **Page index** (`Wiki.tsx`, 212 px): the project's pages with drafts marked, a search box that
   filters by title and excerpt (with a count and an empty state; Escape clears), **New page** and

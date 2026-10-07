@@ -22,7 +22,7 @@ import { TypingNotice } from '../typing/TypingNotice';
 import './agents.css';
 
 /**
- * Agents (Studio 11.6 UI116-2, #136): a view of the project's existing work, not a second
+ * Agents (UI116-2): a view of the project's existing work, not a second
  * backlog or chat. Each person's connections are listed separately, so Hubert's Codex and
  * Hubert's Claude Code are two entries. The thread is the task's one canonical discussion.
  */

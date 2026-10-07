@@ -108,6 +108,7 @@ repository was created on 2026-09-26.
 
 ### Changed
 
+- One neutral look from the final design: Soft volume surfaces in light, dark or Match system, Geist type served with Flux, pill buttons, and task states shown as shapes with words. The accent colours and their picker are gone ([#353](https://github.com/ColdPhase/flux/pull/353)).
 - The Studio 11.6 interface: a sidebar with workspace and project names, a calmer
   header, Conversation · Map · Tasks · Wiki tabs and a reworked conversation
   ([#184](https://github.com/ColdPhase/flux/pull/184)).
@@ -117,6 +118,7 @@ repository was created on 2026-09-26.
 
 ### Fixed
 
+- Task board columns describe the tasks being loaded, and the Wiki link picker names its search while waiting for results ([#363](https://github.com/ColdPhase/flux/pull/363)).
 - When someone's sign-in and extra address are one mailbox and the notification email Flux sent there fails for good, the other copy is now sent instead, once, after rechecking access and preferences ([#334](https://github.com/ColdPhase/flux/pull/334)).
 - The shared files volume works on SELinux hosts ([#67](https://github.com/ColdPhase/flux/pull/67)).
 - Check scripts remove the images they built, so test runs no longer fill the

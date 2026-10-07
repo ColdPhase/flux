@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { hasMinimumTouchSize } from '../support/touch-target.js';
 import { mkdirSync } from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
@@ -149,7 +150,7 @@ test('task Details: turn the rule on, see sourced automatic changes, resume afte
   await details(phone).getByText('Ready to close.', { exact: true }).waitFor();
   for (const target of [ready, details(phone).locator('.wd-gh-toggle'), details(phone).getByLabel('When every required PR is merged'), details(phone).getByRole('link', { name: /#42 · Keep a manual off switch/ })]) {
     const box = await target.boundingBox();
-    assert.ok(box && box.height >= 44, `44 px touch target at 390 px (${box?.height})`);
+    assert.ok(box && hasMinimumTouchSize(box.height), `44 px touch target at 390 px (${box?.height})`);
   }
   assert.ok(await phone.locator('body').evaluate((el) => el.scrollWidth) <= 390, 'no horizontal overflow at 390 px');
   await evidence(phone, 'phone-ready');

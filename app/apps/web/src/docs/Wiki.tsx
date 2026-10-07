@@ -11,7 +11,7 @@ import { WikiIcon } from './WikiParts';
 import { WikiContext, useWiki, type WikiState } from './wiki-context';
 import './docs.css';
 
-// The project wiki as two panes (#136, Studio 11.6 / UI116-4): a page index with search, New page
+// The project wiki as two panes (UI116-4): a page index with search, New page
 // and Import .md beside the document. The open page is marked by a quiet tint, a stronger label,
 // a small dot and aria-current, never by colour alone. In a narrow work area the index becomes a
 // compact strip above the document.

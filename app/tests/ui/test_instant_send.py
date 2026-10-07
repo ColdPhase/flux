@@ -352,7 +352,10 @@ class InstantSendJourney(unittest.TestCase):
         page.get_by_role("button", name="Send message").tap()
         bubble = self.pending(stream, body)
         line = page.get_by_text("Flux isn’t responding. Messages wait here and send when it’s back.")
-        expect(bubble).to_contain_text("Waiting for connection")
+        expect(bubble).to_contain_text("Waiting to send")
+        # F-026: the waiting state is a clock and words, not a dot.
+        expect(bubble.locator(".outbox-status.is-waiting svg")).to_have_count(1)
+        expect(bubble.locator(".outbox-status.is-waiting .outbox-status__dot")).to_have_count(0)
         expect(line).to_be_visible()
         shot(page, "instant-send-unreachable-390")
         page.wait_for_timeout(500)
@@ -363,7 +366,7 @@ class InstantSendJourney(unittest.TestCase):
             page.wait_for_timeout(wait)
             expect(page.get_by_text("Flux can’t be reached", exact=False)).to_have_count(0)
             expect(stream.get_by_text(OPENING)).to_be_visible()
-            expect(bubble).to_contain_text("Waiting for connection")
+            expect(bubble).to_contain_text("Waiting to send")
             expect(line).to_be_visible()
         self.assertEqual(len(sent), 2, "the Retry was one attempt")
         # Flux answers again: Retry now stores it once, with the same command.
@@ -390,13 +393,13 @@ class InstantSendJourney(unittest.TestCase):
         page.get_by_label("Write a message", exact=True).fill(body)
         page.get_by_role("button", name="Send message").click()
         bubble = self.pending(stream, body)
-        expect(bubble).to_contain_text("Waiting for connection")
+        expect(bubble).to_contain_text("Waiting to send")
         # The browser is online again; Flux still does not answer. Nothing reloads into an error page.
         page.context.set_offline(False)
         page.wait_for_timeout(1500)
         expect(page.get_by_text("Flux can’t be reached", exact=False)).to_have_count(0)
         expect(stream.get_by_text(OPENING)).to_be_visible()
-        expect(bubble).to_contain_text("Waiting for connection")
+        expect(bubble).to_contain_text("Waiting to send")
         expect(page.get_by_text("Flux isn’t responding", exact=False)).to_be_visible()
         # Flux answers its next check: the message goes once, by itself.
         down["flux"] = False
@@ -450,7 +453,7 @@ class InstantSendJourney(unittest.TestCase):
                 field = page.get_by_label("Write a message", exact=True)
                 button = page.get_by_role("button", name="Send message")
                 page.context.set_offline(True)
-                line = page.get_by_text("You’re offline. Messages wait here and send when you’re back online.")
+                line = page.get_by_text("You’re offline. Messages send when you’re back.")
                 expect(line).to_be_visible(timeout=2000)
                 bodies = [f"Offline at {width}, first.", f"Offline at {width}, second."]
                 for body in bodies:
@@ -459,7 +462,7 @@ class InstantSendJourney(unittest.TestCase):
                         button.tap()
                     else:
                         button.click()
-                    expect(self.pending(stream, body)).to_contain_text("Waiting for connection")
+                    expect(self.pending(stream, body)).to_contain_text("Waiting to send")
                     expect(field).to_have_value("")
                 ids = [self.pending(stream, body).get_attribute("data-client-message-id") for body in bodies]
                 page.wait_for_timeout(500)
@@ -484,7 +487,7 @@ class InstantSendJourney(unittest.TestCase):
         page.get_by_label(re.compile(r"^Message ")).fill(body)
         page.get_by_role("button", name="Send message").tap()
         list_ = page.get_by_role("list", name="Messages")
-        expect(self.pending(list_, body)).to_contain_text("Waiting for connection")
+        expect(self.pending(list_, body)).to_contain_text("Waiting to send")
         page.wait_for_timeout(300)
         self.assertEqual(sent, [])
         page.context.set_offline(False)
@@ -579,7 +582,7 @@ class InstantSendJourney(unittest.TestCase):
                 uploads[0].abort("internetdisconnected")
                 # The upload was cut: the message says why (HIG-67), not "Uploading…".
                 expect(bubble).to_have_attribute("data-send-state", "waiting")
-                expect(bubble).to_contain_text("Waiting for connection")
+                expect(bubble).to_contain_text("Waiting to send")
                 expect(bubble).not_to_contain_text("Uploading…")
                 # The stream and the thread both have a composer: one line on the screen.
                 expect(page.locator(".connection-line")).to_have_count(1)

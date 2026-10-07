@@ -3,14 +3,12 @@
 Flux is a global open source, self-hostable workspace for people and agents.
 Read `docs/product/FLUX-FOUNDATION.md` in full when first joining; then use
 `docs/product/README.md`, current decisions, and relevant sections per task.
-The latest [Studio 11.6 direction](docs/design/studio-v11.6.md)
-(F-017, 2026-09-30) is the primary appearance/UX reference, with required
+The [final design "Prostota"](docs/design/final/README.md) (F-026, founder
+direction 2026-10-07) is the only UI/UX direction on computer and phone:
+implement it as drawn and do not re-decide it. It works with required
 [local MCP co-work](docs/product/mcp-cowork.md) (F-016) and
 [adaptive workspaces](docs/design/adaptive-workspaces.md) (F-015).
-Preserve useful repo improvements and refine remaining friction.
-The older `flux-ux-v8.html` is
-historical inspiration. Demo internals do not establish production architecture,
-permissions or functionality; recorded current decisions govern these.
+Recorded current decisions govern architecture, permissions and functionality.
 The founder's later [delegation](docs/product/autonomy.md) assigns these decisions
 to the agents. Choose, peer-review, record and implement them; do not wait for
 human acceptance. The goal is the complete working application.
@@ -25,20 +23,19 @@ Keep procedures in one place and use the guides below when relevant.
 | --- | --- |
 | Delivery pace, MVP slicing, releases, or community | `docs/product/playbook-the-5.md` |
 | Product direction, personas, scope, or research | `docs/product/README.md`, `docs/product/decisions.md`, and `docs/product/research.md` |
-| UI direction, density, or visual review | `docs/design/README.md` and foundation sections 10 / 17 D1–D4 |
+| UI/UX, screens, tokens, Kreska, or visual review | `docs/design/final/README.md` (the only design source) and `docs/design/README.md` |
 | Starting, pausing or resuming the agents (`/goal` sessions) | `docs/agents/startup.md` |
 | Development environment, services, tests, or packaging | `docs/development/containers.md` |
 | Module boundaries, dependency direction, or where code/tests go | `docs/development/architecture.md` |
 | Responsive/adaptive UI, small phones, 4K or ultrawide | `docs/design/adaptive-workspaces.md` |
-| Phone/tablet UX | `docs/design/apple-hig-mobile.md` |
+| Phone/tablet UX | `docs/design/final/README.md`; platform rules in `docs/design/apple-hig-mobile.md` |
 | Mobile/tablet UX, PWA installation or push notifications | `docs/product/mobile-pwa.md` |
-| Ordinary contribution or prototype change | `docs/CONTRIBUTING.md` |
+| Ordinary contribution | `docs/CONTRIBUTING.md` |
 | Agent collaboration and task lifecycle | `docs/agents/workflow.md` |
 | Product co-work playbooks, agent inbox and onboarding | `docs/product/cowork-workflow.md`, `docs/product/cowork-playbook.md` (F-018; product contract, not this repo’s operating workflow) |
 | Issue/PR messages, ownership, and handoffs | `docs/agents/github-protocol.md` |
 | Review, application verification, or release acceptance | `docs/agents/evaluation.md` |
 | GitHub Actions, required PR checks, packaging, or publication | `docs/agents/ci-and-releases.md` |
-| Current prototype behavior | `docs/prototype/README.md` and relevant parts of `docs/prototype/SPECIFICATION.md` |
 
 ## Scope and decisions
 
@@ -128,8 +125,7 @@ Keep procedures in one place and use the guides below when relevant.
 
 ## Commands available today
 
-Serve the prototype: `python3 -m http.server 8080 --bind 127.0.0.1`, then open
-`http://127.0.0.1:8080/flux-ux-v8.html`.
+Run the application: `./flux up` (and `./flux demo` for sample data).
 
 Check this foundation: `python3 scripts/check_agent_setup.py`,
 `python3 -m unittest discover -s tests -p 'test_*.py'`, and `git diff --check`.

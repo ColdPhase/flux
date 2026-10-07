@@ -121,6 +121,41 @@ async function currentVersion(row: MaterialRow, db: Executor): Promise<VersionRo
   return current;
 }
 
+/**
+ * The first and the last message of each conversation, in one statement however many a page has
+ * (#298): two index probes per conversation instead of two queries, which used to take every
+ * pooled connection at once for a page of 100.
+ */
+async function conversationEnds(ids: string[], db: Executor) {
+  const ends = new Map<string, { firstBody: string; firstAttachments: number; lastBody: string; lastAttachments: number; lastAt: Date }>();
+  if (!ids.length) return ends;
+  const wanted = sql.join(ids.map((id) => sql`(${id}::uuid)`), sql`, `);
+  const result = await db.execute<{ id: string; first_body: string; first_attachments: number; last_body: string; last_attachments: number; last_at: Date | string }>(sql`
+    SELECT c.id, f.body AS first_body, f.attachment_count AS first_attachments, l.body AS last_body, l.attachment_count AS last_attachments, l.created_at AS last_at
+    FROM (VALUES ${wanted}) AS c(id)
+    JOIN LATERAL (SELECT m.body, m.attachment_count FROM project_messages m WHERE m.conversation_id = c.id ORDER BY m.sequence ASC LIMIT 1) f ON true
+    JOIN LATERAL (SELECT m.body, m.attachment_count, m.created_at FROM project_messages m WHERE m.conversation_id = c.id ORDER BY m.sequence DESC LIMIT 1) l ON true`);
+  for (const row of result.rows) {
+    ends.set(row.id, { firstBody: row.first_body, firstAttachments: Number(row.first_attachments), lastBody: row.last_body,
+      lastAttachments: Number(row.last_attachments), lastAt: new Date(row.last_at) });
+  }
+  return ends;
+}
+
+/** The current version of each row, in one statement however many rows a page has (#298). */
+async function currentVersions(rows: MaterialRow[], db: Executor): Promise<VersionRow[]> {
+  if (!rows.length) return [];
+  const v = schema.projectMaterialVersions;
+  const wanted = sql.join(rows.map((row) => sql`(${row.id}::uuid, ${row.currentVersion}::int)`), sql`, `);
+  const found = await db.select().from(v).where(sql`(${v.materialId}, ${v.version}) IN (${wanted})`);
+  const byMaterial = new Map(found.map((version) => [version.materialId, version]));
+  return rows.map((row) => {
+    const current = byMaterial.get(row.id);
+    if (!current || current.version !== row.currentVersion) throw new Error('Material current version missing');
+    return current;
+  });
+}
+
 async function sourceExists(projectId: string, source: { materialId: string; version: number } | null, db: Executor) {
   if (!source) return;
   const [row] = await db.select({ materialId: schema.projectMaterialVersions.materialId }).from(schema.projectMaterialVersions)
@@ -179,29 +214,28 @@ export function conversationStore(db: Database, options: ConversationStoreOption
         .limit(page.limit).offset(page.offset);
       const names = await workRows(db).names(rows.filter((row) => row.createdByAgentId !== null)
         .map((row) => ({ kind: 'agent' as const, id: row.createdByAgentId! })));
-      const items = await Promise.all(rows.map(async (row) => {
-        const [[first], [last]] = await Promise.all([
-          db.select().from(schema.projectMessages).where(eq(schema.projectMessages.conversationId, row.id))
-            .orderBy(asc(schema.projectMessages.sequence)).limit(1),
-          db.select().from(schema.projectMessages).where(eq(schema.projectMessages.conversationId, row.id))
-            .orderBy(desc(schema.projectMessages.sequence)).limit(1),
-        ]);
+      const ends = await conversationEnds(rows.map((row) => row.id), db);
+      const items = rows.map((row) => {
+        const end = ends.get(row.id);
         return { id: row.id, projectId: row.projectId, ...creator(row, names), createdAt: row.createdAt.toISOString(),
-          firstMessageBody: messagePreview(first?.body ?? '', first?.attachmentCount ?? 0), lastMessageAt: last?.createdAt.toISOString() ?? row.createdAt.toISOString(),
-          lastMessageBody: messagePreview(last?.body ?? '', last?.attachmentCount ?? 0) };
-      }));
+          firstMessageBody: messagePreview(end?.firstBody ?? '', end?.firstAttachments ?? 0), lastMessageAt: end?.lastAt?.toISOString() ?? row.createdAt.toISOString(),
+          lastMessageBody: messagePreview(end?.lastBody ?? '', end?.lastAttachments ?? 0) };
+      });
       return { items, total: count?.total ?? 0, ...page };
     },
 
     /**
      * The project's one stream (UI116-1, 2026-10-02): each stored conversation's opening message,
      * newest first by (created_at, id) and returned oldest first, with its thread's size. Current
-     * project access is checked and held before the cursor, counts and page are read; every root of
-     * the project shares the project audience, so nothing is filtered after the page is cut.
+     * project access, the cursor, the counts and the page come from one snapshot (a read-only
+     * repeatable-read transaction), so a grant revoked meanwhile cannot leave a partly authorized
+     * window behind; every root of the project shares the project audience, so nothing is filtered
+     * after the page is cut. No row locks (#298): share-locking the access rows made every read of
+     * the stream write WAL and wait for its flush at commit.
      */
     async listRoots(principal: Principal, projectId: string, window: Parameters<ConversationPort['listRoots']>[2]): Promise<ConversationRootWindow> {
       return db.transaction(async (tx) => {
-        await requireProject(principal, projectId, tx, false, true);
+        await requireProject(principal, projectId, tx);
         const conversations = schema.projectConversations;
         let before: SQL | undefined;
         if (window.before !== null) {
@@ -235,7 +269,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
           lastReplyAt: row.lastReplyAt === null ? null : new Date(row.lastReplyAt).toISOString(),
           ...(row.taskId !== null && row.taskTitle !== null ? { task: { workId: row.taskId, title: row.taskTitle } } : {}) }));
         return { projectId, roots, rootPage: { hasMoreBefore, nextBefore: hasMoreBefore ? roots[0]!.conversationId : null, limit: window.limit } };
-      });
+      }, { isolationLevel: 'repeatable read', accessMode: 'read only' });
     },
 
     async getConversation(principal: Principal, conversationId: string, window: Parameters<ConversationPort['getConversation']>[2]): Promise<Conversation> {
@@ -324,7 +358,8 @@ export function conversationStore(db: Database, options: ConversationStoreOption
       const [count] = await db.select({ total: sql<number>`count(*)::int` }).from(schema.projectMaterials).where(materials);
       const rows = await db.select().from(schema.projectMaterials).where(materials)
         .orderBy(desc(schema.projectMaterials.createdAt), desc(schema.projectMaterials.id)).limit(page.limit).offset(page.offset);
-      const items = await Promise.all(rows.map(async (row) => material(row, await currentVersion(row, db), principal)));
+      const versions = await currentVersions(rows, db);
+      const items = rows.map((row, index) => material(row, versions[index]!, principal));
       return { items, total: count?.total ?? 0, ...page };
     },
 

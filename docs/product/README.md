@@ -24,12 +24,28 @@ Polish foundation remains the original source, not a second competing roadmap.
 
 ## Current authority
 
-**Latest additions, 2026-09-30:** [F-016 local MCP co-work](mcp-cowork.md)
-and [F-017 Studio 11.6](../design/studio-v11.6.md) are required milestone-2
-outcomes: one Flux backlog, project GitHub bindings, multiple personal external
-agents per owner, bounded autonomous handoffs/review, preserved embedded helper,
-full UI redesign with continuity and subtle motion/real typing. These extend
-F-015 phone-to-ultrawide and qualify older visual/RFC descriptions below.
+**2026-10-07 release amendment:** [founder direction](https://github.com/ColdPhase/flux/issues/249#issuecomment-6042227715)
+requires #228/#231 live map/wiki, #238 safe unused AI-task Undo and #314
+back-channel logout in v0.1, retaining all existing technical and independent
+acceptance gates. One operator-configured SSO provider serves each installation;
+the [assessed identity amendment](https://github.com/ColdPhase/flux/issues/360#issuecomment-6042333778)
+is recorded in [F-024](mcp-identity.md), now superseded in part by
+[ordinary owner MCP switches and exclusive SSO/password modes](https://github.com/ColdPhase/flux/issues/360#issuecomment-6043340696).
+No recent-authentication/password-replay challenge or ordinary password login
+alongside active SSO; safe pre-cutover migration and current authority checks remain. The [final design Prostota](https://github.com/ColdPhase/flux/issues/336)
+(F-026; [reference import](https://github.com/ColdPhase/flux/pull/337)) supersedes
+the earlier appearance directions below. This amendment records required work,
+not implementation or release acceptance.
+
+**Design, 2026-10-07:** the [final design "Prostota"](../design/final/README.md) (F-026) is
+the only UI and UX on the computer and the phone, tracked in
+[#336](https://github.com/ColdPhase/flux/issues/336). It governs every visual or placement
+description below.
+
+**Required additions, 2026-09-30:** [F-016 local MCP co-work](mcp-cowork.md) is a required
+milestone-2 outcome: one Flux backlog, project GitHub bindings, multiple personal external
+agents per owner, bounded autonomous handoffs/review and the preserved embedded helper. It
+extends F-015 phone-to-ultrawide.
 Implementation and real integration evidence remain pending; #147 / PR #150
 imports references and reconciles contracts only.
 
@@ -39,7 +55,7 @@ start with instructions supplied internally by Flux; no user-facing README,
 prompt copying or manual skill setup. Durable addressed requests are handled at safe
 checkpoints, without repeated global GitHub scans or duplicate coordination
 comments. #160 owns packaging/onboarding, #152 bootstrap, #153 inbox/scheduling,
-#74 the provider bridge and #136 UI. Publishing these docs is not delivery.
+#74 the provider bridge and the final design's Agents view (#347) the UI. Publishing these docs is not delivery.
 Flux remains the project planning/knowledge home: agents first analyze current
 plans, wiki, relevant conversations/decisions and existing tasks, then create and
 manage native tasks within their grants, linking PRs without a second backlog.
@@ -71,24 +87,21 @@ Android phones/tablets, iPhones and iPads, installable app behavior, responsive
 touch workflows and Web Push are required in the complete application release.
 
 The later [creative collaboration direction](https://github.com/ColdPhase/flux/issues/44)
-is recorded as [F-012](decisions.md). Its earlier v8/C appearance baseline is superseded by F-017. Its product
-journeys remain required. It specifies separate personal, DM and project audiences;
+is recorded as [F-012](decisions.md). Its product
+journeys remain required; its appearance follows F-026. It specifies separate personal, DM and project audiences;
 selected-content evolution from DM to sketch to project; fluid maps connected to
 work and results; return after a pivot; and bounded proactive help. The three
 integrated scenarios in #44 govern later design and application evaluation.
-**Current UI: [Studio 11.6 / F-017](../design/studio-v11.6.md).** Use the
-[11.6 originals and screenshots](../design/references/studio-v11.6/README.md)
-for appearance, with F-016 co-work and the required F-015 adaptation below.
-#136 integrates all surfaces; #148 supplies Mint/Sky/Copper and independent
-theme preferences, #149 draft-first capture. Preserve #133 explicit acknowledgment
-and #134 personal ID-only outline. Earlier visual choices are
-[historical](../design/reference-history.md); their PNGs are not current targets.
+**UI: [final design "Prostota" / F-026](../design/final/README.md).** Use its screens and
+rules for appearance and interaction, with F-016 co-work and the required F-015 adaptation
+below. #149 keeps draft-first capture. Preserve #133 explicit acknowledgment and #134
+personal ID-only outline.
 
 The later **[F-015 adaptive-workspace requirement](../design/adaptive-workspaces.md)**
 (2026-09-30, [#151](https://github.com/ColdPhase/flux/issues/151)) extends the UI
 from small Android phones to 4K/ultrawide. More available space must yield useful
 work/context while navigation, objects and ongoing work stay recognizable and
-stable. #136 integrates it; #20 retains mobile/PWA evidence.
+stable. The final design (#336) integrates it; #20 retains mobile/PWA evidence.
 
 The later [#57 personal AI direction](https://github.com/ColdPhase/flux/issues/57)
 binds invocation and cost to the connection owner while preserving human work
@@ -116,8 +129,8 @@ Research serves a concrete code task; it does not replace shipping.
 | Founder direction | Global OSS, self-hosting, creative human collaboration, connected work, bounded AI participation, high UX quality, mobile PWA and a path to enterprise; see F-012 for the later concrete scenarios. |
 | Proposal | Initial personas, market entry, product mechanisms and commercial services remain research proposals. |
 | Accepted decision | O-002 React/Node/Fastify/PostgreSQL architecture and O-004 complete-product public release boundary; see the [register](decisions.md). |
-| Open decision | First niche/USP (O-001) and later commercial terms. O-003 and O-005 are accepted; current visual target is F-017 Studio 11.6. |
-| Existing implementation | Compose application and historical prototypes. #52 / PR #103 completes the narrow Claude MCP/OAuth foundation; #152/#153 extend it and remain planned. v8 is historical; Studio 11.6 is the current appearance target. Feature acceptance remains in the [ledger](foundation-coverage.md) and linked issues. |
+| Open decision | First niche/USP (O-001) and later commercial terms. O-003 and O-005 are accepted; the design is F-026, the final design "Prostota". |
+| Existing implementation | Compose application. #52 / PR #103 completes the narrow Claude MCP/OAuth foundation; #152/#153 extend it and remain planned. Its UI is being moved to the final design (#336). Feature acceptance remains in the [ledger](foundation-coverage.md) and linked issues. |
 
 Routine decisions within an accepted task belong to its owner. Record larger
 recommendations with evidence; only the named decision owner can accept them.

@@ -7,7 +7,7 @@ import './composer.css';
 
 /**
  * The state of a message the person sent (#264, HIG-59/66): on the message itself, quiet while it
- * goes ("Sending…", "Uploading…", "Waiting for connection") and an alert with Retry and Remove when
+ * goes ("Sending…", "Uploading…", "Waiting to send") and an alert with Retry and Remove when
  * it was not sent. Nothing is shown once it is stored (HIG-69).
  */
 export function OutboxStatus({ item, inline = false, onRetry, onRemove }: { item: PendingSend; inline?: boolean; onRetry: () => void; onRemove: () => void }) {
@@ -30,10 +30,10 @@ export function OutboxStatus({ item, inline = false, onRetry, onRemove }: { item
 
 function PendingStatus({ item, onRetry, onRemove }: { item: PendingSend; onRetry: () => void; onRemove: () => void }) {
   const connection = useConnection();
-  const label = item.state === 'uploading' ? 'Uploading…' : item.state === 'waiting' ? 'Waiting for connection' : 'Sending…';
+  const label = item.state === 'uploading' ? 'Uploading…' : item.state === 'waiting' ? 'Waiting to send' : 'Sending…';
   return (
     <div className={`outbox-status is-${item.state}`}>
-      <span className="outbox-status__dot" aria-hidden="true" />
+      {item.state === 'waiting' ? <Icon name="clock" size={13} /> : <span className="outbox-status__dot" aria-hidden="true" />}
       <span className="outbox-status__text">{label}{item.state === 'waiting' && item.error ? <span className="outbox-status__why">. {item.error}</span> : null}</span>
       {/* While the browser is online but Flux did not answer, the person may try now; offline, it goes on its own. */}
       {item.state === 'waiting' ? <span className="outbox-status__acts">
@@ -59,7 +59,7 @@ export function PendingSource({ item, className = 'outbox-source' }: { item: Pen
 }
 
 /**
- * One polite announcement per send: "Sending…" when a message is sent, and "Waiting for connection"
+ * One polite announcement per send: "Sending…" when a message is sent, and "Waiting to send"
  * when it has to wait. Being stored says nothing; "Not sent" is an alert on the message.
  */
 export function SendAnnouncer({ pending }: { pending: readonly PendingSend[] }) {
@@ -69,7 +69,7 @@ export function SendAnnouncer({ pending }: { pending: readonly PendingSend[] }) 
   useEffect(() => {
     let next = '';
     for (const item of pending) {
-      const now = item.state === 'waiting' ? 'Waiting for connection' : item.state === 'failed' ? null : 'Sending…';
+      const now = item.state === 'waiting' ? 'Waiting to send' : item.state === 'failed' ? null : 'Sending…';
       const before = said.current.get(item.id);
       if (!now || before === now || (before && now === 'Sending…')) continue;
       said.current.set(item.id, now);
@@ -102,7 +102,7 @@ export function ConnectionLine() {
     return () => { lines.splice(lines.indexOf(me), 1); lineListeners.forEach((listener) => listener()); };
   }, [me]);
   const live = useSyncExternalStore(subscribeLines, () => lines[lines.length - 1] === me, () => false);
-  const text = state === 'offline' ? 'You’re offline. Messages wait here and send when you’re back online.'
+  const text = state === 'offline' ? 'You’re offline. Messages send when you’re back.'
     : state === 'unreachable' ? 'Flux isn’t responding. Messages wait here and send when it’s back.' : '';
   // The live region stays in place and empty while online, so the line is announced when it appears.
   // One line per screen: only the newest composer's line shows it.

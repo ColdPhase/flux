@@ -1,17 +1,17 @@
 # Project capture and conversation backend (#36)
 
-**Later required amendment, 2026-09-30:** [UI116-3](../design/studio-v11.6.md#one-announcement-then-the-real-discussion--ui116-3)
+**Later required amendment, 2026-09-30 (UI116-3; drawn as rule P5 of the [final design](../design/final/README.md#5-behaviour)):**
 separates one task-created system notice from the first true contribution/root,
 retains the same one-level thread across all views, and preserves history and
 private helper prompts. [#154](https://github.com/ColdPhase/flux/issues/154) owns implementation; current code below is not
-claimed to satisfy the new semantics. [UI116-5](../design/studio-v11.6.md#subtle-motion-and-truthful-typing--ui116-5)
+claimed to satisfy the new semantics. UI116-5 ([motion and agent states](../design/final/README.md#3-kreska-logo-agent-icon-and-mascot))
 adds scoped ephemeral typing without durable messages or notification/model effects.
 
-**One project conversation, 2026-10-02:** [UI116-1 clarification](../design/studio-v11.6.md#one-project-conversation--ui116-1-clarification).
+**One project conversation, 2026-10-02 (UI116-1):** see the [final design's structure](../design/final/README.md#4-structure-and-navigation).
 The UI presents a project's stored conversations as one stream: each conversation's
 opening message (sequence 1) is a root, and its later messages are that root's
 one-level thread. Storage, commands and URLs are unchanged; see
-[the stream and its threads](#one-stream-of-roots-ui116-1) below.
+[the stream and its threads](#one-stream-of-roots) below.
 
 The current slice stores project conversations, direct text replies and versioned
 project materials. A signed-in person with contributor access can send from the
@@ -71,7 +71,11 @@ The script creates its own isolated Compose project, builds, typechecks, lints,
 runs API/PostgreSQL integration tests and restarts the API to verify a session,
 material and linked conversation survive. It removes only its own test volumes.
 
-## One stream of roots (UI116-1)
+## One stream of roots
+
+This retains the one-project-stream functional contract. Current composition follows
+[F-026 navigation and panels](../design/final/README.md#4-structure-and-navigation), with
+task announcements governed by [P5](../design/final/README.md#5-behaviour).
 
 `GET /api/v1/projects/:projectId/conversation-roots` returns the project's roots
 for the Conversation tab: `{ projectId, roots, rootPage }`. Each root is
@@ -83,9 +87,11 @@ the conversation's `(created_at, id)`. `rootPage.nextBefore` is a conversation i
 pass it as `?before=<conversationId>` while `hasMoreBefore` is true. The cursor is
 compared in PostgreSQL, so a root started between two reads never shifts or
 repeats an older window. A `before` that is not a conversation of this project is
-`400`. Current project read access is checked and its rows locked in the same
-transaction before the cursor, counts and page are read; every root shares the
-project audience, so nothing is filtered after the page is cut. Readers who lost
+`400`. Current project read access, the cursor, the counts and the page are read
+from one snapshot (a read-only repeatable-read transaction, without row locks,
+[#298](performance-2026-10.md)), so a revoke committed meanwhile cannot leave a
+partly authorized window; every root shares the project audience, so nothing is
+filtered after the page is cut. Readers who lost
 access get `404`, like every other conversation read.
 
 The browser starts a root with the existing `POST
@@ -132,13 +138,13 @@ Private assistant prompts keep their own send path.
   the message to an empty field at once with the existing explanation, so its files and
   source can be fixed there; the draft is restored only when sending fails.
 - **Offline.** The browser being offline (`navigator.onLine` and its events) or a send or
-  upload failing to reach Flux shows one quiet line above the composer ("You’re offline…" or
-  "Flux isn’t responding…"). Messages sent then, and a send that could not reach Flux, wait
-  in the queue marked "Waiting for connection". When the browser is back online, or a light
+  upload failing to reach Flux shows one quiet line above the composer ("You’re offline. Messages send when you’re back." or, when the browser is
+  online but Flux does not answer, "Flux isn’t responding. Messages wait here and send when it’s back."). Messages sent then, and a send that could not reach Flux, wait
+  in the queue marked with a clock and "Waiting to send" (F-026). When the browser is back online, or a light
   check of `GET /api/v1/me` gets any answer (every 3 s, slowing to 30 s, only while Flux is
   unreachable), the waiting messages are sent automatically in their order with their
   original `clientMessageId`s. A send or upload under way when the browser goes offline
-  also reads "Waiting for connection". The stream reads again only after Flux has answered
+  also reads "Waiting to send". The stream reads again only after Flux has answered
   (a delivered send or the check): a Retry or the browser's `online` event alone never
   reloads the page, so an unreachable Flux cannot replace the conversation with an error
   page. With a stream and a thread open, the line shows once.

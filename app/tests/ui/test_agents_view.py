@@ -365,7 +365,7 @@ class AgentsViewJourney(unittest.TestCase):
         page.get_by_role("button", name="Send to task").click()
         # No answer from Flux (#264): the message waits on the page and the quiet line says why.
         queued = self.thread(page).locator("[data-client-message-id]").filter(has_text="Battery check tonight")
-        expect(queued).to_contain_text("Waiting for connection")
+        expect(queued).to_contain_text("Waiting to send")
         expect(page.get_by_text("Flux isn’t responding. Messages wait here and send when it’s back.")).to_be_visible()
         queued.get_by_role("button", name="Remove").click()
         expect(page.get_by_label("Write to this task")).to_have_value("Battery check tonight")

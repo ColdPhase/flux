@@ -328,11 +328,11 @@ class AppShellJourney(unittest.TestCase):
         page.goto("/")
         expect(places.get_by_role("link", name="Home")).to_have_attribute("aria-current", "page")
         side_box = box(page, sidebar)
-        self.assertEqual((round(side_box["x"]), round(side_box["width"])), (0, 220), "a 220px sidebar at the far left")
-        self.assertEqual(page.evaluate("getComputedStyle(document.querySelector('.app')).backgroundColor"), "rgb(242, 243, 245)", "the chrome")
+        self.assertEqual((round(side_box["x"]), round(side_box["width"])), (0, 248), "a 248px sidebar at the far left")
+        self.assertEqual(page.evaluate("getComputedStyle(document.querySelector('.app')).backgroundColor"), "rgb(235, 235, 237)", "the outer background (--side)")
         sheet = page.locator(".app__main")
-        self.assertEqual(sheet.evaluate("el => [getComputedStyle(el).borderTopLeftRadius, getComputedStyle(el).backgroundColor]"), ["13px", "rgb(255, 255, 255)"], "a rounded white sheet")
-        self.assertEqual(round(box(page, sheet)["x"]), 220, "the sheet meets the sidebar")
+        self.assertEqual(sheet.evaluate("el => [getComputedStyle(el).borderTopLeftRadius, getComputedStyle(el).backgroundColor]"), ["20px", "rgb(244, 244, 245)"], "a rounded panel on --bg")
+        self.assertEqual(round(box(page, sheet)["x"]), 248, "the panel meets the sidebar")
         rail = places
         marker = places.get_by_role("link", name="Home").evaluate("el => { const s = getComputedStyle(el, '::before'); return [s.width, s.height]; }")
         self.assertEqual(marker, ["3px", "20px"], "an accent bar beside the current place (#266 PF-1)")
@@ -535,8 +535,8 @@ class AppShellJourney(unittest.TestCase):
         page = self.page(dark=True)
         page.goto("/")
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
-        self.assertEqual(page.evaluate("getComputedStyle(document.body).backgroundColor"), "rgb(25, 28, 33)", "the dark chrome")
-        self.assertEqual(page.locator(".app__main").evaluate("el => getComputedStyle(el).backgroundColor"), "rgb(33, 37, 43)", "the dark sheet")
+        self.assertEqual(page.evaluate("getComputedStyle(document.body).backgroundColor"), "rgb(11, 11, 11)", "the dark outer background")
+        self.assertEqual(page.locator(".app__main").evaluate("el => getComputedStyle(el).backgroundColor"), "rgb(17, 17, 17)", "the dark panel")
         shot(page, "desktop-1440-dark")
         page.get_by_role("button", name="Details", exact=True).click()
         expect(page.get_by_role("complementary", name="Details")).to_be_visible()
@@ -544,7 +544,7 @@ class AppShellJourney(unittest.TestCase):
 
         tablet = self.page(viewport={"width": 1024, "height": 768})
         tablet.goto("/")
-        # At 1024px the 220px sidebar stays beside the sheet (Studio 11.6 keeps it down to 681px).
+        # At 1024px the sidebar stays beside the panel (down to 681px).
         expect(tablet.get_by_role("complementary", name="Sidebar")).to_be_visible()
         expect(tablet.get_by_role("button", name="Open navigation")).to_have_count(0)
         shot(tablet, "tablet-1024-light")
@@ -663,7 +663,7 @@ class AppShellJourney(unittest.TestCase):
         page.reload()
         self.assertEqual(page.evaluate("document.documentElement.dataset.theme"), "dark")
         account.click()
-        page.get_by_role("dialog", name="Account").get_by_role("radio", name="System").click()
+        page.get_by_role("dialog", name="Account").get_by_role("radio", name="Match system").click()
         self.assertIsNone(page.evaluate("document.documentElement.dataset.theme ?? null"))
 
         calm = self.page(reduced_motion="reduce")
@@ -948,7 +948,7 @@ class AppShellJourney(unittest.TestCase):
         owner.get_by_role("button", name="Send reply").click()
         # Sending is instant (#264): the reply waits with its command and is sent again when Flux answers.
         queued = thread_of(owner).locator("[data-client-message-id]").filter(has_text="Retry this one reply")
-        expect(queued).to_contain_text("Waiting for connection")
+        expect(queued).to_contain_text("Waiting to send")
         queued.get_by_role("button", name="Retry").click()
         expect(queued).to_have_count(0)
         expect(owner.get_by_text("Retry this one reply", exact=True)).to_be_visible()
@@ -966,7 +966,7 @@ class AppShellJourney(unittest.TestCase):
         owner.get_by_label("Reply", exact=True).fill("Reload after lost reply")
         owner.get_by_role("button", name="Send reply").click()
         queued = thread_of(owner).locator("[data-client-message-id]").filter(has_text="Reload after lost reply")
-        expect(queued).to_contain_text("Waiting for connection")
+        expect(queued).to_contain_text("Waiting to send")
         expect(owner.get_by_label("Reply", exact=True)).to_have_value("")
         owner.unroute("**/api/v1/conversations/*/messages", lose_committed_reply)
         # The waiting reply and its id survive the reload, and it is sent again as the thread opens.
@@ -986,7 +986,7 @@ class AppShellJourney(unittest.TestCase):
         owner.route("**/api/v1/projects/*/conversations", lose_committed_opening)
         owner.get_by_label("Write a message").fill("Revisit after lost opening")
         owner.get_by_role("button", name="Send message").click()
-        expect(owner.get_by_role("region", name="Messages").locator("[data-client-message-id]").filter(has_text="Revisit after lost opening")).to_contain_text("Waiting for connection")
+        expect(owner.get_by_role("region", name="Messages").locator("[data-client-message-id]").filter(has_text="Revisit after lost opening")).to_contain_text("Waiting to send")
         owner.unroute("**/api/v1/projects/*/conversations", lose_committed_opening)
         owner.get_by_role("link", name="Home").click()
         owner.goto(f"/projects/{project_id}")

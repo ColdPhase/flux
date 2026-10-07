@@ -366,7 +366,7 @@ class TaskAnnouncements(unittest.TestCase):
         # Sending is instant (#264): with no answer the message waits in Details, and its command stays
         # in the task's record (its queue) rather than in the emptied field.
         queued = section.locator("[data-client-message-id]")
-        expect(queued).to_contain_text("Waiting for connection")
+        expect(queued).to_contain_text("Waiting to send")
         expect(queued).to_contain_text(text)
         expect(box).to_have_value("")
         kept = page.evaluate("key => JSON.parse(localStorage.getItem(key))", key)

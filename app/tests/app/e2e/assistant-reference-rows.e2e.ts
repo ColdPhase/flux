@@ -254,7 +254,7 @@ test('required metadata retry preserves lost-response command UUID, native reply
   await page.route('**/api/v1/me',(route)=>route.abort('failed'));
   await page.locator('#thread-composer').fill(replyText);await page.getByRole('button',{name:'Send reply',exact:true}).click();
   const queued=page.locator('#thread [data-client-message-id]').filter({hasText:replyText});
-  await expect(queued).toContainText('Waiting for connection');
+  await expect(queued).toContainText('Waiting to send');
   // The thread's composer record (#195 shared composer, #264 queue) keeps the unconfirmed command's one UUID.
   const storageKey=`flux:composer:${owner.id}:${place.id}:conversation:${thread.id}`;
   const pending=(await page.evaluate((key)=>JSON.parse(localStorage.getItem(key)!),storageKey)).pending[0];

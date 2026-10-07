@@ -55,7 +55,7 @@ function opens(item: TabItem, path: string | null): boolean {
 }
 
 /**
- * View switcher: labels with one 2px accent mark under the whole current label that slides
+ * View switcher: labels with one 2px mark under the whole current label that slides
  * between tabs (translate + scaleX of a 1px bar, so only transform animates).
  * Navigation tabs are links with aria-current; in-page tabs follow the ARIA tabs pattern.
  * Navigation feedback (#155, UI116-5): the mark slides to a chosen tab at once, while its view loads;
@@ -193,7 +193,7 @@ export interface BottomNavItem extends TabItem {
 
 /**
  * The phone's bar of main places (#266 PF-1): each an icon over its label, at thumb height. The current
- * place carries an accent pill behind its icon, an accent label and aria-current; the pill grows in,
+ * place carries a pill behind its icon, a strong label and aria-current; the pill grows in,
  * so the change of place is felt as well as seen. A chosen place shows the pill at once while it loads
  * (as #155 does for the tabs).
  */
