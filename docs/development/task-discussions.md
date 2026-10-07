@@ -253,7 +253,8 @@ effects, atomicity, hooks and lock order apply; the file corrections remain for 
 
 ## In the project stream (web, 2026-10-03)
 
-The one project stream (UI116-1) shows both halves of UI116-3:
+The [one project stream](conversations.md#one-stream-of-roots) shows the task announcement
+and its real discussion under [P5](../design/final/README.md#5-behaviour):
 
 - **Announcements.** The conversation route reads `GET /api/v1/projects/:id/task-notices` (newest first) beside
   the newest roots. Each announcement is one compact line, merged with the roots by time (an announcement first at

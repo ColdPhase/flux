@@ -213,6 +213,10 @@ content and never nags.
 
 The keys show next to their actions in menus.
 
+Existing Settings URLs remain valid entry points to the corresponding permitted section,
+directly or through a redirect to its current equivalent. Preserve Back and history without
+restoring the former appearance.
+
 ## 5. Behaviour
 
 The canvas labels S1–S22 and P1–P12 refer to these rules.
@@ -258,6 +262,20 @@ The canvas labels S1–S22 and P1–P12 refer to these rules.
 - Cards, bubbles and event text start on one left edge: avatar column plus a gap of 12 on the
   computer, 10 on the phone.
 - Small 20 px avatars appear only as owners inside task rows.
+
+### Kept map and board behaviour
+
+These functional rules from UI116-4 remain required; they do not change the fixed screens,
+tokens or S/P rules above:
+
+- A map thought's task count opens **all** its related tasks under current access checks,
+  with exact task IDs, current states and people. Closing the related-task view returns to
+  the same map camera and selection. Preserve many-to-many relations and accessible named
+  links; simplifying their display does not delete tasks, relations or data.
+- On the task board, a drop outside a valid target does nothing. A failed transition restores
+  the true current state. The column header and an empty column are usable drop targets.
+  Drag feedback clears on leave, drop or cancel. Keep touch and keyboard/menu alternatives
+  to dragging; this adds no card-ordering semantics.
 
 ## 6. Files, references and photos
 

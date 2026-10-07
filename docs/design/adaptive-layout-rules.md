@@ -32,7 +32,8 @@ Content:
 - six tasks: open, in progress, blocked with its blocker, and done, each linked to thoughts;
 - a published wiki page with long prose, a list and code.
 
-Agents lists the three connections as three entries (F-017 UI116-2).
+Agents lists the three connections as three entries under the
+[CO-1 connection model](../product/mcp-cowork.md#connections-and-owner-authorized-autonomy--co-1).
 
 ## Pane and breakpoint rules
 
