@@ -297,6 +297,40 @@ class RouteChunksJourney(unittest.TestCase):
                         Path(evidence).mkdir(parents=True, exist_ok=True)
                         (Path(evidence) / f"route-code-reload-{engine}.json").write_text(json.dumps(diagnostic, indent=2))
 
+    def test_09_first_project_details_keep_readable_rows_before_any_map_download(self):
+        for engine in self.browsers:
+            with self.subTest(engine=engine):
+                page = self.page(engine, phone=True)
+                title = f"Check the first project overview before opening Map {engine}"
+                response = page.request.post(f"{ORIGIN}/api/v1/projects/{self.project_id}/work",
+                    headers={"origin": ORIGIN, "content-type": "application/json"}, data=json.dumps({"title": title}))
+                self.assertEqual(response.status, 201, response.text())
+                requested = []
+                page.on("request", lambda request: requested.append(request.url))
+                page.goto(f"/projects/{self.project_id}")
+                expect(page.get_by_role("heading", name="Chunk boundaries", exact=True)).to_be_visible()
+                page.get_by_role("button", name="Details", exact=True).click()
+                row = page.locator("#details .ov-row", has_text=title)
+                expect(row).to_be_visible()
+                # A first-open native row must keep its icon, readable text and action in separate
+                # columns inside the phone panel. Missing lazy surface CSS must not collapse them.
+                geometry = row.evaluate("""el => {
+                    const box = el.getBoundingClientRect();
+                    const icon = el.querySelector('.ov-row__ic').getBoundingClientRect();
+                    const body = el.querySelector('.ov-row__b').getBoundingClientRect();
+                    const action = el.querySelector('.ov-row__go').getBoundingClientRect();
+                    return { height: box.height, left: box.left, right: box.right,
+                        iconRight: icon.right, textLeft: body.left, textRight: body.right, actionLeft: action.left };
+                }""")
+                self.assertGreaterEqual(geometry["height"], 44 - 0.001)
+                self.assertGreater(geometry["textLeft"], geometry["iconRight"])
+                self.assertLess(geometry["textRight"], geometry["actionLeft"])
+                self.assertGreaterEqual(geometry["left"], 0)
+                self.assertLessEqual(geometry["right"], page.viewport_size["width"])
+                self.assertFalse(any(re.search(r"/assets/(?:ProjectViews|SketchView)-[^/]+\\.js", url) for url in requested),
+                                 "The first project/Details render never depends on Map code")
+                shot(page, f"route-chunks-first-project-details-{engine}-phone")
+
 
 if __name__ == "__main__":
     unittest.main()
