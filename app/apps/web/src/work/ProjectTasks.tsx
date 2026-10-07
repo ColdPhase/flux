@@ -211,7 +211,7 @@ export function ProjectTasks() {
   const shell = useProjectShell();
   const { openDetails } = useShellActions();
   const revalidator = useRevalidator();
-  const [search] = useSearchParams();
+  const [search, setSearch] = useSearchParams();
   const { me } = useShellData();
   const scroller = useRef<HTMLDivElement>(null);
   const location = useLocation();
@@ -346,6 +346,15 @@ export function ProjectTasks() {
     if (mode === 'list') document.getElementById('ws-add')?.focus();
     else setAdding('open');
   };
+  // New → Task in the sidebar (F-026 S3) arrives as ?new=task: start the same creation once, then drop it.
+  useEffect(() => {
+    if (search.get('new') !== 'task' || !writable) return;
+    const next = new URLSearchParams(search);
+    next.delete('new');
+    setSearch(next, { replace: true });
+    if (mode === 'list') requestAnimationFrame(() => document.getElementById('ws-add')?.focus());
+    else requestAnimationFrame(() => setAdding('open'));
+  }, [search, writable, mode, setSearch]);
 
   useEffect(() => {
     const refresh = () => { if (document.visibilityState === 'visible') revalidator.revalidate(); };

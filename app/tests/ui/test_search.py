@@ -81,7 +81,7 @@ class SearchJourney(unittest.TestCase):
 
     def jump(self, page: Page, query: str):
         # The shortcut works once the app shell has loaded.
-        expect(page.get_by_role("button", name=re.compile("Jump to"))).to_be_visible()
+        expect(page.get_by_role("button", name="Search", exact=True)).to_be_visible()
         page.keyboard.press("Control+k")
         dialog = page.get_by_role("dialog", name="Jump to")
         expect(dialog).to_be_visible()
@@ -141,7 +141,7 @@ class SearchJourney(unittest.TestCase):
     def test_02_ctrl_k_searches_as_you_type_and_opens_the_exact_message(self) -> None:
         page = self.page("nia")
         page.goto("/")
-        expect(page.get_by_role("button", name=re.compile("Jump to"))).to_be_visible()
+        expect(page.get_by_role("button", name="Search", exact=True)).to_be_visible()
         dialog, field = self.jump(page, "sensor")
         options = dialog.get_by_role("option")
         expect(options.first).to_be_visible()
@@ -162,7 +162,7 @@ class SearchJourney(unittest.TestCase):
     def test_03_arrow_keys_choose_and_old_versions_open_at_their_version(self) -> None:
         page = self.page("nia")
         page.goto("/")
-        page.get_by_role("button", name=re.compile("Jump to")).click()
+        page.get_by_role("button", name="Search", exact=True).click()
         dialog = page.get_by_role("dialog", name="Jump to")
         field = dialog.get_by_role("combobox", name="Jump to")
         expect(field).to_be_focused()
@@ -307,7 +307,7 @@ class SearchJourney(unittest.TestCase):
         page = self.page("nia", phone=True)
         page.goto("/")
         page.get_by_role("button", name="Open navigation").click()
-        page.get_by_role("dialog", name="Flux").get_by_role("button", name=re.compile("Jump to")).click()
+        page.get_by_role("dialog", name="Flux").get_by_role("button", name="Search", exact=True).click()
         dialog = page.get_by_role("dialog", name="Jump to")
         expect(dialog).to_be_visible()
         box = dialog.bounding_box()
@@ -320,7 +320,8 @@ class SearchJourney(unittest.TestCase):
         cancel = dialog.get_by_role("button", name="Cancel")
         cancel_box = cancel.bounding_box()
         assert cancel_box is not None
-        self.assertGreaterEqual(cancel_box["height"], 44)
+        # Rounded: the sheet's opening scale can leave a 43.99999px reading.
+        self.assertGreaterEqual(round(cancel_box["height"]), 44)
         for index in range(min(options.count(), 5)):
             option_box = options.nth(index).bounding_box()
             assert option_box is not None

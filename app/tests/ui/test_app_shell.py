@@ -102,6 +102,12 @@ def thread_of(page: Page):
     return page.get_by_role("complementary", name="Replies")
 
 
+def new_from_sidebar(page: Page, item: str) -> None:
+    """New (C) in the computer sidebar, then one of its items (F-026 §4)."""
+    page.get_by_role("complementary", name="Sidebar").get_by_role("button", name="New", exact=True).click()
+    page.get_by_role("menu", name="New").get_by_role("menuitem", name=item, exact=True).click()
+
+
 def shot(page: Page, name: str) -> None:
     if not SHOTS:
         return
@@ -318,8 +324,7 @@ class AppShellJourney(unittest.TestCase):
         expect(sidebar.get_by_role("img", name="Flux")).to_be_visible()
         places = sidebar.get_by_role("navigation", name="Places")
         expect(places.get_by_role("link", name="Home")).to_have_attribute("aria-current", "page")
-        expect(places.get_by_role("link", name="Direct messages")).not_to_have_attribute("aria-current", "page")
-        self.assertEqual(places.get_by_role("link").all_inner_texts(), ["Home", "Inbox", "Direct messages", "My sketchbook"])
+        self.assertEqual(places.get_by_role("link").all_inner_texts(), ["Home", "Inbox", "Sketchbook"])
         # Search and personal settings have their own header; Home is not current there (#184 delta review S1).
         for path, title in (("/search", "Search"), ("/settings/assistant", "Your assistant"), ("/settings/background-compute", "Background suggestions")):
             page.goto(path)
@@ -334,10 +339,10 @@ class AppShellJourney(unittest.TestCase):
         self.assertEqual(sheet.evaluate("el => [getComputedStyle(el).borderTopLeftRadius, getComputedStyle(el).backgroundColor]"), ["20px", "rgb(244, 244, 245)"], "a rounded panel on --bg")
         self.assertEqual(round(box(page, sheet)["x"]), 248, "the panel meets the sidebar")
         rail = places
-        marker = places.get_by_role("link", name="Home").evaluate("el => { const s = getComputedStyle(el, '::before'); return [s.width, s.height]; }")
-        self.assertEqual(marker, ["3px", "20px"], "an accent bar beside the current place (#266 PF-1)")
+        marker = places.get_by_role("link", name="Home").evaluate("el => [getComputedStyle(el).backgroundColor, getComputedStyle(el).boxShadow !== 'none']")
+        self.assertEqual(marker, ["rgb(255, 255, 255)", True], "the current place is a raised white pill (F-026 §4)")
         expect(sidebar.get_by_text("No projects yet")).to_be_visible()
-        expect(sidebar.get_by_role("button", name=re.compile("^New note"))).to_be_visible()
+        expect(sidebar.get_by_role("button", name=re.compile("^New"))).to_have_attribute("aria-keyshortcuts", "C")
         views = page.get_by_role("navigation", name="Views")
         for label in ("Conversation", "Map", "Tasks", "Wiki"):
             expect(views.get_by_role("link", name=label, exact=True)).to_be_visible()
@@ -403,13 +408,14 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("complementary", name="Details")).to_have_count(0)
 
         # Direct messages is its own place: the sidebar lists conversations, there are no views.
-        rail.get_by_role("link", name="Direct messages").click()
+        sidebar.locator("#side-dms").get_by_role("link", name="Messages", exact=True).click()
         expect(page).to_have_url(f"{ORIGIN}/dm")
         expect(page.get_by_role("heading", level=1, name="Direct messages")).to_be_visible()
         expect(page.get_by_role("heading", name="No direct messages yet")).to_be_visible()
-        expect(rail.get_by_role("link", name="Direct messages")).to_have_attribute("aria-current", "page")
+        expect(sidebar.locator("#side-dms").get_by_role("link", name="Messages", exact=True)).to_have_attribute("aria-current", "page")
         expect(sidebar.get_by_text("No conversations yet", exact=False)).to_be_visible()
-        expect(sidebar.get_by_role("link", name="New message")).to_be_visible()
+        # On the computer New (C) starts a message; the sidebar has no second "+".
+        expect(sidebar.get_by_role("link", name="New message")).to_have_count(0)
         expect(page.get_by_role("navigation", name="Views")).to_have_count(0)
         shot(page, "desktop-1440-dm-light")
         rail.get_by_role("link", name="Home").click()
@@ -584,7 +590,7 @@ class AppShellJourney(unittest.TestCase):
         drawer_places = drawer.get_by_role("navigation", name="Places")
         expect(drawer_places).to_be_visible()
         self.assertLessEqual(round(box(page, drawer)["width"]), 260)
-        for name in ("Home", "Inbox", "Direct messages"):
+        for name in ("Home", "Inbox", "Sketchbook"):
             self.assertGreaterEqual(box(page, drawer_places.get_by_role("link", name=name))["height"], 44, f"44px place target: {name}")
         self.assertTrue(drawer.evaluate("el => el.contains(document.activeElement)"), "focus moves into the drawer")
         self.assertTrue(page.evaluate("document.getElementById('root').inert"), "the page behind the drawer is inert")
@@ -795,7 +801,7 @@ class AppShellJourney(unittest.TestCase):
     def test_11a_sign_out_while_an_opened_task_is_still_loading(self) -> None:
         """A search result opens a task in Details (`?open=work:<id>`); signing out right away wins."""
         page, project_id, _ = self.person_with_a_task("Rae Lund")
-        page.get_by_role("button", name=re.compile("Jump to")).click()
+        page.get_by_role("button", name="Search", exact=True).click()
         dialog = page.get_by_role("dialog", name="Jump to")
         field = dialog.get_by_role("combobox", name="Jump to")
         field.fill("dimmer curve")
@@ -842,7 +848,7 @@ class AppShellJourney(unittest.TestCase):
         owner.get_by_label("Password").fill(PASSWORD)
         owner.get_by_role("button", name="Create account").click()
         expect(owner.get_by_role("heading", level=1, name="Home")).to_be_visible()
-        owner.get_by_role("link", name="New project").click()
+        new_from_sidebar(owner, "Project")
         owner.get_by_label("Your space").fill("Lamp lab")
         owner.get_by_label("Project name").fill("Gesture lamp")
 
@@ -1094,7 +1100,7 @@ class AppShellJourney(unittest.TestCase):
         owner.get_by_label("Email").fill(email)
         owner.get_by_label("Password").fill(PASSWORD)
         owner.get_by_role("button", name="Create account").click()
-        owner.get_by_role("link", name="New project").click()
+        new_from_sidebar(owner, "Project")
         owner.get_by_label("Your space").fill("Many ideas")
         owner.get_by_label("Project name").fill("Busy project")
         owner.get_by_role("button", name="Create project").click()
@@ -1208,7 +1214,7 @@ class AppShellJourney(unittest.TestCase):
         page.get_by_label("Email").fill(email)
         page.get_by_label("Password").fill(PASSWORD)
         page.get_by_role("button", name="Create account").click()
-        page.get_by_role("link", name="New project").click()
+        new_from_sidebar(page, "Project")
         page.get_by_label("Your space").fill("Research space")
         page.get_by_label("Project name").fill("Sensor study")
         page.get_by_role("button", name="Create project").click()

@@ -103,8 +103,8 @@ test('all pages render quiet comparisons and insufficient evidence with current 
       await page.screenshot({ path: `/state/comparison-outcomes-${viewport.width}-insufficient-footer.png`, fullPage: true });
       if (!touch) {
         await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
-        await page.waitForFunction(() => document.querySelector('.side__jump')!.getAnimations().every((animation) => animation.playState !== 'running'));
-        const colors = await page.locator('.side__jump').evaluate((node) => {
+        await page.waitForFunction(() => document.querySelector('.side__search')!.getAnimations().every((animation) => animation.playState !== 'running'));
+        const colors = await page.locator('.side__search').evaluate((node) => {
           const style = getComputedStyle(node);
           return { foreground: style.color, background: style.backgroundColor };
         });
@@ -124,9 +124,9 @@ test('all pages render quiet comparisons and insufficient evidence with current 
             if (Number.isFinite(size)) document.documentElement.style.setProperty(token, `${size * 1.25}px`);
           }
         });
-        await page.waitForFunction(() => document.querySelector('.side__jump')!.getAnimations()
+        await page.waitForFunction(() => document.querySelector('.side__search')!.getAnimations()
           .every((animation) => animation.playState !== 'running'));
-        const lightColors = await page.locator('.side__jump').evaluate((node) => {
+        const lightColors = await page.locator('.side__search').evaluate((node) => {
           const style = getComputedStyle(node);
           return { foreground: style.color, background: style.backgroundColor };
         });

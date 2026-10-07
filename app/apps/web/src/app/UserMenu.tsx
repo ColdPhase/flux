@@ -98,13 +98,16 @@ function AccountMenu({ name, email, sessionExpiresAt }: { name: string; email: s
           </Form>
         </div>
       ) : null}
-      <button ref={buttonRef} type="button" className="me__btn" aria-expanded={open} aria-controls={open ? popId : undefined}
-        aria-haspopup="dialog" onClick={() => (open ? close(false) : setOpen(true))}>
-        <Avatar name={name} tone="me" />
-        <span className="me__text"><b>{name}</b><span>{email}</span></span>
-        <Icon name="chevron-up" className="me__chev" />
-        <span className="ui-vh">, account and sign out</span>
-      </button>
+      {/* The account and Settings (F-026 §4): the name opens the account; the gear is Settings. */}
+      <div className="me__row">
+        <button ref={buttonRef} type="button" className="me__btn" aria-expanded={open} aria-controls={open ? popId : undefined}
+          aria-haspopup="dialog" onClick={() => (open ? close(false) : setOpen(true))}>
+          <Avatar name={name} tone="me" size="sm" />
+          <span className="me__text"><b>{name}</b><span className="ui-vh">{email}</span></span>
+          <span className="ui-vh">, account and sign out</span>
+        </button>
+        <Link to="/settings" className="me__settings" aria-label="Settings" title="Settings"><Icon name="gear" size={17} /></Link>
+      </div>
     </div>
   );
 }
