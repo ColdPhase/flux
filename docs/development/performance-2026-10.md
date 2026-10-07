@@ -406,3 +406,96 @@ FLUX_PERF_PHASES="count plans" ./scripts/check_performance.sh       # statements
 Results go to `perf-results/<time>/` (`report.md`, `measure.jsonl`, `api.log`, `plans.log`,
 `profile/`). The regression tests are `app/tests/app/server-performance.test.ts`, run by
 `./scripts/check_application.sh`.
+
+## Current-main revalidation, 2026-10-07
+
+**Observed.** Source head `61a4361c3ab114fd74f16b6d1df0f1044cc859b1` incorporates
+`main` `9d54135b7b13f6c932ccf4c6e080ae4ae48d2fa5`. The performance adapters,
+regression tests and measurement scripts are unchanged since independently approved
+`af7dff6dc6a59e2d4bd73487f5f624d0d8e42064`; the later evidence commit only adds this
+section. The original before/after results above remain their dated observations.
+
+The canonical `check_application.sh` passed with **1088/1088 API tests** and every
+configured browser/e2e, API restart, unavailable push/email and background-switch
+phase. The earlier fractional phone touch-target failure did not reproduce; no
+threshold, test or acceptance criterion was changed. Foundation/link checks, the
+75 Python repository tests and whitespace checks passed.
+
+The complete `check_performance.sh` ran sequentially after that suite, reusing its
+frozen production image `flux-foundation:flux300-61a4361`
+(`sha256:7f953794ebc8453daf624e184ecec990cb4f7cb59339639f15b173afa4978a86`).
+It seeded through the public API exactly 3 people and 10 projects, 2000 messages in
+100 conversations, 500 tasks, 200 thoughts, 50 docs / 150 versions, 20 other
+materials, 1400 notifications per person, 2884 events / 8649 audience rows and
+2874 search documents. All configured phases ran: isolated counts, 20 warm runs
+per person, two concurrent clients, query plans, 20 cold passes per person after
+restarting PostgreSQL and the API, and CPU profiling.
+
+**Observed.** All **41 distinct requests** had at least 20 samples in each required
+cold/warm/concurrent phase, zero missing samples or HTTP errors, and p95 below
+300 ms. The highest p95 was **71.4 ms**, `work view finished` for a member
+in the cold phase. This is server time from Fastify's request log; it is not a
+measurement of browser paint or network latency.
+
+The connection sampler saw at most 11 matching PostgreSQL client sessions, 5 active
+and 5 idle in transaction, with at most 7 active-or-idle-in-transaction together.
+Its filter does not identify the API pool separately from every other connection,
+so 11 is not proof that the 10-connection API pool exceeded its cap, and the
+samples alone do not prove the absence of brief pool waits. No request error or
+latency-budget miss occurred. Both CPU profiles and the query plans were retained.
+
+The raw local run is `/tmp/flux300-performance-61a4361/`; the application log is
+`/tmp/flux300-application-61a4361.log`. Each pipeline exited 0 and its owned
+containers, volumes and networks were independently empty afterwards. These are
+author validation results; fresh eligible review of the pushed head is still
+required.
+
+### Current per-request results
+
+An isolated column is one sample. Cold and warm columns distinguish owner/member;
+concurrent combines the two clients, with 20 runs each. Query counts, DB times and
+WAL are the measurement's recorded values.
+
+| View | Request | SQL | DB ms (owner / member) | WAL B | Bytes | isolated p50 / p95 | isolated (member) p50 / p95 | cold p50 / p95 | cold (member) p50 / p95 | warm p50 / p95 | warm (member) p50 / p95 | concurrent p50 / p95 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Home | me | 3 | 0.1 / 0.1 | 56 | 273 | 1.6 / 1.6 | 1.8 / 1.8 | 1.4 / 13 | 1.4 / 14 | 1.0 / 1.4 | 1.0 / 1.5 | 1.2 / 3.0 |
+| Home | workspaces | 4 | 0.1 / 0.1 | 0 | 141 | 1.8 / 1.8 | 2.1 / 2.1 | 1.8 / 5.3 | 1.8 / 5.0 | 1.2 / 1.6 | 1.2 / 1.6 | 1.5 / 2.9 |
+| Home | projects | 6 | 0.1 / 0.1 | 0 | 555 | 3.7 / 3.7 | 3.9 / 3.9 | 3.5 / 8.0 | 4.1 / 9.5 | 2.6 / 3.4 | 3.2 / 4.0 | 3.7 / 6.3 |
+| Home | dms | 10 | 0.1 / 0.1 | 112 | 45 | 4.7 / 4.7 | 2.9 / 2.9 | 3.3 / 6.6 | 3.5 / 7.8 | 2.0 / 2.6 | 2.0 / 2.7 | 2.7 / 5.7 |
+| Home | inbox dot | 10 | 2.3 / 3.1 | 0 | 488 | 9.2 / 9.2 | 14 / 14 | 8.3 / 13 | 9.2 / 15 | 6.7 / 8.8 | 7.4 / 9.5 | 8.6 / 13 |
+| Home | live capabilities | 0 | 0.0 / 0.0 | 0 | 24 | 0.3 / 0.3 | 0.1 / 0.1 | 0.1 / 0.2 | 0.1 / 0.2 | 0.0 / 0.1 | 0.0 / 0.0 | 0.0 / 0.1 |
+| Home | since you left | 41 | 3.0 / 3.3 | 184 | 2036 | 27 / 27 | 22 / 22 | 29 / 64 | 29 / 66 | 18 / 23 | 19 / 24 | 23 / 30 |
+| Home | assistant | 9 | 0.1 / 0.1 | 0 | 321 | 4.6 / 4.6 | 2.8 / 2.8 | 7.2 / 15 | 7.4 / 14 | 3.4 / 5.5 | 3.4 / 5.4 | 4.7 / 9.1 |
+| Home | drafts | 6 | 0.1 / 0.1 | 0 | 45 | 6.1 / 6.1 | 3.0 / 3.0 | 8.6 / 24 | 8.6 / 30 | 3.0 / 3.9 | 3.3 / 5.1 | 4.9 / 9.3 |
+| Conversation | project | 6 | 0.1 / 0.1 | 0 | 227 | 2.2 / 2.2 | 3.5 / 3.5 | 2.0 / 3.3 | 2.3 / 3.8 | 1.6 / 2.5 | 1.7 / 2.2 | 2.3 / 4.9 |
+| Conversation | project people | 17 | 0.2 / 0.2 | 376 | 312 | 5.3 / 5.3 | 4.5 / 4.5 | 8.9 / 13 | 8.7 / 14 | 6.0 / 8.2 | 5.8 / 7.9 | 8.0 / 12 |
+| Conversation | project sketches | 12 | 0.1 / 0.3 | 0 | 470 | 5.4 / 5.4 | 4.6 / 4.6 | 7.7 / 20 | 8.7 / 20 | 5.5 / 7.2 | 6.1 / 7.5 | 7.6 / 12 |
+| Conversation | project docs | 11 | 0.4 / 0.3 | 0 | 2079 | 7.1 / 7.1 | 6.0 / 6.0 | 8.8 / 23 | 8.7 / 24 | 6.0 / 8.0 | 6.1 / 8.0 | 8.0 / 13 |
+| Conversation | work summary | 42 | 1.0 / 0.9 | 0 | 1198 | 22 / 22 | 16 / 16 | 29 / 62 | 24 / 57 | 21 / 26 | 19 / 22 | 27 / 37 |
+| Conversation | needs you | 28 | 5.3 / 2.9 | 0 | 1876 | 36 / 36 | 14 / 14 | 26 / 60 | 18 / 49 | 19 / 23 | 14 / 15 | 21 / 29 |
+| Conversation | conversation roots | 10 | 2.1 / 1.2 | 0 | 3447 | 12 / 12 | 12 / 12 | 16 / 19 | 16 / 20 | 8.0 / 11 | 8.0 / 11 | 11 / 15 |
+| Conversation | task notices | 11 | 0.5 / 0.4 | 0 | 5688 | 5.7 / 5.7 | 5.5 / 5.5 | 12 / 17 | 13 / 16 | 6.9 / 9.0 | 6.9 / 9.4 | 9.6 / 15 |
+| Conversation | materials | 9 | 0.2 / 0.2 | 0 | 1208 | 4.8 / 4.8 | 4.6 / 4.6 | 12 / 15 | 10 / 12 | 5.9 / 8.5 | 5.8 / 9.1 | 8.5 / 13 |
+| Conversation | members | 5 | 0.1 / 0.1 | 120 | 468 | 3.2 / 3.2 | 1.8 / 1.8 | 5.9 / 8.5 | 5.9 / 7.3 | 2.7 / 4.2 | 2.8 / 4.5 | 4.3 / 6.6 |
+| Conversation | assistant runs | 8 | 0.1 / 0.1 | 0 | 44 | 3.7 / 3.7 | 2.7 / 2.7 | 8.8 / 10 | 8.8 / 11 | 4.2 / 6.0 | 3.6 / 5.4 | 5.1 / 9.6 |
+| Conversation | root work associations | 36 | 1.2 / 1.0 | 64 | 1260 | 35 / 35 | 29 / 29 | 41 / 48 | 41 / 46 | 31 / 34 | 31 / 34 | 39 / 49 |
+| Conversation | notice reference rows | 32 | 2.4 / 1.8 | 0 | 4024 | 27 / 27 | 26 / 26 | 36 / 40 | 38 / 41 | 26 / 30 | 26 / 30 | 33 / 48 |
+| Conversation thread | thread | 10 | 0.2 / 0.2 | 0 | 1161 | 5.5 / 5.5 | 5.2 / 5.2 | 7.1 / 24 | 7.0 / 27 | 4.2 / 5.4 | 3.8 / 4.8 | 4.8 / 8.5 |
+| Conversation thread | assistant answers | 11 | 0.1 / 0.1 | 0 | 45 | 3.3 / 3.3 | 2.7 / 2.7 | 5.8 / 7.6 | 6.1 / 7.8 | 2.8 / 4.9 | 3.0 / 3.9 | 4.4 / 9.3 |
+| Conversation thread | assistant proposals | 10 | 0.1 / 0.1 | 0 | 45 | 5.0 / 5.0 | 3.4 / 3.4 | 4.8 / 14 | 5.2 / 14 | 2.6 / 4.4 | 2.7 / 3.9 | 4.1 / 9.7 |
+| Tasks | comparison outcomes | 10 | 0.1 / 0.1 | 0 | 45 | 6.2 / 6.2 | 6.2 / 6.2 | 5.9 / 6.9 | 6.4 / 7.8 | 2.8 / 4.5 | 2.7 / 3.2 | 3.6 / 8.0 |
+| Tasks | work view open | 48 | 1.9 / 1.7 | 64 | 2893 | 22 / 22 | 23 / 23 | 43 / 69 | 45 / 70 | 31 / 36 | 31 / 34 | 41 / 52 |
+| Tasks | work view in_progress | 48 | 1.8 / 1.5 | 0 | 2878 | 22 / 22 | 22 / 22 | 45 / 66 | 45 / 68 | 30 / 35 | 30 / 35 | 40 / 51 |
+| Tasks | work view blocked | 44 | 0.9 / 0.8 | 0 | 1309 | 17 / 17 | 15 / 15 | 35 / 53 | 37 / 59 | 23 / 29 | 22 / 27 | 30 / 43 |
+| Tasks | work view finished | 48 | 1.8 / 1.5 | 0 | 2857 | 21 / 21 | 22 / 22 | 41 / 70 | 45 / 71 | 30 / 35 | 30 / 34 | 39 / 51 |
+| Tasks | work relations 1 | 31 | 0.5 / 0.5 | 0 | 128 | 24 / 24 | 24 / 24 | 29 / 32 | 29 / 31 | 24 / 29 | 25 / 28 | 30 / 38 |
+| Tasks | work relations 2 | 31 | 0.5 / 0.5 | 0 | 128 | 21 / 21 | 21 / 21 | 26 / 29 | 26 / 29 | 22 / 25 | 22 / 24 | 27 / 36 |
+| Map | sketch list | 12 | 0.2 / 0.2 | 0 | 470 | 6.5 / 6.5 | 6.0 / 6.0 | 4.2 / 8.9 | 5.0 / 9.6 | 3.8 / 4.7 | 4.2 / 5.3 | 5.0 / 9.3 |
+| Map | sketch | 16 | 0.6 / 0.6 | 0 | 14234 | 9.1 / 9.1 | 8.9 / 8.9 | 12 / 14 | 12 / 14 | 8.6 / 9.3 | 9.5 / 10 | 11 / 15 |
+| Map | thought tasks 1 | 30 | 0.5 / 0.6 | 0 | 162 | 16 / 16 | 17 / 17 | 21 / 27 | 22 / 29 | 17 / 19 | 16 / 19 | 21 / 28 |
+| Map | thought tasks 2 | 30 | 0.5 / 0.5 | 0 | 162 | 14 / 14 | 15 / 15 | 21 / 25 | 19 / 29 | 16 / 20 | 16 / 19 | 21 / 29 |
+| Wiki | doc | 13 | 0.1 / 0.2 | 0 | 1717 | 3.4 / 3.4 | 4.7 / 4.7 | 10 / 12 | 10 / 11 | 2.8 / 4.0 | 3.0 / 4.2 | 3.9 / 6.9 |
+| Inbox | inbox | 10 | 2.3 / 2.6 | 0 | 5828 | 10 / 10 | 11 / 11 | 8.5 / 17 | 9.1 / 14 | 7.5 / 9.2 | 8.1 / 9.1 | 9.5 / 13 |
+| Search | search | 17 | 4.0 / 3.6 | 0 | 1384 | 28 / 28 | 14 / 14 | 19 / 40 | 21 / 42 | 11 / 12 | 12 / 13 | 13 / 17 |
+| Jump to | jump to | 17 | 6.8 / 7.0 | 0 | 943 | 12 / 12 | 18 / 18 | 13 / 42 | 15 / 41 | 12 / 14 | 13 / 15 | 15 / 18 |
+| Link picker | conversation list | 9 | 0.6 / 0.5 | 56 | 4197 | 5.4 / 5.4 | 5.8 / 5.8 | 8.2 / 26 | 9.2 / 28 | 4.8 / 5.7 | 5.0 / 6.4 | 5.5 / 8.5 |
