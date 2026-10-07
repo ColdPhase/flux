@@ -13,6 +13,7 @@
     "@flux/contracts": "workspace:*",
     "@flux/core": "workspace:*",
     "@flux/db": "workspace:*",
+    "@flux/runtime-protocol": "workspace:*",
     "pg-boss": "12.35.0"
   },
   "devDependencies": {

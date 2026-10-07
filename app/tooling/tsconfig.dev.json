@@ -7,7 +7,8 @@
       "@flux/contracts": ["packages/contracts/src/index.ts"],
       "@flux/core": ["packages/core/src/index.ts"],
       "@flux/db": ["packages/db/src/index.ts"],
-      "@flux/sdk": ["packages/sdk/src/index.ts"]
+      "@flux/sdk": ["packages/sdk/src/index.ts"],
+      "@flux/runtime-protocol": ["packages/runtime-protocol/src/index.ts"]
     }
   }
 }
