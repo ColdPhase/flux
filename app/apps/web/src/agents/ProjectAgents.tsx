@@ -9,11 +9,11 @@ import { useComposerDraft, useComposerScope } from '../composer/draft';
 import { AttachButton, ComposerFiles, MessageFiles } from '../composer/Files';
 import { contributeToTask, getTaskDiscussion } from '../composer/api';
 import { useProjectShell } from '../project/data';
-import { Button, Icon } from '../ui';
+import { AgentIdentity, AgentTag, Button, Icon, Kreska, agentHue, type KreskaExpression } from '../ui';
 import { STATUS_LABEL } from '../work/format';
 import { useNativeOwn, useWorkChoices } from '../work/useDetailReads';
 import { WorkPagination } from '../work/WorkPagination';
-import { AGENT_SUFFIX, agentDisplayName } from '../docs/format';
+import { agentDisplayName } from '../docs/format';
 import { getProjectAgents } from './api';
 import { ProjectPolicy } from './ProjectPolicy';
 import { useTyping } from '../typing/useTyping';
@@ -67,6 +67,15 @@ function stateLine(connection: ProjectAgentConnection, now: number) {
   return connection.own ? 'Not signed in from your client yet' : 'Not signed in yet';
 }
 
+/** Kreska's face for a connection: only what Flux can prove (#155 AC-3). Recent action reads as working. */
+function connectionExpression(connection: ProjectAgentConnection, now: number): KreskaExpression {
+  const state = shownState(connection, now);
+  if (connection.state === 'unavailable') return 'worried';
+  if (state !== 'session_open') return 'asleep';
+  const last = connection.lastActivity ? Date.parse(connection.lastActivity.at) : 0;
+  return now - last < 2 * 60_000 ? 'working' : 'idle';
+}
+
 function activityLine(connection: ProjectAgentConnection) {
   const last = connection.lastActivity;
   if (!last) return null;
@@ -78,14 +87,14 @@ function Connection({ connection, now }: { connection: ProjectAgentConnection; n
   const activity = activityLine(connection);
   return (
     <li className="agents-conn" data-state={shownState(connection, now)}>
-      <span className="agents-conn__icon" aria-hidden="true"><Icon name="terminal" size={16} /></span>
+      {/* The Agents section is where an agent's own colour shows (F-026 §2). */}
+      <Kreska size={32} expression={connectionExpression(connection, now)} hue={agentHue(connection.agent.id)} className="agents-conn__icon" />
       <span className="agents-conn__body">
         <span className="agents-conn__who">
-          <b>{CLIENT_LABEL[connection.clientDesignation]}</b>
-          <span> · {connection.owner.name}{connection.own ? ' (you)' : ''}</span>
+          <AgentIdentity name={CLIENT_LABEL[connection.clientDesignation]} owner={`${connection.owner.name}${connection.own ? ' (you)' : ''}`} icon={false} />
         </span>
-        <span className="agents-conn__name">{connection.name}</span>
-        <span className="agents-conn__state"><span className="agents-conn__dot" aria-hidden="true" />{stateLine(connection, now)}</span>
+        <span className="agents-conn__name">{connection.agent.name} · {connection.name}</span>
+        <span className="agents-conn__state">{stateLine(connection, now)}</span>
         {activity ? <span className="agents-conn__activity">{activity}</span> : null}
       </span>
     </li>
@@ -276,7 +285,7 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
           return (
             <li key={message.id} className={`agents-msg${own ? ' agents-msg--own' : ''}${agent ? ' agents-msg--agent' : ''}`}>
               <span className="agents-msg__meta">
-                <b>{own ? 'You' : authorName(message, names)}</b>{agent ? <span className="agents-msg__kind">{AGENT_SUFFIX}</span> : null}
+                <b>{own ? 'You' : authorName(message, names)}</b>{agent ? <AgentTag /> : null}
                 <time dateTime={message.createdAt}>{when(message.createdAt)}</time>
                 {message.contribution ? <span className="agents-msg__kind"> · {message.contribution.kind}</span> : null}
               </span>

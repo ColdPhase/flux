@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import type { Conversation, ConversationMessage, ConversationRoot, ConversationRootWindow, NamedPrincipal, NativeWorkRow, Page, Project, TaskCreationNotice } from '@flux/contracts';
-import { Avatar, Button, EmptyState, Icon, useArrivals } from '../ui';
+import { Button, EmptyState, Icon, useArrivals } from '../ui';
 import { newBelowText } from '../ui/motion-rules';
 import { MessageActions, MessageObjects, useCreateWorkFromMessage } from '../work/inline';
 import { useMessageWorkRead, type MessageWorkRead } from '../work/useMessageWork';
@@ -10,7 +10,8 @@ import { useProjectWorkSummary } from '../work/WorkReadContext';
 import { MessageWorkPages } from '../work/MessageWorkPages';
 import { useShellActions } from './shellContext';
 import { listConversationRoots, listTaskNotices } from './conversation-api';
-import { ContributionMark, OPENING_REVEAL_MS, SourceCitation, clock, day, openOnWholeMessages, when } from './messageParts';
+import { AgentAuthor, AuthorFace, ContributionMark, OPENING_REVEAL_MS, SourceCitation, clock, day, openOnWholeMessages, when } from './messageParts';
+import { useAgentOwners } from '../agents/owners';
 import { MessageFiles } from '../composer/Files';
 import { agentAuthorLabel } from '../docs/format';
 
@@ -545,12 +546,13 @@ function RootItem({ root, project, meId, author, messageWork, taskRow, open, arr
   const writable = project.access !== 'viewer';
   const mine = message.authorId === meId;
   const name = author(message);
+  const owners = useAgentOwners(project.workspaceId);
   return (
     <li id={`message-${message.id}`} data-message-id={message.id} tabIndex={-1} data-conversation-id={root.conversationId}
       className={`project-convo__message${mine ? ' is-mine' : ''}${arrived ? ' is-arrived' : ''}${open ? ' is-open' : ''}`}>
-      <Avatar name={name} size="md" tone={mine ? 'me' : 'neutral'} />
+      <AuthorFace message={message} name={name} mine={mine} />
       <div className="project-convo__message-meta">
-        <strong>{mine ? `${name} · you` : message.authorId === null ? name : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</Link>}</strong>
+        <strong>{mine ? `${name} · you` : message.authorId === null ? <AgentAuthor message={message} owner={owners.get(message.author.id)} /> : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</Link>}</strong>
         <time dateTime={message.createdAt} title={when(message.createdAt)}>{clock(message.createdAt)}</time>
       </div>
       {message.body ? <p>{message.body}</p> : null}

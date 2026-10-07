@@ -1,8 +1,7 @@
 /* The personal assistant in a conversation (#57 design, #68). No new colours: the shared tokens,
    the ordinary message hierarchy, one framed proposal. */
-.assistant-avatar { position: absolute; left: 0; top: 10px; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: var(--sub); color: var(--t1); box-shadow: inset 0 0 0 1px var(--line); }
-.project-convo__message-meta span.assistant-tag, .project-convo__message-meta span.assistant-answer__asked { visibility: visible; }
-.assistant-tag { display: inline-flex; align-items: center; min-height: 18px; padding: 0 6px; border-radius: var(--r-pill); background: var(--sub); color: var(--t2); font-size: 11px; font-weight: 600; letter-spacing: .01em; box-shadow: inset 0 0 0 1px var(--line); }
+.assistant-avatar { position: absolute; left: 0; top: 10px; }
+.project-convo__message-meta span.assistant-answer__asked { visibility: visible; }
 .assistant-answer__asked { color: var(--t3); }
 /* The request is a quiet caption above the answer bubble, not a message of its own (#136 bubbles). */
 .project-convo__message > .assistant-answer__request { margin: 2px 0 0; padding: 0; border-radius: 0; background: none; color: var(--t2); font-size: var(--fs-sm); font-style: italic; overflow-wrap: anywhere; }
@@ -17,14 +16,11 @@
 
 .assistant-working { position: relative; display: flex; align-items: flex-start; gap: 10px; margin-top: 6px; padding: 8px 0 8px 46px; list-style: none; }
 .assistant-working .assistant-avatar { top: 8px; }
-.assistant-working.is-working .assistant-avatar { animation: assistant-breathe 1.8s var(--ease-out) infinite; }
 .assistant-working__body { flex: 1; min-width: 0; }
 .assistant-working__text { display: flex; align-items: center; gap: 8px; font-size: var(--fs-md); color: var(--t2); }
-.assistant-working__pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--inv); animation: assistant-breathe 1.2s var(--ease-out) infinite; }
 .assistant-working__who { display: flex; align-items: center; gap: 5px; margin-top: 2px; font-size: var(--fs-xs); color: var(--t3); overflow-wrap: anywhere; }
 .assistant-working__actions { display: flex; align-items: center; gap: 4px; flex: none; }
 @keyframes assistant-breathe { 50% { opacity: .45; } }
-@media (prefers-reduced-motion: reduce) { .assistant-working.is-working .assistant-avatar, .assistant-working__pulse { animation: none; } }
 
 .assistant-proposal { margin-top: 10px; padding: 12px 14px; border-radius: var(--r-lg); background: var(--el); box-shadow: inset 0 0 0 1px var(--line2); }
 .assistant-proposal.is-accepted, .assistant-proposal.is-dismissed { box-shadow: inset 0 0 0 1px var(--line); }

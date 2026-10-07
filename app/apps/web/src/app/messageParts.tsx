@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import type { ConversationMessage } from '@flux/contracts';
-import { Icon } from '../ui';
+import { AgentIdentity, Avatar, Icon, Kreska } from '../ui';
 import { getMaterialVersion } from './conversation-api';
 import { readerActive, watchReaderInput } from '../work/readerIntent';
 
@@ -74,3 +74,18 @@ export function SourceCitation({ materialId, version, onDenied }: { materialId: 
   useEffect(() => { const controller = new AbortController(); getMaterialVersion(materialId, version, controller.signal).then((item) => setTitle(item.title)).catch((cause: unknown) => { if (!controller.signal.aborted) { onDeniedRef.current(cause); setTitle('Material unavailable'); } }); return () => controller.abort(); }, [materialId, version]);
   return <Link to={`/materials/${materialId}/versions/${version}`} className="project-convo__source">Source: {title} · v{version}</Link>;
 }
+
+/**
+ * Who wrote a message, in the avatar column (F-026 P3): a person is a grey circle with initials, an
+ * agent is Kreska. Decorative: the name beside it says who it is.
+ */
+export function AuthorFace({ message, name, mine, size = 'md' }: { message: Pick<ConversationMessage, 'authorId'>; name: string; mine: boolean; size?: 'sm' | 'md' }) {
+  if (message.authorId === null) return <Kreska size={size === 'sm' ? 20 : 26} className="author-face" />;
+  return <Avatar name={name} size={size} tone={mine ? 'me' : 'neutral'} />;
+}
+
+/** An agent author's name line: its name, the "Agent" tag and "for <owner>" when the reader may know it. */
+export function AgentAuthor({ message, owner }: { message: Extract<ConversationMessage, { authorId: null }>; owner?: string | null }) {
+  return <AgentIdentity name={message.author.name ?? 'Agent'} owner={owner} icon={false} />;
+}
+

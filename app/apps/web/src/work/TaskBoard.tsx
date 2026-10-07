@@ -3,13 +3,12 @@ import { createPortal } from 'react-dom';
 import { Link, useRevalidator } from 'react-router';
 import type { ObjectLink, Project, ProjectWorkView, WorkGroup, WorkItem, WorkRelations, WorkRowProjection, WorkStatus } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
-import { Button, Icon, IconButton, initials, type IconName } from '../ui';
+import { AgentTag, Button, Icon, IconButton, Kreska, initials, type IconName } from '../ui';
 import { createWork, updateWork } from './api';
 import { isFinished } from './format';
 import { getProjectWorkView, getWorkRelations, workRelationReadUrl, workViewReadUrl } from './read-api';
 import type { ReadState } from './read-state';
 import { useWorkRead } from './useWorkRead';
-import { AGENT_SUFFIX } from '../docs/format';
 import './board.css';
 
 // The Tasks board (#136, UI116-4): three columns over the existing statuses, no new status and no
@@ -188,8 +187,9 @@ function Card({ item, from, column, meId, writable, hintId, saving, dragged, lif
       <div className="tb-card__foot">
         {owner ? (
           <span className={`tb-card__owner${owner.kind === 'agent' ? ' tb-card__owner--agent' : ''}`}>
-            <span className="tb-av" aria-hidden="true">{owner.kind === 'agent' ? <Icon name="agent" size={12} /> : initials(owner.name)}</span>
-            <span className="tb-card__name">{owner.name}{owner.kind === 'agent' ? <span className="tb-card__kind">{AGENT_SUFFIX}</span> : owner.id === meId ? <span className="tb-card__kind"> · you</span> : null}</span>
+            {owner.kind === 'agent' ? <Kreska size={20} /> : <span className="tb-av" aria-hidden="true">{initials(owner.name)}</span>}
+            <span className="tb-card__name">{owner.name}{owner.id === meId && owner.kind === 'human' ? <span className="tb-card__kind"> · you</span> : null}</span>
+            {owner.kind === 'agent' ? <AgentTag /> : null}
           </span>
         ) : <span className="tb-card__owner tb-card__owner--none">No owner</span>}
         {waiting || results ? (
