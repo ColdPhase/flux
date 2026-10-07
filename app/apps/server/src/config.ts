@@ -1,4 +1,4 @@
-import { backgroundComparisonsEnabled, loadPushServerConfig, type PushServerConfig } from '@flux/core';
+import { backgroundComparisonsEnabled, loadAgentRuntimeConfig, loadPushServerConfig, type AgentRuntimeConfig, type PushServerConfig } from '@flux/core';
 import { loadBackgroundMasterKey } from '@flux/db';
 import { loadIdentityConfig, type IdentityConfig } from './identity/index.js';
 
@@ -25,6 +25,8 @@ export interface ServerConfig {
   backgroundMasterKey: Buffer | null;
   /** `FLUX_BACKGROUND_COMPARISONS=on` (#58): owners may enable comparison rules; the worker runs them. */
   backgroundComparisons: boolean;
+  /** `FLUX_AGENT_RUNTIME` and its settings (F-022 AIM-3); empty, the default, is off. */
+  agentRuntime: AgentRuntimeConfig;
 }
 
 export function loadServerConfig(env: NodeJS.ProcessEnv = process.env, backgroundKeyPath?: string): ServerConfig {
@@ -43,5 +45,6 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env, backgroun
     port: Number(env.PORT ?? 8080),
     backgroundMasterKey: backgroundKeyPath === undefined ? loadBackgroundMasterKey() : loadBackgroundMasterKey(backgroundKeyPath),
     backgroundComparisons: backgroundComparisonsEnabled(env),
+    agentRuntime: loadAgentRuntimeConfig(env),
   };
 }

@@ -9,6 +9,8 @@ set -eu
 FLUX_ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)
 COMPOSE_MAIN="$FLUX_ROOT/docker/compose.source.yaml"
 COMPOSE_DEV="$FLUX_ROOT/docker/compose.dev.yaml"
+# The operator's own override (for example extra agent runtime slots); used when it exists.
+COMPOSE_OVERRIDE="$FLUX_ROOT/docker/compose.override.yaml"
 ENV_EXAMPLE="$FLUX_ROOT/docker/.env.example"
 ENV_FILE="$FLUX_ROOT/docker/.env"
 DEMO_SEED="$FLUX_ROOT/scripts/flux-demo.mjs"
@@ -39,8 +41,13 @@ need_docker() {
 # Compose for the production-mode stack (`up`, `demo`) or the hot-reload stack (`dev`).
 # The image tag follows the project so parallel checkouts and `clean` stay scoped.
 compose_main() {
-  FLUX_IMAGE_TAG="$PROJECT" docker compose --project-directory "$FLUX_ROOT/docker" \
-    --env-file "$ENV_FILE" -p "$PROJECT" -f "$COMPOSE_MAIN" "$@"
+  if [ -f "$COMPOSE_OVERRIDE" ]; then
+    FLUX_IMAGE_TAG="$PROJECT" docker compose --project-directory "$FLUX_ROOT/docker" \
+      --env-file "$ENV_FILE" -p "$PROJECT" -f "$COMPOSE_MAIN" -f "$COMPOSE_OVERRIDE" "$@"
+  else
+    FLUX_IMAGE_TAG="$PROJECT" docker compose --project-directory "$FLUX_ROOT/docker" \
+      --env-file "$ENV_FILE" -p "$PROJECT" -f "$COMPOSE_MAIN" "$@"
+  fi
 }
 compose_dev() {
   FLUX_IMAGE_TAG="$DEV_PROJECT" FLUX_PUBLIC_ORIGIN="$(dev_origin)" \
@@ -180,6 +187,10 @@ ensure_env() {
   set_env_line "$draft" FLUX_AUTH_SECRET "$(random_hex 32)"
   set_env_line "$draft" FLUX_DEMO_OWNER_PASSWORD "demo-$(random_hex 8)"
   set_env_line "$draft" FLUX_DEMO_PARTNER_PASSWORD "demo-$(random_hex 8)"
+  # Agent runtime secrets (F-022 T3): the service secret and one secret per slot. Generated now so
+  # switching FLUX_AGENT_RUNTIME on needs nothing else; unused while it is off.
+  set_env_line "$draft" FLUX_RUNTIME_MANAGER_SECRET "$(random_hex 32)"
+  for n in 1 2 3 4; do set_env_line "$draft" "FLUX_RUNTIME_SECRET_$n" "$(random_hex 32)"; done
   [ -z "${FLUX_MAILPIT_PORT:-}" ] || set_env_line "$draft" FLUX_MAILPIT_PORT "$FLUX_MAILPIT_PORT"
   [ -z "${FLUX_DEV_PORT:-}" ] || set_env_line "$draft" FLUX_DEV_PORT "$FLUX_DEV_PORT"
 
@@ -212,14 +223,93 @@ build_main() {
   if [ "${FLUX_NO_CACHE:-}" = 1 ]; then compose_main build --no-cache migrate; else compose_main build migrate; fi
 }
 
+# --- Agent runtime (F-022 AIM-3, T3 #278; docs/operations/agent-runtime.md). FLUX_AGENT_RUNTIME empty,
+# the default, is off: no runtime service runs. On, `up` starts the `runtime` profile. No service ever
+# gets a Docker socket; the slots are a fixed pool in compose.source.yaml (more via the override).
+runtime_value() { env_value FLUX_AGENT_RUNTIME | tr -d ' '; }
+runtime_on() { [ -n "$(runtime_value)" ]; }
+check_runtime_switch() {
+  value=$(runtime_value)
+  case "$value" in
+    ''|claude_code|codex|claude_code,codex|codex,claude_code) ;;
+    *) die "FLUX_AGENT_RUNTIME must be empty (off), claude_code, codex or claude_code,codex; it is '$value'." ;;
+  esac
+  case ",$value," in
+    *,claude_code,*)
+      [ -n "$(env_value FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS)" ] || die "FLUX_AGENT_RUNTIME includes claude_code. Running Claude Code for others needs Anthropic's Commercial Terms: agree to them with Anthropic first, then set FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS=<YYYY-MM-DD> (the date you agreed) in ${ENV_FILE#"$FLUX_ROOT"/}. Flux records that statement; it does not verify it. See docs/operations/agent-runtime.md." ;;
+  esac
+  return 0
+}
+# The slot services in this project's Compose files, in number order (runtime-1 … and override slots).
+runtime_slots() { compose_main --profile runtime config --services 2>/dev/null | grep -E '^runtime-[1-9][0-9]*$' | sort -t- -k2 -n | tr '\n' ' '; }
+runtime_services() { printf 'runtime-manager runtime-egress runtime-install %s' "$(runtime_slots)"; }
+# Adds any missing runtime secret (an older docker/.env, or a slot added by the override). Existing
+# values are never changed.
+ensure_runtime_secrets() {
+  [ -n "$(env_value FLUX_RUNTIME_MANAGER_SECRET)" ] || set_env_line "$ENV_FILE" FLUX_RUNTIME_MANAGER_SECRET "$(random_hex 32)"
+  for slot in $(runtime_slots); do
+    key="FLUX_RUNTIME_SECRET_${slot#runtime-}"
+    [ -n "$(env_value "$key")" ] || { set_env_line "$ENV_FILE" "$key" "$(random_hex 32)"; say "Added $key for $slot to ${ENV_FILE#"$FLUX_ROOT"/}."; }
+  done
+}
+runtime_volumes() {
+  docker volume ls -q --filter "label=com.docker.compose.project=$PROJECT" | grep -E "^${PROJECT}_runtime-([1-9][0-9]*-data|tools)\$" || true
+}
+# Stops and removes the runtime containers; slot volumes (and so the owners' logins) stay.
+stop_runtime() {
+  [ -n "$(docker ps -aq --filter "label=com.docker.compose.project=$PROJECT" --filter "label=com.docker.compose.service=runtime-manager")" ] || return 0
+  say "FLUX_AGENT_RUNTIME is empty: stopping the agent runtime. Slot volumes and logins are kept (./flux runtime purge removes them)."
+  # shellcheck disable=SC2046
+  compose_main --profile runtime rm -sf $(runtime_services) >/dev/null 2>&1 || warn "Could not remove every agent runtime container."
+}
+# Best effort before slot volumes are deleted: each CLI signs out (the vendor ends the session where it
+# can), each binding directory is deleted and each supervisor confirms an empty /data.
+runtime_sign_out() {
+  [ -n "$(runtime_volumes | grep -- '-data$' || true)" ] || return 0
+  say "Signing out the agent runtime logins first (best effort)..."
+  if ! docker image inspect "flux-agent-runtime:$PROJECT" >/dev/null 2>&1 || ! docker image inspect "flux-foundation:$PROJECT" >/dev/null 2>&1; then
+    warn "The runtime images are not built, so the logins cannot be signed out; they are deleted with the volumes. Owners should end those sessions in their Claude or ChatGPT account settings."
+    return 0
+  fi
+  ensure_runtime_secrets
+  # shellcheck disable=SC2046
+  if ! compose_main --profile runtime up -d --no-deps runtime-manager runtime-egress $(runtime_slots) >/dev/null 2>&1; then
+    warn "Could not start the agent runtime to sign out; the logins are deleted with the volumes. Owners should end those sessions in their Claude or ChatGPT account settings."
+    return 0
+  fi
+  tries=0
+  until compose_main exec -T runtime-manager node apps/runtime/dist/manager/cli.js sign-out-all; do
+    tries=$((tries + 1))
+    if [ "$tries" -ge 10 ]; then
+      warn "Not every agent runtime login could be signed out; the files are deleted anyway. Owners should end those sessions in their Claude or ChatGPT account settings."
+      return 0
+    fi
+    sleep 2
+  done
+}
+
 start_main() {
+  check_runtime_switch
+  if runtime_on; then ensure_runtime_secrets; fi
   [ "${BUILT:-0}" = 1 ] || build_main
+  if runtime_on; then
+    say "Building the agent runtime ($(runtime_value))..."
+    compose_main --profile runtime build runtime-install runtime-1
+  fi
   say "Migrating and starting..."
   # files-init gives the non-root API and worker their files volume; `up` then waits for
   # PostgreSQL, runs the one-shot migration and starts API and worker only if it succeeded.
   compose_main --profile setup run --rm files-init >/dev/null
-  compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" api worker \
-    || { compose_main logs --no-color --tail 60 migrate api worker >&2 || true; die "Flux did not become healthy. See the logs above."; }
+  if runtime_on; then
+    # runtime-install runs first (a no-op unless claude_code is on); the slots then start.
+    # shellcheck disable=SC2046
+    compose_main --profile runtime up -d --wait --wait-timeout "$WAIT_TIMEOUT" api worker runtime-manager runtime-egress $(runtime_slots) \
+      || { compose_main --profile runtime logs --no-color --tail 60 migrate api worker runtime-install runtime-manager runtime-egress >&2 || true; die "Flux did not become healthy. See the logs above."; }
+  else
+    compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" api worker \
+      || { compose_main logs --no-color --tail 60 migrate api worker >&2 || true; die "Flux did not become healthy. See the logs above."; }
+    stop_runtime
+  fi
 }
 
 # Development demo only. True only for an origin that is exactly scheme://host[:port] with
@@ -358,7 +448,7 @@ cmd_down() {
   [ -f "$ENV_FILE" ] || { say "No ${ENV_FILE#"$FLUX_ROOT"/}; nothing to stop."; return 0; }
   check_owner "$PROJECT"
   check_owner "$DEV_PROJECT"
-  compose_main --profile dev down --remove-orphans
+  compose_main --profile dev --profile runtime down --remove-orphans
   compose_dev down --remove-orphans
   say "Stopped $PROJECT and $DEV_PROJECT. Data volumes are kept (./flux reset removes them)."
 }
@@ -391,9 +481,10 @@ cmd_reset() {
   [ -f "$ENV_FILE" ] || { say "No ${ENV_FILE#"$FLUX_ROOT"/}; nothing to reset."; return 0; }
   check_owner "$PROJECT"
   check_owner "$DEV_PROJECT"
-  confirm "Delete ALL data (database, files) of Compose projects $PROJECT and $DEV_PROJECT?" \
+  confirm "Delete ALL data (database, files, agent runtime logins) of Compose projects $PROJECT and $DEV_PROJECT?" \
     || { say "Cancelled; nothing was deleted."; return 1; }
-  compose_main --profile dev --profile test --profile ui down -v --remove-orphans
+  runtime_sign_out
+  compose_main --profile dev --profile test --profile ui --profile runtime down -v --remove-orphans
   compose_dev down -v --remove-orphans
   release_project "$PROJECT"
   release_project "$DEV_PROJECT"
@@ -403,7 +494,7 @@ cmd_reset() {
 # Images this checkout built: flux-* repositories tagged with one of its project names.
 remove_own_images() {
   removed=0
-  for image in $( { compose_main --profile test --profile ui config --images; compose_dev config --images; } 2>/dev/null | sort -u); do
+  for image in $( { compose_main --profile test --profile ui --profile runtime config --images; compose_dev config --images; } 2>/dev/null | sort -u); do
     case "$image" in
       flux-*:"$PROJECT"|flux-*:"$DEV_PROJECT") ;;
       *) continue ;;
@@ -421,9 +512,10 @@ cmd_clean() {
   [ -f "$ENV_FILE" ] || die "No ${ENV_FILE#"$FLUX_ROOT"/}; there is no project to clean."
   check_owner "$PROJECT"
   check_owner "$DEV_PROJECT"
-  confirm "Remove the containers, volumes (ALL data) and built images of $PROJECT and $DEV_PROJECT?" \
+  confirm "Remove the containers, volumes (ALL data, agent runtime logins included) and built images of $PROJECT and $DEV_PROJECT?" \
     || { say "Cancelled; nothing was removed."; return 1; }
-  compose_main --profile dev --profile test --profile ui down -v --remove-orphans
+  runtime_sign_out
+  compose_main --profile dev --profile test --profile ui --profile runtime down -v --remove-orphans
   compose_dev down -v --remove-orphans
   remove_own_images
   release_project "$PROJECT"
@@ -783,6 +875,12 @@ cmd_restore() {
   fi
   compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" api worker \
     || { compose_main logs --no-color --tail 60 api worker >&2 || true; die "Flux did not become healthy after the restore."; }
+  # Slot volumes are not in the backup and were not replaced; the worker reconciles the restored
+  # bindings with them at its start (F-022: Sign in again, or sign out and delete an unbound directory).
+  if runtime_on; then
+    # shellcheck disable=SC2046
+    compose_main --profile runtime up -d runtime-manager runtime-egress $(runtime_slots) >/dev/null || warn "The agent runtime did not start after the restore; run ./flux up."
+  fi
   verify_running || die "The restored instance failed its health or schema check."
   say "Restored $archive into $PROJECT: $(public_origin)"
 }
@@ -909,6 +1007,42 @@ cmd_upgrade() {
   upgrade_apply "$BACKUP_ARCHIVE" "$from_schema" "$from_commit"
 }
 
+# ./flux runtime status | release runtime-<n> | purge [-y]  (F-022 T3; docs/operations/agent-runtime.md)
+cmd_runtime() {
+  sub=${1:-status}
+  [ $# -gt 0 ] && shift
+  need_docker
+  [ -f "$ENV_FILE" ] || die "No ${ENV_FILE#"$FLUX_ROOT"/}; start Flux with ./flux up first."
+  check_owner "$PROJECT"
+  case "$sub" in
+    status)
+      [ $# -eq 0 ] || die "runtime status takes no options"
+      say "FLUX_AGENT_RUNTIME: '$(runtime_value)'$(runtime_on || printf ' (off)')"
+      image_op runtime-status
+      if compose_main --profile runtime ps --status running --services 2>/dev/null | grep -qx runtime-manager; then
+        say "Slots as runtime-manager sees them:"
+        compose_main exec -T runtime-manager node apps/runtime/dist/manager/cli.js slots
+      else
+        say "runtime-manager is not running."
+      fi ;;
+    release)
+      [ $# -eq 1 ] || die "usage: ./flux runtime release runtime-<n>"
+      case "$1" in runtime-[1-9]|runtime-[1-9][0-9]|runtime-[1-9][0-9][0-9]) ;; *) die "usage: ./flux runtime release runtime-<n>" ;; esac
+      image_op runtime-release "$1" ;;
+    purge)
+      parse_yes "$@"
+      confirm "Sign out and delete EVERY agent runtime login of $PROJECT (slot volumes and the Claude Code tools volume)?" \
+        || { say "Cancelled; nothing was changed."; return 1; }
+      runtime_sign_out
+      # shellcheck disable=SC2046
+      compose_main --profile runtime rm -sf $(runtime_services) >/dev/null 2>&1 || true
+      for volume in $(runtime_volumes); do docker volume rm "$volume" >/dev/null || die "Could not remove $volume; is a runtime container still using it?"; done
+      if docker volume inspect "${PROJECT}_pgdata" >/dev/null 2>&1; then image_op runtime-forget; fi
+      say "The agent runtime of $PROJECT is purged. Set FLUX_AGENT_RUNTIME= (empty) in ${ENV_FILE#"$FLUX_ROOT"/} so ./flux up keeps it off." ;;
+    *) die "usage: ./flux runtime status | release runtime-<n> | purge [-y]" ;;
+  esac
+}
+
 cmd_help() {
   cat <<EOF
 Flux launcher. Everything runs in Docker; only sh and Docker Compose are needed.
@@ -937,6 +1071,9 @@ Flux launcher. Everything runs in Docker; only sh and Docker Compose are needed.
   ./flux upgrade [--pull] [-y]
                          Back up, (git pull,) build this checkout, migrate and check health; on
                          failure print the restore instructions.
+  ./flux runtime status | release runtime-<n> | purge [-y]
+                         Agent runtime (FLUX_AGENT_RUNTIME): show slots and bindings, release one slot's
+                         binding (its owner is signed out and told), or sign out and delete every login.
   ./flux help            This text.
 
 Commands that start, stop, back up, restore or delete refuse a Compose project that belongs to another
@@ -977,6 +1114,7 @@ case "$command" in
   restore) cmd_restore "$@" ;;
   export) cmd_export "$@" ;;
   upgrade) cmd_upgrade "$@" ;;
+  runtime) cmd_runtime "$@" ;;
   _upgrade-apply) upgrade_apply "$@" ;;  # continues ./flux upgrade --pull in the pulled launcher
   help|-h|--help) cmd_help ;;
   *) warn "unknown command: $command"; cmd_help >&2; exit 2 ;;

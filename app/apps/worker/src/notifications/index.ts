@@ -81,7 +81,7 @@ export async function registerNotificationEmailWorker(boss: PgBoss, db: Database
   const options = {
     available: config.status === 'available',
     origin: config.status === 'available' ? config.origin : '',
-    uow: emailUnitOfWork(db),
+    uow: emailUnitOfWork(db, boss),
     mailer: smtp ?? { send: async () => ({ kind: 'failed' as const, message: 'email unavailable' }) },
   };
   // A few sends at once and a short poll: one slow SMTP answer never holds up everyone's mail.

@@ -24,3 +24,6 @@ coverage/
 /backups/
 /exports/
 /.flux-backup-lock-*/
+
+# The operator's own Compose override (for example extra agent runtime slots); ./flux reads it.
+/docker/compose.override.yaml
