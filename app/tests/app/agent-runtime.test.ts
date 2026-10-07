@@ -158,8 +158,8 @@ describe('purge records confirmed and unconfirmed vendor logout', () => {
         await tx.execute(sql`INSERT INTO agent_runtime_slots(slot, state) VALUES ('runtime-999', 'held')`);
         await tx.execute(sql`INSERT INTO agent_runtime_bindings(id, owner_user_id, slot, state)
           VALUES (${randomUUID()}, ${owner.id}, 'runtime-999', 'active')`);
-        await tx.execute(sql`INSERT INTO agent_runtime_bindings(id, owner_user_id, slot, state, release_reason, released_at, release_logout_failed)
-          VALUES (${randomUUID()}, ${historicalOwner.id}, 'runtime-999', 'released', 'owner', now() - interval '1 day', true)`);
+        await tx.execute(sql`INSERT INTO agent_runtime_bindings(id, owner_user_id, slot, state, release_reason, release_requested_at, released_at, release_logout_failed)
+          VALUES (${randomUUID()}, ${historicalOwner.id}, 'runtime-999', 'released', 'owner', now() - interval '1 day', now() - interval '1 day', true)`);
         await agentRuntimeOperations(tx).forgetAll(confirmed);
         const view = await agentRuntimeStore(tx).ownerView(owner.id);
         assert.equal(view.binding, null);
