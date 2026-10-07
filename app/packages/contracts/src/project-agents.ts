@@ -2,7 +2,7 @@ import type { ExternalClientDesignation } from './agent-proposals.js';
 import type { AgentOperation } from './agent-execution.js';
 
 /**
- * The Agents view of a project (Studio 11.6 UI116-2, #136): every current external connection
+ * The Agents view of a project (UI116-2): every current external connection
  * selected for this project, whoever owns it, with what Flux can truthfully say about it. A
  * project reader sees the connection identity and state; never grants, tokens, keys or receipts.
  */

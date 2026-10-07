@@ -73,7 +73,9 @@ These are drafted in the repository and reviewed like code. Publication follows
   - what Flux is, in two sentences;
   - the quick start;
   - what works (the founder scenarios of #44, phone and PWA, AI modes over MCP);
-  - known limits (live co-editing is not in v0.1, plus anything left open at #249);
+  - known verified limits at the accepted candidate; live co-editing is required
+    by the [2026-10-07 scope amendment](https://github.com/ColdPhase/flux/issues/249#issuecomment-6042227715),
+    so an unresolved #228/#231/#238 gate blocks release rather than becoming a release-note exclusion;
   - upgrade and backup notes;
   - checksums.
 - **README:**
