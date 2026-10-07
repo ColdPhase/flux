@@ -1,5 +1,11 @@
 # Single sign-on
 
+**Implemented #240 baseline:** the setup and verified behavior below describe
+the current mixed-login implementation. The [required exclusive-mode target](#target-mode)
+and [bounded F-024 contract](../product/mcp-identity.md#exclusive-ordinary-sign-in-modes)
+supersede that ordinary login model; SSO-only mode and safe pre-cutover migration
+remain unimplemented.
+
 Flux can let people sign in with your organisation's OpenID Connect identity provider (Keycloak,
 Google Workspace, Okta, Authentik and others), next to email and password
 ([#113](https://github.com/ColdPhase/flux/issues/113)). Flux supports **one** provider per
@@ -92,6 +98,7 @@ token from the same mock still signs in.
 It uses its own Compose project and ports (`FLUX_OIDC_TEST_PORT`, default 18095, and the next port
 for Mailpit) and removes everything afterwards.
 
+<a id="target-mode"></a>
 **Target mode, superseding amendment 2026-10-07:**
 [F-024](../product/mcp-identity.md) requires password-only ordinary login without
 active SSO or SSO-only with the installation's sole IdP. Under active SSO, no
