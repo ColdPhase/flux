@@ -358,6 +358,14 @@ class InstantSendJourney(unittest.TestCase):
         expect(bubble.locator(".outbox-status.is-waiting .outbox-status__dot")).to_have_count(0)
         expect(line).to_be_visible()
         shot(page, "instant-send-unreachable-390")
+        # F-026 S17: phone metadata is at least 12.5 px and follows system text enlargement (200%).
+        size = "(e) => parseFloat(getComputedStyle(e).fontSize)"
+        status = bubble.locator(".outbox-status.is-waiting")
+        for scale, floor in (("", 12.5), ("200%", 25.0)):
+            page.evaluate("(s) => { document.documentElement.style.fontSize = s; }", scale)
+            for name, target in (("waiting status", status), ("offline line", line)):
+                self.assertGreaterEqual(target.evaluate(size), floor, f"{name} text at root {scale or 'default'}")
+        page.evaluate("() => { document.documentElement.style.fontSize = ''; }")
         page.wait_for_timeout(500)
         self.assertEqual(len(sent), 1, "nothing is resent while Flux does not answer")
         # Retry while Flux still does not answer: the conversation, the line and the message stay.

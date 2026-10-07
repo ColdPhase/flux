@@ -45,7 +45,7 @@
 .connection-line { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; padding: 6px 10px; border-radius: var(--r); background: var(--sub); color: var(--t2); font-size: var(--fs-sm); line-height: 1.45; }
 .connection-line::before { content: ''; flex: none; width: 6px; height: 6px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px currentColor; }
 @media (pointer: coarse) {
-  .outbox-status, .message-files.is-pending .message-files__name, .message-files.is-pending small, .connection-line { font-size: 12px; }
+  .outbox-status, .message-files.is-pending .message-files__name, .message-files.is-pending small, .connection-line { font-size: var(--fs-xs); }
   .outbox-status__b { min-height: 44px; min-width: 44px; padding: 0 10px; }
 }
 @media (prefers-reduced-motion: reduce) { .outbox-status__b:active { transform: none; } }
