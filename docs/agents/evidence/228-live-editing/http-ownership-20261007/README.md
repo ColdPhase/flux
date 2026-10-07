@@ -22,12 +22,12 @@ Only the test COMMIT barrier's arming point was moved between the valid baseline
 
 ## Build and runtime provenance
 
-Valid baseline project `flux-live-http-baseline-files-1791405202-1240949`:
+Valid baseline project `FLUX_PROJECT=flux-live-http-baseline-files-1791405202-1240949`:
 
 - Production image `sha256:a1397a82ec08e7e39e9fc624da718cf55b01fabc14b253408f413eb0bd16670c`.
 - Test image `sha256:29c78a337fb902df8f3d350d9b63342b6cd0741248c97180c56358e3f6b02c23`.
 
-Candidate project `flux-live-http-candidate-1791405313-1252586`:
+Candidate project `FLUX_PROJECT=flux-live-http-candidate-1791405313-1252586`:
 
 - Production image `sha256:a8d9bc22c3669a8723d3c01ce035a4e3cfd1fc6d002887c8bb47520d5f78a9c0`.
 - Test image `sha256:4c5edd39070ad20f6ee599ffcd9af0222eab0c775bf55a851caeed0dd36d96a6`.
