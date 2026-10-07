@@ -245,14 +245,14 @@ test('a first live room after ordinary preflight charges ownership even after HT
       body: { title: 'First room during ordinary admission', scope: 'project', projectId: f.sketch.projectId },
     }), 201) as Sketch;
     await observed(() => apiEditingOutputBudget.bytes === 0, 'Roomless setup must settle');
-    roomRead = f.pauseRoomRead(sketch.id); const boundary = f.arm(1);
-    releaseCommit = boundary.release;
+    roomRead = f.pauseRoomRead(sketch.id);
     const watch = f.watch(); const uuid = randomUUID(); const parameters = { text: 'Created after the first room joined', x: 0, y: 0 };
     pending = client(f, 'POST', `/api/v1/sketches/${sketch.id}/thoughts`, watch.id, parameters, { 'idempotency-key': uuid });
     await finite(roomRead.reached, 'The actual ordinary preflight read must be observed');
     assert.equal(apiEditingOutputBudget.bytes, 0, 'A scalar terminal observer before any live room must not take live capacity');
     expectStatus(await f.browser.request('GET', `/api/v1/sketches/${sketch.id}/live`), 200);
     await observed(() => apiEditingOutputBudget.bytes === 0 && f.backend.sqlActive === 0, 'The first join must finish independently');
+    const boundary = f.arm(1); releaseCommit = boundary.release;
     pending.req.destroy(); await finite(watch.value.close.promise, 'The ordinary response must close before the new-room SQL work');
     roomRead.release(); await finite(boundary.reached, 'The actual native COMMIT must finish, then its response is held');
     assert.equal(watch.value.workSettled, false);

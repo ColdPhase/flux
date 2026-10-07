@@ -157,7 +157,7 @@ export function sketchUnitOfWork(db: Database, storage?: FileStorage, options: N
       // Only a map with an established live room takes the live preparation (#239 review); an
       // ordinary map is neither charged nor queued. A room that appears later is admitted by the journal.
       const live=!options.prepared&&!!options.principal&&!!options.resourceId&&await liveMapRows(db as DbExecutor,decodeMapChange).exists(options.resourceId);
-      if(live)releasePreparation=await prepareNativeMap(options.context??{principal:options.principal,sessionId:options.sessionId,resourceId:options.resourceId,commandId:options.commandId,operation:options.operation,fingerprint:options.fingerprint});
+      if(live){options.protectLifetime?.();releasePreparation=await prepareNativeMap(options.context??{principal:options.principal,sessionId:options.sessionId,resourceId:options.resourceId,commandId:options.commandId,operation:options.operation,fingerprint:options.fingerprint});}
       const prepared=!!options.prepared||live;
       return await db.transaction(async tx=>{
         const ports=sketchPorts(tx,storage);const events=transactionEventSession(tx);ports.events=events;const journal=nativeMapJournal(tx,ports.sketches,{...options,prepared});ports.live=journal.journal;release=()=>journal.release();

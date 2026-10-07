@@ -22,6 +22,8 @@ export const nativeMapRoomExists=(db:DbExecutor,sketchId:string)=>liveMapRows(db
 
 export interface NativeMapOptions {
   commandId?:string;sessionId?:string;fingerprint?:string;operation?:string;principal?:Principal;retainUntil?: (release:()=>void)=>void;prepared?:boolean;resourceId?:string;context?:unknown;
+  /** Acquire HTTP owner metadata before any protected live input/admission. */
+  protectLifetime?:()=>void;
 }
 const conflict=()=>new ConflictError('This command UUID belongs to another immutable intent','EDITING_IDEMPOTENCY_CONFLICT');
 /** Only affected raw objects/dependency bags enter the durable journal; delivery projects current read rights. */
@@ -35,6 +37,7 @@ export function nativeMapJournal(db:DbExecutor,repository:SketchRepository,optio
       // admission or author requirement (#239 review). A prepared caller saw the room already.
       if(!options.prepared&&!await rows.exists(sketch.id)){if(affected.leaseId)throw new ConflictError('No active drag lease exists','EDITING_LEASE_CHANGED');return;}
       if(principal.kind==='fixture')throw new InvalidInputError('A real map author is required');
+      options.protectLifetime?.();
       const releaseInput=apiEditingOutputBudget.reserve(editingMapContextCharge({principal,sketchId:sketch.id,affected,commandId:options.commandId,sessionId:options.sessionId,operation:options.operation}));
       retained.add(releaseInput);
       const room=await rows.head(sketch.id);

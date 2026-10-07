@@ -61,7 +61,7 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions, storage
   async function command(request:FastifyRequest,reply:FastifyReply,spec:CommandSpec) {
     let owner:EditingHTTPLifetime|undefined;
     try {
-      const lifetime=editingHTTPLifetime(reply.raw,apiEditingOutputBudget);owner=lifetime;lifetimes.set(reply,lifetime);
+      const lifetime=editingHTTPLifetime(reply.raw,apiEditingOutputBudget,{deferCharge:!developmentEditing});owner=lifetime;lifetimes.set(reply,lifetime);
       if(!developmentEditing) {
         const response=await runner.runCommand(request,spec);
         if(!lifetime.canSend)return reply.hijack();
@@ -99,7 +99,8 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions, storage
     const key=request.headers['idempotency-key'];const original=typeof key==='string'?key:null;
     const url=routeUrl(request);
     const uuid=original&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(original)?original.toLowerCase():original?derivedUuid('flux.map.legacy-key.v1',actor.kind,actor.id,request.method,url,original):undefined;
-    return sketchUseCases(conn,storage,{context:{params:request.params,body:request.body,query:request.query,headers:request.headers,session},prepared:developmentEditing,resourceId:(request.params as {sketchId?:string}).sketchId,principal:actor,sessionId:session.sessionId,commandId:uuid,retainUntil:(release)=>{const lifetime=lifetimes.get(reply);if(!lifetime)throw new Error('Native HTTP work has no response owner');lifetime.retain(release);},
+    const lifetime=lifetimes.get(reply);if(!lifetime)throw new Error('Native HTTP work has no response owner');
+    return sketchUseCases(conn,storage,{context:{params:request.params,body:request.body,query:request.query,headers:request.headers,session},prepared:developmentEditing,resourceId:(request.params as {sketchId?:string}).sketchId,principal:actor,sessionId:session.sessionId,commandId:uuid,protectLifetime:()=>lifetime.protect(),retainUntil:(release)=>lifetime.retain(release),
       operation:`native:${request.method} ${url}`,fingerprint:requestHash({params:request.params,body:request.body??null,query:request.query,ifMatch:request.headers['if-match']??null})});
   }
   const sketchScope = (sketchId: string): ResourceRef => ({ type: 'sketch', id: sketchId });
