@@ -73,7 +73,7 @@ export function TaskDiscussionSection({ workId, project, members, me }: {
           : <>
             {root && thread ? <>
               <Link className="wd-discussion" to={thread}>
-                <span className="wd-discussion__who">{root.author.kind === 'agent' ? <AgentIdentity name={author(root)} owner={owners.get(root.author.id)} /> : <b>{author(root)}</b>} <time dateTime={root.createdAt} title={when(root.createdAt)}>{day(root.createdAt)} · {clock(root.createdAt)}</time></span>
+                <span className="wd-discussion__who">{root.author?.kind === 'agent' ? <AgentIdentity name={author(root)} owner={owners.get(root.author.id)} /> : <b>{author(root)}</b>} <time dateTime={root.createdAt} title={when(root.createdAt)}>{day(root.createdAt)} · {clock(root.createdAt)}</time></span>
                 {root.body ? <span className="wd-discussion__body">{root.body}</span> : null}
                 <span className="wd-discussion__more">{replies ? `${replies} ${replies === 1 ? 'reply' : 'replies'}` : 'No replies yet'} · Open in Conversation<Icon name="chevron-right" size={14} /></span>
               </Link>
