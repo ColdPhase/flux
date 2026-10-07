@@ -4,11 +4,13 @@ import { randomUUID } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
+import type { Server } from 'node:http';
+import { createSupervisorServer } from '../../apps/runtime/src/supervisor/server.js';
 import { createManagerServer } from '../../apps/runtime/src/manager/server.js';
 import { AGENT_RUNTIME_CONSOLE_PATH, AGENT_RUNTIME_PATH, type AgentRuntimeConsoleServerMessage, type AgentRuntimeStatus } from '@flux/contracts';
 import { agentRuntimeStore } from '@flux/db';
 import { reconcileAgentRuntime } from '@flux/core';
-import { createRuntimeManagerClient, runtimeManagerPort } from '@flux/runtime-protocol';
+import { callSupervisor, createRuntimeManagerClient, runtimeManagerPort } from '@flux/runtime-protocol';
 import WebSocket from 'ws';
 import { Browser } from './support/http.js';
 import { pool,db,connectionString } from './support/db.js';
@@ -144,6 +146,69 @@ test('a held real manager response arriving after a second HTTP process requests
   }finally{
     release();await pending?.catch(()=>undefined);for(const ws of sockets)ws.terminate();await Promise.all(children.map(stop));
     manager.closeAllConnections();await new Promise<void>(r=>manager.close(()=>r()));await slot.close();
+    if(ownerId)await pool.query('DELETE FROM auth_users WHERE id=$1',[ownerId]);await pool.query('DELETE FROM agent_runtime_slots WHERE slot=$1',[slot.config.slot]);
+  }
+});
+
+
+test('API crash with an undelivered old logout requires full recovery; late logout cannot delete the fresh login', { timeout:30_000 },async()=>{
+  const slot=await startTestSlot({slot:'runtime-998',enabled:['claude_code']}),managerSecret=slotSecret();
+  const target={host:'127.0.0.1',port:portOf(slot.url),secret:slot.config.secret};
+  let holdLogout=false,enter!:()=>void,release!:()=>void,lateCode:string|undefined;
+  const reached=new Promise<void>(r=>{enter=r;}),held=new Promise<void>(r=>{release=r;});
+  const manager=createManagerServer({secret:managerSecret,log:()=>undefined,slots:new Map([[slot.config.slot,target]]),
+    call:async(t,request)=>{
+      // Existing manager dependency seam: barrier holds a real parsed request, then performs the
+      // real closed HTTP call. The target address follows the restarted supervisor as Docker DNS does.
+      if(holdLogout&&request.kind==='logout'){holdLogout=false;enter();await held;const answer=await callSupervisor(t,request);lateCode=answer.ok?'ok':answer.code;return answer;}
+      return callSupervisor(t,request);
+    }});
+  await new Promise<void>(r=>manager.listen(0,'127.0.0.1',r));
+  const managerUrl=`http://127.0.0.1:${(manager.address()as{port:number}).port}`;
+  const config={clients:['claude_code']as const,commercialTermsAgreedOn:null,idleDays:null,manager:{url:managerUrl,secret:managerSecret}};
+  const children:ChildProcess[]=[],sockets:WebSocket[]=[];let ownerId:string|undefined,fresh:Server|undefined,pending:Promise<unknown>|undefined;
+  try{
+    const port=runtimeManagerPort(createRuntimeManagerClient(config.manager)),store=agentRuntimeStore(db);
+    await reconcileAgentRuntime({config:{...config,clients:[...config.clients]},store,manager:port});
+    const first=await api(managerUrl,managerSecret),second=await api(managerUrl,managerSecret);children.push(first.child,second.child);
+    const a=new Browser(first.url,origin),signup=await a.request('POST','/api/auth/sign-up/email',{body:{email:`crashed-auth-${randomUUID()}@example.test`,password:'correct horse battery staple',name:'Crashed auth owner'}});
+    assert.equal(signup.status,200);ownerId=(signup.json as{user:{id:string}}).user.id;
+    const b=new Browser(second.url,origin);for(const[n,v]of a.cookies)b.cookies.set(n,v);
+    const signin=async(browser:Browser)=>{
+      const issue=await browser.request('POST',AGENT_RUNTIME_CONSOLE_PATH,{body:{client:'claude_code',method:'sso'}});assert.equal(issue.status,200);
+      const view=await socket(browser);sockets.push(view.ws);view.ws.send(JSON.stringify({t:'attach',ticket:(issue.json as{ticket:string}).ticket,cols:60,rows:20}));
+      await until(()=>view.output.includes('Paste code'));view.ws.send(JSON.stringify({t:'in',d:'fake-code-crash-recovery\r'}));assert.equal(await view.closed,1000);
+      const done=view.messages.at(-1);assert.ok(done?.t==='done'&&done.disposition==='accepted'&&done.signedIn);
+    };
+    await signin(a);
+    const old=(await pool.query<{id:string}>('SELECT id FROM agent_runtime_bindings WHERE owner_user_id=$1 AND state=\'active\'',[ownerId])).rows[0].id;
+    holdLogout=true;pending=a.request('POST','/api/v1/agent-runtime/sign-out',{body:{client:'claude_code'}}).catch(()=>({ disconnected:true }));
+    await Promise.race([reached,delay(5000).then(()=>{throw new Error('logout dispatch barrier deadline');})]);
+    const exited=new Promise<void>(r=>first.child.once('exit',()=>r()));first.child.kill('SIGKILL');await exited;
+    // Exact actual-DB clock control simulates the lost lease; it grants no same-binding takeover.
+    await pool.query(`UPDATE agent_runtime_auth_operations SET claimed_at=clock_timestamp()-interval '2 minutes',
+      lease_ends_at=clock_timestamp()-interval '1 minute' WHERE binding_id=$1`,[old]);
+    const denied=await b.request('POST',AGENT_RUNTIME_CONSOLE_PATH,{body:{client:'claude_code',method:'sso'}});assert.equal(denied.status,409);
+    const blocked=(await b.request('GET',AGENT_RUNTIME_PATH)).json as AgentRuntimeStatus;
+    assert.equal(blocked.binding?.recovery,true);assert.equal(blocked.connections.claude_code,null);
+    await reconcileAgentRuntime({config:{...config,clients:[...config.clients]},store,manager:port});
+    assert.equal(slot.released,1,'real supervisor release confirmed full deletion');
+    const freshConfig={...slot.config,bootId:randomUUID()};
+    fresh=createSupervisorServer(freshConfig,()=>undefined).server;
+    await new Promise<void>(r=>fresh!.listen(0,'127.0.0.1',r));target.port=(fresh.address()as{port:number}).port;
+    await reconcileAgentRuntime({config:{...config,clients:[...config.clients]},store,manager:port});
+    await signin(b);
+    const current=(await pool.query<{id:string}>('SELECT id FROM agent_runtime_bindings WHERE owner_user_id=$1 AND state=\'active\'',[ownerId])).rows[0].id;
+    assert.notEqual(current,old);assert.notEqual(freshConfig.bootId,slot.config.bootId);
+    const file=join(slot.config.dataDir,current,'claude','.credentials.json'),before=await readFile(file,'utf8');
+    release();await until(()=>lateCode!==undefined);
+    assert.equal(lateCode,'invalid_request','late real HTTP logout meets the new supervisor boot fence before effects');
+    assert.equal(await readFile(file,'utf8'),before,'fresh credential survived the obsolete destructive request');
+    assert.equal(((await b.request('GET',AGENT_RUNTIME_PATH)).json as AgentRuntimeStatus).connections.claude_code?.state,'signed_in');
+  }finally{
+    release();await pending?.catch(()=>undefined);for(const ws of sockets)ws.terminate();await Promise.all(children.map(stop));
+    manager.closeAllConnections();await new Promise<void>(r=>manager.close(()=>r()));
+    if(fresh){fresh.closeAllConnections();await new Promise<void>(r=>fresh!.close(()=>r()));}await slot.close();
     if(ownerId)await pool.query('DELETE FROM auth_users WHERE id=$1',[ownerId]);await pool.query('DELETE FROM agent_runtime_slots WHERE slot=$1',[slot.config.slot]);
   }
 });
