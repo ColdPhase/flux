@@ -14,6 +14,11 @@ The design keeps the functional contracts: [F-016 local MCP co-work](../product/
 architecture. Where a functional document describes appearance or placement, the final design
 wins.
 
+Live map/wiki is required in v0.1 again under the
+[2026-10-07 direction](https://github.com/ColdPhase/flux/issues/249#issuecomment-6042227715),
+so the [former map-agent-cursor release exception is superseded](https://github.com/ColdPhase/flux/issues/336#issuecomment-6042363834).
+Actual live presence, Kreska marking and the existing technical gates still need evidence.
+
 The feature folders in this directory (for example `conversation/`, `map-list-outline/`,
 `thought-drafts/`) record behaviour contracts and the evidence of past implementation work.
 Their screenshots show the application as it was then; they are not a visual target.

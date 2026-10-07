@@ -83,9 +83,11 @@ the conversation's `(created_at, id)`. `rootPage.nextBefore` is a conversation i
 pass it as `?before=<conversationId>` while `hasMoreBefore` is true. The cursor is
 compared in PostgreSQL, so a root started between two reads never shifts or
 repeats an older window. A `before` that is not a conversation of this project is
-`400`. Current project read access is checked and its rows locked in the same
-transaction before the cursor, counts and page are read; every root shares the
-project audience, so nothing is filtered after the page is cut. Readers who lost
+`400`. Current project read access, the cursor, the counts and the page are read
+from one snapshot (a read-only repeatable-read transaction, without row locks,
+[#298](performance-2026-10.md)), so a revoke committed meanwhile cannot leave a
+partly authorized window; every root shares the project audience, so nothing is
+filtered after the page is cut. Readers who lost
 access get `404`, like every other conversation read.
 
 The browser starts a root with the existing `POST

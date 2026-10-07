@@ -24,6 +24,19 @@ Polish foundation remains the original source, not a second competing roadmap.
 
 ## Current authority
 
+**2026-10-07 release amendment:** [founder direction](https://github.com/ColdPhase/flux/issues/249#issuecomment-6042227715)
+requires #228/#231 live map/wiki, #238 safe unused AI-task Undo and #314
+back-channel logout in v0.1, retaining all existing technical and independent
+acceptance gates. One operator-configured SSO provider serves each installation;
+the [assessed identity amendment](https://github.com/ColdPhase/flux/issues/360#issuecomment-6042333778)
+is recorded in [F-024](mcp-identity.md), now superseded in part by
+[ordinary owner MCP switches and exclusive SSO/password modes](https://github.com/ColdPhase/flux/issues/360#issuecomment-6043340696).
+No recent-authentication/password-replay challenge or ordinary password login
+alongside active SSO; safe pre-cutover migration and current authority checks remain. The [final design Prostota](https://github.com/ColdPhase/flux/issues/336)
+(F-026; [reference import](https://github.com/ColdPhase/flux/pull/337)) supersedes
+the earlier appearance directions below. This amendment records required work,
+not implementation or release acceptance.
+
 **Design, 2026-10-07:** the [final design "Prostota"](../design/final/README.md) (F-026) is
 the only UI and UX on the computer and the phone, tracked in
 [#336](https://github.com/ColdPhase/flux/issues/336). It governs every visual or placement

@@ -1,5 +1,35 @@
 # Milestone 2 — Working Flux application
 
+## Current v0.1 scope — 2026-10-07
+
+The [founder's latest direction](https://github.com/ColdPhase/flux/issues/249#issuecomment-6042227715)
+restores live map/wiki co-editing (#228), its bounded transport and replica
+calibration (#231), safe Undo of an unused AI-created task (#238), and OIDC
+back-channel logout (#314) as required v0.1 outcomes. It supersedes the
+2026-10-06 release deferral; none of these outcomes is delivered by this record.
+Preserve the four independently assessed live-editing gates, input-to-render
+p95 ≤200 ms, #238 AC-U1–U5, current access, private drafts, immutable history,
+recovery and the integrated candidate pass. Draft PRs #239/#244 and the preserved
+decoupled #238 branch must be reconciled and verified, not discarded or accepted
+by changing their milestone. Migration reservations and ledgers stay unchanged.
+
+Each installation uses one operator-configured SSO provider. The required F-024
+slices and their ordering remain in [the identity contract](../mcp-identity.md).
+The [necessity assessment and amendment](https://github.com/ColdPhase/flux/issues/360#issuecomment-6042333778)
+initially narrowed #315/#316 and canceled #317's opaque keys. The later
+[founder amendment](https://github.com/ColdPhase/flux/issues/360#issuecomment-6043340696) replaces recent-authentication with ordinary
+owner MCP capability switches and requires exclusive password-only without active
+SSO or SSO-only with the sole IdP, with pre-cutover account migration/recovery.
+No ten-minute/password-replay challenge; live rights/grants/OAuth ceilings and
+standing/offboarding remain. Cancellation does not mean implementation. OAuth and tested SSH/callback guidance remain.
+
+The [final design Prostota](https://github.com/ColdPhase/flux/issues/336), F-026,
+is the sole appearance and UX authority on both devices. Its
+[reference package](https://github.com/ColdPhase/flux/pull/337) is imported
+separately; older appearance descriptions below are historical. Restored live
+presence also removes the release exception for the map's agent cursor, while
+preserving its dependencies and the final Kreska requirements.
+
 ## Final design — F-026 (2026-10-07)
 
 The [final design "Prostota"](../../design/final/README.md) is the only UI and UX on the
