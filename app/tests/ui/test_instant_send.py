@@ -332,32 +332,76 @@ class InstantSendJourney(unittest.TestCase):
         expect(stream.get_by_text(OPENING)).to_be_visible()
         sent = self.posts(page, f"/projects/{self.ids['project']}/conversations")
         lost: list[str] = []
+        down = {"flux": True}
         def lose(route: Route) -> None:
-            # Stored, but the browser never hears back: a NetworkError while it says it is online.
-            if route.request.method == "POST" and not lost:
-                response = route.fetch()
-                self.assertEqual(response.status, 201)
-                lost.append(route.request.post_data_json["clientMessageId"])
+            # The first is stored, but the browser never hears back; while Flux is down nothing answers.
+            if route.request.method == "POST" and down["flux"]:
+                if not lost:
+                    response = route.fetch()
+                    self.assertEqual(response.status, 201)
+                    lost.append(route.request.post_data_json["clientMessageId"])
                 route.abort("failed")
             else:
                 route.continue_()
         page.route("**/api/v1/projects/*/conversations", lose)
+        # Flux's light reachability check (and any reload of the page's data) gets no answer either.
+        page.route("**/api/v1/me", lambda route: route.abort("failed") if down["flux"] else route.continue_())
         self.unroute_later(page)
-        # Flux's light reachability check gets no answer either, so only the person's Retry sends it now.
-        page.route("**/api/v1/me", lambda route: route.abort("failed"))
         body = "Lost answer: the root waits and is sent again once."
         page.get_by_label("Write a message", exact=True).fill(body)
         page.get_by_role("button", name="Send message").tap()
         bubble = self.pending(stream, body)
+        line = page.get_by_text("Flux isn’t responding. Messages wait here and send when it’s back.")
         expect(bubble).to_contain_text("Waiting for connection")
-        expect(page.get_by_text("Flux isn’t responding. Messages wait here and send when it’s back.")).to_be_visible()
+        expect(line).to_be_visible()
         shot(page, "instant-send-unreachable-390")
         page.wait_for_timeout(500)
         self.assertEqual(len(sent), 1, "nothing is resent while Flux does not answer")
+        # Retry while Flux still does not answer: the conversation, the line and the message stay.
+        bubble.get_by_role("button", name="Retry").tap()
+        for wait in (300, 1200):
+            page.wait_for_timeout(wait)
+            expect(page.get_by_text("Flux can’t be reached", exact=False)).to_have_count(0)
+            expect(stream.get_by_text(OPENING)).to_be_visible()
+            expect(bubble).to_contain_text("Waiting for connection")
+            expect(line).to_be_visible()
+        self.assertEqual(len(sent), 2, "the Retry was one attempt")
+        # Flux answers again: Retry now stores it once, with the same command.
+        down["flux"] = False
         bubble.get_by_role("button", name="Retry").tap()
         expect(stream.locator(".project-convo__message:not(.is-pending)").filter(has_text=body)).to_have_count(1)
         expect(page.get_by_text("Flux isn’t responding", exact=False)).to_have_count(0)
-        self.assertEqual([command["clientMessageId"] for command in sent], [lost[0], lost[0]], "the same command, twice")
+        self.assertEqual([command["clientMessageId"] for command in sent], [lost[0]] * 3, "the same command each time")
+        self.assertEqual(sum(root["message"]["body"] == body for root in self.roots(page)), 1, "exactly one stored root")
+
+    def test_10_back_online_while_flux_is_down_keeps_the_conversation(self) -> None:
+        page = self.page("ada", 1440)
+        page.goto(f"/projects/{self.ids['project']}")
+        stream = page.get_by_role("region", name="Messages")
+        expect(stream.get_by_text(OPENING)).to_be_visible()
+        sent = self.posts(page, f"/projects/{self.ids['project']}/conversations")
+        down = {"flux": True}
+        page.route("**/api/v1/projects/*/conversations", lambda route: route.abort("failed") if route.request.method == "POST" and down["flux"] else route.continue_())
+        page.route("**/api/v1/me", lambda route: route.abort("failed") if down["flux"] else route.continue_())
+        self.unroute_later(page)
+        page.context.set_offline(True)
+        expect(page.get_by_text("You’re offline", exact=False)).to_be_visible(timeout=2000)
+        body = "Back online, but Flux is not: the stream stays."
+        page.get_by_label("Write a message", exact=True).fill(body)
+        page.get_by_role("button", name="Send message").click()
+        bubble = self.pending(stream, body)
+        expect(bubble).to_contain_text("Waiting for connection")
+        # The browser is online again; Flux still does not answer. Nothing reloads into an error page.
+        page.context.set_offline(False)
+        page.wait_for_timeout(1500)
+        expect(page.get_by_text("Flux can’t be reached", exact=False)).to_have_count(0)
+        expect(stream.get_by_text(OPENING)).to_be_visible()
+        expect(bubble).to_contain_text("Waiting for connection")
+        expect(page.get_by_text("Flux isn’t responding", exact=False)).to_be_visible()
+        # Flux answers its next check: the message goes once, by itself.
+        down["flux"] = False
+        expect(stream.locator(".project-convo__message:not(.is-pending)").filter(has_text=body)).to_have_count(1, timeout=10000)
+        self.assertEqual(len({command["clientMessageId"] for command in sent}), 1)
         self.assertEqual(sum(root["message"]["body"] == body for root in self.roots(page)), 1, "exactly one stored root")
 
     def test_07_a_refused_send_returns_to_the_field_and_remove_returns_an_unsent_one(self) -> None:
@@ -481,6 +525,72 @@ class InstantSendJourney(unittest.TestCase):
                 expect(self.pending(thread, body)).to_have_count(0)
                 reply = next(message for message in self.replies(page) if message["body"] == body)
                 self.assertEqual([file["name"] for file in reply["files"]], [name], "stored once, with its file")
+
+    def test_13_remove_with_text_in_the_field_keeps_the_message(self) -> None:
+        page = self.page("ada", 1440)
+        page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
+        thread = page.get_by_role("complementary", name="Replies")
+        expect(thread.get_by_text("Yes, after nine.")).to_be_visible()
+        held = self.hold(page, "**/api/v1/conversations/*/messages")
+        field = thread.get_by_label("Reply", exact=True)
+        first, second = "Kept A: not sent, never lost.", "Kept B: typed meanwhile."
+        field.fill(first)
+        thread.get_by_role("button", name="Send reply").click()
+        expect(self.pending(thread, first)).to_contain_text("Sending…")
+        field.fill(second)
+        page.wait_for_timeout(200)
+        self.assertEqual(len(held), 1)
+        held[0].fulfill(status=404, content_type="application/json", body=json.dumps({"code": "NOT_FOUND", "message": "Unavailable"}))
+        failed = self.pending(thread, first).get_by_role("alert")
+        expect(failed).to_contain_text("Not sent")
+        failed.get_by_role("button", name="Remove").click()
+        # The field holds B: A stays, says what to do first, and is still kept by the browser.
+        expect(self.pending(thread, first)).to_have_count(1)
+        expect(failed).to_contain_text("Send or clear your text first, then remove it to edit it.")
+        expect(failed).to_contain_text("Your access, a file or a source may be unavailable.")
+        expect(field).to_have_value(second)
+        self.assertIn(first, page.evaluate("() => JSON.stringify(Object.values(localStorage))"))
+        # With the field cleared, Remove returns A to it.
+        field.fill("")
+        failed.get_by_role("button", name="Remove").click()
+        expect(self.pending(thread, first)).to_have_count(0)
+        expect(field).to_have_value(first)
+        field.fill("")
+
+    def test_14_an_upload_cut_by_going_offline_waits_and_one_line_shows(self) -> None:
+        for width in WIDTHS:
+            with self.subTest(width=width):
+                page = self.page("jonas", width)
+                page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
+                thread = page.get_by_role("complementary", name="Replies")
+                expect(thread.get_by_text("Yes, after nine.")).to_be_visible()
+                uploads = self.hold(page, "**/api/v1/projects/*/files?*")
+                name = f"offline-readings-{width}.bin"
+                with page.expect_file_chooser() as chooser:
+                    thread.get_by_role("button", name="Attach files", exact=True).click()
+                chooser.value.set_files({"name": name, "mimeType": "application/octet-stream", "buffer": b"\x00\x05 lux offline"})
+                body = f"Readings at {width} sent as the connection dropped."
+                thread.get_by_label("Reply", exact=True).fill(body)
+                button = thread.get_by_role("button", name="Send reply")
+                button.tap() if width < 681 else button.click()
+                bubble = self.pending(thread, body)
+                expect(bubble).to_contain_text("Uploading…")
+                page.context.set_offline(True)
+                uploads[0].abort("internetdisconnected")
+                # The upload was cut: the message says why (HIG-67), not "Uploading…".
+                expect(bubble).to_have_attribute("data-send-state", "waiting")
+                expect(bubble).to_contain_text("Waiting for connection")
+                expect(bubble).not_to_contain_text("Uploading…")
+                # The stream and the thread both have a composer: one line on the screen.
+                expect(page.locator(".connection-line")).to_have_count(1)
+                expect(page.locator(".connection-line")).to_be_visible()
+                page.unroute_all(behavior="ignoreErrors")
+                page.context.set_offline(False)
+                stored = thread.locator(".project-convo__message:not(.is-pending)").filter(has_text=body)
+                expect(stored).to_have_count(1, timeout=10000)
+                expect(page.locator(".connection-line")).to_have_count(0)
+                reply = [message for message in self.replies(page) if message["body"] == body]
+                self.assertEqual([[file["name"] for file in message["files"]] for message in reply], [[name]], "stored once, with its file")
 
     # ---------------------------------------------------------------- server idempotency
 

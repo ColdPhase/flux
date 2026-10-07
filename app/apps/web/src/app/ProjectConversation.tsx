@@ -5,7 +5,7 @@ import { ApiError } from '../api/client';
 import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
 import { AttachButton, ComposerFiles, MessageFiles } from '../composer/Files';
 import { ConnectionLine, SendAnnouncer } from '../composer/Outbox';
-import { connectionState, onConnectionChange } from '../composer/connection';
+import { fluxAnswers, onFluxAnswered } from '../composer/connection';
 import { Avatar, Button, Icon, Input, MEDIA, sendsOnEnter, useArrivals, useMediaQuery } from '../ui';
 import { getConversation, getMaterialVersion, getProject, listConversationRoots, listDrafts, listMaterials, listTaskNotices, listWorkspaceMembers, olderMessages, publishMaterial } from './conversation-api';
 import { pageBackTo } from './seekMessage';
@@ -209,7 +209,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const refresh = useCallback(async () => {
     // Offline, a read fails and a failed route reload would replace the stream with an error page:
     // the quiet line says why (#264), and the stream reads again when the connection is back.
-    if (refreshingRef.current || connectionState() !== 'online') return;
+    if (refreshingRef.current || !fluxAnswers()) return;
     refreshingRef.current = true;
     // The stream's refresh reloads the route (newest roots, the project); a thread reads only its own replies.
     if (!conversationId) revalidateRef.current();
@@ -242,8 +242,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     return () => controller.abort();
   }, [showMaterialForm, writable, project.workspaceId, me.user.id]);
 
-  // Back online: read what arrived meanwhile.
-  useEffect(() => onConnectionChange(() => { if (connectionState() === 'online') void refresh(); }), [refresh]);
+  // Flux answers again (not merely a Retry or the browser's `online` event): read what arrived meanwhile.
+  useEffect(() => onFluxAnswered(() => { void refresh(); }), [refresh]);
   useEffect(() => {
     const onFocus = () => { void refresh(); };
     const onVisible = () => { if (document.visibilityState === 'visible') void refresh(); };

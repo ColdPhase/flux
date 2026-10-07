@@ -213,6 +213,8 @@ export function composerError(cause: unknown) {
   if (cause instanceof ApiError && cause.code === 'IDEMPOTENCY_CONFLICT') return 'This send conflicts with an earlier command. Your draft is kept. Edit it to start a new send.';
   return 'Could not confirm the send. Your text is kept with its files and sources; retry or edit it.';
 }
+/** Why Remove keeps a message: it returns to the field only while the field is empty. */
+export const keepHint = 'Send or clear your text first, then remove it to edit it.';
 /** What a retry cannot change: the message goes back to the field to be fixed there. */
 const lasting = (cause: unknown) => cause instanceof ApiError && [400, 401, 403, 404, 409, 413, 422].includes(cause.status);
 /** The reason beside "Not sent" on the message itself. */
@@ -281,7 +283,9 @@ function kick(key: string) {
   const item = snapshot.pending.find((other) => other.state !== 'failed');
   if (!item || !place) return;
   if (connectionState() !== 'online') {
-    if (snapshot.pending.some((other) => other.state === 'sending')) put(key, { ...snapshot, pending: snapshot.pending.map((other) => other.state === 'sending' ? { ...other, state: 'waiting', waited: true } : other) });
+    // A send or an upload under way now waits, and says why (HIG-67).
+    const going = (other: PendingSend) => other.state === 'sending' || other.state === 'uploading';
+    if (snapshot.pending.some(going)) put(key, { ...snapshot, pending: snapshot.pending.map((other) => going(other) ? { ...other, state: 'waiting', waited: true } : other) });
     return;
   }
   const generation = sessionGeneration;
@@ -489,13 +493,16 @@ export function useComposerDraft(accountId: string, projectId: string, context: 
     const current = snapshots.get(key)!;
     const item = current.pending.find((other) => other.id === id);
     if (!item || item.state === 'sending' || item.state === 'uploading') return;
-    const pending = current.pending.filter((other) => other.id !== id);
-    if (blank(current.draft) && !current.sending) {
-      put(key, { ...current, error: '', pending, draft: { version: 1, body: item.body, files: item.files, references: item.references, commandId: item.id, unconfirmed: !!item.attempted } });
-    } else {
-      forgetBytes(key, item.files);
-      put(key, { ...current, pending });
+    if (!blank(current.draft) || current.sending) {
+      // The field holds other text: the message stays, never lost, and says what to do first (HIG-70).
+      changePending(key, id, (other) => {
+        const why = (other.error ?? '').replace(/\s*(Send or clear your text first, then remove it to edit it|Remove it to edit it)\.$/, '');
+        return { ...other, error: `${why ? `${why} ` : ''}${keepHint}` };
+      });
+      return;
     }
+    put(key, { ...current, error: '', pending: current.pending.filter((other) => other.id !== id),
+      draft: { version: 1, body: item.body, files: item.files, references: item.references, commandId: item.id, unconfirmed: !!item.attempted } });
     settle(id, { status: 'removed' });
   }
   return { ...snapshot, key, canSend: !snapshot.sending && draft.files.every((file) => file.state !== 'failed') && (!!draft.body.trim() || !!draft.files.length),

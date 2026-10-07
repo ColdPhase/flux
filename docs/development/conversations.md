@@ -125,8 +125,8 @@ Private assistant prompts keep their own send path.
   "Not sent" (an alert) with **Retry** and **Remove**. Retry sends the same command again.
   Remove takes it out of the conversation and, when the field is empty, puts its text, files
   and source back into the field with the same command (a later edit gives it a new one).
-  When the field already holds other text, Remove discards the queued copy (a recorded
-  trade-off; an Undo can follow under HIG-70). Remove only affects this browser: a message
+  When the field already holds other text, Remove keeps the message and says "Send or clear
+  your text first, then remove it to edit it", so nothing is lost. Remove only affects this browser: a message
   whose answer was lost may already be stored, and then it still appears with the next read.
   An error that a retry cannot fix (`400`, `401`, `403`, `404`, `409`, `413`, `422`) returns
   the message to an empty field at once with the existing explanation, so its files and
@@ -137,7 +137,11 @@ Private assistant prompts keep their own send path.
   in the queue marked "Waiting for connection". When the browser is back online, or a light
   check of `GET /api/v1/me` gets any answer (every 3 s, slowing to 30 s, only while Flux is
   unreachable), the waiting messages are sent automatically in their order with their
-  original `clientMessageId`s.
+  original `clientMessageId`s. A send or upload under way when the browser goes offline
+  also reads "Waiting for connection". The stream reads again only after Flux has answered
+  (a delivered send or the check): a Retry or the browser's `online` event alone never
+  reloads the page, so an unreachable Flux cannot replace the conversation with an error
+  page. With a stream and a thread open, the line shows once.
 - **Reload.** A queued message survives a reload with its command; one whose outcome was
   unknown is sent again (idempotently) when its composer opens. The record follows the
   draft's storage and sign-out rules: `localStorage` per account, project and context for

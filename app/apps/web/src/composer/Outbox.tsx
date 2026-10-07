@@ -34,7 +34,7 @@ function PendingStatus({ item, onRetry, onRemove }: { item: PendingSend; onRetry
   return (
     <div className={`outbox-status is-${item.state}`}>
       <span className="outbox-status__dot" aria-hidden="true" />
-      <span className="outbox-status__text">{label}</span>
+      <span className="outbox-status__text">{label}{item.state === 'waiting' && item.error ? <span className="outbox-status__why">. {item.error}</span> : null}</span>
       {/* While the browser is online but Flux did not answer, the person may try now; offline, it goes on its own. */}
       {item.state === 'waiting' ? <span className="outbox-status__acts">
         {connection !== 'offline' ? <button type="button" className="outbox-status__b" onClick={onRetry}>Retry</button> : null}
@@ -86,7 +86,8 @@ export function SendAnnouncer({ pending }: { pending: readonly PendingSend[] }) 
   return <p ref={region} className="ui-vh" role="status" aria-live="polite" data-send-announcer="" />;
 }
 
-// Several composers can be on screen (the stream and a docked thread): one of their lines is the live region.
+// Several composers can be on screen (the stream and a docked thread): the newest one's line shows and is the live region
+// (on the phone the thread covers the stream).
 const lines: symbol[] = [];
 const lineListeners = new Set<() => void>();
 const subscribeLines = (listener: () => void) => { lineListeners.add(listener); return () => { lineListeners.delete(listener); }; };
@@ -100,9 +101,10 @@ export function ConnectionLine() {
     lineListeners.forEach((listener) => listener());
     return () => { lines.splice(lines.indexOf(me), 1); lineListeners.forEach((listener) => listener()); };
   }, [me]);
-  const live = useSyncExternalStore(subscribeLines, () => lines[0] === me, () => false);
+  const live = useSyncExternalStore(subscribeLines, () => lines[lines.length - 1] === me, () => false);
   const text = state === 'offline' ? 'You’re offline. Messages wait here and send when you’re back online.'
     : state === 'unreachable' ? 'Flux isn’t responding. Messages wait here and send when it’s back.' : '';
   // The live region stays in place and empty while online, so the line is announced when it appears.
-  return <div className="connection-line-region" role={live ? 'status' : undefined} data-connection={state}>{text ? <p className="connection-line">{text}</p> : null}</div>;
+  // One line per screen: only the newest composer's line shows it.
+  return <div className="connection-line-region" role={live ? 'status' : undefined} data-connection={state}>{text && live ? <p className="connection-line">{text}</p> : null}</div>;
 }

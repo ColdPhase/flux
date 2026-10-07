@@ -15,8 +15,20 @@ let browserOffline = typeof navigator !== 'undefined' && navigator.onLine === fa
 let unreachable = false;
 let probeTimer = 0;
 let probeDelay = 3000;
+// Set when sends could not reach Flux; cleared only by an answer from Flux, never by a guess
+// (a Retry, or the browser's `online` event), so nothing that replaces the page runs before then.
+let unanswered = false;
+const answers = new Set<() => void>();
 
 export const connectionState = (): ConnectionState => browserOffline ? 'offline' : unreachable ? 'unreachable' : 'online';
+
+/** Online, and Flux has answered since sends last failed to reach it. */
+export const fluxAnswers = () => connectionState() === 'online' && !unanswered;
+function answered() {
+  if (!unanswered) return;
+  unanswered = false;
+  answers.forEach((listener) => listener());
+}
 
 function changed(before: ConnectionState) {
   const now = connectionState();
@@ -33,6 +45,7 @@ function probe() {
       // Flux answers. Waiting sends go now; if they still get no answer, the next check waits longer.
       probeDelay = Math.min(30000, probeDelay * 2);
       clear();
+      answered();
     })
     .catch(() => {
       probeDelay = Math.min(30000, probeDelay * 2);
@@ -49,6 +62,7 @@ export function reportUnreachable() {
   const before = connectionState();
   if (typeof navigator !== 'undefined' && navigator.onLine === false) browserOffline = true;
   else unreachable = true;
+  unanswered = true;
   scheduleProbe();
   changed(before);
 }
@@ -65,11 +79,18 @@ function clear() {
 export function reportReachable() {
   probeDelay = 3000;
   clear();
+  answered();
 }
 
-/** The person asked to try again now: their attempt is the check. */
+/** The person asked to try again now: their attempt is the check, and only its answer confirms Flux. */
 export function assumeReachable() {
   clear();
+}
+
+/** Called once Flux answers after sends could not reach it: the moment to read what arrived meanwhile. */
+export function onFluxAnswered(listener: () => void) {
+  answers.add(listener);
+  return () => { answers.delete(listener); };
 }
 
 /** Called on each change, including when sending becomes possible again. */
@@ -79,12 +100,14 @@ export function onConnectionChange(listener: () => void) {
 }
 
 if (typeof window !== 'undefined') {
-  window.addEventListener('offline', () => { const before = connectionState(); browserOffline = true; changed(before); });
+  window.addEventListener('offline', () => { const before = connectionState(); browserOffline = true; unanswered = true; changed(before); });
   window.addEventListener('online', () => {
     const before = connectionState();
     browserOffline = false;
     // Online again: check Flux now rather than after the remaining backoff.
     if (unreachable) { if (probeTimer) window.clearTimeout(probeTimer); probeTimer = 0; probeDelay = 3000; probe(); }
+    // The browser is back, which does not mean Flux is: one check confirms it before anything reloads.
+    else if (unanswered) void fetch('/api/v1/me', { credentials: 'same-origin', cache: 'no-store', headers: { accept: 'application/json' } }).then(answered, () => reportUnreachable());
     changed(before);
   });
 }
