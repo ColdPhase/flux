@@ -35,8 +35,8 @@ does **not** claim the frame caused an immediate UI refresh.
 
 The author used a separate source worktree, project `FLUX_PROJECT=flux327-https-20261007`,
 API19373, mailpit19374 and proxy19443. The actual image IDs, platform, public origin and
-narrow trust are in [runtime.json](runtime.json). No shared stack, volume, host certificate
-store or Docker build cache was changed. The generated own `docker/.env` and Caddy CA
+narrow trust are in [runtime.json](runtime.json). No shared stack, volume or host certificate
+store was changed; cleanup did not prune the shared Docker build cache. The generated own `docker/.env` and Caddy CA
 volumes were removed after the checks. The public CA certificate was only used for curl.
 
 The Caddy container used host networking, a read-only SELinux-compatible configuration
