@@ -87,7 +87,8 @@ test('agent root renders without a human DM link, real human reply persists, and
     await page.goto(path);
     const row = page.locator(`#message-${root.id}`);
     await row.waitFor();
-    assert.match(await row.innerText(), /Trial analyst · agent/);
+    assert.match(await row.innerText(), /Trial analyst\s*Agent/);
+    assert.equal(await row.locator('.kreska').count() > 0, true, 'an agent author is Kreska, never initials (#339)');
     assert.equal(await row.locator('a[href*="/dm/new"]').count(), 0);
     assert.equal(await row.locator('.project-convo__message-meta time').getAttribute('datetime'), root.createdAt);
     // One project conversation (UI116-1): the root is in the stream, its replies and reply box in the thread beside it.
@@ -134,7 +135,7 @@ test('agent root renders without a human DM link, real human reply persists, and
       await view.goto(path);
       const agentRow = view.locator(`#message-${root.id}`);
       await agentRow.waitFor();
-      assert.match(await agentRow.innerText(), /Trial analyst · agent/);
+      assert.match(await agentRow.innerText(), /Trial analyst\s*Agent/);
       assert.equal(await agentRow.locator('a[href*="/dm/new"]').count(), 0);
       const humanRow = view.locator(`#message-${human.id}`);
       await humanRow.waitFor();

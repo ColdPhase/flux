@@ -211,7 +211,10 @@ class TasksBoardJourney(unittest.TestCase):
         expect(self.card(doing, CALIBRATE).get_by_role("link", name=f"From a thought: {THOUGHT}")).to_have_attribute(
             "href", f"/projects/{self.ids['project']}/map/{self.ids['sketch']}#thought-{self.ids['thought']}")
         expect(self.card(doing, CALIBRATE).locator(".tb-card__owner")).to_contain_text("Ada Lind · you")
-        expect(self.card(open_, DIFFUSER).locator(".tb-card__owner")).to_have_text("Codex · agent")
+        owner = self.card(open_, DIFFUSER).locator(".tb-card__owner")
+        expect(owner.locator(".tb-card__name")).to_have_text("Codex")
+        expect(owner.locator(".kreska")).to_have_count(1)  # an agent is Kreska, never initials (#339)
+        expect(owner.locator(".agent-tag")).to_have_text("Agent")
         expect(self.card(open_, FIRMWARE)).to_contain_text("Waits for 1")
         expect(self.card(done, CAMERA).locator(".tb-card__state")).to_have_text("Not pursued")
         # Decisions and results stay one step away, and a decision that needs you is named.

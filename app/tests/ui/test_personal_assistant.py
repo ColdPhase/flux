@@ -310,7 +310,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(answer).to_be_visible(timeout=20000)
         expect(working).to_have_count(0)
         expect(answer).to_contain_text(f"{JO['name']}'s assistant")
-        expect(answer.locator(".assistant-tag")).to_have_text("Assistant")
+        expect(answer.locator(".agent-tag")).to_have_text("Agent")
         expect(answer).to_contain_text("asked by you")
         expect(answer).to_contain_text("“Summarize where we are”")
         expect(answer).to_contain_text("Anthropic · claude-sonnet-5")

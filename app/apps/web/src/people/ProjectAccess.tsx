@@ -5,7 +5,7 @@ import type { Project, ProjectAccess as Access, ProjectGrant, ProjectGrantRole, 
 import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
 import { ACCESS_LABEL } from '../project/data';
-import { Avatar, Button, Icon } from '../ui';
+import { AgentTag, Avatar, Button, Icon, Kreska } from '../ui';
 import { ROLE_LABEL, attemptKeys, firstName, grantPerson, isManagerRole, levelFor, listGrants, listMembers, problemText, revokeGrant } from './api';
 import './people.css';
 
@@ -156,7 +156,7 @@ export function ProjectAccess({ project, people, focusToken }: { project: Projec
             const options = member && manager ? optionsFor(member) : [];
             const reason = manager ? why(person) : null;
             return (
-              <AccessRow key={`${person.kind}:${person.id}`} name={`${person.name}${person.kind === 'agent' ? ' (agent)' : ''}`}
+              <AccessRow key={`${person.kind}:${person.id}`} name={person.name} agent={person.kind === 'agent'}
                 label={`${ACCESS_LABEL[person.access]}${reason ? ` · ${reason}` : ''}`} access={person.access}
                 options={options} editing={editing === person.id} onEdit={(open) => { setDone(''); setEditing(open ? person.id : null); }}
                 onApply={member ? (option, key) => apply(member, option, key) : undefined} workspaceName={workspaceName} />
@@ -194,8 +194,8 @@ export function ProjectAccess({ project, people, focusToken }: { project: Projec
   );
 }
 
-function AccessRow({ name, label, access, options, editing, onEdit, onApply, workspaceName }: {
-  name: string; label: string; access: Access | null; options: Option[]; editing: boolean;
+function AccessRow({ name, agent = false, label, access, options, editing, onEdit, onApply, workspaceName }: {
+  name: string; agent?: boolean; label: string; access: Access | null; options: Option[]; editing: boolean;
   onEdit: (open: boolean) => void; onApply?: (option: Option, key: string) => Promise<void>; workspaceName: string;
 }) {
   const editId = useId();
@@ -204,8 +204,8 @@ function AccessRow({ name, label, access, options, editing, onEdit, onApply, wor
   return (
     <li className={`people__item${editing ? ' is-editing' : ''}`}>
       <div className="people__row">
-        <Avatar name={name} size="md" />
-        <span className="people__who"><b>{name}</b><span className={access === null ? 'access__out' : undefined}>{label}</span></span>
+        {agent ? <Kreska size={26} /> : <Avatar name={name} size="md" />}
+        <span className="people__who"><b>{name}{agent ? <> <AgentTag /></> : null}</b><span className={access === null ? 'access__out' : undefined}>{label}</span></span>
         {options.length && onApply ? (
           <Button ref={changeRef} variant="quiet" className="people__change" aria-expanded={editing} aria-controls={editing ? editId : undefined} onClick={() => onEdit(!editing)}>
             Change<span className="ui-vh"> access for {name}</span>

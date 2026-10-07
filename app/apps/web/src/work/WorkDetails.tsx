@@ -3,7 +3,7 @@ import { Link, useRevalidator } from 'react-router';
 import type { Agent, ObjectLink, Project, WorkspaceMember, WorkStatus, WorkDetailObject, WorkDetailProjection } from '@flux/contracts';
 import { WORK_STATUSES } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { Button, Icon, Input, StatusGlyph } from '../ui';
+import { AgentTag, Button, Icon, Input, StatusGlyph } from '../ui';
 import { getProject, listWorkspaceMembers } from '../app/conversation-api';
 import { useShellData } from '../app/data';
 import { useRegisterLiveHere } from '../live/LiveProvider';
@@ -395,7 +395,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, choices, 
       </div>
       {decision.rationale ? <p className="details__lead">{decision.rationale}</p> : null}
       <dl className="details__dl wd-dl">
-        <dt>Proposed</dt><dd>{decision.proposedBy.name}{decision.proposedBy.kind === 'agent' ? ' (agent)' : ''} · {shortDate(decision.createdAt)}</dd>
+        <dt>Proposed</dt><dd>{decision.proposedBy.name}{decision.proposedBy.kind === 'agent' ? <> <AgentTag /></> : null} · {shortDate(decision.createdAt)}</dd>
         {decision.decidedBy ? <><dt>Decided</dt><dd>{decision.decidedBy.name} · {shortDate(decision.decidedAt!)}</dd></> : null}
       </dl>
 
