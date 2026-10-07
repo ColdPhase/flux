@@ -33,43 +33,79 @@ def heading_anchors(content: str) -> set[str]:
     return anchors
 
 
-def markdown_without_code(content: str) -> str:
-    """Mask fenced and inline code while preserving positions and line numbers."""
-    lines: list[str] = []
-    fence: tuple[str, int] | None = None
-    for line in content.splitlines(keepends=True):
-        marker = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)", line)
-        if fence is not None:
-            if marker and marker[1][0] == fence[0] and len(marker[1]) >= fence[1] and not marker[2].strip():
-                fence = None
-            lines.append(re.sub(r"[^\r\n]", " ", line))
-        elif marker and (marker[1][0] != "`" or "`" not in marker[2]):
-            fence = (marker[1][0], len(marker[1]))
-            lines.append(re.sub(r"[^\r\n]", " ", line))
-        else:
-            lines.append(line)
-    masked = "".join(lines)
-    runs = list(re.finditer(r"`+", masked))
+def mask_inline_code(content: str) -> str:
+    """Mask matching backtick runs within one Markdown text block."""
+    runs = list(re.finditer(r"`+", content))
     pieces: list[str] = []
     start = 0
     index = 0
     while index < len(runs):
         opening = runs[index]
-        if is_escaped(masked, opening.start()):
+        opening_start, length = opening.start(), len(opening[0])
+        if is_escaped(content, opening_start):
+            # A backslash escapes just the first backtick, not the whole run.
+            opening_start += 1
+            length -= 1
+        if not length:
             index += 1
             continue
         closing = next((other for other in range(index + 1, len(runs))
-                        if len(runs[other][0]) == len(opening[0])), None)
+                        if len(runs[other][0]) == length), None)
         if closing is None:
             index += 1
             continue
         end = runs[closing].end()
-        pieces.extend((masked[start:opening.start()],
-                       re.sub(r"[^\r\n]", " ", masked[opening.start():end])))
+        pieces.extend((content[start:opening_start],
+                       re.sub(r"[^\r\n]", " ", content[opening_start:end])))
         start = end
         index = closing + 1
-    pieces.append(masked[start:])
+    pieces.append(content[start:])
     return "".join(pieces)
+
+
+def markdown_without_code(content: str) -> str:
+    """Mask code without joining inline spans across paragraph or fence boundaries."""
+    output: list[str] = []
+    paragraph: list[str] = []
+    fence: tuple[str, int, int] | None = None
+    quote_depth = 0
+
+    def flush() -> None:
+        output.append(mask_inline_code("".join(paragraph)))
+        paragraph.clear()
+
+    for line in content.splitlines(keepends=True):
+        quote = re.match(r"^(?: {0,3}>[ \t]?)+", line)
+        depth = quote[0].count(">") if quote else 0
+        text = line[quote.end():] if quote else line
+        if depth != quote_depth:
+            flush()
+            quote_depth = depth
+        if fence is not None and depth < fence[2]:
+            fence = None
+        marker = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)", text)
+        if fence is not None:
+            if (marker and depth == fence[2] and marker[1][0] == fence[0]
+                    and len(marker[1]) >= fence[1] and not marker[2].strip()):
+                fence = None
+            output.append(re.sub(r"[^\r\n]", " ", line))
+        elif marker and (marker[1][0] != "`" or "`" not in marker[2]):
+            flush()
+            fence = (marker[1][0], len(marker[1]), depth)
+            output.append(re.sub(r"[^\r\n]", " ", line))
+        elif not text.strip():
+            flush()
+            output.append(line)
+        elif re.match(r"^ {0,3}#{1,6}(?:[ \t]+|$)", text):
+            flush()
+            output.append(mask_inline_code(line))
+        else:
+            # A new list item starts a different inline text block.
+            if re.match(r"^ {0,3}(?:[-+*]|[0-9]{1,9}[.)])[ \t]+", text):
+                flush()
+            paragraph.append(line)
+    flush()
+    return "".join(output)
 
 
 def is_escaped(content: str, position: int) -> bool:

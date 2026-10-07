@@ -137,6 +137,23 @@ class FoundationValidationTests(unittest.TestCase):
     def test_escaped_numeric_reference_is_literal_but_even_backslashes_are_not(self):
         self.assertEqual(CHECKER.undefined_numeric_references(r"\[#1] \\[#2] \\\[#3]"), [(1, "#2")])
         self.assertEqual(CHECKER.undefined_numeric_references(r"\` [#1]"), [(1, "#1")])
+        self.assertEqual(CHECKER.undefined_numeric_references(r"\``[#1]`"), [])
+
+    def test_unmatched_inline_code_cannot_hide_a_reference_in_the_next_block(self):
+        self.assertEqual(CHECKER.undefined_numeric_references(
+            "Unmatched `\n\nSee [#30].\n\nTrailing `\n"), [(3, "#30")])
+        self.assertEqual(CHECKER.undefined_numeric_references(
+            "Unmatched `\n~~~md\nignored [#31]\n~~~\nSee [#32] `\n"), [(5, "#32")])
+        self.assertEqual(CHECKER.undefined_numeric_references(
+            "Unmatched `\n## See [#34]\nTrailing `\n"), [(2, "#34")])
+
+    def test_quoted_fenced_code_does_not_hide_references_after_the_quote(self):
+        self.assertEqual(CHECKER.undefined_numeric_references(
+            "> ~~~md\n> [#33]\n> ~~~\n"), [])
+        self.assertEqual(CHECKER.undefined_numeric_references(
+            "> ```md\n> [#33]\nOutside [#34]\n"), [(3, "#34")])
+        self.assertEqual(CHECKER.undefined_numeric_references(
+            "> > ~~~md\n> > [#33]\n> > ~~~\n\n[#34]\n"), [(5, "#34")])
 
 if __name__ == "__main__":
     unittest.main()
