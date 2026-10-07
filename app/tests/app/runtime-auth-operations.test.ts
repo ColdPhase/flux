@@ -161,7 +161,7 @@ test('paired reverse refuses unsafe active metadata and restores T4 after settle
   } finally { await client.query('ROLLBACK').catch(()=>undefined);client.release(); }
 }));
 
-test('held renewal SQL cannot revive a lease that expires after its initial validation', () => fixture(async (target,operations) => {
+test('held renewal SQL cannot revive a lease that expires after its initial validation', { timeout: 10_000 }, () => fixture(async (target,operations) => {
   const operation=claimed(await operations.claim({ ...target,leaseMs:1000 }));
   let reached!:()=>void, release!:()=>void;
   const waiting=new Promise<void>(resolve=>{reached=resolve;});
@@ -183,11 +183,24 @@ test('held renewal SQL cannot revive a lease that expires after its initial vali
   // Real PostgreSQL results, held only at the outbound renewal dispatch. This
   // reproduces a scheduler/socket stall; no mocked lease or response values.
   const renewing=runtimeAuthOperations(held).renew(operation,60_000);
-  await waiting;
-  // Synchronize with the actual DB-generated deadline, not a guessed timing delay.
-  await pool.query('SELECT pg_sleep_until($1::timestamptz)',[new Date(operation.leaseEndsAt.getTime()+5)]);
-  assert.equal((await pool.query('SELECT clock_timestamp() > $1::timestamptz expired',[operation.leaseEndsAt])).rows[0].expired,true);
-  release();
-  assert.equal(await renewing,false);
-  assert.equal((await operations.claim({ ...target,kind:'logout' })).kind,'recovery');
+  const outcome=renewing.then(value=>({kind:'finished' as const,value}),error=>({kind:'error' as const,error}));
+  let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+  const deadline=new Promise<{kind:'deadline'}>(resolve=>{deadlineTimer=setTimeout(()=>resolve({kind:'deadline'}),5000);});
+  try {
+    const admission=await Promise.race([waiting.then(()=>({kind:'held' as const})),outcome,deadline]);
+    assert.equal(admission.kind,'held','renewal must reach the real SQL barrier before finishing or its deadline');
+    // Synchronize with the actual DB-generated deadline, not a guessed timing delay.
+    await pool.query('SELECT pg_sleep_until($1::timestamptz)',[new Date(operation.leaseEndsAt.getTime()+5)]);
+    assert.equal((await pool.query('SELECT clock_timestamp() > $1::timestamptz expired',[operation.leaseEndsAt])).rows[0].expired,true);
+    release();
+    const completed=await Promise.race([outcome,deadline]);
+    assert.equal(completed.kind,'finished');
+    assert.ok(completed.kind==='finished');
+    assert.equal(completed.value,false);
+    assert.equal((await operations.claim({ ...target,kind:'logout' })).kind,'recovery');
+  } finally {
+    release();
+    if(deadlineTimer) clearTimeout(deadlineTimer);
+    await outcome;
+  }
 }));
