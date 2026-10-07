@@ -18,4 +18,3 @@ export function useDmSketchCount(workspaceId: string | undefined, dmId: string |
   useStreamEvents(meId, (event) => { if (event.objectType === 'sketch' && event.kind === 'sketch.created.v1') setRefresh((n) => n + 1); }, () => setRefresh((n) => n + 1));
   return count && count.dmId === dmId ? count.total : null;
 }
-

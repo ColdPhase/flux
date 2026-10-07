@@ -23,4 +23,3 @@ export function OverviewContext() {
     <small><Icon name={shell.project.visibility === 'workspace' ? 'people' : 'lock'} size={11} />{audienceLine(shell.people, me.user.id, shell.project.visibility === 'workspace')}</small>
   </div>;
 }
-
