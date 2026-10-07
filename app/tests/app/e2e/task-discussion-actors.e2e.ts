@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
 import { join } from 'node:path';
@@ -193,9 +193,51 @@ test('native agent owners retry failed reads, fence stale permission answers and
     }), 201);
     const context = await signedIn(owner, 1440);
     const page = await context.newPage();
-    const capture = async (name: string) => {
+    const capture = async (name: string, ownerSelector: string) => {
+      // A route may still be settling after a fast input. Wait for real animation completion;
+      // do not disable production motion or accept a DOM label hidden by a leaving panel.
+      await page.waitForFunction(() => document.getAnimations().every((animation) =>
+        animation.effect?.getTiming().iterations === Infinity || (!animation.pending && animation.playState !== 'running')));
+      const inspect = () => page.evaluate((selector) => [...document.querySelectorAll<HTMLElement>(selector)].map((label) => {
+        const rect = label.getBoundingClientRect();
+        const ancestors = [];
+        for (let node: HTMLElement | null = label; node; node = node.parentElement) {
+          const style = getComputedStyle(node);
+          ancestors.push({ tag: node.tagName, className: node.className, display: style.display,
+            visibility: style.visibility, opacity: Number(style.opacity), hidden: node.hidden,
+            inert: node.inert, ariaHidden: node.getAttribute('aria-hidden') });
+        }
+        const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+        return { text: label.innerText, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+          inViewport: rect.x >= 0 && rect.y >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight,
+          uncovered: !!hit && (hit === label || label.contains(hit)), ancestors };
+      }), ownerSelector);
+      await page.locator(ownerSelector).first().waitFor();
+      // Three rendered frames must show the same full ownership relation and geometry.
+      const samples = [];
+      for (let frame = 0; frame < 3; frame++) {
+        await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+        samples.push(await inspect());
+      }
+      for (const labels of samples) {
+        assert.ok(labels.length > 0, `${name}: an actual owner label is rendered`);
+        for (const label of labels) {
+          assert.equal(label.text, 'for Scoped Casey');
+          assert.ok(label.rect.width > 0 && label.rect.height > 0 && label.inViewport && label.uncovered, `${name}: owner is visibly drawn and uncovered`);
+          assert.ok(label.ancestors.every((node) => node.display !== 'none' && node.visibility === 'visible' && node.opacity >= .999
+            && !node.hidden && !node.inert && node.ariaHidden !== 'true'), `${name}: every owner ancestor is visible at full opacity`);
+        }
+      }
+      assert.deepEqual(samples[1], samples[0], `${name}: settled layout`);
+      assert.deepEqual(samples[2], samples[1], `${name}: settled layout`);
       const evidence = process.env.FLUX_E2E_EVIDENCE_DIR;
-      if (evidence) { mkdirSync(evidence, { recursive: true }); await page.screenshot({ path: join(evidence, `339-${name}.png`), fullPage: true }); }
+      if (evidence) {
+        mkdirSync(evidence, { recursive: true });
+        await page.screenshot({ path: join(evidence, `339-${name}.png`), fullPage: true });
+        const after = await inspect();
+        assert.deepEqual(after, samples[2], `${name}: owner remains visible throughout the raw capture`);
+        writeFileSync(join(evidence, `339-${name}-visibility.json`), JSON.stringify({ url: page.url(), before: samples[2], after }, null, 2));
+      }
     };
     const endpoint = `**/api/v1/projects/${place.id}/people`;
     await page.route(endpoint, (route) => route.fulfill({ status: 503, contentType: 'application/json', body: '{"code":"TEMPORARY_UNAVAILABLE"}' }));
@@ -207,7 +249,7 @@ test('native agent owners retry failed reads, fence stale permission answers and
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await card.locator('.agent-for').waitFor();
     assert.equal(await card.locator('.agent-for').innerText(), 'for Scoped Casey', '503 was not cached');
-    await capture('scoped-owner-board');
+    await capture('scoped-owner-board', '.tb-card__owner .agent-for');
     await page.getByRole('radio', { name: 'List', exact: true }).click();
     const row = page.locator(`[data-work-id="${task.id}"]`);
     await row.locator('.agent-for').waitFor();
@@ -217,23 +259,27 @@ test('native agent owners retry failed reads, fence stale permission answers and
     await decision.locator('.agent-for').waitFor();
     assert.equal(await decision.locator('.agent-tag').innerText(), 'Agent');
     assert.equal((await decision.innerText()).includes('(agent)'), false);
-    await capture('scoped-owner-list');
+    await capture('scoped-owner-list', '.ws-item .agent-for');
     await row.getByRole('button').click();
     await page.locator('.wd-discussion .agent-for').waitFor();
     assert.equal(await page.locator('.wd-discussion .agent-tag').innerText(), 'Agent');
     assert.equal(await page.locator('.wd-discussion .agent-for').innerText(), 'for Scoped Casey');
-    await capture('scoped-owner-task-details');
+    await capture('scoped-owner-task-details', '.wd-discussion .agent-for');
     await page.keyboard.press('Escape');
+    await page.locator('#details').waitFor({ state: 'detached' });
     await decision.getByRole('button').click();
     await page.locator('.details .agent-for').waitFor();
     assert.equal(await page.locator('.details .agent-for').innerText(), 'for Scoped Casey');
-    await capture('scoped-owner-decision-details');
+    await capture('scoped-owner-decision-details', '.details .agent-for');
     await page.keyboard.press('Escape');
+    await page.locator('#details').waitFor({ state: 'detached' });
     await page.locator(`a[href^="/projects/${place.id}/agents"]`).click();
     await page.getByLabel('Task', { exact: true }).selectOption(task.id);
+    await page.waitForURL((url) => url.pathname === `/projects/${place.id}/agents` && url.searchParams.get('task') === task.id);
+    await page.locator('#details').waitFor({ state: 'detached' });
     await page.locator('.agents-msg__meta .agent-for').waitFor();
     assert.equal(await page.locator('.agents-msg__meta .agent-for').innerText(), 'for Scoped Casey');
-    await capture('scoped-owner-agents-thread');
+    await capture('scoped-owner-agents-thread', '.agents-msg__meta .agent-for');
     await page.locator(`a[data-tab="tasks"][href^="/projects/${place.id}/tasks"]`).click();
     await page.getByRole('radio', { name: 'List', exact: true }).click();
     await row.locator('.agent-for').waitFor();
