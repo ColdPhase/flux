@@ -51,14 +51,14 @@ export function RuntimeSection() {
   }, [load]);
   // While the runtime is being removed, the worker signs out and frees the slot; look again shortly.
   useEffect(() => {
-    if (status?.binding?.state !== 'releasing') return;
+    if (status?.binding?.state !== 'releasing' && !status?.auth?.claude_code) return;
     const timer = window.setTimeout(() => load(), 2000);
     return () => window.clearTimeout(timer);
   }, [status, load]);
 
   const act = async (key: string, action: () => Promise<AgentRuntimeStatus>, fallback: string) => {
     setBusy(key); setError('');
-    try { setStatus(await action()); setConfirmRemove(false); } catch (cause) { setError(failure(cause, fallback)); } finally { setBusy(''); }
+    try { setStatus(await action()); setConfirmRemove(false); } catch (cause) { setError(failure(cause, fallback)); load(); } finally { setBusy(''); }
   };
 
   if (failed) return <section className="nset__sec rt" aria-labelledby="rt-h"><h3 id="rt-h">Claude Code in Flux</h3><p className="nset__note">This part couldn’t load. <button type="button" className="ui-link" onClick={() => { setFailed(false); load(); }}>Try again</button></p></section>;
@@ -79,6 +79,7 @@ export function RuntimeSection() {
   const binding = status.binding;
   const signedIn = connection?.state === 'signed_in';
   const removing = binding?.state === 'releasing';
+  const authPending = status.auth?.claude_code;
   const again = binding?.state === 'sign_in_again' || connection?.state === 'sign_in_again';
   const release = status.lastRelease;
 
@@ -100,9 +101,10 @@ export function RuntimeSection() {
         <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Your runtime was removed, but Anthropic didn’t confirm the sign-out.</b> Flux deleted the login anyway. End the session in your Claude account or Anthropic Console settings to be sure.</span></p>
       ) : null}
       {!binding && release && release.reason !== 'owner' ? (
-        <p className="nset__note">Your runtime was removed on {dateTime(release.at)} {release.reason === 'idle' ? 'because it wasn’t used for a while' : 'by the person who runs this server'}. It signed out first.</p>
+        <p className="nset__note">Your runtime was removed on {dateTime(release.at)} {release.reason === 'idle' ? 'because it wasn’t used for a while' : release.reason === 'auth_recovery' ? 'to recover safely after an unconfirmed operation; both clients need to sign in again' : 'by the person who runs this server'}. It signed out first.</p>
       ) : null}
-      {removing ? <p className="nset__note" role="status"><Spinner /> Signing out and removing your runtime…</p> : null}
+      {removing ? <p className="nset__note" role="status"><Spinner /> {binding?.recovery ? 'Recovering your runtime after an unconfirmed operation. Access is disabled; both clients may need to sign in again after cleanup.' : 'Signing out and removing your runtime…'}</p> : null}
+      {authPending ? <p className="nset__note" role="status"><Spinner /> {authPending === 'signing_out' ? 'Sign-out requested. Access is disabled while Claude Code signs out and its files are removed.' : authPending === 'signing_in' ? 'A sign-in is still in progress.' : 'Checking the current sign-in…'}</p> : null}
       {signedIn && connection ? <SignedIn connection={connection} /> : null}
       {!signedIn && !removing ? (
         status.pool === 'full' && !binding
@@ -112,9 +114,9 @@ export function RuntimeSection() {
       {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
       {removing ? null : (
         <div className="aset__actions rt-actions">
-          {!signedIn && !(status.pool === 'full' && !binding) ? <Link className="ui-btn ui-btn--primary" to="/settings/assistant/claude-code">{again ? 'Sign in again' : 'Sign in to Claude Code'}</Link> : null}
-          {signedIn ? <Button variant="secondary" busy={busy === 'check'} onClick={() => void act('check', () => checkRuntime('claude_code'), 'Couldn’t check. Try again.')}>Check sign-in</Button> : null}
-          {signedIn ? <Button variant="secondary" busy={busy === 'signout'} onClick={() => void act('signout', () => signOutRuntime('claude_code'), 'Couldn’t sign out. Nothing changed; try again.')}>Sign out</Button> : null}
+          {!signedIn && !authPending && !(status.pool === 'full' && !binding) ? <Link className="ui-btn ui-btn--primary" to="/settings/assistant/claude-code">{again ? 'Sign in again' : 'Sign in to Claude Code'}</Link> : null}
+          {signedIn && !authPending ? <Button variant="secondary" busy={busy === 'check'} onClick={() => void act('check', () => checkRuntime('claude_code'), 'Couldn’t check. Try again.')}>Check sign-in</Button> : null}
+          {signedIn ? <Button variant="secondary" busy={busy === 'signout'} onClick={() => void act('signout', () => signOutRuntime('claude_code'), 'Sign-out could not be confirmed. Access remains disabled while the runtime recovers; both clients may need to sign in again.')}>Sign out</Button> : null}
           {binding && !confirmRemove ? <Button variant="quiet" onClick={() => setConfirmRemove(true)}>Remove runtime…</Button> : null}
         </div>
       )}

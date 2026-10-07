@@ -17,10 +17,10 @@ const caps = { maxTurns: 10, wallClockSeconds: 300, idleSeconds: 60, maxAnswerBy
 const valid: Record<string, Record<string, unknown>> = {
   bind: { bindingId: binding() },
   status: {},
-  login: { bindingId: binding(), client: 'claude_code', method: 'console', cols: 80, rows: 24 },
+  login: { bindingId: binding(), bootId: randomUUID(), client: 'claude_code', method: 'console', cols: 80, rows: 24 },
   run: { bindingId: binding(), client: 'claude_code', runId: randomUUID(), prompt: 'Summarize the plan', runToken: token, tools: ['flux_get_doc', 'flux_list_docs'], caps },
   stop: { bindingId: binding(), runId: randomUUID() },
-  logout: { bindingId: binding(), client: 'codex' },
+  logout: { bindingId: binding(), bootId: randomUUID(), client: 'codex' },
   release: { bindingId: binding() },
 };
 
@@ -42,7 +42,7 @@ describe('the supervisor\'s closed request set', () => {
   test('accepts exactly the seven requests with data-only fields', () => {
     assert.deepEqual([...SUPERVISOR_REQUESTS].sort(), ['bind', 'login', 'logout', 'release', 'run', 'status', 'stop']);
     for (const kind of SUPERVISOR_REQUESTS) assert.equal(parseSupervisorRequest(kind, valid[kind]).ok, true, kind);
-    assert.equal(parseSupervisorRequest('status', { bindingId: binding(), client: 'claude_code' }).ok, true);
+    assert.equal(parseSupervisorRequest('status', { bindingId: binding(), bootId: randomUUID(), client: 'claude_code' }).ok, true);
   });
 
   test('refuses any other request name', () => {

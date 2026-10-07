@@ -262,6 +262,18 @@ stop_runtime() {
   # shellcheck disable=SC2046
   compose_main --profile runtime rm -sf $(runtime_services) >/dev/null 2>&1 || warn "Could not remove every agent runtime container."
 }
+# Stop HTTP/worker admission before destructive cleanup, even if the database cannot answer.
+# Keep the durable block after any failure; a retry reuses its server-generated purge ID.
+runtime_prepare_cleanup() {
+  compose_main stop api worker >/dev/null || die "Could not stop runtime admission; cleanup was not started."
+  runtime_purge_id=
+  if docker volume inspect "${PROJECT}_pgdata" >/dev/null 2>&1; then
+    runtime_purge_reply=$(image_op runtime-begin-purge) || die "Runtime cleanup admission could not be fenced. API and worker remain stopped; repair the database and retry."
+    runtime_purge_id=$(printf '%s\n' "$runtime_purge_reply" | sed -n 's/^FLUX_RUNTIME_PURGE //p')
+    printf '%s\n' "$runtime_purge_id" | grep -Eq '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' \
+      || die "Runtime cleanup fence was not confirmed. API and worker remain stopped."
+  fi
+}
 # Best effort before slot volumes are deleted: each CLI signs out (the vendor ends the session where it
 # can), each binding directory is deleted and each supervisor confirms an empty /data.
 runtime_sign_out() {
@@ -487,6 +499,7 @@ cmd_reset() {
   check_owner "$DEV_PROJECT"
   confirm "Delete ALL data (database, files, agent runtime logins) of Compose projects $PROJECT and $DEV_PROJECT?" \
     || { say "Cancelled; nothing was deleted."; return 1; }
+  runtime_prepare_cleanup
   runtime_sign_out
   compose_main --profile dev --profile test --profile ui --profile runtime down -v --remove-orphans
   compose_dev down -v --remove-orphans
@@ -518,6 +531,7 @@ cmd_clean() {
   check_owner "$DEV_PROJECT"
   confirm "Remove the containers, volumes (ALL data, agent runtime logins included) and built images of $PROJECT and $DEV_PROJECT?" \
     || { say "Cancelled; nothing was removed."; return 1; }
+  runtime_prepare_cleanup
   runtime_sign_out
   compose_main --profile dev --profile test --profile ui --profile runtime down -v --remove-orphans
   compose_dev down -v --remove-orphans
@@ -1037,11 +1051,12 @@ cmd_runtime() {
       parse_yes "$@"
       confirm "Sign out and delete EVERY agent runtime login of $PROJECT (slot volumes and the Claude Code tools volume)?" \
         || { say "Cancelled; nothing was changed."; return 1; }
+      runtime_prepare_cleanup
       runtime_sign_out
       # shellcheck disable=SC2046
-      compose_main --profile runtime rm -sf $(runtime_services) >/dev/null 2>&1 || true
+      compose_main --profile runtime rm -sf $(runtime_services) >/dev/null 2>&1 || die "Runtime containers could not all be removed; admission remains blocked. Repair and retry purge."
       for volume in $(runtime_volumes); do docker volume rm "$volume" >/dev/null || die "Could not remove $volume; is a runtime container still using it?"; done
-      if docker volume inspect "${PROJECT}_pgdata" >/dev/null 2>&1; then image_op runtime-forget "$runtime_sign_out_result"; fi
+      if [ -n "$runtime_purge_id" ]; then image_op runtime-forget "$runtime_purge_id" "$runtime_sign_out_result"; fi
       say "The agent runtime of $PROJECT is purged. Set FLUX_AGENT_RUNTIME= (empty) in ${ENV_FILE#"$FLUX_ROOT"/} so ./flux up keeps it off." ;;
     *) die "usage: ./flux runtime status | release runtime-<n> | purge [-y]" ;;
   esac

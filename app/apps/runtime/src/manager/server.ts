@@ -78,7 +78,7 @@ export function createManagerServer(config: ManagerConfig): Server {
     const started = Date.now();
     const outcome = await call(target, parsed.request);
     log({ event: 'request', slot, kind: parsed.request.kind, outcome: outcome.ok ? 'ok' : outcome.code, ms: Date.now() - started });
-    if (outcome.ok) json(res, 200, { result: outcome.result });
+    if (outcome.ok) json(res, 200, { bootId: outcome.bootId, result: outcome.result });
     else json(res, STATUS[outcome.code] ?? 502, { error: outcome.code });
   });
   server.on('upgrade', (req, socket, head) => relayConsole({ secret: config.secret, slots: config.slots, log }, req, socket, head));

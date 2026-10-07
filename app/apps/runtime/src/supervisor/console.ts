@@ -42,13 +42,20 @@ export function serveConsole(config: SupervisorConfig, lane: ConsoleLane, socket
   async function start(request: LoginRequest) {
     send({ t: 'accepted', kind: 'login', bootId: config.bootId });
     if (!config.enabled.includes(request.client)) { refuse('client_off'); return; }
-    const binding = await openBinding(config.dataDir, request.bindingId);
-    if (!binding.ok) { refuse(binding.code); return; }
-    if (!(await installedClient(config, request.client))) { refuse('not_installed'); return; }
     for (const waitUntil = Date.now() + LANE_WAIT_MS; lane.busy && link.open && Date.now() < waitUntil;) await new Promise((resume) => setTimeout(resume, 100));
     if (!link.open) return;
-    const ran = lane.tryRun(() => login(request, binding.dir));
+    const ran = lane.tryRun(async () => {
+      // Directory/boot checked inside the admitted lane, never captured before
+      // cancellation/release could drain and remove the previous binding.
+      if (!link.open) return;
+      if (request.bootId !== config.bootId) { refuse('invalid_request'); return; }
+      const binding = await openBinding(config.dataDir, request.bindingId);
+      if (!binding.ok) { refuse(binding.code); return; }
+      if (!(await installedClient(config, request.client))) { refuse('not_installed'); return; }
+      await login(request, binding.dir);
+    });
     if (!ran) refuse('busy');
+    else await ran;
   }
 
   function login(request: LoginRequest, dir: string): Promise<void> {

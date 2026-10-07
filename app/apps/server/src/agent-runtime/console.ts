@@ -4,7 +4,7 @@ import {
   AGENT_RUNTIME_CONSOLE_INPUT_CHARS, AGENT_RUNTIME_CONSOLE_LIFETIME_MS, AGENT_RUNTIME_CONSOLE_SIZE,
   type AgentRuntimeConsoleClientMessage, type AgentRuntimeConsoleError, type AgentRuntimeConsoleServerMessage, type ClaudeCodeSignInMethod,
 } from '@flux/contracts';
-import type { AgentRuntimeUseCases } from '@flux/core';
+import type { AgentRuntimeUseCases, RuntimeAuthOperation } from '@flux/core';
 import {
   ConsoleFrameReader, ConsoleLink, encodeInput, encodeOpen, encodeResize, openManagerConsole, type ConsoleControl,
 } from '@flux/runtime-protocol';
@@ -19,7 +19,7 @@ import {
 //    ticket are refused before anything reaches the runtime.
 // 3. The API names the owner's own slot from the database and opens the console through runtime-manager.
 //    It relays the CLI's output as binary messages and the owner's input as frames, in memory only. It
-//    never logs a message. A newer console of the same owner replaces an older one.
+//    never logs a message. Durable admission refuses overlapping auth; uncertain work needs full recovery.
 // 4. When the CLI ends, the supervisor reads its status; that alone is recorded (display facts) and
 //    sent to the browser as the final message.
 
@@ -27,10 +27,10 @@ const TICKET_TTL_MS = 60_000;
 const ATTACH_WITHIN_MS = 10_000;
 
 export interface ConsoleTicket { ownerUserId: string; client: 'claude_code'; method: ClaudeCodeSignInMethod }
+export interface VerifiedConsoleTicket extends ConsoleTicket { nonce: { digest: string; expiresAt: Date } }
 
 export class ConsoleTickets {
   private readonly key: Buffer;
-  private readonly used = new Map<string, number>();
 
   constructor(secret: string, private readonly now: () => number = Date.now) {
     this.key = Buffer.from(hkdfSync('sha256', secret, 'flux-agent-runtime', 'console ticket v1', 32));
@@ -46,8 +46,8 @@ export class ConsoleTickets {
     return { ticket: `${body}.${this.sign(body)}`, expiresAt: new Date(expires).toISOString() };
   }
 
-  /** The ticket's console, only for its own owner and session, once, before it expires. */
-  redeem(value: unknown, ownerUserId: string, sessionId: string): ConsoleTicket | null {
+  /** Verify owner/session/method/expiry; shared PostgreSQL admission enforces one-use. */
+  redeem(value: unknown, ownerUserId: string, sessionId: string): VerifiedConsoleTicket | null {
     if (typeof value !== 'string' || value.length > 512) return null;
     const [body, mac, ...rest] = value.split('.');
     if (!body || !mac || rest.length) return null;
@@ -57,12 +57,13 @@ export class ConsoleTickets {
     let fields: { o?: unknown; s?: unknown; c?: unknown; m?: unknown; e?: unknown; n?: unknown };
     try { fields = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as typeof fields; } catch { return null; }
     const now = this.now();
-    for (const [nonce, expires] of this.used) if (expires < now) this.used.delete(nonce);
-    if (typeof fields.e !== 'number' || fields.e < now || typeof fields.n !== 'string' || this.used.has(fields.n)) return null;
+    if (typeof fields.e !== 'number' || !Number.isFinite(fields.e) || fields.e <= now
+      || typeof fields.n !== 'string' || !/^[A-Za-z0-9_-]{16}$/.test(fields.n)) return null;
     if (fields.o !== ownerUserId || fields.s !== ConsoleTickets.sessionTag(sessionId) || fields.c !== 'claude_code') return null;
     if (fields.m !== 'claude_account' && fields.m !== 'console' && fields.m !== 'sso') return null;
-    this.used.set(fields.n, fields.e);
-    return { ownerUserId, client: 'claude_code', method: fields.m };
+    // Pure verification. Only the shared PostgreSQL claim consumes the digest.
+    return { ownerUserId, client: 'claude_code', method: fields.m,
+      nonce: { digest: createHash('sha256').update(fields.n).digest('hex'), expiresAt: new Date(fields.e) } };
   }
 }
 
@@ -113,14 +114,18 @@ export function serveBrowserConsole(socket: WebSocket, owner: { userId: string; 
   let phase: 'attach' | 'connecting' | 'relay' | 'done' = 'attach';
   let finishing = false;
   let link: ConsoleLink<'from_supervisor'> | null = null;
-  let attachment: { ticket: ConsoleTicket; bindingId: string } | null = null;
+  let attachment: { ticket: VerifiedConsoleTicket; operation: RuntimeAuthOperation; actualBoot: string | null } | null = null;
+  let operation: RuntimeAuthOperation | null = null;
+  let settled = false;
+  const isEnded = () => phase === 'done';
   const timers: ReturnType<typeof setTimeout>[] = [];
   const send = (message: AgentRuntimeConsoleServerMessage) => { if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(message)); };
   const close = (code: number, reason: string) => {
-    if (phase === 'done') return;
+    if (isEnded()) return;
     phase = 'done';
     for (const timer of timers) clearTimeout(timer);
     link?.destroy();
+    if (operation && !settled) void deps.runtime.cancelAuth(operation).catch(() => undefined);
     if (deps.open.get(owner.userId) === end) deps.open.delete(owner.userId);
     if (socket.readyState === socket.OPEN || socket.readyState === socket.CONNECTING) socket.close(code, reason);
   };
@@ -129,20 +134,27 @@ export function serveBrowserConsole(socket: WebSocket, owner: { userId: string; 
 
   timers.push(setTimeout(() => { if (phase === 'attach') close(CONSOLE_CLOSE.invalid, 'attach'); }, ATTACH_WITHIN_MS));
   timers.push(setTimeout(() => fail('ended', CONSOLE_CLOSE.ended), (deps.lifetimeMs ?? AGENT_RUNTIME_CONSOLE_LIFETIME_MS) + 30_000));
-  const revalidate = setInterval(() => { void deps.sessionAlive().then((alive) => { if (!alive) fail('ended', CONSOLE_CLOSE.refused); }, () => undefined); }, 30_000);
+  const revalidate = setInterval(() => {
+    void deps.sessionAlive().then(async alive => {
+      if (!alive || (operation && !await deps.runtime.renewAuth(operation))) fail('ended', CONSOLE_CLOSE.refused);
+    }).catch(() => fail('unavailable', CONSOLE_CLOSE.unavailable));
+  }, 20_000);
   timers.push(revalidate as unknown as ReturnType<typeof setTimeout>);
 
-  async function connect(ticket: ConsoleTicket, cols: number, rows: number) {
+  async function connect(ticket: VerifiedConsoleTicket, cols: number, rows: number) {
     phase = 'connecting';
+    let target: { slot: string; operation: RuntimeAuthOperation };
+    try { target = await deps.runtime.beginConsole({ ownerUserId: owner.userId, sessionId: owner.sessionId }, ticket.client, ticket.nonce); }
+    catch (error) { fail((error as { code?: string }).code === 'AGENT_RUNTIME_AUTH_BUSY' ? 'busy' : 'refused', CONSOLE_CLOSE.refused); return; }
+    operation = target.operation;
+    if (phase !== 'connecting') { await deps.runtime.cancelAuth(target.operation); return; }
+    // Local notifications only: PostgreSQL admission already proved the previous work settled.
     deps.open.get(owner.userId)?.();
     deps.open.set(owner.userId, end);
-    let target: { slot: string; bindingId: string };
-    try { target = await deps.runtime.consoleTarget(owner.userId, ticket.client); } catch { fail('refused', CONSOLE_CLOSE.refused); return; }
-    if (phase !== 'connecting') return;
     const upgrade = await openManagerConsole(deps.manager, target.slot);
     if (!upgrade.ok) { fail('unavailable', CONSOLE_CLOSE.unavailable); return; }
     if (phase !== 'connecting') { upgrade.socket.destroy(); return; }
-    attachment = { ticket, bindingId: target.bindingId };
+    attachment = { ticket, operation: target.operation, actualBoot: null };
     const current = new ConsoleLink(upgrade.socket, new ConsoleFrameReader('from_supervisor'));
     link = current;
     current.onFrame((frame) => {
@@ -151,13 +163,19 @@ export function serveBrowserConsole(socket: WebSocket, owner: { userId: string; 
     });
     current.onEnd(() => { if (phase !== 'done' && !finishing) fail('ended', CONSOLE_CLOSE.ended); });
     current.start(upgrade.head);
-    current.send(encodeOpen({ bindingId: target.bindingId, client: ticket.client, method: ticket.method, cols, rows }));
+    current.send(encodeOpen({ bindingId: target.operation.bindingId, bootId: target.operation.bootId, client: ticket.client, method: ticket.method, cols, rows }));
     phase = 'relay';
     send({ t: 'state', state: 'starting' });
   }
 
   async function control(frame: ConsoleControl) {
-    if (frame.t === 'accepted' || frame.t === 'step') return;
+    if (phase === 'done') return;
+    if (frame.t === 'accepted') {
+      if (!attachment || frame.bootId !== attachment.operation.bootId) { fail('unavailable', CONSOLE_CLOSE.unavailable); return; }
+      attachment.actualBoot = frame.bootId;
+      return;
+    }
+    if (frame.t === 'step') return;
     if (frame.t === 'console') { send({ t: 'state', state: frame.state === 'started' ? 'running' : 'checking' }); return; }
     if (frame.t === 'relay_error') { fail(frame.code === 'busy' ? 'busy' : 'unavailable', CONSOLE_CLOSE.unavailable); return; }
     if (frame.t === 'error') { fail(frame.code === 'busy' ? 'busy' : frame.code === 'internal' || frame.code === 'not_installed' ? 'unavailable' : 'refused', CONSOLE_CLOSE.unavailable); return; }
@@ -165,9 +183,11 @@ export function serveBrowserConsole(socket: WebSocket, owner: { userId: string; 
     if (result.kind !== 'login' || !attachment || result.client !== attachment.ticket.client) { fail('unavailable', CONSOLE_CLOSE.unavailable); return; }
     finishing = true;
     try {
-      const status = await deps.runtime.recordSignIn(owner.userId, { bindingId: attachment.bindingId, client: result.client, method: attachment.ticket.method },
-        { signedIn: result.status.signedIn, facts: result.status.facts });
-      send({ t: 'done', ended: result.ended, signedIn: status.connections[result.client]?.state === 'signed_in', status });
+      const completed = await deps.runtime.recordSignIn(owner.userId, { operation: attachment.operation, method: attachment.ticket.method },
+        { signedIn: result.status.signedIn, facts: result.status.facts, bootId: attachment.actualBoot ?? '' });
+      settled = completed.disposition === 'accepted';
+      if (isEnded()) return;
+      send({ t: 'done', ended: result.ended, disposition: completed.disposition, signedIn: completed.signedIn, status: completed.status });
       close(CONSOLE_CLOSE.done, 'done');
     } catch {
       fail('unavailable', CONSOLE_CLOSE.unavailable);

@@ -1,4 +1,5 @@
 import type { AgentRuntimeBindingState, AgentRuntimeClient, AgentRuntimeConnectionState, AgentRuntimeReleaseReason, AgentRuntimeSignInMethod } from '@flux/contracts';
+import type { RuntimeAuthAdmission, RuntimeAuthClaim, RuntimeAuthOperation } from './auth.js';
 
 // Ports of the `runtime` transport's use cases (F-022 AIM-3). The manager port is implemented over the
 // manager's HTTP API (@flux/runtime-protocol); the store over PostgreSQL (@flux/db). Every call to the
@@ -19,9 +20,9 @@ export interface RuntimeManagerPort {
   slots(): Promise<RuntimeCall<RuntimeSlotSighting[]>>;
   bind(slot: string, bindingId: string): Promise<RuntimeCall<void>>;
   /** The CLI's own status (`claude auth status`) in the owner's binding directory. */
-  status(slot: string, bindingId: string, client: AgentRuntimeClient): Promise<RuntimeCall<RuntimeClientStatus>>;
+  status(slot: string, bindingId: string, client: AgentRuntimeClient, bootId: string): Promise<RuntimeCall<RuntimeClientStatus & { bootId: string }>>;
   /** The CLI's own logout; the supervisor deletes that CLI's files whatever its outcome. */
-  logout(slot: string, bindingId: string, client: AgentRuntimeClient): Promise<RuntimeCall<{ logout: string }>>;
+  logout(slot: string, bindingId: string, client: AgentRuntimeClient, bootId: string): Promise<RuntimeCall<{ logout: string; bootId: string }>>;
   /** Signs out each CLI, deletes the directory, confirms /data is empty; the supervisor then exits. */
   release(slot: string, bindingId: string): Promise<RuntimeCall<{ dataEmpty: boolean; logoutFailed: boolean }>>;
 }
@@ -64,6 +65,7 @@ export interface RuntimeConnectionRow {
 
 /** A sign-in's outcome as the CLI's status reported it, with the keyed fingerprint of its account. */
 export interface RuntimeSignInRecord {
+  operation: RuntimeAuthOperation;
   ownerUserId: string;
   bindingId: string;
   client: AgentRuntimeClient;
@@ -85,9 +87,14 @@ export interface RuntimeOwnerView {
   lastRelease: { reason: AgentRuntimeReleaseReason; at: Date; signOutFailed: boolean } | null;
   slots: { ready: number; held: number; total: number };
   commercialTerms: { agreedOn: string; recordedAt: Date } | null;
+    auth?: { client: AgentRuntimeClient; kind: 'check' | 'logout' | 'console' }[];
 }
 
 export interface AgentRuntimeStore {
+  claimAuth(input: RuntimeAuthClaim): Promise<RuntimeAuthAdmission>;
+  renewAuth(operation: RuntimeAuthOperation, leaseMs: number): Promise<boolean>;
+  recoverAuth(operation: RuntimeAuthOperation): Promise<boolean>;
+  recoverAbandonedAuth(): Promise<number>;
   ownerView(ownerUserId: string): Promise<RuntimeOwnerView>;
   /** Atomically gives the owner their live binding, or a new one on a `ready` slot (that slot becomes `held`). */
   reserve(ownerUserId: string, bindingId: string): Promise<ReserveOutcome>;
@@ -109,7 +116,7 @@ export interface AgentRuntimeStore {
    */
   recordSignIn(record: RuntimeSignInRecord): Promise<boolean>;
   /** Signed out in Flux after the CLI's logout ran; `failed`: the logout itself failed. */
-  recordSignOut(ownerUserId: string, bindingId: string, client: AgentRuntimeClient, failed: boolean): Promise<void>;
+  recordSignOut(operation: RuntimeAuthOperation, failed: boolean): Promise<boolean>;
   dismissAccountNotice(ownerUserId: string, client: AgentRuntimeClient): Promise<void>;
   // The worker's reconciliation.
   slotsWithBindings(): Promise<{ slot: RuntimeSlotRow; binding: RuntimeBindingRow | null }[]>;

@@ -1,5 +1,5 @@
 import { isSlotReport, isSupervisorResult, SUPERVISOR_ERRORS, type SlotReport, type SupervisorResult } from './frames.js';
-import { RUNTIME_PORTS, SLOT_NAME } from './names.js';
+import { RUNTIME_PORTS, SLOT_NAME, UUID } from './names.js';
 import { requestBody, type SupervisorRequest } from './requests.js';
 import { arrayOf, object, oneOf, str, type Check } from './shape.js';
 import { SUPERVISOR_TIMEOUTS_MS } from './supervisor-client.js';
@@ -25,10 +25,10 @@ const isManagedSlot: Check<ManagedSlot> = (value): value is ManagedSlot =>
   object({ slot: str(SLOT_NAME, 12), reachable: exactly(true), report: isSlotReport })(value)
   || object({ slot: str(SLOT_NAME, 12), reachable: exactly(false), error: managerError })(value);
 export const isManagerSlots = object({ slots: arrayOf(isManagedSlot, 999) });
-export const isManagerResult = object({ result: isSupervisorResult });
+export const isManagerResult = object({ bootId: str(UUID, 36), result: isSupervisorResult });
 export const isManagerError = object({ error: managerError });
 
-export type ManagerOutcome = { ok: true; result: SupervisorResult } | { ok: false; code: ManagerError };
+export type ManagerOutcome = { ok: true; bootId: string; result: SupervisorResult } | { ok: false; code: ManagerError };
 
 export interface RuntimeManagerClient {
   slots(): Promise<{ ok: true; slots: ManagedSlot[] } | { ok: false; code: ManagerError }>;
@@ -75,7 +75,7 @@ export function createRuntimeManagerClient({ url, secret, fetch: fetchImpl = fet
       }, SUPERVISOR_TIMEOUTS_MS[request.kind] + 5_000);
       if (!answer.ok) return answer;
       if (!isManagerResult(answer.body) || answer.body.result.kind !== request.kind) return { ok: false, code: 'protocol' };
-      return { ok: true, result: answer.body.result };
+      return { ok: true, bootId: answer.body.bootId, result: answer.body.result };
     },
   };
 }

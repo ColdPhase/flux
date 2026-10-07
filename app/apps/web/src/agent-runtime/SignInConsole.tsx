@@ -18,7 +18,7 @@ import { consoleSocketUrl } from './api';
 export interface ConsoleOutcome {
   signedIn: boolean;
   ended: 'exited' | 'timed_out' | null;
-  error: AgentRuntimeConsoleError | 'cancelled' | null;
+  error: AgentRuntimeConsoleError | 'cancelled' | 'superseded' | null;
   status: AgentRuntimeStatus | null;
 }
 
@@ -99,7 +99,8 @@ export default function SignInConsole({ ticket, methodTitle, onEnd }: { ticket: 
       let message: AgentRuntimeConsoleServerMessage;
       try { message = JSON.parse(String(event.data)) as AgentRuntimeConsoleServerMessage; } catch { return; }
       if (message.t === 'state') setPhase(message.state);
-      else if (message.t === 'done') finish({ signedIn: message.signedIn, ended: message.ended, error: null, status: message.status });
+      else if (message.t === 'done') finish({ signedIn: message.disposition === 'accepted' && message.signedIn, ended: message.ended,
+        error: message.disposition === 'superseded' ? 'superseded' : null, status: message.status });
       else finish({ signedIn: false, ended: null, error: message.code, status: null });
     });
     socket.addEventListener('close', () => finish({ signedIn: false, ended: null, error: cancelled.current ? 'cancelled' : 'ended', status: null }));

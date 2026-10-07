@@ -5,6 +5,10 @@ import {
 import { ConflictError, ServiceUnavailableError } from '../access/errors.js';
 import { clientAvailability, type AgentRuntimeConfig } from './config.js';
 import type { AgentRuntimeStore, RuntimeBindingRow, RuntimeClientStatus, RuntimeConnectionRow, RuntimeManagerPort } from './ports.js';
+import {
+  RUNTIME_AUTH_COMMAND_LIFETIME_MS, RUNTIME_AUTH_CONSOLE_LIFETIME_MS, RUNTIME_AUTH_LEASE_MS,
+  type RuntimeAuthActor, type RuntimeAuthKind, type RuntimeAuthOperation,
+} from './auth.js';
 
 // The owner's runtime (F-022 "One slot per owner"). The caller is always the session's own user: no
 // input selects an owner, a slot or a binding, so one owner can never reach, start, inspect or sign in
@@ -20,6 +24,7 @@ function bindingView(binding: RuntimeBindingRow, idleDays: number | null) {
   const since = binding.lastUsedAt ?? binding.createdAt;
   return {
     state: binding.state,
+    ...(binding.releaseReason === 'auth_recovery' ? { recovery: true as const } : {}),
     boundAt: binding.createdAt.toISOString(),
     lastUsedAt: binding.lastUsedAt?.toISOString() ?? null,
     idleReleaseAt: idleDays && binding.state === 'active' ? new Date(since.getTime() + idleDays * DAY).toISOString() : null,
@@ -56,14 +61,18 @@ export interface AgentRuntimeUseCases {
   remove(ownerUserId: string): Promise<AgentRuntimeStatus>;
   /** Where the owner's sign-in console runs: their own slot, bound first if needed. */
   consoleTarget(ownerUserId: string, client: AgentRuntimeClient): Promise<{ slot: string; bindingId: string }>;
+  beginConsole(actor: RuntimeAuthActor, client: AgentRuntimeClient, nonce: { digest: string; expiresAt: Date }): Promise<{ slot: string; operation: RuntimeAuthOperation }>;
+  renewAuth(operation: RuntimeAuthOperation): Promise<boolean>;
+  cancelAuth(operation: RuntimeAuthOperation): Promise<void>;
   /** Records the CLI's own status after the console ended; only that can make the connection signed in. */
-  recordSignIn(ownerUserId: string, target: { bindingId: string; client: AgentRuntimeClient; method: AgentRuntimeSignInMethod | null }, status: RuntimeClientStatus): Promise<AgentRuntimeStatus>;
+  recordSignIn(ownerUserId: string, target: { operation: RuntimeAuthOperation; method: AgentRuntimeSignInMethod | null }, status: RuntimeClientStatus & { bootId: string }): Promise<RuntimeAuthCompletion>;
   /** Reads the CLI's own status again (a console closed before its result, or a change at the vendor). */
-  check(ownerUserId: string, client: AgentRuntimeClient): Promise<AgentRuntimeStatus>;
+  check(ownerUserId: string, client: AgentRuntimeClient, sessionId: string): Promise<AgentRuntimeStatus>;
   /** *Sign out*: the CLI's own logout, then its files are deleted (even when the logout failed). */
-  signOut(ownerUserId: string, client: AgentRuntimeClient): Promise<AgentRuntimeStatus>;
+  signOut(ownerUserId: string, client: AgentRuntimeClient, sessionId: string): Promise<AgentRuntimeStatus>;
   dismissAccountNotice(ownerUserId: string, client: AgentRuntimeClient): Promise<AgentRuntimeStatus>;
 }
+export interface RuntimeAuthCompletion { disposition: 'accepted' | 'superseded'; status: AgentRuntimeStatus; signedIn: boolean }
 
 export interface AgentRuntimeOptions {
   /**
@@ -88,7 +97,7 @@ export function agentRuntimeUseCases(config: AgentRuntimeConfig, store: AgentRun
       throw new ConflictError('This program is not available in the agent runtime on this instance', AGENT_RUNTIME_ERRORS.clientUnavailable);
     }
   };
-  const unavailable = () => new ServiceUnavailableError('Your agent runtime could not be reached. Nothing changed; try again shortly', AGENT_RUNTIME_ERRORS.unavailable);
+  const unavailable = () => new ServiceUnavailableError('The auth operation could not be confirmed. Runtime use is disabled while its storage is safely recovered; both clients may need to sign in again', AGENT_RUNTIME_ERRORS.unavailable);
 
   async function status(ownerUserId: string): Promise<AgentRuntimeStatus> {
     if (!enabled) return off();
@@ -105,6 +114,7 @@ export function agentRuntimeUseCases(config: AgentRuntimeConfig, store: AgentRun
       binding: view.binding ? bindingView(view.binding, config.idleDays) : null,
       lastRelease: view.lastRelease && { reason: view.lastRelease.reason, at: view.lastRelease.at.toISOString(), signOutFailed: view.lastRelease.signOutFailed },
       connections,
+      auth: Object.fromEntries((view.auth ?? []).map(a => [a.client, a.kind === 'console' ? 'signing_in' : a.kind === 'logout' ? 'signing_out' : 'checking'])),
     };
   }
 
@@ -131,18 +141,35 @@ export function agentRuntimeUseCases(config: AgentRuntimeConfig, store: AgentRun
   /** The owner's live, active binding, or a conflict that says why there is none. */
   async function activeBinding(ownerUserId: string): Promise<RuntimeBindingRow> {
     const binding = (await store.ownerView(ownerUserId)).binding;
-    if (binding?.state === 'releasing') throw new ConflictError('Your agent runtime is being removed', AGENT_RUNTIME_ERRORS.releasing);
+    if (binding?.state === 'releasing') throw new ConflictError(binding.releaseReason === 'auth_recovery'
+      ? 'Your runtime is waiting for confirmed cleanup; both clients may need to sign in again' : 'Your agent runtime is being removed', AGENT_RUNTIME_ERRORS.releasing);
     if (!binding || binding.state !== 'active') throw new ConflictError('Set up your agent runtime first', AGENT_RUNTIME_ERRORS.unavailable);
     return binding;
   }
 
-  async function record(ownerUserId: string, target: { bindingId: string; client: AgentRuntimeClient; method: AgentRuntimeSignInMethod | null }, reported: RuntimeClientStatus) {
+  async function claim(actor: RuntimeAuthActor, client: AgentRuntimeClient, kind: RuntimeAuthKind, nonce?: { digest: string; expiresAt: Date }) {
+    const binding = await activeBinding(actor.ownerUserId);
+    const admitted = await store.claimAuth({ ...actor, bindingId: binding.id, client, kind, nonce,
+      leaseMs: RUNTIME_AUTH_LEASE_MS, lifetimeMs: kind === 'console' ? RUNTIME_AUTH_CONSOLE_LIFETIME_MS : RUNTIME_AUTH_COMMAND_LIFETIME_MS });
+    if (admitted.kind === 'busy') throw new ConflictError('Another auth operation is still using your runtime', 'AGENT_RUNTIME_AUTH_BUSY');
+    if (admitted.kind === 'recovery') throw new ConflictError('Your runtime is waiting for confirmed cleanup; both clients may need to sign in again', 'AGENT_RUNTIME_AUTH_RECOVERY');
+    if (admitted.kind !== 'claimed') throw new ConflictError('This auth operation is no longer current', 'AGENT_RUNTIME_AUTH_SUPERSEDED');
+    return { binding, operation: admitted.operation };
+  }
+  async function record(ownerUserId: string, target: { operation: RuntimeAuthOperation; method: AgentRuntimeSignInMethod | null }, reported: RuntimeClientStatus & { bootId: string }) {
+    const operation = target.operation;
+    if (operation.ownerUserId !== ownerUserId || operation.bootId !== reported.bootId) {
+      await store.recoverAuth(operation);
+      return false;
+    }
     const facts = reported.signedIn && reported.facts ? reported.facts : null;
-    await store.recordSignIn({
-      ownerUserId, bindingId: target.bindingId, client: target.client, method: target.method, signedIn: reported.signedIn,
+    const accepted = await store.recordSignIn({
+      operation, ownerUserId, bindingId: operation.bindingId, client: operation.client, method: target.method, signedIn: reported.signedIn,
       facts: facts && { authMethod: facts.authMethod, plan: facts.plan, accountLabel: facts.accountLabel },
       fingerprint: facts?.accountDigest && options.accountFingerprint ? options.accountFingerprint(facts.accountDigest) : null,
     });
+    if (!accepted) await store.recoverAuth(operation);
+    return accepted;
   }
 
   return {
@@ -160,27 +187,40 @@ export function agentRuntimeUseCases(config: AgentRuntimeConfig, store: AgentRun
       const binding = await activeBinding(ownerUserId);
       return { slot: binding.slot, bindingId: binding.id };
     },
+    async beginConsole(actor, client, nonce) {
+      requireOn(); requireClient(client);
+      await bind(actor.ownerUserId);
+      const admitted = await claim(actor, client, 'console', nonce);
+      return { slot: admitted.binding.slot, operation: admitted.operation };
+    },
+    renewAuth: (operation) => store.renewAuth(operation, RUNTIME_AUTH_LEASE_MS),
+    async cancelAuth(operation) { await store.recoverAuth(operation); },
     async recordSignIn(ownerUserId, target, reported) {
       requireOn();
-      await record(ownerUserId, target, reported);
-      return status(ownerUserId);
+      const accepted = await record(ownerUserId, target, reported);
+      return { disposition: accepted ? 'accepted' : 'superseded', status: await status(ownerUserId), signedIn: accepted && reported.signedIn };
     },
-    async check(ownerUserId, client) {
+    async check(ownerUserId, client, sessionId) {
       requireOn();
       requireClient(client);
-      const binding = await activeBinding(ownerUserId);
-      const reported = await manager!.status(binding.slot, binding.id, client);
-      if (!reported.ok) throw unavailable();
-      await record(ownerUserId, { bindingId: binding.id, client, method: null }, reported.value);
-      return status(ownerUserId);
+      const { binding, operation } = await claim({ ownerUserId, sessionId }, client, 'check');
+      try {
+        const reported = await manager!.status(binding.slot, binding.id, client, operation.bootId);
+        if (!reported.ok) { await store.recoverAuth(operation); throw unavailable(); }
+        const accepted = await record(ownerUserId, { operation, method: null }, reported.value);
+        return { ...await status(ownerUserId), authCompletion: { kind: 'check' as const, disposition: accepted ? 'accepted' as const : 'superseded' as const } };
+      } catch (error) { await store.recoverAuth(operation); throw error; }
     },
-    async signOut(ownerUserId, client) {
+    async signOut(ownerUserId, client, sessionId) {
       requireOn();
-      const binding = await activeBinding(ownerUserId);
-      const outcome = await manager!.logout(binding.slot, binding.id, client);
-      if (!outcome.ok) throw unavailable();
-      await store.recordSignOut(ownerUserId, binding.id, client, outcome.value.logout !== 'ok');
-      return status(ownerUserId);
+      const { binding, operation } = await claim({ ownerUserId, sessionId }, client, 'logout');
+      try {
+        const outcome = await manager!.logout(binding.slot, binding.id, client, operation.bootId);
+        if (!outcome.ok || outcome.value.bootId !== operation.bootId) { await store.recoverAuth(operation); throw unavailable(); }
+        const accepted = await store.recordSignOut(operation, outcome.value.logout !== 'ok');
+        if (!accepted) await store.recoverAuth(operation);
+        return { ...await status(ownerUserId), authCompletion: { kind: 'logout' as const, disposition: accepted ? 'accepted' as const : 'superseded' as const } };
+      } catch (error) { await store.recoverAuth(operation); throw error; }
     },
     async dismissAccountNotice(ownerUserId, client) {
       requireOn();

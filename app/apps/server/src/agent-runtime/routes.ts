@@ -98,12 +98,12 @@ export async function agentRuntimeRoutes(app: FastifyInstance, { db, sessions, c
   });
 
   app.post(AGENT_RUNTIME_SIGN_OUT_PATH, async (request, reply) => {
-    const { user } = await sessions.requirePrincipal(request);
-    return reply.headers(noStore).send(await runtime.signOut(user.id, clientOf(request)));
+    const { user, sessionId } = await sessions.requirePrincipal(request);
+    return reply.headers(noStore).send(await runtime.signOut(user.id, clientOf(request), sessionId));
   });
   app.post(AGENT_RUNTIME_CHECK_PATH, async (request, reply) => {
-    const { user } = await sessions.requirePrincipal(request);
-    return reply.headers(noStore).send(await runtime.check(user.id, clientOf(request)));
+    const { user, sessionId } = await sessions.requirePrincipal(request);
+    return reply.headers(noStore).send(await runtime.check(user.id, clientOf(request), sessionId));
   });
   app.post(AGENT_RUNTIME_NOTICE_PATH, async (request, reply) => {
     const { user } = await sessions.requirePrincipal(request);

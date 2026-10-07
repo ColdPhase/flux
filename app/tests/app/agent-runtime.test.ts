@@ -119,8 +119,8 @@ describe('the PostgreSQL store under the owner use cases', () => {
     async slots() { return { ok: true, value: slots.map((slot) => ({ slot, reachable: true as const, bootId: boots.get(slot)!, bindings: [...dirs.get(slot)!], other: 0 })) }; },
     async bind(slot, id) { if (dirs.get(slot)!.length) return { ok: false, code: 'data_not_empty' }; dirs.get(slot)!.push(id); return { ok: true, value: undefined }; },
     async release(slot, id) { dirs.set(slot, dirs.get(slot)!.filter((dir) => dir !== id)); boots.set(slot, randomUUID()); return { ok: true, value: { dataEmpty: true, logoutFailed: true } }; },
-    async status() { return { ok: true, value: { signedIn: false, facts: null } }; },
-    async logout() { return { ok: true, value: { logout: 'ok' } }; },
+    async status(slot) { return { ok: true, value: { signedIn: false, facts: null, bootId: boots.get(slot)! } }; },
+    async logout(slot) { return { ok: true, value: { logout: 'ok', bootId: boots.get(slot)! } }; },
   };
   const store = agentRuntimeStore(db);
 
@@ -173,7 +173,8 @@ describe('purge records confirmed and unconfirmed vendor logout', () => {
           VALUES (${randomUUID()}, ${owner.id}, 'runtime-999', 'active')`);
         await tx.execute(sql`INSERT INTO agent_runtime_bindings(id, owner_user_id, slot, state, release_reason, release_requested_at, released_at, release_logout_failed)
           VALUES (${randomUUID()}, ${historicalOwner.id}, 'runtime-999', 'released', 'owner', now() - interval '1 day', now() - interval '1 day', true)`);
-        await agentRuntimeOperations(tx).forgetAll(confirmed);
+        const purgeId = await agentRuntimeOperations(tx).beginPurge();
+        await agentRuntimeOperations(tx).forgetAll(purgeId, confirmed);
         const view = await agentRuntimeStore(tx).ownerView(owner.id);
         assert.equal(view.binding, null);
         assert.equal(view.lastRelease?.reason, 'purge');

@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class RuntimePurgeTest(unittest.TestCase):
     def test_cleanup_outcome_reaches_persisted_history(self) -> None:
-        for scenario in ("ok", "retry", "failed", "missing-image", "start-failed", "no-volume"):
+        for scenario in ("ok", "retry", "failed", "missing-image", "start-failed", "no-volume", "db-unavailable", "invalid-fence", "remove-failed", "volume-failed"):
             with self.subTest(scenario=scenario), tempfile.TemporaryDirectory(prefix="flux-purge-test-") as directory:
                 base = Path(directory)
                 checkout = base / "checkout"
@@ -29,6 +29,12 @@ printf '%s\\n' "$*" >> "$FLUX_PURGE_TEST_LOG"
 case "$*" in
   'volume inspect -f '*) printf '%s\\n' "$FLUX_PURGE_TEST_CHECKOUT" ;;
   'volume ls '*) [ "$FLUX_PURGE_TEST_SCENARIO" = no-volume ] || printf 'flux-purge-test_runtime-1-data\\n' ;;
+  *'runtime-begin-purge')
+    [ "$FLUX_PURGE_TEST_SCENARIO" != db-unavailable ] || exit 1
+    if [ "$FLUX_PURGE_TEST_SCENARIO" = invalid-fence ]; then printf 'FLUX_RUNTIME_PURGE bad\n'
+    else printf 'FLUX_RUNTIME_PURGE 11111111-1111-4111-8111-111111111111\n'; fi ;;
+  *'rm -sf '*) [ "$FLUX_PURGE_TEST_SCENARIO" != remove-failed ] ;;
+  'volume rm '*) [ "$FLUX_PURGE_TEST_SCENARIO" != volume-failed ] ;;
   'image inspect '*) [ "$FLUX_PURGE_TEST_SCENARIO" != missing-image ] ;;
   *'config --services') printf 'runtime-1\\n' ;;
   *'up -d --no-deps '*) [ "$FLUX_PURGE_TEST_SCENARIO" != start-failed ] ;;
@@ -52,12 +58,23 @@ esac
                            FLUX_PURGE_TEST_ATTEMPT=str(base / "attempt"))
                 result = subprocess.run([str(checkout / "flux"), "runtime", "purge", "-y"],
                                         env=env, capture_output=True, text=True, timeout=10)
+                calls = log.read_text().splitlines()
+                stopped = next(i for i, call in enumerate(calls) if 'stop api worker' in call)
+                fenced = next(i for i, call in enumerate(calls) if 'runtime-begin-purge' in call)
+                self.assertLess(stopped, fenced, 'services stop before even a failed DB fence')
+                if scenario in ('db-unavailable', 'invalid-fence', 'remove-failed', 'volume-failed'):
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertFalse(any('runtime-forget' in call for call in calls), 'failure must leave admission blocked')
+                    if scenario in ('db-unavailable', 'invalid-fence'):
+                        self.assertFalse(any('cli.js sign-out-all' in call or 'volume rm ' in call for call in calls))
+                    continue
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 outcome = "confirmed" if scenario == "ok" else "unconfirmed"
                 calls = log.read_text().splitlines()
                 persisted = [call for call in calls if "runtime-forget" in call]
                 self.assertEqual(len(persisted), 1)
-                self.assertTrue(persisted[0].endswith(f"runtime-forget {outcome}"), persisted)
+                self.assertTrue(persisted[0].endswith(f"runtime-forget 11111111-1111-4111-8111-111111111111 {outcome}"), persisted)
+                self.assertTrue(all(fenced < i for i, call in enumerate(calls) if 'cli.js sign-out-all' in call or 'volume rm ' in call))
                 if scenario == "retry":
                     self.assertEqual(sum("cli.js sign-out-all" in call for call in calls), 2)
 

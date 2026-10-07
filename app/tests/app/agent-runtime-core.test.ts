@@ -4,7 +4,7 @@ import { describe, test } from 'node:test';
 import {
   agentRuntimeUseCases, loadAgentRuntimeConfig, parseAgentRuntimeClients, reconcileAgentRuntime, runtimePayer, DomainError,
   type AgentRuntimeConfig, type AgentRuntimeStore, type RuntimeBindingRow, type RuntimeClientStatus, type RuntimeConnectionRow, type RuntimeManagerPort,
-  type RuntimeSlotRow, type RuntimeSlotSighting,
+  type RuntimeSlotRow, type RuntimeSlotSighting, type RuntimeAuthOperation, type AgentRuntimeUseCases,
 } from '@flux/core';
 import { parseRuntimeSwitch } from '@flux/runtime-protocol';
 
@@ -50,13 +50,40 @@ function memoryStore() {
   const view = (c: Connection): RuntimeConnectionRow => ({ client: c.client, bindingId: c.bindingId, state: c.state, signInMethod: c.signInMethod,
     authMethod: c.authMethod, plan: c.plan, accountLabel: c.accountLabel, signedInAt: c.signedInAt, accountChangedAt: c.accountChangedAt,
     previousAccountLabel: c.previousAccountLabel, signedOutAt: c.signedOutAt, signOutFailed: c.signOutFailed });
+  // A deterministic port fixture; cross-process clock/CAS behavior is tested with real PostgreSQL.
+  const operations = new Map<string, RuntimeAuthOperation>();
+  const valid = (op: RuntimeAuthOperation) => operations.get(op.bindingId + op.client)?.operationId === op.operationId
+    && bindings.some(b => b.id === op.bindingId && b.ownerUserId === op.ownerUserId && b.state === 'active')
+    && slots.get(bindings.find(b => b.id === op.bindingId)?.slot ?? '')?.bootId === op.bootId;
   const store: AgentRuntimeStore = {
+    async claimAuth(input) {
+      const b = bindings.find(b => b.id === input.bindingId && b.ownerUserId === input.ownerUserId && b.state === 'active');
+      if (!b) return { kind: 'superseded' };
+      const key = b.id + input.client;
+      if (operations.has(key)) {
+        if (input.kind === 'logout') { await store.requestRelease({ ownerUserId: b.ownerUserId }, 'auth_recovery'); return { kind: 'recovery' }; }
+        return { kind: 'busy' };
+      }
+      const operation: RuntimeAuthOperation = { ...input, operationId: randomUUID(), revision: 1,
+        bootId: slots.get(b.slot)!.bootId!, leaseEndsAt: new Date(Date.now()+input.leaseMs), hardEndsAt: new Date(Date.now()+input.lifetimeMs) };
+      operations.set(key, operation);
+      if (input.kind === 'logout') for (const c of connections) if (c.bindingId === b.id && c.client === input.client) Object.assign(c, { state: 'signed_out', signedInAt: null });
+      return { kind: 'claimed', operation };
+    },
+    async renewAuth(op) { return valid(op); },
+    async recoverAuth(op) {
+      if (!valid(op)) return false;
+      await store.requestRelease({ ownerUserId: op.ownerUserId }, 'auth_recovery');
+      return true;
+    },
+    async recoverAbandonedAuth() { return 0; },
     async ownerView(owner) {
       const binding = live().find((b) => b.ownerUserId === owner) ?? null;
       const last = bindings.filter((b) => b.ownerUserId === owner && b.releasedAt).at(-1);
       const all = [...slots.values()];
       return {
         binding,
+        auth: [...operations.values()].filter(op => valid(op)).map(op => ({ client: op.client, kind: op.kind })),
         lastRelease: last ? { reason: last.releaseReason!, at: last.releasedAt!, signOutFailed: false } : null,
         slots: { ready: all.filter((s) => s.state === 'ready' && !live().some((b) => b.slot === s.slot)).length, held: live().length,
           total: all.filter((s) => s.state !== 'out_of_pool').length },
@@ -90,7 +117,8 @@ function memoryStore() {
     async recordCommercialTerms() {},
     async connections(owner) { return connections.filter((c) => c.ownerUserId === owner && !c.revoked).map(view); },
     async recordSignIn(record) {
-      if (!bindings.some((b) => b.id === record.bindingId && b.ownerUserId === record.ownerUserId && b.state === 'active')) return false;
+      if (!valid(record.operation)) return false;
+      operations.delete(record.bindingId + record.client);
       let row = connections.find((c) => c.ownerUserId === record.ownerUserId && c.client === record.client && !c.revoked);
       if (!row) {
         row = { ownerUserId: record.ownerUserId, client: record.client, bindingId: record.bindingId, state: 'signed_out', signInMethod: null, authMethod: null, plan: null,
@@ -109,7 +137,10 @@ function memoryStore() {
         ...(changed ? { accountChangedAt: new Date(), previousAccountLabel: before!.accountLabel } : {}) });
       return true;
     },
-    async recordSignOut(owner, bindingId, client, failed) {
+    async recordSignOut(operation, failed) {
+      if (!valid(operation)) return false;
+      const { ownerUserId: owner, bindingId, client } = operation;
+      operations.delete(bindingId + client);
       let row = connections.find((c) => c.ownerUserId === owner && c.client === client && !c.revoked);
       if (!row) {
         row = { ownerUserId: owner, client, bindingId, state: 'signed_out', signInMethod: null, authMethod: null, plan: null, accountLabel: null, signedInAt: null,
@@ -117,6 +148,7 @@ function memoryStore() {
         connections.push(row);
       }
       Object.assign(row, { state: 'signed_out', signedInAt: null, signedOutAt: new Date(), signOutFailed: failed });
+      return true;
     },
     async dismissAccountNotice(owner, client) {
       for (const c of connections) if (c.ownerUserId === owner && c.client === client && !c.revoked) Object.assign(c, { accountChangedAt: null, previousAccountLabel: null });
@@ -168,12 +200,12 @@ function fakeManager(names: string[]) {
     async status(slot, id, client) {
       calls.push(`status ${slot} ${client}`);
       if (!reported.reachable) return { ok: false, code: 'unreachable' };
-      return { ok: true, value: reported.status };
+      return { ok: true, value: { ...reported.status, bootId: state.get(slot)!.bootId } };
     },
     async logout(slot, id, client) {
       calls.push(`logout ${slot} ${client}`);
       if (!reported.reachable) return { ok: false, code: 'unreachable' };
-      return { ok: true, value: { logout: reported.logout } };
+      return { ok: true, value: { logout: reported.logout, bootId: state.get(slot)!.bootId } };
     },
   };
   /** What the slot's CLI reports next (T4): its status and the outcome of its own logout. */
@@ -209,8 +241,8 @@ describe('binding a slot to its owner', () => {
     await assert.rejects(runtime.bind('ada'), (error: DomainError) => error.code === 'AGENT_RUNTIME_OFF');
     await assert.rejects(runtime.remove('ada'), (error: DomainError) => error.code === 'AGENT_RUNTIME_OFF');
     // T4: the sign-in commands answer the same way.
-    for (const command of [() => runtime.consoleTarget('ada', 'claude_code'), () => runtime.signOut('ada', 'claude_code'), () => runtime.check('ada', 'claude_code'),
-      () => runtime.dismissAccountNotice('ada', 'claude_code'), () => runtime.recordSignIn('ada', { bindingId: randomUUID(), client: 'claude_code', method: 'sso' }, { signedIn: true, facts: null })]) {
+    for (const command of [() => runtime.consoleTarget('ada', 'claude_code'), () => runtime.signOut('ada', 'claude_code', 'ada-session'), () => runtime.check('ada', 'claude_code', 'ada-session'),
+      () => runtime.dismissAccountNotice('ada', 'claude_code'), () => runtime.recordSignIn('ada', { operation: {} as RuntimeAuthOperation, method: 'sso' }, { signedIn: true, facts: null, bootId: randomUUID() })]) {
       await assert.rejects(command(), (error: DomainError) => error.code === 'AGENT_RUNTIME_OFF');
     }
   });
@@ -345,6 +377,15 @@ describe('sign-in to Claude Code (T4 #279)', () => {
     return { runtime, store, slots, connections, manager, reported, calls, target };
   }
 
+  const actor = { ownerUserId: 'ada', sessionId: 'ada-session' };
+  async function consoleOperation(runtime: AgentRuntimeUseCases) {
+    return (await runtime.beginConsole(actor, 'claude_code', { digest: createHash('sha256').update(randomUUID()).digest('hex'), expiresAt: new Date(Date.now()+60_000) })).operation;
+  }
+  async function record(runtime: AgentRuntimeUseCases, method: 'sso' | 'console' | 'claude_account' | null, reported: RuntimeClientStatus) {
+    const operation = await consoleOperation(runtime);
+    return (await runtime.recordSignIn('ada', { operation, method }, { ...reported, bootId: operation.bootId })).status;
+  }
+
   test('the console runs in the owner\'s own slot, bound first; off, Codex and a removed runtime are refused', async () => {
     const { runtime, target } = await owned();
     assert.equal(target.slot, 'runtime-1');
@@ -358,85 +399,93 @@ describe('sign-in to Claude Code (T4 #279)', () => {
   });
 
   test('only the CLI\'s own status signs a connection in; a console that ended without it leaves it signed out', async () => {
-    const { runtime, target } = await owned();
-    const notYet = await runtime.recordSignIn('ada', { ...target, client: 'claude_code', method: 'sso' }, { signedIn: false, facts: null });
+    const { runtime } = await owned();
+    const notYet = await record(runtime, 'sso', { signedIn: false, facts: null });
     assert.equal(notYet.connections.claude_code?.state, 'signed_out');
     assert.equal(notYet.connections.claude_code?.signInMethod, 'sso');
     // Negative control: the status reports a login, so the same call signs in.
-    const signedIn = await runtime.recordSignIn('ada', { ...target, client: 'claude_code', method: 'sso' }, facts('ada@example.org'));
+    const signedIn = await record(runtime, 'sso', facts('ada@example.org'));
     assert.deepEqual({ ...signedIn.connections.claude_code, signedInAt: null }, { state: 'signed_in', signInMethod: 'sso', authMethod: 'claude.ai', plan: 'max',
       accountLabel: 'a***@example.org', signedInAt: null, payer: 'claude_plan', accountChange: null, signOut: null });
     // A status that no longer reports the login: Sign in again, never silently signed in.
-    const lost = await runtime.recordSignIn('ada', { ...target, client: 'claude_code', method: null }, { signedIn: false, facts: null });
+    const lost = await record(runtime, null, { signedIn: false, facts: null });
     assert.equal(lost.connections.claude_code?.state, 'sign_in_again');
     assert.equal(lost.connections.claude_code?.payer, null);
   });
 
   test('a later sign-in to a different account shows a notice until dismissed; the same account does not', async () => {
-    const { runtime, target } = await owned();
-    const record = (account: string) => runtime.recordSignIn('ada', { ...target, client: 'claude_code', method: 'claude_account' }, facts(account));
-    assert.equal((await record('ada@example.org')).connections.claude_code?.accountChange, null, 'the first account is no change');
-    assert.equal((await record('ada@example.org')).connections.claude_code?.accountChange, null, 'the same account again is no change');
-    await runtime.signOut('ada', 'claude_code');
-    const other = await record('mallory@example.net');
+    const { runtime } = await owned();
+    const observe = (account: string) => record(runtime, 'claude_account', facts(account));
+    assert.equal((await observe('ada@example.org')).connections.claude_code?.accountChange, null, 'the first account is no change');
+    assert.equal((await observe('ada@example.org')).connections.claude_code?.accountChange, null, 'the same account again is no change');
+    await runtime.signOut('ada', 'claude_code', 'ada-session');
+    const other = await observe('mallory@example.net');
     assert.equal(other.connections.claude_code?.accountChange?.previousLabel, 'a***@example.org', 'compared across a sign-out');
     assert.equal(other.connections.claude_code?.accountLabel, 'm***@example.net');
     // Same masked label, different account: the keyed fingerprint still tells them apart.
     await runtime.dismissAccountNotice('ada', 'claude_code');
     assert.equal((await runtime.status('ada')).connections.claude_code?.accountChange, null);
-    const twin = await record('mx@example.net');
+    const twin = await observe('mx@example.net');
     assert.equal(twin.connections.claude_code?.accountLabel, 'm***@example.net');
     assert.ok(twin.connections.claude_code?.accountChange, 'a different account behind the same label is a change');
   });
 
   test('without a fingerprint, accounts are compared by their masked label', async () => {
-    const { runtime, target } = await owned(false);
-    const record = (account: string) => runtime.recordSignIn('ada', { ...target, client: 'claude_code', method: 'claude_account' }, { signedIn: true, facts: { ...facts(account).facts, accountDigest: null } });
-    await record('ada@example.org');
-    assert.equal((await record('ab@example.org')).connections.claude_code?.accountChange, null, 'same label');
-    assert.ok((await record('bob@example.org')).connections.claude_code?.accountChange);
+    const { runtime } = await owned(false);
+    const observe = (account: string) => record(runtime, 'claude_account', { signedIn: true, facts: { ...facts(account).facts, accountDigest: null } });
+    await observe('ada@example.org');
+    assert.equal((await observe('ab@example.org')).connections.claude_code?.accountChange, null, 'same label');
+    assert.ok((await observe('bob@example.org')).connections.claude_code?.accountChange);
   });
 
   test('after Remove runtime, the next sign-in is still compared with the last account', async () => {
     const { runtime, target, store, manager } = await owned();
-    await runtime.recordSignIn('ada', { ...target, client: 'claude_code', method: 'claude_account' }, facts('ada@example.org'));
+    await record(runtime, 'claude_account', facts('ada@example.org'));
+    const oldOperation = await consoleOperation(runtime);
     await runtime.remove('ada');
     assert.equal((await runtime.status('ada')).connections.claude_code, null, 'a removed runtime has no connection');
     await reconcileAgentRuntime({ config: on, store, manager });
     await reconcileAgentRuntime({ config: on, store, manager });
     const again = await runtime.consoleTarget('ada', 'claude_code');
     assert.notEqual(again.bindingId, target.bindingId);
-    const other = await runtime.recordSignIn('ada', { ...again, client: 'claude_code', method: 'claude_account' }, facts('mallory@example.net'));
+    const other = await record(runtime, 'claude_account', facts('mallory@example.net'));
     assert.equal(other.connections.claude_code?.accountChange?.previousLabel, 'a***@example.org');
     // A sign-in recorded for a binding that is no longer the owner's live one changes nothing.
-    const stale = await runtime.recordSignIn('ada', { ...target, client: 'claude_code', method: 'sso' }, facts('eve@example.com'));
-    assert.equal(stale.connections.claude_code?.accountLabel, 'm***@example.net');
+    const stale = await runtime.recordSignIn('ada', { operation: oldOperation, method: 'sso' }, { ...facts('eve@example.com'), bootId: oldOperation.bootId });
+    assert.equal(stale.disposition, 'superseded');
+    assert.equal(stale.signedIn, false, 'a newer owner view is never this old operation success');
+    assert.equal(stale.status.connections.claude_code?.accountLabel, 'm***@example.net');
   });
 
-  test('sign-out runs the CLI\'s logout; a failed logout still signs out and says so; an unreachable runtime changes nothing', async () => {
-    const { runtime, target, reported, calls } = await owned();
-    await runtime.recordSignIn('ada', { ...target, client: 'claude_code', method: 'console' }, facts('ada@example.org', 'api_key', null));
+  test('sign-out disables authority on unknown effects and resumes only after verified recovery', async () => {
+    const { runtime, reported, calls, store, manager } = await owned();
+    await record(runtime, 'console', facts('ada@example.org', 'api_key', null));
     assert.equal((await runtime.status('ada')).connections.claude_code?.payer, 'anthropic_console');
     reported.reachable = false;
-    await assert.rejects(runtime.signOut('ada', 'claude_code'), (error: DomainError) => error.code === 'AGENT_RUNTIME_UNAVAILABLE');
-    assert.equal((await runtime.status('ada')).connections.claude_code?.state, 'signed_in', 'nothing changed');
+    await assert.rejects(runtime.signOut('ada', 'claude_code', 'ada-session'), (error: DomainError) => error.code === 'AGENT_RUNTIME_UNAVAILABLE');
+    assert.equal((await runtime.status('ada')).binding?.state, 'releasing');
+    assert.equal((await runtime.status('ada')).connections.claude_code, null, 'unknown logout cannot retain runtime authority');
+    await assert.rejects(runtime.beginConsole(actor, 'claude_code', { digest: 'a'.repeat(64), expiresAt: new Date(Date.now()+60_000) }));
     reported.reachable = true;
+    await reconcileAgentRuntime({ config: on, store, manager });
+    await reconcileAgentRuntime({ config: on, store, manager });
+    await runtime.bind('ada');
     reported.logout = 'failed';
-    const out = await runtime.signOut('ada', 'claude_code');
+    const out = await runtime.signOut('ada', 'claude_code', 'ada-session');
     assert.equal(out.connections.claude_code?.state, 'signed_out');
     assert.equal(out.connections.claude_code?.signOut?.failed, true);
     assert.ok(calls.includes('logout runtime-1 claude_code'));
     reported.logout = 'ok';
-    await runtime.recordSignIn('ada', { ...target, client: 'claude_code', method: 'console' }, facts('ada@example.org', 'api_key', null));
-    assert.equal((await runtime.signOut('ada', 'claude_code')).connections.claude_code?.signOut?.failed, false);
+    await record(runtime, 'console', facts('ada@example.org', 'api_key', null));
+    assert.equal((await runtime.signOut('ada', 'claude_code', 'ada-session')).connections.claude_code?.signOut?.failed, false);
   });
 
   for (const outcome of ['ok', 'failed', 'timeout', 'not_installed', 'skipped'] as const) {
     test(`completed ${outcome} sign-out preserves the honest vendor-session warning`, async () => {
-      const { runtime, target, reported } = await owned();
-      await runtime.recordSignIn('ada', { ...target, client: 'claude_code', method: 'claude_account' }, facts('ada@example.org'));
+      const { runtime, reported } = await owned();
+      await record(runtime, 'claude_account', facts('ada@example.org'));
       reported.logout = outcome;
-      const after = await runtime.signOut('ada', 'claude_code');
+      const after = await runtime.signOut('ada', 'claude_code', 'ada-session');
       assert.equal(after.connections.claude_code?.state, 'signed_out');
       assert.equal(after.connections.claude_code?.signOut?.failed, outcome !== 'ok');
     });
@@ -445,9 +494,9 @@ describe('sign-in to Claude Code (T4 #279)', () => {
   test('check reads the CLI\'s status again', async () => {
     const { runtime, reported } = await owned();
     reported.status = facts('ada@example.org');
-    assert.equal((await runtime.check('ada', 'claude_code')).connections.claude_code?.state, 'signed_in');
+    assert.equal((await runtime.check('ada', 'claude_code', 'ada-session')).connections.claude_code?.state, 'signed_in');
     reported.reachable = false;
-    await assert.rejects(runtime.check('ada', 'claude_code'), (error: DomainError) => error.code === 'AGENT_RUNTIME_UNAVAILABLE');
+    await assert.rejects(runtime.check('ada', 'claude_code', 'ada-session'), (error: DomainError) => error.code === 'AGENT_RUNTIME_UNAVAILABLE');
   });
 
   test('the payer comes from the reported method only, never guessed', () => {

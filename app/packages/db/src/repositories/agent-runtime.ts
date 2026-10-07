@@ -4,6 +4,10 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { AgentRuntimeBindingState, AgentRuntimeClient, AgentRuntimeConnectionState, AgentRuntimeReleaseReason, AgentRuntimeSignInMethod } from '@flux/contracts';
 import type { Pool } from 'pg';
 import type * as schema from '../schema.js';
+import {
+  currentRuntimeAuthOperation, runtimeAuthAdmissionLock, runtimeAuthOperations, settleRuntimeAuthOperation, RuntimeAuthSupersededError,
+  type RuntimeAuthClaim, type RuntimeAuthAdmission, type RuntimeAuthOperation,
+} from './runtime-auth-operations.js';
 
 // PostgreSQL adapter of the `runtime` transport's store (F-022 T3, migration 0056; sign-in T4, 0057).
 // Each method is one short transaction; the use cases call runtime-manager only between them, never
@@ -25,15 +29,21 @@ export interface RuntimeConnectionRow {
   accountChangedAt: Date | null; previousAccountLabel: string | null; signedOutAt: Date | null; signOutFailed: boolean | null;
 }
 export interface RuntimeSignInRecord {
+  operation: RuntimeAuthOperation;
   ownerUserId: string; bindingId: string; client: AgentRuntimeClient; method: AgentRuntimeSignInMethod | null; signedIn: boolean;
   facts: { authMethod: string; plan: string | null; accountLabel: string | null } | null; fingerprint: string | null;
 }
 export interface AgentRuntimeRows {
+  claimAuth(input: RuntimeAuthClaim): Promise<RuntimeAuthAdmission>;
+  renewAuth(operation: RuntimeAuthOperation, leaseMs: number): Promise<boolean>;
+  recoverAuth(operation: RuntimeAuthOperation): Promise<boolean>;
+  recoverAbandonedAuth(): Promise<number>;
   ownerView(ownerUserId: string): Promise<{
     binding: RuntimeBindingRow | null;
     lastRelease: { reason: AgentRuntimeReleaseReason; at: Date; signOutFailed: boolean } | null;
     slots: { ready: number; held: number; total: number };
     commercialTerms: { agreedOn: string; recordedAt: Date } | null;
+    auth?: { client: AgentRuntimeClient; kind: 'check' | 'logout' | 'console' }[];
   }>;
   reserve(ownerUserId: string, bindingId: string): Promise<ReserveOutcome>;
   activate(bindingId: string): Promise<void>;
@@ -42,7 +52,7 @@ export interface AgentRuntimeRows {
   recordCommercialTerms(agreedOn: string): Promise<void>;
   connections(ownerUserId: string): Promise<RuntimeConnectionRow[]>;
   recordSignIn(record: RuntimeSignInRecord): Promise<boolean>;
-  recordSignOut(ownerUserId: string, bindingId: string, client: AgentRuntimeClient, failed: boolean): Promise<void>;
+  recordSignOut(operation: RuntimeAuthOperation, failed: boolean): Promise<boolean>;
   dismissAccountNotice(ownerUserId: string, client: AgentRuntimeClient): Promise<void>;
   slotsWithBindings(): Promise<{ slot: RuntimeSlotRow; binding: RuntimeBindingRow | null }[]>;
   saveSlot(slot: RuntimeSlotRow): Promise<void>;
@@ -91,7 +101,12 @@ async function revokeConnections(tx: Exec, bindingId: string) {
 }
 
 export function agentRuntimeStore(db: Handle): AgentRuntimeRows {
+  const auth = runtimeAuthOperations(db);
   return {
+    claimAuth: auth.claim,
+    renewAuth: auth.renew,
+    recoverAuth: auth.uncertain,
+    recoverAbandonedAuth: auth.recoverAbandoned,
     async ownerView(ownerUserId) {
       const live = await db.execute<BindingRecord>(sql`SELECT ${BINDING_COLUMNS} FROM agent_runtime_bindings
         WHERE owner_user_id = ${ownerUserId} AND state <> 'released'`);
@@ -105,7 +120,11 @@ export function agentRuntimeStore(db: Handle): AgentRuntimeRows {
         FROM agent_runtime_slots s LEFT JOIN agent_runtime_bindings b ON b.slot = s.slot AND b.state <> 'released'`);
       const terms = await db.execute<{ agreed_on: string; recorded_at: Date | string }>(sql`SELECT agreed_on::text AS agreed_on, recorded_at
         FROM agent_runtime_operator_statements WHERE statement = 'anthropic_commercial_terms' ORDER BY recorded_at DESC LIMIT 1`);
+      const auth = await db.execute<{ client: AgentRuntimeClient; kind: 'check' | 'logout' | 'console' }>(sql`SELECT a.client, a.kind
+        FROM agent_runtime_auth_operations a JOIN agent_runtime_bindings b ON b.id = a.binding_id
+        WHERE b.owner_user_id = ${ownerUserId} AND b.state = 'active' AND a.phase = 'active'`);
       return {
+        auth: auth.rows,
         binding: live.rows[0] ? binding(live.rows[0]) : null,
         lastRelease: last.rows[0] ? { reason: last.rows[0].release_reason, at: date(last.rows[0].released_at), signOutFailed: last.rows[0].release_logout_failed === true } : null,
         slots: counts.rows[0] ?? { ready: 0, held: 0, total: 0 },
@@ -115,12 +134,24 @@ export function agentRuntimeStore(db: Handle): AgentRuntimeRows {
 
     reserve(ownerUserId, bindingId) {
       return db.transaction(async (tx) => {
+        if (!await runtimeAuthAdmissionLock(tx)) return { kind: 'starting' as const };
         // Reservations are rare: one at a time, so "full" is never answered while another commits.
         await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('agent-runtime-reserve'))`);
         await ownerLock(tx, ownerUserId);
         const existing = await tx.execute<BindingRecord>(sql`SELECT ${BINDING_COLUMNS} FROM agent_runtime_bindings
           WHERE owner_user_id = ${ownerUserId} AND state <> 'released' FOR UPDATE`);
-        if (existing.rows[0]) return { kind: 'existing' as const, binding: binding(existing.rows[0]) };
+        if (existing.rows[0]) {
+          const current = existing.rows[0];
+          const uncertain = await tx.execute(sql`SELECT 1 FROM agent_runtime_auth_operations WHERE binding_id = ${current.id}
+            AND (phase = 'uncertain' OR (phase = 'active' AND lease_ends_at <= clock_timestamp()))`);
+          if (uncertain.rows.length && (current.state === 'active' || current.state === 'sign_in_again')) {
+            await tx.execute(sql`UPDATE agent_runtime_bindings SET state = 'releasing', release_reason = 'auth_recovery',
+              release_requested_at = clock_timestamp() WHERE id = ${current.id}`);
+            await revokeConnections(tx, current.id);
+            current.state = 'releasing'; current.release_reason = 'auth_recovery';
+          }
+          return { kind: 'existing' as const, binding: binding(current) };
+        }
         const free = await tx.execute<{ slot: string }>(sql`SELECT s.slot FROM agent_runtime_slots s
           WHERE s.state = 'ready' AND NOT EXISTS (SELECT 1 FROM agent_runtime_bindings b WHERE b.slot = s.slot AND b.state <> 'released')
           ORDER BY length(s.slot), s.slot LIMIT 1 FOR UPDATE`);
@@ -179,12 +210,12 @@ export function agentRuntimeStore(db: Handle): AgentRuntimeRows {
       return rows.rows.map(connection);
     },
 
-    recordSignIn(record) {
-      return db.transaction(async (tx) => {
-        await ownerLock(tx, record.ownerUserId);
-        const live = await tx.execute<{ id: string }>(sql`SELECT id FROM agent_runtime_bindings
-          WHERE id = ${record.bindingId} AND owner_user_id = ${record.ownerUserId} AND state = 'active' FOR UPDATE`);
-        if (!live.rows[0]) return false;
+    async recordSignIn(record) {
+      try { return await db.transaction(async (tx) => {
+        const operation = record.operation;
+        if (!operation || operation.kind === 'logout' || operation.ownerUserId !== record.ownerUserId
+          || operation.bindingId !== record.bindingId || operation.client !== record.client
+          || !await currentRuntimeAuthOperation(tx, operation)) return false;
         const current = await tx.execute<{ id: string; state: AgentRuntimeConnectionState }>(sql`SELECT id, state FROM agent_runtime_connections
           WHERE owner_user_id = ${record.ownerUserId} AND client = ${record.client} AND revoked_at IS NULL FOR UPDATE`);
         const row = current.rows[0];
@@ -199,6 +230,7 @@ export function agentRuntimeStore(db: Handle): AgentRuntimeRows {
             await tx.execute(sql`INSERT INTO agent_runtime_connections(id, owner_user_id, binding_id, client, state, sign_in_method)
               VALUES (${randomUUID()}, ${record.ownerUserId}, ${record.bindingId}, ${record.client}, 'signed_out', ${record.method})`);
           }
+          await settleRuntimeAuthOperation(tx, operation);
           return true;
         }
         // The owner's previous account for this CLI: the live connection's, or else the latest one's.
@@ -223,13 +255,15 @@ export function agentRuntimeStore(db: Handle): AgentRuntimeRows {
           previous_account_label = CASE WHEN ${changed}::boolean THEN ${before?.account_label ?? null}::text ELSE previous_account_label END,
           signed_out_at = NULL, sign_out_failed = NULL
           WHERE id = ${id}`);
+        await settleRuntimeAuthOperation(tx, operation);
         return true;
-      });
+      }); } catch (error) { if (error instanceof RuntimeAuthSupersededError) return false; throw error; }
     },
 
-    async recordSignOut(ownerUserId, bindingId, client, failed) {
-      await db.transaction(async (tx) => {
-        await ownerLock(tx, ownerUserId);
+    async recordSignOut(operation, failed) {
+      try { return await db.transaction(async (tx) => {
+        if (operation.kind !== 'logout' || !await currentRuntimeAuthOperation(tx, operation)) return false;
+        const { ownerUserId, bindingId, client } = operation;
         const updated = await tx.execute(sql`UPDATE agent_runtime_connections SET state = 'signed_out', signed_in_at = NULL,
           signed_out_at = now(), sign_out_failed = ${failed}
           WHERE owner_user_id = ${ownerUserId} AND client = ${client} AND binding_id = ${bindingId} AND revoked_at IS NULL RETURNING id`);
@@ -238,7 +272,9 @@ export function agentRuntimeStore(db: Handle): AgentRuntimeRows {
             SELECT ${randomUUID()}::uuid, ${ownerUserId}::text, ${bindingId}::uuid, ${client}::text, 'signed_out', now(), ${failed}::boolean
             WHERE NOT EXISTS (SELECT 1 FROM agent_runtime_connections WHERE owner_user_id = ${ownerUserId} AND client = ${client} AND revoked_at IS NULL)`);
         }
-      });
+        await settleRuntimeAuthOperation(tx, operation);
+        return true;
+      }); } catch (error) { if (error instanceof RuntimeAuthSupersededError) return false; throw error; }
     },
 
     async dismissAccountNotice(ownerUserId, client) {
@@ -274,6 +310,8 @@ export function agentRuntimeStore(db: Handle): AgentRuntimeRows {
         await tx.execute(sql`UPDATE agent_runtime_bindings SET state = 'released', released_at = now(), release_logout_failed = ${logoutFailed}
           WHERE id = ${bindingId} AND state = 'releasing'`);
         await revokeConnections(tx, bindingId);
+        await tx.execute(sql`UPDATE agent_runtime_auth_operations SET phase = 'settled', settled_at = clock_timestamp()
+          WHERE binding_id = ${bindingId} AND phase <> 'settled'`);
         await tx.execute(sql`UPDATE agent_runtime_slots SET state = ${slot.state}, boot_id = ${slot.bootId}, wipe_boot_id = ${slot.wipeBootId},
           out_of_pool_reason = ${slot.outOfPoolReason}, reported_at = now(), updated_at = now() WHERE slot = ${slot.slot}`);
       });
@@ -314,13 +352,22 @@ export function agentRuntimeOperations(db: Handle) {
       return rows.rows;
     },
     release: (slot: string) => store.requestRelease({ slot }, 'operator'),
-    async forgetAll(signOutConfirmed = false) {
+    beginPurge: () => runtimeAuthOperations(db).beginPurge(),
+    async forgetAll(purgeId: string, signOutConfirmed = false) {
       await db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('agent-runtime-auth-admission'))`);
+        const gate = await tx.execute(sql`SELECT 1 FROM agent_runtime_auth_admission
+          WHERE singleton AND blocked AND purge_id = ${purgeId} FOR UPDATE`);
+        if (!gate.rows.length) throw new Error('Runtime purge is not the current fenced cleanup');
         await tx.execute(sql`UPDATE agent_runtime_connections SET state = 'signed_out', signed_in_at = NULL, revoked_at = coalesce(revoked_at, now()) WHERE revoked_at IS NULL`);
         await tx.execute(sql`UPDATE agent_runtime_bindings SET state = 'released', release_reason = 'purge',
           release_requested_at = coalesce(release_requested_at, now()), released_at = now(),
           release_logout_failed = ${!signOutConfirmed} WHERE state <> 'released'`);
         await tx.execute(sql`UPDATE agent_runtime_slots SET state = 'unknown', boot_id = NULL, wipe_boot_id = NULL, out_of_pool_reason = NULL, updated_at = now()`);
+        await tx.execute(sql`UPDATE agent_runtime_auth_operations SET phase = 'settled', settled_at = clock_timestamp() WHERE phase <> 'settled'`);
+        // The launcher invokes this only after every runtime container and volume is removed.
+        await tx.execute(sql`UPDATE agent_runtime_auth_admission SET blocked = false, purge_id = NULL,
+          changed_at = clock_timestamp() WHERE singleton AND purge_id = ${purgeId}`);
       });
     },
   };

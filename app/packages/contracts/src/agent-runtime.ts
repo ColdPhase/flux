@@ -16,10 +16,12 @@ export const AGENT_RUNTIME_BINDING_PATH = '/api/v1/agent-runtime/binding';
 export type AgentRuntimeClientAvailability = 'available' | 'pending' | 'off';
 
 export type AgentRuntimeBindingState = 'binding' | 'active' | 'sign_in_again' | 'releasing';
-export type AgentRuntimeReleaseReason = 'owner' | 'operator' | 'idle' | 'purge' | 'bind_failed';
+export type AgentRuntimeReleaseReason = 'owner' | 'operator' | 'idle' | 'purge' | 'bind_failed' | 'auth_recovery';
 
 export interface AgentRuntimeBinding {
   state: AgentRuntimeBindingState;
+  /** Uncertain auth needs full cleanup/fresh boot; both clients may need to sign in again. */
+  recovery?: true;
   boundAt: string;
   lastUsedAt: string | null;
   /** When the operator's idle policy will release this binding without a run; null without a policy. */
@@ -74,6 +76,10 @@ export interface AgentRuntimeStatus {
   lastRelease: { reason: AgentRuntimeReleaseReason; at: string; signOutFailed: boolean } | null;
   /** The owner's sign-in to each CLI in their slot, or null when there is none. */
   connections: Record<AgentRuntimeClient, AgentRuntimeConnection | null>;
+  /** Current durable auth work; display only, never an operation token. */
+  auth?: Partial<Record<AgentRuntimeClient, 'checking' | 'signing_in' | 'signing_out'>>;
+  /** This command's own settlement, separate from the newer owner view. */
+  authCompletion?: { kind: 'check' | 'logout'; disposition: 'accepted' | 'superseded' };
 }
 
 // --- The sign-in console (F-022 T4 #279). `POST` the method to get a single-use ticket bound to this
@@ -110,7 +116,7 @@ export type AgentRuntimeConsoleClientMessage =
  */
 export type AgentRuntimeConsoleServerMessage =
   | { t: 'state'; state: 'starting' | 'running' | 'checking' }
-  | { t: 'done'; ended: 'exited' | 'timed_out'; signedIn: boolean; status: AgentRuntimeStatus }
+  | { t: 'done'; ended: 'exited' | 'timed_out'; disposition: 'accepted' | 'superseded'; signedIn: boolean; status: AgentRuntimeStatus }
   | { t: 'error'; code: AgentRuntimeConsoleError };
 
 /** `busy`: another sign-in, status or sign-out is using the runtime; `unavailable`: the runtime could not be reached. */
@@ -123,4 +129,7 @@ export const AGENT_RUNTIME_ERRORS = {
   releasing: 'AGENT_RUNTIME_RELEASING',
   clientUnavailable: 'AGENT_RUNTIME_CLIENT_UNAVAILABLE',
   invalidInput: 'AGENT_RUNTIME_INVALID_INPUT',
+  authBusy: 'AGENT_RUNTIME_AUTH_BUSY',
+  authRecovery: 'AGENT_RUNTIME_AUTH_RECOVERY',
+  authSuperseded: 'AGENT_RUNTIME_AUTH_SUPERSEDED',
 } as const;

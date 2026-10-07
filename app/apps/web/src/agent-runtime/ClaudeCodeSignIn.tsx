@@ -39,7 +39,7 @@ export function ClaudeCodeSignIn() {
       const { ticket } = await consoleTicket(method);
       setStep({ kind: 'console', method, ticket });
     } catch (cause) {
-      setError(cause instanceof ApiError && cause.status < 500 ? cause.message : 'Your runtime could not be reached. Nothing changed; try again shortly.');
+      setError(cause instanceof ApiError && cause.status < 500 ? cause.message : 'The runtime could not confirm the operation. Check its current state before trying again.');
     } finally { setBusy(false); }
   }
 
@@ -84,10 +84,11 @@ export function ClaudeCodeSignIn() {
                 <li>Open the sign-in link it shows, sign in with Anthropic and copy the code you get.</li>
                 <li>Come back here and paste the code. Flux then asks Claude Code whether you are signed in.</li>
               </ol>
-              <p className="nset__note">The terminal closes when the sign-in ends, when you leave this page, or after 15 minutes. It runs only this sign-in, nothing else.</p>
+              <p className="nset__note">The terminal closes when the sign-in ends, when you leave this page, or after 15 minutes. It runs only this sign-in. A lost or cancelled operation requires safe runtime cleanup before another sign-in and may sign both clients out.</p>
+              {status.binding?.recovery ? <p className="nset__problem" role="status">Runtime recovery is pending. Both clients may need to sign in again after cleanup is confirmed.</p> : status.auth?.claude_code ? <p className="nset__note" role="status">Another sign-in, check or sign-out is still in progress.</p> : null}
               {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
               <div className="aset__actions">
-                <Button variant="primary" busy={busy} onClick={() => void start()}>Start sign-in</Button>
+                <Button variant="primary" busy={busy} disabled={status.binding?.state === 'releasing' || Boolean(status.auth?.claude_code)} onClick={() => void start()}>Start sign-in</Button>
                 {back}
               </div>
             </section>
@@ -109,10 +110,11 @@ export function ClaudeCodeSignIn() {
 
 const ERRORS: Record<string, string> = {
   busy: 'Your runtime is busy with another sign-in or task. Try again in a moment.',
-  unavailable: 'Your runtime could not be reached. Nothing changed; try again shortly.',
+  unavailable: 'The runtime could not confirm the operation. Check its current state before trying again.',
   refused: 'This sign-in could not start. It may have expired or belong to another session. Start again.',
-  cancelled: 'You cancelled the sign-in. Nothing was saved.',
-  ended: 'The sign-in stopped before Claude Code reported a login: this page lost its connection (for example, when your phone put the browser to sleep), or 15 minutes passed. Start again, or check your sign-in on Agent in Flux.',
+  cancelled: 'You cancelled the sign-in. Runtime access stays disabled until cleanup is confirmed; both clients may need to sign in again.',
+  superseded: 'This sign-in result is no longer current and was not accepted. Check the current runtime state before starting again.',
+  ended: 'The sign-in connection ended before its result was confirmed. Flux is recovering the runtime safely; both clients may need to sign in again. Check its state on Agent in Flux.',
 };
 
 function Outcome({ outcome, onAgain, back }: { outcome: ConsoleOutcome; onAgain: () => void; back: ReactNode }) {

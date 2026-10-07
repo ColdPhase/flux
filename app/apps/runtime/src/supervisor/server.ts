@@ -83,6 +83,12 @@ export function createSupervisorServer(config: SupervisorConfig, onReleased: () 
     const work = async () => {
       try {
         if (request.kind === 'status' && !request.client) return { result: await slotReport(config, lane.busy) };
+        // Recheck after queue wait. A delayed auth command may not target a new
+        // supervisor process, even if a stale API still knows its old binding.
+        if ((request.kind === 'logout' || (request.kind === 'status' && request.client)) && request.bootId !== config.bootId) {
+          return { error: 'invalid_request' as const };
+        }
+        if (closing && request.kind !== 'release') return { error: 'busy' as const };
         return await handle(config, request, send);
       } catch {
         return { error: 'internal' as const };

@@ -10,6 +10,7 @@ import {
   CONSOLE_FRAME, CONSOLE_LIMITS, CONSOLE_UPGRADE_ANSWER, ConsoleFrameReader, ConsoleLink, ConsoleStreamError, callSupervisor, encodeControl, encodeInput,
   encodeOpen, encodeOutput, encodeResize, openConsoleUpgrade, type ConsoleControl, type SupervisorResult,
 } from '@flux/runtime-protocol';
+import { createSupervisorServer } from '../../apps/runtime/src/supervisor/server.js';
 import { createManagerServer } from '../../apps/runtime/src/manager/server.js';
 import { ConsoleTickets, parseClientMessage } from '../../apps/server/src/agent-runtime/console.js';
 import type { ConsoleClock } from '../../apps/runtime/src/supervisor/pty.js';
@@ -51,8 +52,10 @@ const result = (login: Login) => login.controls.find((frame): frame is { t: 'res
 const errorOf = (login: Login) => login.controls.find((frame) => frame.t === 'error' || frame.t === 'relay_error') as { code: string } | undefined;
 const target = (slot: TestSlot) => ({ host: '127.0.0.1', port: portOf(slot.url), secret: slot.config.secret });
 
+const bindingBoots = new Map<string, string>();
 async function bound(slot: TestSlot, options: { secret?: string; account?: string; scenario?: string } = {}) {
   const bindingId = randomUUID();
+  bindingBoots.set(bindingId, slot.config.bootId);
   assert.ok((await callSupervisor(target(slot), { kind: 'bind', bindingId })).ok);
   const home = join(slot.config.dataDir, bindingId, 'claude');
   if (options.secret) await writeFile(join(home, 'fake-secret'), options.secret, { mode: 0o600 });
@@ -67,7 +70,7 @@ async function calls(home: string) {
 }
 
 const PROMPT = 'Paste code here if prompted > ';
-const open = (bindingId: string, method: string, extra: Record<string, unknown> = {}) => encodeOpen({ bindingId, client: 'claude_code', method, cols: 60, rows: 20, ...extra });
+const open = (bindingId: string, method: string, extra: Record<string, unknown> = {}) => encodeOpen({ bindingId, bootId: bindingBoots.get(bindingId) ?? randomUUID(), client: 'claude_code', method, cols: 60, rows: 20, ...extra });
 
 /** Timers a test advances by hand (the 15-minute end without waiting 15 minutes). */
 function manualClock() {
@@ -188,8 +191,8 @@ describe('the console cannot run any other command', () => {
       ['a path for the binding', encodeOpen({ bindingId: '../../etc', client: 'claude_code', method: 'sso', cols: 60, rows: 20 }), 'invalid_request'],
       ['an impossible terminal size', open(bindingId, 'sso', { cols: 5000 }), 'invalid_request'],
       ['input before the login request', encodeInput(Buffer.from('claude --help\r')), 'invalid_request'],
-      ['another binding', open(randomUUID(), 'sso'), 'no_binding'],
-      ['Codex, which the operator did not enable', encodeOpen({ bindingId, client: 'codex', method: 'device_code', cols: 60, rows: 20 }), 'client_off'],
+      ['another binding', open(randomUUID(), 'sso', { bootId: slot.config.bootId }), 'no_binding'],
+      ['Codex, which the operator did not enable', encodeOpen({ bindingId, bootId: slot.config.bootId, client: 'codex', method: 'device_code', cols: 60, rows: 20 }), 'client_off'],
     ];
     for (const [what, frame, code] of refused) {
       const login = await connect(portOf(slot.url), slot.config.secret);
@@ -314,6 +317,40 @@ describe('the PTY ends on exit, on disconnect and after 15 minutes', () => {
   });
 });
 
+test('late destructive auth targets cannot reach a fresh boot/binding on the same real filesystem', { timeout:15_000 }, async () => {
+  const slot=await startTestSlot({ enabled:['claude_code'] });
+  let fresh: Server | undefined;
+  try {
+    const { bindingId:oldBinding }=await bound(slot);
+    const oldBoot=slot.config.bootId;
+    const stale={ kind:'logout' as const,bindingId:oldBinding,bootId:oldBoot,client:'claude_code' as const };
+    const released=await callSupervisor(target(slot),{ kind:'release',bindingId:oldBinding });
+    assert.ok(released.ok && released.result.kind==='release' && released.result.dataEmpty);
+    assert.deepEqual(await readdir(slot.config.dataDir),[]);
+    const freshConfig={ ...slot.config,bootId:randomUUID() };
+    fresh=createSupervisorServer(freshConfig,()=>undefined).server;
+    await new Promise<void>(done=>fresh!.listen(0,'127.0.0.1',done));
+    const port=(fresh.address() as AddressInfo).port;
+    const freshTarget={ host:'127.0.0.1',port,secret:freshConfig.secret },bindingId=randomUUID();
+    assert.ok((await callSupervisor(freshTarget,{ kind:'bind',bindingId })).ok);
+    const login=await connect(port,freshConfig.secret);
+    login.link.send(encodeOpen({ bindingId,bootId:freshConfig.bootId,client:'claude_code',method:'sso',cols:60,rows:20 }));
+    await until('fresh-boot PTY prompt',()=>login.output.includes(PROMPT));
+    login.link.send(encodeInput(Buffer.from('fake-code-fresh-boot-control\r')));await login.ended;
+    assert.ok(result(login)?.kind==='login');
+    const home=join(freshConfig.dataDir,bindingId,'claude'),file=join(home,'.credentials.json');
+    const credentialBefore=await readFile(file,'utf8'),callsBefore=await calls(home);
+    assert.deepEqual(await callSupervisor(target(slot),stale),{ ok:false,code:'busy' },'old supervisor stays closed to auth');
+    assert.deepEqual(await callSupervisor(freshTarget,stale),{ ok:false,code:'invalid_request' },'old boot is refused before effects');
+    assert.deepEqual(await callSupervisor(freshTarget,{ ...stale,bindingId }),{ ok:false,code:'invalid_request' },'even guessed new binding cannot revive an old boot target');
+    assert.equal(await readFile(file,'utf8'),credentialBefore);
+    assert.deepEqual(await calls(home),callsBefore,'no stale CLI command started');
+    // Identical command with the current server target really does remove the login.
+    assert.ok((await callSupervisor(freshTarget,{ ...stale,bindingId,bootId:freshConfig.bootId })).ok);
+    await assert.rejects(readFile(file),{ code:'ENOENT' });
+  } finally { if(fresh){fresh.closeAllConnections();await new Promise<void>(done=>fresh!.close(()=>done()));}await slot.close(); }
+});
+
 describe('runtime-manager relays the console and checks it', () => {
   let slot: TestSlot;
   let manager: Server;
@@ -346,7 +383,7 @@ describe('runtime-manager relays the console and checks it', () => {
     const text = JSON.stringify(logged);
     for (const forbidden of [secret, 'fake-code-relay', 'oauth/authorize', PROMPT]) assert.ok(!text.includes(forbidden), `the log holds ${forbidden}`);
     // Signed out again (the CLI's logout, then its files are deleted) and the directory removed, for the next test.
-    assert.ok((await callSupervisor(target(slot), { kind: 'logout', bindingId, client: 'claude_code' })).ok);
+    assert.ok((await callSupervisor(target(slot), { kind: 'logout', bindingId, bootId: slot.config.bootId, client: 'claude_code' })).ok);
     await rm(join(slot.config.dataDir, bindingId), { recursive: true, force: true });
   });
 
@@ -469,16 +506,21 @@ Options:
 });
 
 describe('the API\'s console tickets and browser messages', () => {
-  test('a ticket works once, for its owner and session, for one minute', () => {
+  test('a ticket verifies its owner/session for one minute and yields only the durable nonce digest', () => {
     let now = Date.parse('2026-10-06T12:00:00Z');
     const tickets = new ConsoleTickets('a'.repeat(48), () => now);
     const issue = () => tickets.issue({ ownerUserId: 'ada', client: 'claude_code', method: 'sso' }, 'session-1').ticket;
-    assert.deepEqual(tickets.redeem(issue(), 'ada', 'session-1'), { ownerUserId: 'ada', client: 'claude_code', method: 'sso' }, 'control');
+    const control = tickets.redeem(issue(), 'ada', 'session-1');
+    assert.ok(control);
+    assert.deepEqual({ ownerUserId: control.ownerUserId, client: control.client, method: control.method }, { ownerUserId: 'ada', client: 'claude_code', method: 'sso' });
+    assert.match(control.nonce.digest, /^[0-9a-f]{64}$/);
+    assert.equal(control.nonce.expiresAt.getTime(), now + 60_000);
     const ticket = issue();
     assert.equal(tickets.redeem(ticket, 'bo', 'session-1'), null, 'another member');
     assert.equal(tickets.redeem(ticket, 'ada', 'session-2'), null, 'another session of the owner');
     assert.ok(tickets.redeem(ticket, 'ada', 'session-1'));
-    assert.equal(tickets.redeem(ticket, 'ada', 'session-1'), null, 'used once');
+    assert.deepEqual(tickets.redeem(ticket, 'ada', 'session-1'), tickets.redeem(ticket, 'ada', 'session-1'),
+      'verification is pure; actual two-pool PostgreSQL nonce admission is covered in runtime-auth-operations.test.ts');
     const late = issue();
     now += 60_001;
     assert.equal(tickets.redeem(late, 'ada', 'session-1'), null, 'expired after a minute');

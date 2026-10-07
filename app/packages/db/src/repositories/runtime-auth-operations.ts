@@ -124,7 +124,15 @@ export function runtimeAuthOperations(db: Handle) {
           return { kind: 'recovery' as const };
         }
         const previous = await operationRow(tx, input.bindingId, input.client);
-        if (previous?.phase === 'active') return { kind: 'busy' as const };
+        if (previous?.phase === 'active') {
+          if (input.kind === 'logout') {
+            // The owner may always restrict their runtime. Without a proved drain
+            // acknowledgement, sign-out cannot replace the in-flight command.
+            await recoverBinding(tx, input.ownerUserId, input.bindingId);
+            return { kind: 'recovery' as const };
+          }
+          return { kind: 'busy' as const };
+        }
         if (previous?.revision === 2_147_483_647) {
           await recoverBinding(tx, input.ownerUserId, input.bindingId);
           return { kind: 'recovery' as const };

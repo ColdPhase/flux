@@ -12,7 +12,9 @@ import { portOf, startTestSlot, type TestSlot } from './support/runtime-slot.js'
 // No database and no network beyond loopback.
 
 const target = (slot: TestSlot) => ({ host: '127.0.0.1', port: portOf(slot.url), secret: slot.config.secret });
-const call = (slot: TestSlot, request: SupervisorRequest) => callSupervisor(target(slot), request, { timeoutMs: 20_000 });
+type FixtureRequest<T> = T extends { bootId: string } ? Omit<T, 'bootId'> & { bootId?: string } : T;
+const call = (slot: TestSlot, request: FixtureRequest<SupervisorRequest>) => callSupervisor(target(slot),
+  ('client' in request && ['status', 'logout', 'login'].includes(request.kind) ? { bootId: slot.config.bootId, ...request } : request) as SupervisorRequest, { timeoutMs: 20_000 });
 
 /** The client status of a successful status request, or a failed assertion. */
 function clientStatus(out: SupervisorCallOutcome): ClientStatus {
