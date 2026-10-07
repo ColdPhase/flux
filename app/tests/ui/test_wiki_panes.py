@@ -23,7 +23,7 @@ from pathlib import Path
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
-from test_theme_accents import MEASURE
+from contrast import MEASURE
 
 PASSWORD = "wiki pages keep their place"
 STAMP = int(time.time() * 1000)
@@ -239,7 +239,7 @@ class WikiPanesJourney(unittest.TestCase):
         self.assertAlmostEqual(page.locator(".wiki-bar").bounding_box()["height"], 57, delta=1)
         self.assertLessEqual(page.locator(".wiki-doc").bounding_box()["width"], 820.5)
         title = page.get_by_role("heading", level=2, name=LAMP)
-        self.assertEqual(title.evaluate("e => [getComputedStyle(e).fontSize, getComputedStyle(e).fontWeight]"), ["30px", "650"])
+        self.assertEqual(title.evaluate("e => [getComputedStyle(e).fontSize, getComputedStyle(e).fontWeight]"), ["32px", "650"])
         prose = page.locator(".doc-prose")
         self.assertEqual(prose.evaluate("e => [getComputedStyle(e).fontSize, getComputedStyle(e).lineHeight]"), ["14px", "25.9px"])
         self.assertEqual(prose.locator("h2").first.evaluate("e => [getComputedStyle(e).fontSize, getComputedStyle(e).fontWeight, getComputedStyle(e).borderBottomStyle]"), ["20px", "600", "none"])
@@ -713,16 +713,14 @@ class WikiPanesJourney(unittest.TestCase):
                 self.measure(page, ".wiki-search input")
                 search.fill("")
                 shot(page, f"wiki-desktop-1440-{theme}")
-                # The focus ring and links follow each accent family and stay visible in every one.
-                for family in ("mint", "sky", "copper"):
-                    page.evaluate(f"document.documentElement.dataset.accent = '{family}'")
-                    self.index(page).get_by_role("link", name=PARTS).focus()
-                    page.keyboard.press("Shift+Tab")
-                    expect(self.index(page).get_by_role("link", name=LAMP)).to_be_focused()
-                    page.wait_for_timeout(200)
-                    self.measure(page, '.wiki-page[aria-current="page"]', 3, property="outlineColor", backgroundSelector=".wiki-index")
-                    self.measure(page, ".doc-prose a")
-                    self.assertIn("underline", page.locator(".doc-prose a").first.evaluate("e => getComputedStyle(e).textDecorationLine"), "links are more than colour")
+                # The focus ring and links stay visible: one ink, and links are underlined (#338).
+                self.index(page).get_by_role("link", name=PARTS).focus()
+                page.keyboard.press("Shift+Tab")
+                expect(self.index(page).get_by_role("link", name=LAMP)).to_be_focused()
+                page.wait_for_timeout(200)
+                self.measure(page, '.wiki-page[aria-current="page"]', 3, property="outlineColor", backgroundSelector=".wiki-index")
+                self.measure(page, ".doc-prose a")
+                self.assertIn("underline", page.locator(".doc-prose a").first.evaluate("e => getComputedStyle(e).textDecorationLine"), "links are more than colour")
                 page.locator(".wiki-bar").get_by_role("button", name="Share this page").click()
                 for selector in (".wiki-pop__h", ".wiki-pop__who", ".wiki-pop__link .ui-input"):
                     self.measure(page, selector)

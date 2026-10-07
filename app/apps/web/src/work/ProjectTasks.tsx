@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { useLoaderData, useLocation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { DecisionRowProjection, Project, ProactiveComparisonOutcome, ProjectWorkViewQuery, ResultRowProjection, WorkCounts, WorkObjectType, WorkRowProjection } from '@flux/contracts';
-import { Button, EmptyState, ErrorState, Icon } from '../ui';
+import { Button, EmptyState, ErrorState, Icon, StatusGlyph } from '../ui';
 import { getProject } from '../app/conversation-api';
 import { useShellActions } from '../app/shellContext';
 import { useShellData } from '../app/data';
@@ -114,7 +114,8 @@ function workSub(item: WorkRowProjection) {
   ].filter(Boolean).join(' · ');
 }
 
-const dot = (kind: string) => <span className={`ws-dot ws-dot--${kind}`} />;
+// The row's own text names the state; a parked task keeps its state's shape, quieter.
+const glyph = (item: WorkRowProjection) => <StatusGlyph status={item.status} className={item.parked ? 'ui-glyph--parked' : undefined} />;
 
 type Mode = 'board' | 'list';
 const MODE_KEY = 'flux.tasks.mode.';
@@ -129,7 +130,7 @@ function rememberMode(userId: string, mode: Mode) {
 }
 
 /**
- * The Tasks toolbar (Studio 11.6): an underline search, the way to the project's decisions and
+ * The Tasks toolbar: an underline search, the way to the project's decisions and
  * results, Kanban | List, Mine on the board and the one primary action, "+ Task". The List keeps
  * its own "Only mine" among its views. The search filters the board's loaded cards; the List is
  * read in bounded pages from the server, so it has no search that could only see one page.
@@ -364,7 +365,7 @@ export function ProjectTasks() {
   const earlier = decisions.filter((item) => item.status === 'superseded');
   const groupCount = (id: GroupId, visible: number) => visible ? counts?.[id] ?? 0 : 0;
   const openObject = (kind: WorkObjectType, id: string) => () => { saveReading(); openDetails({ kind, id }); };
-  const workRow = (item: WorkRowProjection, muted = false) => <Row key={item.id} kind="work" id={item.id} icon={dot(item.parked ? 'parked' : item.status)} title={item.title} sub={workSub(item)} right={item.owner ? <span className="ws-av" aria-hidden="true">{item.owner.name.slice(0, 1)}</span> : null} onOpen={openObject('work', item.id)} muted={muted} />;
+  const workRow = (item: WorkRowProjection, muted = false) => <Row key={item.id} kind="work" id={item.id} icon={glyph(item)} title={item.title} sub={workSub(item)} right={item.owner ? <span className="ws-av" aria-hidden="true">{item.owner.name.slice(0, 1)}</span> : null} onOpen={openObject('work', item.id)} muted={muted} />;
   const summaryCounts = data ? mine ? data.summary.mine : data.summary.all : null;
   // What the board leaves to the List, one step away: a decision waiting for someone and work a pivot set aside.
   const elsewhere: { id: GroupId; text: string; need?: boolean }[] = [];
