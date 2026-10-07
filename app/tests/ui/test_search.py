@@ -425,13 +425,9 @@ class SearchJourney(unittest.TestCase):
                     expect(details.locator(".wd-project-name")).to_have_text(place["name"])
                     self.no_horizontal_scroll(page)
                     shot(page, f"task-number-{number}-global-details-{'phone-390' if phone else 'desktop-1440'}")
-                # Enlarge all text tokens rather than the screenshot, and keep the task's scope readable.
-                page.evaluate("""() => {
-                    const root = document.documentElement, style = getComputedStyle(root);
-                    const sizes = ['--fs-xs', '--fs-sm', '--fs-md', '--fs-base', '--fs-lg', '--fs-xl', '--fs-2xl', '--fs-title', '--fs-doc-title']
-                        .map(key => [key, 2 * parseFloat(style.getPropertyValue(key))]);
-                    for (const [key, size] of sizes) root.style.setProperty(key, `${size}px`);
-                }""")
+                # The shared type tokens use rem. Enlarge actual text through the root size;
+                # parseFloat(.75rem) followed by px would shrink it to 1.5px instead of 24px.
+                page.evaluate("document.documentElement.style.fontSize = '200%'")
                 number_label = details.locator(".wd-eyebrow .ui-task-number")
                 expect(number_label).to_be_visible()
                 expect(details.locator(".wd-project-name")).to_be_visible()
