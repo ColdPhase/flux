@@ -277,3 +277,82 @@ class NativeDetailsJourney(unittest.TestCase):
         self.assertEqual(sum(link["role"]=="still_applies" for link in saved["links"]),50)
         parked=api(self.ctx,"GET",self.root+"/work?limit=100")["items"]
         self.assertEqual(sum(bool(item["parked"] and item["parked"]["decisionId"]==rule["id"]) for item in parked),1)
+
+    def test_11_empty_relations_keep_loading_failure_and_retry_visible(self):
+        task = api(self.ctx, "POST", self.root + "/work", {"title": "Record the next shield reading"}, 201)
+        before = self.native("work", task["id"])
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page = self.page(phone)
+                held = []
+
+                def hold(route):
+                    response = route.fetch()
+                    self.assertEqual(response.status, 200)
+                    held.append((route, response))
+
+                page.route("**/work-relations?**", hold)
+                page.goto(f"/projects/{self.project}/tasks?open=work:{task['id']}")
+                panel = page.locator(f".wd[data-detail-id='{task['id']}']")
+                expect(panel).to_be_visible()
+                expect(panel.locator("[data-detail-relations-phase]")).to_have_attribute("data-detail-relations-phase", "loading")
+                nav = panel.get_by_role("navigation", name="Object relationship pages")
+                expect(nav).to_have_attribute("aria-busy", "true")
+                expect(panel).not_to_contain_text("Added directly on the Tasks tab.")
+                self.assertEqual(len(held), 1)
+                route, response = held.pop()
+                self.assertEqual(response.json()["total"], 0)
+                route.fulfill(response=response)
+                self.ready(panel)
+                expect(nav).to_have_count(0)
+                expect(panel).not_to_contain_text("No rows on this page")
+                expect(panel).to_contain_text("Added directly on the Tasks tab.")
+                shot(page, f"detail-relations-empty-{'phone' if phone else 'desktop'}")
+
+                page.unroute("**/work-relations?**", hold)
+                page.route("**/work-relations?**", lambda route: route.fulfill(status=503, json={"code": "WORK_READ_UNAVAILABLE", "error": "Fixture unavailable"}))
+                page.reload()
+                expect(panel.locator("[data-detail-relations-phase]")).to_have_attribute("data-detail-relations-phase", "unavailable")
+                expect(nav).to_be_visible()
+                expect(panel.get_by_role("alert")).to_contain_text("Relationships could not be loaded")
+                expect(panel).not_to_contain_text("Added directly on the Tasks tab.")
+                shot(page, f"detail-relations-unavailable-{'phone' if phone else 'desktop'}")
+                page.unroute("**/work-relations?**")
+                panel.get_by_role("button", name="Refresh relationships", exact=True).click()
+                self.ready(panel)
+                expect(nav).to_have_count(0)
+                expect(panel).to_contain_text("Added directly on the Tasks tab.")
+        self.assertEqual(self.native("work", task["id"]), before, "empty/read/retry never changes native work or links")
+
+    def test_12_empty_later_relation_page_still_returns_to_first_page(self):
+        page = self.page()
+        panel = self.open(page, "work", self.target["id"])
+        nav = panel.get_by_role("navigation", name="Object relationship pages")
+
+        def empty_later_page(route):
+            if not parse_qs(urlsplit(route.request.url).query).get("cursor"):
+                route.continue_()
+                return
+            response = route.fetch()
+            self.assertEqual(response.status, 200)
+            payload = response.json()
+            self.assertGreater(payload["before"], 0)
+            self.assertTrue(payload["previousCursor"])
+            # A changed observation can leave the requested later page empty. Keep
+            # the real cursor/before metadata so both recovery paths stay testable.
+            payload.update(items=[], total=0, nextCursor=None)
+            route.fulfill(response=response, json=payload)
+
+        page.route("**/work-relations?**", empty_later_page)
+        for recovery in ("Previous", "Refresh"):
+            with self.subTest(recovery=recovery):
+                nav.get_by_role("button", name="Next", exact=True).click()
+                self.ready(panel)
+                expect(nav).to_contain_text("No rows on this page · 0 links total")
+                expect(nav.get_by_role("button", name="Previous", exact=True)).to_be_enabled()
+                expect(panel).to_contain_text("No matching links on this page.")
+                shot(page, f"detail-relations-empty-later-{recovery.lower()}")
+                nav.get_by_role("button", name=recovery, exact=True).click()
+                self.ready(panel)
+                expect(nav).to_contain_text("1–50 of")
+                expect(nav.get_by_role("button", name="Next", exact=True)).to_be_enabled()

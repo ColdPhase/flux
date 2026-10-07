@@ -423,6 +423,15 @@ class SearchJourney(unittest.TestCase):
                     expect(details.get_by_role("heading", name=tasks[number - 1]["title"], exact=True)).to_be_visible()
                     expect(details.locator(".wd-eyebrow .ui-task-number")).to_have_text(f"#{number}")
                     expect(details.locator(".wd-project-name")).to_have_text(place["name"])
+                    expect(details.locator("[data-detail-relations-phase]")).to_have_attribute("data-detail-relations-phase", "ready")
+                    expect(details.get_by_role("navigation", name="Object relationship pages")).to_have_count(0)
+                    expect(details.get_by_label("Status", exact=True)).to_have_value("open")
+                    expect(details.get_by_label("Owner", exact=True)).to_have_value("")
+                    for name in ("Status", "Owner"):
+                        field_box = details.get_by_label(name, exact=True).bounding_box()
+                        label_box = details.locator(".wd-controls > label", has_text=name).bounding_box()
+                        self.assertGreaterEqual(field_box["x"] - label_box["x"] - label_box["width"], 11,
+                                                f"{name} keeps a readable label/value gap at default text size")
                     self.no_horizontal_scroll(page)
                     shot(page, f"task-number-{number}-global-details-{'phone-390' if phone else 'desktop-1440'}")
                 # The shared type tokens use rem. Enlarge actual text through the root size;
@@ -432,6 +441,12 @@ class SearchJourney(unittest.TestCase):
                 expect(number_label).to_be_visible()
                 expect(details.locator(".wd-project-name")).to_be_visible()
                 self.assertGreaterEqual(number_label.evaluate("node => parseFloat(getComputedStyle(node).fontSize)"), 20)
+                for name in ("Status", "Owner"):
+                    field_box = details.get_by_label(name, exact=True).bounding_box()
+                    label_box = details.locator(".wd-controls > label", has_text=name).bounding_box()
+                    self.assertGreaterEqual(field_box["x"] - label_box["x"] - label_box["width"], 11,
+                                            f"{name} keeps a readable label/value gap with 200% text")
+                expect(details.get_by_role("navigation", name="Object relationship pages")).to_have_count(0)
                 self.no_horizontal_scroll(page)
                 shot(page, f"task-number-26-text-200-{'phone-390' if phone else 'desktop-1440'}")
 

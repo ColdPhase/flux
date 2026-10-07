@@ -109,8 +109,11 @@ export function WorkDetails({ view }: { view: ObjectView | WorkFormView }) {
 }
 
 function RelationPages({ relations }: { relations: DetailRelations }) {
+  // Only a successful, complete first observation proves there are no links. A later
+  // empty page must retain navigation/Refresh, and pending or failed reads remain visible.
+  const emptyEntry = relations.read.phase === 'ready' && relations.complete && relations.page?.total === 0 && !relations.links.length;
   return <div data-detail-relations-phase={relations.read.phase} data-detail-relations-observed-at={relations.page?.observedAt}>
-    <WorkPagination {...relations} page={relations.page} label="Object relationship pages" noun="links" />
+    {!emptyEntry ? <WorkPagination {...relations} page={relations.page} label="Object relationship pages" noun="links" /> : null}
     {relations.read.phase === 'unavailable' ? <p className="wd-error" role="alert">Relationships could not be loaded. <button type="button" className="wd-inline" onClick={relations.onRefresh}>Refresh relationships</button></p> : null}
     {relations.page && !relations.complete ? <p className="wd-muted">Linked sections show this page of relationships. Browse all pages to explore every link.</p> : null}
   </div>;
