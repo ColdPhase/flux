@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useRevalidator } from 'react-router';
-import type { Project } from '@flux/contracts';
+import type { ConversationMessage, Project } from '@flux/contracts';
 import { useShellData } from '../app/data';
 import { useStreamEvents } from '../api/stream';
 import { listProjectPeople } from '../project/data';
@@ -8,6 +8,15 @@ import { listProjectPeople } from '../project/data';
 /** Agent owners from this project's current authorized audience; no workspace roster or shared cache. */
 export type AgentOwners = ReadonlyMap<string, string>;
 const EMPTY: AgentOwners = new Map();
+
+/** A historical author may lose its grant; its owner name still needs a fresh authorized audience. */
+export function agentAuthorOwner(author: Extract<ConversationMessage, { authorId: null }>['author'], owners: AgentOwners): string | undefined {
+  const current = owners.get(author.id);
+  if (current) return current;
+  const projected = author.projectOwner;
+  if (projected?.kind === 'workspace') return owners.get('owner:workspace');
+  return projected?.kind === 'human' ? owners.get(`human:${projected.id}`) : undefined;
+}
 
 export function useAgentOwners(project: Pick<Project, 'id' | 'workspaceId'> | null | undefined): AgentOwners {
   const { me } = useShellData();
@@ -33,10 +42,11 @@ export function useAgentOwners(project: Pick<Project, 'id' | 'workspaceId'> | nu
       setRead(null);
       void listProjectPeople(projectId, controller.signal).then((people) => {
         if (controller.signal.aborted) return;
-        const owners = new Map(people.flatMap((person) => {
+        const owners = new Map<string, string>([['owner:workspace', 'the workspace'], ...people.flatMap((person) => {
+          if (person.kind === 'human') return [[`human:${person.id}`, person.name] as const];
           if (person.kind !== 'agent' || !person.agentOwner) return [];
           return [[person.id, person.agentOwner.kind === 'workspace' ? 'the workspace' : person.agentOwner.name] as const];
-        }));
+        })]);
         setRead({ scope, owners });
       }, () => { if (!controller.signal.aborted) setRead(null); });
     };

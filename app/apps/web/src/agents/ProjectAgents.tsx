@@ -16,7 +16,7 @@ import { useNativeOwn, useWorkChoices } from '../work/useDetailReads';
 import { WorkPagination } from '../work/WorkPagination';
 import { agentDisplayName } from '../docs/format';
 import { getProjectAgents } from './api';
-import { useAgentOwners } from './owners';
+import { agentAuthorOwner, useAgentOwners } from './owners';
 import { ProjectPolicy } from './ProjectPolicy';
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
@@ -290,7 +290,7 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
             // A confirmed message keeps its queued item, so nothing moves or is announced twice (#264).
             <li key={outbox.keyOf(message.id)} className={`agents-msg${own ? ' agents-msg--own' : ''}${agent ? ' agents-msg--agent' : ''}`}>
               <span className="agents-msg__meta">
-                {agent ? <AgentIdentity name={authorName(message, names)} owner={message.author.kind === 'agent' ? owners.get(message.author.id) : undefined} /> : <b>{own ? 'You' : authorName(message, names)}</b>}
+                {agent ? <AgentIdentity name={authorName(message, names)} owner={message.author.kind === 'agent' ? agentAuthorOwner(message.author, owners) : undefined} /> : <b>{own ? 'You' : authorName(message, names)}</b>}
                 <time dateTime={message.createdAt}>{when(message.createdAt)}</time>
                 {message.contribution ? <span className="agents-msg__kind"> · {message.contribution.kind}</span> : null}
               </span>

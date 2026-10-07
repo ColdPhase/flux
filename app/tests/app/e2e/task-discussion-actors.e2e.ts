@@ -173,6 +173,7 @@ test('agent root renders without a human DM link, real human reply persists, and
       const agentRow = view.locator(`#message-${root.id}`);
       await agentRow.waitFor();
       await assertAuthorColumn(agentRow, width);
+      await agentRow.locator('.agent-for').filter({ hasText: 'for Casey Human' }).waitFor();
       assert.match(await agentRow.innerText(), /Trial analyst\s*Agent/);
       assert.equal(await agentRow.locator('a[href*="/dm/new"]').count(), 0);
       const humanRow = view.locator(`#message-${human.id}`);
@@ -181,6 +182,7 @@ test('agent root renders without a human DM link, real human reply persists, and
       assert.equal(await humanRow.locator(`a[href$="with=${owner.id}"]`).count(), 1);
       const thread = view.locator('#thread');
       await assertAuthorColumn(thread.locator(`#thread-root-${root.id}`), width);
+      await thread.locator('.thread__root .agent-for').filter({ hasText: 'for Casey Human' }).waitFor();
       await thread.getByText('You have read access to this project.', { exact: true }).waitFor();
       assert.equal(await view.getByRole('textbox', { name: 'Reply', exact: true }).count(), 0);
       assert.equal(await view.getByRole('button', { name: 'Send reply', exact: true }).count(), 0);

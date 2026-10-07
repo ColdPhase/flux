@@ -11,7 +11,7 @@ import { MessageWorkPages } from '../work/MessageWorkPages';
 import { useShellActions } from './shellContext';
 import { listConversationRoots, listTaskNotices } from './conversation-api';
 import { AgentAuthor, AuthorFace, ContributionMark, OPENING_REVEAL_MS, SourceCitation, clock, day, openOnWholeMessages, pendingMessageRow, when } from './messageParts';
-import { useAgentOwners, type AgentOwners } from '../agents/owners';
+import { agentAuthorOwner, useAgentOwners, type AgentOwners } from '../agents/owners';
 import { MessageFiles } from '../composer/Files';
 import { onSent, outboxView, useComposerDraft, type PendingSend } from '../composer/draft';
 import { agentAuthorLabel } from '../docs/format';
@@ -589,7 +589,7 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
       className={`project-convo__message${mine ? ' is-mine' : ''}${arrived ? ' is-arrived' : ''}${open ? ' is-open' : ''}`}>
       <AuthorFace message={message} name={name} mine={mine} />
       <div className="project-convo__message-meta">
-        <strong>{mine ? `${name} · you` : message.authorId === null ? <AgentAuthor message={message} owner={owners.get(message.author.id)} /> : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</Link>}</strong>
+        <strong>{mine ? `${name} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</Link>}</strong>
         <time dateTime={message.createdAt} title={when(message.createdAt)}>{clock(message.createdAt)}</time>
       </div>
       {message.body ? <p>{message.body}</p> : null}

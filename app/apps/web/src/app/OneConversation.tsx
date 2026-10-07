@@ -4,7 +4,7 @@ import type { Conversation, ConversationMessage, ConversationRoot, NativeWorkRow
 import type { MessageWorkPreview } from '../work/message-associations';
 import { ApiError } from '../api/client';
 import { MEDIA, useMediaQuery } from '../ui';
-import { useAgentOwners } from '../agents/owners';
+import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import { excerpt } from '../live/anchors';
 import { audienceLine, useProjectShell } from '../project/data';
@@ -150,7 +150,7 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
           <Pane key={thread.id} data={data} variant="thread" rootMessageId={rootMessage?.id ?? null}
             focusComposer={!!state?.focusComposer} onThreadSize={roots.threadSize}
             rootHeader={({ preview, taskRow }) => <ThreadRoot message={rootMessage} projectId={project.id} body={rootMessage?.body ?? thread.firstMessageBody} author={rootMessage ? author(rootMessage) : null}
-              agentOwner={rootMessage?.authorId === null ? owners.get(rootMessage.author.id) ?? null : null} meId={me.user.id} writable={writable} replies={replies} task={root?.task ?? null} taskRow={taskRow} preview={preview} onDenied={onDenied} />} />
+              agentOwner={rootMessage?.authorId === null ? agentAuthorOwner(rootMessage.author, owners) ?? null : null} meId={me.user.id} writable={writable} replies={replies} task={root?.task ?? null} taskRow={taskRow} preview={preview} onDenied={onDenied} />} />
         </ThreadDrawer>
       ) : null}
     </div>
