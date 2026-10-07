@@ -292,7 +292,7 @@ svg { flex: none; }
   display: inline-flex; align-items: center; gap: 3px; flex: none; height: 18px; padding: 0 7px 0 4px; border-radius: var(--r-pill);
   background: var(--el); box-shadow: var(--sh-1), inset 0 0 0 1px var(--line); font-size: .6875rem; font-weight: 600; color: var(--t1);
 }
-.agent-for { flex: none; color: var(--t2); font-weight: 400; white-space: nowrap; }
+.agent-for { flex: 0 1 auto; min-width: 0; max-width: 100%; color: var(--t2); font-weight: 400; white-space: normal; overflow-wrap: anywhere; }
 @media (max-width: 680px) { .agent-tag { min-height: 20px; height: auto; font-size: var(--fs-xs); } }
 
 /* ---------- Avatar: people are grey circles with initials ---------- */

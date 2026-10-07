@@ -199,7 +199,7 @@ test('native agent owners retry failed reads, fence stale permission answers and
     const card = page.locator(`[data-card-id="${task.id}"]`);
     await card.waitFor();
     assert.equal(await card.locator('.agent-for').count(), 0, 'failed owner reads show no obsolete relation');
-    await page.unroute(endpoint);
+    await page.unrouteAll({ behavior: 'wait' });
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await card.locator('.agent-for').waitFor();
     assert.equal(await card.locator('.agent-for').innerText(), 'for Scoped Casey', '503 was not cached');
@@ -224,12 +224,12 @@ test('native agent owners retry failed reads, fence stale permission answers and
     // The same workspace has a second project with different agent rights. A workspace-keyed
     // owner cache would wrongly reuse the first project's authorized name here.
     await page.getByRole('link', { name: 'Other owner scope', exact: true }).click();
-    await page.getByRole('link', { name: /^Tasks/ }).click();
+    await page.locator(`a[href^="/projects/${elsewhere.id}/tasks"]`).click();
     await page.getByRole('radio', { name: 'Kanban', exact: true }).click();
     await page.locator(`[data-card-id="${otherTask.id}"]`).waitFor();
     assert.equal(await page.locator(`[data-card-id="${otherTask.id}"] .agent-for`).count(), 0);
     await page.getByRole('link', { name: 'Owner scope', exact: true }).click();
-    await page.getByRole('link', { name: /^Tasks/ }).click();
+    await page.locator(`a[href^="/projects/${place.id}/tasks"]`).click();
     await page.getByRole('radio', { name: 'List', exact: true }).click();
     await row.locator('.agent-for').waitFor();
     // A response completed under old authority is held while a real grant changes. The stream
@@ -247,8 +247,9 @@ test('native agent owners retry failed reads, fence stale permission answers and
       if (!once) {
         const response = await route.fetch();
         const people = await response.json() as { id: string }[];
+        await route.fulfill({ response });
         if (!people.some((person) => person.id === agent.id)) currentRead();
-        return route.fulfill({ response });
+        return;
       }
       once = false;
       const response = await route.fetch();
@@ -266,7 +267,7 @@ test('native agent owners retry failed reads, fence stale permission answers and
     await gotCurrentRead;
     release();
     await gotHeldDone;
-    await page.unroute(endpoint);
+    await page.unrouteAll({ behavior: 'wait' });
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await page.waitForFunction((id) => !document.querySelector(`[data-work-id="${id}"] .agent-for`), task.id);
     assert.equal(await row.locator('.agent-for').count(), 0, 'an old authorized response cannot reintroduce the relation');
@@ -278,7 +279,7 @@ test('native agent owners retry failed reads, fence stale permission answers and
     await page.getByLabel('Email').fill(guest.email); await page.getByLabel('Password', { exact: true }).fill(password);
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     await page.getByRole('link', { name: 'Owner scope', exact: true }).click();
-    await page.getByRole('link', { name: /^Tasks/ }).click();
+    await page.locator(`a[href^="/projects/${place.id}/tasks"]`).click();
     await page.locator(`[data-card-id="${task.id}"]`).waitFor();
     assert.equal(await page.locator(`[data-card-id="${task.id}"] .agent-for`).count(), 0);
     assert.equal(await page.evaluate(() => (window as unknown as { sameDocument: boolean }).sameDocument), true);
