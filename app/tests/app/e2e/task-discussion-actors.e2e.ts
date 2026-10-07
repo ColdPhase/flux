@@ -5,7 +5,7 @@ import http from 'node:http';
 import net from 'node:net';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
-import { chromium, type Browser, type BrowserContext, type Locator } from 'playwright';
+import { chromium, type Browser, type BrowserContext, type Locator, type Route } from 'playwright';
 import { taskDiscussionPath, type ConversationMessage, type WorkItem } from '@flux/contracts';
 import { workUseCases } from '../../../apps/server/src/work/adapters.js';
 import { taskDiscussionUseCases } from '../../../apps/server/src/work/task-discussions.js';
@@ -64,6 +64,12 @@ async function signedIn(who: Person, width: number) {
 /** Both author types occupy the existing avatar column; Kreska retains its own SVG/decoration.
  * Full F-026 32px conversation layout remains the conversation task, not this identity increment.
  */
+function isCancelledFulfilment(cause: unknown, route: Route): boolean {
+  const failure = route.request().failure();
+  return cause instanceof Error && cause.message.includes('Route is already handled!')
+    && failure?.errorText === 'net::ERR_ABORTED';
+}
+
 async function assertAuthorColumn(row: Locator, width: number) {
   await row.waitFor();
   const geometry = await row.evaluate((el) => {
@@ -348,7 +354,14 @@ test('native agent owners retry failed reads, fence stale permission answers and
       if (!once) {
         const response = await route.fetch();
         const people = await response.json() as { id: string }[];
-        await route.fulfill({ response });
+        try {
+          await route.fulfill({ response });
+        } catch (cause) {
+          // The production scope fence can abort a superseded request while its fixture fetch finishes.
+          // Only the actual browser cancellation is expected; every other handler error still fails.
+          if (!isCancelledFulfilment(cause, route)) throw cause;
+          return;
+        }
         if (!people.some((person) => person.id === agent.id)) currentRead();
         return;
       }
@@ -356,7 +369,11 @@ test('native agent owners retry failed reads, fence stale permission answers and
       const response = await route.fetch();
       held();
       await gate;
-      await route.fulfill({ response }).catch(() => undefined);
+      try {
+        await route.fulfill({ response });
+      } catch (cause) {
+        if (!isCancelledFulfilment(cause, route)) throw cause;
+      }
       heldDone();
     });
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
