@@ -1,0 +1,170 @@
+[
+  {
+    "path": "Caddyfile",
+    "source": "/tmp/flux327-runtime/Caddyfile",
+    "sha256": "409e3b28b3ff43af602057ac80ff136c9f997210edb1b87ba08875313cfba9a3",
+    "bytes": 164
+  },
+  {
+    "path": "browser-probe.py",
+    "source": "/tmp/flux327-runtime/browser_probe.py",
+    "sha256": "15317727762d5638309fbec5918ee0d6ec6a3273a3fc0f3ad4bfcc1237139966",
+    "bytes": 7512
+  },
+  {
+    "path": "untrusted-browser.json",
+    "source": "/tmp/flux327-runtime/untrusted-browser.json",
+    "sha256": "1814d5ae350854ef1f41dce0063d9f81b86d31cd8a2e269e4272baf92f934563",
+    "bytes": 510
+  },
+  {
+    "path": "trusted-browser.json",
+    "source": "/tmp/flux327-runtime/trusted-browser.json",
+    "sha256": "519aa4e18810a17bbc919c2f922b1b900d9db1e7863e7ec548cbee6fcee7c99d",
+    "bytes": 4614
+  },
+  {
+    "path": "socket-peer.tsv",
+    "source": "/tmp/flux327-socket-peer.tsv",
+    "sha256": "924fd2b3675c379ecc4f68129a02ec8d8c4b7223d66367f5ae05d8f32ea988e5",
+    "bytes": 77
+  },
+  {
+    "path": "final-proof.tsv",
+    "source": "/tmp/flux327-final-proof.tsv",
+    "sha256": "e15ec07081d2c44eb9fa07316a4b5969a1754f9da89dc2b573bb73aaedced54b",
+    "bytes": 394
+  },
+  {
+    "path": "final-proof.sql",
+    "source": "/tmp/flux327-final-proof.sql",
+    "sha256": "35244a0f7d19b78febac6f0ea4aecc6ff7d788e6e39314c3be8326a613538927",
+    "bytes": 458
+  },
+  {
+    "path": "sender.png",
+    "source": "/tmp/flux327-runtime/sender.png",
+    "sha256": "9c4db57141d31dc974ea2f13a2e3149fa2aa3064e3b0bcb0521c064789b87749",
+    "bytes": 92158
+  },
+  {
+    "path": "receiver.png",
+    "source": "/tmp/flux327-runtime/receiver.png",
+    "sha256": "215c7200eda24d7a80ba196b14721743936601bdf7251542d128fb642659a5f3",
+    "bytes": 90257
+  },
+  {
+    "path": "caddy-version.txt",
+    "source": "/tmp/flux327-caddy-version.txt",
+    "sha256": "528dbf5ef3ef70408fc96e3b827c6ff9342f193a9650e0e95db8602b9826b325",
+    "bytes": 56
+  },
+  {
+    "path": "caddy-validation.txt",
+    "source": "/tmp/flux327-caddy-validate.log",
+    "sha256": "f1b86afc53ac62a6c435005f941b49f13fe45d602b22ef694961691d48965a2f",
+    "bytes": 965
+  },
+  {
+    "path": "caddy-selinux-failure.txt",
+    "source": "/tmp/flux327-caddy-validate-selinux-failure.log",
+    "sha256": "6d687987bc6aac928f321607c3710ea528be466f5c92a47cba48c9e15035a706",
+    "bytes": 121
+  },
+  {
+    "path": "browser-untrusted.txt",
+    "source": "/tmp/flux327-browser-untrusted.log",
+    "sha256": "40fdd31db6904bd9a162617617b4edcdf597c30be4988a25e0058249cec280c3",
+    "bytes": 35
+  },
+  {
+    "path": "browser-trusted.txt",
+    "source": "/tmp/flux327-browser-trusted.log",
+    "sha256": "2495fbd1915f079070988d59102875ce13bbe881670429eed733a9cd4f639051",
+    "bytes": 33
+  },
+  {
+    "path": "independent-runtime.md",
+    "source": "/tmp/flux327-independent-runtime.md",
+    "sha256": "998d1d1e688240d711736df7227d10e8ba84ccaf965145a98be63816a1103f55",
+    "bytes": 5620
+  },
+  {
+    "path": "independent-plan.md",
+    "source": "/tmp/flux327-plan-independent.md",
+    "sha256": "a90384fb88a01a2ca59bffbc53a40793c582103d99f8b86e7cb1fb8001534f5b",
+    "bytes": 7785
+  },
+  {
+    "path": "cleanup.txt",
+    "source": "/tmp/flux327-cleanup.log",
+    "sha256": "8f960f54b77be663e46bd4c82399e291945e731498080c3d4e96ca2a20708a43",
+    "bytes": 1678
+  },
+  {
+    "path": "cleanup-containers.txt",
+    "source": "/tmp/flux327-cleanup-containers.txt",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  {
+    "path": "cleanup-volumes.txt",
+    "source": "/tmp/flux327-cleanup-volumes.txt",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  {
+    "path": "cleanup-images.txt",
+    "source": "/tmp/flux327-cleanup-images.txt",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  {
+    "path": "metadata-headers.txt",
+    "source": "/tmp/flux327-independent-metadata-after-trust-headers.txt",
+    "sha256": "2189a6443d6bcacb995f784d23f150a85fd902d692c0d6c1f46c8237632b5a2d",
+    "bytes": 326
+  },
+  {
+    "path": "metadata.json",
+    "source": "/tmp/flux327-independent-metadata-after-trust.json",
+    "sha256": "9ee39ac5351177097f8e6ce1caa3d3026a15efabbca13a7149340bfc3a606a2e",
+    "bytes": 304
+  },
+  {
+    "path": "mcp-headers.txt",
+    "source": "/tmp/flux327-independent-mcp-after-trust-headers.txt",
+    "sha256": "254347eab1001a91bbc40a7112b1d6ecbb191c7ed3f5e125907097a1d9994792",
+    "bytes": 245
+  },
+  {
+    "path": "mcp.json",
+    "source": "/tmp/flux327-independent-mcp-after-trust.json",
+    "sha256": "babe53800e6c513756f98fb9cf33d49ea069450fba2c0bfd4e9d689ee6abf925",
+    "bytes": 92
+  },
+  {
+    "path": "browser-selector-failure.txt.gz",
+    "source": "/tmp/flux327-browser-trusted-selector-failure.log",
+    "originalSha256": "f4ddbef649b04d5e7975b87a9f3141f7b043ec5efd7ad1a7ba85665f5a1119fb",
+    "originalBytes": 4039,
+    "sha256": "1521dd5f2ce47b8946c4d7a985d0328993b42100b3456d724e344f2b4cae14fb",
+    "bytes": 1467
+  },
+  {
+    "path": "browser-empty-region-failure.txt.gz",
+    "source": "/tmp/flux327-browser-trusted-empty-region-failure.log",
+    "originalSha256": "9d9e38a4f2faf988e41b4d73510c4cb7c44c0517a55f4fd417a10dfa83907c41",
+    "originalBytes": 4204,
+    "sha256": "706598688bd2144257cbccd08804b1e7faac17dcc23b194c7f23f984bd7109b0",
+    "bytes": 1520
+  },
+  {
+    "path": "browser-15s-failure.txt.gz",
+    "source": "/tmp/flux327-browser-trusted-15s-failure.log",
+    "originalSha256": "fd1854f44df47f764b00c40fae7d031d9ddf98a10c552e7f241885abf2dfac36",
+    "originalBytes": 4318,
+    "sha256": "9a6b33f45d91f2b0187210b9ac594460ab5da4704f8b35244dd6738d9efbe04f",
+    "bytes": 1583
+  }
+]
