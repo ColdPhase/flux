@@ -227,5 +227,25 @@ class RouteChunksJourney(unittest.TestCase):
                 expect(opener).to_be_focused()
 
 
+    def test_08_restored_network_really_recovers_the_failed_route(self):
+        for engine in self.browsers:
+            with self.subTest(engine=engine):
+                page = self.page(engine)
+                self.home(page)
+                pattern = re.compile(r"/assets/SettingsHome-[^/]+\.js(?:\?.*)?$")
+                refused = []
+                def refuse(route):
+                    refused.append(route.request.url)
+                    route.abort("failed")
+                page.route(pattern, refuse)
+                self.settings(page)
+                expect(page.locator(".ui-error")).to_be_visible()
+                self.assertEqual(len(refused), 1)
+                page.unroute(pattern, refuse)
+                page.get_by_role("button", name="Try again", exact=True).click()
+                expect(page.get_by_role("heading", name="Settings", exact=True)).to_be_visible()
+                expect(page.locator(".ui-error")).to_have_count(0)
+
+
 if __name__ == "__main__":
     unittest.main()
