@@ -63,13 +63,14 @@ class KreskaJourney(unittest.TestCase):
         page.get_by_label("Password").fill(PASSWORD)
         page.get_by_role("button", name="Create account").click()
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
-        type(self).state = page.context.storage_state()
         workspace = self.api(page, "POST", "/api/v1/workspaces", {"name": "Garden sensors"})
         project = self.api(page, "POST", f"/api/v1/workspaces/{workspace['id']}/projects", {"name": "Soil probes", "visibility": "restricted"})
         agent = self.api(page, "POST", f"/api/v1/workspaces/{workspace['id']}/agents", {"name": "Codex", "owner": "self"})
+        self.api(page, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": {"kind": "agent", "id": agent["id"]}, "role": "contributor"})
         self.api(page, "POST", f"/api/v1/projects/{project['id']}/work", {"title": "Calibrate the probes", "owner": {"kind": "agent", "id": agent["id"]}})
         self.api(page, "POST", f"/api/v1/projects/{project['id']}/work", {"title": "Order the enclosures", "owner": {"kind": "human", "id": self.me(page)}})
         type(self).ids = {"workspace": workspace["id"], "project": project["id"], "agent": agent["id"]}
+        type(self).state = page.context.storage_state()
 
     def me(self, page: Page) -> str:
         return json.loads(page.request.get(f"{ORIGIN}/api/v1/me").text())["user"]["id"]
@@ -99,14 +100,15 @@ class KreskaJourney(unittest.TestCase):
         page = self.page()
         page.goto(f"/projects/{self.ids['project']}/tasks")
         agent_card = page.locator(".tb-card", has_text="Calibrate the probes")
-        expect(agent_card.locator(".kreska")).to_have_count(1)
-        expect(agent_card.locator(".agent-tag")).to_have_text("Agent")
+        owner = agent_card.locator(".tb-card__owner")
+        expect(owner.locator(":scope > .kreska")).to_have_count(1)
+        expect(owner.locator(".agent-tag")).to_have_text("Agent")
         expect(agent_card.locator(".tb-av")).to_have_count(0)
         person_card = page.locator(".tb-card", has_text="Order the enclosures")
         expect(person_card.locator(".tb-av")).to_have_text("AK")
         expect(person_card.locator(".kreska")).to_have_count(0)
         # Outside the Agents section an agent is monochrome: no colour class.
-        self.assertEqual(agent_card.locator(".kreska").get_attribute("class").strip(), "kreska")
+        self.assertEqual(owner.locator(":scope > .kreska").get_attribute("class").strip(), "kreska")
         shot(page, "339-tasks-agent-owner")
 
     def test_03_every_expression_is_a_complete_static_frame_under_reduced_motion(self) -> None:

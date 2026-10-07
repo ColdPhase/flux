@@ -401,8 +401,9 @@ class PersonalAssistantJourney(unittest.TestCase):
     def check_working_motion(self, jo: Page, working) -> None:
         expect(working).to_contain_text("Your assistant is writing an answer…", timeout=15000)
         expect(working).to_have_class(re.compile(r"\bis-working\b"))
-        pulse = working.locator(".assistant-working__pulse")
-        self.assertEqual(pulse.evaluate("el => [getComputedStyle(el).animationName, getComputedStyle(el).animationPlayState]"), ["assistant-breathe", "running"])
+        # The mark is Kreska thinking: its brow waves while the run executes (#339).
+        pulse = working.locator('.kreska[data-expression="thinking"] .kreska__brow')
+        self.assertEqual(pulse.evaluate("el => [getComputedStyle(el).animationName, getComputedStyle(el).animationPlayState]"), ["kreska-wave", "running"])
         # Under a modal (Jump to…) the mark pauses; it runs again when the modal closes.
         jo.keyboard.press("Control+k")
         expect(jo.locator('[aria-modal="true"]')).to_be_visible()
@@ -429,7 +430,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         working.get_by_role("button", name="Stop").click()
         expect(working).to_contain_text(re.compile("Stopping… nothing will be posted.|Stopped. Nothing was posted."), timeout=15000)
         expect(working).not_to_have_class(re.compile(r"\bis-working\b"))
-        expect(working.locator(".assistant-working__pulse")).to_have_count(0)
+        expect(working.locator('.kreska[data-expression="thinking"]')).to_have_count(0)
         expect(working).to_contain_text("Stopped. Nothing was posted.", timeout=15000)
 
     # ---------------------------------------------------------------- the proposal: only authority accepts
