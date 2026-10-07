@@ -202,7 +202,8 @@ client, with each client's own add and login commands. All of them get the same:
 
 - OAuth consent
 - grants and standing autonomy
-- identity and one entry per connection in the Agents view (UI116-2)
+- identity and one entry per connection in the Agents view
+  ([CO-1](mcp-cowork.md#connections-and-owner-authorized-autonomy--co-1))
 
 The client label stays a recognition aid, not a verified identity.
 

@@ -8,64 +8,64 @@
   display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center;
   gap: var(--s-1) var(--s-3); min-height: var(--ctl);
 }
-.agents-policy__title { margin: 0; font-size: var(--fs-md); font-weight: 600; color: var(--text); }
-.agents-policy__meta { min-width: 0; font-size: var(--fs-xs); color: var(--text-3); overflow-wrap: anywhere; }
+.agents-policy__title { margin: 0; font-size: var(--fs-md); font-weight: 600; color: var(--t1); }
+.agents-policy__meta { min-width: 0; font-size: var(--fs-xs); color: var(--t3); overflow-wrap: anywhere; }
 .agents-policy__head .ui-btn { grid-column: 3; }
 
 .agents-policy__body, .agents-policy__form { display: flex; flex-direction: column; gap: var(--s-4); }
-.agents-policy__note { margin: 0; max-width: 72ch; font-size: var(--fs-sm); line-height: 1.5; color: var(--text-3); }
+.agents-policy__note { margin: 0; max-width: 72ch; font-size: var(--fs-sm); line-height: 1.5; color: var(--t3); }
 /* What the policy is, who writes it and whether to act, in every state (#272). */
-.agents-policy__purpose { margin: 0; max-width: 72ch; font-size: var(--fs-sm); line-height: 1.5; color: var(--text-2); }
-.agents-policy__published, .agents-policy__newer { margin: 0; font-size: var(--fs-sm); line-height: 1.5; color: var(--text-2); }
+.agents-policy__purpose { margin: 0; max-width: 72ch; font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); }
+.agents-policy__published, .agents-policy__newer { margin: 0; font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); }
 
 .agents-policy__sections { margin: 0; display: flex; flex-direction: column; gap: var(--s-3); }
-.agents-policy__section dt { margin-bottom: 2px; font-size: var(--fs-sm); font-weight: 600; color: var(--text-2); }
+.agents-policy__section dt { margin-bottom: 2px; font-size: var(--fs-sm); font-weight: 600; color: var(--t2); }
 .agents-policy__section dd {
-  margin: 0; max-width: 72ch; font-size: var(--fs-base); line-height: 1.6; color: var(--text);
+  margin: 0; max-width: 72ch; font-size: var(--fs-base); line-height: 1.6; color: var(--t1);
   white-space: pre-wrap; overflow-wrap: anywhere;
 }
-.agents-policy__section dd[data-empty] { color: var(--text-3); }
+.agents-policy__section dd[data-empty] { color: var(--t3); }
 
 .agents-policy__field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.agents-policy__field label { font-size: var(--fs-sm); font-weight: 600; color: var(--text-2); }
+.agents-policy__field label { font-size: var(--fs-sm); font-weight: 600; color: var(--t2); }
 .agents-policy__field textarea {
   width: 100%; min-height: 76px; max-height: 50vh; resize: vertical; field-sizing: content;
-  font: inherit; font-size: var(--fs-base); line-height: 1.6; color: var(--text);
-  background: var(--bg); border: 1px solid var(--line-input); border-radius: var(--r); padding: var(--s-2) var(--s-3);
+  font: inherit; font-size: var(--fs-base); line-height: 1.6; color: var(--t1);
+  background: var(--el); border: 1px solid var(--line2); border-radius: var(--r); padding: var(--s-2) var(--s-3);
 }
-.agents-policy__field textarea:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
-.agents-policy__field--invalid textarea { border-color: var(--danger); }
+.agents-policy__field textarea:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
+.agents-policy__field--invalid textarea { border-color: var(--t1); }
 .agents-policy__field-foot { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-3); }
-.agents-policy__hint { margin: 0; font-size: var(--fs-xs); line-height: 1.5; color: var(--text-3); }
-.agents-policy__count { flex: none; font-size: var(--fs-xs); color: var(--text-3); font-variant-numeric: tabular-nums; }
-.agents-policy__field--invalid .agents-policy__count { color: var(--danger); }
+.agents-policy__hint { margin: 0; font-size: var(--fs-xs); line-height: 1.5; color: var(--t3); }
+.agents-policy__count { flex: none; font-family: var(--mono); font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
+.agents-policy__field--invalid .agents-policy__count { color: var(--t1); }
 .agents-policy__field-error, .agents-policy__error {
   margin: 0; display: flex; align-items: flex-start; gap: 6px;
-  font-size: var(--fs-sm); line-height: 1.45; color: var(--danger);
+  font-size: var(--fs-sm); line-height: 1.45; color: var(--t1);
 }
 .agents-policy__field-error svg, .agents-policy__error svg { flex: none; margin-top: 2px; }
 
 /* A revision published while this edit was open: one short tinted line, and what it changed under each field. */
 .agents-policy__conflict-note {
-  margin: 0; padding: var(--s-2) var(--s-3); border-radius: var(--r); background: var(--tint-warning);
-  font-size: var(--fs-sm); line-height: 1.5; color: var(--text);
+  margin: 0; padding: var(--s-2) var(--s-3); border-radius: var(--r); background: var(--sub);
+  font-size: var(--fs-sm); line-height: 1.5; color: var(--t1);
 }
 .agents-policy__theirs {
   display: flex; flex-direction: column; align-items: flex-start; gap: 2px; margin-top: 2px;
-  padding: var(--s-2) var(--s-3); border-left: 3px solid var(--warning); border-radius: 0 var(--r) var(--r) 0; background: var(--bg-side);
+  padding: var(--s-2) var(--s-3); border-left: 3px solid var(--t2); border-radius: 0 var(--r) var(--r) 0; background: var(--sub);
 }
-.agents-policy__theirs-label { font-size: var(--fs-sm); font-weight: 600; color: var(--text-2); }
-.agents-policy__theirs-text { max-width: 72ch; font-size: var(--fs-sm); line-height: 1.55; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
-.agents-policy__theirs-text[data-empty] { color: var(--text-3); }
-.agents-policy__theirs-same { font-size: var(--fs-xs); color: var(--text-3); }
+.agents-policy__theirs-label { font-size: var(--fs-sm); font-weight: 600; color: var(--t2); }
+.agents-policy__theirs-text { max-width: 72ch; font-size: var(--fs-sm); line-height: 1.55; color: var(--t1); white-space: pre-wrap; overflow-wrap: anywhere; }
+.agents-policy__theirs-text[data-empty] { color: var(--t3); }
+.agents-policy__theirs-same { font-size: var(--fs-xs); color: var(--t3); }
 .agents-policy__theirs .ui-btn { margin-left: -6px; }
 
 .agents-policy__actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: var(--s-2); }
 .agents-policy__body .agents-policy__actions { justify-content: flex-start; }
-.agents-policy__next { margin-right: auto; font-size: var(--fs-xs); color: var(--text-3); }
+.agents-policy__next { margin-right: auto; font-size: var(--fs-xs); color: var(--t3); }
 
 /* A press state on every button (HIG-16); the primary one darkens through the shared rule. */
-.agents-policy .ui-btn:not(.ui-btn--primary):active:not(:disabled):not([aria-disabled="true"]) { background: var(--bg-active); }
+.agents-policy .ui-btn:not(.ui-btn--primary):active:not(:disabled):not([aria-disabled="true"]) { background: var(--sub); }
 
 /* Touch, after the Apple HIG checklist (docs/design/apple-hig-mobile.md): fields at 16 px so focusing one never
    zooms (HIG-41), no text under 11 px with secondary lines at 13 px and the policy itself at 16 px (HIG-08, HIG-09),

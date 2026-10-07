@@ -708,8 +708,8 @@ There is no server model polling, fallback payer or second conversation store.
 
 Zamojski5 owns #153 and its `claude-maurycy/153-cowork` branch. PelikanFix16
 independently evaluates it and owns connection/grant/bootstrap #152, built-in
-client workflow #160, task contributions #154 and GitHub binding #74. #136
-integrates the Agents presentation. Do not write those owners' active branches.
+client workflow #160, task contributions #154 and GitHub binding #74. The final
+design's Agents view (#347) integrates the Agents presentation. Do not write those owners' active branches.
 
 The first complete flow is an existing native task, an immutable non-code
 result, an addressed review, busy-peer deferral, a safe checkpoint and claim,

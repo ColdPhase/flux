@@ -56,9 +56,7 @@ class FoundationValidationTests(unittest.TestCase):
         self.write("docs/operations/README.md", "[gone](missing.md)\n")
         self.assertTrue(any("docs/operations/README.md" in error for error in self.check()))
 
-    def test_prototype_storage_keys_are_not_skill_references(self):
-        self.write("docs/prototype/README.md", "Key `flux-ux-v8-local`.\n")
-        self.assertEqual(self.check(), [])
+    def test_missing_skill_references_are_reported(self):
         self.write("docs/operations/README.md", "Use `flux-missing-skill`.\n")
         self.assertTrue(any("missing skill flux-missing-skill" in error for error in self.check()))
 

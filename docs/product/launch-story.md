@@ -11,7 +11,7 @@
 > - the release link and date in the last paragraph (`[link]` placeholders);
 > - the v3 quote: #302 records it in English, translated from your chat, so use your own words in
 >   the Polish version;
-> - any entries added to the [build log](../build-log.md) after 2026-10-06.
+> - any entries added to the [build log](../build-log.md) after 2026-10-07.
 >
 > Every fact below comes from the build log or the linked pull requests and issues. There are no
 > other numbers in it, and none should be added without a source.
@@ -72,9 +72,10 @@ it overwhelming: it was unclear what to tap, and it felt nothing like a messenge
 ([#266](https://github.com/ColdPhase/flux/issues/266)), and an Apple HIG checklist became the
 rule book ([#285](https://github.com/ColdPhase/flux/pull/285)). Then we compared five phone
 mock-ups. The third, the desktop look copied onto the phone, got one line: "really ugly …
-hard to look at" ([#302](https://github.com/ColdPhase/flux/pull/302)). We chose a calmer
-direction, where each AI agent has its own coloured mark that moves only while the agent really
-works (proposed in [#304](https://github.com/ColdPhase/flux/pull/304)). A description is not a
+hard to look at" ([#302](https://github.com/ColdPhase/flux/pull/302)). So on 7 October we drew
+the final design ourselves, "Prostota" (simplicity): one calm language on the computer and the
+phone, one Inbox for what needs you, and Kreska, a line-drawn face that is the logo and every
+agent's icon ([#336](https://github.com/ColdPhase/flux/issues/336)). A description is not a
 design; show rendered screens early.
 
 **What we would tell another team.** Keep the coordination layer as thin as GitHub allows.
@@ -148,9 +149,10 @@ telefon” ([#266](https://github.com/ColdPhase/flux/issues/266)), a lista kontr
 stała się zbiorem zasad ([#285](https://github.com/ColdPhase/flux/pull/285)). Potem porównaliśmy
 pięć makiet na telefon. Trzecia, czyli wygląd z komputera przeniesiony na telefon, dostała jedno
 zdanie: „naprawdę brzydkie … ciężko na to patrzeć”
-([#302](https://github.com/ColdPhase/flux/pull/302)). Wybraliśmy spokojniejszy kierunek, w którym
-każdy agent AI ma własny kolorowy znak, poruszający się tylko wtedy, gdy agent naprawdę pracuje
-(propozycja w [#304](https://github.com/ColdPhase/flux/pull/304)). Opis to nie projekt;
+([#302](https://github.com/ColdPhase/flux/pull/302)). Dlatego 7 października sami narysowaliśmy
+finalny projekt, „Prostotę”: jeden spokojny język na komputerze i telefonie, jedna skrzynka
+na to, co czeka na ciebie, i Kreska, narysowana linią buźka, która jest logo i ikoną każdego
+agenta ([#336](https://github.com/ColdPhase/flux/issues/336)). Opis to nie projekt;
 pokazujcie wyrenderowane ekrany wcześnie.
 
 **Co powiedzielibyśmy innemu zespołowi.** Warstwa koordynacji powinna być tak cienka, jak pozwala

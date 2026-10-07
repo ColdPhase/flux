@@ -1,18 +1,22 @@
 # Milestone 1 — Decisions that enable implementation
 
-## Latest required additions — F-016 / F-017 (2026-09-30)
+## Final design — F-026 (2026-10-07)
 
-[Local MCP co-work](../mcp-cowork.md) and [Studio 11.6](../../design/studio-v11.6.md)
-now govern the new feature and full UI direction. #147 / PR #150 preserves the
-seven inputs and independent reference/contract review; import is not delivery.
-Flux owns the single task/thread, GitHub supplies PR/CI facts through project
+The [final design "Prostota"](../../design/final/README.md) is the only UI and UX on the
+computer and the phone. It is a founder direction: agents implement it as drawn and do not
+re-decide it. [#336](https://github.com/ColdPhase/flux/issues/336) lists the implementation
+issues. It governs every appearance or placement statement in this brief.
+
+## Required additions — F-016 (2026-09-30)
+
+[Local MCP co-work](../mcp-cowork.md) governs the new feature. Flux owns the single task/thread, GitHub supplies PR/CI facts through project
 bindings (#74), several external agents may belong to one person, and standing
 owner grants allow cooperation without routine approval prompts. Keep the
 embedded helper, existing Node stack, tenant/project access and review gates.
 
 The [delivery table](../mcp-cowork.md#delivery-and-evidence--co-5) maps connection,
-co-work, task-thread and motion/presence slices. #136 owns UI integration, #151
-phone-to-ultrawide, #148 themes and #149 map drafts. Required evidence includes
+co-work, task-thread and motion/presence slices. #336 owns the UI, #151
+phone-to-ultrawide and #149 map drafts. Required evidence includes
 real two-owner/three-connection work, task/PR/result review, no duplicate backlog,
 revocation/reconnect, deterministic board rules/manual override, two-user typing,
 all no-AI journeys and F-015/#20 device gates. Active owners and reviews stay;
@@ -21,16 +25,16 @@ below is historical where superseded. No production completion is claimed here.
 
 Status: **agents decide and proceed**. Read the complete
 [foundation](../FLUX-FOUNDATION.md) and the later [founder delegation](../autonomy.md).
-There is no founder acceptance step for product, stack, UX or implementation scope.
+There is no founder acceptance step for product, stack or implementation scope; the UI and
+UX are the founders' final design (F-026).
 The later [creative collaboration direction](https://github.com/ColdPhase/flux/issues/44)
-governs the three integrated creative scenarios. The current appearance target is
-[Studio 11.6](../../design/studio-v11.6.md); use its source/screenshots for work.
-F-013/v11 and F-014/11.1 remain [historical](../../design/reference-history.md).
-Do not restart visual exploration or copy prototype access/storage internals.
+governs the three integrated creative scenarios. The appearance is the
+[final design](../../design/final/README.md); use its screens and rules for work.
+Do not restart visual exploration.
 
 The later [F-015 adaptive-workspace requirement](../../design/adaptive-workspaces.md)
 adds smart small-phone through 4K/ultrawide layouts and familiar cross-device
-workflows. #151 in milestone 2 implements it under #136; concrete compositions
+workflows. #151 in milestone 2 implements it with #336; concrete compositions
 and performance budgets are independently reviewed without reopening the stack.
 
 Preserve and resume #8 (segment/persona) and #9 (own-AI feasibility), their accepted
@@ -42,7 +46,7 @@ the tasks or renegotiate unchanged criteria after a restart.
 
 - Select the first segment/persona and defensible USP hypotheses using evidence.
 - Establish product vocabulary and integrated human/agent journeys.
-- Apply Studio 11.6 and independently review focused improvements on realistic UI.
+- Apply the final design and independently review the result on realistic UI.
 - Select architecture, stack, access/data boundaries and extension contracts.
   Start with a concise decision sufficient for the next real coding tasks.
 - Determine feasible own-AI paths, preserving uncertainty and provider constraints.

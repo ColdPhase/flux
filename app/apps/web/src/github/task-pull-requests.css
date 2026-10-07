@@ -1,25 +1,25 @@
 /* "Let linked PRs move this task" in task Details (#74 G-1a): one compact block, 44 px targets on touch. */
 .wd-gh-rule { display: grid; gap: 6px; margin-top: 8px; }
-.wd-gh-toggle { display: flex; align-items: center; gap: 10px; min-height: var(--ctl); font-size: var(--fs-md); font-weight: 500; color: var(--text); cursor: pointer; }
-.wd-gh-toggle input { flex: none; width: 18px; height: 18px; margin: 0; accent-color: var(--accent); cursor: pointer; }
-.wd-gh-toggle input:disabled, .wd-gh-toggle input:disabled + span { cursor: default; color: var(--text-3); }
+.wd-gh-toggle { display: flex; align-items: center; gap: 10px; min-height: var(--ctl); font-size: var(--fs-md); font-weight: 500; color: var(--t1); cursor: pointer; }
+.wd-gh-toggle input { flex: none; width: 18px; height: 18px; margin: 0; accent-color: var(--t1); cursor: pointer; }
+.wd-gh-toggle input:disabled, .wd-gh-toggle input:disabled + span { cursor: default; color: var(--t3); }
 .wd-gh-rule .wd-muted, .wd-gh .wd-muted { margin: 0; line-height: 1.45; }
 .wd-gh-mode { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, auto); align-items: center; gap: 6px 12px; }
-.wd-gh-mode label { font-size: var(--fs-sm); color: var(--text-2); }
-.wd-gh-mode select { width: 100%; min-height: var(--ctl); padding: 0 8px; border: 0; border-radius: var(--r); background: var(--bg); color: var(--text); font-size: var(--fs-md); box-shadow: inset 0 0 0 1px var(--line-input); }
-.wd-gh-mode select:focus { outline: none; box-shadow: inset 0 0 0 1px var(--accent), 0 0 0 3px var(--accent-soft); }
-.wd-gh-note { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 8px 0; padding: 8px 10px; border-radius: var(--r); background: var(--bg-hover); }
-.wd-gh-note p { flex: 1 1 220px; margin: 0; font-size: var(--fs-sm); color: var(--text-2); line-height: 1.45; }
-.wd-gh-ready { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 12px; padding: 8px 10px; border-radius: var(--r); background: var(--accent-soft); color: var(--text); }
-.wd-gh-ready > svg { flex: none; color: var(--ok); }
+.wd-gh-mode label { font-size: var(--fs-sm); color: var(--t2); }
+.wd-gh-mode select { width: 100%; min-height: var(--ctl); padding: 0 8px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-md); box-shadow: inset 0 0 0 1px var(--line2); }
+.wd-gh-mode select:focus { outline: none; box-shadow: inset 0 0 0 1px var(--t1), 0 0 0 3px var(--sub); }
+.wd-gh-note { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 8px 0; padding: 8px 10px; border-radius: var(--r); background: var(--hov); }
+.wd-gh-note p { flex: 1 1 220px; margin: 0; font-size: var(--fs-sm); color: var(--t2); line-height: 1.45; }
+.wd-gh-ready { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 12px; padding: 8px 10px; border-radius: var(--r); background: var(--sub); color: var(--t1); }
+.wd-gh-ready > svg { flex: none; color: var(--t1); }
 .wd-gh-ready p { flex: 1 1 180px; margin: 0; font-size: var(--fs-md); line-height: 1.45; }
 .wd-gh-ready b { font-weight: 600; }
 .wd-gh-history { list-style: none; margin: 10px 0 0; padding: 0; }
 .wd-gh-history li { display: grid; gap: 2px; padding: 6px 0; border-top: 1px solid var(--line); }
-.wd-gh-history__what { font-size: var(--fs-md); line-height: 1.45; color: var(--text); overflow-wrap: anywhere; }
+.wd-gh-history__what { font-size: var(--fs-md); line-height: 1.45; color: var(--t1); overflow-wrap: anywhere; }
 .wd-gh-history__what b { margin-right: 6px; font-weight: 600; }
-.wd-gh-history__what a { color: var(--accent); }
-.wd-gh-history small { font-size: var(--fs-xs); color: var(--text-3); }
+.wd-gh-history__what a { color: var(--t1); }
+.wd-gh-history small { font-size: var(--fs-xs); color: var(--t3); }
 @media (max-width: 480px) { .wd-gh-mode { grid-template-columns: 1fr; } }
 @media (pointer: coarse) {
   .wd-gh-toggle { min-height: 44px; }
