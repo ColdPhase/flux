@@ -1,0 +1,55 @@
+API phase and earlier configured browser phases
+#16 15.89 $ tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json
+#16 30.67 $ eslint .
+✔ agent owner labels use only the current project audience, including guest reads and revocation (459.479797ms)
+ℹ tests 1084
+ℹ pass 1084
+ℹ fail 0
+ℹ duration_ms 596981.468152
+ℹ tests 3
+ℹ pass 3
+ℹ fail 0
+ℹ duration_ms 3397.734849
+ℹ tests 1
+ℹ pass 1
+ℹ fail 0
+ℹ duration_ms 1901.905159
+✔ all sixteen production Kreska expressions at five sizes retain static frames in Chromium and WebKit (3754.177138ms)
+ℹ tests 1
+ℹ pass 1
+ℹ fail 0
+ℹ duration_ms 4146.369843
+✔ agent root renders without a human DM link, real human reply persists, and readers retain genuine history (2409.328039ms)
+ℹ tests 2
+ℹ pass 1
+ℹ fail 1
+ℹ duration_ms 34354.89323
+
+Current production build/type/lint
+#15 16.13 $ tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json
+#15 32.25 $ eslint .
+
+Initial UI
+Ran 59 tests in 114.013s
+OK
+
+Final owner wrapping UI
+#24 15.68 $ tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json
+#24 31.40 $ eslint .
+Ran 17 tests in 34.123s
+OK
+
+Final native owner/actor browser
+✔ agent root renders without a human DM link, real human reply persists, and readers retain genuine history (2868.318944ms)
+✔ native agent owners retry failed reads, fence stale permission answers and survive same-tab account changes (4781.774391ms)
+ℹ tests 2
+ℹ pass 2
+ℹ fail 0
+ℹ duration_ms 8527.879317
+
+Final component browser
+✔ all sixteen production Kreska expressions at five sizes retain static frames in Chromium and WebKit (3923.404535ms)
+ℹ tests 1
+ℹ pass 1
+ℹ fail 0
+ℹ duration_ms 4303.307994
