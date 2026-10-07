@@ -399,8 +399,45 @@ class SearchJourney(unittest.TestCase):
                 details = page.locator("#details")
                 expect(details.get_by_role("heading", name=target["title"], exact=True)).to_be_visible()
                 expect(details.locator(".wd-eyebrow .ui-task-number")).to_have_text("#2")
+                expect(details.locator(".wd-project-name")).to_have_text(place["name"])
                 self.no_horizontal_scroll(page)
                 shot(page, f"task-number-jump-{'phone-390' if phone else 'desktop-1440'}")
+
+                details.get_by_role("button", name="Close details").click()
+                page.keyboard.press("Control+k")
+                dialog = page.get_by_role("dialog", name="Jump to")
+                field = dialog.get_by_role("combobox", name="Jump to")
+                field.fill("#12")
+                expect(dialog.get_by_role("option").first).to_contain_text(tasks[11]["title"])
+                shot(page, f"task-number-12-palette-{'phone-390' if phone else 'desktop-1440'}")
+                page.keyboard.press("Escape")
+
+                for number in (12, 26):
+                    page.goto(f"/search?q=%23{number}&type=work&place=project:{place['id']}")
+                    result = page.locator("a.sr").first
+                    expect(result).to_contain_text(tasks[number - 1]["title"])
+                    expect(result).to_contain_text(f"#{number}")
+                    shot(page, f"task-number-{number}-search-{'phone-390' if phone else 'desktop-1440'}")
+                    result.click()
+                    details = page.locator("#details")
+                    expect(details.get_by_role("heading", name=tasks[number - 1]["title"], exact=True)).to_be_visible()
+                    expect(details.locator(".wd-eyebrow .ui-task-number")).to_have_text(f"#{number}")
+                    expect(details.locator(".wd-project-name")).to_have_text(place["name"])
+                    self.no_horizontal_scroll(page)
+                    shot(page, f"task-number-{number}-global-details-{'phone-390' if phone else 'desktop-1440'}")
+                # Enlarge all text tokens rather than the screenshot, and keep the task's scope readable.
+                page.evaluate("""() => {
+                    const root = document.documentElement, style = getComputedStyle(root);
+                    const sizes = ['--fs-xs', '--fs-sm', '--fs-md', '--fs-base', '--fs-lg', '--fs-xl', '--fs-2xl', '--fs-title', '--fs-doc-title']
+                        .map(key => [key, 2 * parseFloat(style.getPropertyValue(key))]);
+                    for (const [key, size] of sizes) root.style.setProperty(key, `${size}px`);
+                }""")
+                number_label = details.locator(".wd-eyebrow .ui-task-number")
+                expect(number_label).to_be_visible()
+                expect(details.locator(".wd-project-name")).to_be_visible()
+                self.assertGreaterEqual(number_label.evaluate("node => parseFloat(getComputedStyle(node).fontSize)"), 20)
+                self.no_horizontal_scroll(page)
+                shot(page, f"task-number-26-text-200-{'phone-390' if phone else 'desktop-1440'}")
 
 
 if __name__ == "__main__":

@@ -44,6 +44,7 @@
 .ws-chip { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; min-height: 30px; padding: 0 10px; border-radius: var(--r); box-shadow: inset 0 0 0 1px var(--line-strong); font-size: var(--fs-sm); color: var(--text-2); text-align: left; transition: var(--tr); }
 .ws-chip:hover { background: var(--bg-hover); color: var(--text); }
 .ws-chip svg { flex: none; color: var(--text-3); }
+.ws-chip__num { flex: none; color: var(--text-3); }
 .ws-chip__t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; color: var(--text); }
 .ws-chip__k { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-xs); color: var(--text-3); }
 .ws-chip--need .ws-chip__k { color: var(--attention); font-weight: 500; }
