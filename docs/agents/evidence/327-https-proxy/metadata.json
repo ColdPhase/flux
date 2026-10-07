@@ -1,0 +1,1 @@
+{"resource":"https://localhost:19443/mcp","authorization_servers":["https://localhost:19443/api/auth"],"bearer_methods_supported":["header"],"dpop_signing_alg_values_supported":["EdDSA","ES256","ES512","PS256","RS256"],"scopes_supported":["flux.context.read","flux.proposal.write","flux.action.execute"]}
