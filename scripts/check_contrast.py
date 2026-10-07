@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Checks WCAG 2.2 contrast of the web app's colour tokens in all three families and both themes.
+"""Checks WCAG 2.2 contrast of the web app's colour tokens in both themes (final design, F-026).
 
-Reads app/apps/web/src/ui/tokens.css (light/dark roles and each family override) and
-fails when a text pair is below 4.5:1 or a UI boundary/indicator pair is below 3:1.
-`--failures-only` prints only failing pairs and a one-line summary; the exit code is the same.
+Reads app/apps/web/src/ui/tokens.css (the light :root block and the dark block) and fails when a
+text pair is below 4.5:1 or an icon, glyph or indicator pair is below 3:1. Gradients are checked
+at both stops. `--failures-only` prints only failing pairs and a one-line summary; the exit code
+is the same.
 """
 from __future__ import annotations
 
@@ -14,61 +15,44 @@ from pathlib import Path
 
 TOKENS = Path(__file__).resolve().parent.parent / "app/apps/web/src/ui/tokens.css"
 
-# (foreground, background, minimum ratio, purpose)
+# (foreground, background, minimum ratio, purpose). A name ending in @0 or @1 is the first or last
+# stop of a gradient token. --t3 is muted text: it is used only on --bg and --el; text on the quiet
+# fills (--side, --sub, --hov) is --t2 or --t1.
 PAIRS = [
-    ("--text", "--bg", 4.5, "body text"),
-    ("--text-2", "--bg", 4.5, "secondary text"),
-    ("--text-3", "--bg", 4.5, "muted text"),
-    ("--text-3", "--bg-side", 4.5, "muted sidebar text"),
-    ("--text-3", "--bg-hover", 4.5, "muted text on hover"),
-    ("--text-2", "--bg-active", 4.5, "selected item text"),
-    ("--text-3", "--bg-active", 4.5, "muted text on selection"),
-    ("--text-3", "--bg-raised", 4.5, "muted text on popovers"),
-    ("--accent", "--bg", 4.5, "links and accent text"),
-    ("--accent", "--bg-side", 4.5, "accent text in the sidebar"),
-    ("--on-accent", "--accent", 4.5, "primary button label"),
-    ("--on-accent", "--accent-hover", 4.5, "primary button label on hover"),
-    ("--on-accent", "--accent-pressed", 4.5, "primary button label while pressed"),
-    ("--accent-selected-text", "--accent-selected-bg", 4.5, "selected control label"),
-    ("--text-3", "--accent-soft", 4.5, "metadata on selected rows"),
-    ("--accent-selected-border", "--accent-selected-bg", 3.0, "selected control boundary"),
-    ("--link", "--bg", 4.5, "text link"),
-    ("--link", "--accent-soft", 4.5, "link on selected surface"),
-    ("--focus", "--bg-raised", 3.0, "focus ring on popovers"),
-    ("--focus", "--accent-soft", 3.0, "focus ring on selection"),
-    ("--map-guide", "--bg-side", 3.0, "map relationship guide"),
-    ("--map-guide", "--line-strong", 3.0, "map relationship guide crossing canvas grid dots"),
-    ("--resolution", "--bg", 4.5, "semantic resolution label"),
-    ("--attention", "--bg", 4.5, "needs-you label"),
-    ("--attention", "--bg-hover", 4.5, "needs-you label on hover"),
-    ("--danger", "--bg", 4.5, "error text"),
-    ("--danger", "--tint-danger", 4.5, "error text on its tint"),
-    ("--warning", "--bg", 4.5, "warning text"),
-    ("--ok", "--bg", 4.5, "success text"),
-    ("--on-action", "--action", 4.5, "toast text"),
-    ("--line-input", "--bg", 3.0, "input boundary"),
-    ("--focus", "--bg", 3.0, "focus ring"),
-    ("--focus", "--bg-side", 3.0, "focus ring in the sidebar"),
-    ("--accent", "--bg", 3.0, "view switcher indicator (the short accent mark)"),
-    ("--text", "--bg-chrome", 4.5, "sidebar item text"),
-    ("--text-2", "--bg-chrome", 4.5, "small sidebar labels and section headings"),
-    ("--text-2", "--bg-hover", 4.5, "sidebar item on hover"),
-    ("--accent", "--bg-chrome", 3.0, "current-project marker and unread dot in the sidebar"),
-    ("--focus", "--bg-chrome", 3.0, "focus ring in the sidebar"),
-    ("--on-action", "--action", 4.5, "primary button and send label"),
-    ("--action", "--bg", 3.0, "primary button boundary"),
-    ("--text", "--bubble", 4.5, "others' message text"),
-    ("--text-3", "--bubble", 4.5, "metadata in a message"),
-    ("--text", "--bubble-own", 4.5, "own message text"),
-    ("--text-3", "--bubble-own", 4.5, "metadata in an own message"),
-    ("--ok", "--tint-ok", 4.5, "result text on its tint"),
-    ("--warning", "--tint-warning", 4.5, "blocker text on its tint"),
-    ("--map-guide", "--canvas", 3.0, "map relationship guide on the canvas"),
+    ("--t1", "--bg", 4.5, "body text on the screen"),
+    ("--t1", "--el", 4.5, "text in cards, bubbles and fields"),
+    ("--t1", "--side", 4.5, "sidebar item text"),
+    ("--t1", "--sub", 4.5, "text on quiet fills and chips"),
+    ("--t1", "--hov", 4.5, "text on hover"),
+    ("--t2", "--bg", 4.5, "secondary text"),
+    ("--t2", "--el", 4.5, "secondary text in cards"),
+    ("--t2", "--side", 4.5, "sidebar labels and section headings"),
+    ("--t2", "--sub", 4.5, "segmented control and chip labels"),
+    ("--t2", "--hov", 4.5, "secondary text on hover"),
+    ("--t3", "--bg", 4.5, "meta text on the screen"),
+    ("--t3", "--el", 4.5, "meta text in cards and bubbles"),
+    ("--oninv", "--inv", 4.5, "inverted text: own bubbles, chosen chips, toasts"),
+    ("--oninv", "--grad-inv@0", 4.5, "primary button label, top of its gradient"),
+    ("--oninv", "--grad-inv@1", 4.5, "primary button label, bottom of its gradient"),
+    ("--t1", "--grad-btn@0", 4.5, "button label, top of its gradient"),
+    ("--t1", "--grad-btn@1", 4.5, "button label, bottom of its gradient"),
+    ("--inv", "--bg", 3.0, "primary button and inverted pill on the screen"),
+    ("--t1", "--bg", 3.0, "focus ring and filled state glyphs"),
+    ("--t1", "--el", 3.0, "focus ring and glyphs in cards"),
+    ("--t1", "--side", 3.0, "focus ring in the sidebar"),
+    ("--t3", "--bg", 3.0, "open and not-pursued glyphs"),
+    ("--t3", "--el", 3.0, "open and not-pursued glyphs in cards"),
+    ("--t2", "--sub", 3.0, "icons on quiet fills"),
 ]
+
+HEX = r"#[0-9a-fA-F]{6}"
 
 
 def parse(block: str) -> dict[str, str]:
-    return dict(re.findall(r"(--[a-z0-9-]+):\s*(#[0-9a-fA-F]{6}|var\(--[a-z0-9-]+\))", block))
+    tokens = dict(re.findall(rf"(--[a-z0-9-]+):\s*({HEX}|var\(--[a-z0-9-]+\))", block))
+    for name, first, last in re.findall(rf"(--[a-z0-9-]+):\s*linear-gradient\(\s*({HEX})\s*,\s*({HEX})\s*\)", block):
+        tokens[f"{name}@0"], tokens[f"{name}@1"] = first, last
+    return tokens
 
 
 def resolve(tokens: dict[str, str], name: str, seen: tuple[str, ...] = ()) -> str:
@@ -89,6 +73,11 @@ def ratio(a: str, b: str) -> float:
     return (la + 0.05) / (lb + 0.05)
 
 
+def block_after(css: str, opener: str) -> str:
+    start = css.index(opener)
+    return css[start:css.index("}", start)]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Check WCAG contrast of the web app's colour tokens.")
     parser.add_argument("--failures-only", action="store_true", help="print only failing pairs and a summary")
@@ -96,36 +85,27 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     quiet = args.failures_only
     css = args.tokens.read_text()
-    light = parse(css[css.index(":root {"):css.index("}", css.index(":root {"))])
-    dark_start = css.index(':root[data-theme="dark"] {')
-    dark = {**light, **parse(css[dark_start:css.index("}", dark_start)])}
-    palettes = []
-    for family in ("mint", "sky", "copper"):
-        override = {}
-        if family != "mint":
-            start = css.index(f':root[data-accent="{family}"]')
-            override = parse(css[start:css.index("}", start)])
-        palettes.extend((f"{theme}/{family}", {**tokens, **override}) for theme, tokens in (("light", light), ("dark", dark)))
+    light = parse(block_after(css, ":root {"))
+    dark_block = block_after(css, ':root[data-theme="dark"] {')
+    dark = {**light, **parse(dark_block)}
     failures = 0
-    mint_start = css.index('.me-accent__option[data-accent-option="mint"] {')
-    mint_sample = parse(css[mint_start:css.index("}", mint_start)])
-    if any(light.get(k) != v for k, v in mint_sample.items()):
-        print("FAIL Mint sample differs from the default family primitives")
-        failures += 1
     checked = 0
-    for theme, tokens in palettes:
+    for theme, tokens in (("light", light), ("dark", dark)):
         for fg, bg, minimum, purpose in PAIRS:
             value = ratio(resolve(tokens, fg), resolve(tokens, bg))
             ok = value >= minimum
             failures += not ok
             checked += 1
             if not (quiet and ok):
-                print(f"{'ok  ' if ok else 'FAIL'} {theme:10} {value:5.2f}:1 (min {minimum}) {fg} on {bg}: {purpose}")
+                print(f"{'ok  ' if ok else 'FAIL'} {theme:5} {value:5.2f}:1 (min {minimum}) {fg} on {bg}: {purpose}")
     # The dark tokens are duplicated for prefers-color-scheme; they must match the toggle block.
-    media_start = css.index("@media (prefers-color-scheme: dark)")
-    media = parse(css[media_start:css.index("}", css.index("{", css.index("{", media_start) + 1))])
-    if {k: v.lower() for k, v in media.items()} != {k: v.lower() for k, v in parse(css[dark_start:css.index("}", dark_start)]).items()}:
+    media = block_after(css, ':root:not([data-theme="light"]) {')
+    normalise = lambda block: re.sub(r"\s+", "", re.sub(r"color-scheme:\s*dark;", "", block.split("{", 1)[1]))
+    if normalise(media) != normalise(dark_block):
         print("FAIL dark tokens differ between the media query and [data-theme=dark]")
+        failures += 1
+    if re.search(r"--accent|data-accent", css):
+        print("FAIL tokens.css defines an accent colour; the final design has none")
         failures += 1
     if quiet:
         print(f"{checked} pairs checked, {failures} failed")

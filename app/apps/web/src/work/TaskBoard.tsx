@@ -665,7 +665,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
                         onMove={(to) => void move(item, to, true)} />
                     ))}
                   </ol>
-                ) : adding === column.id ? null : <p className="tb-col__empty">{waitingFor[column.id] ? 'Loading…' : filtered ? 'Nothing here matches.' : 'Nothing here yet.'}</p>}
+                ) : adding === column.id ? null : <p className="tb-col__empty">{waitingFor[column.id] ? `Loading ${column.label.toLowerCase()} tasks…` : filtered ? 'Nothing here matches.' : 'Nothing here yet.'}</p>}
                 {more(column.id).filter((entry) => entry.count > 0).map((entry) => (
                   <button key={entry.group} type="button" className="ws-none__b tb-col__more" onClick={() => showInList(entry.group)}>
                     {entry.count} more {entry.label} in the List

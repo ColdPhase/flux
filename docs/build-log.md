@@ -180,3 +180,33 @@ were restored to CI, and the full suite stayed a local Docker requirement
   rendered screens early; a description is not a design.
 - **Launch plan.** A plan for the v0.1 launch was written from *The Five*
   ([launch plan](product/launch-v0.1.md)).
+
+## 2026-10-07 — restored release scope and one SSO provider
+
+- The [founder's new direction](https://github.com/ColdPhase/flux/issues/249#issuecomment-6042227715)
+  restores live map/wiki (#228/#231), safe unused AI-task Undo (#238), and
+  back-channel logout (#314) to v0.1. The earlier deferral above remains a
+  historical event; all technical gates and independent acceptance still apply.
+- The [independently assessed amendment](https://github.com/ColdPhase/flux/issues/360#issuecomment-6042333778)
+  uses one SSO provider per installation, keeps the narrowed account/deployment
+  and authority-increasing confirmation safeguards in #315/#316, and cancels
+  #317's extra opaque-key surface. OAuth/SSH guidance remains. This records
+  scope and cancellation, not delivered functionality.
+- [Prostota](https://github.com/ColdPhase/flux/issues/336) (F-026) is the final
+  appearance and UX reference. The [reference import](https://github.com/ColdPhase/flux/pull/337)
+  and its implementations remain independently reviewed work.
+
+## 2026-10-07 — owner MCP switches and SSO-only ordinary login
+
+- The [later founder amendment](https://github.com/ColdPhase/flux/issues/360#issuecomment-6043340696)
+  replaces #316 recent-authentication with ordinary owner capability switches and
+  selected native projects. No password replay or ten-minute/secondary SSO
+  challenge; live rights/grants/OAuth ceilings and bounded runtime effects remain.
+- #315 now targets password-only without active SSO or SSO-only through the sole
+  IdP, with explicit account migration before cutover and audited host recovery.
+  IDs/data/memberships and verification/offboarding stay protected; no email
+  auto-linking, ordinary mixed login or password signup/reset alongside SSO.
+- The preceding scope and necessity entries remain historical. [The current
+  assessment](product/research/2026-10-07-mcp-switches-and-sso-only.md) distinguishes
+  source seams from missing switches/exclusive-mode implementation and preserves
+  real bootstrap prerequisites, race/transport boundaries and all release gates.
