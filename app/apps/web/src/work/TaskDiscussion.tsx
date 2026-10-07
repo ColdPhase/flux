@@ -4,9 +4,10 @@ import type { ConversationMessage, Project, TaskDiscussion as Discussion, Worksp
 import { Button, Icon } from '../ui';
 import { useComposerDraft, useComposerScope } from '../composer/draft';
 import { ComposerFiles, MessageFiles } from '../composer/Files';
+import { ConnectionLine, OutboxStatus, PendingFiles, PendingSource, SendAnnouncer } from '../composer/Outbox';
 import { clock, day, when } from '../app/messageParts';
 import { useProjectShell } from '../project/data';
-import { contributeToTask, getTaskDiscussion } from '../composer/api';
+import { getTaskDiscussion } from '../composer/api';
 import { agentAuthorLabel } from '../docs/format';
 
 /**
@@ -29,7 +30,6 @@ export function TaskDiscussionSection({ workId, project, members, me }: {
   const [attempt, setAttempt] = useState(0);
   const composer = useComposerDraft(me.id, project.id, `task:${workId}`);
   const captureScope = useComposerScope(composer.key);
-  const sending = composer.sending;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -48,14 +48,13 @@ export function TaskDiscussionSection({ workId, project, members, me }: {
   async function send(event?: FormEvent) {
     event?.preventDefault();
     if (!writable || !discussion) return;
-    const command = composer.begin();
-    if (!command) return;
+    // The message joins the task's queue and the field empties at once (#264); it shows below until stored.
+    const outcome = composer.submit();
+    if (!outcome) return;
     const active = captureScope();
-    try {
-      const message = await contributeToTask(workId, { ...command, kind: 'text' });
-      composer.finish(command.clientMessageId);
-      if (active()) navigate(`/projects/${project.id}/conversations/${message.conversationId}#message-${message.id}`);
-    } catch (cause) { composer.finish(command.clientMessageId, cause); }
+    const result = await outcome;
+    // Stored as it was sent: open it in the conversation. One that waited for the connection stays put.
+    if (result.status === 'delivered' && !result.waited && active()) navigate(`/projects/${project.id}/conversations/${result.message.conversationId}#message-${result.message.id}`);
   }
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); void send(); }
@@ -77,13 +76,23 @@ export function TaskDiscussionSection({ workId, project, members, me }: {
               </Link>
               <MessageFiles files={root.files} />
             </> : null}
+            {composer.pending.length ? <ol className="wd-pending" aria-label="Messages you are sending">{composer.pending.map((item) => (
+              <li key={item.id} id={`pending-${item.id}`} data-client-message-id={item.id} data-send-state={item.state} className={`wd-pending__item is-pending${item.state === 'failed' ? ' is-failed-send' : ''}`}>
+                {item.body ? <span className="wd-pending__body">{item.body}</span> : null}
+                <PendingFiles files={item.files} />
+                <PendingSource item={item} />
+                <OutboxStatus item={item} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} />
+              </li>
+            ))}</ol> : null}
             {writable ? <form className="wd-discussion-form" onSubmit={(event) => void send(event)}>
+              <ConnectionLine />
               <p id={`${fieldId}-hint`} className="wd-discussion-form__hint">{root ? 'Goes to this task’s one discussion, also shown in Conversation and Agents.' : 'Nobody has written about this task yet. The first message starts its discussion in the project conversation.'}</p>
               <label className="ui-vh" htmlFor={fieldId}>{root ? 'Write to this task' : 'First message about this task'}</label>
-              <textarea id={fieldId} aria-describedby={`${fieldId}-hint`} value={composer.draft.body} rows={3} maxLength={20000} readOnly={sending} aria-busy={sending || undefined}
+              <textarea id={fieldId} aria-describedby={`${fieldId}-hint`} value={composer.draft.body} rows={3} maxLength={20000}
                 placeholder="Write about this task…" onChange={(event) => composer.setBody(event.target.value)} onKeyDown={onKeyDown} />
               <ComposerFiles state={composer} />
-              <div className="wd-actions"><Button type="submit" variant="secondary" icon="send" busy={sending} disabled={!composer.canSend}>{root ? 'Send to task' : 'Start the discussion'}</Button></div>
+              <SendAnnouncer pending={composer.pending} />
+              <div className="wd-actions"><Button type="submit" variant="secondary" icon="send" disabled={!composer.canSend}>{root ? 'Send to task' : 'Start the discussion'}</Button></div>
             </form> : !root ? <p className="wd-muted">Nobody has written about this task yet.</p> : null}
           </>}
     </section>
