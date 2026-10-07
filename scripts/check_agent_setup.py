@@ -33,6 +33,75 @@ def heading_anchors(content: str) -> set[str]:
     return anchors
 
 
+def markdown_without_code(content: str) -> str:
+    """Mask fenced and inline code while preserving positions and line numbers."""
+    lines: list[str] = []
+    fence: tuple[str, int] | None = None
+    for line in content.splitlines(keepends=True):
+        marker = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)", line)
+        if fence is not None:
+            if marker and marker[1][0] == fence[0] and len(marker[1]) >= fence[1] and not marker[2].strip():
+                fence = None
+            lines.append(re.sub(r"[^\r\n]", " ", line))
+        elif marker and (marker[1][0] != "`" or "`" not in marker[2]):
+            fence = (marker[1][0], len(marker[1]))
+            lines.append(re.sub(r"[^\r\n]", " ", line))
+        else:
+            lines.append(line)
+    masked = "".join(lines)
+    runs = list(re.finditer(r"`+", masked))
+    pieces: list[str] = []
+    start = 0
+    index = 0
+    while index < len(runs):
+        opening = runs[index]
+        if is_escaped(masked, opening.start()):
+            index += 1
+            continue
+        closing = next((other for other in range(index + 1, len(runs))
+                        if len(runs[other][0]) == len(opening[0])), None)
+        if closing is None:
+            index += 1
+            continue
+        end = runs[closing].end()
+        pieces.extend((masked[start:opening.start()],
+                       re.sub(r"[^\r\n]", " ", masked[opening.start():end])))
+        start = end
+        index = closing + 1
+    pieces.append(masked[start:])
+    return "".join(pieces)
+
+
+def is_escaped(content: str, position: int) -> bool:
+    slashes = 0
+    while position > 0 and content[position - 1] == "\\":
+        slashes += 1
+        position -= 1
+    return slashes % 2 == 1
+
+
+def undefined_numeric_references(content: str) -> list[tuple[int, str]]:
+    """Check issue/PR reference labels only; research labels are intentionally free-form."""
+    masked = markdown_without_code(content)
+    definitions = list(re.finditer(r"^ {0,3}\[(#\d+)\]:[ \t]*(?:\S[^\n]*|\n[ \t]*\S[^\n]*)", masked, re.MULTILINE))
+    defined = {definition[1] for definition in definitions}
+    definition_spans = [(definition.start(), definition.end()) for definition in definitions]
+    missing: list[tuple[int, str]] = []
+    for reference in re.finditer(r"\[(#\d+)\]", masked):
+        if is_escaped(masked, reference.start()):
+            continue
+        if any(start <= reference.start() < end for start, end in definition_spans):
+            continue
+        following = masked[reference.end():]
+        # A numeric display label can belong to an inline or a full reference link.
+        # A collapsed reference [#1][] still resolves using its numeric label.
+        if following.startswith("(") or re.match(r"\[[^\]\n]+\]", following):
+            continue
+        if reference[1] not in defined:
+            missing.append((masked.count("\n", 0, reference.start()) + 1, reference[1]))
+    return missing
+
+
 def validate(root: Path) -> list[str]:
     root = root.resolve()
     errors: list[str] = []
@@ -77,6 +146,8 @@ def validate(root: Path) -> list[str]:
             errors.append(f"missing document: {path.relative_to(root)}")
             continue
         content = path.read_text(encoding="utf-8")
+        for line, label in undefined_numeric_references(content):
+            errors.append(f"{path.relative_to(root)}:{line}: undefined numeric reference [{label}]")
         # The v8 prototype notes (Polish, historical) use `flux-*` for browser storage keys.
         skills = [] if path.is_relative_to(root / "docs/prototype") else re.findall(r"`(flux-[a-z0-9-]+)`", content)
         for skill in skills:

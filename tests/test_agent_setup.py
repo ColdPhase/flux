@@ -102,5 +102,41 @@ class FoundationValidationTests(unittest.TestCase):
         self.assertTrue(any("guide.md#identity" in error and "missing heading anchor" in error for error in errors))
         self.assertTrue(any("guide.md#not-a-heading" in error for error in errors))
 
+    def test_numeric_reference_requires_a_definition_in_the_same_file(self):
+        self.write("docs/agents/README.md", "# Agent design\n\nSee [#1].\n")
+        self.write("docs/agents/guide.md", "[#1]: https://github.com/ColdPhase/flux/issues/1\n")
+        self.assertEqual(self.check(), ["docs/agents/README.md:3: undefined numeric reference [#1]"])
+        self.write("docs/agents/README.md", "# Agent design\n\nSee [#1].\n\n[#1]: https://github.com/ColdPhase/flux/issues/1\n")
+        self.assertEqual(self.check(), [])
+
+    def test_numeric_reference_check_ignores_research_labels_and_inline_links(self):
+        self.write("docs/agents/README.md", "[S4] [P12] [#1](https://example.com) [#2][source]\n")
+        self.assertEqual(self.check(), [])
+
+    def test_numeric_full_and_collapsed_references_resolve_the_target_label(self):
+        self.assertEqual(CHECKER.undefined_numeric_references("[text][#1] [#2][] [#3][#4]\n"),
+                         [(1, "#1"), (1, "#2"), (1, "#4")])
+        self.assertEqual(CHECKER.undefined_numeric_references(
+            "[text][#1] [#2][]\n\n[#1]: https://example.com\n[#2]:\n  https://example.com\n"), [])
+
+    def test_numeric_references_ignore_inline_code_with_matching_backtick_runs(self):
+        self.assertEqual(CHECKER.undefined_numeric_references(
+            "`[#1]` ``literal ` [#2]`` ```[#3]`` [#4]```\n`across\n[#5]`\n[#6]\n"), [(4, "#6")])
+        self.assertEqual(CHECKER.undefined_numeric_references("Unmatched ` then [#1]\n"), [(1, "#1")])
+
+    def test_numeric_references_ignore_fences_only_until_a_matching_close(self):
+        self.assertEqual(CHECKER.undefined_numeric_references(
+            "````md\n[#1]\n```\n[#2]\n~~~\n[#3]\n`````\n[#4]\n"
+            "  ~~~\n[#5]\n   ~~~~\n[#6]\n"), [(8, "#4"), (12, "#6")])
+
+    def test_code_examples_cannot_define_real_numeric_references(self):
+        self.assertEqual(CHECKER.undefined_numeric_references(
+            "```md\n[#1]: https://example.com\n```\n`[#2]: https://example.com`\n[#1] [#2]\n"),
+                         [(5, "#1"), (5, "#2")])
+
+    def test_escaped_numeric_reference_is_literal_but_even_backslashes_are_not(self):
+        self.assertEqual(CHECKER.undefined_numeric_references(r"\[#1] \\[#2] \\\[#3]"), [(1, "#2")])
+        self.assertEqual(CHECKER.undefined_numeric_references(r"\` [#1]"), [(1, "#1")])
+
 if __name__ == "__main__":
     unittest.main()
