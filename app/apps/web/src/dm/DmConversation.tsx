@@ -1,11 +1,13 @@
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLoaderData, useLocation, useNavigate, useRevalidator, type LoaderFunctionArgs } from 'react-router';
-import type { HumanConversationMessage, Dm, DmPerson, SendDmMessageCommand } from '@flux/contracts';
+import type { HumanConversationMessage, Dm, DmPerson } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { getDm, olderDmMessages, sendDmMessage } from '../api/direct-messages';
+import { getDm, olderDmMessages } from '../api/direct-messages';
+import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
+import { ConnectionLine, OutboxStatus, SendAnnouncer } from '../composer/Outbox';
 import { createDmSketch } from '../api/sketches';
 import { sketchHref } from '../sketch/format';
 import { useStreamEvents } from '../api/stream';
@@ -19,8 +21,9 @@ import './dm.css';
 /**
  * One direct message (#107): a private conversation with its audience always in view. Messages
  * reuse the #36 contract (sequence order, `clientMessageId` retries) and the conversation
- * composer. Replies inherit the DM's audience; there is no audience checkbox. A failed send keeps
- * its text and its client id for this account and DM, so Retry never duplicates a message.
+ * composer. Replies inherit the DM's audience; there is no audience checkbox. Sending is instant
+ * (#264): the shared composer queue keeps each message and its client id in this tab until it is
+ * stored, so Retry and automatic resends never duplicate a message.
  */
 export async function dmLoader({ params, request }: LoaderFunctionArgs): Promise<Dm | null> {
   try {
@@ -48,14 +51,6 @@ function DmUnavailable() {
   );
 }
 
-function stored(key: string) { try { return sessionStorage.getItem(key) ?? ''; } catch { return ''; } }
-function store(key: string, value: string) { try { if (value) sessionStorage.setItem(key, value); else sessionStorage.removeItem(key); } catch { /* private mode */ } }
-function storedPending(key: string, text: string): SendDmMessageCommand | null {
-  try {
-    const saved = JSON.parse(sessionStorage.getItem(key) ?? 'null') as SendDmMessageCommand | null;
-    return saved && saved.body === text.trim() && typeof saved.clientMessageId === 'string' ? saved : null;
-  } catch { return null; }
-}
 function merge(current: HumanConversationMessage[], incoming: HumanConversationMessage[]) {
   const byId = new Map(current.map((message) => [message.id, message]));
   for (const message of incoming) byId.set(message.id, message);
@@ -85,17 +80,18 @@ function DmContent({ initial }: { initial: Dm }) {
   const [people, setPeople] = useState(() => new Map(initial.people.map((p) => [p.id, p])));
   const [olderCursor, setOlderCursor] = useState(initial.messagePage.nextBeforeSequence);
   const [olderBusy, setOlderBusy] = useState(false);
-  const draftKey = `flux.dm-composer.${me.user.id}.${initial.id}`;
-  const pendingKey = `${draftKey}.pending`;
-  const [draft, setDraft] = useState(() => stored(draftKey));
-  const [pending, setPending] = useState<SendDmMessageCommand | null>(() => storedPending(pendingKey, stored(draftKey)));
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  // The shared composer record, kept in this tab: the draft and the messages being sent (#264).
+  const composer = useComposerDraft(me.user.id, 'dm', `dm:${initial.id}`);
+  const captureScope = useComposerScope(composer.key);
+  const draft = composer.draft.body;
   const [gone, setGone] = useState(false);
   const [leftNotice, setLeftNotice] = useState('');
   const feedRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesRef = useRef(messages);
+  // A message confirmed here shows at once, in its queued place, until the DM's own read includes it.
+  const shown = useMemo(() => merge(messages, composer.sent.map((item) => item.message as HumanConversationMessage)), [messages, composer.sent]);
+  const outbox = outboxView(shown, composer.pending, composer.sent, me.user.id);
   const refreshing = useRef(false);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   // #96: selecting messages to start a sketch that stays in this DM.
@@ -191,36 +187,36 @@ function DmContent({ initial }: { initial: Dm }) {
     el.style.height = 'auto';
     el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
   };
-  useLayoutEffect(autosize, []);
+  // The field follows its text, including when Send empties it at once.
+  useLayoutEffect(autosize, [draft]);
 
   function change(value: string) {
     typing.input(Boolean(value.trim()));
-    setDraft(value); store(draftKey, value);
-    if (pending && pending.body !== value.trim()) { setPending(null); store(pendingKey, ''); }
-    setError('');
-    autosize();
+    composer.setBody(value);
   }
 
   async function send() {
     typing.stop();
-    const body = draft.trim();
-    if (busy || !body) return;
-    const command = pending ?? { body, clientMessageId: crypto.randomUUID() };
-    setPending(command); store(pendingKey, JSON.stringify(command)); setBusy(true); setError('');
-    try {
-      const sent = await sendDmMessage(initial.id, command);
-      setMessages((current) => merge(current, [sent]));
-      setPending(null); store(pendingKey, ''); setDraft(''); store(draftKey, '');
-      requestAnimationFrame(autosize);
-      toBottom();
-    } catch (cause) {
-      if (cause instanceof ApiError && (cause.code === 'DM_RECIPIENT_LEFT' || cause.code === 'DM_RECIPIENT_UNAVAILABLE')) {
-        // The other person left meanwhile: nothing was stored. Keep the text, show why, refresh.
-        setPending(null); store(pendingKey, ''); setLeftNotice(cause.message); void refresh();
-        return;
-      }
-      if (!denied(cause)) setError('Not sent. Your message is kept here; Retry sends it once.');
-    } finally { setBusy(false); }
+    if (recipientGone) return;
+    // The message shows at once at the end, marked "Sending…", and the field empties (#264).
+    const outcome = composer.submit(shown.at(-1)?.sequence ?? 0);
+    if (!outcome) return;
+    const active = captureScope();
+    toBottom();
+    const result = await outcome;
+    if (!active()) return;
+    if (result.status === 'delivered') {
+      setMessages((current) => merge(current, [result.message as HumanConversationMessage]));
+      return;
+    }
+    if (result.status !== 'failed') return;
+    const cause = result.cause;
+    if (cause instanceof ApiError && (cause.code === 'DM_RECIPIENT_LEFT' || cause.code === 'DM_RECIPIENT_UNAVAILABLE')) {
+      // The other person left meanwhile: nothing was stored. The text is back in the field; show why, refresh.
+      setLeftNotice(cause.message); void refresh();
+      return;
+    }
+    denied(cause);
   }
 
   function onKey(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -279,18 +275,21 @@ function DmContent({ initial }: { initial: Dm }) {
   const goneNotice = recipientGone
     ? leftNotice || `${counterpart!.name.split(/\s+/)[0]} left this conversation. They can reopen it by messaging you.`
     : '';
-  const typing = useTyping(me.user.id, !gone && !selecting ? { kind: 'dm', id: dm.id } : null, !busy && !recipientGone);
+  const typing = useTyping(me.user.id, !gone && !selecting ? { kind: 'dm', id: dm.id } : null, !recipientGone);
   if (gone) return <DmUnavailable />;
-  const canSend = draft.trim().length > 0 && !busy && !recipientGone;
+  const canSend = composer.canSend && !recipientGone;
   const selectButton = actionSlot && messages.length && !recipientGone ? createPortal(
     <Button ref={selectButtonRef} variant="quiet" icon="check" aria-pressed={selecting} className="dm-select-btn" onClick={() => toggleSelecting(!selecting)}>Select</Button>,
     actionSlot,
   ) : null;
-  const rows = messages.map((message, index) => {
-    const previous = messages[index - 1];
-    const label = dayLabel(message.createdAt);
-    const newDay = !previous || dayLabel(previous.createdAt) !== label;
-    return { message, label, newDay, continued: !newDay && previous?.authorId === message.authorId };
+  // Stored messages, then the ones being sent, grouped by day and author as one list.
+  const lines = [...shown.map((message) => ({ kind: 'message' as const, message, authorId: message.authorId, at: message.createdAt })),
+    ...outbox.pending.map((item) => ({ kind: 'pending' as const, item, authorId: me.user.id, at: item.at }))];
+  const rows = lines.map((line, index) => {
+    const previous = lines[index - 1];
+    const label = dayLabel(line.at);
+    const newDay = !previous || dayLabel(previous.at) !== label;
+    return { line, label, newDay, continued: !newDay && previous?.authorId === line.authorId };
   });
   return (
     <div className={`dm${selecting ? ' dm--selecting' : ''}`} data-dm-id={dm.id}
@@ -311,13 +310,32 @@ function DmContent({ initial }: { initial: Dm }) {
             </header>
           )}
           {olderCursor ? <div className="dm__older"><Button variant="quiet" busy={olderBusy} onClick={() => void loadOlder()}>Show earlier messages</Button></div> : null}
-          {messages.length ? (
+          {rows.length ? (
             <ol className="dm__list" aria-label="Messages">
-              {rows.map(({ message, label, newDay, continued }) => {
+              {rows.map(({ line, label, newDay, continued }) => {
+                if (line.kind === 'pending') {
+                  const { item } = line;
+                  return (
+                    <li key={`pending-${item.id}`} id={`pending-${item.id}`} data-client-message-id={item.id} data-send-state={item.state}
+                      className={`dm-msg is-mine is-pending${continued ? ' dm-msg--cont' : ''}${item.state === 'failed' ? ' is-failed-send' : ''}`}>
+                      {newDay ? <p className="dm__day"><span>{label}</span></p> : null}
+                      <div className="dm-msg__row">
+                        <span className="dm-msg__face">{continued ? null : <Avatar name={me.user.name} size="md" tone="me" />}</span>
+                        <div className="dm-msg__main">
+                          {continued ? null : <p className="dm-msg__meta"><b>You</b></p>}
+                          <p className="dm-msg__body">{item.body}</p>
+                          <OutboxStatus item={item} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} />
+                        </div>
+                      </div>
+                    </li>
+                  );
+                }
+                const { message } = line;
                 const mine = message.authorId === me.user.id;
                 const isPicked = selecting && picked.includes(message.id);
                 return (
-                  <li key={message.id} id={`message-${message.id}`} tabIndex={-1} className={`dm-msg${mine ? ' is-mine' : ''}${continued ? ' dm-msg--cont' : ''}${arrived === message.id ? ' is-arrived' : ''}${isPicked ? ' is-picked' : ''}`} data-sequence={message.sequence} data-message-id={message.id}>
+                  // A message confirmed from its queued one keeps that list item: nothing moves (#264).
+                  <li key={outbox.keyOf(message.id)} id={`message-${message.id}`} tabIndex={-1} className={`dm-msg${mine ? ' is-mine' : ''}${continued ? ' dm-msg--cont' : ''}${arrived === message.id ? ' is-arrived' : ''}${isPicked ? ' is-picked' : ''}`} data-sequence={message.sequence} data-message-id={message.id}>
                     {newDay ? <p className="dm__day"><span>{label}</span></p> : null}
                     {/* While selecting, the whole row toggles; the check is the keyboard and screen reader control. */}
                     <div className="dm-msg__row" onClick={selecting ? (event) => { if (!(event.target as HTMLElement).closest('.dm-msel')) pick(message.id); } : undefined}>
@@ -356,14 +374,16 @@ function DmContent({ initial }: { initial: Dm }) {
         <div className="composer__in">
           <p className="composer__audience" id={audienceId}><Icon name="lock" size={13} />{audience}<span aria-hidden="true"> · </span><span className="composer__where">direct message</span></p>
           {goneNotice ? <p className="dm__notice" role="status"><Icon name="lock" size={13} />{goneNotice}</p> : null}
+          <ConnectionLine />
           <div className="composer__box" aria-disabled={recipientGone || undefined}>
             <label className="ui-vh" htmlFor="dm-composer">Message {title}</label>
             <textarea id="dm-composer" ref={textareaRef} rows={1} value={draft} onChange={(event) => change(event.target.value)} onBlur={typing.stop} onKeyDown={onKey}
-              disabled={busy || recipientGone} placeholder={recipientGone ? 'Nobody else is in this conversation' : `Message ${others.length === 1 ? others[0]!.name.split(/\s+/)[0] : title}…`} aria-describedby={`${audienceId} ${hintId}`} />
+              disabled={recipientGone} placeholder={recipientGone ? 'Nobody else is in this conversation' : `Message ${others.length === 1 ? others[0]!.name.split(/\s+/)[0] : title}…`} aria-describedby={`${audienceId} ${hintId}`} />
             <button type="button" className="composer__send" aria-label="Send message" aria-disabled={!canSend} onClick={() => void send()}><Icon name="send" /></button>
           </div>
           <TypingNotice {...typing} />
-          {error ? <p className="dm__error" role="alert"><Icon name="alert" size={13} />{error}{pending ? <button type="button" onClick={() => void send()}>Retry</button> : null}</p> : null}
+          <SendAnnouncer pending={composer.pending} />
+          {composer.error && composer.error !== goneNotice ? <p className="dm__error" role="alert"><Icon name="alert" size={13} />{composer.error}</p> : null}
           <p className="composer__hint" id={hintId}><span className="composer__keys">Enter sends · Shift+Enter adds a line · </span>Unsent text stays in this tab</p>
         </div>
       </div>
