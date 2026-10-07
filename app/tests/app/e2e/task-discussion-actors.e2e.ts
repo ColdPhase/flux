@@ -234,18 +234,18 @@ test('native agent owners retry failed reads, fence stale permission answers and
     await page.locator('.agents-msg__meta .agent-for').waitFor();
     assert.equal(await page.locator('.agents-msg__meta .agent-for').innerText(), 'for Scoped Casey');
     await capture('scoped-owner-agents-thread');
-    await page.locator(`a[href^="/projects/${place.id}/tasks"]`).click();
+    await page.locator(`a[data-tab="tasks"][href^="/projects/${place.id}/tasks"]`).click();
     await page.getByRole('radio', { name: 'List', exact: true }).click();
     await row.locator('.agent-for').waitFor();
     // The same workspace has a second project with different agent rights. A workspace-keyed
     // owner cache would wrongly reuse the first project's authorized name here.
     await page.getByRole('link', { name: 'Other owner scope', exact: true }).click();
-    await page.locator(`a[href^="/projects/${elsewhere.id}/tasks"]`).click();
+    await page.locator(`a[data-tab="tasks"][href^="/projects/${elsewhere.id}/tasks"]`).click();
     await page.getByRole('radio', { name: 'Kanban', exact: true }).click();
     await page.locator(`[data-card-id="${otherTask.id}"]`).waitFor();
     assert.equal(await page.locator(`[data-card-id="${otherTask.id}"] .agent-for`).count(), 0);
     await page.getByRole('link', { name: 'Owner scope', exact: true }).click();
-    await page.locator(`a[href^="/projects/${place.id}/tasks"]`).click();
+    await page.locator(`a[data-tab="tasks"][href^="/projects/${place.id}/tasks"]`).click();
     await page.getByRole('radio', { name: 'List', exact: true }).click();
     await row.locator('.agent-for').waitFor();
     // A response completed under old authority is held while a real grant changes. The stream
@@ -295,7 +295,7 @@ test('native agent owners retry failed reads, fence stale permission answers and
     await page.getByLabel('Email').fill(guest.email); await page.getByLabel('Password', { exact: true }).fill(password);
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     await page.getByRole('link', { name: 'Owner scope', exact: true }).click();
-    await page.locator(`a[href^="/projects/${place.id}/tasks"]`).click();
+    await page.locator(`a[data-tab="tasks"][href^="/projects/${place.id}/tasks"]`).click();
     await page.locator(`[data-card-id="${task.id}"]`).waitFor();
     assert.equal(await page.locator(`[data-card-id="${task.id}"] .agent-for`).count(), 0);
     assert.equal(await page.evaluate(() => (window as unknown as { sameDocument: boolean }).sameDocument), true);
