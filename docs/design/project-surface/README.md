@@ -1,7 +1,7 @@
 # Project surface (#117)
 
-The project page brought up to the accepted O-003 direction C ([direction.md](../direction.md)),
-with `flux-ux-v8.html` as the discoverability baseline. Screenshots come from the Compose
+The project page as built for #117. Its appearance is superseded by the
+[final design](../final/README.md); this record keeps the behaviour and its evidence. Screenshots come from the Compose
 Playwright journey `app/tests/ui/test_project_surface.py` on realistic seeded content (three people,
 one restricted project, a cited source, work, a current rule, a negative result, a proposed
 decision, a project sketch and a doc), 100% zoom, light theme.
@@ -18,7 +18,7 @@ decision, a project sketch and a doc), 100% zoom, light theme.
   route under `/projects/:projectId` and shares one parent loader (project, audience, work,
   sketches, docs).
 - **One reading column:** the project's conversations moved to the sidebar (as in C; since
-  2026-10-02 a project has [one conversation](../studio-v11.6.md#one-project-conversation--ui116-1-clarification)
+  2026-10-02 a project has [one conversation](../final/README.md#4-structure-and-navigation)
   instead: one stream of roots, each root's replies beside it, and no sidebar thread list), sources
   moved into the composer (the document button opens saved material to cite or add), and
   messages use avatars, day lines and calm chips for the objects made from them. On a pointer,

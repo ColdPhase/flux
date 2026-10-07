@@ -1,14 +1,14 @@
 # Confirmed thought capture (#149)
 
-Recorded before implementation, 2026-09-30, under the accepted Studio 11.6
-UI116-1/4 and #149 contract. The #134 personal ID-only outline, shared graph,
+Recorded before implementation, 2026-09-30, under the #149 contract. Appearance follows the
+[final design](final/README.md) (F-026), whose rule P12 adds the draft thought on release. The #134 personal ID-only outline, shared graph,
 source navigation and map camera remain authoritative.
 
 New root/child capture opens one private draft per account/workspace/place/map.
 It retains text, intended parent ID, client thought/link IDs, position and an
 idempotency key in this tab's session storage, with memory fallback. No shared
 thought, relation, event, outline grouping or API write exists before Save/Enter.
-List/Map and map navigation retain it; blur never saves. So do the Studio 11.6 task
+List/Map and map navigation retain it; blur never saves. So do the task
 count chooser (opening it, Escape, Close and opening a task beside the map) and switching
 project views (Conversation, Agents, Tasks, Wiki) within the same visit. Empty Save leaves the
 draft open; Cancel/Escape discards it without a server mutation. Signing out

@@ -1,17 +1,17 @@
 # Project capture and conversation backend (#36)
 
-**Later required amendment, 2026-09-30:** [UI116-3](../design/studio-v11.6.md#one-announcement-then-the-real-discussion--ui116-3)
+**Later required amendment, 2026-09-30 (UI116-3; drawn as rule P5 of the [final design](../design/final/README.md#5-behaviour)):**
 separates one task-created system notice from the first true contribution/root,
 retains the same one-level thread across all views, and preserves history and
 private helper prompts. [#154](https://github.com/ColdPhase/flux/issues/154) owns implementation; current code below is not
-claimed to satisfy the new semantics. [UI116-5](../design/studio-v11.6.md#subtle-motion-and-truthful-typing--ui116-5)
+claimed to satisfy the new semantics. UI116-5 ([motion and agent states](../design/final/README.md#3-kreska-logo-agent-icon-and-mascot))
 adds scoped ephemeral typing without durable messages or notification/model effects.
 
-**One project conversation, 2026-10-02:** [UI116-1 clarification](../design/studio-v11.6.md#one-project-conversation--ui116-1-clarification).
+**One project conversation, 2026-10-02 (UI116-1):** see the [final design's structure](../design/final/README.md#4-structure-and-navigation).
 The UI presents a project's stored conversations as one stream: each conversation's
 opening message (sequence 1) is a root, and its later messages are that root's
 one-level thread. Storage, commands and URLs are unchanged; see
-[the stream and its threads](#one-stream-of-roots-ui116-1) below.
+[the stream and its threads](#one-stream-of-roots) below.
 
 The current slice stores project conversations, direct text replies and versioned
 project materials. A signed-in person with contributor access can send from the
@@ -71,7 +71,11 @@ The script creates its own isolated Compose project, builds, typechecks, lints,
 runs API/PostgreSQL integration tests and restarts the API to verify a session,
 material and linked conversation survive. It removes only its own test volumes.
 
-## One stream of roots (UI116-1)
+## One stream of roots
+
+This retains the one-project-stream functional contract. Current composition follows
+[F-026 navigation and panels](../design/final/README.md#4-structure-and-navigation), with
+task announcements governed by [P5](../design/final/README.md#5-behaviour).
 
 `GET /api/v1/projects/:projectId/conversation-roots` returns the project's roots
 for the Conversation tab: `{ projectId, roots, rootPage }`. Each root is

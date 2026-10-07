@@ -1,24 +1,24 @@
 # Adaptive workspaces: small phones through 4K and ultrawide
 
-**Later F-017 extension:** apply this whole contract to Studio 11.6 and its
-Agents tab as well as Conversation/Map/Tasks/Wiki. Include Hubert's two agents
-plus Marek's one, optional related task/source/PR context on wide panes, and a
-phone composition that preserves usable stream/composer height. Consolidate
-repeated header/identity details rather than shrinking text. See
-[UI116-1–UI116-5](studio-v11.6.md) and the
-[11.6 visual findings](references/studio-v11.6/inspection/visual-review.md).
+**Final design, F-026 (2026-10-07):** apply this whole contract to the
+[final design](final/README.md): its computer layout (sidebar, collapsed rail, one detail
+panel) and its phone layout (tab bar, sheets) are the two drawn ends, and the five views
+Conversation/Map/Tasks/Wiki/Agents adapt between them. Include Hubert's two agents plus
+Marek's one, optional related task/source/PR context on wide panes, and a phone composition
+that preserves usable stream/composer height. Consolidate repeated header/identity details
+rather than shrinking text.
 
 **Founder requirement:** F-015, Hubert, 2026-09-30; added to [#147 / PR #150](https://github.com/ColdPhase/flux/pull/150).
 The application must use available space intelligently: a larger screen gives
 more useful working context, while moving between phone, tablet and computer
-feels like the same product. This applies to the current [Studio 11.6](studio-v11.6.md)
+feels like the same product. This applies to the [final design](final/README.md)
 and [MOB-1–MOB-7](../product/mobile-pwa.md). It does not constitute implementation
 or device evidence. Agents choose and independently review the concrete layouts.
 
 Primary users are collaborators capturing ideas on a small Android phone,
 returning on a laptop, and exploring linked work on a large desktop. The goal
-is continuity with greater working capacity when space permits. Keep the calm
-Studio direction and human collaboration without AI.
+is continuity with greater working capacity when space permits. Keep the final
+design and human collaboration without AI.
 
 ## Required outcomes
 
@@ -112,10 +112,10 @@ wide-layout evidence, not proof of a physical 4K device or readable physical siz
 For the matrix, use a deterministic realistic fixture with long names, dense
 conversation, linked sources, deep map relations, active and blocked work, wiki
 text and open context. Cover loading/empty/error/restricted states in the changed
-components; include both themes and the final #148 accent states where affected.
+components; include light and dark themes where affected.
 Run layout/overflow/reachability smoke checks across the full matrix; use a
 focused set of matched whole-view captures for independent visual review at
-320/390, tablet, laptop, 1920, 3440 and 3840 widths. Reuse #134/#148/#149 evidence
+320/390, tablet, laptop, 1920, 3440 and 3840 widths. Reuse #134/#149 evidence
 where it still covers the final combined head; do not run a huge Cartesian product
 of every state and dimension without a reason.
 
@@ -158,9 +158,9 @@ breakpoint rules, input modes, readable measure, map camera rule and surface map
 recorded in [adaptive layout rules](adaptive-layout-rules.md). It uses emulated viewports only.
 
 Implement through [#151](https://github.com/ColdPhase/flux/issues/151), with the
-same shell owner (@Zamojski5) as #136 and independent evaluator @PelikanFix16. #136 remains the integrated UX acceptance
-record and must include ADAPT-1–ADAPT-5; #20 retains mobile acceptance.
-Coordinate shared shell/token/map work with #134/#135/#148/#149; one writer per
+the final design's shell issues (#340, #341, #344). The final design (#336) is the integrated
+UX acceptance record and must include ADAPT-1–ADAPT-5; #20 retains mobile acceptance.
+Coordinate shared shell/token/map work with #338 and #349; one writer per
 branch. Split implementation by independently verifiable surfaces if useful,
 retaining all outcomes and final combined-head checks. This document adds a
 requirement and a design/test brief; no new responsive implementation or hardware
