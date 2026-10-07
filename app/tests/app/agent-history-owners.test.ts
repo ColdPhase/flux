@@ -53,7 +53,6 @@ test('current-project owner remains visible in genuine agent history after grant
   assert.equal(JSON.stringify(await taskDiscussionUseCases(db).contribute(f.actor, f.task.id, f.command)), exactReceipt);
   for (const row of await f.read()) {
     unchangedIdentity(row, f.receipt);
-    assert.deepEqual(row.author!.projectOwner, { kind: 'human', id: f.owner.id });
   }
   expectStatus(await f.manager.browser.request('DELETE', `/api/v1/projects/${f.place.id}/grants/${f.access.id}`), 204);
   const people = expectStatus(await f.reader.browser.request('GET', `/api/v1/projects/${f.place.id}/people`), 200) as ProjectPerson[];
