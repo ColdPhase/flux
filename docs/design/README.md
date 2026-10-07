@@ -34,8 +34,10 @@ each reference contributes. Keep interaction references separate from aesthetic
 references. A marketing hero does not set the scale of a working screen.
 
 A design task within the final design starts from its screens and rules. When a state is
-not drawn, compose it from the drawn components and rules, and show it to a founder before
-it becomes a pattern.
+not drawn, compose it from the drawn components and rules, then verify its behaviour and
+obtain independent review of conformance before reusing it as a pattern. Escalate actual
+design changes or conflicts with a functional contract on #336; only the founders may
+change the accepted design.
 
 ## Compact, readable working surfaces
 
