@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import re
+import time
 import unittest
 import uuid
 
@@ -99,9 +100,27 @@ class RouteChunksJourney(unittest.TestCase):
 
     def hold(self, page: Page, module: str):
         held: list[Route] = []
-        page.route(re.compile(rf"/assets/{module}-[^/]+\.js(?:\?.*)?$"), lambda route: held.append(route))
+        pattern = re.compile(rf"/assets/{module}-[^/]+\.js(?:\?.*)?$")
+        def pause(route):
+            held.append(route)
+        page.route(pattern, pause)
+        def cleanup():
+            page.unroute(pattern, pause)
+            for route in held:
+                route.abort("aborted")
+            held.clear()
+        self.addCleanup(cleanup)
         # A retained Route is released by the test, so the browser remains responsive to other input.
         return held
+
+    def request_is_held(self, page: Page, held):
+        # Native dynamic import starts after the stylesheet is ready. Observe its actual paused
+        # request instead of assuming a loading placeholder means the request has already arrived.
+        deadline = time.monotonic() + 3
+        while not held:
+            self.assertLess(time.monotonic(), deadline, "The actual route code request did not arrive")
+            page.wait_for_timeout(5)
+        self.assertEqual(len(held), 1, "Exactly one actual code download is held")
 
     def test_01_cold_home_omits_secondary_and_closed_surface_imports(self):
         for engine in self.browsers:
@@ -127,7 +146,7 @@ class RouteChunksJourney(unittest.TestCase):
                 self.settings(page, phone=phone)
                 expect(page.locator('[data-route-pending="/settings"]')).to_be_visible()
                 expect(page.locator('[data-route-pending="/settings"] [role="status"]')).to_have_text("Opening settings…")
-                self.assertEqual(len(held), 1, "The actual destination code download is held")
+                self.request_is_held(page, held)
                 expect(page.get_by_role("heading", name="Home", exact=True)).to_be_visible()
                 expect(field).to_have_value("Private work while the destination downloads")
                 field.fill("Private work remains editable")
@@ -167,7 +186,7 @@ class RouteChunksJourney(unittest.TestCase):
                 held = self.hold(page, "SettingsHome")
                 page.goto("/settings", wait_until="commit")
                 expect(page.locator(".booting")).to_contain_text("Opening settings…")
-                self.assertEqual(len(held), 1)
+                self.request_is_held(page, held)
                 expect(page.locator(".app")).to_have_count(0)
                 held.pop().continue_()
                 expect(page.get_by_role("heading", name="Settings", exact=True)).to_be_visible()
@@ -184,7 +203,7 @@ class RouteChunksJourney(unittest.TestCase):
                 page.keyboard.press("Control+k")
                 dialog = page.get_by_role("dialog", name="Jump to")
                 expect(dialog).to_contain_text("Opening search…")
-                self.assertEqual(len(held), 1)
+                self.request_is_held(page, held)
                 page.keyboard.press("Escape")
                 expect(dialog).to_have_count(0)
                 field.focus()
@@ -221,7 +240,7 @@ class RouteChunksJourney(unittest.TestCase):
                 self.home(page)
                 opener = self.open_details_by_keyboard(page)
                 expect(page.locator("#details")).to_contain_text("Opening details…")
-                self.assertEqual(len(held), 1)
+                self.request_is_held(page, held)
                 page.keyboard.press("Escape")
                 expect(page.locator("#details")).to_have_count(0)
                 expect(opener).to_be_focused()
