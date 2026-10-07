@@ -80,7 +80,7 @@
   .thread .project-convo__message, .thread .project-convo__message.is-mine { max-width: 91%; padding-left: 0; padding-right: 0; }
   .thread .project-convo__message.is-arrived { padding-left: 10px; }
   .thread .project-convo__message.is-mine.is-arrived { padding-right: 10px; }
-  .thread__root-meta .ui-avatar { display: none; }
+  .thread__root-meta :is(.ui-avatar, .author-face) { display: none; }
 }
 @media (prefers-reduced-motion: no-preference) {
   .thread--sheet { animation: thread-in var(--dur-3) var(--ease-sheet) both; }

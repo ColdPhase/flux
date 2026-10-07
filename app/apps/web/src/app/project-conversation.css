@@ -18,7 +18,8 @@
 .project-convo__day::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .project-convo__message { position: relative; padding: 8px 0 8px 46px; border-radius: var(--r); }
 .project-convo__message + .project-convo__message { margin-top: 6px; }
-.project-convo__message > .ui-avatar { position: absolute; left: 0; top: 10px; width: 32px; height: 32px; font-size: 12px; }
+.project-convo__message > :is(.ui-avatar, .author-face) { position: absolute; left: 0; top: 10px; }
+.project-convo__message > .ui-avatar { width: 32px; height: 32px; font-size: 12px; }
 .project-convo__message-meta { display: flex; gap: 8px; align-items: baseline; color: var(--t3); font-size: var(--fs-xs); }
 .project-convo__message-meta strong { color: var(--t1); font-size: var(--fs-md); font-weight: 600; }
 .project-convo__message-meta > span { font-family: var(--mono); visibility: hidden; font-variant-numeric: tabular-nums; }
@@ -92,7 +93,8 @@ button.project-convo__contribution { cursor: pointer; }
 .project-convo__day::before, .project-convo__day::after { content: ""; flex: 0 0 25px; height: 1px; background: var(--line); }
 .project-convo__message { display: flex; flex-direction: column; align-items: flex-start; width: fit-content; min-width: min(260px, 100%); max-width: min(600px, 87%); padding: 0 0 0 39px; }
 .project-convo__message + .project-convo__message { margin-top: 24px; }
-.project-convo__message > .ui-avatar { top: 0; width: 27px; height: 27px; font-size: 10px; font-weight: 500; background: var(--sub); color: var(--t2); box-shadow: inset 0 0 0 1px var(--line); }
+.project-convo__message > :is(.ui-avatar, .author-face) { top: 0; }
+.project-convo__message > .ui-avatar { width: 27px; height: 27px; font-size: 10px; font-weight: 500; background: var(--sub); color: var(--t2); box-shadow: inset 0 0 0 1px var(--line); }
 .project-convo__message-meta { gap: 9px; margin-bottom: 7px; font-size: var(--fs-xs); }
 .project-convo__message-meta strong { font-size: var(--fs-sm); font-weight: 550; }
 .project-convo__message-meta > span:not(.agent-tag) { visibility: visible; color: var(--t3); }
@@ -103,11 +105,11 @@ button.project-convo__contribution { cursor: pointer; }
 .project-convo__message > p { max-width: 100%; margin: 0; padding: 9px 13px; border-radius: 6px var(--r-lg) var(--r-lg) var(--r-lg); background: var(--el); box-shadow: var(--sh-1); font-size: var(--fs-base); line-height: var(--lh); }
 /* Everything under a message (sources, linked work, decisions, results, actions) stays inside its
    column; a long linked title shortens with an ellipsis instead of running off the side. */
-.project-convo__message > :not(.ui-avatar) { max-width: 100%; min-width: 0; }
+.project-convo__message > :not(.ui-avatar, .author-face) { max-width: 100%; min-width: 0; }
 .project-convo__message .ws-attach { max-width: 100%; }
 .project-convo__message.is-mine .ws-attach { justify-content: flex-end; }
 .project-convo__message.is-mine { margin-left: auto; align-items: flex-end; padding-left: 0; padding-right: 39px; }
-.project-convo__message.is-mine > .ui-avatar { left: auto; right: 0; }
+.project-convo__message.is-mine > :is(.ui-avatar, .author-face) { left: auto; right: 0; }
 .project-convo__message.is-mine > p { border-radius: var(--r-lg) 6px var(--r-lg) var(--r-lg); background-color: var(--inv); background-image: var(--grad-inv); color: var(--oninv); }
 .project-convo__message.is-mine .project-convo__message-meta { flex-direction: row-reverse; }
 .project-convo__message.is-mine .ws-acts { justify-content: flex-end; margin-left: 0; margin-right: -6px; }
@@ -135,7 +137,7 @@ button.project-convo__contribution { cursor: pointer; }
   .project-convo__in { padding: 22px 17px 12px; }
   /* Phones give the text the width: no avatars. */
   .project-convo__message, .project-convo__message.is-mine { max-width: 91%; padding-left: 0; padding-right: 0; }
-  .project-convo__message > .ui-avatar { display: none; }
+  .project-convo__message > :is(.ui-avatar, .author-face) { display: none; }
   .project-convo__message.is-arrived { padding-left: 10px; }
   .project-convo__message.is-mine.is-arrived { padding-right: 10px; }
   .project-convo__message > p { padding: 11px 14px; }

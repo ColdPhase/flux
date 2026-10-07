@@ -5,7 +5,7 @@ import http from 'node:http';
 import net from 'node:net';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
-import { chromium, type Browser, type BrowserContext } from 'playwright';
+import { chromium, type Browser, type BrowserContext, type Locator } from 'playwright';
 import { taskDiscussionPath, type ConversationMessage, type WorkItem } from '@flux/contracts';
 import { workUseCases } from '../../../apps/server/src/work/adapters.js';
 import { taskDiscussionUseCases } from '../../../apps/server/src/work/task-discussions.js';
@@ -60,6 +60,37 @@ async function signedIn(who: Person, width: number) {
   return context;
 }
 
+
+/** Both author types occupy the existing avatar column; Kreska retains its own SVG/decoration.
+ * Full F-026 32px conversation layout remains the conversation task, not this identity increment.
+ */
+async function assertAuthorColumn(row: Locator, width: number) {
+  await row.waitFor();
+  const geometry = await row.evaluate((el) => {
+    const face = el.querySelector<HTMLElement>(':scope > :is(.ui-avatar, .author-face)')!;
+    const meta = el.querySelector<HTMLElement>('.project-convo__message-meta')!;
+    const r = el.getBoundingClientRect();
+    const f = face.getBoundingClientRect();
+    const m = meta.getBoundingClientRect();
+    return { position: getComputedStyle(face).position, display: getComputedStyle(face).display,
+      mine: el.classList.contains('is-mine'), rowX: r.x, rowRight: r.right,
+      faceX: f.x, faceRight: f.right, metaX: m.x, metaRight: m.right };
+  });
+  if (width <= 640) {
+    assert.equal(geometry.display, 'none', 'both authors retain the current phone policy');
+    return;
+  }
+  assert.notEqual(geometry.display, 'none');
+  assert.equal(geometry.position, 'absolute', 'every face occupies the avatar column');
+  if (geometry.mine) {
+    assert.ok(Math.abs(geometry.faceRight - geometry.rowRight) <= 1, JSON.stringify(geometry));
+    assert.ok(geometry.faceX > geometry.metaRight, 'own avatar stays outside its name column');
+  } else {
+    assert.ok(Math.abs(geometry.faceX - geometry.rowX) <= 1, JSON.stringify(geometry));
+    assert.ok(geometry.faceRight < geometry.metaX, 'avatar stays outside its name column');
+  }
+}
+
 test('agent root renders without a human DM link, real human reply persists, and readers retain genuine history',
   { timeout: 90_000 }, async () => {
     const [owner, reader] = await Promise.all(['Casey Human', 'Lee Reader'].map(person));
@@ -88,6 +119,7 @@ test('agent root renders without a human DM link, real human reply persists, and
     await page.goto(path);
     const row = page.locator(`#message-${root.id}`);
     await row.waitFor();
+    await assertAuthorColumn(row, 1280);
     assert.match(await row.innerText(), /Trial analyst\s*Agent/);
     assert.equal(await row.locator('.kreska').count() > 0, true, 'an agent author is Kreska, never initials (#339)');
     assert.equal(await row.locator('a[href*="/dm/new"]').count(), 0);
@@ -110,6 +142,7 @@ test('agent root renders without a human DM link, real human reply persists, and
     assert.equal(humanCommand.body, 'I checked the trial: the counterexample is real.');
     assert.match(humanCommand.clientMessageId, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
     const receipt = await replyResponse.json() as ConversationMessage;
+    await assertAuthorColumn(page.locator(`#message-${receipt.id}`), 1280);
     await page.getByText('I checked the trial: the counterexample is real.', { exact: true }).waitFor();
     const read = expectStatus(await owner.browser.request('GET', `/api/v1/conversations/${root.conversationId}`), 200) as { messages: ConversationMessage[] };
     const human = read.messages[1]!;
@@ -136,10 +169,12 @@ test('agent root renders without a human DM link, real human reply persists, and
       await view.goto(path);
       const agentRow = view.locator(`#message-${root.id}`);
       await agentRow.waitFor();
+      await assertAuthorColumn(agentRow, width);
       assert.match(await agentRow.innerText(), /Trial analyst\s*Agent/);
       assert.equal(await agentRow.locator('a[href*="/dm/new"]').count(), 0);
       const humanRow = view.locator(`#message-${human.id}`);
       await humanRow.waitFor();
+      await assertAuthorColumn(humanRow, width);
       assert.equal(await humanRow.locator(`a[href$="with=${owner.id}"]`).count(), 1);
       const thread = view.locator('#thread');
       await thread.getByText('You have read access to this project.', { exact: true }).waitFor();
