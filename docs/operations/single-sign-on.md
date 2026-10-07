@@ -92,13 +92,23 @@ token from the same mock still signs in.
 It uses its own Compose project and ports (`FLUX_OIDC_TEST_PORT`, default 18095, and the next port
 for Mailpit) and removes everything afterwards.
 
+The installation uses one operator-configured SSO provider. The
+[F-024 scope amendment](../product/mcp-identity.md) requires the narrowed #315
+password mode, explicit safe existing-account conversion/recovery and only the
+claim adapters needed by that selected provider. These safeguards and #316's
+authority-increasing confirmation still need implementation and independent
+evidence. A successful offline standing check is not recent human authentication.
+There is no simultaneous-provider file or new opaque MCP-key setting (#317 is
+canceled, not delivered); supported-client OAuth/SSH/callback guidance remains.
+
 Not covered: SAML, SCIM provisioning, several providers at once, and a production provider's
 own policies (MFA, conditional access), which stay the provider's responsibility.
 
 - **Microsoft Entra ID (unverified, 2026-10-06).** Flux accepts an identity only when the ID token says
   `email_verified: true`. Entra's ID token and optional-claims references and its `claims_supported`
   list don't include `email_verified`, so Entra sign-in is expected to be refused until a provider
-  profile for it exists (F-024 S5b, [#274](https://github.com/ColdPhase/flux/pull/274)). This is an
+  claim adapter for it exists (F-024 S5b, [#315](https://github.com/ColdPhase/flux/issues/315)). These
+  profiles describe provider compatibility, not personal profile pages. This is an
   inference from Microsoft's documentation; it was not tested against a real Entra tenant.
 - **Agent (MCP) authorization.** The page an agent client opens for authorization (`/login`, for
   example from `claude mcp login`) offers email and password only, not single sign-on. Single sign-on

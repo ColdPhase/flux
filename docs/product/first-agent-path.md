@@ -64,14 +64,17 @@ idempotent replay and queued output. Token or session caching cannot restore a
 revoked grant. Do not reveal an inaccessible project's existence, count, title,
 event cursor or summary.
 
-**Proposed amendment, 2026-10-06 ([F-024](mcp-identity.md#connection-access-keys-header-only-clients-and-ci),
-[#273](https://github.com/ColdPhase/flux/issues/273), pending independent acceptance):**
-the MCP server stays an OAuth 2.1 resource server for every OAuth client. When the
-operator turns on connection access keys (`FLUX_MCP_ACCESS_KEYS=on`, off by
-default), `/mcp` also accepts a Flux-issued key for one connection, for clients
-that can only send a fixed header and for CI. A key is not an OAuth token: it is
-checked against its stored hash, and then gets the same connection, grant, owner
-and standing checks as a token.
+**2026-10-07 scope amendment:** [F-024](mcp-identity.md) and the
+[independently assessed decision](https://github.com/ColdPhase/flux/issues/360#issuecomment-6042333778)
+keep Flux OAuth and owner-bound grants for supported personal clients. The
+proposed opaque connection-key exception is canceled (#317, `not_planned`), not
+implemented or promised later. No separate key UI, endpoint or operator switch
+is required. Tested interactive SSH/paste-back/callback guidance remains under
+#310/#152; an unsupported fully unattended CI/header-only consumer is not
+advertised. Reconsider one only through an admitted bounded use case. Official
+MCP client-credentials mechanisms exist; lack of a mechanism is not the reason
+for cancellation, and a machine principal would need a separate F-019-compatible
+contract. See the [dated assessment](research/2026-10-07-single-provider-identity-scope.md).
 
 The first tool set is deliberately small: list authorized current contexts,
 read a selected source with revision, and create a **sourced proposal** for

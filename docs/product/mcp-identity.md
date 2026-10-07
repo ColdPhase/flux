@@ -1,14 +1,22 @@
 # F-024 — MCP sign-in with built-in accounts and external identity providers
 
-**Status: Proposed, 2026-10-05; revised 2026-10-06** for the
-[review of `f90c2350`](https://github.com/ColdPhase/flux/pull/274) by @Zamojski5, who
-accepted the MCPID-1 architecture and asked for the changes in groups A and B. Awaiting
-his re-review.
+**Status: Accepted baseline, 2026-10-06:** @Zamojski5 approved `76ccc6ce` in
+[PR #274](https://github.com/ColdPhase/flux/pull/274#pullrequestreview-5423586804),
+merged as `a66bb72b240305fcf54c98f92d1634c849898c4e`, with N1–N5 carried by
+#310/#311/#313. **Amended 2026-10-07:** the
+[founder direction](https://github.com/ColdPhase/flux/issues/249#issuecomment-6042227715)
+requires one SSO provider per installation and restores S3 to v0.1; the
+[independently assessed decision](https://github.com/ColdPhase/flux/issues/360#issuecomment-6042333778)
+narrows S5b/S6 and cancels S7's opaque-key feature. This is a contract, not
+implementation or release acceptance.
 **Owner:** @PelikanFix16 (`claude-hubert`). **Issue:** [#273](https://github.com/ColdPhase/flux/issues/273).
 **Evidence:** [research note](research/2026-10-05-mcp-identity.md), retrieved 2026-10-05;
 corrections and closed items re-verified 2026-10-06 (its last section). Labels
 [S] specification, [V] vendor documentation, [C] code read at a pinned revision,
 [O] observed response and [I] inference are as defined there.
+The [2026-10-07 necessity assessment](research/2026-10-07-single-provider-identity-scope.md)
+records the amendment's source observations, primary sources, counter-evidence
+and remaining limitations. The older research remains historical.
 
 **Founder direction** (Hubert / @PelikanFix16, 2026-10-05, relayed by
 `claude-hubert`, recorded in [#272](https://github.com/ColdPhase/flux/issues/272)
@@ -28,10 +36,12 @@ mode (a) ([MCPID-5](#standing-governs-all-of-the-persons-automation)). It builds
 [agent connection contract](../development/agent-connection.md) and
 [F-016](mcp-cowork.md). It extends the human single sign-on of
 [#240](https://github.com/ColdPhase/flux/pull/240) / [#113](https://github.com/ColdPhase/flux/issues/113),
-which is not merged yet, and relies on the client-registration and consent rules of
+which is merged, and relies on the client-registration and consent rules of
 [#294](https://github.com/ColdPhase/flux/pull/294) / [#287](https://github.com/ColdPhase/flux/issues/287),
-also not merged yet. Nothing here is implemented; the
-[slices](#implementation-slices) are the plan.
+also merged. These supply the existing human sign-in and consent seams; the
+F-024 [slices](#implementation-slices) still require implementation and pinned
+independent evidence. One SSO provider does not limit AI compute providers or
+the number of owner-authorized agent connections.
 
 **Unchanged:** F-019 owner-only use, per-connection consent, scope ceilings,
 per-call rechecks of grants, the tool contract ([O-010](extension-contracts.md)),
@@ -49,28 +59,29 @@ and no provider credential in Flux.
    for a person who has only an IdP account. Consent then shows where access goes
    (#294); with single sign-on it is the only step where the person approves a
    client ([MCPID-2](#mcpid-2--signing-in-during-mcp-authorization)).
-3. **Accounts are keyed by issuer and subject, never by email.** Several providers
-   can be configured. Linking an identity to an account is an explicit, signed-in
+3. **Accounts are keyed by issuer and subject, never by email.** Each installation
+   configures one provider. Attaching that identity to an existing account is an explicit, signed-in
    action. With a provider configured, password sign-up is off or verified-only, an
    unverified account never blocks a provider identity, and a managed account does
    not sign in with a password ([MCPID-3](#mcpid-3--several-providers-and-account-linking)).
-4. **Header-only clients and CI can use connection access keys, when the operator
-   turns them on.** A key is a short-lived, revocable Flux bearer for one connection,
-   under the same checks as an OAuth token. Headless machines use the clients' own
-   paste-back or callback options. There is no device flow yet
+4. **Supported personal clients use Flux OAuth.** SSH and remote machines retain
+   the clients' own paste-back or callback options. S7's extra opaque-key minting,
+   storage, settings and bearer surface is canceled; fully unattended CI or a
+   client unable to complete supported OAuth is not an admitted v0.1 journey.
+   There is no device flow yet
    ([MCPID-4](#mcpid-4--clients-headless-machines-and-ci)).
 5. **The IdP governs a managed account's access, including its automation.** Flux
    re-checks the person with the IdP every 15 minutes using an offline refresh token
    held only by the server and kept out of backups. A refusal puts the identity in
    **sign-in required**: the person's browser sessions end, and their MCP grants,
-   access keys, run tokens and owner compute are refused, not revoked, until they
+   run tokens and owner compute are refused, not revoked, until they
    sign in through the IdP again.
    A back-channel logout triggers an immediate check; one that asks to revoke
-   offline access revokes the identity's MCP grants and keys. Without any signal,
+   offline access revokes the identity's MCP grants. Without any signal,
    access stops when the IdP's last confirmation is 7 days old
    ([MCPID-5](#mcpid-5--lifetimes-standing-and-how-access-ends)).
-6. **Release position.** If v0.1.0 ships #240's single sign-on, it also needs
-   slices S1, S4, S2 and S5a. The other slices follow with stated interim behaviour
+6. **Release position.** v0.1.0 requires S1, S4, S2, S5a, S3, the narrowed S5b
+   and S6. S7 is canceled, not delivered or promised after v0.1
    ([slices](#implementation-slices)).
 
 **Rejected:** the IdP as the MCP authorization server, accepting or forwarding IdP
@@ -307,32 +318,32 @@ New operator setting `FLUX_PASSWORD_SIGN_IN`: `on` (default) or `off`.
 - **Off:**
   - Password sign-in, sign-up and reset requests are refused with
     `PASSWORD_SIGN_IN_DISABLED`.
-  - `/sign-in` and `/login` show only the provider buttons.
-  - A password-only account has no standing, so its browser sessions, MCP grants
-    and access keys stop at their next request. An account with a provider identity
+  - `/sign-in` and `/login` show only the configured provider.
+  - A password-only account has no standing, so its browser sessions, MCP grants,
+    runtime run tokens and owner compute stop at their next authorization check. An account with a provider identity
     keeps working through that identity.
 - **Either way,** a managed account never signs in with a password
   ([password rules](#password-sign-up-reset-and-email-collisions)).
 - **Before switching off:** people link their provider identity while signed in
   ([MCPID-3](#mcpid-3--several-providers-and-account-linking)).
 - **Break-glass:** set `on` and restart. Managed accounts also need their provider
-  set non-authoritative (`FLUX_OIDC_AUTHORITATIVE=false`, or `authoritative: false`
-  in the providers file). Both are operator actions on the host, never settings in
+  set non-authoritative (`FLUX_OIDC_AUTHORITATIVE=false`). Both are operator actions on the host, never settings in
   the web UI.
 - **First owner:** signs in through the provider; creating a workspace works as
   today.
 
-## MCPID-3 — Several providers and account linking
+<a id="mcpid-3--several-providers-and-account-linking"></a>
+## MCPID-3 — One provider and safe account migration
 
-### Several providers at once
+### One configured provider
 
-- The operator lists providers in a file named by `FLUX_OIDC_PROVIDERS_FILE`.
-  #240's single-provider variables stay as a shorthand for a list of one.
-- Each provider has its own provider id, derived from its issuer, so two
-  providers never share an identity namespace.
-- `/sign-in` and `/login` show one button per provider. Routing people to a
-  provider by email domain is deferred.
-- Each provider has an `authoritative` setting, `true` by default. A provider used
+- Keep #240's single issuer, client id, label and secret configuration. There is
+  no provider-list file, simultaneous selection or multi-provider standing policy.
+- The provider id remains derived from its issuer; an identity is always bound
+  to that issuer and `sub`, never to its email address alone.
+- `/sign-in` and `/login` offer that provider and, when the operator allows it,
+  the existing password method.
+- The provider's `authoritative` setting is `true` by default. A provider used
   only as a convenience login (for example gitlab.com) can be set to `false`.
 
 ### Linking: issuer and subject, never email alone
@@ -341,22 +352,22 @@ New operator setting `FLUX_PASSWORD_SIGN_IN`: `on` (default) or `off`.
 | --- | --- |
 | Account key | (provider id, `sub`), as in #240. The same `sub` is the same person even when the email or name changes |
 | Automatic linking by verified email | **Rejected.** A second provider, or a tenant admin, can assert any address. Entra's `email` "isn't guaranteed to be correct and is mutable over time". A takeover would carry the account's MCP grants, private notes and connections. #240 already refuses a new identity whose email belongs to another account; S5a narrows that to verified emails ([below](#password-sign-up-reset-and-email-collisions)) |
-| Explicit linking | A signed-in person with a recent sign-in ([step-up](#step-up-recent-sign-in-for-sensitive-actions)) chooses `Link <provider>` in Settings → Account and completes that provider's sign-in. The identity is attached unless another account already holds it. Linking an authoritative identity makes the account managed; the page says first that the account's password will then stop working |
-| Unlinking | Allowed while another usable identity remains. An identity at an authoritative provider cannot be unlinked by its owner, so a person cannot escape offboarding |
-| Migration and recovery | An operator command re-keys an identity, for example after an issuer change or a user re-created at the IdP with a new `sub`. It records the old and new key and revokes the account's MCP grants and access keys |
+| Explicit conversion | A signed-in owner with recent confirmation ([step-up](#step-up-recent-sign-in-for-sensitive-actions)) attaches the sole configured provider after its verified sign-in. Preserve the same Flux account ID, private data, roles, memberships and applicable grants. Reject an identity another account already holds. The page says that an authoritative identity makes the account managed and its password stops working |
+| Lockout and offboarding | An authoritative identity cannot be detached by its owner to evade offboarding. The last usable sign-in method cannot be removed. Any retained removal path is confined to the sole provider and applicable password mode; this is not general multi-identity management |
+| Migration and recovery | The operator can re-key the sole provider identity after an issuer or subject change. Preserve the Flux account and history; audit old/new issuer and subject, end obsolete sessions and revoke old MCP authority and refresh credentials. It is recovery of the same account, not automatic data transfer by email |
 
-### How standing combines identities
+### Standing for the sole provider
 
-- **Managed account** (it has at least one authoritative identity):
-  - every request requires that no authoritative identity is in
+- **Managed account** (linked to the authoritative configured provider):
+  - every request requires that its provider identity is not in
     [sign-in required](#standing-check-s4);
-  - the newest confirmation among its authoritative identities must be within the
+  - that identity's confirmation must be within the
     confirmation age;
   - it signs in only through a provider. Its password, if it has one, is kept but
     refused while the account is managed, so a password is no way around the IdP's
     MFA or offboarding.
 - **Unmanaged account:**
-  - password and non-authoritative identities are plain sign-in methods with no
+  - password and the sole non-authoritative identity are plain sign-in methods with no
     confirmation age;
   - an identity in sign-in required stops only the grants and sessions created
     through it;
@@ -385,7 +396,7 @@ rules apply:
 | Password sign-up | New setting `FLUX_PASSWORD_SIGN_UP`: `off` or `verified`, default `off`. With `verified`, a new password account cannot sign in, and is not found by email, until its email is verified. Without any provider the setting is not read and sign-up works as today |
 | Adding a member by email | Matches only an account whose email is verified. Otherwise the answer is the same `ACCOUNT_NOT_FOUND` as for no account |
 | Provider identity, email held by a **verified** account | Refused, as in #240. The page tells the person to sign in to that account and link the provider (explicit linking) |
-| Provider identity, email held by an **unverified** account | The unverified account never blocks it. Flux offers two choices: sign in to the existing account and link the provider, or claim the address. Claiming releases the address from the unverified account: its email becomes `unverified-<account id>@invalid` (the `.invalid` top-level domain of RFC 2606), its sessions, MCP grants and keys end, and an audit event names both accounts. Flux then creates the provider account. The released account keeps its data; the operator's re-key command can attach an identity to it later |
+| Provider identity, email held by an **unverified** account | The unverified account never blocks it. Flux offers two choices: sign in to the existing account and link the provider, or claim the address. Claiming releases the address from the unverified account: its email becomes `unverified-<account id>@invalid` (the `.invalid` top-level domain of RFC 2606), its sessions and MCP grants end, and an audit event names both accounts. Flux then creates the provider account. The released account keeps its data; the operator's re-key command can attach an identity to it later |
 | Password reset | Never creates a password: an account without a password is refused (`NO_PASSWORD`). A managed account is refused (`MANAGED_ACCOUNT`) |
 | Password sign-in on a managed account | Refused (`MANAGED_ACCOUNT`), with the provider buttons shown. Setting the provider non-authoritative (`FLUX_OIDC_AUTHORITATIVE=false` for #240's single provider) and restarting is the operator's break-glass |
 
@@ -403,7 +414,7 @@ RFC 7591 registration (#294).
 | Client | OAuth to Flux | Static header | Headless / SSH | Device grant |
 | --- | --- | --- | --- | --- |
 | Claude Code | Yes. `/mcp` or `claude mcp login`; CIMD; `--client-id`/`--callback-port` for a pre-registered client. Redirect `http://localhost:PORT/callback`. Run against Flux with versions 2.1.281 and 2.1.283 ([evidence](../development/agent-connection.md#identities-and-consent)) | `--header "Authorization: Bearer …"`, or `headersHelper` for a short-lived token | Over SSH `claude mcp login` prints the URL, and the person pastes the redirect URL back | Not documented (request #20215 closed as a duplicate) |
-| Codex | Yes. `codex mcp login`; CIMD; a configured client id "always takes precedence and skips client registration". Redirect `http://127.0.0.1:<port>/callback/<callback_id>` | `bearer_token_env_var`, `http_headers`, `env_http_headers` | `mcp_oauth_callback_port` or `mcp_oauth_callback_url` | Not documented |
+| Codex | Yes. `codex mcp login`; CIMD; a configured client id "always takes precedence and skips client registration". With pre-registration and Flux's advertised issuer/`authorization_response_iss_parameter_supported`, the stable loopback path is `/callback`; `/<callback_id>` applies without that support. Register the exact callback Codex displays (accepted [#310 N2](https://github.com/ColdPhase/flux/issues/310)) | `bearer_token_env_var`, `http_headers`, `env_http_headers` | `mcp_oauth_callback_port` or `mcp_oauth_callback_url` | Not documented |
 | Cursor | Only with a pre-registered client: its docs offer "static OAuth client credentials" instead of dynamic registration and do not mention CIMD | `headers` with `${env:…}` | Not documented | Not documented |
 | Other MCP clients | Through the MCP authorization specification | Varies | Varies | Not in the MCP specification |
 
@@ -411,55 +422,36 @@ Under A, an IdP changes nothing for the client. Only the browser step differs.
 
 ### Connection access keys (header-only clients and CI)
 
-For clients that only send a fixed `Authorization` header, and for CI jobs where
-nobody can open a browser:
+**Canceled, 2026-10-07; #317 is closed as `not_planned`.** No additional opaque
+Flux key, key-management UI, key bearer handler or operator key setting is
+required or implemented. The earlier proposal remains in the dated research;
+O-005 continues to require Flux OAuth and owner-bound per-request checks.
 
-- **Creating a key.** On `/connect-agent` the owner creates a key for one of their
-  own connections. This needs a [recent sign-in](#step-up-recent-sign-in-for-sensitive-actions).
-  The key's scopes are a subset of the connection's scopes.
-- **Showing and storing.** Flux shows the key once and stores only its SHA-256
-  hash and a short public prefix. The format is `fxk_<prefix>_<secret>`, with a
-  256-bit secret.
-- **Where it works.** The key is valid only at `<origin>/mcp`. `/api/v1`, the
-  WebSocket and `/api/auth` refuse it.
-- **Checks on every request.** Flux checks the key's hash, expiry and revocation,
-  then runs the same checks as for an OAuth token: connection live, grants, owner
-  access, scopes and standing.
-- **Lifetime.** A key expires after at most `FLUX_MCP_ACCESS_KEY_MAX_DAYS` (default
-  30, allowed 1–90) and has no refresh. It also stops at once when the connection
-  is revoked, the owner revokes the key, or the account loses standing (sign-in
-  required, or for a managed account a confirmation older than the confirmation
-  age).
-- **The Connect page** lists each key with its prefix, scopes, creation time, last
-  use and expiry, and a Revoke action.
-- **Operator switch.** `FLUX_MCP_ACCESS_KEYS` is `off` by default, so keys are
-  opt-in. With `off`, the Connect page offers no key, none can be created, and
-  existing keys are refused.
-- **The MCP specification.** For HTTP transports it says implementations "SHOULD"
-  conform to its OAuth flow. A key departs from that "SHOULD" only for clients that
-  cannot use OAuth, and only where the operator chose it. It is still issued by
-  Flux for Flux's own resource, so it is not token passthrough. O-005 calls the
-  MCP server "an OAuth 2.1 resource server"; a proposed amendment there records
-  this operator-enabled exception ([first agent path](first-agent-path.md)).
-- **CI guidance.** Create a dedicated connection named for the job, with read-only
-  scope where possible and a short expiry. Store the key in CI secrets. Anyone who
-  can read that secret acts as that connection within its grants. A key never
-  represents a workspace bot (F-019). Machine identities through client credentials
-  wait for the MCP client-credentials extension, which is a draft.
+Official MCP documentation and SDKs already provide client-credentials
+mechanisms; the extension repository's release label differs. Their absence is
+not the reason for cancellation. The reason is that no admitted current
+header-only/CI consumer needs a second credential surface. See the
+[assessment and counter-evidence](research/2026-10-07-single-provider-identity-scope.md).
+Reconsider only a concrete consumer with bounded principal, owner/grants,
+lifetime, custody, offboarding and tested compatibility. A machine principal
+would need its own F-019-compatible decision, not a shared human credential.
 
 ### Headless and remote machines
 
-Use, in order:
+For the supported personal clients, retain and test:
 
-1. **The client's own flow.** Over SSH, `claude mcp login flux` prints the
-   authorization URL. Open it on the laptop, sign in (through the IdP if
-   configured), approve, and paste the full redirect URL back at the prompt.
-   Codex: set `mcp_oauth_callback_port` and forward it with
-   `ssh -L <port>:127.0.0.1:<port>`, or set `mcp_oauth_callback_url`. Flux needs
-   nothing extra: it accepts any loopback port (RFC 8252).
-2. **A connection access key** when the client cannot finish OAuth, for example
-   Claude Code in non-interactive mode, or a CI job, and the operator turned keys
-   on.
+**The client's own flow.** Over SSH, `claude mcp login flux` prints the
+authorization URL. Open it on the laptop, sign in (through the IdP if
+configured), approve, and paste the full redirect URL back at the prompt.
+Codex: set `mcp_oauth_callback_port` and forward it with
+`ssh -L <port>:127.0.0.1:<port>`, or set `mcp_oauth_callback_url`. Preserve the
+accepted loopback-port rule (RFC 8252) and the client's displayed redirect for
+pre-registration; #310/#152 still require supported-client integration evidence.
+
+An interactive owner may authorize first and then run the client non-interactively
+within that existing grant. Fully unattended first authorization and clients
+unable to complete supported OAuth are not advertised as v0.1-compatible. Remote
+location alone does not require another bearer-key mechanism.
 
 The device authorization grant (RFC 8628) is not offered yet:
 
@@ -486,7 +478,6 @@ using the defaults of Better Auth 1.7.6, whose source was read at `v1.7.6`.
 | MCP access token (JWT, `aud` = `<origin>/mcp`) | 1 hour; every request rechecks the connection and grants | Unchanged; every request also checks standing |
 | MCP refresh token | 30 days, rotated on every use, with a new 30-day expiry each time (sliding); 30-second retry window | Unchanged for unmanaged accounts. For a managed account, refused while it is in sign-in required or once the confirmation is older than the confirmation age |
 | Browser session | 7 days, extended on use (Better Auth default; not overridden) | Also ends with standing; back-channel logout ends the matching sessions |
-| Connection access key | — | Opt-in. At most 30 days by default (90 maximum), no refresh |
 | F-022 run token | — (accepted, not built) | No longer than the run timeout ([AIM-3](ai-modes.md#agent-connection-and-permissions)); minting it and every request check standing |
 | IdP ID and access tokens | #240 keeps Better Auth's default, which stores them in `auth_accounts` unencrypted (below) | Not kept: cleared after the callback; never used for MCP |
 | IdP refresh token (offline) | — | Kept only for the standing check, encrypted, in its own table that backups and exports leave out. Used only against that IdP's token and revocation endpoints. Never sent to a client or logged |
@@ -546,8 +537,7 @@ Default `FLUX_OIDC_STANDING=refresh`, interval 15 minutes.
    OIDC client secret file that #240 mounts on `api` only, and `FLUX_AUTH_SECRET`
    for the token key. The `worker` gets no IdP secret; it reads the stored standing
    when it [starts owner compute](#standing-governs-all-of-the-persons-automation).
-3. **What it checks.** Each identity that has a live browser session, MCP grant,
-   access key or running run, once its last check is older than the interval. It
+3. **What it checks.** Each identity that has a live browser session, MCP grant or running run, once its last check is older than the interval. It
    claims identities with `FOR UPDATE SKIP LOCKED`, so two `api` replicas never
    check one identity at once and a rotating refresh token is never raced. Each
    check is a `refresh_token` grant at the IdP's token endpoint, authenticated as
@@ -575,10 +565,10 @@ Default `FLUX_OIDC_STANDING=refresh`, interval 15 minutes.
      sign-in required.
 5. **Sign-in required at an authoritative provider:**
    - Flux deletes the account's browser sessions;
-   - MCP requests with any bearer (OAuth token, access key, run token) get 401
+   - MCP requests with any bearer (OAuth token, run token) get 401
      `invalid_token`, and the refresh grant gets `invalid_grant`;
    - owner compute stops ([below](#standing-governs-all-of-the-persons-automation));
-   - nothing is revoked: MCP grants, access keys, connections and standing grants
+   - nothing is revoked: MCP grants, connections and standing grants
      stay the owner's and are only refused.
 6. **A successful sign-in through that identity** clears the state. Keys work
    again, a client that kept its refresh token can refresh, and a client that
@@ -602,8 +592,7 @@ Foundation §8.15 requires that access can be taken away effectively "również
 aktywnej automatyzacji" (also from running automation). Standing is therefore part
 of "owner access" wherever Flux already rechecks it:
 
-- **Every `/mcp` request, whatever the bearer:** an OAuth access token, an access
-  key, or an F-022 mode (a) run token (`flux_run_id`), which uses the same route.
+- **Every `/mcp` request, whatever the bearer:** an OAuth access token or an F-022 mode (a) run token (`flux_run_id`), which uses the same route.
 - **Minting a run token** ([AIM-3](ai-modes.md#run)): the worker mints none for an
   account without standing.
 - **Owner compute in the worker:** O-007 background comparisons recheck owner access
@@ -619,7 +608,7 @@ The worker reads standing from the database; it never calls the IdP.
 
 `FLUX_OIDC_CONFIRMATION_MAX_AGE`, default `7d`, allowed `1h`–`30d`.
 
-- A managed account is served only while its newest authoritative confirmation is
+- A managed account is served only while its sole provider identity's confirmation is
   within this age.
 - With the standing check on, confirmation renews every 15 minutes, so the age only
   matters while the IdP cannot be reached.
@@ -669,7 +658,7 @@ The worker reads standing from the database; it never calls the IdP.
   not end the Flux client's offline session itself: a normal logout keeps offline
   sessions, and Keycloak's own handling of the flag applies only when it receives a
   logout token as a broker. Flux therefore honours the flag:
-  - it revokes the MCP refresh tokens and access keys of the account when it is
+  - it revokes the MCP refresh tokens of the account when it is
     managed, or those created through that identity when it is not;
   - it revokes its own IdP refresh token at the IdP and deletes it, so the identity
     is in sign-in required until the next sign-in.
@@ -685,9 +674,9 @@ The worker reads standing from the database; it never calls the IdP.
 
 ### When MCP access stops
 
-| Event | Browser sessions | MCP grants, keys and owner compute | When |
+| Event | Browser sessions | MCP grants and owner compute | When |
 | --- | --- | --- | --- |
-| Owner revokes the connection, a standing grant or a key in Flux | Unchanged | Revoked | Next request (existing for connections and grants) |
+| Owner revokes the connection or a standing grant in Flux | Unchanged | Revoked | Next request (existing for connections and grants) |
 | Workspace admin removes the person | Lose that workspace | Refused for its projects | Next request (existing) |
 | User disabled or deleted at the IdP, standing check on | Ended | Refused until a sign-in (sign-in required) | Within the 15-minute interval plus one check |
 | The IdP refuses the offline token for another reason (offline maximum, access removed by the person, lost rotation) | Ended | Refused until a sign-in | Next check |
@@ -705,18 +694,31 @@ outstanding access tokens" therefore does not reach MCP clients.
 
 ### Step-up: recent sign-in for sensitive actions
 
-These actions need the browser session to have authenticated within the last
-10 minutes:
+Only these authority-increasing actions need human authentication or the
+provider's explicitly documented confirmation within the last 10 minutes:
 
 - approving an MCP grant with `flux.action.execute`;
-- creating a standing grant or an access key;
-- linking or unlinking an identity.
+- creating a standing grant;
+- explicitly attaching the sole configured provider to an existing account.
+
+Ordinary reads/editing, existing agent calls/runs, token refresh, reconnect,
+revocation and narrowing authority do not prompt again. Standing proves that
+the IdP still serves an account; an offline refresh, a new token issue time or a
+new Flux session does not prove recent human authentication. Bind the continuation
+to the same account, session/action and signed OAuth request. Cancellation,
+failure, stale claims or an identity substitution cannot increase authority.
 
 | Identity | How Flux gets a recent sign-in |
 | --- | --- |
 | Password | The person re-enters the password |
 | Provider with re-authentication (Keycloak; Entra with the `auth_time` optional claim) | Flux redirects with `prompt=login` and `max_age=600`, then requires `auth_time` in the ID token to be within 10 minutes (60 seconds tolerance). Entra documents `prompt=login` but not `max_age`; the `auth_time` check does not depend on it |
 | Provider without re-authentication (Google documents only `prompt` values `none`, `consent` and `select_account`, and no `max_age`) | A fresh provider round trip, which proves the person is still active but not that credentials were re-entered. The provider profile states which of the two applies |
+
+The confirm-only case is weaker than credential re-entry and must be disclosed
+in the chosen provider's operator guidance. Do not claim equivalent protection
+or silently fall back to a password for a managed account. The 10-minute policy
+is Flux's narrow safeguard, not a general OIDC requirement or a complete defense
+against a compromised browser.
 
 This is separate from MCP's scope step-up. When a tool needs a scope the token
 lacks, Flux keeps answering with the scope error. The client re-runs
@@ -726,7 +728,7 @@ authorization, and the consent step above applies.
 
 ### Settings
 
-The #240 settings are proposed in an open PR; the rest are new in F-024. The
+The #240 settings are merged; the remaining F-024 settings require implementation. The
 operator sets these in `docker/.env`, except where a row says the variable is set
 inside the container.
 
@@ -736,14 +738,12 @@ inside the container.
 | `FLUX_OIDC_ISSUER`, `FLUX_OIDC_CLIENT_ID`, `FLUX_OIDC_LABEL` | off | One provider (#240) |
 | `FLUX_OIDC_CLIENT_SECRET_HOST_FILE` | — | **Host** path of the client secret file (#240). Compose mounts it read-only into `api` at `/run/secrets/flux_oidc_client_secret` |
 | `FLUX_OIDC_CLIENT_SECRET_FILE` | that mount | **Container** path the API reads. Compose sets it; operators do not |
-| `FLUX_OIDC_PROVIDERS_FILE` | — | Several providers: issuer, client id, secret file (container path; S5 adds a read-only mount for the secrets), label, `authoritative`, `standing`, `confirmationMaxAge`, `profile`, extra authorization parameters (S5) |
+| Single-provider claim adapter | `oidc` | S5b retains only the claim rules needed by the one selected supported provider; no provider collection. The implementation owner records its bounded single-provider configuration and actual compatibility evidence |
 | `FLUX_PASSWORD_SIGN_IN` | `on` | `off` allows only provider sign-in (S5) |
 | `FLUX_PASSWORD_SIGN_UP` | `off` | Read only when a provider is configured: `off` or `verified` (S5a) |
 | `FLUX_OIDC_AUTHORITATIVE` | `true` | For #240's single provider. `false` makes it a convenience login whose identities do not make an account managed; also the break-glass for managed accounts' passwords (S5a) |
 | `FLUX_OIDC_STANDING` | `refresh` | `off` disables the offline standing check (S4) |
 | `FLUX_OIDC_CONFIRMATION_MAX_AGE` | `7d` | `1h`–`30d` (S2) |
-| `FLUX_MCP_ACCESS_KEYS` | `off` | `on` allows connection access keys (S7) |
-| `FLUX_MCP_ACCESS_KEY_MAX_DAYS` | `30` | 1–90 (S7) |
 
 ### Who must reach what
 
@@ -792,7 +792,7 @@ The other profiles change only what their provider needs.
      Backchannel logout session required **On**. "Backchannel logout revoke
      offline sessions" **Off**, unless every logout should also end agents: when
      on, Keycloak adds `revoke_offline_access` to each logout token, and Flux then
-     revokes the person's MCP grants and keys (S3).
+     revokes the person's MCP grants (S3).
 2. **Offline access:** a new realm puts the `offline_access` role in its default
    roles (`default-roles-<realm>`); check that it is still there, so Flux can hold
    an offline token for the standing check. Keycloak's default offline session
@@ -863,14 +863,14 @@ The other profiles change only what their provider needs.
   documentation lists no `max_age` and no `prompt=login`. Use profile `google` and
   the standing check.
 - **GitLab.** Its discovery has no logout keys. `email` and `email_verified` come
-  only with the email scope and a public email. Usually `authoritative: false`.
+  only with the email scope and a public email. Usually `FLUX_OIDC_AUTHORITATIVE=false`.
 
 ## MCPID-7 — Failures and edges
 
 | Situation | Behaviour |
 | --- | --- |
 | IdP down when Flux starts | #240 reads discovery only at start and leaves single sign-on off until a restart. **Change (S1):** read discovery lazily with retry and backoff, and show `<label> is not reachable right now` on the sign-in pages. Password sign-in, when on, still works |
-| IdP down later | New sign-ins and new MCP authorizations fail at the browser step with the same message. Existing browser sessions, MCP tokens and keys keep working until the confirmation age. The standing check records "unknown", not "sign-in required" |
+| IdP down later | New sign-ins and new MCP authorizations fail at the browser step with the same message. Existing browser sessions, MCP tokens keep working until the confirmation age. The standing check records "unknown", not "sign-in required" |
 | IdP step fails during an MCP authorization | Back to `/login` with the same signed OAuth query and a message (S1) |
 | Flux's IdP client secret expired or rotated | Sign-in and standing checks fail with `invalid_client`. Flux treats this as **unknown**, not as every person needing to sign in, and logs `OIDC_CLIENT_REJECTED` for the operator |
 | Lost response to a standing check | Unknown. The next check uses the previous refresh token, which the IdP still accepts unless it makes refresh tokens single-use; then sign-in required |
@@ -923,16 +923,19 @@ imported realm, the API, Mailpit and Chromium. Add:
 | --- | --- |
 | 1 Built-in | Existing `oauth-mcp` tests still pass. With password sign-in off, a password-only grant is refused at its next request |
 | 2 OIDC on `/login` | An IdP-only person completes the scripted client's authorization from a fresh browser; the token has `aud` = `<origin>/mcp`; tools work. A tampered continuation is refused. A cancelled or failed IdP step returns to `/login` with the query, and the authorization then completes. Consent after the IdP step shows the redirect host and the `client_id` host, the loopback line or the non-loopback warning, and cannot be framed. A loopback redirect on another port is accepted as `localhost` and as `127.0.0.1`; a different path or host is refused |
-| 3 Several providers | Keycloak plus the mock: separate identities for the same email; explicit linking needs a recent sign-in; automatic email linking never happens; an authoritative identity cannot be unlinked |
-| 4 Account safety | With a provider configured: password sign-up is refused; with `verified`, an unverified account cannot sign in and is not found when adding a member by email. A provider identity whose email a verified account holds is refused with link guidance. One whose email an unverified account holds can link or claim; claiming releases the address, ends that account's sessions, MCP grants and keys, and writes the audit event. A reset is refused for an account without a password and for a managed account. A managed account's password sign-in is refused, and works again with the provider set non-authoritative |
-| 5 Header-only | Keys are off by default. With keys on, a key works only at `/mcp`; it is refused after expiry, revocation, connection revocation, sign-in required or `FLUX_MCP_ACCESS_KEYS=off`; its hash, never the key, is in the database and logs |
+| 3 Single-provider conversion and recovery | Separate Keycloak/mock configuration runs for the sole provider: preserve an existing account's data, roles and applicable grants after explicit confirmed conversion; reject duplicate identity and email auto-linking; prevent lockout/offboarding escape; audit re-key recovery and revoke old authority; test only the selected supported provider's relevant claims |
+| 4 Account safety | With a provider configured: password sign-up is refused; with `verified`, an unverified account cannot sign in and is not found when adding a member by email. A provider identity whose email a verified account holds is refused with link guidance. One whose email an unverified account holds can link or claim; claiming releases the address, ends that account's sessions and MCP grants, and writes the audit event. A reset is refused for an account without a password and for a managed account. A managed account's password sign-in is refused, and works again with the provider set non-authoritative |
+| 5 Canceled opaque keys | No additional key minting/storage/UI/settings are admitted. Existing OAuth issuer/audience, owner/grant/standing checks and unsupported-bearer refusals remain; this is cancellation, not successful implementation of S7 |
 | 6 Headless | The scripted client completes authorization by posting the pasted redirect URL to its own loopback listener, mirroring Claude Code's paste-back |
-| 7 Offboarding | Keycloak disable → within the interval: browser sessions gone, refresh `invalid_grant`, MCP 401 with the `error_description` (a label with non-ASCII characters is reduced to allowed characters), keys refused, nothing revoked. Re-enable plus sign-in: keys work again, and a client that kept its refresh token can refresh. Removing the Flux client's offline session at Keycloak gives the same suspension. In sign-in required, an O-008 personal run (mock provider) is not dispatched, and, once F-022 run tokens exist, none is minted or accepted. Back-channel logout ends matching browser sessions and MCP continues; with "Backchannel logout revoke offline sessions" on, the MCP refresh tokens and keys are revoked. With standing off, MCP stops at the confirmation age (shortened in the test). Step-up refuses `flux.action.execute` consent with an `auth_time` older than 10 minutes |
+| 7 Offboarding | Keycloak disable → within the interval: browser sessions gone, refresh `invalid_grant`, MCP 401 with the `error_description` (a label with non-ASCII characters is reduced to allowed characters), MCP requests refused, nothing revoked. Re-enable plus sign-in: a client that kept its refresh token can refresh. Removing the Flux client's offline session at Keycloak gives the same suspension. In sign-in required, an O-008 personal run (mock provider) is not dispatched, and, once F-022 run tokens exist, none is minted or accepted. Back-channel logout ends matching browser sessions and MCP continues; with "Backchannel logout revoke offline sessions" on, the MCP refresh tokens are revoked. With standing off, MCP stops at the confirmation age (shortened in the test). Step-up refuses authority-increasing execute consent/standing-grant creation/provider linking with stale or substituted proof; fresh-confirmation continuations stay bound to the same account/action. Ordinary work, revoke and narrowing remain prompt-free; confirm-only assurance is disclosed |
 | 8 No passthrough and token storage | A Keycloak-issued access token or ID token sent to `/mcp` gets 401. After sign-in, `auth_accounts` holds no IdP access or ID token, and the IdP refresh token is only in its own table, encrypted. A dump made with the backup's `pg_dump` arguments has no row of that table; after restoring it, managed accounts are in sign-in required until they sign in. No IdP token appears in any MCP response, log line or export |
 | 9 Failures | The mock IdP returning 503 leaves MCP working and records "unknown"; at the confirmation age it stops. A rejected client secret puts nobody in sign-in required. After a lost rotation response, the next check succeeds with the previous token. A logout token with `nonce`, a replayed `jti`, a wrong `aud` or `alg` none gets 400. Every back-channel response has `Cache-Control: no-store` |
 
-Entra and Google are not run in Docker; their profiles are tested against the mock
-and stay "untested against the real provider" until someone records a real run.
+For the selected supported provider, test its relevant claim adapter against the
+mock and retain negative controls. Entra/Google compatibility remains "untested
+against the real provider" without a corresponding real run; mocks do not
+establish it. The one-provider scope does not require every vendor adapter
+without an admitted supported use.
 
 ## Implementation slices
 
@@ -950,12 +953,15 @@ from #240) and the [integration guide](../integrations/README.md).
 - S3 depends on S4, because it queues standing checks and revokes the stored IdP
   refresh token.
 - S5a depends only on #240.
-- S5b and S6 depend on S1. S7 is independent.
+- S6 depends on S1. The narrowed S5b also composes S5a's account-safety
+  interfaces and S6's confirmation for linking. S7 has no planned implementation.
 
-**Release position.** The proposed v0.1.0-rc.1 acceptance matrix
+**Release position, amended 2026-10-07.** The v0.1.0-rc.1 acceptance matrix
 ([#248](https://github.com/ColdPhase/flux/pull/248),
 `docs/agents/release-acceptance/v0.1.0-rc.1.md`) lists #240's single sign-on under
-OPS-1 and 8.15, and MCP co-work under CO-1–CO-5. If v0.1.0 ships #240:
+OPS-1 and 8.15, and MCP co-work under CO-1–CO-5. The
+[founder and assessed amendment](https://github.com/ColdPhase/flux/issues/360#issuecomment-6042333778)
+requires the following v0.1 outcomes with one SSO provider:
 
 - **S1 gates it.** Without S1, an IdP-only person reaches MCP only through the
   workaround in #240's guide, and consent is untested on the IdP path.
@@ -965,16 +971,21 @@ OPS-1 and 8.15, and MCP co-work under CO-1–CO-5. If v0.1.0 ships #240:
   refresh grants (30 days, sliding).
 - **S5a gates it.** Without it, password sign-up lets anyone block an employee's
   first single sign-on and receive a membership meant for them.
-- **After v0.1.0,** with this interim behaviour in the operator guide:
-  - S3: no back-channel logout. The standing check finds disabled people within
-    15 minutes, and an IdP logout does not end Flux sessions.
-  - S5b: one provider (#240). Entra sign-in is refused (#240's documented caveat).
-    No linking, password switch or re-key command.
-  - S6: approving an execute grant or creating a standing grant uses the current
-    session, as today.
-  - S7: header-only clients and CI cannot connect, as today.
+- **S3 gates it.** Back-channel logout (#314) follows S4 (#311); its validated
+  event/session effects do not replace the standing check or imply that every
+  provider sends logout events.
+- **The narrowed S5b gates it.** #315 supplies one-provider password mode, safe
+  existing-account conversion/recovery and the selected provider's claim rules.
+  There is no simultaneous-provider file, list UI or combined-standing policy.
+- **The narrow S6 gates it.** #316 requires recent authentication or explicitly
+  weaker provider confirmation only when execute consent, a new standing grant
+  or provider linking increases authority.
+- **S7 is canceled.** #317 is `not_planned`, not implemented or deferred delivery.
+  Tested personal-client SSH/paste-back/callback guidance remains in S1/#310 and
+  #152. No key UI, key endpoint or unsupported fully unattended consumer is added.
 
-If #240 is not in v0.1.0, no F-024 slice gates it.
+All implementation and independent evidence remain required. The prior deferred
+scope and its observations are preserved in the dated research and GitHub records.
 
 ### S1 — Provider sign-in on the MCP authorization path
 
@@ -1016,8 +1027,7 @@ If #240 is not in v0.1.0, no F-024 slice gates it.
   200 or 400 with `Cache-Control: no-store`.
 - **AC-2.** `sid` and `sub` session ending.
 - **AC-3.** The immediate standing check.
-- **AC-4.** `revoke_offline_access` in `events` revokes the MCP refresh tokens and
-  keys, and Flux's IdP refresh token.
+- **AC-4.** `revoke_offline_access` in `events` revokes the MCP refresh tokens and Flux's IdP refresh token.
 - **AC-5.** The logout rows of test cases 7 and 9, against Keycloak with the client
   setting on and off, and against the mock.
 
@@ -1031,7 +1041,7 @@ If #240 is not in v0.1.0, no F-024 slice gates it.
   required.
 - **AC-3.** Sign-in required deletes the browser sessions, answers MCP requests with
   401 and an RFC 6750-safe `error_description`, refuses refresh, and revokes
-  nothing. A new sign-in restores keys and kept refresh tokens.
+  nothing. A new sign-in restores use of kept refresh tokens and grants.
 - **AC-4.** Standing gates every `/mcp` bearer, run-token minting and the start of
   owner compute (O-007, O-008; F-022 runs when they are built).
 - **AC-5.** Backups leave out the token table's rows; after a restore, managed
@@ -1052,30 +1062,68 @@ If #240 is not in v0.1.0, no F-024 slice gates it.
   (default `true`) sets #240's single provider non-authoritative for break-glass.
 - **AC-5.** Test case 4.
 
-### S5b — Password switch, several providers, linking and profiles
+<a id="s5b--password-switch-several-providers-linking-and-profiles"></a>
+### S5b — Password mode, safe migration and provider claim adapters
 
-- **AC-1.** `FLUX_PASSWORD_SIGN_IN`.
-- **AC-2.** `FLUX_OIDC_PROVIDERS_FILE` with per-provider `authoritative`,
-  `standing`, `confirmationMaxAge` and `profile`.
-- **AC-3.** The explicit link and unlink rules.
-- **AC-4.** The `entra` and `google` profiles against the mock.
-- **AC-5.** The operator re-key command. Test cases 1 and 3.
+Required in v0.1 under [#315](https://github.com/ColdPhase/flux/issues/315).
+Depends on S1/#310, S5a/#313 account-safety interfaces and S6/#316 for linking.
+
+- **AC-1 — One provider and password mode.** Keep one configured issuer. Add
+  `FLUX_PASSWORD_SIGN_IN` on/off, honest startup/UI states and refusal of password
+  sign-in, sign-up/reset and existing password-only authority when off. Preserve
+  S5a's managed-account/break-glass rules. No provider-list file, simultaneous
+  provider selection or multi-authoritative aggregation.
+- **AC-2 — Existing-account conversion.** An explicitly signed-in owner with
+  S6's recent confirmation may attach the sole provider after its verified
+  sign-in. Preserve the same account ID, private data, memberships and applicable
+  grants. Reject an identity already held by another account and all automatic
+  email-based linking. An authoritative identity cannot be detached to evade
+  offboarding; the last usable identity cannot be removed. Compose S5a's
+  link-first collision guidance. Claiming an unverified email never transfers
+  that account's data.
+- **AC-3 — Claims and recovery.** Retain verified issuer/subject/email rules and
+  only the claim adapters required by the selected supported provider. These
+  profiles are provider compatibility rules, not person-profile pages or extra
+  concurrent providers. Operator re-key recovery preserves the account/history,
+  audits old/new issuer and subject, and revokes old MCP authority. Entra/Google
+  support stays unverified without corresponding real-provider evidence; mock
+  claim tests do not establish compatibility.
+- **AC-4 — Evidence.** Docker Keycloak and scripted MCP/mock-provider positive
+  and negative controls prove password-off enforcement, existing-account
+  conversion, duplicate-identity refusal, lockout prevention, authority
+  revocation, rejected email linking, recovery and the relevant claims. Preserve
+  the remaining accepted cases 1 and 3; replace simultaneous providers with
+  separate single-provider configuration runs. Obtain exact-head independent
+  review. Do not require every vendor profile without an admitted supported use.
 
 ### S6 — Recent sign-in for sensitive actions
 
 - **AC-1.** The 10-minute rule for the listed actions, for password,
-  re-authenticating providers and confirm-only providers.
-- **AC-2.** `prompt=login` and `max_age` with an `auth_time` check.
-- **AC-3.** The step-up row of test case 7.
+  re-authenticating providers and confirm-only providers, only for execute
+  consent, creating a standing grant and linking the sole provider. Reads,
+  editing, existing calls/runs, refresh, revocation and narrowing do not prompt.
+- **AC-2.** Verify a password or, for a provider supporting re-authentication,
+  use `prompt=login`/`max_age` and verify the ID token's `auth_time` within the
+  window/tolerance. A refresh or new session timestamp is not human authentication.
+  Bind the continuation to the same account, session/action and signed OAuth
+  request; cancellation, failure, stale claims or identity substitution cannot
+  increase authority.
+- **AC-3.** Disclose confirm-only providers' weaker assurance. Docker Keycloak
+  and mock positive/negative controls exercise case 7 plus ordinary no-prompt,
+  revoke and narrow controls. No claim of a complete compromised-browser defense.
+
+Required in v0.1 under [#316](https://github.com/ColdPhase/flux/issues/316), after
+S1/#310. Canceled S7 keys are not a target of this slice.
 
 ### S7 — Connection access keys and headless guidance
 
-- **AC-1.** Create, list and revoke keys on `/connect-agent`, with the operator
-  switches; keys are off by default.
-- **AC-2.** The hash-only storage, MCP-only validity and per-request checks.
-- **AC-3.** The Connect page shows the Claude Code `--header`/`headersHelper` and
-  Codex `bearer_token_env_var` commands next to the OAuth commands when keys are on.
-- **AC-4.** Test cases 5 and 6.
+**Canceled, not implemented:** [#317](https://github.com/ColdPhase/flux/issues/317)
+is closed as `not_planned`. The prior opaque-key acceptance criteria are
+historical research, not promised future work. There is no new key UI,
+`fxk_` bearer handler or `FLUX_MCP_ACCESS_KEYS` setting. OAuth/SSH/callback
+guidance and the supported-client test case 6 remain required under S1/#310 and
+#152. Reconsider a second credential surface only for an admitted, concrete
+CI/header-only consumer with bounded owner/grant/custody/offboarding requirements.
 
 ## Rejected and deferred
 

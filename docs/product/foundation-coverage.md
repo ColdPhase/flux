@@ -16,6 +16,15 @@ Earlier revision: 2026-09-27, reconciled with protected `main` at `146a1c7` afte
 
 ## Evidence rule
 
+**Required v0.1 scope, 2026-10-07:** the [founder's amendment](https://github.com/ColdPhase/flux/issues/249#issuecomment-6042227715)
+restores #228/#231 live map/wiki, #238 safe unused AI-task Undo and #314
+back-channel logout. The [single-provider identity amendment](https://github.com/ColdPhase/flux/issues/360#issuecomment-6042333778)
+narrows the required #315/#316 safeguards and cancels #317's additional opaque
+keys. The live-editing gates, p95 ≤200 ms, AC-U1–U5, privacy/history and existing
+OAuth/grant checks remain. The affected rows stay pending until implementation
+and criterion-specific evidence; this scope record raises no evidence state.
+F-026 [Prostota](https://github.com/ColdPhase/flux/issues/336) governs appearance.
+
 The later [F-012 direction](decisions.md) and [#44 scenarios](https://github.com/ColdPhase/flux/issues/44)
 add creative, independent-audience requirements to these same rows. The mapping
 below names every new unmet outcome. A design mock, candidate PR or issue link

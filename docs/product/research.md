@@ -1,5 +1,11 @@
 # Research that changes a decision
 
+Current dated assessment: [single-provider identity scope, 2026-10-07](research/2026-10-07-single-provider-identity-scope.md)
+records the independently assessed #315/#316 safeguards and #317 cancellation,
+with primary sources, source pins, counter-evidence and remaining limitations.
+The earlier F-024 research remains historical; the current
+[contract](mcp-identity.md) records the adopted scope.
+
 Use foundation sections 14 and 20. Start with the task, existing repository
 knowledge, and the uncertainty that could change the outcome. Do not impose a
 link quota or a separate validation campaign on a small reversible change.
