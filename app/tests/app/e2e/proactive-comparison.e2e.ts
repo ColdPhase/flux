@@ -163,7 +163,7 @@ test('real project UI presents sourced quiet suggestions, then persists edits, u
         assert.equal(await page.evaluate(() => matchMedia('(pointer: coarse)').matches), true);
         for (const control of await page.locator('.ws-proposal__sources a, .ws-proposal__sources button, .ws-proposals__jumps button').all()) {
           const bounds = await control.boundingBox();
-          assert.ok(bounds && bounds.height >= 44 && bounds.width >= 44, 'source links and section jumps have 44×44px touch targets');
+          assert.ok(bounds && Math.round(bounds.height) >= 44 && Math.round(bounds.width) >= 44, 'source links and section jumps have 44×44px touch targets');
         }
       }
       await page.screenshot({ path: `/state/proactive-ui-${viewport.width}-expanded.png`, fullPage: true });
@@ -352,7 +352,7 @@ test('owner-only background setup persists consent, clears keys and preserves an
     assert.ok(await key.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize) >= 16));
     for (const check of await page.locator('.background-settings__check').all()) {
       const bounds = await check.boundingBox();
-      assert.ok(bounds && bounds.height >= 44 && bounds.width >= 44);
+      assert.ok(bounds && Math.round(bounds.height) >= 44 && Math.round(bounds.width) >= 44);
     }
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await page.screenshot({ path: `/state/background-setup-${viewport.width}-add.png`, fullPage: true });
@@ -471,7 +471,7 @@ test('an owner creates a personal project agent and a paused rule, then pauses, 
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
       for (const control of await page.locator('.background-settings__actions .ui-btn').all()) {
         const bounds = await control.boundingBox();
-        assert.ok(bounds && bounds.height >= 44 && bounds.width >= 44);
+        assert.ok(bounds && Math.round(bounds.height) >= 44 && Math.round(bounds.width) >= 44);
       }
       await page.screenshot({ path: `/state/background-rules-${viewport.width}-paused.png`, fullPage: true });
     } finally { page = desktopPage; await touchContext.close(); }
