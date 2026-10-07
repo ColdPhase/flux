@@ -250,8 +250,15 @@ docker volume inspect "${project}_runtime-1-data" >/dev/null || fail "switching 
 live off
 
 step "14. ./flux runtime purge signs out and deletes every login"
-./flux runtime purge -y | tee "$work/purge.txt"
+if ! ./flux runtime purge -y > "$work/purge.txt" 2>&1; then
+  cat "$work/purge.txt"
+  fail "off→purge failed"
+fi
+cat "$work/purge.txt"
 grep -q 'signed out (claude_code ok, codex ok)' "$work/purge.txt" || fail "off→purge did not attempt sign-out successfully"
+if grep -Ei 'sign-out NOT confirmed|Not every.*signed out|could not be signed out|cannot be signed out|Could not start.*sign out' "$work/purge.txt" >/dev/null; then
+  fail "off→purge left a sign-out unconfirmed"
+fi
 [ -z "$(docker volume ls -q --filter "label=com.docker.compose.project=$project" | grep -E '_runtime-' || true)" ] || fail "purge left runtime volumes"
 ./flux runtime status | grep -q 'no binding' || true
 
