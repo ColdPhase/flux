@@ -157,16 +157,31 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
     assert.equal(run.output, '');
     console.log('CROSS=refused');
   },
-  /** Leaving at the prompt ends the console; the next one starts at once (the slot's lane is free). */
+  /** Disconnect retains an unknown claim until full release, empty data and a fresh boot/binding. */
   async 'console-leave'(label) {
     const someone = await owner(label!);
-    const left = await runConsole(someone, await ticket(someone, 'claude_account'), null);
+    const issued = await ticket(someone, 'claude_account');
+    const before = (await bindingOf(someone.id))!;
+    const bootBefore = (await slotRow(before.slot))!.boot_id;
+    const left = await runConsole(someone, issued, null);
     assert.ok(left.output.includes(PROMPT));
-    await sleep(1000);
-    const next = await runConsole(someone, await ticket(someone, 'console'), null);
+    const immediate = await someone.browser.request('POST', AGENT_RUNTIME_CONSOLE_PATH, { body: { client: 'claude_code', method: 'console' } });
+    if (immediate.status === 200) {
+      // A fast worker may already have recovered it; success must name a genuinely new binding.
+      assert.notEqual((await bindingOf(someone.id))?.id, before.id, 'never admit another console on the uncertain binding');
+    } else assert.ok([409, 503].includes(immediate.status), immediate.text);
+    await until('confirmed full cleanup and fresh supervisor', () => slotRow(before.slot),
+      row => Boolean(row && row.boot_id !== bootBefore && ['ready', 'held'].includes(row.state)));
+    const freshTicket = await ticket(someone, 'console');
+    const fresh = (await bindingOf(someone.id))!;
+    assert.notEqual(fresh.id, before.id);
+    assert.equal((await pool.query('SELECT state FROM agent_runtime_bindings WHERE id=$1', [before.id])).rows[0].state, 'released');
+    const next = await runConsole(someone, freshTicket, 'fake-code-recovery-control');
     assert.ok(next.output.includes(PROMPT), JSON.stringify(next.messages));
-    await sleep(1000);
+    const done = next.messages.at(-1);
+    assert.ok(done?.t === 'done' && done.disposition === 'accepted' && done.signedIn);
     console.log('LEFT=yes');
+    console.log('RECOVERY=fresh-boot-and-binding');
   },
   /** No request accepts a setup-token, auth.json, session or API key. */
   async 'console-no-fields'(label) {

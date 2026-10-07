@@ -248,7 +248,11 @@ print("ran exactly", commands[0], "in a terminal, then auth status")' "$expected
   if docker exec "$t_cid" test -e "/data/$t_binding/claude/.credentials.json"; then fail "$method: sign-out left the login"; fi
 done
 live console-cross T U
-live console-leave T
+out=$(live console-leave T); printf '%s\n' "$out"
+[ "$(value "$out" RECOVERY)" = fresh-boot-and-binding ] || fail "disconnect did not prove fresh runtime recovery"
+# Recovery may change the physical process and binding. All following controls target that current one.
+out=$(live console-bind T); printf '%s\n' "$out"
+t_slot=$(value "$out" SLOT); t_binding=$(value "$out" BINDING); t_cid=$(cid "$t_slot")
 [ "$(logins_running)" = 0 ] || fail "a login command still runs after its console was left"
 live console-no-fields T
 # A failed logout still deletes the login and tells the owner.

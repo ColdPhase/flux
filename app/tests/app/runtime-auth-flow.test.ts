@@ -114,3 +114,12 @@ test('lifecycle fence rejects obsolete logout INSERT fallback, and purge blocks 
   assert.equal((await f.runtime.status(f.owner.id)).lastRelease?.signOutFailed,true);
   assert.equal(await f.store.recordSignOut(admitted.operation,false),false);
 }));
+
+
+test('accepted status without required display facts cannot report a successful sign-in', () => fixture(async f => {
+  const operation=await f.console();
+  const answer=await f.runtime.recordSignIn(f.owner.id,{ operation,method:'sso' },{ signedIn:true,facts:null,bootId:f.bootId });
+  assert.equal(answer.disposition,'accepted');assert.equal(answer.signedIn,false);
+  assert.equal(answer.status.connections.claude_code?.state,'signed_out');
+  assert.equal((await f.observe()).signedIn,true,'same real store with complete facts signs in');
+}));

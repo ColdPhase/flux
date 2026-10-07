@@ -97,3 +97,53 @@ test('two actual API processes share one-use tickets and operation ownership acr
     await slot.close();if(ownerId)await pool.query('DELETE FROM auth_users WHERE id=$1',[ownerId]);await pool.query('DELETE FROM agent_runtime_slots WHERE slot=$1',[slot.config.slot]);
   }
 });
+
+test('a held real manager response arriving after a second HTTP process requests sign-out is explicitly superseded', { timeout:30_000 },async()=>{
+  const slot=await startTestSlot({ slot:'runtime-998',enabled:['claude_code'] }),managerSecret=slotSecret();
+  const manager=createManagerServer({ secret:managerSecret,log:()=>undefined,slots:new Map([[slot.config.slot,{ host:'127.0.0.1',port:portOf(slot.url),secret:slot.config.secret }]]) });
+  // Controlled network barrier around the actual manager result, after real CLI status finished.
+  // No fake DB result/clock and no product test hook. Admission tx must already be released.
+  let holdNext=false,release!:()=>void,entered!:()=>void;
+  const held=new Promise<void>(r=>{release=r;});
+  const reached=new Promise<void>(r=>{entered=r;});
+  const handlers=manager.listeners('request');manager.removeAllListeners('request');
+  manager.on('request',(request,response)=>{
+    if(holdNext&&request.url?.endsWith('/status')) {
+      holdNext=false;const end=response.end;
+      response.end=((...args:unknown[])=>{entered();void held.then(()=>Reflect.apply(end,response,args));return response;})as typeof response.end;
+    }
+    for(const handler of handlers)Reflect.apply(handler,manager,[request,response]);
+  });
+  await new Promise<void>(r=>manager.listen(0,'127.0.0.1',r));
+  const managerUrl=`http://127.0.0.1:${(manager.address()as{port:number}).port}`;
+  const children:ChildProcess[]=[],sockets:WebSocket[]=[];let ownerId:string|undefined,pending:Promise<unknown>|undefined;
+  try {
+    const config={clients:['claude_code']as const,commercialTermsAgreedOn:null,idleDays:null,manager:{url:managerUrl,secret:managerSecret}};
+    await reconcileAgentRuntime({config:{...config,clients:[...config.clients]},store:agentRuntimeStore(db),manager:runtimeManagerPort(createRuntimeManagerClient(config.manager))});
+    const first=await api(managerUrl,managerSecret),second=await api(managerUrl,managerSecret);children.push(first.child,second.child);
+    const a=new Browser(first.url,origin),signup=await a.request('POST','/api/auth/sign-up/email',{body:{email:`held-http-${randomUUID()}@example.test`,password:'correct horse battery staple',name:'Held status owner'}});
+    assert.equal(signup.status,200);ownerId=(signup.json as{user:{id:string}}).user.id;
+    const b=new Browser(second.url,origin);for(const[n,v]of a.cookies)b.cookies.set(n,v);
+    const issue=await a.request('POST',AGENT_RUNTIME_CONSOLE_PATH,{body:{client:'claude_code',method:'sso'}});assert.equal(issue.status,200);
+    const login=await socket(a);sockets.push(login.ws);login.ws.send(JSON.stringify({t:'attach',ticket:(issue.json as{ticket:string}).ticket,cols:60,rows:20}));
+    await until(()=>login.output.includes('Paste code'));login.ws.send(JSON.stringify({t:'in',d:'fake-code-held-http\r'}));assert.equal(await login.closed,1000);
+    holdNext=true;
+    const checking=a.request('POST','/api/v1/agent-runtime/check',{body:{client:'claude_code'}});pending=checking;
+    await Promise.race([reached,delay(5000).then(()=>{throw new Error('manager response barrier deadline');})]);
+    const tx=await pool.query<{n:number}>(`SELECT count(*)::int n FROM pg_stat_activity WHERE datname=current_database() AND state='idle in transaction'`);
+    assert.equal(tx.rows[0].n,0,'held external response occupies no database transaction');
+    assert.equal(((await b.request('GET',AGENT_RUNTIME_PATH)).json as AgentRuntimeStatus).auth?.claude_code,'checking');
+    const out=await b.request('POST','/api/v1/agent-runtime/sign-out',{body:{client:'claude_code'}});
+    assert.equal(out.status,409);assert.equal((out.json as{code:string}).code,'AGENT_RUNTIME_AUTH_RECOVERY');
+    release();const completed=await checking;assert.equal(completed.status,200);
+    const status=completed.json as AgentRuntimeStatus;
+    assert.deepEqual(status.authCompletion,{kind:'check',disposition:'superseded'});
+    assert.equal(status.binding?.recovery,true);assert.equal(status.connections.claude_code,null);
+    const rows=await pool.query<{state:string;signed_in_at:Date|null;sign_out_failed:boolean|null;revoked_at:Date|null}>('SELECT state,signed_in_at,sign_out_failed,revoked_at FROM agent_runtime_connections WHERE owner_user_id=$1',[ownerId]);
+    assert.equal(rows.rows[0].state,'signed_out');assert.equal(rows.rows[0].signed_in_at,null);assert.equal(rows.rows[0].sign_out_failed,null);assert.ok(rows.rows[0].revoked_at);
+  }finally{
+    release();await pending?.catch(()=>undefined);for(const ws of sockets)ws.terminate();await Promise.all(children.map(stop));
+    manager.closeAllConnections();await new Promise<void>(r=>manager.close(()=>r()));await slot.close();
+    if(ownerId)await pool.query('DELETE FROM auth_users WHERE id=$1',[ownerId]);await pool.query('DELETE FROM agent_runtime_slots WHERE slot=$1',[slot.config.slot]);
+  }
+});

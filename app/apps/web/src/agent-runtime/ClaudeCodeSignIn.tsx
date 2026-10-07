@@ -135,7 +135,7 @@ function Outcome({ outcome, onAgain, back }: { outcome: ConsoleOutcome; onAgain:
       : 'Claude Code ended without reporting a login, so you are not signed in. If the code was refused, start again and paste the whole code.';
   return (
     <section className="nset__sec rt-outcome" aria-labelledby="rt-done">
-      <h3 id="rt-done">Not signed in</h3>
+      <h3 id="rt-done">{outcome.error === 'superseded' ? 'Result not accepted' : 'Not signed in'}</h3>
       <p className="nset__problem" role="alert"><Icon name="alert" size={14} /><span>{message}</span></p>
       <div className="aset__actions">
         <Button variant="primary" onClick={onAgain}>Start again</Button>

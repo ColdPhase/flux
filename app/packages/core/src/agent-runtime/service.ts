@@ -198,7 +198,7 @@ export function agentRuntimeUseCases(config: AgentRuntimeConfig, store: AgentRun
     async recordSignIn(ownerUserId, target, reported) {
       requireOn();
       const accepted = await record(ownerUserId, target, reported);
-      return { disposition: accepted ? 'accepted' : 'superseded', status: await status(ownerUserId), signedIn: accepted && reported.signedIn };
+      return { disposition: accepted ? 'accepted' : 'superseded', status: await status(ownerUserId), signedIn: accepted && reported.signedIn && reported.facts !== null };
     },
     async check(ownerUserId, client, sessionId) {
       requireOn();

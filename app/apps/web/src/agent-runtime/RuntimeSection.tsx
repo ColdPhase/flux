@@ -111,6 +111,7 @@ export function RuntimeSection() {
           ? <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Every runtime on this server is in use.</b> You can still use your own AI key here, or Claude Code on your computer through an <Link className="ui-link" to="/connect-agent">agent connection (MCP)</Link>.</span></p>
           : <><h4 className="rt-sub">Before you sign in</h4><BeforeSignIn status={status} /></>
       ) : null}
+      {status.authCompletion?.disposition === 'superseded' ? <p className="nset__problem" role="status">This operation’s result was no longer current and was not accepted. The current runtime state is shown here.</p> : null}
       {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
       {removing ? null : (
         <div className="aset__actions rt-actions">
