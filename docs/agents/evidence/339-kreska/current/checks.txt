@@ -53,3 +53,16 @@ Final component browser
 ℹ pass 1
 ℹ fail 0
 ℹ duration_ms 4303.307994
+
+Stable capture follow-up f5f7c882 (unchanged production1987254e)
+✔ agent root renders without a human DM link, real human reply persists, and readers retain genuine history (2754.037811ms)
+✔ native agent owners retry failed reads, fence stale permission answers and survive same-tab account changes (5636.653644ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9333.844165
+Existing Docker runner: application workspace typecheck and targeted actor-file ESLint pass (no diagnostic output).

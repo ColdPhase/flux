@@ -2,8 +2,9 @@
 
 This is a component increment for [#339](https://github.com/ColdPhase/flux/issues/339)
 under [#336/F-026](https://github.com/ColdPhase/flux/issues/336), not whole-issue or
-release acceptance. Source frozen for review at
-`d225edbb67aa0e762bcc20d1c45bf3e234e685cd`. The documentation/screenshot commit
+release acceptance. Initial source was frozen at `d225edbb67aa0e762bcc20d1c45bf3e234e685cd`;
+the stable-capture follow-up test source is
+`f5f7c882fd20d63761cdd8f595ce35805a0d0a58`. The documentation/screenshot commit
 that contains this record adds no application code.
 
 ## Corrected behavior
@@ -62,6 +63,45 @@ Actual check excerpts are in [checks.txt](checks.txt). Full local transcripts:
 `/tmp/flux339-ui.log`, `/tmp/flux339-ui-final.log`,
 `/tmp/flux339-actors-final.log`, `/tmp/flux339-frames-final.log`.
 
+## Stable capture follow-up
+
+The first neutral visual review at `b81eba8e` found that the Agents-thread PNG
+caught the closing Details panel over the page and omitted the owner visibly.
+That capture is superseded by the five native PNGs now in this directory; its
+unmodified bytes remain locally in `/tmp/flux339-raw-evidence/b81-pre-stable-capture`.
+
+The follow-up did not change production code. The docked panel intentionally
+remains mounted through its exit animation, and selecting a task commits a new
+`?task=` route visit, which fences/reloads the authorized owner projection. The
+previous test asserted a label before capturing those transitions. The new test
+waits for the panel to detach, the intended task URL to commit and finite
+animations to end. It then checks the full owner label, positive in-viewport
+bounds, visible/non-inert ancestors at opacity 1, same-surface hit testing, and
+identical metrics over three rendered frames and before/after the raw screenshot.
+The task card's transparent stretched button may own hits over its own label;
+a different panel/overlay is rejected. Motion stays enabled.
+
+The rerun at `f5f7c882fd20d63761cdd8f595ce35805a0d0a58` passes 2/2 real
+actor/owner journeys, with no asynchronous test error. All five native captures
+include `*-visibility.json` with actual before/after measurements. The Agents
+thread's `for Scoped Casey` is at x633, y634.46875, width99, height17.15625;
+all recorded ancestors have opacity1/visibilityvisible and the label is
+uncovered, in the viewport, and unchanged throughout capture.
+
+The unchanged production image is
+`sha256:91fcce70e17f8ad42c8f39eee106d089db82a8d082322f10db0109bcfbf92d3b`
+(`1987254e`). The existing runner is
+`sha256:311291cbf950845791671c16e6f040cf37e2a92f366ea483766dd0441166a852`;
+only the current test file is mounted into it. Type checking of the application
+workspace with that test file and targeted ESLint pass in the existing Docker
+runner; no heavy application build is needed. Web production source has no diff
+from `1987254e` to `f5f7c882`, and backend/contracts source has no diff from
+`51b7aabc` to `f5f7c882`. Source checks, suite and cleanup transcripts are
+`/tmp/flux339-capture-source-checks.log`, `/tmp/flux339-capture.log` and
+`/tmp/flux339-capture-cleanup.log`. The separate capture project and volumes were
+removed. A fresh independent source/test and visual delta review is required for
+this follow-up; the prior review is not represented as a pass for these captures.
+
 ## Neutral visual review input
 
 A project collaborator needs to recognize an agent, its human/workspace owner
@@ -86,13 +126,13 @@ face, fake font sample, post-render edit or changed viewport zoom is used.
 ## Remaining #339 outcomes
 
 #339 stays open and PR #356 stays **Part of #339**. The whole final-design
-integration still requires Inbox (#342), search/mentions (#343/#349), hand-off
+integration still requires Inbox (#342), command menu/search/mentions (#343/#345/#349), hand-off
 and Settings agent/AI colors (#347/#350), working-run/claim indicators (#347),
 phone Home/splash/small moments (#352), and live map cursor/presence (#228/#231).
 Live map/co-editing is required for v0.1; it is not deferred out of scope.
 
 Visible remaining native identity fields include WorkDetails “Added by” creator,
-pivot candidate owners and selected task owner identity (#339/#346/#347).
+pivot candidate owners and selected task owner identity (#339/#344/#346).
 Native select options may remain textual accessible options, but the displayed
 selected owner still needs the final identity treatment. This bounded change does
 not claim every agent everywhere, all seven hue placements, all small moments,
