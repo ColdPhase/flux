@@ -61,9 +61,6 @@ async function signedIn(who: Person, width: number) {
 }
 
 
-/** Both author types occupy the existing avatar column; Kreska retains its own SVG/decoration.
- * Full F-026 32px conversation layout remains the conversation task, not this identity increment.
- */
 function isFinishedFixtureRoute(cause: unknown): boolean {
   // Playwright can finish/continue a superseded route before its fixture response is fulfilled.
   // This public handled-route error does not always populate Request.failure(); no network
@@ -71,6 +68,7 @@ function isFinishedFixtureRoute(cause: unknown): boolean {
   return cause instanceof Error && cause.message.includes('route.fulfill: Route is already handled!');
 }
 
+/** F-026: people and agents keep a 32px face in the same column on every viewport. */
 async function assertAuthorColumn(row: Locator, width: number) {
   await row.waitFor();
   const geometry = await row.evaluate((el) => {
@@ -80,22 +78,17 @@ async function assertAuthorColumn(row: Locator, width: number) {
     const f = face.getBoundingClientRect();
     const m = meta.getBoundingClientRect();
     return { position: getComputedStyle(face).position, display: getComputedStyle(face).display,
-      mine: el.classList.contains('is-mine'), rowX: r.x, rowRight: r.right,
-      faceX: f.x, faceRight: f.right, metaX: m.x, metaRight: m.right };
+      rowX: r.x, faceX: f.x, faceRight: f.right, faceWidth: f.width, faceHeight: f.height,
+      metaX: m.x, direction: getComputedStyle(meta).flexDirection };
   });
-  if (width <= 640) {
-    assert.equal(geometry.display, 'none', 'both authors retain the current phone policy');
-    return;
-  }
-  assert.notEqual(geometry.display, 'none');
+  assert.notEqual(geometry.display, 'none', 'the phone retains the full author avatar');
   assert.equal(geometry.position, 'absolute', 'every face occupies the avatar column');
-  if (geometry.mine) {
-    assert.ok(Math.abs(geometry.faceRight - geometry.rowRight) <= 1, JSON.stringify(geometry));
-    assert.ok(geometry.faceX > geometry.metaRight, 'own avatar stays outside its name column');
-  } else {
-    assert.ok(Math.abs(geometry.faceX - geometry.rowX) <= 1, JSON.stringify(geometry));
-    assert.ok(geometry.faceRight < geometry.metaX, 'avatar stays outside its name column');
-  }
+  assert.ok(Math.abs(geometry.faceWidth - 32) <= 0.01 && Math.abs(geometry.faceHeight - 32) <= 0.01,
+    'both author shapes have the required 32px size');
+  assert.ok(Math.abs(geometry.faceX - geometry.rowX) <= 1, JSON.stringify(geometry));
+  assert.ok(Math.abs(geometry.metaX - geometry.faceRight - (width <= 680 ? 10 : 12)) <= 1,
+    'the author name follows the common face column and required gap');
+  assert.equal(geometry.direction, 'row', 'own authors keep the same order');
 }
 
 test('agent root renders without a human DM link, real human reply persists, and readers retain genuine history',

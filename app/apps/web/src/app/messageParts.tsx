@@ -79,9 +79,9 @@ export function SourceCitation({ materialId, version, onDenied }: { materialId: 
  * Who wrote a message, in the avatar column (F-026 P3): a person is a grey circle with initials, an
  * agent is Kreska. Decorative: the name beside it says who it is.
  */
-export function AuthorFace({ message, name, mine, size = 'md' }: { message: Pick<ConversationMessage, 'authorId'>; name: string; mine: boolean; size?: 'sm' | 'md' }) {
-  if (message.authorId === null) return <Kreska size={size === 'sm' ? 20 : 26} className="author-face" />;
-  return <Avatar name={name} size={size} tone={mine ? 'me' : 'neutral'} />;
+export function AuthorFace({ message, name, mine }: { message: Pick<ConversationMessage, 'authorId'>; name: string; mine: boolean }) {
+  if (message.authorId === null) return <Kreska size={32} className="author-face" />;
+  return <Avatar name={name} size="lg" tone={mine ? 'me' : 'neutral'} />;
 }
 
 /** An agent author's name line: its name, the "Agent" tag and "for <owner>" when the reader may know it. */
