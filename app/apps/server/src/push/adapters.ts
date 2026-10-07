@@ -37,11 +37,23 @@ async function inboxAudience(db: DbExecutor, userId: string): Promise<SQL> {
     const projects = await visibleFilter(principal, workspaceId, 'project', db);
     const drafts = await visibleFilter(principal, workspaceId, 'draft', db);
     const dms = await visibleFilter(principal, workspaceId, 'dm', db);
+    // Each set starts from the distinct sources of the reader's own notifications of that kind in
+    // this workspace and keeps those that pass the policy's filter, looked up one by one by
+    // primary key (a LATERAL subquery with LIMIT, which PostgreSQL cannot turn into a scan of the
+    // whole table). The outer `IN` is then decided once per query as a hashed set. Its size and
+    // estimate follow the reader's notifications, never the workspace's projects, drafts or DMs
+    // (#298): as correlated EXISTS the checks were costed once per notification and crossed
+    // jit_above_cost at about a thousand of them; as sets of every readable row they grew with
+    // the workspace; as semi-joins PostgreSQL could still choose to scan every DM.
+    const readable = (type: 'project' | 'draft' | 'dm', table: typeof schema.projects | typeof schema.drafts | typeof schema.dms, filter: SQL) =>
+      sql`SELECT own.source_id FROM (SELECT DISTINCT mine.source_id FROM notifications mine
+        WHERE mine.user_id = ${userId} AND mine.workspace_id = ${workspaceId} AND mine.source_type = ${type}) AS own
+        CROSS JOIN LATERAL (SELECT 1 FROM ${table} WHERE ${table.id} = own.source_id AND ${filter} LIMIT 1) AS passes`;
     const sources: SQL[] = [
-      sql`(${n.sourceType} = 'project' AND EXISTS (SELECT 1 FROM ${schema.projects} WHERE ${schema.projects.id} = ${n.sourceId} AND ${projects}))`,
-      sql`(${n.sourceType} = 'draft' AND EXISTS (SELECT 1 FROM ${schema.drafts} WHERE ${schema.drafts.id} = ${n.sourceId} AND ${drafts}))`,
+      sql`(${n.sourceType} = 'project' AND ${n.sourceId} IN (${readable('project', schema.projects, projects)}))`,
+      sql`(${n.sourceType} = 'draft' AND ${n.sourceId} IN (${readable('draft', schema.drafts, drafts)}))`,
       // Direct messages (#116): only while the recipient is a participant (#107).
-      sql`(${n.sourceType} = 'dm' AND EXISTS (SELECT 1 FROM ${schema.dms} WHERE ${schema.dms.id} = ${n.sourceId} AND ${dms}))`,
+      sql`(${n.sourceType} = 'dm' AND ${n.sourceId} IN (${readable('dm', schema.dms, dms)}))`,
     ];
     if (workspace.allowed) sources.push(sql`(${n.sourceType} = 'workspace' AND ${n.sourceId} = ${workspaceId})`);
     conditions.push(and(eq(n.workspaceId, workspaceId), or(...sources))!);

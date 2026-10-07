@@ -25,5 +25,7 @@ coverage/
 /exports/
 /.flux-backup-lock-*/
 
+# Server measurement results written by scripts/check_performance.sh (#298).
+/perf-results/
 # The operator's own Compose override (for example extra agent runtime slots); ./flux reads it.
 /docker/compose.override.yaml

@@ -1,5 +1,12 @@
 # Research that changes a decision
 
+Current dated assessment: [owner MCP switches and SSO-only authentication, 2026-10-07](research/2026-10-07-mcp-switches-and-sso-only.md)
+records the superseding founder direction and independent source assessment.
+The [earlier same-day necessity assessment](research/2026-10-07-single-provider-identity-scope.md)
+remains historical; its recent-authentication and mixed-password/SSO
+recommendations are superseded. The current [F-024 contract](mcp-identity.md)
+retains actual OAuth/grant/standing boundaries and canceled #317 scope.
+
 Use foundation sections 14 and 20. Start with the task, existing repository
 knowledge, and the uncertainty that could change the outcome. Do not impose a
 link quota or a separate validation campaign on a small reversible change.

@@ -1,0 +1,25 @@
+# Measurement-only overlay for scripts/check_performance.sh (#298), layered over
+# compose.source.yaml. Nothing here changes the application; never use it for a real deployment.
+# - pg_stat_statements counts the statements each request sends (top level, BEGIN and COMMIT
+#   included) with their execution and planning time;
+# - auto_explain is loaded but off (its default log_min_duration is -1; a command-line value here
+#   would override ALTER SYSTEM); the script switches it on only for its plan phase, so the timed
+#   phases carry no plan instrumentation;
+# - FLUX_PERF_NODE_OPTIONS reaches the API only in the script's CPU-profile phase.
+services:
+  db:
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements,auto_explain
+      - -c
+      - pg_stat_statements.track=top
+      - -c
+      - pg_stat_statements.track_utility=on
+      - -c
+      - pg_stat_statements.track_planning=on
+      - -c
+      - track_io_timing=on
+  api:
+    environment:
+      NODE_OPTIONS: ${FLUX_PERF_NODE_OPTIONS:-}
