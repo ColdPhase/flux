@@ -10,6 +10,7 @@ changes to it; agents implement it and do not re-decide it.
   and annotations (S1–S22, P1–P12): <https://claude.ai/artifact/UnQv8mJcyLWrDmKg7nMYDf>.
 - **In this folder.** This guide and a render of every board in [`screens/`](screens/). Phone
   renders are at 2× (780 × 1688). Desktop renders are 1440 × 900, and boards are 1440 × 1200.
+- **Implementation.** Issues [#338](https://github.com/ColdPhase/flux/issues/338), [#339](https://github.com/ColdPhase/flux/issues/339), [#340](https://github.com/ColdPhase/flux/issues/340), [#341](https://github.com/ColdPhase/flux/issues/341), [#342](https://github.com/ColdPhase/flux/issues/342), [#343](https://github.com/ColdPhase/flux/issues/343), [#344](https://github.com/ColdPhase/flux/issues/344), [#345](https://github.com/ColdPhase/flux/issues/345), [#346](https://github.com/ColdPhase/flux/issues/346), [#347](https://github.com/ColdPhase/flux/issues/347), [#348](https://github.com/ColdPhase/flux/issues/348), [#349](https://github.com/ColdPhase/flux/issues/349), [#350](https://github.com/ColdPhase/flux/issues/350), [#351](https://github.com/ColdPhase/flux/issues/351), [#352](https://github.com/ColdPhase/flux/issues/352), tracked on #336. Each has its renders, acceptance criteria and the code to change.
 - **Scope.** Appearance, structure and interaction. Product, data, access, AI and agent contracts
   stay as recorded in [the decision register](../../product/decisions.md). Where an older contract
   describes how something looks or where it sits, this design wins.
