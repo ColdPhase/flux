@@ -1,8 +1,8 @@
 .message-files { list-style: none; padding: 0; margin: 4px 0; display: flex; flex-direction: column; gap: 3px; max-width: 100%; }
 .message-files a { display: flex; align-items: center; gap: 6px; color: var(--t1); font-size: var(--fs-sm); text-decoration: none; min-height: 32px; }
 .message-files a:hover { text-decoration: underline; }
-.message-files a span { overflow-wrap: anywhere; min-width: 0; }
-.message-files small { flex: none; color: var(--t3); font-size: var(--fs-xs); }
+.message-files a span { overflow-wrap: anywhere; min-width: 0; font-family: var(--mono); }
+.message-files small { flex: none; color: var(--t3); font-size: var(--fs-xs); font-family: var(--mono); }
 .message-files svg { flex: none; }
 .message-files a:focus-visible, .composer-files button:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
 .composer-files { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; margin: 4px 0; font-size: var(--fs-xs); }
@@ -12,7 +12,7 @@
 .composer-files__privacy { margin: 0; color: var(--t3); line-height: 1.5; }
 .composer-files__list { list-style: none; padding: 0; margin: 0; width: 100%; max-height: 150px; overflow-y: auto; }
 .composer-files__list li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 3px 0; border-bottom: 1px solid var(--line); }
-.composer-files__name { min-width: 0; flex: 1; overflow-wrap: anywhere; color: var(--t1); }
+.composer-files__name { min-width: 0; flex: 1; overflow-wrap: anywhere; color: var(--t1); font-family: var(--mono); }
 .composer-files__name small { display: block; color: var(--t3); font-size: var(--fs-xs); }
 .composer-files__list li > button { flex: none; }
 .composer-files__error { color: var(--t1); width: 100%; margin: 3px 0; line-height: 1.5; }

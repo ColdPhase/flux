@@ -9,6 +9,7 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 button, input, textarea, select { font: inherit; color: inherit; letter-spacing: inherit; }
+time { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 button { cursor: pointer; background: none; border: 0; padding: 0; }
 p { margin: 0; }
 h1, h2, h3 { margin: 0; font-weight: 600; }
@@ -130,7 +131,7 @@ svg { flex: none; }
 /* The label keeps the width of its bold form, so selecting a tab never nudges the others. */
 .ui-tabs__label { display: inline-flex; flex-direction: column; }
 .ui-tabs__label::after { content: attr(data-text); height: 0; overflow: hidden; visibility: hidden; font-weight: 650; pointer-events: none; user-select: none; }
-.ui-tabs__count { font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
+.ui-tabs__count { font-family: var(--mono); font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
 .ui-tabs__indicator {
   position: absolute; left: 0; bottom: 0; width: 1px; height: 2px; border-radius: 1px; background: var(--inv);
   transform-origin: 0 0; pointer-events: none; opacity: 0; transition: transform var(--dur-3) var(--ease-glide), opacity var(--dur-1) ease;
