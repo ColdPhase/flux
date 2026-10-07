@@ -520,6 +520,30 @@ anything; only this publish writes it, never message, PR, wiki or tool text.
 - The narrowing is guidance the agent follows, not a server rule: every command is still decided by
   the owner's grants and current project access alone, whatever the policy says. Policy text is
   counted in characters (code points); the publisher's name in the resource is quoted as data.
+- **Editor (T160-b).** The project's Agents view shows the policy as one folded line (revision,
+  publisher, time) under the connections (`app/apps/web/src/agents/ProjectPolicy.tsx`).
+  - In every state, one line says what the policy is, who writes it and whether the reader needs
+    to act. Readers are told that only the named managers write it and that they need to do
+    nothing; managers are told it is optional and why they might write one.
+  - Project managers (workspace owners and admins) write or edit the four parts and publish the next
+    revision from the one they loaded, with one `Idempotency-Key` per attempt. The editor checks
+    the server's rules first (no part over 4,000 characters, at least one part written) and names
+    the part at fault.
+  - A `409 VERSION_CONFLICT` keeps the manager's text. A short line says who published which
+    revision, and the other revision's text appears under each field it changed, with "Use their
+    …". Publishing again replaces that revision knowingly.
+  - A publish whose answer is lost may have been saved, so the editor says only "Flux couldn't
+    confirm the publish". It then asks again. A newer revision that this person's own unconfirmed
+    publish made is recognised as theirs, never shown as someone else's: the edit ends, or carries
+    on from that revision if the text changed since.
+  - Everyone else who can read the project sees the parts read-only. The view refetches on
+    `project.agent_policy_published.v1`, so an open view, and an open editor, see a new revision.
+  - User text avoids internal words such as grants, checkpoints or bootstrap.
+  - On touch screens it follows the [Apple HIG checklist](../design/apple-hig-mobile.md): 16 px
+    fields, 44 px targets, press states, and no text under 11 px.
+  - It uses the existing API; nothing was added to it. Tests: `agent-policy.test.ts` (a publish
+    reaches the same session's next bootstrap; refusals and invalid policies change nothing; a
+    conflict carries the newer policy) and `tests/ui/test_project_policy.py` (1440, 390 and 320 px).
 
 ## Verification boundary
 

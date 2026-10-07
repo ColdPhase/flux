@@ -25,8 +25,9 @@ if (command === 'slots') {
       const outcome = await callSupervisor(slots.get(entry.slot)!, { kind: 'release', bindingId });
       if (outcome.ok && outcome.result.kind === 'release') {
         const { logout, dataEmpty } = outcome.result;
-        console.log(`${entry.slot}: signed out (claude_code ${logout.claude_code}, codex ${logout.codex}); directory deleted; /data ${dataEmpty ? 'empty' : 'NOT empty'}`);
-        if (!dataEmpty || Object.values(logout).some((step) => step === 'failed' || step === 'timeout')) failed += 1;
+        const signedOut = Object.values(logout).every((step) => step === 'ok');
+        console.log(`${entry.slot}: ${signedOut ? 'signed out' : 'sign-out NOT confirmed'} (claude_code ${logout.claude_code}, codex ${logout.codex}); cleanup attempted; /data ${dataEmpty ? 'empty' : 'NOT empty'}`);
+        if (!dataEmpty || !signedOut) failed += 1;
       } else {
         console.log(`${entry.slot}: release failed (${outcome.ok ? 'protocol' : outcome.code})`);
         failed += 1;

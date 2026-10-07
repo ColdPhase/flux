@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { chmod, lstat } from 'node:fs/promises';
+import { chmod, lstat, readFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import { url as inspectorUrl } from 'node:inspector';
 import { parseRuntimeSwitch, RUNTIME_PORTS, RUNTIME_SECRET, SLOT_NAME } from '@flux/runtime-protocol';
 import type { SupervisorConfig } from './handlers.js';
 import { createSupervisorServer } from './server.js';
@@ -8,6 +10,17 @@ import { CLI_PATHS } from './templates.js';
 // A runtime slot's main process (F-022 "The supervisor"). It reads its slot name and its own secret
 // from the environment Compose gives this slot only, keeps a fresh boot id, and listens on the slot's
 // network for the manager. It never logs a request body, CLI output or a credential.
+
+// The CLI shares our uid, but must not read our /proc environ or write our memory. A slot
+// with missing hardening or ptrace_scope=0 never listens, so the worker cannot admit it.
+// A same-uid CLI can send SIGUSR1. Without this flag Node opens an inspector that
+// can evaluate code and expose the secret despite /proc protection.
+if (process.execArgv.length !== 1 || process.execArgv[0] !== '--disable-sigusr1' || process.env.NODE_OPTIONS || inspectorUrl()) {
+  throw new Error('Runtime slots require only --disable-sigusr1, empty NODE_OPTIONS and no active inspector; no slot was admitted');
+}
+const ptraceScope = (await readFile('/proc/sys/kernel/yama/ptrace_scope', 'utf8')).trim();
+if (!/^[1-3]$/.test(ptraceScope)) throw new Error('Runtime slots require Linux Yama ptrace_scope >= 1; no slot was admitted');
+createRequire(import.meta.url)('../../native/protect.node');
 
 const env = process.env;
 const slot = env.FLUX_RUNTIME_SLOT ?? '';

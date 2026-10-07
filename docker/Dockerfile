@@ -1,5 +1,10 @@
 # Set by BuildKit for the platform being built; selects the pinned Codex download (agent runtime).
 ARG TARGETARCH
+FROM node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS runtime-hardening-build
+RUN apk add --no-cache gcc musl-dev
+COPY apps/runtime/native/protect.c /native/protect.c
+RUN cc -std=c11 -Wall -Wextra -Werror -fPIC -shared -I/usr/local/include/node /native/protect.c -o /native/protect.node
+
 FROM node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS build
 WORKDIR /app
 RUN corepack enable && corepack install -g pnpm@12.6.0
@@ -52,11 +57,12 @@ COPY --from=build /app/packages/runtime-protocol/package.json ./packages/runtime
 COPY --from=build /app/packages/runtime-protocol/dist ./packages/runtime-protocol/dist
 COPY --from=build /app/apps/runtime/package.json ./apps/runtime/package.json
 COPY --from=build /app/apps/runtime/dist ./apps/runtime/dist
+COPY --from=runtime-hardening-build /native/protect.node ./apps/runtime/native/protect.node
 COPY --from=build /app/apps/runtime/keys ./apps/runtime/keys
 COPY --from=production-dependencies /app/apps/runtime/node_modules ./apps/runtime/node_modules
 RUN mkdir -p /data /opt/flux-tools /opt/flux-runtime/codex/bin && chown node:node /data /opt/flux-tools && chmod 0700 /data
 USER node
-CMD ["node", "apps/runtime/dist/supervisor/main.js"]
+CMD ["node", "--disable-sigusr1", "apps/runtime/dist/supervisor/main.js"]
 
 # TEST ONLY: fake `claude` and `codex` (apps/runtime/src/fakes) instead of the vendors' CLIs. The fake
 # Claude Code reaches the tools volume through runtime-install, like the real one. Never deployed.
