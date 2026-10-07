@@ -250,7 +250,7 @@ class RouteChunksJourney(unittest.TestCase):
                 page.on("response", lambda response: assets.append({"event": "response", "url": response.url, "status": response.status}) if "/assets/" in response.url else None)
                 def refuse(route):
                     refused.append(route.request.url)
-                    route.abort("failed")
+                    route.fulfill(status=503, content_type="application/javascript", headers={"cache-control": "no-store"}, body="// The code server is temporarily unavailable")
                 page.route(pattern, refuse)
                 self.settings(page)
                 expect(page.locator(".ui-error")).to_be_visible()
@@ -258,6 +258,7 @@ class RouteChunksJourney(unittest.TestCase):
                 page.unroute(pattern, refuse)
                 expect(page.get_by_role("button", name="Try again", exact=True)).to_have_count(0)
                 before = page.evaluate("performance.timeOrigin")
+                before_reload_assets = len(assets)
                 try:
                     with page.expect_navigation(wait_until="domcontentloaded"):
                         page.get_by_role("button", name="Reload Flux", exact=True).click()
@@ -265,10 +266,11 @@ class RouteChunksJourney(unittest.TestCase):
                     self.assertGreater(after, before, "A real new document must reset the failed module graph")
                     expect(page.get_by_role("heading", name="This device", exact=True)).to_be_visible()
                     expect(page.locator(".ui-error")).to_have_count(0)
+                    self.assertTrue(any(item["event"] == "response" and item["url"] == refused[0] and item["status"] == 200 for item in assets[before_reload_assets:]), "The recovered document must fetch the actual formerly unavailable route chunk successfully")
                 finally:
                     evidence = os.environ.get("FLUX_UI_SCREENSHOTS")
                     if evidence:
-                        diagnostic = {"engine": engine, "beforeTimeOrigin": before, "afterTimeOrigin": page.evaluate("performance.timeOrigin"), "assets": assets,
+                        diagnostic = {"engine": engine, "beforeReloadAssetIndex": before_reload_assets, "beforeTimeOrigin": before, "afterTimeOrigin": page.evaluate("performance.timeOrigin"), "assets": assets,
                                       "errorText": page.locator(".ui-error").all_text_contents(), "settingsContent": page.get_by_role("heading", name="This device", exact=True).count()}
                         Path(evidence).mkdir(parents=True, exist_ok=True)
                         (Path(evidence) / f"route-code-reload-{engine}.json").write_text(json.dumps(diagnostic, indent=2))
