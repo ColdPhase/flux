@@ -38,7 +38,9 @@ if (process.argv[2] === 'supervisor') {
   for (const entry of await readdir('/proc')) {
     if (!/^\d+$/.test(entry) || Number(entry) === process.pid) continue;
     const argv = await readFile(`/proc/${entry}/cmdline`, 'utf8').catch(() => '');
-    if (argv.split('\0').some((name) => name.endsWith('/supervisor/main.js'))) matches.push(Number(entry));
+    const args = argv.split('\0');
+    // docker-init's argv includes its child's whole command. Only Node owns the secret.
+    if ((args[0] === 'node' || args[0].endsWith('/node')) && args.slice(1).some((name) => name.endsWith('/supervisor/main.js'))) matches.push(Number(entry));
   }
   assert.equal(matches.length, 1, 'exactly one running supervisor');
   assert.deepEqual(await accessProcess(matches[0]), { environ: false, memory: false });
