@@ -16,8 +16,12 @@ by changing their milestone. Migration reservations and ledgers stay unchanged.
 Each installation uses one operator-configured SSO provider. The required F-024
 slices and their ordering remain in [the identity contract](../mcp-identity.md).
 The [necessity assessment and amendment](https://github.com/ColdPhase/flux/issues/360#issuecomment-6042333778)
-narrow #315/#316 and cancel #317's additional opaque-key feature; cancellation
-does not mean implementation. OAuth and tested SSH/callback guidance remain.
+initially narrowed #315/#316 and canceled #317's opaque keys. The later
+[founder amendment](https://github.com/ColdPhase/flux/issues/360#issuecomment-6043340696) replaces recent-authentication with ordinary
+owner MCP capability switches and requires exclusive password-only without active
+SSO or SSO-only with the sole IdP, with pre-cutover account migration/recovery.
+No ten-minute/password-replay challenge; live rights/grants/OAuth ceilings and
+standing/offboarding remain. Cancellation does not mean implementation. OAuth and tested SSH/callback guidance remain.
 
 The [final design Prostota](https://github.com/ColdPhase/flux/issues/336), F-026,
 is the sole appearance and UX authority on both devices. Its

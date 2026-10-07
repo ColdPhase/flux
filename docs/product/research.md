@@ -1,10 +1,11 @@
 # Research that changes a decision
 
-Current dated assessment: [single-provider identity scope, 2026-10-07](research/2026-10-07-single-provider-identity-scope.md)
-records the independently assessed #315/#316 safeguards and #317 cancellation,
-with primary sources, source pins, counter-evidence and remaining limitations.
-The earlier F-024 research remains historical; the current
-[contract](mcp-identity.md) records the adopted scope.
+Current dated assessment: [owner MCP switches and SSO-only authentication, 2026-10-07](research/2026-10-07-mcp-switches-and-sso-only.md)
+records the superseding founder direction and independent source assessment.
+The [earlier same-day necessity assessment](research/2026-10-07-single-provider-identity-scope.md)
+remains historical; its recent-authentication and mixed-password/SSO
+recommendations are superseded. The current [F-024 contract](mcp-identity.md)
+retains actual OAuth/grant/standing boundaries and canceled #317 scope.
 
 Use foundation sections 14 and 20. Start with the task, existing repository
 knowledge, and the uncertainty that could change the outcome. Do not impose a

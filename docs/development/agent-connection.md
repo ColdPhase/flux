@@ -12,15 +12,41 @@ The owner operates an official Claude Code client and its compute account. Flux 
 OAuth consent, narrow MCP tools, current project policy and sourced proposals. No
 provider credential or model request passes through Flux.
 
-**Accepted F-024 baseline (#274), amended 2026-10-07:** [F-024](../product/mcp-identity.md) defines
-how this OAuth flow works with one operator-configured OIDC provider:
-the provider on `/login`, issuer-and-subject identities, a standing check with
-the provider, a confirmation age for managed accounts, step-up for
-authority-increasing execute consent, standing-grant creation and sole-provider
-linking, with explicit provider assurance limits. #317's additional opaque keys
-are canceled; OAuth/SSH guidance stays. Password mode and safe existing-account
-conversion remain in narrowed #315. Until the independently evaluated slices
-land, the rules below describe implemented behaviour, not delivery of the amendment.
+**Accepted F-024 baseline (#274), superseded in part on 2026-10-07:**
+[F-024](../product/mcp-identity.md) now requires password-only ordinary login
+without active SSO or SSO-only through one IdP with it, safe explicit pre-cutover
+account migration/recovery, and ordinary owner MCP capability switches. No
+recent-authentication threshold, password replay or secondary SSO challenge.
+Standing/confirmation-age/offboarding, OAuth consent and current owner/agent/
+project/grant/runtime rights remain. #317 opaque keys are canceled; OAuth/SSH
+keeps its supported paths. The implementation rules below are the existing
+seams, not proof of the new exclusive mode or mutable capability controls.
+
+### Owner MCP controls — required new S6 interface
+
+The [current bounded contract](../product/mcp-identity.md#s6--owner-mcp-capability-switches)
+adds a persisted/versioned restrictive policy for the connection owner. It does
+not rewrite the original connection consent/project/scope envelope or receipt
+identities. Current create/list/revoke and standing-grant routes below are not
+an edit API for existing capabilities. The ordinary owner session manages this
+policy; another owner/admin/agent cannot edit the private connection.
+
+Every protected projection/read/proposal/effect, delivery recheck and receipt
+replay intersects current rights/grants, original signed OAuth scope/place
+consent and live settings. Off applies after its commit at the next check; held
+races must serialize around authorization/effect/delivery. Already committed
+history and bytes handed to transport cannot be retracted. On cannot resurrect
+revoked/expired/used-up authority. New actual bounded grants retain owner plus
+project.manage routes; no invisible grant or unsupported invoke/admin/private/DM
+permission is created. Larger original consent needs ordinary explicit OAuth
+consent and a suitable token; refresh cannot widen the old scope.
+
+Current `flux_bootstrap` requires Read to establish runtime. Actions with Read
+off must show the true bootstrap prerequisite/block or a real independently
+reviewed alternative, not silently enable Read or claim cached runtime is a grant.
+Fully disabled connections remain owner-manageable; reload/failed/stale saves and
+old-token/replay/race/expiry cases need actual API/browser evidence. Reuse one
+permissions surface across #343/#347/#350, without an additional grant workflow.
 
 ## Identities and consent
 

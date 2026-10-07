@@ -92,14 +92,23 @@ token from the same mock still signs in.
 It uses its own Compose project and ports (`FLUX_OIDC_TEST_PORT`, default 18095, and the next port
 for Mailpit) and removes everything afterwards.
 
-The installation uses one operator-configured SSO provider. The
-[F-024 scope amendment](../product/mcp-identity.md) requires the narrowed #315
-password mode, explicit safe existing-account conversion/recovery and only the
-claim adapters needed by that selected provider. These safeguards and #316's
-authority-increasing confirmation still need implementation and independent
-evidence. A successful offline standing check is not recent human authentication.
-There is no simultaneous-provider file or new opaque MCP-key setting (#317 is
-canceled, not delivered); supported-client OAuth/SSH/callback guidance remains.
+**Target mode, superseding amendment 2026-10-07:**
+[F-024](../product/mcp-identity.md) requires password-only ordinary login without
+active SSO or SSO-only with the installation's sole IdP. Under active SSO, no
+ordinary Flux password sign-in/signup/reset or password-only authority remains;
+new accounts come through the verified IdP flow. This needs real backend/UI/
+session enforcement; the current #240 baseline has not delivered that mode.
+
+Existing accounts migrate explicitly before cutover: prepared provider,
+authenticated existing account/session and a verified callback bound to that
+account and intent, preserving Flux IDs/data/roles/memberships/applicable grants.
+Duplicate identity, substitution and email auto-linking are refused. Audited host
+recovery/re-key handles stranded accounts; it does not add an ordinary password
+fallback under SSO. Selected-provider claims/offboarding/verification remain.
+#316's ordinary per-connection capability controls have no ten-minute guard,
+password replay or secondary SSO challenge; live rights/grants/OAuth ceilings
+still apply. Neither these switches nor exclusive mode are claimed implemented.
+#317 opaque MCP keys remain canceled; supported OAuth/SSH/callback paths stay.
 
 Not covered: SAML, SCIM provisioning, several providers at once, and a production provider's
 own policies (MFA, conditional access), which stay the provider's responsibility.

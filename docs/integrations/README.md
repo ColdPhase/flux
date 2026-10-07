@@ -14,8 +14,10 @@ proposed on 2026-10-05.
 
 Supported personal agents authenticate with Flux OAuth and owner-bound grants.
 The [single-provider F-024 amendment](../product/mcp-identity.md) keeps one
-operator-configured SSO provider, required offboarding/account safeguards and
-narrow confirmation when authority increases. #317's additional opaque MCP-key
+operator-configured IdP with SSO-only ordinary login when active (otherwise
+password-only), safe account migration, required offboarding and ordinary owner
+MCP capability controls. No recent-authentication or secondary password/SSO
+challenge; current rights/grants and OAuth consent still bound every request. #317's additional opaque MCP-key
 surface is canceled, not implemented or promised after v0.1. Retain tested
 SSH/paste-back/callback guidance under #310/#152; a fully unattended CI or
 header-only consumer that cannot complete supported OAuth is not advertised.

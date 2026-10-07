@@ -46,9 +46,11 @@ When people sign in to Flux through their installation's sole operator-configure
 OIDC provider (one supported choice such as Keycloak), [F-024](mcp-identity.md) keeps Flux as the only authorization
 server for `/mcp`. The provider signs the person in during Flux's authorization
 step. Its standing check suspends the person's MCP access, agent runs and owner
-compute when the provider stops confirming them. The narrowed #315/#316 account
-and authority-confirmation safeguards remain required; ordinary work and authorized
-runs do not acquire repeated prompts. #317's opaque-key feature is canceled, not
+compute when the provider stops confirming them. The current #315 requires exclusive password-only/no-SSO or SSO-only/sole-IdP
+login and safe pre-cutover migration. #316 supplies ordinary owner capability
+switches and selected native projects, checked live within rights/grants/OAuth
+consent. No password replay, recent-authentication window or secondary SSO prompt;
+existing authorized work keeps its standing boundaries. #317's opaque-key feature is canceled, not
 implemented. OAuth and supported SSH/callback guidance stay. Provider compatibility
 requires actual evidence for the chosen provider. The CO-1 connection model is
 unchanged; F-024 implementation and independent acceptance remain pending.
@@ -219,7 +221,7 @@ human-confirm-every-step rule. Reserved actions still require their authority.
 | Same-task creation notice and first real discussion message | [#154](https://github.com/ColdPhase/flux/issues/154), amends #36/#101 behavior without rewriting history |
 | Studio 11.6 / Agents tab and responsive integration | #136 with #151; consumes the domain contracts above |
 | Subtle motion and real typing presence | [#155](https://github.com/ColdPhase/flux/issues/155), coordinated with #136 |
-| MCP sign-in with one external identity provider, offboarding and narrow confirmation | [F-024](mcp-identity.md), [#273](https://github.com/ColdPhase/flux/issues/273); required slices S1–S6 (S5a and narrowed S5b), S1 after #240/#294 and S3 after S4; S7 opaque keys canceled (#317) |
+| MCP sign-in with one external identity provider, offboarding and owner capability controls | [F-024](mcp-identity.md), [#273](https://github.com/ColdPhase/flux/issues/273); required slices S1–S6 (S5a and narrowed S5b), S1 after #240/#294 and S3 after S4; S7 opaque keys canceled (#317) |
 | Public tool contract: versioning, compatibility and snapshot | [O-010 EXT-1](extension-contracts.md#ext-1--mcp-tool-contract-1), [#251](https://github.com/ColdPhase/flux/issues/251); a new tool from these rows joins tool contract 1 additively with an updated snapshot |
 
 Required integrated fixture: two owners/three connections, distinct grants and

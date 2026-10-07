@@ -9,14 +9,24 @@ requires one SSO provider per installation and restores S3 to v0.1; the
 [independently assessed decision](https://github.com/ColdPhase/flux/issues/360#issuecomment-6042333778)
 narrows S5b/S6 and cancels S7's opaque-key feature. This is a contract, not
 implementation or release acceptance.
+**Later superseding amendment, 2026-10-07:** [Hubert's current direction](https://github.com/ColdPhase/flux/issues/360#issuecomment-6043340696)
+replaces S6 recent-authentication with ordinary owner-controlled MCP capability
+switches and selected native projects. No password re-entry, secondary SSO
+challenge or ten-minute authentication-age gate. Ordinary authentication is
+password-only without active SSO, or sole-IdP SSO-only with it; S5b migration is
+before cutover and no longer depends on S6. The earlier assessment is historical;
+[the new source assessment](research/2026-10-07-mcp-switches-and-sso-only.md)
+records the accepted seams, prerequisites and still-missing implementation.
+
 **Owner:** @PelikanFix16 (`claude-hubert`). **Issue:** [#273](https://github.com/ColdPhase/flux/issues/273).
 **Evidence:** [research note](research/2026-10-05-mcp-identity.md), retrieved 2026-10-05;
 corrections and closed items re-verified 2026-10-06 (its last section). Labels
 [S] specification, [V] vendor documentation, [C] code read at a pinned revision,
 [O] observed response and [I] inference are as defined there.
-The [2026-10-07 necessity assessment](research/2026-10-07-single-provider-identity-scope.md)
-records the amendment's source observations, primary sources, counter-evidence
-and remaining limitations. The older research remains historical.
+The [earlier same-day necessity assessment](research/2026-10-07-single-provider-identity-scope.md)
+keeps its source facts and recommendation as history. The later founder amendment
+and [current source assessment](research/2026-10-07-mcp-switches-and-sso-only.md)
+govern ordinary capability controls and exclusive modes; no runtime completion is claimed.
 
 **Founder direction** (Hubert / @PelikanFix16, 2026-10-05, relayed by
 `claude-hubert`, recorded in [#272](https://github.com/ColdPhase/flux/issues/272)
@@ -61,9 +71,10 @@ and no provider credential in Flux.
    client ([MCPID-2](#mcpid-2--signing-in-during-mcp-authorization)).
 3. **Accounts are keyed by issuer and subject, never by email.** Each installation
    configures one provider. Attaching that identity to an existing account is an explicit, signed-in
-   action. With a provider configured, password sign-up is off or verified-only, an
-   unverified account never blocks a provider identity, and a managed account does
-   not sign in with a password ([MCPID-3](#mcpid-3--several-providers-and-account-linking)).
+   action before SSO-only cutover, bound to the existing account/session and a
+   verified provider round trip. With active SSO, ordinary password sign-in,
+   sign-up/reset and password-only authority are refused; new accounts come
+   through the IdP. Collision/verification/offboarding safeguards remain ([MCPID-3](#mcpid-3--several-providers-and-account-linking)).
 4. **Supported personal clients use Flux OAuth.** SSH and remote machines retain
    the clients' own paste-back or callback options. S7's extra opaque-key minting,
    storage, settings and bearer surface is canceled; fully unattended CI or a
@@ -80,8 +91,12 @@ and no provider credential in Flux.
    offline access revokes the identity's MCP grants. Without any signal,
    access stops when the IdP's last confirmation is 7 days old
    ([MCPID-5](#mcpid-5--lifetimes-standing-and-how-access-ends)).
-6. **Release position.** v0.1.0 requires S1, S4, S2, S5a, S3, the narrowed S5b
-   and S6. S7 is canceled, not delivered or promised after v0.1
+6. **Owner capability controls.** S6 stores owner-only switches for real MCP
+   capabilities and selected native projects in the ordinary valid session. The
+   server intersects them with current owner/agent rights, bounded grants and
+   the original OAuth/connection consent; a switch never creates authority.
+7. **Release position.** v0.1.0 requires S1, S4, S2, S5a, S3, exclusive-mode S5b
+   and capability-control S6. S7 is canceled, not delivered or promised after v0.1
    ([slices](#implementation-slices)).
 
 **Rejected:** the IdP as the MCP authorization server, accepting or forwarding IdP
@@ -310,27 +325,34 @@ S1 tests them on the IdP path:
   a fixed `https` address registered at the IdP. It has nothing to do with MCP
   clients.
 
-### Password sign-in on or off
+<a id="password-sign-in-on-or-off"></a>
+### Exclusive ordinary sign-in modes
 
-New operator setting `FLUX_PASSWORD_SIGN_IN`: `on` (default) or `off`.
+Active SSO means the operator-activated authentication mode, not the provider's
+momentary health. Failed discovery or an IdP outage must not silently switch
+that mode to password login.
 
-- **On:** the behaviour of #240. Passwords and providers sit side by side.
-- **Off:**
-  - Password sign-in, sign-up and reset requests are refused with
-    `PASSWORD_SIGN_IN_DISABLED`.
-  - `/sign-in` and `/login` show only the configured provider.
-  - A password-only account has no standing, so its browser sessions, MCP grants,
-    runtime run tokens and owner compute stop at their next authorization check. An account with a provider identity
-    keeps working through that identity.
-- **Either way,** a managed account never signs in with a password
-  ([password rules](#password-sign-up-reset-and-email-collisions)).
-- **Before switching off:** people link their provider identity while signed in
-  ([MCPID-3](#mcpid-3--several-providers-and-account-linking)).
-- **Break-glass:** set `on` and restart. Managed accounts also need their provider
-  set non-authoritative (`FLUX_OIDC_AUTHORITATIVE=false`). Both are operator actions on the host, never settings in
-  the web UI.
-- **First owner:** signs in through the provider; creating a workspace works as
-  today.
+- **Without active SSO:** password-only ordinary authentication. The existing
+  password-mode account/signup/verification/reset protections apply.
+- **With active sole-provider SSO:** ordinary `/sign-in` and MCP `/login` use
+  that IdP alone. Refuse password sign-in/signup/reset and password-only
+  session/authority continuation at the server; hiding forms is insufficient.
+  New SSO accounts are created through the verified IdP flow without setting a
+  Flux password. A provider outage is an honest unavailable state, not password
+  fallback.
+- **Migration before activation:** with the provider prepared for migration,
+  the already authenticated existing account completes its verified provider
+  round trip bound to the same account/session and intent. Preserve Flux IDs,
+  private data, roles, memberships and applicable grants. This is a migration
+  phase, not ordinary combined password/SSO login, and has no recent-auth gate.
+- **Cutover/recovery:** do not silently strand required accounts. Define and test
+  the audited host-operator recovery/re-key path, including obsolete-credential
+  revocation and lockout handling. Recovery is not an ordinary password form,
+  password reset or bypass while SSO is active. It does not auto-link by email.
+- The earlier independent `FLUX_PASSWORD_SIGN_IN` on/off and verified-password-
+  signup-with-active-SSO proposals are superseded. Compatibility settings cannot
+  permit ordinary mixed login. Exact activation/recovery configuration requires
+  the S5b implementation; no working mode switch is claimed here.
 
 <a id="mcpid-3--several-providers-and-account-linking"></a>
 ## MCPID-3 — One provider and safe account migration
@@ -341,10 +363,11 @@ New operator setting `FLUX_PASSWORD_SIGN_IN`: `on` (default) or `off`.
   no provider-list file, simultaneous selection or multi-provider standing policy.
 - The provider id remains derived from its issuer; an identity is always bound
   to that issuer and `sub`, never to its email address alone.
-- `/sign-in` and `/login` offer that provider and, when the operator allows it,
-  the existing password method.
-- The provider's `authoritative` setting is `true` by default. A provider used
-  only as a convenience login (for example gitlab.com) can be set to `false`.
+- `/sign-in` and `/login` use only the active provider; without active SSO they
+  use password mode. Prepared-provider migration is separately bound and explicit.
+- Preserve the authoritative provider's standing/offboarding rules and scoped
+  operator recovery safeguards. No setting turns SSO-only into ordinary mixed
+  authentication or makes a managed account bypass its provider through a password.
 
 ### Linking: issuer and subject, never email alone
 
@@ -352,7 +375,7 @@ New operator setting `FLUX_PASSWORD_SIGN_IN`: `on` (default) or `off`.
 | --- | --- |
 | Account key | (provider id, `sub`), as in #240. The same `sub` is the same person even when the email or name changes |
 | Automatic linking by verified email | **Rejected.** A second provider, or a tenant admin, can assert any address. Entra's `email` "isn't guaranteed to be correct and is mutable over time". A takeover would carry the account's MCP grants, private notes and connections. #240 already refuses a new identity whose email belongs to another account; S5a narrows that to verified emails ([below](#password-sign-up-reset-and-email-collisions)) |
-| Explicit conversion | A signed-in owner with recent confirmation ([step-up](#step-up-recent-sign-in-for-sensitive-actions)) attaches the sole configured provider after its verified sign-in. Preserve the same Flux account ID, private data, roles, memberships and applicable grants. Reject an identity another account already holds. The page says that an authoritative identity makes the account managed and its password stops working |
+| Explicit conversion | Before SSO-only activation, the authenticated existing-account owner completes the sole prepared provider's verified round trip bound to that same account/session and intent. Preserve Flux account ID, private data, roles, memberships and applicable grants. Reject duplicate/substituted identity and email auto-linking. No secondary password/SSO challenge, authentication-age window or S6 dependency |
 | Lockout and offboarding | An authoritative identity cannot be detached by its owner to evade offboarding. The last usable sign-in method cannot be removed. Any retained removal path is confined to the sole provider and applicable password mode; this is not general multi-identity management |
 | Migration and recovery | The operator can re-key the sole provider identity after an issuer or subject change. Preserve the Flux account and history; audit old/new issuer and subject, end obsolete sessions and revoke old MCP authority and refresh credentials. It is recovery of the same account, not automatic data transfer by email |
 
@@ -366,12 +389,11 @@ New operator setting `FLUX_PASSWORD_SIGN_IN`: `on` (default) or `off`.
   - it signs in only through a provider. Its password, if it has one, is kept but
     refused while the account is managed, so a password is no way around the IdP's
     MFA or offboarding.
-- **Unmanaged account:**
-  - password and the sole non-authoritative identity are plain sign-in methods with no
-    confirmation age;
-  - an identity in sign-in required stops only the grants and sessions created
-    through it;
-  - with password sign-in off, a password-only account has no standing.
+- **Password-mode account:** while there is no active SSO, ordinary password
+  authentication follows its existing rules. After SSO-only activation, an
+  account without the required provider mapping has no continuing password-only
+  authority; migration or audited host recovery is required. This changes neither
+  issuer/subject identity nor managed-account standing/offboarding gates.
 
 ### Password sign-up, reset and email collisions
 
@@ -393,12 +415,12 @@ rules apply:
 
 | Rule | Decision |
 | --- | --- |
-| Password sign-up | New setting `FLUX_PASSWORD_SIGN_UP`: `off` or `verified`, default `off`. With `verified`, a new password account cannot sign in, and is not found by email, until its email is verified. Without any provider the setting is not read and sign-up works as today |
+| Password sign-up | Only in password mode, with its account/email-verification safeguards. With active SSO, ordinary password signup is refused; verified IdP signup creates SSO accounts. The old `verified` password-signup-with-active-SSO flow is superseded |
 | Adding a member by email | Matches only an account whose email is verified. Otherwise the answer is the same `ACCOUNT_NOT_FOUND` as for no account |
-| Provider identity, email held by a **verified** account | Refused, as in #240. The page tells the person to sign in to that account and link the provider (explicit linking) |
-| Provider identity, email held by an **unverified** account | The unverified account never blocks it. Flux offers two choices: sign in to the existing account and link the provider, or claim the address. Claiming releases the address from the unverified account: its email becomes `unverified-<account id>@invalid` (the `.invalid` top-level domain of RFC 2606), its sessions and MCP grants end, and an audit event names both accounts. Flux then creates the provider account. The released account keeps its data; the operator's re-key command can attach an identity to it later |
-| Password reset | Never creates a password: an account without a password is refused (`NO_PASSWORD`). A managed account is refused (`MANAGED_ACCOUNT`) |
-| Password sign-in on a managed account | Refused (`MANAGED_ACCOUNT`), with the provider buttons shown. Setting the provider non-authoritative (`FLUX_OIDC_AUTHORITATIVE=false` for #240's single provider) and restarting is the operator's break-glass |
+| Provider identity, email held by a **verified** account | Refused, as in #240. The page explains explicit pre-cutover conversion or audited operator recovery; it never transfers data or offers a password fallback in SSO-only mode |
+| Provider identity, email held by an **unverified** account | The unverified account never blocks it. Offer safe pre-cutover conversion/recovery or the bounded address claim, consistent with the active mode; never suggest ordinary password login with SSO. Claiming releases the address from the unverified account: its email becomes `unverified-<account id>@invalid` (the `.invalid` top-level domain of RFC 2606), its sessions and MCP grants end, and an audit event names both accounts. Flux then creates the provider account. The released account keeps its data; the operator's re-key command can attach an identity to it later |
+| Password reset | Password mode only; never creates a password for an account without one. Refused for managed accounts and every ordinary SSO-only password-reset attempt |
+| Password sign-in with SSO | Refused at UI/API/session boundaries while sole-provider SSO is active. Scoped host recovery is audited and separate; it cannot become ordinary password fallback or bypass offboarding |
 
 Without any provider, adding a member by email still matches unverified accounts.
 That gap predates F-024 and is outside it; it needs its own issue.
@@ -501,7 +523,7 @@ using the defaults of Better Auth 1.7.6, whose source was read at `v1.7.6`.
 F-024 therefore:
 
 1. **Keeps only the IdP refresh token.** After the callback, Flux records what it
-   needs from the ID token (`sub`, `sid`, `auth_time`, the verified email and the
+   needs from the ID token (`sub`, `sid`, the verified email and the
    name) on the identity and the session. It keeps neither the IdP access token nor
    the ID token. Better Auth 1.7.6 has no option to skip storing them
    (`updateAccountOnSignIn` only stops updates to an existing account), so S1 takes
@@ -685,44 +707,54 @@ The worker reads standing from the database; it never calls the IdP.
 | No signal (standing check off, or IdP refresh unsupported) | Ended at the confirmation age | Refused at the confirmation age | ≤ 7 days by default |
 | IdP unreachable | Continue | Continue | Until the confirmation age; then "sign in again" |
 | Restore from a backup | Ended for managed accounts | Refused until a sign-in | First check after start |
-| Password sign-in turned off | Password-only accounts refused | Same | Next request |
+| SSO-only mode activated | Password-only accounts refused | Same | Next request |
 | SCIM deprovisioning | — | — | Deferred |
 
 An access token the IdP issued to Flux itself is never used for MCP, and Flux does
 not keep it. Keycloak's note that "Sign out all active sessions does not revoke
 outstanding access tokens" therefore does not reach MCP clients.
 
-### Step-up: recent sign-in for sensitive actions
+<a id="step-up-recent-sign-in-for-sensitive-actions"></a>
+### Owner MCP capability controls
 
-Only these authority-increasing actions need human authentication or the
-provider's explicitly documented confirmation within the last 10 minutes:
+The latest [founder amendment](https://github.com/ColdPhase/flux/issues/360#issuecomment-6043340696)
+replaces the earlier recent-authentication design. The normally authenticated
+owner uses clear persisted/versioned switches on a named personal MCP connection
+and selects native projects. No password replay, ten-minute/authentication-age
+threshold, or secondary SSO challenge is introduced.
 
-- approving an MCP grant with `flux.action.execute`;
-- creating a standing grant;
-- explicitly attaching the sole configured provider to an existing account.
+- Choices come from actual registered read/propose/execute capabilities and exact
+  native operations/classes, not arbitrary future actions. No implied personal/DM
+  access, administrator powers, decision acceptance or paid agent invocation.
+- Effective authority is current owner rights ∩ actual agent project grants ∩
+  original connection/OAuth consent envelope ∩ selected projects ∩ live switches.
+  Effects additionally need the exact existing standing grant, runtime/binding,
+  operation/class/object, uses/expiry and source/version checks where applicable.
+- A committed Off/narrowing applies at the next protected read/projection/list,
+  effect, queued-output or receipt replay check, including an old JWT. Serialize
+  changes with authorization/effect/delivery checks and prove held-request races.
+  Reject pending work truthfully. Earlier committed effects/history and bytes
+  already handed to transport cannot be retroactively removed; unrelated local
+  CLI work is not promised to stop.
+- On restores only settings permitted by still-valid consent, rights and bounded
+  grants. It does not revive revoked connections/runtime, revoked/expired/used-up
+  grants or removed owner/IdP authority. Actual new grants use the existing
+  disclosed owner plus `project.manage` routes; there is no hidden grant creation.
+- Outside the original consented scopes/places, normal explicit owner/OAuth
+  authorization and an adequate token remain necessary. Refresh cannot enlarge
+  the original scope (RFC 6749 §6); OAuth scope reconsent is not password step-up.
+- Keep consent and receipt identities intact with a restrictive versioned policy
+  overlay or an independently reviewed equivalent. Fully disabled connections
+  remain manageable by their owner. Failed/stale saves cannot show false success.
+- Current `flux_bootstrap` requires Read to establish authenticated runtime.
+  Actions with Read off must honestly expose that prerequisite/block, or have a
+  real independently evaluated alternative. A checkbox cannot silently enable
+  Read or invent an unavailable bootstrap path. Catalog/runtime cache is not a grant.
 
-Ordinary reads/editing, existing agent calls/runs, token refresh, reconnect,
-revocation and narrowing authority do not prompt again. Standing proves that
-the IdP still serves an account; an offline refresh, a new token issue time or a
-new Flux session does not prove recent human authentication. Bind the continuation
-to the same account, session/action and signed OAuth request. Cancellation,
-failure, stale claims or an identity substitution cannot increase authority.
-
-| Identity | How Flux gets a recent sign-in |
-| --- | --- |
-| Password | The person re-enters the password |
-| Provider with re-authentication (Keycloak; Entra with the `auth_time` optional claim) | Flux redirects with `prompt=login` and `max_age=600`, then requires `auth_time` in the ID token to be within 10 minutes (60 seconds tolerance). Entra documents `prompt=login` but not `max_age`; the `auth_time` check does not depend on it |
-| Provider without re-authentication (Google documents only `prompt` values `none`, `consent` and `select_account`, and no `max_age`) | A fresh provider round trip, which proves the person is still active but not that credentials were re-entered. The provider profile states which of the two applies |
-
-The confirm-only case is weaker than credential re-entry and must be disclosed
-in the chosen provider's operator guidance. Do not claim equivalent protection
-or silently fall back to a password for a managed account. The 10-minute policy
-is Flux's narrow safeguard, not a general OIDC requirement or a complete defense
-against a compromised browser.
-
-This is separate from MCP's scope step-up. When a tool needs a scope the token
-lacks, Flux keeps answering with the scope error. The client re-runs
-authorization, and the consent step above applies.
+S6's [bounded acceptance](#s6--owner-mcp-capability-switches) supplies the UI/API
+and replay/race evidence. Existing create/list/revoke/scopes/grants are real seams,
+not proof the mutable switches are implemented. Reuse the one permissions surface
+in #343/#347/#350 rather than a competing grant flow.
 
 ## MCPID-6 — Operator configuration
 
@@ -739,9 +771,9 @@ inside the container.
 | `FLUX_OIDC_CLIENT_SECRET_HOST_FILE` | — | **Host** path of the client secret file (#240). Compose mounts it read-only into `api` at `/run/secrets/flux_oidc_client_secret` |
 | `FLUX_OIDC_CLIENT_SECRET_FILE` | that mount | **Container** path the API reads. Compose sets it; operators do not |
 | Single-provider claim adapter | `oidc` | S5b retains only the claim rules needed by the one selected supported provider; no provider collection. The implementation owner records its bounded single-provider configuration and actual compatibility evidence |
-| `FLUX_PASSWORD_SIGN_IN` | `on` | `off` allows only provider sign-in (S5) |
-| `FLUX_PASSWORD_SIGN_UP` | `off` | Read only when a provider is configured: `off` or `verified` (S5a) |
-| `FLUX_OIDC_AUTHORITATIVE` | `true` | For #240's single provider. `false` makes it a convenience login whose identities do not make an account managed; also the break-glass for managed accounts' passwords (S5a) |
+| Ordinary authentication mode | Password-only without active SSO; SSO-only with it | S5b enforces exclusive mode at UI/API/session boundaries. Compatibility flags cannot enable mixed login; exact activation/migration/recovery settings remain implementation work |
+| Password signup/verification | Password mode only | S5a retains collision and verification safeguards; active SSO refuses ordinary password signup/reset |
+| Authoritative IdP / operator recovery | Preserve S5a standing/offboarding defaults | An operator recovery setting does not authorize ordinary password login while SSO is active or remove the required standing/offboarding gates; explicit host recovery is separately audited |
 | `FLUX_OIDC_STANDING` | `refresh` | `off` disables the offline standing check (S4) |
 | `FLUX_OIDC_CONFIRMATION_MAX_AGE` | `7d` | `1h`–`30d` (S2) |
 
@@ -767,14 +799,15 @@ follows #240:
 - the subject is `sub`;
 - the email counts only with `email_verified: true`;
 - `iss` must match exactly;
-- re-authentication uses `prompt=login` and `max_age`.
+- verified sign-in and migration remain bound to the configured issuer/account;
+  no S6 recent-authentication or secondary provider challenge is required.
 
 The other profiles change only what their provider needs.
 
 | Profile | Differences |
 | --- | --- |
-| `entra` | Entra's claims references list no `email_verified`, so #240's rule as written would refuse every Entra sign-in (an inference, untested against Entra). The email counts as verified only when the optional claim `xms_edov` is `true`. Requires the optional claims `email`, `xms_edov` and `auth_time`. `sub` is pairwise per application, so keep the app registration (re-registering changes every `sub`; use the re-key command) |
-| `google` | Accepts `iss` `https://accounts.google.com` and `accounts.google.com`. Sends `access_type=offline`, because Google returns a refresh token only then and only on the first code exchange; `prompt=consent` obtains a new one when Flux has none. Can require an `hd` (Workspace domain) value. Re-authentication is confirm-only |
+| `entra` | Entra's claims references list no `email_verified`, so #240's rule as written would refuse every Entra sign-in (an inference, untested against Entra). The email counts as verified only when the optional claim `xms_edov` is `true`. Requires the documented verified-email compatibility claims; no authentication-age challenge is added. `sub` is pairwise per application, so keep the app registration (re-registering changes every `sub`; use the re-key command) |
+| `google` | Accepts `iss` `https://accounts.google.com` and `accounts.google.com`. Sends `access_type=offline`, because Google returns a refresh token only then and only on the first code exchange; `prompt=consent` obtains a new one when Flux has none. Can require an `hd` (Workspace domain) value. Do not claim or require S6 credential re-entry |
 | `oidc` | Keycloak, Authentik, Zitadel, Okta, GitLab |
 
 ### Worked example: Keycloak 26.8
@@ -813,10 +846,9 @@ The other profiles change only what their provider needs.
    # a path on the host; Compose mounts the file into the api container
    FLUX_OIDC_CLIENT_SECRET_HOST_FILE=/etc/flux/oidc_client_secret
    FLUX_OIDC_LABEL=Acme login
-   # password sign-up stays off while a provider is configured; to allow it:
-   # FLUX_PASSWORD_SIGN_UP=verified
-   # optional after people have linked their Acme identity:
-   # FLUX_PASSWORD_SIGN_IN=off
+   # Target: after explicit account migration, active SSO is the sole ordinary login.
+   # No Flux password signup/reset or fallback with SSO.
+   # Activation/recovery details require S5b implementation and evidence.
    ```
 
 6. **MCP clients:** nothing changes. Run
@@ -834,8 +866,8 @@ The other profiles change only what their provider needs.
    https except for localhost.
 2. **Certificates & secrets:** create a client secret and save it to the secret
    file. Note its expiry: an expired secret stops sign-in and standing checks.
-3. **Token configuration → Add optional claim** (ID token): `email`, `xms_edov`
-   and `auth_time`.
+3. **Token configuration → Add optional claim** (ID token): `email`, `xms_edov`.
+   No S6 authentication-age claim or ten-minute challenge is required.
 4. **API permissions:** `openid`, `email`, `profile`, `offline_access` (Microsoft
    Graph delegated); grant admin consent.
 5. **Flux:**
@@ -859,22 +891,22 @@ The other profiles change only what their provider needs.
 - **Okta.** Its discovery has no `backchannel_logout_supported`, and its single
   logout is front-channel. Its "Universal Logout" uses Global Token Revocation,
   which Flux does not implement (deferred). Rely on the standing check.
-- **Google Workspace.** No logout endpoint and no back-channel logout. Its
-  documentation lists no `max_age` and no `prompt=login`. Use profile `google` and
-  the standing check.
+- **Google Workspace.** No logout endpoint and no back-channel logout. Use its required verified-claim adapter and the standing check;
+  no secondary S6 sign-in challenge is added.
 - **GitLab.** Its discovery has no logout keys. `email` and `email_verified` come
-  only with the email scope and a public email. Usually `FLUX_OIDC_AUTHORITATIVE=false`.
+  only with the email scope and a public email. Preserve the sole provider's admitted authoritative/standing policy;
+  no convenience-password fallback is introduced by this amendment.
 
 ## MCPID-7 — Failures and edges
 
 | Situation | Behaviour |
 | --- | --- |
-| IdP down when Flux starts | #240 reads discovery only at start and leaves single sign-on off until a restart. **Change (S1):** read discovery lazily with retry and backoff, and show `<label> is not reachable right now` on the sign-in pages. Password sign-in, when on, still works |
+| IdP down when Flux starts | #240 reads discovery only at start and leaves single sign-on off until a restart. **Change (S1):** read discovery lazily with retry and backoff, and show `<label> is not reachable right now` on the sign-in pages. SSO-only shows honest unavailability without password fallback; password mode remains available only without active SSO |
 | IdP down later | New sign-ins and new MCP authorizations fail at the browser step with the same message. Existing browser sessions, MCP tokens keep working until the confirmation age. The standing check records "unknown", not "sign-in required" |
 | IdP step fails during an MCP authorization | Back to `/login` with the same signed OAuth query and a message (S1) |
 | Flux's IdP client secret expired or rotated | Sign-in and standing checks fail with `invalid_client`. Flux treats this as **unknown**, not as every person needing to sign in, and logs `OIDC_CLIENT_REJECTED` for the operator |
 | Lost response to a standing check | Unknown. The next check uses the previous refresh token, which the IdP still accepts unless it makes refresh tokens single-use; then sign-in required |
-| Clock skew between Flux and IdP | ID-token and logout-token `iat`/`exp`/`auth_time` get 60 seconds of tolerance. Hosts must run NTP. MCP clients rely on `expires_in`; Flux verifies its own JWTs with its own clock |
+| Clock skew between Flux and IdP | Required ID-token and logout-token `iat`/`exp` validation retains its 60-second tolerance; no S6 authentication-age gate is added. Hosts must run NTP. MCP clients rely on `expires_in`; Flux verifies its own JWTs with its own clock |
 | Email changed at the IdP | Same `sub`, same account (#240). The email updates at the next sign-in or standing check. MCP grants are unaffected. If the new email belongs to another account, the update is skipped and logged, and the person keeps signing in with the old email. #240's current behaviour in this case is untested; S1 tests it |
 | Provider email held by another account | [Password rules](#password-sign-up-reset-and-email-collisions): refused with link guidance when that account's email is verified; link or claim when it is not (S5a) |
 | User renamed at the IdP | Name updates; nothing else changes |
@@ -911,7 +943,7 @@ imported realm, the API, Mailpit and Chromium. Add:
 - **The mock provider** from #240 (`app/tests/app/support/oidc-mock.ts`), for what
   Keycloak cannot be made to do:
   - Entra-shaped and Google-shaped claims;
-  - a missing or old `auth_time`;
+  - account/session/intent substitution during verified migration callbacks;
   - bad logout tokens, and logout tokens with `revoke_offline_access`;
   - `invalid_grant` versus a 503 on refresh, a lost rotation response, and no
     refresh token at all;
@@ -923,13 +955,14 @@ imported realm, the API, Mailpit and Chromium. Add:
 | --- | --- |
 | 1 Built-in | Existing `oauth-mcp` tests still pass. With password sign-in off, a password-only grant is refused at its next request |
 | 2 OIDC on `/login` | An IdP-only person completes the scripted client's authorization from a fresh browser; the token has `aud` = `<origin>/mcp`; tools work. A tampered continuation is refused. A cancelled or failed IdP step returns to `/login` with the query, and the authorization then completes. Consent after the IdP step shows the redirect host and the `client_id` host, the loopback line or the non-loopback warning, and cannot be framed. A loopback redirect on another port is accepted as `localhost` and as `127.0.0.1`; a different path or host is refused |
-| 3 Single-provider conversion and recovery | Separate Keycloak/mock configuration runs for the sole provider: preserve an existing account's data, roles and applicable grants after explicit confirmed conversion; reject duplicate identity and email auto-linking; prevent lockout/offboarding escape; audit re-key recovery and revoke old authority; test only the selected supported provider's relevant claims |
-| 4 Account safety | With a provider configured: password sign-up is refused; with `verified`, an unverified account cannot sign in and is not found when adding a member by email. A provider identity whose email a verified account holds is refused with link guidance. One whose email an unverified account holds can link or claim; claiming releases the address, ends that account's sessions and MCP grants, and writes the audit event. A reset is refused for an account without a password and for a managed account. A managed account's password sign-in is refused, and works again with the provider set non-authoritative |
+| 3 Single-provider migration/recovery | Before SSO-only activation, bind the authenticated existing Flux account/session and intent to a verified sole-provider round trip. Preserve Flux IDs/data/roles/grants; refuse duplicate/substituted identity and email auto-linking; prove cutover/lockout handling, audited recovery and the chosen provider claims. No second password/SSO or authentication-age gate |
+| 4 Exclusive modes and account safety | Password-only without active SSO; SSO-only with it, including server refusal of password sign-in/signup/reset and password-only continuation. Fresh SSO accounts need no Flux password. Preserve migration/collision, verified-email membership, no-data-transfer claim, managed/reset/offboarding and audited recovery controls. No ordinary mixed-method fallback |
 | 5 Canceled opaque keys | No additional key minting/storage/UI/settings are admitted. Existing OAuth issuer/audience, owner/grant/standing checks and unsupported-bearer refusals remain; this is cancellation, not successful implementation of S7 |
 | 6 Headless | The scripted client completes authorization by posting the pasted redirect URL to its own loopback listener, mirroring Claude Code's paste-back |
-| 7 Offboarding | Keycloak disable → within the interval: browser sessions gone, refresh `invalid_grant`, MCP 401 with the `error_description` (a label with non-ASCII characters is reduced to allowed characters), MCP requests refused, nothing revoked. Re-enable plus sign-in: a client that kept its refresh token can refresh. Removing the Flux client's offline session at Keycloak gives the same suspension. In sign-in required, an O-008 personal run (mock provider) is not dispatched, and, once F-022 run tokens exist, none is minted or accepted. Back-channel logout ends matching browser sessions and MCP continues; with "Backchannel logout revoke offline sessions" on, the MCP refresh tokens are revoked. With standing off, MCP stops at the confirmation age (shortened in the test). Step-up refuses authority-increasing execute consent/standing-grant creation/provider linking with stale or substituted proof; fresh-confirmation continuations stay bound to the same account/action. Ordinary work, revoke and narrowing remain prompt-free; confirm-only assurance is disclosed |
+| 7 Offboarding | Keycloak disable suspends browser/MCP/owner compute through the existing standing/confirmation-age rules; refresh and old tokens remain subject to live standing. Re-enable plus provider sign-in permits retained grants again, not canceled keys. Normal back-channel logout ends matching sessions and queues the standing check; revoke_offline_access revokes the current MCP/IdP refresh authority. No ten-minute or password-reentry gate |
 | 8 No passthrough and token storage | A Keycloak-issued access token or ID token sent to `/mcp` gets 401. After sign-in, `auth_accounts` holds no IdP access or ID token, and the IdP refresh token is only in its own table, encrypted. A dump made with the backup's `pg_dump` arguments has no row of that table; after restoring it, managed accounts are in sign-in required until they sign in. No IdP token appears in any MCP response, log line or export |
 | 9 Failures | The mock IdP returning 503 leaves MCP working and records "unknown"; at the confirmation age it stops. A rejected client secret puts nobody in sign-in required. After a lost rotation response, the next check succeeds with the previous token. A logout token with `nonce`, a replayed `jti`, a wrong `aud` or `alg` none gets 400. Every back-channel response has `Cache-Control: no-store` |
+| 10 Owner capability switches | Owner-only persisted/versioned controls; other owner/admin/agent denied. Old JWT, cached catalog/runtime, held projection/effect/delivery and receipt replay cannot bypass committed Off/narrowing. On is within live consent/rights/grants, never resurrects expired/revoked authority; refresh cannot widen scope. Prove all-disabled management, failed/stale saves and actual Read/bootstrap execution prerequisites without secondary authentication |
 
 For the selected supported provider, test its relevant claim adapter against the
 mock and retain negative controls. Entra/Google compatibility remains "untested
@@ -954,7 +987,7 @@ from #240) and the [integration guide](../integrations/README.md).
   refresh token.
 - S5a depends only on #240.
 - S6 depends on S1. The narrowed S5b also composes S5a's account-safety
-  interfaces and S6's confirmation for linking. S7 has no planned implementation.
+  interfaces and applicable S4/S2 standing/offboarding seams; linking has no S6 challenge dependency. S7 has no planned implementation.
 
 **Release position, amended 2026-10-07.** The v0.1.0-rc.1 acceptance matrix
 ([#248](https://github.com/ColdPhase/flux/pull/248),
@@ -977,9 +1010,9 @@ requires the following v0.1 outcomes with one SSO provider:
 - **The narrowed S5b gates it.** #315 supplies one-provider password mode, safe
   existing-account conversion/recovery and the selected provider's claim rules.
   There is no simultaneous-provider file, list UI or combined-standing policy.
-- **The narrow S6 gates it.** #316 requires recent authentication or explicitly
-  weaker provider confirmation only when execute consent, a new standing grant
-  or provider linking increases authority.
+- **Capability-control S6 gates it.** #316 supplies ordinary owner switches
+  and selected-project access, enforced live within rights/grants/OAuth consent,
+  without recent-authentication or secondary password/SSO challenges.
 - **S7 is canceled.** #317 is `not_planned`, not implemented or deferred delivery.
   Tested personal-client SSH/paste-back/callback guidance remains in S1/#310 and
   #152. No key UI, key endpoint or unsupported fully unattended consumer is added.
@@ -989,7 +1022,7 @@ scope and its observations are preserved in the dated research and GitHub record
 
 ### S1 — Provider sign-in on the MCP authorization path
 
-- **AC-1.** `/login` offers each provider. The IdP round trip keeps the signed
+- **AC-1.** `/login` offers the sole active provider; without active SSO it uses password mode. The IdP round trip keeps the signed
   OAuth query through Better Auth's `/sign-in/social` and callback, and continuing
   re-verifies it.
 - **AC-2.** A cancelled or failed IdP step returns to `/login` with the signed query
@@ -1051,69 +1084,103 @@ scope and its observations are preserved in the dated research and GitHub record
 
 ### S5a — Account safety with a provider
 
-- **AC-1.** `FLUX_PASSWORD_SIGN_UP` (`off` or `verified`), read when a provider is
-  configured.
-- **AC-2.** Adding a member by email matches only a verified email when a provider
-  is configured.
-- **AC-3.** The collision rules: refused with link guidance for a verified account;
-  link or claim for an unverified one, with the audit event.
-- **AC-4.** A reset never creates a password and is refused for a managed account; a
-  managed account's password sign-in is refused. `FLUX_OIDC_AUTHORITATIVE`
-  (default `true`) sets #240's single provider non-authoritative for break-glass.
-- **AC-5.** Test case 4.
+- **AC-1.** Ordinary password signup/verification/reset apply only in password
+  mode. Active sole-provider SSO refuses ordinary password sign-in/signup/reset
+  and password-only authority continuation at UI/API/session boundaries. The old
+  verified-password-signup-with-active-SSO scenario is superseded, not implemented.
+- **AC-2.** Membership lookup by email under the provider/migration safety rules
+  uses verified addresses; retain the prior collision/verification protections.
+- **AC-3.** Refuse a provider identity held by another account. Preserve link-first
+  guidance only as explicit pre-cutover conversion or audited recovery; never
+  offer ordinary password fallback with SSO. An unverified-address claim keeps
+  its audit/revocation behavior and never transfers the released account's data.
+- **AC-4.** Reset never creates a password; managed/offboarding safeguards and
+  audited host recovery remain. Recovery does not become mixed ordinary login
+  or a bypass of the sole provider's authority.
+- **AC-5.** Adapt case 4 to exclusive modes, migration/collision/reset/offboarding
+  refusal and verified-email safeguards. The previous N4 signup-verification
+  guidance remains applicable in password mode, not active SSO.
 
 <a id="s5b--password-switch-several-providers-linking-and-profiles"></a>
 ### S5b — Password mode, safe migration and provider claim adapters
 
 Required in v0.1 under [#315](https://github.com/ColdPhase/flux/issues/315).
-Depends on S1/#310, S5a/#313 account-safety interfaces and S6/#316 for linking.
+Depends on S1/#310 and S5a/#313, with S4/S2 standing/offboarding interfaces
+where applicable. S6 is capability control, not a linking reauthentication dependency.
 
-- **AC-1 — One provider and password mode.** Keep one configured issuer. Add
-  `FLUX_PASSWORD_SIGN_IN` on/off, honest startup/UI states and refusal of password
-  sign-in, sign-up/reset and existing password-only authority when off. Preserve
-  S5a's managed-account/break-glass rules. No provider-list file, simultaneous
-  provider selection or multi-authoritative aggregation.
-- **AC-2 — Existing-account conversion.** An explicitly signed-in owner with
-  S6's recent confirmation may attach the sole provider after its verified
-  sign-in. Preserve the same account ID, private data, memberships and applicable
-  grants. Reject an identity already held by another account and all automatic
-  email-based linking. An authoritative identity cannot be detached to evade
-  offboarding; the last usable identity cannot be removed. Compose S5a's
-  link-first collision guidance. Claiming an unverified email never transfers
-  that account's data.
-- **AC-3 — Claims and recovery.** Retain verified issuer/subject/email rules and
-  only the claim adapters required by the selected supported provider. These
-  profiles are provider compatibility rules, not person-profile pages or extra
-  concurrent providers. Operator re-key recovery preserves the account/history,
-  audits old/new issuer and subject, and revokes old MCP authority. Entra/Google
-  support stays unverified without corresponding real-provider evidence; mock
-  claim tests do not establish compatibility.
-- **AC-4 — Evidence.** Docker Keycloak and scripted MCP/mock-provider positive
-  and negative controls prove password-off enforcement, existing-account
-  conversion, duplicate-identity refusal, lockout prevention, authority
-  revocation, rejected email linking, recovery and the relevant claims. Preserve
-  the remaining accepted cases 1 and 3; replace simultaneous providers with
-  separate single-provider configuration runs. Obtain exact-head independent
-  review. Do not require every vendor profile without an admitted supported use.
+- **AC-1 — One provider, exclusive ordinary mode.** Password-only without active
+  SSO, or sole-IdP SSO-only with it. Enforce this at UI/API/session boundaries;
+  refuse ordinary password sign-in/signup/reset and password-only authority
+  continuation under SSO. New SSO accounts come through the verified IdP flow.
+  No simultaneous-provider selector/file or ordinary password fallback. Preserve
+  scoped managed-account/operator recovery safeguards.
+- **AC-2 — Migration before cutover.** In the prepared-provider migration phase,
+  the authenticated existing-account owner completes a verified provider round
+  trip bound to the same Flux account/session and intent before SSO activation.
+  Preserve Flux ID, data, memberships and applicable grants. Reject duplicate
+  identity, substitution and email auto-linking. Do not silently strand required
+  accounts; document and test audited host recovery. Authoritative/last-usable
+  identity removal cannot evade offboarding or lockout protections. Compose S5a's
+  link-first guidance; an unverified email claim never transfers old data. No
+  recent-authentication, ten-minute or second password/SSO challenge.
+- **AC-3 — Claims and recovery.** Preserve verified OIDC defaults and the relevant
+  claim adapters for the one chosen provider; these are not concurrent providers
+  or person-profile pages. Re-key recovery keeps Flux identity/history, audits
+  old/new issuer and subject, and revokes obsolete MCP authority. It is not
+  ordinary password login with active SSO. Real selected-provider compatibility
+  stays unverified without corresponding evidence; mocks alone cannot establish it.
+- **AC-4 — Evidence.** Docker Keycloak, scripted MCP/client and mock negative
+  controls prove exclusive modes at UI/API/session boundaries, existing-account
+  migration, duplicate/substituted identities, refused email linking, preserved
+  data/rights, cutover/lockout handling, offboarding, authority revocation, audited
+  recovery and relevant verified claims. Preserve the remaining accepted S5b
+  cases, replacing simultaneous providers with separate single-provider runs.
+  Independently evaluate the exact final head.
 
-### S6 — Recent sign-in for sensitive actions
+<a id="s6--recent-sign-in-for-sensitive-actions"></a>
+### S6 — Owner MCP capability switches
 
-- **AC-1.** The 10-minute rule for the listed actions, for password,
-  re-authenticating providers and confirm-only providers, only for execute
-  consent, creating a standing grant and linking the sole provider. Reads,
-  editing, existing calls/runs, refresh, revocation and narrowing do not prompt.
-- **AC-2.** Verify a password or, for a provider supporting re-authentication,
-  use `prompt=login`/`max_age` and verify the ID token's `auth_time` within the
-  window/tolerance. A refresh or new session timestamp is not human authentication.
-  Bind the continuation to the same account, session/action and signed OAuth
-  request; cancellation, failure, stale claims or identity substitution cannot
-  increase authority.
-- **AC-3.** Disclose confirm-only providers' weaker assurance. Docker Keycloak
-  and mock positive/negative controls exercise case 7 plus ordinary no-prompt,
-  revoke and narrow controls. No claim of a complete compromised-browser defense.
+Required in v0.1 under [#316](https://github.com/ColdPhase/flux/issues/316).
+Depends on S1 identity/session, existing MCP/grant/runtime interfaces and final
+UI #343/#347/#350. It supersedes recent-authentication; source seams are not
+proof mutable switches already exist.
 
-Required in v0.1 under [#316](https://github.com/ColdPhase/flux/issues/316), after
-S1/#310. Canceled S7 keys are not a target of this slice.
+- **AC-1 — Honest persisted controls.** A named personal connection has owner-only,
+  persisted/versioned switches for actual registered Read/Suggest/Execute
+  capabilities and selected native projects. Show effective availability,
+  unsupported/prerequisite/refusal reasons, reload and stale/concurrent-save
+  behavior. Failed saves cannot claim success; all-disabled connections remain
+  manageable. No password replay, ten-minute/authentication-age rule or secondary
+  SSO prompt. Current Read-scoped bootstrap/runtime prerequisites must be explicit.
+- **AC-2 — Authority intersection.** Every protected read/projection/tool/effect
+  is capped by current owner rights, actual agent project grants, original
+  connection/OAuth consent envelope, selected projects and live switches.
+  Effects retain exact existing standing grant/runtime/binding, operation/class/
+  object, uses/expiry and source/version checks. Owner labels, admin/manager
+  status, agent input and frontend hiding do not bypass private connection
+  ownership. No new project/admin/private/DM access, invocation/paid-run or
+  decision-acceptance tool is manufactured. Outside the original scopes/places
+  requires normal explicit owner/OAuth authorization and an adequate token;
+  refresh never enlarges the original consent scope.
+- **AC-3 — Live Off/narrowing.** After its commit, Off/narrowing is checked on the
+  next protected read/projection/list/effect/queued-output or receipt replay,
+  even with an old JWT. Serialize policy edits with authority/effect/delivery
+  rechecks; prove held-request races and truthful refusal of pending work.
+  Preserve already committed history/effects and account separately for bytes
+  already handed to transport; no retroactive undo or stopping unrelated CLI work.
+- **AC-4 — On preserves ceilings.** Restore only policy allowed by still-valid
+  consent, rights and bounded grants. Never revive revoked connection/runtime,
+  revoked/expired/used-up grants or removed owner/IdP authority. New real bounded
+  grants use existing disclosed owner plus `project.manage` routes; no hidden
+  grant creation. Preserve consent/receipt identities through a restrictive
+  versioned policy overlay or an independently reviewed equivalent.
+- **AC-5 — Integrated evidence.** Docker API/browser checks cover owner vs
+  other-owner/admin/agent refusal, reload/persistence, old-token Off/On and
+  refresh ceilings, failed/stale saves, held projection/effect/delivery races,
+  replay/revocation/expiry, all-disabled management and ordinary no-prompt
+  behavior. Actions with Read off show the real bootstrap prerequisite/block or
+  use an actual independently evaluated alternative; never silently enable Read.
+  Integrate one permission surface with #343/#347/#350 and review the exact head.
 
 ### S7 — Connection access keys and headless guidance
 

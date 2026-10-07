@@ -74,7 +74,14 @@ is required. Tested interactive SSH/paste-back/callback guidance remains under
 advertised. Reconsider one only through an admitted bounded use case. Official
 MCP client-credentials mechanisms exist; lack of a mechanism is not the reason
 for cancellation, and a machine principal would need a separate F-019-compatible
-contract. See the [dated assessment](research/2026-10-07-single-provider-identity-scope.md).
+contract. The [later founder amendment](https://github.com/ColdPhase/flux/issues/360#issuecomment-6043340696) replaces recent-authentication
+with ordinary persisted owner capability switches inside current rights/grants/
+OAuth consent, and chooses exclusive password-only/no-SSO or sole-IdP SSO-only
+ordinary login. Larger original OAuth scope still needs normal explicit consent;
+refresh never expands it. Safe migration is before cutover, without email auto-linking.
+See the [current source assessment](research/2026-10-07-mcp-switches-and-sso-only.md);
+the [earlier necessity assessment](research/2026-10-07-single-provider-identity-scope.md)
+remains historical.
 
 The first tool set is deliberately small: list authorized current contexts,
 read a selected source with revision, and create a **sourced proposal** for
