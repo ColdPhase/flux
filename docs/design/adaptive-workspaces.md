@@ -158,9 +158,9 @@ breakpoint rules, input modes, readable measure, map camera rule and surface map
 recorded in [adaptive layout rules](adaptive-layout-rules.md). It uses emulated viewports only.
 
 Implement through [#151](https://github.com/ColdPhase/flux/issues/151), with the
-same shell owner (@Zamojski5) as #136 and independent evaluator @PelikanFix16. #136 remains the integrated UX acceptance
-record and must include ADAPT-1–ADAPT-5; #20 retains mobile acceptance.
-Coordinate shared shell/token/map work with #134/#135/#148/#149; one writer per
+the final design's shell issues (#340, #341, #344). The final design (#336) is the integrated
+UX acceptance record and must include ADAPT-1–ADAPT-5; #20 retains mobile acceptance.
+Coordinate shared shell/token/map work with #338 and #349; one writer per
 branch. Split implementation by independently verifiable surfaces if useful,
 retaining all outcomes and final combined-head checks. This document adds a
 requirement and a design/test brief; no new responsive implementation or hardware

@@ -63,7 +63,7 @@ no public file/root/result/notification may partially commit.
 
 Conversation/Tasks/Map/Agents consume one account/project/task-scoped draft with
 body, staged file IDs, references and command UUID. Pane changes and failures
-retain it; successful confirmed publication clears it. #136 supplies the shared
+retain it; successful confirmed publication clears it. The final design (#343, #344) supplies the shared
 shell, #152 the current MCP grants/tools and real-client evidence. Per-view form
 state or an alternative shell cannot satisfy those integration criteria.
 
@@ -91,7 +91,7 @@ cannot run on the upgraded exact ledger, and manual ledger edits are forbidden.
 
 Acceptance needs Docker API/UI/persistence/race/failure evidence, historical
 fixtures and rollback/restore evidence, real authorized agent entry paths, shared
-draft/root identity in the integrated #136 views and a separate neutral visual
+draft/root identity in the integrated final-design views (#343, #344) and a separate neutral visual
 review. Missing file/MCP/import/shell or migration checks remain unverified.
 
 ## Canonical text implementation and historical human checkpoint
@@ -246,7 +246,7 @@ effects, atomicity, hooks and lock order apply; the file corrections remain for 
   authored body and actor, which is what the contribution is. Their output legitimately changes: the Return view and
   "Since you left" count the opening of a task thread that a result created like any new conversation, and the
   Conversation tab's default (the project's newest conversation) can now be a task thread. Both are interim
-  behavior for the integrated #136 shell to settle, not a decision made here. Portable export carries the marker
+  behavior for the final design shell (#340, #341) to settle, not a decision made here. Portable export carries the marker
   additively.
 - **Not in this part.** Stored files and attachment-only messages, shared drafts, unused-AI undo, #152/#153 tools
   and import.
@@ -315,7 +315,7 @@ and the body-or-attachments invariant without backfilling old messages. Its
 [guarded pre-use reversal](../../app/packages/db/migrations/reverse/0045_stored_files.down.sql)
 refuses file or deletion-queue use. Operational recovery uses paired DB/files
 backup. Shared composer drafts and rendered UI acceptance remain the separate
-#136 integration; #152/#153 must compose real grant checks before agent file writes
+final-design integration (#343); #152/#153 must compose real grant checks before agent file writes
 can be enabled. Real client and mobile evidence is still required for release.
 
 ## Shared structured composer slice (#154/#136, 2026-10-03)

@@ -38,7 +38,7 @@ clients load it through a tested Start/Resume path, and addressed durable reques
 survive busy/offline/context-reset states. Agents act at safe checkpoints without
 periodically scanning all GitHub issues/PRs/comments. Coordination stays in Flux;
 formal GitHub approval/check gates stay real. #160 packages content/onboarding;
-#152/#153/#74/#136 implement their existing domains against this amendment.
+#152/#153/#74 and the final design's Agents view (#347) implement their existing domains against this amendment.
 
 ## Sign-in through an identity provider — F-024 (proposed)
 

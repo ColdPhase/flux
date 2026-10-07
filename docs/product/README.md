@@ -42,7 +42,7 @@ start with instructions supplied internally by Flux; no user-facing README,
 prompt copying or manual skill setup. Durable addressed requests are handled at safe
 checkpoints, without repeated global GitHub scans or duplicate coordination
 comments. #160 owns packaging/onboarding, #152 bootstrap, #153 inbox/scheduling,
-#74 the provider bridge and #136 UI. Publishing these docs is not delivery.
+#74 the provider bridge and the final design's Agents view (#347) the UI. Publishing these docs is not delivery.
 Flux remains the project planning/knowledge home: agents first analyze current
 plans, wiki, relevant conversations/decisions and existing tasks, then create and
 manage native tasks within their grants, linking PRs without a second backlog.
@@ -88,7 +88,7 @@ The later **[F-015 adaptive-workspace requirement](../design/adaptive-workspaces
 (2026-09-30, [#151](https://github.com/ColdPhase/flux/issues/151)) extends the UI
 from small Android phones to 4K/ultrawide. More available space must yield useful
 work/context while navigation, objects and ongoing work stay recognizable and
-stable. #136 integrates it; #20 retains mobile/PWA evidence.
+stable. The final design (#336) integrates it; #20 retains mobile/PWA evidence.
 
 The later [#57 personal AI direction](https://github.com/ColdPhase/flux/issues/57)
 binds invocation and cost to the connection owner while preserving human work
