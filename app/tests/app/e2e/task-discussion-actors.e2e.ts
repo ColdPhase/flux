@@ -208,9 +208,13 @@ test('native agent owners retry failed reads, fence stale permission answers and
             inert: node.inert, ariaHidden: node.getAttribute('aria-hidden') });
         }
         const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+        // The board's transparent stretched task button owns hits over its metadata.
+        // Accept that same card/row hit surface, but reject a different overlay or panel.
+        const surface = label.closest('.tb-card, .ws-item, .wd-discussion, .details, .agents-msg');
         return { text: label.innerText, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
           inViewport: rect.x >= 0 && rect.y >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight,
-          uncovered: !!hit && (hit === label || label.contains(hit)), ancestors };
+          uncovered: !!hit && (hit === label || label.contains(hit) || !!surface?.contains(hit)),
+          hitTarget: hit ? { tag: hit.tagName, className: hit.className } : null, ancestors };
       }), ownerSelector);
       await page.locator(ownerSelector).first().waitFor();
       // Three rendered frames must show the same full ownership relation and geometry.
