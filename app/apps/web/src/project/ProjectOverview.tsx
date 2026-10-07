@@ -14,6 +14,7 @@ import { ProjectAccess } from '../people/ProjectAccess';
 import { docUrl } from '../docs/api';
 import { useOpenConversation } from './OverviewContext';
 import { agentAuthorLabel, authorLabel } from '../docs/format';
+import './overview.css';
 
 interface Row {
   key: string;
