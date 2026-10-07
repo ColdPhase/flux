@@ -1,6 +1,8 @@
 # Soft volume tokens and components (#338)
 
-The running app on `./flux demo` data, before and after the change, at commit-time of the PR.
+The pairs below are historical captures from the initial implementation.
+For the corrected application at `33362d42`, see the [current verification and renders](current/README.md).
+They do not establish a current-head full-suite pass.
 
 - [Computer, 1440 × 900](desktop-before-after.webp). The project conversation is shown in light (top) and dark (bottom); the left of each pair is before.
 - [Phone, 390 × 844](phone-before-after.webp). Settings in light and Home in dark, before and after.
