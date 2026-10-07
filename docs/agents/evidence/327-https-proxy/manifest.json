@@ -96,10 +96,12 @@
     "bytes": 7785
   },
   {
-    "path": "cleanup.txt",
+    "path": "cleanup.txt.gz",
     "source": "/tmp/flux327-cleanup.log",
-    "sha256": "8f960f54b77be663e46bd4c82399e291945e731498080c3d4e96ca2a20708a43",
-    "bytes": 1678
+    "sha256": "b4ec1b4f3805861ed58f4692142da488e85018cb17e4fc8763c6de67064ce9de",
+    "bytes": 389,
+    "originalSha256": "8f960f54b77be663e46bd4c82399e291945e731498080c3d4e96ca2a20708a43",
+    "originalBytes": 1678
   },
   {
     "path": "cleanup-containers.txt",
@@ -120,10 +122,12 @@
     "bytes": 0
   },
   {
-    "path": "metadata-headers.txt",
+    "path": "metadata-headers.txt.gz",
     "source": "/tmp/flux327-independent-metadata-after-trust-headers.txt",
-    "sha256": "2189a6443d6bcacb995f784d23f150a85fd902d692c0d6c1f46c8237632b5a2d",
-    "bytes": 326
+    "sha256": "94cf42add6ffd2b05d1170f81c40c95e0aab1c10343723060d2e018e80d81381",
+    "bytes": 264,
+    "originalSha256": "2189a6443d6bcacb995f784d23f150a85fd902d692c0d6c1f46c8237632b5a2d",
+    "originalBytes": 326
   },
   {
     "path": "metadata.json",
@@ -132,10 +136,12 @@
     "bytes": 304
   },
   {
-    "path": "mcp-headers.txt",
+    "path": "mcp-headers.txt.gz",
     "source": "/tmp/flux327-independent-mcp-after-trust-headers.txt",
-    "sha256": "254347eab1001a91bbc40a7112b1d6ecbb191c7ed3f5e125907097a1d9994792",
-    "bytes": 245
+    "sha256": "b47303ba9c84c09f0949d4691496665c20ee39b10cda9e1ba22938a8deead11c",
+    "bytes": 218,
+    "originalSha256": "254347eab1001a91bbc40a7112b1d6ecbb191c7ed3f5e125907097a1d9994792",
+    "originalBytes": 245
   },
   {
     "path": "mcp.json",

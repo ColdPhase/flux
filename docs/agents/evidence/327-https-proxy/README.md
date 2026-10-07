@@ -19,10 +19,10 @@ file or launcher. It does not certify a complete release or the final design.
 | Browser-posted reply | HTTP201; another browser receives a real WebSocket101 and project message event, and displays the reply without document reload |
 | Durable correlation | The received event ID matches the database event's project, conversation and posted message IDs; [selected SQL result](final-proof.tsv), [query](final-proof.sql) |
 | Resolved client IP and spoof control | All three final sessions contain `127.0.0.1`, including ordinary signin with injected `X-Forwarded-For: 203.0.113.199` |
-| Independent CA-verified discovery | Metadata200, exact HTTPS resource and authorization-server origin; [body](metadata.json), [headers](metadata-headers.txt) |
-| Independent CA-verified unauthenticated MCP | POST401, exact HTTPS `WWW-Authenticate` resource-metadata URL; [body](mcp.json), [headers](mcp-headers.txt) |
+| Independent CA-verified discovery | Metadata200, exact HTTPS resource and authorization-server origin; [body](metadata.json), [headers](metadata-headers.txt.gz) |
+| Independent CA-verified unauthenticated MCP | POST401, exact HTTPS `WWW-Authenticate` resource-metadata URL; [body](mcp.json), [headers](mcp-headers.txt.gz) |
 | Uncaught browser errors | None in the accepted run |
-| Own resources cleaned up | [Cleanup](cleanup.txt); empty [container](cleanup-containers.txt), [volume](cleanup-volumes.txt), [tagged image](cleanup-images.txt) inventories |
+| Own resources cleaned up | [Cleanup](cleanup.txt.gz); empty [container](cleanup-containers.txt), [volume](cleanup-volumes.txt), [tagged image](cleanup-images.txt) inventories |
 
 Actual screenshots: [sender](sender.png), [receiver](receiver.png). They corroborate the
 browser observations; the screenshot alone is not the behavior or stream proof.
@@ -55,7 +55,7 @@ The accepted runs exited0: [untrusted](browser-untrusted.txt), [trusted](browser
 The ephemeral browser passwords existed only in the process. No cookie/token value,
 database password, auth secret or CA private key is in this evidence. Discovery and MCP
 headers contain no Cookie or Set-Cookie. [Manifest](manifest.json) pins the retained
-original bytes, and both compressed and original hashes for failure logs.
+original bytes, and both compressed and original hashes for raw logs/HTTP headers.
 
 Browser contexts explicitly used `ignore_https_errors=True` for the local CA and blocked
 service workers. Independently executed curl used `--cacert`, never `-k`, with TLS verify0
