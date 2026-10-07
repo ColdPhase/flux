@@ -193,6 +193,10 @@ test('native agent owners retry failed reads, fence stale permission answers and
     }), 201);
     const context = await signedIn(owner, 1440);
     const page = await context.newPage();
+    const capture = async (name: string) => {
+      const evidence = process.env.FLUX_E2E_EVIDENCE_DIR;
+      if (evidence) { mkdirSync(evidence, { recursive: true }); await page.screenshot({ path: join(evidence, `339-${name}.png`), fullPage: true }); }
+    };
     const endpoint = `**/api/v1/projects/${place.id}/people`;
     await page.route(endpoint, (route) => route.fulfill({ status: 503, contentType: 'application/json', body: '{"code":"TEMPORARY_UNAVAILABLE"}' }));
     await page.goto(`/projects/${place.id}/tasks?view=board`);
@@ -203,6 +207,7 @@ test('native agent owners retry failed reads, fence stale permission answers and
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await card.locator('.agent-for').waitFor();
     assert.equal(await card.locator('.agent-for').innerText(), 'for Scoped Casey', '503 was not cached');
+    await capture('scoped-owner-board');
     await page.getByRole('radio', { name: 'List', exact: true }).click();
     const row = page.locator(`[data-work-id="${task.id}"]`);
     await row.locator('.agent-for').waitFor();
@@ -212,15 +217,26 @@ test('native agent owners retry failed reads, fence stale permission answers and
     await decision.locator('.agent-for').waitFor();
     assert.equal(await decision.locator('.agent-tag').innerText(), 'Agent');
     assert.equal((await decision.innerText()).includes('(agent)'), false);
+    await capture('scoped-owner-list');
     await row.getByRole('button').click();
     await page.locator('.wd-discussion .agent-for').waitFor();
     assert.equal(await page.locator('.wd-discussion .agent-tag').innerText(), 'Agent');
     assert.equal(await page.locator('.wd-discussion .agent-for').innerText(), 'for Scoped Casey');
+    await capture('scoped-owner-task-details');
     await page.keyboard.press('Escape');
     await decision.getByRole('button').click();
     await page.locator('.details .agent-for').waitFor();
     assert.equal(await page.locator('.details .agent-for').innerText(), 'for Scoped Casey');
+    await capture('scoped-owner-decision-details');
     await page.keyboard.press('Escape');
+    await page.locator(`a[href^="/projects/${place.id}/agents"]`).click();
+    await page.getByLabel('Task', { exact: true }).selectOption(task.id);
+    await page.locator('.agents-msg__meta .agent-for').waitFor();
+    assert.equal(await page.locator('.agents-msg__meta .agent-for').innerText(), 'for Scoped Casey');
+    await capture('scoped-owner-agents-thread');
+    await page.locator(`a[href^="/projects/${place.id}/tasks"]`).click();
+    await page.getByRole('radio', { name: 'List', exact: true }).click();
+    await row.locator('.agent-for').waitFor();
     // The same workspace has a second project with different agent rights. A workspace-keyed
     // owner cache would wrongly reuse the first project's authorized name here.
     await page.getByRole('link', { name: 'Other owner scope', exact: true }).click();
