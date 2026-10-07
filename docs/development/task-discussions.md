@@ -332,9 +332,15 @@ Human DMs and authenticated agent file operations retain #225's unavailable stat
 A send captures its original scope and immutable command. Every task-bound composer
 uses `POST /api/v1/work/:id/discussion` with `kind: 'text'`, so a lost-response retry
 from another view retains `task.contribute` and the exact work ID in its durable
-fingerprint. Failed or uncertain sends retain the entire draft. Only confirmed
-publication clears the matching command; delayed A results cannot clear B or
-navigate a person away from their new work. Selection order is publication order.
+fingerprint. Since #264 (2026-10-06) a send moves the draft's body, files,
+reference and command into the record's queue (`pending`) and empties the field;
+the queued message shows in every view of that task as "Sending…", "Uploading…",
+"Waiting to send" or "Not sent", and keeps its command until it is
+confirmed or removed ([instant sending](conversations.md#instant-sending-and-the-offline-queue-264-2026-10-06)).
+An uncertain send therefore stays queued with its command rather than in the
+field; a send the server refuses for good (`400/401/403/404/409/413/422`) returns
+its entire draft, command and unconfirmed state to an empty field. Delayed A
+results cannot clear B or navigate a person away from their new work. Selection order is publication order.
 Successful sign-out clears current and legacy private composer records and selected
 bytes from this browser visit. It retires outstanding upload/send callbacks before
 clearing storage, so their late results cannot restore a signed-out draft or affect

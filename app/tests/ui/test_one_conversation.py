@@ -357,9 +357,14 @@ class OneConversationJourney(unittest.TestCase):
             route.abort("failed")
         page.route("**/api/v1/projects/*/conversations", lose_committed_start)
         page.get_by_role("button", name="Send message").click()
-        expect(page.get_by_role("alert")).to_contain_text("Flux could not be reached")
+        # Sending is instant (#264): the root waits at the end of the stream with its command, and the
+        # quiet line says why; when Flux answers again it is sent once more, with the same key.
+        queued = self.stream(page).locator("[data-client-message-id]").filter(has_text=body)
+        expect(queued).to_contain_text("Waiting to send")
+        expect(composer).to_have_value("")
+        expect(page.get_by_text("Flux isn’t responding", exact=False)).to_be_visible()
         page.unroute("**/api/v1/projects/*/conversations", lose_committed_start)
-        page.get_by_role("button", name="Retry send").click()
+        expect(queued).to_have_count(0, timeout=20000)
         expect(composer).to_have_value("")
         last = self.stream(page).locator(".project-convo__message").last
         expect(last).to_contain_text(body)
@@ -454,6 +459,7 @@ class OneConversationJourney(unittest.TestCase):
         owner.get_by_label("Write a message", exact=True).fill(body)
         owner.get_by_role("button", name="Send message", exact=True).click()
         expect(owner.get_by_label("Write a message", exact=True)).to_have_value("")
+        expect(owner.locator("[data-client-message-id]")).to_have_count(0)
         roots = self.api(owner, "GET", path, status=200)["roots"]
         self.assertEqual(len(roots), 1)
         self.assertEqual(roots[0]["message"]["body"], body)
@@ -490,6 +496,7 @@ class OneConversationJourney(unittest.TestCase):
         owner.get_by_label("Write a message", exact=True).fill(body)
         owner.get_by_role("button", name="Send message", exact=True).click()
         expect(owner.get_by_label("Write a message", exact=True)).to_have_value("")
+        expect(owner.locator("[data-client-message-id]")).to_have_count(0)
         roots = self.api(owner, "GET", path, status=200)["roots"]
         self.assertEqual(len(roots), 1)
         self.assertEqual(roots[0]["message"]["body"], body)
