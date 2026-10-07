@@ -214,11 +214,12 @@ export function agentRuntimeOperations(db: Handle) {
       return rows.rows;
     },
     release: (slot: string) => store.requestRelease({ slot }, 'operator'),
-    async forgetAll() {
+    async forgetAll(signOutConfirmed = false) {
       await db.transaction(async (tx) => {
         await tx.execute(sql`UPDATE agent_runtime_connections SET state = 'signed_out', signed_in_at = NULL, revoked_at = coalesce(revoked_at, now()) WHERE revoked_at IS NULL`);
         await tx.execute(sql`UPDATE agent_runtime_bindings SET state = 'released', release_reason = 'purge',
-          release_requested_at = coalesce(release_requested_at, now()), released_at = now() WHERE state <> 'released'`);
+          release_requested_at = coalesce(release_requested_at, now()), released_at = now(),
+          release_logout_failed = ${!signOutConfirmed} WHERE state <> 'released'`);
         await tx.execute(sql`UPDATE agent_runtime_slots SET state = 'unknown', boot_id = NULL, wipe_boot_id = NULL, out_of_pool_reason = NULL, updated_at = now()`);
       });
     },

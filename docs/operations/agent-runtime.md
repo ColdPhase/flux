@@ -71,6 +71,10 @@ time can change them:
   Linux Yama `kernel.yama.ptrace_scope` of 1 or higher; a missing policy or value 0 stops the supervisor
   before it listens, so the worker cannot admit the slot. This is a Linux host requirement, including
   the Linux VM used by Docker Desktop; Flux does not change host kernel settings;
+- the supervisor requires Node's sole startup flag to be `--disable-sigusr1`, empty `NODE_OPTIONS`,
+  and no already active inspector. Additional or negated flags fail closed.
+  A same-uid CLI can send signals; it must not be able to start a debugger and evaluate code in the
+  supervisor. The pinned Node 24.21 supports this flag;
 - 2 GiB memory (no swap), one CPU, 256 processes, a 128 MiB tmpfs `/tmp`;
 - container logs rotated at 3 × 10 MB;
 - only its own volume at `/data` and the read-only tools volume;
@@ -156,6 +160,9 @@ supervisor reports an empty `/data`.
   vendor's logout path from its other paths; the host list stays restricted to those already recorded.
 - Skipped, missing, failed or timed-out CLI logout is **not confirmed**, even if local files were
   deleted. The API reports `signOutFailed`, and operator output says `sign-out NOT confirmed`.
+  Purge records this in owner history too. If a failed attempt deleted a binding and a later retry
+  sees no credentials, that retry does not erase the unconfirmed result. Already released history
+  keeps its original outcome.
 
 ## Versions
 

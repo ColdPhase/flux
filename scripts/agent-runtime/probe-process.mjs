@@ -3,6 +3,26 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { open, readdir, readFile } from 'node:fs/promises';
+import { setTimeout } from 'node:timers/promises';
+
+async function inspectorAvailable() {
+  try {
+    const response = await fetch('http://127.0.0.1:9229/json/list', { signal: AbortSignal.timeout(200) });
+    return response.ok && (await response.json()).some((target) => target.webSocketDebuggerUrl);
+  } catch { return false; }
+}
+
+async function signalInspector(pid, expected) {
+  assert.equal(await inspectorAvailable(), false, 'no inspector before the signal');
+  process.kill(pid, 'SIGUSR1');
+  let available = false;
+  for (let attempt = 0; attempt < 25; attempt++) {
+    await setTimeout(20);
+    available = await inspectorAvailable();
+    if (available) break;
+  }
+  assert.equal(Boolean(available), expected, 'SIGUSR1 inspector access');
+}
 
 async function accessProcess(pid) {
   const access = async (name, flags) => {
@@ -22,15 +42,17 @@ if (process.argv[2] === 'supervisor') {
   }
   assert.equal(matches.length, 1, 'exactly one running supervisor');
   assert.deepEqual(await accessProcess(matches[0]), { environ: false, memory: false });
-  console.log('CLI uid cannot read supervisor environment or write its memory');
+  await signalInspector(matches[0], false);
+  console.log('CLI uid cannot read supervisor environment, write its memory or open its inspector');
 } else {
   const native = process.argv[2];
   assert.ok(native?.endsWith('protect.node'));
-  for (const protectedProcess of [false, true]) {
+  for (const mode of ['unprotected', 'native-only', 'hardened']) {
+    const protectedProcess = mode !== 'unprotected';
     // The attacker is the child's parent, so this control exercises the stricter case even
     // at ptrace_scope=1. In a slot the CLI is merely another process with the same uid.
     const code = `${protectedProcess ? 'require(process.argv[1]);' : ''} process.stdout.write('ready\\n'); setInterval(() => {}, 1000);`;
-    const child = spawn(process.execPath, ['-e', code, native], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [...(mode === 'hardened' ? ['--disable-sigusr1'] : []), '-e', code, native], { stdio: ['ignore', 'pipe', 'pipe'] });
     const exited = once(child, 'exit');
     try {
       const ready = await Promise.race([
@@ -39,7 +61,8 @@ if (process.argv[2] === 'supervisor') {
       ]);
       assert.equal(ready, 'ready\n');
       assert.deepEqual(await accessProcess(child.pid), { environ: !protectedProcess, memory: !protectedProcess });
-      console.log(protectedProcess ? 'protected: environment and memory denied' : 'negative control: environment and memory accessible');
+      await signalInspector(child.pid, mode !== 'hardened');
+      console.log(`${mode}: environment/memory ${protectedProcess ? 'denied' : 'accessible'}, signal inspector ${mode === 'hardened' ? 'denied' : 'accessible'}`);
     } finally { child.kill('SIGKILL'); await exited; }
   }
 }

@@ -51,7 +51,7 @@ COPY --from=build /app/apps/runtime/keys ./apps/runtime/keys
 COPY --from=production-dependencies /app/apps/runtime/node_modules ./apps/runtime/node_modules
 RUN mkdir -p /data /opt/flux-tools /opt/flux-runtime/codex/bin && chown node:node /data /opt/flux-tools && chmod 0700 /data
 USER node
-CMD ["node", "apps/runtime/dist/supervisor/main.js"]
+CMD ["node", "--disable-sigusr1", "apps/runtime/dist/supervisor/main.js"]
 
 # TEST ONLY: fake `claude` and `codex` (apps/runtime/src/fakes) instead of the vendors' CLIs. The fake
 # Claude Code reaches the tools volume through runtime-install, like the real one. Never deployed.
