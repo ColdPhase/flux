@@ -189,8 +189,9 @@ T11 issue text updates                       after T0
 
 ### T4 — Claude Code sign-in console (new issue; minimum viable slice, part 2)
 
-- **Owner:** @PelikanFix16. **Evaluator:** @Zamojski5. **Depends on:** T3.
-- **Scope:** Settings → *Agent in Flux* → *Sign in to Claude Code*, with no vendor
+- **Owner:** @PelikanFix16. **Evaluator:** @Zamojski5. **Depends on:** T3 and #331's
+  mandatory accepted integration gate before merge.
+- **Scope:** Settings → Agents and AI (#350 / final #336) → *Agent in Flux* → *Sign in to Claude Code*, with no vendor
   logos. The owner chooses Claude account, Anthropic Console or SSO; the supervisor
   runs `claude auth login`, `claude auth login --console` or
   `claude auth login --sso` in a PTY, relayed by xterm.js over a session-bound
@@ -216,7 +217,37 @@ T11 issue text updates                       after T0
     frames or API responses.
   - Phone-width layout of the console and the notices.
 
+- **Accepted operation correction (#279, 2026-10-07):** the
+  [independently evaluated contract](https://github.com/ColdPhase/flux/issues/279#issuecomment-6045964415)
+  and [F-022 durable admission](../ai-modes.md#durable-auth-operations) supersede
+  instance-local ticket/console authority and instant replacement assumptions.
+  Claim owner/binding/client/boot plus server operation UUID/revision durably;
+  claim/renew/consume/finish use short PostgreSQL transactions, never CLI waits.
+  Preserve boot through the closed protocol and revalidate inside the slot lane.
+  Completion returns `accepted`/`superseded`; old work cannot report success from
+  a newer connection or overwrite notices/sign-out. No TTL takeover or automatic
+  retry on the same binding after uncertainty. Retain a recovery block, then use
+  confirmed full release → empty `/data` → fresh supervisor boot and binding;
+  otherwise remain unavailable. Explain that both clients may need sign-in again.
+  Only current `ok` logout plus acknowledged cleanup is confirmed; every completed
+  non-`ok` warns, and unknown effects keep runtime authority disabled. Lifecycle
+  and project-wide purge admission share the fence. Atomically consume a durable
+  nonce digest across APIs; Maps provide no authority. Lost session/disconnect/
+  timeout/replacement invalidate the same operation; fast replacement needs
+  actual canceled/drained acknowledgement, otherwise recovery.
+  Barrier-based tests must cover both reproduced core bugs, real PostgreSQL
+  two-API claims/tickets, old destructive commands after crash/expiry, stale
+  completion, release/purge/new-reserve and fresh binding/boot reuse. The original
+  command, transient-frame, seeded-secret, timeout, notice and phone criteria stay.
+  This is a contract checkpoint; runtime and final-design acceptance stay pending.
+  Preserve published `0057_agent_runtime_sign_in.sql`; reserve the distinct
+  `0058_agent_runtime_auth_operations.sql` (and paired reverse) after current-ref
+  inventory. Other #238/#340 unmerged `0057` collisions are owner handoffs, not
+  permission to edit their branches or deployed ledgers.
+
 - **Implementation notes (#279, 2026-10-06), for the evaluator:**
+  Historical source observations at `f831e9b6`; the accepted correction above
+  supersedes local ticket/replacement authority and the old Settings route.
   - **The pinned CLI, observed.** Claude Code 2.1.285 (`runtime-install`'s verified binary, no account,
     `--network none`, 2026-10-06): `auth login --help` lists `--claudeai` ("Use Claude subscription
     (default)"), `--console`, `--email <email>` (pre-fills the address on the login page), `-h, --help`

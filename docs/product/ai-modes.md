@@ -15,6 +15,14 @@ before `7a6987e7` do not cover this revision.
 retrieved 2026-10-05, and the [two AI modes audit and research](research/2026-10-04-two-ai-modes.md),
 retrieved 2026-10-04. **Delivery:** [plan](research/2026-10-04-two-ai-modes-plan.md).
 
+**Accepted correction, 2026-10-07:** [#279's independently evaluated operation
+contract](https://github.com/ColdPhase/flux/issues/279#issuecomment-6045964415)
+adds [durable auth admission and recovery](#durable-auth-operations) to T4.
+Earlier source observations stay historical; this records required behavior,
+not implementation or full T4 acceptance. The final console belongs in Settings
+→ Agents and AI under [#350](https://github.com/ColdPhase/flux/issues/350) /
+[F-026](https://github.com/ColdPhase/flux/issues/336).
+
 **Founder direction.**
 
 - **2026-10-04 (#245).** Flux has exactly two AI modes. Providers, connectors and
@@ -326,6 +334,59 @@ root on the host or every owner's credentials.
    `cli_auth_credentials_store=file` is passed on every Codex command; `auto` and
    `keyring` are refused.
 
+### Durable auth operations
+
+The current owner, binding, client and supervisor boot identify an auth target.
+Before status, sign-out or a sign-in console starts, a short PostgreSQL transaction
+claims a server-generated operation UUID and monotonic revision. Admission,
+heartbeat, ticket consumption and completion are short transactions; external
+CLI/PTY/HTTP waits hold no transaction or database connection. Use database wall
+time for expiry; an expired heartbeat cannot revive its operation.
+
+- **Exact completion.** Atomically verify the current owner/binding/client,
+  operation/revision, active lifecycle and expected boot, update display facts
+  and settle the operation. Return explicit `accepted` or `superseded`. A stale
+  completion changes neither account notices nor sign-out history. A console
+  reports success only for its own accepted operation, never from a newer owner
+  view. Preserve the accepted boot through the manager's closed protocol.
+- **Physical ordering.** Keep the supervisor's single slot lane. Revalidate
+  binding and boot inside the admitted task after queue wait and before effects.
+  Neither the browser nor an agent supplies the owner, slot, binding, operation
+  epoch or arbitrary command. Later T5/T6 joins this same admission and lane.
+- **No TTL takeover.** A timed-out, disconnected, crashed or uncertain operation
+  retains a recovery block on its binding. Lease expiry, a row revision, a closed
+  API WebSocket or a reported idle slot does not prove an earlier CLI stopped.
+  Do not admit another auth command or run on that same binding. The minimal
+  recovery is complete release, confirmed empty `/data`, a restarted supervisor
+  with a new boot and a fresh binding UUID. Old queued work cannot recreate the
+  old directory. If cleanup cannot be confirmed, keep it unavailable/out of pool.
+  Disclose that recovery may require both clients to sign in again.
+- **Truthful sign-out.** Immediately disable new runtime use for the requested
+  client, showing pending rather than confirmed cleanup. Only a current `ok`
+  logout plus acknowledged local deletion is confirmed. Completed `failed`,
+  `timeout`, `not_installed` and `skipped` retain the vendor-session warning.
+  Unknown transport, protocol or cleanup retains disabled authority and recovery
+  pending; do not claim deletion, vendor revocation or that nothing changed.
+- **Shared lifecycle fence.** Remove, owner deletion, revocation, operator
+  release/purge/reset and recovery invalidate auth admission/completion before
+  cleanup. Guard obsolete INSERT as well as UPDATE paths. Purge blocks new
+  project-wide admission until cleanup is safe; if the database is unavailable,
+  stop admission/services first and retain the block. This does not settle other
+  separately tracked #331 reconciliation findings.
+- **Durable console ownership.** Verify the ticket's HMAC, owner, session, method
+  and expiry, then atomically consume its nonce digest and claim the operation.
+  Two API instances cannot redeem it twice or own the same client console. Local
+  Maps only optimize notifications. Session loss, disconnect and the 15-minute
+  timeout invalidate the same operation; replacement requires a real canceled
+  and drained PTY acknowledgement, otherwise full recovery. Store metadata only,
+  never frames, pasted codes, credentials, raw tickets or session tokens.
+
+T4 must prove held status/console/destructive logout and lifecycle races, two-API
+PostgreSQL claim/nonce CAS, crash recovery and late effects after fresh binding
+reuse with controlled barriers. Retain its fixed commands, notices, seeded-secret
+checks and phone/theme criteria; a passing source or core test is not acceptance
+of the integrated runtime or final design.
+
 ### Agent connection and permissions
 
 The MCP route resolves `flux_connection_id` in the agent-connection store, with
@@ -531,6 +592,9 @@ and nothing falls back to an API key.
   still deleted. The owner is told to end the session in their Claude or ChatGPT
   account settings. Whether CLI logout revokes the refresh token at the vendor is
   **unverified** (T10).
+- The [auth-operation fence](#durable-auth-operations) distinguishes acknowledged
+  non-`ok` cleanup from unknown effects and prevents a delayed status/console or
+  old logout from undoing sign-out or acting on a recovered binding.
 - A login revoked or expired at the vendor shows *Sign in again* on the next run.
 
 ### Backup, restore and cleanup
