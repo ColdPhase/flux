@@ -13,6 +13,7 @@ export function useAgentOwners(project: Pick<Project, 'id' | 'workspaceId'> | nu
   const { me } = useShellData();
   const { key: visit } = useLocation();
   const revalidator = useRevalidator();
+  const projectId = project?.id;
   const scope = project ? `${me.user.id}:${project.workspaceId}:${project.id}:${visit}` : null;
   const [read, setRead] = useState<{ scope: string; owners: AgentOwners } | null>(null);
   const [boundary, setBoundary] = useState({ scope, phase: revalidator.state });
@@ -22,7 +23,7 @@ export function useAgentOwners(project: Pick<Project, 'id' | 'workspaceId'> | nu
   }
   const reload = useRef<() => void>(() => undefined);
   useEffect(() => {
-    if (!scope || !project || revalidator.state !== 'idle') return;
+    if (!scope || !projectId || revalidator.state !== 'idle') return;
     let current: AbortController | null = null;
     const load = () => {
       current?.abort();
@@ -30,7 +31,7 @@ export function useAgentOwners(project: Pick<Project, 'id' | 'workspaceId'> | nu
       current = controller;
       // An access change or failed read never leaves an obsolete owner name visible.
       setRead(null);
-      void listProjectPeople(project.id, controller.signal).then((people) => {
+      void listProjectPeople(projectId, controller.signal).then((people) => {
         if (controller.signal.aborted) return;
         const owners = new Map(people.flatMap((person) => {
           if (person.kind !== 'agent' || !person.agentOwner) return [];
@@ -49,7 +50,7 @@ export function useAgentOwners(project: Pick<Project, 'id' | 'workspaceId'> | nu
       window.removeEventListener('focus', load);
       window.removeEventListener('online', load);
     };
-  }, [scope, project?.id, revalidator.state]);
+  }, [scope, projectId, revalidator.state]);
   useStreamEvents(me.user.id, (event) => {
     if (event.workspaceId === project?.workspaceId) reload.current();
   }, () => reload.current());

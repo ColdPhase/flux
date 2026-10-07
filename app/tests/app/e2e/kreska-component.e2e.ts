@@ -15,7 +15,9 @@ test('all sixteen production Kreska expressions at five sizes retain static fram
     try {
       for (const scheme of ['light', 'dark'] as const) {
         const page = await browser.newPage({ viewport: { width: 1050, height: 1350 }, reducedMotion: 'reduce', colorScheme: scheme });
+        await page.goto(`${process.env.FLUX_API_URL ?? 'http://api:8080'}/sign-in`);
         await page.setContent(`<style>${css}</style><style>body{margin:24px;background:var(--bg);color:var(--t1)}main{display:grid;grid-template-columns:1fr 1fr;gap:12px}section{display:flex;align-items:center;gap:20px;min-height:132px;padding:8px;background:var(--el)}h2{font-size:14px;width:90px}section>div{display:grid;gap:12px;font-size:12px}</style><main>${kreskaComponentFixture()}</main>`);
+        await page.evaluate(() => document.fonts.ready);
         assert.equal(await page.locator('.kreska').count(), 80);
         for (const expression of expressions) {
           for (const size of sizes) {
