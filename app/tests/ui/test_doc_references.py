@@ -64,8 +64,8 @@ class DocReferenceJourney(unittest.TestCase):
         cls.browser.close()
         cls.pw.stop()
 
-    def scene(self, phone=False, self_doc=False):
-        ctx = self.browser.new_context(base_url=ORIGIN, storage_state=self.state, viewport={"width": 390 if phone else 1440, "height": 844 if phone else 900}, is_mobile=phone, has_touch=phone)
+    def scene(self, phone=False, self_doc=False, block_service_workers=False):
+        ctx = self.browser.new_context(base_url=ORIGIN, storage_state=self.state, viewport={"width": 390 if phone else 1440, "height": 844 if phone else 900}, is_mobile=phone, has_touch=phone, service_workers="block" if block_service_workers else "allow")
         self.addCleanup(ctx.close)
         page = ctx.new_page()
         page.choice_observations = []
@@ -408,3 +408,44 @@ class DocReferenceJourney(unittest.TestCase):
                 self.assertIsNone(page.evaluate("key => sessionStorage.getItem(key)", key))
                 docs = api(self.ctx, "GET", f"/api/v1/projects/{self.project}/docs?limit=100")["items"]
                 self.assertEqual(sum(doc["title"] == title for doc in docs), 1)
+
+
+    def test_10_delayed_reference_search_describes_its_wait_and_keeps_the_draft(self):
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page, text = self.scene(phone, block_service_workers=True)
+                picker = self.picker(page, text)
+                target = self.native["work"][3]
+                held = []
+                def hold(route):
+                    query = parse_qs(urlsplit(route.request.url).query)
+                    if query.get("choice") == ["doc_refs"] and query.get("kind") == ["work"] and query.get("q") == [target["title"]]:
+                        response = route.fetch()
+                        self.assertEqual(response.status, 200)
+                        held.append((route, response))
+                        page.evaluate("window.loadingProjectObjectsHeld = true")
+                    else:
+                        route.continue_()
+                page.route(f"**/api/v1/projects/{self.project}/work-view?**", hold)
+                self.addCleanup(lambda page=page: page.unroute_all(behavior="ignoreErrors"))
+                query = picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True)
+                query.fill(target["title"])
+                waiting = picker.locator("p.doc-muted.doc-picker__empty[aria-busy='true']")
+                expect(waiting).to_have_text("Finding project objects…")
+                expect(waiting).to_be_visible()
+                expect(waiting).to_have_attribute("class", "doc-muted doc-picker__empty")
+                expect(waiting).to_have_attribute("aria-busy", "true")
+                expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(0)
+                expect(text).to_have_value("PRIVATE-DRAFT of native reference notes\n")
+                # The loading state remains until the real, matching native read completes.
+                page.wait_for_function("window.loadingProjectObjectsHeld === true")
+                self.assertEqual(len(held), 1)
+                shot(page, f"323-link-picker-loading-{'phone' if phone else 'desktop'}")
+                for route, response in held:
+                    route.fulfill(response=response)
+                page.unroute_all(behavior="wait")
+                match = picker.get_by_role("listbox", name="Matches").get_by_role("option")
+                expect(match).to_have_count(1)
+                expect(match).to_contain_text(target["title"])
+                expect(waiting).to_have_count(0)
+                expect(text).to_have_value("PRIVATE-DRAFT of native reference notes\n")
