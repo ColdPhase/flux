@@ -70,10 +70,17 @@ pending independent acceptance):** client registration and the consent screen.
   an app's private-use scheme. The MCP 2026-07-28 security considerations, as quoted in the
   [#274 review (finding A2)](https://github.com/ColdPhase/flux/pull/274), require the
   authorization server to "clearly display the redirect URI hostname during authorization".
-- **Framing.** Every response sends `X-Frame-Options: DENY`, and
+- **Framing.** Ordinary Fastify HTTP responses send `X-Frame-Options: DENY`, and
   `Content-Security-Policy: frame-ancestors 'none'` unless the route sets its own policy
-  (stored files keep `sandbox`). Flux frames none of its own pages, and the installed PWA is
-  a top-level window. The Vite dev server (`./flux dev`) serves the page without these headers.
+  (stored files keep `sandbox`). These headers come from the `onSend` hook. The
+  `/mcp` handler bypasses it with `reply.hijack()`; that JSON-RPC stream never renders a page.
+  Successful WebSocket upgrades also bypass ordinary response serialization:
+  `/api/v1/stream`, `/api/v1/typing` and the separate media signaling gate at
+  `/media/rtc` or `/media/rtc/v1`. They carry protocol traffic, not rendered pages;
+  ordinary Fastify HTTP refusals still pass through the hook. The media gate's
+  direct socket refusals also bypass it. Flux frames none of its own pages, and the
+  installed PWA is a top-level window. The Vite dev server (`./flux dev`) serves the
+  page without these headers.
 - **Tests.** `app/tests/app/oauth-clients.test.ts` covers refused registration, the fixture,
   the consent hosts and the framing headers. `app/tests/app/oauth-flow.test.ts` covers the
   redirect and `client_id` host rules, and `app/tests/app/fixture-routes.test.ts` shows the
