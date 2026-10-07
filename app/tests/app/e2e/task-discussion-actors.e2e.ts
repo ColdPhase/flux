@@ -72,8 +72,8 @@ function isFinishedFixtureRoute(cause: unknown): boolean {
 async function assertAuthorColumn(row: Locator, width: number) {
   await row.waitFor();
   const geometry = await row.evaluate((el) => {
-    const face = el.querySelector<HTMLElement>(':scope > :is(.ui-avatar, .author-face)')!;
-    const meta = el.querySelector<HTMLElement>('.project-convo__message-meta')!;
+    const face = el.querySelector<HTMLElement>(':scope > :is(.ui-avatar, .author-face), :scope > .thread__root-meta > :is(.ui-avatar, .author-face)')!;
+    const meta = el.querySelector<HTMLElement>('.project-convo__message-meta, .thread__root-meta')!;
     const r = el.getBoundingClientRect();
     const f = face.getBoundingClientRect();
     const m = meta.getBoundingClientRect();
@@ -159,6 +159,9 @@ test('agent root renders without a human DM link, real human reply persists, and
     await page.reload();
     await row.waitFor();
     assert.equal(await page.locator(`#message-${root.id}`).count(), 1);
+    const opening = page.locator(`#thread-root-${root.id}`);
+    await assertAuthorColumn(opening, 1280);
+    await opening.locator('.agent-for').filter({ hasText: 'for Casey Human' }).waitFor();
     const evidence = process.env.FLUX_E2E_EVIDENCE_DIR;
     if (evidence) { mkdirSync(evidence, { recursive: true }); await page.screenshot({ path: join(evidence, 'agent-root-desktop.png'), fullPage: true }); }
     expectStatus(await owner.browser.request('DELETE', `/api/v1/projects/${place.id}/grants/${access.id}`), 204);
@@ -177,6 +180,7 @@ test('agent root renders without a human DM link, real human reply persists, and
       await assertAuthorColumn(humanRow, width);
       assert.equal(await humanRow.locator(`a[href$="with=${owner.id}"]`).count(), 1);
       const thread = view.locator('#thread');
+      await assertAuthorColumn(thread.locator(`#thread-root-${root.id}`), width);
       await thread.getByText('You have read access to this project.', { exact: true }).waitFor();
       assert.equal(await view.getByRole('textbox', { name: 'Reply', exact: true }).count(), 0);
       assert.equal(await view.getByRole('button', { name: 'Send reply', exact: true }).count(), 0);
@@ -193,6 +197,14 @@ test('agent root renders without a human DM link, real human reply persists, and
         body: { body: 'This viewer cannot publish to the canonical task.', clientMessageId: randomUUID(), kind: 'text' },
       }), 403);
       if (evidence) await view.screenshot({ path: join(evidence, `mixed-authors-reader-${width}.png`), fullPage: true });
+      if (width === 390) {
+        await view.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
+        await assertAuthorColumn(humanRow, width);
+        await assertAuthorColumn(thread.locator(`#thread-root-${root.id}`), width);
+        assert.equal(await view.evaluate(() => document.documentElement.scrollWidth - innerWidth), 0,
+          'full author names and faces fit the phone at enlarged text');
+        if (evidence) await view.screenshot({ path: join(evidence, 'mixed-authors-reader-390-text200.png'), fullPage: true });
+      }
     }
     assert.deepEqual((await pool.query('SELECT * FROM project_messages WHERE id=$1', [root.id])).rows[0], stored);
     assert.deepEqual(errors, []);
