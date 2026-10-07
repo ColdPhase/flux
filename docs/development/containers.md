@@ -94,7 +94,10 @@ pooled client whose `BEGIN` or `ROLLBACK` failed instead of leaking it or return
 it to the pool with an open transaction ([#234](https://github.com/ColdPhase/flux/issues/234)).
 Each connection also sets `idle_in_transaction_session_timeout` to 60 s, so PostgreSQL
 ends any session abandoned inside a transaction. Flux code does not wait on
-anything outside the database inside a transaction. pg-boss keeps its own pool.
+anything outside the database inside a transaction. Each connection also sets `jit=off`:
+Flux's statements are short, and when an access filter inflated a plan's estimate past
+`jit_above_cost`, PostgreSQL compiled for 50–300 ms to run a few milliseconds
+([#298](performance-2026-10.md)). pg-boss keeps its own pool.
 
 The connection timeout bounds the whole wait for a client: queued behind the pool's
 10 busy clients (the `pg` default size) or opening a new connection.
@@ -120,6 +123,16 @@ the 2 s read timeout. Two changes follow:
   cover a database too slow for the 2 s read timeout, and it does not hide exhaustion:
   PostgreSQL keeps the image default `max_connections` of 100 and the suite peaks near
   21 client connections. A leaked client still fails the suite, after 10 s instead of 1.5 s.
+
+### Server measurement
+
+`./scripts/check_performance.sh` measures the API on the seeded #298 volume: a production-mode
+stack with the measurement-only `docker/compose.perf.yaml` overlay (`pg_stat_statements`,
+`auto_explain`), the public-API seed `scripts/perf-seed.mjs`, the web app's per-view requests
+`scripts/perf-measure.mjs` and the report `scripts/perf_report.py`. It takes about 15 minutes, uses
+at most two clients and writes to `perf-results/` (ignored by git); `FLUX_PERF_PHASES`,
+`FLUX_PERF_IMAGE_TAG` and `FLUX_PERF_PORT` narrow or redirect a run. Method and results:
+[performance, October 2026](performance-2026-10.md).
 
 ### Disk hygiene
 
