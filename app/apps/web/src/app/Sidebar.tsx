@@ -20,7 +20,7 @@ export interface SidebarProps {
 }
 
 /**
- * Studio 11.6 sidebar (#136): one list on the chrome beside the sheet. Places (Home, Inbox,
+ * The sidebar: one list on the outer background beside the panel. Places (Home, Inbox,
  * Direct messages and the private sketchbook), then Projects and Messages. A project has one
  * conversation (UI116-1): its roots and their threads live in the project's Conversation tab, not
  * in this list. A project never reveals another project's contents.
@@ -37,7 +37,7 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
   // Home is current where the header says Home: not in My sketchbook, Search or personal settings.
   const home = place === 'home' && !sketchbook && !/^\/(search|settings|projects)(\/|$)/.test(location.pathname);
   // Subtle navigation feedback (#155, UI116-5): the highlight travels to a chosen project at once, while
-  // the project loads; the row becomes current (accent bar, aria-current) when its content shows. A newer
+  // the project loads; the row becomes current (its bar, aria-current) when its content shows. A newer
   // choice retargets it, and a navigation that ends elsewhere (refused, cancelled) returns it.
   const navigation = useNavigation();
   const pendingProject = navigation.state !== 'idle' ? navigation.location?.pathname.match(/^\/projects\/([^/]+)/)?.[1] ?? null : null;

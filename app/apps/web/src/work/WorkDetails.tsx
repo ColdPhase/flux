@@ -3,7 +3,7 @@ import { Link, useRevalidator } from 'react-router';
 import type { Agent, ObjectLink, Project, WorkspaceMember, WorkStatus, WorkDetailObject, WorkDetailProjection } from '@flux/contracts';
 import { WORK_STATUSES } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { Button, Icon, Input } from '../ui';
+import { Button, Icon, Input, StatusGlyph } from '../ui';
 import { getProject, listWorkspaceMembers } from '../app/conversation-api';
 import { useShellData } from '../app/data';
 import { useRegisterLiveHere } from '../live/LiveProvider';
@@ -240,7 +240,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
 
   return (
     <div className="details wd" data-detail-kind="work" data-detail-id={item.id}>
-      <p className="details__eyebrow wd-eyebrow"><span className={`wd-dot wd-dot--${item.status}`} aria-hidden="true" />{STATUS_LABEL[item.status]}{item.parked ? ' · parked, not done' : ''}</p>
+      <p className="details__eyebrow wd-eyebrow"><StatusGlyph status={item.status} size={14} />{STATUS_LABEL[item.status]}{item.parked ? ' · parked, not done' : ''}</p>
       <h3 className="details__title">{item.title}</h3>
       {item.outcome ? <p className="details__lead">{item.outcome}</p> : null}
       {item.status === 'blocked' && item.blocker ? <p className="wd-blocker"><Icon name="alert" size={14} />Blocked: {item.blocker}</p> : null}
@@ -340,7 +340,7 @@ function Prerequisites({ item, openDetails }: { item: OwnWork; openDetails: Retu
         {ordered.map((prerequisite) => (
           <li key={prerequisite.id}>
             <button type="button" className="wd-link" onClick={() => openDetails({ kind: 'work', id: prerequisite.id, projectId: item.projectId })}>
-              <span className={`wd-dot wd-dot--${prerequisite.status}`} aria-hidden="true" />
+              <StatusGlyph status={prerequisite.status} size={14} />
               <span>{prerequisite.title}</span>
               <small>{STATUS_LABEL[prerequisite.status]}{prerequisite.parked ? ' · parked' : ''}{prerequisite.met ? '' : ' · waiting'}</small>
               <Icon name="chevron-right" size={14} />
