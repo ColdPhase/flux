@@ -7,7 +7,7 @@ import { backgroundConnectionUseCases, baseUrlSyntaxProblem, ConflictError, Doma
   isUuid, normalizeBaseUrl, NotFoundError, proactiveRuleUseCases, VersionConflictError, visibleProposal, type Database } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { workUseCases } from '../work/adapters.js';
-import { comparisonOutcomeAccess, comparisonOutcomes } from './outcome-adapter.js';
+import { comparisonOutcomeAccess, comparisonOutcomeReads, comparisonOutcomes } from './outcome-adapter.js';
 import { aiConnectionServerComposition, type AiConnectionServerComposition } from './ai-composition.js';
 
 interface Options {
@@ -33,6 +33,7 @@ const microsPerMTok = { type: 'integer', minimum: 0, maximum: AI_PRICE_MAX_MICRO
 export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sessions, backgroundMasterKey, ai = aiConnectionServerComposition(process.env),
   comparisonsEnabled }: Options) {
   const outcomes = comparisonOutcomes(db);
+  const outcomeReads = comparisonOutcomeReads(db);
   const connections = backgroundConnectionUseCases(backgroundConnectionRepository(db), {
     seal(plainKey, ownerUserId, connectionId) {
       if (!backgroundMasterKey) throw new ConflictError('Background key custody is unavailable on this instance', 'BACKGROUND_KEY_CUSTODY_UNAVAILABLE');
@@ -118,7 +119,7 @@ export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sess
   app.get<{ Params: { projectId: string }; Querystring: { limit?: number; offset?: number } }>(
     proactiveComparisonOutcomesPath(':projectId'), { schema: { querystring: { type: 'object', additionalProperties: false,
       properties: { limit: { type: 'integer', minimum: 1, maximum: 100 }, offset: { type: 'integer', minimum: 0, maximum: 10000 } } } } },
-    async (request) => outcomes.list((await sessions.requirePrincipal(request)).principal, request.params.projectId,
+    async (request) => outcomeReads.list((await sessions.requirePrincipal(request)).principal, request.params.projectId,
       request.query.limit, request.query.offset));
   app.patch<{ Params: { outcomeId: string }; Body: { expectedVersion: number; status: 'dismissed' } }>(
     proactiveComparisonOutcomePath(':outcomeId'), { schema: { body: { type: 'object', additionalProperties: false,
@@ -126,7 +127,7 @@ export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sess
     async (request) => outcomes.dismiss((await sessions.requirePrincipal(request)).principal,
       request.params.outcomeId, request.body.expectedVersion));
   app.get(backgroundComputeUsagePath, { schema: { querystring: { type: 'object', additionalProperties: false } } },
-    async (request) => outcomes.usage((await sessions.requirePrincipal(request)).principal));
+    async (request) => outcomeReads.usage((await sessions.requirePrincipal(request)).principal));
   app.patch<{ Params: { proposalId: string }; Body: { expectedVersion: number; fact?: string;
     interpretation?: string; suggestedAction?: string; status?: 'dismissed' } }>(
     '/api/v1/proactive-comparison-proposals/:proposalId', async (request) => db.transaction(async (tx) => {
