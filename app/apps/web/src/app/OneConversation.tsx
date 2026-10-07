@@ -30,6 +30,10 @@ export interface PaneProps {
   rootMessageId?: string | null;
   /** stream: a root the person just started. */
   onPosted?: (conversation: Conversation) => void;
+  /** stream: the person sent a root; it shows at once at the end of the stream (#264). */
+  onSending?: () => void;
+  /** stream: when the newest root shown was written; a refreshed root newer than that may be the one being sent. */
+  newestRootAt?: string;
   /** thread: its latest size, so the stream's reply count matches it. */
   onThreadSize?: (conversationId: string, replyCount: number, lastReplyAt: string | null) => void;
   /** thread: the person chose Reply, or a link asked to write a reply. */
@@ -129,7 +133,7 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
 
   const audience = audienceLine(people, me.user.id, project.visibility === 'workspace');
   const stream = (
-    <ConversationStream project={project} meId={me.user.id} roots={roots} notices={notices} author={author}
+    <ConversationStream project={project} meId={me.user.id} meName={me.user.name} roots={roots} notices={notices} author={author}
       audience={audience} openId={thread?.id ?? null} reveal={reveal} arrived={arrived} endToken={endToken} onOpen={open} onDenied={onDenied} />
   );
   const rootMessage = root?.message ?? thread?.messages.find((message) => message.sequence === 1) ?? null;
@@ -139,7 +143,7 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
     <div className={`convo-split${thread ? ` has-thread is-${mode}` : ''}`} ref={splitRef}>
       <div className="convo-split__stream" inert={!!thread && mode === 'sheet'}>
         <Pane key="stream" data={data} variant="stream" feed={stream}
-          onPosted={(started) => { roots.posted(started); setEndToken((value) => value + 1); }} />
+          onPosted={(started) => { roots.posted(started); setEndToken((value) => value + 1); }} onSending={() => setEndToken((value) => value + 1)} newestRootAt={roots.roots.at(-1)?.message.createdAt ?? ''} />
       </div>
       {thread ? (
         <ThreadDrawer key={thread.id} mode={mode} count={replies} focusOnOpen={!!state?.fromStream && !state.focusComposer} onClose={close}>
