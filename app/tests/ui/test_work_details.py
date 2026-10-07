@@ -299,17 +299,20 @@ class NativeDetailsJourney(unittest.TestCase):
                 nav = panel.get_by_role("navigation", name="Object relationship pages")
                 expect(nav).to_have_attribute("aria-busy", "true")
                 expect(panel).not_to_contain_text("Added directly on the Tasks tab.")
-                self.assertEqual(len(held), 1)
-                route, response = held.pop()
-                self.assertEqual(response.json()["total"], 0)
-                route.fulfill(response=response)
+                self.assertTrue(held, "the loading state comes from actual held relation reads")
+                page.unroute("**/work-relations?**", hold)
+                # Router/context revalidation can retire an earlier read. Release every
+                # real response, without assuming there is only one dispatch per opening.
+                for route, response in held:
+                    payload = response.json()
+                    self.assertEqual((payload["before"], payload["total"], payload["items"]), (0, 0, []))
+                    route.fulfill(response=response)
                 self.ready(panel)
                 expect(nav).to_have_count(0)
                 expect(panel).not_to_contain_text("No rows on this page")
                 expect(panel).to_contain_text("Added directly on the Tasks tab.")
                 shot(page, f"detail-relations-empty-{'phone' if phone else 'desktop'}")
 
-                page.unroute("**/work-relations?**", hold)
                 page.route("**/work-relations?**", lambda route: route.fulfill(status=503, json={"code": "WORK_READ_UNAVAILABLE", "error": "Fixture unavailable"}))
                 page.reload()
                 expect(panel.locator("[data-detail-relations-phase]")).to_have_attribute("data-detail-relations-phase", "unavailable")
