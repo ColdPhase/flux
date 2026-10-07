@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import type { ConversationMessage } from '@flux/contracts';
-import { Icon } from '../ui';
+import { Avatar, Icon } from '../ui';
+import type { PendingSend } from '../composer/draft';
+import { OutboxStatus, PendingFiles, PendingSource } from '../composer/Outbox';
 import { getMaterialVersion } from './conversation-api';
 import { readerActive, watchReaderInput } from '../work/readerIntent';
 
@@ -73,4 +75,31 @@ export function SourceCitation({ materialId, version, onDenied }: { materialId: 
   useEffect(() => { onDeniedRef.current = onDenied; }, [onDenied]);
   useEffect(() => { const controller = new AbortController(); getMaterialVersion(materialId, version, controller.signal).then((item) => setTitle(item.title)).catch((cause: unknown) => { if (!controller.signal.aborted) { onDeniedRef.current(cause); setTitle('Material unavailable'); } }); return () => controller.abort(); }, [materialId, version]);
   return <Link to={`/materials/${materialId}/versions/${version}`} className="project-convo__source">Source: {title} · v{version}</Link>;
+}
+
+/**
+ * The person's own message from the moment they press Send until it is stored (#264): at the end of
+ * the stream or thread, shaped like the stored message that replaces it. It is a plain list item (not
+ * a component of its own), so the stored message with the same key reuses it and nothing is redrawn.
+ */
+export function pendingMessageRow({ item, name, place, keyed = true, onRetry, onRemove }: {
+  item: PendingSend; name: string; place: 'stream' | 'thread';
+  /** False when a component returns it: its key then sits on that component, as on the stored message's. */
+  keyed?: boolean; onRetry: () => void; onRemove: () => void;
+}) {
+  // In a thread "Sending…" stands where the time will be, and in the stream where the reply row will be,
+  // so the stored message takes exactly the queued one's space. Retry and Remove need their own row.
+  const inMeta = place === 'thread' && (item.state === 'sending' || item.state === 'uploading');
+  const status = <OutboxStatus inline={inMeta} item={item} onRetry={onRetry} onRemove={onRemove} />;
+  return (
+    <li key={keyed ? `pending-${item.id}` : undefined} id={`pending-${item.id}`} data-client-message-id={item.id} data-send-state={item.state}
+      className={`project-convo__message is-mine is-pending is-pending-${place}${item.state === 'failed' ? ' is-failed-send' : ''}`}>
+      <Avatar name={name} size="md" tone="me" />
+      <div className="project-convo__message-meta"><strong>{name} · you</strong>{inMeta ? status : null}</div>
+      {item.body ? <p>{item.body}</p> : null}
+      <PendingFiles files={item.files} />
+      <PendingSource item={item} className="project-convo__source" />
+      {inMeta ? null : status}
+    </li>
+  );
 }

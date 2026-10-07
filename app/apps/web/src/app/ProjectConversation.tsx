@@ -2,11 +2,12 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { Link, useLoaderData, useLocation, useNavigate, useRevalidator, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from 'react-router';
 import type { AssistantAnswer, ConversationMessage, Conversation, ConversationRootWindow, Draft, Material, Page, Project, TaskCreationNotice, WorkspaceMember } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { useComposerDraft, useComposerScope } from '../composer/draft';
+import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
 import { AttachButton, ComposerFiles, MessageFiles } from '../composer/Files';
-import { contributeToTask } from '../composer/api';
+import { ConnectionLine, SendAnnouncer } from '../composer/Outbox';
+import { fluxAnswers, onFluxAnswered } from '../composer/connection';
 import { Avatar, Button, Icon, Input, MEDIA, sendsOnEnter, useArrivals, useMediaQuery } from '../ui';
-import { getConversation, getMaterialVersion, getProject, listConversationRoots, listDrafts, listMaterials, listTaskNotices, listWorkspaceMembers, olderMessages, publishMaterial, reply, startConversation } from './conversation-api';
+import { getConversation, getMaterialVersion, getProject, listConversationRoots, listDrafts, listMaterials, listTaskNotices, listWorkspaceMembers, olderMessages, publishMaterial } from './conversation-api';
 import { pageBackTo } from './seekMessage';
 import { useShellData } from './data';
 import { MessageActions, MessageObjects, useCreateWorkFromMessage } from '../work/inline';
@@ -21,7 +22,7 @@ import { AnswerItem, AskBar, ProposalCard, WorkingLine } from '../assistant/Conv
 import { askError as askErrorText, askState } from '../assistant/format';
 import { grantAgentProject } from '../agent-connection/api';
 import { agentAuthorLabel } from '../docs/format';
-import { ContributionMark, OPENING_REVEAL_MS, SourceCitation, clock, day, openOnWholeMessages, when } from './messageParts';
+import { ContributionMark, OPENING_REVEAL_MS, SourceCitation, clock, day, openOnWholeMessages, pendingMessageRow, when } from './messageParts';
 import { OneConversation, type PaneProps } from './OneConversation';
 import { ThreadMessageActions } from './ThreadDrawer';
 import { useTyping } from '../typing/useTyping';
@@ -86,7 +87,7 @@ export function ProjectConversation() {
  * One conversation's pane: in the stream it is the composer that starts a root (UI116-1); in the thread
  * beside it, the replies with their own composer, assistant and sources.
  */
-function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessageId = null, onPosted, onThreadSize, focusComposer = false }: PaneProps) {
+function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessageId = null, onPosted, onSending, newestRootAt, onThreadSize, focusComposer = false }: PaneProps) {
   // Touch devices add a line with Enter and send with the button (#189).
   const touch = useMediaQuery(MEDIA.touch);
   const { project, materials, members } = data;
@@ -115,11 +116,14 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const captureHelperScope = useComposerScope(helperComposer.key);
   const savedMaterial = useMemo(() => savedMaterialForm(materialFormKey), [materialFormKey]);
   const busy = publicComposer.sending;
-  const error = publicComposer.error;
   const [readFailure, setReadFailure] = useState<{ message: string; retry: () => void } | null>(null);
   const [accessLost, setAccessLost] = useState(false);
-  const [messages, setMessages] = useState<Conversation['messages']>(conversation?.messages ?? []);
-  const messagesRef = useRef(messages);
+  const [stored, setMessages] = useState<Conversation['messages']>(conversation?.messages ?? []);
+  const messagesRef = useRef(stored);
+  // A reply confirmed here is shown at once, in place of its queued message, until a read includes it (#264).
+  const messages = useMemo(() => conversation ? mergeMessages(stored, publicComposer.sent.filter((item) => item.message.conversationId === conversation.id).map((item) => item.message)) : stored,
+    [conversation, stored, publicComposer.sent]);
+  const outbox = outboxView(messages, conversation ? publicComposer.pending : [], publicComposer.sent, me.user.id);
   const refreshingRef = useRef(false);
   const [olderCursor, setOlderCursor] = useState(conversation?.messagePage.nextBeforeSequence ?? null);
   const [olderBusy, setOlderBusy] = useState(false);
@@ -197,13 +201,15 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     queueMicrotask(() => { if (current) hideIfDenied(cause); });
     return () => { current = false; };
   }, [referenceWork.state, hideIfDenied]);
-  useEffect(() => { messagesRef.current = messages; }, [messages]);
+  useEffect(() => { messagesRef.current = stored; }, [stored]);
   useEffect(() => {
     try { sessionStorage.setItem(materialFormKey, JSON.stringify({ open: showMaterialForm, title: materialTitle, body: materialBody, url: materialUrl, sourceDraft, mutationId: materialMutationId } satisfies MaterialFormSnapshot)); }
     catch { /* private mode: the form remains usable during this visit */ }
   }, [materialFormKey, showMaterialForm, materialTitle, materialBody, materialUrl, sourceDraft, materialMutationId]);
   const refresh = useCallback(async () => {
-    if (refreshingRef.current) return;
+    // Offline, a read fails and a failed route reload would replace the stream with an error page:
+    // the quiet line says why (#264), and the stream reads again when the connection is back.
+    if (refreshingRef.current || !fluxAnswers()) return;
     refreshingRef.current = true;
     // The stream's refresh reloads the route (newest roots, the project); a thread reads only its own replies.
     if (!conversationId) revalidateRef.current();
@@ -236,6 +242,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     return () => controller.abort();
   }, [showMaterialForm, writable, project.workspaceId, me.user.id]);
 
+  // Flux answers again (not merely a Retry or the browser's `online` event): read what arrived meanwhile.
+  useEffect(() => onFluxAnswered(() => { void refresh(); }), [refresh]);
   useEffect(() => {
     const onFocus = () => { void refresh(); };
     const onVisible = () => { if (document.visibilityState === 'visible') void refresh(); };
@@ -283,8 +291,10 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   // Genuine replies and answers arriving in an open thread rise in gently when the reader sees them (#155,
   // UI116-5); the history the thread opens with and earlier pages never move. The thread's position owner
   // (useMessageWork) decides whether the reader follows the end.
-  const threadIds = conversation ? feedEntries(messages.filter((message) => message.sequence > 1), assistant.answers, !!olderCursor)
-    .map((entry) => entry.type === 'message' ? `message-${entry.message.id}` : `answer-${entry.answer.runId}`) : [];
+  // A confirmed reply keeps its queued message's place and id here, so it is not a second arrival (#264).
+  const messageDomKey = (id: string) => { const key = outbox.keyOf(id); return key === id ? `message-${id}` : key; };
+  const threadIds = conversation ? [...feedEntries(messages.filter((message) => message.sequence > 1), assistant.answers, !!olderCursor)
+    .map((entry) => entry.type === 'message' ? messageDomKey(entry.message.id) : `answer-${entry.answer.runId}`), ...outbox.pending.map((item) => `pending-${item.id}`)] : [];
   useArrivals(scrollRef, threadIds, (id) => document.getElementById(id));
 
   // The stream has no assistant: `/ai …` there would post the prompt for the whole project.
@@ -329,23 +339,22 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     if (asking) { await sendToAssistant(); return; }
     // A private helper prompt is never published as a root (UI116-3); it stays in the private draft.
     if (!writable || assistantInStream) return;
-    const command = publicComposer.begin();
-    if (!command) return;
+    // The message joins the end of the stream or thread at once and the field empties (#264); the
+    // queue sends it with its command, and a second tap finds nothing to send.
+    const outcome = publicComposer.submit(conversation ? messages.at(-1)?.sequence ?? 0 : newestRootAt);
+    if (!outcome) return;
     const active = captureScope();
-    try {
-      const result = conversation?.task ? await contributeToTask(conversation.task.workId, { ...command, kind: 'text' })
-        : conversation ? await reply(conversation.id, command) : await startConversation(project.id, command);
-      publicComposer.finish(command.clientMessageId);
-      if (!active()) return;
-      if (!conversation) onPosted?.(result as Conversation);
+    if (!conversation) onSending?.();
+    else requestAnimationFrame(() => { const feed = scrollRef.current; if (feed && active()) feed.scrollTop = feed.scrollHeight; });
+    const result = await outcome;
+    if (!active()) return;
+    if (result.status === 'delivered') {
+      if (!conversation && result.conversation) onPosted?.(result.conversation);
       void refresh();
-    } catch (cause) {
-      publicComposer.finish(command.clientMessageId, cause);
+    } else if (result.status === 'failed' && result.cause instanceof ApiError && [401, 403, 404].includes(result.cause.status)) {
       // A send's 404 also protects an unavailable file/source. Confirm scope loss through
       // the ordinary project read before hiding the composer needed to recover that draft.
-      if (active() && cause instanceof ApiError && [401, 403, 404].includes(cause.status)) {
-        void getProject(project.id).catch((accessCause: unknown) => { if (active()) hideIfDenied(accessCause); });
-      }
+      void getProject(project.id).catch((accessCause: unknown) => { if (active()) hideIfDenied(accessCause); });
     }
   }
   function onComposerKey(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -433,9 +442,9 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
         <section aria-label="Replies to this message" className="project-convo__messages">
           {conversation ? <>
             {olderCursor ? <Button variant="quiet" busy={olderBusy} onClick={() => void loadOlder()}>Load earlier replies</Button> : null}
-            <ol className="thread__list">{entries.map((entry) => {
+            <ol className="thread__list">{[...entries.flatMap((entry) => {
               const label = day(entry.at);
-              const divider = label !== lastDay ? <li className="project-convo__day" key={`day-${entry.key}`}><span>{label}</span></li> : null;
+              const divider = label !== lastDay ? <li className="project-convo__day" key={`day-${entry.type === 'message' ? outbox.keyOf(entry.message.id) : entry.key}`}><span>{label}</span></li> : null;
               lastDay = label;
               if (entry.type === 'answer') {
                 const answer = entry.answer;
@@ -453,7 +462,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
               }
               const message = entry.message;
               const mine = message.authorId === me.user.id;
-              return [divider, <li key={message.id} id={`message-${message.id}`} data-message-id={message.id} tabIndex={-1} className={`project-convo__message${mine ? ' is-mine' : ''}${arrived === message.id ? ' is-arrived' : ''}`}>
+              // A reply confirmed from its queued message keeps that list item: it does not move or arrive twice (#264).
+              return [divider, <li key={outbox.keyOf(message.id)} id={`message-${message.id}`} data-message-id={message.id} tabIndex={-1} className={`project-convo__message${mine ? ' is-mine' : ''}${arrived === message.id ? ' is-arrived' : ''}`}>
                 <Avatar name={messageAuthor(message)} size="md" tone={mine ? 'me' : 'neutral'} />
                 <div className="project-convo__message-meta"><strong>{mine ? `${messageAuthor(message)} · you` : message.authorId === null ? messageAuthor(message) : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${messageAuthor(message)} directly`}>{messageAuthor(message)}</Link>}</strong><time dateTime={message.createdAt} title={when(message.createdAt)}>{clock(message.createdAt)}</time><span>#{message.sequence}</span></div>
                 {message.body ? <p>{message.body}</p> : null}
@@ -464,7 +474,12 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
                 <ThreadMessageActions writable={writable}><MessageActions projectId={project.id} message={message} writable={writable} busy={makeWork.busy === message.id} onCreateWork={() => void makeWork.create(message)} /></ThreadMessageActions>
                 {makeWork.failed?.messageId === message.id ? <p className="ws-act-error" role="alert">{makeWork.failed.text} <button type="button" onClick={() => void makeWork.create(message)}>Retry</button></p> : null}
               </li>];
-            })}
+            }), ...outbox.pending.flatMap((item) => {
+              const label = day(item.at);
+              const divider = label !== lastDay ? <li className="project-convo__day" key={`day-pending-${item.id}`}><span>{label}</span></li> : null;
+              lastDay = label;
+              return [divider, pendingMessageRow({ place: 'thread', item, name: me.user.name, onRetry: () => publicComposer.retry(item.id), onRemove: () => publicComposer.remove(item.id) })];
+            })]}
             {assistant.run ? <WorkingLine key={assistant.run.id} run={assistant.run} onStop={assistant.stop} onRetry={() => assistant.retry(assistant.run!.id)} onDismiss={assistant.dismissRun} /> : null}
             </ol>
           </> : null}
@@ -485,6 +500,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
           {materialError && !showMaterialForm ? <p role="alert">{materialError}</p> : null}
         </div>
       </section> : null}
+      {writable ? <ConnectionLine /> : null}
       {/* On the phone "Replying to" and the audience share one line, keeping the composer compact. */}
       {asking && writable ? <AskBar id="project-ask" state={ask} error={askFailure} errorAction={grantAction} onExit={exitAsk} onAction={(action) => {
         if (action === 'connect') openDetails('connect-ai');
@@ -499,9 +515,9 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
       <div className="composer__box" onClick={(event) => { if (event.target === event.currentTarget) document.getElementById(composerId)?.focus(); }}>{writable && !asking ? <AttachButton state={publicComposer} /> : null}<button type="button" className="composer__ask project-convo__sources-btn" aria-expanded={trayOpen} aria-controls={trayOpen ? `${conversation ? 'thread' : 'project'}-sources` : undefined} aria-label={`Sources${materialTotal ? `, ${materialTotal} saved` : ''}`} data-tip={writable ? 'Sources to cite' : 'Saved sources to read'} data-tip-align="start" onClick={() => { if (trayOpen) { setSourcesOpen(false); if (writable) setShowMaterialForm(false); } else setSourcesOpen(true); }}><Icon name="doc" /><span className="project-convo__sources-t" aria-hidden="true">Sources</span>{materialTotal ? <span className="project-convo__sources-n" aria-hidden="true">{materialTotal > 99 ? '99+' : materialTotal}</span> : null}</button>{conversation && writable ? <button type="button" className="composer__ask" aria-pressed={asking} aria-label="Ask my assistant" aria-controls={asking ? 'project-ask' : undefined} data-tip="Ask my assistant · /ai" data-tip-align="start"
         onClick={() => { if (asking) exitAsk(); else { setAsking(true); document.getElementById(composerId)?.focus(); } }}><Icon name="spark" /></button> : null}{writable ? <><label className="ui-vh" htmlFor={composerId}>{asking ? 'Ask your assistant' : conversation ? 'Reply' : 'Write a message'}</label><textarea id={composerId} value={draft} onChange={(event) => changeDraft(event.target.value)} onBlur={typing.stop} onKeyDown={onComposerKey} disabled={!writable || busy || askBusy} aria-describedby={asking ? 'project-ask' : assistantInStream ? `${composerId}-ai-hint` : undefined} placeholder={asking ? 'Ask your assistant…' : conversation ? replyHint : 'Write a message…'} rows={1} /><button className="composer__send" aria-label={asking ? 'Send to your assistant' : conversation ? 'Send reply' : 'Send message'} aria-disabled={!composer.canSend || !writable || busy || askBusy || assistantInStream || (asking && ask.kind !== 'ready')} type="button" onClick={() => void send()}><Icon name="send" /></button></> : <p className="project-convo__read-only">Read-only · <span>You have read access to this project.</span></p>}</div>
       {conversation && !accessLost ? <TypingNotice {...typing} /> : null}
+      {writable ? <SendAnnouncer pending={publicComposer.pending} /> : null}
       {writable && assistantInStream ? <p id={`${composerId}-ai-hint`} className="project-convo__hint" role="status">Your assistant answers inside a conversation. Open one and type /ai there. This text is not posted.</p> : null}
       {readFailure ? <p className="project-convo__error" role="alert">{readFailure.message} <button type="button" onClick={readFailure.retry}>Retry read</button></p> : null}
-      {writable && error && !asking ? <p className="project-convo__error"><button type="button" onClick={() => void send()}>Retry send</button></p> : null}
     </div></div>
   </div>;
 }
