@@ -197,7 +197,7 @@ class RouteChunksJourney(unittest.TestCase):
                 page.on("request", lambda request: requested.append(request.url))
                 page.goto(f"/projects/{self.project_id}/conversations/{self.conversation_id}")
                 expect(page.get_by_role("heading", name="Chunk boundaries", exact=True)).to_be_visible()
-                expect(page.get_by_text("An eager conversation stays available before secondary routes", exact=True)).to_be_visible()
+                expect(page.get_by_label("Message from you", exact=True).get_by_text("An eager conversation stays available before secondary routes", exact=True)).to_be_visible()
                 for module in ("ProjectTasks", "ProjectAgents", "DocEditor", "SketchView", "Details", "JumpTo", "LiveStage"):
                     self.assertFalse(any(re.search(rf"/assets/{module}-[^/]+\.js", url) for url in requested), f"The eager conversation does not import {module}")
 
@@ -242,7 +242,8 @@ class RouteChunksJourney(unittest.TestCase):
                 expect(page.locator(".ui-error")).to_be_visible()
                 self.assertEqual(len(refused), 1)
                 page.unroute(pattern, refuse)
-                page.get_by_role("button", name="Try again", exact=True).click()
+                expect(page.get_by_role("button", name="Try again", exact=True)).to_have_count(0)
+                page.get_by_role("button", name="Reload Flux", exact=True).click()
                 expect(page.get_by_role("heading", name="Settings", exact=True)).to_be_visible()
                 expect(page.locator(".ui-error")).to_have_count(0)
 

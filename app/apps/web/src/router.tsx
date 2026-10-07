@@ -4,7 +4,7 @@ import { UpdatePrompt } from './pwa';
 import { AppLayout } from './app/AppLayout';
 import { appLoader } from './app/data';
 import { ProjectConversation, projectConversationLoader, shouldRevalidateProjectConversation } from './app/ProjectConversation';
-import { Booting, RouteErrorPage } from './app/errors';
+import { Booting, RouteCodeLoadError, RouteErrorPage } from './app/errors';
 import { ConversationView, NotFoundView } from './app/views';
 import { projectShellLoader } from './project/data';
 import {
@@ -22,8 +22,20 @@ import { AuthLayout, ForgotPasswordPage, ResetPasswordPage, SignInPage, SignOutP
 // Paths and nesting stay eager so matching needs no download. A secondary route loads its
 // existing component/data functions together, without changing their authority or revalidation.
 // Its failure is contained inside the mounted shell instead of replacing it.
-function secondary(lazy: NonNullable<RouteObject['lazy']>) {
-  return { lazy, ErrorBoundary: RouteErrorPage };
+function secondary(load: Extract<NonNullable<RouteObject['lazy']>, () => Promise<unknown>>) {
+  return {
+    ErrorBoundary: RouteErrorPage,
+    async lazy() {
+      try { return await load(); }
+      catch (cause) {
+        // Router 8 retains route.lazy after a rejected module and renders HydrateFallback before
+        // its error boundary. Finish registration, then fail the loader explicitly: no component,
+        // destination data or successful action is invented. Reload resets the failed module cache.
+        const error = new RouteCodeLoadError(cause);
+        return { loader: () => { throw error; } };
+      }
+    },
+  };
 }
 const docReader = secondary(async () => {
   const page = await import('./docs/DocViews');

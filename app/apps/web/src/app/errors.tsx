@@ -6,12 +6,19 @@ import { useThoughtDraft } from '../sketch/createdDraft';
 import { Button, ErrorState, Spinner } from '../ui';
 import { routeLabel } from './routeLabel';
 
+/** Code download/evaluation failed; retry needs a fresh document/module cache, not API revalidation. */
+export class RouteCodeLoadError extends Error {
+  constructor(cause: unknown) { super('The page code could not be loaded', { cause }); this.name = 'RouteCodeLoadError'; }
+}
+
 /** Full-page failure when the shell itself can't load (e.g. the server is unreachable). */
 export function RouteErrorPage() {
   const error = useRouteError();
   const revalidator = useRevalidator();
   const retrying = revalidator.state === 'loading';
   const sketchId = /\/map\/([0-9a-f-]{36})$/i.exec(useLocation().pathname)?.[1];
+  const destination = routeLabel(useLocation().pathname);
+  const codeUnavailable = error instanceof RouteCodeLoadError;
   const unreachable = error instanceof NetworkError;
   // "This page will work again once the server answers": when the device is back online, and every
   // 10 s while the page is visible, it tries again by itself.
@@ -25,7 +32,10 @@ export function RouteErrorPage() {
   let title = 'Something went wrong';
   let body = 'Flux hit an unexpected problem while opening this page. Nothing you wrote was lost.';
   let detail: string | undefined;
-  if (error instanceof NetworkError) {
+  if (codeUnavailable) {
+    title = 'This page couldn’t be loaded';
+    body = `Flux couldn’t open ${destination}. Your work is kept in this browser. Check your connection and reload Flux to try again.`;
+  } else if (error instanceof NetworkError) {
     title = 'Flux can’t be reached';
     body = 'Your device couldn’t connect to the Flux server. Check your connection; this page will work again once the server answers.';
   } else if (error instanceof ApiError && error.status === 404) {
@@ -41,7 +51,9 @@ export function RouteErrorPage() {
     <main className="page-center">
       <ErrorState level={1} title={title} detail={detail}
         actions={<>
-          <Button variant="primary" size="lg" icon={retrying ? undefined : 'refresh'} busy={retrying} onClick={() => revalidator.revalidate()}>Try again</Button>
+          {codeUnavailable
+            ? <Button variant="primary" size="lg" icon="refresh" onClick={() => window.location.reload()}>Reload Flux</Button>
+            : <Button variant="primary" size="lg" icon={retrying ? undefined : 'refresh'} busy={retrying} onClick={() => revalidator.revalidate()}>Try again</Button>}
           <Link className="ui-btn ui-btn--quiet ui-btn--lg" to="/">Go to Home</Link>
         </>}>
         <p>{body}</p>
