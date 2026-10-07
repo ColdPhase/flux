@@ -168,10 +168,11 @@ class SoftVolume(unittest.TestCase):
         for node in (timestamp, filename):
             self.assert_mono(node)
         # Exercise the actual upload draft, not an injected font demonstration.
+        replies = page.get_by_role("complementary", name="Replies")
         with page.expect_file_chooser() as chooser:
-            page.locator(".project-convo__composer").get_by_role("button", name="Attach files", exact=True).click()
+            replies.get_by_role("button", name="Attach files", exact=True).click()
         chooser.value.set_files({"name": "delivery.csv", "mimeType": "text/csv", "buffer": b"batch,count\nnext,4\n"})
-        draft = page.locator(".composer-files__name").first
+        draft = replies.locator(".composer-files__name")
         expect(draft).to_contain_text("delivery.csv")
         self.assert_mono(draft)
         page.goto(f"/projects/{self.ids['project']}/tasks")
