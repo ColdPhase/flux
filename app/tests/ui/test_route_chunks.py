@@ -7,6 +7,8 @@ exercise the production router and modal owners, without substituting route comp
 from __future__ import annotations
 
 import json
+import os
+from pathlib import Path
 import re
 import unittest
 import uuid
@@ -84,6 +86,16 @@ class RouteChunksJourney(unittest.TestCase):
         else:
             page.get_by_role("button", name=re.compile(self.name)).click()
             page.get_by_role("link", name="All settings", exact=True).click()
+
+    def open_details_by_keyboard(self, page: Page):
+        opener = page.get_by_role("button", name="Details", exact=True)
+        for _ in range(50):
+            if opener.evaluate("element => element === document.activeElement"):
+                break
+            page.keyboard.press("Tab")
+        expect(opener).to_be_focused()
+        page.keyboard.press("Enter")
+        return opener
 
     def hold(self, page: Page, module: str):
         held: list[Route] = []
@@ -207,8 +219,7 @@ class RouteChunksJourney(unittest.TestCase):
                 page = self.page(engine)
                 held = self.hold(page, "Details")
                 self.home(page)
-                opener = page.get_by_role("button", name="Details", exact=True)
-                opener.click()
+                opener = self.open_details_by_keyboard(page)
                 expect(page.locator("#details")).to_contain_text("Opening details…")
                 self.assertEqual(len(held), 1)
                 page.keyboard.press("Escape")
@@ -221,7 +232,7 @@ class RouteChunksJourney(unittest.TestCase):
                 page.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
                 expect(field).to_be_focused()
                 expect(page.locator("#details")).to_have_count(0)
-                opener.click()
+                self.open_details_by_keyboard(page)
                 expect(page.locator("#details .details")).to_be_visible()
                 page.keyboard.press("Escape")
                 expect(opener).to_be_focused()
@@ -234,6 +245,9 @@ class RouteChunksJourney(unittest.TestCase):
                 self.home(page)
                 pattern = re.compile(r"/assets/SettingsHome-[^/]+\.js(?:\?.*)?$")
                 refused = []
+                assets = []
+                page.on("requestfailed", lambda request: assets.append({"event": "failed", "url": request.url, "reason": request.failure}) if "/assets/" in request.url else None)
+                page.on("response", lambda response: assets.append({"event": "response", "url": response.url, "status": response.status}) if "/assets/" in response.url else None)
                 def refuse(route):
                     refused.append(route.request.url)
                     route.abort("failed")
@@ -243,9 +257,21 @@ class RouteChunksJourney(unittest.TestCase):
                 self.assertEqual(len(refused), 1)
                 page.unroute(pattern, refuse)
                 expect(page.get_by_role("button", name="Try again", exact=True)).to_have_count(0)
-                page.get_by_role("button", name="Reload Flux", exact=True).click()
-                expect(page.get_by_role("heading", name="Settings", exact=True)).to_be_visible()
-                expect(page.locator(".ui-error")).to_have_count(0)
+                before = page.evaluate("performance.timeOrigin")
+                try:
+                    with page.expect_navigation(wait_until="domcontentloaded"):
+                        page.get_by_role("button", name="Reload Flux", exact=True).click()
+                    after = page.evaluate("performance.timeOrigin")
+                    self.assertGreater(after, before, "A real new document must reset the failed module graph")
+                    expect(page.get_by_role("heading", name="This device", exact=True)).to_be_visible()
+                    expect(page.locator(".ui-error")).to_have_count(0)
+                finally:
+                    evidence = os.environ.get("FLUX_UI_SCREENSHOTS")
+                    if evidence:
+                        diagnostic = {"engine": engine, "beforeTimeOrigin": before, "afterTimeOrigin": page.evaluate("performance.timeOrigin"), "assets": assets,
+                                      "errorText": page.locator(".ui-error").all_text_contents(), "settingsContent": page.get_by_role("heading", name="This device", exact=True).count()}
+                        Path(evidence).mkdir(parents=True, exist_ok=True)
+                        (Path(evidence) / f"route-code-reload-{engine}.json").write_text(json.dumps(diagnostic, indent=2))
 
 
 if __name__ == "__main__":
