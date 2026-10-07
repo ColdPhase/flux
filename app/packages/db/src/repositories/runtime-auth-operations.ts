@@ -166,9 +166,18 @@ export function runtimeAuthOperations(db: Handle) {
       if (!Number.isInteger(leaseMs) || leaseMs < 1000 || leaseMs > 120_000) throw new Error('Invalid runtime auth renewal');
       return db.transaction(async (tx) => {
         if (!await currentRuntimeAuthOperation(tx, operation)) return false;
-        await tx.execute(sql`UPDATE agent_runtime_auth_operations SET lease_ends_at = least(hard_ends_at,
-          clock_timestamp() + ${leaseMs} * interval '1 millisecond') WHERE operation_id = ${operation.operationId}`);
-        return true;
+        const renewed = await tx.execute(sql`UPDATE agent_runtime_auth_operations SET lease_ends_at = least(hard_ends_at,
+          clock_timestamp() + ${leaseMs} * interval '1 millisecond')
+          WHERE binding_id = ${operation.bindingId} AND client = ${operation.client} AND operation_id = ${operation.operationId}
+            AND revision = ${operation.revision} AND boot_id = ${operation.bootId} AND actor_digest = ${digest(operation)}
+            AND kind = ${operation.kind} AND phase = 'active' AND lease_ends_at > clock_timestamp() AND hard_ends_at > clock_timestamp()
+            AND EXISTS (SELECT 1 FROM auth_sessions WHERE id = ${operation.sessionId} AND user_id = ${operation.ownerUserId}
+              AND expires_at > clock_timestamp())
+            AND EXISTS (SELECT 1 FROM agent_runtime_bindings b JOIN agent_runtime_slots s ON s.slot = b.slot
+              WHERE b.id = ${operation.bindingId} AND b.owner_user_id = ${operation.ownerUserId} AND b.state = 'active' AND s.boot_id = ${operation.bootId})
+            AND EXISTS (SELECT 1 FROM agent_runtime_auth_admission WHERE singleton AND NOT blocked)
+          RETURNING operation_id`);
+        return renewed.rows.length > 0;
       });
     },
     /** Restrictive cancellation remains valid after session loss; it cannot create authority. */

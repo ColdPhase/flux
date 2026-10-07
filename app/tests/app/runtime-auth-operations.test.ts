@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { test } from 'node:test';
+import { PgDialect } from 'drizzle-orm/pg-core';
 import {
   createDatabase, currentRuntimeAuthOperation, runtimeAuthOperations, settleRuntimeAuthOperation,
   RuntimeAuthSupersededError,
@@ -158,4 +159,35 @@ test('paired reverse refuses unsafe active metadata and restores T4 after settle
     assert.equal((await client.query("SELECT to_regclass('agent_runtime_auth_operations') present")).rows[0].present,null);
     await client.query('ROLLBACK');
   } finally { await client.query('ROLLBACK').catch(()=>undefined);client.release(); }
+}));
+
+test('held renewal SQL cannot revive a lease that expires after its initial validation', () => fixture(async (target,operations) => {
+  const operation=claimed(await operations.claim({ ...target,leaseMs:1000 }));
+  let reached!:()=>void, release!:()=>void;
+  const waiting=new Promise<void>(resolve=>{reached=resolve;});
+  const barrier=new Promise<void>(resolve=>{release=resolve;});
+  const dialect=new PgDialect();
+  type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+  const held={ execute:db.execute.bind(db), transaction: <T>(work: (tx: Transaction)=>Promise<T>) => db.transaction(async tx => {
+    const delegate=tx.execute.bind(tx);
+    const proxy=new Proxy(tx,{get(object,key){
+      if(key==='execute') return async (query: Parameters<typeof tx.execute>[0])=>{
+        const text=dialect.sqlToQuery(query as Parameters<typeof dialect.sqlToQuery>[0]).sql;
+        if(text.includes('UPDATE agent_runtime_auth_operations SET lease_ends_at')) { reached(); await barrier; }
+        return delegate(query);
+      };
+      return Reflect.get(object,key);
+    }});
+    return work(proxy);
+  }) };
+  // Real PostgreSQL results, held only at the outbound renewal dispatch. This
+  // reproduces a scheduler/socket stall; no mocked lease or response values.
+  const renewing=runtimeAuthOperations(held).renew(operation,60_000);
+  await waiting;
+  // Synchronize with the actual DB-generated deadline, not a guessed timing delay.
+  await pool.query('SELECT pg_sleep_until($1::timestamptz)',[new Date(operation.leaseEndsAt.getTime()+5)]);
+  assert.equal((await pool.query('SELECT clock_timestamp() > $1::timestamptz expired',[operation.leaseEndsAt])).rows[0].expired,true);
+  release();
+  assert.equal(await renewing,false);
+  assert.equal((await operations.claim({ ...target,kind:'logout' })).kind,'recovery');
 }));
