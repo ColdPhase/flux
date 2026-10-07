@@ -1,0 +1,1 @@
+{"name":"@flux/runtime","version":"0.1.0","private":true,"type":"module","license":"AGPL-3.0-only","dependencies":{"@flux/runtime-protocol":"workspace:*"},"scripts":{"build":"tsc -p tsconfig.build.json"}}

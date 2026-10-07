@@ -179,6 +179,9 @@ importers:
       '@flux/db':
         specifier: workspace:*
         version: link:packages/db
+      '@flux/runtime-protocol':
+        specifier: workspace:*
+        version: link:packages/runtime-protocol
       pg-boss:
         specifier: 12.35.0
         version: 12.35.0
@@ -229,6 +232,12 @@ importers:
         specifier: 8.22.0
         version: 8.22.0
 
+  apps/runtime:
+    dependencies:
+      '@flux/runtime-protocol':
+        specifier: workspace:*
+        version: link:../../packages/runtime-protocol
+
   apps/server:
     dependencies:
       '@better-auth/cimd':
@@ -255,6 +264,9 @@ importers:
       '@flux/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@flux/runtime-protocol':
+        specifier: workspace:*
+        version: link:../../packages/runtime-protocol
       '@modelcontextprotocol/node':
         specifier: 2.1.0
         version: 2.1.0(@modelcontextprotocol/server@2.1.0)(hono@4.13.9)
@@ -341,6 +353,9 @@ importers:
       '@flux/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@flux/runtime-protocol':
+        specifier: workspace:*
+        version: link:../../packages/runtime-protocol
       drizzle-orm:
         specifier: 0.45.3
         version: 0.45.3(patch_hash=c4464c575bb21b7d76a56f7c31ea0c5c7f6b3fca4e40581583dadd6e0944f9e3)(@types/pg@8.15.5)(kysely@0.29.6)(pg@8.23.0)
@@ -404,6 +419,8 @@ importers:
       pg:
         specifier: 8.23.0
         version: 8.23.0
+
+  packages/runtime-protocol: {}
 
   packages/sdk:
     dependencies:

@@ -1,10 +1,15 @@
 # GitHub App connection
 
+**2026-10-05:** [G-1](2026-10-05-app-and-task-rules.md) (proposed, #266 item 12) keeps the
+read-only App and adds rules by which linked PRs move the same Flux task, one-click App setup,
+polling for instances without public HTTPS, and suggested links found in PRs.
+
 This is the first implementation slice of [#74](https://github.com/ColdPhase/flux/issues/74).
 Repository bindings and verified task/PR references are implemented under each
-reader's own GitHub authorization. Native task rules, local-agent delivery,
-external review publication and portable export/import recovery
-remain pending. Fixture checks do not complete the whole issue.
+reader's own GitHub authorization. G-1a task rules ("Let linked PRs move this task") are implemented as recorded in
+[G-1 §2a](2026-10-05-app-and-task-rules.md#2a-g-1a-as-implemented). Local-agent delivery, external review publication,
+polling without public HTTPS, manifest setup and portable export/import recovery remain pending. Fixture checks do not
+complete the whole issue.
 
 ## Operator configuration
 
@@ -88,6 +93,21 @@ binding stops processing and retains internal history; disconnecting a person's
 authorization stops their authorized bindings. A fresh authorization generation
 requires explicit repository reconnection by a manager.
 
+**Linked PRs move the same task (G-1a).** In task Details, a person who can edit the task turns on **Let linked PRs
+move this task** and picks what happens once every required PR is merged: **Ready to close** (default when the task
+has written criteria) or **Mark it done**. A manager can make that the project default for new required links.
+- An open required PR starts the task, a failing check blocks it and checks passing again unblock it.
+- A PR closed without merge blocks it. Done needs Complete mode, no written criteria, done prerequisites and passing
+  checks on every merged head; otherwise the task shows Ready to close.
+- A manual change of status or blocker pauses the rule until someone resumes it. So does losing the author's access
+  or a required repository: disconnect, uninstall, removal from the installation, revoked authorization or restore.
+  Re-binding never restarts it.
+- Each automatic change appears in the task's history as "by GitHub rule · set up by <name>", with the PR, its
+  head commit and the delivery or reconciliation behind it.
+- Routes: `GET`/`PUT /api/v1/work/<taskId>/github-rule`, `POST …/github-rule/resume`, and `PUT
+  /api/v1/projects/<projectId>/github/rule-default`. Viewers get 403 and people outside the project 404.
+- Migration `0052_github_task_rules.sql` is additive.
+
 Signed deliveries persist before 202. Restart-safe retries are per binding,
 under current Flux/GitHub access, and fetch current provider state. Requests have
 fixed origins, 10-second timeouts, 2 MiB bodies and bounded pagination.
@@ -99,10 +119,12 @@ coalesced during an outage. No repository discovery scan or agent wake occurs.
 Completed/irrelevant raw deliveries expire after seven days; pending deliveries
 survive outages. Internal #153 bridge metadata remains undelivered until a
 recipient/subscription adapter checks current repository access. No provider
-facts enter ordinary tasks, discussions, notifications, events or exports.
+facts enter ordinary discussions, notifications, events or exports. Native task status, blocker text and rule history
+change only through a task rule a writer turned on (G-1a).
 
 Run source and SQL/API checks in Docker with `./scripts/check_application.sh`.
-`app/tests/app/github.test.ts` injects typed provider transport fixtures; these are
+`app/tests/app/github.test.ts`, `github-rules.test.ts`, `github-rules-core.test.ts` and the browser checks
+`e2e/github.e2e.ts` and `e2e/github-rules.e2e.ts` inject typed provider fixtures; these are
 not real installation evidence. Full acceptance needs a least-privilege test
 App, public TLS callbacks and real PR/check/review/merge/duplicate/out-of-order/
 access-loss/recovery evidence at the pinned head, plus all remaining native rule,

@@ -33,6 +33,10 @@ if (mailConfig.status !== 'available') throw new Error('The test stack must conf
 const origin = mailConfig.origin;
 const smtp = smtpNotificationMailer(mailConfig);
 after(() => smtp.close());
+// Sends the jobs delivery itself queues (a promoted same-mailbox copy, #329).
+const queue = new PgBoss({ connectionString, migrate: false });
+before(() => queue.start());
+after(() => queue.stop());
 
 /** A person with a real display name, which mentions match against. */
 async function named(name: string, email: string): Promise<Person> {
@@ -329,7 +333,7 @@ describe('email and push delivery', () => {
     assert.ok(new Date(held.rows[0].start_after).getTime() > Date.now() + 60_000, 'the email job waits for the end of quiet hours');
 
     await removeMember(owner, workspaceId, leaver);
-    const outcome = await deliverNotificationEmail({ available: true, origin, uow: emailUnitOfWork(db), mailer: smtp }, { emailId: email!.id });
+    const outcome = await deliverNotificationEmail({ available: true, origin, uow: emailUnitOfWork(db, queue), mailer: smtp }, { emailId: email!.id });
     assert.deepEqual(outcome, { outcome: 'skipped', reason: 'recipient can no longer read the source' });
     const push = await deliverPush({ db, config: loadPushSenderConfig() }, { notificationId: item.id, subscriptionId, userId: leaver.id } satisfies PushSendJob);
     assert.equal(push.outcome, 'skipped');
@@ -361,7 +365,7 @@ describe('email and push delivery', () => {
     const [email] = await waitFor(async () => { const rows = await emailRows(quiet.id); return rows.length ? rows : null; }, 'the queued email');
     // Quiet hours held the job; end them so the in-process deliveries below may send.
     await prefs(quiet, { quietHours: { enabled: false } });
-    const options = { available: true, origin, uow: emailUnitOfWork(db) };
+    const options = { available: true, origin, uow: emailUnitOfWork(db, queue) };
 
     // SMTP refuses: the row goes back to queued and the job is retried.
     const failing: NotificationMailer = { send: async () => ({ kind: 'failed', message: '421 try later' }) };
@@ -496,6 +500,262 @@ describe('recipient matrix and operator TLS (#113)', () => {
     for (const address of extras.values()) assert.notEqual((await signIn(address, password)).response.status, 200);
   });
 
+  test('an identity email that becomes the verified extra address gets one message, not two (#113)', async () => {
+    const lead = await person('Ula Brandt');
+    const someone = await named('Kim Ostrowska', `kim.${randomUUID().slice(0, 8)}@nebula.homes`);
+    const space = (await workspace(lead, 'Mailbox merge')).id;
+    await addMember(lead, space, someone, 'member');
+    const extra = `kim.private-${randomUUID()}@gmail.test`;
+    await verifyExtra(someone, extra);
+    await prefs(someone, { emailDestination: 'both' });
+    // The identity provider later reports the same verified address as the sign-in email.
+    await pool.query('UPDATE auth_users SET email = $1 WHERE id = $2', [extra.toUpperCase(), someone.id]);
+    const before = (await mailsTo(extra)).length;
+    const room = (await project(lead, space, 'Mail merge', 'workspace')).id;
+    const thread = await conversation(lead, room, '@Kim Ostrowska the meter readings are in');
+    await waitForItem(someone, (item) => item.url?.endsWith(thread.messages[0]!.id) === true, 'the in-app record');
+    const rows = await waitFor(async () => {
+      const found = await emailRows(someone.id);
+      return found.length === 2 && found.every((row) => row.status === 'sent' || row.status === 'skipped') ? found : null;
+    }, 'both copies to settle');
+    assert.deepEqual(rows.map((row) => row.status).sort(), ['sent', 'skipped'], 'one copy is sent, the other skipped');
+    await sleep(800);
+    assert.equal((await mailsTo(extra)).length, before + 1, 'exactly one message reaches the shared mailbox');
+  });
+
+  /** One notification with both copies queued and held by quiet hours (real generator rows and pg-boss jobs). */
+  async function heldCopies(lead: Person, space: string, someone: Person, displayName: string, name: string) {
+    await prefs(someone, { quietHours: quietNow() });
+    const room = (await project(lead, space, name, 'workspace')).id;
+    const thread = await conversation(lead, room, `@${displayName} the ${name.toLowerCase()} numbers are in`);
+    const notificationId = (await waitForItem(someone, (item) => item.url?.endsWith(thread.messages[0]!.id) === true, 'the in-app record')).id;
+    const rows = await waitFor(async () => {
+      const found = (await emailRows(someone.id)).filter((row) => row.notification_id === notificationId);
+      return found.length === 2 ? found : null;
+    }, 'both copies queued');
+    assert.deepEqual(rows.map((row) => [row.address_kind, row.status, row.address]).sort(), [['account', 'queued', null], ['extra', 'queued', null]]);
+    const jobs = await pool.query(`SELECT data->>'emailId' AS id, start_after FROM pgboss.job WHERE name = $1 AND data->>'emailId' = ANY($2)`, [NOTIFICATION_EMAIL_JOB, rows.map((row) => row.id)]);
+    assert.equal(jobs.rows.length, 2, 'both copies were actually enqueued');
+    for (const job of jobs.rows) assert.ok(new Date(job.start_after).getTime() > Date.now() + 60_000, 'and are held by quiet hours');
+    const byKind = Object.fromEntries(rows.map((row) => [row.address_kind, row])) as Record<'account' | 'extra', (typeof rows)[number]>;
+    return { notificationId, account: byKind.account, extra: byKind.extra };
+  }
+
+  /** Messages Mailpit accepted for this mailbox, whatever the letter case of the recipient. */
+  async function mailboxCount(address: string) {
+    const ids = new Set<string>();
+    for (const variant of [address.toLowerCase(), address.toUpperCase()]) {
+      for (const mail of await mailsTo(variant)) if (mail.To.some((to) => to.Address.toLowerCase() === address.toLowerCase())) ids.add(mail.ID);
+    }
+    return ids.size;
+  }
+
+  /** Real SMTP: Mailpit accepts; each acceptance is counted by recipient. */
+  function countingSmtp() {
+    const accepted: string[] = [];
+    const mailer: NotificationMailer = { async send(mail) { const result = await smtp.send(mail); if (result.kind === 'accepted') accepted.push(mail.to.toLowerCase()); return result; } };
+    return { accepted, mailer };
+  }
+
+  /** A real SMTP refusal: this catcher requires STARTTLS and the transport will not use it. */
+  function refusingSmtp() {
+    const config = loadNotificationMailConfig({ FLUX_SMTP_URL: 'smtp://mailpit-starttls:1025?ignoreTLS=true', FLUX_MAIL_FROM: 'Flux <flux@example.test>', FLUX_PUBLIC_ORIGIN: origin });
+    return smtpNotificationMailer(config as Extract<typeof config, { status: 'available' }>);
+  }
+
+  test('addresses that become one mailbox after enqueue: a failed send is retried and racing copies send exactly once (#113)', async () => {
+    const lead = await person('Vera Holm');
+    const someone = await named('Nils Wren', `nils.${randomUUID().slice(0, 8)}@nebula.homes`);
+    const space = (await workspace(lead, 'Enqueue then merge')).id;
+    await addMember(lead, space, someone, 'member');
+    const extra = `nils.private-${randomUUID()}@gmail.test`;
+    await verifyExtra(someone, extra);
+    await prefs(someone, { emailDestination: 'both' });
+    const copies = await heldCopies(lead, space, someone, 'Nils Wren', 'Meter');
+    // After both copies were queued, the identity provider reports the private address as the
+    // sign-in email: the two copies now go to one mailbox.
+    await pool.query('UPDATE auth_users SET email = $1 WHERE id = $2', [extra.toUpperCase(), someone.id]);
+    await prefs(someone, { quietHours: { enabled: false } });
+    const before = await mailboxCount(extra);
+    const options = { available: true, origin, uow: emailUnitOfWork(db, queue) };
+    const { accepted, mailer } = countingSmtp();
+    const refusing = refusingSmtp();
+    try {
+      // The SMTP server refuses the account copy: it goes back to queued for its retry.
+      await assert.rejects(deliverNotificationEmail({ ...options, mailer: refusing }, { emailId: copies.account.id }), /SMTP did not accept/);
+      assert.deepEqual((await emailRows(someone.id)).filter((row) => row.notification_id === copies.notificationId).map((row) => row.status), ['queued', 'queued']);
+    } finally { refusing.close(); }
+    // Its retry and the extra copy run at the same time: they serialize on the notification's
+    // rows, one is sent and the other is skipped as the same mailbox.
+    const results = await Promise.all([copies.account, copies.extra].map((row) => deliverNotificationEmail({ ...options, mailer }, { emailId: row.id })));
+    assert.deepEqual(results.map((result) => result.outcome).sort(), ['sent', 'skipped']);
+    assert.deepEqual(results.find((result) => result.outcome === 'skipped'), { outcome: 'skipped', reason: 'this mailbox already gets this notification' });
+    // Later retries of either copy (pg-boss redelivery) change nothing.
+    for (const row of [copies.account, copies.extra]) {
+      const again = await deliverNotificationEmail({ ...options, mailer }, { emailId: row.id });
+      assert.equal(again.outcome, 'skipped');
+      assert.match((again as { reason: string }).reason, /^already (sent|skipped)$/);
+    }
+    assert.deepEqual(accepted, [extra.toLowerCase()], 'exactly one SMTP acceptance for the mailbox');
+    await waitFor(async () => (await mailboxCount(extra)) === before + 1, 'the one message');
+    await sleep(800);
+    assert.equal(await mailboxCount(extra), before + 1, 'Mailpit holds exactly one message for the mailbox');
+  });
+
+  test('one mailbox, copies in flight: a sibling skips while a send is pending, a failed one retries, an uncertain one is never repeated (#113)', async () => {
+    const lead = await person('Ines Kahl');
+    const someone = await named('Otto Brin', `otto.${randomUUID().slice(0, 8)}@nebula.homes`);
+    const space = (await workspace(lead, 'Copies in flight')).id;
+    await addMember(lead, space, someone, 'member');
+    const extra = `otto.private-${randomUUID()}@gmail.test`;
+    await verifyExtra(someone, extra);
+    await prefs(someone, { emailDestination: 'both' });
+    const options = { available: true, origin, uow: emailUnitOfWork(db, queue) };
+
+    // 1. The account copy is at the SMTP server when the extra copy is claimed; the server then refuses.
+    const pending = await heldCopies(lead, space, someone, 'Otto Brin', 'Boiler');
+    await pool.query('UPDATE auth_users SET email = $1 WHERE id = $2', [extra.toUpperCase(), someone.id]);
+    await prefs(someone, { quietHours: { enabled: false } });
+    const before = await mailboxCount(extra);
+    const { accepted, mailer } = countingSmtp();
+    const refusing = refusingSmtp();
+    let release!: () => void;
+    const siblingDone = new Promise<void>((resolve) => { release = resolve; });
+    const slowRefusal: NotificationMailer = { async send(mail) { await Promise.race([siblingDone, sleep(10_000)]); return refusing.send(mail); } };
+    try {
+      const first = deliverNotificationEmail({ ...options, mailer: slowRefusal }, { emailId: pending.account.id });
+      await waitFor(async () => (await emailRows(someone.id)).find((row) => row.id === pending.account.id)?.status === 'sending', 'the account copy to be sending');
+      const sibling = await deliverNotificationEmail({ ...options, mailer }, { emailId: pending.extra.id });
+      release();
+      assert.deepEqual(sibling, { outcome: 'skipped', reason: 'this mailbox already gets this notification' });
+      await assert.rejects(first, /SMTP did not accept/);
+    } finally { release(); refusing.close(); }
+    assert.equal((await emailRows(someone.id)).find((row) => row.id === pending.account.id)?.status, 'queued', 'the refused copy waits for its retry');
+    // Its retry delivers the one message for the mailbox.
+    assert.deepEqual(await deliverNotificationEmail({ ...options, mailer }, { emailId: pending.account.id }), { outcome: 'sent', addressKind: 'account' });
+    assert.deepEqual(accepted, [extra.toLowerCase()]);
+    await waitFor(async () => (await mailboxCount(extra)) === before + 1, 'the retried message');
+
+    // 2. Uncertain: SMTP accepted the extra copy, then the worker died before recording it.
+    const uncertain = await heldCopies(lead, space, someone, 'Otto Brin', 'Gutter');
+    await prefs(someone, { quietHours: { enabled: false } });
+    const crashing: NotificationMailer = { async send(mail) { await mailer.send(mail); throw new Error('worker died after SMTP accepted'); } };
+    await assert.rejects(deliverNotificationEmail({ ...options, mailer: crashing }, { emailId: uncertain.extra.id }), /worker died/);
+    assert.equal((await emailRows(someone.id)).find((row) => row.id === uncertain.extra.id)?.status, 'sending', 'left uncertain');
+    // Neither the sibling nor a retry of the uncertain copy sends again.
+    assert.deepEqual(await deliverNotificationEmail({ ...options, mailer }, { emailId: uncertain.account.id }), { outcome: 'skipped', reason: 'this mailbox already gets this notification' });
+    assert.deepEqual(await deliverNotificationEmail({ ...options, mailer }, { emailId: uncertain.extra.id }), { outcome: 'skipped', reason: 'already sending' });
+    assert.deepEqual(accepted, [extra.toLowerCase(), extra.toLowerCase()], 'one acceptance per notification');
+    await waitFor(async () => (await mailboxCount(extra)) === before + 2, 'the uncertain message');
+    await sleep(800);
+    assert.equal(await mailboxCount(extra), before + 2, 'one message per notification for the mailbox');
+  });
+
+  /** A copy whose SMTP attempt is held open until `release`, then fails as the server refused it. */
+  function heldFailure(onRelease?: () => Promise<void>) {
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => { release = resolve; });
+    const mailer: NotificationMailer = { async send() { await Promise.race([released, sleep(10_000)]); await onRelease?.(); return { kind: 'failed', message: '550 5.1.1 mailbox unavailable' }; } };
+    return { mailer, release };
+  }
+
+  /** One mailbox for both copies: the account copy is sending when the extra copy is skipped. */
+  async function sharedMailboxCopies(lead: Person, someone: Person, displayName: string, name: string) {
+    const space = (await workspace(lead, `${name} lane`)).id;
+    await addMember(lead, space, someone, 'member');
+    const extra = `${displayName.split(' ')[0]!.toLowerCase()}.private-${randomUUID()}@gmail.test`;
+    await verifyExtra(someone, extra);
+    await prefs(someone, { emailDestination: 'both' });
+    const copies = await heldCopies(lead, space, someone, displayName, name);
+    await pool.query('UPDATE auth_users SET email = $1 WHERE id = $2', [extra.toUpperCase(), someone.id]);
+    await prefs(someone, { quietHours: { enabled: false } });
+    return { space, extra, copies };
+  }
+
+  const rowOf = async (userId: string, id: string) => (await emailRows(userId)).find((row) => row.id === id)!;
+  const jobsFor = async (id: string) => (await pool.query(`SELECT singleton_key FROM pgboss.job WHERE name = $1 AND data->>'emailId' = $2 ORDER BY created_on`, [NOTIFICATION_EMAIL_JOB, id])).rows.map((row) => row.singleton_key as string);
+
+  test('a shared mailbox whose sent copy fails permanently gets the skipped copy instead, exactly once (#329)', async () => {
+    const lead = await person('Rhea Lind');
+    const someone = await named('Tomas Ek', `tomas.${randomUUID().slice(0, 8)}@nebula.homes`);
+    const { extra, copies } = await sharedMailboxCopies(lead, someone, 'Tomas Ek', 'Furnace');
+    const before = await mailboxCount(extra);
+    const options = { available: true, origin, uow: emailUnitOfWork(db, queue) };
+    const refusing: NotificationMailer = { send: async () => ({ kind: 'failed', message: '421 4.7.0 try again later' }) };
+    // Attempts 1–5 (pg-boss retries 5 times): each failure puts the account copy back to queued.
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      await assert.rejects(deliverNotificationEmail({ ...options, mailer: refusing }, { emailId: copies.account.id }), /SMTP did not accept/);
+      assert.equal((await rowOf(someone.id, copies.account.id)).status, 'queued', `attempt ${attempt} is retried`);
+    }
+    // Attempt 6 is at the server when the extra copy is claimed: same mailbox, so it is skipped.
+    const last = heldFailure();
+    const sixth = deliverNotificationEmail({ ...options, mailer: last.mailer }, { emailId: copies.account.id });
+    try {
+      await waitFor(async () => (await rowOf(someone.id, copies.account.id)).status === 'sending', 'the last attempt to be sending');
+      assert.deepEqual(await deliverNotificationEmail({ ...options, mailer: smtp }, { emailId: copies.extra.id }), { outcome: 'skipped', reason: 'this mailbox already gets this notification' });
+    } finally { last.release(); }
+    // The last attempt fails: the account copy ends, and the skipped copy is promoted and queued once.
+    assert.deepEqual(await sixth, { outcome: 'failed', reason: 'delivery failed permanently', promoted: copies.extra.id });
+    const account = await rowOf(someone.id, copies.account.id);
+    assert.deepEqual([account.status, account.skip_reason], ['skipped', 'delivery failed permanently']);
+    assert.deepEqual(await jobsFor(copies.extra.id), [copies.extra.id, `${copies.extra.id}:promoted`], 'one promoted job besides the original held one');
+    // The running worker sends it; Mailpit receives exactly one message for the mailbox.
+    await waitFor(async () => (await rowOf(someone.id, copies.extra.id)).status === 'sent', 'the worker to send the promoted copy');
+    await waitFor(async () => (await mailboxCount(extra)) === before + 1, 'the promoted message');
+    // Redelivery of either copy (pg-boss retries, the held jobs) sends nothing more.
+    for (const row of [copies.account, copies.extra]) {
+      const again = await deliverNotificationEmail({ ...options, mailer: smtp }, { emailId: row.id });
+      assert.match((again as { reason: string }).reason, /^already (sent|skipped)$/);
+    }
+    assert.deepEqual(await jobsFor(copies.extra.id), [copies.extra.id, `${copies.extra.id}:promoted`], 'still one promotion');
+    await sleep(800);
+    assert.equal(await mailboxCount(extra), before + 1, 'exactly one message reaches the mailbox');
+  });
+
+  test('a temporary failure that later succeeds promotes nothing (#329)', async () => {
+    const lead = await person('Ada Voss');
+    const someone = await named('Bruno Hale', `bruno.${randomUUID().slice(0, 8)}@nebula.homes`);
+    const { extra, copies } = await sharedMailboxCopies(lead, someone, 'Bruno Hale', 'Chimney');
+    const before = await mailboxCount(extra);
+    const options = { available: true, origin, uow: emailUnitOfWork(db, queue) };
+    const first = heldFailure();
+    const attempt = deliverNotificationEmail({ ...options, mailer: first.mailer }, { emailId: copies.account.id });
+    try {
+      await waitFor(async () => (await rowOf(someone.id, copies.account.id)).status === 'sending', 'the account copy to be sending');
+      assert.deepEqual(await deliverNotificationEmail({ ...options, mailer: smtp }, { emailId: copies.extra.id }), { outcome: 'skipped', reason: 'this mailbox already gets this notification' });
+    } finally { first.release(); }
+    await assert.rejects(attempt, /SMTP did not accept/);
+    assert.deepEqual(await deliverNotificationEmail({ ...options, mailer: smtp }, { emailId: copies.account.id }), { outcome: 'sent', addressKind: 'account' });
+    const skipped = await rowOf(someone.id, copies.extra.id);
+    assert.deepEqual([skipped.status, skipped.skip_reason], ['skipped', 'this mailbox already gets this notification'], 'the skipped copy stays skipped');
+    assert.deepEqual(await jobsFor(copies.extra.id), [copies.extra.id], 'no promoted job');
+    await waitFor(async () => (await mailboxCount(extra)) === before + 1, 'the retried message');
+    await sleep(800);
+    assert.equal(await mailboxCount(extra), before + 1, 'exactly one message reaches the mailbox');
+  });
+
+  test('a promoted copy rechecks access when sent: a recipient removed meanwhile gets nothing (#329)', async () => {
+    const lead = await person('Elin Moss');
+    const someone = await named('Ivo Stark', `ivo.${randomUUID().slice(0, 8)}@nebula.homes`);
+    const { space, extra, copies } = await sharedMailboxCopies(lead, someone, 'Ivo Stark', 'Cellar');
+    const before = await mailboxCount(extra);
+    const options = { available: true, origin, uow: emailUnitOfWork(db, queue), maxAttempts: 1 };
+    // The person is removed from the workspace while the last attempt is at the SMTP server.
+    const last = heldFailure(() => removeMember(lead, space, someone));
+    const attempt = deliverNotificationEmail({ ...options, mailer: last.mailer }, { emailId: copies.account.id });
+    try {
+      await waitFor(async () => (await rowOf(someone.id, copies.account.id)).status === 'sending', 'the account copy to be sending');
+      assert.deepEqual(await deliverNotificationEmail({ ...options, mailer: smtp }, { emailId: copies.extra.id }), { outcome: 'skipped', reason: 'this mailbox already gets this notification' });
+    } finally { last.release(); }
+    assert.deepEqual(await attempt, { outcome: 'failed', reason: 'delivery failed permanently', promoted: copies.extra.id });
+    // The worker claims the promoted copy, rechecks access and skips it.
+    await waitFor(async () => (await rowOf(someone.id, copies.extra.id)).skip_reason === 'recipient can no longer read the source', 'the worker to recheck the promoted copy');
+    assert.equal((await rowOf(someone.id, copies.extra.id)).status, 'skipped');
+    assert.deepEqual(await jobsFor(copies.extra.id), [copies.extra.id, `${copies.extra.id}:promoted`], 'one promotion');
+    await sleep(800);
+    assert.equal(await mailboxCount(extra), before, 'nothing reaches the mailbox');
+  });
+
   for (const [label, url, api] of [
     ['STARTTLS (required)', 'smtp://flux:secret@mailpit-starttls:1025?requireTLS=true', process.env.FLUX_MAILPIT_STARTTLS_URL],
     ['implicit TLS (smtps)', 'smtps://flux:secret@mailpit-smtps:1025', process.env.FLUX_MAILPIT_SMTPS_URL],
@@ -534,7 +794,7 @@ describe('recipient matrix and operator TLS (#113)', () => {
     const [email] = await waitFor(async () => { const rows = await emailRows(target.id); return rows.length ? rows : null; }, 'the queued email');
     await prefs(target, { quietHours: { enabled: false } });
     const failing: NotificationMailer = { send: async () => ({ kind: 'failed', message: 'connect ECONNREFUSED' }) };
-    await assert.rejects(deliverNotificationEmail({ available: true, origin, uow: emailUnitOfWork(db), mailer: failing }, { emailId: email!.id }));
+    await assert.rejects(deliverNotificationEmail({ available: true, origin, uow: emailUnitOfWork(db, queue), mailer: failing }, { emailId: email!.id }));
     const view = expectStatus(await target.browser.request('GET', '/api/v1/notification-preferences'), 200) as NotificationPreferences;
     assert.equal(view.email.available, true);
     assert.ok(view.email.lastFailureAt, 'the person can see that email delivery failed');
@@ -684,7 +944,7 @@ describe('review fixes: exact unsubscribe, bounded verification, quiet hours at 
     // Then the person turns quiet hours on, covering now, in their own (DST-observing) zone.
     const window = quietNow('Europe/Warsaw');
     await prefs(reader, { quietHours: window });
-    const options = { available: true, origin, uow: emailUnitOfWork(db), mailer: smtp };
+    const options = { available: true, origin, uow: emailUnitOfWork(db, queue), mailer: smtp };
     const deferred = await handleEmailJob(boss, options, { emailId });
     assert.equal(deferred.outcome, 'deferred');
     const until = (deferred as { until: Date }).until;

@@ -168,6 +168,24 @@ T11 issue text updates                       after T0
   - `docker inspect` shows the limits and security options on every slot.
   - `./flux backup` contains no slot volume; `./flux reset` removes them.
   - The flag contract test passes against the pinned real CLIs.
+- **Implementation notes (#278, 2026-10-06), for the evaluator:**
+  - The operator's release of a binding is `./flux runtime release runtime-<n>`
+    (with `./flux runtime status`): Flux has no in-app instance administrator
+    role, and inventing one is outside T3.
+  - `runtime-install` verifies the pinned Claude Code (2.1.285, the `stable`
+    channel on 2026-10-05) with Anthropic's documented manifest-signature steps
+    (fingerprint `31DD DE24 … 1A7E CACE` from the setup page) instead of piping
+    `install.sh`, which downloads and runs the latest binary first.
+  - The `runtime` profile is in `docker/compose.source.yaml`, which `./flux`
+    runs. The release `docker/compose.yaml` stays unchanged until the release
+    workflow builds and publishes `ghcr.io/coldphase/flux-agent-runtime`; that
+    is release engineering, recorded as a follow-up.
+  - `codex` is accepted by the switch and shown as pending: Codex stays off until
+    T6 records its hosts.
+  - The automated checks use fake CLIs. The flag contract test against the pinned
+    real CLIs is `scripts/check_runtime_cli_contract.sh`, opt-in and outside CI. It
+    passed on 2026-10-06 (Claude Code 2.1.285, codex-cli 0.160.1); `--max-turns` is
+    not in `claude --help` but is accepted, which T5 should keep checking.
 
 ### T4 — Claude Code sign-in console (new issue; minimum viable slice, part 2)
 

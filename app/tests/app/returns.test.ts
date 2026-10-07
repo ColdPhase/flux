@@ -5,6 +5,7 @@ import type { Conversation, Decision, Doc, Project, ReturnPlace, ReturnPoint, Re
 import { pool } from './support/db.js';
 import type { ClientResponse } from './support/http.js';
 import { addMember, expectStatus, grant, person, project as createProject, workspace, type Person } from './support/people.js';
+import { inBatches } from './support/batches.js';
 
 // The return view, "Since you left" (issue #106): server-side return points per person and
 // place, a summary built only from the reader's own event audience after the point (plus the
@@ -247,8 +248,7 @@ describe('return view: hidden rows never hint at anything', () => {
     for (const someone of [nia, olek]) await view(someone, { type: 'home' });
 
     // More than one page (400) of Nia's audience rows, in a place she will lose.
-    for (let start = 0; start < 450; start += 25)
-      await Promise.all(Array.from({ length: 25 }, (_, index) => say(ari, hiddenThread.id, `Launch step ${start + index + 1}`)));
+    await inBatches(450, (index) => say(ari, hiddenThread.id, `Launch step ${index + 1}`));
     const open = await createProject(ari, ws.id, 'Open notes', 'workspace');
     const openThread = json<Conversation>(await post(ari, `/api/v1/projects/${open.id}/conversations`, { body: 'Welcome to the open notes', clientMessageId: randomUUID() }), 201);
     await say(ari, openThread.id, 'The workshop is on Thursday.');

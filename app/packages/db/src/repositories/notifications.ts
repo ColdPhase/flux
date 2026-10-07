@@ -333,13 +333,22 @@ export function notificationAddressRows(db: DbExecutor) {
 export function notificationEmailRows(db: DbExecutor) {
   return {
     async lockEmail(id: string) {
+      const [target] = await db.select({ notificationId: ob.notificationId }).from(ob).where(eq(ob.id, id));
+      if (!target) return null;
+      // Lock the notification's copies in one order, so concurrent account/extra sends serialize.
+      await db.select({ id: ob.id }).from(ob).where(eq(ob.notificationId, target.notificationId)).orderBy(ob.id).for('update');
       const [row] = await db.select({ email: ob, notification: n }).from(ob)
         .innerJoin(n, and(eq(n.id, ob.notificationId), eq(n.userId, ob.userId))).where(eq(ob.id, id)).for('update', { of: ob });
       if (!row) return null;
       return {
-        id: row.email.id, userId: row.email.userId, addressKind: row.email.addressKind, status: row.email.status,
+        id: row.email.id, userId: row.email.userId, addressKind: row.email.addressKind, status: row.email.status, attempts: row.email.attempts,
         notification: { id: row.notification.id, reason: row.notification.reason ?? null, source: { workspaceId: row.notification.workspaceId, type: row.notification.sourceType, id: row.notification.sourceId } },
       };
+    },
+    async mailboxClaimed(notificationId: string, exceptId: string, address: string) {
+      const [row] = await db.select({ id: ob.id }).from(ob).where(and(eq(ob.notificationId, notificationId), ne(ob.id, exceptId),
+        inArray(ob.status, ['sending', 'sent']), sql`lower(${ob.address}) = lower(${address})`)).limit(1);
+      return !!row;
     },
     async accountAddress(userId: string) {
       const [row] = await db.select({ email: schema.authUsers.email }).from(schema.authUsers).where(eq(schema.authUsers.id, userId));
@@ -360,6 +369,19 @@ export function notificationEmailRows(db: DbExecutor) {
     },
     async requeue(id: string, error: string) {
       await db.update(ob).set({ status: 'queued', lastError: error.slice(0, 300), lastErrorAt: sql`now()` }).where(and(eq(ob.id, id), eq(ob.status, 'sending')));
+    },
+    async failPermanently(id: string, reason: string, error: string) {
+      const rows = await db.update(ob).set({ status: 'skipped', skipReason: reason.slice(0, 200), lastError: error.slice(0, 300), lastErrorAt: sql`now()` })
+        .where(and(eq(ob.id, id), eq(ob.status, 'sending'))).returning({ id: ob.id });
+      return rows.length === 1;
+    },
+    async promoteSkippedCopy(notificationId: string, exceptId: string, skipReason: string) {
+      const [sibling] = await db.select({ id: ob.id }).from(ob).where(and(eq(ob.notificationId, notificationId), ne(ob.id, exceptId),
+        eq(ob.status, 'skipped'), eq(ob.skipReason, skipReason))).orderBy(ob.id).limit(1);
+      if (!sibling) return null;
+      const rows = await db.update(ob).set({ status: 'queued', skipReason: null })
+        .where(and(eq(ob.id, sibling.id), eq(ob.status, 'skipped'), eq(ob.skipReason, skipReason))).returning({ id: ob.id });
+      return rows[0]?.id ?? null;
     },
     /** When the person's most recent email that has not been sent last failed, if within `since`. */
     async lastFailure(userId: string, since: Date) {

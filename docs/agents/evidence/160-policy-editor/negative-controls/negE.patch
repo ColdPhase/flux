@@ -1,0 +1,7 @@
+diff --git a/app/apps/web/src/agents/ProjectPolicy.tsx b/app/apps/web/src/agents/ProjectPolicy.tsx
+index 56c4a06..066b2f3 100644
+--- a/app/apps/web/src/agents/ProjectPolicy.tsx
++++ b/app/apps/web/src/agents/ProjectPolicy.tsx
+@@ -297 +297 @@ export function ProjectPolicy({ projectId, meId, canEdit, managers }: { projectI
+-      {editing ? null : <p className="agents-policy__purpose">{purpose}</p>}
++      {editing || !purpose ? null : null}
