@@ -15,6 +15,7 @@ import re
 import time
 import unittest
 import uuid
+from urllib.parse import parse_qs, urlsplit
 
 from playwright.sync_api import Browser, BrowserContext, Locator, Page, expect, sync_playwright
 
@@ -70,8 +71,9 @@ class TasksBoardJourney(unittest.TestCase):
 
     # ---------------------------------------------------------------- helpers
 
-    def context(self, who: str | None, *, viewport: dict | None = None, phone: bool = False, dark: bool = False, touch: bool = False) -> BrowserContext:
-        options: dict = {"base_url": ORIGIN, "color_scheme": "dark" if dark else "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw"}
+    def context(self, who: str | None, *, viewport: dict | None = None, phone: bool = False, dark: bool = False, touch: bool = False, block_service_workers: bool = False) -> BrowserContext:
+        options: dict = {"base_url": ORIGIN, "color_scheme": "dark" if dark else "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw",
+                         "service_workers": "block" if block_service_workers else "allow"}
         if phone:
             options.update(viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
         else:
@@ -616,6 +618,43 @@ class TasksBoardJourney(unittest.TestCase):
                     self.assertGreaterEqual(value["ratio"], minimum, value)
                 shot(page, f"tasks-board-1440-{theme.lower()}")
         self.assertEqual(len(measured), 2 * 17)
+
+    def test_13_delayed_native_columns_say_which_tasks_are_loading(self) -> None:
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                # The request hold must reach the actual API; a controlling service worker can
+                # bypass page.route. PWA behavior is covered separately.
+                page = self.page("ada", phone=phone, block_service_workers=True)
+                held = []
+                def hold(route):
+                    query = parse_qs(urlsplit(route.request.url).query)
+                    if query.get("purpose") == ["tasks"] and query.get("group", [""])[0] in ("open", "in_progress", "blocked", "finished"):
+                        response = route.fetch()
+                        self.assertEqual(response.status, 200)
+                        held.append((route, response))
+                        page.evaluate("count => window.loadingTaskReadsHeld = count", len(held))
+                    else:
+                        route.continue_()
+                page.route(f"**/api/v1/projects/{self.ids['project']}/work-view?**", hold)
+                self.addCleanup(lambda page=page: page.unroute_all(behavior="ignoreErrors"))
+                page.goto(f"/projects/{self.ids['project']}/tasks?view=board")
+                for column in ("Open", "In progress", "Done"):
+                    if phone:
+                        page.locator(".tb-ov").filter(has_text=column).click()
+                    label = self.column(page, column).locator(".tb-col__empty")
+                    expect(label).to_have_text(f"Loading {column.lower()} tasks…")
+                    expect(label).to_be_visible()
+                    self.assertEqual(label.evaluate("e => e.tagName"), "P")
+                    expect(label).to_have_attribute("class", "tb-col__empty")
+                page.wait_for_function("window.loadingTaskReadsHeld >= 4")
+                self.assertGreaterEqual(len(held), 4, "each real native status read waits")
+                shot(page, f"323-board-loading-{'phone' if phone else 'desktop'}")
+                for route, response in held:
+                    route.fulfill(response=response)
+                page.unroute_all(behavior="wait")
+                expect(page.locator(".tb")).to_have_attribute("data-work-observed-at", re.compile(r".+"))
+                expect(page.locator(".tb-col__empty").filter(has_text=re.compile("^Loading"))).to_have_count(0)
+                self.assertGreater(page.locator(".tb-card").count(), 0, "the stored task cards appear after their responses arrive")
 
 
 if __name__ == "__main__":
