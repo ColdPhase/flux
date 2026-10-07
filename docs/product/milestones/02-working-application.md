@@ -1,18 +1,22 @@
 # Milestone 2 — Working Flux application
 
-## Latest required additions — F-016 / F-017 (2026-09-30)
+## Final design — F-026 (2026-10-07)
 
-[Local MCP co-work](../mcp-cowork.md) and [Studio 11.6](../../design/studio-v11.6.md)
-now govern the new feature and full UI direction. #147 / PR #150 preserves the
-seven inputs and independent reference/contract review; import is not delivery.
-Flux owns the single task/thread, GitHub supplies PR/CI facts through project
+The [final design "Prostota"](../../design/final/README.md) is the only UI and UX on the
+computer and the phone. It is a founder direction: agents implement it as drawn and do not
+re-decide it. [#336](https://github.com/ColdPhase/flux/issues/336) lists the implementation
+issues. It governs every appearance or placement statement in this brief.
+
+## Required additions — F-016 (2026-09-30)
+
+[Local MCP co-work](../mcp-cowork.md) governs the new feature. Flux owns the single task/thread, GitHub supplies PR/CI facts through project
 bindings (#74), several external agents may belong to one person, and standing
 owner grants allow cooperation without routine approval prompts. Keep the
 embedded helper, existing Node stack, tenant/project access and review gates.
 
 The [delivery table](../mcp-cowork.md#delivery-and-evidence--co-5) maps connection,
-co-work, task-thread and motion/presence slices. #136 owns UI integration, #151
-phone-to-ultrawide, #148 themes and #149 map drafts. Required evidence includes
+co-work, task-thread and motion/presence slices. #336 owns the UI, #151
+phone-to-ultrawide and #149 map drafts. Required evidence includes
 real two-owner/three-connection work, task/PR/result review, no duplicate backlog,
 revocation/reconnect, deterministic board rules/manual override, two-user typing,
 all no-AI journeys and F-015/#20 device gates. Active owners and reviews stay;
@@ -28,30 +32,26 @@ project; map thought → experiment → negative result → new direction, also 
 from work; and a useful return after a pivot with AI unavailable. Preserve
 personal, DM and project audiences and the full [coverage ledger](../foundation-coverage.md).
 
-Agents own architecture, stack, UX, feature sequencing and acceptance. They create
+Agents own architecture, stack, feature sequencing and acceptance; the UI and UX are the
+founders' final design (F-026). They create
 and review each other's issues/PRs and further milestones. No founder acceptance
 is required. Use the coverage matrix for areas 8.1–8.16 to keep the full goal visible.
 
-## Current appearance and integrated UX — Studio 11.6 / F-017
+## Appearance and integrated UX — final design / F-026
 
-[UI116-1–UI116-5](../../design/studio-v11.6.md) and the
-[unchanged 11.6 reference/screenshots](../../design/references/studio-v11.6/README.md)
-are the only current visual target. #136 covers the whole application, all five
-work tabs, own-right/others-left conversation, same-task Agents, map count chooser,
-board drop feedback, wiki selection and continuity. #154 supplies creation notice
-and first-message semantics; #155 real typing and restrained motion.
+The [final design](../../design/final/README.md) is the only visual and interaction target.
+[#336](https://github.com/ColdPhase/flux/issues/336) covers the whole application: tokens and
+Kreska, the computer and phone shells, Inbox "Needs you", the five project views, one detail
+panel or sheet, the conversation, hand-off, files and photos, settings, onboarding and the
+small moments. #154 supplies creation notice and first-message semantics; #155 real typing and
+restrained motion.
 
-Preserve merged #133 explicit acknowledgment and active #134 personal outline /
-#135 theme foundations. #148 completes Mint/Sky/Copper, independent light/dark
-choices and migration; #149 adds draft-before-save and safe recovery. Existing
-owners and current-head reviews remain; final integration waits for their outcomes.
-
-The 11.6 reference still needs improved phone Agents reading height, clear phone
-board status navigation and useful wide-screen context. Independent layout work
-can proceed while backend contracts settle. Required no-AI #44 journeys, #57/#68
+Preserve merged #133 explicit acknowledgment and #134 personal outline. #149 adds
+draft-before-save and safe recovery. Existing owners and current-head reviews remain; work
+that changes appearance follows the final design. Required no-AI #44 journeys, #57/#68
 helper, #59 live collaboration, current permissions and #20 mobile evidence remain.
 Demo storage, roles, PR/CI and author assertion counts establish no production
-capability. Earlier appearance inputs are [history](../../design/reference-history.md).
+capability.
 
 ### Adaptive working capacity — F-015 (2026-09-30)
 
@@ -59,8 +59,8 @@ capability. Earlier appearance inputs are [history](../../design/reference-histo
 [ADAPT-1–ADAPT-5](../../design/adaptive-workspaces.md): continuous layout from
 small Android phones through 4K/ultrawide, more useful work/context on large
 screens, familiar navigation and preserved drafts/selection/source position
-during transitions. The same #136 shell owner coordinates this child; final
-#136 acceptance includes it alongside #148/#149. #20 retains mobile/PWA gates.
+during transitions, within the final design. #336 acceptance includes it alongside
+#149. #20 retains mobile/PWA gates.
 
 Use the full viewport/height/scaling/input matrix, intermediate widths, real
 text enlargement, independent visual and running behavior review, measurable
@@ -80,7 +80,7 @@ checkpoints. No periodic global issue/PR/comment scans or idle model calls.
 First-entry analysis covers the Flux plan/wiki/relevant conversations/decisions
 and existing tasks. Agents may create/manage native tasks within standing grants,
 prevent duplicate decomposition and link verified PRs; later read affected changes.
-#74 bridges linked GitHub events/formal reviews; #136 shows understandable pending
+#74 bridges linked GitHub events/formal reviews; the Agents view (#336) shows pending
 work and controls without duplicating the task thread or flooding human unread.
 
 Require real supported client activation and two-owner/three-connection busy-peer,

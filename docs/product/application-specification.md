@@ -5,8 +5,9 @@
 ## Authority and decision status
 
 **Later amendment, 2026-09-30:** [F-016](mcp-cowork.md) adds local external
-co-work and project GitHub bindings; [F-017](../design/studio-v11.6.md) supersedes
-older visual descriptions and amends new-task announcement/first-message flow.
+co-work and project GitHub bindings. **2026-10-07:** [F-026, the final design](../design/final/README.md),
+supersedes every visual description below and draws the new-task notice (one line with its
+source) and the first-message flow.
 Standing owner grants authorize bounded agent domain actions without per-step
 confirmation; existing human-only decision acceptance is unchanged. One task
 and thread remain authoritative, with independent execution/review state.
@@ -28,8 +29,8 @@ The [foundation](FLUX-FOUNDATION.md), [delegation](autonomy.md) and
 and #44 creative scenarios remain useful. Consult the [decision register](decisions.md)
 for current status: O-002 architecture and O-005 external-client path are accepted,
 #52 provides its first implemented MCP foundation, and F-016 extends it through
-#152/#153. F-017 Studio 11.6 is the current appearance target; earlier C/v8/v11
-comparisons and the original proposal's open-decision statuses are historical.
+#152/#153. The appearance is F-026, the final design; the original proposal's
+open-decision statuses are historical.
 Provider, pricing and enterprise claims require their own current evidence.
 
 Use the working terms *workspace, project, material, conversation, decision, work item, result, handoff,* and *agent run* from #14. A decision's proposed, accepted, and superseded states have different authority. A relation has an explicit meaning; map adjacency alone creates no work dependency. The browser, API, stream, worker, search, notification, file, agent and extension paths must apply the same current authorization, including after revocation. The exact schema and routes belong to bounded implementation contracts.

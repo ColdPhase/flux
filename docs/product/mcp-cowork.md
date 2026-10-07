@@ -2,8 +2,8 @@
 
 **Direction F-016, 2026-09-30.** Hubert's later request makes this required
 milestone-2 work. This is a production contract and handoff, **not implemented
-capability**. [Source package](../design/references/studio-v11.6/README.md),
-[UI contract](../design/studio-v11.6.md), and the issue table below belong together.
+capability**. The [final design](../design/final/README.md) (F-026) draws its Agents view,
+hand-off and live agent states; this contract and the issue table below govern behaviour.
 
 ## One workspace experience, one task
 
@@ -214,8 +214,8 @@ human-confirm-every-step rule. Reserved actions still require their authority.
 | Claims, local cooperation, handoffs and current-version review | [#153](https://github.com/ColdPhase/flux/issues/153), depends on connection contract; code path additionally #74 |
 | Ready playbooks and supported Start/Resume | [#160](https://github.com/ColdPhase/flux/issues/160), [CW-1–CW-5](cowork-workflow.md); consumes #152 bootstrap and #153 durable inbox/checkpoint interface |
 | Same-task creation notice and first real discussion message | [#154](https://github.com/ColdPhase/flux/issues/154), amends #36/#101 behavior without rewriting history |
-| Studio 11.6 / Agents tab and responsive integration | #136 with #151; consumes the domain contracts above |
-| Subtle motion and real typing presence | [#155](https://github.com/ColdPhase/flux/issues/155), coordinated with #136 |
+| Agents view, hand-off and responsive integration per the [final design](../design/final/README.md) | [#336](https://github.com/ColdPhase/flux/issues/336) with #151; consumes the domain contracts above |
+| Subtle motion and real typing presence | [#155](https://github.com/ColdPhase/flux/issues/155), coordinated with #336 |
 | MCP sign-in with external identity providers, offboarding and access keys | [F-024](mcp-identity.md), [#273](https://github.com/ColdPhase/flux/issues/273); slices S1–S7 (S5 split into S5a and S5b), S1 after #240 and #294 |
 | Public tool contract: versioning, compatibility and snapshot | [O-010 EXT-1](extension-contracts.md#ext-1--mcp-tool-contract-1), [#251](https://github.com/ColdPhase/flux/issues/251); a new tool from these rows joins tool contract 1 additively with an updated snapshot |
 

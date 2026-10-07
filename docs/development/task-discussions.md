@@ -1,7 +1,7 @@
 # Task notices and genuine discussions (#154)
 
 Recorded 2026-09-30 before implementation. This implements the accepted
-[UI116-3 contract](../design/studio-v11.6.md), under the delegated independent
+UI116-3 contract, now drawn as rule P5 of the [final design](../design/final/README.md#5-behaviour), under the delegated independent
 [design assessment](task-discussions/2026-09-30-design-review.md). The issue's
 AC-1–AC-5 remain required; this design record does not establish delivery.
 

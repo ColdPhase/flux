@@ -35,9 +35,9 @@ client) and covers the core loop of working together:
 The [current milestone](https://github.com/ColdPhase/flux/milestone/2) tracks the rest of
 the first release, including installation and notifications on real phones and tablets.
 
-`flux-ux-v8.html` is an earlier single-file UX prototype (Polish interface, browser
-storage only). It is design inspiration, not the application; see the
-[prototype guide](docs/prototype/README.md).
+The application follows one design for the computer and the phone, the
+[final design "Prostota"](docs/design/final/README.md). Its screens and guidelines are the
+reference for every UI change.
 
 ## Quick start
 

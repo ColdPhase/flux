@@ -77,7 +77,7 @@ These are drafted in the repository and reviewed like code. Publication follows
   - upgrade and backup notes;
   - checksums.
 - **README:**
-  - refresh the demo GIF once #275 (Friendly Flux) and the phone look (F-025) are on `main`;
+  - refresh the demo GIF once the final design (#336) is on `main`;
   - add one phone screenshot;
   - make sure the first screen answers what Flux is, who it is for, and how to try it.
 - **A 60–90 s demo video of the core journey** on the demo data: a person and an agent in one
@@ -116,7 +116,7 @@ These are drafted in the repository and reviewed like code. Publication follows
 ## Order
 
 L-1 and L-2 start now; they need no other work. The L-3 drafts start now. The README, GIF and
-video in L-3 wait for #275 and the F-025 phone work, and the release notes wait for #249. L-4's
+video in L-3 wait for the final design (#336), and the release notes wait for #249. L-4's
 partner profile and guide come before the release; the weekly review starts after it.
 
 ## Not in this plan

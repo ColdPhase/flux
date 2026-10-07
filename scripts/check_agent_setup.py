@@ -77,8 +77,7 @@ def validate(root: Path) -> list[str]:
             errors.append(f"missing document: {path.relative_to(root)}")
             continue
         content = path.read_text(encoding="utf-8")
-        # The v8 prototype notes (Polish, historical) use `flux-*` for browser storage keys.
-        skills = [] if path.is_relative_to(root / "docs/prototype") else re.findall(r"`(flux-[a-z0-9-]+)`", content)
+        skills = re.findall(r"`(flux-[a-z0-9-]+)`", content)
         for skill in skills:
             require(skill in skill_names,
                     f"{path.relative_to(root)}: references missing skill {skill}")

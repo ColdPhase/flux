@@ -1,13 +1,13 @@
 # Project capture and conversation backend (#36)
 
-**Later required amendment, 2026-09-30:** [UI116-3](../design/studio-v11.6.md#one-announcement-then-the-real-discussion--ui116-3)
+**Later required amendment, 2026-09-30 (UI116-3; drawn as rule P5 of the [final design](../design/final/README.md#5-behaviour)):**
 separates one task-created system notice from the first true contribution/root,
 retains the same one-level thread across all views, and preserves history and
 private helper prompts. [#154](https://github.com/ColdPhase/flux/issues/154) owns implementation; current code below is not
-claimed to satisfy the new semantics. [UI116-5](../design/studio-v11.6.md#subtle-motion-and-truthful-typing--ui116-5)
+claimed to satisfy the new semantics. UI116-5 ([motion and agent states](../design/final/README.md#3-kreska-logo-agent-icon-and-mascot))
 adds scoped ephemeral typing without durable messages or notification/model effects.
 
-**One project conversation, 2026-10-02:** [UI116-1 clarification](../design/studio-v11.6.md#one-project-conversation--ui116-1-clarification).
+**One project conversation, 2026-10-02 (UI116-1):** see the [final design's structure](../design/final/README.md#4-structure-and-navigation).
 The UI presents a project's stored conversations as one stream: each conversation's
 opening message (sequence 1) is a root, and its later messages are that root's
 one-level thread. Storage, commands and URLs are unchanged; see
