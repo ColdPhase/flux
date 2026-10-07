@@ -169,7 +169,7 @@ function Card({ item, from, column, meId, writable, hintId, saving, dragged, lif
     <li className={classes} data-card-id={item.id} aria-busy={saving || undefined}
       onPointerDown={onPointerDown} onClickCapture={onClickCapture} onDragStart={(event) => event.preventDefault()}>
       <div className="tb-card__top">
-        <span className="tb-card__id" title={`Task ${taskNumber(item)} · ${item.id}`}><span className="ui-vh">Task </span>{taskNumber(item)}</span>
+        <span className="tb-card__id" title={`Task ${taskNumber(item)} · ${item.id}`}><span className="ui-vh">Task </span><span className="ui-task-number">{taskNumber(item)}</span></span>
         {state ? <span className={`tb-card__state${blocked ? ' tb-card__state--blocked' : ''}`}>{blocked ? <Icon name="alert" size={12} /> : null}{state}</span> : null}
         {writable ? (
           <IconButton ref={menuButton} icon="more" size={15} label="Move to…" className="tb-card__menu" aria-haspopup="menu" aria-expanded={menuOpen}
@@ -678,7 +678,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
       </div>
       {dragging ? createPortal(
         <div ref={ghostRef} className="tb-ghost" aria-hidden="true" style={{ width: dragging.width }}>
-          <span className="tb-card__id">{taskNumber(dragging)}</span>
+          <span className="tb-card__id"><span className="ui-task-number">{taskNumber(dragging)}</span></span>
           <span className="tb-ghost__t">{dragging.title}</span>
         </div>,
         document.body,

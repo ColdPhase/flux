@@ -530,7 +530,7 @@ function NoticeItem({ notice, meId, row, onOpenTask }: { notice: TaskCreationNot
         <button type="button" className="convo-notice__task" data-native-ref={`work:${notice.workId}`} onClick={() => onOpenTask(notice.workId)} aria-label={`Open task #${notice.workNumber} ${title}`}>
           {/* The task's name in the project (#276), from the announcement itself, so nothing shifts when rows arrive. The
               accessible name holds the visible "#12 Title" in the same order. */}
-          <span className="convo-notice__num">#{notice.workNumber}</span><span className="convo-notice__title">{title}</span><Icon name="chevron-right" size={14} />
+          <span className="convo-notice__num ui-task-number">#{notice.workNumber}</span><span className="convo-notice__title">{title}</span><Icon name="chevron-right" size={14} />
         </button>
       </span>
       <time dateTime={notice.createdAt} title={when(notice.createdAt)}>{clock(notice.createdAt)}</time>

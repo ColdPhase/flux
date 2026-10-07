@@ -140,6 +140,8 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(panel.locator(".wd-eyebrow")).to_contain_text("In progress")
         # Details names the task by its number in the project (#276).
         expect(panel.locator(".wd-eyebrow")).to_have_text(re.compile(r"^Task #[1-9]\d* · In progress"))
+        expect(panel.locator(".wd-eyebrow .ui-task-number")).to_have_text("#1")
+        expect(message.locator(".ws-chip .ui-task-number")).to_have_text("#1")
         panel.get_by_label("Owner").select_option(f"human:{PARTNER['id']}")
         expect(message.get_by_role("button", name=f"Work: {IDEA}")).to_contain_text("Kai Berg")
         stored = self.work(page)["work"]

@@ -301,6 +301,9 @@ class TaskAnnouncements(unittest.TestCase):
                 box, row = button.bounding_box(), made.bounding_box()
                 assert box and row
                 self.assertGreaterEqual(box["height"], 44, "the link is a full touch target")
+                number = made.locator(".ui-task-number")
+                self.assertIn("monospace", number.evaluate("node => getComputedStyle(node).fontFamily"))
+                self.assertGreaterEqual(number.evaluate("node => parseFloat(getComputedStyle(node).fontSize)"), 12.5, "F-026 phone task number uses readable metadata")
                 self.assertLessEqual(row["x"] + row["width"], viewport["width"], "no sideways overflow")
                 title = made.locator(".convo-notice__title")
                 height = title.evaluate("node => node.getBoundingClientRect().height")

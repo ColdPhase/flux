@@ -115,7 +115,7 @@ export function ThoughtTasks({ thought, tasks: entry, projectId, variant, onOpen
               <span className={`ws-dot ws-dot--${item.parked ? 'parked' : item.status}`} aria-hidden="true" />
               <span className="sk-task__b">
                 <span className="sk-task__t">{item.title}</span>
-                <span className="sk-task__m"><span className="sk-task__id">{taskNumber(item)}</span> · {STATUS_LABEL[item.status]}{item.parked ? ' · parked' : ''}</span>
+                <span className="sk-task__m"><span className="sk-task__id"><span className="ui-task-number">{taskNumber(item)}</span></span> · {STATUS_LABEL[item.status]}{item.parked ? ' · parked' : ''}</span>
                 <span className="sk-task__m sk-task__people">{item.owner ? `Owner ${item.owner.name}${item.owner.kind === 'agent' ? ' (agent)' : ''}` : 'No owner yet'} · added by {item.createdBy.name}{item.createdBy.kind === 'agent' ? ' (agent)' : ''}</span>
               </span>
               <Icon name="chevron-right" size={14} />

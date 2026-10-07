@@ -94,8 +94,6 @@ html.tb-is-dragging .tb-card:hover { border-color: var(--line); background: var(
 .tb-card:has(.tb-card__open:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
 .tb-card__top { display: flex; align-items: center; gap: 8px; min-height: 20px; margin: -4px -6px 0 0; }
 .tb-card__id { font-size: var(--fs-xs); letter-spacing: .5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
-/* The number is the task's name now (#276), so on touch it is at least 11 px (HIG-08). */
-@media (pointer: coarse) { .tb-card__id { font-size: max(11px, var(--fs-xs)); } }
 .tb-card__state { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-xs); font-weight: 500; color: var(--text-2); }
 .tb-card__state--blocked { color: var(--warning); }
 .tb-card__menu.ui-icon-btn { position: relative; z-index: 2; width: 28px; height: 28px; margin-left: auto; }

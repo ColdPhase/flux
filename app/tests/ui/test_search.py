@@ -371,6 +371,37 @@ class SearchJourney(unittest.TestCase):
             if "oak" in query:
                 shot(page, "search-open-old-dm-message-desktop-1440")
 
+    def test_11_task_number_leads_jump_to_even_on_a_busy_project(self) -> None:
+        owner = self.page("ari")
+        place = self.api(owner, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects",
+                         {"name": "Hedge sensor calibration", "visibility": "restricted"}, status=201)
+        titles = ["Phase 2 walnut probes", "Seal the barrel lid", "Order 2 spare probes"] + [
+            f"Log the hedge reading {chr(97 + index)}" for index in range(23)]
+        tasks = [self.api(owner, "POST", f"/api/v1/projects/{place['id']}/work",
+                          {"title": title}, status=201) for title in titles]
+        target = tasks[1]
+        self.assertEqual(target["number"], 2)
+        hidden = self.api(self.page("olek"), "GET", "/api/v1/search?q=%232", status=200)
+        self.assertNotIn(f"work:{target['id']}", [item["id"] for item in hidden["items"]])
+
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page = self.page("ari", phone=phone)
+                page.goto(f"/projects/{place['id']}/tasks")
+                expect(page.locator(".tb-card").first).to_be_visible()
+                page.keyboard.press("Control+k")
+                dialog = page.get_by_role("dialog", name="Jump to")
+                field = dialog.get_by_role("combobox", name="Jump to")
+                for query in ("#2", "2", " #2 "):
+                    field.fill(query)
+                    expect(dialog.get_by_role("option").first).to_contain_text(target["title"])
+                field.press("Enter")
+                details = page.locator("#details")
+                expect(details.get_by_role("heading", name=target["title"], exact=True)).to_be_visible()
+                expect(details.locator(".wd-eyebrow .ui-task-number")).to_have_text("#2")
+                self.no_horizontal_scroll(page)
+                shot(page, f"task-number-jump-{'phone-390' if phone else 'desktop-1440'}")
+
 
 if __name__ == "__main__":
     unittest.main()

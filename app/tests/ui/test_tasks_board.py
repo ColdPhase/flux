@@ -207,6 +207,9 @@ class TasksBoardJourney(unittest.TestCase):
         # A task is named by its number in the project, "#12" (#276); the id stays in the tooltip.
         self.assertEqual(self.numbers["order"], 1, "the project's first task is #1")
         expect(order.locator(".tb-card__id")).to_have_text("Task #1")
+        number = order.locator(".ui-task-number")
+        self.assertIn("monospace", number.evaluate("node => getComputedStyle(node).fontFamily"))
+        self.assertGreaterEqual(number.evaluate("node => parseFloat(getComputedStyle(node).fontSize)"), 12)
         expect(order.locator(".tb-card__id")).to_have_attribute("title", f"Task #1 · {self.ids['order']}")
         expect(self.card(doing, SOLDER).locator(".tb-card__id")).to_have_text(f"Task #{self.numbers['solder']}")
         expect(order.get_by_role("button", name=ORDER, exact=True)).to_be_visible()
@@ -523,6 +526,9 @@ class TasksBoardJourney(unittest.TestCase):
         expect(self.column(page, "Open")).to_have_count(0)
         expect(self.column(page, "Done")).to_have_count(0)
         expect(self.column(page, "In progress").locator(".tb-card").first).to_contain_text(SOLDER)
+        number = self.card(page, SOLDER).locator(".ui-task-number")
+        expect(number).to_have_text(f"#{self.numbers['solder']}")
+        self.assertGreaterEqual(number.evaluate("node => parseFloat(getComputedStyle(node).fontSize)"), 12.5, "F-026 phone metadata remains readable")
         column = self.column(page, "In progress").bounding_box()
         assert column
         self.assertLessEqual(column["x"] + column["width"], PHONE["width"], "the column fits the phone")
