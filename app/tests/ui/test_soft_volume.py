@@ -301,6 +301,10 @@ class SoftVolume(unittest.TestCase):
                     parked = group.get_by_role("radio", name="Park", exact=True)
                     expect(parked).to_be_checked()
                     expect(parked).to_be_focused()
+                    # Reach the selected radio by Tab, rather than carrying the earlier pointer focus.
+                    page.keyboard.press("Tab")
+                    page.keyboard.press("Shift+Tab")
+                    expect(parked).to_be_focused()
                     self.assertEqual(parked.evaluate("e => e.matches(':focus-visible')"), True)
                     ring = parked.evaluate("e => { const s = getComputedStyle(e); return [s.outlineColor, s.outlineStyle, s.outlineWidth]; }")
                     self.assertEqual(ring, [RGB(tokens["--t1"]), "solid", "2px"])
