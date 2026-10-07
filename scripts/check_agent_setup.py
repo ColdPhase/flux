@@ -188,8 +188,7 @@ def validate(root: Path) -> list[str]:
         content = path.read_text(encoding="utf-8")
         for line, label in undefined_numeric_references(content):
             errors.append(f"{path.relative_to(root)}:{line}: undefined numeric reference [{label}]")
-        # The v8 prototype notes (Polish, historical) use `flux-*` for browser storage keys.
-        skills = [] if path.is_relative_to(root / "docs/prototype") else re.findall(r"`(flux-[a-z0-9-]+)`", content)
+        skills = re.findall(r"`(flux-[a-z0-9-]+)`", content)
         for skill in skills:
             require(skill in skill_names,
                     f"{path.relative_to(root)}: references missing skill {skill}")

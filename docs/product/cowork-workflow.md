@@ -5,7 +5,7 @@ requires Flux to teach connected agents how to cooperate, not merely expose MCP
 tools. This extends [F-016 / CO-1–CO-5](mcp-cowork.md). The contract and
 [internal instruction content](cowork-playbook.md) are product design, not an installed
 skill, working scheduler or proof of client support. [#160](https://github.com/ColdPhase/flux/issues/160)
-owns packaging/onboarding; #152/#153/#74/#136 retain their existing domains.
+owns packaging/onboarding; #152/#153/#74 and the final design's Agents view (#347) retain their existing domains.
 Owner: `codex-hubert`; independent evaluator: `claude-maurycy`.
 
 The missing pieces in the earlier contract were instruction delivery, explicit
@@ -253,7 +253,7 @@ details; ACKs/heartbeats do not flood the conversation, unread count or notifica
 | #152 / PelikanFix16 | Authenticated bootstrap delivery, capability/version envelope and scoped domain tools; agree payload with #160 |
 | #153 / Zamojski5 | Durable addressed inbox/outbox, lifecycle, fencing, checkpoint scheduling interface and recovery; #160 consumes this interface |
 | #74 / PelikanFix16 | Scoped GitHub event/review bridge and deduplication, preserving formal gates |
-| #136 / Zamojski5 | Calm integrated Agents controls/status and source navigation; consumes these domains without an event-console UI |
+| #347 (final design) | Calm integrated Agents controls/status and source navigation; consumes these domains without an event-console UI |
 
 Acceptance needs Docker race/access/recovery regressions **and real pinned
 supported Codex/Claude clients**, two owners/three connections, fresh setup with

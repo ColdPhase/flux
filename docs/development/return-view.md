@@ -1,7 +1,7 @@
 # Return view: "Since you left" (issue #106)
 
-Foundation 8.8, pillar F5, the #44 "Return and pivot" contract and direction C (`#since` in the
-[variant C prototype](../design/proposals/o-003-ui-direction/variant-c-calm-messenger.html)): one
+Foundation 8.8, pillar F5, the #44 "Return and pivot" contract and the
+[final design](../design/final/README.md#5-behaviour) rule S7 ("Since you left"): one
 slim "N updates since …" line that expands into a short list in human language. There is no
 guilt here: no streaks, no forced clearing, no rail badges. At most one next step is shown,
 always with its reason.
