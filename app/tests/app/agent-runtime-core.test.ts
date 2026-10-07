@@ -431,6 +431,17 @@ describe('sign-in to Claude Code (T4 #279)', () => {
     assert.equal((await runtime.signOut('ada', 'claude_code')).connections.claude_code?.signOut?.failed, false);
   });
 
+  for (const outcome of ['ok', 'failed', 'timeout', 'not_installed', 'skipped'] as const) {
+    test(`completed ${outcome} sign-out preserves the honest vendor-session warning`, async () => {
+      const { runtime, target, reported } = await owned();
+      await runtime.recordSignIn('ada', { ...target, client: 'claude_code', method: 'claude_account' }, facts('ada@example.org'));
+      reported.logout = outcome;
+      const after = await runtime.signOut('ada', 'claude_code');
+      assert.equal(after.connections.claude_code?.state, 'signed_out');
+      assert.equal(after.connections.claude_code?.signOut?.failed, outcome !== 'ok');
+    });
+  }
+
   test('check reads the CLI\'s status again', async () => {
     const { runtime, reported } = await owned();
     reported.status = facts('ada@example.org');

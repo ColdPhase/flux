@@ -179,7 +179,7 @@ export function agentRuntimeUseCases(config: AgentRuntimeConfig, store: AgentRun
       const binding = await activeBinding(ownerUserId);
       const outcome = await manager!.logout(binding.slot, binding.id, client);
       if (!outcome.ok) throw unavailable();
-      await store.recordSignOut(ownerUserId, binding.id, client, outcome.value.logout === 'failed' || outcome.value.logout === 'timeout');
+      await store.recordSignOut(ownerUserId, binding.id, client, outcome.value.logout !== 'ok');
       return status(ownerUserId);
     },
     async dismissAccountNotice(ownerUserId, client) {
