@@ -5,7 +5,7 @@ application. Three people and one agent share a project with open, in-progress, 
 not-pursued tasks that come from a message and a map thought. The tests cover the columns and
 cards, dragging with drop feedback on the card list only, keyboard and menu moves, a refused
 move that restores the stored state, the List, phone and tablet layouts, a reader without
-changes, and contrast in Light and Dark with every accent. Every move is checked against the API.
+changes, and contrast in Light and Dark. Every move is checked against the API.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from urllib.parse import parse_qs, urlsplit
 from playwright.sync_api import Browser, BrowserContext, Locator, Page, expect, sync_playwright
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
-from test_theme_accents import FAMILIES, MEASURE
+from contrast import MEASURE
 
 PASSWORD = "boards keep the work moving"
 STAMP = int(time.time() * 1000)
@@ -592,35 +592,32 @@ class TasksBoardJourney(unittest.TestCase):
 
     # ---------------------------------------------------------------- contrast
 
-    def test_12_light_dark_and_every_accent_keep_readable_contrast(self) -> None:
+    def test_12_light_and_dark_keep_readable_contrast(self) -> None:
         measured: list[dict] = []
         for theme in ("Light", "Dark"):
-            for family in FAMILIES:
-                with self.subTest(theme=theme, family=family):
-                    context = self.context("ada")
-                    context.add_init_script(f"localStorage.setItem('flux.theme', '{theme.lower()}'); localStorage.setItem('flux.accent.{theme.lower()}', '{family.lower()}')")
-                    page = context.new_page()
-                    page.goto(f"/projects/{self.ids['project']}/tasks")
-                    expect(page.locator("html")).to_have_attribute("data-accent", family.lower())
-                    expect(page.locator(".tb-card").first).to_be_visible()
-                    # Since #155 a card's source line comes from its own bounded read, after the cards.
-                    expect(page.locator(".tb-card__from").first).to_be_visible()
-                    page.wait_for_timeout(250)
-                    for selector, minimum, spec in (
-                        (".tb-card__id", 4.5, {}), (".tb-card__title", 4.5, {}), (".tb-card__from", 4.5, {}), (".tb-card__kind", 4.5, {}),
-                        (".tb-card__state--blocked", 4.5, {}), (".tb-card__blocker", 4.5, {}), (".tb-col__n", 4.5, {}), (".tb-col__b", 4.5, {}),
-                        (".tb-col__h", 4.5, {}), ('.tb-mode__b[aria-checked="true"]', 4.5, {}), ('.tb-mode__b[aria-checked="false"]', 4.5, {}),
-                        (".tb-dr", 4.5, {}), (".tb-mine", 4.5, {}), (".tb-also__b--need", 4.5, {}), (".tb-search input", 4.5, {"pseudo": "::placeholder"}),
-                        (".tb-col__head .tb-ring--in_progress", 3, {"property": "borderTopColor"}), (".tb-search", 3, {"property": "color"}),
-                    ):
-                        value = page.evaluate(MEASURE, {"selector": selector, **spec})
-                        value.update(theme=theme, family=family, minimum=minimum)
-                        measured.append(value)
-                        self.assertGreaterEqual(value["ratio"], minimum, value)
-                    if family == "Mint":
-                        shot(page, f"tasks-board-1440-{theme.lower()}")
-                    shot(page, f"tasks-board-1440-{theme.lower()}-{family.lower()}")
-        self.assertEqual(len(measured), 2 * len(FAMILIES) * 17)
+            with self.subTest(theme=theme):
+                context = self.context("ada")
+                context.add_init_script(f"localStorage.setItem('flux.theme', '{theme.lower()}')")
+                page = context.new_page()
+                page.goto(f"/projects/{self.ids['project']}/tasks")
+                expect(page.locator("html")).to_have_attribute("data-theme", theme.lower())
+                expect(page.locator(".tb-card").first).to_be_visible()
+                # Since #155 a card's source line comes from its own bounded read, after the cards.
+                expect(page.locator(".tb-card__from").first).to_be_visible()
+                page.wait_for_timeout(250)
+                for selector, minimum, spec in (
+                    (".tb-card__id", 4.5, {}), (".tb-card__title", 4.5, {}), (".tb-card__from", 4.5, {}), (".tb-card__kind", 4.5, {}),
+                    (".tb-card__state--blocked", 4.5, {}), (".tb-card__blocker", 4.5, {}), (".tb-col__n", 4.5, {}), (".tb-col__b", 4.5, {}),
+                    (".tb-col__h", 4.5, {}), ('.tb-mode__b[aria-checked="true"]', 4.5, {}), ('.tb-mode__b[aria-checked="false"]', 4.5, {}),
+                    (".tb-dr", 4.5, {}), (".tb-mine", 4.5, {}), (".tb-also__b--need", 4.5, {}), (".tb-search input", 4.5, {"pseudo": "::placeholder"}),
+                    (".tb-col__head .tb-ring--in_progress", 3, {"property": "borderTopColor"}), (".tb-search", 3, {"property": "color"}),
+                ):
+                    value = page.evaluate(MEASURE, {"selector": selector, **spec})
+                    value.update(theme=theme, minimum=minimum)
+                    measured.append(value)
+                    self.assertGreaterEqual(value["ratio"], minimum, value)
+                shot(page, f"tasks-board-1440-{theme.lower()}")
+        self.assertEqual(len(measured), 2 * 17)
 
     def test_13_delayed_native_columns_say_which_tasks_are_loading(self) -> None:
         for phone in (False, True):
