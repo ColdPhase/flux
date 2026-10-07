@@ -1,166 +1,154 @@
-/* Flux theme tokens: Studio 11.6 (F-017), measured from the supplied prototype (#136), with
-   Mint (default), Sky and Copper accent families (#148). See docs/design/studio-v11.6-design-system.md.
-   Accent marks selection, links, focus and unread only; primary actions use the neutral --action.
-   scripts/check_contrast.py checks all six palettes. */
+/* Flux tokens: Soft volume, the final design "Prostota" (F-026, #336). The values are the design's
+   own (docs/design/final/README.md §2): one neutral palette in light and dark and no accent colour.
+   Status is a glyph plus a word; colour appears only in user photos and in the Agents section.
+   scripts/check_contrast.py checks the text and icon pairs in both themes. */
+
+/* Geist and Geist Mono 1.7.2 (SIL Open Font License 1.1, ./fonts/OFL.txt), served with the app. */
+@font-face {
+  font-family: "Geist"; font-style: normal; font-weight: 100 900; font-display: swap;
+  src: url("./fonts/Geist-Variable.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Geist Mono"; font-style: normal; font-weight: 100 900; font-display: swap;
+  src: url("./fonts/GeistMono-Variable.woff2") format("woff2");
+}
+
 :root {
   color-scheme: light;
 
-  /* Surfaces: the chrome behind the sheet and sidebar, the sheet itself, and quiet fills */
-  --bg-chrome: #f2f3f5;
-  --bg: #ffffff;
-  --bg-raised: #ffffff;
-  --bg-side: #f4f5f7;   /* quiet fill inside the sheet (was the sidebar) */
-  --bg-hover: #eceef2;
-  --bg-active: #f4f5f7;
-  --sheet-edge: #dde2e9;
-  --bubble: #f4f5f7;
-  --bubble-own: var(--bubble-own-light);
-  --tint-danger: #fbece8;
-  --tint-ok: #eaf4ee;
-  --tint-warning: #faf1df;
-  --canvas: #f7f8fa;
-  --canvas-dot: #dde2e9;
-  /* Text */
-  --text: #272e38;   /* 13.7:1 on --bg */
-  --text-2: #596577; /* 5.9:1 on --bg, also small sidebar labels on the chrome */
-  --text-3: #5e6a7d; /* 5.5:1 on --bg; 11.6 dim #657185 darkened to keep 4.5:1 on hover, own and selected fills */
-  /* Lines */
-  --line: #dde2e9;
-  --line-strong: #cfd6df;
-  --line-input: #8a93a1; /* ≥3:1 on --bg: input borders are a non-text UI boundary (WCAG 1.4.11) */
-  /* The neutral primary action: primary buttons, send and toasts */
-  --action: #2e3743;
-  --on-action: #ffffff;
-  /* Theme-specific family primitives; every component consumes the semantic roles below. */
-  --accent-light: #28664f; --accent-light-hover: #215643; --accent-light-pressed: #1b4737; --accent-light-soft: #e8f1ec;
-  --accent-dark: #91c9b3; --accent-dark-hover: #a6d5c2; --accent-dark-pressed: #7fb9a2; --accent-dark-soft: #293b34;
-  --on-accent-dark: #242d20; --bubble-own-light: #e5eee5;
-  --accent: var(--accent-light);
-  --accent-hover: var(--accent-light-hover);
-  --accent-pressed: var(--accent-light-pressed);
-  --accent-soft: var(--accent-light-soft);
-  --on-accent: #ffffff;
-  --accent-selected-bg: var(--accent-soft);
-  --accent-selected-text: var(--accent);
-  --accent-selected-border: var(--accent);
-  --link: var(--accent);
-  --focus: var(--accent);
-  --map-guide: var(--text-3);
-  --attention: #4b53be;
-  --resolution: var(--ok);
-  /* Status */
-  --danger: #a1443c;  /* 6.1:1 on --bg */
-  --warning: #855c20; /* 6.2:1 on --bg */
-  --ok: #31664d;      /* 6.6:1 on --bg */
-  --shadow: 0 16px 48px #26344716;
-  --shadow-sm: 0 1px 2px rgba(38, 52, 71, .06), 0 2px 8px rgba(38, 52, 71, .05);
-  --scrim: rgba(14, 21, 19, .35);
+  /* Surfaces: the outer background (behind the sidebar and the panel), the screen, the elements on it
+     (cards, bubbles, fields, sheets, menus), quiet fills and hover */
+  --side: #ebebed;
+  --bg: #f4f4f5;
+  --el: #ffffff;
+  --sub: #ebebec;
+  --hov: #e3e3e5;
+  --line: rgba(0, 0, 0, .07);
+  --line2: rgba(0, 0, 0, .14);
+  /* Text; --t3 keeps at least 4.5:1 on --bg and --el */
+  --t1: #18181b;
+  --t2: #4a4a4a;
+  --t3: #6b6b6b;
+  /* Inverted: the primary button, own bubbles, chosen chips, toasts */
+  --inv: #18181b;
+  --oninv: #ffffff;
+  --scrim: rgba(0, 0, 0, .28);
+  --dot: #d4d4d8;
+  /* Volume: layers get lighter as they rise */
+  --sh-1: 0 1px 2px rgba(0, 0, 0, .06);
+  --sh-card: 0 1px 2px rgba(0, 0, 0, .05), 0 6px 16px -6px rgba(0, 0, 0, .12);
+  --sh-pop: 0 1px 2px rgba(0, 0, 0, .06), 0 12px 30px -10px rgba(0, 0, 0, .22);
+  --sh-field: inset 0 0 0 1px rgba(0, 0, 0, .05), 0 1px 2px rgba(0, 0, 0, .05), 0 6px 16px -8px rgba(0, 0, 0, .12);
+  --sh-btn: inset 0 1px 0 #ffffff, 0 0 0 1px rgba(0, 0, 0, .08), 0 1px 2px rgba(0, 0, 0, .08);
+  --sh-pri: inset 0 1px 0 rgba(255, 255, 255, .16), 0 1px 2px rgba(0, 0, 0, .2), 0 4px 10px -4px rgba(0, 0, 0, .3);
+  --sh-seg: inset 0 1px 2px rgba(0, 0, 0, .06);
+  --sh-raise: 0 1px 2px rgba(0, 0, 0, .06), 0 4px 10px -6px rgba(0, 0, 0, .16);
+  --grad-btn: linear-gradient(#ffffff, #f1f1f2);
+  --grad-inv: linear-gradient(#3b3b3f, #18181b);
 
-  /* Type: the system UI stack, no web font */
-  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  --fs-xs: 10px;   /* timestamps, metadata */
-  --fs-sm: 11px;   /* names, chips, small buttons, section labels */
-  --fs-md: 12px;   /* navigation, tabs, controls */
-  --fs-base: 14px; /* reading text, bubbles, inputs */
-  --fs-lg: 16px;
-  --fs-xl: 20px;
-  --fs-2xl: 24px;
-  --fs-title: 21px;     /* project title */
-  --fs-doc-title: 30px; /* wiki document title */
-  --lh: 1.55;
-  --lh-tight: 1.35;
+  /* Type: Geist and Geist Mono. Sizes are in rem, so the person's text size applies (1rem = 16px).
+     Body 14 on the computer and 15 on the phone; meta 12, 12.5 on the phone. */
+  --font: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --fs-xs: .75rem;      /* 12: meta, times, counts */
+  --fs-sm: .75rem;      /* 12: labels, chips, small buttons */
+  --fs-md: .8125rem;    /* 13: navigation, tabs, controls */
+  --fs-base: .875rem;   /* 14: reading text, bubbles, inputs */
+  --fs-lg: 1rem;        /* 16: section titles */
+  --fs-xl: 1.25rem;     /* 20 */
+  --fs-2xl: 1.75rem;    /* 28 */
+  --fs-title: 1rem;     /* 16: the project name in its header */
+  --fs-page: 2rem;      /* 32: page titles */
+  --fs-doc-title: 2rem; /* 32: wiki page title */
+  --lh: 1.43;           /* 14/20 */
+  --lh-tight: 1.3;
   --tracking: 0;
+  --tracking-title: -.02em;
 
   /* Space (4px grid) */
   --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px; --s-6: 24px; --s-8: 32px; --s-10: 40px; --s-12: 48px;
-  --space-page: 36px;  /* the sheet's horizontal padding */
-  --sheet-inset: 12px; /* chrome around the sheet: top, right and bottom */
+  --space-page: 36px;  /* the panel's horizontal padding */
+  --sheet-inset: 8px;  /* the outer background around the panel: top, right and bottom */
 
-  /* Radii */
-  --r-sm: 6px; --r: 7px; --r-lg: 12px; --r-pill: 999px;
-  --r-card: 8px; --r-composer: 10px; --r-sheet: 13px; --r-tag: 4px;
+  /* Radii: small, rows and fields, cards and bubbles, full; the phone sheet's top corners */
+  --r-sm: 10px; --r: 14px; --r-lg: 20px; --r-pill: 999px;
+  --r-card: 18px; --r-composer: 22px; --r-sheet: 26px; --r-panel: 20px; --r-tag: 999px;
 
   /* Sizes */
-  --ctl: 32px;       /* small and toolbar controls; 44px on coarse pointers */
-  --ctl-lg: 40px;    /* form fields and form buttons */
-  --header-h: 52px;  /* non-project places */
-  --side-w: 220px;
+  --ctl: 34px;       /* small and toolbar controls; 44px on coarse pointers */
+  --ctl-lg: 44px;    /* form fields and form buttons */
+  --header-h: 56px;  /* page and project headers */
+  --side-w: 248px;
+  --rail-w: 64px;
   --panel-w: 408px;
   --col: 790px;      /* reading column */
 
-  /* Motion (#266 PF-4). Only colour, opacity and transform animate. Every duration is 0ms under reduced
-     motion. --dur-1 colour and small feedback, --dur-2 content changes, --dur-3 indicators, panels and
-     drawers, --dur-4 full-screen sheets on the phone. */
-  --dur-1: 120ms; --dur-2: 180ms; --dur-3: 260ms; --dur-4: 340ms;
+  /* Motion. Only colour, opacity and transform animate. Pressing scales to .97 and springs back in
+     about 250 ms. Every duration is 0ms under reduced motion. */
+  --dur-1: 120ms; --dur-2: 180ms; --dur-3: 260ms; --dur-4: 340ms; --dur-press: 250ms;
+  --press: .97;
   --ease-out: cubic-bezier(.22, 1, .36, 1);
   --ease-in: cubic-bezier(.4, 0, 1, 1);
   --ease-sheet: cubic-bezier(.32, .72, 0, 1);
+  --ease-spring: cubic-bezier(.34, 1.4, .64, 1);
   /* Indicators glide into place with a barely perceptible settle (≤2% past the target, no bounce). */
   --ease-glide: cubic-bezier(.3, 1.25, .5, 1);
   --tr: background-color var(--dur-1) ease, color var(--dur-1) ease, border-color var(--dur-1) ease,
         box-shadow var(--dur-1) ease, opacity var(--dur-1) ease, outline-color var(--dur-1) ease,
-        outline-offset var(--dur-1) ease;
+        outline-offset var(--dur-1) ease, transform var(--dur-press) var(--ease-spring);
 
   /* Layers */
   --z-panel: 20; --z-scrim: 30; --z-overlay: 40; --z-menu: 50; --z-toast: 60;
-}
-
-/* The default-family sample owns its primitives even when the root uses another family. */
-.me-accent__option[data-accent-option="mint"] {
-  --accent-light: #28664f; --accent-light-hover: #215643; --accent-light-pressed: #1b4737; --accent-light-soft: #e8f1ec;
-  --accent-dark: #91c9b3; --accent-dark-hover: #a6d5c2; --accent-dark-pressed: #7fb9a2; --accent-dark-soft: #293b34;
-  --on-accent-dark: #242d20; --bubble-own-light: #e5eee5;
-}
-:root[data-accent="copper"], .me-accent__option[data-accent-option="copper"] {
-  --accent-light: #985035; --accent-light-hover: #853f2a; --accent-light-pressed: #703521; --accent-light-soft: #f6ede7;
-  --accent-dark: #dba88c; --accent-dark-hover: #e6baa2; --accent-dark-pressed: #c69478; --accent-dark-soft: #42342d;
-  --on-accent-dark: #302820; --bubble-own-light: #f3e8de;
-}
-:root[data-accent="sky"], .me-accent__option[data-accent-option="sky"] {
-  --accent-light: #345f93; --accent-light-hover: #2b507d; --accent-light-pressed: #234268; --accent-light-soft: #eaf0f8;
-  --accent-dark: #9bb7e1; --accent-dark-hover: #b0c7e8; --accent-dark-pressed: #88a6d4; --accent-dark-soft: #2b384b;
-  --on-accent-dark: #212b32; --bubble-own-light: #e7edf4;
 }
 
 /* Dark: follows the system unless the person chose a theme (data-theme on <html>). */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --bg-chrome: #191c21; --bg: #21252b; --bg-raised: #21252b; --bg-side: #282d35; --bg-hover: #303741; --bg-active: #282d35;
-    --sheet-edge: #363f49; --bubble: #2a3038; --bubble-own: #2e3742;
-    --tint-danger: #402f2f; --tint-ok: #273b31; --tint-warning: #3a3328; --canvas: #1c2026; --canvas-dot: #3c4551;
-    --text: #e8ecf2; --text-2: #adb7c6; --text-3: #a0abba;
-    --line: #3b424e; --line-strong: #46505d; --line-input: #6b7583;
-    --action: #e0e7ef; --on-action: #242c36;
-    --accent: var(--accent-dark); --accent-hover: var(--accent-dark-hover); --accent-pressed: var(--accent-dark-pressed); --accent-soft: var(--accent-dark-soft); --on-accent: var(--on-accent-dark);
-    --accent-selected-bg: var(--accent-soft); --accent-selected-text: var(--accent); --accent-selected-border: var(--accent); --link: var(--accent); --focus: var(--accent);
-    --danger: #efb0a7; --warning: #e0c38d; --ok: #9fceb1; --attention: #a6abf5;
-    --shadow: 0 20px 65px #00000055;
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, .3), 0 2px 8px rgba(0, 0, 0, .3);
-    --scrim: rgba(14, 21, 19, .35);
+    --side: #0b0b0b; --bg: #111111; --el: #1c1c1c; --sub: #242424; --hov: #2c2c2c;
+    --line: rgba(255, 255, 255, .08); --line2: rgba(255, 255, 255, .16);
+    --t1: #f0f0f0; --t2: #acacac; --t3: #8c8c8c; --inv: #f0f0f0; --oninv: #111111;
+    --scrim: rgba(0, 0, 0, .6); --dot: #2e2e2e;
+    --sh-1: 0 1px 2px rgba(0, 0, 0, .4);
+    --sh-card: inset 0 0 0 1px rgba(255, 255, 255, .06), 0 1px 2px rgba(0, 0, 0, .5), 0 8px 20px -8px rgba(0, 0, 0, .6);
+    --sh-pop: inset 0 0 0 1px rgba(255, 255, 255, .08), 0 12px 30px -10px rgba(0, 0, 0, .7);
+    --sh-field: inset 0 0 0 1px rgba(255, 255, 255, .09), 0 1px 2px rgba(0, 0, 0, .4);
+    --sh-btn: inset 0 1px 0 rgba(255, 255, 255, .07), 0 0 0 1px rgba(255, 255, 255, .08);
+    --sh-pri: inset 0 -1px 0 rgba(0, 0, 0, .15), 0 1px 2px rgba(0, 0, 0, .4);
+    --sh-seg: inset 0 1px 2px rgba(0, 0, 0, .3);
+    --sh-raise: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 10px -6px rgba(0, 0, 0, .5);
+    --grad-btn: linear-gradient(#2a2a2a, #1e1e1e);
+    --grad-inv: linear-gradient(#ffffff, #d9d9d9);
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg-chrome: #191c21; --bg: #21252b; --bg-raised: #21252b; --bg-side: #282d35; --bg-hover: #303741; --bg-active: #282d35;
-  --sheet-edge: #363f49; --bubble: #2a3038; --bubble-own: #2e3742;
-  --tint-danger: #402f2f; --tint-ok: #273b31; --tint-warning: #3a3328; --canvas: #1c2026; --canvas-dot: #3c4551;
-  --text: #e8ecf2; --text-2: #adb7c6; --text-3: #a0abba;
-  --line: #3b424e; --line-strong: #46505d; --line-input: #6b7583;
-  --action: #e0e7ef; --on-action: #242c36;
-  --accent: var(--accent-dark); --accent-hover: var(--accent-dark-hover); --accent-pressed: var(--accent-dark-pressed); --accent-soft: var(--accent-dark-soft); --on-accent: var(--on-accent-dark);
-  --accent-selected-bg: var(--accent-soft); --accent-selected-text: var(--accent); --accent-selected-border: var(--accent); --link: var(--accent); --focus: var(--accent);
-  --danger: #efb0a7; --warning: #e0c38d; --ok: #9fceb1; --attention: #a6abf5;
-  --shadow: 0 20px 65px #00000055;
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .3), 0 2px 8px rgba(0, 0, 0, .3);
-  --scrim: rgba(14, 21, 19, .35);
+  --side: #0b0b0b; --bg: #111111; --el: #1c1c1c; --sub: #242424; --hov: #2c2c2c;
+  --line: rgba(255, 255, 255, .08); --line2: rgba(255, 255, 255, .16);
+  --t1: #f0f0f0; --t2: #acacac; --t3: #8c8c8c; --inv: #f0f0f0; --oninv: #111111;
+  --scrim: rgba(0, 0, 0, .6); --dot: #2e2e2e;
+  --sh-1: 0 1px 2px rgba(0, 0, 0, .4);
+  --sh-card: inset 0 0 0 1px rgba(255, 255, 255, .06), 0 1px 2px rgba(0, 0, 0, .5), 0 8px 20px -8px rgba(0, 0, 0, .6);
+  --sh-pop: inset 0 0 0 1px rgba(255, 255, 255, .08), 0 12px 30px -10px rgba(0, 0, 0, .7);
+  --sh-field: inset 0 0 0 1px rgba(255, 255, 255, .09), 0 1px 2px rgba(0, 0, 0, .4);
+  --sh-btn: inset 0 1px 0 rgba(255, 255, 255, .07), 0 0 0 1px rgba(255, 255, 255, .08);
+  --sh-pri: inset 0 -1px 0 rgba(0, 0, 0, .15), 0 1px 2px rgba(0, 0, 0, .4);
+  --sh-seg: inset 0 1px 2px rgba(0, 0, 0, .3);
+  --sh-raise: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 10px -6px rgba(0, 0, 0, .5);
+  --grad-btn: linear-gradient(#2a2a2a, #1e1e1e);
+  --grad-inv: linear-gradient(#ffffff, #d9d9d9);
 }
 
 @media (max-width: 1200px) { :root { --space-page: 26px; --panel-w: 375px; } }
 @media (max-width: 1000px) { :root { --space-page: 22px; } }
 @media (max-width: 760px) { :root { --space-page: 18px; --sheet-inset: 8px; } }
-@media (max-width: 680px) { :root { --sheet-inset: 0px; } }
+/* The phone: larger small and body text (S17). */
+@media (max-width: 680px) {
+  :root {
+    --sheet-inset: 0px;
+    --fs-xs: .78125rem; --fs-sm: .78125rem; --fs-md: .875rem; --fs-base: .9375rem; --fs-title: 1.0625rem; --fs-page: 1.75rem;
+  }
+}
 @media (min-width: 1600px) { :root { --space-page: 44px; --panel-w: 430px; } }
 
 @media (pointer: coarse) {
@@ -168,5 +156,5 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  :root { --dur-1: 0ms; --dur-2: 0ms; --dur-3: 0ms; --dur-4: 0ms; }
+  :root { --dur-1: 0ms; --dur-2: 0ms; --dur-3: 0ms; --dur-4: 0ms; --dur-press: 0ms; --press: 1; }
 }

@@ -66,7 +66,8 @@ install: a newer `main` can need other migrations or variables than your image.
    curl -fsS http://127.0.0.1:8081/api/v1/health   # {"status":"ok","schemaVersion":N}
    ```
 
-5. Put a TLS reverse proxy in front of `127.0.0.1:${FLUX_PORT}` for `FLUX_PUBLIC_ORIGIN`,
+5. Follow the tested [HTTPS reverse-proxy example](reverse-proxy.md) to put TLS in front
+   of `127.0.0.1:${FLUX_PORT}` for `FLUX_PUBLIC_ORIGIN`,
    open that URL and create the first account. If startup fails, read
    `docker compose --env-file .env -f compose.yaml logs migrate api worker` before changing data.
 

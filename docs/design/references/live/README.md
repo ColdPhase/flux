@@ -23,8 +23,8 @@ browser storage is not the production persistence or authorization model.
 The media capability must be tested over HTTPS/localhost when appropriate.
 
 The imported HTML preserves the supplied CSS/JavaScript and sample content.
-Only its two links back to v8 were changed from `flux-ux-v8.html` to
-`../../../../flux-ux-v8.html`, so they work in this directory. Original/imported
+Only its two links back to the earlier prototype were changed to repository-relative paths;
+that prototype has since been removed (#336), so those two links no longer resolve. Original/imported
 SHA-256 values are recorded in [inspection.json](inspection.json). Keep this
 reference outside the production app bundle; do not copy its single-file
 structure, hard-coded global helper or fake participant model into product code.

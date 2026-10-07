@@ -325,7 +325,7 @@ class PhoneShellJourney(unittest.TestCase):
         expect(page.get_by_role("radiogroup", name="Appearance")).to_be_visible()
         page.get_by_role("radio", name="Dark").click()
         self.assertEqual(page.evaluate("document.documentElement.dataset.theme"), "dark")
-        page.get_by_role("radio", name="System").click()
+        page.get_by_role("radio", name="Match system").click()
         for title, url, heading in (("What reaches you", "/settings/notifications", "Notification settings"),
                                     ("Agent in Flux", "/settings/assistant", "Your assistant"),
                                     ("Background suggestions", "/settings/background-compute", "Background suggestions")):

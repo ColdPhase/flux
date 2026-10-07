@@ -10,7 +10,7 @@ import uuid
 from playwright.sync_api import expect, sync_playwright
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, SHOTS, UPSTREAM, shot, start_forwarder
-from test_theme_accents import MEASURE
+from contrast import MEASURE
 
 STAMP = int(time.time() * 1000)
 PASSWORD = "keep private captures recoverable"

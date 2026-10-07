@@ -7,7 +7,7 @@ export interface WikiState {
   /** The project's pages, the most recently changed first (the server's order). */
   docs: DocSummary[];
   writable: boolean;
-  /** Focus mode hides the page index so the document has the room (the 11.6 "fullscreen"). */
+  /** Focus mode hides the page index so the document has the room ("fullscreen"). */
   focus: boolean;
   setFocus(next: boolean): void;
 }

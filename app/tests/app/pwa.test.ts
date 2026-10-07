@@ -54,7 +54,7 @@ describe('web app manifest and icons', () => {
     const html = (await get('/', 'text/html')).bytes.toString('utf8');
     assert.match(html, /<link rel="manifest" href="\/manifest\.webmanifest">/);
     assert.match(html, /<link rel="apple-touch-icon" href="\/icons\/apple-touch-icon\.png"/);
-    assert.match(html, /<meta name="theme-color" content="#FFFFFF">/);
+    assert.match(html, /<meta name="theme-color" content="#F4F4F5">/);
     assert.match(html, /<meta name="apple-mobile-web-app-capable" content="yes">/);
     assert.match(html, /viewport-fit=cover/);
   });

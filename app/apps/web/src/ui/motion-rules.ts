@@ -1,5 +1,5 @@
 /**
- * Motion rules (#155, Studio 11.6 UI116-5), kept free of the DOM so views and unit tests share them.
+ * Motion rules (#155, UI116-5), kept free of the DOM so views and unit tests share them.
  * Motion reinforces a state change after input or a genuine arrival; it never delays or blocks.
  */
 

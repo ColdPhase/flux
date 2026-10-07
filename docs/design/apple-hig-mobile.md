@@ -13,11 +13,11 @@ iPhone and iPad.
   direction recorded on [#266](https://github.com/ColdPhase/flux/issues/266).
 - **Scope:** phone and tablet layouts and touch input (coarse pointer), in Safari and
   as a Home Screen web app. Desktop density is unchanged.
-- **Relationship to other contracts.** It adds to [Studio 11.6](studio-v11.6.md),
+- **Relationship to other contracts.** It adds to the [final design](final/README.md),
   [adaptive workspaces](adaptive-workspaces.md) (ADAPT-1 to ADAPT-5) and the
   [mobile PWA contract](../product/mobile-pwa.md) (MOB-1 to MOB-7); it does not replace them.
-  Where a Studio 11.6 token is below a HIG minimum on a touch layout (for example a
-  10 px timestamp or a 32 px control), the HIG minimum applies on coarse pointers.
+  The final design already meets these minimums on the phone; where a computer-sized token
+  would fall below a HIG minimum on a touch layout, the HIG minimum applies on coarse pointers.
 - **How to use it.** Cite rule IDs in phone/tablet issues, PRs and reviews. A PR that
   changes a phone or tablet screen states which rules it was checked against and how.
 
@@ -131,7 +131,7 @@ Dynamic Type or the display of a push notification. Those checks are marked
 
 | ID | Apple says | Flux on the web | Check |
 | --- | --- | --- | --- |
-| HIG-08 · Must | **Minimum size.** "Follow the recommended default and minimum text sizes for each platform" — iOS and iPadOS: default 17 pt, minimum 11 pt. ([typography](https://developer.apple.com/design/human-interface-guidelines/typography)) | No visible text below 11 px on touch layouts, including timestamps, badges, chips and tab labels. Studio 11.6's 10 px size is desktop-only. | Visible text nodes with computed `font-size` < 11 px on coarse-pointer screens: 0. |
+| HIG-08 · Must | **Minimum size.** "Follow the recommended default and minimum text sizes for each platform" — iOS and iPadOS: default 17 pt, minimum 11 pt. ([typography](https://developer.apple.com/design/human-interface-guidelines/typography)) | No visible text below 11 px on touch layouts, including timestamps, badges, chips and tab labels. The final design's phone meta text is at least 12.5 px. | Visible text nodes with computed `font-size` < 11 px on coarse-pointer screens: 0. |
 | HIG-09 · Should | **Readable default.** "Use font sizes that most people can read easily." ([typography](https://developer.apple.com/design/human-interface-guidelines/typography)); default 17 pt. | Reading text (messages, task titles, wiki body, list titles) is 16–17 px on coarse pointers; secondary lines at least 13 px. | Computed size of message body, list-row title and wiki paragraph ≥ 16 px at 390 and 820 with touch. |
 | HIG-10 · Should | **No light weights.** "avoid Ultralight, Thin, and Light font weights, which can be difficult to see, especially when text is small" ([typography](https://developer.apple.com/design/human-interface-guidelines/typography)) | Regular (400) and heavier only. | Visible text with computed `font-weight` < 400: 0. |
 | HIG-11 · Must | **Text enlargement.** "Ideally, give people the option to enlarge text by at least 200 percent" ([accessibility](https://developer.apple.com/design/human-interface-guidelines/accessibility)) | Text sizes in `rem`/`em` so the browser's default font size and zoom enlarge them; no fixed-pixel text that ignores the setting. Pinch zoom stays available (HIG-91). | With the default font size doubled (`Page.setFontSizes`, 16 → 32), message body size grows by ≥ 1.9×. At 200 % zoom (half-width viewport) no content or action is lost. |
@@ -264,11 +264,11 @@ The navigation bar guidance now lives on the toolbars page
 | ID | Apple says | Flux on the web | Check |
 | --- | --- | --- | --- |
 | HIG-78 · Must | **Follow the system appearance.** People "generally expect all apps and games to respect their preference." "Avoid offering an app-specific appearance setting." ([dark mode](https://developer.apple.com/design/human-interface-guidelines/dark-mode)) | The default follows `prefers-color-scheme`, including the `theme-color` meta. Flux's remembered light/dark choice (#148) stays an explicit override whose first option is System. | New account in a dark context: dark theme with no setting changed; `theme-color` matches the dark surface. |
-| HIG-79 · Must | **Contrast.** Text up to 17 pt needs 4.5:1 ([accessibility](https://developer.apple.com/design/human-interface-guidelines/accessibility)); "For custom foreground and background colors, strive for a contrast ratio of 7:1, especially in small text." ([dark mode](https://developer.apple.com/design/human-interface-guidelines/dark-mode)) | All text ≥ 4.5:1 in both themes and every accent; text under 13 px aims for 7:1. | Sample every visible text node against its effective background in light and dark: count < 4.5:1 = 0; count of text < 13 px below 7:1 reported. |
+| HIG-79 · Must | **Contrast.** Text up to 17 pt needs 4.5:1 ([accessibility](https://developer.apple.com/design/human-interface-guidelines/accessibility)); "For custom foreground and background colors, strive for a contrast ratio of 7:1, especially in small text." ([dark mode](https://developer.apple.com/design/human-interface-guidelines/dark-mode)) | All text ≥ 4.5:1 in both themes; text under 13 px aims for 7:1. | Sample every visible text node against its effective background in light and dark: count < 4.5:1 = 0; count of text < 13 px below 7:1 reported. |
 | HIG-80 · Must | **Not color alone.** "Avoid relying solely on color to differentiate between objects, indicate interactivity, or communicate essential information." ([color](https://developer.apple.com/design/human-interface-guidelines/color)) | Current place, unread, status and errors each carry text, an icon or a shape as well as color. | For each state indicator on the phone screens, a non-color cue exists. |
 | HIG-81 · Should | **Increase Contrast.** "ensure it at least provides a higher contrast color scheme when the system setting Increase Contrast is turned on" ([accessibility](https://developer.apple.com/design/human-interface-guidelines/accessibility)) | `@media (prefers-contrast: more)` raises secondary text and borders, unless all text already meets 7:1. | Static: a `prefers-contrast: more` rule exists, or the HIG-79 sample shows all text ≥ 7:1. |
 | HIG-82 · Should | **Elevated surfaces in dark.** "the system uses two sets of background colors — called base and elevated" ([dark mode](https://developer.apple.com/design/human-interface-guidelines/dark-mode)) | In dark, sheets and menus use a lighter surface than the page behind them; no hard-coded white surfaces. | In dark: sheet background luminance > page background luminance; visible elements with a white background: 0. |
-| HIG-83 · Should | **One meaning per color.** "Avoid using the same color to mean different things." ([color](https://developer.apple.com/design/human-interface-guidelines/color)) | Accent marks selection, links, focus and unread only; primary actions use the neutral action color (Studio 11.6 tokens). | Visual review against the token roles. |
+| HIG-83 · Should | **One meaning per color.** "Avoid using the same color to mean different things." ([color](https://developer.apple.com/design/human-interface-guidelines/color)) | There is no accent colour: selection, focus and unread use shape and the inverted fill, and agent colours appear only in the Agents section (final design tokens). | Visual review against the token roles. |
 
 ### Accessibility
 

@@ -8,7 +8,7 @@ import { canRetry, endedText, isWorking, workingText, type AskState } from './fo
 import { agentAuthorLabel } from '../docs/format';
 import './assistant.css';
 
-// The personal assistant in a project conversation (#57 design, #68 AC-8), in the calm v11
+// The personal assistant in a project conversation (#57 design, #68 AC-8), in the calm
 // hierarchy: an answer is an ordinary message whose author is "<Owner>'s assistant", marked as
 // an assistant and never as the person; the working line and its Stop are the owner's alone; a
 // proposal is the one framed object and only a person with authority sees Accept.

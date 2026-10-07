@@ -11,8 +11,8 @@ This extends the [creative collaboration direction #44](https://github.com/ColdP
 [mobile contract](mobile-pwa.md), and [working application milestone](milestones/02-working-application.md).
 The [supplied interactive reference](../design/references/live/README.md) illustrates
 the interaction; its palette, demo data and monolithic script are not a new
-production design or architecture. Continue the accepted
-[O-003 C/v8 direction](../design/direction.md).
+production design or architecture. Appearance follows the
+[final design](../design/final/README.md) (F-026).
 
 ## 1. Job and complete journey
 
