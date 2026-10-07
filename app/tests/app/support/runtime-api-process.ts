@@ -10,6 +10,11 @@ if (process.env.FLUX_TEST_RUNTIME_CHILD !== 'true' || !process.send) throw new E
 const origin=process.env.FLUX_PUBLIC_ORIGIN!, secret=process.env.FLUX_AUTH_SECRET!;
 const { db,pool }=createDatabase(process.env.DATABASE_URL!);
 const app=Fastify({ logger:false });
+// Test-only, bounded error provenance. Never emit a message, query, params, headers or frames.
+app.addHook('onError', async (_request,_reply,error) => {
+  const cause=(error as Error & {cause?:{code?:string;constraint?:string;column?:string}}).cause;
+  process.send!({diagnostic:true,name:error.name,classification:error.name==='BetterAuthError'&&error.message.startsWith('Failed to decrypt private key.')?'jwks_decryption':null,code:cause?.code??null,constraint:cause?.constraint??null,column:cause?.column??null});
+});
 const sessions=registerIdentity(app,{ db,config:loadIdentityConfig({ FLUX_PUBLIC_ORIGIN:origin,FLUX_AUTH_SECRET:secret,FLUX_AUTH_RATE_LIMIT:'false' }),mailer:null });
 await app.register(websocket,{ options:{ maxPayload:1024 } });
 await app.register(agentRuntimeRoutes,{ db,sessions,secret,publicOrigin:origin,config:{ clients:['claude_code'],commercialTermsAgreedOn:null,idleDays:null,

@@ -202,6 +202,9 @@ describe('migration 0056 reverses only before use', () => {
       await client.query('ROLLBACK TO SAVEPOINT before_reverse');
       await client.query('DELETE FROM agent_runtime_bindings');
       await client.query('DELETE FROM agent_runtime_connections');
+      // Reverse new dependent schema first, preserving each migration's own refusal guards.
+      await client.query(await readFile('packages/db/migrations/reverse/0058_agent_runtime_auth_operations.down.sql','utf8'));
+      await client.query(await readFile('packages/db/migrations/reverse/0057_agent_runtime_sign_in.down.sql','utf8'));
       await client.query(down);
       const left = await client.query(`SELECT count(*)::int AS n FROM information_schema.tables WHERE table_name = ANY($1)`,
         [['agent_runtime_slots', 'agent_runtime_bindings', 'agent_runtime_connections', 'agent_runtime_operator_statements']]);

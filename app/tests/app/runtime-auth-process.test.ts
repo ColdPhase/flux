@@ -16,7 +16,9 @@ import { Browser } from './support/http.js';
 import { pool,db,connectionString } from './support/db.js';
 import { startTestSlot, portOf, slotSecret } from './support/runtime-slot.js';
 
-const origin='http://127.0.0.1:18279',secret='isolated-runtime-two-api-test-'+ 'x'.repeat(40);
+const origin='http://127.0.0.1:18279';
+// All API replicas on one DB share the instance secret, including its encrypted JWT signing keys.
+const secret=process.env.FLUX_AUTH_SECRET??('isolated-runtime-two-api-test-'+ 'x'.repeat(40));
 const delay=(ms:number)=>new Promise<void>(r=>setTimeout(r,ms));
 async function until(check:()=>boolean|Promise<boolean>,ms=5000) {
   const end=Date.now()+ms;
@@ -28,12 +30,14 @@ async function api(managerUrl:string,managerSecret:string) {
       FLUX_TEST_RUNTIME_MANAGER_URL:managerUrl,FLUX_TEST_RUNTIME_MANAGER_SECRET:managerSecret } });
   // No cookie, credential or PTY bytes are emitted by the harness.
   child.stdout?.resume(); child.stderr?.resume();
+  const diagnostics:unknown[]=[];
+  child.on('message',(message:unknown)=>{if((message as{diagnostic?:boolean}).diagnostic)diagnostics.push(message);});
   const url=await new Promise<string>((resolve,reject)=>{
     const timer=setTimeout(()=>{ child.kill('SIGKILL'); reject(new Error('runtime API child startup deadline')); },10_000);
     child.once('message',(message:unknown)=>{ clearTimeout(timer); const m=message as { ready?:boolean;url?:string }; if(m.ready&&m.url)resolve(m.url);else reject(new Error('child not ready')); });
     child.once('exit',()=>{ clearTimeout(timer);reject(new Error('runtime API child exited before ready')); });
   });
-  return { child,url };
+  return { child,url,diagnostics };
 }
 async function stop(child:ChildProcess) {
   if(child.exitCode!==null||child.signalCode!==null)return;
@@ -63,7 +67,7 @@ test('two actual API processes share one-use tickets and operation ownership acr
     const signup=await a.request('POST','/api/auth/sign-up/email',{body:{email,password:'correct horse battery staple',name:'Two API owner'}});
     assert.equal(signup.status,200);ownerId=(signup.json as {user:{id:string}}).user.id;
     const b=new Browser(second.url,origin);for(const [name,value]of a.cookies)b.cookies.set(name,value);
-    const response=await a.request('POST',AGENT_RUNTIME_CONSOLE_PATH,{body:{client:'claude_code',method:'sso'}});assert.equal(response.status,200);
+    const response=await a.request('POST',AGENT_RUNTIME_CONSOLE_PATH,{body:{client:'claude_code',method:'sso'}});assert.equal(response.status,200,JSON.stringify(first.diagnostics));
     const ticket=(response.json as {ticket:string}).ticket;
     const [left,right]=await Promise.all([socket(a),socket(b)]);sockets.push(left.ws,right.ws);
     for(const view of[left,right])view.ws.send(JSON.stringify({t:'attach',ticket,cols:60,rows:20}));
@@ -126,7 +130,7 @@ test('a held real manager response arriving after a second HTTP process requests
     const a=new Browser(first.url,origin),signup=await a.request('POST','/api/auth/sign-up/email',{body:{email:`held-http-${randomUUID()}@example.test`,password:'correct horse battery staple',name:'Held status owner'}});
     assert.equal(signup.status,200);ownerId=(signup.json as{user:{id:string}}).user.id;
     const b=new Browser(second.url,origin);for(const[n,v]of a.cookies)b.cookies.set(n,v);
-    const issue=await a.request('POST',AGENT_RUNTIME_CONSOLE_PATH,{body:{client:'claude_code',method:'sso'}});assert.equal(issue.status,200);
+    const issue=await a.request('POST',AGENT_RUNTIME_CONSOLE_PATH,{body:{client:'claude_code',method:'sso'}});assert.equal(issue.status,200,JSON.stringify(first.diagnostics));
     const login=await socket(a);sockets.push(login.ws);login.ws.send(JSON.stringify({t:'attach',ticket:(issue.json as{ticket:string}).ticket,cols:60,rows:20}));
     await until(()=>login.output.includes('Paste code'));login.ws.send(JSON.stringify({t:'in',d:'fake-code-held-http\r'}));assert.equal(await login.closed,1000);
     holdNext=true;
@@ -175,7 +179,7 @@ test('API crash with an undelivered old logout requires full recovery; late logo
     assert.equal(signup.status,200);ownerId=(signup.json as{user:{id:string}}).user.id;
     const b=new Browser(second.url,origin);for(const[n,v]of a.cookies)b.cookies.set(n,v);
     const signin=async(browser:Browser)=>{
-      const issue=await browser.request('POST',AGENT_RUNTIME_CONSOLE_PATH,{body:{client:'claude_code',method:'sso'}});assert.equal(issue.status,200);
+      const issue=await browser.request('POST',AGENT_RUNTIME_CONSOLE_PATH,{body:{client:'claude_code',method:'sso'}});assert.equal(issue.status,200,JSON.stringify([...first.diagnostics,...second.diagnostics]));
       const view=await socket(browser);sockets.push(view.ws);view.ws.send(JSON.stringify({t:'attach',ticket:(issue.json as{ticket:string}).ticket,cols:60,rows:20}));
       await until(()=>view.output.includes('Paste code'));view.ws.send(JSON.stringify({t:'in',d:'fake-code-crash-recovery\r'}));assert.equal(await view.closed,1000);
       const done=view.messages.at(-1);assert.ok(done?.t==='done'&&done.disposition==='accepted'&&done.signedIn);
@@ -246,7 +250,7 @@ test('well-shaped console result for another status client is refused without pe
       const binding=randomUUID(),bootId=randomUUID();
       await pool.query(`INSERT INTO agent_runtime_slots(slot,state,boot_id) VALUES($1,'held',$2)`,[names[index],bootId]);
       await pool.query(`INSERT INTO agent_runtime_bindings(id,owner_user_id,slot,state) VALUES($1,$2,$3,'active')`,[binding,owner,names[index]]);
-      const issue=await browser.request('POST',AGENT_RUNTIME_CONSOLE_PATH,{body:{client:'claude_code',method:'sso'}});assert.equal(issue.status,200);
+      const issue=await browser.request('POST',AGENT_RUNTIME_CONSOLE_PATH,{body:{client:'claude_code',method:'sso'}});assert.equal(issue.status,200,JSON.stringify(fixture.diagnostics));
       const view=await socket(browser);sockets.push(view.ws);view.ws.send(JSON.stringify({t:'attach',ticket:(issue.json as{ticket:string}).ticket,cols:60,rows:20}));
       assert.equal(await view.closed,index===0?4503:1000);
       if(index===0){
