@@ -177,3 +177,8 @@ for (const entry of ['apps/server/dist/index.js', 'apps/worker/dist/index.js']) 
     await refuseWithoutWrites(db, url, entry);
   }));
 }
+
+test('refusal harness rejects a timed-out child even with a refusal prefix and unchanged catalog/data', async () => fixture(0, async (db, url) => {
+  await assert.rejects(refuseWithoutWrites(db, url, 'tests/app/support/migration-refusal-timeout.mjs'),
+    /actual nonzero integer exit|must not time out|must not be killed/);
+}));
