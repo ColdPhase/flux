@@ -554,7 +554,7 @@ function NoticeItem({ notice, meId, owners, row, onOpenTask }: { notice: TaskCre
           <time dateTime={notice.createdAt} title={when(notice.createdAt)}>{clock(notice.createdAt)}</time>
         </span>
         <button type="button" className="convo-notice__task" data-native-ref={`work:${notice.workId}`} onClick={() => onOpenTask(notice.workId)} aria-label={`Open task: ${title}`}>
-          <Icon name="tasks" size={14} /><span className="convo-notice__title"><span className="convo-notice__kind">New task · </span>{title}</span><Icon name="chevron-right" size={14} />
+          <span className="convo-notice__title"><span className="convo-notice__kind">New task · </span>{title}</span><Icon name="chevron-right" size={14} />
         </button>
       </span>
     </li>

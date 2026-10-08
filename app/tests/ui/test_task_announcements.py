@@ -177,6 +177,9 @@ class TaskAnnouncements(unittest.TestCase):
         expect(made.locator(".convo-notice__meta strong")).to_have_text("Jonas Berg")
         expect(made.locator(".convo-notice__kind")).to_have_text("New task · ")
         assert_author_column(self, made, DESKTOP["width"], "task event author")
+        self.assertAlmostEqual(made.locator(".convo-notice__kind").bounding_box()["x"],
+                               made.locator(".convo-notice__meta").bounding_box()["x"], delta=1,
+                               msg="the event text starts in the author content column")
         expect(made.get_by_role("button", name=f"Open task: {FROM_MESSAGE}")).to_be_visible()
         expect(self.notice(page, self.ids["measure"]).locator(".convo-notice__meta strong")).to_have_text("Ada Kowalska · you")
         # Authored events share the creator's column, while retaining no message actions or replies.
@@ -297,6 +300,8 @@ class TaskAnnouncements(unittest.TestCase):
                 made = self.notice(page, self.ids["from_message"])
                 made.scroll_into_view_if_needed()
                 assert_author_column(self, made, viewport["width"], "phone task event author")
+                self.assertAlmostEqual(made.locator(".convo-notice__kind").bounding_box()["x"],
+                                       made.locator(".convo-notice__meta").bounding_box()["x"], delta=1)
                 button = made.get_by_role("button", name=f"Open task: {FROM_MESSAGE}")
                 box, row = button.bounding_box(), made.bounding_box()
                 assert box and row
@@ -312,6 +317,9 @@ class TaskAnnouncements(unittest.TestCase):
                 page.evaluate("document.documentElement.style.fontSize = '200%'")
                 made.scroll_into_view_if_needed()
                 assert_author_column(self, made, viewport["width"], "enlarged phone task event author")
+                self.assertAlmostEqual(made.locator(".convo-notice__kind").bounding_box()["x"],
+                                       made.locator(".convo-notice__meta").bounding_box()["x"], delta=1,
+                                       msg="enlarged event text keeps the common content edge")
                 expect(made.locator(".convo-notice__meta strong")).to_have_text("Jonas Berg")
                 self.assertTrue(page.evaluate("document.documentElement.scrollWidth <= innerWidth"))
                 shot(page, f"task-announcements-phone-{viewport['width']}{'-dark' if dark else ''}-text200")
