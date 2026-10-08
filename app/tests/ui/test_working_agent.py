@@ -133,7 +133,18 @@ class WorkingAgentJourney(unittest.TestCase):
         mock("/__script", {"reset": True, "delay": delay})
         run = self.api(page, "POST", f"/api/v1/conversations/{ids['conversation']}/assistant-runs", {
             "clientRunId": str(uuid.uuid4()), "kind": "ask", "prompt": "Compare the garden readings before tomorrow's sensor test."}, 202)
-        self.addCleanup(lambda: self.api(page, "POST", f"/api/v1/assistant-runs/{run['id']}/stop"))
+        def cleanup_run() -> None:
+            # The live document may have signed out or switched accounts. Cleanup uses its own
+            # genuine session of the original owner, never the new viewer's request context.
+            request = self.pw.request.new_context(base_url=ORIGIN)
+            try:
+                signed = request.post("/api/auth/sign-in/email", data={"email": ids["email"], "password": PASSWORD}, headers={"origin": ORIGIN})
+                self.assertEqual(signed.status, 200)
+                ended = request.post(f"/api/v1/assistant-runs/{run['id']}/stop", headers={"origin": ORIGIN})
+                self.assertEqual(ended.status, 200)
+            finally:
+                request.dispose()
+        self.addCleanup(cleanup_run)
         page.evaluate("window.dispatchEvent(new Event('focus'))")
         expect(page.locator(".agentlive")).to_be_visible()
         self.wait_run(page, run["id"], lambda current: current["status"] == "dispatching")
@@ -150,7 +161,7 @@ class WorkingAgentJourney(unittest.TestCase):
 
     def hold_list(self, page: Page, name: str) -> None:
         page.evaluate("name => { window.__workingWire.arm(name); window.dispatchEvent(new Event('focus')); }", name)
-        page.wait_for_function("name => window.__workingWire.gates[name]?.held", name)
+        page.wait_for_function("name => window.__workingWire.gates[name]?.held", arg=name)
         held = page.evaluate("name => window.__workingWire.gates[name].record", name)
         self.assertEqual(held["status"], 200)
         self.assertTrue(any(item["status"] in WORKING and not item["stopRequested"] for item in held["items"]),
@@ -158,14 +169,14 @@ class WorkingAgentJourney(unittest.TestCase):
 
     def release(self, page: Page, name: str, *, reject: bool = False) -> None:
         page.evaluate("({name, reject}) => window.__workingWire.release(name, reject)", {"name": name, "reject": reject})
-        page.wait_for_function("name => window.__workingWire.gates[name]?.settled", name)
+        page.wait_for_function("name => window.__workingWire.gates[name]?.settled", arg=name)
         page.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
 
     def stopped(self, page: Page, run: dict) -> None:
         stored = self.wait_run(page, run["id"], lambda current: current["status"] == "stopped")
         self.assertIsNone(stored["answer"], "Stop committed no assistant answer")
         expect(page.locator(".agentlive")).to_have_count(0, timeout=20000)
-        page.wait_for_function("id => window.__workingWire.history.some(r => r.kind === 'list' && r.status === 200 && r.delivery === 'delivered' && r.items.every(item => item.id !== id || !['queued','reading','dispatching'].includes(item.status)))", run["id"])
+        page.wait_for_function("id => window.__workingWire.history.some(r => r.kind === 'list' && r.status === 200 && r.delivery === 'delivered' && r.items.every(item => item.id !== id || !['queued','reading','dispatching'].includes(item.status)))", arg=run["id"])
 
     def test_01_old_real_working_answer_cannot_return_after_card_stop(self) -> None:
         for engine in self.browsers:
@@ -265,9 +276,25 @@ class WorkingAgentJourney(unittest.TestCase):
                 expect(page.locator(".agentlive")).to_have_count(0)
                 self.assertEqual(page.evaluate("window.__workingWire.breaches"), [])
                 self.assertTrue(page.evaluate("window.__sameWorkingDocument"))
-                # Cleanup has a live separate session belonging to the original owner.
-                self.api(page, "POST", "/api/auth/sign-in/email", {"email": ids["email"], "password": PASSWORD})
                 other.close()
+
+
+    def test_05_older_delivery_failure_cannot_hide_a_newer_working_answer(self) -> None:
+        for engine in self.browsers:
+            with self.subTest(engine=engine):
+                page, ids = self.person(engine)
+                run = self.start(page, ids)
+                self.hold_list(page, "older-failure")
+                try:
+                    before = page.evaluate("window.__workingWire.history.length")
+                    page.evaluate("window.dispatchEvent(new Event('focus'))")
+                    page.wait_for_function("before => window.__workingWire.history.slice(before).some(r => r.kind === 'list' && r.status === 200 && r.delivery === 'delivered')", arg=before)
+                finally:
+                    self.release(page, "older-failure", reject=True)
+                expect(page.locator(".agentlive")).to_be_visible()
+                self.assertEqual(self.api(page, "GET", f"/api/v1/assistant-runs/{run['id']}")["status"], "dispatching")
+                page.locator(".agentlive").get_by_role("button", name="Stop your assistant").click()
+                self.stopped(page, run)
 
 
 if __name__ == "__main__":
