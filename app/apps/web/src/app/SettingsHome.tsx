@@ -69,7 +69,7 @@ function LinkRow({ to, title, detail, icon, action }: { to: string; title: React
       <Link to={to} className="sset-row sset-row--link">
         {icon ? <span className="sset-row__ic" aria-hidden="true">{icon}</span> : null}
         <span className="sset-row__b"><span className="sset-row__t">{title}</span>{detail ? <span className="sset-row__s">{detail}</span> : null}</span>
-        {action ? <span className="sset-row__go">{action}<Icon name="chevron-right" size={12} /></span> : <Icon name="chevron-right" size={14} className="sset-row__go" />}
+        {action ? <span className="sset-row__go"><span className="sset-row__go-label">{action}</span><Icon name="chevron-right" size={12} /></span> : <Icon name="chevron-right" size={14} className="sset-row__go" />}
       </Link>
     </li>
   );

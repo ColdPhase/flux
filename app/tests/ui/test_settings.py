@@ -166,8 +166,9 @@ class SettingsJourney(unittest.TestCase):
     def test_05_account_and_earlier_addresses_keep_a_home(self) -> None:
         page = self.page()
         page.goto("/settings/account")
-        expect(page.get_by_text(NAME, exact=True)).to_be_visible()
-        expect(page.get_by_text(EMAIL)).to_be_visible()
+        me = page.get_by_label("Signed in as")
+        expect(me.get_by_text(NAME, exact=True)).to_be_visible()
+        expect(me.get_by_text(EMAIL)).to_be_visible()
         expect(page.get_by_text(re.compile("^Signed in on this device until"))).to_be_visible()
         expect(page.get_by_role("button", name=re.compile("^Sign out"))).to_be_visible()
         nav = page.get_by_role("navigation", name="Settings sections")
@@ -195,6 +196,7 @@ class SettingsJourney(unittest.TestCase):
         for dark in (False, True):
             page = self.page(phone=True, dark=dark)
             page.goto("/settings")
+            expect(page.get_by_role("radiogroup", name="Theme")).to_be_visible()
             expect(page.get_by_role("navigation", name="Settings sections")).to_have_count(0)
             self.assertEqual(page.locator(".sset-in > h2.sset-sec").all_inner_texts(), ["Appearance", "This phone", "Agents and AI", "More"])
             themes = page.get_by_role("radiogroup", name="Theme")
