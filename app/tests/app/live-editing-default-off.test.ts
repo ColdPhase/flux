@@ -7,8 +7,8 @@ import { buildApp } from '../../apps/server/src/app.js';
 import { loadServerConfig } from '../../apps/server/src/config.js';
 import { developmentQueueTelemetry } from '../../apps/server/src/editing/telemetry.js';
 
-// #228/#239: live map and wiki editing ships behind a default-off development switch (F-021 is
-// outside v0.1.0). Only the exact value FLUX_DEVELOPMENT_LIVE_EDITING=true selects it; without it
+// #228/#239: live map/wiki is required in v0.1 and stays behind the default-off development switch
+// until all four F-021 gates pass. Only FLUX_DEVELOPMENT_LIVE_EDITING=true selects it; without it
 // the built API reports the capability unavailable, refuses the live routes, accepts no editing
 // socket and emits no live telemetry, even when the telemetry variables are set.
 const base: NodeJS.ProcessEnv = {
@@ -51,19 +51,25 @@ test('the default API reports live editing unavailable, refuses its routes and o
       assert.equal(refused.statusCode, 503, url);
       assert.equal(refused.json().code, 'LIVE_EDITING_DISABLED', url);
     }
-    // The editing gate is not registered: the upgrade never reaches an open editing socket.
-    const socket = new WebSocket(`${address.replace('http', 'ws')}${EDITING_SOCKET_PATH}?kind=map&id=${randomUUID()}`,
-      { headers: { origin: config.identity.publicOrigin }, perMessageDeflate: false });
-    const outcome = await new Promise<string>((resolve) => {
-      const timer = setTimeout(() => resolve('no answer'), 5000);
-      const settle = (value: string) => { clearTimeout(timer); resolve(value); };
-      socket.once('open', () => settle('open'));
-      socket.once('unexpected-response', () => settle('refused'));
-      socket.once('error', () => settle('refused'));
-      socket.once('close', () => settle('refused'));
-    });
-    socket.terminate();
-    assert.equal(outcome, 'refused');
+    // An explicit disabled gate owns this path before the generic WebSocket fallback.
+    for (const kind of ['map', 'wiki']) {
+      const socket = new WebSocket(`${address.replace('http', 'ws')}${EDITING_SOCKET_PATH}?kind=${kind}&id=${randomUUID()}`,
+        { headers: { origin: config.identity.publicOrigin }, perMessageDeflate: false });
+      let status: number | null = null;
+      const outcome = await new Promise<string>((resolve) => {
+        const timer = setTimeout(() => resolve('no answer'), 5000);
+        const settle = (value: string) => { clearTimeout(timer); resolve(value); };
+        socket.once('open', () => settle('open'));
+        socket.once('unexpected-response', (_request, response) => {
+          status = response.statusCode ?? null; response.resume(); settle('refused');
+        });
+        socket.once('error', () => settle('refused'));
+        socket.once('close', () => settle('refused'));
+      });
+      socket.terminate();
+      assert.equal(outcome, 'refused', kind);
+      assert.equal(status, 503, 'an actual disabled response, not an open socket or reset');
+    }
     assert.equal(await server.closeGracefully(), true, 'nothing live to drain');
     app = undefined;
     assert.deepEqual(writes.filter((line) => line.includes('FLUX_LIVE_QUEUE')), [], 'no live queue telemetry when off');

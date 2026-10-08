@@ -54,6 +54,7 @@ import { registerHealth } from './health/routes.js';
 import { useDomainErrors } from './http/errors.js';
 import { registerUpgradeDispatcher } from './http/upgrades.js';
 import { registerEditing } from './editing/composition.js';
+import { disabledEditingUpgrade } from './editing/disabled-upgrade.js';
 import { useJsonCompression } from './http/compress.js';
 import { useFramingProtection } from './http/framing.js';
 
@@ -131,7 +132,8 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
     connectionString, developmentEnabled: config.developmentLiveEditing, env });
   if (editing) app.log.warn('Development live editing selected; four-gate production acceptance remains pending');
   // One listener owns every upgrade: media, then editing, then the Fastify stream emitter (1 KiB bound).
-  const removeUpgradeDispatcher = registerUpgradeDispatcher(app.server, streamUpgrades, [liveSignaling?.gate, editing?.gate]);
+  const removeUpgradeDispatcher = registerUpgradeDispatcher(app.server, streamUpgrades,
+    [liveSignaling?.gate, editing?.gate ?? disabledEditingUpgrade()]);
   app.addHook('onClose', async () => removeUpgradeDispatcher());
   app.decorate('closeGracefully', async () => {
     await editing?.close();
