@@ -1,0 +1,32 @@
+ℹ tests 1090
+ℹ suites 123
+ℹ pass 1089
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 674818.954889
+
+✖ failing tests:
+
+test at tests/app/pwa.test.ts:1:6364
+✖ the main script and style are sent as Brotli or gzip with their own type and cache policy (41.625854ms)
+  AssertionError [ERR_ASSERTION]: /assets/data-1ij7AUYt.css: main delivery retains Brotli
+  
+  false !== true
+  
+      at TestContext.<anonymous> (/app/tests/app/pwa.test.ts:162:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Promise.all (index 0)
+      at async Suite.run (node:internal/test_runner/test:1905:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+

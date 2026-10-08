@@ -1,0 +1,162 @@
+{
+  "sourceCommit": "f5603386bf35d6ba2e492af495eedff93da8ba99",
+  "applicationEquivalent": "784d46007cd21cf35bd457ecc71c0f81b47f33c3",
+  "sourceBase": "0f68aa963be920fbc7ebf30742da4aef54fe34be",
+  "dateLocal": "2026-10-08 Europe/Warsaw",
+  "applicationExit": 0,
+  "applicationTests": 1111,
+  "uiExit": 0,
+  "uiTests": 474,
+  "uiSkipped": 5,
+  "uiExpectedFailures": 3,
+  "uiHarnessWarnings": "preserved, not zeroasync claim",
+  "routeCorrectedOverlayTests": 9,
+  "routeCorrectedOverlayContexts": 18,
+  "files": [
+    {
+      "file": "README.md",
+      "bytes": 6627,
+      "sha256": "90e11bd5928b30ef1c5f918303a72dc04078f0acd126cbd6c2eb58e6b24f2741"
+    },
+    {
+      "file": "application-result.json",
+      "bytes": 532,
+      "sha256": "0c4a6a72c56a068773ce0784d2c1c6c8cdc82c6606b9005d14e288530838b39f"
+    },
+    {
+      "file": "asset-inventory.json",
+      "bytes": 12795,
+      "sha256": "afa86f78c3bf20c529601bc347a75c7a0a47ee97f48ddb67292eea3f4813a2ed"
+    },
+    {
+      "file": "before-main0f68-build.txt",
+      "bytes": 2537,
+      "sha256": "db5502e3ec4ac5831eaebd62e6fb5e198c1f5b21a4634ab0cf64f6424183414a"
+    },
+    {
+      "file": "current-build-and-targeted-ui.txt",
+      "bytes": 11153,
+      "sha256": "2c773b022651d9217d2339b68ac0b21df1c369a7f263269d3bc361e85f41f197"
+    },
+    {
+      "file": "current-f560-pwa.log",
+      "bytes": 1584,
+      "sha256": "60d9b03a19833a012ec3dc4e555dee2ae1e61d9621c983b938eb2a8c7e5ed976"
+    },
+    {
+      "file": "current-full-application-summary.txt",
+      "bytes": 72344,
+      "sha256": "a696252c6cbd1bf8ccbaaa9eb920fe1a7ba25d17cbf5609265c62f4246ddf051"
+    },
+    {
+      "file": "current-full-ui-summary.txt",
+      "bytes": 2261,
+      "sha256": "a1e19f1f8f85e48d50ced8d2707e0461441d4863f2a90afaa884d3b6a9810a87"
+    },
+    {
+      "file": "current-testfix-ui.log",
+      "bytes": 2521,
+      "sha256": "00f98233a10958b4c4c52eb0c6a94c60bd77d088af6b25d69687d1293813f7e5"
+    },
+    {
+      "file": "current-ui-harness-warnings.txt",
+      "bytes": 5049,
+      "sha256": "87d79c5f056d469ea84183334637a00bfe35f50a9a51272ee28863301c7779cb"
+    },
+    {
+      "file": "historical-f06-build.log",
+      "bytes": 7346,
+      "sha256": "69cc2205fad75aa11b59bd296f20e67035d1c892f61acd2d5174abb0d5165eb8"
+    },
+    {
+      "file": "historical-primary-style-selector-failure.txt",
+      "bytes": 958,
+      "sha256": "8de469a82f531ff7759647d2a3eff8480f3aba0db00173621816171c8b379b06"
+    },
+    {
+      "file": "historical-pwa-failures.txt",
+      "bytes": 6841,
+      "sha256": "6aad349a11406a98bbd7ccade9222ca9206dea786330d65fcb622b7c88043dad"
+    },
+    {
+      "file": "historical-ui-phone-failures.txt",
+      "bytes": 2691,
+      "sha256": "e280d06da55e50c1e626d5dadf64b8760643754c2aadabfb957043e2713a6267"
+    },
+    {
+      "file": "historical-webkit-503-chromium.json",
+      "bytes": 2864,
+      "sha256": "fe98aa077d198c2db3f1a9435dd08d53fa2f2fd64ae90708083e15f3ac6d33c3"
+    },
+    {
+      "file": "historical-webkit-503-webkit.json",
+      "bytes": 2917,
+      "sha256": "c9525a118bc0a5ad8d817b3fa52dac720c8235fae6ee9d4c506059342ec65c44"
+    },
+    {
+      "file": "independent-visual.md",
+      "bytes": 4406,
+      "sha256": "33479ec808cbcaaef3262519501875cc9f80c64a672357e917e178d9f793ba1d"
+    },
+    {
+      "file": "route-chunks-code-error-chromium-desktop.png",
+      "bytes": 53770,
+      "sha256": "feb77119787246cf2bdae0999e72080f23c28aaa352bb34f5e748b2aa9419603"
+    },
+    {
+      "file": "route-chunks-code-error-webkit-desktop.png",
+      "bytes": 65596,
+      "sha256": "fd396f26a5e2882f7d8d25d89cbb821d59d358d12d342886331844bfb5402fd8"
+    },
+    {
+      "file": "route-chunks-details-pending-chromium-desktop.png",
+      "bytes": 74531,
+      "sha256": "a4b722d7e4ab5266cfdee7f0b2e193ce21b48cc940ba25ebf9687ae420609060"
+    },
+    {
+      "file": "route-chunks-details-pending-webkit-desktop.png",
+      "bytes": 93181,
+      "sha256": "390b633dc6cd2ab34c613607d9f6aae4439bd2bb29d6acfead0cc480afd2e787"
+    },
+    {
+      "file": "route-chunks-first-project-details-chromium-phone.png",
+      "bytes": 47985,
+      "sha256": "3daa27318936aca2c112714d0af015425c5e405eac1625c920394410408417e8"
+    },
+    {
+      "file": "route-chunks-first-project-details-webkit-phone.png",
+      "bytes": 68299,
+      "sha256": "f103ff80bf4834498d4a89a78865ba2ad9034267d16b9b83ce6c32165555f738"
+    },
+    {
+      "file": "route-chunks-pending-chromium-desktop.png",
+      "bytes": 73904,
+      "sha256": "83b4f56ed2e8c49aa301da9c5f2ea4a0ef1b455e5ecb2de89ee84bfa3fcf44ef"
+    },
+    {
+      "file": "route-chunks-pending-webkit-phone.png",
+      "bytes": 56643,
+      "sha256": "d02c97b89c9cbc4e561bb99a14d097e37f4a92c7e054deb3bb9f644670bd0ff2"
+    },
+    {
+      "file": "route-chunks-search-pending-chromium-desktop.png",
+      "bytes": 71136,
+      "sha256": "f186d009b5f47793948f0d33d97e7558ed46cf211d5809768ca93395ab8557d8"
+    },
+    {
+      "file": "route-chunks-search-pending-webkit-desktop.png",
+      "bytes": 88354,
+      "sha256": "7aaf2d71dd82f231d9ce4ba8e660fd1942a2174abdecfe5e9bb4bd82bc08dd7c"
+    },
+    {
+      "file": "route-code-reload-chromium.json",
+      "bytes": 3280,
+      "sha256": "e46a1182eb3ede5d033a8aa0e21e8d03b84b64358ec37ba6f3c6f243b6e492e2"
+    },
+    {
+      "file": "route-code-reload-webkit.json",
+      "bytes": 3140,
+      "sha256": "b8663f184b8b573de51b3948dcd29ce58feeb8d20f147330744874f8a59b4277"
+    }
+  ]
+}

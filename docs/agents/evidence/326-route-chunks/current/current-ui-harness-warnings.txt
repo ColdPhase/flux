@@ -1,0 +1,55 @@
+Task was destroyed but it is pending!
+task: <Task pending name='Task-13737' coro=<Page._on_route() running at /usr/local/lib/python3.12/dist-packages/playwright/_impl/_page.py:308> wait_for=<Future pending cb=[Task.task_wakeup()]> cb=[Connection.dispatch.<locals>._done_callback() at /usr/local/lib/python3.12/dist-packages/playwright/_impl/_connection.py:539]>
+Task was destroyed but it is pending!
+task: <Task pending name='Task-13738' coro=<Page._on_route() running at /usr/local/lib/python3.12/dist-packages/playwright/_impl/_page.py:308> wait_for=<Future pending cb=[Task.task_wakeup()]> cb=[Connection.dispatch.<locals>._done_callback() at /usr/local/lib/python3.12/dist-packages/playwright/_impl/_connection.py:539]>
+ok
+test_03_work_tab_mark_moves_at_once_content_follows_and_state_is_kept (test_motion.MotionJourney.test_03_work_tab_mark_moves_at_once_content_follows_and_state_is_kept) ... ok
+test_04_keyboard_choice_has_the_same_feedback_and_keeps_focus (test_motion.MotionJourney.test_04_keyboard_choice_has_the_same_feedback_and_keeps_focus) ... ok
+test_05_reduced_motion_places_at_once_without_any_animation (test_motion.MotionJourney.test_05_reduced_motion_places_at_once_without_any_animation) ... ok
+test_06_zoom_200_and_drawer_keep_the_highlight_on_its_row (test_motion.MotionJourney.test_06_zoom_200_and_drawer_keep_the_highlight_on_its_row) ... ok
+test_06b_script_driven_motion_lasts_its_token_in_the_production_build (test_motion.MotionJourney.test_06b_script_driven_motion_lasts_its_token_in_the_production_build) ... ok
+test_07_only_genuinely_new_visible_entries_arrive_and_a_reader_is_never_moved (test_motion.MotionJourney.test_07_only_genuinely_new_visible_entries_arrive_and_a_reader_is_never_moved) ... Task was destroyed but it is pending!
+task: <Task pending name='Task-13775' coro=<Page._on_route() running at /usr/local/lib/python3.12/dist-packages/playwright/_impl/_page.py:308> wait_for=<Future pending cb=[Task.task_wakeup()]> cb=[Connection.dispatch.<locals>._done_callback() at /usr/local/lib/python3.12/dist-packages/playwright/_impl/_connection.py:539]>
+Task was destroyed but it is pending!
+task: <Task pending name='Task-13776' coro=<Page._on_route() running at /usr/local/lib/python3.12/dist-packages/playwright/_impl/_page.py:308> wait_for=<Future pending cb=[Task.task_wakeup()]> cb=[Connection.dispatch.<locals>._done_callback() at /usr/local/lib/python3.12/dist-packages/playwright/_impl/_connection.py:539]>
+Exception ignored in: <coroutine object Page._on_route at 0x7f76bd9f55a0>
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_page.py", line 318, in _on_route
+    asyncio.create_task(
+  File "/usr/lib/python3.12/asyncio/tasks.py", line 417, in create_task
+    loop = events.get_running_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: no running event loop
+/usr/lib/python3.12/_weakrefset.py:85: RuntimeWarning: coroutine 'Connection.wrap_api_call' was never awaited
+  def add(self, item):
+RuntimeWarning: Enable tracemalloc to get the object allocation traceback
+Exception ignored in: <coroutine object Page._on_route at 0x7f76bd9f6320>
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_page.py", line 318, in _on_route
+    asyncio.create_task(
+  File "/usr/lib/python3.12/asyncio/tasks.py", line 417, in create_task
+    loop = events.get_running_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: no running event loop
+Task was destroyed but it is pending!
+task: <Task pending name='Task-13802' coro=<Page._on_route() running at /usr/local/lib/python3.12/dist-packages/playwright/_impl/_page.py:308> wait_for=<Future pending cb=[Task.task_wakeup()]> cb=[Connection.dispatch.<locals>._done_callback() at /usr/local/lib/python3.12/dist-packages/playwright/_impl/_connection.py:539]>
+Task was destroyed but it is pending!
+task: <Task pending name='Task-13803' coro=<Page._on_route() running at /usr/local/lib/python3.12/dist-packages/playwright/_impl/_page.py:308> wait_for=<Future pending cb=[Task.task_wakeup()]> cb=[Connection.dispatch.<locals>._done_callback() at /usr/local/lib/python3.12/dist-packages/playwright/_impl/_connection.py:539]>
+Exception ignored in: <coroutine object Page._on_route at 0x7f76bd9f5360>
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_page.py", line 318, in _on_route
+    asyncio.create_task(
+  File "/usr/lib/python3.12/asyncio/tasks.py", line 417, in create_task
+    loop = events.get_running_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: no running event loop
+Exception ignored in: <coroutine object Page._on_route at 0x7f76bd9f5b40>
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_page.py", line 318, in _on_route
+    asyncio.create_task(
+  File "/usr/lib/python3.12/asyncio/tasks.py", line 417, in create_task
+    loop = events.get_running_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: no running event loop
+ok
+
