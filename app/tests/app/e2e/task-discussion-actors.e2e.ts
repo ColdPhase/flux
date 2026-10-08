@@ -82,8 +82,9 @@ after(async () => {
   if (failures.length) throw new AggregateError(failures, 'Actor fixture final cleanup failed');
 });
 
-async function signedIn(who: Person, width: number) {
-  const context = await browser.newContext({ baseURL: origin.origin, viewport: { width, height: 900 }, serviceWorkers: 'block' });
+async function signedIn(who: Person, width: number, touch = false) {
+  const context = await browser.newContext({ baseURL: origin.origin, viewport: { width, height: 900 },
+    isMobile: touch, hasTouch: touch, serviceWorkers: 'block' });
   contexts.push(context);
   const signed = await context.request.post('/api/auth/sign-in/email', {
     data: { email: who.email, password }, headers: { origin: origin.origin },
@@ -319,25 +320,29 @@ test('agent root renders without a human DM link, real human reply persists, and
     const workspaceRoot = await taskDiscussionUseCases(db).contribute(workspaceActor, workspaceTask.id, {
       body: 'The workspace agent recorded this observation.', clientMessageId: randomUUID(),
     });
-    const workspaceContext = await signedIn(reader, 390);
-    const workspaceView = await workspaceContext.newPage();
-    workspaceView.on('pageerror', (error) => errors.push(error.message));
-    await workspaceView.emulateMedia({ colorScheme: 'dark' });
-    await workspaceView.goto(`/projects/${place.id}/conversations/${workspaceRoot.conversationId}`);
-    await workspaceView.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
-    await workspaceView.getByRole('button', { name: 'Close replies', exact: true }).click();
-    await workspaceView.locator('#thread').waitFor({ state: 'detached' });
-    const workspaceEvent = workspaceView.locator(`.convo-notice[data-work-id="${workspaceTask.id}"]`);
-    await assertAuthorColumn(workspaceEvent, 390);
-    await workspaceEvent.locator('.agent-for').filter({ hasText: 'for the workspace' }).waitFor();
-    assert.match(await workspaceEvent.innerText(), /Workspace analyst\s*Agent/);
-    await captureVisibleAuthor(workspaceView, workspaceEvent, 'workspace-agent-event-390-dark-text200', evidence);
-    const workspaceRow = workspaceView.locator(`#message-${workspaceRoot.id}`);
-    await assertAuthorColumn(workspaceRow, 390);
-    await workspaceRow.locator('.agent-for').filter({ hasText: 'for the workspace' }).waitFor();
-    assert.equal(await workspaceRow.locator('a[href*="/dm/new"]').count(), 0);
-    assert.equal(await workspaceView.evaluate(() => document.documentElement.scrollWidth - innerWidth), 0);
-    await captureVisibleAuthor(workspaceView, workspaceRow, 'workspace-agent-author-390-dark-text200', evidence);
+    for (const touch of [false, true]) {
+      const workspaceContext = await signedIn(reader, 390, touch);
+      const workspaceView = await workspaceContext.newPage();
+      workspaceView.on('pageerror', (error) => errors.push(error.message));
+      await workspaceView.emulateMedia({ colorScheme: 'dark' });
+      await workspaceView.goto(`/projects/${place.id}/conversations/${workspaceRoot.conversationId}`);
+      assert.equal(await workspaceView.evaluate(() => matchMedia('(pointer: coarse)').matches), touch,
+        'both the actual narrow mouse window and touch-emulated phone are exercised');
+      await workspaceView.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
+      await workspaceView.getByRole('button', { name: 'Close replies', exact: true }).click();
+      await workspaceView.locator('#thread').waitFor({ state: 'detached' });
+      const workspaceEvent = workspaceView.locator(`.convo-notice[data-work-id="${workspaceTask.id}"]`);
+      await assertAuthorColumn(workspaceEvent, 390);
+      await workspaceEvent.locator('.agent-for').filter({ hasText: 'for the workspace' }).waitFor();
+      assert.match(await workspaceEvent.innerText(), /Workspace analyst\s*Agent/);
+      await captureVisibleAuthor(workspaceView, workspaceEvent, `workspace-agent-event-390-dark-text200${touch ? '-touch' : ''}`, evidence);
+      const workspaceRow = workspaceView.locator(`#message-${workspaceRoot.id}`);
+      await assertAuthorColumn(workspaceRow, 390);
+      await workspaceRow.locator('.agent-for').filter({ hasText: 'for the workspace' }).waitFor();
+      assert.equal(await workspaceRow.locator('a[href*="/dm/new"]').count(), 0);
+      assert.equal(await workspaceView.evaluate(() => document.documentElement.scrollWidth - innerWidth), 0);
+      await captureVisibleAuthor(workspaceView, workspaceRow, `workspace-agent-author-390-dark-text200${touch ? '-touch' : ''}`, evidence);
+    }
     assert.deepEqual(errors, []);
   });
 
