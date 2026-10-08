@@ -473,8 +473,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
                 {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={(resultId) => openDetails({ kind: 'result', id: resultId })} /> : null}
                 {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={hideIfDenied} /> : null}
                 <MessageObjects message={message} projectId={project.id} preview={messageWork.previews?.get(message.id) ?? null} />
-                <ThreadMessageActions writable={writable}><MessageActions projectId={project.id} message={message} writable={writable} busy={makeWork.busy === message.id} onCreateWork={() => void makeWork.create(message)} /></ThreadMessageActions>
-                {makeWork.failed?.messageId === message.id ? <p className="ws-act-error" role="alert">{makeWork.failed.text} <button type="button" onClick={() => void makeWork.create(message)}>Retry</button></p> : null}
+                <ThreadMessageActions writable={writable}><MessageActions projectId={project.id} message={message} writable={writable} onCreateWork={() => makeWork.create(message)} /></ThreadMessageActions>
               </li>];
             }), ...outbox.pending.flatMap((item) => {
               const label = day(item.at);

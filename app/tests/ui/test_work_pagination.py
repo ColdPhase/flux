@@ -8,6 +8,7 @@ import uuid
 from urllib.parse import parse_qs, urlsplit
 
 from playwright.sync_api import expect, sync_playwright
+from create_window import open_from_tasks
 from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
 
 
@@ -169,7 +170,7 @@ class WorkPaginationJourney(unittest.TestCase):
         self.assertEqual(self.rows(page), original)
         route, response = held.pop(); route.fulfill(response=response)
         self.ready(page); expect(row).to_be_focused()
-        field = page.get_by_label("New task", exact=True)
+        field = open_from_tasks(page)
         field.fill("Check the spare boards before ordering")
         field.evaluate("el => { el.focus(); el.setSelectionRange(6, 18); }")
         page.evaluate("window.dispatchEvent(new Event('focus'))")
@@ -201,12 +202,14 @@ class WorkPaginationJourney(unittest.TestCase):
         expect(page.get_by_role("navigation", name="Work pages")).to_contain_text("1–6 of 6")
         self.assertEqual(len(self.rows(page)), 6)
         page.unroute("**/work-view**", hold_all)
-        field = page.get_by_label("New task", exact=True); field.fill("Private text survives a failed read")
+        field = open_from_tasks(page); field.fill("Private text survives a failed read")
+        page.keyboard.press("Escape")
         page.route("**/work-view**", lambda route: route.fulfill(status=503, json={"code": "WORK_READ_UNAVAILABLE", "error": "Fixture required read unavailable"}))
         page.get_by_role("navigation", name="Work pages").get_by_role("button", name="Refresh", exact=True).click()
         expect(page.get_by_role("heading", name="Work could not be loaded")).to_be_visible()
         expect(page.get_by_role("heading", name="No tasks yet")).to_have_count(0)
-        expect(field).to_have_value("Private text survives a failed read")
+        expect(open_from_tasks(page)).to_have_value("Private text survives a failed read")
+        page.keyboard.press("Escape")
         self.assertEqual(self.rows(page), [])
         page.unroute("**/work-view**")
         page.get_by_role("button", name="Refresh work", exact=True).click()
@@ -216,7 +219,8 @@ class WorkPaginationJourney(unittest.TestCase):
         page = self.page()
         page.goto(f"/projects/{self.project}/tasks?view=list&show=mine"); self.ready(page)
         expect(page.get_by_role("navigation", name="Work pages")).to_contain_text("1–50 of 64")
-        field = page.get_by_label("New task", exact=True); field.fill("Ada Kowalska's private draft")
+        field = open_from_tasks(page); field.fill("Ada Kowalska's private draft")
+        page.keyboard.press("Escape")
         held = []
         def hold_once(route):
             if not held:
@@ -231,6 +235,7 @@ class WorkPaginationJourney(unittest.TestCase):
         page.evaluate("window.dispatchEvent(new Event('focus'))")
         self.ready(page)
         expect(page.get_by_role("navigation", name="Work pages")).to_contain_text("1–50 of 62")
+        field = open_from_tasks(page)
         expect(field).to_have_value("")
         field.fill("Ada Nowak's separate private draft")
         route, response = held.pop(); route.fulfill(response=response)

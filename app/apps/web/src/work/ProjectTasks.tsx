@@ -6,7 +6,6 @@ import { getProject } from '../app/conversation-api';
 import { useShellActions } from '../app/shellContext';
 import { useShellData } from '../app/data';
 import { remember } from '../app/remembered';
-import { NewWorkComposer } from './NewWorkComposer';
 import { STATUS_LABEL, isFinished, shortDate } from './format';
 import { getProjectWorkView, getWorkReferenceRows, workReferenceReadUrl, workViewReadUrl } from './read-api';
 import { useWorkRead } from './useWorkRead';
@@ -14,7 +13,7 @@ import { OPENING_REVEAL_MS } from '../app/messageParts';
 import { useProjectWorkPage } from './WorkReadContext';
 import { WorkPagination } from './WorkPagination';
 import { useWorkReadingPosition } from './useWorkReadingPosition';
-import { TaskBoard, type ColumnId } from './TaskBoard';
+import { TaskBoard } from './TaskBoard';
 import { useProjectShell } from '../project/data';
 import { ProjectProposals } from '../project/ProjectProposals';
 import { listComparisonOutcomes } from '../project/proposals';
@@ -212,9 +211,9 @@ export function ProjectTasks() {
   const { project, outcomes } = useLoaderData() as TasksData;
   const shell = useProjectShell();
   const owners = useAgentOwners(project);
-  const { openDetails } = useShellActions();
+  const { openDetails, openCreate } = useShellActions();
   const revalidator = useRevalidator();
-  const [search, setSearch] = useSearchParams();
+  const [search] = useSearchParams();
   const { me } = useShellData();
   const scroller = useRef<HTMLDivElement>(null);
   const location = useLocation();
@@ -232,7 +231,6 @@ export function ProjectTasks() {
   };
   const [stored, setViewState] = useState(fromUrl);
   const [searched, setSearched] = useState({ routeKey: `${me.user.id}:${project.id}`, text: '' });
-  const [adding, setAdding] = useState<ColumnId | null>(null);
   // A router POP, account switch or project switch selects its actual URL immediately.
   const view = stored.routeKey === routeKey ? stored : fromUrl();
   const { status, mine, cursor, mode } = view;
@@ -344,20 +342,8 @@ export function ProjectTasks() {
   // The board's own column reads follow this revision as well as the router's revalidation.
   const [boardRevision, setBoardRevision] = useState(0);
   const refreshBoard = () => { refreshPage(); setBoardRevision((current) => current + 1); };
-  // "+ Task" starts the same creation: the List's field, or a field at the top of the board's Open column.
-  const startNew = () => {
-    if (mode === 'list') document.getElementById('ws-add')?.focus();
-    else setAdding('open');
-  };
-  // New → Task in the sidebar (F-026 S3) arrives as ?new=task: start the same creation once, then drop it.
-  useEffect(() => {
-    if (search.get('new') !== 'task' || !writable) return;
-    const next = new URLSearchParams(search);
-    next.delete('new');
-    setSearch(next, { replace: true });
-    if (mode === 'list') requestAnimationFrame(() => document.getElementById('ws-add')?.focus());
-    else requestAnimationFrame(() => setAdding('open'));
-  }, [search, writable, mode, setSearch]);
+  // "+ Task" opens the one Create window, here in this project (F-026 S3).
+  const startNew = () => openCreate({ kind: 'task', projectId: project.id });
 
   useEffect(() => {
     const refresh = () => { if (document.visibilityState === 'visible') revalidator.revalidate(); };
@@ -420,14 +406,13 @@ export function ProjectTasks() {
           ) : null}
           <div className="tb-aside">{proposals}</div>
           <TaskBoard project={project} openRead={read} meId={me.user.id} mine={mine} query={boardSearch.trim().toLowerCase()} writable={writable}
-            revision={boardRevision} adding={adding} onAdding={setAdding}
+            revision={boardRevision}
             openWork={(id) => { saveReading(); openDetails({ kind: 'work', id }); }} refresh={refreshBoard}
             showInList={(group) => setView({ mode: 'list', status: group })}
             clearFilters={() => { setBoardSearch(''); setView({ mine: false }); }} />
         </div>
       ) : (
       <div className="pane-in ws-tasks" data-shift data-work-observed-at={data?.summary.observedAt}>
-        {writable ? <NewWorkComposer key={`${me.user.id}:${project.id}`} userId={me.user.id} projectId={project.id} /> : null}
         {proposals}
         <div className="ws-task-controls">
           <TaskViews counts={counts} status={status} mine={mine} writable={writable} onStatus={(next) => setView({ status: next })} onMine={(next) => setView({ mine: next })} />

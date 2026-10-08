@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
-import { Link, NavLink, useLocation, useNavigate, useNavigation } from 'react-router';
+import { useEffect, useRef } from 'react';
+import { Link, NavLink, useLocation, useNavigation } from 'react-router';
 import { Avatar, FluxLogo, Icon, IconButton, choosesInPlace, useTravelingHighlight } from '../ui';
 import { type DirectMessageSummary, type ProjectSummary, type WorkspaceSummary } from './data';
 import { placeOf } from './place';
-import { startCapture } from './views';
 import { UserMenu } from './UserMenu';
 import { useShellActions } from './shellContext';
 import { WorkingAgent } from './WorkingAgent';
@@ -37,8 +36,7 @@ function ProjectTile({ name, size = 20 }: { name: string; size?: number }) {
  * threads live in its Conversation view, not in this list. A project never reveals another's contents.
  */
 export function Sidebar({ projects, directMessages, user, session, onClose, titleId, inboxUnread = 0, collapsed = false, onToggleCollapsed }: SidebarProps) {
-  const go = useNavigate();
-  const { openSearch } = useShellActions();
+  const { openSearch, openCreate } = useShellActions();
   const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
   const location = useLocation();
   const place = placeOf(location.pathname);
@@ -57,7 +55,6 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
   const glide = useRef<HTMLLIElement>(null);
   const glideTo = useTravelingHighlight(projectList, glide, ['.side__project[data-pending]', '.side__project.is-open']);
   const searchKeys = mac ? 'Meta+K' : 'Control+K';
-  const [newOpen, setNewOpen] = useState(false);
   useEffect(() => {
     // "C" opens New from anywhere outside a field or dialog (F-026 §4 keyboard); the drawer has its own.
     if (onClose) return undefined;
@@ -66,21 +63,18 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
       const target = event.target as HTMLElement | null;
       if (target?.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
       event.preventDefault();
-      setNewOpen(true);
+      openCreate(projectId ? { projectId } : {});
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-  const newProject = () => { onClose?.(); void go('/projects/new'); };
-  const newNote = () => { onClose?.(); startCapture(go); };
-  const newTask = projectId ? () => { onClose?.(); void go(`/projects/${projectId}/tasks?new=task`); } : null;
-  const newMessage = () => { onClose?.(); void go('/dm/new'); };
+  }, [onClose, openCreate, projectId]);
+  const onNew = () => openCreate(projectId ? { projectId } : {});
 
   if (collapsed && !onClose) {
     return (
       <div className="side side--rail">
         <span className="side__glyph" role="img" aria-label="Flux" id={titleId}><FluxLogo size={28} /></span>
-        <NewMenu compact open={newOpen} onOpenChange={setNewOpen} onTask={newTask} onProject={newProject} onNote={newNote} onMessage={newMessage} />
+        <NewMenu compact onNew={onNew} />
         <nav className="side__rail-places" aria-label="Places">
           <Link to="/" className="side__ib" aria-label="Home" aria-current={home ? 'page' : undefined}><Icon name="home" size={18} /></Link>
           <Link to="/inbox" className="side__ib" aria-label={inboxUnread ? `Inbox, ${inboxUnread} new` : 'Inbox'} aria-current={inbox ? 'page' : undefined}>
@@ -127,7 +121,7 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
           : <IconButton icon="sidebar" label="Collapse sidebar" aria-keyshortcuts="[" className="side__toggle" onClick={onToggleCollapsed} />}
       </div>
       <div className="side__actions">
-        <NewMenu open={newOpen} onOpenChange={setNewOpen} onTask={newTask} onProject={newProject} onNote={newNote} onMessage={newMessage} />
+        <NewMenu onNew={onNew} />
         <button type="button" className="side__search" aria-label="Search" aria-keyshortcuts={searchKeys} title={mac ? 'Search (⌘K)' : 'Search (Ctrl K)'} onClick={() => { onClose?.(); openSearch(); }}>
           <Icon name="search" size={16} />
         </button>

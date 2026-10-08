@@ -152,11 +152,6 @@ html.tb-is-dragging, html.tb-is-dragging * { cursor: grabbing !important; user-s
 .tb-menu__i .tb-menu__check { margin-left: auto; color: var(--t1); }
 .tb-menu__sep { height: 1px; margin: 6px 4px; background: var(--line); }
 
-/* ---------- Adding a task in a column ---------- */
-.tb-new { display: grid; gap: 8px; margin-bottom: 12px; padding: 12px; border: 1px solid var(--line); border-radius: var(--r-card); background: var(--el); }
-.tb-new__in.ui-input { min-height: 36px; }
-.tb-new__acts { display: flex; gap: 6px; }
-
 /* ---------- Narrow boards: an overview of every status, then one column at a time ---------- */
 .tb-overview { display: none; }
 @container tasks (max-width: 699px) {

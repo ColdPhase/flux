@@ -32,8 +32,7 @@ PARTNER = ("jonas@demo.flux.test", os.environ.get("FLUX_DEMO_PARTNER_PASSWORD", 
 WORKSPACE = "Riverside Makers (demo)"
 PROJECT = "Community garden sensors"
 NEWS = "Ada, the school can lend us two ESP32 kits. Shall I pick them up on Thursday?"
-# Message actions were renamed in the Studio 11.6 flow work (#189); either name works.
-CREATE_TASK = re.compile("^(Create work|Task)$")
+CREATE_TASK = re.compile("^Task$")
 PROPOSE_DECISION = re.compile("^(Propose decision|Decision)$")
 
 # A classic arrow, drawn above the page and ignored by hit testing and assistive technology.
@@ -145,6 +144,11 @@ def journey(page: Page, rec: Recorder) -> None:
     expect(order).to_be_visible()
     order.hover()
     rec.click(order.get_by_role("button", name=CREATE_TASK))
+    # The one Create window opens with the message as its source (#345).
+    window = page.get_by_role("dialog", name="Create")
+    expect(window).to_be_visible()
+    rec.hold(1200)
+    rec.click(window.get_by_role("button", name=re.compile("^Create task")))
     panel = page.locator("#details")
     expect(panel.get_by_label("Status")).to_have_value("open")
     rec.hold(2400)

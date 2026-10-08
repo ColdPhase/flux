@@ -122,27 +122,25 @@ class ComputerShell(unittest.TestCase):
         expect(composer).to_have_value("[")
         expect(self.sidebar(page).locator(".side--rail")).to_have_count(0)
 
-    def test_03_c_opens_new_and_a_task_starts_in_the_open_project(self) -> None:
+    def test_03_c_opens_the_create_window_and_a_task_starts_in_the_open_project(self) -> None:
         self.ensure_account()
         page = self.page()
         page.goto("/")
         expect(self.sidebar(page).get_by_role("button", name=re.compile("^New"))).to_be_visible()
         page.locator("body").press("c")
-        menu = page.get_by_role("menu", name="New")
-        expect(menu).to_be_visible()
-        self.assertEqual([item.strip() for item in menu.get_by_role("menuitem").all_inner_texts()],
-                         ["Task\nin a project", "Project", "Private note", "Message"])
-        expect(menu.get_by_role("menuitem", name=re.compile("^Task"))).to_have_attribute("aria-disabled", "true")
-        expect(menu.get_by_role("menuitem", name="Project", exact=True)).to_be_focused()
+        window = page.get_by_role("dialog", name="Create")
+        expect(window).to_be_visible()
+        # New opens the one Create window (#345); Project, Message and Private note stay one step away.
+        expect(window.get_by_label("Title", exact=True)).to_be_focused()
+        other = window.get_by_role("group", name="Create something else")
+        self.assertEqual([item.strip() for item in other.get_by_role("button").all_inner_texts()], ["Project", "Message", "Private note"])
         page.keyboard.press("Escape")
-        expect(menu).to_have_count(0)
-        expect(self.sidebar(page).get_by_role("button", name=re.compile("^New"))).to_be_focused()
+        expect(window).to_have_count(0)
         page.goto(f"/projects/{self.ids['projects'][0]}")
         expect(page.get_by_role("heading", level=1, name="Community garden sensors")).to_be_visible()
         page.locator("body").press("c")
-        page.get_by_role("menu", name="New").get_by_role("menuitem", name=re.compile("^Task")).click()
-        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['projects'][0]}/tasks$"))
-        expect(page.locator(".tb-new, #ws-add").first).to_be_visible()
+        expect(window).to_be_visible()
+        expect(window.get_by_role("combobox", name="Project")).to_have_value(self.ids["projects"][0])
 
     def test_04_g_then_i_goes_to_the_inbox(self) -> None:
         self.ensure_account()

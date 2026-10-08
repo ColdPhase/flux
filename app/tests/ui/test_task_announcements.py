@@ -191,7 +191,7 @@ class TaskAnnouncements(unittest.TestCase):
         # Authored events share the creator's column, while retaining no message actions or replies.
         for work_id in (self.ids["from_message"], self.ids["measure"]):
             item = self.notice(page, work_id)
-            expect(item.get_by_role("button", name=re.compile("Reply|Create work|Details"))).to_have_count(0)
+            expect(item.get_by_role("button", name=re.compile("Reply|Create task|Details"))).to_have_count(0)
             expect(item.locator(".ui-avatar")).to_have_count(1)
             assert_author_column(self, item, DESKTOP["width"], "actual task event creator")
         # The early task's announcement waits with the earlier roots, then appears in its place.
@@ -281,6 +281,9 @@ class TaskAnnouncements(unittest.TestCase):
         later = page.locator(f"#message-{self.ids['later']}")
         later.hover()
         later.get_by_role("button", name="Task", exact=True).click()
+        # The one Create window opens with the message as its source (#345); creating it opens the task.
+        expect(page.get_by_role("dialog", name="Create").get_by_label("Title", exact=True)).to_have_value(LATER)
+        page.get_by_role("dialog", name="Create").get_by_role("button", name=re.compile("^Create task")).click()
         details = page.locator("#details")
         expect(details.get_by_role("heading", name=LATER)).to_be_visible()
         work = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/work?limit=100", status=200)
@@ -554,8 +557,8 @@ class TaskAnnouncements(unittest.TestCase):
         page.keyboard.press("Control+k")
         dialog = page.get_by_role("dialog", name="Jump to")
         dialog.get_by_role("combobox", name="Jump to").fill("heavier foot")
-        expect(dialog.get_by_role("option").first).to_contain_text("heavier foot")
-        dialog.get_by_role("combobox", name="Jump to").press("Enter")
+        expect(dialog.locator("[role=option].sr").first).to_contain_text("heavier foot")
+        dialog.locator("[role=option].sr").first.click()
         expect(page).to_have_url(re.compile(f"/conversations/{self.ids['linked']}"))
         root = page.locator(f"#message-{self.ids['linked_root']}")
         expect(root).to_be_in_viewport()

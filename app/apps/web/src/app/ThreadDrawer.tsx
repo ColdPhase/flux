@@ -40,7 +40,7 @@ export function ThreadDrawer({ mode, count, focusOnOpen, onClose, children }: { 
 }
 
 /**
- * A reply's actions in the narrow thread (Create work, Propose decision, Attach result, Details): as on touch,
+ * A reply's actions in the narrow thread (Task, Propose decision, Attach result, Details): as on touch,
  * one quiet ⋯ in the reply's corner opens them under the reply, so the full bar never covers its author or
  * leaves empty rows between replies. Touch already has its own ⋯; a reader has only Details.
  */

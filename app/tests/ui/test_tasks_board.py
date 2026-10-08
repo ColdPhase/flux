@@ -19,6 +19,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from playwright.sync_api import Browser, BrowserContext, Locator, Page, expect, sync_playwright
 
+from create_window import add_task
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 from contrast import MEASURE
 
@@ -486,9 +487,8 @@ class TasksBoardJourney(unittest.TestCase):
         page.reload()
         expect(page.get_by_role("radio", name="List", exact=True)).to_be_checked()
         expect(page.get_by_role("navigation", name="Task views")).to_be_visible()
-        # The List's own field still adds a task through the existing flow.
-        page.get_by_label("New task", exact=True).fill(PETG)
-        page.get_by_role("button", name="Add task", exact=True).click()
+        # The List adds a task through the same Create window as the board.
+        add_task(page, PETG)
         expect(page.locator("#details").get_by_role("heading", name=PETG)).to_be_visible()
         page.keyboard.press("Escape")
         expect(page.get_by_role("region", name=re.compile("^Open"))).to_contain_text(PETG)

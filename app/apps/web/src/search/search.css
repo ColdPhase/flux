@@ -51,6 +51,10 @@
 .jump__opt:not(.sr) { display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 10px; border-radius: var(--r); color: var(--t2); font-size: var(--fs-md); cursor: pointer; }
 .jump__opt:not(.sr).is-active { background: var(--hov); color: var(--t1); }
 .jump__ric { color: var(--t3); }
+.jump__sh { padding: 10px 10px 4px; font-size: var(--fs-xs); font-weight: 500; color: var(--t3); }
+.jump__key { margin-left: auto; font: 500 11px var(--mono); color: var(--t3); background: var(--sub); border-radius: 6px; padding: 1px 6px; }
+.jump__side { margin-left: auto; padding-left: 12px; font-size: var(--fs-xs); color: var(--t3); white-space: nowrap; }
+.jump__opt:not(.sr) .jump__rtext { flex: 0 1 auto; }
 .jump__rtext, .jump__alltext { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .jump__all { min-height: 42px !important; margin: 4px 0 2px; border-top: 1px solid var(--line); border-radius: 0 0 var(--r) var(--r); color: var(--t1) !important; font-weight: 500; }
 .jump__all svg { margin-left: auto; }

@@ -597,8 +597,7 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
       {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
       <MessageObjects message={message} projectId={project.id} preview={messageWork.previews?.get(message.id) ?? null} thread={root.task ?? null} threadRow={taskRow} />
       <Replies root={root} open={open} writable={writable} onOpen={(reply) => onOpen(root, reply)} />
-      <MessageActions projectId={project.id} message={message} writable={writable} busy={makeWork.busy === message.id} onCreateWork={() => void makeWork.create(message)} />
-      {makeWork.failed?.messageId === message.id ? <p className="ws-act-error" role="alert">{makeWork.failed.text} <button type="button" onClick={() => void makeWork.create(message)}>Retry</button></p> : null}
+      <MessageActions projectId={project.id} message={message} writable={writable} onCreateWork={() => makeWork.create(message)} />
     </li>
   );
 }

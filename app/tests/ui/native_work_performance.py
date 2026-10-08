@@ -39,7 +39,7 @@ PROBE = r"""(() => {
   const rows = () => document.querySelectorAll('.ws-list > li').length;
   const pane = () => document.querySelector('.ws-tasks')?.closest('.pane-scroll');
   function correctView(view, rowCount, checkAllCounts) {
-    const input = document.querySelector('#ws-add');
+    const input = document.querySelector('.create__title');
     if (!input || input.disabled || !input.closest('.ws-tasks')) return false;
     const views = document.querySelectorAll('.ws-view');
     const selected = [...views].find(b => b.getAttribute('aria-pressed') === 'true');
@@ -68,7 +68,7 @@ PROBE = r"""(() => {
     probe.armed = {kind, expected, start:null, trusted:false, beforeScroll:pane()?.scrollTop};
   };
   function ready(a) {
-    if (a.kind === 'input') return document.querySelector('#ws-add')?.value === a.expected.value;
+    if (a.kind === 'input') return document.querySelector('.create__title')?.value === a.expected.value;
     if (a.kind === 'view') return correctView(a.expected.view,a.expected.rows,true);
     return !!pane() && Math.abs(pane().scrollTop-a.beforeScroll) >= 1;
   }
@@ -88,7 +88,7 @@ PROBE = r"""(() => {
     const a = probe.armed;
     if (!a || a.start !== null || !event.isTrusted) return;
     const el = event.target instanceof Element ? event.target : null;
-    if (a.kind === 'input' && !(event.type === 'keydown' && el?.id === 'ws-add')) return;
+    if (a.kind === 'input' && !(event.type === 'keydown' && el?.classList?.contains('create__title'))) return;
     if (a.kind === 'view' && !(event.type === 'click' && el?.closest('.ws-view'))) return;
     if (a.kind === 'scroll' && !(event.type === 'wheel' && el?.closest('.pane-scroll') === pane())) return;
     a.start = performance.now(); a.trusted = true; requestAnimationFrame(() => finish(a));
@@ -365,7 +365,8 @@ def run_profile(browser,data,label,viewport,cpu,report):
                         driver_navigation.append(driver_ms)
                 else:
                     if kind == "input":
-                        field = page.locator("#ws-add"); field.focus()
+                        if not page.locator(".create__title").is_visible(): page.get_by_role("button",name=re.compile("^(New )?Task$")).first.click()
+                        field = page.locator(".create__title"); field.focus()
                         before = field.input_value(); key = "a" if index%2 == 0 else "Backspace"
                         expected = before+"a" if key == "a" else before[:-1]
                         assert expected != before, "each native key action must change the input"
@@ -402,7 +403,8 @@ def run_profile(browser,data,label,viewport,cpu,report):
         # Native continuity is a separate observation, not a fabricated passing sample.
         item["currentPhase"] = "continuity"
         page.goto(url,wait_until="domcontentloaded"); usable(page)
-        field = page.locator("#ws-add"); draft = "Compare privacy and sensor range before the next library test"
+        page.get_by_role("button",name=re.compile("^(New )?Task$")).first.click()
+        field = page.locator(".create__title"); draft = "Compare privacy and sensor range before the next library test"
         field.fill(draft); field.focus(); page.keyboard.press("End")
         selection_before = field.evaluate("el => ({start:el.selectionStart,end:el.selectionEnd,focused:document.activeElement===el})")
         page.set_viewport_size({"width":820,"height":1000}); following_frame(page)

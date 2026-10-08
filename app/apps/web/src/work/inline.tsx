@@ -1,11 +1,9 @@
-import { useCallback, useRef, useState } from 'react';
-import { useRevalidator } from 'react-router';
+import { useCallback, useState } from 'react';
 import { messagePreview, type ConversationMessage, type NativeWorkRow, type Project, type ProjectWorkSummary } from '@flux/contracts';
-import { ApiError } from '../api/client';
 import { Icon, useMediaQuery } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { useShellData } from '../app/data';
-import { createWork, type ProjectWork } from './api';
+import type { ProjectWork } from './api';
 import { decisionLine, firstLine, resultLine, workLine, taskNumber } from './format';
 import type { MessageWorkPreview } from './message-associations';
 import { summaryEmptyCaption, summaryStateParts, type StatePart } from './state-summary';
@@ -150,30 +148,15 @@ export function MessageObjects({ message, projectId, preview, thread = null, thr
   );
 }
 
-/**
- * Creates work from a message in one action. A failed attempt keeps its Idempotency-Key, so
- * retrying after a lost response returns the same work item instead of a duplicate.
- */
+/** A message's Task action opens the one Create window with the message as its source; the notice in the conversation is the server's. */
 export function useCreateWorkFromMessage(project: Project) {
-  const { openDetails } = useShellActions();
-  const revalidator = useRevalidator();
-  const keys = useRef(new Map<string, string>());
-  const [busy, setBusy] = useState<string | null>(null);
-  const [failed, setFailed] = useState<{ messageId: string; text: string } | null>(null);
-  const create = useCallback(async (message: ConversationMessage) => {
-    const key = keys.current.get(message.id) ?? crypto.randomUUID();
-    keys.current.set(message.id, key);
-    setBusy(message.id); setFailed(null);
-    try {
-      const item = await createWork(project.id, { title: firstLine(messagePreview(message.body, message.files?.length)), sources: [{ type: 'message', id: message.id }] }, key);
-      keys.current.delete(message.id);
-      revalidator.revalidate();
-      openDetails({ kind: 'work', id: item.id });
-    } catch (cause) {
-      setFailed({ messageId: message.id, text: cause instanceof ApiError && cause.status === 403 ? 'You can read this project but not add work.' : cause instanceof Error ? cause.message : 'Could not create the work.' });
-    } finally { setBusy(null); }
-  }, [openDetails, project.id, revalidator]);
-  return { create, busy, failed };
+  const { openCreate } = useShellActions();
+  /** Opens the Create window prefilled with this message as the task's source (F-026 S3, P5). */
+  const create = useCallback((message: ConversationMessage) => {
+    const preview = firstLine(messagePreview(message.body, message.files?.length));
+    openCreate({ kind: 'task', projectId: project.id, title: preview, sources: [{ ref: { type: 'message', id: message.id }, label: preview }] });
+  }, [openCreate, project.id]);
+  return { create };
 }
 
 /**
@@ -183,7 +166,7 @@ export function useCreateWorkFromMessage(project: Project) {
  * On a pointer they float over the message's corner and take no room in the feed. "Details" shows everything linked to this message (#117); readers without write access
  * get only that.
  */
-export function MessageActions({ projectId, message, onCreateWork, busy, writable = true }: { projectId: string; message: ConversationMessage; onCreateWork: () => void; busy: boolean; writable?: boolean }) {
+export function MessageActions({ projectId, message, onCreateWork, writable = true }: { projectId: string; message: ConversationMessage; onCreateWork: () => void; writable?: boolean }) {
   const { openDetails } = useShellActions();
   const touch = useMediaQuery('(hover: none)');
   const [open, setOpen] = useState(false);
@@ -197,7 +180,7 @@ export function MessageActions({ projectId, message, onCreateWork, busy, writabl
   }
   return (
     <div className="ws-acts" role="group" aria-label="Make something from this message">
-      <button type="button" className="ws-act" onClick={onCreateWork} aria-busy={busy || undefined} disabled={busy}><Icon name="tasks" size={14} />{busy ? 'Creating…' : 'Task'}</button>
+      <button type="button" className="ws-act" onClick={onCreateWork}><Icon name="tasks" size={14} />Task</button>
       <button type="button" className="ws-act" onClick={() => openDetails({ kind: 'propose-decision', projectId, source })}><Icon name="rule" size={14} />Decision</button>
       <button type="button" className="ws-act" onClick={() => openDetails({ kind: 'attach-result', projectId, source })}><Icon name="result" size={14} />Result</button>
       {details}
