@@ -13,7 +13,7 @@ export async function agentMcpPolicyRoutes(app: FastifyInstance, { db, sessions 
     const principal = (await sessions.requirePrincipal(request)).principal;
     const result = await db.transaction(async (tx) => {
       const current = await agentMcpPolicyUseCases(createMcpPolicyStore(tx)).get(principal, request.params.connectionId);
-      const projects = [];
+      const projects: { id: string; selected: boolean; readable: boolean; writable: boolean }[] = [];
       for (const projectId of [...current.connection.selectedProjectIds].sort()) {
         const actor = { kind: 'agent' as const, id: current.connection.agentId };
         const read = await evaluateProject(actor, 'project.read', projectId, tx, { lock: true });

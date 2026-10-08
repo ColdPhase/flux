@@ -282,3 +282,17 @@ owner inspection/removal-only policy management. It is prepared, not executed.
 The earlier `62fd94a63e12882547dc5d3816e8b5713086eb59` source review is historical
 and qualified by this omitted boundary. No relay, complete S6 or runtime acceptance
 is claimed by this correction.
+
+
+### First actual owner-checkpoint build
+
+The independently reviewed frozen owner checkpoint
+`dcf865fac886b358f0c70273c5c49b57cf743095` was run in Docker on 2026-10-08.
+Its maintained build failed with actual exit 1 before application tests because the
+owner GET projection's empty project array lacked a TypeScript annotation
+(TS7034/TS7005). No deadline or unsettled process group occurred; owned project
+resources and image tags were removed and confirmed absent. The continuation adds
+the explicit existing projection shape without changing values or authorization.
+The owner/core/architecture tests from that run remain unexecuted. Preparation or
+source-review PASS never counts as application acceptance; a new pinned build and
+actual selected tests are still required.
