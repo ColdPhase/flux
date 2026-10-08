@@ -74,6 +74,13 @@
   .thread__in { padding: 16px 17px 12px; }
   .thread__root { padding-left: 42px; }
 }
+/* A narrow window can still have a mouse. Keep its hover controls below the content,
+   where the touch controls already live, so enlarged author names remain readable. */
+@media (max-width: 680px) and (hover: hover) {
+  .project-convo__message > .ws-acts:not(.ws-acts--more) {
+    position: static; margin: 4px 0 0 -6px; padding: 0; background: none; box-shadow: none;
+  }
+}
 @media (prefers-reduced-motion: no-preference) {
   .thread--sheet { animation: thread-in var(--dur-3) var(--ease-sheet) both; }
   .thread--docked { animation: thread-dock var(--dur-2) var(--ease-out) both; }
@@ -81,7 +88,7 @@
 @keyframes thread-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes thread-dock { from { opacity: 0; } to { opacity: 1; } }
 
-/* A task event retains the actual creator's author column; its task glyph stays with the event. */
+/* A task event retains the actual creator's author column. */
 .convo-notice { position: relative; padding-left: 44px; margin: 24px 0; }
 .convo-notice > :is(.ui-avatar, .author-face) { position: absolute; left: 0; top: 0; }
 .convo-notice__body { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
