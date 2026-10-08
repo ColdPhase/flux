@@ -33,9 +33,15 @@
 .thread { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg); outline: none; }
 .thread--docked { flex: none; width: clamp(320px, 40%, var(--panel-w)); border-left: 1px solid var(--line); }
 .thread--sheet { position: absolute; inset: 0; z-index: var(--z-panel); }
+/* One panel look (F-026 S4): beside the stream a raised card like the detail panel; over it a sheet with a grabber and two heights. */
+.thread--docked { margin: 10px 10px 10px 0; background: var(--el); border: 0; border-radius: var(--r-panel); box-shadow: var(--sh-pop); overflow: hidden; }
+.thread--sheet { inset: auto 0 0 0; height: calc(100% - 12px); background: var(--el); border-radius: var(--r-sheet) var(--r-sheet) 0 0; box-shadow: var(--sh-pop); overflow: hidden; transition: height var(--dur-3) var(--ease-sheet); }
+.thread--sheet[data-height="half"] { height: 56%; }
+.thread--sheet .thread__head, .thread--sheet .thread__head * { border-bottom: 0; touch-action: none; }
+@media (prefers-reduced-motion: reduce) { .thread--sheet { transition: none; } }
 .thread__head { display: flex; align-items: center; gap: 8px; height: 48px; flex: none; padding: 0 8px 0 20px; border-bottom: 1px solid var(--line); }
-.thread__title { font-size: var(--fs-md); font-weight: 600; }
-.thread__n { font-family: var(--mono); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--sub); color: var(--t2); font-size: var(--fs-xs); font-weight: 600; line-height: 18px; text-align: center; font-variant-numeric: tabular-nums; }
+.thread__title { margin: 0; font-size: var(--fs-sm); font-weight: 600; }
+.thread__n { color: var(--t3); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
 .thread__close { margin-left: auto; }
 /* As a sheet the way back sits first, where a phone's back control is expected. */
 .thread--sheet .thread__head { padding-left: 6px; }

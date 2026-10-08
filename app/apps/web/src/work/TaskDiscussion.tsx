@@ -17,8 +17,8 @@ import { agentDisplayName } from '../docs/format';
  * Before anyone has written, a person who can write starts it here. The structured draft and its
  * retry identity belong to the account/project/task, as in every place that writes to it.
  */
-export function TaskDiscussionSection({ workId, project, members, me }: {
-  workId: string; project: Project; members: WorkspaceMember[]; me: { id: string; name: string };
+export function TaskDiscussionSection({ workId, number, project, members, me }: {
+  workId: string; number?: number; project: Project; members: WorkspaceMember[]; me: { id: string; name: string };
 }) {
   const owners = useAgentOwners(project);
   const headingId = useId();
@@ -65,8 +65,8 @@ export function TaskDiscussionSection({ workId, project, members, me }: {
   const root = discussion?.root ?? null;
   const replies = root ? Math.max(0, (discussion?.messages.at(-1)?.sequence ?? 1) - 1) : 0;
   return (
-    <section className="details__sec" aria-labelledby={headingId}>
-      <h4 id={headingId}>Discussion</h4>
+    <section className="details__sec wd-activity" aria-label="Discussion">
+      <h4 id={headingId}>Activity</h4>
       {failed ? <p className="wd-error" role="alert">The discussion could not be loaded. <button type="button" className="wd-inline" onClick={() => { setFailed(false); setAttempt((value) => value + 1); }}>Retry</button></p>
         : !discussion ? <p className="wd-muted" aria-busy="true">Loading…</p>
           : <>
@@ -91,7 +91,7 @@ export function TaskDiscussionSection({ workId, project, members, me }: {
               <p id={`${fieldId}-hint`} className="wd-discussion-form__hint">{root ? 'Goes to this task’s one discussion, also shown in Conversation and Agents.' : 'Nobody has written about this task yet. The first message starts its discussion in the project conversation.'}</p>
               <label className="ui-vh" htmlFor={fieldId}>{root ? 'Write to this task' : 'First message about this task'}</label>
               <textarea id={fieldId} aria-describedby={`${fieldId}-hint`} value={composer.draft.body} rows={3} maxLength={20000}
-                placeholder="Write about this task…" onChange={(event) => composer.setBody(event.target.value)} onKeyDown={onKeyDown} />
+                placeholder={number ? `Write about #${number}…` : 'Write about this task…'} onChange={(event) => composer.setBody(event.target.value)} onKeyDown={onKeyDown} />
               <ComposerFiles state={composer} />
               <SendAnnouncer pending={composer.pending} />
               <div className="wd-actions"><Button type="submit" variant="secondary" icon="send" disabled={!composer.canSend}>{root ? 'Send to task' : 'Start the discussion'}</Button></div>

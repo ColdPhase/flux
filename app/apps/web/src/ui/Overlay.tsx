@@ -55,8 +55,13 @@ export interface OverlayProps {
   initialFocus?: RefObject<HTMLElement | null>;
   className?: string;
   id?: string;
+  /** A bottom sheet with two heights, half and full (F-026 S4): the grabber and a drag up or down change it. */
+  detents?: boolean;
   children: ReactNode;
 }
+
+/** The sheet's current height; dragging down from half closes, from full it goes back to half. */
+interface Detent { full: boolean; setFull: (full: boolean) => void }
 
 const offstage: Record<OverlayPlacement, string> = {
   left: 'translateX(calc(-100% - 24px))',
@@ -71,7 +76,7 @@ const offstage: Record<OverlayPlacement, string> = {
  * flick, it closes from where it is; otherwise it settles back. Mouse input and keyboard keep
  * their own paths (scrim, close button, Esc), and vertical scrolling inside the drawer is untouched.
  */
-function useDismissDrag(placement: OverlayPlacement, surfaceRef: RefObject<HTMLDivElement | null>, scrimRef: RefObject<HTMLDivElement | null>, close: () => void) {
+function useDismissDrag(placement: OverlayPlacement, surfaceRef: RefObject<HTMLDivElement | null>, scrimRef: RefObject<HTMLDivElement | null>, close: () => void, detent?: Detent) {
   const state = useRef<{ id: number; x: number; y: number; t: number; moving: boolean; prev: number; prevT: number; last: number; lastT: number } | null>(null);
   if (placement !== 'left' && placement !== 'bottom') return {};
   const axis = placement === 'left' ? 'x' : 'y';
@@ -95,7 +100,7 @@ function useDismissDrag(placement: OverlayPlacement, surfaceRef: RefObject<HTMLD
     onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
       if (event.pointerType === 'mouse' || !event.isPrimary) return;
       // The sheet drags only from its header, so its body keeps scrolling normally.
-      if (placement === 'bottom' && !(event.target as HTMLElement).closest('.ui-panel__head')) return;
+      if (placement === 'bottom' && !(event.target as HTMLElement).closest('.ui-panel__head, .ui-grabber')) return;
       if ((event.target as HTMLElement).closest('input, textarea, select, [contenteditable="true"]')) return;
       state.current = { id: event.pointerId, x: event.clientX, y: event.clientY, t: event.timeStamp, moving: false, prev: 0, prevT: event.timeStamp, last: 0, lastT: event.timeStamp };
     },
@@ -108,6 +113,8 @@ function useDismissDrag(placement: OverlayPlacement, surfaceRef: RefObject<HTMLD
       const across = axis === 'x' ? dy : dx;
       if (!drag.moving) {
         if (Math.abs(along) < 8) return;
+        // Up from half opens the full height; there is nothing to follow.
+        if (detent && !detent.full && along < 0 && Math.abs(across) <= Math.abs(along)) { state.current = null; detent.setFull(true); return; }
         if (Math.abs(across) > Math.abs(along) || Math.sign(along) !== sign) { state.current = null; return; }
         drag.moving = true;
         event.currentTarget.setPointerCapture(event.pointerId);
@@ -123,7 +130,10 @@ function useDismissDrag(placement: OverlayPlacement, surfaceRef: RefObject<HTMLD
       const along = axis === 'x' ? event.clientX - drag.x : event.clientY - drag.y;
       // A flick is judged by the finger's speed as it lets go, not averaged from the start.
       const velocity = (along - drag.prev) / Math.max(1, event.timeStamp - drag.prevT);
-      if (Math.sign(along) === sign && (Math.abs(along) > size() / 3 || velocity * sign > 0.5)) close();
+      const far = Math.sign(along) === sign && (Math.abs(along) > size() / 3 || velocity * sign > 0.5);
+      // Full height steps down to half first; only half closes.
+      if (far && detent?.full) { detent.setFull(false); settle(); }
+      else if (far) close();
       else settle();
     },
     onPointerCancel() {
@@ -138,8 +148,9 @@ function useDismissDrag(placement: OverlayPlacement, surfaceRef: RefObject<HTMLD
  * Modal surface in a portal: scrim, focus moved in and trapped, Esc and scrim close,
  * the rest of the app inert, focus returned to the opener. Slides from its edge.
  */
-export function Overlay({ open, onClose, placement, label, labelledBy, initialFocus, className, id, children }: OverlayProps) {
+export function Overlay({ open, onClose, placement, label, labelledBy, initialFocus, className, id, detents, children }: OverlayProps) {
   const { mounted, unmount } = usePresence(open);
+  const [full, setFull] = useState(false);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const scrimRef = useRef<HTMLDivElement>(null);
   const returnRef = useRef<HTMLElement | null>(null);
@@ -175,14 +186,14 @@ export function Overlay({ open, onClose, placement, label, labelledBy, initialFo
       void play(surface, [{ transform: from }, { transform: offstage[placement] }], ms2, from === 'none' ? '--ease-in' : '--ease-out', { fill: 'forwards' }).then(() => {
         if (surface) surface.style.transform = '';
         if (scrim) scrim.style.opacity = '';
-        if (!openRef.current) unmount();
+        if (!openRef.current) { unmount(); setFull(false); }
       });
     };
     // unmount/initialFocus are stable for the lifetime of one open overlay.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, mounted, placement]);
 
-  const drag = useDismissDrag(placement, surfaceRef, scrimRef, () => onCloseRef.current());
+  const drag = useDismissDrag(placement, surfaceRef, scrimRef, () => onCloseRef.current(), detents ? { full, setFull } : undefined);
 
   if (!mounted) return null;
 
@@ -197,7 +208,8 @@ export function Overlay({ open, onClose, placement, label, labelledBy, initialFo
       <div
         ref={surfaceRef}
         id={id}
-        className={['ui-overlay__surface', className].filter(Boolean).join(' ')}
+        className={['ui-overlay__surface', detents ? 'ui-overlay__surface--detent' : '', className].filter(Boolean).join(' ')}
+        data-height={detents ? (full ? 'full' : 'half') : undefined}
         role="dialog"
         aria-modal="true"
         aria-label={label}
@@ -207,6 +219,11 @@ export function Overlay({ open, onClose, placement, label, labelledBy, initialFo
         inert={!open}
         {...drag}
       >
+        {detents ? (
+          <button type="button" className="ui-grabber" aria-label={full ? 'Show half height' : 'Show full height'} aria-expanded={full} onClick={() => setFull((value) => !value)}>
+            <span aria-hidden="true" />
+          </button>
+        ) : null}
         {children}
       </div>
     </div>,
@@ -219,5 +236,5 @@ export function Drawer(props: Omit<OverlayProps, 'placement'>) {
 }
 
 export function Sheet(props: Omit<OverlayProps, 'placement'>) {
-  return <Overlay placement="bottom" {...props} className={['ui-sheet', props.className].filter(Boolean).join(' ')} />;
+  return <Overlay placement="bottom" {...props} className={['ui-sheet', props.detents ? 'ui-sheet--detent' : '', props.className].filter(Boolean).join(' ')} />;
 }

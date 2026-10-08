@@ -189,10 +189,22 @@ svg { flex: none; }
 .ui-drawer, .ui-drawer * { touch-action: pan-y pinch-zoom; }
 /* The phone sheet's header is its handle: a grabber shows it can be pulled down to close (#266 PF-4). */
 .ui-sheet .ui-panel__head { position: relative; touch-action: none; }
-.ui-sheet .ui-panel__head::before {
+.ui-sheet:not(.ui-sheet--detent) .ui-panel__head::before {
   content: ""; position: absolute; left: 50%; top: calc(env(safe-area-inset-top) + 6px); width: 36px; height: 5px; margin-left: -18px;
   border-radius: 3px; background: var(--line2);
 }
+/* Two heights (F-026 S4): half leaves the conversation in view, full is dragged up; down from half closes. */
+.ui-overlay--bottom .ui-overlay__surface--detent {
+  inset: auto 0 0 0; height: 56dvh; border-radius: var(--r-sheet) var(--r-sheet) 0 0; background: var(--el); box-shadow: var(--sh-pop);
+  transition: height var(--dur-3) var(--ease-sheet), border-radius var(--dur-3) var(--ease-sheet);
+}
+.ui-overlay--bottom .ui-overlay__surface--detent[data-height="full"] { height: calc(100dvh - 12px); }
+.ui-grabber { position: relative; flex: none; display: grid; place-items: center; width: 100%; height: 28px; margin: 0; padding: 0; touch-action: none; }
+.ui-grabber span { width: 36px; height: 5px; border-radius: 3px; background: var(--line2); transition: width var(--dur-2) ease; }
+.ui-grabber, .ui-grabber * , .ui-sheet--detent .ui-panel__head, .ui-sheet--detent .ui-panel__head * { touch-action: none; }
+.ui-grabber:hover span { width: 44px; }
+.ui-grabber:focus-visible { outline-offset: -4px; border-radius: 12px; }
+@media (prefers-reduced-motion: reduce) { .ui-overlay--bottom .ui-overlay__surface--detent { transition: none; } }
 @media (max-width: 640px) { .ui-overlay--left .ui-overlay__surface { width: 100%; } }
 
 /* ---------- Side panel ---------- */
@@ -204,12 +216,23 @@ svg { flex: none; }
   padding: 0 10px 0 16px; border-bottom: 1px solid var(--line);
 }
 .ui-panel__title { flex: 1; min-width: 0; font-size: var(--fs-md); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ui-panel__chip { display: inline-flex; margin: 0; font-size: var(--fs-sm); font-weight: 600; }
+.ui-panel__kind { display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: var(--r-pill); background: var(--sub); color: var(--t2); }
+.ui-panel__meta { margin-left: 8px; color: var(--t3); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.ui-panel__fill { flex: 1; }
+.ui-panel__hint { flex: 1; margin-right: 8px; text-align: right; color: var(--t3); font-size: var(--fs-sm); }
+.ui-panel--docked, .ui-panel--overlay { background: var(--el); }
+.ui-panel--docked:has(.ui-panel__chip) { margin: 10px 10px 10px 0; border: 0; border-radius: var(--r-panel); box-shadow: var(--sh-pop); }
 .ui-panel__body {
   position: relative; flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;
   padding: 20px 22px 28px; padding-bottom: max(28px, env(safe-area-inset-bottom));
 }
-.ui-panel__body:focus-visible { outline-offset: -2px; }
+.ui-panel__body:focus-visible { outline: none; }
 .ui-sheet .ui-panel__head { height: calc(56px + env(safe-area-inset-top)); padding-top: env(safe-area-inset-top); padding-left: 16px; padding-right: 4px; }
+.ui-sheet--detent .ui-panel__head { height: 52px; padding: 0 12px 0 20px; border-bottom: 0; }
+.ui-sheet--detent[data-height="full"] .ui-panel__head { padding-top: env(safe-area-inset-top); height: calc(52px + env(safe-area-inset-top)); }
+.ui-sheet--detent.ui-panel { background: var(--el); }
+.ui-sheet--detent[data-height="full"] .ui-panel__hint { display: none; }
 .ui-sheet .ui-panel__body { padding: 18px 16px 28px; }
 
 /* ---------- Toast: an inverted pill ---------- */
@@ -223,6 +246,10 @@ svg { flex: none; }
 }
 .ui-toast--success svg:first-child { color: var(--oninv); }
 .ui-toast__msg { padding: 6px 0; }
+.ui-toast__action { min-height: 32px; padding: 0 12px; border-radius: var(--r-pill); color: inherit; font-weight: 650; text-decoration: underline; text-underline-offset: 3px; }
+.ui-toast__action:hover { background: color-mix(in srgb, var(--oninv) 14%, transparent); }
+.ui-toast__action:focus-visible { outline-color: var(--oninv); }
+@media (pointer: coarse) { .ui-toast__action { min-height: 44px; } }
 .ui-toast__close { display: grid; place-items: center; width: 32px; height: 32px; border-radius: var(--r-pill); color: inherit; opacity: .7; transition: var(--tr); }
 .ui-toast__close:hover { opacity: 1; background: color-mix(in srgb, var(--oninv) 14%, transparent); }
 .ui-toast__close:focus-visible { outline-color: var(--oninv); }

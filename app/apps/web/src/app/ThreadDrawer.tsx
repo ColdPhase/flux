@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { ConversationMessage, NativeWorkRow } from '@flux/contracts';
 import { Icon, IconButton, useMediaQuery } from '../ui';
+import { useSheetDetents } from '../ui/useSheetDetents';
 import { DiscussedTask, MessageObjects } from '../work/inline';
 import type { MessageWorkPreview } from '../work/message-associations';
 import { AgentAuthor, AuthorFace, SourceCitation, clock, day, when } from './messageParts';
@@ -16,6 +17,7 @@ export type ThreadMode = 'docked' | 'sheet';
 export function ThreadDrawer({ mode, count, focusOnOpen, onClose, children }: { mode: ThreadMode; count: number; focusOnOpen: boolean; onClose: () => void; children: ReactNode }) {
   const ref = useRef<HTMLElement>(null);
   const titleId = useId();
+  const sheet = useSheetDetents(true, onClose);
   useEffect(() => {
     if (focusOnOpen && !ref.current?.contains(document.activeElement)) ref.current?.focus({ preventScroll: true });
     // When it opens; the composer may take focus first when the person chose Reply.
@@ -28,10 +30,13 @@ export function ThreadDrawer({ mode, count, focusOnOpen, onClose, children }: { 
     onClose();
   };
   return (
-    <aside ref={ref} id="thread" className={`thread thread--${mode}`} aria-labelledby={titleId} tabIndex={-1} onKeyDown={onKeyDown}>
+    <aside ref={ref} id="thread" className={`thread thread--${mode}`} data-height={mode === 'sheet' ? (sheet.full ? 'full' : 'half') : undefined} aria-labelledby={titleId} tabIndex={-1} onKeyDown={onKeyDown} {...(mode === 'sheet' ? sheet.handlers : {})}>
+      {mode === 'sheet' ? (
+        <button type="button" className="ui-grabber" aria-label={sheet.full ? 'Show half height' : 'Show full height'} aria-expanded={sheet.full} onClick={sheet.toggle}><span aria-hidden="true" /></button>
+      ) : null}
       <div className="thread__head">
-        <h2 className="thread__title" id={titleId}>Replies</h2>
-        <span className="thread__n"><span className="ui-vh">, </span>{count}</span>
+        <h2 className="thread__title" id={titleId}><span className="ui-vh">Replies: </span><span className="ui-panel__kind">Thread</span></h2>
+        <span className="thread__n">{count} {count === 1 ? 'reply' : 'replies'}</span>
         <IconButton icon={mode === 'sheet' ? 'chevron-left' : 'x'} label="Close replies" className="thread__close" onClick={onClose} />
       </div>
       {children}
