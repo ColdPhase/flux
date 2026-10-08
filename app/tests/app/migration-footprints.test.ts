@@ -14,7 +14,7 @@ const quote = (name: string) => `"${name.replaceAll('"', '""')}"`;
 
 // Invoke the real built entry point; these controls cannot pass through a mocked gate.
 async function entrypoint(url: string, entry = 'tooling/dist/migrate.js') {
-  return new Promise<{ code: number | null; output: string }>((resolve, reject) => {
+  return new Promise<{ code: number | null; signal: NodeJS.Signals | null; timedOut: boolean; output: string }>((resolve, reject) => {
     const child = spawn(process.execPath, [entry], { env: { ...process.env, DATABASE_URL: url,
       FLUX_AUTH_SECRET: 'semantic-fixture-secret-'.repeat(3), FLUX_PUBLIC_ORIGIN: 'http://127.0.0.1:18979',
       FLUX_AGENT_RUNTIME: '', FLUX_BACKGROUND_COMPARISONS: 'off', FLUX_TEST_PERSONAL_RUNS: '',
@@ -22,9 +22,10 @@ async function entrypoint(url: string, entry = 'tooling/dist/migrate.js') {
     let output = '';
     child.stdout.on('data', (chunk: Buffer) => { output += chunk.toString(); });
     child.stderr.on('data', (chunk: Buffer) => { output += chunk.toString(); });
-    const timer = setTimeout(() => { child.kill('SIGKILL'); }, entry === 'tooling/dist/migrate.js' ? 90_000 : 10_000);
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL'); }, entry === 'tooling/dist/migrate.js' ? 90_000 : 10_000);
     child.on('error', (error) => { clearTimeout(timer); reject(error); });
-    child.on('close', (code) => { clearTimeout(timer); resolve({ code, output }); });
+    child.on('close', (code, signal) => { clearTimeout(timer); resolve({ code, signal, timedOut, output }); });
   });
 }
 
@@ -93,9 +94,12 @@ async function snapshot(db: Pool) {
 async function refuseWithoutWrites(db: Pool, url: string, entry?: string) {
   const before = await snapshot(db);
   const result = await entrypoint(url, entry);
-  assert.notEqual(result.code, 0, 'an unsupported footprint must refuse');
+  const after = await snapshot(db);
+  assert.equal(result.timedOut, false, 'a genuine migration refusal must not time out');
+  assert.equal(result.signal, null, 'a genuine migration refusal must not be killed');
+  assert.ok(Number.isInteger(result.code) && result.code !== 0, 'a genuine migration refusal needs an actual nonzero integer exit');
   assert.match(result.output, /Flux migration (?:footprint refused|ledger has versions without files)/, result.output);
-  assert.deepEqual(await snapshot(db), before, 'refusal keeps catalog, ledger, native data, sequences and queues unchanged');
+  assert.deepEqual(after, before, 'refusal keeps catalog, ledger, native data, sequences and queues unchanged');
 }
 
 async function legacy(db: Pool, name: string) {
