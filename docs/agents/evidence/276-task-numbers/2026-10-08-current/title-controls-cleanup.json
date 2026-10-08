@@ -1,0 +1,18 @@
+[
+  {
+    "phase": "negative",
+    "project": "flux-ui-1791430271-558354",
+    "containers": 0,
+    "volumes": 0,
+    "networks": 0,
+    "imageTags": 0
+  },
+  {
+    "phase": "positive",
+    "project": "flux-ui-1791430438-575438",
+    "containers": 0,
+    "volumes": 0,
+    "networks": 0,
+    "imageTags": 0
+  }
+]

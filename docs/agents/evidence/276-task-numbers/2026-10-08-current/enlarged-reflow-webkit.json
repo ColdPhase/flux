@@ -1,0 +1,92 @@
+[
+  {
+    "engine": "webkit",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "dark": true,
+    "deviceScaleFactor": 3,
+    "rootFontSize": "200%",
+    "title": {
+      "clientHeight": 107,
+      "scrollHeight": 107,
+      "clientWidth": 294,
+      "scrollWidth": 294,
+      "fontSize": "25px",
+      "text": "New task \u00b7 #2 Order two ToF boards for the dark-room test",
+      "lineClamp": "none"
+    },
+    "textBoundaries": {
+      "number": {
+        "x": 185.65052795410156,
+        "y": 399.109375,
+        "right": 200.6505889892578,
+        "bottom": 431.109375
+      },
+      "firstWord": {
+        "x": 221,
+        "y": 399.109375,
+        "right": 287,
+        "bottom": 431.109375
+      },
+      "author": {
+        "x": 59,
+        "y": 320.609375,
+        "right": 193.0330352783203,
+        "bottom": 352.609375
+      },
+      "time": {
+        "x": 59,
+        "y": 361.359375,
+        "right": 134.00030517578125,
+        "bottom": 393.359375
+      }
+    }
+  },
+  {
+    "engine": "webkit",
+    "viewport": {
+      "width": 320,
+      "height": 640
+    },
+    "dark": false,
+    "deviceScaleFactor": 3,
+    "rootFontSize": "200%",
+    "title": {
+      "clientHeight": 143,
+      "scrollHeight": 143,
+      "clientWidth": 224,
+      "scrollWidth": 224,
+      "fontSize": "25px",
+      "text": "New task \u00b7 #2 Order two ToF boards for the dark-room test",
+      "lineClamp": "none"
+    },
+    "textBoundaries": {
+      "number": {
+        "x": 185.65052795410156,
+        "y": 279.609375,
+        "right": 200.6505889892578,
+        "bottom": 311.609375
+      },
+      "firstWord": {
+        "x": 59,
+        "y": 315.359375,
+        "right": 124,
+        "bottom": 347.359375
+      },
+      "author": {
+        "x": 59,
+        "y": 201.109375,
+        "right": 193.0330352783203,
+        "bottom": 233.109375
+      },
+      "time": {
+        "x": 59,
+        "y": 241.859375,
+        "right": 134.00030517578125,
+        "bottom": 273.859375
+      }
+    }
+  }
+]
