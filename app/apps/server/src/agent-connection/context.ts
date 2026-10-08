@@ -57,6 +57,7 @@ export async function agentConnectionInTransaction(tx: Transaction, claims: Flux
       const actor = await loadActor({ kind: 'agent', id: row.agentId }, row.workspaceId, tx, { lock: true });
       if (!actor.active || actor.agent?.ownerUserId !== row.ownerUserId)
         throw new DomainError(403, 'MCP_ENTRY_UNAVAILABLE', 'This capability is unavailable');
+      claims.dispatch.admit(entry);
     }
     const connection: AgentConnectionContext = {
       connectionId: row.id, ownerUserId: row.ownerUserId, agentId: row.agentId,

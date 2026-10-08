@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { agentMcpPolicyPath, type AgentMcpPolicy, type SaveAgentMcpPolicy } from '@flux/contracts';
 import { coworkPlaybookReference, coworkPlaybookUri } from '@flux/core';
 import { pool } from './support/db.js';
-import { publicOrigin, register, uniqueEmail } from './support/http.js';
+import { Browser, publicOrigin, register, uniqueEmail } from './support/http.js';
 import { beginOauth, expect, mcp, oauthToken, toolValue } from './support/mcp.js';
 
 // Genuine OAuth/PKCE, old bearer, HTTP entry points and saved owner policy. These
@@ -57,7 +57,7 @@ async function connected() {
   const call = (method: string, params: Record<string, unknown>) => mcp(token, id++, method, params);
   const tool = (name: string, args: Record<string, unknown> = {}) => call('tools/call', { name, arguments: args });
   return { owner, workspaceId: String(workspace.id), agentId: String(agent.id), projects, grants, projectId,
-    doc, material, work, initial, connection, connectionId, get, save, input, call, tool };
+    doc, material, work, initial, connection, connectionId, token, get, save, input, call, tool };
 }
 
 function unavailable(response: Awaited<ReturnType<typeof mcp>>) {
@@ -177,4 +177,77 @@ test('removed owner membership refuses project-independent resources and runtime
     'removal-only management changes no original consent');
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM agent_standing_grants WHERE connection_id=$1',
     [f.connectionId])).rows[0].n, 0, 'management creates no execution authority');
+});
+
+
+// Real transport handoff across two API processes on one database (#316 AC-3). The test gate (fixture token plus
+// failure injection only) parks a request exactly after its tool ran and before the delivery fence, by waiting on an
+// advisory lock this test holds; the owner changes the policy through the OTHER API process meanwhile.
+const api2 = process.env.FLUX_API2_URL ?? 'http://api2:8080';
+async function twoApi() {
+  const f = await connected();
+  const second = new Browser(api2, publicOrigin);
+  for (const [name, value] of f.owner.cookies) second.cookies.set(name, value);
+  const path = agentMcpPolicyPath(f.connectionId);
+  const patchOn2 = async (input: SaveAgentMcpPolicy) => {
+    const current = (expect(await second.request('GET', path), 200) as { policy: AgentMcpPolicy }).policy;
+    return expect(await second.request('PATCH', path, { body: input, headers: { 'if-match': `"mcp-policy-${current.version}"` } }), 200);
+  };
+  const held = async (name: string, args: Record<string, unknown>, change: () => Promise<void>) => {
+    const key = randomUUID(); const lock = await pool.connect();
+    try {
+      await lock.query('SELECT pg_advisory_lock(hashtext($1))', [key]);
+      const pending = mcp(f.token, 900, 'tools/call', { name, arguments: args }, { headers: { 'x-flux-test-delivery-gate': key } });
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const waiting = await pool.query(`SELECT 1 FROM pg_locks WHERE locktype='advisory' AND NOT granted AND mode='ShareLock'`);
+        if (waiting.rowCount) break;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      assert.equal((await pool.query(`SELECT 1 FROM pg_locks WHERE locktype='advisory' AND NOT granted`)).rowCount! > 0, true,
+        'the request is held after its tool ran and before delivery');
+      await change();
+      await lock.query('SELECT pg_advisory_unlock(hashtext($1))', [key]);
+      return await pending;
+    } finally { lock.release(); }
+  };
+  return { ...f, second, patchOn2, held };
+}
+
+test('two API processes: Off, narrowing and Off-then-On committed on one are enforced on bytes held on the other', async () => {
+  const f = await twoApi();
+  const doc = { projectId: f.projectId, id: f.doc.id };
+  const control = await f.held('flux_get_doc', doc, async () => undefined);
+  assert.equal(control.status, 200, 'with no change the held bytes are delivered');
+  assert.equal(toolValue(control.message).title, 'Hidden knowledge reference');
+
+  const off = f.input(f.initial);
+  off.enabledCapabilityIds = off.enabledCapabilityIds.filter((id) => id !== 'project.knowledge.read');
+  const refusedOff = await f.held('flux_get_doc', doc, async () => { await f.patchOn2(off); });
+  assert.equal(refusedOff.status, 403, 'a switch committed through the other API stops the held bytes');
+  assert.ok(!JSON.stringify(refusedOff.message).includes('Knowledge-secret-78419'));
+  assert.ok(!JSON.stringify(refusedOff.message).includes('Hidden knowledge reference'));
+
+  // Off then On with identical content: the held request keeps its captured version and cannot adopt the new one.
+  const cycle = await f.held('flux_get_doc', doc, async () => {
+    const saved = await f.patchOn2({ ...f.input(f.initial), enabledCapabilityIds: [] });
+    assert.ok(saved);
+    await f.patchOn2(f.input(f.initial));
+  });
+  assert.equal(cycle.status, 403, 'Off then On does not resurrect a held request');
+  assert.equal(toolValue((await f.tool('flux_get_doc', doc)).message).title, 'Hidden knowledge reference',
+    'a newly admitted request after On is served');
+
+  // Removing the selected project is a narrowing that also fences held bytes.
+  const narrowed = await f.held('flux_get_doc', doc, async () => {
+    await f.patchOn2({ ...f.input(f.initial), selectedProjectIds: [f.projects[1]!] });
+  });
+  assert.equal(narrowed.status, 403);
+  await f.patchOn2(f.input(f.initial));
+
+  // Deleting the agent's project grant on the other API also refuses held bytes.
+  const grant = await f.held('flux_get_doc', doc, async () => {
+    expect(await f.second.request('DELETE', `/api/v1/projects/${f.projectId}/grants/${f.grants[0]}`), 204);
+  });
+  assert.equal(grant.status, 403);
+  assert.ok(!JSON.stringify(grant.message).includes('Knowledge-secret-78419'));
 });

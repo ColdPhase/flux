@@ -168,7 +168,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await app.register(agentMcpPolicyRoutes, { db, sessions: identity });
   await app.register(proactiveComparisonRoutes, { db, sessions: identity, backgroundMasterKey: config.backgroundMasterKey,
     comparisonsEnabled: config.backgroundComparisons });
-  registerMcpRoute(app, db, identity.auth, identityConfig.publicOrigin);
+  registerMcpRoute(app, db, identity.auth, identityConfig.publicOrigin, config.fixture.failureInjection && !!config.fixture.token);
   await app.register(returnRoutes, { db, sessions: identity });
   await app.register(docRoutes, { db, sessions: identity });
   await app.register(notificationRoutes, { db, sessions: identity, smtp: identityConfig.smtp, publicOrigin: identityConfig.publicOrigin });

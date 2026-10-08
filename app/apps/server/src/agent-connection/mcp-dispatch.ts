@@ -11,6 +11,10 @@ export interface McpDeliveryDependencies {
   projects: Map<string, McpProjectDependency['action']>;
   objects: Map<string, McpObjectDependency>;
   protectedOutput: boolean;
+  /** Entries that passed live admission (a refused call delivers only its structured refusal). */
+  admitted: Set<string>;
+  /** Source capabilities registered by aggregates, whose delivery depends on them. */
+  sources: Set<AgentMcpCapabilityId>;
 }
 
 /** One verified request owns this context; nothing is a module-global identity/policy cache. */
@@ -19,7 +23,7 @@ export function createMcpDispatch(capturedVersion: number) {
   const scope = new AsyncLocalStorage<AgentMcpEntry>();
   const registered = new Set<string>();
   const dependencies: McpDeliveryDependencies = { capturedVersion, entryIds: new Set(), capabilities: new Set(),
-    projects: new Map(), objects: new Map(), protectedOutput: false };
+    projects: new Map(), objects: new Map(), protectedOutput: false, admitted: new Set(), sources: new Set() };
   return {
     dependencies,
     declare(kind: AgentMcpEntry['kind'], name: string) {
@@ -45,8 +49,9 @@ export function createMcpDispatch(capturedVersion: number) {
       return scope.run(entry, callback);
     },
     requireCapabilities(capabilities: readonly AgentMcpCapabilityId[]) {
-      for (const capability of capabilities) dependencies.capabilities.add(capability);
+      for (const capability of capabilities) { dependencies.capabilities.add(capability); dependencies.sources.add(capability); }
     },
+    admit(entry: AgentMcpEntry) { dependencies.admitted.add(entry.id); },
     project(projectId: string, action: McpProjectDependency['action']) {
       if (dependencies.projects.get(projectId) !== 'project.write') dependencies.projects.set(projectId, action);
     },
