@@ -80,12 +80,13 @@ export function TaskDiscussionSection({ workId, project, members, me, readOnly =
               </Link>
               <MessageFiles files={root.files} />
             </> : null}
-            {composer.pending.length ? <ol className="wd-pending" aria-label="Messages you are sending">{composer.pending.map((item) => (
+            {composer.pending.length ? <ol className="wd-pending" aria-label={writable ? 'Messages you are sending' : 'Unsent messages kept'}>{composer.pending.map((item) => (
               <li key={item.id} id={`pending-${item.id}`} data-client-message-id={item.id} data-send-state={item.state} className={`wd-pending__item is-pending${item.state === 'failed' ? ' is-failed-send' : ''}`}>
                 {item.body ? <span className="wd-pending__body">{item.body}</span> : null}
                 <PendingFiles files={item.files} />
                 <PendingSource item={item} />
-                <OutboxStatus item={item} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} />
+                {writable ? <OutboxStatus item={item} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} />
+                  : <p className="wd-muted" role="status">Unsent message kept. You cannot send to this task.</p>}
               </li>
             ))}</ol> : null}
             {writable ? <form className="wd-discussion-form" onSubmit={(event) => void send(event)}>
