@@ -8,8 +8,8 @@ Date: 2026-10-08. Tested application and UI-test source:
 
 **Partial delivery; neither #350 nor #360 is complete.** The current Settings and
 Notifications browser scenarios pass in Chromium and WebKit, and three deliberate
-backend regressions are detected. Two final-source full application attempts were interrupted by Docker engine
-loss (both exit 125); no complete final-source application pass is claimed. Independent visual review retains two material
+backend regressions are detected. After two Docker engine interruptions, the unchanged
+final application source passed the complete application check: **1169/1169**, exit 0. Independent visual review retains two material
 conformance findings. This record does not constitute eligible independent PR
 approval or release acceptance.
 
@@ -40,8 +40,8 @@ approval or release acceptance.
   hit-area extensions. Assistant/connected-agent rows use the explicit Agent tag.
 
 These describe the correction and regression coverage present at the source above.
-The full integrated backend result is unverified; individual passing lines from
-interrupted suites are not promoted to a completed suite result.
+The completed full check below covers this final source. Individual passing lines
+from the two interrupted attempts are not included in its totals.
 
 ## Completed browser and negative-control runs
 
@@ -55,7 +55,7 @@ directory. Do not run two heavy checks together when reproducing them.
 | Settings plus affected UI modules | **83 tests, OK**, 193.837s | 75 Chromium tests and 8 built-in `SoftVolumeWebKit` tests. `/tmp/flux370-ui-chromium-current.log`; project flux-ui-1791481544-64057. |
 | Settings and Notifications in WebKit | **14 tests, OK**, 43.882s | The same 8 Settings and 6 Notifications methods use actual WebKit through `FLUX_UI_BROWSER=webkit`. `/tmp/flux370-ui-webkit-current.log`; project flux-ui-1791481398-63330. |
 | Deliberate summary regressions | **3/3 rejected by regression assertions** | Each selected mutated test exits 1, with no skips; the mutation runner reports success only after verifying the intended assertion. `/tmp/flux370-negative-check-final.log`; project flux-test-1791481879-65821. |
-| Full application | **UNVERIFIED — two Docker engine interruptions, both exit 125** | `FLUX_TEST_PORT=19370 FLUX_TEST_MAILPIT_PORT=19371 ./scripts/check_application.sh`, source `e67967e4`; `/tmp/flux370-application-current.log` and `/tmp/flux370-application-retry.log`. Neither produced a complete suite total. |
+| Full application after recovery | **1169/1169, exit 0** | `FLUX_TEST_PORT=19370 FLUX_TEST_MAILPIT_PORT=19371 TMPDIR=/private/tmp ./scripts/check_application.sh`, head `6adc781ae374d523dbd208c75b576630c1c3a6b8` (application source unchanged from `e67967e4`). `/tmp/flux370-application-recovered.log`; project flux-test-1791487477-89613. Main suite 1146 plus 23 browser/availability checks; build, lint, typecheck, architecture, session restart and operator-switch checks also completed. |
 | Foundation and final documentation checks | **87/87, OK**, 17.338s; setup and whitespace pass | `TMPDIR=/private/tmp python3 scripts/check_agent_setup.py`; `TMPDIR=/private/tmp python3 -m unittest discover -s tests -p 'test_*.py'`; `git diff --check`. The first evidence link check rejected project names formatted as skill names; prose formatting was corrected and the complete checks reran successfully. |
 
 Browser selections:
@@ -124,10 +124,27 @@ volumes and three project-tagged images were removed. The fresh standard retry u
 flux-test-1791484237-74390. It also ended with exit **125** after Docker became
 unresponsive. Bounded `docker version` and project-only `docker ps` reads each
 timed out; the backend log recorded a VM stats timeout. Its exact-project cleanup
-could not connect to the daemon. Its remaining resources require cleanup after
-Docker is healthy. No third heavy attempt was started without a changed condition.
+could not connect to the daemon. After Docker recovered, its exact containers, volumes and networks were confirmed
+absent and its three project-tagged images were removed. A fresh run was started
+only after the API responded promptly and disk had 34 GB free.
 No global Docker restart, prune, or protected-preview operation was performed by
 this agent.
+
+## Completed full application run after recovery
+
+The unchanged application source was tested at evidence head
+`6adc781ae374d523dbd208c75b576630c1c3a6b8`. The standard script ended with **exit 0**:
+1146 main-suite tests and 23 separately reported browser/availability tests,
+**1169 passes, zero failures** across 16 reported suites. The complete command also
+finished its build, lint, typecheck, architecture, session-restart, key-log-absence
+and background-comparison operator-switch steps. These are not extra counted tests.
+
+The log is `/tmp/flux370-application-recovered.log`; the isolated project was
+flux-test-1791487477-89613 on ports 19370/19371. Cleanup removed that exact project's
+containers, networks, four disposable volumes and three tagged images. Protected
+previews were not modified or restarted by this agent. This successful rerun does
+not retrospectively change the two interrupted results, and does not resolve the
+remaining visual/integration criteria or replace eligible independent evaluation.
 
 ## Earlier WebKit attempts and the route-readiness correction
 
