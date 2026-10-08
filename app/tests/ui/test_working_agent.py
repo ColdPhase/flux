@@ -261,7 +261,7 @@ class WorkingAgentJourney(unittest.TestCase):
                                 const r=el.getBoundingClientRect(), node=el.firstChild;
                                 const words=[...node.textContent.matchAll(/\S+/g)];
                                 return r.left>=0 && r.top>=0 && r.right<=innerWidth && r.bottom<=innerHeight
-                                  && el.scrollWidth<=el.clientWidth+.001 && words.every(word => {
+                                  && el.scrollWidth<=el.clientWidth+.001 && words.length===6 && words.every(word => {
                                     const range=document.createRange();range.setStart(node,word.index);range.setEnd(node,word.index+word[0].length);
                                     return range.getClientRects().length===1;
                                   });
