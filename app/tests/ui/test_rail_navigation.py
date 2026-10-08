@@ -7,7 +7,6 @@ to keep the working Stop and account reachable rather than certifying an empty r
 from __future__ import annotations
 
 import re
-import time
 import unittest
 import uuid
 
@@ -70,12 +69,12 @@ class RailNavigation(unittest.TestCase):
         expect(page.locator(".side--rail")).to_be_visible()
         return page, {"email": email, "user": identity["user"]["id"], "dm": dm["id"], "projects": projects}
 
-    def assert_native_target(self, locator, coarse):
+    def assert_native_target(self, page, locator, coarse):
         self.assertEqual(locator.evaluate("el => ['A','BUTTON'].includes(el.tagName)"), True)
         locator.focus()
         expect(locator).to_be_focused()
-        locator.press("Tab")
-        locator.press("Shift+Tab")
+        page.keyboard.press("Tab")
+        page.keyboard.press("Shift+Tab")
         expect(locator).to_be_focused()
         self.assertTrue(locator.evaluate("el => el.matches(':focus-visible') && parseFloat(getComputedStyle(el).outlineWidth)>=2"))
         if coarse:
@@ -90,13 +89,13 @@ class RailNavigation(unittest.TestCase):
                     rail = page.locator(".side--rail")
                     sketchbook = rail.get_by_role("link", name="Sketchbook", exact=True)
                     self.assertEqual(sketchbook.count(), 1, "the rail must preserve Sketchbook")
-                    self.assert_native_target(sketchbook, coarse)
+                    self.assert_native_target(page, sketchbook, coarse)
                     sketchbook.press("Enter")
                     expect(page).to_have_url(re.compile(r"/map$"))
                     expect(sketchbook).to_have_attribute("aria-current", "page")
                     settings = rail.get_by_role("link", name="Settings", exact=True)
                     self.assertEqual(settings.count(), 1, "the rail must preserve Settings")
-                    self.assert_native_target(settings, coarse)
+                    self.assert_native_target(page, settings, coarse)
                     settings.press("Enter")
                     expect(page).to_have_url(re.compile(r"/settings$"))
                     expect(page.get_by_role("heading", name="Settings", exact=True)).to_be_visible()
@@ -111,7 +110,7 @@ class RailNavigation(unittest.TestCase):
                 account = rail.get_by_role("button", name=re.compile("Ada Kowalska.*account and sign out"))
                 self.assertEqual(account.count(), 1, "the rail must identify the current account")
                 expect(account.locator(".ui-avatar")).to_have_text("AK")
-                self.assert_native_target(account, True)
+                self.assert_native_target(page, account, True)
                 account.press("Enter")
                 popup = page.get_by_role("dialog", name="Account", exact=True)
                 expect(popup).to_be_visible()
@@ -140,12 +139,12 @@ class RailNavigation(unittest.TestCase):
                 rail = page.locator(".side--rail")
                 messages = rail.get_by_role("link", name="Messages", exact=True)
                 self.assertEqual(messages.count(), 1, "the rail must preserve its real Messages place")
-                self.assert_native_target(messages, True)
+                self.assert_native_target(page, messages, True)
                 messages.press("Enter")
                 expect(page).to_have_url(re.compile(r"/dm$"))
                 dm = rail.get_by_role("link", name="Jonas Berg", exact=True)
                 self.assertEqual(dm.count(), 1, "a real authorized private conversation keeps an avatar link")
-                self.assert_native_target(dm, True)
+                self.assert_native_target(page, dm, True)
                 dm.press("Enter")
                 expect(page).to_have_url(re.compile(rf"/dm/{ids['dm']}$"))
                 expect(page.get_by_text("Bring the ToF boards for Friday’s dark-room test.", exact=True)).to_be_visible()
