@@ -353,14 +353,47 @@ class TaskAnnouncements(unittest.TestCase):
                     fontSize: getComputedStyle(node).fontSize, text: node.textContent,
                     lineClamp: getComputedStyle(node).webkitLineClamp
                 })""")
+                boundaries = made.evaluate("""notice => {
+                    const rect = range => {
+                        const r = range.getClientRects()[0];
+                        return { x: r.x, y: r.y, right: r.right, bottom: r.bottom };
+                    };
+                    const contents = node => {
+                        const range = document.createRange(); range.selectNodeContents(node);
+                        return rect(range);
+                    };
+                    const number = notice.querySelector('.ui-task-number');
+                    let word = number.nextSibling;
+                    while (word && (word.nodeType !== Node.TEXT_NODE || !word.textContent.trim())) word = word.nextSibling;
+                    if (!word) throw new Error('The task title has no first word');
+                    const first = word.textContent.search(/\\S/);
+                    const range = document.createRange();
+                    range.setStart(word, first);
+                    range.setEnd(word, first + word.textContent.slice(first).match(/^\\S+/)[0].length);
+                    return { number: contents(number), firstWord: rect(range),
+                        author: contents(notice.querySelector('.convo-notice__meta strong')),
+                        time: contents(notice.querySelector('time')) };
+                }""")
                 observations.append({"engine": engine, "viewport": viewport, "dark": dark,
-                                     "deviceScaleFactor": 3, "rootFontSize": "200%", "title": geometry})
+                                     "deviceScaleFactor": 3, "rootFontSize": "200%", "title": geometry,
+                                     "textBoundaries": boundaries})
                 if SHOTS:
                     (SHOTS / f"task-announcements-enlarged-reflow{suffix}.json").write_text(
                         json.dumps(observations, indent=2) + "\n", encoding="utf-8")
                 self.assertLessEqual(geometry["scrollHeight"], geometry["clientHeight"] + 1,
                                      "enlarged text exposes the full task title instead of clipping its purpose")
                 self.assertLessEqual(geometry["scrollWidth"], geometry["clientWidth"] + 1)
+                with self.subTest(boundary="task number and title"):
+                    number_rect, word_rect = boundaries["number"], boundaries["firstWord"]
+                    same_line = min(number_rect["bottom"], word_rect["bottom"]) > max(number_rect["y"], word_rect["y"])
+                    if same_line:
+                        self.assertGreaterEqual(word_rect["x"] - number_rect["right"], 3,
+                                                "the visible number and first title word have readable separation")
+                    else:
+                        self.assertGreaterEqual(word_rect["y"], number_rect["bottom"] - 1)
+                with self.subTest(boundary="author and timestamp"):
+                    self.assertGreaterEqual(boundaries["time"]["y"], boundaries["author"]["bottom"] - 1,
+                                            "narrow enlarged metadata puts time below the full author identity")
                 self.assertEqual(button.get_attribute("data-native-ref"), f"work:{self.ids['from_message']}")
                 button.tap()
                 expect(page.locator("#details").get_by_role("heading", name=FROM_MESSAGE)).to_be_visible()
