@@ -23,9 +23,9 @@ export function setReloadRetention(store: Store, key: Key, accountId: string, un
 
 /** Called by a store's existing confirmed retirement, never by the recovery UI. */
 export function forgetReloadRetention(store: Store) {
-  let removed = false;
-  for (const [key, entry] of retained) if (entry.store === store) { retained.delete(key); removed = true; }
-  if (removed) changed();
+  for (const [key, entry] of retained) if (entry.store === store) retained.delete(key);
+  // Confirmed device retirement invalidates checked ownership even with no volatile work.
+  changed();
 }
 
 export function reloadRetention(accountId: string | null): 'safe' | 'blocked' | 'unknown' {

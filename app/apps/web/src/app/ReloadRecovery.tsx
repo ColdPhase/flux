@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useLocation, useRouteLoaderData } from 'react-router';
 import type { MeResponse } from '@flux/contracts';
 import { getMe } from '../api/auth';
@@ -17,7 +17,9 @@ export function ReloadRecovery() {
   const [validation, setValidation] = useState<Validation>({ known: false, actor: null, checking: true });
   const lifetime = useRef<{ live: boolean; request: number; controller: AbortController | null } | null>(null);
 
-  useEffect(() => {
+  // Install/retire the ownership token in the DOM commit, not a later passive effect. A held
+  // real response cannot authorize a destructive action for an already-removed/changed view.
+  useLayoutEffect(() => {
     const scope = { live: true, request: 0, controller: new AbortController() as AbortController | null };
     lifetime.current = scope;
     setValidation({ known: false, actor: null, checking: true });
@@ -43,11 +45,12 @@ export function ReloadRecovery() {
     setValidation((old) => ({ ...old, checking: true }));
     try {
       const actor = await getMe(scope.controller.signal);
-      if (!scope.live || lifetime.current !== scope || request !== scope.request) return;
+      const current = () => scope.live && lifetime.current === scope && request === scope.request;
+      if (!current()) return;
       const known = (expected === null || identity(actor) === expected) && (before === null || identity(actor) === before);
       const unchanged = retainedRevision === reloadRetentionRevision();
       setValidation({ known: known && (!performReload || unchanged), actor, checking: false });
-      if (performReload && known && unchanged && reloadRetention(actor?.user.id ?? null) === 'safe') window.location.reload();
+      if (performReload && current() && known && unchanged && reloadRetention(actor?.user.id ?? null) === 'safe') window.location.reload();
     } catch {
       if (scope.live && lifetime.current === scope && request === scope.request) setValidation({ known: false, actor: null, checking: false });
     }
