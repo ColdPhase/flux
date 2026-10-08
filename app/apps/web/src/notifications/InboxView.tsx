@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import type { NeedsYouItem, NeedsYouKind } from '@flux/contracts';
-import { Button, ErrorState, Icon, Kreska, Spinner, Tabs, type TabItem } from '../ui';
+import { createPortal } from 'react-dom';
+import { Button, ErrorState, Icon, Kreska, MEDIA, Spinner, Tabs, useMediaQuery, type TabItem } from '../ui';
+import { useShellActions } from '../app/shellContext';
 import { useShellData } from '../app/data';
 import { announceInboxChange, getInboxItem, markInboxRead } from './api';
 import { NeedsYouCard, type CardHandlers } from './NeedsYouCard';
@@ -52,6 +54,8 @@ function useQueueKeys(items: NeedsYouItem[], selected: string | null, select: (k
  */
 export function InboxView() {
   const { me } = useShellData();
+  const { actionSlot } = useShellActions();
+  const phone = useMediaQuery(MEDIA.navDrawer);
   const queue = useNeedsYou(me.user.id);
   const handlers = useNeedsYouActions(queue);
   // `?show=decisions` is where the retired Decisions view's links lead.
@@ -84,10 +88,16 @@ export function InboxView() {
 
   return (
     <div className="pane-scroll"><div className="pane-in nyq">
-      <div className="nyq__bar">
-        <p className="nyq__summary" aria-live="polite">{summary}{queue.later ? ` · ${queue.later} for later` : ''}</p>
-        <Tabs variant="segmented" className="nyq__filters" label="Show" items={tabs} value={filter} onChange={(id) => setFilter(id as Filter)} />
-      </div>
+      {/* On the computer the summary and the filters sit in the header row, as drawn; on a phone they head the list. */}
+      {(() => {
+        const bar = (
+          <>
+            <p className="nyq__summary" aria-live="polite">{summary}{queue.later ? ` · ${queue.later} for later` : ''}</p>
+            <Tabs variant="segmented" className="nyq__filters" label="Show" items={tabs} value={filter} onChange={(id) => setFilter(id as Filter)} />
+          </>
+        );
+        return !phone && actionSlot ? createPortal(<div className="nyq__bar nyq__bar--head">{bar}</div>, actionSlot) : <div className="nyq__bar">{bar}</div>;
+      })()}
       {queue.failed && queue.items === null ? (
         <ErrorState title="The Inbox could not load" actions={<Button onClick={queue.reload}>Retry</Button>}>
           <p>Check your connection. Nothing was lost.</p>

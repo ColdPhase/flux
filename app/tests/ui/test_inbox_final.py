@@ -241,6 +241,7 @@ class InboxFinal(unittest.TestCase):
         expect(page.locator(".nyc")).to_have_count(3)
         expect(page.get_by_text("3 need you · all projects · 1 for later")).to_be_visible()
         self.contexts["ada"].request.delete(f"/api/v1/needs-you/{requests_quote('decision:' + self.decision['id'])}", headers={"origin": ORIGIN})
+        self.wait_for(lambda: self.queue(None)["later"] == 0, "the snooze to be undone")
         page.reload()
         expect(page.locator(".nyc")).to_have_count(4)
 

@@ -48,3 +48,7 @@
   .home__need { margin-top: 20px; }
   .home .agentlive { margin: 0 0 12px; padding: 12px 12px 12px 14px; border-radius: var(--r-card); }
 }
+.home__more { display: flex; gap: 18px; margin: 20px 4px 0; font-size: var(--fs-sm); }
+.home__more a, .home__more button { display: inline-flex; align-items: center; min-height: 28px; color: var(--t2); text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 3px; font: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+.home__more a:hover, .home__more button:hover { color: var(--t1); }
+@media (pointer: coarse) { .home__more a, .home__more button { min-height: 44px; } }

@@ -120,8 +120,8 @@ class HomeNotesJourney(unittest.TestCase):
         page.get_by_role("button", name="New sketch").click()
         expect(page).to_have_url(re.compile(r"/map/[0-9a-f-]{36}$"))
         self.assertEqual(len(self.spaces(page)), 1, "a sketch reuses the personal space")
-        # The open private sketch is Home's Map view.
-        expect(page.get_by_role("navigation", name="Views").get_by_role("link", name="Map")).to_have_attribute("aria-current", "page")
+        # The open private sketch is in the Sketchbook.
+        expect(page.get_by_role("navigation", name="Places").get_by_role("link", name="Sketchbook")).to_have_attribute("aria-current", "page")
         shot(page, "home-notes-first-sketch-desktop-1440")
 
     def test_02_a_first_save_that_fails_keeps_the_text(self) -> None:

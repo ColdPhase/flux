@@ -10,6 +10,7 @@ import { SourceLink } from '../returns/SinceYouLeft';
 import { listAssignedWork } from '../work/api';
 import { STATUS_LABEL } from '../work/format';
 import { useShellData } from './data';
+import { useShellActions } from './shellContext';
 import { WorkingAgent } from './WorkingAgent';
 import '../notifications/needs-you.css';
 import './home.css';
@@ -84,6 +85,7 @@ function ContinueCard({ userId, workspaceIds }: { userId: string; workspaceIds: 
 /** Home (F-026 §7, S1, P1): the date and a greeting, the top three that need you, where to continue, and your projects. */
 export function Home() {
   const { me, workspaces, projects } = useShellData();
+  const { openDetails } = useShellActions();
   const phone = useMediaQuery(MEDIA.navDrawer);
   const queue = useNeedsYou(me.user.id);
   const handlers = useNeedsYouActions(queue);
@@ -137,6 +139,8 @@ export function Home() {
           ) : <p className="home__empty">No projects yet. <Link to="/projects/new">Create one</Link> with the New button.</p>}
         </section>
       </div>
+
+      <p className="home__more"><Link to="/tasks">All my tasks</Link><Link to="/docs">Wiki</Link>{phone ? null : <button type="button" onClick={() => openDetails()}>Details</button>}</p>
 
       <p className="home__keys" aria-hidden="true">
         <span><kbd>C</kbd> new</span><span><kbd>⌘K</kbd> search or run</span><span><kbd>G</kbd><kbd>I</kbd> Inbox</span><span><kbd>[</kbd> hide sidebar</span>
