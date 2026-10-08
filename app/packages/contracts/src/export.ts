@@ -148,6 +148,8 @@ export interface ProjectExportWork {
     notices: { id: string; kind: 'task.created' | 'task.creation_reverted'; createdBy: ExportActor; sources: ObjectRef[]; createdAt: string }[];
   };
   id: string;
+  /** The task's number in its project, "#12" (#276); never reused or changed. */
+  number: number;
   title: string;
   outcome: string;
   status: WorkStatus;
@@ -307,7 +309,7 @@ const baseExportSchema = {
       lifecycle: { oneOf: [object({ state: { const: 'active' } }), object({ state: { const: 'creation_reverted' }, noticeId: id, revertedAt: time, revertedBy: ref('actor') })] },
       creationHistory: object({ origin: nullable({ enum: ['native_agent', 'ai_proposal', 'human'] }), baselineVersion: nullable(count), baseline: {}, proposalId: nullable(id), firstPersistedUseAt: nullable(time),
         notices: list(object({ id, kind: { enum: ['task.created', 'task.creation_reverted'] }, createdBy: ref('actor'), sources: list(ref('objectRef')), createdAt: time })) }),
-      id, title: text, outcome: text, status: { enum: ['open', 'in_progress', 'blocked', 'done', 'not_pursued'] }, blocker: nullable(text),
+      id, number: count, title: text, outcome: text, status: { enum: ['open', 'in_progress', 'blocked', 'done', 'not_pursued'] }, blocker: nullable(text),
       owner: nullable(ref('actor')), parked: nullable(object({ decisionId: id, at: time })), createdBy: ref('actor'), version: count, createdAt: time, updatedAt: time,
     }),
     decision: object({

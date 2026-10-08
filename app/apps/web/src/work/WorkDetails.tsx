@@ -11,7 +11,7 @@ import { useRegisterLiveHere } from '../live/LiveProvider';
 import { LiveEntry } from '../live/LiveEntry';
 import { useShellActions, type ObjectView, type WorkFormView } from '../app/shellContext';
 import { acceptDecision, createResult, listAgents, proposeDecision, undoTaskCreation, updateWork } from './api';
-import { STATUS_LABEL, decisionLine, firstLine, isFinished, linked, resultLine, shortDate } from './format';
+import { STATUS_LABEL, decisionLine, firstLine, isFinished, linked, resultLine, shortDate, taskNumber } from './format';
 import { docsLinking } from '../docs/AddToDoc';
 import { useAgentOwners } from '../agents/owners';
 import { useProjectShell } from '../project/data';
@@ -116,8 +116,11 @@ export function WorkDetails({ view }: { view: ObjectView | WorkFormView }) {
 }
 
 function RelationPages({ relations }: { relations: DetailRelations }) {
+  // Only a successful, complete first observation proves there are no links. A later
+  // empty page must retain navigation/Refresh, and pending or failed reads remain visible.
+  const emptyEntry = relations.read.phase === 'ready' && relations.complete && relations.page?.total === 0 && !relations.links.length;
   return <div data-detail-relations-phase={relations.read.phase} data-detail-relations-observed-at={relations.page?.observedAt}>
-    <WorkPagination {...relations} page={relations.page} label="Object relationship pages" noun="links" />
+    {!emptyEntry ? <WorkPagination {...relations} page={relations.page} label="Object relationship pages" noun="links" /> : null}
     {relations.read.phase === 'unavailable' ? <p className="wd-error" role="alert">Relationships could not be loaded. <button type="button" className="wd-inline" onClick={relations.onRefresh}>Refresh relationships</button></p> : null}
     {relations.page && !relations.complete ? <p className="wd-muted">Linked sections show this page of relationships. Browse all pages to explore every link.</p> : null}
   </div>;
@@ -249,7 +252,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
 
   return (
     <div className="details wd" data-detail-kind="work" data-detail-id={item.id}>
-      <p className="details__eyebrow wd-eyebrow"><StatusGlyph status={item.status} size={14} />{reverted ? 'Creation undone · read-only history' : STATUS_LABEL[item.status]}{item.parked ? ' · parked, not done' : ''}</p>
+      <p className="details__eyebrow wd-eyebrow"><StatusGlyph status={item.status} size={14} /><span>Task <span className="ui-task-number">{taskNumber(item)}</span> · <span className="wd-project-name">{context.project.name}</span> · <span>{reverted ? 'Creation undone · read-only history' : STATUS_LABEL[item.status]}</span>{item.parked ? ' · parked, not done' : ''}</span></p>
       <h3 className="details__title">{item.title}</h3>
       {item.outcome ? <p className="details__lead">{item.outcome}</p> : null}
       {item.status === 'blocked' && item.blocker ? <p className="wd-blocker"><Icon name="alert" size={14} />Blocked: {item.blocker}</p> : null}

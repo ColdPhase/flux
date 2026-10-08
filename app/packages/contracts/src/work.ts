@@ -140,6 +140,8 @@ export interface TaskPrerequisite {
 export interface WorkItem extends ProjectObject {
   lifecycle?: TaskLifecycle;
   creationUndo?: TaskCreationUndoEligibility;
+  /** The task's number in its project, shown as "#12" (#276): given at creation, never reused or changed. */
+  number: number;
   title: string;
   /** What finishing it should achieve; may be empty for small tasks. */
   outcome: string;
@@ -222,6 +224,8 @@ export interface TaskCreationNotice {
   lifecycle?: TaskLifecycle;
   /** Current task label; the exact historical identity/creator/sources below are retained. */
   workTitle: string;
+  /** The task's number in its project, "#12" (#276), so the announcement names it from the start. */
+  workNumber: number;
   createdBy: NamedPrincipal;
   sources: ObjectRef[];
   createdAt: string;

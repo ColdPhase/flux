@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Link, useRevalidator } from 'react-router';
 import type { ThoughtTaskRow, WorkThoughtTasks } from '@flux/contracts';
 import { AgentTag, Icon, IconButton, MEDIA, Sheet, StatusGlyph, duration, play, trapTab, useMediaQuery } from '../ui';
-import { STATUS_LABEL } from '../work/format';
+import { STATUS_LABEL, taskNumber } from '../work/format';
 import { getWorkThoughtTasks, thoughtChunks } from '../work/read-api';
 import { useWorkRead } from '../work/useWorkRead';
 import { quote } from './format';
@@ -45,8 +45,6 @@ export function useThoughtTasks(accountId: string, projectId: string | null, tho
   }, [pages, accountId, revision]);
 }
 
-/** The short task ID a Tasks card shows; the full ID is the link's title and target. */
-export const taskId = (id: string) => id.replace(/-/g, '').slice(0, 8).toUpperCase();
 
 export const taskHref = (projectId: string, id: string) => `/projects/${projectId}/tasks?open=work:${id}`;
 
@@ -117,7 +115,7 @@ export function ThoughtTasks({ thought, tasks: entry, projectId, variant, onOpen
               <StatusGlyph status={item.status} className={item.parked ? 'ui-glyph--parked' : undefined} />
               <span className="sk-task__b">
                 <span className="sk-task__t">{item.title}</span>
-                <span className="sk-task__m"><span className="sk-task__id">{taskId(item.id)}</span> · {STATUS_LABEL[item.status]}{item.parked ? ' · parked' : ''}</span>
+                <span className="sk-task__m"><span className="sk-task__id"><span className="ui-task-number">{taskNumber(item)}</span></span> · {STATUS_LABEL[item.status]}{item.parked ? ' · parked' : ''}</span>
                 <span className="sk-task__m sk-task__people">{item.owner ? <>Owner {item.owner.name}{item.owner.kind === 'agent' ? <> <AgentTag /></> : null}</> : 'No owner yet'} · added by {item.createdBy.name}{item.createdBy.kind === 'agent' ? <> <AgentTag /></> : null}</span>
               </span>
               <Icon name="chevron-right" size={14} />

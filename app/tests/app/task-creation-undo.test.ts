@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { notificationFactRows, projectExportRows, taskUseRows } from '@flux/db';
-import type { UndoTaskCreationResult, WorkItem, SearchResponse } from '@flux/contracts';
+import { projectWorkDetailPath, type UndoTaskCreationResult, type WorkItem, type SearchResponse, type TaskCreationNotice } from '@flux/contracts';
 import { nativeWorkInTransaction } from '../../apps/server/src/work/adapters.js';
 import { db, pool } from './support/db.js';
 import { actionScene, toolFailure } from './support/mcp-actions.js';
@@ -38,6 +38,7 @@ test('genuine native creation Undo retains exact history and receipts; core/MCP 
   const f = await scene();
   const query = `undosearchprobe${randomUUID().replaceAll('-', '')}`;
   const { item, command } = await f.create({ title: query });
+  assert.ok(Number.isSafeInteger(item.number) && item.number > 0, 'the native task has a real project number');
   const activeControl = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/work`,
     { body: { title: `${query} active human control` } }), 201) as unknown as WorkItem;
   expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/materials`,
@@ -60,7 +61,15 @@ test('genuine native creation Undo retains exact history and receipts; core/MCP 
   const commandId = randomUUID();
   const reverted = expect(await f.undo(item, commandId), 200) as unknown as UndoTaskCreationResult;
   assert.equal(reverted.work.lifecycle?.state, 'creation_reverted');
+  assert.equal(reverted.work.number, item.number, 'Undo preserves the native task number');
   assert.equal(reverted.work.version, item.version + 1);
+  const detail = expect(await f.owner.request('GET', projectWorkDetailPath(f.projectId, 'work', item.id)), 200) as unknown as {
+    object: { number: number; lifecycle: { state: string } };
+  };
+  assert.equal(detail.object.number, item.number); assert.equal(detail.object.lifecycle.state, 'creation_reverted');
+  const noticePage = expect(await f.owner.request('GET', `/api/v1/projects/${f.projectId}/task-notices`), 200) as unknown as { items: TaskCreationNotice[] };
+  assert.deepEqual(noticePage.items.filter((notice) => notice.workId === item.id).map((notice) => [notice.kind, notice.workNumber]).sort(),
+    [['task.created', item.number], ['task.creation_reverted', item.number]].sort(), 'both truthful notices retain the exact task number');
   for (const type of [undefined, 'work']) {
     const answer = await search(type);
     assert.equal(answer.counts.work, 1, 'current counts exclude retained reverted work before the count limit');
@@ -92,7 +101,10 @@ test('genuine native creation Undo retains exact history and receipts; core/MCP 
   assert.equal((active.items as WorkItem[]).some((work) => work.id === item.id), false);
   const historical = (await projectExportRows(db).work(f.projectId)).find((work) => work.id === item.id)!;
   assert.equal(historical.lifecycle.state, 'creation_reverted');
+  assert.equal(historical.number, item.number, 'historical export retains the native task number');
   assert.equal(historical.creationHistory.notices.length, 2);
+  await assert.rejects(pool.query('UPDATE project_work_items SET number=number+1 WHERE id=$1', [item.id]),
+    (error: unknown) => error instanceof Error && 'code' in error && error.code === '23514');
   assert.equal(await notificationFactRows(db).work(item.id), null);
 });
 
@@ -108,7 +120,7 @@ test('unrelated project writer and viewer cannot Undo; an exact agent operation 
   assert.equal(toolFailure(await f.tool('flux_undo_task_creation', { ...envelope, grantId: updateGrant.id })).code, 'AGENT_EXECUTION_UNAVAILABLE');
   const undoGrant = await f.grant('work.creation.revert', 'execute', 5, item.id);
   const reverted = toolValue(await f.tool('flux_undo_task_creation', { ...envelope, grantId: undoGrant.id }));
-  assert.equal(reverted.workId, item.id); assert.equal(await f.used(undoGrant.id), 1);
+  assert.equal(reverted.workId, item.id); assert.equal(reverted.number, item.number); assert.equal(await f.used(undoGrant.id), 1);
   assert.deepEqual(toolValue(await f.tool('flux_undo_task_creation', { ...envelope, grantId: undoGrant.id })), { ...reverted, replayed: true });
   expect(await f.owner.request('DELETE', `/api/v1/agent-connections/${f.connectionId}/action-grants/${undoGrant.id}`), 204);
   assert.equal(toolFailure(await f.tool('flux_undo_task_creation', { ...envelope, grantId: undoGrant.id })).code, 'AGENT_EXECUTION_UNAVAILABLE');

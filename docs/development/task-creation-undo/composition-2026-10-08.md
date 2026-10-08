@@ -5,9 +5,15 @@ this is a composition plan and does not certify implementation or runtime behavi
 
 Preserve original draft #244 and both original worktrees. The clean, unpublished standalone candidate
 `0e15abab9d3297e5e4e2ff598ba151aa05466004` is the starting point of the isolated continuation
-`codex/238-undo-main-composition`. Compose accepted main `94e708cdcdc8607e004d37846165cd6ec6479211`
-without replacing native instant sending, human/agent author history, current owner scoping or current authority.
-The six known source conflicts require explicit review of both sides and independent evaluation of the result.
+`codex/238-undo-main-composition`. The first composition used accepted main
+`94e708cdcdc8607e004d37846165cd6ec6479211`. The current continuation advances the reviewed fixture checkpoint
+`61c7ada8f69bb2c681d3154c8600cea5832da584` onto accepted main `b0fbc8b5291e3c9e2995962442144fbc48094ab3`
+(#282), without replacing native instant sending, human/agent author history, current owner scoping or current
+authority. Keep the immutable project task number in active and historical task/notice/native/MCP/export
+projections alongside trusted Undo origin, retained lifecycle, terminal replay and the monotonic use fence.
+The nine current source conflicts require explicit review of both sides and independent evaluation of the result.
+Checked v1 MCP/export snapshots retain the admitted exact Undo operation, typed task-use refusals and historical
+lifecycle/number fields; their actual extension-contract checks remain required before acceptance.
 
 ## Scope and appearance
 

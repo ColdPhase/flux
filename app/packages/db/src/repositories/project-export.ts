@@ -150,7 +150,7 @@ export function projectExportRows(db: DbExecutor) {
           proposalId: row.creationProposalId, firstPersistedUseAt: row.firstPersistedUseAt ? iso(row.firstPersistedUseAt) : null,
           notices: notices.filter((notice) => notice.workId === row.id).map((notice) => ({ id: notice.id, kind: notice.kind,
             createdBy: { kind: notice.createdByKind, id: notice.createdById }, sources: notice.sources, createdAt: iso(notice.createdAt) })) },
-        id: row.id, title: row.title, outcome: row.outcome, status: row.status, blocker: row.blocker,
+        id: row.id, number: row.number, title: row.title, outcome: row.outcome, status: row.status, blocker: row.blocker,
         owner: row.ownerUserId ? human(row.ownerUserId) : row.ownerAgentId ? { kind: 'agent' as const, id: row.ownerAgentId } : null,
         parked: row.parkedByDecisionId && row.parkedAt ? { decisionId: row.parkedByDecisionId, at: iso(row.parkedAt) } : null,
         createdBy: { kind: row.createdByKind, id: row.createdById }, version: row.version, createdAt: iso(row.createdAt), updatedAt: iso(row.updatedAt),

@@ -848,6 +848,11 @@ export const projectWorkItems = pgTable('project_work_items', {
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull(),
   projectId: uuid('project_id').notNull(),
+  /**
+   * The task's number in its project, shown as "#12" (#276, migration 0055). A trigger takes it from the
+   * project's own sequence on every insert and refuses changes; the default only lets inserts leave it out.
+   */
+  number: integer('number').notNull().default(0),
   title: text('title').notNull(),
   outcome: text('outcome').notNull().default(''),
   status: text('status', { enum: ['open', 'in_progress', 'blocked', 'done', 'not_pursued'] }).notNull().default('open'),

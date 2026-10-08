@@ -151,6 +151,7 @@ async function reverted(page: Page, item: WorkItem) {
   await title(page, item).waitFor();
   await panel(page).getByText('Creation undone · read-only history', { exact: true }).waitFor();
   await panel(page).locator('[data-task-lifecycle="creation_reverted"]').waitFor();
+  assert.equal(await panel(page).locator('.details__eyebrow .ui-task-number').innerText(), `#${item.number}`);
   assert.equal(await undoButton(page).count(), 0); assert.equal(await panel(page).getByLabel('Status', { exact: true }).count(), 0);
   assert.equal(await panel(page).getByRole('textbox').count(), 0);
   assert.equal(await panel(page).locator('.lv-inline').count(), 0);
@@ -406,7 +407,9 @@ test('two accounts keep Conversation, Tasks, Map and Agents current after real U
     for (const notice of history) {
       const row = pages[0]!.locator(`#notice-${notice.id}`); await row.waitFor();
       assert.equal(await row.locator('time').getAttribute('datetime'), notice.createdAt);
-      assert.equal(await row.getByRole('button', { name: `Open task: ${item.title}`, exact: true }).count(), 1);
+      assert.equal(notice.workNumber, item.number);
+      assert.equal(await row.locator('.convo-notice__num').innerText(), `#${item.number}`);
+      assert.equal(await row.getByRole('button', { name: `Open task #${item.number} ${item.title}`, exact: true }).count(), 1);
     }
     const undoNotice = pages[0]!.locator(`#notice-${appended.id}`);
     assert.equal(await undoNotice.locator('.convo-notice__meta strong').innerText(), 'Ari Task author · you');
@@ -559,7 +562,7 @@ test('desktop and phone-width history render readable actor and time, keyboard l
       const notice = page.locator(`#notice-${result.noticeId}`); await notice.waitFor();
       assert.equal(await notice.locator('time').getAttribute('datetime'), life.revertedAt);
       if (evidence) await notice.screenshot({ path: join(evidence, `task-undo-notice-${width}.png`) });
-      const historyLink = notice.getByRole('button', { name: `Open task: ${item.title}`, exact: true });
+      const historyLink = notice.getByRole('button', { name: `Open task #${item.number} ${item.title}`, exact: true });
       await historyLink.focus(); await page.keyboard.press('Enter'); await reverted(page, item);
       if (evidence) await page.screenshot({ path: join(evidence, `task-undo-keyboard-history-${width}.png`), fullPage: true });
     });

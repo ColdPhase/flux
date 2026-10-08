@@ -122,7 +122,7 @@ async function presenter(ports: WorkPorts, ids: string[], actors: (ActorRef | nu
     work: (record: WorkRecord): WorkItem => {
       const plan = planOf.get(record.id) ?? NO_PLAN;
       return {
-        ...base(record), title: record.title, outcome: record.outcome, criteria: record.criteria, status: record.status, blocker: record.blocker,
+        ...base(record), number: record.number, title: record.title, outcome: record.outcome, criteria: record.criteria, status: record.status, blocker: record.blocker,
         dependencyIds: plan.prerequisites.map((item) => item.id),
         prerequisites: plan.prerequisites.map((item) => ({ ...item, met: item.status === 'done' && !item.parked })),
         planIntent: plan.planIntent,

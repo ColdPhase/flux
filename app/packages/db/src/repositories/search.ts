@@ -53,6 +53,8 @@ export interface SearchPlanRows {
   prefix: string | null;
   /** Also match titles by trigram similarity (plain words only; never with `-word` or quotes). */
   fuzzy: boolean;
+  /** The task number the query names on its own ("#12"): a task with that number ranks above every other hit. */
+  number: number | null;
   /** The plain words of the prefix query, also looked up in the index (see `audienceCte`). */
   words: string;
   kinds: SearchKind[] | null;
@@ -171,6 +173,17 @@ function hitConditions(plan: SearchPlanRows, withKinds: boolean): SQL {
   return sql.join(conditions, sql` AND `);
 }
 
+/**
+ * A task's number is the first line of its indexed body ("#12", see migration 0055). A query that is only a
+ * number puts that task first: rank (at most 1) plus half the similarity stays far below the added 10, which
+ * therefore orders it above every other hit, also across pages (the cursor carries the same score).
+ */
+function exactNumber(plan: SearchPlanRows): SQL {
+  return plan.number === null
+    ? sql``
+    : sql` + CASE WHEN sd.kind = 'work' AND split_part(sd.body, E'\n', 1) = ${`#${plan.number}`} THEN 10 ELSE 0 END`;
+}
+
 function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows): SQL {
   const q = tsquery(plan);
   const after = plan.after
@@ -182,7 +195,7 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows): S
     matched AS (
       SELECT sd.id, sd.kind, sd.workspace_id, sd.object_id, sd.parent_id, sd.project_id, sd.dm_id, sd.version, sd.status, sd.title, sd.body,
         sd.author_kind, sd.author_id, sd.at,
-        round((ts_rank(sd.tsv, ${q}) + 0.5 * word_similarity(${plan.text}, sd.title))::numeric, 6) AS score,
+        round((ts_rank(sd.tsv, ${q}) + 0.5 * word_similarity(${plan.text}, sd.title))::numeric, 6)${exactNumber(plan)} AS score,
         row_number() OVER (PARTITION BY sd.kind, sd.object_id ORDER BY sd.version DESC NULLS LAST) AS newest
       FROM search_documents sd
       WHERE ${hitConditions(plan, true)}

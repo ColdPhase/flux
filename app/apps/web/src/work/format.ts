@@ -4,6 +4,9 @@ export const STATUS_LABEL: Record<WorkStatus, string> = {
   open: 'Open', in_progress: 'In progress', blocked: 'Blocked', done: 'Done', not_pursued: 'Not pursued',
 };
 
+/** The name a task goes by on every surface (#276): its number in its project, "#12". */
+export const taskNumber = (item: { number: number }) => `#${item.number}`;
+
 const day = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
 export const shortDate = (iso: string) => day.format(new Date(iso));
 
