@@ -10,6 +10,7 @@ on the phone. Olek never sees the restricted project, and recent searches go awa
 from __future__ import annotations
 
 import json
+import math
 import re
 import time
 import unittest
@@ -329,9 +330,12 @@ class SearchJourney(unittest.TestCase):
         dialog.evaluate("el => Promise.all(el.getAnimations({subtree: true}).filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished))")
         cancel_box = cancel.bounding_box()
         assert cancel_box is not None
-        self.assertTrue(has_minimum_touch_size(cancel_box["height"]), str(cancel_box))
-        self.assertTrue(has_minimum_touch_size(cancel.evaluate("el => parseFloat(getComputedStyle(el).minHeight)")),
-                        "Cancel retains the computed 44px minimum")
+        minimum = cancel.evaluate("el => parseFloat(getComputedStyle(el).minHeight)")
+        self.assertTrue(math.isfinite(minimum))
+        self.assertGreaterEqual(minimum, 44)
+        # Keep the newer main's stricter noise tolerance; never round a shorter target up.
+        self.assertTrue(math.isfinite(cancel_box["height"]))
+        self.assertGreaterEqual(cancel_box["height"], 44 - 0.0001)
         for index in range(min(options.count(), 5)):
             option_box = options.nth(index).bounding_box()
             assert option_box is not None
@@ -381,6 +385,87 @@ class SearchJourney(unittest.TestCase):
             expect(target).to_be_in_viewport()
             if "oak" in query:
                 shot(page, "search-open-old-dm-message-desktop-1440")
+
+    def test_11_task_number_leads_jump_to_even_on_a_busy_project(self) -> None:
+        owner = self.page("ari")
+        place = self.api(owner, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects",
+                         {"name": "Hedge sensor calibration", "visibility": "restricted"}, status=201)
+        titles = ["Phase 2 walnut probes", "Seal the barrel lid", "Order 2 spare probes"] + [
+            f"Log the hedge reading {chr(97 + index)}" for index in range(23)]
+        tasks = [self.api(owner, "POST", f"/api/v1/projects/{place['id']}/work",
+                          {"title": title}, status=201) for title in titles]
+        target = tasks[1]
+        self.assertEqual(target["number"], 2)
+        hidden = self.api(self.page("olek"), "GET", "/api/v1/search?q=%232", status=200)
+        self.assertNotIn(f"work:{target['id']}", [item["id"] for item in hidden["items"]])
+
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page = self.page("ari", phone=phone)
+                page.goto(f"/projects/{place['id']}/tasks")
+                expect(page.locator(".tb-card").first).to_be_visible()
+                page.keyboard.press("Control+k")
+                dialog = page.get_by_role("dialog", name="Jump to")
+                field = dialog.get_by_role("combobox", name="Jump to")
+                for query in ("#2", "2", " #2 "):
+                    field.fill(query)
+                    expect(dialog.get_by_role("option").first).to_contain_text(target["title"])
+                field.press("Enter")
+                details = page.locator("#details")
+                expect(details.get_by_role("heading", name=target["title"], exact=True)).to_be_visible()
+                expect(details.locator(".wd-eyebrow .ui-task-number")).to_have_text("#2")
+                expect(details.locator(".wd-project-name")).to_have_text(place["name"])
+                self.no_horizontal_scroll(page)
+                shot(page, f"task-number-jump-{'phone-390' if phone else 'desktop-1440'}")
+
+                details.get_by_role("button", name="Close details").click()
+                page.keyboard.press("Control+k")
+                dialog = page.get_by_role("dialog", name="Jump to")
+                field = dialog.get_by_role("combobox", name="Jump to")
+                field.fill("#12")
+                expect(dialog.get_by_role("option").first).to_contain_text(tasks[11]["title"])
+                shot(page, f"task-number-12-palette-{'phone-390' if phone else 'desktop-1440'}")
+                page.keyboard.press("Escape")
+
+                for number in (12, 26):
+                    page.goto(f"/search?q=%23{number}&type=work&place=project:{place['id']}")
+                    result = page.locator("a.sr").first
+                    expect(result).to_contain_text(tasks[number - 1]["title"])
+                    expect(result).to_contain_text(f"#{number}")
+                    shot(page, f"task-number-{number}-search-{'phone-390' if phone else 'desktop-1440'}")
+                    result.click()
+                    details = page.locator("#details")
+                    expect(details.get_by_role("heading", name=tasks[number - 1]["title"], exact=True)).to_be_visible()
+                    expect(details.locator(".wd-eyebrow .ui-task-number")).to_have_text(f"#{number}")
+                    expect(details.locator(".wd-project-name")).to_have_text(place["name"])
+                    expect(details.locator("[data-detail-relations-phase]")).to_have_attribute("data-detail-relations-phase", "ready")
+                    expect(details.get_by_role("navigation", name="Object relationship pages")).to_have_count(0)
+                    expect(details.get_by_label("Status", exact=True)).to_have_value("open")
+                    expect(details.get_by_label("Owner", exact=True)).to_have_value("")
+                    for name in ("Status", "Owner"):
+                        field_box = details.get_by_label(name, exact=True).bounding_box()
+                        label_box = details.locator(".wd-controls > label", has_text=name).evaluate(
+                            "node => { const range = document.createRange(); range.selectNodeContents(node); return range.getBoundingClientRect().toJSON(); }")
+                        self.assertGreaterEqual(field_box["x"] - label_box["x"] - label_box["width"], 11,
+                                                f"{name} keeps a readable label/value gap at default text size")
+                    self.no_horizontal_scroll(page)
+                    shot(page, f"task-number-{number}-global-details-{'phone-390' if phone else 'desktop-1440'}")
+                # The shared type tokens use rem. Enlarge actual text through the root size;
+                # parseFloat(.75rem) followed by px would shrink it to 1.5px instead of 24px.
+                page.evaluate("document.documentElement.style.fontSize = '200%'")
+                number_label = details.locator(".wd-eyebrow .ui-task-number")
+                expect(number_label).to_be_visible()
+                expect(details.locator(".wd-project-name")).to_be_visible()
+                self.assertGreaterEqual(number_label.evaluate("node => parseFloat(getComputedStyle(node).fontSize)"), 20)
+                for name in ("Status", "Owner"):
+                    field_box = details.get_by_label(name, exact=True).bounding_box()
+                    label_box = details.locator(".wd-controls > label", has_text=name).evaluate(
+                        "node => { const range = document.createRange(); range.selectNodeContents(node); return range.getBoundingClientRect().toJSON(); }")
+                    self.assertGreaterEqual(field_box["x"] - label_box["x"] - label_box["width"], 11,
+                                            f"{name} keeps a readable label/value gap with 200% text")
+                expect(details.get_by_role("navigation", name="Object relationship pages")).to_have_count(0)
+                self.no_horizontal_scroll(page)
+                shot(page, f"task-number-26-text-200-{'phone-390' if phone else 'desktop-1440'}")
 
 
 if __name__ == "__main__":

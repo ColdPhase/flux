@@ -45,8 +45,9 @@ def quote(text: str) -> str:
     return f"“{text[:47] + '…' if len(text) > 48 else text}”"
 
 
-def short_id(work_id: str) -> str:
-    return work_id.replace("-", "")[:8].upper()
+def task_number(item: dict) -> str:
+    """The name a task goes by on every surface (#276): its number in its project."""
+    return f"#{item['number']}"
 
 
 def tasks_label(count: int, text: str) -> str:
@@ -62,6 +63,7 @@ class MapTaskCountJourney(unittest.TestCase):
     ids: dict[str, str] = {}
     thoughts: dict[str, str] = {}
     work: dict[str, str] = {}
+    numbers: dict[str, int] = {}
     sketch_baseline: dict = {}
     work_baseline: dict = {}
 
@@ -109,7 +111,8 @@ class MapTaskCountJourney(unittest.TestCase):
         thought("later", LATER, 1500, 900)
 
         def task(key: str, title: str, **extra) -> None:
-            cls.work[key] = post(f"/api/v1/projects/{project}/work", {"title": title, **extra})["id"]
+            created = post(f"/api/v1/projects/{project}/work", {"title": title, **extra})
+            cls.work[key], cls.numbers[key] = created["id"], created["number"]
 
         ref = lambda key: {"type": "thought", "id": cls.thoughts[key]}  # noqa: E731
         task("order", ORDER, sources=[ref("dark")], owner={"kind": "human", "id": cls.ids["nia"]}, status="in_progress")
@@ -296,8 +299,8 @@ class MapTaskCountJourney(unittest.TestCase):
             link = links.nth(index)
             work_id = self.work[key]
             expect(link).to_contain_text(title)
-            expect(link.locator(".sk-task__id")).to_have_text(short_id(work_id))
-            expect(link).to_contain_text(f"{short_id(work_id)} · {status}")
+            expect(link.locator(".sk-task__id")).to_have_text(f"#{self.numbers[key]}")
+            expect(link).to_contain_text(f"#{self.numbers[key]} · {status}")
             expect(link).to_contain_text(f"{owner} · added by Ada Lind")
             expect(link).to_have_attribute("title", f"Task {work_id}")
             expect(link).to_have_attribute("data-work-id", work_id)
@@ -322,7 +325,7 @@ class MapTaskCountJourney(unittest.TestCase):
         self.row_badge(page, "drafted").click()
         drafted = self.chooser(page, DRAFTED)
         expect(drafted.get_by_role("link")).to_have_count(1)
-        expect(drafted.get_by_role("link")).to_contain_text(f"{short_id(self.work['diffuser'])} · Done")
+        expect(drafted.get_by_role("link")).to_contain_text(f"#{self.numbers['diffuser']} · Done")
         expect(drafted.get_by_role("link")).to_contain_text("Owner Nia Okafor · added by Ada Lind")
         page.keyboard.press("Escape")
         expect(self.row_badge(page, "drafted")).to_be_focused()
@@ -450,9 +453,23 @@ class MapTaskCountJourney(unittest.TestCase):
             box = badge.bounding_box()
             self.assertGreaterEqual(box["height"], 24, "the count is a usable touch target")
             before = self.camera(page)
-            badge.tap()
+            center = {"x": box["x"] + box["width"] / 2, "y": box["y"] + box["height"] / 2}
+            target = badge.evaluate("""(button, p) => {
+              const hit = document.elementFromPoint(p.x, p.y);
+              const canvas = button.closest('.sk-canvas').getBoundingClientRect();
+              return {
+                uncovered: !!hit && button.contains(hit),
+                insideCanvas: p.x >= canvas.left && p.x < canvas.right && p.y >= canvas.top && p.y < canvas.bottom,
+              };
+            }""", center)
+            self.assertTrue(target["uncovered"] and target["insideCanvas"], "the real touch target is visible and uncovered")
+            self.assertEqual(self.camera(page), before, "measuring the visible target does not move the camera")
+            # Normal actionability checks remain. Entry-motion retries must not add a synthetic
+            # scroll after our deliberate visibility scroll and camera baseline.
+            badge.tap(scroll="none")
             sheet = self.chooser(page, DARK_ROOM)
             expect(sheet).to_be_visible()
+            self.assertEqual(self.camera(page), before, "opening the sheet keeps the phone camera")
             expect(sheet).to_have_attribute("aria-modal", "true")
             expect(sheet.get_by_role("link")).to_have_count(3)
             # The sheet slides up (shell overlay motion): measure where it comes to rest.
@@ -526,7 +543,7 @@ class MapTaskCountJourney(unittest.TestCase):
         expect(self.badge(page, "quiet")).to_have_accessible_name(tasks_label(1, QUIET))
         expect(self.badge(page, "dark")).to_have_accessible_name(tasks_label(4, DARK_ROOM))
         self.badge(page, "quiet").click()
-        expect(self.chooser(page, QUIET).get_by_role("link")).to_contain_text(f"{short_id(created['id'])} · Open")
+        expect(self.chooser(page, QUIET).get_by_role("link")).to_contain_text(f"{task_number(created)} · Open")
         expect(self.chooser(page, QUIET).get_by_role("link")).to_contain_text("No owner yet · added by Nia Okafor")
         page.keyboard.press("Escape")
         # Create work on the map: the new task is counted at once.

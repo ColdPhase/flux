@@ -22,6 +22,9 @@ test('a standing work.create grant creates one planned native task through MCP; 
   assert.equal(created.replayed, false);
   const task = await f.read(String(created.workId));
   assert.equal(task.version, created.version);
+  // The agent learns the task's name in the project, "#n" (#276), without reading it again.
+  assert.equal(typeof created.number, 'number');
+  assert.equal(created.number, task.number);
   assert.deepEqual([task.title, task.criteria, task.dependencyIds, task.planIntent],
     ['Compare against the baseline', ['The comparison names both runs'], [f.prerequisiteId], { ...f.source, intentKey: 'compare-step' }]);
   assert.deepEqual([(task.createdBy as { kind: string }).kind, (task.createdBy as { id: string }).id], ['agent', f.agentId]);
@@ -78,7 +81,7 @@ test('a standing work.update grant changes a task at its read version and keeps 
     { status: 'in_progress', criteria: ['Both runs are attached'] }, first)));
   assert.equal(started.replayed, false);
   const task = await f.read(String(target.id));
-  assert.deepEqual([task.status, task.criteria, task.version], ['in_progress', ['Both runs are attached'], started.version]);
+  assert.deepEqual([task.status, task.criteria, task.version, task.number], ['in_progress', ['Both runs are attached'], started.version, started.number]);
   assert.equal(await f.used(update.id), 1);
   assert.deepEqual(toolValue(await f.tool('flux_update_task', change(Number(target.version),
     { status: 'in_progress', criteria: ['Both runs are attached'] }, first))), { ...started, replayed: true });

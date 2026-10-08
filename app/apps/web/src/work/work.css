@@ -39,6 +39,7 @@
 .ws-chip { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; min-height: 30px; padding: 0 10px; border-radius: var(--r); box-shadow: inset 0 0 0 1px var(--line2); font-size: var(--fs-sm); color: var(--t2); text-align: left; transition: var(--tr); }
 .ws-chip:hover { background: var(--hov); color: var(--t1); }
 .ws-chip svg { flex: none; color: var(--t3); }
+.ws-chip__num { flex: none; color: var(--t3); }
 .ws-chip__t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; color: var(--t1); }
 .ws-chip__k { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-xs); color: var(--t3); }
 .ws-chip--need .ws-chip__k { color: var(--t1); font-weight: 500; }
@@ -84,7 +85,7 @@
 .wd-finding--positive svg { color: var(--t1); }
 .wd-was { color: var(--t3); text-decoration: line-through; text-decoration-color: var(--line2); }
 .wd-blocker { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: var(--fs-md); color: var(--t2); }
-.wd-controls { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; gap: 8px 12px; margin: 18px 0 0; padding: 0; border: 0; min-width: 0; }
+.wd-controls { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: 8px 12px; margin: 18px 0 0; padding: 0; border: 0; min-width: 0; }
 .wd-controls label { font-size: var(--fs-sm); color: var(--t3); }
 .wd-controls select, .wd-form select { width: 100%; min-height: var(--ctl); padding: 0 8px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-md); box-shadow: inset 0 0 0 1px var(--line2); }
 .wd-blocker-form { grid-column: 1 / -1; display: flex; align-items: flex-end; gap: 8px; }

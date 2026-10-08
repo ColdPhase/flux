@@ -20,6 +20,8 @@ export interface WorkRecord {
   id: string;
   workspaceId: string;
   projectId: string;
+  /** The task's number in its project, "#12" (#276). */
+  number: number;
   title: string;
   outcome: string;
   status: WorkStatus;
@@ -75,7 +77,8 @@ export interface ObjectLinkRecord {
   createdAt: Date;
 }
 
-export type NewWork = Omit<WorkRecord, 'version' | 'createdAt' | 'updatedAt' | 'parked' | 'criteria'> & {
+/** A task to insert; its number is given by the database (#276). */
+export type NewWork = Omit<WorkRecord, 'number' | 'version' | 'createdAt' | 'updatedAt' | 'parked' | 'criteria'> & {
   criteria?: string[];
   clientCommandId?: string;
   requestFingerprint?: string;
@@ -86,6 +89,7 @@ export interface TaskCreationNoticeRecord {
   projectId: string;
   workId: string;
   workTitle: string;
+  workNumber: number;
   createdBy: ActorRef;
   sources: ObjectRef[];
   createdAt: Date;

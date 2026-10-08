@@ -71,6 +71,8 @@ interface NativeRowBase {
 
 export interface WorkRowProjection extends NativeRowBase {
   kind: 'work';
+  /** The task's number in its project, "#12" (#276). */
+  number: number;
   /** Direct native task prerequisites only; page rows never hydrate the graph. */
   prerequisiteCounts: { total: number; unmet: number };
   status: WorkStatus;
