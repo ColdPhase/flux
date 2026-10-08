@@ -46,3 +46,15 @@ failed clears, thought captures, Wiki base/attempt/bytes, unfinished file bytes 
 validation/refusal/late response. Run Chromium and WebKit in isolated Docker;
 source preparation alone is not a runtime pass. Keep the original nine route,
 phone, asset-delivery, offline and compression guards unchanged.
+
+## Current source composition target
+
+Before composition, preserve the source-reviewed recovery candidate
+`d36c9bb1f47fd0870ad643dd16480b5f320f561e` and all earlier failure/control pins.
+Compose protected main `197f52162e6eb0091870aab0435bce4dc71f27b3`, including
+#367/#368's immutable task number on the first discussion-root paint. Keep all
+four producers, committed recovery lifetime, AbortSignal, existing confirmed
+device privacy retirement and durable command/file/reference identities intact.
+This changes no acceptance criteria or runtime budget. Pin the resulting clean
+tree and compare all incoming main blobs/modes and retained recovery artifacts;
+source composition and repository checks are not a current application result.
