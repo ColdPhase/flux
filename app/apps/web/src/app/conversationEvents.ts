@@ -13,7 +13,7 @@ export const FOLD_AT = 3;
 export type NoticeSource =
   | { kind: 'message'; messageId: string; author: string | null }
   | { kind: 'map' }
-  | { kind: 'tasks' }
+  | { kind: 'none' }
   | { kind: 'material' }
   | { kind: 'other' };
 
@@ -24,7 +24,8 @@ export function noticeSource(notice: Pick<TaskCreationNotice, 'sources'>, author
   if (message) return { kind: 'message', messageId: message.id, author: authorOf(message.id) };
   if (pick('thought') || pick('sketch')) return { kind: 'map' };
   if (pick('material')) return { kind: 'material' };
-  return notice.sources.length ? { kind: 'other' } : { kind: 'tasks' };
+  // No source is not "made in Tasks": a task typed in the conversation or sent through the API has none either.
+  return notice.sources.length ? { kind: 'other' } : { kind: 'none' };
 }
 
 /** "Jonas" for "Jonas Berg": the possessive reads as speech, not a form field. */
@@ -39,8 +40,7 @@ export function sourcePhrase(source: NoticeSource): { lead: string; link?: strin
     case 'message': return source.author ? { lead: 'made a task from', link: `${possessive(source.author)} message` } : { lead: 'made a task from', link: 'a message' };
     case 'map': return { lead: 'added a task on the Map' };
     case 'material': return { lead: 'made a task from a source' };
-    case 'other': return { lead: 'added a task' };
-    default: return { lead: 'added a task in Tasks' };
+    default: return { lead: 'added a task' };
   }
 }
 
@@ -49,7 +49,7 @@ export function foldSummary(notices: TaskCreationNotice[], authorOf: (messageId:
   const groups = new Map<string, { name: string; count: number; where: string }>();
   for (const notice of notices) {
     const source = noticeSource(notice, authorOf);
-    const where = source.kind === 'map' ? ' on the Map' : source.kind === 'tasks' ? '' : source.kind === 'message' ? ' from messages' : source.kind === 'material' ? ' from a source' : '';
+    const where = source.kind === 'map' ? ' on the Map' : source.kind === 'none' ? '' : source.kind === 'message' ? ' from messages' : source.kind === 'material' ? ' from a source' : '';
     const name = nameOf(notice);
     const key = `${notice.createdBy.kind}:${notice.createdBy.id}:${where}`;
     const group = groups.get(key) ?? { name, count: 0, where };

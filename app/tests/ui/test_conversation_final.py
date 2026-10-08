@@ -18,7 +18,7 @@ import uuid
 from playwright.sync_api import Browser, BrowserContext, Locator, Page, expect, sync_playwright
 
 from author_columns import assert_author_column
-from message_gestures import long_press, swipe
+from message_gestures import centre, long_press, swipe, touch
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "a calm and long passphrase"
@@ -93,9 +93,19 @@ class ConversationFinal(unittest.TestCase):
             start("ada" if index % 2 else "jonas", f"Later note {index + 1:02}: a short thought about the beds, the gateway or the probes.")
         folded = [task("ada", {"title": title}) for title in FOLDED]
         order = start("ada", ORDER)
+        # A task whose announcement is older than the stream's first window, updated after Jonas left.
+        old_pid = call("ada", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Old task board", "visibility": "restricted"})["id"]
+        call("ada", f"/api/v1/projects/{old_pid}/grants", {"principal": {"kind": "human", "id": cls.ids["jonas"]}, "role": "contributor"})
+        old_task = call("ada", f"/api/v1/projects/{old_pid}/work", {"title": "Reorder the weather shield", "clientCommandId": str(uuid.uuid4())})
+        for index in range(56):
+            call("ada", f"/api/v1/projects/{old_pid}/conversations", {"body": f"Board note {index:02}: a short line.", "clientMessageId": str(uuid.uuid4())})
+        old_summary = call("jonas", f"/api/v1/return?place=project&id={old_pid}", method="GET")
+        call("jonas", "/api/v1/return-points", {"place": {"type": "project", "id": old_pid}, "mark": old_summary["mark"]}, method="PUT")
+        time.sleep(1.1)
+        call("ada", f"/api/v1/work/{old_task['id']}", {"status": "in_progress", "expectedVersion": old_task["version"]}, method="PATCH")
         for context in contexts.values():
             context.close()
-        cls.ids.update(project=pid, workspace=ws["id"], probes=probes["messages"][0]["id"], thanks=thanks["messages"][0]["id"], marker=marker["messages"][0]["id"],
+        cls.ids.update(old_project=old_pid, old_task=old_task["id"], project=pid, workspace=ws["id"], probes=probes["messages"][0]["id"], thanks=thanks["messages"][0]["id"], marker=marker["messages"][0]["id"],
                        from_message=from_message["id"], from_message_number=from_message["number"], in_tasks=in_tasks["id"], on_map=on_map["id"],
                        first_unread=first_unread["messages"][0]["id"], order=order["messages"][0]["id"], folded=json.dumps([item["id"] for item in folded]))
 
@@ -167,7 +177,7 @@ class ConversationFinal(unittest.TestCase):
         made = self.notice(page, self.ids["from_message"])
         expect(made.locator(".convo-notice__meta strong")).to_have_text("Ada Kowalska · you")
         expect(made.locator(".convo-notice__what")).to_have_text("made a task from Jonas’s message")
-        expect(self.notice(page, self.ids["in_tasks"]).locator(".convo-notice__what")).to_have_text("added a task in Tasks")
+        expect(self.notice(page, self.ids["in_tasks"]).locator(".convo-notice__what")).to_have_text("added a task")
         expect(self.notice(page, self.ids["on_map"]).locator(".convo-notice__what")).to_have_text("added a task on the Map")
         expect(made.locator(".convo-notice__num")).to_have_text(f"#{self.ids['from_message_number']}")
         expect(made.get_by_role("button", name=re.compile(rf"^Open task #\d+ {FROM_MESSAGE}$"))).to_be_visible()
@@ -270,9 +280,12 @@ class ConversationFinal(unittest.TestCase):
         attach = page.locator(".composer__attach")
         self.assertEqual(attach.count(), 1, "one attach button")
         self.assertTrue(attach.is_enabled(), "the attach button is enabled")
-        page.evaluate("window.__fileClicks = 0; document.addEventListener('click', (event) => { if (event.target instanceof HTMLInputElement && event.target.type === 'file') window.__fileClicks += 1; }, true)")
-        page.keyboard.press("Enter")
-        self.assertEqual(page.evaluate("window.__fileClicks"), 1, "/file opens the file picker, as the attach button does")
+        with page.expect_file_chooser(timeout=15000) as chooser:
+            page.keyboard.press("Enter")
+        chooser.value.set_files({"name": "bed-readings.csv", "mimeType": "text/csv", "buffer": b"bed,dbm\nfar east,-112\n"})
+        expect(page.get_by_text("bed-readings.csv")).to_be_visible()
+        expect(page.get_by_text("Ready, private", exact=False)).to_be_visible()
+        page.get_by_role("button", name="Remove bed-readings.csv").click()
         expect(composer).to_have_value("")
         composer.fill("/source")
         page.keyboard.press("Enter")
@@ -441,6 +454,100 @@ class ConversationFinal(unittest.TestCase):
         reply.hover()
         expect(reply.get_by_role("group", name="Message actions")).to_be_visible()
         shot(page, "conversation-final-thread-desktop")
+
+    # ---------------------------------------------------------------- review fixes (#387)
+
+    def hold_work(self, page: Page) -> list:
+        held: list = []
+        page.route("**/api/v1/projects/*/work", lambda route: held.append(route) if route.request.method == "POST" else route.continue_())
+        return held
+
+    def test_11_a_slash_command_consumes_only_the_draft_it_was_given(self) -> None:
+        for command in ("task", "handoff"):
+            page = self.open("ada")
+            composer = self.composer(page)
+            held = self.hold_work(page)
+            title = f"Held {command} original"
+            newer = f"Newer draft typed while /{command} was on its way"
+            composer.fill(f"/{command} {title}")
+            composer.press("Enter")
+            for _ in range(60):
+                if held:
+                    break
+                page.wait_for_timeout(100)
+            self.assertEqual(len(held), 1, "the work request is held")
+            composer.fill(newer)
+            held[0].continue_()
+            expect(page.locator("#details").get_by_role("heading", name=title)).to_be_visible()
+            page.wait_for_timeout(300)
+            expect(composer).to_have_value(newer)
+            self.assertEqual(self.work_titles(page).count(title), 1, "exactly the original task exists")
+            page.reload()
+            expect(page.locator("#project-composer")).to_have_value(newer)
+            # Positive control: an unchanged draft is consumed by its command.
+            page.locator("#project-composer").fill(f"/{command} Control {command} task")
+            page.locator("#project-composer").press("Enter")
+            expect(page.locator("#details").get_by_role("heading", name=f"Control {command} task")).to_be_visible()
+            expect(page.locator("#project-composer")).to_have_value("")
+
+    def test_12_a_task_without_a_source_does_not_claim_where_it_was_made(self) -> None:
+        page = self.open("ada")
+        title = "Typed in the conversation without a source"
+        self.composer(page).fill(f"/task {title}")
+        self.composer(page).press("Enter")
+        expect(page.locator("#details").get_by_role("heading", name=title)).to_be_visible()
+        made = page.locator(".convo-notice").filter(has_text=title)
+        expect(made.locator(".convo-notice__what")).to_have_text("added a task")
+        for text in page.locator(".convo-notice__what").all_inner_texts():
+            self.assertNotIn("in Tasks", text, "no notice names Tasks as its origin")
+        # A task made from a message keeps its truthful source (positive control).
+        expect(self.notice(page, self.ids["from_message"]).locator(".convo-notice__what")).to_have_text("made a task from Jonas’s message")
+
+    def test_13_short_taps_leave_no_timer_that_opens_the_next_press_early(self) -> None:
+        page = self.open("ada", phone=True)
+        first = self.message(page, self.ids["probes"]).locator(":scope > p")
+        first.scroll_into_view_if_needed()
+        menu = page.get_by_role("menu", name="Message actions")
+        # The touches are fired from the page with its own clock, so the gaps are exact even on a loaded machine.
+        script = """async ([a, b, scrolled]) => {
+          const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+          const fire = (el, type, dy = 0) => { const r = el.getBoundingClientRect();
+            el.dispatchEvent(new PointerEvent(type, { pointerType: 'touch', pointerId: 41, isPrimary: true, button: 0, buttons: type === 'pointerup' ? 0 : 1,
+              clientX: r.x + r.width / 2, clientY: r.y + r.height / 2 + dy, bubbles: true, cancelable: true })); };
+          const open = () => !!document.querySelector('[role=menu][aria-label="Message actions"]');
+          const A = document.querySelector(a), B = document.querySelector(b);
+          fire(A, 'pointerdown'); await wait(40); fire(A, 'pointerup');       // a quick tap on the first message
+          await wait(250); fire(B, 'pointerdown');                            // then a press on the second
+          await wait(300);                                                    // 590 ms after the tap began, 300 ms into the press
+          const early = open();
+          await wait(350);                                                    // 650 ms held: a genuine long press
+          const held = open();
+          fire(B, 'pointerup');
+          return { early, held };
+        }"""
+        result = page.evaluate(script, [f"#message-{self.ids['probes']} > p", f"#message-{self.ids['probes']} > p", False])
+        self.assertFalse(result["early"], "an earlier tap's timer does not open the next press early")
+        self.assertTrue(result["held"], "a real long hold still opens the menu")
+        page.keyboard.press("Escape")
+        expect(menu).to_have_count(0)
+        # Moving down (a scroll) before the hold is up cancels it.
+        x, y = centre(first)
+        touch(first, "pointerdown", x, y)
+        touch(first, "pointermove", x, y + 30)
+        page.wait_for_timeout(700)
+        expect(menu).to_have_count(0)
+        touch(first, "pointerup", x, y + 30)
+
+    def test_14_jump_reaches_a_task_whose_announcement_is_outside_the_loaded_window(self) -> None:
+        page = self.page("jonas")
+        page.goto(f"/projects/{self.ids['old_project']}")
+        expect(page.locator(".project-convo__message").last).to_be_visible()
+        expect(page.locator(f'.convo-notice[data-work-id="{self.ids["old_task"]}"]')).to_have_count(0)
+        line = page.get_by_role("region", name="Since you left")
+        expect(line).to_contain_text("task update")
+        line.get_by_role("button", name="Jump to the first unread").click()
+        expect(page.locator("#details").get_by_role("heading", name="Reorder the weather shield")).to_be_visible()
+        expect(line).to_have_count(0)
 
 
 if __name__ == "__main__":

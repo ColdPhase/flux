@@ -386,11 +386,19 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   }
   // `/task …`, `/decide …` and `/handoff …` act when sent; the words after the command are the title.
   const COMMAND_EXAMPLE = { task: 'Order the probes', decide: 'Use the second supplier', handoff: 'Calibrate the probes' } as const;
+  // What the composer holds now, for a command whose answer arrives after the person typed on.
+  const latestBody = useRef(draft);
+  useEffect(() => { latestBody.current = publicComposer.draft.body; });
   async function runCommand(name: keyof typeof COMMAND_EXAMPLE, text: string) {
     if (!text) { setCommandHint(`Say what it is after the command, for example /${name} ${COMMAND_EXAMPLE[name]}.`); document.getElementById(composerId)?.focus(); return; }
-    if (name === 'decide') { openDetails({ kind: 'propose-decision', projectId: project.id, title: text }); composer.setBody(''); return; }
+    // Only the draft that was submitted is consumed, and only in the scope it was written in: words typed
+    // while the answer was on its way, or in another conversation, stay.
+    const submitted = draft;
+    const active = captureScope();
+    const consume = () => { if (active() && latestBody.current === submitted) composer.setBody(''); };
+    if (name === 'decide') { openDetails({ kind: 'propose-decision', projectId: project.id, title: text }); consume(); return; }
     // A hand-off is a task for an agent; its owner is chosen in Details, where it opens (there is no hand-off command yet).
-    if (await makeWork.createText(text)) composer.setBody('');
+    if (await makeWork.createText(text)) consume();
   }
   async function send() {
     typing.stop();

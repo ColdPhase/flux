@@ -405,22 +405,25 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
   };
 
   // "Since you left" (S7): the first unread item comes into view, or opens in its thread when it is a reply.
-  const jump = (target: NonNullable<ReturnType<typeof firstUnread>>) => {
+  // Returns whether it reached the item, so the line is only dismissed when the reader got there.
+  const jump = (target: NonNullable<ReturnType<typeof firstUnread>>): boolean => {
     const feed = feedRef.current;
-    if (!feed) return;
+    if (!feed) return false;
     if ('workId' in target) {
       const notice = feed.querySelector<HTMLElement>(`.convo-notice[data-work-id="${CSS.escape(target.workId)}"]`);
-      if (!notice) return;
+      // Its announcement is older than the loaded window: the task itself is the target.
+      if (!notice) { openDetails({ kind: 'work', id: target.workId }); return true; }
       notice.closest('.convo-fold')?.querySelector<HTMLButtonElement>('.convo-fold__b[aria-expanded="false"]')?.click();
       requestAnimationFrame(() => { stickRef.current = false; notice.scrollIntoView({ block: 'start' }); notice.querySelector<HTMLElement>('.convo-notice__task')?.focus({ preventScroll: true }); });
-      return;
+      return true;
     }
-    if (target.conversationId) { navigate(`/projects/${project.id}/conversations/${target.conversationId}#message-${target.messageId}`); return; }
+    if (target.conversationId) { navigate(`/projects/${project.id}/conversations/${target.conversationId}#message-${target.messageId}`); return true; }
     const message = document.getElementById(`message-${target.messageId}`);
-    if (!message) return;
+    if (!message) return false;
     stickRef.current = false;
     message.scrollIntoView({ block: 'start' });
     message.focus({ preventScroll: true });
+    return true;
   };
 
   // The thread docks beside the stream and leaves again: the root whose replies the person opened stays
@@ -640,7 +643,7 @@ function NoticeFold({ fold, summary, children }: { fold: { key: string; notices:
 }
 
 /** "Since you left: …" with a jump to the first unread item (S7). It floats over the stream and takes no room. */
-function SinceLine({ projectId, roots, onJump }: { projectId: string; roots: ConversationRoot[]; onJump: (target: NonNullable<ReturnType<typeof firstUnread>>) => void }) {
+function SinceLine({ projectId, roots, onJump }: { projectId: string; roots: ConversationRoot[]; onJump: (target: NonNullable<ReturnType<typeof firstUnread>>) => boolean }) {
   const [summary, setSummary] = useState<ReturnSummary | null>(null);
   const [dismissed, setDismissed] = useState(false);
   useEffect(() => {
@@ -655,7 +658,7 @@ function SinceLine({ projectId, roots, onJump }: { projectId: string; roots: Con
     <div className="convo-since" role="region" aria-label="Since you left">
       <Kreska size={22} />
       <span className="convo-since__t"><b>Since you left:</b> {line}</span>
-      {target ? <button type="button" className="convo-since__jump" aria-label="Jump to the first unread" onClick={() => { onJump(target); setDismissed(true); }}>Jump <Icon name="chevron-down" size={14} /></button> : null}
+      {target ? <button type="button" className="convo-since__jump" aria-label="Jump to the first unread" onClick={() => { if (onJump(target)) setDismissed(true); }}>Jump <Icon name="chevron-down" size={14} /></button> : null}
       <IconButton icon="x" size={14} label="Dismiss" className="convo-since__x" onClick={() => setDismissed(true)} />
     </div>
   );

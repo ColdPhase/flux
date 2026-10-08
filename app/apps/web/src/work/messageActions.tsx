@@ -163,7 +163,8 @@ export function useTouchActions(options: MessageActionOptions | null): { props: 
   const opener = useRef<HTMLElement | null>(null);
   const { onCreateWork, onReply, writable, busy } = options ?? { onCreateWork: undefined, onReply: undefined, writable: false, busy: false };
 
-  const clearTimer = () => { if (gesture.current) window.clearTimeout(gesture.current.timer); };
+  // A gesture's own timer is cancelled before the gesture is dropped, and a timer only acts for the gesture that set it.
+  const clearTimer = (g = gesture.current) => { if (g) window.clearTimeout(g.timer); };
   const close = useCallback(() => { setRevealed(false); setOffset(0); }, []);
   // A revealed row closes when the person touches elsewhere or scrolls.
   useEffect(() => {
@@ -193,10 +194,12 @@ export function useTouchActions(options: MessageActionOptions | null): { props: 
       if (event.pointerType !== 'touch') return;
       const row = event.currentTarget;
       const interactive = !!(event.target as Element).closest('a, button, input, textarea, select, [role="button"]');
-      const timer = interactive ? 0 : window.setTimeout(() => {
-        if (gesture.current?.mode === 'idle') { gesture.current.mode = 'dead'; openPress(row); }
+      clearTimer();
+      const g: NonNullable<typeof gesture.current> = { x: event.clientX, y: event.clientY, mode: 'idle', timer: 0, interactive };
+      if (!interactive) g.timer = window.setTimeout(() => {
+        if (gesture.current === g && g.mode === 'idle') { g.mode = 'dead'; openPress(row); }
       }, HOLD_MS);
-      gesture.current = { x: event.clientX, y: event.clientY, mode: 'idle', timer, interactive };
+      gesture.current = g;
     },
     onPointerMove: (event: ReactPointerEvent<HTMLLIElement>) => {
       const g = gesture.current;
@@ -215,7 +218,7 @@ export function useTouchActions(options: MessageActionOptions | null): { props: 
       const g = gesture.current;
       gesture.current = null;
       if (!g) return;
-      clearTimer();
+      clearTimer(g);
       if (g.mode !== 'swipe') return;
       setDragging(false);
       swallow.current = true;

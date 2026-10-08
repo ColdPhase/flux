@@ -6,6 +6,7 @@ import unittest
 import uuid
 from urllib.parse import parse_qs, urlsplit
 from playwright.sync_api import expect, sync_playwright
+from message_gestures import open_message_menu
 from test_app_shell import ORIGIN, UPSTREAM, SHOTS, shot, start_forwarder
 from test_work_pagination import api
 
@@ -140,7 +141,7 @@ class NativeDetailsJourney(unittest.TestCase):
 
     def test_04_all_current_rules_reachable_and_selected_rule_persists_on_another_page(self):
         page=self.page();page.goto(f"/projects/{self.project}/conversations/{self.conversation}")
-        message=page.locator(f"#message-{self.message}");message.hover();message.get_by_role("button",name="Decision",exact=True).click()
+        message=page.locator(f"#message-{self.message}");open_message_menu(message,phone=False).get_by_role("menuitem",name="Propose a decision").click()
         panel=page.locator("#details .wd");self.choices_ready(panel,"Current rule choices")
         panel.get_by_label("Decision",exact=True).fill("Keep a manual off switch after measuring both shields")
         why=panel.get_by_label("Why",exact=True);why.fill("Retain the complete earlier measurements before changing the cable")
