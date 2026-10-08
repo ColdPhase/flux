@@ -1,0 +1,794 @@
+{
+  "runtime-1": {
+    ".Config.Image": "flux-agent-runtime:flux-8c90dc32",
+    ".Config.User": "1000:1000",
+    ".HostConfig.ReadonlyRootfs": true,
+    ".HostConfig.CapDrop": [
+      "ALL"
+    ],
+    ".HostConfig.SecurityOpt": [
+      "no-new-privileges:true"
+    ],
+    ".HostConfig.PidsLimit": 256,
+    ".HostConfig.Memory": 2147483648,
+    ".HostConfig.NanoCpus": 1000000000,
+    ".HostConfig.NetworkMode": "flux-8c90dc32_runtime-1",
+    ".NetworkSettings.Networks": {
+      "flux-8c90dc32_runtime-1": {
+        "IPAMConfig": null,
+        "Links": null,
+        "Aliases": [
+          "flux-8c90dc32-runtime-1-1",
+          "runtime-1"
+        ],
+        "DriverOpts": null,
+        "GwPriority": 0,
+        "NetworkID": "cacb863c8d38c67ba4518336a42ec4d5117c960e4d377825f403520f4237e951",
+        "EndpointID": "8f5bc685e5f8139dfea92d07e67c0122109eeed9feca9c92470ecc12ebcdc27c",
+        "Gateway": "",
+        "IPAddress": "172.27.0.3",
+        "MacAddress": "56:4f:b5:07:ee:ae",
+        "IPPrefixLen": 16,
+        "IPv6Gateway": "",
+        "GlobalIPv6Address": "",
+        "GlobalIPv6PrefixLen": 0,
+        "DNSNames": [
+          "flux-8c90dc32-runtime-1-1",
+          "runtime-1",
+          "92ab27a0bcc6"
+        ]
+      }
+    },
+    ".HostConfig.Tmpfs": {
+      "/tmp": "rw,nosuid,nodev,size=128m,mode=1777"
+    },
+    ".RestartCount": 0
+  },
+  "runtime-4": {
+    ".Config.Image": "flux-agent-runtime:flux-8c90dc32",
+    ".Config.User": "1000:1000",
+    ".HostConfig.ReadonlyRootfs": true,
+    ".HostConfig.CapDrop": [
+      "ALL"
+    ],
+    ".HostConfig.SecurityOpt": [
+      "no-new-privileges:true"
+    ],
+    ".HostConfig.PidsLimit": 256,
+    ".HostConfig.Memory": 2147483648,
+    ".HostConfig.NanoCpus": 1000000000,
+    ".HostConfig.NetworkMode": "flux-8c90dc32_runtime-4",
+    ".NetworkSettings.Networks": {
+      "flux-8c90dc32_runtime-4": {
+        "IPAMConfig": null,
+        "Links": null,
+        "Aliases": [
+          "flux-8c90dc32-runtime-4-1",
+          "runtime-4"
+        ],
+        "DriverOpts": null,
+        "GwPriority": 0,
+        "NetworkID": "cc4436ba5c4a45e7fad5b0f0b46ae6d7656d1d359a76a2a963b0f2817341bb4c",
+        "EndpointID": "c6487667f4d9e4339df054457f11c27bcf59b463a891da252f6a9eaf31de94bd",
+        "Gateway": "",
+        "IPAddress": "172.26.0.3",
+        "MacAddress": "5a:9b:5b:f9:c7:b7",
+        "IPPrefixLen": 16,
+        "IPv6Gateway": "",
+        "GlobalIPv6Address": "",
+        "GlobalIPv6PrefixLen": 0,
+        "DNSNames": [
+          "flux-8c90dc32-runtime-4-1",
+          "runtime-4",
+          "a417a23aa7d2"
+        ]
+      }
+    },
+    ".HostConfig.Tmpfs": {
+      "/tmp": "rw,nosuid,nodev,size=128m,mode=1777"
+    },
+    ".RestartCount": 0
+  },
+  "runtime-3": {
+    ".Config.Image": "flux-agent-runtime:flux-8c90dc32",
+    ".Config.User": "1000:1000",
+    ".HostConfig.ReadonlyRootfs": true,
+    ".HostConfig.CapDrop": [
+      "ALL"
+    ],
+    ".HostConfig.SecurityOpt": [
+      "no-new-privileges:true"
+    ],
+    ".HostConfig.PidsLimit": 256,
+    ".HostConfig.Memory": 2147483648,
+    ".HostConfig.NanoCpus": 1000000000,
+    ".HostConfig.NetworkMode": "flux-8c90dc32_runtime-3",
+    ".NetworkSettings.Networks": {
+      "flux-8c90dc32_runtime-3": {
+        "IPAMConfig": null,
+        "Links": null,
+        "Aliases": [
+          "flux-8c90dc32-runtime-3-1",
+          "runtime-3"
+        ],
+        "DriverOpts": null,
+        "GwPriority": 0,
+        "NetworkID": "88601ce9c6f5a79bb348df483cd08d3c3f4c5a08438fa2ed23faa641520f8954",
+        "EndpointID": "d7783810daed4f7814cac2298e331242d4a8c93ee77e1a643683b651c6d2eeca",
+        "Gateway": "",
+        "IPAddress": "172.22.0.3",
+        "MacAddress": "46:35:80:38:80:b3",
+        "IPPrefixLen": 16,
+        "IPv6Gateway": "",
+        "GlobalIPv6Address": "",
+        "GlobalIPv6PrefixLen": 0,
+        "DNSNames": [
+          "flux-8c90dc32-runtime-3-1",
+          "runtime-3",
+          "a3a98b548bbb"
+        ]
+      }
+    },
+    ".HostConfig.Tmpfs": {
+      "/tmp": "rw,nosuid,nodev,size=128m,mode=1777"
+    },
+    ".RestartCount": 0
+  },
+  "runtime-5": {
+    ".Config.Image": "flux-agent-runtime:flux-8c90dc32",
+    ".Config.User": "1000:1000",
+    ".HostConfig.ReadonlyRootfs": true,
+    ".HostConfig.CapDrop": [
+      "ALL"
+    ],
+    ".HostConfig.SecurityOpt": [
+      "no-new-privileges:true"
+    ],
+    ".HostConfig.PidsLimit": 256,
+    ".HostConfig.Memory": 2147483648,
+    ".HostConfig.NanoCpus": 1000000000,
+    ".HostConfig.NetworkMode": "flux-8c90dc32_runtime-5",
+    ".NetworkSettings.Networks": {
+      "flux-8c90dc32_runtime-5": {
+        "IPAMConfig": null,
+        "Links": null,
+        "Aliases": [
+          "flux-8c90dc32-runtime-5-1",
+          "runtime-5"
+        ],
+        "DriverOpts": null,
+        "GwPriority": 0,
+        "NetworkID": "b0565d3f3dccea16a43f83ee2b2be81a78aeea1349b4cbda28b181dcd998bc8a",
+        "EndpointID": "bbd62b8bff11b3713934802be227193bb4de1ac329abbac640a2a19defe03df8",
+        "Gateway": "",
+        "IPAddress": "172.24.0.3",
+        "MacAddress": "86:ed:a0:8f:56:15",
+        "IPPrefixLen": 16,
+        "IPv6Gateway": "",
+        "GlobalIPv6Address": "",
+        "GlobalIPv6PrefixLen": 0,
+        "DNSNames": [
+          "flux-8c90dc32-runtime-5-1",
+          "runtime-5",
+          "69bd13a7d03a"
+        ]
+      }
+    },
+    ".HostConfig.Tmpfs": {
+      "/tmp": "rw,nosuid,nodev,size=128m,mode=1777"
+    },
+    ".RestartCount": 0
+  },
+  "runtime-2": {
+    ".Config.Image": "flux-agent-runtime:flux-8c90dc32",
+    ".Config.User": "1000:1000",
+    ".HostConfig.ReadonlyRootfs": true,
+    ".HostConfig.CapDrop": [
+      "ALL"
+    ],
+    ".HostConfig.SecurityOpt": [
+      "no-new-privileges:true"
+    ],
+    ".HostConfig.PidsLimit": 256,
+    ".HostConfig.Memory": 2147483648,
+    ".HostConfig.NanoCpus": 1000000000,
+    ".HostConfig.NetworkMode": "flux-8c90dc32_runtime-2",
+    ".NetworkSettings.Networks": {
+      "flux-8c90dc32_runtime-2": {
+        "IPAMConfig": null,
+        "Links": null,
+        "Aliases": [
+          "flux-8c90dc32-runtime-2-1",
+          "runtime-2"
+        ],
+        "DriverOpts": null,
+        "GwPriority": 0,
+        "NetworkID": "51eaa7f8ba633e809c1609e453a2215fed1d128a7112bd1dde9ee5e594d86c5c",
+        "EndpointID": "c0b41815a5d6f0b2cec0e0caa4ef846c77c47641d557b24c0feeb559fa78373b",
+        "Gateway": "",
+        "IPAddress": "172.21.0.3",
+        "MacAddress": "36:db:ec:36:ab:e1",
+        "IPPrefixLen": 16,
+        "IPv6Gateway": "",
+        "GlobalIPv6Address": "",
+        "GlobalIPv6PrefixLen": 0,
+        "DNSNames": [
+          "flux-8c90dc32-runtime-2-1",
+          "runtime-2",
+          "bafd93f75240"
+        ]
+      }
+    },
+    ".HostConfig.Tmpfs": {
+      "/tmp": "rw,nosuid,nodev,size=128m,mode=1777"
+    },
+    ".RestartCount": 0
+  },
+  "runtime-manager": {
+    ".Config.Image": "flux-foundation:flux-8c90dc32",
+    ".Config.User": "1000:1000",
+    ".HostConfig.ReadonlyRootfs": true,
+    ".HostConfig.CapDrop": [
+      "ALL"
+    ],
+    ".HostConfig.SecurityOpt": [
+      "no-new-privileges:true"
+    ],
+    ".HostConfig.PidsLimit": 64,
+    ".HostConfig.Memory": 268435456,
+    ".HostConfig.NanoCpus": 0,
+    ".HostConfig.NetworkMode": "flux-8c90dc32_runtime-1",
+    ".NetworkSettings.Networks": {
+      "flux-8c90dc32_runtime-1": {
+        "IPAMConfig": {},
+        "Links": null,
+        "Aliases": [
+          "flux-8c90dc32-runtime-manager-1",
+          "runtime-manager"
+        ],
+        "DriverOpts": null,
+        "GwPriority": 0,
+        "NetworkID": "cacb863c8d38c67ba4518336a42ec4d5117c960e4d377825f403520f4237e951",
+        "EndpointID": "f8a37e71af65cc8c4c783050666df5af9c1db52aeb1b21f44a28bab4e0d48c13",
+        "Gateway": "",
+        "IPAddress": "172.27.0.1",
+        "MacAddress": "7a:5d:24:67:03:e2",
+        "IPPrefixLen": 16,
+        "IPv6Gateway": "",
+        "GlobalIPv6Address": "",
+        "GlobalIPv6PrefixLen": 0,
+        "DNSNames": [
+          "flux-8c90dc32-runtime-manager-1",
+          "runtime-manager",
+          "40b4d16d8f4e"
+        ]
+      },
+      "flux-8c90dc32_runtime-2": {
+        "IPAMConfig": {},
+        "Links": null,
+        "Aliases": [
+          "flux-8c90dc32-runtime-manager-1",
+          "runtime-manager"
+        ],
+        "DriverOpts": null,
+        "GwPriority": 0,
+        "NetworkID": "51eaa7f8ba633e809c1609e453a2215fed1d128a7112bd1dde9ee5e594d86c5c",
+        "EndpointID": "48a38a0e249447095baff722d9d077aafd414bd9bdc091bc2badaf2e490bf910",
+        "Gateway": "",
+        "IPAddress": "172.21.0.1",
+        "MacAddress": "2a:9b:cc:ee:e2:f3",
+        "IPPrefixLen": 16,
+        "IPv6Gateway": "",
+        "GlobalIPv6Address": "",
+        "GlobalIPv6PrefixLen": 0,
+        "DNSNames": [
+          "flux-8c90dc32-runtime-manager-1",
+          "runtime-manager",
+          "40b4d16d8f4e"
+        ]
+      },
+      "flux-8c90dc32_runtime-3": {
+        "IPAMConfig": {},
+        "Links": null,
+        "Aliases": [
+          "flux-8c90dc32-runtime-manager-1",
+          "runtime-manager"
+        ],
+        "DriverOpts": null,
+        "GwPriority": 0,
+        "NetworkID": "88601ce9c6f5a79bb348df483cd08d3c3f4c5a08438fa2ed23faa641520f8954",
+        "EndpointID": "4059b15a741b9436cc240b443b6321b801be33a91d3bf62aaa1a2539fc6cc4f0",
+        "Gateway": "",
+        "IPAddress": "172.22.0.1",
+        "MacAddress": "0e:78:e8:4d:dd:7b",
+        "IPPrefixLen": 16,
+        "IPv6Gateway": "",
+        "GlobalIPv6Address": "",
+        "GlobalIPv6PrefixLen": 0,
+        "DNSNames": [
+          "flux-8c90dc32-runtime-manager-1",
+          "runtime-manager",
+          "40b4d16d8f4e"
+        ]
+      },
+      "flux-8c90dc32_runtime-4": {
+        "IPAMConfig": {},
+        "Links": null,
+        "Aliases": [
+          "flux-8c90dc32-runtime-manager-1",
+          "runtime-manager"
+        ],
+        "DriverOpts": null,
+        "GwPriority": 0,
+        "NetworkID": "cc4436ba5c4a45e7fad5b0f0b46ae6d7656d1d359a76a2a963b0f2817341bb4c",
+        "EndpointID": "f862f773f120046e02ae0ecacae552abafba65c816819c2d458a5543551d3a1e",
+        "Gateway": "",
+        "IPAddress": "172.26.0.1",
+        "MacAddress": "12:fd:71:de:2c:4d",
+        "IPPrefixLen": 16,
+        "IPv6Gateway": "",
+        "GlobalIPv6Address": "",
+        "GlobalIPv6PrefixLen": 0,
+        "DNSNames": [
+          "flux-8c90dc32-runtime-manager-1",
+          "runtime-manager",
+          "40b4d16d8f4e"
+        ]
+      },
+      "flux-8c90dc32_runtime-5": {
+        "IPAMConfig": {},
+        "Links": null,
+        "Aliases": [
+          "flux-8c90dc32-runtime-manager-1",
+          "runtime-manager"
+        ],
+        "DriverOpts": null,
+        "GwPriority": 0,
+        "NetworkID": "b0565d3f3dccea16a43f83ee2b2be81a78aeea1349b4cbda28b181dcd998bc8a",
+        "EndpointID": "4b07676eba8813e0505b936336f058b82562f41041e2a4afa9b7fd179b030bf2",
+        "Gateway": "",
+        "IPAddress": "172.24.0.1",
+        "MacAddress": "da:06:1b:dd:bf:06",
+        "IPPrefixLen": 16,
+        "IPv6Gateway": "",
+        "GlobalIPv6Address": "",
+        "GlobalIPv6PrefixLen": 0,
+        "DNSNames": [
+          "flux-8c90dc32-runtime-manager-1",
+          "runtime-manager",
+          "40b4d16d8f4e"
+        ]
+      },
+      "flux-8c90dc32_runtime-control": {
+        "IPAMConfig": {},
+        "Links": null,
+        "Aliases": [
+          "flux-8c90dc32-runtime-manager-1",
+          "runtime-manager",
+          "runtime-manager-control"
+        ],
+        "DriverOpts": null,
+        "GwPriority": 0,
+        "NetworkID": "3c6a6131fbb9af87f2271d8485273d6b858980f091e49667a90cd6b94085b56c",
+        "EndpointID": "506667c7079a673a256e13fad36d02da97be5ba427f2dfca93c626e5994c8127",
+        "Gateway": "",
+        "IPAddress": "172.20.0.1",
+        "MacAddress": "22:fc:4c:c5:6a:b0",
+        "IPPrefixLen": 16,
+        "IPv6Gateway": "",
+        "GlobalIPv6Address": "",
+        "GlobalIPv6PrefixLen": 0,
+        "DNSNames": [
+          "flux-8c90dc32-runtime-manager-1",
+          "runtime-manager",
+          "runtime-manager-control",
+          "40b4d16d8f4e"
+        ]
+      }
+    },
+    ".HostConfig.Tmpfs": null,
+    ".RestartCount": 0
+  },
+  "runtime-egress": {
+    ".Config.Image": "flux-foundation:flux-8c90dc32",
+    ".Config.User": "1000:1000",
+    ".HostConfig.ReadonlyRootfs": true,
+    ".HostConfig.CapDrop": [
+      "ALL"
+    ],
+    ".HostConfig.SecurityOpt": [
+      "no-new-privileges:true"
+    ],
+    ".HostConfig.PidsLimit": 128,
+    ".HostConfig.Memory": 268435456,
+    ".HostConfig.NanoCpus": 0,
+    ".HostConfig.NetworkMode": "flux-8c90dc32_runtime-1",
+    ".NetworkSettings.Networks": {
+      "flux-8c90dc32_runtime-1": {
+        "IPAMConfig": {},
+        "Links": null,
+        "Aliases": [
+          "flux-8c90dc32-runtime-egress-1",
+          "runtime-egress"
+        ],
+        "DriverOpts": null,
+        "GwPriority": 0,
+        "NetworkID": "cacb863c8d38c67ba4518336a42ec4d5117c960e4d377825f403520f4237e951",
+        "EndpointID": "c4f47dd614035f74bd26f58de5ecf205cec37d1d649797cd23b81cdded97ea5a",
+        "Gateway": "",
+        "IPAddress": "172.27.0.2",
+        "MacAddress": "fa:44:fb:e9:35:bf",
+        "IPPrefixLen": 16,
+        "IPv6Gateway": "",
+        "GlobalIPv6Address": "",
+        "GlobalIPv6PrefixLen": 0,
+        "DNSNames": [
+          "flux-8c90dc32-runtime-egress-1",
+          "runtime-egress",
+          "3ffb803d3a3e"
+        ]
+      },
+      "flux-8c90dc32_runtime-2": {
+        "IPAMConfig": {},
+        "Links": null,
+        "Aliases": [
+          "flux-8c90dc32-runtime-egress-1",
+          "runtime-egress"
+        ],
+        "DriverOpts": null,
+        "GwPriority": 0,
+        "NetworkID": "51eaa7f8ba633e809c1609e453a2215fed1d128a7112bd1dde9ee5e594d86c5c",
+        "EndpointID": "738b1b2e319fa36bb0705931ec6f6f3628a0e14f1d74c99a5427338944953e3b",
+        "Gateway": "",
+        "IPAddress": "172.21.0.2",
+        "MacAddress": "de:a9:4f:41:53:3a",
+        "IPPrefixLen": 16,
+        "IPv6Gateway": "",
+        "GlobalIPv6Address": "",
+        "GlobalIPv6PrefixLen": 0,
+        "DNSNames": [
+          "flux-8c90dc32-runtime-egress-1",
+          "runtime-egress",
+          "3ffb803d3a3e"
+        ]
+      },
+      "flux-8c90dc32_runtime-3": {
+        "IPAMConfig": {},
+        "Links": null,
+        "Aliases": [
+          "flux-8c90dc32-runtime-egress-1",
+          "runtime-egress"
+        ],
+        "DriverOpts": null,
+        "GwPriority": 0,
+        "NetworkID": "88601ce9c6f5a79bb348df483cd08d3c3f4c5a08438fa2ed23faa641520f8954",
+        "EndpointID": "7705d2edd2063878d34fa653c475b853461be71aecca79a2bdbded3db11d1fd9",
+        "Gateway": "",
+        "IPAddress": "172.22.0.2",
+        "MacAddress": "b2:70:c7:c3:9d:a6",
+        "IPPrefixLen": 16,
+        "IPv6Gateway": "",
+        "GlobalIPv6Address": "",
+        "GlobalIPv6PrefixLen": 0,
+        "DNSNames": [
+          "flux-8c90dc32-runtime-egress-1",
+          "runtime-egress",
+          "3ffb803d3a3e"
+        ]
+      },
+      "flux-8c90dc32_runtime-4": {
+        "IPAMConfig": {},
+        "Links": null,
+        "Aliases": [
+          "flux-8c90dc32-runtime-egress-1",
+          "runtime-egress"
+        ],
+        "DriverOpts": null,
+        "GwPriority": 0,
+        "NetworkID": "cc4436ba5c4a45e7fad5b0f0b46ae6d7656d1d359a76a2a963b0f2817341bb4c",
+        "EndpointID": "73ed6d64c2f62e6f910ad931d010fa182c2ad70dfeb1d8eb432c63309ba31843",
+        "Gateway": "",
+        "IPAddress": "172.26.0.2",
+        "MacAddress": "46:6b:bb:0e:93:27",
+        "IPPrefixLen": 16,
+        "IPv6Gateway": "",
+        "GlobalIPv6Address": "",
+        "GlobalIPv6PrefixLen": 0,
+        "DNSNames": [
+          "flux-8c90dc32-runtime-egress-1",
+          "runtime-egress",
+          "3ffb803d3a3e"
+        ]
+      },
+      "flux-8c90dc32_runtime-5": {
+        "IPAMConfig": {},
+        "Links": null,
+        "Aliases": [
+          "flux-8c90dc32-runtime-egress-1",
+          "runtime-egress"
+        ],
+        "DriverOpts": null,
+        "GwPriority": 0,
+        "NetworkID": "b0565d3f3dccea16a43f83ee2b2be81a78aeea1349b4cbda28b181dcd998bc8a",
+        "EndpointID": "aa2beda7321b1a81f760e971c61dd211d4fc27130ca6d27e3cda2af346af57d8",
+        "Gateway": "",
+        "IPAddress": "172.24.0.2",
+        "MacAddress": "62:6b:f2:83:82:d0",
+        "IPPrefixLen": 16,
+        "IPv6Gateway": "",
+        "GlobalIPv6Address": "",
+        "GlobalIPv6PrefixLen": 0,
+        "DNSNames": [
+          "flux-8c90dc32-runtime-egress-1",
+          "runtime-egress",
+          "3ffb803d3a3e"
+        ]
+      },
+      "flux-8c90dc32_runtime-api": {
+        "IPAMConfig": {},
+        "Links": null,
+        "Aliases": [
+          "flux-8c90dc32-runtime-egress-1",
+          "runtime-egress"
+        ],
+        "DriverOpts": null,
+        "GwPriority": 0,
+        "NetworkID": "dada937ff9b9dae225622d1c7b29c6c2d03e0e33d5f620b69244a2910bcc66d8",
+        "EndpointID": "097c499a4e57813f00e2150902fa41ccb9e40389cfc8c7f47b407256416271ae",
+        "Gateway": "",
+        "IPAddress": "172.19.0.1",
+        "MacAddress": "52:49:ab:41:af:b6",
+        "IPPrefixLen": 16,
+        "IPv6Gateway": "",
+        "GlobalIPv6Address": "",
+        "GlobalIPv6PrefixLen": 0,
+        "DNSNames": [
+          "flux-8c90dc32-runtime-egress-1",
+          "runtime-egress",
+          "3ffb803d3a3e"
+        ]
+      },
+      "flux-8c90dc32_runtime-egress-out": {
+        "IPAMConfig": {},
+        "Links": null,
+        "Aliases": [
+          "flux-8c90dc32-runtime-egress-1",
+          "runtime-egress"
+        ],
+        "DriverOpts": null,
+        "GwPriority": 0,
+        "NetworkID": "14064b6196da3ab70285f47abca3d984292db32d2821c2305993a93486e13032",
+        "EndpointID": "17480703c2addec3b401718d8793357d079dadc33c2ca80139e87325aa18babc",
+        "Gateway": "172.25.0.1",
+        "IPAddress": "172.25.0.2",
+        "MacAddress": "e2:cf:cf:d1:90:29",
+        "IPPrefixLen": 16,
+        "IPv6Gateway": "",
+        "GlobalIPv6Address": "",
+        "GlobalIPv6PrefixLen": 0,
+        "DNSNames": [
+          "flux-8c90dc32-runtime-egress-1",
+          "runtime-egress",
+          "3ffb803d3a3e"
+        ]
+      },
+      "flux-8c90dc32_runtime-install": {
+        "IPAMConfig": {},
+        "Links": null,
+        "Aliases": [
+          "flux-8c90dc32-runtime-egress-1",
+          "runtime-egress",
+          "runtime-egress-install"
+        ],
+        "DriverOpts": null,
+        "GwPriority": 0,
+        "NetworkID": "cf679ca3c4da3bf13e631117478d5fe08bd897c38bd65700a26e0e73bb2b06e6",
+        "EndpointID": "526998ff63b1f6a9cb39ac711fd1ee0767fabe13df489858be1852a623d5f11f",
+        "Gateway": "",
+        "IPAddress": "172.23.0.1",
+        "MacAddress": "12:8d:c4:d7:3d:b4",
+        "IPPrefixLen": 16,
+        "IPv6Gateway": "",
+        "GlobalIPv6Address": "",
+        "GlobalIPv6PrefixLen": 0,
+        "DNSNames": [
+          "flux-8c90dc32-runtime-egress-1",
+          "runtime-egress",
+          "runtime-egress-install",
+          "3ffb803d3a3e"
+        ]
+      }
+    },
+    ".HostConfig.Tmpfs": null,
+    ".RestartCount": 0
+  },
+  "worker": {
+    ".Config.Image": "flux-foundation:flux-8c90dc32",
+    ".Config.User": "node",
+    ".HostConfig.ReadonlyRootfs": false,
+    ".HostConfig.CapDrop": null,
+    ".HostConfig.SecurityOpt": null,
+    ".HostConfig.PidsLimit": null,
+    ".HostConfig.Memory": 0,
+    ".HostConfig.NanoCpus": 0,
+    ".HostConfig.NetworkMode": "flux-8c90dc32_default",
+    ".NetworkSettings.Networks": {
+      "flux-8c90dc32_default": {
+        "IPAMConfig": null,
+        "Links": null,
+        "Aliases": [
+          "flux-8c90dc32-worker-1",
+          "worker"
+        ],
+        "DriverOpts": null,
+        "GwPriority": 0,
+        "NetworkID": "bf25d0f815f964fe02a96616aeba3c4f457345c710c479c7334727a05d4c8e20",
+        "EndpointID": "ba28c35dc497b67539c00bb71a03e0126b83ca14820fbf414cc6b32721ea0dab",
+        "Gateway": "172.18.0.1",
+        "IPAddress": "172.18.0.3",
+        "MacAddress": "b2:9e:92:47:3b:c8",
+        "IPPrefixLen": 16,
+        "IPv6Gateway": "",
+        "GlobalIPv6Address": "",
+        "GlobalIPv6PrefixLen": 0,
+        "DNSNames": [
+          "flux-8c90dc32-worker-1",
+          "worker",
+          "ec4af6791133"
+        ]
+      },
+      "flux-8c90dc32_runtime-control": {
+        "IPAMConfig": null,
+        "Links": null,
+        "Aliases": [
+          "flux-8c90dc32-worker-1",
+          "worker"
+        ],
+        "DriverOpts": null,
+        "GwPriority": 0,
+        "NetworkID": "3c6a6131fbb9af87f2271d8485273d6b858980f091e49667a90cd6b94085b56c",
+        "EndpointID": "9dc73ce978c81bdaffc89ed61769598d538e14272a6e4026cd778a1ceaa6774d",
+        "Gateway": "",
+        "IPAddress": "172.20.0.2",
+        "MacAddress": "ca:86:c4:34:a9:e3",
+        "IPPrefixLen": 16,
+        "IPv6Gateway": "",
+        "GlobalIPv6Address": "",
+        "GlobalIPv6PrefixLen": 0,
+        "DNSNames": [
+          "flux-8c90dc32-worker-1",
+          "worker",
+          "ec4af6791133"
+        ]
+      }
+    },
+    ".HostConfig.Tmpfs": null,
+    ".RestartCount": 0
+  },
+  "api": {
+    ".Config.Image": "flux-foundation:flux-8c90dc32",
+    ".Config.User": "node",
+    ".HostConfig.ReadonlyRootfs": false,
+    ".HostConfig.CapDrop": null,
+    ".HostConfig.SecurityOpt": null,
+    ".HostConfig.PidsLimit": null,
+    ".HostConfig.Memory": 0,
+    ".HostConfig.NanoCpus": 0,
+    ".HostConfig.NetworkMode": "flux-8c90dc32_default",
+    ".NetworkSettings.Networks": {
+      "flux-8c90dc32_default": {
+        "IPAMConfig": null,
+        "Links": null,
+        "Aliases": [
+          "flux-8c90dc32-api-1",
+          "api"
+        ],
+        "DriverOpts": null,
+        "GwPriority": 0,
+        "NetworkID": "bf25d0f815f964fe02a96616aeba3c4f457345c710c479c7334727a05d4c8e20",
+        "EndpointID": "dd35da2748d70a4d24dbb68d988a70fe23ba3ac395ff141e0e4dd4893cad8b1a",
+        "Gateway": "172.18.0.1",
+        "IPAddress": "172.18.0.4",
+        "MacAddress": "5e:4c:53:29:ac:65",
+        "IPPrefixLen": 16,
+        "IPv6Gateway": "",
+        "GlobalIPv6Address": "",
+        "GlobalIPv6PrefixLen": 0,
+        "DNSNames": [
+          "flux-8c90dc32-api-1",
+          "api",
+          "65cbf20c6dd6"
+        ]
+      },
+      "flux-8c90dc32_runtime-api": {
+        "IPAMConfig": null,
+        "Links": null,
+        "Aliases": [
+          "flux-8c90dc32-api-1",
+          "api"
+        ],
+        "DriverOpts": null,
+        "GwPriority": 0,
+        "NetworkID": "dada937ff9b9dae225622d1c7b29c6c2d03e0e33d5f620b69244a2910bcc66d8",
+        "EndpointID": "8984fb4365a6139bcd14c9c71679cd7e10c5bb09f17e1c718146ff84c6680d0f",
+        "Gateway": "",
+        "IPAddress": "172.19.0.2",
+        "MacAddress": "52:77:ae:64:2e:c0",
+        "IPPrefixLen": 16,
+        "IPv6Gateway": "",
+        "GlobalIPv6Address": "",
+        "GlobalIPv6PrefixLen": 0,
+        "DNSNames": [
+          "flux-8c90dc32-api-1",
+          "api",
+          "65cbf20c6dd6"
+        ]
+      },
+      "flux-8c90dc32_runtime-control": {
+        "IPAMConfig": null,
+        "Links": null,
+        "Aliases": [
+          "flux-8c90dc32-api-1",
+          "api"
+        ],
+        "DriverOpts": null,
+        "GwPriority": 0,
+        "NetworkID": "3c6a6131fbb9af87f2271d8485273d6b858980f091e49667a90cd6b94085b56c",
+        "EndpointID": "6fc9331dd7df4400c746602265f244770a124f88f7332d16a14bc4fbec500a78",
+        "Gateway": "",
+        "IPAddress": "172.20.0.3",
+        "MacAddress": "56:61:21:04:df:4d",
+        "IPPrefixLen": 16,
+        "IPv6Gateway": "",
+        "GlobalIPv6Address": "",
+        "GlobalIPv6PrefixLen": 0,
+        "DNSNames": [
+          "flux-8c90dc32-api-1",
+          "api",
+          "65cbf20c6dd6"
+        ]
+      }
+    },
+    ".HostConfig.Tmpfs": null,
+    ".RestartCount": 0
+  },
+  "db": {
+    ".Config.Image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
+    ".Config.User": "",
+    ".HostConfig.ReadonlyRootfs": false,
+    ".HostConfig.CapDrop": null,
+    ".HostConfig.SecurityOpt": null,
+    ".HostConfig.PidsLimit": null,
+    ".HostConfig.Memory": 0,
+    ".HostConfig.NanoCpus": 0,
+    ".HostConfig.NetworkMode": "flux-8c90dc32_default",
+    ".NetworkSettings.Networks": {
+      "flux-8c90dc32_default": {
+        "IPAMConfig": null,
+        "Links": null,
+        "Aliases": [
+          "flux-8c90dc32-db-1",
+          "db"
+        ],
+        "DriverOpts": null,
+        "GwPriority": 0,
+        "NetworkID": "bf25d0f815f964fe02a96616aeba3c4f457345c710c479c7334727a05d4c8e20",
+        "EndpointID": "fb49433d351033635c2e72e3150eefe67dc3e3aef6ad763ca30669701a553d73",
+        "Gateway": "172.18.0.1",
+        "IPAddress": "172.18.0.2",
+        "MacAddress": "72:d7:de:db:8c:d0",
+        "IPPrefixLen": 16,
+        "IPv6Gateway": "",
+        "GlobalIPv6Address": "",
+        "GlobalIPv6PrefixLen": 0,
+        "DNSNames": [
+          "flux-8c90dc32-db-1",
+          "db",
+          "ba4d2180a1be"
+        ]
+      }
+    },
+    ".HostConfig.Tmpfs": null,
+    ".RestartCount": 0
+  }
+}

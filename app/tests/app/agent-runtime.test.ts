@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { describe, test } from 'node:test';
+import { sql } from 'drizzle-orm';
 import { AGENT_RUNTIME_BINDING_PATH, AGENT_RUNTIME_PATH } from '@flux/contracts';
 import { agentRuntimeUseCases, reconcileAgentRuntime, type AgentRuntimeConfig, type DomainError, type RuntimeManagerPort } from '@flux/core';
 import { agentRuntimeOperations, agentRuntimeStore } from '@flux/db';
@@ -143,6 +144,34 @@ describe('the PostgreSQL store under the owner use cases', () => {
       await pool.query('DELETE FROM agent_runtime_slots WHERE slot = ANY($1)', [slots]);
     }
   });
+});
+
+describe('purge records confirmed and unconfirmed vendor logout', () => {
+  for (const confirmed of [undefined, false, true]) {
+    test(`owner history reports signOutFailed=${confirmed !== true} after ${String(confirmed)} cleanup`, async () => {
+      const owner = await insertedHuman('runtime-purge');
+      const historicalOwner = await insertedHuman('runtime-previous-release');
+      const rollback = new Error('rollback isolated purge fixture');
+      // Purge updates every binding. Roll back the whole test, including nested adapter
+      // transactions, so this regression cannot alter other owners' runtime state.
+      await assert.rejects(db.transaction(async (tx) => {
+        await tx.execute(sql`INSERT INTO agent_runtime_slots(slot, state) VALUES ('runtime-999', 'held')`);
+        await tx.execute(sql`INSERT INTO agent_runtime_bindings(id, owner_user_id, slot, state)
+          VALUES (${randomUUID()}, ${owner.id}, 'runtime-999', 'active')`);
+        await tx.execute(sql`INSERT INTO agent_runtime_bindings(id, owner_user_id, slot, state, release_reason, release_requested_at, released_at, release_logout_failed)
+          VALUES (${randomUUID()}, ${historicalOwner.id}, 'runtime-999', 'released', 'owner', now() - interval '1 day', now() - interval '1 day', true)`);
+        await agentRuntimeOperations(tx).forgetAll(confirmed);
+        const view = await agentRuntimeStore(tx).ownerView(owner.id);
+        assert.equal(view.binding, null);
+        assert.equal(view.lastRelease?.reason, 'purge');
+        assert.equal(view.lastRelease?.signOutFailed, confirmed !== true);
+        const historical = await agentRuntimeStore(tx).ownerView(historicalOwner.id);
+        assert.equal(historical.lastRelease?.reason, 'owner');
+        assert.equal(historical.lastRelease?.signOutFailed, true, 'purge preserves earlier release failures');
+        throw rollback;
+      }), (error) => error === rollback);
+    });
+  }
 });
 
 describe('migration 0056 reverses only before use', () => {

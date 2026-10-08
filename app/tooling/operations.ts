@@ -18,7 +18,8 @@ import {
 //   node tooling/dist/operations.js revoke-agent-access    revokes every agent connection and OAuth token
 //   node tooling/dist/operations.js runtime-status         agent runtime slots and their bindings (F-022 T3)
 //   node tooling/dist/operations.js runtime-release <slot> asks the worker to release that slot's binding
-//   node tooling/dist/operations.js runtime-forget         after ./flux runtime purge: every binding released
+//   node tooling/dist/operations.js runtime-forget [confirmed|unconfirmed]
+//                                                        after purge: release bindings with the cleanup outcome
 // The migration commands use the #118 ledger parser of @flux/db, the one the migrator trusts.
 
 const migrationsDir = 'packages/db/migrations';
@@ -90,8 +91,10 @@ if (command === 'migration-files') {
       console.log(released ? `Releasing ${slot}: the worker signs its owner out, deletes the binding directory and frees the slot; the owner sees it in Settings.`
         : `${slot} has no binding to release.`);
     } else if (command === 'runtime-forget') {
-      await agentRuntimeOperations(db).forgetAll();
-      console.log('Every agent runtime binding is released in the database.');
+      const outcome = args[0] ?? 'unconfirmed';
+      if (args.length > 1 || !['confirmed', 'unconfirmed'].includes(outcome)) throw new Error('usage: runtime-forget [confirmed|unconfirmed]');
+      await agentRuntimeOperations(db).forgetAll(outcome === 'confirmed');
+      console.log(`Every agent runtime binding is released in the database; vendor sign-out ${outcome}.`);
     } else {
       throw new Error(`unknown operation ${command ?? ''} (use migration-files, migration-ledger, migration-gate, agent-access, revoke-agent-access, revoke-github-access, runtime-status, runtime-release or runtime-forget)`);
     }
