@@ -67,3 +67,21 @@ The old private driver remains pinned to 0a0. It must not execute against the
 refreshed candidate or automatically select HEAD. A new explicit immutable pin,
 reviewed driver and isolated heavy window are required. Neither main's passing
 checks nor this source refresh accepts live, Undo, phone interaction or latency.
+
+## Disabled upgrade refusal found by current runtime
+
+Actual d6de8dfd Docker verification executed84 HTTP/native tests;83 passed and
+the default-off test failed because the editing WebSocket reached Open. HTTP
+capability/native-live routes correctly refused. With no active editing gate, the
+upgrade dispatcher handed that path to the existing Fastify WebSocket fallback,
+which can complete a handshake before rejecting an unknown route. The original
+FAIL/exit1 is retained; canonical codec was not run after that failure.
+
+Keep the original default-off criterion and add an explicit disabled editing
+upgrade gate before the fallback. It owns only the canonical editing socket path,
+returns HTTP503/LIVE_EDITING_DISABLED before any handshake, creates no WebSocket
+server/controller/SQL/telemetry, and retains ordinary stream/media dispatch. Use a
+finite flush/close path and test both map and wiki upgrades for the actual503;
+Open or a silent reset is not accepted as that response. Active development live
+continues through its existing authorized gate. This fixes the existing contract,
+without enabling live or accepting any of the four required production gates.
