@@ -320,7 +320,10 @@ class SearchJourney(unittest.TestCase):
         cancel = dialog.get_by_role("button", name="Cancel")
         cancel_box = cancel.bounding_box()
         assert cancel_box is not None
-        self.assertGreaterEqual(cancel_box["height"], 44)
+        self.assertGreaterEqual(cancel.evaluate("el => parseFloat(getComputedStyle(el).minHeight)"), 44)
+        # Chromium can report44px as43.999996 at a fractional transformed origin.
+        # Keep the actual44px style and reject a physically shorter target beyond float noise.
+        self.assertGreaterEqual(cancel_box["height"], 44 - 0.0001)
         for index in range(min(options.count(), 5)):
             option_box = options.nth(index).bounding_box()
             assert option_box is not None
