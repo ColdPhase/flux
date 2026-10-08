@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser, type BrowserContext, type Page, type Route } from 'playwright';
 import { LIVE_SESSIONS_PATH, projectWorkDetailPath, STREAM_PATH, taskCreationUndoPath, taskDiscussionPath, type ConversationMessage,
-  type SketchDetail, type TaskCreationNotice, type UndoTaskCreationResult, type WorkItem } from '@flux/contracts';
+  projectWorkPath, type SketchDetail, type TaskCreationNotice, type UndoTaskCreationResult, type WorkItem } from '@flux/contracts';
 import { pool } from '../support/db.js';
 import { agentConnection } from '../support/mcp-actions.js';
 import { toolValue } from '../support/mcp.js';
@@ -232,6 +232,7 @@ test('pending contribution cannot be retried from undone read-only history and b
         await finite(release.promise, 'held contribution release', 30_000);
         const response = await route.fetch({ timeout: 15_000 });
         assert.equal(response.status(), 409, await response.text());
+        assert.equal((await response.json() as { code: string }).code, 'TASK_CREATION_REVERTED');
         await route.fulfill({ response });
       } catch (error) { failure = error; }
       finally { settled.resolve(); }
@@ -279,6 +280,84 @@ test('pending contribution cannot be retried from undone read-only history and b
     } finally {
       release.resolve();
       try { if (used) await finite(settled.promise, 'contribution cleanup'); }
+      finally { await page.unroute(matches, handler); }
+      if (failure) throw failure;
+    }
+  });
+});
+
+test('a committed contribution with a held answer stays unconfirmed after write access is revoked', { timeout: 120_000 }, async () => {
+  const f = await fixture(); const item = await f.create(); const context = await signedIn(f.author);
+  await withContexts([context], async () => {
+    const page = await open(context, f, item);
+    const committed = gate<{ clientMessageId: string; message: ConversationMessage }>();
+    const release = gate(); const settled = gate();
+    const matches = (url: URL) => url.pathname === taskDiscussionPath(item.id);
+    const writes: string[] = [];
+    let used = false; let failure: unknown;
+    const handler = async (route: Route) => {
+      if (route.request().method() !== 'POST' || used) { await route.continue(); return; }
+      used = true;
+      try {
+        const command = route.request().postDataJSON() as { clientMessageId: string };
+        // The actual upstream response proves this task contribution committed before revocation.
+        const response = await route.fetch({ timeout: 15_000 });
+        assert.equal(response.status(), 201, await response.text());
+        committed.resolve({ clientMessageId: command.clientMessageId, message: await response.json() as ConversationMessage });
+        await finite(release.promise, 'committed contribution answer release', 45_000);
+        await route.fulfill({ response });
+      } catch (error) { failure = error; }
+      finally { settled.resolve(); }
+    };
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && new URL(request.url()).pathname === taskDiscussionPath(item.id))
+        writes.push(request.postDataJSON().clientMessageId);
+    });
+    await page.route(matches, handler);
+    try {
+      const body = 'The sensor measurement is saved while its answer is still on the way.';
+      await panel(page).getByRole('textbox', { name: 'First message about this task', exact: true }).fill(body);
+      await panel(page).getByRole('button', { name: 'Start the discussion', exact: true }).click();
+      const command = await finite(committed.promise, 'actual committed contribution', 20_000);
+      assert.equal(command.message.body, body);
+      const original = await stageDraft(page, f, item);
+      const pendingBefore = original.pending.find((entry) => entry.id === command.clientMessageId)!;
+      assert.equal(pendingBefore.state, 'sending'); assert.equal(pendingBefore.body, body);
+      await grant(f.manager, f.place.id, f.author, 'viewer');
+      const refreshed = finite(page.waitForResponse((response) => response.request().method() === 'GET'
+        && new URL(response.url()).pathname === detailPath(f, item) && response.status() === 200), 'actual viewer Details refresh', 20_000);
+      // A real work event re-reads Details without reloading or abandoning the held request.
+      expectStatus(await f.manager.browser.request('POST', projectWorkPath(f.place.id),
+        { body: { title: 'A separate task refreshes current project authority', clientCommandId: randomUUID() } }), 201);
+      assert.equal((await (await refreshed).json() as { access: string }).access, 'viewer');
+      await panel(page).getByRole('textbox', { name: 'First message about this task', exact: true }).waitFor({ state: 'detached' });
+      const pending = panel(page).locator('[data-client-message-id="' + command.clientMessageId + '"]');
+      await pending.waitFor(); assert.equal(await pending.getAttribute('data-send-state'), 'sending');
+      assert.equal(await pending.getByRole('button').count(), 0, 'a viewer cannot retry or remove through the task composer');
+      assert.equal(await pending.getByRole('status').innerText(), 'Send not confirmed. Your message is kept. You cannot send to this task.');
+      assert.equal(await pending.locator('..').getAttribute('aria-label'), 'Pending messages kept');
+      assert.deepEqual(await storedDraft(page, draftKey(f, item)), original, 'permission changes keep both private records');
+      const stored = expectStatus(await f.author.browser.request('GET', taskDiscussionPath(item.id)), 200) as { root: ConversationMessage | null; messages: ConversationMessage[] };
+      assert.equal(stored.root?.id, command.message.id); assert.deepEqual(stored.messages.map((message) => message.id), [command.message.id]);
+      release.resolve(); await finite(settled.promise, 'committed answer settlement');
+      if (failure) throw failure;
+      await finite((async () => {
+        while ((await storedDraft(page, draftKey(f, item))).pending.some((entry) => entry.id === command.clientMessageId))
+          await page.waitForTimeout(100);
+      })(), 'confirmed command leaves the private queue');
+      const current = await storedDraft(page, draftKey(f, item));
+      assert.deepEqual({ body: current.body, files: current.files, references: current.references, commandId: current.commandId },
+        { body: original.body, files: original.files, references: original.references, commandId: original.commandId }, 'confirming the earlier send keeps the later staged draft');
+      await grant(f.manager, f.place.id, f.author, 'contributor');
+      await page.goto('/projects/' + f.place.id + '/tasks?open=work:' + item.id); await title(page, item).waitFor();
+      assert.deepEqual(await storedDraft(page, draftKey(f, item)), current, 'returning write access keeps the draft and does not restore a confirmed command');
+      assert.deepEqual(writes, [command.clientMessageId], 'authority refresh, confirmation and reload never duplicate the saved send');
+      const after = expectStatus(await f.author.browser.request('GET', taskDiscussionPath(item.id)), 200) as { messages: ConversationMessage[] };
+      assert.deepEqual(after.messages.map((message) => message.id), [command.message.id]);
+      assert.equal((await notices(f, item)).length, 1); assert.equal(await receipts(item), 0);
+    } finally {
+      release.resolve();
+      try { if (used) await finite(settled.promise, 'committed contribution cleanup'); }
       finally { await page.unroute(matches, handler); }
       if (failure) throw failure;
     }
