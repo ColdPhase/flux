@@ -1,4 +1,13 @@
-# #326 route code on demand — current evidence
+# #326 route code on demand — historical evidence at f560 / 784
+
+The runs and artifacts below are tied to `f5603386bf35d6ba2e492af495eedff93da8ba99`
+and `784d46007cd21cf35bd457ecc71c0f81b47f33c3`, on their recorded older base.
+The later source composition `bdb13e604c912b9a189fd1084d2452457a10642e`
+includes protected main `b0fbc8b5291e3c9e2995962442144fbc48094ab3`.
+Its repository checks and bounded source-preservation review passed; its actual
+build, bundle measurements, routes, phone and PWA/offline checks remain unverified.
+The historical runs do not establish those results for the composed candidate.
+Within this retained record, “current” refers to its explicitly named original pin.
 
 Owner PelikanFix16, sole implementation worker peer_reviews. Current test-only sourcef5603386bf35d6ba2e492af495eedff93da8ba99, with application bytes identical to784d46007cd21cf35bd457ecc71c0f81b47f33c3. Base is protectedmain0f68aa963be920fbc7ebf30742da4aef54fe34be. No release or whole-application completion claim. Final configured run completed exit0; independent neutral review is included. Final commit-specific source evaluation remains required before publication.
 
