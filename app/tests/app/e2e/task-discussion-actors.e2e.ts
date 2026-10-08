@@ -5,7 +5,7 @@ import http from 'node:http';
 import net from 'node:net';
 import { join } from 'node:path';
 import { after, afterEach, before, test } from 'node:test';
-import { chromium, type Browser, type BrowserContext, type Locator, type Page } from 'playwright';
+import { chromium, type Browser, type BrowserContext, type Locator, type Page, type Route } from 'playwright';
 import { taskDiscussionPath, type ConversationMessage, type WorkItem } from '@flux/contracts';
 import { workUseCases } from '../../../apps/server/src/work/adapters.js';
 import { taskDiscussionUseCases } from '../../../apps/server/src/work/task-discussions.js';
@@ -483,9 +483,12 @@ test('native agent owners retry failed reads, fence stale permission answers and
     let heldDone!: () => void;
     const gotHeldDone = new Promise<void>((resolve) => { heldDone = resolve; });
     let once = true;
-    await page.route(endpoint, async (route) => {
+    const pendingHandlers = new Set<Promise<void>>();
+    const handlerFailures: unknown[] = [];
+    const handlePeople = async (route: Route) => {
       if (!once) {
         const response = await route.fetch();
+        assert.equal(response.status(), 200, 'the current authorized people read succeeds');
         const people = await response.json() as { id: string }[];
         try {
           await route.fulfill({ response });
@@ -510,7 +513,17 @@ test('native agent owners retry failed reads, fence stale permission answers and
         if (!isFinishedFixtureRoute(cause)) throw cause;
       }
       heldDone();
-    });
+    };
+    const peopleHandler = (route: Route) => {
+      const pending = handlePeople(route);
+      pendingHandlers.add(pending);
+      void pending.then(() => pendingHandlers.delete(pending), (cause: unknown) => {
+        handlerFailures.push(cause);
+        pendingHandlers.delete(pending);
+      });
+      return pending;
+    };
+    await page.route(endpoint, peopleHandler);
     try {
       await page.evaluate(() => window.dispatchEvent(new Event('focus')));
       await fixturePhase(gotHeld, 'authorized answer held');
@@ -521,7 +534,14 @@ test('native agent owners retry failed reads, fence stale permission answers and
       await fixturePhase(gotCurrentRead, 'delivered current answer without agent');
       release();
       await fixturePhase(gotHeldDone, 'held answer handler finished');
-      await fixturePhase(page.unrouteAll({ behavior: 'wait' }), 'route handlers drained');
+      // Remove this fixture only after releasing its old real answer. Drain every actual
+      // callback explicitly instead of waiting on Playwright's separate internal route latch.
+      await fixturePhase(page.unroute(endpoint, peopleHandler), 'people fixture removed');
+      const outcomes = await fixturePhase(Promise.allSettled([...pendingHandlers]), 'people callbacks drained');
+      for (const outcome of outcomes) {
+        if (outcome.status === 'rejected' && !handlerFailures.includes(outcome.reason)) handlerFailures.push(outcome.reason);
+      }
+      if (handlerFailures.length) throw new AggregateError(handlerFailures, 'People fixture callbacks failed');
     } finally {
       // A failed assertion must still release the real old answer before context cleanup.
       release();
