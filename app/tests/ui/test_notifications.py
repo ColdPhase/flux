@@ -146,15 +146,17 @@ class NotificationJourney(unittest.TestCase):
 
     # ---------------------------------------------------------------- the inbox from the rail
 
-    def test_01_inbox_from_the_rail_with_a_quiet_dot(self) -> None:
+    def test_01_inbox_from_the_sidebar_with_its_count(self) -> None:
         page = self.page("ada")
         self.wait_for_inbox(page, 6)
         page.goto("/")
         rail = page.get_by_role("navigation", name="Places")
-        inbox_link = rail.get_by_role("link", name="Inbox, something new")
+        inbox_link = rail.get_by_role("link", name=re.compile(r"^Inbox, \d+ new$"))
         expect(inbox_link).to_be_visible()
-        expect(inbox_link.locator(".side__dot")).to_be_visible()
-        self.assertIsNone(re.search(r"\d", inbox_link.inner_text()), "no count on the rail, only a dot")
+        # The final design's Inbox count (F-026 §4): the same number the link's name gives.
+        count = inbox_link.locator(".side__count")
+        expect(count).to_have_text(re.compile(r"^\d+$"))
+        self.assertEqual(re.search(r"\d+", inbox_link.get_attribute("aria-label")).group(), count.inner_text())
         inbox_link.click()
         expect(page).to_have_url(re.compile(r"/inbox$"))
         expect(page.get_by_role("heading", level=1, name="Inbox")).to_be_visible()
@@ -213,7 +215,7 @@ class NotificationJourney(unittest.TestCase):
     def test_03_preferences_quiet_hours_and_a_muted_place(self) -> None:
         page = self.page("ada")
         page.goto("/inbox")
-        page.get_by_role("link", name="Settings", exact=True).click()
+        page.locator(".app__main").get_by_role("link", name="Settings", exact=True).click()
         expect(page).to_have_url(re.compile(r"/settings/notifications$"))
         expect(page.get_by_role("heading", level=1, name="Settings")).to_be_visible()
         expect(page.get_by_role("heading", level=2, name="Notifications")).to_be_visible()

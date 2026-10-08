@@ -156,8 +156,8 @@ starting mail to the sign-in address by itself. The sign-in address cannot be ad
 
 ## Inbox UI
 
-The rail has an **Inbox** button between Home and Direct messages with a quiet lime dot when
-something is unread — never a count (#44 no guilt). `/inbox` lists "New" and "Earlier" items,
+The sidebar's **Inbox**, between Home and Sketchbook, shows how many items are unread (F-026 §4;
+the 64 px rail shows the same number). `/inbox` lists "New" and "Earlier" items,
 each with its reason, title, excerpt and time; opening one marks it read and opens the source;
 "Mark all read" only quiets the dot. `/settings/notifications` (Settings → Notifications, #350)
 holds the level (Only "Needs you", Everything, Nothing), quiet hours, the morning summary, then

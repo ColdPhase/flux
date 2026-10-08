@@ -213,14 +213,17 @@ class PhoneShellJourney(unittest.TestCase):
         expect(tabs.get_by_role("link", name="Wiki")).to_have_attribute("aria-current", "page")
         self.settle(page)
         self.assertNotAlmostEqual(indicator.evaluate("el => el.getBoundingClientRect().left"), before, delta=2)
-        # The sidebar's current project is accent-tinted with a 3px bar.
+        # The sidebar's current project is a raised white pill (F-026 §4).
         row = page.locator(".side__project.is-open")
         # The accent tint is the row's own background, or the travelling highlight behind it (#155).
         tint = row.evaluate("""el => { const glide = el.closest('.side__list')?.querySelector('.side__glide');
           const own = getComputedStyle(el).backgroundColor;
           return own !== 'rgba(0, 0, 0, 0)' ? own : glide && getComputedStyle(glide).opacity === '1' ? getComputedStyle(glide).backgroundColor : own; }""")
         self.assertNotIn(tint, ("rgba(0, 0, 0, 0)", "transparent"), "the current project is tinted")
-        self.assertEqual(row.evaluate("el => getComputedStyle(el, '::before').width"), "3px")
+        lift = row.evaluate("""el => { const glide = el.closest('.side__list')?.querySelector('.side__glide');
+          const own = getComputedStyle(el).boxShadow;
+          return own !== 'none' ? own : glide && getComputedStyle(glide).opacity === '1' ? getComputedStyle(glide).boxShadow : own; }""")
+        self.assertNotEqual(lift, "none", "the current project is raised")
         expect(page.get_by_role("navigation", name="Main places")).to_have_count(0)
         shot(page, "266-desktop-tabs")
 

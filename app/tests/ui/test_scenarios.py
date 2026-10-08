@@ -269,7 +269,7 @@ class ScenarioJourney:
             bar.get_by_role("link", name=re.compile(f"^{name}")).tap()
             expect(bar.get_by_role("link", name=re.compile(f"^{name}"))).to_have_attribute("aria-current", "page")
         else:
-            page.get_by_role("navigation", name="Places").get_by_role("link", name=re.compile(f"^{'Direct messages' if name == 'Messages' else name}")).click()
+            (page.locator("#side-dms").get_by_role("link", name="Messages", exact=True) if name == "Messages" else page.get_by_role("navigation", name="Places").get_by_role("link", name=re.compile(f"^{name}"))).click()
 
     def project_list(self, page: Page):
         """The projects a person can open: the sidebar on a desktop, the Projects place on a phone."""
@@ -407,7 +407,8 @@ class ScenarioJourney:
             expect(page.get_by_text("No projects yet.")).to_be_visible()
             page.get_by_role("link", name="Create a project").tap()
         else:
-            page.get_by_role("navigation", name="Projects").get_by_role("link", name="New project").click()
+            page.get_by_role("complementary", name="Sidebar").get_by_role("button", name="New", exact=True).click()
+            page.get_by_role("menu", name="New").get_by_role("menuitem", name="Project", exact=True).click()
         page.get_by_label("Your space").fill(WORKSPACE)
         page.get_by_label("Project name").fill(MARKET)
         self.tap(page.get_by_role("button", name="Create project"))
@@ -966,9 +967,9 @@ class ScenarioJourney:
         page.goto(f"/projects/{lamp}")
         if self.phone:
             page.get_by_role("button", name="Open navigation").tap()
-            page.get_by_role("dialog", name="Flux").get_by_role("button", name=re.compile("Jump to")).tap()
+            page.get_by_role("dialog", name="Flux").get_by_role("button", name="Search", exact=True).tap()
         else:
-            expect(page.get_by_role("button", name=re.compile("Jump to"))).to_be_visible()
+            expect(page.get_by_role("button", name="Search", exact=True)).to_be_visible()
             page.keyboard.press("Control+k")
         dialog = page.get_by_role("dialog", name="Jump to")
         dialog.get_by_role("combobox", name="Jump to").fill("lux")

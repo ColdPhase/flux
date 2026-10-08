@@ -406,6 +406,11 @@ class PersonalAssistantJourney(unittest.TestCase):
     def check_working_motion(self, jo: Page, working) -> None:
         expect(working).to_contain_text("Your assistant is writing an answer…", timeout=15000)
         expect(working).to_have_class(re.compile(r"\bis-working\b"))
+        # The sidebar shows the working agent with Stop while the run executes (F-026 S13, #340).
+        if jo.locator(".app__side").count():
+            card = jo.locator(".app__side .agentlive")
+            expect(card).to_be_visible()
+            expect(card.get_by_role("button", name="Stop your assistant")).to_be_visible()
         # The mark is Kreska thinking: its brow waves while the run executes (#339).
         pulse = working.locator('.kreska[data-expression="thinking"] .kreska__brow')
         self.assertEqual(pulse.evaluate("el => [getComputedStyle(el).animationName, getComputedStyle(el).animationPlayState]"), ["kreska-wave", "running"])
