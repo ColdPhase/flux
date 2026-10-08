@@ -160,8 +160,10 @@ class WorkingAgentJourney(unittest.TestCase):
         self.fail(f"run did not reach the expected actual API state: {run['status']}")
 
     def hold_list(self, page: Page, name: str) -> None:
-        page.evaluate("name => { window.__workingWire.arm(name); window.dispatchEvent(new Event('focus')); }", name)
+        before = page.evaluate("name => { const before = window.__workingWire.history.length; window.__workingWire.arm(name); window.dispatchEvent(new Event('focus')); window.dispatchEvent(new Event('focus')); return before; }", name)
         page.wait_for_function("name => window.__workingWire.gates[name]?.held", arg=name)
+        self.assertTrue(page.evaluate("before => window.__workingWire.history.slice(before).some(record => record.kind === 'list' && record.delivery === 'aborted')", before),
+                        "the first genuine read was superseded before the held answer")
         held = page.evaluate("name => window.__workingWire.gates[name].record", name)
         self.assertEqual(held["status"], 200)
         self.assertTrue(any(item["status"] in WORKING and not item["stopRequested"] for item in held["items"]),
