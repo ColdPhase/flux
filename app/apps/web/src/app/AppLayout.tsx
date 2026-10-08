@@ -146,7 +146,7 @@ function AppLayoutContent() {
   }), []);
   // Focus mode (`F`, F-026 S19): the rail, a quiet header, and push and email held by the server.
   const focus = useFocus(me.user.id);
-  const focusing = !!focus.until && !navDrawer;
+  const focusing = !!focus.until && !phone;
 
   const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const detailsOwner = useMemo(() => ({ accountId: me.user.id, projectId }), [me.user.id, projectId]);
@@ -214,13 +214,13 @@ function AppLayoutContent() {
       if (document.getElementById('root')?.inert) return;
       if (event.key === '[') { event.preventDefault(); toggleRail(); return; }
       const key = event.key.toLowerCase();
-      if (key === 'f' && !navDrawer) { event.preventDefault(); void toggleFocus(); return; }
+      if (key === 'f' && !phone) { event.preventDefault(); void toggleFocus(); return; }
       if (key === 'g') { leader = Date.now(); return; }
       if (key === 'i' && Date.now() - leader < 1200) { event.preventDefault(); leader = 0; navigate('/inbox'); }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [toggleRail, toggleFocus, navigate, navDrawer]);
+  }, [toggleRail, toggleFocus, navigate, phone]);
 
 
   // Typing on a touch phone (#266 PF-3): the view bar steps aside for the keyboard once a text field

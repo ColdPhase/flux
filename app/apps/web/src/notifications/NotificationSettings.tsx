@@ -15,7 +15,7 @@ import { clock } from '../app/focus';
 import { NotificationsButton } from '../pwa';
 import { getPushState } from '../pwa/push';
 import { Button, ErrorState, Icon, Spinner, useToast } from '../ui';
-import { addAddress, getPreferences, removeAddress, resendVerification, setMute, unsubscribe, updatePreferences, verifyAddress } from './api';
+import { addAddress, announcePauseChange, getPreferences, removeAddress, resendVerification, setMute, unsubscribe, updatePreferences, verifyAddress } from './api';
 import './notifications.css';
 
 const ROWS: Record<NotificationReason, { label: string; hint: string }> = {
@@ -79,6 +79,8 @@ export function NotificationSettings() {
     const next = queue.current.then(async () => {
       try {
         const result = await run();
+        // Saves apply in order, so each confirmed answer is the server's state at that point.
+        announcePauseChange(result.pause.until);
         if (mine === sequence.current) { setPrefs(result); setSaved(done); }
       } catch (error) {
         toast({ message: message(error, 'Could not save. Try again.'), tone: 'danger' });
