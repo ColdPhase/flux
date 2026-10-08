@@ -134,7 +134,8 @@ describe('project conversation roots', () => {
       assert.equal(thread.message.id, first.id);
       assert.equal(thread.message.authorId, owner.id, 'its true author, not the task creator');
       assert.equal(thread.replyCount, 1);
-      assert.deepEqual(thread.task, { workId: task.id, title: 'Measure the ToF sensor at 5 lux' }, 'the current title');
+      assert.deepEqual(thread.task, { workId: task.id, title: 'Measure the ToF sensor at 5 lux', number: task.number },
+        'the current title and the immutable number, so the chip does not grow when its row arrives (#367)');
       const plain = window.roots.find((root) => root.conversationId === ordinary.id);
       assert.ok(plain);
       assert.equal('task' in plain, false);
