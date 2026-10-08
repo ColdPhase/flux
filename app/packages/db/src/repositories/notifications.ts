@@ -414,13 +414,17 @@ export async function markAllNotificationsRead(db: DbExecutor, userId: string) {
 export function morningSummaryRows(db: DbExecutor) {
   return {
     async candidates() {
-      const rows = await db.select({ userId: p.userId, summaryEnabled: p.summaryEnabled, summaryAt: p.summaryAt, timeZone: p.timeZone, lastOn: p.summaryLastOn })
+      const rows = await db.select({ userId: p.userId, summaryEnabled: p.summaryEnabled, summaryAt: p.summaryAt, timeZone: p.timeZone, channels: p.channels, lastOn: p.summaryLastOn })
         .from(p).where(eq(p.summaryEnabled, true));
       return rows.map(({ userId, lastOn, ...preferences }) => ({ userId, lastOn, preferences }));
     },
+    async lockCandidate(userId: string) {
+      const [row] = await db.select().from(p).where(eq(p.userId, userId)).for('update');
+      return row ? { userId, lastOn: row.summaryLastOn, preferences: storedRow(row) } : null;
+    },
     async claimDay(userId: string, day: string) {
       const rows = await db.update(p).set({ summaryLastOn: day })
-        .where(and(eq(p.userId, userId), eq(p.summaryEnabled, true), sql`${p.summaryLastOn} IS DISTINCT FROM ${day}::date`))
+        .where(and(eq(p.userId, userId), eq(p.summaryEnabled, true), sql`(${p.summaryLastOn} IS NULL OR ${p.summaryLastOn} < ${day}::date)`))
         .returning({ userId: p.userId });
       return rows.length > 0;
     },
@@ -429,10 +433,10 @@ export function morningSummaryRows(db: DbExecutor) {
         .where(and(eq(n.userId, userId), eq(n.inInbox, true), isNull(n.readAt))).orderBy(sql`${n.createdAt} DESC`).limit(limit);
       return rows.map((row) => ({ id: row.id, source: { workspaceId: row.workspaceId, type: row.type, id: row.sourceId } }));
     },
-    async insertSummary(row: { id: string; userId: string; source: { workspaceId: string; type: SourceType; id: string }; title: string; body: string; url: string }) {
+    async insertSummary(row: { id: string; userId: string; source: { workspaceId: string; type: SourceType; id: string }; sources: { workspaceId: string; type: SourceType; id: string }[]; title: string; body: string; url: string }) {
       await db.insert(n).values({
         id: row.id, userId: row.userId, workspaceId: row.source.workspaceId, sourceType: row.source.type, sourceId: row.source.id,
-        title: row.title, body: row.body, url: row.url, inInbox: false,
+        title: row.title, body: row.body, url: row.url, inInbox: false, deliveryKind: 'morning_summary', summarySources: row.sources,
       });
     },
   };

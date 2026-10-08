@@ -64,7 +64,7 @@ describe('notification levels', () => {
 });
 
 describe('morning summary', () => {
-  const warsaw = { summaryEnabled: true, summaryAt: 9 * 60, timeZone: 'Europe/Warsaw' };
+  const warsaw = { channels: {}, summaryEnabled: true, summaryAt: 9 * 60, timeZone: 'Europe/Warsaw' };
 
   test('due once a local day, from its time until three hours later, in the person\'s time zone', () => {
     // 2026-10-08 07:10Z is 09:10 in Warsaw (CEST).
@@ -77,18 +77,20 @@ describe('morning summary', () => {
 
   function harness(unread: { readable: boolean }[]) {
     const workspaceId = randomUUID();
-    const state = { lastOn: null as string | null, inserted: [] as { title: string; source: { id: string } }[], pushes: 0 };
+    const state = { preferences: { ...fresh(), ...warsaw }, lastOn: null as string | null, inserted: [] as { title: string; source: { id: string } }[], pushes: 0 };
     const rows = unread.map((row) => ({ id: randomUUID(), readable: row.readable, source: { workspaceId, type: 'project' as const, id: randomUUID() } }));
     const ports: SummaryPorts = {
       authorizer: { canRead: async (_user, source) => ({ visible: true, allowed: rows.find((row) => row.source.id === source.id)?.readable ?? false, workspaceId }) },
-      claimDay: async (_user, day) => { if (state.lastOn === day) return false; state.lastOn = day; return true; },
+      lockCandidate: async (userId) => ({ userId, preferences: state.preferences, lastOn: state.lastOn }),
+      isMuted: async () => false,
+      claimDay: async (_user, day) => { if (state.lastOn && state.lastOn >= day) return false; state.lastOn = day; return true; },
       unread: async (_user, limit) => rows.slice(0, limit),
       insertSummary: async (row) => { state.inserted.push(row); },
       deliverableSubscriptions: async () => ['phone', 'laptop'],
       enqueuePush: async () => { state.pushes++; },
     };
-    const uow = { candidates: async () => [{ userId: 'ada', preferences: warsaw, lastOn: state.lastOn }], run: <T>(work: (p: SummaryPorts) => Promise<T>) => work(ports) };
-    return { state, uow, rows };
+    const uow = { candidates: async () => [{ userId: 'ada', preferences: state.preferences, lastOn: state.lastOn }], run: <T>(work: (p: SummaryPorts) => Promise<T>) => work(ports) };
+    return { state, uow, rows, ports };
   }
 
   test('one push per device counts only what the person can still read, and only once that day', async () => {
@@ -101,6 +103,34 @@ describe('morning summary', () => {
     assert.equal(state.pushes, 2);
     assert.deepEqual(await sendMorningSummaries(uow, new Date('2026-10-08T07:25:00Z')), { sent: 0, empty: 0 }, 'a later tick that day sends nothing');
     assert.equal(state.pushes, 2);
+  });
+
+  test('Nothing and Off reject admission, including a preference changed after candidate discovery', async () => {
+    for (const change of [{ level: 'nothing' as const }, { morningSummary: { enabled: false } }]) {
+      const { state, uow } = harness([{ readable: true }]);
+      const stale = await uow.candidates();
+      state.preferences = applyPreferenceChange(state.preferences, change);
+      assert.deepEqual(await sendMorningSummaries({ ...uow, candidates: async () => stale }, new Date('2026-10-08T07:10:00Z')), { sent: 0, empty: 0 });
+      assert.equal(state.pushes, 0);
+      assert.equal(state.inserted.length, 0);
+      assert.equal(state.lastOn, null, 'rejected current preferences do not claim a day');
+      state.preferences = { ...fresh(), ...warsaw };
+      assert.equal((await sendMorningSummaries(uow, new Date('2026-10-08T07:10:00Z'))).sent, 1, 'enabled positive control');
+    }
+  });
+
+  test('schedule/timezone changes retire a stale due candidate without consuming its day', async () => {
+    for (const change of [{ morningSummary: { at: '18:00' } }, { quietHours: { timeZone: 'America/New_York' } }]) {
+      const { state, uow } = harness([{ readable: true }]);
+      const stale = await uow.candidates();
+      state.preferences = applyPreferenceChange(state.preferences, change);
+      assert.deepEqual(await sendMorningSummaries({ ...uow, candidates: async () => stale }, new Date('2026-10-08T07:10:00Z')), { sent: 0, empty: 0 });
+      assert.equal(state.lastOn, null);
+    }
+  });
+
+  test('changing timezone cannot rewind the scheduled-day watermark', () => {
+    assert.equal(summaryDueOn({ ...warsaw, summaryAt: 23 * 60 + 59, timeZone: 'UTC' }, '2026-10-09', new Date('2026-10-09T00:00:00Z')), null);
   });
 
   test('an empty (or unreadable) inbox sends nothing', async () => {

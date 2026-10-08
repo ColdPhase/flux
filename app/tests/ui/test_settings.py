@@ -3,18 +3,25 @@ Keyboard shortcuts, at 1440 × 900 and on a 390 × 844 touch phone, in light and
 
 Runs with the other tests/ui modules through scripts/check_ui.sh against the running Compose application.
 Every step that changes something is checked in the running app (the root's data attributes, storage and
-the API), each with a negative control. Screenshots (settings-*.png) go to FLUX_UI_SCREENSHOTS when set.
+the API), each with a negative control. FLUX_UI_BROWSER selects chromium (default) or webkit.
+Screenshots (settings-*-<browser>.png) go to FLUX_UI_SCREENSHOTS when set.
 """
 
 from __future__ import annotations
 
+import os
 import re
 import time
 import unittest
 
-from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
+from playwright.sync_api import Browser, BrowserContext, Locator, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, box, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, box, shot as save_shot, start_forwarder
+from touch_targets import has_minimum_touch_size
+
+UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
+if UI_BROWSER not in ("chromium", "webkit"):
+    raise ValueError(f"FLUX_UI_BROWSER must be chromium or webkit, got {UI_BROWSER!r}")
 
 PASSWORD = "settings stay calm and findable"
 STAMP = int(time.time() * 1000)
@@ -26,7 +33,49 @@ SHORTCUTS = [
     ("S", "Not now"), ("A", "Accept"), ("Z", "Undo"), ("R", "Reply in thread"), ("T", "Create a task from a message"),
     ("1to5", "Task state"), ("[", "Collapse the sidebar"), ("F", "Focus mode"), ("Esc", "Close a panel or menu"),
 ]
-TOUCH = 43.99  # 44 px, allowing for sub-pixel layout noise
+
+
+def shot(page: Page, name: str) -> None:
+    save_shot(page, f"{name}-{UI_BROWSER}")
+
+
+def assert_touch_target(case: unittest.TestCase, page: Page, control: Locator) -> None:
+    """Measure a native control's actual hit area, including an associated label or switch halo."""
+    case.assertTrue(control.evaluate("el => el.matches('button, input, select, a[href]')"), "measure a native control, not a decorative row")
+    target = control
+    if control.evaluate("el => el.matches('input') && el.closest('label')?.control === el"):
+        target = control.locator("xpath=ancestor::label[1]")
+    target.scroll_into_view_if_needed()
+    target.evaluate("el => el.scrollIntoView({block: 'center', inline: 'nearest', behavior: 'instant'})")
+    measured = target.evaluate("""el => {
+      const rect = el.getBoundingClientRect();
+      let left = rect.left, top = rect.top, width = rect.width, height = rect.height;
+      // The switch track is deliberately smaller than its native button's ::after hit area.
+      // Read that actual box and prove that its perimeter belongs to the button, rather than
+      // counting the surrounding non-interactive .sset-row as a target.
+      if (el.matches('button.sset-switch')) {
+        const after = getComputedStyle(el, '::after');
+        if (after.content !== 'none' && after.display !== 'none' && after.pointerEvents !== 'none') {
+          const values = [after.left, after.top, after.width, after.height].map(parseFloat);
+          if (values.every(Number.isFinite) && values[2] > 0 && values[3] > 0) {
+            [left, top, width, height] = [rect.left + values[0], rect.top + values[1], values[2], values[3]];
+          }
+        }
+      }
+      // Prove a usable 44 px core, not every pixel of a larger decorative box. This
+      // allows an Inbox row's separate read button while rejecting a blocked switch halo.
+      // Edge midpoints also work for circular and pill-shaped native targets.
+      const coreWidth = Math.min(width, 44), coreHeight = Math.min(height, 44);
+      const x = (width - coreWidth) / 2, y = (height - coreHeight) / 2;
+      const positions = [[x + .5, height / 2], [x + coreWidth - .5, height / 2], [width / 2, y + .5], [width / 2, y + coreHeight - .5], [width / 2, height / 2]];
+      return {width, height, hittable: positions.every(([x, y]) => {
+        const hit = document.elementFromPoint(left + x, top + y);
+        return hit === el || (hit !== null && el.contains(hit));
+      })};
+    }""")
+    name = control.get_attribute("aria-label") or control.inner_text() or control.get_attribute("name") or control.get_attribute("type")
+    case.assertTrue(has_minimum_touch_size(measured["width"]) and has_minimum_touch_size(measured["height"]), f"44 × 44 px touch target {name!r}: {measured}")
+    case.assertTrue(measured["hittable"], f"the measured hit area belongs to {name!r}: {measured}")
 
 
 class SettingsJourney(unittest.TestCase):
@@ -39,7 +88,7 @@ class SettingsJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=15000)
         context = cls.browser.new_context(base_url=ORIGIN)
         response = context.request.post("/api/auth/sign-up/email", data={"email": EMAIL, "password": PASSWORD, "name": NAME}, headers={"origin": ORIGIN})
@@ -186,13 +235,17 @@ class SettingsJourney(unittest.TestCase):
 
     # ---------------------------------------------------------------- phone
 
-    def phone_rows(self, page: Page) -> None:
-        heights = page.locator(".sset-row, .sset-theme").evaluate_all("els => els.filter(e => e.offsetParent).map(e => e.getBoundingClientRect().height)")
-        self.assertTrue(heights, "rows are rendered")
-        self.assertTrue(all(height >= TOUCH for height in heights), f"every row is at least 44 px: {heights}")
+    def phone_targets(self, page: Page) -> None:
+        controls = page.locator("a.sset-row, button.sset-row, button.sset-theme, button.sset-switch, .sset-row--stack button, .sset-choice input")
+        scroller = page.locator(".sset__page .pane-scroll")
+        previous_scroll = scroller.evaluate("el => el.scrollTop")
+        self.assertGreater(controls.count(), 0, "native settings controls are rendered")
+        for control in controls.all():
+            assert_touch_target(self, page, control)
+        scroller.evaluate("(el, top) => { el.scrollTop = top; }", previous_scroll)
         self.assertLessEqual(page.evaluate("document.scrollingElement.scrollWidth"), PHONE["width"], "no sideways scroll")
 
-    def test_06_phone_settings_page_with_44px_rows(self) -> None:
+    def test_06_phone_settings_page_with_44px_targets(self) -> None:
         for dark in (False, True):
             page = self.page(phone=True, dark=dark)
             page.goto("/settings")
@@ -205,7 +258,7 @@ class SettingsJourney(unittest.TestCase):
             expect(page.get_by_role("switch", name="Kreska in small moments")).to_be_visible()
             expect(page.get_by_text("Notifications on this phone")).to_be_visible()
             self.no_colour_picker(page)
-            self.phone_rows(page)
+            self.phone_targets(page)
             shot(page, f"settings-phone-390-settings-{'dark' if dark else 'light'}")
             themes.get_by_role("radio", name="Light" if dark else "Dark").tap()
             self.assertEqual(page.evaluate("document.documentElement.dataset.theme"), "light" if dark else "dark")
@@ -217,7 +270,7 @@ class SettingsJourney(unittest.TestCase):
         expect(page).to_have_url(re.compile(r"/settings/notifications$"))
         expect(page.get_by_role("heading", level=2, name="Notifications")).to_be_visible()
         expect(page.get_by_role("radio", name="Only “Needs you”")).to_be_checked()
-        self.phone_rows(page)
+        self.phone_targets(page)
         shot(page, "settings-phone-390-notifications-light")
         page.get_by_role("button", name="Back").tap()
         expect(page).to_have_url(re.compile(r"/settings$"))
@@ -226,11 +279,46 @@ class SettingsJourney(unittest.TestCase):
         page.get_by_role("button", name="Back").tap()
         page.get_by_role("link", name=re.compile("^Account")).tap()
         expect(page.get_by_role("button", name=re.compile("^Sign out"))).to_be_visible()
-        self.phone_rows(page)
+        self.phone_targets(page)
         dark = self.page(phone=True, dark=True)
         dark.goto("/settings/notifications")
         expect(dark.get_by_role("radio", name="Only “Needs you”")).to_be_checked()
         shot(dark, "settings-phone-390-notifications-dark")
+
+    def test_08_touch_guard_rejects_small_or_noninteractive_hit_areas(self) -> None:
+        for size in (44, 48, 43.99997):
+            self.assertTrue(has_minimum_touch_size(size), str(size))
+        for size in (43.99, 43.9989, 43.75, 0, float("nan"), float("inf")):
+            self.assertFalse(has_minimum_touch_size(size), str(size))
+
+        page = self.page(phone=True)
+        page.goto("/settings")
+        switch = page.get_by_role("switch", name="Kreska in small moments")
+        assert_touch_target(self, page, switch)
+        # Keep the decorative row unchanged while removing the button's actual extension.
+        # A row-only size check would still pass, but the 28 px native track must fail.
+        row = switch.locator("xpath=..")
+        self.assertTrue(has_minimum_touch_size(box(page, row)["height"]))
+        style = page.add_style_tag(content=".sset-switch::after { content: none !important; }")
+        with self.assertRaisesRegex(AssertionError, "44 × 44 px touch target"):
+            assert_touch_target(self, page, switch)
+        style.evaluate("el => el.remove()")
+        assert_touch_target(self, page, switch)
+
+        # A declared 44 px halo that cannot receive events must not count either.
+        style = page.add_style_tag(content=".sset-switch::after { pointer-events: none !important; }")
+        with self.assertRaisesRegex(AssertionError, "44 × 44 px touch target"):
+            assert_touch_target(self, page, switch)
+        style.evaluate("el => el.remove()")
+
+        # Width and height independently gate a real button; its parent remains full size.
+        theme = page.get_by_role("radio", name="Light", exact=True)
+        for dimension in ("width", "height"):
+            style = page.add_style_tag(content=f"button.sset-theme {{ {dimension}: 43.99px !important; min-{dimension}: 0 !important; max-{dimension}: 43.99px !important; overflow: hidden !important; }}")
+            with self.assertRaisesRegex(AssertionError, "44 × 44 px touch target"):
+                assert_touch_target(self, page, theme)
+            style.evaluate("el => el.remove()")
+        assert_touch_target(self, page, theme)
 
 
 if __name__ == "__main__":

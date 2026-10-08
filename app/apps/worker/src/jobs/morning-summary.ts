@@ -1,5 +1,5 @@
 import { fromDrizzle, type PgBoss } from 'pg-boss';
-import { morningSummaryRows, pushSubscriptionRepository, sql } from '@flux/db';
+import { morningSummaryRows, notificationPreferenceRows, pushSubscriptionRepository, sql } from '@flux/db';
 import { MORNING_SUMMARY_JOB, PUSH_SEND_JOB, policySourceReader, sendMorningSummaries, type Database, type SummaryUnitOfWork } from '@flux/core';
 
 /** Drizzle rows, the access policy and pg-boss for the morning summary (#350); the rules are in core. */
@@ -12,6 +12,8 @@ export function summaryUnitOfWork(db: Database, boss: PgBoss): SummaryUnitOfWork
       const queueDb = fromDrizzle(tx as Parameters<typeof fromDrizzle>[0], sql);
       return work({
         authorizer: policySourceReader(tx),
+        lockCandidate: (userId) => rows.lockCandidate(userId),
+        isMuted: (userId, source) => notificationPreferenceRows(tx).isMuted(userId, source),
         claimDay: (userId, day) => rows.claimDay(userId, day),
         unread: (userId, limit) => rows.unread(userId, limit),
         insertSummary: (row) => rows.insertSummary(row),

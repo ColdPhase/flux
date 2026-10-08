@@ -85,7 +85,7 @@ export function levelOf(channels: Record<NotificationReason, ChannelChoice>): No
   return 'custom';
 }
 
-export function channelsOf(stored: StoredPreferences): Record<NotificationReason, ChannelChoice> {
+export function channelsOf(stored: Pick<StoredPreferences, 'channels'>): Record<NotificationReason, ChannelChoice> {
   const result = {} as Record<NotificationReason, ChannelChoice>;
   for (const reason of NOTIFICATION_REASONS) result[reason] = { ...DEFAULT_CHANNELS[reason], ...stored.channels[reason] };
   return result;

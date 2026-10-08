@@ -5,8 +5,8 @@ application, whose worker turns committed events into notifications. Kai creates
 for Ada through the public API (a question, a reply, a DM, assigned work, a decision to review
 and a mention). Ada finds it from the rail's quiet dot, opens exact sources, marks items read,
 changes preferences, mutes a place, adds and verifies an extra address through Mailpit and uses
-the inbox on a phone. Each step is checked against the API. Screenshots (notifications-*.png)
-go to FLUX_UI_SCREENSHOTS when set.
+the inbox on a phone. Each step is checked against the API. FLUX_UI_BROWSER selects chromium
+(default) or webkit. Screenshots (notifications-*-<browser>.png) go to FLUX_UI_SCREENSHOTS when set.
 """
 
 from __future__ import annotations
@@ -21,7 +21,8 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, MAILPIT, ORIGIN, PHONE, UPSTREAM, box, shot, start_forwarder
+from test_app_shell import DESKTOP, MAILPIT, ORIGIN, PHONE, UPSTREAM, start_forwarder
+from test_settings import UI_BROWSER, assert_touch_target, shot
 
 PASSWORD = "a calm inbox for the garden"
 STAMP = int(time.time() * 1000)
@@ -63,7 +64,7 @@ class NotificationJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=15000)
         contexts: dict[str, BrowserContext] = {}
         for key, (name, email) in PEOPLE.items():
@@ -336,25 +337,34 @@ class NotificationJourney(unittest.TestCase):
         expect(rows).to_have_count(6)
         self.assertLessEqual(page.evaluate("document.scrollingElement.scrollWidth"), PHONE["width"], "no sideways scroll")
         first = rows.first.get_by_role("link")
-        self.assertGreaterEqual(box(page, first)["height"], 44)
+        assert_touch_target(self, page, first)
         shot(page, "notifications-phone-390-inbox")
         page.get_by_role("button", name="Open navigation").tap()
         drawer_rail = page.get_by_role("dialog").get_by_role("navigation", name="Places")
         inbox_link = drawer_rail.get_by_role("link", name=re.compile("^Inbox"))
         expect(inbox_link).to_have_attribute("aria-current", "page")
-        self.assertGreaterEqual(box(page, inbox_link)["height"], 44)
+        assert_touch_target(self, page, inbox_link)
         page.get_by_role("dialog").get_by_role("link", name="Notification settings").tap()
         expect(page.get_by_role("heading", level=2, name="Notifications")).to_be_visible()
         self.assertLessEqual(page.evaluate("document.scrollingElement.scrollWidth"), PHONE["width"], "settings fit the phone")
-        for row in (page.get_by_role("radiogroup", name="Notify me about").locator(".sset-row").all()
-                    + [page.get_by_role("switch", name="Quiet hours").locator("xpath=.."), page.get_by_role("switch", name="Morning summary").locator("xpath=..")]):
-            self.assertGreaterEqual(box(page, row)["height"], 43.99, "44px rows on the phone")
-        check = page.get_by_label("Mentions: Email")
-        self.assertGreaterEqual(box(page, check.locator("xpath=..")).get("height", 0), 44, "44px checkbox target")
+        for control in (page.get_by_role("radiogroup", name="Notify me about").get_by_role("radio").all()
+                        + [page.get_by_role("switch", name="Quiet hours"), page.get_by_role("switch", name="Morning summary")]):
+            assert_touch_target(self, page, control)
+        assert_touch_target(self, page, page.get_by_label("Mentions: Email"))
+        page.get_by_role("heading", level=2, name="Notifications").scroll_into_view_if_needed()
         shot(page, "notifications-phone-390-settings")
         page.locator(".nset__sec").nth(1).scroll_into_view_if_needed()
-        # Negative control: a check box that is not a touch target would be under 44 px.
-        self.assertGreaterEqual(box(page, page.get_by_label("Replies: Push").locator("xpath=.."))["height"], 43.99)
+        check = page.get_by_label("Replies: Push")
+        assert_touch_target(self, page, check)
+        # The native input's associated label is the target. Shrinking that target fails
+        # in either dimension even though the surrounding table row stays full height.
+        for dimension in ("width", "height"):
+            style = page.add_style_tag(content=f".nset__check {{ {dimension}: 43.99px !important; }}")
+            with self.assertRaisesRegex(AssertionError, "44 × 44 px touch target"):
+                assert_touch_target(self, page, check)
+            style.evaluate("el => el.remove()")
+        assert_touch_target(self, page, check)
+        page.locator(".nset__sec").nth(1).scroll_into_view_if_needed()
         shot(page, "notifications-phone-390-email")
 
     def test_06_dark_inbox_and_unsubscribe_page(self) -> None:
