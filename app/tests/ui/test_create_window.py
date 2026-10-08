@@ -285,6 +285,50 @@ class CreateWindow(unittest.TestCase):
         stored = self.api(page, "GET", f"/api/v1/projects/{self.ids['other']}/work?limit=100", status=200)["items"]
         self.assertTrue([item for item in stored if item["title"] == "Print labels for the beds"])
 
+    # ---------------------------------------------------------------- the phone's Search (S-P-Search, S-P-NoResults)
+
+    def test_09_phone_search_has_scope_chips_a_create_action_and_a_calm_no_match_state(self) -> None:
+        self.ensure_account()
+        for scheme in ("light", "dark"):
+            page = self.page(scheme, phone=True)
+            self.api(page, "POST", f"/api/v1/projects/{self.ids['project']}/work", {"title": f"Order the probes {scheme}", "clientCommandId": str(uuid.uuid4())}, 201)
+            page.goto(f"/projects/{self.ids['project']}")
+            page.get_by_role("button", name="Open navigation").click()
+            page.get_by_role("dialog", name="Flux").get_by_role("button", name="Search", exact=True).tap()
+            sheet = page.get_by_role("dialog", name="Jump to")
+            expect(sheet).to_be_visible()
+            expect(sheet.get_by_role("heading", name="Search")).to_be_visible()
+            chips = sheet.get_by_role("group", name="Search in")
+            self.assertEqual([item.strip() for item in chips.get_by_role("button").all_inner_texts()], ["All", "Tasks", "People", "Agents", "Wiki"])
+            for chip in chips.get_by_role("button").all():
+                self.assertGreaterEqual(chip.bounding_box()["height"], 44)
+            field = sheet.get_by_role("combobox", name="Jump to")
+            field.fill("probes")
+            # All: the create action first, then tasks, then everything else.
+            expect(sheet.get_by_role("option", name=re.compile("^New task “probes”"))).to_be_visible()
+            expect(sheet.locator("[role=option].sr").filter(has_text=f"Order the probes {scheme}")).to_be_visible()
+            shot(page, f"345-phone-search-390-{scheme}")
+            chips.get_by_role("button", name="Tasks").tap()
+            expect(chips.get_by_role("button", name="Tasks")).to_have_attribute("aria-pressed", "true")
+            expect(sheet.get_by_role("option", name=re.compile("^New task"))).to_have_count(0)
+            expect(sheet.locator("[role=option].sr").filter(has_text=f"Order the probes {scheme}")).to_be_visible()
+            chips.get_by_role("button", name="Agents").tap()
+            field.fill("probe")
+            expect(sheet.get_by_role("option", name=re.compile("Probe helper"))).to_be_visible()
+            chips.get_by_role("button", name="All").tap()
+            field.fill("zzqxunmatched")
+            none = sheet.locator(".jump__none")
+            expect(none.get_by_role("heading", name="No match in this project")).to_be_visible()
+            expect(none.locator(".kreska")).to_have_count(1)
+            expect(sheet.get_by_role("option", name=re.compile("^New task “zzqxunmatched”"))).to_be_visible()
+            shot(page, f"345-phone-search-nomatch-390-{scheme}")
+            none.get_by_role("button", name="Search all projects").tap()
+            expect(sheet.get_by_role("group", name="Search where").get_by_role("button", name="All projects")).to_have_attribute("aria-pressed", "true")
+            expect(none).to_have_count(0)
+            # The create action opens the sheet with the text.
+            sheet.get_by_role("option", name=re.compile("^New task “zzqxunmatched”")).tap()
+            expect(title_field(page)).to_have_value("zzqxunmatched")
+
 
 if __name__ == "__main__":
     unittest.main()

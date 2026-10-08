@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router';
 import type { Agent, SearchResult } from '@flux/contracts';
 import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
-import { Icon, MEDIA, Overlay, Spinner, useMediaQuery, type IconName } from '../ui';
+import { Button, Icon, Kreska, MEDIA, Overlay, Spinner, useMediaQuery, type IconName } from '../ui';
 import { listAgents } from '../work/api';
 import { targetHref } from './api';
 import { useRecentSearches } from './recent';
@@ -19,18 +19,26 @@ type Option =
   | { kind: 'agent'; id: string; agent: Agent };
 
 /** `@` searches people and agents, `#` tasks by number or title; anything else searches everything. */
-function scopeOf(query: string): { scope: 'all' | 'people' | 'tasks'; rest: string } {
+type Scope = 'all' | 'people' | 'tasks' | 'agents' | 'wiki';
+/** The phone's scope chips (S-P-Search): the same scopes `@` and `#` reach from the keyboard, plus Agents and Wiki. */
+const CHIPS: { id: Scope; label: string }[] = [
+  { id: 'all', label: 'All' }, { id: 'tasks', label: 'Tasks' }, { id: 'people', label: 'People' }, { id: 'agents', label: 'Agents' }, { id: 'wiki', label: 'Wiki' },
+];
+const SEARCH_TYPE = { all: null, people: 'person', tasks: 'work', agents: null, wiki: 'doc' } as const;
+
+function scopeOf(query: string): { scope: Scope; rest: string } {
   const text = query.trimStart();
   if (text.startsWith('@')) return { scope: 'people', rest: text.slice(1).trim() };
   if (text.startsWith('#')) return { scope: 'tasks', rest: text.slice(1).trim() };
   return { scope: 'all', rest: text.trim() };
 }
 
-const sectionOf = (option: Option, scope: 'all' | 'people' | 'tasks'): string | null => {
+const sectionOf = (option: Option, scope: Scope): string | null => {
   if (option.kind === 'create') return 'Create';
-  if (option.kind === 'agent') return 'People and agents';
+  if (option.kind === 'agent') return scope === 'agents' ? 'Agents' : 'People and agents';
   if (option.kind !== 'result') return null;
   if (scope === 'people') return 'People and agents';
+  if (scope === 'wiki') return 'Files and wiki';
   return option.result.kind === 'work' ? 'Tasks' : 'Messages, files, wiki and people';
 };
 
@@ -82,11 +90,19 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
   const { openCreate, openDetails } = useShellActions();
   const location = useLocation();
   const here = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
-  const { scope, rest } = scopeOf(query);
+  // On the phone the chips choose the scope; on the computer `@` and `#` do (⌘K is unchanged).
+  const [chip, setChip] = useState<Scope>('all');
+  const [where, setWhere] = useState<'here' | 'all'>('here');
+  const prefixed = scopeOf(query);
+  const scope: Scope = phone && chip !== 'all' ? chip : prefixed.scope;
+  const rest = phone && chip !== 'all' ? query.trim().replace(/^[@#]\s*/, '') : prefixed.rest;
   // The search finds a task by its number ("#12") as well as by its title.
-  const asked = scope === 'tasks' && /^\d+$/.test(rest) ? `#${rest}` : rest;
-  const { state } = useSearch(asked, { limit: 8, type: scope === 'people' ? 'person' : scope === 'tasks' ? 'work' : null });
-  const agents = useAgents(workspaces.map((space) => space.id), scope === 'people');
+  const asked = scope === 'agents' ? '' : scope === 'tasks' && /^\d+$/.test(rest) ? `#${rest}` : rest;
+  // On the phone, inside a project, the search starts in that project and offers all projects when nothing matches.
+  const inProject = phone && !!here && (scope === 'all' || scope === 'tasks' || scope === 'wiki');
+  const place = inProject && where === 'here' ? `project:${here}` : null;
+  const { state } = useSearch(asked, { limit: 8, type: SEARCH_TYPE[scope], place });
+  const agents = useAgents(workspaces.map((space) => space.id), scope === 'people' || scope === 'agents');
   const text = query.trim();
   useEffect(() => { inputRef.current?.focus(); }, []);
 
@@ -99,8 +115,8 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
     ...(here ? [{ kind: 'create' as const, id: 'create-decision', label: 'Propose a decision', icon: 'rule' as const, run: () => openDetails({ kind: 'propose-decision', projectId: here }) }] : []),
   ];
   const results: Option[] = shown.map((result) => ({ kind: 'result' as const, id: result.id, result }));
-  const agentMatches: Option[] = scope === 'people' ? agents.filter((agent) => agent.name.toLowerCase().includes(rest.toLowerCase())).slice(0, 5).map((agent) => ({ kind: 'agent' as const, id: `agent-${agent.id}`, agent })) : [];
-  const withResults = scope === 'people' ? [...agentMatches, ...results] : results;
+  const agentMatches: Option[] = scope === 'people' || scope === 'agents' ? agents.filter((agent) => agent.name.toLowerCase().includes(rest.toLowerCase())).slice(0, scope === 'agents' ? 8 : 5).map((agent) => ({ kind: 'agent' as const, id: `agent-${agent.id}`, agent })) : [];
+  const withResults = scope === 'people' ? [...agentMatches, ...results] : scope === 'agents' ? agentMatches : results;
   const options: Option[] = rest || scope !== 'all'
     ? [...actions, ...withResults, ...(scope === 'all' && state.status === 'ready' && shown.length ? [{ kind: 'all' as const, id: 'all' }] : [])]
     : [...actions, ...recent.items.map((item) => ({ kind: 'recent' as const, id: `recent-${item}`, text: item }))];
@@ -130,14 +146,18 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
     }
   };
 
+  const noneHere = !!place && !!rest && state.status === 'ready' && !withResults.length;
+  const elsewhere = useSearch(noneHere ? asked : '', { limit: 1, type: SEARCH_TYPE[scope] });
+  const elsewhereCount = elsewhere.state.status === 'ready' ? Object.values(elsewhere.state.answer.counts).reduce((sum, n) => sum + (n ?? 0), 0) : 0;
   const extra = agentMatches.length;
   const total = state.status === 'ready' ? Object.values(state.answer.counts).reduce((sum, n) => sum + (n ?? 0), 0) : 0;
   const status = !text ? '' : state.status === 'loading' ? 'Searching…' : state.status === 'failed' ? state.message
     : state.status === 'ready' ? (shown.length || extra ? `${total + extra}${state.answer.countsCapped ? '+' : ''} ${total + extra === 1 ? 'result' : 'results'}` : 'No results')
-      : scope !== 'all' && !rest ? (scope === 'people' ? 'Type a name to find a person or an agent' : 'Type a task number or title') : '';
+      : scope !== 'all' && !rest ? (scope === 'tasks' ? 'Type a task number or title' : 'Type a name to find a person or an agent') : '';
 
   return (
     <div className="jump__in">
+      {phone ? <h2 className="jump__title">Search</h2> : null}
       <div className="jump__field">
         <Icon name="search" size={16} className="jump__icon" />
         <input ref={inputRef} className="jump__input" type="search" value={query} placeholder="Search or create · @ people · # tasks"
@@ -148,6 +168,17 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
         {state.status === 'loading' ? <Spinner /> : null}
         <button type="button" className="jump__close" onClick={onClose}>{phone ? 'Cancel' : <><span className="ui-vh">Close</span><kbd aria-hidden="true">Esc</kbd></>}</button>
       </div>
+      {phone ? (
+        <div className="jump__chips" role="group" aria-label="Search in">
+          {CHIPS.map((item) => <button key={item.id} type="button" className="jump__chip" aria-pressed={chip === item.id} onClick={() => { setChip(item.id); inputRef.current?.focus(); }}>{item.label}</button>)}
+        </div>
+      ) : null}
+      {inProject && rest ? (
+        <div className="jump__chips" role="group" aria-label="Search where">
+          <button type="button" className="jump__chip" aria-pressed={where === 'here'} onClick={() => setWhere('here')}>This project</button>
+          <button type="button" className="jump__chip" aria-pressed={where === 'all'} onClick={() => setWhere('all')}>All projects</button>
+        </div>
+      ) : null}
       <p className="ui-vh" id={statusId} role="status">{status}</p>
       <div className="jump__body">
         {!text ? (
@@ -177,7 +208,14 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
             })}
           </ul>
         ) : null}
-        {rest && state.status === 'ready' && !withResults.length ? (
+        {noneHere ? (
+          <div className="jump__none">
+            <Kreska expression="looking" size={64} />
+            <h3>No match in this project</h3>
+            <p>{elsewhereCount ? `“${rest}” appears ${elsewhereCount === 1 ? 'once' : `${elsewhereCount} times`} in another project.` : `Nothing you can open matches “${rest}”.`}</p>
+            <Button variant="secondary" onClick={() => setWhere('all')}>Search all projects</Button>
+          </div>
+        ) : rest && state.status === 'ready' && !withResults.length ? (
           <p className="jump__empty">{/[\p{L}\p{N}]{2,}/u.test(rest) ? <>Nothing you can open matches “{rest}”. Try fewer or different words.</> : 'Type at least two letters of a word.'}</p>
         ) : state.status === 'failed' ? <p className="jump__empty" role="alert">{state.message}</p> : null}
       </div>
