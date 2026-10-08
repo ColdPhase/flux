@@ -229,3 +229,18 @@ Tests must distinguish a committed receipt before Off, Off refusal, an old held
 request after Off/On, a newly admitted observation after On, a new-command refusal,
 revoked/expired refusal and unchanged receipt/effect/use counts. Do not delete or
 weaken the existing consumed-last-use retry assertion.
+
+## Owner management implementation checkpoint
+
+The separate continuation `codex/316-mcp-enforcement` starts at the independently
+reviewed foundation `1065cf22bc66a747fe6c205d5f22807d98176d14`; the original
+foundation checkout remains frozen for its bounded verification. The continuation
+registers the ordinary owner policy GET/PATCH routes in the server and adds four
+real-session/API/SQL tests for all Off and empty selection, immutable original
+consent/no new standing grant, other-owner/admin refusal, invalid/stale saves and
+two owner sessions competing on one saved version. These tests are not yet run.
+
+This checkpoint wires owner management only. The actual MCP dispatcher, effective
+selection, every tool/resource/prompt alias, real transport delivery, native action
+and Off/On races, browser switches and compatible migration/identity composition
+remain required and unverified. It is not a completed S6 feature or a merge candidate.
