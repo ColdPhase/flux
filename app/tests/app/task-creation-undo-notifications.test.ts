@@ -1,18 +1,24 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { test } from 'node:test';
+import { after, before, test } from 'node:test';
+import { PgBoss } from 'pg-boss';
 import { assignmentDeliveryAdmission, pushDeliveryRepository } from '@flux/db';
 import { deliverNotificationEmail, deliverPushJob, loadNotificationMailConfig, loadPushSenderConfig, policySourceReader, type DeliveryPorts } from '@flux/core';
 import type { WorkItem } from '@flux/contracts';
 import { nativeWorkInTransaction } from '../../apps/server/src/work/adapters.js';
 import { emailUnitOfWork, pushPreferenceCheck, pushQuietCheck, smtpNotificationMailer } from '../../apps/worker/src/notifications/adapters.js';
 import { createPushAgent, webPushSender } from '../../apps/worker/src/push/deliver.js';
-import { db, pool } from './support/db.js';
+import { connectionString, db, pool } from './support/db.js';
 import { actionScene } from './support/mcp-actions.js';
 import { expect } from './support/mcp.js';
 import { barrier } from './support/locks.js';
 import { mailpitUrl } from './support/http.js';
 import { recordedPushes, subscribe, waitFor } from './support/push.js';
+
+// Use the same real queue adapter as the worker, including delivery promotion (#329).
+const queue = new PgBoss({ connectionString, migrate: false });
+before(() => queue.start());
+after(() => queue.stop());
 
 async function within<T>(pending: Promise<T>, label: string, milliseconds = 10_000): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -96,7 +102,7 @@ test('queued email rechecks lifecycle after a held current account-address check
   const config = loadNotificationMailConfig();
   if (config.status !== 'available') throw new Error('SMTP test configuration required');
   const smtp = smtpNotificationMailer(config);
-  const base = emailUnitOfWork(db);
+  const base = emailUnitOfWork(db, queue);
   const uow: typeof base = { admitSend: base.admitSend, run: (action) => base.run((ports) => action({ ...ports,
     async accountAddress(user) { const result = await ports.accountAddress(user); held.resolve(); await within(release.promise, 'delivery release'); return result; },
   })) };

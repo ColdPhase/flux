@@ -249,7 +249,10 @@ test('two accounts keep Conversation, Tasks, Map and Agents current after real U
       assert.equal(await row.locator('time').getAttribute('datetime'), notice.createdAt);
       assert.equal(await row.getByRole('button', { name: `Open task: ${item.title}`, exact: true }).count(), 1);
     }
-    assert.match(await pages[0]!.locator(`#notice-${appended.id}`).innerText(), /Task creation undone · Ari Task author · you/);
+    const undoNotice = pages[0]!.locator(`#notice-${appended.id}`);
+    assert.equal(await undoNotice.locator('.convo-notice__meta strong').innerText(), 'Ari Task author · you');
+    assert.equal(await undoNotice.locator('.convo-notice__kind').textContent(), 'Task creation undone · ');
+    assert.equal(await undoNotice.getByRole('button').getAttribute('data-native-ref'), `work:${item.id}`);
     assert.equal(await receipts(item), 1);
     assert.deepEqual(expectStatus(await f.author.browser.request('GET', `/api/v1/sketches/${sketch.id}`), 200), mapBefore,
       'the map is unchanged; it never had a task node to remove');
