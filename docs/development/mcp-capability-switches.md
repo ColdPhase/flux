@@ -29,6 +29,14 @@ or explicitly unavailable. The proposed additive migration must be reserved with
 #153's namespace record before writing SQL; it must not reuse57–60 or rewrite
 those branches. Upgrade, reversal and semantic footprint checks remain required.
 
+An explicit allowlist is materialized from the real registration manifest before
+serving the first migrated MCP request. Existing policies retain their captured
+allowlist across subsequent upgrades; newly added registrations are not silently
+enabled. A missing/uninitialized policy fails closed instead of deriving a fresh
+allow-all policy on each request. New connection creation stores the explicit
+initial policy in the same transaction as its original consent selection. This
+initialization must be bounded, restart-safe and tested with concurrent creation.
+
 ## Current, effective authority
 
 Keep configured switches distinct from effective availability. A configured On
