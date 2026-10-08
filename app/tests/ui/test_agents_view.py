@@ -16,6 +16,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
+from author_columns import assert_author_column
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "two agents share one lamp"
@@ -172,6 +173,9 @@ class AgentsViewJourney(unittest.TestCase):
         discussion = self.api(page, "GET", f"/api/v1/work/{self.ids['task']}/discussion", status=200)
         self.assertEqual(discussion["root"]["body"], "I'll take the reconnect bug with Codex; Claude Code reviews it.")
         self.assertEqual(discussion["root"]["authorId"], HUBERT["id"])
+        own = thread.locator(f'[data-message-id="{discussion["root"]["id"]}"]')
+        assert_author_column(self, own, DESKTOP["width"], "stored Agents author")
+        expect(own.locator(".agents-msg__meta b")).to_have_text("Hubert Nowak · you")
         marek = self.open_agents("marek")
         expect(marek.get_by_role("region", name=f"Thread of {TASK}").get_by_text("I'll take the reconnect bug with Codex")).to_be_visible()
         reply = marek.get_by_label("Write to this task")
@@ -184,6 +188,11 @@ class AgentsViewJourney(unittest.TestCase):
         discussion = self.api(page, "GET", f"/api/v1/work/{self.ids['task']}/discussion", status=200)
         bodies = [discussion["root"]["body"], *[m["body"] for m in discussion["messages"] if m["id"] != discussion["root"]["id"]]]
         self.assertEqual(bodies.count("OK. Workshop PC is offline until tonight."), 1, "one send, one message")
+        rows = self.thread(page).locator(".agents-msg")
+        for row in rows.all():
+            assert_author_column(self, row, DESKTOP["width"], "shared Agents author column")
+        self.assertAlmostEqual(rows.nth(0).bounding_box()["x"], rows.nth(1).bounding_box()["x"], delta=1,
+                               msg="own and other task replies use the same column")
 
     def thread(self, page: Page):
         return page.get_by_role("region", name=f"Thread of {TASK}")
@@ -366,6 +375,8 @@ class AgentsViewJourney(unittest.TestCase):
         # No answer from Flux (#264): the message waits on the page and the quiet line says why.
         queued = self.thread(page).locator("[data-client-message-id]").filter(has_text="Battery check tonight")
         expect(queued).to_contain_text("Waiting to send")
+        assert_author_column(self, queued, PHONE["width"], "queued phone Agents author")
+        expect(queued.locator(".agents-msg__meta b")).to_have_text("Hubert Nowak · you")
         expect(page.get_by_text("Flux isn’t responding. Messages wait here and send when it’s back.")).to_be_visible()
         queued.get_by_role("button", name="Remove").click()
         expect(page.get_by_label("Write to this task")).to_have_value("Battery check tonight")

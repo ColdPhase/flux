@@ -9,7 +9,7 @@ def assert_author_column(case: unittest.TestCase, row: Locator, width: int, labe
     expect(row).to_be_visible()
     observed = row.evaluate("""el => {
       const face = el.querySelector(':scope > :is(.ui-avatar, .author-face)');
-      const meta = el.querySelector('.project-convo__message-meta');
+      const meta = el.querySelector('.project-convo__message-meta, .convo-notice__meta, .agents-msg__meta');
       const r = el.getBoundingClientRect(), f = face.getBoundingClientRect(), m = meta.getBoundingClientRect();
       return {rowX:r.x, faceX:f.x, faceRight:f.right, width:f.width, height:f.height,
         display:getComputedStyle(face).display, metaX:m.x, direction:getComputedStyle(meta).flexDirection};

@@ -73,16 +73,15 @@ async function assertAuthorColumn(row: Locator, width: number) {
   await row.waitFor();
   const geometry = await row.evaluate((el) => {
     const face = el.querySelector<HTMLElement>(':scope > :is(.ui-avatar, .author-face), :scope > .thread__root-meta > :is(.ui-avatar, .author-face)')!;
-    const meta = el.querySelector<HTMLElement>('.project-convo__message-meta, .thread__root-meta')!;
+    const meta = el.querySelector<HTMLElement>('.project-convo__message-meta, .thread__root-meta, .convo-notice__meta, .agents-msg__meta')!;
     const r = el.getBoundingClientRect();
     const f = face.getBoundingClientRect();
     const m = meta.getBoundingClientRect();
-    return { position: getComputedStyle(face).position, display: getComputedStyle(face).display,
+    return { display: getComputedStyle(face).display,
       rowX: r.x, faceX: f.x, faceRight: f.right, faceWidth: f.width, faceHeight: f.height,
       metaX: m.x, direction: getComputedStyle(meta).flexDirection };
   });
   assert.notEqual(geometry.display, 'none', 'the phone retains the full author avatar');
-  assert.equal(geometry.position, 'absolute', 'every face occupies the avatar column');
   assert.ok(Math.abs(geometry.faceWidth - 32) <= 0.01 && Math.abs(geometry.faceHeight - 32) <= 0.01,
     'both author shapes have the required 32px size');
   assert.ok(Math.abs(geometry.faceX - geometry.rowX) <= 1, JSON.stringify(geometry));
@@ -162,6 +161,9 @@ test('agent root renders without a human DM link, real human reply persists, and
     const opening = page.locator(`#thread-root-${root.id}`);
     await assertAuthorColumn(opening, 1280);
     await opening.locator('.agent-for').filter({ hasText: 'for Casey Human' }).waitFor();
+    const notice = page.locator(`.convo-notice[data-work-id="${task.id}"]`);
+    await assertAuthorColumn(notice, 1280);
+    assert.equal(await notice.locator('.convo-notice__meta strong').innerText(), 'Casey Human · you');
     const evidence = process.env.FLUX_E2E_EVIDENCE_DIR;
     if (evidence) { mkdirSync(evidence, { recursive: true }); await page.screenshot({ path: join(evidence, 'agent-root-desktop.png'), fullPage: true }); }
     expectStatus(await owner.browser.request('DELETE', `/api/v1/projects/${place.id}/grants/${access.id}`), 204);
@@ -206,9 +208,51 @@ test('agent root renders without a human DM link, real human reply persists, and
         assert.equal(await view.evaluate(() => document.documentElement.scrollWidth - innerWidth), 0,
           'full author names and faces fit the phone at enlarged text');
         if (evidence) await view.screenshot({ path: join(evidence, 'mixed-authors-reader-390-text200.png'), fullPage: true });
+        await agentRow.scrollIntoViewIfNeeded();
+        await assertAuthorColumn(agentRow, width);
+        const ownerLabel = agentRow.locator('.agent-for');
+        const visibleOwner = await ownerLabel.boundingBox();
+        assert.ok(visibleOwner && visibleOwner.x >= 0 && visibleOwner.x + visibleOwner.width <= width,
+          'the enlarged agent owner is fully within the phone');
+        if (evidence) await view.screenshot({ path: join(evidence, 'agent-owner-reader-390-text200.png'), fullPage: true });
+        const event = view.locator(`.convo-notice[data-work-id="${task.id}"]`);
+        await event.scrollIntoViewIfNeeded();
+        await assertAuthorColumn(event, width);
+        assert.equal(await event.locator('.convo-notice__meta strong').innerText(), 'Casey Human');
+        if (evidence) await view.screenshot({ path: join(evidence, 'task-event-reader-390-text200.png'), fullPage: true });
       }
     }
     assert.deepEqual((await pool.query('SELECT * FROM project_messages WHERE id=$1', [root.id])).rows[0], stored);
+    const workspaceAgent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, {
+      body: { name: 'Workspace analyst', owner: 'workspace' },
+    }), 201) as { id: string };
+    const workspaceActor = { kind: 'agent' as const, id: workspaceAgent.id };
+    expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/grants`, {
+      body: { principal: workspaceActor, role: 'contributor' },
+    }), 201);
+    const workspaceTask = await workUseCases(db).createWork(workspaceActor, place.id, { title: 'Check the workspace trial' });
+    const workspaceRoot = await taskDiscussionUseCases(db).contribute(workspaceActor, workspaceTask.id, {
+      body: 'The workspace agent recorded this observation.', clientMessageId: randomUUID(),
+    });
+    const workspaceContext = await signedIn(reader, 390);
+    const workspaceView = await workspaceContext.newPage();
+    workspaceView.on('pageerror', (error) => errors.push(error.message));
+    await workspaceView.emulateMedia({ colorScheme: 'dark' });
+    await workspaceView.goto(`/projects/${place.id}/conversations/${workspaceRoot.conversationId}`);
+    await workspaceView.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
+    const workspaceEvent = workspaceView.locator(`.convo-notice[data-work-id="${workspaceTask.id}"]`);
+    await workspaceEvent.scrollIntoViewIfNeeded();
+    await assertAuthorColumn(workspaceEvent, 390);
+    await workspaceEvent.locator('.agent-for').filter({ hasText: 'for the workspace' }).waitFor();
+    assert.match(await workspaceEvent.innerText(), /Workspace analyst\s*Agent/);
+    if (evidence) await workspaceView.screenshot({ path: join(evidence, 'workspace-agent-event-390-dark-text200.png'), fullPage: true });
+    const workspaceRow = workspaceView.locator(`#message-${workspaceRoot.id}`);
+    await workspaceRow.scrollIntoViewIfNeeded();
+    await assertAuthorColumn(workspaceRow, 390);
+    await workspaceRow.locator('.agent-for').filter({ hasText: 'for the workspace' }).waitFor();
+    assert.equal(await workspaceRow.locator('a[href*="/dm/new"]').count(), 0);
+    assert.equal(await workspaceView.evaluate(() => document.documentElement.scrollWidth - innerWidth), 0);
+    if (evidence) await workspaceView.screenshot({ path: join(evidence, 'workspace-agent-author-390-dark-text200.png'), fullPage: true });
     assert.deepEqual(errors, []);
   });
 
@@ -332,6 +376,11 @@ test('native agent owners retry failed reads, fence stale permission answers and
     await page.locator('#details').waitFor({ state: 'detached' });
     await page.locator('.agents-msg__meta .agent-for').waitFor();
     assert.equal(await page.locator('.agents-msg__meta .agent-for').innerText(), 'for Scoped Casey');
+    await assertAuthorColumn(page.locator('.agents-msg').first(), 1440);
+    const messageBody = await page.locator('.agents-msg__body').first().boundingBox();
+    const messageMeta = await page.locator('.agents-msg__meta').first().boundingBox();
+    assert.ok(messageBody && messageMeta && Math.abs(messageBody.x - messageMeta.x) <= 1,
+      'the actual Agents reply starts in its author content column');
     await capture('scoped-owner-agents-thread', '.agents-msg__meta .agent-for');
     await page.locator(`a[data-tab="tasks"][href^="/projects/${place.id}/tasks"]`).click();
     await page.getByRole('radio', { name: 'List', exact: true }).click();

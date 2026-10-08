@@ -72,7 +72,7 @@ export function ThreadRoot({ message, projectId, body, author, agentOwner = null
       <article className={`thread__root${mine ? ' is-mine' : ''}`} id={message ? `thread-root-${message.id}` : undefined} data-message-id={message?.id} aria-label={author ? `Message from ${mine ? 'you' : author}` : 'Opening message'}>
         {message && author ? (
           <div className="thread__root-meta">
-            <AuthorFace message={message} name={author} mine={mine} />
+            <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} name={author} mine={mine} />
             <strong>{mine ? `${author} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentOwner} /> : author}</strong>
             <time dateTime={message.createdAt} title={when(message.createdAt)}>{day(message.createdAt)} · {clock(message.createdAt)}</time>
           </div>

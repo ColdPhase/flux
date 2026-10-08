@@ -10,7 +10,7 @@ import { AttachButton, ComposerFiles, MessageFiles } from '../composer/Files';
 import { ConnectionLine, OutboxStatus, PendingFiles, PendingSource } from '../composer/Outbox';
 import { getTaskDiscussion } from '../composer/api';
 import { useProjectShell } from '../project/data';
-import { AgentIdentity, Button, Icon, Kreska, agentHue, type KreskaExpression } from '../ui';
+import { AgentIdentity, AuthorFace, Button, Icon, Kreska, agentHue, type KreskaExpression } from '../ui';
 import { STATUS_LABEL } from '../work/format';
 import { useNativeOwn, useWorkChoices } from '../work/useDetailReads';
 import { WorkPagination } from '../work/WorkPagination';
@@ -286,11 +286,13 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
         {[...messages.map((message) => {
           const own = message.authorId === meId;
           const agent = message.authorId === null;
+          const name = authorName(message, names);
           return (
             // A confirmed message keeps its queued item, so nothing moves or is announced twice (#264).
-            <li key={outbox.keyOf(message.id)} className={`agents-msg${own ? ' agents-msg--own' : ''}${agent ? ' agents-msg--agent' : ''}`}>
+            <li key={outbox.keyOf(message.id)} data-message-id={message.id} className={`agents-msg${own ? ' agents-msg--own' : ''}${agent ? ' agents-msg--agent' : ''}`}>
+              <AuthorFace kind={agent ? 'agent' : 'human'} name={name} mine={own} />
               <span className="agents-msg__meta">
-                {agent ? <AgentIdentity name={authorName(message, names)} owner={message.author.kind === 'agent' ? agentAuthorOwner(message.author, owners) : undefined} /> : <b>{own ? 'You' : authorName(message, names)}</b>}
+                {agent ? <AgentIdentity name={name} owner={message.author.kind === 'agent' ? agentAuthorOwner(message.author, owners) : undefined} icon={false} /> : <b>{name}{own ? ' · you' : ''}</b>}
                 <time dateTime={message.createdAt}>{when(message.createdAt)}</time>
                 {message.contribution ? <span className="agents-msg__kind"> · {message.contribution.kind}</span> : null}
               </span>
@@ -301,8 +303,9 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
         }), ...outbox.pending.map((item) => (
           <li key={`pending-${item.id}`} id={`pending-${item.id}`} data-client-message-id={item.id} data-send-state={item.state}
             className={`agents-msg agents-msg--own is-pending${item.state === 'failed' ? ' is-failed-send' : ''}`}>
+            <AuthorFace kind="human" name={names.get(meId) ?? 'Someone'} mine />
             {/* "Sending…" stands where the stored message's time will be, so it takes that message's exact space. */}
-            <span className="agents-msg__meta"><b>You</b>{item.state === 'sending' || item.state === 'uploading' ? <OutboxStatus inline item={item} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} /> : null}</span>
+            <span className="agents-msg__meta"><b>{names.get(meId) ?? 'Someone'} · you</b>{item.state === 'sending' || item.state === 'uploading' ? <OutboxStatus inline item={item} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} /> : null}</span>
             {item.body ? <p className="agents-msg__body">{item.body}</p> : null}
             <PendingFiles files={item.files} />
             <PendingSource item={item} />

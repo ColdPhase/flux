@@ -81,12 +81,14 @@
 @keyframes thread-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes thread-dock { from { opacity: 0; } to { opacity: 1; } }
 
-/* A task announcement (UI116-3): one quiet line in the stream, not a message. The task mark sits in the
-   avatars' column, who created the task above its title, and the time at the far side. */
-.convo-notice { display: grid; grid-template-columns: 27px minmax(0, 1fr) auto; column-gap: 12px; align-items: start; margin: 24px 0; }
-.convo-notice__icon { display: grid; place-items: center; width: 27px; height: 27px; border-radius: 6px; background: var(--sub); box-shadow: inset 0 0 0 1px var(--line); color: var(--t2); }
+/* A task event retains the actual creator's author column; its task glyph stays with the event. */
+.convo-notice { position: relative; padding-left: 44px; margin: 24px 0; }
+.convo-notice > :is(.ui-avatar, .author-face) { position: absolute; left: 0; top: 0; }
 .convo-notice__body { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
-.convo-notice__meta { font-size: var(--fs-xs); color: var(--t3); }
+.convo-notice__meta { display: flex; flex-wrap: wrap; gap: 4px 9px; align-items: baseline; min-width: 0; max-width: 100%; font-size: var(--fs-xs); color: var(--t3); }
+.convo-notice__meta strong { min-width: 0; max-width: 100%; overflow-wrap: anywhere; font-size: var(--fs-sm); font-weight: 550; color: var(--t1); }
+.convo-notice__meta .agent-id__name { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+.convo-notice__kind { color: var(--t3); }
 .convo-notice__task { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 0; border: 0; background: none; color: var(--t1); font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; }
 .convo-notice__title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .convo-notice__task svg { flex: none; color: var(--t3); }
@@ -98,4 +100,4 @@
    two lines instead of being cut to one. */
 .convo-notice + .convo-notice { margin-top: -12px; }
 .convo-notice__title { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
-@media (max-width: 640px) { .convo-notice { margin: 14px 0; } .convo-notice + .convo-notice { margin-top: -6px; } }
+@media (max-width: 680px) { .convo-notice { padding-left: 42px; margin: 14px 0; } .convo-notice + .convo-notice { margin-top: -6px; } }

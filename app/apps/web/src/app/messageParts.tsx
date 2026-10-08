@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import type { ConversationMessage } from '@flux/contracts';
-import { AgentIdentity, Avatar, Icon, Kreska } from '../ui';
+import { AgentIdentity, Avatar, Icon } from '../ui';
 import type { PendingSend } from '../composer/draft';
 import { OutboxStatus, PendingFiles, PendingSource } from '../composer/Outbox';
 import { getMaterialVersion } from './conversation-api';
@@ -77,14 +77,7 @@ export function SourceCitation({ materialId, version, onDenied }: { materialId: 
   return <Link to={`/materials/${materialId}/versions/${version}`} className="project-convo__source">Source: {title} · v{version}</Link>;
 }
 
-/**
- * Who wrote a message, in the avatar column (F-026 P3): a person is a grey circle with initials, an
- * agent is Kreska. Decorative: the name beside it says who it is.
- */
-export function AuthorFace({ message, name, mine }: { message: Pick<ConversationMessage, 'authorId'>; name: string; mine: boolean }) {
-  if (message.authorId === null) return <Kreska size={32} className="author-face" />;
-  return <Avatar name={name} size="lg" tone={mine ? 'me' : 'neutral'} />;
-}
+export { AuthorFace } from '../ui';
 
 /** An agent author's name line: its name, the "Agent" tag and "for <owner>" when the reader may know it. */
 export function AgentAuthor({ message, owner }: { message: Extract<ConversationMessage, { authorId: null }>; owner?: string | null }) {
