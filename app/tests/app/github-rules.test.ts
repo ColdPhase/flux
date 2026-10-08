@@ -323,6 +323,45 @@ describe('linked PRs move the same Flux task (#74 G-1a)', () => {
     assert.equal(negative.status, 400);
   });
 
+  test('a native command retry is exact only with the same rule pin: a changed, added or removed pin is an idempotency conflict', async () => {
+    const { owner, writer, task, binding } = await setup('Idem');
+    fixture.set(REPO, 80, {});
+    await github.link(actor(owner), task.id, { bindingId: binding.id, number: 80, role: 'required_output' });
+    await enable(writer, task); await settle(binding);
+    const current = await work(owner, task); const rev = current.githubRule!.revision;
+    const commandId = randomUUID();
+    const send = (body: Record<string, unknown>) => owner.browser.request('PATCH', `/api/v1/work/${task.id}`, { body });
+    const state = async () => {
+      const one = async (sql: string, params: unknown[]) => (await pool.query(sql, params)).rows[0];
+      return { rule: await one('SELECT state, revision FROM github_task_rules WHERE task_id=$1', [task.id]),
+        task: await one('SELECT version, status FROM project_work_items WHERE id=$1', [task.id]),
+        history: (await one('SELECT count(*)::int AS n FROM github_task_rule_changes WHERE task_id=$1', [task.id])).n,
+        receipts: (await one('SELECT count(*)::int AS n FROM native_command_receipts WHERE work_id=$1', [task.id])).n,
+        messages: (await one('SELECT count(*)::int AS n FROM project_messages WHERE project_id=$1', [current.projectId])).n };
+    };
+    const conflict = async (label: string, body: Record<string, unknown>) => {
+      const before = await state(); const response = await send(body);
+      assert.deepEqual([response.status, (response.json as { code?: string }).code], [409, 'IDEMPOTENCY_CONFLICT'], label);
+      assert.deepEqual(await state(), before, `${label}: nothing changed`);
+    };
+    const same = { status: 'blocked', blocker: 'Supplier', expectedVersion: current.version, expectedGithubRuleRevision: rev, clientCommandId: commandId };
+    expectStatus(await send(same), 200);
+    const done = await state();
+    assert.deepEqual([done.rule.state, done.rule.revision, done.receipts, done.history], ['suspended', rev + 1, 1, done.history]);
+    expectStatus(await send(same), 200);
+    assert.deepEqual(await state(), done, 'an exact replay returns the original result and changes nothing');
+    await conflict('changed pin', { ...same, expectedGithubRuleRevision: rev + 100 });
+    const removed: Record<string, unknown> = { ...same }; delete removed.expectedGithubRuleRevision;
+    await conflict('removed pin', removed);
+    // An unpinned command, then the same UUID with a pin added.
+    const second = randomUUID(); const latest = await work(owner, task);
+    const unpinned = { status: 'in_progress', expectedVersion: latest.version, clientCommandId: second };
+    expectStatus(await send(unpinned), 200);
+    await conflict('added pin', { ...unpinned, expectedGithubRuleRevision: 0 });
+    const stale = await send({ status: 'open', expectedVersion: (await work(owner, task)).version, expectedGithubRuleRevision: rev + 100, clientCommandId: randomUUID() });
+    assert.deepEqual([stale.status, (stale.json as { code?: string }).code], [409, 'VERSION_CONFLICT'], 'a fresh command with a stale pin is still a version conflict');
+  });
+
   test('a manager\'s project default turns the rule on for new required links, as the person linking', async () => {
     const { owner, writer, viewer, place, binding } = await setup('Default');
     const path = `/api/v1/projects/${place.id}/github/rule-default`;

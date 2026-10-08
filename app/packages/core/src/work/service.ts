@@ -366,6 +366,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         if (dependencyIds?.includes(id)) throw new RuleViolationError('A task cannot depend on itself', 'TASK_SELF_DEPENDENCY');
         // Prerequisites are a set: their order is not part of the intent.
         const fingerprint = sha256({ operation: 'work.update', workId: id, expectedVersion: version, changes,
+          ...(ruleRevision !== undefined ? { expectedGithubRuleRevision: ruleRevision } : {}),
           ...(dependencyIds !== undefined ? { dependencyIds: [...dependencyIds].sort() } : {}) });
         if (clientCommandId) {
           // The command identity precedes every other lock below. An exact retry rechecks the current

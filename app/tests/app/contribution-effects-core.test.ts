@@ -77,6 +77,7 @@ function world(options: { writable?: boolean; taskIds?: string[]; hook?: boolean
     // The #152 task graph: the project graph lock and the complete sorted task pass.
     async taskPlans() { return new Map(); },
     async githubRules() { return new Map(); },
+    async suspendGithubRule() { return false; },
     async lockTaskGraphs() { log.push('graph.lock'); },
     async directPrerequisiteIds(_workspace: string, ids: readonly string[]) {
       return [...new Set(ids.flatMap((id) => options.prerequisites?.[id] ?? []))].sort();
