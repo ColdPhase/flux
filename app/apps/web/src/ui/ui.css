@@ -248,6 +248,53 @@ svg { flex: none; }
 .ui-pill { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: var(--r-pill); font-size: var(--fs-xs); font-weight: 500; white-space: nowrap; background: var(--sub); color: var(--t2); }
 .ui-pill--inv { background-color: var(--inv); background-image: var(--grad-inv); color: var(--oninv); }
 
+/* ---------- Kreska (Kreska.tsx): the agent icon, the logo and the mascot (F-026 §3) ---------- */
+.kreska { position: relative; display: inline-flex; flex: none; color: var(--t1); vertical-align: middle; }
+.kreska svg { display: block; overflow: visible; }
+.kreska__frame { fill: var(--el); }
+/* Agent colours, only where a hue is passed (the Agents section): the lines take it, the face 12% of it. */
+.kreska--clay { color: #9b6147; } .kreska--ochre { color: #886d32; } .kreska--sage { color: #4b8057; } .kreska--teal { color: #208181; }
+.kreska--indigo { color: #5e6fa4; } .kreska--plum { color: #886191; } .kreska--rose { color: #9c5c66; }
+:root[data-theme="dark"] .kreska--clay { color: #e8af96; } :root[data-theme="dark"] .kreska--ochre { color: #d4bb86; }
+:root[data-theme="dark"] .kreska--sage { color: #9ccca4; } :root[data-theme="dark"] .kreska--teal { color: #82cdcd; }
+:root[data-theme="dark"] .kreska--indigo { color: #abbcef; } :root[data-theme="dark"] .kreska--plum { color: #d4afdc; }
+:root[data-theme="dark"] .kreska--rose { color: #e9aab3; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .kreska--clay { color: #e8af96; } :root:not([data-theme="light"]) .kreska--ochre { color: #d4bb86; }
+  :root:not([data-theme="light"]) .kreska--sage { color: #9ccca4; } :root:not([data-theme="light"]) .kreska--teal { color: #82cdcd; }
+  :root:not([data-theme="light"]) .kreska--indigo { color: #abbcef; } :root:not([data-theme="light"]) .kreska--plum { color: #d4afdc; }
+  :root:not([data-theme="light"]) .kreska--rose { color: #e9aab3; }
+}
+.kreska[class*="kreska--"] .kreska__frame { fill: currentColor; fill-opacity: .12; }
+/* Motion only where it says something true: the brow waves while thinking, dots flow while loading,
+   the eyes blink slowly while working. Reduced motion shows the static frame (see the end of this file). */
+@media (prefers-reduced-motion: no-preference) {
+  .kreska[data-expression="thinking"] .kreska__brow { animation: kreska-wave 1.6s var(--ease-out) infinite; transform-origin: 9px 7px; }
+  .kreska[data-expression="loading"] .kreska__dots circle { animation: kreska-dot 1.2s ease-in-out infinite; }
+  .kreska[data-expression="loading"] .kreska__dots circle:nth-child(2) { animation-delay: .2s; }
+  .kreska[data-expression="loading"] .kreska__dots circle:nth-child(3) { animation-delay: .4s; }
+  .kreska[data-expression="working"] .kreska__eyes { animation: kreska-blink 4s ease-in-out infinite; transform-origin: 12px 12.7px; }
+}
+@keyframes kreska-wave { 0%, 100% { transform: none; } 50% { transform: translateY(-.8px) rotate(-4deg); } }
+@keyframes kreska-dot { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+@keyframes kreska-blink { 0%, 92%, 100% { transform: none; } 96% { transform: scaleY(.15); } }
+
+.flux-logo { display: block; flex: none; }
+.flux-logo__tile { fill: var(--inv); }
+.flux-logo__face { color: var(--oninv); }
+.flux-lockup { display: inline-flex; align-items: center; gap: 8px; color: var(--t1); }
+.flux-lockup b { font-size: 1.25rem; font-weight: 600; letter-spacing: -.04em; line-height: 1; }
+
+/* An agent: Kreska, its name, the "Agent" tag and "for <owner>" (AgentIdentity.tsx). */
+.agent-id { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; font-family: var(--font); }
+.agent-id__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--t1); }
+.agent-tag {
+  display: inline-flex; align-items: center; gap: 3px; flex: none; height: 18px; padding: 0 7px 0 4px; border-radius: var(--r-pill);
+  background: var(--el); box-shadow: var(--sh-1), inset 0 0 0 1px var(--line); font-size: .6875rem; font-weight: 600; color: var(--t1);
+}
+.agent-for { flex: 0 1 auto; min-width: 0; max-width: 100%; color: var(--t2); font-weight: 400; white-space: normal; overflow-wrap: anywhere; }
+@media (max-width: 680px) { .agent-tag { min-height: 20px; height: auto; font-size: var(--fs-xs); } }
+
 /* ---------- Avatar: people are grey circles with initials ---------- */
 .ui-avatar {
   display: grid; place-items: center; flex: none; border-radius: 50%;

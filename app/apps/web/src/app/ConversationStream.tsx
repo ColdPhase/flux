@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
-import type { Conversation, ConversationMessage, ConversationRoot, ConversationRootWindow, NamedPrincipal, NativeWorkRow, Page, Project, TaskCreationNotice } from '@flux/contracts';
-import { Avatar, Button, EmptyState, Icon, useArrivals } from '../ui';
+import type { Conversation, ConversationMessage, ConversationRoot, ConversationRootWindow, NativeWorkRow, Page, Project, TaskCreationNotice } from '@flux/contracts';
+import { AgentIdentity, Button, EmptyState, Icon, useArrivals } from '../ui';
 import { newBelowText } from '../ui/motion-rules';
 import { MessageActions, MessageObjects, useCreateWorkFromMessage } from '../work/inline';
 import { useMessageWorkRead, type MessageWorkRead } from '../work/useMessageWork';
@@ -10,10 +10,10 @@ import { useProjectWorkSummary } from '../work/WorkReadContext';
 import { MessageWorkPages } from '../work/MessageWorkPages';
 import { useShellActions } from './shellContext';
 import { listConversationRoots, listTaskNotices } from './conversation-api';
-import { ContributionMark, OPENING_REVEAL_MS, SourceCitation, clock, day, openOnWholeMessages, pendingMessageRow, when } from './messageParts';
+import { AgentAuthor, AuthorFace, ContributionMark, OPENING_REVEAL_MS, SourceCitation, clock, day, openOnWholeMessages, pendingMessageRow, when } from './messageParts';
+import { agentAuthorOwner, useAgentOwners, type AgentOwners } from '../agents/owners';
 import { MessageFiles } from '../composer/Files';
 import { onSent, outboxView, useComposerDraft, type PendingSend } from '../composer/draft';
-import { agentAuthorLabel } from '../docs/format';
 
 // One project conversation (UI116-1, 2026-10-02): a chronological stream of roots. Each root is the
 // opening message of a stored conversation; its replies open beside it in a one-level thread.
@@ -255,6 +255,7 @@ export interface StreamProps {
 
 /** The project's stream of roots, oldest first, with day dividers, each root's thread size and reply action. */
 export function ConversationStream({ project, meId, meName, roots: stream, notices, author, audience, openId, reveal, arrived, endToken, onOpen, onDenied }: StreamProps) {
+  const owners = useAgentOwners(project);
   // Roots the person sent from the stream's composer (#264): queued ones at the end, and confirmed ones
   // shown at once in their place until the stream's own read includes them.
   const composer = useComposerDraft(meId, project.id, 'new');
@@ -504,10 +505,10 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
                 const label = dayOf[index]!;
                 const key = entry.kind === 'root' ? rootKey(entry.root) : entry.key;
                 const divider = index === 0 || dayOf[index - 1] !== label ? <li className="project-convo__day" key={`day-${key}`}><span>{label}</span></li> : null;
-                if (entry.kind === 'notice') return [divider, <NoticeItem key={entry.key} notice={entry.notice} meId={meId} row={referenceWork.rows.get(`work:${entry.notice.workId}`) ?? null} onOpenTask={(id) => openDetails({ kind: 'work', id })} />];
+                if (entry.kind === 'notice') return [divider, <NoticeItem key={entry.key} notice={entry.notice} meId={meId} owners={owners} row={referenceWork.rows.get(`work:${entry.notice.workId}`) ?? null} onOpenTask={(id) => openDetails({ kind: 'work', id })} />];
                 const { root } = entry;
                 // A root confirmed from its queued message keeps that list item: it does not move or arrive twice (#264).
-                return [divider, <RootItem key={key} root={root} project={project} meId={meId} author={author} messageWork={messageWork}
+                return [divider, <RootItem key={key} owners={owners} root={root} project={project} meId={meId} author={author} messageWork={messageWork}
                   taskRow={root.task ? referenceWork.rows.get(`work:${root.task.workId}`) ?? null : null}
                   open={root.conversationId === openId} arrived={arrived === root.message.id} makeWork={makeWork} onOpen={openRoot}
                   onOpenResult={(resultId) => openDetails({ kind: 'result', id: resultId })} onDenied={onDenied} />];
@@ -534,36 +535,34 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
   </>);
 }
 
-/** Who created a task, as the stream names people: "Ada · you", "Ada", or an agent via agentAuthorLabel. */
-function creatorName(creator: NamedPrincipal, meId: string) {
-  if (creator.kind === 'agent') return agentAuthorLabel(creator);
-  const name = creator.name ?? 'Member';
-  return creator.id === meId ? `${name} · you` : name;
-}
-
 /**
  * One compact announcement that a task was created (UI116-3): who created it, its current title and a
  * link that opens exactly that task. It is not a message, so it has no replies or actions of its own.
  */
-function NoticeItem({ notice, meId, row, onOpenTask }: { notice: TaskCreationNotice; meId: string; row: NativeWorkRow | null; onOpenTask: (workId: string) => void }) {
+function NoticeItem({ notice, meId, owners, row, onOpenTask }: { notice: TaskCreationNotice; meId: string; owners: AgentOwners; row: NativeWorkRow | null; onOpenTask: (workId: string) => void }) {
   // The task's current title from the visible reference read (#155); the announced title until it answers.
   const title = row?.kind === 'work' && row.id === notice.workId ? row.title : notice.workTitle;
+  const creator = notice.createdBy;
+  const name = creator.name ?? (creator.kind === 'agent' ? 'Agent' : 'Member');
+  const mine = creator.kind === 'human' && creator.id === meId;
   return (
     <li className="convo-notice" id={`notice-${notice.id}`} data-work-id={notice.workId}>
-      <span className="convo-notice__icon" aria-hidden="true"><Icon name="tasks" size={14} /></span>
+      <AuthorFace kind={creator.kind} name={name} mine={mine} />
       <span className="convo-notice__body">
-        <span className="convo-notice__meta">New task · {creatorName(notice.createdBy, meId)}</span>
+        <span className="convo-notice__meta">
+          {creator.kind === 'agent' ? <AgentIdentity name={name} owner={owners.get(creator.id)} icon={false} /> : <strong>{name}{mine ? ' · you' : ''}</strong>}
+          <time dateTime={notice.createdAt} title={when(notice.createdAt)}>{clock(notice.createdAt)}</time>
+        </span>
         <button type="button" className="convo-notice__task" data-native-ref={`work:${notice.workId}`} onClick={() => onOpenTask(notice.workId)} aria-label={`Open task: ${title}`}>
-          <span className="convo-notice__title">{title}</span><Icon name="chevron-right" size={14} />
+          <span className="convo-notice__title"><span className="convo-notice__kind">New task · </span>{title}</span><Icon name="chevron-right" size={14} />
         </button>
       </span>
-      <time dateTime={notice.createdAt} title={when(notice.createdAt)}>{clock(notice.createdAt)}</time>
     </li>
   );
 }
 
 type RootItemProps = {
-  root: ConversationRoot; project: Project; meId: string; author: (message: ConversationMessage) => string;
+  root: ConversationRoot; project: Project; owners: AgentOwners; meId: string; author: (message: ConversationMessage) => string;
   messageWork: MessageWorkRead; taskRow: NativeWorkRow | null;
   open: boolean; arrived: boolean; makeWork: ReturnType<typeof useCreateWorkFromMessage>;
   onOpen: (root: ConversationRoot, reply: boolean) => void; onOpenResult: (resultId: string) => void; onDenied: (cause: unknown) => void;
@@ -577,7 +576,7 @@ type QueuedRootProps = { pending: PendingSend; name: string; onRetry: () => void
  */
 function RootItem(props: RootItemProps | QueuedRootProps) {
   if ('pending' in props) return pendingMessageRow({ place: 'stream', keyed: false, item: props.pending, name: props.name, onRetry: props.onRetry, onRemove: props.onRemove });
-  const { root, project, meId, author, messageWork, taskRow, open, arrived, makeWork, onOpen, onOpenResult, onDenied } = props;
+  const { root, project, owners, meId, author, messageWork, taskRow, open, arrived, makeWork, onOpen, onOpenResult, onDenied } = props;
   const { message } = root;
   const writable = project.access !== 'viewer';
   const mine = message.authorId === meId;
@@ -585,9 +584,9 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
   return (
     <li id={`message-${message.id}`} data-message-id={message.id} tabIndex={-1} data-conversation-id={root.conversationId}
       className={`project-convo__message${mine ? ' is-mine' : ''}${arrived ? ' is-arrived' : ''}${open ? ' is-open' : ''}`}>
-      <Avatar name={name} size="md" tone={mine ? 'me' : 'neutral'} />
+      <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} name={name} mine={mine} />
       <div className="project-convo__message-meta">
-        <strong>{mine ? `${name} · you` : message.authorId === null ? name : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</Link>}</strong>
+        <strong>{mine ? `${name} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</Link>}</strong>
         <time dateTime={message.createdAt} title={when(message.createdAt)}>{clock(message.createdAt)}</time>
       </div>
       {message.body ? <p>{message.body}</p> : null}

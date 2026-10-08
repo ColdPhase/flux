@@ -6,8 +6,7 @@
 @keyframes rise { from { opacity: 0; transform: translateY(4px); } }
 
 .brand { display: inline-flex; align-items: center; gap: 10px; min-height: var(--ctl); padding: 0 6px; margin-left: -6px; border-radius: var(--r); text-decoration: none; font-weight: 600; font-size: var(--fs-md); color: var(--t1); }
-.brand__name { font-size: 24px; font-weight: 650; letter-spacing: -1px; line-height: 1; }
-.brand__name span { color: var(--t1); }
+.brand__name { font-size: 1.5rem; font-weight: 600; letter-spacing: -.04em; line-height: 1; }
 
 /* ---------- Sign-in and recovery ---------- */
 .auth { min-height: 100%; display: flex; flex-direction: column; background: var(--bg); }
@@ -62,10 +61,9 @@ body:has(.app) { background: var(--side); }
   padding: 19px 18px 0 22px; padding-top: max(19px, env(safe-area-inset-top));
 }
 .side__brand { display: flex; align-items: center; gap: 8px; min-height: 46px; }
-.side__logo { display: inline-flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 4px; margin-left: -4px; color: var(--t1); flex: 1; min-width: 0; }
+.side__logo { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 4px; margin-left: -4px; color: var(--t1); flex: 1; min-width: 0; }
 .side__glyph { display: grid; place-items: center; color: var(--t1); }
-.side__word { font-size: 30px; font-weight: 650; letter-spacing: -1.3px; line-height: 1; }
-.side__word span { color: var(--t1); }
+.side__word { font-size: 1.25rem; font-weight: 600; letter-spacing: -.04em; line-height: 1; }
 .side__jump {
   display: flex; align-items: center; gap: 8px; width: 100%; min-height: 39px; margin: 22px 0 18px; padding: 8px 4px;
   border-bottom: 1px solid var(--line); background: var(--side); color: var(--t2); font-size: var(--fs-md); text-align: left; transition: var(--tr);

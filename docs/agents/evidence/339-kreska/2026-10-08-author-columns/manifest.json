@@ -1,0 +1,308 @@
+{
+  "date": "2026-10-08",
+  "testedCommit": "fb3df4769d8822aed2e931cb12f0d13d38041254",
+  "productionCommit": "01e55cba6f9331f1108030f744f030aed0197333",
+  "backendCommit": "dabf3bb5f6905efb73d58419fc9e52d1e990f667",
+  "mainComposition": "0f68aa963be920fbc7ebf30742da4aef54fe34be",
+  "documentationOnlyCheckpoint": true,
+  "servedFoundationImage": "sha256:3bedad9840c85eefd51e32edd6ec481ced104adf89d7d7779b096ef7b4efbf0a",
+  "coreEquivalentActorDriverImage": "sha256:04f10cddfdcfed35ca5db94f868a9cab9cf1a02925f6b034be5c71d99dd76e59",
+  "immutableActorOverlaySha256": "3c50233bf80a55adcdcc32df89c199892e587842ebf67865bd872255d783d25d",
+  "sourceGitBlobs": {
+    "app/apps/web/src/app/one-conversation.css": "c1b02058d5e8f39e3bb479ef015271cb75c9a6df",
+    "app/tests/app/e2e/task-discussion-actors.e2e.ts": "b0fd5d46645873c2eec044a2244622de514c5f6d"
+  },
+  "originalLogs": {
+    "full-older-backend": {
+      "originalPath": "/tmp/flux356-dab-current-application.log",
+      "sha256": "6e65a34c320cc95f2403b9b4a987eb5eaeb4926db65b6f45ea672f78df10c879",
+      "sourceCommit": "dabf3bb5f6905efb73d58419fc9e52d1e990f667",
+      "scope": "1116 tests, configured full application",
+      "result": "PASS"
+    },
+    "fresh-current-ui": {
+      "originalPath": "/tmp/flux356-uncovered-current-ui.log",
+      "sha256": "15e8856edae1c088cbbfc9d7aaf24bc0cee0586d1da3998e247b427f27c3a8e3",
+      "sourceCommit": "01e55cba6f9331f1108030f744f030aed0197333",
+      "scope": "29 tests, fresh build/types/lint",
+      "result": "PASS"
+    },
+    "current-actor-journeys": {
+      "originalPath": "/tmp/flux356-uncovered-current-actors.log",
+      "sha256": "e84d21b462b45f3cbc00ca0864a69c5119c84e3a91fef78b1e2a7bbb7c7a46ef",
+      "sourceCommit": "fb3df4769d8822aed2e931cb12f0d13d38041254",
+      "scope": "2 actor journeys",
+      "result": "PASS"
+    },
+    "stronger-old-product-negative": {
+      "originalPath": "/tmp/flux356-author-obstruction-negative.log",
+      "sha256": "0ab1015d266f3fd4b97e94ae7a073a5c615d200882e0930284386a5a1473282b",
+      "sourceCommit": "51815a968470119b53aa921458ffbd231809ceb6",
+      "scope": "1 pass / 1 fail on D85 production",
+      "result": "FAIL"
+    },
+    "current-typecheck": {
+      "originalPath": "/tmp/flux356-fb-typecheck.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sourceCommit": "fb3df4769d8822aed2e931cb12f0d13d38041254",
+      "scope": "Docker current source",
+      "result": "PASS, actual command exit 0; empty output"
+    },
+    "current-lint": {
+      "originalPath": "/tmp/flux356-fb-lint.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sourceCommit": "fb3df4769d8822aed2e931cb12f0d13d38041254",
+      "scope": "Docker current source",
+      "result": "PASS, actual command exit 0; empty output"
+    }
+  },
+  "files": [
+    {
+      "path": "339-scoped-agent-owner-board.png",
+      "sha256": "11610b9a152e72127b63d5964f60a36ff5cd51283b7692f9eff5d638f28225ec",
+      "bytes": 77032,
+      "pixels": [
+        1440,
+        900
+      ]
+    },
+    {
+      "path": "339-scoped-owner-agents-thread-visibility.json",
+      "sha256": "f6cde962146062fdbf8c3742417f3c58eb47fec2a7411ceed854e82979a07076",
+      "bytes": 7905
+    },
+    {
+      "path": "339-scoped-owner-agents-thread.png",
+      "sha256": "965ea4de61d277c757ffedfee9063b44a7154b6726a0f18f858a43dd7d0663c6",
+      "bytes": 95795,
+      "pixels": [
+        1440,
+        900
+      ]
+    },
+    {
+      "path": "339-scoped-owner-board-visibility.json",
+      "sha256": "8d18900e57fd8c26bd65b9fc087f1961f78c7bd30699eb73d5511ce2f607072f",
+      "bytes": 9866
+    },
+    {
+      "path": "339-scoped-owner-board.png",
+      "sha256": "2861af2b6d7dddc33286b4110afbbde8f06b285b3ea25e14dcf0d026e32226d7",
+      "bytes": 74251,
+      "pixels": [
+        1440,
+        900
+      ]
+    },
+    {
+      "path": "339-scoped-owner-decision-details-visibility.json",
+      "sha256": "6587ed240a99995165fc0548d83854d766712c82ced642f3d655c2f5eaacb884",
+      "bytes": 6318
+    },
+    {
+      "path": "339-scoped-owner-decision-details.png",
+      "sha256": "5dbae9c81f974d6f0eca79df6e7052a1bf99c8678c9c021dca1f3a07d6258ce2",
+      "bytes": 140215,
+      "pixels": [
+        1440,
+        900
+      ]
+    },
+    {
+      "path": "339-scoped-owner-list-visibility.json",
+      "sha256": "423aecbf0e29bc3709f924a4506ec4284ad78bf03c0c1f5a3e85acff7a3d03cb",
+      "bytes": 18456
+    },
+    {
+      "path": "339-scoped-owner-list.png",
+      "sha256": "85cfdac6417364facb0d112f65aac5dc87038b128c7023fd620eafc89d33be07",
+      "bytes": 92374,
+      "pixels": [
+        1440,
+        900
+      ]
+    },
+    {
+      "path": "339-scoped-owner-task-details-visibility.json",
+      "sha256": "b990427da6c014c1b1b8fdeca3b76a5c9bc40df39a807cf78f45e21f017d982e",
+      "bytes": 6862
+    },
+    {
+      "path": "339-scoped-owner-task-details.png",
+      "sha256": "cb91e3c57d70135e17eb929153118df64fd94553f5e476751d8c0df395381754",
+      "bytes": 145706,
+      "pixels": [
+        1440,
+        900
+      ]
+    },
+    {
+      "path": "README.md",
+      "sha256": "6c2a85065d85f8fd2a0b6c21a5b5170ac426a85ae348a3bf1ed8391f72affaad",
+      "bytes": 4810
+    },
+    {
+      "path": "agent-owner-reader-390-text200-visibility.json",
+      "sha256": "2afff057f95beffc5e3cc73bf8606c2fd272da0f7e89f6695c604bdc3b634c45",
+      "bytes": 40491
+    },
+    {
+      "path": "agent-owner-reader-390-text200.png",
+      "sha256": "0c1488b066ad7c235291af79769f108fb14fcd2d500154c03e78a84a0e035705",
+      "bytes": 81310,
+      "pixels": [
+        390,
+        900
+      ]
+    },
+    {
+      "path": "agent-root-desktop.png",
+      "sha256": "fea49f002a7c6c475226bfadc2d5cdaaeff79225121ea8f872aad6b84d00b740",
+      "bytes": 107161,
+      "pixels": [
+        1280,
+        900
+      ]
+    },
+    {
+      "path": "callback-drain-independent-review.md",
+      "sha256": "66e30868665bdb25fe75e37efecb346dd14d97c83a38c6975b75adaaef6e8b66",
+      "bytes": 7361
+    },
+    {
+      "path": "earlier-action-overlap-visual-review.md",
+      "sha256": "b48d42b4a2319a389a7f33fad88dcf306a8a093d0f1a7594b1cd95e7513beeb2",
+      "bytes": 7407
+    },
+    {
+      "path": "earlier-obscured-author-visual-review.md",
+      "sha256": "df63bc312594dc65bed6afa55a37edd36ad6f78189b171c043c3bfb421380548",
+      "bytes": 7775
+    },
+    {
+      "path": "independent-final-visual-review.md",
+      "sha256": "7c76a16f7be09e6f9ba20aa63e8d2e3a48e307c49ff23da2f41c89a5b67e3f4e",
+      "bytes": 6882
+    },
+    {
+      "path": "independent-source-runtime-review.md",
+      "sha256": "a78ac50c99bd1344257f8cd4b0e2150b65f23ec3904fd30a73f3df59dea7d652",
+      "bytes": 7933
+    },
+    {
+      "path": "mixed-authors-reader-1280.png",
+      "sha256": "41d250dcd33a1e567f6d9fc3cd04151e99e3fcb0c2df49c7f412a682c86711b8",
+      "bytes": 108077,
+      "pixels": [
+        1280,
+        900
+      ]
+    },
+    {
+      "path": "mixed-authors-reader-390-text200.png",
+      "sha256": "b56914181379116eeea4a1e9d7fc682a7d7d63ed9d8ccb4cff11d76da3ae348f",
+      "bytes": 69409,
+      "pixels": [
+        390,
+        900
+      ]
+    },
+    {
+      "path": "mixed-authors-reader-390.png",
+      "sha256": "c26ec17069c45d498de23483b9e9f748ad023d1cc3c3ab52ed0779d87deb4916",
+      "bytes": 54874,
+      "pixels": [
+        390,
+        900
+      ]
+    },
+    {
+      "path": "task-announcements-phone-320-text200.png",
+      "sha256": "dd1231125fa0488742df7095b0a84749730355fb009a37656627d464875b657f",
+      "bytes": 160432,
+      "pixels": [
+        960,
+        1920
+      ]
+    },
+    {
+      "path": "task-announcements-phone-390-dark-text200.png",
+      "sha256": "6c86542796e77aa28562a2bf031ffdf3f1f0d579eb89f80df85ed7b06bc52fa7",
+      "bytes": 228086,
+      "pixels": [
+        1170,
+        2532
+      ]
+    },
+    {
+      "path": "task-event-reader-390-text200-visibility.json",
+      "sha256": "ca4984b531831222dc5672b5552ff01db1cc3c6bfafcfb734887d010dc86cce5",
+      "bytes": 32181
+    },
+    {
+      "path": "task-event-reader-390-text200.png",
+      "sha256": "0c1488b066ad7c235291af79769f108fb14fcd2d500154c03e78a84a0e035705",
+      "bytes": 81310,
+      "pixels": [
+        390,
+        900
+      ]
+    },
+    {
+      "path": "workspace-agent-author-390-dark-text200-touch-visibility.json",
+      "sha256": "ac965303ef7de7d15093b624ec29fa206a57943f921d51dbad9dced4ab3d1948",
+      "bytes": 40505
+    },
+    {
+      "path": "workspace-agent-author-390-dark-text200-touch.png",
+      "sha256": "5371fd6a5e1fb8c28115562fb45eb398ae4f2c26f4899bf77b06349630df2da1",
+      "bytes": 77068,
+      "pixels": [
+        390,
+        900
+      ]
+    },
+    {
+      "path": "workspace-agent-author-390-dark-text200-visibility.json",
+      "sha256": "2d1bb69754cbcdefbc13ca6b5a863d2c95f9c277527180a865af7ce66ecdf6cc",
+      "bytes": 40505
+    },
+    {
+      "path": "workspace-agent-author-390-dark-text200.png",
+      "sha256": "78b998614541792c5ff24c244373a3918815690a62ab3ef2d35225a59e36cfdd",
+      "bytes": 84496,
+      "pixels": [
+        390,
+        900
+      ]
+    },
+    {
+      "path": "workspace-agent-event-390-dark-text200-touch-visibility.json",
+      "sha256": "dd3b089ae7c879b59dc77a039092c81131c4ab700cc6a424f09429149964b652",
+      "bytes": 41767
+    },
+    {
+      "path": "workspace-agent-event-390-dark-text200-touch.png",
+      "sha256": "94cdf619eee8dc9361663ae0996193b5a55b94070d9634623f0cbe0153bcc46c",
+      "bytes": 76553,
+      "pixels": [
+        390,
+        900
+      ]
+    },
+    {
+      "path": "workspace-agent-event-390-dark-text200-visibility.json",
+      "sha256": "692597113efa0152b63b2ca4f919809f7c441273dc4e9dbf738b9b2048bd43b7",
+      "bytes": 41767
+    },
+    {
+      "path": "workspace-agent-event-390-dark-text200.png",
+      "sha256": "03c9f102b8e52346201eadb0cf4eaf0880050792f064a91080ddbbe604b02579",
+      "bytes": 85254,
+      "pixels": [
+        390,
+        900
+      ]
+    }
+  ]
+}
