@@ -20,6 +20,7 @@ const PATHS = {
   share: <><path d="M13.5 2.5L7 9" /><path d="M13.5 2.5l-4 11-2.5-4.5-4.5-2.5z" /></>,
   download: <><path d="M8 2.75v7.5M4.75 7L8 10.25 11.25 7" /><path d="M2.75 11.25v1.5a.5.5 0 00.5.5h9.5a.5.5 0 00.5-.5v-1.5" /></>,
   upload: <><path d="M8 10.25v-7.5M4.75 6L8 2.75 11.25 6" /><path d="M2.75 11.25v1.5a.5.5 0 00.5.5h9.5a.5.5 0 00.5-.5v-1.5" /></>,
+  more: <><circle cx="3.5" cy="8" r=".9" fill="currentColor" /><circle cx="8" cy="8" r=".9" fill="currentColor" /><circle cx="12.5" cy="8" r=".9" fill="currentColor" /></>,
   archive: <><rect x="2.5" y="3" width="11" height="3" rx="1" /><path d="M3.5 6v6.25a.75.75 0 00.75.75h7.5a.75.75 0 00.75-.75V6M6.5 8.75h3" /></>,
 };
 export type WikiIconName = keyof typeof PATHS;
@@ -33,13 +34,27 @@ export function WikiIcon({ name, size = 16 }: { name: WikiIconName; size?: numbe
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iP(hone|ad|od)/.test(navigator.platform);
 
-/** The 57px bar above every wiki document: what is shown on the left, actions on the right. */
+/** The quiet row above every wiki document: what is shown on the left, actions on the right. */
 export function WikiBar({ meta, children }: { meta: ReactNode; children?: ReactNode }) {
+  const { compact } = useWiki();
   return (
     <div className="wiki-bar">
       <div className="wiki-bar__meta">{meta}</div>
-      <div className="wiki-bar__acts"><FocusToggle />{children}</div>
+      <div className="wiki-bar__acts">{compact ? null : <FocusToggle />}{children}</div>
     </div>
+  );
+}
+
+/** On a phone the page's actions are one menu: history, then the share and download cards. */
+export function PageMenu({ history, sharePath, shareVersion, shown }: {
+  history: ReactNode; sharePath: string; shareVersion: number | null; shown: Shown;
+}) {
+  return (
+    <Popover icon="more" label="More" title="Page actions">
+      {history}
+      <ShareBody path={sharePath} version={shareVersion} />
+      <DownloadBody shown={shown} />
+    </Popover>
   );
 }
 

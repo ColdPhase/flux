@@ -108,6 +108,7 @@ repository was created on 2026-09-26.
 
 ### Changed
 
+- The Wiki reads as drawn: a "Pages" list beside the page, who edited it with their faces, an "On this page" outline, tasks with their state and decisions as cards in the text, and on the phone a row of page chips with 16px text and Edit at the bottom ([#354](https://github.com/ColdPhase/flux/issues/354)).
 - One neutral look from the final design: Soft volume surfaces in light, dark or Match system, Geist type served with Flux, pill buttons, and task states shown as shapes with words. The accent colours and their picker are gone ([#353](https://github.com/ColdPhase/flux/pull/353)).
 - Kreska, a face drawn in a few lines, is the Flux logo, the app icon and every agent's icon. Agents carry an "Agent" tag and, where you may know them, the person they work for; the personal assistant's face shows what its run is doing ([#356](https://github.com/ColdPhase/flux/pull/356)).
 - The computer sidebar as drawn: New (C) and Search at the top, Home, Inbox with its count and Sketchbook, projects as letter tiles, Messages, a card for your working assistant with Stop, and the account with Settings. `[` folds it to a 64 px rail and `G` `I` opens the Inbox ([#357](https://github.com/ColdPhase/flux/pull/357)).

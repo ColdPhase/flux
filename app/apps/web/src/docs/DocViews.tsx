@@ -9,7 +9,9 @@ import { docUrl, getDoc, getVersion, listVersions, listWorkspaceDocs } from './a
 import { diffDocs, diffStats, readableRefs, type DiffRow } from './diff';
 import { draftKey, readKept } from './drafts';
 import { STATE_LABEL, authorLabel, docLinks, kindLabel, longDate, pathOfLink, shortDate } from './format';
-import { DownloadButton, ShareButton, WikiBar, WikiIcon } from './WikiParts';
+import { DownloadButton, PageMenu, ShareButton, WikiBar, WikiIcon } from './WikiParts';
+import { EditedBy, Outline, useProse } from './WikiRead';
+import { useAgentOwners } from '../agents/owners';
 import { useWiki } from './wiki-context';
 import './docs.css';
 
@@ -178,9 +180,12 @@ function LinkList({ title, links, end, projectId, empty }: { title: string; link
 /** Reads a doc, its current or an earlier version, with what it links to and what links here. */
 export function DocReader() {
   const { doc, shown } = useLoaderData() as ReaderData;
-  const { project, writable } = useWiki();
+  const { project, docs, writable, compact } = useWiki();
   const { me } = useShellData();
   const navigate = useNavigate();
+  const owners = useAgentOwners(project);
+  const [prose, setProse] = useState<HTMLElement | null>(null);
+  const { headings, marks } = useProse(prose, shown.html, project.id);
   useRefresh();
   const onClick = useReferenceClicks();
   const current = shown.version === doc.version;
@@ -208,42 +213,56 @@ export function DocReader() {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [writable, current, edit, navigate]);
+  const historyTo = `${base}/history${current ? '' : `?to=${shown.version}`}`;
+  const historyLabel = `History, ${doc.version} ${doc.version === 1 ? 'version' : 'versions'}`;
+  const keptLink = kept ? <Link className="wiki-bar__kept" to={edit}>Unsaved changes in this tab</Link> : null;
+  const editButton = writable && current
+    ? <Link className={`ui-btn ui-btn--primary ${compact ? 'wiki-edit' : 'wiki-bar__primary'}`} to={edit} aria-keyshortcuts="e"><Icon name="edit" size={16} />Edit</Link> : null;
   return (
     <>
-      <WikiBar meta={<>
-        <span className="doc-head__k">{STATE_LABEL[shown.state]} · version {shown.version}{current ? '' : ` of ${doc.version}`}</span>
-        {kept ? <Link className="wiki-bar__kept" to={edit}>Unsaved changes in this tab</Link> : null}
-      </>}>
-        <Link className="ui-icon-btn" to={`${base}/history${current ? '' : `?to=${shown.version}`}`}
-          aria-label={`History, ${doc.version} ${doc.version === 1 ? 'version' : 'versions'}`} data-tip={`History · ${doc.version} ${doc.version === 1 ? 'version' : 'versions'}`}>
-          <WikiIcon name="history" />
-        </Link>
-        <ShareButton path={current ? base : `${base}/versions/${shown.version}`} version={current ? null : shown.version} />
-        <DownloadButton shown={{ title: shown.title, body: shown.body, version: shown.version, current }} />
-        {writable && current ? <Link className="ui-btn ui-btn--primary wiki-bar__primary" to={edit} aria-keyshortcuts="e">Edit</Link> : null}
+      <WikiBar meta={compact
+        ? <><span className="wiki-bar__title"><b>Wiki</b> · {docs.length} {docs.length === 1 ? 'page' : 'pages'}</span>{keptLink}</>
+        : <><span className="doc-head__k">{STATE_LABEL[shown.state]} · version {shown.version}{current ? '' : ` of ${doc.version}`}</span>{keptLink}</>}>
+        {compact ? (
+          <PageMenu sharePath={current ? base : `${base}/versions/${shown.version}`} shareVersion={current ? null : shown.version}
+            shown={{ title: shown.title, body: shown.body, version: shown.version, current }}
+            history={<Link className="wiki-pop__item" to={historyTo} aria-label={historyLabel}><WikiIcon name="history" /><span><b>History</b><small>{doc.version} {doc.version === 1 ? 'version' : 'versions'}, {STATE_LABEL[shown.state].toLowerCase()}</small></span></Link>} />
+        ) : (
+          <>
+            <Link className="ui-icon-btn" to={historyTo} aria-label={historyLabel} data-tip={`History · ${doc.version} ${doc.version === 1 ? 'version' : 'versions'}`}>
+              <WikiIcon name="history" />
+            </Link>
+            <ShareButton path={current ? base : `${base}/versions/${shown.version}`} version={current ? null : shown.version} />
+            <DownloadButton shown={{ title: shown.title, body: shown.body, version: shown.version, current }} />
+            {editButton}
+          </>
+        )}
       </WikiBar>
-      <article className="wiki-doc doc" data-shift aria-labelledby="doc-title">
-        <p className="wiki-doc__crumb"><Icon name="doc" size={13} /><span>{project.name}</span></p>
-        {!current ? (
-          <p className="doc-notice"><Icon name="undo" size={14} />You are reading an earlier version. It stays as it was written.
-            <Link to={base}>Open the current version</Link><Link to={`${base}/history?from=${shown.version}&to=${doc.version}`}>What changed since</Link></p>
-        ) : null}
-        <header className="doc-head">
-          <h2 id="doc-title" className="doc-head__t">{shown.title}</h2>
-          <p className="doc-head__change"><span>{authorLabel(shown.author)}</span> · <time dateTime={shown.createdAt}>{longDate(shown.createdAt)}</time> · <span className="doc-head__why">{shown.reason}</span></p>
-        </header>
-        {shown.body.trim()
-          ? <div className="doc-prose" onClick={onClick} dangerouslySetInnerHTML={{ __html: shown.html }} />
-          : <p className="doc-muted doc-empty">This page has no text yet.{writable && current ? <> <Link to={edit}>Start writing</Link></> : null}</p>}
-        {missing ? <p className="doc-notice"><Icon name="alert" size={14} />{missing === 1 ? 'One link points' : `${missing} links point`} to something that is not in this project or no longer exists. It shows as plain text.</p> : null}
-        <div className="doc-foot">
-          <LinkList title="Added from" links={sources} end="to" projectId={project.id} />
-          {current ? <LinkList title="Links in this page" links={mentions} end="to" projectId={project.id} /> : null}
-          <LinkList title="Linked from" links={backlinks} end="from" projectId={project.id} empty="Nothing links here yet. Other pages and work can link to this page." />
-          <Audience project={project} />
-          <p className="doc-ids">Started by {authorLabel(doc.createdBy)} · {shortDate(doc.startedAt)}</p>
-        </div>
-      </article>
+      <div className="wiki-read">
+        <article className="wiki-doc wiki-doc--read doc" data-shift aria-labelledby="doc-title">
+          {!current ? (
+            <p className="doc-notice"><Icon name="undo" size={14} />You are reading an earlier version. It stays as it was written.
+              <Link to={base}>Open the current version</Link><Link to={`${base}/history?from=${shown.version}&to=${doc.version}`}>What changed since</Link></p>
+          ) : null}
+          <header className="doc-head">
+            <h2 id="doc-title" className="doc-head__t">{shown.title}</h2>
+            <EditedBy editor={shown.author} at={shown.createdAt} reason={shown.reason} starter={doc.createdBy} startedAt={doc.startedAt} owners={owners} />
+          </header>
+          {shown.body.trim()
+            ? <><div className="doc-prose" ref={setProse} onClick={onClick} dangerouslySetInnerHTML={{ __html: shown.html }} />{marks}</>
+            : <p className="doc-muted doc-empty">This page has no text yet.{writable && current ? <> <Link to={edit}>Start writing</Link></> : null}</p>}
+          {missing ? <p className="doc-notice"><Icon name="alert" size={14} />{missing === 1 ? 'One link points' : `${missing} links point`} to something that is not in this project or no longer exists. It shows as plain text.</p> : null}
+          <div className="doc-foot">
+            <LinkList title="Added from" links={sources} end="to" projectId={project.id} />
+            {current ? <LinkList title="Links in this page" links={mentions} end="to" projectId={project.id} /> : null}
+            <LinkList title="Linked from" links={backlinks} end="from" projectId={project.id} empty="Nothing links here yet. Other pages and work can link to this page." />
+            <Audience project={project} />
+            <p className="doc-ids">Started by {authorLabel(doc.createdBy)} · {shortDate(doc.startedAt)}</p>
+          </div>
+        </article>
+        {!compact && headings.length > 1 ? <Outline headings={headings} scroller={prose?.closest<HTMLElement>('.wiki-main') ?? null} /> : null}
+      </div>
+      {compact ? editButton : null}
     </>
   );
 }
