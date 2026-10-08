@@ -62,7 +62,7 @@ export function ThreadMessageActions({ writable, children }: { writable: boolean
 export function ThreadRoot({ message, projectId, body, author, agentOwner = null, meId, writable, replies, task = null, taskRow = null, preview = null, onDenied }: {
   message: ConversationMessage | null; projectId: string; body: string; author: string | null; agentOwner?: string | null; meId: string; writable: boolean; replies: number;
   /** The task whose discussion this thread is (UI116-3), and its row from the thread's visible reference read (#155). */
-  task?: { workId: string; title: string } | null; taskRow?: NativeWorkRow | null;
+  task?: { workId: string; title: string; number?: number } | null; taskRow?: NativeWorkRow | null;
   /** What was made from the root, from the thread's bounded association read (#155): the root is shown whole here. */
   preview?: MessageWorkPreview | null; onDenied: (cause: unknown) => void;
 }) {
