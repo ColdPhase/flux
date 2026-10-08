@@ -546,9 +546,9 @@ class MapTaskCountJourney(unittest.TestCase):
         expect(self.chooser(page, QUIET).get_by_role("link")).to_contain_text(f"{task_number(created)} · Open")
         expect(self.chooser(page, QUIET).get_by_role("link")).to_contain_text("No owner yet · added by Nia Okafor")
         page.keyboard.press("Escape")
-        # Create work on the map: the new task is counted at once.
+        # Create task on the map: the new task is counted at once.
         self.node(page, "later").click()
-        page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Create work from selected thoughts").click()
+        page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Create task from selected thoughts").click()
         expect(page.locator(".details__title")).to_have_text(LATER)
         expect(self.badge(page, "later")).to_have_accessible_name(tasks_label(1, LATER))
         self.assertEqual(self.expected_counts(page), {"dark": 4, "camera": 1, "quiet": 1, "drafted": 1, "later": 1})

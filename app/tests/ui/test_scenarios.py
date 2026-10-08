@@ -614,7 +614,7 @@ class ScenarioJourney:
             for text in (LOW_LIGHT, PRIVACY):
                 self.thought(page, thoughts[text]).click(modifiers=["Shift"])
             expect(page.locator(".sk-node[aria-pressed='true']")).to_have_count(3)
-        create = page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Create work from selected thoughts")
+        create = page.get_by_role("button", name="Create task from selected thoughts", exact=True)
         with page.expect_response(lambda r: r.request.method == "POST" and urllib.parse.urlsplit(r.url).path == f"/api/v1/projects/{lamp}/work") as saved:
             self.tap(create)
         self.assertEqual(saved.value.status, 201)
@@ -746,7 +746,7 @@ class ScenarioJourney:
         market_task = self.api("jonas", "POST", f"/api/v1/projects/{lamp}/work", {"title": MARKET_TASK, "sources": [{"type": "thought", "id": market}]}, status=201)
         self.open_map(page)
         self.tap(self.thought(page, market))
-        self.tap(page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Remove from sketch"))
+        self.tap(page.get_by_role("button", name="Remove from sketch", exact=True))
         self.wait_for("the placement to go", lambda: all(t["id"] != market for t in self.sketch("ada", s["map"])["thoughts"]))
         kept = self.api("ada", "GET", f"/api/v1/work/{market_task['id']}", status=200)
         self.assertEqual((kept["title"], kept["status"]), (MARKET_TASK, "open"), "the task outlives its map placement")

@@ -336,7 +336,10 @@ class AdaptiveMatrix(AdaptiveBase):
         zoom = page.get_by_role("group", name="Zoom")
         for button in zoom.get_by_role("button").all():
             self.primary(page, button, f"the zoom control “{button.get_attribute('aria-label')}”")
-        self.measure(page, ".sk-help", "The map hint")
+        add = page.get_by_role("button", name="Add a thought", exact=True)
+        if add.count():
+            self.primary(page, add, "the phone's Add a thought")
+        self.measure(page, ".sk-hint, .sk-phone__note", "The map hint")
         self.no_sideways_scroll(page, "Map")
         self.shot(page, f"adapt-{size}-map")
 
@@ -438,7 +441,9 @@ class AdaptiveMatrix(AdaptiveBase):
                 expect(page.locator("#details.ui-panel--docked")).to_be_visible()
                 page.wait_for_timeout(300)
                 after = page.locator(".sk-canvas").bounding_box()["width"]
-                self.assertGreaterEqual(after, before - 1, f"the map canvas keeps its width beside Details at {width}")
+                # F-026: the map fills its pane, so docking Details narrows it; what is left stays a real work surface.
+                self.assertLessEqual(after, before + 1)
+                self.assertGreaterEqual(after, min(900, width * 0.45), f"the map canvas keeps a usable width beside Details at {width}")
                 self.assertLessEqual(page.locator(".sk-canvas").bounding_box()["x"] + after, page.locator("#details").bounding_box()["x"] + 1)
                 page.goto(f"/projects/{pid}/tasks")
                 expect(page.locator(".tb-board")).to_be_visible()

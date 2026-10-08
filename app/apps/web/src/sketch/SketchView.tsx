@@ -106,6 +106,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   }
   // AC-2: no Shift key on touch, so a tablet's toolbar can switch tapping to adding to the selection.
   const [selectSeveral, setSelectSeveral] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [connectState, setConnectFrom] = useState<string | null>(null);
   const [editingState, setEditing] = useState<Editing | null>(null);
   const editSaveInFlight = useRef(false);
@@ -125,7 +126,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
 
   // UI116-4: each thought of a project sketch shows how many of the project's tasks link to it,
   // from bounded reads of the sketch's own thoughts (#170), never the project's work collection.
-  // They refresh when the project's work or links change, on focus and after Create work; a
+  // They refresh when the project's work or links change, on focus and after Create task; a
   // private or DM sketch has no linkable thoughts.
   const taskProjectId = sketch?.scope === 'project' ? sketch.projectId ?? null : null;
   const [taskRevision, setTaskRevision] = useState(0);
@@ -518,7 +519,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   const workAttempt = useRef<{ ids: string; key: string } | null>(null);
   const makeWork = async () => {
     const thoughts = selection.flatMap((id) => { const t = find(id); return t ? [t] : []; });
-    if (!thoughts.length || !sketch?.projectId) { say('Select thoughts first, then Create work'); return; }
+    if (!thoughts.length || !sketch?.projectId) { say('Select thoughts first, then Create task'); return; }
     const ids = thoughts.map((t) => t.id).join(',');
     if (workAttempt.current?.ids !== ids) workAttempt.current = { ids, key: crypto.randomUUID() };
     const title = thoughts.length === 1 ? thoughts[0]!.text : `Explore: ${thoughts.map((t) => t.text).join(', ')}`;
@@ -527,7 +528,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
       workAttempt.current = null;
       setTaskRevision((value) => value + 1);
       revalidator.revalidate();
-      say(`Created work ${quote(item.title)}; the thoughts stay on the map`);
+      say(`Created task ${quote(item.title)}; the thoughts stay on the map`);
       openDetails({ kind: 'work', id: item.id, projectId: item.projectId });
     } catch { say('Could not create the work yet. Wait for “Saved”, then try again.'); }
   };
@@ -583,9 +584,8 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     describe(next);
   };
 
-  return (
-    <div className={`sk-page${mode === 'map' ? ' sk-page--map' : ''}`} ref={rootRef} onKeyDown={onKeyDown}>
-      <div className={`sk${mode === 'map' ? ' sk--map' : ''}`}>
+  const mapMode = mode === 'map';
+  const head = (
         <div className="sk-head">
           <p className="sk-lead">
             <Link to={back} className="sk-back">Sketches</Link>
@@ -598,7 +598,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
             ) : (
               <button type="button" className="sk-title" disabled={!canWrite} aria-label={canWrite ? `Rename sketch ${sketch.title}` : undefined} onClick={() => setRenaming(true)}>{sketch.title}</button>
             )}
-            <span className="sk-aud"><Icon name={sketch.scope === 'project' ? 'people' : 'lock'} size={12} />{audience(sketch, me.user.id, projectName, dmAudience)}</span>
+            <span className="sk-aud" title="Who can see this map"><Icon name={sketch.scope === 'project' ? 'people' : 'lock'} size={12} />{audience(sketch, me.user.id, projectName, dmAudience)}</span>
           </p>
           {/* #96: a DM sketch can be copied into a project, after an exact preview in Details. */}
           {sketch.scope === 'dm' && canWrite ? (
@@ -610,7 +610,9 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
             ))}
           </div>
         </div>
-
+  );
+  const notices = (
+    <>
         {sketch.copies.length ? (
           <ul className="sk-copies" aria-label="Project copies">
             {sketch.copies.map((copy) => (
@@ -621,36 +623,6 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
         {sketch.origin ? (
           <p className="sk-origin"><Icon name="lock" size={12} />Copied from a direct message by {sketch.origin.copiedBy.id === me.user.id ? 'you' : sketch.origin.copiedBy.name} · {when(sketch.origin.copiedAt)}<span className="sk-origin__long">. Only the thoughts were copied; the conversation stays private.</span><span className="sk-origin__short"> · the conversation stays private</span></p>
         ) : null}
-
-        {canWrite ? (
-          <div className={`sk-bar${doc.problem ? ' sk-bar--problem' : ''}`}>
-            <div className={`sk-tools${sketch.scope === 'project' ? ' sk-tools--seven' : ''}`} role="toolbar" aria-label="Sketch tools">
-            {phone && mode === 'map' ? null : <button type="button" className="ui-btn ui-btn--quiet sk-add" onClick={() => add(selection[selection.length - 1] ?? null)}><Icon name="plus" size={14} />Thought</button>}
-            {phone ? null : <button type="button" className="ui-btn ui-btn--quiet" aria-pressed={!!connectFrom} onClick={connect} aria-label="Connect"><Icon name="link" size={14} /><span className="sk-bl">Connect</span></button>}
-            {coarse && !phone ? <button type="button" className="ui-btn ui-btn--quiet" aria-pressed={selectSeveral} onClick={() => { setSelectSeveral(!selectSeveral); say(selectSeveral ? 'Tapping selects one thought' : 'Tap thoughts to add them to the selection'); }}><Icon name="check" size={14} /><span className="sk-bl">Select several</span></button> : null}
-            <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={selection.length !== 1} onClick={() => {
-              if (selection.length !== 1) { say('Select one thought, then Edit'); return; }
-              startEdit(selection[0]!);
-            }} aria-label="Edit"><Icon name="edit" size={14} /><span className="sk-bl">Edit</span></button>
-            {phone ? null : <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={cycleShape} aria-label="Change shape"><Icon name="shape" size={14} /><span className="sk-bl">Shape</span></button>}
-            <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={() => remove(selection)} aria-label="Remove from sketch"><Icon name="trash" size={14} /><span className="sk-bl">Remove</span></button>
-            {sketch.scope === 'project' ? <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={() => void makeWork()} aria-label="Create work from selected thoughts"><Icon name="tasks" size={14} /><span className="sk-bl sk-bl--long">Create task</span><span className="sk-bl sk-bl--short">Task</span></button> : null}
-            <span className="sk-div" aria-hidden="true" />
-            <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!doc.canUndo} onClick={undo} aria-label="Undo"><Icon name="undo" size={14} /><span className="sk-bl">Undo</span></button>
-            </div>
-            <p className="sk-status" role="status">
-              {doc.problem ? <span className="sk-warn">{doc.problem}</span> : status.text}
-              {!doc.problem && status.change ? <span className={doc.saving ? undefined : 'sk-ok'}> · {busy}</span> : null}
-            </p>
-          </div>
-        ) : (
-          <>
-            <p className="sk-readonly"><Icon name="lock" size={12} />{sketch.scope === 'dm'
-              ? 'Nobody else is in this conversation now, so the sketch is read-only until the other person reopens it.'
-              : 'You can look at this sketch; people who can change it keep it up to date.'}</p>
-            <p className="sk-status sk-status--readonly" role="status">{status.text}</p>
-          </>
-        )}
 
         {/* Pressing these keeps focus in the editor. Safari and macOS Firefox never focus a pressed
             button: the editor would blur first, and leaving the field saves, even for Cancel edit. */}
@@ -674,27 +646,134 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
           <textarea aria-label="Recoverable thought edit" readOnly value={editingState.initial} />
           <Button variant="secondary" onClick={() => setEditing(null)}>Discard edit</Button>
         </label> : null}
+    </>
+  );
+  const sayLine = doc.problem ? <span className="sk-warn">{doc.problem}</span> : status.text;
+  const statusLine = (
+    <p className={`sk-status${canWrite ? '' : ' sk-status--readonly'}`} role="status">
+      {sayLine}
+      {!doc.problem && status.change ? <span className={doc.saving ? undefined : 'sk-ok'}> · {busy}</span> : null}
+    </p>
+  );
+  const hasStatus = !!doc.problem || !!status.text;
+  const helpText = phone
+    ? 'Tap a thought to select it. Add a thought, then Paste, fills a draft from copied lines, a link or an image. List shows the same thoughts in order.'
+    : coarse
+      ? 'Tap a thought to select it, then drag it, or drag its dot onto another thought to connect them. Add links a new thought to it. Select several adds taps to the selection. Thought, then Paste, turns copied lines, a link or an image into a draft. List shows the same thoughts in order.'
+      : 'Drag to move, drag a thought’s dot onto another thought to connect, or release it on empty space for a connected draft thought. Drag empty space to pan, Shift-click to select several. On a focused thought: arrows move (Shift further, Alt resizes) · Enter edits · Space selects · Enter on the dot connects · + adds a linked thought · Delete removes · Ctrl/⌘ Z undoes · Ctrl/⌘ V pastes lines, a link or an image as a draft.';
 
-        {mode === 'map' ? (
-          sketch.thoughts.length || canWrite ? (
-            <>
-              <SketchMap {...shared} coarse={coarse} compact={phone} helpId={helpId} heights={heights}
-                onConnect={connectTo} onAddAt={(parentId, x, y) => add(parentId, '', false, { x, y })} onConnectFrom={connectFromDot} onAddThought={() => add(selection[selection.length - 1] ?? null)}
-                draft={capture.draft && !capture.draft.lines ? { x: capture.draft.x, y: capture.draft.y, parentId: capture.draft.parentId } : null} onMove={move} onResize={resize} onClear={() => { if (connectFrom) return; setSelection([]); say(''); }} />
-              {!sketch.thoughts.length ? <p className="sk-first">An empty sketch. Add the first thought with <b>Thought</b>, then keep adding with the <b>+</b> beside it.</p> : null}
-            </>
-          ) : <p className="sk-empty-list">No thoughts yet.</p>
+  if (mapMode && !(sketch.thoughts.length || canWrite)) {
+    return (
+      <div className="sk-page" ref={rootRef} onKeyDown={onKeyDown}><div className="sk">{head}<p className="sk-empty-list">No thoughts yet.</p></div></div>
+    );
+  }
+  if (mapMode) {
+    // F-026: the map fills the pane; the header, the tools and the notices float over it.
+    const dock = canWrite && !phone ? (
+      <div className="sk-tools" role="toolbar" aria-label="Sketch tools">
+        <button type="button" className="sk-tool" aria-label="Select" aria-pressed={!connectFrom} data-tip="Select" onClick={() => { if (connectFrom) escape(); }}>
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"><path d="M3.5 2.5 12 6.2 8 7.6 6.6 11.7z" /></svg>
+        </button>
+        <button type="button" className="ui-btn ui-btn--quiet sk-add" onClick={() => add(selection[selection.length - 1] ?? null)}><Icon name="plus" size={14} />Thought</button>
+        {coarse ? <button type="button" className="ui-btn ui-btn--quiet" aria-pressed={selectSeveral} onClick={() => { setSelectSeveral(!selectSeveral); say(selectSeveral ? 'Tapping selects one thought' : 'Tap thoughts to add them to the selection'); }}><Icon name="check" size={14} /><span className="sk-bl">Select several</span></button> : null}
+        {sketch.scope === 'project' ? <button type="button" className="ui-btn ui-btn--primary sk-task-btn" aria-disabled={!selection.length} onClick={() => void makeWork()} aria-label="Create task from selected thoughts">Create task</button> : null}
+        <button type="button" className="sk-tool" aria-label="Undo" data-tip="Undo" aria-disabled={!doc.canUndo} onClick={undo}><Icon name="undo" size={16} /></button>
+      </div>
+    ) : null;
+    const hint = canWrite ? (
+      <div className="sk-line">
+        {statusLine}
+        {!hasStatus && !phone ? <p className="sk-hint">Drag a dot onto a thought to connect · release on empty space to add a new one</p> : null}
+      </div>
+    ) : <div className="sk-line">{statusLine}</div>;
+    return (
+      <div className="sk-page sk-page--map" ref={rootRef} onKeyDown={onKeyDown}>
+        <div className="sk sk--map">
+          <div className="sk-over">
+            {head}
+            {!canWrite ? <p className="sk-readonly"><Icon name="lock" size={12} />{sketch.scope === 'dm'
+              ? 'Nobody else is in this conversation now, so the sketch is read-only until the other person reopens it.'
+              : 'You can look at this sketch; people who can change it keep it up to date.'}</p> : null}
+            {notices}
+          </div>
+          <SketchMap {...shared} coarse={coarse} compact={phone} helpId={helpId} heights={heights} dock={dock} hint={hint}
+            bar={{ project: sketch.scope === 'project', canUndo: doc.canUndo, helpOpen, onShape: cycleShape, onTask: () => void makeWork(), onUndo: undo, onHelp: () => setHelpOpen(!helpOpen) }}
+            onConnect={connectTo} onAddAt={(parentId, x, y) => add(parentId, '', false, { x, y })} onConnectFrom={connectFromDot} onAddThought={() => add(selection[selection.length - 1] ?? null)}
+            draft={capture.draft && !capture.draft.lines ? { x: capture.draft.x, y: capture.draft.y, parentId: capture.draft.parentId } : null} onMove={move} onResize={resize} onClear={() => { if (connectFrom) return; setSelection([]); say(''); }} />
+          {!sketch.thoughts.length ? <p className="sk-first">An empty sketch. Add the first thought with <b>Thought</b>, then keep adding with the <b>+</b> beside it.</p> : null}
+          <p className={`sk-help${helpOpen ? ' is-open' : ''}`} id={helpId}>{helpText}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="sk-page" ref={rootRef} onKeyDown={onKeyDown}>
+      <div className="sk">
+        {head}
+        {sketch.copies.length ? (
+          <ul className="sk-copies" aria-label="Project copies">
+            {sketch.copies.map((copy) => (
+              <li key={copy.sketchId}><Icon name="check" size={12} />Copied to <Link to={`/projects/${copy.projectId}/map/${copy.sketchId}`}>{copy.projectName}</Link> · {when(copy.copiedAt)}<span className="sk-origin__long"> · later changes here stay in this conversation</span><span className="sk-origin__short"> · not synced</span></li>
+            ))}
+          </ul>
+        ) : null}
+        {sketch.origin ? (
+          <p className="sk-origin"><Icon name="lock" size={12} />Copied from a direct message by {sketch.origin.copiedBy.id === me.user.id ? 'you' : sketch.origin.copiedBy.name} · {when(sketch.origin.copiedAt)}<span className="sk-origin__long">. Only the thoughts were copied; the conversation stays private.</span><span className="sk-origin__short"> · the conversation stays private</span></p>
+        ) : null}
+
+
+        {canWrite ? (
+          <div className={`sk-bar${doc.problem ? ' sk-bar--problem' : ''}`}>
+            <div className={`sk-tools${sketch.scope === 'project' ? ' sk-tools--seven' : ''}`} role="toolbar" aria-label="Sketch tools">
+            <button type="button" className="ui-btn ui-btn--quiet sk-add" onClick={() => add(selection[selection.length - 1] ?? null)}><Icon name="plus" size={14} />Thought</button>
+            {phone ? null : <button type="button" className="ui-btn ui-btn--quiet" aria-pressed={!!connectFrom} onClick={connect} aria-label="Connect"><Icon name="link" size={14} /><span className="sk-bl">Connect</span></button>}
+            <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={selection.length !== 1} onClick={() => {
+              if (selection.length !== 1) { say('Select one thought, then Edit'); return; }
+              startEdit(selection[0]!);
+            }} aria-label="Edit"><Icon name="edit" size={14} /><span className="sk-bl">Edit</span></button>
+            {phone ? null : <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={cycleShape} aria-label="Change shape"><Icon name="shape" size={14} /><span className="sk-bl">Shape</span></button>}
+            <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={() => remove(selection)} aria-label="Remove from sketch"><Icon name="trash" size={14} /><span className="sk-bl">Remove</span></button>
+            {sketch.scope === 'project' ? <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={() => void makeWork()} aria-label="Create task from selected thoughts"><Icon name="tasks" size={14} /><span className="sk-bl sk-bl--long">Create task</span><span className="sk-bl sk-bl--short">Task</span></button> : null}
+            <span className="sk-div" aria-hidden="true" />
+            <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!doc.canUndo} onClick={undo} aria-label="Undo"><Icon name="undo" size={14} /><span className="sk-bl">Undo</span></button>
+            </div>
+            {statusLine}
+          </div>
         ) : (
-          <SketchList {...shared} personalOutline={personalOutline} onNavigate={navigateThought} />
+          <>
+            <p className="sk-readonly"><Icon name="lock" size={12} />{sketch.scope === 'dm'
+              ? 'Nobody else is in this conversation now, so the sketch is read-only until the other person reopens it.'
+              : 'You can look at this sketch; people who can change it keep it up to date.'}</p>
+            <p className="sk-status sk-status--readonly" role="status">{status.text}</p>
+          </>
         )}
+        {/* Pressing these keeps focus in the editor. Safari and macOS Firefox never focus a pressed
+            button: the editor would blur first, and leaving the field saves, even for Cancel edit. */}
+        {editing && canWrite ? <div className="sk-edit-controls" role="group" aria-label="Current thought edit" onMouseDown={(event) => event.preventDefault()}>
+          <Button disabled={editing.saving || !editing.initial.trim()} onClick={() => void finishEdit(editing.initial)}>{editing.saving ? 'Saving…' : 'Save edit'}</Button>
+          <Button variant="secondary" disabled={editing.saving} onClick={() => void finishEdit(null)}>Cancel edit</Button>
+        </div> : null}
 
-        <p className="sk-help" id={helpId}>
-          {phone
-            ? 'Tap a thought to select it. Add a thought, then Paste, fills a draft from copied lines, a link or an image. List shows the same thoughts in order.'
-            : coarse
-            ? 'Tap a thought to select it, then drag it, or drag its dot onto another thought to connect them. Add links a new thought to it. Select several adds taps to the selection. Thought, then Paste, turns copied lines, a link or an image into a draft. List shows the same thoughts in order.'
-            : 'Drag to move, drag a thought’s dot onto another thought to connect, or release it on empty space for a connected draft thought. Drag empty space to pan, Shift-click to select several. On a focused thought: arrows move (Shift further, Alt resizes) · Enter edits · Space selects · Enter on the dot connects · + adds a linked thought · Delete removes · Ctrl/⌘ Z undoes · Ctrl/⌘ V pastes lines, a link or an image as a draft.'}
-        </p>
+        {capture.draft ? <DraftCapture draft={capture.draft} parent={capture.draft.parentId ? find(capture.draft.parentId)?.text ?? null : null}
+          saving={savingDraft} canWrite={canWrite} onText={(text) => { if (capture.draft) capture.set({ ...capture.draft, text, key: doc.newId() }); }}
+          onLines={(lines) => {
+            if (!capture.draft) return;
+            if (lines.length) { capture.set({ ...capture.draft, lines }); return; }
+            capture.set(null); say('Pasted thoughts cancelled'); focusThought('.sk-add');
+          }}
+          onPaste={coarse ? () => void pasteFromClipboard() : undefined}
+          onSave={() => void saveDraft()} onCancel={() => { capture.set(null); say(capture.draft?.lines ? 'Pasted thoughts cancelled' : 'Thought draft cancelled'); focusThought('.sk-add'); }} /> : null}
+        {uploading ? <p className="sk-draft sk-draft--uploading" role="status"><Icon name="image" size={14} />Uploading the pasted image privately…</p> : null}
+
+        {editingState && (!editing || !canWrite) ? <label className="sk-draft">Your unsaved edit is kept
+          <textarea aria-label="Recoverable thought edit" readOnly value={editingState.initial} />
+          <Button variant="secondary" onClick={() => setEditing(null)}>Discard edit</Button>
+        </label> : null}
+
+
+        <SketchList {...shared} personalOutline={personalOutline} onNavigate={navigateThought} />
+        <p className="sk-help" id={helpId}>{helpText}</p>
       </div>
     </div>
   );

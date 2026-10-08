@@ -185,9 +185,9 @@ class SketchJourney(unittest.TestCase):
         self.assertIn("ToF distance sensor (VL53L5CX)", texts)
         self.assertNotIn("discarded", texts)
 
-        # The toolbar's labelled Edit edits the one selected thought.
+        # The floating bar above the selected thought has a labelled Edit for that one thought.
         self.thought(page, "Swipe to dim").click()
-        page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Edit", exact=True).click()
+        page.get_by_role("toolbar", name="Selection actions").get_by_role("button", name=re.compile("^Edit ")).click()
         expect(page.get_by_label("Thought text")).to_be_focused()
         page.keyboard.press("Escape")
 
@@ -291,12 +291,13 @@ class SketchJourney(unittest.TestCase):
     def test_04_connect_and_shape(self) -> None:
         page = self.open_sketch()
         self.thought(page, "Swipe to dim").click()
-        tools = page.get_by_role("toolbar", name="Sketch tools")
+        tools = page.get_by_role("toolbar", name="Selection actions")
         tools.get_by_role("button", name="Connect", exact=True).click()
         expect(tools.get_by_role("button", name="Connect", exact=True)).to_have_attribute("aria-pressed", "true")
         self.thought(page, "ToF distance sensor").click()
         expect(page.locator(".sk-status")).to_contain_text("Linked “Swipe to dim")
         expect(page.locator(".sk-edges path")).to_have_count(3)
+        tools.get_by_role("button", name="More actions").click()
         tools.get_by_role("button", name="Change shape").click()
         self.saved(page)
         shapes = {t["text"]: t["shape"] for t in self.stored(page)["thoughts"]}
@@ -404,17 +405,11 @@ class SketchJourney(unittest.TestCase):
                 a, b = box(page, nodes.nth(i)), box(page, nodes.nth(j))
                 overlap = a["x"] < b["x"] + b["width"] and b["x"] < a["x"] + a["width"] and a["y"] < b["y"] + b["height"] and b["y"] < a["y"] + a["height"]
                 self.assertFalse(overlap, f"thoughts {i} and {j} do not overlap")
-        bar = box(page, page.get_by_role("toolbar", name="Sketch tools"))
-        self.assertLessEqual(bar["height"], 100, "the tools take two compact rows on a phone")
-        # The toolbar says what each action does.
-        tools = page.get_by_role("toolbar", name="Sketch tools")
-        # S15: the phone views and adds; connecting and shaping belong to the computer.
-        for label in ("Edit", "Remove", "Undo"):
-            expect(tools.get_by_text(label, exact=True)).to_be_visible()
-        for label in ("Connect", "Shape"):
-            expect(tools.get_by_text(label, exact=True)).to_have_count(0)
+        # S15: the phone map is the whole screen; no toolbar row. It views and adds, and says where to connect.
+        expect(page.get_by_role("toolbar", name="Sketch tools")).to_have_count(0)
         expect(page.get_by_role("button", name="Add a thought", exact=True)).to_be_visible()
         expect(page.get_by_text("Connect and arrange on a computer")).to_be_visible()
+        expect(page.get_by_role("radio", name="List")).to_be_visible()
         # Selecting shows a labelled Edit action beside the +.
         node = self.thought(page, "Gesture-controlled desk lamp")
         node.tap()
@@ -422,6 +417,11 @@ class SketchJourney(unittest.TestCase):
         expect(edit).to_be_visible()
         expect(edit).to_have_text("Edit")
         self.assertGreaterEqual(box(page, edit)["height"], 44, "touch target")
+        actions = page.get_by_role("toolbar", name="Selection actions")
+        for label in ("Remove from sketch", "Undo"):
+            expect(actions.get_by_role("button", name=label, exact=True)).to_be_visible()
+        for label in ("Connect", "Change shape", "More actions"):
+            expect(actions.get_by_role("button", name=label, exact=True)).to_have_count(0)
         shot(page, "sketch-phone-390-select")
         edit.tap()
         expect(page.get_by_label("Thought text")).to_be_focused()
@@ -536,7 +536,8 @@ class SketchJourney(unittest.TestCase):
         # Use the whole map footprint so these fixtures also reproduce on the old overlapping
         # controls. The new control strip keeps that footprint and reduces only the scroll view.
         width = canvas.evaluate("el => el.clientWidth")
-        height = page.locator(".sk-canvas-wrap").evaluate("el => el.clientHeight")
+        # The floating header and tools sit over the canvas padding; Fit lays the graph out between them.
+        height = canvas.evaluate("el => el.clientHeight - parseFloat(getComputedStyle(el).paddingTop) - parseFloat(getComputedStyle(el).paddingBottom)")
         far_x = round(width / ratios[0] - 240 - 24)
         far_y = round(height / ratios[1] - 100 - 24)
         first = self.api(page, "POST", f"/api/v1/sketches/{sketch['id']}/thoughts", {"text": "Explore gesture sensing in low light", "x": 24, "y": 24, "width": 240, "height": 100, "shape": "card"})
@@ -567,6 +568,7 @@ class SketchJourney(unittest.TestCase):
                 controls = box(page, page.get_by_role("group", name="Zoom", exact=True))
                 self.assert_no_overlap(corner, controls, "Fit leaves the far bottom-right thought clear of zoom controls")
                 canvas = box(page, page.locator(".sk-canvas"))
+                self.assert_no_overlap(corner, box(page, page.locator(".sk-dock__row")), "Fit leaves the far thought clear of the floating tools")
                 for node in page.locator(".sk-node").all():
                     bounds = box(page, node)
                     self.assertGreaterEqual(bounds["x"], canvas["x"] - 1)
@@ -586,7 +588,6 @@ class SketchJourney(unittest.TestCase):
                 canvas = page.locator(".sk-canvas")
                 controls = box(page, page.get_by_role("group", name="Zoom", exact=True))
                 viewport_box = box(page, canvas)
-                self.assert_no_overlap(viewport_box, controls, "the readable minimum clips excess content at the scroll viewport, before controls")
                 first = box(page, self.thought(page, "Explore gesture sensing"))
                 self.assertGreaterEqual(first["x"], viewport_box["x"], "Fit preserves the top-left camera")
                 self.assertGreaterEqual(first["y"], viewport_box["y"], "Fit preserves the top-left camera")
@@ -620,7 +621,7 @@ class SketchJourney(unittest.TestCase):
                 # where the previous controls overlay covered both. Avoid centering it, which
                 # would hide that failure behind the blank space below the final projected row.
                 corner = self.thought(page, "Keep a physical off switch")
-                corner.evaluate("node => { const canvas = node.closest('.sk-canvas'); canvas.scrollTop += node.getBoundingClientRect().bottom - canvas.getBoundingClientRect().bottom; }")
+                corner.evaluate("node => { const canvas = node.closest('.sk-canvas'); canvas.scrollTop = canvas.scrollHeight; }")
                 shot(page, f"sketch-fit-phone-{width}-corner")
                 viewport_box = box(page, canvas)
                 control_box = box(page, controls)
@@ -631,7 +632,7 @@ class SketchJourney(unittest.TestCase):
                     self.assertLessEqual(bounds["x"] + bounds["width"], viewport_box["x"] + viewport_box["width"] + 1)
                     self.assertLessEqual(bounds["y"] + bounds["height"], viewport_box["y"] + viewport_box["height"] + 1)
                     self.assert_no_overlap(bounds, control_box, "the complete last thought and author stay clear of Fit and zoom")
-                self.assert_no_overlap(viewport_box, control_box, "phone controls have a protected strip outside the scroll view")
+                self.assert_no_overlap(box(page, corner), box(page, page.locator(".sk-phone")), "the last thought scrolls clear of the floating Add a thought")
                 expect(corner.locator(".sk-p")).to_contain_text("From you")
                 self.assertGreaterEqual(corner.locator(".sk-t").evaluate("el => parseFloat(getComputedStyle(el).fontSize)"), 12)
                 self.assertGreaterEqual(corner.locator(".sk-p").evaluate("el => parseFloat(getComputedStyle(el).fontSize)"), 10)

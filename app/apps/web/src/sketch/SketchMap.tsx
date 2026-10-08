@@ -1,6 +1,7 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type WheelEvent } from 'react';
+import { Fragment, type CSSProperties, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type WheelEvent } from 'react';
 import { DEFAULT_THOUGHT_SIZE, SKETCH_LIMITS, type SketchDetail, type Thought } from '@flux/contracts';
-import { Icon } from '../ui';
+import { Icon, StatusGlyph } from '../ui';
+import { STATUS_LABEL, taskNumber } from '../work/format';
 import { linkPath, PAD, project, rectOf, type Rect } from './geometry';
 import { provenance, quote } from './format';
 import { ThoughtEditor } from './ThoughtEditor';
@@ -9,7 +10,22 @@ import { ThoughtTasks, type ThoughtTasksEntry } from './ThoughtTasks';
 import { linkOf } from './paste';
 import type { Editing } from './SketchView';
 
+/** What the floating bar above a selected thought needs from the view (the rarer actions sit behind its "…"). */
+export interface SelectionTools {
+  project: boolean;
+  canUndo: boolean;
+  helpOpen: boolean;
+  onShape(): void;
+  onTask(): void;
+  onUndo(): void;
+  onHelp(): void;
+}
+
 export interface SketchMapProps {
+  /** The floating toolbar at the bottom (computer) and the line above it: hint or status. */
+  dock: ReactNode;
+  hint: ReactNode;
+  bar: SelectionTools;
   sketch: SketchDetail;
   meId: string;
   selection: string[];
@@ -91,6 +107,7 @@ export function SketchMap(props: SketchMapProps) {
   const [panning, setPanning] = useState(false);
   // The dot shows while the pointer is over its thought or itself (mouse only; touch shows it on the selection).
   const [hover, setHover] = useState<string | null>(null);
+  const [more, setMore] = useState(false);
   const zoomedRef = useRef<HTMLDivElement>(null);
   /** P12: a connection being drawn from a dot; `x`,`y` are in stored plane units, `over` the thought under the pointer. */
   const [wire, setWire] = useState<{ from: string; x: number; y: number; over: string | null } | null>(null);
@@ -140,7 +157,7 @@ export function SketchMap(props: SketchMapProps) {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  const projection = compact && canvasWidth && shown.length ? project(shown, heights, canvasWidth, selection.length && canWrite && !editing ? { id: selection[selection.length - 1]!, below: 58 } : null) : null;
+  const projection = compact && canvasWidth && shown.length ? project(shown, heights, canvasWidth, null) : null;
   // On a phone nothing is drawn until the width is known, so thoughts never slide in from the plane layout.
   const measuring = compact && !canvasWidth;
   const rects = projection ? projection.rects : new Map<string, Rect>(shown.map((t) => [t.id, rectOf(t, heights)]));
@@ -301,7 +318,10 @@ export function SketchMap(props: SketchMapProps) {
     const maxY = Math.max(...boxes.map((r) => r.y + r.h)) + PAD;
     // The canvas excludes the controls strip, including at the existing Fit zoom floor.
     // Round down so a fitted graph never grows beyond that measured viewport.
-    const z = Math.max(coarseRef.current ? FIT_MIN_COARSE : FIT_MIN, Math.floor(Math.min(1, canvas.clientWidth / (maxX - minX), canvas.clientHeight / (maxY - minY)) * 100) / 100);
+    // The floating header and tools sit over the padding of the canvas: fit what is left between them.
+    const style = getComputedStyle(canvas);
+    const room = canvas.clientHeight - (parseFloat(style.paddingTop) || 0) - (parseFloat(style.paddingBottom) || 0);
+    const z = Math.max(coarseRef.current ? FIT_MIN_COARSE : FIT_MIN, Math.floor(Math.min(1, canvas.clientWidth / (maxX - minX), room / (maxY - minY)) * 100) / 100);
     setZoom(z);
     cameras.current.plane = { left: Math.max(0, (minX - o.x) * z), top: Math.max(0, (minY - o.y) * z) };
     requestAnimationFrame(apply);
@@ -470,7 +490,7 @@ export function SketchMap(props: SketchMapProps) {
   const draftFrom = props.draft?.parentId ? rects.get(props.draft.parentId) : undefined;
   const editingRect = editing ? rects.get(editing.id) : undefined;
   const editingThought = editing ? byId.get(editing.id) : undefined;
-  const plus = last && lastThought && !editing && !connectFrom && canWrite && !offset ? place(last) : null;
+  const plus = last && lastThought && !editing && canWrite && !offset ? place(last) : null;
   // #252: a selected link thought offers its link; the node itself is a button, so the link sits beside it.
   const openLink = last && lastThought && !editing && !connectFrom && !offset ? linkOf(lastThought.text) : null;
   const linkAnchor = openLink ? (
@@ -479,8 +499,38 @@ export function SketchMap(props: SketchMapProps) {
     </a>
   ) : null;
 
+  /** The actions of the selection: above the thought on a computer, a fixed bar over the phone's Add button. */
+  const selectionBar = (style?: CSSProperties) => {
+    if (!plus || !last || !lastThought) return null;
+    const single = selection.length === 1;
+    const label = quote(lastThought.text);
+    const close = (run: () => void) => () => { setMore(false); run(); };
+      return (
+        <div className="sk-actions" role="toolbar" aria-label="Selection actions" style={style}>
+          {single ? <button type="button" className="sk-edit-btn" aria-label={`Edit ${label}`} onClick={() => props.onEdit(lastThought.id)}>Edit</button> : null}
+          {single && !compact ? <button type="button" className="sk-edit-btn" aria-label="Connect" aria-pressed={connectFrom === lastThought.id} onClick={() => props.onConnectFrom(lastThought.id)}>Connect</button> : null}
+          {linkAnchor}
+          <button type="button" className={`sk-plus${coarse ? ' sk-plus--labelled' : ''}`} aria-label={`Add a thought connected to ${label}`} onClick={() => props.onAdd(lastThought.id)}>
+            <Icon name="plus" size={14} />{coarse ? <span aria-hidden="true">Add</span> : null}
+          </button>
+          {compact && props.bar.project ? <button type="button" className="sk-edit-btn sk-edit-btn--icon" aria-label="Create task from selected thoughts" aria-disabled={false} onClick={props.bar.onTask}><Icon name="tasks" size={16} /></button> : null}
+          <button type="button" className="sk-edit-btn sk-edit-btn--icon" aria-label="Remove from sketch" onClick={() => props.onRemove(selection)}><Icon name="trash" size={16} /></button>
+          {compact ? <button type="button" className="sk-edit-btn sk-edit-btn--icon" aria-label="Undo" aria-disabled={!props.bar.canUndo} onClick={props.bar.onUndo}><Icon name="undo" size={16} /></button> : (
+            <>
+              <button type="button" className="sk-edit-btn sk-edit-btn--icon" aria-label="More actions" aria-expanded={more} onClick={() => setMore(!more)}><Icon name="more" size={16} /></button>
+              {more ? (
+                <>
+                  <button type="button" className="sk-edit-btn" aria-label="Change shape" onClick={close(props.bar.onShape)}>Shape</button>
+                  <button type="button" className="sk-edit-btn" aria-expanded={props.bar.helpOpen} onClick={close(props.bar.onHelp)}>Keyboard</button>
+                </>
+              ) : null}
+            </>
+          )}
+        </div>
+      );
+  };
+
   return (
-    <>
     <div className="sk-canvas-wrap sk-canvas-wrap--controls">
     <div className={`sk-canvas${panning ? ' is-panning' : ''}${connectFrom ? ' is-connecting' : ''}${wire ? ' is-wiring' : ''}`} ref={canvasRef} role="group"
       aria-label={`Sketch: ${sketch.title}`} aria-describedby={helpId} onWheel={onWheel}>
@@ -542,6 +592,9 @@ export function SketchMap(props: SketchMapProps) {
                   style={{ maxHeight: Math.max(48, thought.height - 64) }} /> : null}
                 <span className={`sk-t${link ? ' sk-t--link' : ''}`}>{thought.text}</span>
                 <span className="sk-p">{provenance(thought, meId)}</span>
+                {/* A thought that became a task shows its status, number and owner (F-026). */}
+                {linked?.tasks[0] ? <span className="sk-taskline"><StatusGlyph status={linked.tasks[0].status} size={14} />
+                  <span>{taskNumber(linked.tasks[0])} {STATUS_LABEL[linked.tasks[0].status]}{linked.tasks[0].owner ? ` · ${linked.tasks[0].owner.name}` : ''}</span></span> : null}
                 {/* Room for the count, which is its own button beside this one. */}
                 {linked?.count ? <span className="sk-work-gap" aria-hidden="true" /> : null}
                 {selected && selection.length === 1 && arrange && !coarse && !editing ? (
@@ -553,35 +606,25 @@ export function SketchMap(props: SketchMapProps) {
                   <ThoughtTasks thought={thought} tasks={linked} projectId={projectId} variant="map" onOpenTask={props.onOpenTask} />
                 </div>
               ) : null}
-              {arrange && !editing && !measuring ? (
-                <button type="button" tabIndex={selected ? 0 : -1} data-for={thought.id} aria-label={`Connect from ${quote(thought.text)}: drag to another thought, or press Enter and choose one`}
+              {arrange && !editing && !measuring ? (['right', 'left'] as const).map((side) => (
+                <button key={side} type="button" tabIndex={selected && side === 'right' ? 0 : -1} data-for={thought.id} data-side={side}
+                  aria-label={`Connect from ${quote(thought.text)}: drag to another thought, or press Enter and choose one`} aria-hidden={side === 'left' ? true : undefined}
                   onPointerEnter={() => setHover(thought.id)} onPointerLeave={() => setHover((id) => id === thought.id ? null : id)}
                   className={`sk-dot${selected || connectFrom === thought.id || hover === thought.id ? ' is-on' : ''}${dragging ? ' is-dragging' : ''}`}
-                  style={{ transform: `translate(${p.x + r.w}px, ${p.y + r.h / 2}px) scale(${1 / zoom}) translate(-50%, -50%)` }}
+                  style={{ transform: `translate(${p.x + (side === 'right' ? r.w : 0)}px, ${p.y + r.h / 2}px) scale(${1 / zoom}) translate(-50%, -50%)` }}
                   onPointerDown={(event) => onDotPointerDown(event, thought.id)}
                   onClick={() => { if (!suppressClick.current) props.onConnectFrom(thought.id); }} />
-              ) : null}
+              )) : null}
               </Fragment>
             );
           })}
-          {plus && last && lastThought ? (() => {
+          {plus && last && lastThought ? (!compact ? (() => {
             // Controls keep their on-screen size at every zoom (touch targets stay 44px).
+            const x = plus.x + last.w / 2;
             const keep = `scale(${1 / zoom})`;
-            const add = (
-              <button type="button" className={`sk-plus${coarse ? ' sk-plus--labelled' : ''}`} aria-label={`Add a thought connected to ${quote(lastThought.text)}`} onClick={() => props.onAdd(lastThought.id)}>
-                <Icon name="plus" size={14} />{coarse ? <span aria-hidden="true">Add</span> : null}
-              </button>
-            );
-            const edit = (
-              <button type="button" className="sk-edit-btn" aria-label={`Edit ${quote(lastThought.text)}`} onClick={() => props.onEdit(lastThought.id)}>Edit</button>
-            );
-            return coarse ? (
-              <div className="sk-actions" style={{ transform: `translate(${plus.x + last.w / 2}px, ${plus.y + last.h + 6}px) ${keep} translateX(-50%)` }}>{edit}{linkAnchor}{add}</div>
-            ) : (
-              // With a fine pointer, Edit sits in the toolbar so nothing covers nearby thoughts.
-              <div className="sk-actions" style={{ transform: `translate(${plus.x + last.w + 8}px, ${plus.y + last.h / 2}px) ${keep} translateY(-50%)` }}>{linkAnchor}{add}</div>
-            );
-          })() : linkAnchor && last ? (() => {
+            const at = plus.y < 56 ? `translate(${x}px, ${plus.y + last.h + 8}px) ${keep} translateX(-50%)` : `translate(${x}px, ${plus.y - 8}px) ${keep} translate(-50%, -100%)`;
+            return selectionBar({ transform: at });
+          })() : null) : linkAnchor && last ? (() => {
             // People who can only look still open a selected link.
             const at = place(last);
             return <div className="sk-actions" style={{ transform: `translate(${at.x + last.w / 2}px, ${at.y + last.h + 6}px) scale(${1 / zoom}) translateX(-50%)` }}>{linkAnchor}</div>;
@@ -603,20 +646,26 @@ export function SketchMap(props: SketchMapProps) {
         </div>
       </div>
     </div>
-      <div className="sk-zoom" role="group" aria-label="Zoom">
-        <button type="button" className="sk-zoom__fit" aria-label="Fit the sketch to the view" onClick={fit}>Fit</button>
-        <button type="button" aria-label="Zoom out" data-tip="Zoom out" disabled={zoom <= ZOOMS[0]!} onClick={() => setZoom(zoomOut(zoom))}><Icon name="minus" size={14} /></button>
-        <button type="button" className="sk-zoom__level" aria-label={`Zoom ${Math.round(zoom * 100)}%, reset to 100%`} onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button>
-        <button type="button" aria-label="Zoom in" data-tip="Zoom in" disabled={zoom >= ZOOMS[ZOOMS.length - 1]!} onClick={() => setZoom(zoomIn(zoom))}><Icon name="plus" size={14} /></button>
+      <div className="sk-dock">
+        {props.hint}
+        <div className="sk-dock__row">
+          {props.dock}
+          <div className="sk-zoom" role="group" aria-label="Zoom">
+            <button type="button" className="sk-zoom__fit" aria-label="Fit the sketch to the view" onClick={fit}>Fit</button>
+            <button type="button" aria-label="Zoom out" data-tip="Zoom out" disabled={zoom <= ZOOMS[0]!} onClick={() => setZoom(zoomOut(zoom))}><Icon name="minus" size={14} /></button>
+            <button type="button" className="sk-zoom__level" aria-label={`Zoom ${Math.round(zoom * 100)}%, reset to 100%`} onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button>
+            <button type="button" aria-label="Zoom in" data-tip="Zoom in" disabled={zoom >= ZOOMS[ZOOMS.length - 1]!} onClick={() => setZoom(zoomIn(zoom))}><Icon name="plus" size={14} /></button>
+          </div>
+        </div>
       </div>
-    </div>
       {compact && canWrite ? (
         <div className="sk-phone">
+          {selectionBar()}
           <p className="sk-phone__note"><Icon name="monitor" size={16} />Connect and arrange on a computer</p>
           <button type="button" className="sk-fab" onClick={props.onAddThought}><Icon name="plus" size={18} />Add a thought</button>
         </div>
       ) : null}
-    </>
+    </div>
   );
 }
 

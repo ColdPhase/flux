@@ -58,7 +58,7 @@ class SketchWorkDetailsJourney(unittest.TestCase):
                     page.goto(f"/map/{self.sketch}" if route == "workspace" else canonical)
                     expect(page).to_have_url(re.compile(rf"{re.escape(canonical)}$"))
                     page.locator(f".sk-node[data-id='{self.thought}']").click()
-                    create = page.get_by_role("button", name="Create work from selected thoughts", exact=True)
+                    create = page.get_by_role("button", name="Create task from selected thoughts", exact=True)
                     expect(create).to_have_attribute("aria-disabled", "false")
                     with page.expect_response(lambda response: response.request.method == "POST"
                         and urlsplit(response.url).path == f"/api/v1/projects/{self.project}/work") as saved:

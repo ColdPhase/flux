@@ -73,7 +73,10 @@ class MapLayoutJourney(unittest.TestCase):
         return tasks[1]
 
     def assert_hint_inside_pane(self, page):
-        hint = page.locator('.sk-help')
+        """F-026: one line of hint above the tools on a computer, the phone's note and Add button on a phone;
+        the long keyboard help stays attached to the map for assistive technology."""
+        phone = page.viewport_size['width'] <= 640
+        hint = page.locator('.sk-phone__note' if phone else '.sk-hint')
         expect(hint).to_be_in_viewport(ratio=1)
         self.assertTrue(hint.evaluate('el => el.scrollWidth <= el.clientWidth + 1 && el.scrollHeight <= el.clientHeight + 1'),
             'all hint text wraps inside its own box')
@@ -81,8 +84,11 @@ class MapLayoutJourney(unittest.TestCase):
         self.assertGreaterEqual(bounds['left'], bounds['pLeft'])
         self.assertLessEqual(bounds['right'], bounds['pRight'] + 1)
         self.assertGreaterEqual(bounds['top'], bounds['pTop'])
-        self.assertLessEqual(bounds['bottom'], bounds['pBottom'] + 1, 'hint stays above the scroll pane bottom')
+        self.assertLessEqual(bounds['bottom'], bounds['pBottom'] + 1, 'hint stays inside the pane')
         self.assertLessEqual(page.locator('body').evaluate('el => el.scrollWidth'), page.viewport_size['width'])
+        described = page.locator('.sk-canvas').get_attribute('aria-describedby')
+        self.assertEqual(page.locator('.sk-help').get_attribute('id'), described, 'the keyboard help describes the map')
+        self.assertTrue(page.locator('.sk-help').text_content().strip(), 'the keyboard help has text')
 
     def test_01_task_details_and_wrapped_header_keep_the_complete_hint_visible(self):
         page = self.page()
@@ -160,9 +166,6 @@ class MapLayoutJourney(unittest.TestCase):
         page.get_by_role('button', name='Add a thought', exact=True).click()
         draft = page.get_by_role('form', name='New thought draft').get_by_label('Thought text')
         draft.fill('Keep measurements while the keyboard takes space')
-        page.locator('.sk-help').scroll_into_view_if_needed()
-        expect(page.locator('.sk-help')).to_be_in_viewport(ratio=1)
-        self.assertTrue(page.locator('.sk-help').evaluate('el => el.scrollWidth <= el.clientWidth + 1 && el.scrollHeight <= el.clientHeight + 1'))
         self.assertLessEqual(page.locator('body').evaluate('el => el.scrollWidth'), 320)
         draft.scroll_into_view_if_needed()
         expect(draft).to_have_value('Keep measurements while the keyboard takes space')

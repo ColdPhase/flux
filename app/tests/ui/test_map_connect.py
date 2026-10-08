@@ -72,7 +72,7 @@ class MapConnectJourney(unittest.TestCase):
         """Drag from the dot of `source` onto thought `target`, or release at `point` (page pixels)."""
         node = page.locator('.sk-node', has_text=source)
         node.hover()
-        dot = page.locator(f'.sk-dot[data-for="{node.get_attribute("data-id")}"]')
+        dot = page.locator(f'.sk-dot[data-for="{node.get_attribute("data-id")}"][data-side="right"]')
         d = dot.bounding_box()
         page.mouse.move(d['x'] + d['width'] / 2, d['y'] + d['height'] / 2)
         page.mouse.down()
@@ -141,8 +141,8 @@ class MapConnectJourney(unittest.TestCase):
         expect(page.locator('.sk-node[aria-pressed="true"]')).to_have_count(3)
         tools = page.get_by_role('toolbar', name='Sketch tools')
         expect(tools.get_by_text('Create task', exact=True)).to_be_visible()
-        tools.get_by_role('button', name='Create work from selected thoughts').click()
-        expect(page.locator('.sk-status')).to_contain_text('Created work')
+        tools.get_by_role('button', name='Create task from selected thoughts').click()
+        expect(page.locator('.sk-status')).to_contain_text('Created task')
 
     def test_04_tablet_touch_selects_several_with_select_several(self):
         page = self.page({'width': 820, 'height': 1180}, touch=True)
@@ -152,8 +152,8 @@ class MapConnectJourney(unittest.TestCase):
         page.locator('.sk-node', has_text=A).tap()
         page.locator('.sk-node', has_text=B).tap()
         expect(page.locator('.sk-node[aria-pressed="true"]')).to_have_count(2)
-        tools.get_by_role('button', name='Create work from selected thoughts').tap()
-        expect(page.locator('.sk-status')).to_contain_text('Created work')
+        tools.get_by_role('button', name='Create task from selected thoughts').tap()
+        expect(page.locator('.sk-status')).to_contain_text('Created task')
 
     def test_05_phone_views_and_adds_only(self):
         for scheme in ('light', 'dark'):
