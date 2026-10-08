@@ -1,6 +1,7 @@
 import { useCallback, useRef } from 'react';
 import type { WorkItem, WorkRowProjection, WorkStatus } from '@flux/contracts';
-import { ApiError, NetworkError } from '../api/client';
+import { ApiError, NetworkError, request } from '../api/client';
+import { useShellData } from '../app/data';
 import { useToast } from '../ui';
 import { updateWork } from './api';
 import { STATUS_LABEL, taskNumber } from './format';
@@ -36,12 +37,19 @@ export function changeError(error: unknown, item: Pick<StateTarget, 'number' | '
  */
 export function useStateChange(saved: (item: WorkItem) => void, done: () => void) {
   const toast = useToast();
+  const userId = useShellData().me.user.id;
+  // A toast and its Undo outlive the page, not the session: whatever completes or is pressed after the
+  // account changed (or ended) does nothing and shows nothing of the earlier person's.
+  const sameSession = useCallback(async () => {
+    try { return (await request<{ user: { id: string } }>('/api/v1/me')).user.id === userId; } catch { return false; }
+  }, [userId]);
   const busy = useRef(new Set<string>());
   return useCallback(async (item: StateTarget, status: WorkStatus): Promise<WorkItem | null> => {
     if (status === item.status || busy.current.has(item.id)) return null;
     busy.current.add(item.id);
     try {
       const stored = await updateWork(item, { status }, crypto.randomUUID());
+      if (!(await sameSession())) return null;
       saved(stored);
       toast({
         message: `${taskNumber(item)} ${lower(status)}`, tone: 'neutral',
@@ -49,20 +57,29 @@ export function useStateChange(saved: (item: WorkItem) => void, done: () => void
           label: 'Undo',
           onClick: () => {
             const back = { status: item.status, ...(item.status === 'blocked' && item.blocker ? { blocker: item.blocker } : {}) };
-            void updateWork(stored, back, crypto.randomUUID())
-              .then((restored) => { saved(restored); toast({ message: `${taskNumber(item)} back to ${lower(item.status)}` }); })
-              .catch((cause) => toast({ message: changeError(cause, item), tone: 'danger' }))
-              .finally(done);
+            void (async () => {
+              if (!(await sameSession())) return;
+              try {
+                const restored = await updateWork(stored, back, crypto.randomUUID());
+                if (!(await sameSession())) return;
+                saved(restored);
+                toast({ message: `${taskNumber(item)} back to ${lower(item.status)}` });
+              } catch (cause) {
+                if (await sameSession()) toast({ message: changeError(cause, item), tone: 'danger' });
+              } finally {
+                done();
+              }
+            })();
           },
         },
       });
       return stored;
     } catch (cause) {
-      toast({ message: changeError(cause, item), tone: 'danger' });
+      if (await sameSession()) toast({ message: changeError(cause, item), tone: 'danger' });
       return null;
     } finally {
       busy.current.delete(item.id);
       done();
     }
-  }, [saved, done, toast]);
+  }, [saved, done, toast, sameSession]);
 }

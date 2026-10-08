@@ -207,10 +207,12 @@ export function ProjectTasks() {
   // the person's own choice unless the URL names one (`view`).
   const fromUrl = () => {
     const status = isGroup(search.get('status')) ? search.get('status') as GroupId : null;
-    const cursor = search.get('cursor') || null;
+    // The phone always lists All; a continuation that names another group belongs to a desktop view and is dropped.
+    const onPhone = window.matchMedia(MEDIA.phone).matches;
+    const cursor = onPhone && status ? null : search.get('cursor') || null;
     const asked = search.get('view');
     const mode: Mode = asked === 'board' || asked === 'list' ? asked : status || cursor ? 'list' : preferredMode(me.user.id);
-    return { routeKey, status, mine: search.get('show') === 'mine', cursor: mode === 'list' ? cursor : null, mode };
+    return { routeKey, status, mine: search.get('show') === 'mine', cursor: mode === 'list' || onPhone ? cursor : null, mode };
   };
   const [saved, setSaved] = useState<Record<string, WorkItem>>({});
   const focusRow = useRef<{ id: string; until: number } | null>(null);
@@ -221,10 +223,12 @@ export function ProjectTasks() {
   const [composing, setComposing] = useState(false);
   // A router POP, account switch or project switch selects its actual URL immediately.
   const view = stored.routeKey === routeKey ? stored : fromUrl();
-  const { status: viewStatus, mine, cursor, mode: viewMode } = view;
+  const { status: viewStatus, mine, cursor: viewCursor, mode: viewMode } = view;
   // The phone shows the list as drawn (S-P-Tasks): Mine | All over the rows, no board and no group views.
   const phone = useMediaQuery(MEDIA.phone);
   const status = phone ? null : viewStatus;
+  // A continuation belongs to the selector it was issued for: the phone's All never takes a desktop group's.
+  const cursor = phone && viewStatus ? null : viewCursor;
   const listing = phone || viewMode === 'list';
   const mode = viewMode;
   const boardSearch = searched.routeKey === `${me.user.id}:${project.id}` ? searched.text : '';
@@ -263,7 +267,7 @@ export function ProjectTasks() {
     const group = SECTION_GROUP[id];
     if (!group) return;
     saveReading();
-    if (mode === 'list') keepCursor(viewKey, cursor);
+    if (listing) keepCursor(viewKey, cursor);
     jump.current = { routeKey, id, group };
     setBoardSearch('');
     setViewState({ routeKey, status: null, mine: false, cursor: null, mode: 'list' });
@@ -296,39 +300,39 @@ export function ProjectTasks() {
   const params = new URLSearchParams();
   if (mode === 'list' && status) params.set('status', status);
   if (mine) params.set('show', 'mine');
-  if (mode === 'list' && cursor) params.set('cursor', cursor);
-  if (mode !== (mode === 'list' && (status || cursor) ? 'list' : preference)) params.set('view', mode);
+  if (listing && cursor) params.set('cursor', cursor);
+  if (!phone && mode !== (mode === 'list' && (status || cursor) ? 'list' : preference)) params.set('view', mode);
   const viewSearch = params.toString();
   useEffect(() => {
-    if (mode === 'list') keepCursor(viewKey, cursor);
+    if (listing) keepCursor(viewKey, cursor);
     remember('tasks', me.user.id, project.id, viewSearch ? `?${viewSearch}` : '');
     const url = new URL(window.location.href);
     for (const key of ['status', 'show', 'cursor', 'view']) url.searchParams.delete(key);
     for (const [key, value] of new URLSearchParams(viewSearch)) url.searchParams.set(key, value);
     if (url.href !== window.location.href) window.history.replaceState(window.history.state, '', url);
-  }, [viewKey, cursor, mode, viewSearch, me.user.id, project.id, location.search]);
+  }, [viewKey, cursor, mode, listing, viewSearch, me.user.id, project.id, location.search]);
 
   const setView = (next: { status?: GroupId | null; mine?: boolean; mode?: Mode }) => {
     jump.current = null;
     saveReading();
-    if (mode === 'list') keepCursor(viewKey, cursor);
+    if (listing) keepCursor(viewKey, cursor);
     const nextStatus = next.status === undefined ? status : next.status;
     const nextMine = next.mine ?? mine;
     const nextMode = next.mode ?? mode;
     setViewState({ routeKey, status: nextStatus, mine: nextMine, mode: nextMode,
-      cursor: nextMode === 'list' ? storedCursor(taskViewKey(me.user.id, project.id, nextStatus, nextMine)) : null });
+      cursor: nextMode === 'list' || phone ? storedCursor(taskViewKey(me.user.id, project.id, nextStatus, nextMine)) : null });
   };
   const chooseMode = (next: Mode) => { setChosen({ userId: me.user.id, mode: next }); rememberMode(me.user.id, next); setView({ mode: next }); };
   const movePage = (nextCursor: string) => {
     jump.current = null;
     saveReading();
     keepCursor(viewKey, nextCursor);
-    setViewState({ ...view, cursor: nextCursor });
+    setViewState({ ...view, status: phone ? null : view.status, cursor: nextCursor });
   };
   const refresh = () => {
     jump.current = null;
     saveReading();
-    if (mode === 'list') keepCursor(viewKey, null);
+    if (listing) keepCursor(viewKey, null);
     setViewState({ ...view, cursor: null });
     refreshPage();
   };

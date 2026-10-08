@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react';
 import type { WorkRowProjection, WorkStatus } from '@flux/contracts';
-import { Icon, Kreska, StatusGlyph, initials } from '../ui';
+import { AgentIdentity, Icon, Kreska, StatusGlyph, initials } from '../ui';
 import type { AgentOwners } from '../agents/owners';
 import { STATUS_LABEL, isFinished, taskNumber } from './format';
 import { STATE_KEYS, nextStatus, type StateTarget } from './taskState';
@@ -16,9 +16,10 @@ function meta(item: WorkRowProjection, meId: string, owners: AgentOwners) {
   const results = item.relations.results;
   const waiting = isFinished(item) ? 0 : item.prerequisiteCounts.unmet;
   const owner = item.owner;
+  // An agent keeps its Agent tag and the person it works for in every state; a person with the same name does not get them.
   const who = !owner ? 'no owner'
     : owner.kind === 'agent'
-      ? `${owner.name}${item.status === 'in_progress' ? ' is working' : ''}${owners.get(owner.id) ? ` for ${owners.get(owner.id)}` : ''}`
+      ? <><AgentIdentity icon={false} name={owner.name} owner={owners.get(owner.id)} />{item.status === 'in_progress' ? ' is working' : ''}</>
       : owner.id === meId ? 'you' : owner.name;
   const rest = [
     item.status === 'blocked' && item.blocker ? `waiting for ${item.blocker}` : null,
@@ -32,7 +33,7 @@ function meta(item: WorkRowProjection, meId: string, owners: AgentOwners) {
   return (
     <>
       <span className="ui-task-number">{taskNumber(item)}</span>
-      {item.status === 'blocked' && item.blocker ? null : ` · ${who}`}
+      {' · '}{who}
       {item.parked ? null : <span className="ws-task__word">{` · ${STATUS_LABEL[item.status]}`}</span>}
       {rest.map((part) => ` · ${part}`).join('')}
     </>

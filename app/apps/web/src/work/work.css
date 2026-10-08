@@ -104,7 +104,7 @@ button.ws-task__glyph:active { background: var(--hov); }
   .ws-tasks .ws-pages:not(:has(.ws-pages__actions button:not(:last-child):not(:disabled))) { display: none; }
   .ws-task .ws-item { padding: 8px 16px 8px 4px; border-radius: 0; }
   .ws-task .ws-item__t { font-size: 15px; font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .ws-task .ws-item__s { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ws-task .ws-item__s { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 12.5px; }
   .ws-task__word { display: none; }
   .ws-task__acts { width: 76px; }
 }
