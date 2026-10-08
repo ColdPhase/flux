@@ -81,7 +81,7 @@ async function snapshot(db: Pool) {
       WHERE a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped ORDER BY a.attnum) AS columns,
     ARRAY(SELECT k.conname || ':' || pg_get_constraintdef(k.oid,false) || ':' || k.convalidated::text
       FROM pg_constraint k WHERE k.conrelid=c.oid ORDER BY k.conname) AS constraints,
-    ARRAY(SELECT pg_get_triggerdef(t.oid,false) || ':' || t.tgenabled FROM pg_trigger t
+    ARRAY(SELECT pg_get_triggerdef(t.oid,false) || ':' || t.tgenabled::text FROM pg_trigger t
       WHERE t.tgrelid=c.oid AND NOT t.tgisinternal ORDER BY t.tgname) AS triggers,
     ARRAY(SELECT pg_get_indexdef(i.indexrelid) || ':' || i.indisvalid::text || ':' || i.indisready::text
       FROM pg_index i JOIN pg_class x ON x.oid=i.indexrelid WHERE i.indrelid=c.oid ORDER BY x.relname) AS indexes
