@@ -22,6 +22,8 @@ export function ReloadRecovery() {
   useLayoutEffect(() => {
     const scope = { live: true, request: 0, controller: new AbortController() as AbortController | null };
     lifetime.current = scope;
+    // Reset the check synchronously with the commit so a stale result never authorizes a reload.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setValidation({ known: false, actor: null, checking: true });
     void getMe(scope.controller!.signal).then((actor) => {
       if (!scope.live || lifetime.current !== scope || scope.request !== 0) return;
