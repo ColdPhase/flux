@@ -131,5 +131,29 @@ services:
     depends_on:
       api:
         condition: service_healthy
+  # OPT-IN (#152 AC-4, scripts/check_mcp_clients.sh): the real pinned Codex and Claude Code CLIs register Flux's
+  # MCP server with their own `mcp add`, complete its OAuth in Chromium and use its tools against a scripted model
+  # endpoint. Needs internet to download Claude Code at run time (see the Dockerfile `mcp-clients` stage).
+  mcp-clients:
+    profiles: ["mcp-clients"]
+    build:
+      context: ../app
+      dockerfile: ../docker/Dockerfile
+      target: mcp-clients
+    image: flux-mcp-clients:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
+    command:
+      - sh
+      - -c
+      - node apps/runtime/dist/install/main.js && exec node_modules/.bin/tsx --test tests/app/e2e/mcp-clients.e2e.ts
+    environment:
+      FLUX_AGENT_RUNTIME: claude_code
+      DATABASE_URL: postgres://${POSTGRES_USER:-flux}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-flux}
+      FLUX_DB_CONNECT_TIMEOUT_MS: ${FLUX_DB_CONNECT_TIMEOUT_MS:-10000}
+      FLUX_AUTH_SECRET: ${FLUX_AUTH_SECRET:?Set FLUX_AUTH_SECRET}
+      FLUX_API_URL: http://api:8080
+      FLUX_PUBLIC_ORIGIN: ${FLUX_PUBLIC_ORIGIN:?Set FLUX_PUBLIC_ORIGIN}
+    depends_on:
+      api:
+        condition: service_healthy
 volumes:
   pushtls:

@@ -390,3 +390,9 @@ supervisor and the pinned Codex); `agent-runtime-test` replaces both CLIs with t
 project and ports (`FLUX_RUNTIME_TEST_PORT`, default 19571). Run it alone, like the other Docker checks.
 `./scripts/check_runtime_cli_contract.sh` is the opt-in check against the pinned real CLIs; it needs
 internet access and is not part of CI.
+`./scripts/check_mcp_clients.sh` (#152 AC-4) is the opt-in check that the real pinned Codex (`rust-v0.160.1`,
+checksummed in the `mcp-clients` image) and Claude Code (the `pins.ts` version, fetched at run time from the signed
+release manifest) register Flux's MCP server with their own `mcp add`, complete Flux's OAuth as the person in Chromium,
+and list and call the shared domain tools from three personal connections until the owner revokes one. It uses no
+vendor account: the clients' model traffic goes to a scripted local endpoint. It needs internet access and is not
+part of CI or `check_application.sh`.
