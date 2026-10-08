@@ -43,8 +43,7 @@ WIRE = r"""(() => {
     const kind = method === 'GET' && url.pathname === '/api/v1/assistant-runs' ? 'list'
       : method === 'POST' && /^\/api\/v1\/assistant-runs\/[^/]+\/stop$/.test(url.pathname) ? 'stop' : null;
     if (!kind) return fetch(input, init);
-    const index = armed.findIndex(item => item.kind === kind);
-    const gate = index < 0 ? null : gates[armed.splice(index, 1)[0].name];
+    let gate = null;
     const record = {kind, status: null, items: [], settled: false, delivery: null};
     history.push(record);
     try {
@@ -53,9 +52,13 @@ WIRE = r"""(() => {
       record.status = response.status;
       record.items = (kind === 'list' ? body.items ?? [] : [body]).map(item =>
         ({id: item.id, status: item.status, stopRequested: item.stopRequested}));
+      // An aborted request has no answer to hold. Claim only an actual completed response,
+      // so stream/focus supersession cannot consume the next genuine-answer barrier.
+      const signal = init.signal ?? (input instanceof Request ? input.signal : null);
+      const index = signal?.aborted ? -1 : armed.findIndex(item => item.kind === kind);
+      gate = index < 0 ? null : gates[armed.splice(index, 1)[0].name];
       if (gate) {
         gate.held = true; gate.record = record;
-        const signal = init.signal ?? (input instanceof Request ? input.signal : null);
         await new Promise((resolve, reject) => {
           let settled = false;
           const finish = (callback) => {
