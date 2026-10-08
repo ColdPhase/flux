@@ -592,6 +592,11 @@ test('desktop and phone-width history render readable actor and time, keyboard l
       const page = await context.newPage(); page.on('pageerror', (error) => pageErrors.push(error.message));
       await page.goto(`/projects/${f.place.id}?open=work:${item.id}`); await reverted(page, item);
       assert.match(await panel(page).innerText(), /Creation undone by Ari Task author on/);
+      const activity = panel(page).getByRole('list', { name: 'Task activity', exact: true });
+      assert.equal(await activity.locator('time').first().getAttribute('datetime'), item.createdAt);
+      assert.equal(await activity.locator('time').last().getAttribute('datetime'), life.revertedAt);
+      assert.match(await activity.innerText(), /Trial planning agent/);
+      assert.match(await activity.innerText(), /Ari Task author/);
       assert.equal(await panel(page).locator('.wd-criteria li').count(), 2);
       const overflow = await page.evaluate(() => {
         const bounds = document.querySelector('.details.wd')!.getBoundingClientRect();
@@ -600,17 +605,30 @@ test('desktop and phone-width history render readable actor and time, keyboard l
             .filter((element) => element.getBoundingClientRect().right > bounds.right + 1).map((element) => element.className) };
       });
       assert.ok(overflow.page <= 0 && overflow.outside.length === 0, JSON.stringify(overflow));
+      await settleVisualTransitions(page);
       if (evidence) { mkdirSync(evidence, { recursive: true }); await page.screenshot({ path: join(evidence, `task-undo-history-${width}.png`), fullPage: true }); }
       await page.getByRole('button', { name: 'Close details', exact: true }).click();
+      await panel(page).waitFor({ state: 'hidden' });
+      await settleVisualTransitions(page);
       const notice = page.locator(`#notice-${result.noticeId}`); await notice.waitFor();
       assert.equal(await notice.locator('time').getAttribute('datetime'), life.revertedAt);
       if (evidence) await notice.screenshot({ path: join(evidence, `task-undo-notice-${width}.png`) });
       const historyLink = notice.getByRole('button', { name: `Open task #${item.number} ${item.title}`, exact: true });
       await historyLink.focus(); await page.keyboard.press('Enter'); await reverted(page, item);
+      await settleVisualTransitions(page);
       if (evidence) await page.screenshot({ path: join(evidence, `task-undo-keyboard-history-${width}.png`), fullPage: true });
     });
   }
 });
+
+/** Capture complete resting surfaces, including the phone's finite sheet transitions. */
+async function settleVisualTransitions(page: Page) {
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  await page.evaluate(async () => {
+    await Promise.all(document.getAnimations().filter((animation) => Number.isFinite(Number(animation.effect?.getComputedTiming().endTime)))
+      .map((animation) => animation.finished.catch(() => undefined)));
+  });
+}
 
 test('Agents, Map and live work never offer a task whose creation was undone, while its link still opens as history', { timeout: 120_000 }, async () => {
   const f = await fixture(); const item = await f.create(); const kept = await f.create('Keep the second sensor in the plan');

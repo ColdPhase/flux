@@ -85,3 +85,33 @@ retry. Production route behavior and the accepted criteria are unchanged.
 This correction requires fresh independent source evaluation and a new pinned
 Docker run. The earlier API results do not certify a changed candidate, current
 main, migration compatibility, live writer composition or AC-U1–AC-U5 completion.
+# Bounded visual correction after the actual04e4 run
+
+The exact04e4 frozen Docker verification completed2026-10-08 at10:32:07Z:
+295/295 adjacent Undo/native API tests,33/33 shared push tests,10/10 Undo browser
+scenarios,1/1 contribution and2/2 actor browser scenarios, and14/14 maintained
+instant-send UI scenarios. Actual phase/driver/cleanup exits were0 with seven
+complete counters and no deadline, failures, cancellations, skips or TODOs.
+Raw log SHA256: `724baf2534f4df593266ab149808c30f7a002752382f3b8dc37ce6c8b3ba0cc6`.
+This remains a bounded historical result for04e4, not acceptance of later code.
+
+A fresh neutral image-only review of its six original desktop/phone captures
+requested two corrections: group creation/withdrawal attribution near the top,
+and separate the native task reference from the event sentence. It also identified
+an incomplete phone notice crop and a transition-time keyboard-history capture.
+The report is `/tmp/flux238-04e4-fresh-neutral-visual-review.md`, SHA256
+`77df1af15860ee1f261efc5576a6f57451702670532d677ad115a9acf4661ca6`.
+
+The continuation follows F-026's existing Activity and native-reference patterns:
+two compact activity rows retain the actual creation/withdrawal actors and exact
+recorded times, including existing Agent/Kreska/owner identity; the conversation
+event retains its author/source label above a glyph/number/full-title reference.
+Phone titles wrap with44px targets. The existing10 browser scenarios retain every
+assertion and add actual activity timestamp/actor checks; captures wait for the
+closed pane and finite visual transitions. No Undo authority, persistence,
+receipt, pending command, draft or object identity changes are proposed.
+
+The new visual code and strengthened capture fixture are unexecuted. Fresh source,
+runtime and neutral visual evaluation are required again. Full #153/live, semantic
+legacy migration/restore, protected-main composition and integratedv0.1 gates
+remain open; this is not a completed task or merge candidate.

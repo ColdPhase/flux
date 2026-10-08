@@ -218,6 +218,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   const { openDetails } = useShellActions();
   const { me } = useShellData();
   // A task whose creation was undone (#238) stays as read-only history: no change, live or new-target control.
+  const agentOwners = useAgentOwners(context.project);
   const reverted = item.lifecycle?.state === 'creation_reverted' ? item.lifecycle : null;
   const writable = context.project.access !== 'viewer' && !reverted;
   const { busy, error } = commands.state;
@@ -259,7 +260,16 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
       <ReadyToClose item={item} writable={writable} busy={busy} done={() => void change({ status: 'done' })} />
       {!reverted && !isFinished(item) ? <LiveEntry variant="inline" anchor={liveAnchor} /> : null}
 
-      {reverted ? <p className="wd-muted" data-task-lifecycle="creation_reverted">Creation undone by {reverted.revertedBy.name} on {shortDate(reverted.revertedAt)}. This task stays here as history.</p> : null}
+      {reverted ? <section className="details__sec wd-history" data-task-lifecycle="creation_reverted" aria-labelledby={`wd-history-${item.id}`}>
+        <p className="wd-muted">Creation undone by {reverted.revertedBy.name} on {shortDate(reverted.revertedAt)}. This task stays here as history.</p>
+        <h4 id={`wd-history-${item.id}`}>Activity</h4>
+        <ol className="wd-history__events" aria-label="Task activity">
+          <li><span className="wd-history__action">Created by</span><HistoryActor actor={item.createdBy} owners={agentOwners} />
+            <time dateTime={item.createdAt}>{historyTime(item.createdAt)}</time></li>
+          <li><span className="wd-history__action">Creation undone by</span><HistoryActor actor={reverted.revertedBy} owners={agentOwners} />
+            <time dateTime={reverted.revertedAt}>{historyTime(reverted.revertedAt)}</time></li>
+        </ol>
+      </section> : null}
       {item.creationUndo?.eligible && writable ? <UndoCreation key={`${me.user.id}:${item.id}:${item.version}`} item={item} userId={me.user.id} reload={reload} isCurrent={isCurrent} /> : null}
 
       {writable ? (
@@ -338,6 +348,16 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
       <IdsLine>Added by {item.createdBy.name} · {shortDate(item.createdAt)} · version {item.version}</IdsLine>
     </div>
   );
+}
+
+function historyTime(value: string) {
+  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+}
+
+function HistoryActor({ actor, owners }: { actor: OwnWork['createdBy']; owners: ReturnType<typeof useAgentOwners> }) {
+  return actor.kind === 'agent'
+    ? <AgentIdentity name={actor.name} owner={owners.get(actor.id)} />
+    : <strong>{actor.name}</strong>;
 }
 
 /**

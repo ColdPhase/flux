@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import type { Conversation, ConversationMessage, ConversationRoot, ConversationRootWindow, NativeWorkRow, Page, Project, TaskCreationNotice } from '@flux/contracts';
-import { AgentIdentity, Button, EmptyState, Icon, useArrivals } from '../ui';
+import { AgentIdentity, Button, EmptyState, Icon, StatusGlyph, useArrivals } from '../ui';
 import { newBelowText } from '../ui/motion-rules';
 import { MessageActions, MessageObjects, useCreateWorkFromMessage } from '../work/inline';
 import { useMessageWorkRead, type MessageWorkRead } from '../work/useMessageWork';
@@ -554,9 +554,12 @@ function NoticeItem({ notice, meId, owners, row, onOpenTask }: { notice: TaskCre
           {creator.kind === 'agent' ? <AgentIdentity name={name} owner={owners.get(creator.id)} icon={false} /> : <strong>{name}{mine ? ' · you' : ''}</strong>}
           <time dateTime={notice.createdAt} title={when(notice.createdAt)}>{clock(notice.createdAt)}</time>
         </span>
+        <span className="convo-notice__kind">{notice.kind === 'task.creation_reverted' ? 'Task creation undone' : 'New task'}{notice.kind === 'task.created' && notice.lifecycle?.state === 'creation_reverted' ? ' · creation undone' : ''}</span>
         <button type="button" className="convo-notice__task" data-native-ref={`work:${notice.workId}`} onClick={() => onOpenTask(notice.workId)} aria-label={`Open task #${notice.workNumber} ${title}`}>
           {/* The immutable announcement number names the task before and after the current row arrives. */}
-          <span className="convo-notice__title"><span className="convo-notice__kind">{notice.kind === 'task.creation_reverted' ? 'Task creation undone' : 'New task'}{notice.kind === 'task.created' && notice.lifecycle?.state === 'creation_reverted' ? ' · creation undone' : ''} · </span><span className="convo-notice__num ui-task-number">#{notice.workNumber}</span> {title}</span><Icon name="chevron-right" size={14} />
+          <StatusGlyph status={current?.status ?? 'todo'} size={16} />
+          <span className="convo-notice__num ui-task-number">#{notice.workNumber}</span>
+          <span className="convo-notice__title">{title}</span><Icon name="chevron-right" size={14} />
         </button>
       </span>
     </li>
