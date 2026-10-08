@@ -634,6 +634,29 @@ export const agentConnectionProjects = pgTable('agent_connection_projects', {
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
 ]);
 
+/** Restrictive overlay; original connection/OAuth consent remains immutable. */
+export const agentConnectionMcpPolicies = pgTable('agent_connection_mcp_policies', {
+  connectionId: uuid('connection_id').primaryKey().references(() => agentConnections.id, { onDelete: 'cascade' }),
+  version: integer('version').notNull().default(1),
+  enabledCapabilityIds: text('enabled_capability_ids').array().notNull(),
+  enabledEntryIds: text('enabled_entry_ids').array().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  check('agent_connection_mcp_policy_version_check', sql`${table.version} > 0`),
+  check('agent_connection_mcp_capability_array_check', sql`cardinality(${table.enabledCapabilityIds}) <= 128 AND array_position(${table.enabledCapabilityIds}, NULL) IS NULL`),
+  check('agent_connection_mcp_entry_array_check', sql`cardinality(${table.enabledEntryIds}) <= 256 AND array_position(${table.enabledEntryIds}, NULL) IS NULL`),
+]);
+export const agentConnectionMcpProjects = pgTable('agent_connection_mcp_projects', {
+  connectionId: uuid('connection_id').notNull().references(() => agentConnectionMcpPolicies.connectionId, { onDelete: 'cascade' }),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.connectionId, table.projectId] }),
+  foreignKey({ columns: [table.workspaceId, table.connectionId, table.projectId],
+    foreignColumns: [agentConnectionProjects.workspaceId, agentConnectionProjects.connectionId, agentConnectionProjects.projectId] }).onDelete('cascade'),
+]);
+
 // A single immutable OAuth choice per browser session prevents concurrent consent tabs
 // from silently changing which agent and project ceiling receives a token.
 export const agentOauthSelections = pgTable('agent_oauth_selections', {
