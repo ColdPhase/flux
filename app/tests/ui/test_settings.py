@@ -229,7 +229,7 @@ class SettingsJourney(unittest.TestCase):
             if path == "/settings/notifications":
                 # This route includes two async push-status reads. Finish the rendered
                 # state before the next hard navigation destroys its document in WebKit.
-                expect(page.get_by_text("Push is not set up on this Flux server, so the Push column has no effect.", exact=True)).to_be_visible()
+                expect(page.get_by_text("Push is not set up on this Flux server, so the Push column has no effect. Your inbox always works.", exact=True)).to_be_visible()
                 expect(page.get_by_text("Notifications are not set up on this Flux server. New activity always appears in your Inbox.", exact=True)).to_be_visible()
         expect(page.get_by_role("heading", name="This link did not work")).to_be_visible()
         # Back and history are kept across sections.
