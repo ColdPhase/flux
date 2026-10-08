@@ -63,6 +63,7 @@ export function McpPermissions({ connection, projectNames }: { connection: Agent
     pending.current = controller;
     return { controller, current: () => ticket === generation.current && !controller.signal.aborted };
   }, []);
+  const invalidate = useCallback(() => { generation.current += 1; pending.current?.abort(); }, []);
   useEffect(() => {
     const read = startRequest();
     void getMcpPermissions(connection.id, read.controller.signal).then((value) => {
@@ -73,8 +74,8 @@ export function McpPermissions({ connection, projectNames }: { connection: Agent
       setError(cause instanceof NetworkError ? 'Saved permissions could not be loaded. Check your connection and try again.' : 'Saved permissions could not be loaded.');
       setStatus('Permissions unavailable'); setNeedsReload(true);
     });
-    return () => { ++generation.current; read.controller.abort(); pending.current?.abort(); };
-  }, [connection.id, startRequest]);
+    return () => { invalidate(); read.controller.abort(); };
+  }, [connection.id, startRequest, invalidate]);
 
   async function reload() {
     if (busy) return;
