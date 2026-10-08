@@ -13,6 +13,7 @@ import uuid
 from playwright.sync_api import Page, expect, sync_playwright
 
 from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
+from test_personal_assistant import mock
 from touch_targets import has_minimum_touch_size
 
 PASSWORD = "a complete calm rail"
@@ -67,7 +68,7 @@ class RailNavigation(unittest.TestCase):
         expect(page.get_by_role("heading", name="Home", exact=True)).to_be_visible()
         page.get_by_role("button", name="Collapse sidebar").click()
         expect(page.locator(".side--rail")).to_be_visible()
-        return page, {"email": email, "user": identity["user"]["id"], "dm": dm["id"], "projects": projects}
+        return page, {"email": email, "user": identity["user"]["id"], "workspace": space["id"], "dm": dm["id"], "projects": projects}
 
     def assert_native_target(self, page, locator, coarse):
         self.assertEqual(locator.evaluate("el => ['A','BUTTON'].includes(el.tagName)"), True)
@@ -142,7 +143,7 @@ class RailNavigation(unittest.TestCase):
                 self.assert_native_target(page, messages, True)
                 messages.press("Enter")
                 expect(page).to_have_url(re.compile(r"/dm$"))
-                dm = rail.get_by_role("link", name="Jonas Berg", exact=True)
+                dm = rail.get_by_role("link", name=re.compile(r"^Jonas Berg(?:, new messages)?$"))
                 self.assertEqual(dm.count(), 1, "a real authorized private conversation keeps an avatar link")
                 self.assert_native_target(page, dm, True)
                 dm.press("Enter")
@@ -154,6 +155,36 @@ class RailNavigation(unittest.TestCase):
                 expect(rail.get_by_role("button", name="Expand sidebar")).to_be_in_viewport()
                 self.assertEqual(page.evaluate("document.documentElement.scrollWidth - innerWidth"), 0)
                 shot(page, f"340-rail-populated-messages-{engine}")
+
+    def test_04_many_projects_preserve_real_working_stop_and_account(self):
+        for engine in self.browsers:
+            with self.subTest(engine=engine):
+                page, ids = self.setup_owner(engine, coarse=True, many=True)
+                project = ids["projects"][0]["id"]
+                agent = self.api(page, "POST", f"/api/v1/workspaces/{ids['workspace']}/agents", {"name": "Garden analyst", "owner": "self"}, 201)
+                self.api(page, "POST", f"/api/v1/projects/{project}/grants", {"principal": {"kind": "agent", "id": agent["id"]}, "role": "viewer"}, 201)
+                self.api(page, "POST", "/api/v1/personal-assistant", {"consentVersion": "o-008-2026-10-02", "agentId": agent["id"],
+                    "perRunCents": 6, "dailyCapCents": 100, "timeZone": "Europe/Warsaw"}, 201)
+                conversation = self.api(page, "POST", f"/api/v1/projects/{project}/conversations", {
+                    "body": "Compare the sensors for the east garden bed.", "clientMessageId": str(uuid.uuid4())}, 201)
+                mock("/__script", {"reset": True, "delay": 30})
+                run = self.api(page, "POST", f"/api/v1/conversations/{conversation['id']}/assistant-runs", {
+                    "clientRunId": str(uuid.uuid4()), "kind": "ask", "prompt": "Which sensor should we test tomorrow?"}, 202)
+                self.addCleanup(lambda page=page, run=run: self.api(page, "POST", f"/api/v1/assistant-runs/{run['id']}/stop"))
+                page.evaluate("window.dispatchEvent(new Event('focus'))")
+                rail = page.locator(".side--rail")
+                stop = rail.get_by_role("button", name="Stop your assistant", exact=True)
+                expect(stop).to_be_visible()
+                expect(stop).to_be_in_viewport()
+                expect(rail.get_by_role("button", name=re.compile("Ada Kowalska.*account and sign out"))).to_be_in_viewport()
+                expect(rail.get_by_role("link", name="Settings", exact=True)).to_be_in_viewport()
+                self.assert_native_target(page, stop, True)
+                shot(page, f"340-rail-populated-working-{engine}")
+                stop.press("Space")
+                current = self.api(page, "GET", f"/api/v1/assistant-runs/{run['id']}")
+                self.assertTrue(current["stopRequested"] or current["status"] == "stopped", str(current["status"]))
+                expect(rail.locator(".agentlive")).to_have_count(0, timeout=25000)
+                expect(rail.get_by_role("button", name=re.compile("Ada Kowalska.*account and sign out"))).to_be_in_viewport()
 
 
 if __name__ == "__main__":
