@@ -1,5 +1,5 @@
 import { useRouteLoaderData, type LoaderFunctionArgs } from 'react-router';
-import { projectPeoplePath, workspaceSketchesPath, type DocSummary, type Project, type ProjectPerson, type Sketch, type SketchPage } from '@flux/contracts';
+import { PROJECT_VIEWS, projectPeoplePath, workspaceSketchesPath, type DocSummary, type Project, type ProjectPerson, type ProjectViewId, type Sketch, type SketchPage } from '@flux/contracts';
 import { request } from '../api/client';
 import './project.css';
 import { getProject } from '../app/conversation-api';
@@ -34,6 +34,23 @@ export async function projectShellLoader({ params, request: req }: LoaderFunctio
   ]);
   return { project, people, sketches, docs };
 }
+
+/**
+ * The optional views a project shows (#351, F-026 S21): those added on purpose (a template, More), plus
+ * any it already uses: a Map with sketches, a Wiki with docs, Agents with an agent in the project. So an
+ * existing project never loses a view it uses, and a new one shows them the first time they are needed.
+ */
+export function shownViews(shell: ProjectShell, current?: ProjectViewId | null): Set<ProjectViewId> {
+  const shown = new Set<ProjectViewId>(shell.project.views);
+  if (shell.sketches?.total) shown.add('map');
+  if (shell.docs?.length) shown.add('docs');
+  if (shell.people?.some((person) => person.kind === 'agent')) shown.add('agents');
+  if (current) shown.add(current);
+  return shown;
+}
+
+/** What More can still add, in the views' own order. */
+export const addableViews = (shown: ReadonlySet<ProjectViewId>) => PROJECT_VIEWS.filter((view) => !shown.has(view));
 
 export function useProjectShell(): ProjectShell | undefined {
   return useRouteLoaderData('project') as ProjectShell | undefined;

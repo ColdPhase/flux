@@ -108,6 +108,7 @@ repository was created on 2026-09-26.
 
 ### Changed
 
+- A new project takes one step: a name and a template (Build something, Research, Plan an event or Blank); Map, Wiki and Agents appear the first time a project needs them and can be added from More, existing projects keep every view, and sign-in and account pages follow the final design with the plain Kreska logo tile ([#351](https://github.com/ColdPhase/flux/issues/351)).
 - The computer's project header is one row: the name, the views as a segmented control, what needs you, the people and agents, and More, which holds Details. `F` turns on focus: the sidebar folds, and push and email wait on the server until the shown time; Notification settings shows the pause with Resume now. `]` no longer opens Details ([#340](https://github.com/ColdPhase/flux/issues/340)).
 - One neutral look from the final design: Soft volume surfaces in light, dark or Match system, Geist type served with Flux, pill buttons, and task states shown as shapes with words. The accent colours and their picker are gone ([#353](https://github.com/ColdPhase/flux/pull/353)).
 - Kreska, a face drawn in a few lines, is the Flux logo, the app icon and every agent's icon. Agents carry an "Agent" tag and, where you may know them, the person they work for; the personal assistant's face shows what its run is doing ([#356](https://github.com/ColdPhase/flux/pull/356)).

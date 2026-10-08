@@ -7,7 +7,9 @@ import type {
   ChangeRoleCommand,
   CreateAgentCommand,
   CreateDraftCommand,
+  AddProjectViewCommand,
   CreateProjectCommand,
+  ProjectViewId,
   CreateWorkspaceCommand,
   Draft,
   DraftListQuery,
@@ -27,6 +29,7 @@ import type {
   WorkspaceMember,
   WorkspaceRole,
 } from '@flux/contracts';
+import { PROJECT_TEMPLATES, PROJECT_VIEWS, TEMPLATE_VIEWS } from '@flux/contracts';
 import type { Database, Executor, Principal } from '../types.js';
 import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, PreconditionRequiredError, RuleViolationError, VersionConflictError } from './errors.js';
 import { policyEventPorts, recordEvent } from '../events.js';
@@ -129,7 +132,7 @@ function toWorkspace(row: typeof schema.workspaces.$inferSelect, role: Workspace
 function toProject(row: typeof schema.projects.$inferSelect, level: number): Project {
   const access = accessName(level);
   if (!access) throw new Error('Invisible project serialized');
-  return { id: row.id, workspaceId: row.workspaceId, name: row.name, visibility: row.visibility, access, version: row.version, createdAt: row.createdAt.toISOString() };
+  return { id: row.id, workspaceId: row.workspaceId, name: row.name, visibility: row.visibility, access, views: row.views as ProjectViewId[], version: row.version, createdAt: row.createdAt.toISOString() };
 }
 
 function toGrant(row: typeof schema.projectGrants.$inferSelect): ProjectGrant {
@@ -298,12 +301,27 @@ export async function removeMember(principal: Principal, workspaceId: string, us
 export async function createProject(principal: Principal, workspaceId: string, command: CreateProjectCommand, db: Database): Promise<Project> {
   const projectName = name(command?.name);
   const visibility = command.visibility === undefined ? 'workspace' : oneOf(command.visibility, PROJECT_VISIBILITIES, 'visibility');
+  // Without a template (the API, agents, a promoted sketch) a project shows every view, as every project did before (#351).
+  const template = command.template === undefined ? null : oneOf(command.template, PROJECT_TEMPLATES, 'template');
   return db.transaction(async (tx) => {
     enforce(await evaluateWorkspace(principal, 'project.create', workspaceId, tx, { lock: true }), 'workspace');
     const id = randomUUID();
-    const [row] = await tx.insert(schema.projects).values({ id, workspaceId, name: projectName, visibility, createdBy: principal.id }).returning();
+    const [row] = await tx.insert(schema.projects).values({ id, workspaceId, name: projectName, visibility, views: [...(template ? TEMPLATE_VIEWS[template] : PROJECT_VIEWS)], createdBy: principal.id }).returning();
     await recordEvent(events(tx), principal, workspaceId, 'project.created.v1', id, { visibility });
     return toProject(row!, LEVEL.manager);
+  });
+}
+
+/** Adds an optional view (Map, Wiki or Agents) to a project; whoever can write there may (#351). */
+export async function addProjectView(principal: Principal, projectId: string, command: AddProjectViewCommand, db: Database): Promise<Project> {
+  const view = oneOf(command?.view, PROJECT_VIEWS, 'view');
+  return db.transaction(async (tx) => {
+    const { project, level } = enforce(await evaluateProject(principal, 'project.write', projectId, tx, { lock: true }), 'project');
+    if (project!.views.includes(view)) return toProject(project!, level);
+    const [row] = await tx.update(schema.projects).set({ views: [...project!.views, view], version: sql`${schema.projects.version} + 1`, updatedAt: new Date() })
+      .where(eq(schema.projects.id, projectId)).returning();
+    await recordEvent(events(tx), principal, project!.workspaceId, 'project.view_added.v1', projectId, { view });
+    return toProject(row!, level);
   });
 }
 

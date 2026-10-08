@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
-import { PROJECTS_PATH, WORKSPACES_PATH, type CreateProjectCommand, type GrantProjectCommand, type PageQuery } from '@flux/contracts';
+import { PROJECT_TEMPLATES, PROJECT_VIEWS, PROJECTS_PATH, WORKSPACES_PATH, type AddProjectViewCommand, type CreateProjectCommand, type GrantProjectCommand, type PageQuery } from '@flux/contracts';
 import {
+  addProjectView,
   assertAuthorized,
   createProject,
   getProject,
@@ -19,11 +20,18 @@ export function projectRoutes(app: FastifyInstance, { db, principal, command, ru
   app.get<{ Params: { workspaceId: string }; Querystring: PageQuery }>(`${WORKSPACES_PATH}/:workspaceId/projects`, { schema: { querystring: pageQuery } }, async (request) =>
     listProjects(await principal(request), request.params.workspaceId, request.query, db));
   app.post<{ Params: { workspaceId: string }; Body: CreateProjectCommand }>(`${WORKSPACES_PATH}/:workspaceId/projects`, {
-    schema: { body: { type: 'object', required: ['name'], additionalProperties: false, properties: { name: nameSchema, visibility: { type: 'string', enum: ['workspace', 'restricted'] } } } },
+    schema: { body: { type: 'object', required: ['name'], additionalProperties: false, properties: { name: nameSchema, visibility: { type: 'string', enum: ['workspace', 'restricted'] }, template: { type: 'string', enum: [...PROJECT_TEMPLATES] } } } },
   }, async (request, reply) => command(request, reply, {
     operation: `POST ${WORKSPACES_PATH}/:workspaceId/projects`, scope: workspaceScope(request.params.workspaceId), status: 201,
     run: (actor, conn) => createProject(actor, request.params.workspaceId, request.body, conn),
     replay: requires('project', 'project.read', bodyId),
+  }));
+  app.post<{ Params: { projectId: string }; Body: AddProjectViewCommand }>(`${PROJECTS_PATH}/:projectId/views`, {
+    schema: { body: { type: 'object', required: ['view'], additionalProperties: false, properties: { view: { type: 'string', enum: [...PROJECT_VIEWS] } } } },
+  }, async (request, reply) => command(request, reply, {
+    operation: `POST ${PROJECTS_PATH}/:projectId/views`, scope: projectScope(request.params.projectId), status: 200,
+    run: (actor, conn) => addProjectView(actor, request.params.projectId, request.body, conn),
+    replay: requires('project', 'project.write', () => request.params.projectId),
   }));
   app.get<{ Params: { projectId: string } }>(`${PROJECTS_PATH}/:projectId`, async (request) =>
     getProject(await principal(request), request.params.projectId, db));

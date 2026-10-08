@@ -289,7 +289,7 @@ class AppShellJourney(unittest.TestCase):
         page = self.page(signed_in=False)
         page.goto("/tasks")
         expect(page).to_have_url(re.compile(r"/sign-in\?next=%2Ftasks$"))
-        expect(page.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
+        expect(page.get_by_role("heading", name="Sign in")).to_be_visible()
         shot(page, "sign-in-desktop-light")
 
     def test_02_register(self) -> None:
@@ -678,7 +678,7 @@ class AppShellJourney(unittest.TestCase):
 
         signin = self.page(phone=True, dark=True, signed_in=False)
         signin.goto("/sign-in")
-        expect(signin.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
+        expect(signin.get_by_role("heading", name="Sign in")).to_be_visible()
         shot(signin, "sign-in-phone-dark")
 
     # ---------------------------------------------------------------- theme and motion
@@ -789,7 +789,7 @@ class AppShellJourney(unittest.TestCase):
         page.goto("/map")
         expect(page).to_have_url(re.compile(r"/sign-in\?next=%2Fmap$"))
         page.reload()
-        expect(page.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
+        expect(page.get_by_role("heading", name="Sign in")).to_be_visible()
 
     def person_with_a_task(self, name: str, *, slow: bool = True) -> tuple[Page, str, str]:
         """A new account in its own tab with one restricted project and one task in it."""
@@ -817,7 +817,7 @@ class AppShellJourney(unittest.TestCase):
         """Signs out while the tab still waits for answers, then lets every answer arrive."""
         page.get_by_role("button", name=re.compile(rf"{name}.*account and sign out")).click()
         page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
-        expect(page.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
+        expect(page.get_by_role("heading", name="Sign in")).to_be_visible()
         expect(page.get_by_role("status").filter(has_text="You’re signed out.")).to_be_visible()
         # What the tab was loading before sign-out answers now, while the sign-in page's own check
         # of the session is still out; then that check answers too. (That check is the sign-in
@@ -830,7 +830,7 @@ class AppShellJourney(unittest.TestCase):
         # Sign-out ends on the sign-in page and stays there: nothing loaded for the previous account
         # takes the tab back, neither its address nor its page.
         expect(page).to_have_url(f"{ORIGIN}/sign-in")
-        expect(page.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
+        expect(page.get_by_role("heading", name="Sign in")).to_be_visible()
         expect(page.get_by_text("Something went wrong")).to_have_count(0)
         self.assertEqual(page.evaluate("location.pathname + location.search"), "/sign-in")
 
@@ -886,7 +886,7 @@ class AppShellJourney(unittest.TestCase):
         expect(owner.get_by_role("heading", level=1, name="Home")).to_be_visible()
         new_from_sidebar(owner, "Project")
         owner.get_by_label("Your space").fill("Lamp lab")
-        owner.get_by_label("Project name").fill("Gesture lamp")
+        owner.get_by_label("What is it about?").fill("Gesture lamp")
 
         def lose_first_committed(path: str):
             # The server commits the first POST but its 201 never arrives (#29 AC-4): Retry must not duplicate it.
@@ -1146,7 +1146,7 @@ class AppShellJourney(unittest.TestCase):
         owner.get_by_role("button", name="Create account").click()
         new_from_sidebar(owner, "Project")
         owner.get_by_label("Your space").fill("Many ideas")
-        owner.get_by_label("Project name").fill("Busy project")
+        owner.get_by_label("What is it about?").fill("Busy project")
         owner.get_by_role("button", name="Create project").click()
         project_id = owner.locator(".project-convo").get_attribute("data-project-id")
         self.assertTrue(project_id)
@@ -1264,7 +1264,7 @@ class AppShellJourney(unittest.TestCase):
         page.get_by_role("button", name="Create account").click()
         new_from_sidebar(page, "Project")
         page.get_by_label("Your space").fill("Research space")
-        page.get_by_label("Project name").fill("Sensor study")
+        page.get_by_label("What is it about?").fill("Sensor study")
         page.get_by_role("button", name="Create project").click()
         expect(page.get_by_role("heading", level=1, name="Sensor study")).to_be_visible()
 
