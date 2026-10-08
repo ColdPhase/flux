@@ -43,10 +43,12 @@ class HandOffJourney(unittest.TestCase):
         cls.browser.close()
         cls.pw.stop()
 
-    def context(self, who: str | None, *, phone: bool = False, scheme: str = "light") -> BrowserContext:
+    def context(self, who: str | None, *, phone: bool = False, scheme: str = "light", width: int | None = None) -> BrowserContext:
         options: dict = {"base_url": ORIGIN, "color_scheme": scheme, "locale": "en-GB", "timezone_id": "Europe/Warsaw", "service_workers": "block"}
         if phone:
             options.update(viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
+        elif width:
+            options.update(viewport={"width": width, "height": 900}, device_scale_factor=1)
         else:
             options.update(viewport=DESKTOP, device_scale_factor=1)
         if who and who in self.states:
@@ -206,7 +208,7 @@ class HandOffJourney(unittest.TestCase):
         dialog = page.get_by_role("dialog", name="Hand off a task")
         dialog.get_by_label("Task", exact=True).select_option(label="#3 · Ask the supplier for the probe drawing")
         for name, note in (("Outside agent", "has no access to Garden sensors"), ("Reader agent", "can only read Garden sensors")):
-            dialog.get_by_role("radio", name=re.compile(name)).check(force=True)
+            dialog.locator("label.handoff__agent", has_text=name).click()
             dialog.get_by_role("button", name="Next").click()
             expect(dialog).to_contain_text(note)
             expect(dialog).to_contain_text("Nothing is granted from here")
@@ -242,7 +244,7 @@ class HandOffJourney(unittest.TestCase):
         dialog = page.get_by_role("dialog", name="Hand off a task")
         expect(dialog).to_contain_text("Hand off #4 · Photograph the north bed")
         expect(dialog.get_by_label("Task", exact=True)).to_have_count(0)
-        dialog.get_by_role("radio", name=re.compile("Claude Code agent")).check(force=True)
+        dialog.locator("label.handoff__agent", has_text="Claude Code agent").click()
         dialog.get_by_role("button", name="Next").click()
         page.keyboard.press("Control+Enter")
         expect(page.get_by_role("dialog", name="Hand off a task")).to_have_count(0)
@@ -282,6 +284,96 @@ class HandOffJourney(unittest.TestCase):
             page.keyboard.press("Escape")
             expect(page.get_by_role("dialog")).to_have_count(0)
         self.assertIsNone(self.task("keys")["owner"], "closing hands nothing off")
+
+    def test_10_an_agents_task_opens_its_thread_from_the_panel_at_every_width(self) -> None:
+        title = "Calibrate the probes at two soil depths"
+        for label, kwargs in (("phone-390", {"phone": True}), ("tablet-820", {"width": 820})):
+            page = self.open_agents(**kwargs)
+            touch = bool(kwargs.get("phone"))
+            row = page.locator(f'.agents-row[data-agent="{self.ids["agent_claude"]}"] .agents-row__btn')
+            (row.tap if touch else row.click)()
+            detail = page.get_by_role("complementary", name="Claude Code agent, details")
+            expect(detail).to_be_visible()
+            link = detail.get_by_role("region", name="Now").get_by_role("button", name=title)
+            (link.tap if touch else link.click)()
+            # The panel is left: the exact thread with its composer is on screen, not hidden behind the panel.
+            thread = page.get_by_role("region", name=f"Thread of {title}")
+            expect(thread).to_be_visible()
+            expect(page.get_by_label("Write to this task")).to_be_visible()
+            expect(detail).to_have_count(0)
+            expect(page).to_have_url(re.compile(f"task={self.ids['busy']}"))
+            shot(page, f"handoff-thread-from-panel-{label}")
+            # Back returns to the agent's panel; forward to the thread.
+            page.go_back()
+            expect(detail).to_be_visible()
+            page.go_forward()
+            expect(thread).to_be_visible()
+        # Where the panel sits beside the list both stay on screen.
+        wide = self.open_agents()
+        wide.get_by_role("complementary", name="Claude Code agent, details").get_by_role("button", name=title).click()
+        expect(wide.get_by_role("region", name=f"Thread of {title}")).to_be_visible()
+        expect(wide.get_by_role("complementary", name="Claude Code agent, details")).to_be_visible()
+
+    def test_11_the_agent_panel_asks_for_a_task_before_confirmation(self) -> None:
+        page = self.open_agents()
+        grants_before = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/grants", status=200)
+        page.get_by_role("complementary", name="Claude Code agent, details").get_by_role("button", name="Hand off to Claude Code agent").click()
+        dialog = page.get_by_role("dialog", name="Hand off a task")
+        # No task is known yet, so this is step 1 with the agent already chosen, never an empty confirmation.
+        expect(dialog.get_by_text("Step 1 of 2")).to_be_visible()
+        expect(dialog.get_by_role("radio", name=re.compile("Claude Code agent"))).to_be_checked()
+        expect(dialog.get_by_role("button", name="Next")).to_be_disabled()
+        dialog.get_by_label("Task", exact=True).select_option(label="#5 · Order spare batteries")
+        dialog.get_by_role("button", name="Next").click()
+        expect(dialog.get_by_text("Step 2 of 2")).to_be_visible()
+        expect(dialog.get_by_role("button", name=re.compile("^Hand off"))).to_be_enabled()
+        dialog.get_by_role("button", name=re.compile("^Hand off")).click()
+        expect(page.get_by_role("dialog")).to_have_count(0)
+        self.assertEqual(self.task("keys")["owner"]["id"], self.ids["agent_claude"])
+        self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/grants", status=200), grants_before, "permissions are unchanged")
+
+    def seed_paged_project(self, page: Page, free_first: bool) -> tuple[str, str]:
+        """A project with 55 tasks owned by an agent and one free task, created in the given order."""
+        project = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": f"Paged {int(time.time() * 1000) % 100000}", "visibility": "restricted"}, status=201)["id"]
+        self.api(page, "POST", f"/api/v1/projects/{project}/grants", {"principal": {"kind": "agent", "id": self.ids["agent_claude"]}, "role": "contributor"}, status=201)
+        owner = {"kind": "agent", "id": self.ids["agent_claude"]}
+        free = None
+        if free_first:
+            free = self.api(page, "POST", f"/api/v1/projects/{project}/work", {"title": "The one free task"}, status=201)["id"]
+        for number in range(55):
+            self.api(page, "POST", f"/api/v1/projects/{project}/work", {"title": f"Owned task {number}", "owner": owner}, status=201)
+        if free is None:
+            free = self.api(page, "POST", f"/api/v1/projects/{project}/work", {"title": "The one free task"}, status=201)["id"]
+        return project, free
+
+    def test_12_a_free_task_beyond_the_first_page_is_reachable(self) -> None:
+        page = self.page("ada")
+        for free_first in (True, False):
+            project, free = self.seed_paged_project(page, free_first)
+            first = self.api(page, "GET", f"/api/v1/projects/{project}/work-view?purpose=choices&choice=pivot_work&limit=50", status=200)
+            if free not in [row["id"] for row in first["items"]]:
+                break
+        else:
+            self.fail("neither creation order put the free task beyond the first page")
+        self.assertTrue(first["nextCursor"], "the choices are paged")
+        view = self.page("ada")
+        reads: list[str] = []
+        view.on("request", lambda request: reads.append(request.url) if "/work-view" in request.url and "cursor=" in request.url else None)
+        view.goto(f"/projects/{project}/agents")
+        expect(view.get_by_role("heading", level=1, name="Agents")).to_be_visible()
+        view.get_by_role("button", name="Hand off a task").click()
+        dialog = view.get_by_role("dialog", name="Hand off a task")
+        expect(dialog.get_by_text("No open task without an agent")).to_have_count(0)
+        select = dialog.get_by_label("Task", exact=True)
+        expect(select.locator("option", has_text="The one free task")).to_have_count(1)
+        self.assertTrue(reads, "the next bounded page was read")
+        select.select_option(label=next(o for o in select.locator("option").all_inner_texts() if "The one free task" in o))
+        dialog.locator("label.handoff__agent", has_text="Claude Code agent").click()
+        dialog.get_by_role("button", name="Next").click()
+        dialog.get_by_role("button", name=re.compile("^Hand off")).click()
+        expect(view.get_by_role("dialog")).to_have_count(0)
+        owner = self.api(view, "GET", f"/api/v1/work/{free}", status=200)["owner"]
+        self.assertEqual(owner["id"], self.ids["agent_claude"])
 
 
 if __name__ == "__main__":

@@ -480,11 +480,18 @@ export function ProjectAgents() {
   const connections = useConnections(projectId, me.user.id, data.connections);
 
   const entries = useMemo(() => agentEntries(shell?.people ?? null, [...connections.list].sort((a, b) => RANK[shownState(a, connections.now)] - RANK[shownState(b, connections.now)])), [shell?.people, connections.list, connections.now]);
+  const beside = useMediaQuery('(min-width: 1001px)');
+  // From an agent's panel a thread opens as a step forward: on a narrow pane the panel (which hides the list and
+  // the thread) is left, and Back returns to it.
+  const openThread = (id: string) => setSearch((current) => {
+    const next = new URLSearchParams(current); next.set('task', id);
+    if (!beside) next.delete('agent');
+    return next;
+  }, { replace: beside, flushSync: true });
   const heldBy = (agentId: string) => tasksHeldBy(agentId, rows);
   const working = entries.filter((entry) => heldBy(entry.agentId)[0]?.status === 'in_progress').length;
   const picked = search.get('agent');
   // Where the panel fits beside the list it is open from the start, on the working agent as drawn; narrow panes open it by choice.
-  const beside = useMediaQuery('(min-width: 1001px)');
   const selected = entries.find((entry) => entry.key === picked) ?? (beside ? entries.find((entry) => heldBy(entry.agentId)[0]?.status === 'in_progress') ?? entries[0] ?? null : null);
   const open = (key: string | null) => setSearch((current) => { const next = new URLSearchParams(current); if (key) next.set('agent', key); else next.delete('agent'); return next; }, { replace: true });
 
@@ -564,7 +571,7 @@ export function ProjectAgents() {
       </div>
       {selected ? (
         <AgentDetail key={selected.key} entry={selected} held={heldBy(selected.agentId)} projectId={projectId} now={connections.now}
-          canHandOff={canWrite && !!shell} onHandOff={() => setHandOff({ agentId: selected.agentId, task: null })} onClose={() => open(null)} onThread={select} />
+          canHandOff={canWrite && !!shell} onHandOff={() => setHandOff({ agentId: selected.agentId, task: null })} onClose={() => open(null)} onThread={openThread} />
       ) : null}
     </div>
     {shell ? (

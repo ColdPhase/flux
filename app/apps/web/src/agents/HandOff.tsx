@@ -66,7 +66,11 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
   const titleId = useId();
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
-  const [step, setStep] = useState<1 | 2>(agentId ? 2 : 1);
+  // The bounded read's continuation: tasks past the first page are reached page by page, never as the whole project.
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [paging, setPaging] = useState(false);
+  const [pageFailed, setPageFailed] = useState(false);
+  const [step, setStep] = useState<1 | 2>(agentId && given ? 2 : 1);
   const [chosen, setChosen] = useState<string | null>(agentId);
   const [taskId, setTaskId] = useState<string | null>(given?.id ?? null);
   const [busy, setBusy] = useState(false);
@@ -81,10 +85,12 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
     // the workspace's agents just means no "without access" rows, never a failed hand-off.
     Promise.all([
       listProjectPeople(project.id, signal), getProjectAgents(project.id, signal), listAgents(project.workspaceId, signal).catch(() => [] as Agent[]),
-      getProjectWorkView(project.id, { purpose: 'choices', choice: 'pivot_work' }, signal).then((page) => page.items.filter((row): row is WorkRowProjection => row.kind === 'work')),
+      getProjectWorkView(project.id, { purpose: 'choices', choice: 'pivot_work' }, signal).then((page) => ({ rows: page.items.filter((row): row is WorkRowProjection => row.kind === 'work'), next: page.nextCursor })),
       getAgentPolicy(project.id, signal).then((read) => read.policy).catch(() => null),
-    ]).then(([people, agents, workspaceAgents, tasks, policy]) => {
-      if (!signal.aborted) setLoaded({ people, connections: agents.connections, workspaceAgents, tasks, policy });
+    ]).then(([people, agents, workspaceAgents, page, policy]) => {
+      if (signal.aborted) return;
+      setLoaded({ people, connections: agents.connections, workspaceAgents, tasks: page.rows, policy });
+      setCursor(page.next);
     }, () => { if (!signal.aborted) setLoadFailed(true); });
     return () => controller.abort();
   }, [project.id, project.workspaceId]);
@@ -101,6 +107,30 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
   const grant = mayDo(entry?.access ?? null);
   const manager = project.access === 'manager';
   const free = useMemo(() => (loaded?.tasks ?? []).filter((row) => !row.owner || row.owner.kind !== 'agent'), [loaded]);
+
+  const append = (page: { rows: WorkRowProjection[]; next: string | null }) => {
+    setLoaded((current) => current && { ...current, tasks: [...current.tasks, ...page.rows.filter((row) => !current.tasks.some((known) => known.id === row.id))] });
+    setCursor(page.next);
+  };
+  const readPage = async (after: string, signal?: AbortSignal) => {
+    const page = await getProjectWorkView(project.id, { purpose: 'choices', choice: 'pivot_work', cursor: after }, signal);
+    return { rows: page.items.filter((row): row is WorkRowProjection => row.kind === 'work'), next: page.nextCursor };
+  };
+  const loadMore = async () => {
+    if (!cursor || paging) return;
+    setPaging(true); setPageFailed(false);
+    try { append(await readPage(cursor)); } catch { setPageFailed(true); } finally { setPaging(false); }
+  };
+  // A page of tasks that all have an agent is not "no task": keep reading until one is free or the list ends.
+  const reading = !!loaded && !given && !!cursor && !free.length && !pageFailed;
+  useEffect(() => {
+    if (!reading || !cursor) return undefined;
+    const controller = new AbortController();
+    readPage(cursor, controller.signal).then((page) => { if (!controller.signal.aborted) append(page); }, () => { if (!controller.signal.aborted) setPageFailed(true); });
+    return () => controller.abort();
+    // One read per cursor; the helpers only close over the project and setters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reading, cursor]);
 
   // Focus follows the step so keyboard use never starts on the dialog's edge.
   useEffect(() => { first.current?.focus({ preventScroll: true }); }, [step, loaded]);
@@ -148,11 +178,13 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
               <div className="handoff__task">
                 <label htmlFor={`${titleId}-task`}>Task</label>
                 <select id={`${titleId}-task`} ref={(node) => { if (!entry) first.current = node; }} value={taskId ?? ''} disabled={!loaded || !free.length} onChange={(event) => setTaskId(event.target.value || null)}>
-                  <option value="">{loaded && !free.length ? 'No open task without an agent' : 'Choose a task'}</option>
+                  <option value="">{loaded && !free.length && !cursor ? 'No open task without an agent' : paging || reading ? 'Reading tasks…' : 'Choose a task'}</option>
                   {free.map((row) => <option key={row.id} value={row.id}>#{row.number} · {row.title}</option>)}
                 </select>
+                {cursor && free.length ? <Button variant="quiet" busy={paging} onClick={() => void loadMore()}>More tasks</Button> : null}
               </div>
             )}
+            {pageFailed ? <p className="handoff__note" role="alert">More tasks couldn’t be read. <button type="button" className="ui-link" onClick={() => { setPageFailed(false); void loadMore(); }}>Try again</button></p> : null}
             {status ? <p className="handoff__note" role="status">{status}</p> : null}
             {loaded && !entries.length ? <p className="handoff__note">No agents are connected here yet. {manager ? 'Connect one first.' : 'Ask a project manager to connect one.'} <Link className="ui-link" to="/connect-agent">Connect an agent</Link></p> : null}
             <div className="handoff__list" role="radiogroup" aria-label="Agent">
