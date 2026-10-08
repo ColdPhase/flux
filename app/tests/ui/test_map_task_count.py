@@ -453,9 +453,23 @@ class MapTaskCountJourney(unittest.TestCase):
             box = badge.bounding_box()
             self.assertGreaterEqual(box["height"], 24, "the count is a usable touch target")
             before = self.camera(page)
-            badge.tap()
+            center = {"x": box["x"] + box["width"] / 2, "y": box["y"] + box["height"] / 2}
+            target = badge.evaluate("""(button, p) => {
+              const hit = document.elementFromPoint(p.x, p.y);
+              const canvas = button.closest('.sk-canvas').getBoundingClientRect();
+              return {
+                uncovered: !!hit && button.contains(hit),
+                insideCanvas: p.x >= canvas.left && p.x < canvas.right && p.y >= canvas.top && p.y < canvas.bottom,
+              };
+            }""", center)
+            self.assertTrue(target["uncovered"] and target["insideCanvas"], "the real touch target is visible and uncovered")
+            self.assertEqual(self.camera(page), before, "measuring the visible target does not move the camera")
+            # Normal actionability checks remain. Entry-motion retries must not add a synthetic
+            # scroll after our deliberate visibility scroll and camera baseline.
+            badge.tap(scroll="none")
             sheet = self.chooser(page, DARK_ROOM)
             expect(sheet).to_be_visible()
+            self.assertEqual(self.camera(page), before, "opening the sheet keeps the phone camera")
             expect(sheet).to_have_attribute("aria-modal", "true")
             expect(sheet.get_by_role("link")).to_have_count(3)
             # The sheet slides up (shell overlay motion): measure where it comes to rest.
