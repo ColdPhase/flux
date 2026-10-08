@@ -1,3 +1,4 @@
+import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
@@ -33,7 +34,10 @@ const proxy = http.createServer((request, response) => {
     });
     answer.on('error', (error) => { held.failed(error); held.settled(); response.destroy(); });
     answer.on('end', () => {
-      const body = Buffer.concat(chunks); held.captured(body);
+      const body = Buffer.concat(chunks);
+      // Large JSON answers are compressed; the captured copy is decoded, the forwarded bytes stay untouched.
+      const encoding = String(answer.headers['content-encoding'] ?? '');
+      held.captured(encoding === 'br' ? brotliDecompressSync(body) : encoding === 'gzip' ? gunzipSync(body) : body);
       void held.release.then(() => {
         // Preserve the actual upstream status, headers and bytes. Cancellation
         // may already have closed this old request; never substitute JSON.
@@ -113,7 +117,7 @@ test('ordinary owner switches persist, the same old MCP bearer loses wiki access
     await playbook.uncheck(); await panel.getByRole('button', { name: 'Save permissions', exact: true }).click();
     await panel.getByRole('status').getByText('Permissions saved', { exact: true }).waitFor();
     await page.waitForFunction(() => document.querySelector('.mcp-permissions')?.getAttribute('aria-busy') !== 'true');
-    const runtime = panel.locator('.mcp-permissions__row').filter({ has: panel.getByRole('switch', { name: /^Current agent session/ }) });
+    const runtime = panel.locator('.mcp-permissions__row').filter({ has: page.getByRole('switch', { name: /^Current agent session/ }) });
     await runtime.getByText('Related tools also need: Flux co-work instructions.', { exact: true }).waitFor();
     assert.equal(await runtime.getByRole('switch').isChecked(), true, 'a missing prerequisite is explained without changing another switch');
     assert.equal(toolFailure(await f.connection.tool('flux_bootstrap', { projectId: f.projectId, clientSessionId: randomUUID() })).code,
