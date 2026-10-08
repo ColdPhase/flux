@@ -321,3 +321,33 @@ Chromium/WebKit 320/390 controls, 44px geometry, Space activation and persisted
 all-Off management. Each phone iteration has its own account/project/connection,
 so earlier all-Off state cannot silently disable a later iteration's save. No
 browser scenario has been executed and no screenshot exists for this continuation.
+
+
+### Actual admission-checkpoint build and owner UI review corrections
+
+The separately frozen `8bb8720970788c6cd33b0795f8712287ea045ed5` admission
+checkpoint was actually built in Docker on 2026-10-08. Its compiler failed with
+exit 1 at the generic registered-tool wrapper (TS2769); all 60 selected
+application cases remain unexecuted. No deadline expired, process groups settled,
+and its owned containers, networks, volumes and image tags were confirmed absent.
+This continuation retains the SDK's schema-specific `ToolCallback` type through
+a callable Proxy that forwards the original receiver and arguments, rather than
+reconstructing its deferred conditional function signature. A successful current compiler result is still required.
+
+Independent source evaluation of `3acb096a1b5a90225e097abd310fa4b87be1f369`
+found three owner UI defects. Each load/save sequence now has an abortable request
+and generation fence, so a delayed initial read cannot replace a newer confirmed
+write. Combined entry prerequisites are named using the same ordinary permission
+labels without switching them on implicitly. Availability belongs to the loaded
+policy version: after a confirmed write it is unknown until the matching refresh
+returns; failed refresh never presents old availability as current saved access.
+
+The browser module now contains five genuine session/API/persistence scenarios.
+The earlier knowledge-Off scenario also exercises playbook-Off with a named
+bootstrap prerequisite. Two added cases hold the actual initial GET response
+bytes until after a later confirmed write, and refuse only the post-write GET
+while letting the actual project-removal PATCH persist. Existing stale-tab,
+offline-save, immutable-consent/no-standing-grant and two-engine 320/390 phone
+controls remain. All five browser cases and fresh visual evaluation are UNRUN.
+These changes do not establish queued MCP-byte fencing, full S6 acceptance or
+protected-main integration.

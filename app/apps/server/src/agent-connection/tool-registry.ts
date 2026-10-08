@@ -23,7 +23,12 @@ export function agentToolRegistry(server: McpServer, dispatch: McpDispatch) {
         if (!entry || entry.requiredScope !== requiredScope || entry.operation !== (effect?.operation ?? null))
           throw new Error('A Flux tool must match its exact registered permission');
         dispatch.declare('tool', name);
-        server.registerTool(name, config, (args, extra) => dispatch.run('tool', name, () => callback(args, extra)));
+        // Proxy preserves the SDK's schema-dependent callback type and forwards
+        // its original receiver/arguments without reconstructing a conditional signature.
+        const guarded = new Proxy(callback, { apply(target, receiver, args) {
+          return dispatch.run('tool', name, () => Reflect.apply(target, receiver, args));
+        } });
+        server.registerTool(name, config, guarded);
         entries.set(name, { name, title: config.title, requiredScope, operation: effect?.operation ?? null, classes: effect?.classes ?? [] });
       } };
     },

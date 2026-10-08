@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { AGENT_MCP_ENTRIES, AGENT_MCP_READ_CAPABILITIES, type AgentConnection, type AgentMcpCapabilityId,
   type SaveAgentMcpPolicy } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
@@ -54,36 +54,52 @@ export function McpPermissions({ connection, projectNames }: { connection: Agent
   const [needsReload, setNeedsReload] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState('Loading saved permissions…');
+  const [availabilityVersion, setAvailabilityVersion] = useState<number | null>(null);
+  const generation = useRef(0);
+  const pending = useRef<AbortController | null>(null);
+  const startRequest = useCallback(() => {
+    pending.current?.abort();
+    const controller = new AbortController(); const ticket = ++generation.current;
+    pending.current = controller;
+    return { controller, current: () => ticket === generation.current && !controller.signal.aborted };
+  }, []);
   useEffect(() => {
-    const controller = new AbortController();
-    void getMcpPermissions(connection.id, controller.signal).then((value) => {
-      setSettings(value); setDraft(inputOf(value.policy)); setStatus('Showing saved permissions');
+    const read = startRequest();
+    void getMcpPermissions(connection.id, read.controller.signal).then((value) => {
+      if (!read.current()) return;
+      setSettings(value); setDraft(inputOf(value.policy)); setAvailabilityVersion(value.policy.version); setStatus('Showing saved permissions');
     }).catch((cause: unknown) => {
-      if (controller.signal.aborted) return;
+      if (!read.current()) return;
       setError(cause instanceof NetworkError ? 'Saved permissions could not be loaded. Check your connection and try again.' : 'Saved permissions could not be loaded.');
       setStatus('Permissions unavailable'); setNeedsReload(true);
     });
-    return () => controller.abort();
-  }, [connection.id]);
+    return () => { ++generation.current; read.controller.abort(); pending.current?.abort(); };
+  }, [connection.id, startRequest]);
 
   async function reload() {
-    setBusy(true); setError(null);
+    if (busy) return;
+    const read = startRequest(); setBusy(true); setError(null);
     try {
-      const value = await getMcpPermissions(connection.id);
-      setSettings(value); setDraft(inputOf(value.policy)); setNeedsReload(false); setStatus('Showing saved permissions');
-    } catch { setError('Saved permissions could not be loaded. Try again.'); setNeedsReload(true); }
-    finally { setBusy(false); }
+      const value = await getMcpPermissions(connection.id, read.controller.signal);
+      if (!read.current()) return;
+      setSettings(value); setDraft(inputOf(value.policy)); setAvailabilityVersion(value.policy.version); setNeedsReload(false); setStatus('Showing saved permissions');
+    } catch { if (read.current()) { setError('Saved permissions could not be loaded. Try again.'); setNeedsReload(true); } }
+    finally { if (read.current()) setBusy(false); }
   }
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!settings || !draft || busy || needsReload) return;
-    setBusy(true); setError(null);
+    const write = startRequest(); setBusy(true); setError(null);
     try {
-      const saved = await saveMcpPermissions(connection.id, settings.policy.version, draft);
-      setSettings({ ...settings, policy: saved.policy }); setDraft(inputOf(saved.policy)); setStatus('Permissions saved');
-      try { const current = await getMcpPermissions(connection.id); setSettings(current); setDraft(inputOf(current.policy)); }
-      catch { setError('Permissions were saved, but their current availability could not be refreshed. Reload to check.'); setNeedsReload(true); }
-    } catch (cause) { setError(describe(cause)); setNeedsReload(true); setStatus('Save not confirmed'); }
-    finally { setBusy(false); }
+      const saved = await saveMcpPermissions(connection.id, settings.policy.version, draft, write.controller.signal);
+      if (!write.current()) return;
+      setSettings({ ...settings, policy: saved.policy }); setDraft(inputOf(saved.policy)); setAvailabilityVersion(null); setStatus('Permissions saved');
+      try {
+        const current = await getMcpPermissions(connection.id, write.controller.signal);
+        if (!write.current()) return;
+        setSettings(current); setDraft(inputOf(current.policy)); setAvailabilityVersion(current.policy.version);
+      } catch { if (write.current()) { setError('Permissions were saved, but their current availability could not be refreshed. Reload to check.'); setNeedsReload(true); } }
+    } catch (cause) { if (write.current()) { setError(describe(cause)); setNeedsReload(true); setStatus('Save not confirmed'); } }
+    finally { if (write.current()) setBusy(false); }
   }
   const dirty = !!settings && !!draft && !same(settings.policy, draft);
   function toggle(capability: AgentMcpCapabilityId, on: boolean) {
@@ -130,11 +146,16 @@ export function McpPermissions({ connection, projectNames }: { connection: Agent
             const partial = settings.policy.enabledCapabilityIds.includes(capability)
               && entries.some((entry) => connection.scopes.includes(entry.requiredScope) && !settings.policy.enabledEntryIds.includes(entry.id));
             const available = entries.some((entry) => entry.available);
-            const reason = !supported ? 'Requires a new connection with your consent' : !settings.policy.enabledCapabilityIds.includes(capability)
+            const availabilityKnown = availabilityVersion === settings.policy.version;
+            const prerequisites = [...new Set(entries.flatMap((entry) => entry.requiredCapabilities)
+              .filter((required) => required !== capability && !settings.policy.enabledCapabilityIds.includes(required)))];
+            const reason = !supported ? 'Requires a new connection with your consent' : !availabilityKnown ? 'Saved access needs refreshing'
+              : !settings.policy.enabledCapabilityIds.includes(capability)
               ? 'Saved: Off' : partial ? 'Saved: some tools are off' : available ? 'Saved: available'
                 : group.title === 'Act' ? 'Saved: each action also needs a current grant and agent session' : 'Saved: check selected projects and related permissions';
             return <label className="mcp-permissions__row" key={capability}>
-              <span><strong>{LABEL[capability] ?? 'Unavailable capability'}</strong><small>{reason}</small></span>
+              <span><strong>{LABEL[capability] ?? 'Unavailable capability'}</strong><small>{reason}</small>
+                {availabilityKnown && prerequisites.length ? <small>Related tools also need: {prerequisites.map((required) => LABEL[required] ?? 'an unavailable permission').join(', ')}.</small> : null}</span>
               <input type="checkbox" role="switch" checked={enabled} disabled={!supported && !enabled}
                 onChange={(event) => toggle(capability, event.target.checked)} />
             </label>;

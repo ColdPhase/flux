@@ -19,9 +19,9 @@ export function getMcpPermissions(connectionId: string, signal?: AbortSignal) {
   return request<McpPermissionSettings>(agentMcpPolicyPath(encodeURIComponent(connectionId)), { signal });
 }
 
-export function saveMcpPermissions(connectionId: string, version: number, input: SaveAgentMcpPolicy) {
+export function saveMcpPermissions(connectionId: string, version: number, input: SaveAgentMcpPolicy, signal?: AbortSignal) {
   return request<{ policy: AgentMcpPolicy }>(agentMcpPolicyPath(encodeURIComponent(connectionId)), {
-    method: 'PATCH', headers: { 'if-match': `"mcp-policy-${version}"` }, body: input,
+    method: 'PATCH', headers: { 'if-match': `"mcp-policy-${version}"` }, body: input, signal,
   });
 }
 
