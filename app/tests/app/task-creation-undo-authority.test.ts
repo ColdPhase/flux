@@ -81,6 +81,7 @@ test('trusted proposal use keeps accepting human creator; suggesting agent owner
       dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal',
       maxRunsPerDay: 1, periodBudgetCents: 5, perRunCents: 5 } }), 201);
   expect(await f.owner.request('POST', '/api/v1/background-compute-connections', { body: {
+    provider: 'anthropic', model: 'claude-sonnet-5',
     apiKey: `sk-ant-api03-${'undo-controlled-provider-'.repeat(4)}END6`, payerOrganization: 'Controlled fixture payer',
     providerWorkspace: 'Dedicated fixture workspace', workspaceScopedKeyConfirmed: true, payerAuthorityConfirmed: true,
     providerBillingAcknowledged: true, projectDataDisclosureAcknowledged: true,

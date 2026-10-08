@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
 import { join } from 'node:path';
@@ -136,7 +136,7 @@ async function open(context: BrowserContext, f: Scene, item: WorkItem, surface =
 async function storedDraft(page: Page, key: string) {
   return await page.evaluate((value) => JSON.parse(localStorage.getItem(value) ?? sessionStorage.getItem(value) ?? 'null'), key) as {
     body: string; files: { state: string; staged: { id: string }; name: string }[]; references: { materialId: string; version: number; title: string }[]; commandId: string;
-    pending: { id: string; body: string; state: string; error?: string; files: unknown[]; references: unknown[] }[];
+    pending?: { id: string; body: string; state: string; error?: string; files: unknown[]; references: unknown[] }[];
   };
 }
 async function stageDraft(page: Page, f: Scene, item: WorkItem) {
@@ -159,7 +159,30 @@ async function reverted(page: Page, item: WorkItem) {
 }
 async function withContexts(contexts: BrowserContext[], run: () => Promise<void>) {
   const failures: unknown[] = [];
-  try { await run(); } catch (error) { failures.push(error); }
+  try { await run(); } catch (error) {
+    failures.push(error);
+    const evidence = process.env.FLUX_E2E_EVIDENCE_DIR;
+    if (evidence) {
+      const captures = await Promise.allSettled(contexts.flatMap((context) => context.pages().map(async (page) => {
+        const name = `task-undo-failure-${randomUUID()}`;
+        mkdirSync(evidence, { recursive: true });
+        const observed = await finite(page.evaluate(() => {
+          const panel = document.querySelector<HTMLElement>('#details');
+          const own = panel?.querySelector<HTMLElement>('[data-detail-kind]');
+          return { path: location.pathname, panel: panel ? { display: getComputedStyle(panel).display,
+            visibility: getComputedStyle(panel).visibility, hidden: panel.hidden, text: panel.innerText } : null,
+          own: own ? { kind: own.dataset.detailKind, id: own.dataset.detailId } : null,
+          pending: [...document.querySelectorAll<HTMLElement>('[data-client-message-id]')].map((node) => ({
+            id: node.dataset.clientMessageId, state: node.dataset.sendState })),
+          headings: [...document.querySelectorAll('h1,h2,h3,h4')].map((node) => node.textContent),
+          pageWidth: document.documentElement.scrollWidth, viewportWidth: innerWidth };
+        }), 'failed Undo view diagnostics');
+        writeFileSync(join(evidence, `${name}.json`), JSON.stringify(observed, null, 2), { mode: 0o600 });
+        await finite(page.screenshot({ path: join(evidence, `${name}.png`), fullPage: true, timeout: 10_000 }), 'failed Undo view capture');
+      })));
+      for (const capture of captures) if (capture.status === 'rejected') failures.push(capture.reason);
+    }
+  }
   const closed = await Promise.allSettled(contexts.map((context) => finite(context.close(), 'context close')));
   for (const result of closed) if (result.status === 'rejected') failures.push(result.reason);
   if (failures.length === 1) throw failures[0];
@@ -267,14 +290,15 @@ test('pending contribution cannot be retried from undone read-only history and b
       await panel(page).getByRole('button', { name: 'Start the discussion', exact: true }).click();
       const command = await finite(held.promise, 'outgoing contribution');
       const original = await stageDraft(page, f, item);
-      const pendingBefore = original.pending.find((entry) => entry.id === command.clientMessageId)!;
+      const pendingBefore = original.pending?.find((entry) => entry.id === command.clientMessageId);
+      assert.ok(pendingBefore, 'the held command is in the private queue');
       assert.equal(pendingBefore.body, unsent);
       await f.undo(item); await reverted(page, item);
       release.resolve(); await finite(settled.promise, 'contribution refusal settlement');
       if (failure) throw failure;
       const pending = panel(page).locator(`[data-client-message-id="${command.clientMessageId}"]`);
       await finite((async () => {
-        while ((await storedDraft(page, draftKey(f, item))).pending.find((entry) => entry.id === command.clientMessageId)?.state !== 'failed'
+        while ((await storedDraft(page, draftKey(f, item))).pending?.find((entry) => entry.id === command.clientMessageId)?.state !== 'failed'
           || await pending.getAttribute('data-send-state') !== 'failed')
           await page.waitForTimeout(100);
       })(), 'refused pending contribution kept');
@@ -285,7 +309,8 @@ test('pending contribution cannot be retried from undone read-only history and b
       const current = await storedDraft(page, draftKey(f, item));
       assert.deepEqual({ body: current.body, files: current.files, references: current.references, commandId: current.commandId },
         { body: original.body, files: original.files, references: original.references, commandId: original.commandId }, 'second private draft kept');
-      const pendingAfter = current.pending.find((entry) => entry.id === command.clientMessageId)!;
+      const pendingAfter = current.pending?.find((entry) => entry.id === command.clientMessageId);
+      assert.ok(pendingAfter, 'the refused command is retained in the private queue');
       assert.deepEqual({ id: pendingAfter.id, body: pendingAfter.body, files: pendingAfter.files, references: pendingAfter.references },
         { id: pendingBefore.id, body: pendingBefore.body, files: pendingBefore.files, references: pendingBefore.references }, 'unsent command and content kept');
       const discussion = expectStatus(await f.author.browser.request('GET', taskDiscussionPath(item.id)), 200) as { root: ConversationMessage | null; messages: ConversationMessage[] };
@@ -335,7 +360,8 @@ test('a committed contribution with a held answer stays unconfirmed after write 
       const command = await finite(committed.promise, 'actual committed contribution', 20_000);
       assert.equal(command.message.body, body);
       const original = await stageDraft(page, f, item);
-      const pendingBefore = original.pending.find((entry) => entry.id === command.clientMessageId)!;
+      const pendingBefore = original.pending?.find((entry) => entry.id === command.clientMessageId);
+      assert.ok(pendingBefore, 'the committed but unconfirmed command is still queued');
       assert.equal(pendingBefore.state, 'sending'); assert.equal(pendingBefore.body, body);
       await grant(f.manager, f.place.id, f.author, 'viewer');
       const refreshed = finite(page.waitForResponse((response) => response.request().method() === 'GET'
@@ -356,7 +382,7 @@ test('a committed contribution with a held answer stays unconfirmed after write 
       release.resolve(); await finite(settled.promise, 'committed answer settlement');
       if (failure) throw failure;
       await finite((async () => {
-        while ((await storedDraft(page, draftKey(f, item))).pending.some((entry) => entry.id === command.clientMessageId))
+        while ((await storedDraft(page, draftKey(f, item))).pending?.some((entry) => entry.id === command.clientMessageId))
           await page.waitForTimeout(100);
       })(), 'confirmed command leaves the private queue');
       const current = await storedDraft(page, draftKey(f, item));

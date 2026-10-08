@@ -159,6 +159,7 @@ async function captureVisibleAuthor(page: Page, row: Locator, name: string, evid
     return { text: label.innerText, parts };
   });
   const samples = [];
+  const frameSignals = [];
   for (let i = 0; i < 3; i++) {
     await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
     const sample = await inspect();
@@ -169,7 +170,15 @@ async function captureVisibleAuthor(page: Page, row: Locator, name: string, evid
       && (a.ariaHidden !== 'true' || (part.name === 'face' && index === 0)))),
     `${name}: visible identity has no hidden ancestor; only the decorative face itself may be aria-hidden`);
     samples.push(sample);
+    frameSignals.push(await row.evaluate((element) => {
+      const feed = element.closest<HTMLElement>('.project-convo__feed');
+      const bounds = element.getBoundingClientRect();
+      return { rowY: bounds.y, rowHeight: bounds.height, scrollTop: feed?.scrollTop,
+        scrollHeight: feed?.scrollHeight, feedWidth: feed?.clientWidth, feedHeight: feed?.clientHeight,
+        opening: feed?.classList.contains('is-opening') };
+    }));
   }
+  if (evidence) writeFileSync(join(evidence, `${name}-frame-observations.json`), JSON.stringify({ samples, frameSignals }, null, 2), { mode: 0o600 });
   assert.deepEqual(samples[1], samples[0], `${name}: visible identity is stable over rendered frames`);
   assert.deepEqual(samples[2], samples[1], `${name}: visible identity remains stable over rendered frames`);
   if (evidence) {

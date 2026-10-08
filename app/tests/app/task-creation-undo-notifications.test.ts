@@ -136,7 +136,7 @@ test('already admitted real push finishes as history while Undo proceeds without
   } finally { release.resolve(); try { await settleDelivery(delivery); } finally { f.agent.destroy(); } }
 });
 
-test('post-handoff SQL rollback and callback rejection are observed as unknown without another provider call', { timeout: 45_000 }, async () => {
+test('post-handoff SQL rollback stays unknown while a confirmed transaction preserves provider rejection without another call', { timeout: 45_000 }, async () => {
   const f = await queuedAssignment(); let calls = 0;
   try {
     const rollbackDb = { transaction: <T>(action: Parameters<typeof db.transaction<T>>[0]) => db.transaction(async (tx) => {
@@ -146,6 +146,38 @@ test('post-handoff SQL rollback and callback rejection are observed as unknown w
       calls++; return Promise.reject(new Error('Injected provider rejection'));
     });
     assert.deepEqual(result, { status: 'unknown' }); assert.equal(calls, 1);
+    const rejected = new Error('Known provider response rejection after the admission transaction');
+    await assert.rejects(assignmentDeliveryAdmission(db, f.queued.id, () => {
+      calls++; return Promise.reject(rejected);
+    }), (error: unknown) => error === rejected);
+    assert.equal(calls, 2, 'each explicit admission attempts the concrete provider once, never internally retries');
     expect(await f.undo(), 200);
   } finally { f.agent.destroy(); }
+});
+
+test('real SMTP handoff with injected admission SQL rollback retains the sending claim and never sends that copy again', { timeout: 45_000 }, async () => {
+  const f = await queuedAssignment(); const config = loadNotificationMailConfig();
+  if (config.status !== 'available') throw new Error('SMTP test configuration required');
+  const smtp = smtpNotificationMailer(config); const base = emailUnitOfWork(db, queue);
+  let calls = 0;
+  const rollbackDb = { transaction: <T>(action: Parameters<typeof db.transaction<T>>[0]) => db.transaction(async (tx) => {
+    await action(tx); throw new Error('Injected admission SQL rollback after real SMTP handoff');
+  }) };
+  const uow: typeof base = { run: base.run, admitSend: (id, send) => assignmentDeliveryAdmission(rollbackDb, id, () => {
+    calls++; return send();
+  }) };
+  try {
+    const job = { emailId: f.queued.email_id };
+    assert.deepEqual(await deliverNotificationEmail({ available: true, origin: config.origin, uow, mailer: smtp }, job),
+      { outcome: 'unknown', reason: 'delivery outcome unknown after provider admission' });
+    assert.equal((await pool.query('SELECT status FROM notification_emails WHERE id=$1', [job.emailId])).rows[0].status, 'sending');
+    assert.deepEqual(await deliverNotificationEmail({ available: true, origin: config.origin, uow: base, mailer: smtp }, job),
+      { outcome: 'skipped', reason: 'already sending' });
+    assert.equal(calls, 1, 'the unknown result never requeues or re-admits this copy');
+    const mail = await waitFor(async () => {
+      const response = await (await fetch(`${mailpitUrl}/api/v1/search?query=${encodeURIComponent(`to:"${f.email}"`)}`)).json() as { messages: unknown[] };
+      return response.messages.length === 1 ? response : undefined;
+    }, 'the one actual accepted SMTP message');
+    assert.equal(mail.messages.length, 1);
+  } finally { smtp.close(); f.agent.destroy(); }
 });

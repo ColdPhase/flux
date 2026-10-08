@@ -104,7 +104,7 @@ test('genuine native creation Undo retains exact history and receipts; core/MCP 
   assert.equal(historical.number, item.number, 'historical export retains the native task number');
   assert.equal(historical.creationHistory.notices.length, 2);
   await assert.rejects(pool.query('UPDATE project_work_items SET number=number+1 WHERE id=$1', [item.id]),
-    (error: unknown) => error instanceof Error && 'code' in error && error.code === '23514');
+    (error: unknown) => error instanceof Error && 'code' in error && error.code === '23001');
   assert.equal(await notificationFactRows(db).work(item.id), null);
 });
 
