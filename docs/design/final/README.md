@@ -65,6 +65,11 @@ changes to it; agents implement it and do not re-decide it.
 **Radii:** 10 (small), 14 (rows, fields), 18–20 (cards, bubbles, panels) and full (pills,
 buttons). The phone sheet top corners are 26.
 
+**Concentric corners** (founder, 2026-10-08): a frame that tightly holds a tile or an avatar takes
+the inner radius plus the gap. A project tile (radius 6) inside a place picker with a 4 px inset sits
+in a 10 px frame, not in a pill. Projects stay rounded squares and people stay circles, so a lettered
+circle never stands for a project.
+
 **Typography:** Geist 400 / 500 / 600 and Geist Mono for numbers (#12), times, keys and file
 labels.
 - Title: 32 / 600 on the computer, 28–30 on the phone.
