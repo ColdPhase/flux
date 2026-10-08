@@ -108,6 +108,12 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   const [selectSeveral, setSelectSeveral] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [connectState, setConnectFrom] = useState<string | null>(null);
+  // Narrowing to the phone cancels a connection that was armed on the wider screen.
+  const [wasPhone, setWasPhone] = useState(phone);
+  if (wasPhone !== phone) {
+    setWasPhone(phone);
+    if (phone) { setConnectFrom(null); setSelectSeveral(false); setSelection((current) => current.slice(-1)); }
+  }
   const [editingState, setEditing] = useState<Editing | null>(null);
   const editSaveInFlight = useRef(false);
   const dmAudience = directMessages.find((item) => item.id === (doc.sketch?.dmId ?? dmId))?.audience ?? null;
@@ -204,6 +210,8 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
 
   const connectTo = (from: string, to: string) => {
     setConnectFrom(null);
+    // S15: the phone views and adds only, whatever was armed before the screen narrowed.
+    if (phone) return;
     if (from === to) { say('Connect cancelled'); return; }
     const a = find(from);
     const b = find(to);

@@ -398,7 +398,7 @@ export function SketchMap(props: SketchMapProps) {
       canvas.scrollTop = d.scrollTop! - (event.clientY - d.sy);
     } else if (d.kind === 'link') {
       const box = zoomedRef.current!.getBoundingClientRect();
-      const hit = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('.sk-node, .sk-dot');
+      const hit = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('.sk-node, .sk-dot, .sk-work-slot');
       const over = hit?.dataset.id ?? hit?.dataset.for ?? null;
       setWire({ from: d.id!, x: Math.max(0, Math.round((event.clientX - box.left) / zoom + origin.x)), y: Math.max(0, Math.round((event.clientY - box.top) / zoom + origin.y)), over: over && over !== d.id ? over : null });
     } else if (d.kind === 'move') {
@@ -426,7 +426,7 @@ export function SketchMap(props: SketchMapProps) {
     if (d.kind === 'link') {
       const end = wire;
       setWire(null);
-      if (!end) return;
+      if (!end || !arrange) return;
       if (end.over) props.onConnect(d.id!, end.over);
       else if (!hitsDot(event, d.id!)) props.onAddAt(d.id!, end.x, Math.max(0, end.y - Math.round(DEFAULT_THOUGHT_SIZE.height / 2)));
       return;
@@ -444,7 +444,7 @@ export function SketchMap(props: SketchMapProps) {
 
   /** Released back on its own dot: nothing was meant. */
   const hitsDot = (event: ReactPointerEvent, id: string) => {
-    const hit = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('.sk-node, .sk-dot');
+    const hit = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('.sk-node, .sk-dot, .sk-work-slot');
     return (hit?.dataset.id ?? hit?.dataset.for) === id;
   };
 
@@ -515,7 +515,7 @@ export function SketchMap(props: SketchMapProps) {
           </button>
           {compact && props.bar.project ? <button type="button" className="sk-edit-btn sk-edit-btn--icon" aria-label="Create task from selected thoughts" aria-disabled={false} onClick={props.bar.onTask}><Icon name="tasks" size={16} /></button> : null}
           <button type="button" className="sk-edit-btn sk-edit-btn--icon" aria-label="Remove from sketch" onClick={() => props.onRemove(selection)}><Icon name="trash" size={16} /></button>
-          {compact ? <button type="button" className="sk-edit-btn sk-edit-btn--icon" aria-label="Undo" aria-disabled={!props.bar.canUndo} onClick={props.bar.onUndo}><Icon name="undo" size={16} /></button> : (
+          {compact ? null : (
             <>
               <button type="button" className="sk-edit-btn sk-edit-btn--icon" aria-label="More actions" aria-expanded={more} onClick={() => setMore(!more)}><Icon name="more" size={16} /></button>
               {more ? (
@@ -602,7 +602,7 @@ export function SketchMap(props: SketchMapProps) {
                 ) : null}
               </button>
               {linked?.count && projectId ? (
-                <div className={`sk-work-slot sk-work-slot--${thought.shape}${dragging ? ' is-dragging' : ''}`} style={{ transform: `translate(${p.x}px, ${p.y}px)`, width: r.w, height: r.h }}>
+                <div className={`sk-work-slot sk-work-slot--${thought.shape}${dragging ? ' is-dragging' : ''}`} data-for={thought.id} style={{ transform: `translate(${p.x}px, ${p.y}px)`, width: r.w, height: r.h }}>
                   <ThoughtTasks thought={thought} tasks={linked} projectId={projectId} variant="map" onOpenTask={props.onOpenTask} />
                 </div>
               ) : null}
@@ -661,6 +661,7 @@ export function SketchMap(props: SketchMapProps) {
       {compact && canWrite ? (
         <div className="sk-phone">
           {selectionBar()}
+          {props.bar.canUndo ? <button type="button" className="sk-undo" aria-label="Undo" onClick={props.bar.onUndo}><Icon name="undo" size={16} />Undo</button> : null}
           <p className="sk-phone__note"><Icon name="monitor" size={16} />Connect and arrange on a computer</p>
           <button type="button" className="sk-fab" onClick={props.onAddThought}><Icon name="plus" size={18} />Add a thought</button>
         </div>

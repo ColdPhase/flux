@@ -276,9 +276,8 @@ class DmSketchJourney(unittest.TestCase):
             expect(page.get_by_text("Connect and arrange on a computer")).to_be_visible()
             page.locator(".sk-node").first.tap()
             actions = page.get_by_role("toolbar", name="Selection actions")
-            for name in ("Remove from sketch", "Undo"):
-                expect(actions.get_by_role("button", name=name, exact=True)).to_be_visible()
-            for name in ("Connect", "Change shape"):
+            expect(actions.get_by_role("button", name="Remove from sketch", exact=True)).to_be_visible()
+            for name in ("Connect", "Change shape", "Undo"):
                 expect(actions.get_by_role("button", name=name, exact=True)).to_have_count(0)
             self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), PHONE["width"], f"{label}: no horizontal scrolling")
             shot(page, f"dm-sketch-phone-{label}")

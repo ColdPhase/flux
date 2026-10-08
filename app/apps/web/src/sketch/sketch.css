@@ -408,3 +408,6 @@ span.sk-li-img { width: 160px; height: 96px; }
   .sk-actions { flex-wrap: wrap; justify-content: center; max-width: calc(100vw - 20px); }
 }
 .sk-phone .sk-actions { position: static; transform: none; }
+.sk-undo { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 16px; border-radius: var(--r-pill); background: var(--el); color: var(--t1);
+  box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); font-size: var(--fs-md); font-weight: 500; }
+.sk-undo svg { color: var(--t2); }

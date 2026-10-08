@@ -418,9 +418,8 @@ class SketchJourney(unittest.TestCase):
         expect(edit).to_have_text("Edit")
         self.assertGreaterEqual(box(page, edit)["height"], 44, "touch target")
         actions = page.get_by_role("toolbar", name="Selection actions")
-        for label in ("Remove from sketch", "Undo"):
-            expect(actions.get_by_role("button", name=label, exact=True)).to_be_visible()
-        for label in ("Connect", "Change shape", "More actions"):
+        expect(actions.get_by_role("button", name="Remove from sketch", exact=True)).to_be_visible()
+        for label in ("Connect", "Change shape", "More actions", "Undo"):
             expect(actions.get_by_role("button", name=label, exact=True)).to_have_count(0)
         shot(page, "sketch-phone-390-select")
         edit.tap()

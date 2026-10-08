@@ -54,19 +54,46 @@ class MapConnectJourney(unittest.TestCase):
         self.addCleanup(lambda: self.assertEqual(errors, [], 'no uncaught browser errors'))
         return page
 
-    def scene(self, page):
+    def scene(self, page, *, link=False, tasks=(), solo=False):
+        """A project map with three thoughts (one, if `solo`); `link` joins C to A; `tasks` lists thoughts that get a task."""
         project = self.api(page.context, 'POST', f'/api/v1/workspaces/{self.workspace}/projects',
             {'name': f'Sensors {uuid.uuid4().hex[:6]}', 'visibility': 'restricted'}, 201)['id']
         sketch = self.api(page.context, 'POST', f'/api/v1/workspaces/{self.workspace}/sketches',
             {'title': 'Community garden sensors', 'scope': 'project', 'projectId': project}, 201)['id']
-        for text, x, y in ((f'{A} volunteers can open', 40, 40), (f'{B} at two soil depths', 420, 40), (f'{C}, one probe at the gateway', 40, 260)):
-            self.api(page.context, 'POST', f'/api/v1/sketches/{sketch}/thoughts', {'text': text, 'x': x, 'y': y}, 201)
+        self.ids = {}
+        rows = ((A, f'{A} volunteers can open', 40, 40), (B, f'{B} at two soil depths', 420, 40), (C, f'{C}, one probe at the gateway', 40, 260))
+        for key, text, x, y in rows[:1 if solo else 3]:
+            body = {'text': text, 'x': x, 'y': y}
+            if link and key == C:
+                body['linkFrom'] = {'thoughtId': self.ids[A]}
+            self.ids[key] = self.api(page.context, 'POST', f'/api/v1/sketches/{sketch}/thoughts', body, 201)['thought']['id']
+        self.project = project
+        for key in tasks:
+            self.api(page.context, 'POST', f'/api/v1/projects/{project}/work', {'title': f'Check {key}', 'sources': [{'type': 'thought', 'id': self.ids[key]}]}, 201)
         page.goto(f'/projects/{project}/map/{sketch}')
-        expect(page.locator('.sk-node')).to_have_count(3)
+        expect(page.locator('.sk-node')).to_have_count(1 if solo else 3)
         return sketch
 
     def stored(self, page, sketch):
         return self.api(page.context, 'GET', f'/api/v1/sketches/{sketch}')
+
+    def assert_task_sources(self, page, work_id, included, excluded):
+        """The persisted source relations: one per selected thought, none for a thought left out."""
+        item = self.api(page.context, 'GET', f'/api/v1/work/{work_id}')
+        sources = {link['to']['id'] for link in item['links'] if link['role'] == 'source' and link['to']['type'] == 'thought'}
+        self.assertEqual(sources, {self.ids[key] for key in included})
+        for key in excluded:
+            self.assertNotIn(self.ids[key], sources)
+
+    def eventually(self, page, sketch, ready):
+        """The stored sketch once `ready(stored)` holds (saves are asynchronous), else the last read."""
+        stored = self.stored(page, sketch)
+        for _ in range(40):
+            if ready(stored):
+                break
+            page.wait_for_timeout(150)
+            stored = self.stored(page, sketch)
+        return stored
 
     def drag_dot(self, page, source, target=None, point=None):
         """Drag from the dot of `source` onto thought `target`, or release at `point` (page pixels)."""
@@ -139,10 +166,13 @@ class MapConnectJourney(unittest.TestCase):
         page.locator('.sk-node', has_text=C).focus()
         page.keyboard.press('Space')
         expect(page.locator('.sk-node[aria-pressed="true"]')).to_have_count(3)
+        page.keyboard.press('Space')  # C is left out again
+        expect(page.locator('.sk-node[aria-pressed="true"]')).to_have_count(2)
         tools = page.get_by_role('toolbar', name='Sketch tools')
         expect(tools.get_by_text('Create task', exact=True)).to_be_visible()
-        tools.get_by_role('button', name='Create task from selected thoughts').click()
-        expect(page.locator('.sk-status')).to_contain_text('Created task')
+        with page.expect_response(lambda r: r.request.method == 'POST' and r.url.endswith(f'/projects/{self.project}/work')) as saved:
+            tools.get_by_role('button', name='Create task from selected thoughts').click()
+        self.assert_task_sources(page, saved.value.json()['id'], {A, B}, {C})
 
     def test_04_tablet_touch_selects_several_with_select_several(self):
         page = self.page({'width': 820, 'height': 1180}, touch=True)
@@ -152,8 +182,9 @@ class MapConnectJourney(unittest.TestCase):
         page.locator('.sk-node', has_text=A).tap()
         page.locator('.sk-node', has_text=B).tap()
         expect(page.locator('.sk-node[aria-pressed="true"]')).to_have_count(2)
-        tools.get_by_role('button', name='Create task from selected thoughts').tap()
-        expect(page.locator('.sk-status')).to_contain_text('Created task')
+        with page.expect_response(lambda r: r.request.method == 'POST' and r.url.endswith(f'/projects/{self.project}/work')) as saved:
+            tools.get_by_role('button', name='Create task from selected thoughts').tap()
+        self.assert_task_sources(page, saved.value.json()['id'], {A, B}, {C})
 
     def test_05_phone_views_and_adds_only(self):
         for scheme in ('light', 'dark'):
@@ -188,6 +219,82 @@ class MapConnectJourney(unittest.TestCase):
                 draft.get_by_label('Thought text').fill('Solar panel on the enclosure?')
                 draft.get_by_role('button', name='Save thought').tap()
                 expect(page.locator('.sk-node')).to_have_count(4)
+
+    def test_06_phone_undo_survives_removing_a_thought(self):
+        """S15 + undo: removing clears the selection, so Undo must not live in the selection's bar."""
+        for solo in (True, False):
+            with self.subTest(solo=solo):
+                page = self.page(PHONE, touch=True)
+                sketch = self.scene(page, solo=solo, link=not solo)
+                self.assertEqual(page.get_by_role('button', name='Undo', exact=True).count(), 0, 'a fresh map has nothing to undo')
+                before = self.stored(page, sketch)
+                target = A if solo else C
+                page.locator('.sk-node', has_text=target).tap()
+                page.get_by_role('toolbar', name='Selection actions').get_by_role('button', name='Remove from sketch', exact=True).tap()
+                expect(page.locator('.sk-node')).to_have_count(0 if solo else 2)
+                undo = page.get_by_role('button', name='Undo', exact=True)
+                expect(undo).to_be_visible()
+                self.assertGreaterEqual(undo.bounding_box()['height'], 43.5)
+                undo.tap()
+                expect(page.locator('.sk-node')).to_have_count(1 if solo else 3)
+                after = self.eventually(page, sketch, lambda s: len(s['thoughts']) == len(before['thoughts']))
+                key = lambda t: (t['id'], t['text'])
+                self.assertEqual(sorted(map(key, after['thoughts'])), sorted(map(key, before['thoughts'])), 'the exact ID and text return')
+                self.assertEqual(sorted((l['fromId'], l['toId']) for l in after['links']), sorted((l['fromId'], l['toId']) for l in before['links']), 'incident links return')
+
+    def test_07_desktop_undo_and_a_fresh_map(self):
+        page = self.page(COMPUTER)
+        sketch = self.scene(page)
+        undo = page.get_by_role('toolbar', name='Sketch tools').get_by_role('button', name='Undo', exact=True)
+        expect(undo).to_have_attribute('aria-disabled', 'true')
+        page.locator('.sk-node', has_text=B).click()
+        page.get_by_role('toolbar', name='Selection actions').get_by_role('button', name='Remove from sketch', exact=True).click()
+        expect(page.locator('.sk-node')).to_have_count(2)
+        expect(undo).to_have_attribute('aria-disabled', 'false')
+        undo.click()
+        expect(page.locator('.sk-node')).to_have_count(3)
+        stored = self.eventually(page, sketch, lambda s: len(s['thoughts']) == 3)
+        self.assertIn(self.ids[B], {t['id'] for t in stored['thoughts']})
+
+    def test_08_a_drop_on_the_task_count_connects_that_thought(self):
+        page = self.page(COMPUTER)
+        sketch = self.scene(page, tasks=(B, A))
+        badge = lambda key: page.locator(f'.sk-work-slot[data-for="{self.ids[key]}"] .sk-work')
+        expect(badge(B)).to_be_visible()
+        box = badge(B).bounding_box()
+        self.drag_dot(page, A, point=(box['x'] + box['width'] / 2, box['y'] + box['height'] / 2))
+        page.mouse.up()
+        expect(page.locator('.sk-status')).to_contain_text('Linked')
+        expect(page.get_by_role('form', name='New thought draft')).to_have_count(0)
+        stored = self.eventually(page, sketch, lambda s: len(s['links']) == 1)
+        self.assertEqual(len(stored['thoughts']), 3)
+        self.assertEqual([(l['fromId'], l['toId']) for l in stored['links']], [(self.ids[A], self.ids[B])])
+        # Released on the dot's own thought badge: nothing happens, no draft, no second link.
+        own = badge(A).bounding_box()
+        self.drag_dot(page, A, point=(own['x'] + own['width'] / 2, own['y'] + own['height'] / 2))
+        page.mouse.up()
+        expect(page.get_by_role('form', name='New thought draft')).to_have_count(0)
+        self.assertEqual(len(self.stored(page, sketch)['links']), 1)
+
+    def test_09_narrowing_to_a_phone_cancels_a_pending_connection(self):
+        page = self.page({'width': 820, 'height': 1180})
+        sketch = self.scene(page)
+        page.locator('.sk-node', has_text=A).click()
+        page.get_by_role('toolbar', name='Selection actions').get_by_role('button', name='Connect', exact=True).click()
+        expect(page.locator('.sk-status')).to_contain_text('Choose the thought to link to')
+        page.set_viewport_size(PHONE)
+        expect(page.get_by_role('button', name='Add a thought', exact=True)).to_be_visible()
+        page.locator('.sk-node', has_text=B).click()
+        expect(page.locator('.sk-node[aria-pressed="true"]')).to_have_count(1)
+        page.wait_for_timeout(500)
+        self.assertEqual(self.stored(page, sketch)['links'], [], 'phone mode never links')
+        # Wider again: linking still works.
+        page.set_viewport_size({'width': 820, 'height': 1180})
+        page.locator('.sk-node', has_text=A).click()
+        page.get_by_role('toolbar', name='Selection actions').get_by_role('button', name='Connect', exact=True).click()
+        page.locator('.sk-node', has_text=B).click()
+        expect(page.locator('.sk-status')).to_contain_text('Linked')
+        self.assertEqual(len(self.eventually(page, sketch, lambda s: len(s['links']) == 1)['links']), 1)
 
 
 if __name__ == '__main__':
