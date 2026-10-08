@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
 import { join } from 'node:path';
-import { after, before, test } from 'node:test';
+import { after, afterEach, before, test } from 'node:test';
 import { chromium, type Browser, type BrowserContext, type Locator } from 'playwright';
 import { taskDiscussionPath, type ConversationMessage, type WorkItem } from '@flux/contracts';
 import { workUseCases } from '../../../apps/server/src/work/adapters.js';
@@ -39,15 +39,47 @@ proxy.on('upgrade', (request, socket, head) => {
 
 let browser: Browser;
 const contexts: BrowserContext[] = [];
+async function fixturePhase<T>(promise: Promise<T>, phase: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Actor fixture timed out: ${phase}`)), 15_000);
+    timer.unref();
+  });
+  try {
+    return await Promise.race([promise, deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+async function closeFixtureContexts(phase: string): Promise<void> {
+  const closing = contexts.splice(0);
+  const outcomes = await Promise.allSettled(closing.map((context) => fixturePhase(context.close(), phase)));
+  const failures: unknown[] = [];
+  outcomes.forEach((outcome, index) => {
+    if (outcome.status === 'rejected') {
+      contexts.push(closing[index]);
+      failures.push(outcome.reason);
+    }
+  });
+  if (failures.length) throw new AggregateError(failures, `Actor fixture failed: ${phase}`);
+}
 before(async () => {
   await new Promise<void>((resolve) => proxy.listen(Number(origin.port || 80), origin.hostname, resolve));
   browser = await chromium.launch();
 });
+afterEach(async () => {
+  // A preceding journey's live pages and fixture routes must not survive into another one.
+  await closeFixtureContexts('context cleanup');
+});
 after(async () => {
-  for (const context of contexts) await context.close();
-  await browser?.close();
+  const failures: unknown[] = [];
+  try { await closeFixtureContexts('final context cleanup'); } catch (cause) { failures.push(cause); }
+  try { await fixturePhase(browser?.close() ?? Promise.resolve(), 'browser cleanup'); } catch (cause) { failures.push(cause); }
   proxy.closeAllConnections();
-  await new Promise<void>((resolve) => proxy.close(() => resolve()));
+  try {
+    await fixturePhase(new Promise<void>((resolve) => proxy.close(() => resolve())), 'proxy cleanup');
+  } catch (cause) { failures.push(cause); }
+  if (failures.length) throw new AggregateError(failures, 'Actor fixture final cleanup failed');
 });
 
 async function signedIn(who: Person, width: number) {
@@ -435,16 +467,21 @@ test('native agent owners retry failed reads, fence stale permission answers and
       }
       heldDone();
     });
-    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
-    await gotHeld;
-    expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/grants`, {
-      body: { principal: { kind: 'agent', id: agent.id }, role: 'denied' },
-    }), 201);
-    await page.waitForFunction((id) => !document.querySelector(`[data-work-id="${id}"] .agent-for`), task.id);
-    await gotCurrentRead;
-    release();
-    await gotHeldDone;
-    await page.unrouteAll({ behavior: 'wait' });
+    try {
+      await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+      await fixturePhase(gotHeld, 'authorized answer held');
+      expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/grants`, {
+        body: { principal: { kind: 'agent', id: agent.id }, role: 'denied' },
+      }), 201);
+      await page.waitForFunction((id) => !document.querySelector(`[data-work-id="${id}"] .agent-for`), task.id);
+      await fixturePhase(gotCurrentRead, 'delivered current answer without agent');
+      release();
+      await fixturePhase(gotHeldDone, 'held answer handler finished');
+      await fixturePhase(page.unrouteAll({ behavior: 'wait' }), 'route handlers drained');
+    } finally {
+      // A failed assertion must still release the real old answer before context cleanup.
+      release();
+    }
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await page.waitForFunction((id) => !document.querySelector(`[data-work-id="${id}"] .agent-for`), task.id);
     assert.equal(await row.locator('.agent-for').count(), 0, 'an old authorized response cannot reintroduce the relation');
