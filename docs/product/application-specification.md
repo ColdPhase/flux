@@ -5,8 +5,9 @@
 ## Authority and decision status
 
 **Later amendment, 2026-09-30:** [F-016](mcp-cowork.md) adds local external
-co-work and project GitHub bindings; [F-017](../design/studio-v11.6.md) supersedes
-older visual descriptions and amends new-task announcement/first-message flow.
+co-work and project GitHub bindings. **2026-10-07:** [F-026, the final design](../design/final/README.md),
+supersedes every visual description below and draws the new-task notice (one line with its
+source) and the first-message flow.
 Standing owner grants authorize bounded agent domain actions without per-step
 confirmation; existing human-only decision acceptance is unchanged. One task
 and thread remain authoritative, with independent execution/review state.
@@ -28,8 +29,8 @@ The [foundation](FLUX-FOUNDATION.md), [delegation](autonomy.md) and
 and #44 creative scenarios remain useful. Consult the [decision register](decisions.md)
 for current status: O-002 architecture and O-005 external-client path are accepted,
 #52 provides its first implemented MCP foundation, and F-016 extends it through
-#152/#153. F-017 Studio 11.6 is the current appearance target; earlier C/v8/v11
-comparisons and the original proposal's open-decision statuses are historical.
+#152/#153. The appearance is F-026, the final design; the original proposal's
+open-decision statuses are historical.
 Provider, pricing and enterprise claims require their own current evidence.
 
 Use the working terms *workspace, project, material, conversation, decision, work item, result, handoff,* and *agent run* from #14. A decision's proposed, accepted, and superseded states have different authority. A relation has an explicit meaning; map adjacency alone creates no work dependency. The browser, API, stream, worker, search, notification, file, agent and extension paths must apply the same current authorization, including after revocation. The exact schema and routes belong to bounded implementation contracts.
@@ -128,4 +129,4 @@ The first public candidate must let people install and self-host Flux, maintain 
 
 The #16 owner maintains the [coverage ledger](foundation-coverage.md) through this PR. After merge, the owner of each feature PR updates its affected rows with a commit-specific test link and remaining work; the independent evaluator checks those rows before approval. An `implemented` row needs merged behavior and reproducible verification steps; `verified` needs independent evidence at the tested head. If a later merge invalidates a check, revert that state until reverified. The final acceptance owners reconcile all rows at one candidate SHA.
 
-The next bounded milestone-2 issues are [#29 identity and access](https://github.com/ColdPhase/flux/issues/29), [#20 mobile PWA/Web Push](https://github.com/ColdPhase/flux/issues/20), [#36 human capture and conversation](https://github.com/ColdPhase/flux/issues/36), [#37 supported agent integration decision](https://github.com/ColdPhase/flux/issues/37), and [#38 runtime and fixture hardening](https://github.com/ColdPhase/flux/issues/38), following merged [#28 application foundation](https://github.com/ColdPhase/flux/issues/28). Their own contract acceptance and dependency checks still govern coding. Negotiate subsequent decision/work/handoff, authorized map/search/files, agent execution, extension/export, and operations/integrated acceptance tasks without duplicating existing issues. The [#15 UI decision](https://github.com/ColdPhase/flux/issues/15) supplies visual rules for production UI. In its independent visual review, compare the candidate with `flux-ux-v8.html` at matched viewports and record the useful improvements and deliberate departures. Each later task must link the ledger rows it advances and keep release proof separate from a planning artifact.
+The next bounded milestone-2 issues are [#29 identity and access](https://github.com/ColdPhase/flux/issues/29), [#20 mobile PWA/Web Push](https://github.com/ColdPhase/flux/issues/20), [#36 human capture and conversation](https://github.com/ColdPhase/flux/issues/36), [#37 supported agent integration decision](https://github.com/ColdPhase/flux/issues/37), and [#38 runtime and fixture hardening](https://github.com/ColdPhase/flux/issues/38), following merged [#28 application foundation](https://github.com/ColdPhase/flux/issues/28). Their own contract acceptance and dependency checks still govern coding. Negotiate subsequent decision/work/handoff, authorized map/search/files, agent execution, extension/export, and operations/integrated acceptance tasks without duplicating existing issues. The [#15 UI decision](https://github.com/ColdPhase/flux/issues/15) supplies visual rules for production UI. In its independent visual review, compare the candidate with the [final design](../design/final/README.md) renders at matched viewports and record the useful improvements and deliberate departures. Each later task must link the ledger rows it advances and keep release proof separate from a planning artifact.

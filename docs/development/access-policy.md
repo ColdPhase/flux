@@ -530,3 +530,17 @@ and the Better Auth and session endpoints do not take keys.
   duplicates, expiry and cleanup). It also covers replays after lost access: a demoted
   admin replaying a restricted project creation, and draft create and share replays
   after a deny grant. Both get `404` without the stored body.
+
+### Agent owner labels (F-026, #339)
+
+The existing project audience read (`GET /api/v1/projects/:id/people`) may
+include `agentOwner` on an agent. A workspace agent has `{ kind: 'workspace' }`.
+A human owner is named only when that human is already in the same current,
+authorized project audience. This projection never lists the workspace roster
+for a guest and excludes denied/revoked agents under the existing policy.
+The web owner lookup uses this project read, with no module cache; pending
+answers are scoped to account/project and aborted on scope changes or access
+events. Failed reads clear labels and retry on the next visit, focus, online
+event or authorized stream change. A connected session and a recently
+completed action alone leave the agent idle; active-run/claim integration is
+still required by #347 and does not come from an activity time heuristic.

@@ -142,6 +142,8 @@ export interface ProjectExportSketch {
 
 export interface ProjectExportWork {
   id: string;
+  /** The task's number in its project, "#12" (#276); never reused or changed. */
+  number: number;
   title: string;
   outcome: string;
   status: WorkStatus;
@@ -298,7 +300,7 @@ const baseExportSchema = {
       links: list(object({ id, fromId: id, toId: id, label: nullable(text), createdAt: time })),
     }),
     work: object({
-      id, title: text, outcome: text, status: { enum: ['open', 'in_progress', 'blocked', 'done', 'not_pursued'] }, blocker: nullable(text),
+      id, number: count, title: text, outcome: text, status: { enum: ['open', 'in_progress', 'blocked', 'done', 'not_pursued'] }, blocker: nullable(text),
       owner: nullable(ref('actor')), parked: nullable(object({ decisionId: id, at: time })), createdBy: ref('actor'), version: count, createdAt: time, updatedAt: time,
     }),
     decision: object({

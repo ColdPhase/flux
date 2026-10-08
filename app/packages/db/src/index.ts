@@ -12,7 +12,7 @@ export * from './repositories/project-agents.js';
 export * from './repositories/agent-project-objects.js';
 export * from './migrations/ledger.js';
 // Highest numbered file in packages/db/migrations. The API refuses other versions.
-export const FLUX_SCHEMA_VERSION = 54;
+export const FLUX_SCHEMA_VERSION = 56;
 // pg-boss 12.35.0 declares schema 43. Update this with the pinned package.
 export const PG_BOSS_SCHEMA_VERSION = 43;
 
@@ -34,10 +34,17 @@ export function databaseConnectTimeoutMs(env: NodeJS.ProcessEnv = process.env): 
   return value;
 }
 
+/**
+ * Flux's connections never JIT-compile (#298). Its statements are short reads and writes; when a
+ * policy filter inflates a plan's estimate past `jit_above_cost`, compiling took 50–300 ms for
+ * statements that execute in a few milliseconds (docs/development/performance-2026-10.md).
+ */
+export const DATABASE_SESSION_OPTIONS = `-c idle_in_transaction_session_timeout=${IDLE_IN_TRANSACTION_TIMEOUT_MS} -c jit=off`;
+
 export function createDatabase(connectionString: string, connectTimeoutMs = databaseConnectTimeoutMs()) {
   // A client whose BEGIN or ROLLBACK fails is destroyed by the drizzle-orm patch in app/patches (#234).
   const pool = new pg.Pool({ connectionString, connectionTimeoutMillis: connectTimeoutMs, query_timeout: 2000,
-    options: `-c idle_in_transaction_session_timeout=${IDLE_IN_TRANSACTION_TIMEOUT_MS}` });
+    options: DATABASE_SESSION_OPTIONS });
   const db = drizzle({ client: pool, schema });
   return { pool, db };
 }
@@ -159,3 +166,4 @@ export * from './repositories/live-map.js';
 export * from './repositories/agent-policies.js';
 
 export * from './repositories/files.js';
+export * from './repositories/agent-runtime.js';

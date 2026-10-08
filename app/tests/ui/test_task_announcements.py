@@ -18,7 +18,8 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from author_columns import assert_author_column
+from test_app_shell import DESKTOP, ORIGIN, PHONE, SHOTS, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "one announcement then the discussion"
 STAMP = int(time.time() * 1000)
@@ -41,6 +42,11 @@ EARLY_CHORES = 10
 CHORES = 100
 LATER_NOTES = 52
 SHORT_NOTES = 20
+
+
+def opens_task(title: str):
+    """A task notice's button: "Open task #12 Title", the visible "#12 Title" in order (#276)."""
+    return re.compile(rf"^Open task #\d+ {re.escape(title)}$")
 
 
 class TaskAnnouncements(unittest.TestCase):
@@ -114,7 +120,7 @@ class TaskAnnouncements(unittest.TestCase):
         short, _ = board("Short board", SHORT_NOTES, False)
         for context in contexts.values():
             context.close()
-        cls.ids.update(project=pid, early=early["id"], question=question["messages"][0]["id"], from_message=from_message["id"],
+        cls.ids.update(project=pid, early=early["id"], question=question["messages"][0]["id"], from_message=from_message["id"], from_message_number=from_message["number"],
                        measure=measure["id"], first=first["id"], thread=first["conversationId"], later=later["messages"][0]["id"],
                        busy=bid, linked=linked["conversationId"], linked_root=linked["id"], short=short)
 
@@ -173,14 +179,21 @@ class TaskAnnouncements(unittest.TestCase):
                          "announcements sit in time order between the roots, and the first contribution is the task's root")
         made = self.notice(page, self.ids["from_message"])
         expect(made).to_have_count(1)
-        expect(made.locator(".convo-notice__meta")).to_have_text("New task · Jonas Berg")
-        expect(made.get_by_role("button", name=f"Open task: {FROM_MESSAGE}")).to_be_visible()
-        expect(self.notice(page, self.ids["measure"]).locator(".convo-notice__meta")).to_have_text("New task · Ada Kowalska · you")
-        # An announcement is not a message: no replies, no actions, no avatar.
+        expect(made.locator(".convo-notice__meta strong")).to_have_text("Jonas Berg")
+        expect(made.locator(".convo-notice__kind")).to_have_text("New task · ")
+        assert_author_column(self, made, DESKTOP["width"], "task event author")
+        self.assertAlmostEqual(made.locator(".convo-notice__kind").bounding_box()["x"],
+                               made.locator(".convo-notice__meta").bounding_box()["x"], delta=1,
+                               msg="the event text starts in the author content column")
+        expect(made.get_by_role("button", name=opens_task(FROM_MESSAGE))).to_be_visible()
+        expect(made.locator(".convo-notice__num")).to_have_text(f"#{self.ids['from_message_number']}")
+        expect(self.notice(page, self.ids["measure"]).locator(".convo-notice__meta strong")).to_have_text("Ada Kowalska · you")
+        # Authored events share the creator's column, while retaining no message actions or replies.
         for work_id in (self.ids["from_message"], self.ids["measure"]):
             item = self.notice(page, work_id)
             expect(item.get_by_role("button", name=re.compile("Reply|Create work|Details"))).to_have_count(0)
-            expect(item.locator(".ui-avatar")).to_have_count(0)
+            expect(item.locator(".ui-avatar")).to_have_count(1)
+            assert_author_column(self, item, DESKTOP["width"], "actual task event creator")
         # The early task's announcement waits with the earlier roots, then appears in its place.
         expect(self.notice(page, self.ids["early"])).to_have_count(0)
         stream.get_by_role("button", name="Load earlier messages").click()
@@ -196,7 +209,7 @@ class TaskAnnouncements(unittest.TestCase):
         page = self.page("ada")
         page.goto(f"/projects/{self.ids['project']}")
         made = self.notice(page, self.ids["from_message"])
-        made.get_by_role("button", name=f"Open task: {FROM_MESSAGE}").click()
+        made.get_by_role("button", name=opens_task(FROM_MESSAGE)).click()
         details = page.locator("#details")
         expect(details.get_by_role("heading", name=FROM_MESSAGE)).to_be_visible()
         # The task made from the question also shows under the question itself, as before.
@@ -223,6 +236,8 @@ class TaskAnnouncements(unittest.TestCase):
         composer.fill("Numbers at 5 lux: 97% of waves caught.")
         thread.get_by_role("button", name="Send reply").click()
         expect(thread.locator(".project-convo__message", has_text="Numbers at 5 lux")).to_be_visible()
+        # Sending is instant (#264): the reply shows at once and is stored a moment later.
+        expect(thread.locator("[data-client-message-id]")).to_have_count(0)
         discussion = self.api(page, "GET", f"/api/v1/work/{self.ids['measure']}/discussion", status=200)
         self.assertEqual(discussion["rootMessageId"], self.ids["first"])
         self.assertEqual([message["body"] for message in discussion["messages"]][-1], "Numbers at 5 lux: 97% of waves caught.")
@@ -234,7 +249,7 @@ class TaskAnnouncements(unittest.TestCase):
         before = self.counts(page)
         page.goto(f"/projects/{self.ids['project']}")
         expect(self.notice(page, self.ids["measure"])).to_be_visible()
-        self.notice(page, self.ids["measure"]).get_by_role("button", name=f"Open task: {MEASURE}").click()
+        self.notice(page, self.ids["measure"]).get_by_role("button", name=opens_task(MEASURE)).click()
         expect(page.locator("#details").get_by_role("heading", name=MEASURE)).to_be_visible()
         for _ in range(2):
             page.reload()
@@ -254,7 +269,7 @@ class TaskAnnouncements(unittest.TestCase):
                            {"title": LIVE_TASK, "clientCommandId": str(uuid.uuid4())}, status=201)
         arrived = self.notice(page, created["id"])
         expect(arrived).to_have_count(1, timeout=25000)
-        expect(arrived.locator(".convo-notice__meta")).to_have_text("New task · Jonas Berg")
+        expect(arrived.locator(".convo-notice__meta strong")).to_have_text("Jonas Berg")
         expect(arrived, "a reader at the end follows the new announcement").to_be_in_viewport()
         self.assertEqual(self.stream_order(page)[-1], f"task:{created['id']}")
         self.ids["live"] = created["id"]
@@ -271,29 +286,46 @@ class TaskAnnouncements(unittest.TestCase):
         work = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/work?limit=100", status=200)
         made = next(item for item in work["items"] if item["title"] == LATER)
         expect(self.notice(page, made["id"])).to_have_count(1)
-        expect(self.notice(page, made["id"]).locator(".convo-notice__meta")).to_have_text("New task · Ada Kowalska · you")
+        expect(self.notice(page, made["id"]).locator(".convo-notice__meta strong")).to_have_text("Ada Kowalska · you")
         self.assertEqual(self.counts(page), (before[0] + 1, before[1] + 1, before[2]), "one task and one announcement; no root")
 
     def test_07_a_reader_sees_announcements_and_opens_the_task(self) -> None:
         page = self.page("lee")
         page.goto(f"/projects/{self.ids['project']}")
         made = self.notice(page, self.ids["measure"])
-        expect(made.locator(".convo-notice__meta")).to_have_text("New task · Ada Kowalska")
-        made.get_by_role("button", name=f"Open task: {MEASURE}").click()
+        expect(made.locator(".convo-notice__meta strong")).to_have_text("Ada Kowalska")
+        made.get_by_role("button", name=opens_task(MEASURE)).click()
         expect(page.locator("#details").get_by_role("heading", name=MEASURE)).to_be_visible()
         expect(page.get_by_role("button", name="Task", exact=True)).to_have_count(0)
 
     def test_08_phone_keeps_the_announcement_one_line_and_readable(self) -> None:
+        self.check_phone_announcements()
+
+    def test_08b_webkit_keeps_enlarged_announcement_titles_readable(self) -> None:
+        self.browser = self.pw.webkit.launch()
+        self.addCleanup(self.browser.close)
+        self.check_phone_announcements()
+
+    def check_phone_announcements(self) -> None:
+        engine = self.browser.browser_type.name
+        suffix = "-webkit" if engine == "webkit" else ""
+        observations: list[dict] = []
         for viewport, dark in (({"width": 390, "height": 844}, True), ({"width": 320, "height": 640}, False)):
-            with self.subTest(width=viewport["width"]):
+            with self.subTest(engine=engine, width=viewport["width"]):
                 page = self.page("ada", phone=True, dark=dark, viewport=viewport)
                 page.goto(f"/projects/{self.ids['project']}")
                 made = self.notice(page, self.ids["from_message"])
                 made.scroll_into_view_if_needed()
-                button = made.get_by_role("button", name=f"Open task: {FROM_MESSAGE}")
+                assert_author_column(self, made, viewport["width"], "phone task event author")
+                self.assertAlmostEqual(made.locator(".convo-notice__kind").bounding_box()["x"],
+                                       made.locator(".convo-notice__meta").bounding_box()["x"], delta=1)
+                button = made.get_by_role("button", name=opens_task(FROM_MESSAGE))
                 box, row = button.bounding_box(), made.bounding_box()
                 assert box and row
                 self.assertGreaterEqual(box["height"], 44, "the link is a full touch target")
+                number = made.locator(".ui-task-number")
+                self.assertIn("monospace", number.evaluate("node => getComputedStyle(node).fontFamily"))
+                self.assertGreaterEqual(number.evaluate("node => parseFloat(getComputedStyle(node).fontSize)"), 12.5, "F-026 phone task number uses readable metadata")
                 self.assertLessEqual(row["x"] + row["width"], viewport["width"], "no sideways overflow")
                 title = made.locator(".convo-notice__title")
                 height = title.evaluate("node => node.getBoundingClientRect().height")
@@ -301,11 +333,78 @@ class TaskAnnouncements(unittest.TestCase):
                 # #266 PF-6: a long title wraps to at most two lines instead of being cut to one.
                 self.assertLessEqual(height, 2 * line + 1, "a long title takes at most two lines")
                 self.assertEqual(page.evaluate("document.documentElement.scrollWidth <= innerWidth"), True)
-                shot(page, f"task-announcements-phone-{viewport['width']}{'-dark' if dark else ''}")
+                shot(page, f"task-announcements-phone-{viewport['width']}{'-dark' if dark else ''}{suffix}")
+                before = self.counts(page)
+                work_path = f"/api/v1/projects/{self.ids['project']}/work?limit=100"
+                native_before = next(item for item in self.api(page, "GET", work_path, status=200)["items"]
+                                     if item["id"] == self.ids["from_message"])
+                page.evaluate("document.documentElement.style.fontSize = '200%'")
+                made.scroll_into_view_if_needed()
+                assert_author_column(self, made, viewport["width"], "enlarged phone task event author")
+                self.assertAlmostEqual(made.locator(".convo-notice__kind").bounding_box()["x"],
+                                       made.locator(".convo-notice__meta").bounding_box()["x"], delta=1,
+                                       msg="enlarged event text keeps the common content edge")
+                expect(made.locator(".convo-notice__meta strong")).to_have_text("Jonas Berg")
+                self.assertTrue(page.evaluate("document.documentElement.scrollWidth <= innerWidth"))
+                shot(page, f"task-announcements-phone-{viewport['width']}{'-dark' if dark else ''}-text200{suffix}")
+                geometry = title.evaluate("""node => ({
+                    clientHeight: node.clientHeight, scrollHeight: node.scrollHeight,
+                    clientWidth: node.clientWidth, scrollWidth: node.scrollWidth,
+                    fontSize: getComputedStyle(node).fontSize, text: node.textContent,
+                    lineClamp: getComputedStyle(node).webkitLineClamp
+                })""")
+                boundaries = made.evaluate("""notice => {
+                    const rect = range => {
+                        const r = range.getClientRects()[0];
+                        return { x: r.x, y: r.y, right: r.right, bottom: r.bottom };
+                    };
+                    const contents = node => {
+                        const range = document.createRange(); range.selectNodeContents(node);
+                        return rect(range);
+                    };
+                    const number = notice.querySelector('.ui-task-number');
+                    let word = number.nextSibling;
+                    while (word && (word.nodeType !== Node.TEXT_NODE || !word.textContent.trim())) word = word.nextSibling;
+                    if (!word) throw new Error('The task title has no first word');
+                    const first = word.textContent.search(/\\S/);
+                    const range = document.createRange();
+                    range.setStart(word, first);
+                    range.setEnd(word, first + word.textContent.slice(first).match(/^\\S+/)[0].length);
+                    return { number: contents(number), firstWord: rect(range),
+                        author: contents(notice.querySelector('.convo-notice__meta strong')),
+                        time: contents(notice.querySelector('time')) };
+                }""")
+                observations.append({"engine": engine, "viewport": viewport, "dark": dark,
+                                     "deviceScaleFactor": 3, "rootFontSize": "200%", "title": geometry,
+                                     "textBoundaries": boundaries})
+                if SHOTS:
+                    (SHOTS / f"task-announcements-enlarged-reflow{suffix}.json").write_text(
+                        json.dumps(observations, indent=2) + "\n", encoding="utf-8")
+                self.assertLessEqual(geometry["scrollHeight"], geometry["clientHeight"] + 1,
+                                     "enlarged text exposes the full task title instead of clipping its purpose")
+                self.assertLessEqual(geometry["scrollWidth"], geometry["clientWidth"] + 1)
+                with self.subTest(boundary="task number and title"):
+                    number_rect, word_rect = boundaries["number"], boundaries["firstWord"]
+                    same_line = min(number_rect["bottom"], word_rect["bottom"]) > max(number_rect["y"], word_rect["y"])
+                    if same_line:
+                        self.assertGreaterEqual(word_rect["x"] - number_rect["right"], 3,
+                                                "the visible number and first title word have readable separation")
+                    else:
+                        self.assertGreaterEqual(word_rect["y"], number_rect["bottom"] - 1)
+                with self.subTest(boundary="author and timestamp"):
+                    self.assertGreaterEqual(boundaries["time"]["y"], boundaries["author"]["bottom"] - 1,
+                                            "narrow enlarged metadata puts time below the full author identity")
+                self.assertEqual(button.get_attribute("data-native-ref"), f"work:{self.ids['from_message']}")
+                button.tap()
+                expect(page.locator("#details").get_by_role("heading", name=FROM_MESSAGE)).to_be_visible()
+                native_after = next(item for item in self.api(page, "GET", work_path, status=200)["items"]
+                                    if item["id"] == self.ids["from_message"])
+                self.assertEqual(native_after, native_before, "opening an enlarged notice changes no native task field")
+                self.assertEqual(self.counts(page), before, "opening an enlarged notice creates no task, event or message")
 
 
     def open_task_from_stream(self, page: Page, work_id: str, title: str):
-        self.notice(page, work_id).get_by_role("button", name=f"Open task: {title}").click()
+        self.notice(page, work_id).get_by_role("button", name=opens_task(title)).click()
         details = page.locator("#details")
         expect(details.get_by_role("heading", name=title)).to_be_visible()
         return details.get_by_role("region", name="Discussion")
@@ -358,17 +457,25 @@ class TaskAnnouncements(unittest.TestCase):
             route.abort("connectionreset")
 
         page.route(path, lose)
+        # Flux's light reachability check gets no answer either, so the person's Retry is what sends it.
+        page.route("**/api/v1/me", lambda route: route.abort("failed"))
         section.get_by_role("button", name="Start the discussion").click()
-        expect(section.get_by_role("alert")).to_contain_text("Could not confirm the send")
-        expect(box).to_have_value(text)
+        # Sending is instant (#264): with no answer the message waits in Details, and its command stays
+        # in the task's record (its queue) rather than in the emptied field.
+        queued = section.locator("[data-client-message-id]")
+        expect(queued).to_contain_text("Waiting to send")
+        expect(queued).to_contain_text(text)
+        expect(box).to_have_value("")
         kept = page.evaluate("key => JSON.parse(localStorage.getItem(key))", key)
-        self.assertEqual(kept, {**record, 'unconfirmed': True})
+        self.assertEqual(kept['body'], "")
+        self.assertEqual([(item['id'], item['body'], item['state']) for item in kept['pending']], [(record['commandId'], text, 'waiting')])
         self.assertEqual(sent, [record['commandId']])
         page.unroute(path)
         retried: list[str] = []
         page.on("request", lambda request: retried.append(json.loads(request.post_data or "{}").get("clientMessageId", ""))
                 if request.method == "POST" and request.url.endswith(f"/work/{self.ids['from_message']}/discussion") else None)
-        section.get_by_role("button", name="Start the discussion").click()
+        queued.get_by_role("button", name="Retry").click()
+        page.unroute("**/api/v1/me")
         expect(page).to_have_url(re.compile(r"/conversations/[0-9a-f-]+#message-"))
         self.assertEqual(retried, sent, "the retry reuses the first attempt's client message id")
         discussion = self.api(page, "GET", f"/api/v1/work/{self.ids['from_message']}/discussion", status=200)

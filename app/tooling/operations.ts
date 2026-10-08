@@ -1,5 +1,6 @@
 import {
   agentAccessOperations,
+  agentRuntimeOperations,
   githubRows,
   createDatabase,
   FLUX_SCHEMA_VERSION,
@@ -15,6 +16,10 @@ import {
 //                                                        whether a backup ledger may be restored on this image
 //   node tooling/dist/operations.js agent-access           prints active connections and refresh tokens
 //   node tooling/dist/operations.js revoke-agent-access    revokes every agent connection and OAuth token
+//   node tooling/dist/operations.js runtime-status         agent runtime slots and their bindings (F-022 T3)
+//   node tooling/dist/operations.js runtime-release <slot> asks the worker to release that slot's binding
+//   node tooling/dist/operations.js runtime-forget [confirmed|unconfirmed]
+//                                                        after purge: release bindings with the cleanup outcome
 // The migration commands use the #118 ledger parser of @flux/db, the one the migrator trusts.
 
 const migrationsDir = 'packages/db/migrations';
@@ -72,8 +77,26 @@ if (command === 'migration-files') {
     } else if (command === 'revoke-github-access') {
       const revoked = await db.transaction((tx) => githubRows(tx).revokeRestored());
       console.log(`Revoked ${revoked.credentials} GitHub authorization(s) and ${revoked.bindings} GitHub binding(s); retained history is unavailable until reconnected.`);
+    } else if (command === 'runtime-status') {
+      const rows = await agentRuntimeOperations(db).list();
+      if (!rows.length) console.log('No agent runtime slot has reported yet (the worker records them once runtime-manager answers).');
+      for (const row of rows) {
+        const owner = row.binding_state ? `${row.binding_state} for ${row.email ?? 'a deleted account'} since ${new Date(row.created_at!).toISOString().slice(0, 10)}` : 'no binding';
+        console.log(`${row.slot}\t${row.slot_state}${row.out_of_pool_reason ? ` (${row.out_of_pool_reason})` : ''}\t${owner}`);
+      }
+    } else if (command === 'runtime-release') {
+      const slot = args[0] ?? '';
+      if (!/^runtime-[1-9][0-9]{0,2}$/.test(slot)) throw new Error('usage: runtime-release runtime-<n>');
+      const released = await agentRuntimeOperations(db).release(slot);
+      console.log(released ? `Releasing ${slot}: the worker signs its owner out, deletes the binding directory and frees the slot; the owner sees it in Settings.`
+        : `${slot} has no binding to release.`);
+    } else if (command === 'runtime-forget') {
+      const outcome = args[0] ?? 'unconfirmed';
+      if (args.length > 1 || !['confirmed', 'unconfirmed'].includes(outcome)) throw new Error('usage: runtime-forget [confirmed|unconfirmed]');
+      await agentRuntimeOperations(db).forgetAll(outcome === 'confirmed');
+      console.log(`Every agent runtime binding is released in the database; vendor sign-out ${outcome}.`);
     } else {
-      throw new Error(`unknown operation ${command ?? ''} (use migration-files, migration-ledger, migration-gate, agent-access, revoke-agent-access or revoke-github-access)`);
+      throw new Error(`unknown operation ${command ?? ''} (use migration-files, migration-ledger, migration-gate, agent-access, revoke-agent-access, revoke-github-access, runtime-status, runtime-release or runtime-forget)`);
     }
   } finally {
     await pool.end();

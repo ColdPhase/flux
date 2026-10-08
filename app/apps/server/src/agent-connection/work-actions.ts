@@ -36,7 +36,7 @@ export function registerAgentWorkActions(tools: AgentToolRegistry, db: Database,
       const created: CreateWorkCommand = { ...task, ...materialSources(input) };
       return toolResult(await execute(input, 'work.create', null, created as unknown as AgentJsonValue, async ({ work: native, agent }) => {
         const work = await native.createWork(agent, input.projectId, created);
-        return { value: { workId: work.id, version: work.version }, postconditions: [{ kind: 'work', id: work.id, version: work.version }] };
+        return { value: { workId: work.id, number: work.number, version: work.version }, postconditions: [{ kind: 'work', id: work.id, version: work.version }] };
       }));
     } catch (error) { return toolError(error); }
   });
@@ -59,7 +59,7 @@ export function registerAgentWorkActions(tools: AgentToolRegistry, db: Database,
       return toolResult(await execute(input, 'work.update', workId, { expectedVersion, changes: update } as unknown as AgentJsonValue,
         async ({ work: native, agent }) => {
           const work = await native.updateWork(agent, workId, update, expectedVersion);
-          return { value: { workId: work.id, version: work.version }, postconditions: [{ kind: 'work', id: work.id, version: work.version }] };
+          return { value: { workId: work.id, number: work.number, version: work.version }, postconditions: [{ kind: 'work', id: work.id, version: work.version }] };
         }));
     } catch (error) { return toolError(error); }
   });

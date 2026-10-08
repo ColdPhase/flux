@@ -119,6 +119,13 @@ starting mail to the sign-in address by itself. The sign-in address cannot be ad
   (at most once). An SMTP failure puts it back to `queued` with `last_error`, pg-boss retries 5
   times (30 s … 15 min), and settings show "A recent notification email could not be delivered";
   the inbox keeps the item.
+- **One message per mailbox.** When the account and extra address resolve to the same mailbox,
+  the copy claimed second is skipped (`this mailbox already gets this notification`). If the
+  copy that had the mailbox fails on its last attempt (the sixth), it ends as `skipped`
+  (`delivery failed permanently`) and, in the same locked transaction, the skipped copy goes back
+  to `queued` with one new job (#329). That promoted copy is claimed like any other, so access,
+  preferences, quiet hours and the address are rechecked at send time, and it has its own retries.
+  A failure that is later retried successfully promotes nothing.
 - **Calm.** At most one email per person and place in 10 minutes; the inbox holds the rest.
 - **Content.** Subject is always "New activity in Flux". The body has only
   `${origin}/inbox/:id` (which rechecks access and opens the source), a settings link and an

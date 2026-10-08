@@ -5,7 +5,7 @@ application. Three people and one agent share a project with open, in-progress, 
 not-pursued tasks that come from a message and a map thought. The tests cover the columns and
 cards, dragging with drop feedback on the card list only, keyboard and menu moves, a refused
 move that restores the stored state, the List, phone and tablet layouts, a reader without
-changes, and contrast in Light and Dark with every accent. Every move is checked against the API.
+changes, and contrast in Light and Dark. Every move is checked against the API.
 """
 
 from __future__ import annotations
@@ -15,11 +15,12 @@ import re
 import time
 import unittest
 import uuid
+from urllib.parse import parse_qs, urlsplit
 
 from playwright.sync_api import Browser, BrowserContext, Locator, Page, expect, sync_playwright
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
-from test_theme_accents import FAMILIES, MEASURE
+from contrast import MEASURE
 
 PASSWORD = "boards keep the work moving"
 STAMP = int(time.time() * 1000)
@@ -54,6 +55,7 @@ class TasksBoardJourney(unittest.TestCase):
     browser: Browser
     states: dict[str, dict] = {}
     ids: dict[str, str] = {}
+    numbers: dict[str, int] = {}
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -70,8 +72,9 @@ class TasksBoardJourney(unittest.TestCase):
 
     # ---------------------------------------------------------------- helpers
 
-    def context(self, who: str | None, *, viewport: dict | None = None, phone: bool = False, dark: bool = False, touch: bool = False) -> BrowserContext:
-        options: dict = {"base_url": ORIGIN, "color_scheme": "dark" if dark else "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw"}
+    def context(self, who: str | None, *, viewport: dict | None = None, phone: bool = False, dark: bool = False, touch: bool = False, block_service_workers: bool = False) -> BrowserContext:
+        options: dict = {"base_url": ORIGIN, "color_scheme": "dark" if dark else "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw",
+                         "service_workers": "block" if block_service_workers else "allow"}
         if phone:
             options.update(viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
         else:
@@ -178,6 +181,7 @@ class TasksBoardJourney(unittest.TestCase):
         type(self).ids = {"workspace": ws["id"], "project": pid, "study": study["id"], "agent": agent["id"], "conversation": thread["id"],
                           "message": message["id"], "sketch": sketch["id"], "thought": thought["thought"]["id"],
                           **{key: item["id"] for key, item in made.items()}}
+        type(self).numbers = {key: item["number"] for key, item in made.items()}
 
     # ---------------------------------------------------------------- columns and cards
 
@@ -202,8 +206,14 @@ class TasksBoardJourney(unittest.TestCase):
         expect(blocked).to_contain_text(f"Waiting for {BLOCKER}")
         # The ID, the title, where it came from, the owner and the agent that owns a task.
         order = self.card(open_, ORDER)
-        expect(order.locator(".tb-card__id")).to_contain_text(self.ids["order"].replace("-", "")[:8].upper())
-        expect(order.locator(".tb-card__id")).to_have_attribute("title", f"Task {self.ids['order']}")
+        # A task is named by its number in the project, "#12" (#276); the id stays in the tooltip.
+        self.assertEqual(self.numbers["order"], 1, "the project's first task is #1")
+        expect(order.locator(".tb-card__id")).to_have_text("Task #1")
+        number = order.locator(".ui-task-number")
+        self.assertIn("monospace", number.evaluate("node => getComputedStyle(node).fontFamily"))
+        self.assertGreaterEqual(number.evaluate("node => parseFloat(getComputedStyle(node).fontSize)"), 12)
+        expect(order.locator(".tb-card__id")).to_have_attribute("title", f"Task #1 · {self.ids['order']}")
+        expect(self.card(doing, SOLDER).locator(".tb-card__id")).to_have_text(f"Task #{self.numbers['solder']}")
         expect(order.get_by_role("button", name=ORDER, exact=True)).to_be_visible()
         source = order.get_by_role("link", name=re.compile("^From a message: If we agree on the ToF route"))
         expect(source).to_have_attribute("href", f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}#message-{self.ids['message']}")
@@ -211,7 +221,10 @@ class TasksBoardJourney(unittest.TestCase):
         expect(self.card(doing, CALIBRATE).get_by_role("link", name=f"From a thought: {THOUGHT}")).to_have_attribute(
             "href", f"/projects/{self.ids['project']}/map/{self.ids['sketch']}#thought-{self.ids['thought']}")
         expect(self.card(doing, CALIBRATE).locator(".tb-card__owner")).to_contain_text("Ada Lind · you")
-        expect(self.card(open_, DIFFUSER).locator(".tb-card__owner")).to_have_text("Codex · agent")
+        owner = self.card(open_, DIFFUSER).locator(".tb-card__owner")
+        expect(owner.locator(".tb-card__name")).to_have_text("Codex")
+        expect(owner.locator(":scope > .kreska")).to_have_count(1)  # an agent is Kreska, never initials (#339)
+        expect(owner.locator(".agent-tag")).to_have_text("Agent")
         expect(self.card(open_, FIRMWARE)).to_contain_text("Waits for 1")
         expect(self.card(done, CAMERA).locator(".tb-card__state")).to_have_text("Not pursued")
         # Decisions and results stay one step away, and a decision that needs you is named.
@@ -240,6 +253,12 @@ class TasksBoardJourney(unittest.TestCase):
         search.fill("solder")
         expect(page.locator(".tb-card")).to_have_count(1)
         expect(open_).to_contain_text("Nothing here matches.")
+        # "#n" finds exactly that task; a number no task has finds none (#276).
+        search.fill(f"#{self.numbers['solder']}")
+        expect(page.locator(".tb-card")).to_have_count(1)
+        expect(self.card(page, SOLDER)).to_be_visible()
+        search.fill("#99")
+        expect(page.locator(".tb-card")).to_have_count(0)
         search.press("Escape")
         expect(search).to_have_value("")
         expect(page.locator(".tb-card")).to_have_count(8)
@@ -512,6 +531,9 @@ class TasksBoardJourney(unittest.TestCase):
         expect(self.column(page, "Open")).to_have_count(0)
         expect(self.column(page, "Done")).to_have_count(0)
         expect(self.column(page, "In progress").locator(".tb-card").first).to_contain_text(SOLDER)
+        number = self.card(page, SOLDER).locator(".ui-task-number")
+        expect(number).to_have_text(f"#{self.numbers['solder']}")
+        self.assertGreaterEqual(number.evaluate("node => parseFloat(getComputedStyle(node).fontSize)"), 12.5, "F-026 phone metadata remains readable")
         column = self.column(page, "In progress").bounding_box()
         assert column
         self.assertLessEqual(column["x"] + column["width"], PHONE["width"], "the column fits the phone")
@@ -590,35 +612,69 @@ class TasksBoardJourney(unittest.TestCase):
 
     # ---------------------------------------------------------------- contrast
 
-    def test_12_light_dark_and_every_accent_keep_readable_contrast(self) -> None:
+    def test_12_light_and_dark_keep_readable_contrast(self) -> None:
         measured: list[dict] = []
         for theme in ("Light", "Dark"):
-            for family in FAMILIES:
-                with self.subTest(theme=theme, family=family):
-                    context = self.context("ada")
-                    context.add_init_script(f"localStorage.setItem('flux.theme', '{theme.lower()}'); localStorage.setItem('flux.accent.{theme.lower()}', '{family.lower()}')")
-                    page = context.new_page()
-                    page.goto(f"/projects/{self.ids['project']}/tasks")
-                    expect(page.locator("html")).to_have_attribute("data-accent", family.lower())
-                    expect(page.locator(".tb-card").first).to_be_visible()
-                    # Since #155 a card's source line comes from its own bounded read, after the cards.
-                    expect(page.locator(".tb-card__from").first).to_be_visible()
-                    page.wait_for_timeout(250)
-                    for selector, minimum, spec in (
-                        (".tb-card__id", 4.5, {}), (".tb-card__title", 4.5, {}), (".tb-card__from", 4.5, {}), (".tb-card__kind", 4.5, {}),
-                        (".tb-card__state--blocked", 4.5, {}), (".tb-card__blocker", 4.5, {}), (".tb-col__n", 4.5, {}), (".tb-col__b", 4.5, {}),
-                        (".tb-col__h", 4.5, {}), ('.tb-mode__b[aria-checked="true"]', 4.5, {}), ('.tb-mode__b[aria-checked="false"]', 4.5, {}),
-                        (".tb-dr", 4.5, {}), (".tb-mine", 4.5, {}), (".tb-also__b--need", 4.5, {}), (".tb-search input", 4.5, {"pseudo": "::placeholder"}),
-                        (".tb-col__head .tb-ring--in_progress", 3, {"property": "borderTopColor"}), (".tb-search", 3, {"property": "color"}),
-                    ):
-                        value = page.evaluate(MEASURE, {"selector": selector, **spec})
-                        value.update(theme=theme, family=family, minimum=minimum)
-                        measured.append(value)
-                        self.assertGreaterEqual(value["ratio"], minimum, value)
-                    if family == "Mint":
-                        shot(page, f"tasks-board-1440-{theme.lower()}")
-                    shot(page, f"tasks-board-1440-{theme.lower()}-{family.lower()}")
-        self.assertEqual(len(measured), 2 * len(FAMILIES) * 17)
+            with self.subTest(theme=theme):
+                context = self.context("ada")
+                context.add_init_script(f"localStorage.setItem('flux.theme', '{theme.lower()}')")
+                page = context.new_page()
+                page.goto(f"/projects/{self.ids['project']}/tasks")
+                expect(page.locator("html")).to_have_attribute("data-theme", theme.lower())
+                expect(page.locator(".tb-card").first).to_be_visible()
+                # Since #155 a card's source line comes from its own bounded read, after the cards.
+                expect(page.locator(".tb-card__from").first).to_be_visible()
+                page.wait_for_timeout(250)
+                for selector, minimum, spec in (
+                    (".tb-card__id", 4.5, {}), (".tb-card__title", 4.5, {}), (".tb-card__from", 4.5, {}), (".tb-card__kind", 4.5, {}),
+                    (".tb-card__state--blocked", 4.5, {}), (".tb-card__blocker", 4.5, {}), (".tb-col__n", 4.5, {}), (".tb-col__b", 4.5, {}),
+                    (".tb-col__h", 4.5, {}), ('.tb-mode__b[aria-checked="true"]', 4.5, {}), ('.tb-mode__b[aria-checked="false"]', 4.5, {}),
+                    (".tb-dr", 4.5, {}), (".tb-mine", 4.5, {}), (".tb-also__b--need", 4.5, {}), (".tb-search input", 4.5, {"pseudo": "::placeholder"}),
+                    (".tb-col__head .tb-ring--in_progress", 3, {"property": "borderTopColor"}), (".tb-search", 3, {"property": "color"}),
+                ):
+                    value = page.evaluate(MEASURE, {"selector": selector, **spec})
+                    value.update(theme=theme, minimum=minimum)
+                    measured.append(value)
+                    self.assertGreaterEqual(value["ratio"], minimum, value)
+                shot(page, f"tasks-board-1440-{theme.lower()}")
+        self.assertEqual(len(measured), 2 * 17)
+
+    def test_13_delayed_native_columns_say_which_tasks_are_loading(self) -> None:
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                # The request hold must reach the actual API; a controlling service worker can
+                # bypass page.route. PWA behavior is covered separately.
+                page = self.page("ada", phone=phone, block_service_workers=True)
+                held = []
+                def hold(route):
+                    query = parse_qs(urlsplit(route.request.url).query)
+                    if query.get("purpose") == ["tasks"] and query.get("group", [""])[0] in ("open", "in_progress", "blocked", "finished"):
+                        response = route.fetch()
+                        self.assertEqual(response.status, 200)
+                        held.append((route, response))
+                        page.evaluate("count => window.loadingTaskReadsHeld = count", len(held))
+                    else:
+                        route.continue_()
+                page.route(f"**/api/v1/projects/{self.ids['project']}/work-view?**", hold)
+                self.addCleanup(lambda page=page: page.unroute_all(behavior="ignoreErrors"))
+                page.goto(f"/projects/{self.ids['project']}/tasks?view=board")
+                for column in ("Open", "In progress", "Done"):
+                    if phone:
+                        page.locator(".tb-ov").filter(has_text=column).click()
+                    label = self.column(page, column).locator(".tb-col__empty")
+                    expect(label).to_have_text(f"Loading {column.lower()} tasks…")
+                    expect(label).to_be_visible()
+                    self.assertEqual(label.evaluate("e => e.tagName"), "P")
+                    expect(label).to_have_attribute("class", "tb-col__empty")
+                page.wait_for_function("window.loadingTaskReadsHeld >= 4")
+                self.assertGreaterEqual(len(held), 4, "each real native status read waits")
+                shot(page, f"323-board-loading-{'phone' if phone else 'desktop'}")
+                for route, response in held:
+                    route.fulfill(response=response)
+                page.unroute_all(behavior="wait")
+                expect(page.locator(".tb")).to_have_attribute("data-work-observed-at", re.compile(r".+"))
+                expect(page.locator(".tb-col__empty").filter(has_text=re.compile("^Loading"))).to_have_count(0)
+                self.assertGreater(page.locator(".tb-card").count(), 0, "the stored task cards appear after their responses arrive")
 
 
 if __name__ == "__main__":

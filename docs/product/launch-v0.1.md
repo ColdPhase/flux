@@ -73,11 +73,13 @@ These are drafted in the repository and reviewed like code. Publication follows
   - what Flux is, in two sentences;
   - the quick start;
   - what works (the founder scenarios of #44, phone and PWA, AI modes over MCP);
-  - known limits (live co-editing is not in v0.1, plus anything left open at #249);
+  - known verified limits at the accepted candidate; live co-editing is required
+    by the [2026-10-07 scope amendment](https://github.com/ColdPhase/flux/issues/249#issuecomment-6042227715),
+    so an unresolved #228/#231/#238 gate blocks release rather than becoming a release-note exclusion;
   - upgrade and backup notes;
   - checksums.
 - **README:**
-  - refresh the demo GIF once #275 (Friendly Flux) and the phone look (F-025) are on `main`;
+  - refresh the demo GIF once the final design (#336) is on `main`;
   - add one phone screenshot;
   - make sure the first screen answers what Flux is, who it is for, and how to try it.
 - **A 60–90 s demo video of the core journey** on the demo data: a person and an agent in one
@@ -85,6 +87,7 @@ These are drafted in the repository and reviewed like code. Publication follows
 - **The story, as drafts in English and Polish for the founders:** two founders and two agents
   built Flux in public, with dated evidence from the build log. The founders choose where to
   publish it (for example Show HN, r/selfhosted, LinkedIn) and when.
+  The drafts are in [launch-story.md](launch-story.md).
 - **The changelog:** `[Unreleased]` moves under `0.1.0` with its date. The build log gets a
   release entry.
 
@@ -115,7 +118,7 @@ These are drafted in the repository and reviewed like code. Publication follows
 ## Order
 
 L-1 and L-2 start now; they need no other work. The L-3 drafts start now. The README, GIF and
-video in L-3 wait for #275 and the F-025 phone work, and the release notes wait for #249. L-4's
+video in L-3 wait for the final design (#336), and the release notes wait for #249. L-4's
 partner profile and guide come before the release; the weekly review starts after it.
 
 ## Not in this plan

@@ -18,7 +18,7 @@ import uuid
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
-from test_theme_accents import MEASURE
+from contrast import MEASURE
 
 PASSWORD = "one calm conversation for the lamp"
 STAMP = int(time.time() * 1000)
@@ -357,9 +357,14 @@ class OneConversationJourney(unittest.TestCase):
             route.abort("failed")
         page.route("**/api/v1/projects/*/conversations", lose_committed_start)
         page.get_by_role("button", name="Send message").click()
-        expect(page.get_by_role("alert")).to_contain_text("Flux could not be reached")
+        # Sending is instant (#264): the root waits at the end of the stream with its command, and the
+        # quiet line says why; when Flux answers again it is sent once more, with the same key.
+        queued = self.stream(page).locator("[data-client-message-id]").filter(has_text=body)
+        expect(queued).to_contain_text("Waiting to send")
+        expect(composer).to_have_value("")
+        expect(page.get_by_text("Flux isn’t responding", exact=False)).to_be_visible()
         page.unroute("**/api/v1/projects/*/conversations", lose_committed_start)
-        page.get_by_role("button", name="Retry send").click()
+        expect(queued).to_have_count(0, timeout=20000)
         expect(composer).to_have_value("")
         last = self.stream(page).locator(".project-convo__message").last
         expect(last).to_contain_text(body)
@@ -454,6 +459,7 @@ class OneConversationJourney(unittest.TestCase):
         owner.get_by_label("Write a message", exact=True).fill(body)
         owner.get_by_role("button", name="Send message", exact=True).click()
         expect(owner.get_by_label("Write a message", exact=True)).to_have_value("")
+        expect(owner.locator("[data-client-message-id]")).to_have_count(0)
         roots = self.api(owner, "GET", path, status=200)["roots"]
         self.assertEqual(len(roots), 1)
         self.assertEqual(roots[0]["message"]["body"], body)
@@ -490,6 +496,7 @@ class OneConversationJourney(unittest.TestCase):
         owner.get_by_label("Write a message", exact=True).fill(body)
         owner.get_by_role("button", name="Send message", exact=True).click()
         expect(owner.get_by_label("Write a message", exact=True)).to_have_value("")
+        expect(owner.locator("[data-client-message-id]")).to_have_count(0)
         roots = self.api(owner, "GET", path, status=200)["roots"]
         self.assertEqual(len(roots), 1)
         self.assertEqual(roots[0]["message"]["body"], body)
@@ -611,32 +618,27 @@ class OneConversationJourney(unittest.TestCase):
                     }""", arg=selector, timeout=5000)
                     value = page.evaluate(MEASURE, {"selector": selector})
                     self.assertGreaterEqual(value["ratio"], 4.5, value)
-                # The reply link (at rest and on hover) and the open root's ring use the accent: every family (#148 AC-4).
+                # The reply link (at rest and on hover) and the open root's ring are readable (#338, no accent colour).
                 root = f"#message-{self.ids['r1']}"
                 expect(page.locator(root)).to_have_class(re.compile("is-open"))
-                chosen = page.evaluate("document.documentElement.dataset.accent ?? null")
-                for family in ("mint", "sky", "copper"):
-                    page.evaluate(f"document.documentElement.dataset.accent = '{family}'")
-                    page.mouse.move(1, 1)
-                    page.wait_for_timeout(250)
-                    rest = page.evaluate(MEASURE, {"selector": f"{root} .convo-replies__open"})
-                    self.assertGreaterEqual(rest["ratio"], 4.5, (theme, family, "reply link", rest))
-                    page.locator(f"{root} .convo-replies__open").hover()
-                    page.wait_for_timeout(250)
-                    hovered = page.evaluate(MEASURE, {"selector": f"{root} .convo-replies__open"})
-                    self.assertGreaterEqual(hovered["ratio"], 4.5, (theme, family, "reply link on hover", hovered))
-                    page.mouse.move(1, 1)
-                    page.wait_for_timeout(250)
-                    ring = page.locator(f"{root} > p").evaluate("e => getComputedStyle(e).boxShadow")
-                    accent = page.evaluate("""() => { const probe = document.createElement('i'); probe.style.color = 'var(--accent)';
-                      document.body.append(probe); const color = getComputedStyle(probe).color; probe.remove(); return color; }""")
-                    self.assertEqual(ring, f"{accent} 0px 0px 0px 1px inset", (theme, family, "the open root has a solid accent ring"))
-                    colour = [int(channel) for channel in re.findall(r"\d+", accent)[:3]]
-                    # The ring separates the root's bubble from the stream: measured against both.
-                    for inside in (f"{root} > p", root):
-                        background = page.evaluate(MEASURE, {"selector": inside})["background"]
-                        self.assertGreaterEqual(contrast(colour, background), 3, (theme, family, "open root ring", inside, colour, background))
-                page.evaluate("value => { if (value) document.documentElement.dataset.accent = value; else delete document.documentElement.dataset.accent; }", chosen)
+                page.mouse.move(1, 1)
+                page.wait_for_timeout(250)
+                rest = page.evaluate(MEASURE, {"selector": f"{root} .convo-replies__open"})
+                self.assertGreaterEqual(rest["ratio"], 4.5, (theme, "reply link", rest))
+                page.locator(f"{root} .convo-replies__open").hover()
+                page.wait_for_timeout(250)
+                hovered = page.evaluate(MEASURE, {"selector": f"{root} .convo-replies__open"})
+                self.assertGreaterEqual(hovered["ratio"], 4.5, (theme, "reply link on hover", hovered))
+                page.mouse.move(1, 1)
+                page.wait_for_timeout(250)
+                outline = page.locator(f"{root} > p").evaluate("e => { const s = getComputedStyle(e); return [s.outlineStyle, s.outlineWidth, s.outlineColor]; }")
+                ink = page.evaluate("""() => { const probe = document.createElement('i'); probe.style.color = 'var(--t1)';
+                  document.body.append(probe); const color = getComputedStyle(probe).color; probe.remove(); return color; }""")
+                self.assertEqual(outline, ["solid", "2px", ink], (theme, "the open root has a solid ring in the primary ink"))
+                colour = [int(channel) for channel in re.findall(r"\d+", ink)[:3]]
+                # The ring sits 2px outside the bubble, on the stream: measured against the stream.
+                background = page.evaluate(MEASURE, {"selector": root})["background"]
+                self.assertGreaterEqual(contrast(colour, background), 3, (theme, "open root ring", colour, background))
 
 
 if __name__ == "__main__":

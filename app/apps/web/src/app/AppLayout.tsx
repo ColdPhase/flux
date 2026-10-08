@@ -73,7 +73,7 @@ function isTyping(target: EventTarget | null) {
 }
 
 /**
- * Authenticated frame, Studio 11.6 (#136): one sidebar on the chrome and a rounded sheet with
+ * Authenticated frame: one sidebar on the outer background and a rounded panel with
  * the place's header, its view tabs and the work area, plus a Details panel closed by default.
  * At 680px and below the sidebar becomes a drawer and the sheet fills the screen; the panel
  * overlays below 1000px and becomes a full-screen sheet on the phone.
@@ -286,7 +286,7 @@ function AppLayoutContent() {
   const project = shellProject && shellProject.project.id === projectId ? shellProject : undefined;
   const workSummary = useProjectWorkSummary();
   const openWork = project ? workSummary.summary?.unfinishedTotal : undefined;
-  // Conversation · Map · Tasks · Wiki · Agents in the Studio 11.6 order (#117, #136); quiet tabs without
+  // Conversation · Map · Tasks · Wiki · Agents in the final design's order (#117); quiet tabs without
   // counts. The unfinished work count stays readable to assistive technology on the Tasks tab.
   const projectViews = projectId ? [
     { id: 'conversation', label: 'Conversation', to: onOtherView ? lastConversationPath(me.user.id, projectId) : `${location.pathname}${location.search}` },
@@ -304,7 +304,7 @@ function AppLayoutContent() {
   const recapOpen = detailsOpen && typeof detailsView === 'object' && detailsView.kind === 'recap';
   // "What matters" (#133): a quiet count of what needs you; refreshed when the panel closes.
   const needsYou = useNeedsYou(activeProject ? projectId ?? null : null, recapOpen);
-  // One stable entry at the end of the project's view tabs, as in Studio v11, so the header keeps
+  // One stable entry at the end of the project's view tabs, so the header keeps
   // its room for the title, audience and state line.
   const recapEntry = activeProject && projectId ? (
     <Button variant="quiet" icon="leaf" className="views__recap" aria-expanded={recapOpen}

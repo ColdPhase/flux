@@ -9,7 +9,7 @@ import unittest
 from playwright.sync_api import expect, sync_playwright
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, SHOTS, UPSTREAM, shot, start_forwarder
-from test_theme_accents import FAMILIES, MEASURE
+from contrast import MEASURE
 
 STAMP = int(time.time() * 1000)
 PASSWORD = "keep the graph connected"
@@ -380,21 +380,19 @@ class MapOutlineJourney(unittest.TestCase):
     def test_06_render_matched_light_dark_phone_tablet_and_enlarged_text(self):
         measurements = []
         for scheme in ("Light", "Dark"):
-            for family in FAMILIES:
-                page = self.page()
-                self.open(page)
-                page.locator(".me__btn").click()
-                pop = page.get_by_role("dialog", name="Account", exact=True)
-                pop.get_by_role("radio", name=scheme, exact=True).click()
-                pop.get_by_role("radio", name=family, exact=True).click()
-                page.keyboard.press("Escape")
-                self.title(page, 4).click()
-                for selector in ('.sk-li-t', '.sk-li-s', '.sk-outline-related button', '.sk-outline-selected', '.sk-outline-path summary'):
-                    page.wait_for_function("selector => { const node = document.querySelector(selector); if (!node) return false; for (let el = node; el; el = el.parentElement) if (Number(getComputedStyle(el).opacity) !== 1) return false; return true; }", arg=selector)
-                    measured = page.evaluate(MEASURE, {"selector": selector})
-                    measurements.append({"theme": scheme, "family": family, **measured})
-                    self.assertGreaterEqual(measured["ratio"], 4.5, f"{scheme}/{family} {selector} actual composite contrast")
-                shot(page, f"map-outline-{scheme.lower()}-{family.lower()}-desktop-1440")
+            page = self.page()
+            self.open(page)
+            page.locator(".me__btn").click()
+            pop = page.get_by_role("dialog", name="Account", exact=True)
+            pop.get_by_role("radio", name=scheme, exact=True).click()
+            page.keyboard.press("Escape")
+            self.title(page, 4).click()
+            for selector in ('.sk-li-t', '.sk-li-s', '.sk-outline-related button', '.sk-outline-selected', '.sk-outline-path summary'):
+                page.wait_for_function("selector => { const node = document.querySelector(selector); if (!node) return false; for (let el = node; el; el = el.parentElement) if (Number(getComputedStyle(el).opacity) !== 1) return false; return true; }", arg=selector)
+                measured = page.evaluate(MEASURE, {"selector": selector})
+                measurements.append({"theme": scheme, **measured})
+                self.assertGreaterEqual(measured["ratio"], 4.5, f"{scheme} {selector} actual composite contrast")
+            shot(page, f"map-outline-{scheme.lower()}-desktop-1440")
         if SHOTS:
             (SHOTS / "map-outline-contrast.json").write_text(json.dumps(measurements, indent=2) + "\n")
         for scheme in ("light", "dark"):

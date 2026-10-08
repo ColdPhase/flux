@@ -1,9 +1,9 @@
-# Personal map-list outline — Studio v11
+# Personal map-list outline
 
 Issue [#134](https://github.com/ColdPhase/flux/issues/134), 2026-09-30. A person
 reading a deep map needs to keep their place and follow a relation to another
 thought without mistaking that relation for a new parent. This implements the
-accepted [v11 direction](studio-v11-refinement.md#2-hierarchy-is-distinct-from-a-graph-relation)
+accepted rule that hierarchy is distinct from a graph relation
 over the existing undirected graph; it does not add domain hierarchy.
 
 ## Presentation contract

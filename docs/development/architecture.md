@@ -20,6 +20,8 @@ allowlist retain their meaning after the move. `docker/` contains deployment inp
 | `app/packages/core` | `@flux/core` | Domain rules, authorization, use cases and the ports they need. | `@flux/contracts` and Node built-ins. No Drizzle, `@flux/db`, `pg`, pg-boss, Fastify, web-push or React. |
 | `app/packages/db` | `@flux/db` | Schema, reviewed SQL migrations and persistence adapters that implement core ports. | `@flux/contracts`, `@flux/core`, Drizzle, `pg`. |
 | `app/packages/agent-runtime` | `@flux/agent-runtime` | Optional model/provider adapter. | Not `@flux/db`, Drizzle, `pg`, pg-boss, Fastify, the apps or React; it receives a work brief and permitted capabilities. |
+| `app/packages/runtime-protocol` | `@flux/runtime-protocol` | The `runtime` transport's internal protocol ([F-022 AIM-3](../product/ai-modes.md#aim-3--the-runtime-transport)): the supervisor's closed request set, its answer frames, the bounded stream reader, the manager's API and client. | Node built-ins only, so the slot image carries nothing else. |
+| `app/apps/runtime` | `@flux/runtime` | The runtime's own processes: the slot supervisor, `runtime-manager`, `runtime-egress`, `runtime-install`, the TEST ONLY fake CLIs and the opt-in flag contract check. | `@flux/runtime-protocol` and Node built-ins only: no database, queue, HTTP framework, domain package or other app. |
 | `app/apps/server` | `@flux/server` | Composition root of the API: Fastify routes, identity, push and static PWA assets. Maps HTTP to core use cases. | Any package except `@flux/worker`, `@flux/web` and React. |
 | `app/apps/worker` | `@flux/worker` | Composition root of background jobs (pg-boss handlers, Web Push delivery). | Any package except `@flux/server`, `@flux/web`, Fastify and React. |
 | `app/apps/web` | `@flux/web` | Browser application and PWA. Talks to the server only through HTTP/WebSocket contracts. | `@flux/contracts` and UI libraries. Never core, db, server, worker, queue or Node built-ins. Build tooling (`vite.config.ts`, `build/`, `scripts/`) is separate from `src/`. |
@@ -85,6 +87,7 @@ are the only places that choose concrete adapters and wire them together.
 | Checks against a restarted or reconfigured stack | `app/tests/app/*.ts` / `*.check.ts` called by the script | `check_application.sh` |
 | Browser journeys in the web app (Playwright, Python) | `app/tests/ui/test_*.py` | `./scripts/check_ui.sh` |
 | The normal (non-test) deployment: fixture rollback header ignored, worker processes, restart keeps data | `scripts/check_runtime.sh` | `./scripts/check_runtime.sh` |
+| The agent runtime with fake CLIs through `./flux` (isolation, release, backup, restore, purge, reset) | `scripts/check_agent_runtime.sh`, `scripts/agent-runtime/` | `./scripts/check_agent_runtime.sh` |
 | k3s live-media chart values: render, Kubernetes schemas, route and Compose consistency | `docker/k3s/`, `scripts/live_k3s_render.mjs` | `./scripts/check_live_k3s.sh` |
 | Repository and agent tooling | `tests/test_*.py` | `python3 -m unittest discover -s tests -p 'test_*.py'` |
 

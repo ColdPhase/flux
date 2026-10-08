@@ -8,8 +8,7 @@ promised backports.
 
 The application on `main` has accounts, sessions and server-side authorization, but
 it has not had a security review or a release. Use sample data and do not expose it
-as a production service. The `flux-ux-v8.html` prototype has no backend; its
-accounts, permissions, AI and integrations are demonstrations.
+as a production service.
 
 ## Report a vulnerability
 

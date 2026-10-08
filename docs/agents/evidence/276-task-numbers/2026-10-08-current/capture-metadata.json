@@ -1,0 +1,170 @@
+{
+  "source": "1b7c3c03690b4fe4027001b38f7facb69e3c0c63",
+  "captureProvider": "maintained check_ui.sh in pinned Playwright Docker image",
+  "browserZoom": "default 100%",
+  "textEnlargement": "document root fontSize 200%; not browser zoom or OS text-size",
+  "images": [
+    {
+      "file": "task-announcements-desktop.png",
+      "sha256": "283e2bfdb6e0ecf71f63ad0381fa0d12c2b1691747d834f0241bdd0bf6cfe059",
+      "raster": [
+        1440,
+        900
+      ],
+      "engine": "chromium",
+      "cssViewport": [
+        1440,
+        900
+      ],
+      "DPR": 1,
+      "theme": "light",
+      "rootFontSize": "default",
+      "mobile": false,
+      "touch": false
+    },
+    {
+      "file": "task-announcements-phone-320-text200-webkit.png",
+      "sha256": "80a59e880a15768e6023f506b1bbc080ce65d0b31c46519d27537f7a93a6d80f",
+      "raster": [
+        960,
+        1920
+      ],
+      "engine": "webkit",
+      "cssViewport": [
+        320,
+        640
+      ],
+      "DPR": 3,
+      "theme": "light",
+      "rootFontSize": "200%",
+      "mobile": true,
+      "touch": true
+    },
+    {
+      "file": "task-announcements-phone-320-text200.png",
+      "sha256": "c1d9c84338c740cf3ebfce7840db3ee7451ea8d733a356c3b8dfd2d0ca214363",
+      "raster": [
+        960,
+        1920
+      ],
+      "engine": "chromium",
+      "cssViewport": [
+        320,
+        640
+      ],
+      "DPR": 3,
+      "theme": "light",
+      "rootFontSize": "200%",
+      "mobile": true,
+      "touch": true
+    },
+    {
+      "file": "task-announcements-phone-320-webkit.png",
+      "sha256": "a3b616bb1cde547776f6745eb8e515269b29f666a495aa1fe1f9332de2dbe5fa",
+      "raster": [
+        960,
+        1920
+      ],
+      "engine": "webkit",
+      "cssViewport": [
+        320,
+        640
+      ],
+      "DPR": 3,
+      "theme": "light",
+      "rootFontSize": "default",
+      "mobile": true,
+      "touch": true
+    },
+    {
+      "file": "task-announcements-phone-320.png",
+      "sha256": "854f38c3f3bf9d4a8cdfbf0b0ef943cdcb2546e689f557065b6f69f71ab89215",
+      "raster": [
+        960,
+        1920
+      ],
+      "engine": "chromium",
+      "cssViewport": [
+        320,
+        640
+      ],
+      "DPR": 3,
+      "theme": "light",
+      "rootFontSize": "default",
+      "mobile": true,
+      "touch": true
+    },
+    {
+      "file": "task-announcements-phone-390-dark-text200-webkit.png",
+      "sha256": "32c33217e38fc0ee419da3a0e0901ba763f60cf64b20f7261148b0e94306094e",
+      "raster": [
+        1170,
+        2532
+      ],
+      "engine": "webkit",
+      "cssViewport": [
+        390,
+        844
+      ],
+      "DPR": 3,
+      "theme": "dark",
+      "rootFontSize": "200%",
+      "mobile": true,
+      "touch": true
+    },
+    {
+      "file": "task-announcements-phone-390-dark-text200.png",
+      "sha256": "a8b6dbef00a57ee90d29d94707ee0db03bf004e76805d478e281b50d754b6373",
+      "raster": [
+        1170,
+        2532
+      ],
+      "engine": "chromium",
+      "cssViewport": [
+        390,
+        844
+      ],
+      "DPR": 3,
+      "theme": "dark",
+      "rootFontSize": "200%",
+      "mobile": true,
+      "touch": true
+    },
+    {
+      "file": "task-announcements-phone-390-dark-webkit.png",
+      "sha256": "8a51a1b82fb927ac7930f047d02a4cecb7a8406e95d0dd7c5521c637c1b936db",
+      "raster": [
+        1170,
+        2532
+      ],
+      "engine": "webkit",
+      "cssViewport": [
+        390,
+        844
+      ],
+      "DPR": 3,
+      "theme": "dark",
+      "rootFontSize": "default",
+      "mobile": true,
+      "touch": true
+    },
+    {
+      "file": "task-announcements-phone-390-dark.png",
+      "sha256": "178668f8a8c93bdd738bcbca3567da781282a9371e2282d6323558ce32765874",
+      "raster": [
+        1170,
+        2532
+      ],
+      "engine": "chromium",
+      "cssViewport": [
+        390,
+        844
+      ],
+      "DPR": 3,
+      "theme": "dark",
+      "rootFontSize": "default",
+      "mobile": true,
+      "touch": true
+    }
+  ]
+}

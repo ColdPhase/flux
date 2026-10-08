@@ -9,7 +9,7 @@ import { nativeWorkVisibilityRows, type NativeWorkReadObject } from './work-read
 
 const w = schema.projectWorkItems, d = schema.projectDecisions, r = schema.projectResults;
 const base = (table: typeof w | typeof d | typeof r) => ({ id: table.id, workspaceId: table.workspaceId, projectId: table.projectId, title: table.title, createdAt: table.createdAt });
-const workFields = { ...base(w), status: w.status, blocker: w.blocker, ownerUserId: w.ownerUserId, ownerAgentId: w.ownerAgentId, parkedByDecisionId: w.parkedByDecisionId, parkedAt: w.parkedAt, version: w.version, updatedAt: w.updatedAt };
+const workFields = { ...base(w), number: w.number, status: w.status, blocker: w.blocker, ownerUserId: w.ownerUserId, ownerAgentId: w.ownerAgentId, parkedByDecisionId: w.parkedByDecisionId, parkedAt: w.parkedAt, version: w.version, updatedAt: w.updatedAt };
 const decisionFields = { ...base(d), status: d.status, proposedByKind: d.proposedByKind, proposedById: d.proposedById, decidedBy: d.decidedBy, decidedAt: d.decidedAt, supersedesId: d.supersedesId, supersededById: d.supersededById, supersededAt: d.supersededAt, version: d.version, updatedAt: d.updatedAt };
 const resultFields = { ...base(r), finding: r.finding, createdByKind: r.createdByKind, createdById: r.createdById };
 const iso = (date: Date) => date.toISOString();
@@ -57,7 +57,7 @@ export function nativeWorkObjectRows(db: DbExecutor) {
     };
     for (const work of works) {
       const ref = parked.find((decision) => decision.id === work.parkedByDecisionId);
-      const projected: WorkRowProjection = { kind: 'work', id: work.id, projectId: work.projectId, workspaceId: work.workspaceId, title: work.title,
+      const projected: WorkRowProjection = { kind: 'work', id: work.id, number: work.number, projectId: work.projectId, workspaceId: work.workspaceId, title: work.title,
         status: work.status, blocker: work.blocker, version: work.version, ...audience(work), relations: counts('work', work.id),
         prerequisiteCounts: prerequisites.get(work.id)!,
         owner: work.ownerUserId ? named({ kind: 'human', id: work.ownerUserId }) : work.ownerAgentId ? named({ kind: 'agent', id: work.ownerAgentId }) : null,

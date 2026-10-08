@@ -6,7 +6,7 @@ many-to-many: one thought leads to three tasks, one task comes from two thoughts
 none and one sits on a private draft. The tests check the counts against the API on the canvas and
 in the List, the chooser's exact IDs, status and people, opening a task, Escape and Close returning
 to the same camera and selection, a reader without changes, the phone sheet, live counts and
-contrast in Light and Dark with every accent. No interaction changes the stored sketch or work.
+contrast in Light and Dark. No interaction changes the stored sketch or work.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ import uuid
 from playwright.sync_api import Browser, Locator, Page, expect, sync_playwright
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, SHOTS, UPSTREAM, shot, start_forwarder
-from test_theme_accents import FAMILIES, MEASURE
+from contrast import MEASURE
 
 STAMP = int(time.time() * 1000)
 PASSWORD = "count the work, not the words"
@@ -45,8 +45,9 @@ def quote(text: str) -> str:
     return f"“{text[:47] + '…' if len(text) > 48 else text}”"
 
 
-def short_id(work_id: str) -> str:
-    return work_id.replace("-", "")[:8].upper()
+def task_number(item: dict) -> str:
+    """The name a task goes by on every surface (#276): its number in its project."""
+    return f"#{item['number']}"
 
 
 def tasks_label(count: int, text: str) -> str:
@@ -62,6 +63,7 @@ class MapTaskCountJourney(unittest.TestCase):
     ids: dict[str, str] = {}
     thoughts: dict[str, str] = {}
     work: dict[str, str] = {}
+    numbers: dict[str, int] = {}
     sketch_baseline: dict = {}
     work_baseline: dict = {}
 
@@ -109,7 +111,8 @@ class MapTaskCountJourney(unittest.TestCase):
         thought("later", LATER, 1500, 900)
 
         def task(key: str, title: str, **extra) -> None:
-            cls.work[key] = post(f"/api/v1/projects/{project}/work", {"title": title, **extra})["id"]
+            created = post(f"/api/v1/projects/{project}/work", {"title": title, **extra})
+            cls.work[key], cls.numbers[key] = created["id"], created["number"]
 
         ref = lambda key: {"type": "thought", "id": cls.thoughts[key]}  # noqa: E731
         task("order", ORDER, sources=[ref("dark")], owner={"kind": "human", "id": cls.ids["nia"]}, status="in_progress")
@@ -198,7 +201,7 @@ class MapTaskCountJourney(unittest.TestCase):
           return true;
         }""", arg=selector)
 
-    def appearance(self, page: Page, theme: str, family: str) -> None:
+    def appearance(self, page: Page, theme: str) -> None:
         page.locator(".app").wait_for(state="visible")
         if not page.locator(".me__btn").is_visible():
             # The phone drawer's account row opens Settings, with the same choices (#266 PF-5).
@@ -210,8 +213,7 @@ class MapTaskCountJourney(unittest.TestCase):
             page.locator(".me__btn").click()
             pop = page.get_by_role("dialog", name="Account", exact=True)
         pop.get_by_role("radio", name=theme, exact=True).click()
-        pop.get_by_role("radio", name=family, exact=True).click()
-        expect(pop.get_by_role("radio", name=family, exact=True)).to_have_attribute("aria-checked", "true")
+        expect(pop.get_by_role("radio", name=theme, exact=True)).to_have_attribute("aria-checked", "true")
         page.keyboard.press("Escape")
         if page.get_by_role("button", name="Close navigation").is_visible():
             page.get_by_role("button", name="Close navigation").click()
@@ -297,8 +299,8 @@ class MapTaskCountJourney(unittest.TestCase):
             link = links.nth(index)
             work_id = self.work[key]
             expect(link).to_contain_text(title)
-            expect(link.locator(".sk-task__id")).to_have_text(short_id(work_id))
-            expect(link).to_contain_text(f"{short_id(work_id)} · {status}")
+            expect(link.locator(".sk-task__id")).to_have_text(f"#{self.numbers[key]}")
+            expect(link).to_contain_text(f"#{self.numbers[key]} · {status}")
             expect(link).to_contain_text(f"{owner} · added by Ada Lind")
             expect(link).to_have_attribute("title", f"Task {work_id}")
             expect(link).to_have_attribute("data-work-id", work_id)
@@ -323,7 +325,7 @@ class MapTaskCountJourney(unittest.TestCase):
         self.row_badge(page, "drafted").click()
         drafted = self.chooser(page, DRAFTED)
         expect(drafted.get_by_role("link")).to_have_count(1)
-        expect(drafted.get_by_role("link")).to_contain_text(f"{short_id(self.work['diffuser'])} · Done")
+        expect(drafted.get_by_role("link")).to_contain_text(f"#{self.numbers['diffuser']} · Done")
         expect(drafted.get_by_role("link")).to_contain_text("Owner Nia Okafor · added by Ada Lind")
         page.keyboard.press("Escape")
         expect(self.row_badge(page, "drafted")).to_be_focused()
@@ -451,9 +453,23 @@ class MapTaskCountJourney(unittest.TestCase):
             box = badge.bounding_box()
             self.assertGreaterEqual(box["height"], 24, "the count is a usable touch target")
             before = self.camera(page)
-            badge.tap()
+            center = {"x": box["x"] + box["width"] / 2, "y": box["y"] + box["height"] / 2}
+            target = badge.evaluate("""(button, p) => {
+              const hit = document.elementFromPoint(p.x, p.y);
+              const canvas = button.closest('.sk-canvas').getBoundingClientRect();
+              return {
+                uncovered: !!hit && button.contains(hit),
+                insideCanvas: p.x >= canvas.left && p.x < canvas.right && p.y >= canvas.top && p.y < canvas.bottom,
+              };
+            }""", center)
+            self.assertTrue(target["uncovered"] and target["insideCanvas"], "the real touch target is visible and uncovered")
+            self.assertEqual(self.camera(page), before, "measuring the visible target does not move the camera")
+            # Normal actionability checks remain. Entry-motion retries must not add a synthetic
+            # scroll after our deliberate visibility scroll and camera baseline.
+            badge.tap(scroll="none")
             sheet = self.chooser(page, DARK_ROOM)
             expect(sheet).to_be_visible()
+            self.assertEqual(self.camera(page), before, "opening the sheet keeps the phone camera")
             expect(sheet).to_have_attribute("aria-modal", "true")
             expect(sheet.get_by_role("link")).to_have_count(3)
             # The sheet slides up (shell overlay motion): measure where it comes to rest.
@@ -489,31 +505,30 @@ class MapTaskCountJourney(unittest.TestCase):
             shot(page, f"map-task-count-phone-390-list-{scheme}")
         self.unchanged(page)
 
-    def test_07_light_and_dark_contrast_for_every_accent(self) -> None:
+    def test_07_light_and_dark_contrast(self) -> None:
         measurements = []
 
-        def measure(page: Page, theme: str, family: str, selector: str, **spec) -> None:
+        def measure(page: Page, theme: str, selector: str, **spec) -> None:
             self.settle(page, selector)
             value = page.evaluate(MEASURE, {"selector": selector, **spec})
-            value.update(theme=theme, family=family)
+            value.update(theme=theme)
             measurements.append(value)
             self.assertGreaterEqual(value["ratio"], 4.5, value)
 
         for theme in ("Light", "Dark"):
-            for family in FAMILIES:
-                page = self.page()
-                self.open(page)
-                self.appearance(page, theme, family)
-                # The count sits over its thought's own surface.
-                node = f'.sk-node[data-id="{self.thoughts["dark"]}"]'
-                measure(page, theme, family, f"{node} + .sk-work-slot .sk-work", backgroundSelector=node)
-                self.badge(page, "dark").click()
-                for selector in (".sk-tasks__k", ".sk-tasks__t", ".sk-task__t", ".sk-task__m", ".sk-task__id", ".sk-tasks__note"):
-                    measure(page, theme, family, f".sk-tasks-pop {selector}")
-                shot(page, f"map-task-count-{theme.lower()}-{family.lower()}-1440")
-                page.keyboard.press("Escape")
-                page.get_by_role("radio", name="List", exact=True).click()
-                measure(page, theme, family, f'.sk-outline-list > li[data-id="{self.thoughts["dark"]}"] .sk-work')
+            page = self.page()
+            self.open(page)
+            self.appearance(page, theme)
+            # The count sits over its thought's own surface.
+            node = f'.sk-node[data-id="{self.thoughts["dark"]}"]'
+            measure(page, theme, f"{node} + .sk-work-slot .sk-work", backgroundSelector=node)
+            self.badge(page, "dark").click()
+            for selector in (".sk-tasks__k", ".sk-tasks__t", ".sk-task__t", ".sk-task__m", ".sk-task__id", ".sk-tasks__note"):
+                measure(page, theme, f".sk-tasks-pop {selector}")
+            shot(page, f"map-task-count-{theme.lower()}-1440")
+            page.keyboard.press("Escape")
+            page.get_by_role("radio", name="List", exact=True).click()
+            measure(page, theme, f'.sk-outline-list > li[data-id="{self.thoughts["dark"]}"] .sk-work')
         if SHOTS:
             (SHOTS / "map-task-count-contrast.json").write_text(json.dumps(measurements, indent=2) + "\n")
 
@@ -528,7 +543,7 @@ class MapTaskCountJourney(unittest.TestCase):
         expect(self.badge(page, "quiet")).to_have_accessible_name(tasks_label(1, QUIET))
         expect(self.badge(page, "dark")).to_have_accessible_name(tasks_label(4, DARK_ROOM))
         self.badge(page, "quiet").click()
-        expect(self.chooser(page, QUIET).get_by_role("link")).to_contain_text(f"{short_id(created['id'])} · Open")
+        expect(self.chooser(page, QUIET).get_by_role("link")).to_contain_text(f"{task_number(created)} · Open")
         expect(self.chooser(page, QUIET).get_by_role("link")).to_contain_text("No owner yet · added by Nia Okafor")
         page.keyboard.press("Escape")
         # Create work on the map: the new task is counted at once.

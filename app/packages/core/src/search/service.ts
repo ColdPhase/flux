@@ -37,8 +37,16 @@ export function usesSearchSyntax(text: string) {
   return /["]|(^|\s)-|(^|\s)or(\s|$)/i.test(text);
 }
 
+/** The task number a query names on its own ("#12" or "12"), or null (#276). */
+export function taskNumberQuery(text: string): number | null {
+  const match = /^#?(\d{1,9})$/.exec(text.trim());
+  return match ? Number(match[1]) : null;
+}
+
 export function prefixQuery(text: string): string | null {
   if (usesSearchSyntax(text)) return null;
+  // A number names one task exactly: "#2" does not also mean #20 or #215.
+  if (taskNumberQuery(text) !== null) return null;
   if (!/[\p{L}\p{N}]$/u.test(text)) return null;
   const words = (text.match(WORD) ?? []).slice(-MAX_PREFIX_WORDS).map((word) => word.toLowerCase());
   if (!words.length) return null;
@@ -155,6 +163,7 @@ export function createSearchUseCases<C>(ports: SearchPorts<C>) {
       text: search.text,
       prefix: prefixQuery(search.text),
       fuzzy: !usesSearchSyntax(search.text),
+      number: taskNumberQuery(search.text),
       words: (search.text.match(WORD) ?? []).map((word) => word.toLowerCase()).join(' '),
       kinds: search.type ? searchKindsOf(search.type) : null,
       place: search.place,

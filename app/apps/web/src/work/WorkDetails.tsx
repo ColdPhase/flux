@@ -3,15 +3,16 @@ import { Link, useRevalidator } from 'react-router';
 import type { Agent, ObjectLink, Project, WorkspaceMember, WorkStatus, WorkDetailObject, WorkDetailProjection } from '@flux/contracts';
 import { WORK_STATUSES } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { Button, Icon, Input } from '../ui';
+import { AgentIdentity, Button, Icon, Input, StatusGlyph } from '../ui';
 import { getProject, listWorkspaceMembers } from '../app/conversation-api';
 import { useShellData } from '../app/data';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import { LiveEntry } from '../live/LiveEntry';
 import { useShellActions, type ObjectView, type WorkFormView } from '../app/shellContext';
 import { acceptDecision, createResult, listAgents, proposeDecision, updateWork } from './api';
-import { STATUS_LABEL, decisionLine, firstLine, isFinished, linked, resultLine, shortDate } from './format';
+import { STATUS_LABEL, decisionLine, firstLine, isFinished, linked, resultLine, shortDate, taskNumber } from './format';
 import { docsLinking } from '../docs/AddToDoc';
+import { useAgentOwners } from '../agents/owners';
 import { useProjectShell } from '../project/data';
 import { useWorkRead } from './useWorkRead';
 import { useNativeOwn, useWorkChoices, useDetailRelations, type DetailRelations, type DetailChoices } from './useDetailReads';
@@ -109,8 +110,11 @@ export function WorkDetails({ view }: { view: ObjectView | WorkFormView }) {
 }
 
 function RelationPages({ relations }: { relations: DetailRelations }) {
+  // Only a successful, complete first observation proves there are no links. A later
+  // empty page must retain navigation/Refresh, and pending or failed reads remain visible.
+  const emptyEntry = relations.read.phase === 'ready' && relations.complete && relations.page?.total === 0 && !relations.links.length;
   return <div data-detail-relations-phase={relations.read.phase} data-detail-relations-observed-at={relations.page?.observedAt}>
-    <WorkPagination {...relations} page={relations.page} label="Object relationship pages" noun="links" />
+    {!emptyEntry ? <WorkPagination {...relations} page={relations.page} label="Object relationship pages" noun="links" /> : null}
     {relations.read.phase === 'unavailable' ? <p className="wd-error" role="alert">Relationships could not be loaded. <button type="button" className="wd-inline" onClick={relations.onRefresh}>Refresh relationships</button></p> : null}
     {relations.page && !relations.complete ? <p className="wd-muted">Linked sections show this page of relationships. Browse all pages to explore every link.</p> : null}
   </div>;
@@ -240,7 +244,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
 
   return (
     <div className="details wd" data-detail-kind="work" data-detail-id={item.id}>
-      <p className="details__eyebrow wd-eyebrow"><span className={`wd-dot wd-dot--${item.status}`} aria-hidden="true" />{STATUS_LABEL[item.status]}{item.parked ? ' · parked, not done' : ''}</p>
+      <p className="details__eyebrow wd-eyebrow"><StatusGlyph status={item.status} size={14} /><span>Task <span className="ui-task-number">{taskNumber(item)}</span> · <span className="wd-project-name">{context.project.name}</span> · {STATUS_LABEL[item.status]}{item.parked ? ' · parked, not done' : ''}</span></p>
       <h3 className="details__title">{item.title}</h3>
       {item.outcome ? <p className="details__lead">{item.outcome}</p> : null}
       {item.status === 'blocked' && item.blocker ? <p className="wd-blocker"><Icon name="alert" size={14} />Blocked: {item.blocker}</p> : null}
@@ -340,7 +344,7 @@ function Prerequisites({ item, openDetails }: { item: OwnWork; openDetails: Retu
         {ordered.map((prerequisite) => (
           <li key={prerequisite.id}>
             <button type="button" className="wd-link" onClick={() => openDetails({ kind: 'work', id: prerequisite.id, projectId: item.projectId })}>
-              <span className={`wd-dot wd-dot--${prerequisite.status}`} aria-hidden="true" />
+              <StatusGlyph status={prerequisite.status} size={14} />
               <span>{prerequisite.title}</span>
               <small>{STATUS_LABEL[prerequisite.status]}{prerequisite.parked ? ' · parked' : ''}{prerequisite.met ? '' : ' · waiting'}</small>
               <Icon name="chevron-right" size={14} />
@@ -354,6 +358,7 @@ function Prerequisites({ item, openDetails }: { item: OwnWork; openDetails: Retu
 
 function DecisionPanel({ decision, context, detail, relations, reload, choices, setChoices, revision, commands }: { decision: OwnDecision; context: Context; detail: WorkDetailProjection; relations: DetailRelations; reload: () => void; choices: Record<string, Choice>; setChoices: (update: (current: Record<string, Choice>) => Record<string, Choice>) => void; revision: number; commands: PanelCommands }) {
   const { openDetails } = useShellActions();
+  const owners = useAgentOwners(context.project);
   const writable = context.project.access !== 'viewer';
   const earlier = decision.supersedes ? detail.context.find((item) => item.id === decision.supersedes) : null;
   const later = decision.supersededBy ? detail.context.find((item) => item.id === decision.supersededBy) : null;
@@ -395,7 +400,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, choices, 
       </div>
       {decision.rationale ? <p className="details__lead">{decision.rationale}</p> : null}
       <dl className="details__dl wd-dl">
-        <dt>Proposed</dt><dd>{decision.proposedBy.name}{decision.proposedBy.kind === 'agent' ? ' (agent)' : ''} · {shortDate(decision.createdAt)}</dd>
+        <dt>Proposed</dt><dd>{decision.proposedBy.kind === 'agent' ? <AgentIdentity name={decision.proposedBy.name} owner={owners.get(decision.proposedBy.id)} /> : decision.proposedBy.name} · {shortDate(decision.createdAt)}</dd>
         {decision.decidedBy ? <><dt>Decided</dt><dd>{decision.decidedBy.name} · {shortDate(decision.decidedAt!)}</dd></> : null}
       </dl>
 

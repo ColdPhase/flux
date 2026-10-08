@@ -8,7 +8,7 @@ import { fetchProjectExport } from './api';
 import { pageFileName, pageMarkdown, saveBlob } from './markdown-file';
 import { useWiki } from './wiki-context';
 
-// The wiki's top bar (#136, Studio 11.6): focus, history, share and download as quiet icon
+// The wiki's top bar: focus, history, share and download as quiet icon
 // buttons, then the one primary action. Share and Download open small popovers that keep focus
 // inside, close on Escape or outside, and return focus to their button.
 

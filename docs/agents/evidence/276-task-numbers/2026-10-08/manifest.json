@@ -1,0 +1,246 @@
+{
+  "date": "2026-10-08",
+  "testedCommit": "16010f17aabc2b81640bf36b396254e88f140ac4",
+  "productionCommit": "6f962f6335cc7c560609a0c99c8309e1e83bf925",
+  "mainComposition": "0f68aa963be920fbc7ebf30742da4aef54fe34be",
+  "documentationOnlyCheckpoint": true,
+  "foundationImage": "sha256:20ee0017ca5a45ceffddc089c70d59b0703fb76307892dceba5292a4d8d92a6a",
+  "uiImage": "sha256:e5c38f1e3a7d6ca3081eff885294049111580124921502102f720e56d2c24b05",
+  "testGitBlobs": {
+    "app/tests/ui/test_map_task_count.py": "36645ec60fbad4d731589e1fd9cf8cd7722da448",
+    "app/tests/ui/test_search.py": "38eaff851d60b5a2fe3206a06e2913c917b98942"
+  },
+  "originalLogs": {
+    "current-api": {
+      "originalPath": "/tmp/flux282-6f9-independent-api.log",
+      "sha256": "e1c1317d6ca17fade8ef34ce33ec0868a478a5b58c76f76dfbdc0e4e7932c289",
+      "sourceCommit": "6f962f6335cc7c560609a0c99c8309e1e83bf925",
+      "scope": "127 tests / 12 suites",
+      "result": "PASS"
+    },
+    "current-ui": {
+      "originalPath": "/tmp/flux282-16010-independent-ui.log",
+      "sha256": "602e03bc14b67d594fb69660346830d873f7a34f9f8b651bab2984c50d1f9c0c",
+      "sourceCommit": "16010f17aabc2b81640bf36b396254e88f140ac4",
+      "scope": "71 tests",
+      "result": "PASS"
+    },
+    "earlier-ui-negative": {
+      "originalPath": "/tmp/flux282-ed247-independent-ui.log",
+      "sha256": "6127d1bd90d79f81a96bef8eaf49cb7addccf5eabe40e9783fa021ddc676314a",
+      "sourceCommit": "ed247ab7d34734d77989e72be549e32e753eeeb2",
+      "scope": "70 pass / 1 fail",
+      "result": "FAIL"
+    }
+  },
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "c3980b0edd9799f5d3dcab9e1d2c9bbc00b15f59b02a87c658e8a7d365a56fef",
+      "bytes": 3903
+    },
+    {
+      "path": "bounded-details-pivot-desktop.png",
+      "sha256": "9a7671b95a2d992c704552002221a254d3b3ab1ffa078c9e9f045014adf9988c",
+      "bytes": 192152,
+      "pixels": [
+        1500,
+        900
+      ]
+    },
+    {
+      "path": "bounded-details-pivot-phone.png",
+      "sha256": "004e3ef82ad94b176138255214b1481dcd7d580c97b5a9a4ef857cd833d20a9b",
+      "bytes": 229795,
+      "pixels": [
+        1236,
+        2745
+      ]
+    },
+    {
+      "path": "bounded-details-result-desktop.png",
+      "sha256": "37180817d5ca8e667f10317feda36255cc6b8e288aafdc9be07bdc69d3f11cbd",
+      "bytes": 152190,
+      "pixels": [
+        1500,
+        900
+      ]
+    },
+    {
+      "path": "bounded-details-result-phone.png",
+      "sha256": "e45577debe6d730ae0172db4aa972c5c39b4fe8491cbcc364c493b0dd53358d2",
+      "bytes": 150280,
+      "pixels": [
+        1236,
+        2745
+      ]
+    },
+    {
+      "path": "bounded-details-visual-review.md",
+      "sha256": "34afa551f2fd75e82b5bc211fc7efccbd366712f34d9e2eb3eb7f87217b73b46",
+      "bytes": 4273
+    },
+    {
+      "path": "bounded-details-work-desktop.png",
+      "sha256": "c64eee4224ec240e8794f2de935f0e2e82d38c36bbfb97ed3a8bdd3a58dfebb8",
+      "bytes": 165259,
+      "pixels": [
+        1500,
+        900
+      ]
+    },
+    {
+      "path": "bounded-details-work-phone.png",
+      "sha256": "409896fb8f21efeb91ea356a04b484fff2d65ee773f2f086577a272a9c8d8092",
+      "bytes": 178639,
+      "pixels": [
+        1236,
+        2745
+      ]
+    },
+    {
+      "path": "camera-actionability.json.gz",
+      "sha256": "0d1930610c8128f2f259768dd10814b939d3977a44ff72263b24bbe2774aba5e",
+      "bytes": 38233,
+      "encoding": "gzip",
+      "uncompressed": {
+        "path": "camera-actionability.json",
+        "sha256": "d653dd39d41ac85a65ef9e62213384cfb3b239f6ef998e36681f07b5f85bf2dd",
+        "bytes": 1438417
+      }
+    },
+    {
+      "path": "camera-arrival-summary.json",
+      "sha256": "9d883c399dac91d27e3fb343b6caa25e4c3153824f38101342f2a57049885111",
+      "bytes": 306
+    },
+    {
+      "path": "camera-causal-review.md",
+      "sha256": "68721e4a8df63dd5ac8aaf4c6e53c517a97b9c583b005e30cceceb07400402a4",
+      "bytes": 5851
+    },
+    {
+      "path": "detail-relations-empty-later-previous.png",
+      "sha256": "fba0803ef45e8ccdce173205fc60131093393b3437153eb19051577afdabd100",
+      "bytes": 174266,
+      "pixels": [
+        1500,
+        900
+      ]
+    },
+    {
+      "path": "detail-relations-empty-later-refresh.png",
+      "sha256": "49edc70f7566f44c20cedf6e9ea673f76b5bd9ee052461c65931fe45b8effb4f",
+      "bytes": 174264,
+      "pixels": [
+        1500,
+        900
+      ]
+    },
+    {
+      "path": "detail-relations-empty-observations.json",
+      "sha256": "cb50faf5e5c7df841eb693913353110ad44a01720075774a18f1b697655965be",
+      "bytes": 764
+    },
+    {
+      "path": "detail-relations-empty-phone.png",
+      "sha256": "2768fb295ccc82137af47039b879da03e95df57d8f2731599cc8b1153851b10d",
+      "bytes": 159581,
+      "pixels": [
+        1236,
+        2745
+      ]
+    },
+    {
+      "path": "detail-relations-unavailable-phone.png",
+      "sha256": "27eb3c13321baa4468eff376ca0e3d3a3e9d69670cac5d3c27ab9e8593a1ddf7",
+      "bytes": 168843,
+      "pixels": [
+        1236,
+        2745
+      ]
+    },
+    {
+      "path": "independent-final-review.md",
+      "sha256": "d851afb164696e3f2d81e3b5f684a3caccc48df668ba9168869e287b042189ea",
+      "bytes": 8854
+    },
+    {
+      "path": "map-task-count-contrast.json",
+      "sha256": "70584b72c45cd7c214b41c988957c6d02b06afcf63b407ce3da7b5c642d10e7c",
+      "bytes": 4190
+    },
+    {
+      "path": "map-task-count-phone-390-list-dark.png",
+      "sha256": "60f684ccc4d6b67ddab9c8aa3ace19ff86e44ac6f7a3606657bb757d9d79aa0e",
+      "bytes": 205597,
+      "pixels": [
+        1170,
+        2532
+      ]
+    },
+    {
+      "path": "map-task-count-phone-390-list-light.png",
+      "sha256": "7622b805051ef156bcb16da3c735eb1dd4ce457e4e352549fecfc0a05570aff9",
+      "bytes": 221602,
+      "pixels": [
+        1170,
+        2532
+      ]
+    },
+    {
+      "path": "task-number-12-palette-desktop-1440.png",
+      "sha256": "d90367b8781100e16f0928628011a9fd32e7440ad00aff5a2824e5c590907674",
+      "bytes": 102217,
+      "pixels": [
+        1440,
+        900
+      ]
+    },
+    {
+      "path": "task-number-12-search-phone-390.png",
+      "sha256": "56a90a15329ea62e5a1ddb4b71dd8185036cef63d9c0eb963cde2865a1ec38b1",
+      "bytes": 75446,
+      "pixels": [
+        1170,
+        2532
+      ]
+    },
+    {
+      "path": "task-number-26-global-details-desktop-1440.png",
+      "sha256": "f543d5101067f30c2283c6788aaf98c08d30d63c0dd6154dfef0d3e32353e591",
+      "bytes": 127299,
+      "pixels": [
+        1440,
+        900
+      ]
+    },
+    {
+      "path": "task-number-26-text-200-phone-390.png",
+      "sha256": "328ce6e1e7e297048ac564146ef7cf71cbda4cc5aae1baf5db075f1289a10b09",
+      "bytes": 175446,
+      "pixels": [
+        1170,
+        2532
+      ]
+    },
+    {
+      "path": "tasks-board-1440-light.png",
+      "sha256": "7309d8fe8eab4c7023428d4b2c259de865e005b3691bb6a655c0e5e801d63a6e",
+      "bytes": 127280,
+      "pixels": [
+        1440,
+        900
+      ]
+    },
+    {
+      "path": "tasks-board-390-light.png",
+      "sha256": "7f0e58cac39b8d9f64cb2220eaf4296729c15e3fda67f47449433851e3ceb879",
+      "bytes": 191046,
+      "pixels": [
+        1170,
+        2532
+      ]
+    }
+  ]
+}

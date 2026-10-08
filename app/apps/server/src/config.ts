@@ -1,4 +1,4 @@
-import { backgroundComparisonsEnabled, loadPushServerConfig, type PushServerConfig } from '@flux/core';
+import { backgroundComparisonsEnabled, loadAgentRuntimeConfig, loadPushServerConfig, type AgentRuntimeConfig, type PushServerConfig } from '@flux/core';
 import { loadBackgroundMasterKey } from '@flux/db';
 import { loadIdentityConfig, type IdentityConfig } from './identity/index.js';
 
@@ -30,6 +30,8 @@ export interface ServerConfig {
    * editing path. Off by default; selecting it certifies none of the four F-021 gates.
    */
   developmentLiveEditing: boolean;
+  /** `FLUX_AGENT_RUNTIME` and its settings (F-022 AIM-3); empty, the default, is off. */
+  agentRuntime: AgentRuntimeConfig;
 }
 
 export function loadServerConfig(env: NodeJS.ProcessEnv = process.env, backgroundKeyPath?: string): ServerConfig {
@@ -49,5 +51,6 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env, backgroun
     backgroundMasterKey: backgroundKeyPath === undefined ? loadBackgroundMasterKey() : loadBackgroundMasterKey(backgroundKeyPath),
     backgroundComparisons: backgroundComparisonsEnabled(env),
     developmentLiveEditing: env.FLUX_DEVELOPMENT_LIVE_EDITING === 'true',
+    agentRuntime: loadAgentRuntimeConfig(env),
   };
 }

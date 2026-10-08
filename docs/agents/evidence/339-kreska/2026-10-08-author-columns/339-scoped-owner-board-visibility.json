@@ -1,0 +1,401 @@
+{
+  "url": "http://127.0.0.1:19631/projects/2cc8b467-8cf9-4055-a493-dcc74beb1eab/tasks",
+  "before": [
+    {
+      "text": "for Scoped Casey",
+      "rect": {
+        "x": 489,
+        "y": 394.578125,
+        "width": 99,
+        "height": 17.15625
+      },
+      "inViewport": true,
+      "uncovered": true,
+      "hitTarget": {
+        "tag": "BUTTON",
+        "className": "tb-card__open"
+      },
+      "ancestors": [
+        {
+          "tag": "SPAN",
+          "className": "agent-for",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "SPAN",
+          "className": "tb-card__owner tb-card__owner--agent",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "tb-card__foot",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "LI",
+          "className": "tb-card",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "OL",
+          "className": "tb-col__list",
+          "display": "grid",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "tb-col__cards",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "SECTION",
+          "className": "tb-col",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "tb-board tb-board--movable",
+          "display": "grid",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "tb-wrap",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "tb",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "pane-scroll",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "tb-root",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "app__pane",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "app__main",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "app",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "BODY",
+          "className": "",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "HTML",
+          "className": "",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        }
+      ]
+    }
+  ],
+  "after": [
+    {
+      "text": "for Scoped Casey",
+      "rect": {
+        "x": 489,
+        "y": 394.578125,
+        "width": 99,
+        "height": 17.15625
+      },
+      "inViewport": true,
+      "uncovered": true,
+      "hitTarget": {
+        "tag": "BUTTON",
+        "className": "tb-card__open"
+      },
+      "ancestors": [
+        {
+          "tag": "SPAN",
+          "className": "agent-for",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "SPAN",
+          "className": "tb-card__owner tb-card__owner--agent",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "tb-card__foot",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "LI",
+          "className": "tb-card",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "OL",
+          "className": "tb-col__list",
+          "display": "grid",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "tb-col__cards",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "SECTION",
+          "className": "tb-col",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "tb-board tb-board--movable",
+          "display": "grid",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "tb-wrap",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "tb",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "pane-scroll",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "tb-root",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "app__pane",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "app__main",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "app",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "BODY",
+          "className": "",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "HTML",
+          "className": "",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        }
+      ]
+    }
+  ]
+}
