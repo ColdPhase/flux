@@ -190,7 +190,11 @@ class RailNavigation(unittest.TestCase):
                 expect(rail.get_by_role("link", name="Settings", exact=True)).to_be_in_viewport()
                 self.assert_native_target(page, stop, True)
                 shot(page, f"340-rail-populated-working-{engine}")
-                stop.press("Space")
+                with page.expect_response(lambda response: response.request.method == "POST" and
+                        response.url.endswith(f"/api/v1/assistant-runs/{run['id']}/stop")) as stopped:
+                    stop.press("Space")
+                self.assertEqual(stopped.value.status, 200)
+                self.assertEqual(stopped.value.json()["id"], run["id"])
                 current = self.api(page, "GET", f"/api/v1/assistant-runs/{run['id']}")
                 self.assertTrue(current["stopRequested"] or current["status"] == "stopped", str(current["status"]))
                 expect(rail.locator(".agentlive")).to_have_count(0, timeout=25000)
