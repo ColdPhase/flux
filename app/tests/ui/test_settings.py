@@ -186,16 +186,17 @@ class SettingsJourney(unittest.TestCase):
         expect(page).to_have_url(re.compile(r"/settings/agents$"))
         cards = page.locator(".sset-card")
         expect(page.get_by_role("link", name=re.compile("^Local co-work on this computer"))).to_have_attribute("href", "/connect-agent")
-        assistant = page.get_by_role("link", name=re.compile("^Your assistant · for you"))
+        assistant = page.get_by_role("link", name=re.compile("^Your assistant Agent · for you"))
         expect(assistant).to_have_attribute("href", "/settings/assistant")
         expect(page.get_by_role("link", name=re.compile("^Background suggestions"))).to_have_attribute("href", "/settings/background-compute")
         # Agents have their colour here (and only in the Agents section); the Appearance switch's Kreska is monochrome.
-        self.assertRegex(assistant.locator(".kreska").get_attribute("class") or "", r"kreska--(clay|ochre|sage|teal|indigo|plum|rose)")
+        expect(assistant.locator(".agent-tag")).to_have_text("Agent")
+        self.assertRegex(assistant.locator(".sset-row__ic > .kreska").get_attribute("class") or "", r"kreska--(clay|ochre|sage|teal|indigo|plum|rose)")
         page.goto("/settings")
         self.assertNotRegex(page.get_by_role("switch", name="Kreska in loading and empty screens").locator("xpath=..").locator(".kreska").get_attribute("class") or "", r"kreska--")
         expect(cards.first).to_be_visible()
         page.goto("/settings/agents")
-        assistant = page.get_by_role("link", name=re.compile("^Your assistant · for you"))
+        assistant = page.get_by_role("link", name=re.compile("^Your assistant Agent · for you"))
         assistant.click()
         expect(page).to_have_url(re.compile(r"/settings/assistant$"))
         expect(page.locator("header.top").get_by_role("heading", level=1, name="Your assistant")).to_be_visible()
@@ -225,6 +226,11 @@ class SettingsJourney(unittest.TestCase):
                               ("/settings/background-compute", "Agents and AI"), ("/settings/notifications/verify?token=nope", "Notifications")):
             page.goto(path)
             expect(nav.get_by_role("link", name=current)).to_have_attribute("aria-current", "page")
+            if path == "/settings/notifications":
+                # This route includes two async push-status reads. Finish the rendered
+                # state before the next hard navigation destroys its document in WebKit.
+                expect(page.get_by_text("Push is not set up on this Flux server, so the Push column has no effect.", exact=True)).to_be_visible()
+                expect(page.get_by_text("Notifications are not set up on this Flux server. New activity always appears in your Inbox.", exact=True)).to_be_visible()
         expect(page.get_by_role("heading", name="This link did not work")).to_be_visible()
         # Back and history are kept across sections.
         page.goto("/settings/shortcuts")
@@ -258,6 +264,7 @@ class SettingsJourney(unittest.TestCase):
             expect(page.get_by_role("switch", name="Kreska in small moments")).to_be_visible()
             expect(page.get_by_text("Notifications on this phone")).to_be_visible()
             self.no_colour_picker(page)
+            expect(page.get_by_role("link", name=re.compile("^Your assistant Agent")).locator(".agent-tag")).to_have_text("Agent")
             self.phone_targets(page)
             shot(page, f"settings-phone-390-settings-{'dark' if dark else 'light'}")
             themes.get_by_role("radio", name="Light" if dark else "Dark").tap()

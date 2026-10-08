@@ -38,6 +38,7 @@
 .sset-row__meta { font-size: 12.5px; font-weight: 400; color: var(--t3); }
 .sset-row__go { display: inline-flex; align-items: center; gap: 2px; flex: none; font-size: 12.5px; color: var(--t2); }
 .sset-row__t .sset-row__meta { display: contents; }
+.sset-row__identity { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .sset-card.sset-gap, .sset-gap { margin-top: 20px; }
 /* An on/off switch: ink track when on, a white knob; the row label names it. */
 .sset-switch {

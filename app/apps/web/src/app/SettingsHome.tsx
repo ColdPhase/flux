@@ -4,7 +4,7 @@ import type { AgentConnection, PersonalAssistantStatus } from '@flux/contracts';
 import { listAgentConnections } from '../agent-connection/api';
 import { getAssistantStatus } from '../assistant/api';
 import { NotificationsButton } from '../pwa';
-import { Avatar, Icon, Kreska, MEDIA, Spinner, agentHue, useMediaQuery } from '../ui';
+import { AgentTag, Avatar, Icon, Kreska, MEDIA, Spinner, agentHue, useMediaQuery } from '../ui';
 import { useShellData } from './data';
 import { setSmallMoments, useSmallMoments } from './smallMoments';
 import { setTheme, useTheme, type ThemeChoice } from './theme';
@@ -154,10 +154,10 @@ function AgentsAndAi({ full }: { full: boolean }) {
           detail="Claude Code, Codex or any MCP client · connect it to Flux" action="Manage" />
         {mine.map((connection) => (
           <LinkRow key={connection.id} to="/connect-agent" icon={<Kreska size={22} hue={agentHue(connection.agentId)} />}
-            title={<>{connection.name}<span className="sset-row__meta"> · for you · {DESIGNATION[connection.clientDesignation]} · connected</span></>} action="Manage" />
+            title={<><span className="sset-row__identity">{connection.name}{' '}<AgentTag /></span><span className="sset-row__meta"> · for you · {DESIGNATION[connection.clientDesignation]} · connected</span></>} action="Manage" />
         ))}
         <LinkRow to="/settings/assistant" icon={<Kreska size={22} hue={agentHue(`assistant:${me.user.id}`)} />}
-          title={<>Your assistant<span className="sset-row__meta"> · for you · {assistant ? ASSISTANT_STATE[assistant.state] : 'in Flux'}</span></>} action="Manage" />
+          title={<><span className="sset-row__identity">Your assistant{' '}<AgentTag /></span><span className="sset-row__meta"> · for you · {assistant ? ASSISTANT_STATE[assistant.state] : 'in Flux'}</span></>} action="Manage" />
         {full ? <LinkRow to="/settings/background-compute" icon={<Icon name="leaf" size={16} />} title="Background suggestions"
           detail="Optional comparisons from your own connection and allowance" action="Manage" /> : null}
       </ul>
