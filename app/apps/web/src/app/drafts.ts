@@ -49,7 +49,7 @@ function read(key: string): DraftState {
   const previous = memory.get(key);
   if (previous?.state.storage === 'visit' || previous?.local) return previous.state;
   try {
-    const stored = retiredStorage ? null : localStorage.getItem(key);
+    const stored = retiredStorage && key.startsWith('flux:draft:') ? null : localStorage.getItem(key);
     return retain(key, stored ?? '', 'device').state;
   } catch { return retain(key, previous?.state.text ?? '', 'visit').state; }
 }

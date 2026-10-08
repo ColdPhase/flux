@@ -45,6 +45,9 @@ test('a new risk or successful settlement invalidates the decision revision, ind
   assert.equal(reloadRetention(owner), 'blocked', 'retiring one source never silently discards another source');
   forgetReloadRetention('draft');
   assert.equal(reloadRetention(owner), 'safe');
+  const beforeSavedEdit = reloadRetentionRevision();
+  setReloadRetention('draft', 'durably-written-edit', owner, false, true);
+  assert.notEqual(reloadRetentionRevision(), beforeSavedEdit, 'even a safe newer edit invalidates an earlier in-flight reload decision');
 });
 
 test('Wiki refused newer bytes retain exact fields/base/attempt over older storage; a refused clear remains a tombstone', () => {
