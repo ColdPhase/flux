@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { useLoaderData, useLocation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { DecisionRowProjection, Project, ProactiveComparisonOutcome, ProjectWorkViewQuery, ResultRowProjection, WorkCounts, WorkObjectType, WorkRowProjection } from '@flux/contracts';
-import { Button, EmptyState, ErrorState, Icon, StatusGlyph } from '../ui';
+import { AgentIdentity, Button, EmptyState, ErrorState, Icon, StatusGlyph } from '../ui';
 import { getProject } from '../app/conversation-api';
 import { useShellActions } from '../app/shellContext';
 import { useShellData } from '../app/data';
@@ -18,6 +18,7 @@ import { TaskBoard, type ColumnId } from './TaskBoard';
 import { useProjectShell } from '../project/data';
 import { ProjectProposals } from '../project/ProjectProposals';
 import { listComparisonOutcomes } from '../project/proposals';
+import { useAgentOwners, type AgentOwners } from '../agents/owners';
 import './work.css';
 
 interface TasksData { project: Project; outcomes: ProactiveComparisonOutcome[] }
@@ -98,14 +99,13 @@ function Row({ kind, id, icon, iconClass, title, sub, right, onOpen, muted }: { 
   );
 }
 
-function workSub(item: WorkRowProjection) {
+function workSub(item: WorkRowProjection, owners: AgentOwners) {
   const { rule, parkedBy } = item;
   const results = item.relations.results;
   const fromMessage = item.relations.sourceMessages > 0;
   const waiting = isFinished(item) ? 0 : item.prerequisiteCounts.unmet;
-  return [
+  const rest = [
     item.parked ? null : STATUS_LABEL[item.status],
-    item.owner ? item.owner.name : 'No owner',
     item.status === 'blocked' && item.blocker ? `waiting for ${item.blocker}` : null,
     waiting ? `waits for ${waiting} ${waiting === 1 ? 'task' : 'tasks'}` : null,
     parkedBy ? `Parked · was ${STATUS_LABEL[item.status].toLowerCase()}` : null,
@@ -113,6 +113,7 @@ function workSub(item: WorkRowProjection) {
     fromMessage ? 'from a message' : null,
     results ? `${results} ${results === 1 ? 'result' : 'results'}` : null,
   ].filter(Boolean).join(' · ');
+  return <>{item.owner?.kind === 'agent' ? <AgentIdentity name={item.owner.name} owner={owners.get(item.owner.id)} /> : item.owner?.name ?? 'No owner'}{rest ? ` · ${rest}` : ''}</>;
 }
 
 // The row's own text names the state; a parked task keeps its state's shape, quieter.
@@ -210,6 +211,7 @@ function keepCursor(key: string, cursor: string | null) {
 export function ProjectTasks() {
   const { project, outcomes } = useLoaderData() as TasksData;
   const shell = useProjectShell();
+  const owners = useAgentOwners(project);
   const { openDetails } = useShellActions();
   const revalidator = useRevalidator();
   const [search] = useSearchParams();
@@ -366,7 +368,7 @@ export function ProjectTasks() {
   const earlier = decisions.filter((item) => item.status === 'superseded');
   const groupCount = (id: GroupId, visible: number) => visible ? counts?.[id] ?? 0 : 0;
   const openObject = (kind: WorkObjectType, id: string) => () => { saveReading(); openDetails({ kind, id }); };
-  const workRow = (item: WorkRowProjection, muted = false) => <Row key={item.id} kind="work" id={item.id} icon={glyph(item)} title={item.title} sub={workSub(item)} right={item.owner ? <span className="ws-av" aria-hidden="true">{item.owner.name.slice(0, 1)}</span> : null} onOpen={openObject('work', item.id)} muted={muted} />;
+  const workRow = (item: WorkRowProjection, muted = false) => <Row key={item.id} kind="work" id={item.id} icon={glyph(item)} title={item.title} sub={workSub(item, owners)} right={item.owner?.kind === 'human' ? <span className="ws-av" aria-hidden="true">{item.owner.name.slice(0, 1)}</span> : null} onOpen={openObject('work', item.id)} muted={muted} />;
   const summaryCounts = data ? mine ? data.summary.mine : data.summary.all : null;
   // What the board leaves to the List, one step away: a decision waiting for someone and work a pivot set aside.
   const elsewhere: { id: GroupId; text: string; need?: boolean }[] = [];
@@ -430,7 +432,7 @@ export function ProjectTasks() {
           <button type="button" className="ws-none__b" onClick={() => setView(mine ? { mine: false } : { status: null })}>{mine ? 'Show everyone’s' : 'Show all'}</button>
         </p> : null}
         <Group id="proposed" title={writable ? 'Needs you' : 'Waiting for a decision'} count={groupCount('needs', proposed.length)}>
-          {proposed.map((item) => <Row key={item.id} kind="decision" id={item.id} icon={<Icon name="rule" size={16} />} iconClass="ws-need" title={item.title} sub={<>Proposed by {item.proposedBy.name}{item.proposedBy.kind === 'agent' ? ' (agent)' : ''}{item.supersedes ? ' · would replace the current rule' : ''}{writable ? <> · <span className="ws-need">you can accept it</span></> : null}</>} right={shortDate(item.createdAt)} onOpen={openObject('decision', item.id)} />)}
+          {proposed.map((item) => <Row key={item.id} kind="decision" id={item.id} icon={<Icon name="rule" size={16} />} iconClass="ws-need" title={item.title} sub={<>Proposed by {item.proposedBy.kind === 'agent' ? <AgentIdentity name={item.proposedBy.name} owner={owners.get(item.proposedBy.id)} /> : item.proposedBy.name}{item.supersedes ? ' · would replace the current rule' : ''}{writable ? <> · <span className="ws-need">you can accept it</span></> : null}</>} right={shortDate(item.createdAt)} onOpen={openObject('decision', item.id)} />)}
         </Group>
         <Group id="progress" title="In progress" count={groupCount('in_progress', by('in_progress').length)}>{by('in_progress').map((item) => workRow(item))}</Group>
         <Group id="blocked" title="Blocked" count={groupCount('blocked', by('blocked').length)}>{by('blocked').map((item) => workRow(item))}</Group>
@@ -438,11 +440,11 @@ export function ProjectTasks() {
         <Group id="parked" title="Parked by a pivot" count={groupCount('parked', parked.length)}>{parked.map((item) => workRow(item, true))}</Group>
         <Group id="finished" title="Finished" count={groupCount('finished', finished.length)}>{finished.map((item) => workRow(item, true))}</Group>
         <Group id="rules" title="Decisions" count={groupCount('rules', current.length + earlier.length)}>
-          {current.map((item) => <Row key={item.id} kind="decision" id={item.id} icon={<Icon name="rule" size={16} />} title={item.title} sub={`Current rule · ${item.decidedBy?.name ?? ''} · ${shortDate(item.decidedAt!)}`} onOpen={openObject('decision', item.id)} />)}
+          {current.map((item) => <Row key={item.id} kind="decision" id={item.id} icon={<Icon name="rule" size={16} />} title={item.title} sub={<>Current rule · {item.decidedBy?.kind === 'agent' ? <AgentIdentity name={item.decidedBy.name} owner={owners.get(item.decidedBy.id)} /> : item.decidedBy?.name ?? ''} · {shortDate(item.decidedAt!)}</>} onOpen={openObject('decision', item.id)} />)}
           {earlier.map((item) => <Row key={item.id} kind="decision" id={item.id} icon={<Icon name="rule" size={16} />} title={item.title} sub={`Earlier rule · replaced ${shortDate(item.supersededAt!)}`} onOpen={openObject('decision', item.id)} muted />)}
         </Group>
         <Group id="results" title="Results" count={groupCount('results', results.length)}>
-          {results.map((item) => <Row key={item.id} kind="result" id={item.id} icon={<Icon name="result" size={16} />} iconClass={item.finding === 'negative' ? 'ws-neg' : 'ws-pos'} title={item.title} sub={`${item.finding === 'negative' ? 'Negative' : 'Positive'} · ${item.createdBy.name}`} right={shortDate(item.createdAt)} onOpen={openObject('result', item.id)} />)}
+          {results.map((item) => <Row key={item.id} kind="result" id={item.id} icon={<Icon name="result" size={16} />} iconClass={item.finding === 'negative' ? 'ws-neg' : 'ws-pos'} title={item.title} sub={<>{item.finding === 'negative' ? 'Negative' : 'Positive'} · {item.createdBy.kind === 'agent' ? <AgentIdentity name={item.createdBy.name} owner={owners.get(item.createdBy.id)} /> : item.createdBy.name}</>} right={shortDate(item.createdAt)} onOpen={openObject('result', item.id)} />)}
         </Group>
       </div>
       )}

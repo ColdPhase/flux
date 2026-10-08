@@ -28,6 +28,21 @@ effect (a saved blocker, a published result or a public handoff, #154) also carr
 (`{ kind: 'blocker' | 'handoff' }` or `{ kind: 'result', resultId }`); ordinary text omits it. All reads and writes
 recheck the current project access policy; writes do so under a transaction lock.
 
+**Agent owner display in preserved history (#339, 2026-10-08).** Revoking an agent's
+grant does not remove its past messages or add it back to the current audience.
+The authorized conversation/root read may add `author.projectOwner`: either
+`{ kind: 'workspace' }` or `{ kind: 'human', id }`. This optional display metadata
+is resolved only for actual agent authors in the bounded message window, within
+that project's workspace. A human owner is exposed only if that person currently
+is a member of that workspace and currently has project read access, using the
+same candidate and policy boundary as the authorized project audience. It contains no private profile or stored display name;
+human message JSON, write receipts, stored authors and retry identity stay unchanged.
+The browser resolves the name only from its fresh, scoped authorized project
+audience. Failed/obsolete reads, changed accounts and lost owner access clear the
+relation; an old message never restores a cached name. Workspace ownership is
+displayed only after the same scoped audience read succeeds. Hidden owner identity
+is omitted, rather than inferred from email or an unrelated workspace roster.
+
 `POST /api/v1/projects/:projectId/materials` takes an explicit title, body or
 HTTP(S) URL, and `clientMutationId`. A private draft can be a provenance source
 with `sourceDraftId` and `sourceDraftVersion`; the caller must explicitly provide

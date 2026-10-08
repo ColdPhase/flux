@@ -110,16 +110,15 @@ html.tb-is-dragging .tb-card:hover { border-color: var(--line); background: var(
 .tb-card__from > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tb-card__from svg { color: var(--t3); }
 .tb-card__from:hover { color: var(--t1); text-decoration: underline; text-underline-offset: 3px; }
-.tb-card__foot { display: flex; align-items: center; gap: 8px; min-width: 0; margin-top: 12px; font-size: var(--fs-sm); }
-.tb-card__owner { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+.tb-card__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; margin-top: 12px; font-size: var(--fs-sm); }
+.tb-card__owner { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 7px; min-width: 0; }
 .tb-card__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--t1); }
 .tb-card__kind { color: var(--t3); }
 .tb-card__owner--none { color: var(--t3); }
 .tb-av {
   display: grid; place-items: center; flex: none; width: 20px; height: 20px; border-radius: 50%;
-  background: var(--sub); box-shadow: inset 0 0 0 1px var(--line); font-size: var(--fs-xs); font-weight: 500; color: var(--t2);
+  background: var(--el); box-shadow: inset 0 0 0 1px var(--line), var(--sh-1); font-size: 9px; font-weight: 600; color: var(--t1);
 }
-.tb-card__owner--agent .tb-av { border-radius: 5px; }
 .tb-card__facts { display: inline-flex; gap: 8px; flex: none; margin-left: auto; font-size: var(--fs-xs); color: var(--t3); }
 .tb-card--set-aside .tb-card__open { color: var(--t2); }
 .tb-card.is-dragging { opacity: .45; }

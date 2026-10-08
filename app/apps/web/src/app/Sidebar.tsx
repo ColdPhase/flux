@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { Link, NavLink, useLocation, useNavigate, useNavigation } from 'react-router';
-import { Avatar, FluxMark, Icon, IconButton, choosesInPlace, useTravelingHighlight } from '../ui';
+import { Avatar, FluxLogo, Icon, IconButton, choosesInPlace, useTravelingHighlight } from '../ui';
 import { type DirectMessageSummary, type ProjectSummary, type WorkspaceSummary } from './data';
 import { placeOf } from './place';
 import { startCapture } from './views';
@@ -49,8 +49,8 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
       <div className="side__brand">
         {/* The wordmark names the drawer; Home is the first place below, so the mark is not a second link. */}
         <span className="side__logo">
-          <span className="side__glyph" role="img" aria-label="Flux" id={titleId}><FluxMark size={21} /></span>
-          <span className="side__word" aria-hidden="true">flux<span>.</span></span>
+          <span className="side__glyph" role="img" aria-label="Flux" id={titleId}><FluxLogo size={24} /></span>
+          <span className="side__word" aria-hidden="true">flux</span>
         </span>
         {onClose ? <IconButton icon="x" label="Close navigation" onClick={onClose} /> : null}
       </div>

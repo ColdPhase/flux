@@ -3,7 +3,7 @@ import { Link, useRevalidator } from 'react-router';
 import type { Agent, ObjectLink, Project, WorkspaceMember, WorkStatus, WorkDetailObject, WorkDetailProjection } from '@flux/contracts';
 import { WORK_STATUSES } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { Button, Icon, Input, StatusGlyph } from '../ui';
+import { AgentIdentity, Button, Icon, Input, StatusGlyph } from '../ui';
 import { getProject, listWorkspaceMembers } from '../app/conversation-api';
 import { useShellData } from '../app/data';
 import { useRegisterLiveHere } from '../live/LiveProvider';
@@ -12,6 +12,7 @@ import { useShellActions, type ObjectView, type WorkFormView } from '../app/shel
 import { acceptDecision, createResult, listAgents, proposeDecision, updateWork } from './api';
 import { STATUS_LABEL, decisionLine, firstLine, isFinished, linked, resultLine, shortDate } from './format';
 import { docsLinking } from '../docs/AddToDoc';
+import { useAgentOwners } from '../agents/owners';
 import { useProjectShell } from '../project/data';
 import { useWorkRead } from './useWorkRead';
 import { useNativeOwn, useWorkChoices, useDetailRelations, type DetailRelations, type DetailChoices } from './useDetailReads';
@@ -354,6 +355,7 @@ function Prerequisites({ item, openDetails }: { item: OwnWork; openDetails: Retu
 
 function DecisionPanel({ decision, context, detail, relations, reload, choices, setChoices, revision, commands }: { decision: OwnDecision; context: Context; detail: WorkDetailProjection; relations: DetailRelations; reload: () => void; choices: Record<string, Choice>; setChoices: (update: (current: Record<string, Choice>) => Record<string, Choice>) => void; revision: number; commands: PanelCommands }) {
   const { openDetails } = useShellActions();
+  const owners = useAgentOwners(context.project);
   const writable = context.project.access !== 'viewer';
   const earlier = decision.supersedes ? detail.context.find((item) => item.id === decision.supersedes) : null;
   const later = decision.supersededBy ? detail.context.find((item) => item.id === decision.supersededBy) : null;
@@ -395,7 +397,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, choices, 
       </div>
       {decision.rationale ? <p className="details__lead">{decision.rationale}</p> : null}
       <dl className="details__dl wd-dl">
-        <dt>Proposed</dt><dd>{decision.proposedBy.name}{decision.proposedBy.kind === 'agent' ? ' (agent)' : ''} · {shortDate(decision.createdAt)}</dd>
+        <dt>Proposed</dt><dd>{decision.proposedBy.kind === 'agent' ? <AgentIdentity name={decision.proposedBy.name} owner={owners.get(decision.proposedBy.id)} /> : decision.proposedBy.name} · {shortDate(decision.createdAt)}</dd>
         {decision.decidedBy ? <><dt>Decided</dt><dd>{decision.decidedBy.name} · {shortDate(decision.decidedAt!)}</dd></> : null}
       </dl>
 
