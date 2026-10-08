@@ -1,0 +1,23 @@
+{
+  "date": "2026-10-07",
+  "sourceCommit": "9d54135b7b13f6c932ccf4c6e080ae4ae48d2fa5",
+  "platform": "Linux Docker Engine, linux/amd64",
+  "project": "flux327-https-20261007",
+  "fluxApiImage": "sha256:88c32f72e2db627198c42dfe6c29701d566f0a2407f38226dfac406821478ea2",
+  "browserHarnessImage": "sha256:a8d50ee771212e599a1cd1083471f8e6d26aa7f2a8014f09d406631619ffa418",
+  "caddyVersion": "2.11.7",
+  "caddyManifestDigest": "sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f",
+  "caddyImage": "sha256:f77f856a30f0004200b36b322d61da17fade31e24875699d77fb968399b9eb77",
+  "safeConfig": {
+    "origin": "https://localhost:19443",
+    "apiPort": 19373,
+    "mailpitPort": 19374,
+    "trustBefore": "",
+    "trustAfter": "172.27.0.1/32",
+    "caddyNetwork": "host"
+  },
+  "browserCertificateVerification": "ignore_https_errors=True; separate curl --cacert verified TLS and hostname",
+  "browserServiceWorkers": "blocked; no PWA acceptance claim",
+  "uiRefresh": "existing production thread poll every15seconds; fresh 40second visibility assertion",
+  "cleanup": "owned app/Caddy containers, volumes, network, tagged app/UI images and generated docker/.env removed; selected inventories empty"
+}

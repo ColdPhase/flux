@@ -35,9 +35,9 @@ client) and covers the core loop of working together:
 The [current milestone](https://github.com/ColdPhase/flux/milestone/2) tracks the rest of
 the first release, including installation and notifications on real phones and tablets.
 
-`flux-ux-v8.html` is an earlier single-file UX prototype (Polish interface, browser
-storage only). It is design inspiration, not the application; see the
-[prototype guide](docs/prototype/README.md).
+The application follows one design for the computer and the phone, the
+[final design "Prostota"](docs/design/final/README.md). Its screens and guidelines are the
+reference for every UI change.
 
 ## Quick start
 
@@ -55,7 +55,14 @@ cd flux
 <p align="center"><sub>The <code>./flux demo</code> data in the running app: return view, conversation, sketch, task and
 decision (<a href="docs/assets/demo/README.md">how this was recorded</a>).</sub></p>
 
-Then open <http://127.0.0.1:8081/>. `./flux up` never overwrites an existing `docker/.env`. An older root `.env` is moved once with its secrets and project name intact; if both files exist, choose the intended one before continuing. `app/.env.example` documents variables and is never loaded.
+Then open the URL that `./flux up` prints, <http://127.0.0.1:8081/> by default. If port 8081 is
+taken, start the first time with `FLUX_PORT=8090 ./flux up`. The first `./flux up` takes a few
+minutes, because it downloads the dependencies and builds Flux
+([measured times](docs/development/time-to-first-run.md)). To connect your own MCP client, such
+as Claude Code or Codex, sign in, open Settings and choose Agent connections (MCP). The page
+shows the commands for this server.
+
+`./flux up` never overwrites an existing `docker/.env`. An older root `.env` is moved once with its secrets and project name intact; if both files exist, choose the intended one before continuing. `app/.env.example` documents variables and is never loaded.
 Other commands: `./flux dev` (hot reload in Docker), `./flux down`, `./flux logs`,
 `./flux reset` (deletes data after confirmation), `./flux clean` (also removes the
 images this checkout built) and `./flux help`. Backups, restore, project export and
@@ -79,6 +86,47 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 Changes to the launcher or operations also have `./scripts/check_flux_cli.sh` and
 `./scripts/check_backup.sh`. [Contributing](docs/CONTRIBUTING.md) says which checks fit
 which change.
+
+## Connect your own agent
+
+Your own MCP client, such as Claude Code or Codex, can read the projects you choose and suggest
+next steps. It runs on your computer with your own model account, which Flux never sees. On the
+`./flux demo` data:
+
+1. Sign in as Ada, the workspace owner (`./flux demo` prints her password), and open
+   <http://127.0.0.1:8081/connect-agent> (Settings → Agent connections (MCP)).
+2. **Create your personal agent.** Keep the workspace "Riverside Makers (demo)", give the agent a
+   name and choose **Create personal agent**. The demo seeds no agent.
+3. **Grant it the project.** Under **New connection**, name the connection and pick your client.
+   Next to "Community garden sensors", keep **Read and propose** and choose **Grant**; only a
+   project manager can do this, and Ada is one. Tick the project and choose **Save connection**.
+4. **Add Flux to your client** with the commands the page shows:
+
+   ```sh
+   claude mcp add --transport http flux http://127.0.0.1:8081/mcp   # Claude Code
+   claude mcp login flux
+
+   codex mcp add flux --url http://127.0.0.1:8081/mcp               # Codex; adding may start the sign-in
+   codex mcp login flux
+   ```
+
+5. **Consent.** The login opens Flux in your browser. Choose the saved connection, then
+   **Continue to consent**. Check that access goes to an address on your own computer and to the
+   selected project only, and choose **Allow access**.
+6. **Ask it something**, for example: "Using Flux, what is the Community garden sensors project
+   working on, and what is still open?" The client reads the project's conversations, tasks and
+   docs, and answers in your client. A suggestion it makes waits in Flux for a person to review;
+   replying or creating tasks in Flux also needs **Approved actions** and a grant from you on the
+   same page.
+
+The loopback `http://` address works only for a client on the same computer. A client on another
+computer needs an HTTPS address: the operator sets `FLUX_PUBLIC_ORIGIN` behind a TLS reverse proxy
+([agent connection](docs/development/agent-connection.md),
+[integrations for operators](docs/integrations/README.md#for-operators)). Flux accepts clients
+only through their public client metadata documents, so the server needs outbound HTTPS when a
+client signs in. Claude Code completed this sign-in on a loopback install on 2026-09-28; the Codex
+commands come from Codex's own documentation and have not yet been run against Flux
+([#320](https://github.com/ColdPhase/flux/issues/320) times the whole path).
 
 ## Repository layout
 

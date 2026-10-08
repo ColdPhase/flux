@@ -1,0 +1,18 @@
+diff --git a/app/apps/server/src/agent-connection/bootstrap.ts b/app/apps/server/src/agent-connection/bootstrap.ts
+index 3fa20bf..6a84876 100644
+--- a/app/apps/server/src/agent-connection/bootstrap.ts
++++ b/app/apps/server/src/agent-connection/bootstrap.ts
+@@ -36 +36 @@ export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database, c
+-        const policy = await agentPolicyRows(tx).current(projectId);
++        const policy = await agentPolicyRows(tx).revision(projectId, 1);
+diff --git a/app/packages/core/src/agent-connection/project-policy.ts b/app/packages/core/src/agent-connection/project-policy.ts
+index af1ba95..c6991ab 100644
+--- a/app/packages/core/src/agent-connection/project-policy.ts
++++ b/app/packages/core/src/agent-connection/project-policy.ts
+@@ -126 +126 @@ export function agentPolicyUseCases(uow: AgentPolicyUnitOfWork) {
+-      const { workspaceId } = await ports.requireProject(principal, projectId, 'project.manage');
++      const { workspaceId } = await ports.requireProject(principal, projectId, 'project.read');
+@@ -130,2 +130 @@ export function agentPolicyUseCases(uow: AgentPolicyUnitOfWork) {
+-      if ((current?.revision ?? 0) !== expected) throw new VersionConflictError(current?.revision ?? 0, current ? agentPolicyView(current) : null);
+-      const revision = expected + 1;
++      const revision = (current?.revision ?? 0) + 1;

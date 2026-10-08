@@ -7,27 +7,27 @@
 /* The stream's frame (#155): its feed, and over it the quiet "new below" line, which takes no layout space. */
 .convo-stream { position: relative; display: flex; flex: 1; flex-direction: column; min-height: 0; }
 .convo-newbelow { position: absolute; left: 0; right: 0; bottom: 10px; display: flex; justify-content: center; margin: 0; pointer-events: none; }
-.convo-newbelow__b { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; border-radius: 999px; background: var(--bg);
-  box-shadow: var(--shadow), inset 0 0 0 1px var(--line-strong); color: var(--text-2); font-size: var(--fs-sm); font-weight: 500; pointer-events: auto; transition: var(--tr); }
-.convo-newbelow__b:hover { color: var(--text); }
+.convo-newbelow__b { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; border-radius: 999px; background: var(--el);
+  box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line2); color: var(--t2); font-size: var(--fs-sm); font-weight: 500; pointer-events: auto; transition: var(--tr); }
+.convo-newbelow__b:hover { color: var(--t1); }
 @media (pointer: coarse) { .convo-newbelow__b { min-height: 44px; } }
 
 /* Under a root: the size of its thread and the reply action. Both open the thread. */
 .convo-replies { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin: 6px 0 0 -7px; font-size: var(--fs-sm); }
-.project-convo__message.is-mine .convo-replies { justify-content: flex-end; margin: 6px -7px 0 0; }
-.convo-replies button { display: inline-flex; align-items: center; gap: 5px; min-height: 26px; padding: 0 7px; border-radius: var(--r-sm); color: var(--text-2); font-weight: 500; transition: var(--tr); }
-.convo-replies button:hover { background: var(--bg-hover); color: var(--text); }
+.convo-replies button { display: inline-flex; align-items: center; gap: 5px; min-height: 26px; padding: 0 7px; border-radius: var(--r-sm); color: var(--t2); font-weight: 500; transition: var(--tr); }
+.convo-replies button:hover { background: var(--hov); color: var(--t1); }
 .convo-replies svg { flex: none; }
-.convo-replies .convo-replies__open { color: var(--link); }
-.convo-replies .convo-replies__open:hover { color: var(--accent-hover); }
-.convo-replies__when { color: var(--text-3); font-weight: 400; }
+.convo-replies .convo-replies__open { color: var(--t1); }
+.convo-replies .convo-replies__open:hover { color: var(--t1); }
+.convo-replies__when { color: var(--t3); font-weight: 400; }
 @media (hover: hover) {
   .convo-replies__open + .convo-replies__reply { opacity: 0; transition: var(--tr); }
   .project-convo__message:hover .convo-replies__reply, .project-convo__message.is-open .convo-replies__reply, .convo-replies__reply:focus-visible { opacity: 1; }
 }
 @media (pointer: coarse) { .convo-replies button { min-height: 44px; min-width: 44px; justify-content: center; } }
 /* The root whose thread is open, marked without colour alone: its control is also expanded. */
-.project-convo__message.is-open > p { box-shadow: inset 0 0 0 1px var(--accent); }
+/* The open root is ringed just outside its bubble, so the ring reads on light and inverted bubbles alike. */
+.project-convo__message.is-open > p { outline: 2px solid var(--t1); outline-offset: 2px; }
 
 /* ---------- The thread ---------- */
 .thread { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg); outline: none; }
@@ -35,7 +35,7 @@
 .thread--sheet { position: absolute; inset: 0; z-index: var(--z-panel); }
 .thread__head { display: flex; align-items: center; gap: 8px; height: 48px; flex: none; padding: 0 8px 0 20px; border-bottom: 1px solid var(--line); }
 .thread__title { font-size: var(--fs-md); font-weight: 600; }
-.thread__n { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--bg-active); color: var(--text-2); font-size: var(--fs-xs); font-weight: 600; line-height: 18px; text-align: center; font-variant-numeric: tabular-nums; }
+.thread__n { font-family: var(--mono); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--sub); color: var(--t2); font-size: var(--fs-xs); font-weight: 600; line-height: 18px; text-align: center; font-variant-numeric: tabular-nums; }
 .thread__close { margin-left: auto; }
 /* As a sheet the way back sits first, where a phone's back control is expected. */
 .thread--sheet .thread__head { padding-left: 6px; }
@@ -45,19 +45,17 @@
 /* Laid out but hidden until its first bounded reads settle (#155, at most 1 s), so nothing shifts as they arrive. */
 .thread__feed.is-opening { visibility: hidden; }
 .thread__in { padding: 18px 20px 12px; }
-.thread__root-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; color: var(--text-3); font-size: var(--fs-xs); }
-.thread__root-meta strong { color: var(--text); font-size: var(--fs-sm); font-weight: 550; }
+.thread__root { position: relative; padding-left: 44px; }
+.thread__root-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin-bottom: 8px; color: var(--t3); font-size: var(--fs-xs); }
+.thread__root-meta > :is(.ui-avatar, .author-face) { position: absolute; left: 0; top: 0; }
+.thread__root-meta strong { min-width: 0; max-width: 100%; overflow-wrap: anywhere; color: var(--t1); font-size: var(--fs-sm); font-weight: 550; }
+.thread__root-meta .agent-id__name { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
 .thread__root > p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--fs-base); line-height: 1.7; }
-.thread__hint { display: flex; align-items: center; gap: 12px; margin: 14px 0 22px; color: var(--text-3); font-size: var(--fs-xs); }
+.thread__hint { display: flex; align-items: center; gap: 12px; margin: 14px 0 22px; color: var(--t3); font-size: var(--fs-xs); }
 .thread__hint::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .thread__list { list-style: none; margin: 0; padding: 0; }
-/* Replies are the same bubbles, a little more compact in the narrower column. Their actions sit
-   under them (below), so a reply needs no full-width box: own replies keep their right-hand side. */
-.thread .project-convo__message { min-width: min(220px, 100%); max-width: 85%; padding-left: 33px; }
-.thread .project-convo__message.is-mine { padding-left: 0; padding-right: 33px; }
-.thread .project-convo__message.is-arrived { padding-left: 45px; }
-.thread .project-convo__message.is-mine.is-arrived { padding-left: 0; padding-right: 45px; }
-.thread .project-convo__message > .ui-avatar { width: 24px; height: 24px; font-size: 9px; }
+/* Roots and replies keep the same 32px author column, including a person's own replies. */
+.thread .project-convo__message { min-width: min(220px, 100%); max-width: 100%; }
 .thread .project-convo__message > p { padding: 10px 13px; }
 .thread .project-convo__message + .project-convo__message { margin-top: 18px; }
 .thread .project-convo__day { margin: 4px 0 18px; }
@@ -65,9 +63,7 @@
    reply, where they wrap, never over its author and time (ThreadMessageActions). */
 @media (hover: hover) {
   .thread .project-convo__message .ws-acts:not(.ws-acts--more) { position: static; margin: 4px 0 0 -6px; padding: 0; background: none; box-shadow: none; pointer-events: auto; }
-  .thread .project-convo__message.is-mine .ws-acts:not(.ws-acts--more) { justify-content: flex-end; margin: 4px -6px 0 0; }
   .thread .project-convo__message .ws-acts--more { position: absolute; top: -4px; right: -6px; margin: 0; padding: 0; background: none; box-shadow: none; }
-  .thread .project-convo__message.is-mine .ws-acts--more { right: auto; left: -6px; }
   .thread .ws-more { width: 28px; height: 28px; }
   .thread__acts .ws-acts, .thread .ws-acts--more:has([aria-expanded="true"]) { opacity: 1; pointer-events: auto; }
 }
@@ -76,10 +72,14 @@
 
 @media (max-width: 680px) {
   .thread__in { padding: 16px 17px 12px; }
-  .thread .project-convo__message, .thread .project-convo__message.is-mine { max-width: 91%; padding-left: 0; padding-right: 0; }
-  .thread .project-convo__message.is-arrived { padding-left: 10px; }
-  .thread .project-convo__message.is-mine.is-arrived { padding-right: 10px; }
-  .thread__root-meta .ui-avatar { display: none; }
+  .thread__root { padding-left: 42px; }
+}
+/* A narrow window can still have a mouse. Keep its hover controls below the content,
+   where the touch controls already live, so enlarged author names remain readable. */
+@media (max-width: 680px) and (hover: hover) {
+  .project-convo__message > .ws-acts:not(.ws-acts--more) {
+    position: static; margin: 4px 0 0 -6px; padding: 0; background: none; box-shadow: none;
+  }
 }
 @media (prefers-reduced-motion: no-preference) {
   .thread--sheet { animation: thread-in var(--dur-3) var(--ease-sheet) both; }
@@ -88,21 +88,23 @@
 @keyframes thread-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes thread-dock { from { opacity: 0; } to { opacity: 1; } }
 
-/* A task announcement (UI116-3): one quiet line in the stream, not a message. The task mark sits in the
-   avatars' column, who created the task above its title, and the time at the far side. */
-.convo-notice { display: grid; grid-template-columns: 27px minmax(0, 1fr) auto; column-gap: 12px; align-items: start; margin: 24px 0; }
-.convo-notice__icon { display: grid; place-items: center; width: 27px; height: 27px; border-radius: 6px; background: var(--bg-active); box-shadow: inset 0 0 0 1px var(--line); color: var(--text-2); }
+/* A task event retains the actual creator's author column. */
+.convo-notice { position: relative; padding-left: 44px; margin: 24px 0; }
+.convo-notice > :is(.ui-avatar, .author-face) { position: absolute; left: 0; top: 0; }
 .convo-notice__body { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
-.convo-notice__meta { font-size: var(--fs-xs); color: var(--text-3); }
-.convo-notice__task { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 0; border: 0; background: none; color: var(--text); font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; }
+.convo-notice__meta { display: flex; flex-wrap: wrap; gap: 4px 9px; align-items: baseline; min-width: 0; max-width: 100%; font-size: var(--fs-xs); color: var(--t3); }
+.convo-notice__meta strong { min-width: 0; max-width: 100%; overflow-wrap: anywhere; font-size: var(--fs-sm); font-weight: 550; color: var(--t1); }
+.convo-notice__meta .agent-id__name { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+.convo-notice__kind { color: var(--t3); }
+.convo-notice__task { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 0; border: 0; background: none; color: var(--t1); font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; }
 .convo-notice__title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.convo-notice__task svg { flex: none; color: var(--text-3); }
+.convo-notice__task svg { flex: none; color: var(--t3); }
 .convo-notice__task:hover .convo-notice__title { text-decoration: underline; text-underline-offset: 2px; }
-.convo-notice__task:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
-.convo-notice time { padding-top: 1px; font-size: var(--fs-xs); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.convo-notice__task:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; border-radius: 3px; }
+.convo-notice time { padding-top: 1px; font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
 @media (pointer: coarse) { .convo-notice__task { min-height: 44px; } }
 /* Task notices read as one quiet group (#266 PF-6): adjacent notices sit close, and a title wraps to
    two lines instead of being cut to one. */
 .convo-notice + .convo-notice { margin-top: -12px; }
 .convo-notice__title { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
-@media (max-width: 640px) { .convo-notice { margin: 14px 0; } .convo-notice + .convo-notice { margin-top: -6px; } }
+@media (max-width: 680px) { .convo-notice { padding-left: 42px; margin: 14px 0; } .convo-notice + .convo-notice { margin-top: -6px; } }

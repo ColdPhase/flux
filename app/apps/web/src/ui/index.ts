@@ -1,11 +1,15 @@
 export { Avatar, initials } from './Avatar';
+export { AuthorFace } from './AuthorFace';
 export { Button, IconButton, Spinner, type ButtonProps, type ButtonVariant } from './Button';
 export { EmptyState } from './EmptyState';
 export { ErrorState } from './ErrorState';
-export { FluxMark, Icon, type IconName } from './Icon';
+export { Icon, type IconName } from './Icon';
 export { Input } from './Input';
 export { MEDIA, choosesInPlace, duration, flip, isObscured, play, sendsOnEnter, useArrivals, useLoopPause, useMediaQuery, useTravelingHighlight } from './motion';
 export { Drawer, Overlay, Sheet, focusableIn, trapTab } from './Overlay';
+export { AgentIdentity, AgentTag } from './AgentIdentity';
+export { AGENT_HUES, FluxLockup, FluxLogo, Kreska, agentHue, type AgentHue, type KreskaExpression } from './Kreska';
+export { StatusGlyph, TaskState, TASK_STATE_WORD } from './StatusGlyph';
 export { SidePanel, useSidePanelMode, type SidePanelMode } from './SidePanel';
 export { BottomNav, Tabs, type BottomNavItem, type TabItem } from './Tabs';
 export { ToastProvider, useToast, type ToastOptions } from './Toast';

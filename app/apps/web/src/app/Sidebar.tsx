@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { Link, NavLink, useLocation, useNavigate, useNavigation } from 'react-router';
-import { Avatar, FluxMark, Icon, IconButton, choosesInPlace, useTravelingHighlight } from '../ui';
+import { Avatar, FluxLogo, Icon, IconButton, choosesInPlace, useTravelingHighlight } from '../ui';
 import { type DirectMessageSummary, type ProjectSummary, type WorkspaceSummary } from './data';
 import { placeOf } from './place';
 import { startCapture } from './views';
@@ -20,7 +20,7 @@ export interface SidebarProps {
 }
 
 /**
- * Studio 11.6 sidebar (#136): one list on the chrome beside the sheet. Places (Home, Inbox,
+ * The sidebar: one list on the outer background beside the panel. Places (Home, Inbox,
  * Direct messages and the private sketchbook), then Projects and Messages. A project has one
  * conversation (UI116-1): its roots and their threads live in the project's Conversation tab, not
  * in this list. A project never reveals another project's contents.
@@ -37,7 +37,7 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
   // Home is current where the header says Home: not in My sketchbook, Search or personal settings.
   const home = place === 'home' && !sketchbook && !/^\/(search|settings|projects)(\/|$)/.test(location.pathname);
   // Subtle navigation feedback (#155, UI116-5): the highlight travels to a chosen project at once, while
-  // the project loads; the row becomes current (accent bar, aria-current) when its content shows. A newer
+  // the project loads; the row becomes current (its bar, aria-current) when its content shows. A newer
   // choice retargets it, and a navigation that ends elsewhere (refused, cancelled) returns it.
   const navigation = useNavigation();
   const pendingProject = navigation.state !== 'idle' ? navigation.location?.pathname.match(/^\/projects\/([^/]+)/)?.[1] ?? null : null;
@@ -49,8 +49,8 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
       <div className="side__brand">
         {/* The wordmark names the drawer; Home is the first place below, so the mark is not a second link. */}
         <span className="side__logo">
-          <span className="side__glyph" role="img" aria-label="Flux" id={titleId}><FluxMark size={21} /></span>
-          <span className="side__word" aria-hidden="true">flux<span>.</span></span>
+          <span className="side__glyph" role="img" aria-label="Flux" id={titleId}><FluxLogo size={24} /></span>
+          <span className="side__word" aria-hidden="true">flux</span>
         </span>
         {onClose ? <IconButton icon="x" label="Close navigation" onClick={onClose} /> : null}
       </div>

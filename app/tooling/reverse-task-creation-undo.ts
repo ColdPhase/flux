@@ -1,6 +1,6 @@
 import { createDatabase, FLUX_SCHEMA_VERSION, readTaskCreationReversalPlan, reverseUnusedTaskCreation } from '@flux/db';
 
-// Guarded pre-use reversal of #238 (0057, then 0048) for a return to the matching prior image. Without --execute it
+// Guarded pre-use reversal of #238 (0060, then 0048) for a return to the matching prior image. Without --execute it
 // prints the plan. See docs/development/task-creation-undo/README.md#reversal.
 const plan = await readTaskCreationReversalPlan('packages/db/migrations', FLUX_SCHEMA_VERSION);
 if (process.argv.slice(2).some((argument) => argument !== '--execute')) throw new Error('Only the explicit --execute option is supported');
@@ -14,6 +14,6 @@ if (!process.argv.includes('--execute')) {
   try {
     const client = await pool.connect();
     await reverseUnusedTaskCreation(client, plan, { quiesced: true });
-    console.log(`Reversed 0057 and 0048. The ledger is now ${plan.prior.at(-1)?.version ?? 'empty'}-based; start only the matching prior image.`);
+    console.log(`Reversed 0060 and 0048. The ledger is now ${plan.prior.at(-1)?.version ?? 'empty'}-based; start only the matching prior image.`);
   } finally { await pool.end(); }
 }

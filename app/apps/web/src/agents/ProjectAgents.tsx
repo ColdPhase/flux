@@ -5,22 +5,25 @@ import type { AgentOperation, ConversationMessage, ProjectAgentConnection, Proje
 import { ApiError, NetworkError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
-import { useComposerDraft, useComposerScope } from '../composer/draft';
+import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
 import { AttachButton, ComposerFiles, MessageFiles } from '../composer/Files';
-import { contributeToTask, getTaskDiscussion } from '../composer/api';
+import { ConnectionLine, OutboxStatus, PendingFiles, PendingSource } from '../composer/Outbox';
+import { getTaskDiscussion } from '../composer/api';
 import { useProjectShell } from '../project/data';
-import { Button, Icon } from '../ui';
+import { AgentIdentity, AuthorFace, Button, Icon, Kreska, agentHue, type KreskaExpression } from '../ui';
 import { STATUS_LABEL } from '../work/format';
 import { useNativeOwn, useWorkChoices } from '../work/useDetailReads';
 import { WorkPagination } from '../work/WorkPagination';
-import { AGENT_SUFFIX, agentDisplayName } from '../docs/format';
+import { agentDisplayName } from '../docs/format';
 import { getProjectAgents } from './api';
+import { agentAuthorOwner, useAgentOwners } from './owners';
+import { ProjectPolicy } from './ProjectPolicy';
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
 import './agents.css';
 
 /**
- * Agents (Studio 11.6 UI116-2, #136): a view of the project's existing work, not a second
+ * Agents (UI116-2): a view of the project's existing work, not a second
  * backlog or chat. Each person's connections are listed separately, so Hubert's Codex and
  * Hubert's Claude Code are two entries. The thread is the task's one canonical discussion.
  */
@@ -66,6 +69,14 @@ function stateLine(connection: ProjectAgentConnection, now: number) {
   return connection.own ? 'Not signed in from your client yet' : 'Not signed in yet';
 }
 
+/** A session proves connection, and lastActivity is completed history. Neither proves current work. */
+function connectionExpression(connection: ProjectAgentConnection, now: number): KreskaExpression {
+  const state = shownState(connection, now);
+  if (connection.state === 'unavailable') return 'worried';
+  if (state !== 'session_open') return 'asleep';
+  return 'idle';
+}
+
 function activityLine(connection: ProjectAgentConnection) {
   const last = connection.lastActivity;
   if (!last) return null;
@@ -77,14 +88,14 @@ function Connection({ connection, now }: { connection: ProjectAgentConnection; n
   const activity = activityLine(connection);
   return (
     <li className="agents-conn" data-state={shownState(connection, now)}>
-      <span className="agents-conn__icon" aria-hidden="true"><Icon name="terminal" size={16} /></span>
+      {/* The Agents section is where an agent's own colour shows (F-026 §2). */}
+      <Kreska size={32} expression={connectionExpression(connection, now)} hue={agentHue(connection.agent.id)} className="agents-conn__icon" />
       <span className="agents-conn__body">
         <span className="agents-conn__who">
-          <b>{CLIENT_LABEL[connection.clientDesignation]}</b>
-          <span> · {connection.owner.name}{connection.own ? ' (you)' : ''}</span>
+          <AgentIdentity name={CLIENT_LABEL[connection.clientDesignation]} owner={`${connection.owner.name}${connection.own ? ' (you)' : ''}`} icon={false} />
         </span>
-        <span className="agents-conn__name">{connection.name}</span>
-        <span className="agents-conn__state"><span className="agents-conn__dot" aria-hidden="true" />{stateLine(connection, now)}</span>
+        <span className="agents-conn__name">{connection.agent.name} · {connection.name}</span>
+        <span className="agents-conn__state">{stateLine(connection, now)}</span>
         {activity ? <span className="agents-conn__activity">{activity}</span> : null}
       </span>
     </li>
@@ -141,6 +152,7 @@ function paneAtEnd(marker: HTMLElement | null) {
 interface ThreadTask { id: string; title: string; status: WorkStatus }
 
 function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: { task: ThreadTask; projectId: string; meId: string; names: Map<string, string>; canWrite: boolean; changingScope: boolean }) {
+  const owners = useAgentOwners(useProjectShell()?.project);
   const [discussion, setDiscussion] = useState<TaskDiscussion | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [accessLost, setAccessLost] = useState(false);
@@ -154,12 +166,11 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
   // Per account and task, kept across views and reloads like every other composer (#40).
   const composer = useComposerDraft(meId, projectId, `task:${task.id}`);
   const captureScope = useComposerScope(composer.key);
-  const sending = composer.sending;
   const blocked = changingScope || !discussion || !canWrite || accessLost;
   // Typing (#155 AC-2) is the task thread's: the same canonical conversation as the task's thread in
   // Conversation, so a person writing in both views is one person typing. A task without a genuine first
   // contribution has no thread yet, so it has no typing scope (nothing is created to show it).
-  const typing = useTyping(meId, discussion?.conversationId && !accessLost && !changingScope ? { kind: 'conversation', id: discussion.conversationId } : null, canWrite && !blocked && !sending);
+  const typing = useTyping(meId, discussion?.conversationId && !accessLost && !changingScope ? { kind: 'conversation', id: discussion.conversationId } : null, canWrite && !blocked);
   const box = useRef<HTMLTextAreaElement>(null);
   const end = useRef<HTMLDivElement>(null);
 
@@ -223,8 +234,11 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
   const messages = useMemo(() => {
     if (!discussion) return [];
     const all = discussion.root ? [discussion.root, ...discussion.messages.filter((item) => item.id !== discussion.root!.id)] : discussion.messages;
-    return [...all].sort((a, b) => a.sequence - b.sequence);
-  }, [discussion]);
+    // A message confirmed from this task's queue is shown at once, in its queued place (#264).
+    const sent = composer.sent.map((item) => item.message).filter((message) => !discussion.conversationId || message.conversationId === discussion.conversationId);
+    return mergeMessages(all, sent).sort((a, b) => a.sequence - b.sequence);
+  }, [discussion, composer.sent]);
+  const outbox = outboxView(messages, composer.pending, composer.sent, meId);
   // A thread opens at its newest message, like a conversation: once per load, after its messages are
   // on the page, and not on later updates. An empty thread keeps the view at its top.
   const opened = useRef(false);
@@ -240,21 +254,21 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
     event?.preventDefault();
     typing.stop();
     if (blocked) return;
-    const command = composer.begin();
-    if (!command) return;
+    // The message joins the end of the thread at once and the field empties (#264).
+    const outcome = composer.submit(messages.at(-1)?.sequence ?? 0);
+    if (!outcome) return;
     const active = captureScope();
-    try {
-      const message = await contributeToTask(task.id, { ...command, kind: 'text' });
-      composer.finish(command.clientMessageId);
-      if (!active()) return;
-      // The sent message is on the page before the pane scrolls to it.
-      flushSync(() => show((current) => current && !current.messages.some((item) => item.id === message.id) && current.root?.id !== message.id
-        ? { ...current, conversationId: current.conversationId ?? message.conversationId, rootMessageId: current.rootMessageId ?? message.id,
-          root: current.root ?? message, messages: [...current.messages, message] }
-        : current));
-      scrollPaneToEnd(end.current);
-      box.current?.focus({ preventScroll: true });
-    } catch (cause) { composer.finish(command.clientMessageId, cause); }
+    // The queued message is on the page (after this event's render) before the pane scrolls to it.
+    requestAnimationFrame(() => { if (active()) scrollPaneToEnd(end.current); });
+    box.current?.focus({ preventScroll: true });
+    const result = await outcome;
+    if (!active() || result.status !== 'delivered') return;
+    const message = result.message;
+    // The stored message takes its queued item's exact place, so the pane does not move again.
+    flushSync(() => show((current) => current && !current.messages.some((item) => item.id === message.id) && current.root?.id !== message.id
+      ? { ...current, conversationId: current.conversationId ?? message.conversationId, rootMessageId: current.rootMessageId ?? message.id,
+        root: current.root ?? message, messages: [...current.messages, message] }
+      : current));
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -262,20 +276,23 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
   };
 
   return (
-    <section className="agents-thread" data-empty={discussion && !messages.length && !accessLost ? 'true' : undefined} aria-label={`Thread of ${task.title}`}>
+    <section className="agents-thread" data-empty={discussion && !messages.length && !outbox.pending.length && !accessLost ? 'true' : undefined} aria-label={`Thread of ${task.title}`}>
       <p className="agents-thread__top">Thread of this task · the same one shown in Conversation{inConversation ? <> · <Link className="ui-link" to={inConversation}>Open in Conversation</Link></> : null}</p>
       {loadError ? <p className="agents-thread__error" role="alert">{loadError} <button type="button" className="ui-link" onClick={() => reload.current()}>Try again</button></p> : null}
       {accessLost ? <p className="agents-thread__error" role="alert">You can no longer read this task. Your unsent text is kept on this device.</p> : null}
       {!discussion && !loadError ? <p className="agents-thread__empty">Loading…</p> : null}
-      {discussion && !accessLost && !messages.length ? <p className="agents-thread__empty">No one has written about this task yet. The first message starts its thread.</p> : null}
+      {discussion && !accessLost && !messages.length && !outbox.pending.length ? <p className="agents-thread__empty">No one has written about this task yet. The first message starts its thread.</p> : null}
       {accessLost ? null : <ol className="agents-thread__list" aria-live="polite">
-        {messages.map((message) => {
+        {[...messages.map((message) => {
           const own = message.authorId === meId;
           const agent = message.authorId === null;
+          const name = authorName(message, names);
           return (
-            <li key={message.id} className={`agents-msg${own ? ' agents-msg--own' : ''}${agent ? ' agents-msg--agent' : ''}`}>
+            // A confirmed message keeps its queued item, so nothing moves or is announced twice (#264).
+            <li key={outbox.keyOf(message.id)} data-message-id={message.id} className={`agents-msg${own ? ' agents-msg--own' : ''}${agent ? ' agents-msg--agent' : ''}`}>
+              <AuthorFace kind={agent ? 'agent' : 'human'} name={name} mine={own} />
               <span className="agents-msg__meta">
-                <b>{own ? 'You' : authorName(message, names)}</b>{agent ? <span className="agents-msg__kind">{AGENT_SUFFIX}</span> : null}
+                {agent ? <AgentIdentity name={name} owner={message.author.kind === 'agent' ? agentAuthorOwner(message.author, owners) : undefined} icon={false} /> : <b>{name}{own ? ' · you' : ''}</b>}
                 <time dateTime={message.createdAt}>{when(message.createdAt)}</time>
                 {message.contribution ? <span className="agents-msg__kind"> · {message.contribution.kind}</span> : null}
               </span>
@@ -283,13 +300,25 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
               <MessageFiles files={message.files} />
             </li>
           );
-        })}
+        }), ...outbox.pending.map((item) => (
+          <li key={`pending-${item.id}`} id={`pending-${item.id}`} data-client-message-id={item.id} data-send-state={item.state}
+            className={`agents-msg agents-msg--own is-pending${item.state === 'failed' ? ' is-failed-send' : ''}`}>
+            <AuthorFace kind="human" name={names.get(meId) ?? 'Someone'} mine />
+            {/* "Sending…" stands where the stored message's time will be, so it takes that message's exact space. */}
+            <span className="agents-msg__meta"><b>{names.get(meId) ?? 'Someone'} · you</b>{item.state === 'sending' || item.state === 'uploading' ? <OutboxStatus inline item={item} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} /> : null}</span>
+            {item.body ? <p className="agents-msg__body">{item.body}</p> : null}
+            <PendingFiles files={item.files} />
+            <PendingSource item={item} />
+            {item.state === 'sending' || item.state === 'uploading' ? null : <OutboxStatus item={item} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} />}
+          </li>
+        ))]}
       </ol>}
       {discussion?.messagePage.hasMoreBefore && !accessLost ? <p className="agents-thread__empty">Earlier messages are in the task's thread in {inConversation ? <Link className="ui-link" to={inConversation}>Conversation</Link> : 'Conversation'}.</p> : null}
       <div ref={end} />
       <form className="agents-composer" onSubmit={(event) => { void send(event); }}>
+        {canWrite ? <ConnectionLine /> : null}
         <label className="ui-vh" htmlFor="agents-draft">Write to this task</label>
-        <textarea id="agents-draft" ref={box} value={composer.draft.body} rows={2} readOnly={sending || changingScope} aria-busy={sending || changingScope}
+        <textarea id="agents-draft" ref={box} value={composer.draft.body} rows={2} readOnly={changingScope} aria-busy={changingScope}
           placeholder={canWrite ? 'Add to this work…' : 'You can read this task but not write to it.'} disabled={blocked}
           onChange={(event) => { if (!blocked) { composer.setBody(event.target.value); typing.input(Boolean(event.target.value.trim())); } }} onBlur={typing.stop} onKeyDown={onKeyDown} />
         <ComposerFiles state={composer} disabled={blocked} attach="none" />
@@ -298,7 +327,7 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
         <div className="agents-composer__row">
           <AttachButton state={composer} disabled={blocked} />
           <span className="agents-composer__hint">Goes to the task thread<span className="composer__keys"> · Enter sends, Shift+Enter new line</span></span>
-          <Button type="submit" variant="primary" icon="send" busy={sending} disabled={!composer.canSend || blocked} aria-label="Send to task">Send</Button>
+          <Button type="submit" variant="primary" icon="send" disabled={!composer.canSend || blocked} aria-label="Send to task">Send</Button>
         </div>
       </form>
     </section>
@@ -398,6 +427,8 @@ export function ProjectAgents() {
       ) : (
         <p className="agents__no-connections">No agents connected. You can still discuss tasks here.</p>
       )}
+      <ProjectPolicy key={projectId} projectId={projectId} meId={me.user.id} canEdit={shell?.project.access === 'manager'}
+        managers={(shell?.people ?? []).filter((person) => person.kind === 'human' && person.access === 'manager').map((person) => person.name)} />
       {task ? (
         <>
           <div className="agents__task">

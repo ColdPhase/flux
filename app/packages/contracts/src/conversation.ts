@@ -37,9 +37,12 @@ export interface ConversationMessageFields {
   files?: import('./files.js').MessageFile[];
 }
 
+/** Optional current-project display metadata; never changes a stored author or grants access. */
+export type AgentProjectOwner = { kind: 'workspace' } | { kind: 'human'; id: string };
+
 export type MessageIdentity =
   | { authorId: string; author?: never }
-  | { authorId: null; author: { kind: 'agent'; id: string; name?: string } };
+  | { authorId: null; author: { kind: 'agent'; id: string; name?: string; projectOwner?: AgentProjectOwner } };
 /** Existing human JSON is unchanged; agents never occupy a human account field. */
 export type ConversationMessage = ConversationMessageFields & MessageIdentity;
 export type HumanConversationMessage = ConversationMessageFields & { authorId: string; author?: never };

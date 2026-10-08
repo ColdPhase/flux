@@ -12,12 +12,41 @@ The owner operates an official Claude Code client and its compute account. Flux 
 OAuth consent, narrow MCP tools, current project policy and sourced proposals. No
 provider credential or model request passes through Flux.
 
-**Proposed amendment, 2026-10-05:** [F-024](../product/mcp-identity.md) defines
-how this OAuth flow works when people sign in through an external OIDC provider:
-the provider on `/login`, issuer-and-subject identities, a standing check with
-the provider, a confirmation age for managed accounts, step-up for sensitive
-grants and opt-in connection access keys. Until its slices land, the rules below
-are the implemented behaviour.
+**Accepted F-024 baseline (#274), superseded in part on 2026-10-07:**
+[F-024](../product/mcp-identity.md) now requires password-only ordinary login
+without active SSO or SSO-only through one IdP with it, safe explicit pre-cutover
+account migration/recovery, and ordinary owner MCP capability switches. No
+recent-authentication threshold, password replay or secondary SSO challenge.
+Standing/confirmation-age/offboarding, OAuth consent and current owner/agent/
+project/grant/runtime rights remain. #317 opaque keys are canceled; OAuth/SSH
+keeps its supported paths. The implementation rules below are the existing
+seams, not proof of the new exclusive mode or mutable capability controls.
+
+### Owner MCP controls — required new S6 interface
+
+The [current bounded contract](../product/mcp-identity.md#s6--owner-mcp-capability-switches)
+adds a persisted/versioned restrictive policy for the connection owner. It does
+not rewrite the original connection consent/project/scope envelope or receipt
+identities. Current create/list/revoke and standing-grant routes below are not
+an edit API for existing capabilities. The ordinary owner session manages this
+policy; another owner/admin/agent cannot edit the private connection.
+
+Every protected projection/read/proposal/effect, delivery recheck and receipt
+replay intersects current rights/grants, original signed OAuth scope/place
+consent and live settings. Off applies after its commit at the next check; held
+races must serialize around authorization/effect/delivery. Already committed
+history and bytes handed to transport cannot be retracted. On cannot resurrect
+revoked/expired/used-up authority. New actual bounded grants retain owner plus
+project.manage routes; no invisible grant or unsupported invoke/admin/private/DM
+permission is created. Larger original consent needs ordinary explicit OAuth
+consent and a suitable token; refresh cannot widen the old scope.
+
+Current `flux_bootstrap` requires Read to establish runtime. Actions with Read
+off must show the true bootstrap prerequisite/block or a real independently
+reviewed alternative, not silently enable Read or claim cached runtime is a grant.
+Fully disabled connections remain owner-manageable; reload/failed/stale saves and
+old-token/replay/race/expiry cases need actual API/browser evidence. Reuse one
+permissions surface across #343/#347/#350, without an additional grant workflow.
 
 ## Identities and consent
 
@@ -70,10 +99,17 @@ pending independent acceptance):** client registration and the consent screen.
   an app's private-use scheme. The MCP 2026-07-28 security considerations, as quoted in the
   [#274 review (finding A2)](https://github.com/ColdPhase/flux/pull/274), require the
   authorization server to "clearly display the redirect URI hostname during authorization".
-- **Framing.** Every response sends `X-Frame-Options: DENY`, and
+- **Framing.** Ordinary Fastify HTTP responses send `X-Frame-Options: DENY`, and
   `Content-Security-Policy: frame-ancestors 'none'` unless the route sets its own policy
-  (stored files keep `sandbox`). Flux frames none of its own pages, and the installed PWA is
-  a top-level window. The Vite dev server (`./flux dev`) serves the page without these headers.
+  (stored files keep `sandbox`). These headers come from the `onSend` hook. The
+  `/mcp` handler bypasses it with `reply.hijack()`; that JSON-RPC stream never renders a page.
+  Successful WebSocket upgrades also bypass ordinary response serialization:
+  `/api/v1/stream`, `/api/v1/typing` and the separate media signaling gate at
+  `/media/rtc` or `/media/rtc/v1`. They carry protocol traffic, not rendered pages;
+  ordinary Fastify HTTP refusals still pass through the hook. The media gate's
+  direct socket refusals also bypass it. Flux frames none of its own pages, and the
+  installed PWA is a top-level window. The Vite dev server (`./flux dev`) serves the
+  page without these headers.
 - **Tests.** `app/tests/app/oauth-clients.test.ts` covers refused registration, the fixture,
   the consent hosts and the framing headers. `app/tests/app/oauth-flow.test.ts` covers the
   redirect and `client_id` host rules, and `app/tests/app/fixture-routes.test.ts` shows the
@@ -521,6 +557,30 @@ anything; only this publish writes it, never message, PR, wiki or tool text.
 - The narrowing is guidance the agent follows, not a server rule: every command is still decided by
   the owner's grants and current project access alone, whatever the policy says. Policy text is
   counted in characters (code points); the publisher's name in the resource is quoted as data.
+- **Editor (T160-b).** The project's Agents view shows the policy as one folded line (revision,
+  publisher, time) under the connections (`app/apps/web/src/agents/ProjectPolicy.tsx`).
+  - In every state, one line says what the policy is, who writes it and whether the reader needs
+    to act. Readers are told that only the named managers write it and that they need to do
+    nothing; managers are told it is optional and why they might write one.
+  - Project managers (workspace owners and admins) write or edit the four parts and publish the next
+    revision from the one they loaded, with one `Idempotency-Key` per attempt. The editor checks
+    the server's rules first (no part over 4,000 characters, at least one part written) and names
+    the part at fault.
+  - A `409 VERSION_CONFLICT` keeps the manager's text. A short line says who published which
+    revision, and the other revision's text appears under each field it changed, with "Use their
+    …". Publishing again replaces that revision knowingly.
+  - A publish whose answer is lost may have been saved, so the editor says only "Flux couldn't
+    confirm the publish". It then asks again. A newer revision that this person's own unconfirmed
+    publish made is recognised as theirs, never shown as someone else's: the edit ends, or carries
+    on from that revision if the text changed since.
+  - Everyone else who can read the project sees the parts read-only. The view refetches on
+    `project.agent_policy_published.v1`, so an open view, and an open editor, see a new revision.
+  - User text avoids internal words such as grants, checkpoints or bootstrap.
+  - On touch screens it follows the [Apple HIG checklist](../design/apple-hig-mobile.md): 16 px
+    fields, 44 px targets, press states, and no text under 11 px.
+  - It uses the existing API; nothing was added to it. Tests: `agent-policy.test.ts` (a publish
+    reaches the same session's next bootstrap; refusals and invalid policies change nothing; a
+    conflict carries the newer policy) and `tests/ui/test_project_policy.py` (1440, 390 and 320 px).
 
 ## Verification boundary
 

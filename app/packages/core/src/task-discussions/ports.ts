@@ -1,4 +1,4 @@
-import type { MaterialSource, MessageFile } from '@flux/contracts';
+import type { AgentProjectOwner, MaterialSource, MessageFile } from '@flux/contracts';
 import type { Principal } from '../principal.js';
 import type { ActorRef, WorkAccess, WorkRepository } from '../work/ports.js';
 
@@ -68,6 +68,8 @@ export interface TaskDiscussionEventIntent {
   readonly data: Readonly<{ conversationId: string; messageId: string; workId: string; rootMessageId: string }>;
 }
 export interface TaskDiscussionPorts {
+  /** Read-only display metadata for actual historical authors; no grant or stored-author mutation. */
+  authorOwners?: { read(projectId: string, workspaceId: string, agentIds: readonly string[]): Promise<ReadonlyMap<string, AgentProjectOwner>> };
   /** Human file composition. An entry point without storage must refuse attachments. */
   attachments?: { lock(projectId: string, author: ActorRef, ids: readonly string[]): Promise<MessageFile[]> };
   access: WorkAccess;

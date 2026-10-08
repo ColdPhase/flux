@@ -3,13 +3,13 @@ import { createPortal } from 'react-dom';
 import { Link, useRevalidator } from 'react-router';
 import type { ObjectLink, Project, ProjectWorkView, WorkGroup, WorkItem, WorkRelations, WorkRowProjection, WorkStatus } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
-import { Button, Icon, IconButton, initials, type IconName } from '../ui';
+import { AgentTag, Button, Icon, IconButton, Kreska, initials, type IconName } from '../ui';
 import { createWork, updateWork } from './api';
 import { isFinished } from './format';
 import { getProjectWorkView, getWorkRelations, workRelationReadUrl, workViewReadUrl } from './read-api';
 import type { ReadState } from './read-state';
 import { useWorkRead } from './useWorkRead';
-import { AGENT_SUFFIX } from '../docs/format';
+import { useAgentOwners } from '../agents/owners';
 import './board.css';
 
 // The Tasks board (#136, UI116-4): three columns over the existing statuses, no new status and no
@@ -143,6 +143,7 @@ function MoveMenu({ item, column, busy, buttonRef, onMove, onOpen, onClose }: {
 }
 
 interface CardProps {
+  agentOwner?: string;
   item: BoardTask; from: Origin | null; column: ColumnId; meId: string; writable: boolean; hintId: string;
   saving: boolean; dragged: boolean; lifted: boolean; arrived: boolean; menuOpen: boolean;
   onPointerDown: (event: ReactPointerEvent<HTMLLIElement>) => void;
@@ -155,7 +156,7 @@ interface CardProps {
   onMove: (to: ColumnId) => void;
 }
 
-function Card({ item, from, column, meId, writable, hintId, saving, dragged, lifted, arrived, menuOpen, onPointerDown, onClickCapture, onKeyDown, onKeyUp, onBlur, onOpen, onMenu, onMove }: CardProps) {
+function Card({ item, agentOwner, from, column, meId, writable, hintId, saving, dragged, lifted, arrived, menuOpen, onPointerDown, onClickCapture, onKeyDown, onKeyUp, onBlur, onOpen, onMenu, onMove }: CardProps) {
   const menuButton = useRef<HTMLButtonElement>(null);
   const blocked = item.status === 'blocked';
   const waiting = isFinished(item) ? 0 : item.prerequisiteCounts.unmet;
@@ -188,8 +189,9 @@ function Card({ item, from, column, meId, writable, hintId, saving, dragged, lif
       <div className="tb-card__foot">
         {owner ? (
           <span className={`tb-card__owner${owner.kind === 'agent' ? ' tb-card__owner--agent' : ''}`}>
-            <span className="tb-av" aria-hidden="true">{owner.kind === 'agent' ? <Icon name="agent" size={12} /> : initials(owner.name)}</span>
-            <span className="tb-card__name">{owner.name}{owner.kind === 'agent' ? <span className="tb-card__kind">{AGENT_SUFFIX}</span> : owner.id === meId ? <span className="tb-card__kind"> · you</span> : null}</span>
+            {owner.kind === 'agent' ? <Kreska size={20} /> : <span className="tb-av" aria-hidden="true">{initials(owner.name)}</span>}
+            <span className="tb-card__name">{owner.name}{owner.id === meId && owner.kind === 'human' ? <span className="tb-card__kind"> · you</span> : null}</span>
+            {owner.kind === 'agent' ? <><AgentTag />{agentOwner ? <span className="agent-for">for {agentOwner}</span> : null}</> : null}
           </span>
         ) : <span className="tb-card__owner tb-card__owner--none">No owner</span>}
         {waiting || results ? (
@@ -285,6 +287,7 @@ const beyond = (page: ProjectWorkView | null) => page ? Math.max(0, page.total -
 const SOURCE_EDGES = 100;
 
 export function TaskBoard({ project, openRead, meId, mine, query, writable, revision, adding, onAdding, openWork, refresh, showInList, clearFilters }: TaskBoardProps) {
+  const owners = useAgentOwners(project);
   const hintId = useId();
   const boardRef = useRef<HTMLDivElement>(null);
   const ghostRef = useRef<HTMLDivElement>(null);
@@ -652,7 +655,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
                 {list.length ? (
                   <ol className="tb-col__list">
                     {list.map((item) => (
-                      <Card key={item.id} item={item} from={originOf(item.id)} column={column.id} meId={meId} writable={writable} hintId={hintId}
+                      <Card key={item.id} item={item} agentOwner={item.owner?.kind === 'agent' ? owners.get(item.owner.id) : undefined} from={originOf(item.id)} column={column.id} meId={meId} writable={writable} hintId={hintId}
                         saving={item.id in pending} dragged={dragging?.id === item.id} lifted={lifted?.id === item.id}
                         arrived={arrived === item.id} menuOpen={menuFor === item.id}
                         onPointerDown={(event) => startDrag(event, item, column.id)}
@@ -664,7 +667,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
                         onMove={(to) => void move(item, to, true)} />
                     ))}
                   </ol>
-                ) : adding === column.id ? null : <p className="tb-col__empty">{waitingFor[column.id] ? 'Loading…' : filtered ? 'Nothing here matches.' : 'Nothing here yet.'}</p>}
+                ) : adding === column.id ? null : <p className="tb-col__empty">{waitingFor[column.id] ? `Loading ${column.label.toLowerCase()} tasks…` : filtered ? 'Nothing here matches.' : 'Nothing here yet.'}</p>}
                 {more(column.id).filter((entry) => entry.count > 0).map((entry) => (
                   <button key={entry.group} type="button" className="ws-none__b tb-col__more" onClick={() => showInList(entry.group)}>
                     {entry.count} more {entry.label} in the List

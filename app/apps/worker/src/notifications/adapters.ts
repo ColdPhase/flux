@@ -57,11 +57,12 @@ export function generatorUnitOfWork(db: Database, boss: PgBoss): GeneratorUnitOf
   return { run: (work) => db.transaction((tx) => work(generatorPorts(tx, boss))) };
 }
 
-export function emailUnitOfWork(db: Database): EmailDeliveryUnitOfWork {
+export function emailUnitOfWork(db: Database, boss: PgBoss): EmailDeliveryUnitOfWork {
   return {
     admitSend: (notificationId, send) => assignmentDeliveryAdmission(db, notificationId, send),
     run: (work) => db.transaction((tx) => {
       const rows = notificationEmailRows(tx);
+      const queueDb = fromDrizzle(tx as Parameters<typeof fromDrizzle>[0], sql);
       return work({
         lockEmail: (id) => rows.lockEmail(id),
         mailboxClaimed: (notificationId, exceptId, address) => rows.mailboxClaimed(notificationId, exceptId, address),
@@ -73,6 +74,10 @@ export function emailUnitOfWork(db: Database): EmailDeliveryUnitOfWork {
         markSending: (id, address, hash) => rows.markSending(id, address, hash),
         markSent: (id) => rows.markSent(id),
         requeue: (id, error) => rows.requeue(id, error),
+        failPermanently: (id, reason, error) => rows.failPermanently(id, reason, error),
+        promoteSkippedCopy: (notificationId, exceptId, skipReason) => rows.promoteSkippedCopy(notificationId, exceptId, skipReason),
+        // A promoted copy is a new send of a row whose own job already completed (#329).
+        enqueueEmail: (job) => boss.send(NOTIFICATION_EMAIL_JOB, job, { db: queueDb, singletonKey: `${job.emailId}:promoted` }),
       });
     }),
   };

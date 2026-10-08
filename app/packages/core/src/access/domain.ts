@@ -346,7 +346,7 @@ export async function listProjectPeople(principal: Principal, projectId: string,
     .from(schema.workspaceMembers)
     .innerJoin(schema.authUsers, eq(schema.authUsers.id, schema.workspaceMembers.userId))
     .where(eq(schema.workspaceMembers.workspaceId, workspaceId));
-  const agents = await db.select({ id: schema.agents.id, name: schema.agents.name }).from(schema.agents)
+  const agents = await db.select({ id: schema.agents.id, name: schema.agents.name, ownerUserId: schema.agents.ownerUserId }).from(schema.agents)
     .where(and(eq(schema.agents.workspaceId, workspaceId), isNull(schema.agents.revokedAt)));
   const candidates = [
     ...humans.map((row) => ({ kind: 'human' as const, id: row.id, name: row.name })),
@@ -357,6 +357,17 @@ export async function listProjectPeople(principal: Principal, projectId: string,
     const decision = await evaluateProject({ kind: candidate.kind, id: candidate.id }, 'project.read', projectId, db);
     const access = decision.allowed ? accessName(decision.level) : null;
     if (access) people.push({ ...candidate, access });
+  }
+  // Owner names reuse the authorized audience, never the workspace candidate roster.
+  const visibleHumans = new Map(people.filter((person) => person.kind === 'human').map((person) => [person.id, person.name]));
+  for (const person of people) {
+    if (person.kind !== 'agent') continue;
+    const agent = agents.find((candidate) => candidate.id === person.id)!;
+    if (!agent.ownerUserId) person.agentOwner = { kind: 'workspace' };
+    else {
+      const name = visibleHumans.get(agent.ownerUserId);
+      if (name) person.agentOwner = { kind: 'human', id: agent.ownerUserId, name };
+    }
   }
   return people.sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name) || a.id.localeCompare(b.id) : a.kind === 'human' ? -1 : 1));
 }

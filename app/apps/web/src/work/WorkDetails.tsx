@@ -4,7 +4,7 @@ import type { Agent, ObjectLink, Project, WorkspaceMember, WorkStatus, WorkDetai
 import { WORK_STATUSES } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
-import { Button, Icon, Input } from '../ui';
+import { AgentIdentity, Button, Icon, Input, StatusGlyph } from '../ui';
 import { getProject, listWorkspaceMembers } from '../app/conversation-api';
 import { useShellData } from '../app/data';
 import { useRegisterLiveHere } from '../live/LiveProvider';
@@ -13,6 +13,7 @@ import { useShellActions, type ObjectView, type WorkFormView } from '../app/shel
 import { acceptDecision, createResult, listAgents, proposeDecision, undoTaskCreation, updateWork } from './api';
 import { STATUS_LABEL, decisionLine, firstLine, isFinished, linked, resultLine, shortDate } from './format';
 import { docsLinking } from '../docs/AddToDoc';
+import { useAgentOwners } from '../agents/owners';
 import { useProjectShell } from '../project/data';
 import { useWorkRead } from './useWorkRead';
 import { useNativeOwn, useWorkChoices, useDetailRelations, type DetailRelations, type DetailChoices } from './useDetailReads';
@@ -248,7 +249,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
 
   return (
     <div className="details wd" data-detail-kind="work" data-detail-id={item.id}>
-      <p className="details__eyebrow wd-eyebrow"><span className={`wd-dot wd-dot--${item.status}`} aria-hidden="true" />{reverted ? 'Creation undone · read-only history' : STATUS_LABEL[item.status]}{item.parked ? ' · parked, not done' : ''}</p>
+      <p className="details__eyebrow wd-eyebrow"><StatusGlyph status={item.status} size={14} />{reverted ? 'Creation undone · read-only history' : STATUS_LABEL[item.status]}{item.parked ? ' · parked, not done' : ''}</p>
       <h3 className="details__title">{item.title}</h3>
       {item.outcome ? <p className="details__lead">{item.outcome}</p> : null}
       {item.status === 'blocked' && item.blocker ? <p className="wd-blocker"><Icon name="alert" size={14} />Blocked: {item.blocker}</p> : null}
@@ -387,7 +388,7 @@ function Prerequisites({ item, openDetails }: { item: OwnWork; openDetails: Retu
         {ordered.map((prerequisite) => (
           <li key={prerequisite.id}>
             <button type="button" className="wd-link" onClick={() => openDetails({ kind: 'work', id: prerequisite.id, projectId: item.projectId })}>
-              <span className={`wd-dot wd-dot--${prerequisite.status}`} aria-hidden="true" />
+              <StatusGlyph status={prerequisite.status} size={14} />
               <span>{prerequisite.title}</span>
               <small>{STATUS_LABEL[prerequisite.status]}{prerequisite.parked ? ' · parked' : ''}{prerequisite.met ? '' : ' · waiting'}</small>
               <Icon name="chevron-right" size={14} />
@@ -401,6 +402,7 @@ function Prerequisites({ item, openDetails }: { item: OwnWork; openDetails: Retu
 
 function DecisionPanel({ decision, context, detail, relations, reload, choices, setChoices, revision, commands }: { decision: OwnDecision; context: Context; detail: WorkDetailProjection; relations: DetailRelations; reload: () => void; choices: Record<string, Choice>; setChoices: (update: (current: Record<string, Choice>) => Record<string, Choice>) => void; revision: number; commands: PanelCommands }) {
   const { openDetails } = useShellActions();
+  const owners = useAgentOwners(context.project);
   const writable = context.project.access !== 'viewer';
   const earlier = decision.supersedes ? detail.context.find((item) => item.id === decision.supersedes) : null;
   const later = decision.supersededBy ? detail.context.find((item) => item.id === decision.supersededBy) : null;
@@ -442,7 +444,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, choices, 
       </div>
       {decision.rationale ? <p className="details__lead">{decision.rationale}</p> : null}
       <dl className="details__dl wd-dl">
-        <dt>Proposed</dt><dd>{decision.proposedBy.name}{decision.proposedBy.kind === 'agent' ? ' (agent)' : ''} · {shortDate(decision.createdAt)}</dd>
+        <dt>Proposed</dt><dd>{decision.proposedBy.kind === 'agent' ? <AgentIdentity name={decision.proposedBy.name} owner={owners.get(decision.proposedBy.id)} /> : decision.proposedBy.name} · {shortDate(decision.createdAt)}</dd>
         {decision.decidedBy ? <><dt>Decided</dt><dd>{decision.decidedBy.name} · {shortDate(decision.decidedAt!)}</dd></> : null}
       </dl>
 

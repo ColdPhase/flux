@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import type { ConversationMessage, ConversationWindowQuery, TaskContributionCommand, TaskDiscussion } from '@flux/contracts';
+import type { AgentProjectOwner, ConversationMessage, ConversationWindowQuery, TaskContributionCommand, TaskDiscussion } from '@flux/contracts';
 import { ConflictError, InvalidInputError, NotFoundError, RuleViolationError } from '../access/errors.js';
 import { normalizeConversationWindow, normalizeMessage } from '../conversation/commands.js';
 import type { Principal } from '../principal.js';
@@ -9,11 +9,12 @@ import { contributionIdentity, messageContribution } from './identity.js';
 import type { DiscussionBinding, DiscussionMessage, NewDiscussionMessage, TaskDiscussionPorts, TaskDiscussionRoot, TaskDiscussionUnitOfWork } from './ports.js';
 
 const missing = () => new NotFoundError('Work item', 'WORK_NOT_FOUND');
-const wire = (row: DiscussionMessage, names: Map<string, string>): ConversationMessage => {
+const wire = (row: DiscussionMessage, names: Map<string, string>, owners: ReadonlyMap<string, AgentProjectOwner> = new Map()): ConversationMessage => {
   const contribution = messageContribution(row.kind, row.resultId);
   return { id: row.id, conversationId: row.conversationId,
     ...(row.author.kind === 'human' ? { authorId: row.author.id } : { authorId: null,
-      author: { kind: 'agent' as const, id: row.author.id, name: names.get(`agent:${row.author.id}`) ?? 'Agent' } }),
+      author: { kind: 'agent' as const, id: row.author.id, name: names.get(`agent:${row.author.id}`) ?? 'Agent',
+        ...(owners.has(row.author.id) ? { projectOwner: owners.get(row.author.id)! } : {}) } }),
     body: row.body, source: row.source, sequence: row.sequence, createdAt: row.createdAt.toISOString(),
     ...(contribution ? { contribution } : {}), ...(row.files?.length ? { files: row.files } : {}) };
 };
@@ -110,8 +111,11 @@ export function createTaskDiscussionUseCases(unit: TaskDiscussionUnitOfWork) {
         const rows = await ports.discussion.messages(binding.conversationId, window);
         const hasMoreBefore = rows.length > window.limit;
         const names = await ports.work.names([root.author, ...rows.map((row) => row.author)]);
-        const messages = rows.slice(0, window.limit).reverse().map((row) => wire(row, names));
-        return { ...identity(project, binding), root: wire(root, names), messages,
+        const selected = rows.slice(0, window.limit).reverse();
+        const owners = await ports.authorOwners?.read(project.projectId, project.workspaceId,
+          [root, ...selected].flatMap((row) => row.author.kind === 'agent' ? [row.author.id] : [])) ?? new Map<string, AgentProjectOwner>();
+        const messages = selected.map((row) => wire(row, names, owners));
+        return { ...identity(project, binding), root: wire(root, names, owners), messages,
           messagePage: { hasMoreBefore, nextBeforeSequence: hasMoreBefore ? messages[0]!.sequence : null, limit: window.limit } };
       });
     },

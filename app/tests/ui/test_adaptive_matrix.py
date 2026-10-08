@@ -28,6 +28,7 @@ import unittest
 from playwright.sync_api import Locator, Page, expect, sync_playwright
 
 import adaptive_fixture as fx
+from author_columns import assert_author_column
 from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
 
 # Width × height fixtures (CSS px). Phones and tablets use a coarse (touch) pointer.
@@ -292,10 +293,12 @@ class AdaptiveMatrix(AdaptiveBase):
         self.primary(page, composer, "the message field")
         self.primary(page, page.get_by_role("button", name="Send message"), "Send message")
         self.measure(page, ".project-convo__message > p", "Conversation messages")
-        mine = page.locator(".project-convo__message.is-mine").first.bounding_box()
-        theirs = page.locator(".project-convo__message:not(.is-mine)").first.bounding_box()
-        self.assertGreater(mine["x"] + mine["width"], theirs["x"] + theirs["width"], f"own messages sit right at {size}")
-        self.assertLess(theirs["x"], mine["x"], f"other people's messages sit left at {size}")
+        mine_row = page.locator(".project-convo__message.is-mine").first
+        their_row = page.locator(".project-convo__message:not(.is-mine)").first
+        assert_author_column(self, mine_row, width, f"own author at {size}")
+        assert_author_column(self, their_row, width, f"other author at {size}")
+        mine, theirs = mine_row.bounding_box(), their_row.bounding_box()
+        self.assertAlmostEqual(mine["x"], theirs["x"], delta=1, msg=f"all authors share the same left column at {size} (F-026)")
         self.shot(page, f"adapt-{size}-conversation")
 
         # Its thread (the source of a reply), docked beside the stream or as a sheet over it.

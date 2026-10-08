@@ -5,7 +5,7 @@ import { assertExactMigrationLedger, readAppliedMigrationVersions, readMigration
 
 /** #238's own migrations, reversed newest first. */
 const OWN = [
-  { version: 57, name: '0057_task_creation_undo_grant.sql', down: '0057_task_creation_undo_grant.down.sql' },
+  { version: 60, name: '0060_task_creation_undo_grant.sql', down: '0060_task_creation_undo_grant.down.sql' },
   { version: 48, name: '0048_unused_ai_task_creation_undo.sql', down: '0048_unused_ai_task_creation_undo.down.sql' },
 ] as const;
 
@@ -30,7 +30,7 @@ export async function readTaskCreationReversalPlan(directory: string, expectedLa
 }
 
 /**
- * Guarded pre-use reversal of 0057 and 0048 (#238) in one transaction, for a return to the matching prior image.
+ * Guarded pre-use reversal of 0060 and 0048 (#238) in one transaction, for a return to the matching prior image.
  * The caller has stopped the API and worker. It holds the migrator's advisory lock, takes the affected tables
  * with NOWAIT (an active holder is refused, not waited for), requires the exact ledger of this image, runs the two
  * guarded down files and removes exactly their two ledger rows. Any refusal rolls everything back. It consumes and
@@ -42,7 +42,7 @@ export async function reverseUnusedTaskCreation(client: Pick<PoolClient, 'query'
   try {
     if (!options.quiesced) throw new Error('Stop the API and worker and acknowledge that before the reversal');
     if (plan.downs.map((down) => down.version).join(',') !== OWN.map((own) => own.version).join(','))
-      throw new Error('The reversal runs 0057 and then 0048');
+      throw new Error('The reversal runs 0060 and then 0048');
     // query_timeout need not cancel the server query: a failed control await can still take the session lock or
     // begin a transaction after the client gave up, so such a client is discarded.
     try { await client.query('SELECT pg_advisory_lock(hashtext($1))', ['flux-migrate']); serialized = true; }
@@ -54,7 +54,7 @@ export async function reverseUnusedTaskCreation(client: Pick<PoolClient, 'query'
     assertExactMigrationLedger(plan.current, await readAppliedMigrationVersions(client));
     for (const down of plan.downs) await client.query(down.sql);
     const removed = await client.query('DELETE FROM flux_schema_version WHERE version = ANY($1::int[]) RETURNING version', [plan.downs.map((down) => down.version)]);
-    if (removed.rows.length !== plan.downs.length) throw new Error('The reversal did not remove exactly the 0057 and 0048 ledger rows');
+    if (removed.rows.length !== plan.downs.length) throw new Error('The reversal did not remove exactly the 0060 and 0048 ledger rows');
     assertExactMigrationLedger(plan.prior, await readAppliedMigrationVersions(client));
     committing = true; await client.query('COMMIT'); began = false;
   } catch (cause) {

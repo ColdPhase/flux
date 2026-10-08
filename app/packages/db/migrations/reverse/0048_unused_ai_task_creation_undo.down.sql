@@ -1,4 +1,4 @@
--- Guarded pre-use reversal of 0048 (#238), run after reverse/0057 by the task creation Undo reversal runner, which owns
+-- Guarded pre-use reversal of 0048 (#238), run after reverse/0060 by the task creation Undo reversal runner, which owns
 -- the ledger rows. Lossless only before any feature fact exists: a creation baseline (every task created after the
 -- upgrade has one), a first use, a reversion notice or receipt. Otherwise it refuses and changes nothing; recover from
 -- the paired pre-upgrade database and files backup with the matching image instead.

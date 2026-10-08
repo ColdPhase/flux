@@ -68,13 +68,13 @@ Paths below are relative to the repository root. All six reference PNGs were ins
 | [.agents/skills/flux-review-visual/SKILL.md](../../../../.agents/skills/flux-review-visual/SKILL.md) | `fc4161227e26824902e5c234df6b84bf6595f51ef8e53dfbbda4c9834a0d6177` |
 | [docs/product/FLUX-FOUNDATION.md](../../../../docs/product/FLUX-FOUNDATION.md) | `c83973e6fb102aacb6dadec289a615b15a23855542efd0018de6e314fdabdf0e` |
 | [docs/design/README.md](../../../../docs/design/README.md) | `c5048ce2bb81e53dd6128ca56802b12a44b464f274d7c089a9e6f142e81544db` |
-| [docs/design/studio-v11-refinement.md](../../../../docs/design/studio-v11-refinement.md) | `2a73f2e416436fe8fcd8da1a3c8855d7400e20c0a4ab7b58403b68cba612cf0a` |
-| [docs/design/references/studio-v11/README.md](../../../../docs/design/references/studio-v11/README.md) | `358dd9332b583c02a9d6c9c49d683551db60bdf6c0d547c8fa345a35d80911a8` |
-| [docs/design/references/studio-v11/preview/evidence/deep-map-1440-light-after.png](../../../../docs/design/references/studio-v11/preview/evidence/deep-map-1440-light-after.png) | `411c529d40adac5b17c8daf5f555f3083f3ad70db488fc1b3c76afe36823b561` |
-| [docs/design/references/studio-v11/preview/evidence/deep-map-1440-after.png](../../../../docs/design/references/studio-v11/preview/evidence/deep-map-1440-after.png) | `d4f84a0d66a891e9420f4f5dbc3034f8f588728ed24dcf28e817bf1701bf2ce7` |
-| [docs/design/references/studio-v11/preview/evidence/deep-map-390-light-after.png](../../../../docs/design/references/studio-v11/preview/evidence/deep-map-390-light-after.png) | `a359cb965980e9dd05e9f166e428f88e6d2a20c8b62c7880f05d9a384a3f23a4` |
-| [docs/design/references/studio-v11/preview/evidence/deep-map-390-after.png](../../../../docs/design/references/studio-v11/preview/evidence/deep-map-390-after.png) | `6e18a1829991faaa05f14798cffac644ae0ebedb111c8ae21c359bd08f41bda6` |
-| [docs/design/references/studio-v11/supplied/screenshots/05-mapa-lista.png](../../../../docs/design/references/studio-v11/supplied/screenshots/05-mapa-lista.png) | `cf5f9cf8ef212ab717e9c78467f4a74418aa04e9a5fbc8b784e39148aafe2710` |
-| [docs/design/references/studio-v11/supplied/screenshots/06-szukaj-mapa.png](../../../../docs/design/references/studio-v11/supplied/screenshots/06-szukaj-mapa.png) | `743d3575bf91fdae0a4db39443b6b9b5bb41f7c479a6e35efc7fa37eac0e79fc` |
+| `docs/design/studio-v11-refinement.md` (removed) | `2a73f2e416436fe8fcd8da1a3c8855d7400e20c0a4ab7b58403b68cba612cf0a` |
+| `docs/design/references/studio-v11/README.md` (removed) | `358dd9332b583c02a9d6c9c49d683551db60bdf6c0d547c8fa345a35d80911a8` |
+| `docs/design/references/studio-v11/preview/evidence/deep-map-1440-light-after.png` (removed) | `411c529d40adac5b17c8daf5f555f3083f3ad70db488fc1b3c76afe36823b561` |
+| `docs/design/references/studio-v11/preview/evidence/deep-map-1440-after.png` (removed) | `d4f84a0d66a891e9420f4f5dbc3034f8f588728ed24dcf28e817bf1701bf2ce7` |
+| `docs/design/references/studio-v11/preview/evidence/deep-map-390-light-after.png` (removed) | `a359cb965980e9dd05e9f166e428f88e6d2a20c8b62c7880f05d9a384a3f23a4` |
+| `docs/design/references/studio-v11/preview/evidence/deep-map-390-after.png` (removed) | `6e18a1829991faaa05f14798cffac644ae0ebedb111c8ae21c359bd08f41bda6` |
+| `docs/design/references/studio-v11/supplied/screenshots/05-mapa-lista.png` (removed) | `cf5f9cf8ef212ab717e9c78467f4a74418aa04e9a5fbc8b784e39148aafe2710` |
+| `docs/design/references/studio-v11/supplied/screenshots/06-szukaj-mapa.png` (removed) | `743d3575bf91fdae0a4db39443b6b9b5bb41f7c479a6e35efc7fa37eac0e79fc` |
 
 Path-normalized archive: only local paths were replaced with repository-relative links. The independent reviewer's original record is preserved in [visual-review.original.md](visual-review.original.md).

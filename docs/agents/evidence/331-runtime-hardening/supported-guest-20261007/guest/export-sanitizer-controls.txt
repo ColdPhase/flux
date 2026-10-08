@@ -1,0 +1,17 @@
+json-bearer: PASS
+plain-bearer: PASS
+basic-header: PASS
+actual-slot-secret: PASS
+actual-manager-secret: PASS
+indexed-secret: PASS
+manager-slot-map: PASS
+postgres-url: PASS
+quoted-postgresql-url: PASS
+cookie-header: PASS
+set-cookie: [redacted]
+json-session-token: [redacted]
+inline-session-cookie: [redacted]
+json-opaque-token: [redacted]
+password: [redacted]
+plain-password: [redacted]
+safe-status-evidence: PASS

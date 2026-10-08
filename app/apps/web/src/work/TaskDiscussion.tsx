@@ -1,13 +1,15 @@
 import { useEffect, useId, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
 import type { ConversationMessage, Project, TaskDiscussion as Discussion, WorkspaceMember } from '@flux/contracts';
-import { Button, Icon } from '../ui';
+import { AgentIdentity, Button, Icon } from '../ui';
 import { useComposerDraft, useComposerScope } from '../composer/draft';
 import { ComposerFiles, MessageFiles } from '../composer/Files';
+import { ConnectionLine, OutboxStatus, PendingFiles, PendingSource, SendAnnouncer } from '../composer/Outbox';
 import { clock, day, when } from '../app/messageParts';
 import { useProjectShell } from '../project/data';
-import { contributeToTask, getTaskDiscussion } from '../composer/api';
-import { agentAuthorLabel } from '../docs/format';
+import { getTaskDiscussion } from '../composer/api';
+import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
+import { agentDisplayName } from '../docs/format';
 
 /**
  * A task's discussion in Details (UI116-3, #154): its root, which is the task's first genuine
@@ -20,6 +22,7 @@ export function TaskDiscussionSection({ workId, project, members, me, readOnly =
   /** A task whose creation was undone (#238) keeps its discussion as read-only history. */
   readOnly?: boolean;
 }) {
+  const owners = useAgentOwners(project);
   const headingId = useId();
   const fieldId = useId();
   const navigate = useNavigate();
@@ -31,7 +34,6 @@ export function TaskDiscussionSection({ workId, project, members, me, readOnly =
   const [attempt, setAttempt] = useState(0);
   const composer = useComposerDraft(me.id, project.id, `task:${workId}`);
   const captureScope = useComposerScope(composer.key);
-  const sending = composer.sending;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -41,7 +43,7 @@ export function TaskDiscussionSection({ workId, project, members, me, readOnly =
 
   const thread = discussion?.conversationId ? `/projects/${project.id}/conversations/${discussion.conversationId}` : null;
   const author = (message: ConversationMessage) => {
-    if (message.authorId === null) return agentAuthorLabel(message.author);
+    if (message.authorId === null) return agentDisplayName(message.author);
     if (message.authorId === me.id) return `${me.name} · you`;
     return members.find((member) => member.userId === message.authorId)?.name
       ?? people?.find((person) => person.kind === 'human' && person.id === message.authorId)?.name ?? 'Member';
@@ -50,14 +52,13 @@ export function TaskDiscussionSection({ workId, project, members, me, readOnly =
   async function send(event?: FormEvent) {
     event?.preventDefault();
     if (!writable || !discussion) return;
-    const command = composer.begin();
-    if (!command) return;
+    // The message joins the task's queue and the field empties at once (#264); it shows below until stored.
+    const outcome = composer.submit();
+    if (!outcome) return;
     const active = captureScope();
-    try {
-      const message = await contributeToTask(workId, { ...command, kind: 'text' });
-      composer.finish(command.clientMessageId);
-      if (active()) navigate(`/projects/${project.id}/conversations/${message.conversationId}#message-${message.id}`);
-    } catch (cause) { composer.finish(command.clientMessageId, cause); }
+    const result = await outcome;
+    // Stored as it was sent: open it in the conversation. One that waited for the connection stays put.
+    if (result.status === 'delivered' && !result.waited && active()) navigate(`/projects/${project.id}/conversations/${result.message.conversationId}#message-${result.message.id}`);
   }
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); void send(); }
@@ -73,19 +74,29 @@ export function TaskDiscussionSection({ workId, project, members, me, readOnly =
           : <>
             {root && thread ? <>
               <Link className="wd-discussion" to={thread}>
-                <span className="wd-discussion__who"><b>{author(root)}</b> <time dateTime={root.createdAt} title={when(root.createdAt)}>{day(root.createdAt)} · {clock(root.createdAt)}</time></span>
+                <span className="wd-discussion__who">{root.author?.kind === 'agent' ? <AgentIdentity name={author(root)} owner={agentAuthorOwner(root.author, owners)} /> : <b>{author(root)}</b>} <time dateTime={root.createdAt} title={when(root.createdAt)}>{day(root.createdAt)} · {clock(root.createdAt)}</time></span>
                 {root.body ? <span className="wd-discussion__body">{root.body}</span> : null}
                 <span className="wd-discussion__more">{replies ? `${replies} ${replies === 1 ? 'reply' : 'replies'}` : 'No replies yet'} · Open in Conversation<Icon name="chevron-right" size={14} /></span>
               </Link>
               <MessageFiles files={root.files} />
             </> : null}
+            {composer.pending.length ? <ol className="wd-pending" aria-label="Messages you are sending">{composer.pending.map((item) => (
+              <li key={item.id} id={`pending-${item.id}`} data-client-message-id={item.id} data-send-state={item.state} className={`wd-pending__item is-pending${item.state === 'failed' ? ' is-failed-send' : ''}`}>
+                {item.body ? <span className="wd-pending__body">{item.body}</span> : null}
+                <PendingFiles files={item.files} />
+                <PendingSource item={item} />
+                <OutboxStatus item={item} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} />
+              </li>
+            ))}</ol> : null}
             {writable ? <form className="wd-discussion-form" onSubmit={(event) => void send(event)}>
+              <ConnectionLine />
               <p id={`${fieldId}-hint`} className="wd-discussion-form__hint">{root ? 'Goes to this task’s one discussion, also shown in Conversation and Agents.' : 'Nobody has written about this task yet. The first message starts its discussion in the project conversation.'}</p>
               <label className="ui-vh" htmlFor={fieldId}>{root ? 'Write to this task' : 'First message about this task'}</label>
-              <textarea id={fieldId} aria-describedby={`${fieldId}-hint`} value={composer.draft.body} rows={3} maxLength={20000} readOnly={sending} aria-busy={sending || undefined}
+              <textarea id={fieldId} aria-describedby={`${fieldId}-hint`} value={composer.draft.body} rows={3} maxLength={20000}
                 placeholder="Write about this task…" onChange={(event) => composer.setBody(event.target.value)} onKeyDown={onKeyDown} />
               <ComposerFiles state={composer} />
-              <div className="wd-actions"><Button type="submit" variant="secondary" icon="send" busy={sending} disabled={!composer.canSend}>{root ? 'Send to task' : 'Start the discussion'}</Button></div>
+              <SendAnnouncer pending={composer.pending} />
+              <div className="wd-actions"><Button type="submit" variant="secondary" icon="send" disabled={!composer.canSend}>{root ? 'Send to task' : 'Start the discussion'}</Button></div>
             </form> : !root ? <p className="wd-muted">{readOnly ? 'Creation was undone. This history is read-only; your unsent draft is kept.' : 'Nobody has written about this task yet.'}</p> : null}
           </>}
     </section>

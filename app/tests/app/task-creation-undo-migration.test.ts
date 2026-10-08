@@ -9,7 +9,7 @@ import { assertExactMigrationLedger, assertKnownMigrationVersions, assertMigrati
 import { pool } from './support/db.js';
 import { guardFixturePool } from './support/fixture-database.js';
 
-// #238 AC-U5: 0048 (lifecycle, baseline, use and reversion facts) and 0057 (the `work.creation.revert` grant) on an
+// #238 AC-U5: 0048 (lifecycle, baseline, use and reversion facts) and 0060 (the `work.creation.revert` grant) on an
 // existing database whose sparse ledger already has 0049-0054, on a fresh database in file order, and the guarded
 // pre-use reversal of both back to the exact prior ledger and schema.
 const directory = 'packages/db/migrations';
@@ -17,12 +17,12 @@ const newColumns = ['creation_origin', 'creation_baseline', 'creation_baseline_v
   'creation_reverted_at', 'creation_reverted_by_kind', 'creation_reverted_by_id', 'creation_reversion_notice_id'];
 const listed = (definition: string) => [...definition.matchAll(/'([^']*)'::text/g)].map((match) => match[1]).sort();
 
-test('an existing database applies the lower missing 0048 and then 0057, keeps old history unknown, and reverses only before use', { timeout: 120_000 }, async () => {
+test('an existing database applies the lower missing 0048 and then 0060, keeps old history unknown, and reverses only before use', { timeout: 120_000 }, async () => {
   const manifest = await readMigrationManifest(directory, FLUX_SCHEMA_VERSION);
   const plan = await readTaskCreationReversalPlan(directory, FLUX_SCHEMA_VERSION);
-  assert.deepEqual(plan.downs.map((down) => down.version), [57, 48]);
-  assert.ok(plan.prior.some((file) => file.version === 54) && !plan.prior.some((file) => file.version === 48 || file.version === 57));
-  assert.deepEqual(plan.prior.map((file) => file.version), manifest.map((file) => file.version).filter((version) => version !== 48 && version !== 57));
+  assert.deepEqual(plan.downs.map((down) => down.version), [60, 48]);
+  assert.ok(plan.prior.some((file) => file.version === 54) && !plan.prior.some((file) => file.version === 48 || file.version === 60));
+  assert.deepEqual(plan.prior.map((file) => file.version), manifest.map((file) => file.version).filter((version) => version !== 48 && version !== 60));
   const name = `flux_undo_history_${randomUUID().replaceAll('-', '')}`;
   const admin = createDatabase(process.env.DATABASE_URL!).pool;
   const url = new URL(process.env.DATABASE_URL!); url.pathname = `/${name}`;
@@ -53,7 +53,7 @@ test('an existing database applies the lower missing 0048 and then 0057, keeps o
     const grant = (id: string, operation: string) => db.query(`INSERT INTO agent_standing_grants(id,workspace_id,project_id,connection_id,owner_user_id,
       client_command_id,request_fingerprint,operation,peer_request_class,maximum_uses,expires_at)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,'execute',1,clock_timestamp()+interval '1 hour')`, [id, workspace, project, connection, user, randomUUID(), 'a'.repeat(64), operation]);
-    // A grant of an operation 0050 added: the later 0057 must keep it valid (order independence).
+    // A grant of an operation 0050 added: the later 0060 must keep it valid (order independence).
     await grant(unitGrant, 'cowork.unit.create');
 
     const old = async () => ({ work: (await db.query('SELECT to_jsonb(w) - $1::text[] AS row FROM project_work_items w ORDER BY id', [newColumns])).rows,
@@ -71,7 +71,7 @@ test('an existing database applies the lower missing 0048 and then 0057, keeps o
     const original = await old();
     const prior = await shape();
 
-    // The migrator's own loop: the ledger knows 0054 and applies the lower missing 0048, then 0057, each checked.
+    // The migrator's own loop: the ledger knows 0054 and applies the lower missing 0048, then 0060, each checked.
     const upgrade = async () => {
       const client = await db.connect();
       const appliedNow: number[] = [];
@@ -97,7 +97,7 @@ test('an existing database applies the lower missing 0048 and then 0057, keeps o
     };
     const reverse = async () => reverseUnusedTaskCreation(await db.connect(), plan, { quiesced: true });
 
-    assert.deepEqual(await upgrade(), [48, 57], 'only the two missing #238 files apply, lower one first');
+    assert.deepEqual(await upgrade(), [48, 60], 'only the two missing #238 files apply, lower one first');
     assert.deepEqual(await old(), original, 'every old task, notice, grant and search row is unchanged');
     const unknown = (await db.query(`SELECT ${newColumns.join(',')} FROM project_work_items WHERE id=$1`, [work])).rows[0];
     assert.ok(Object.values(unknown).every((value) => value === null), 'old history stays unknown: no inferred origin, baseline or use');
@@ -105,7 +105,7 @@ test('an existing database applies the lower missing 0048 and then 0057, keeps o
       (error: unknown) => error instanceof Error && 'code' in error && error.code === '23514');
     const operations = listed((await db.query(`SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint
       WHERE conrelid='agent_standing_grants'::regclass AND conname='agent_standing_grants_operation_check'`)).rows[0].definition);
-    assert.deepEqual(operations, [...AGENT_OPERATIONS].sort(), 'after 0054, 0057 leaves exactly the contract list');
+    assert.deepEqual(operations, [...AGENT_OPERATIONS].sort(), 'after 0054, 0060 leaves exactly the contract list');
     const revertGrant = randomUUID();
     await grant(revertGrant, 'work.creation.revert');
     await db.query('DELETE FROM agent_standing_grants WHERE id=$1', [revertGrant]);
@@ -123,7 +123,7 @@ test('an existing database applies the lower missing 0048 and then 0057, keeps o
     assert.deepEqual(await old(), original);
     assert.throws(() => assertExactMigrationLedger(manifest, prior.ledger), /0048_unused_ai_task_creation_undo\.sql/,
       'this image refuses to start on the reversed database; the matching prior image starts instead');
-    assert.deepEqual(await upgrade(), [48, 57]);
+    assert.deepEqual(await upgrade(), [48, 60]);
     assert.deepEqual(await shape(), upgraded);
 
     // Any feature fact refuses the reversal and changes nothing: a first use, a revert grant, an unknown later version.
@@ -135,7 +135,7 @@ test('an existing database applies the lower missing 0048 and then 0057, keeps o
     await db.query('TRUNCATE project_work_items CASCADE');
     await grant(revertGrant, 'work.creation.revert');
     before = await shape();
-    await assert.rejects(reverse(), /0057 reversal refused/); assert.deepEqual(await shape(), before);
+    await assert.rejects(reverse(), /0060 reversal refused/); assert.deepEqual(await shape(), before);
     await db.query('DELETE FROM agent_standing_grants WHERE id=$1', [revertGrant]);
     await db.query('INSERT INTO flux_schema_version(version) VALUES(99)');
     before = await shape();
@@ -176,7 +176,7 @@ test('an existing database applies the lower missing 0048 and then 0057, keeps o
   guard?.assertNoEarlyErrors();
 });
 
-test('a fresh database in file order ends with the contract operation list only because 0057 follows the 0054 rewrite', async () => {
+test('a fresh database in file order ends with the contract operation list only because 0060 follows the 0054 rewrite', async () => {
   const manifest = await readMigrationManifest(directory, FLUX_SCHEMA_VERSION);
   const client = await pool.connect();
   const listAfter = async (files: typeof manifest) => {
@@ -193,8 +193,8 @@ test('a fresh database in file order ends with the contract operation list only 
   };
   try {
     assert.deepEqual(await listAfter(manifest), [...AGENT_OPERATIONS].sort(), 'the live list equals the contract list');
-    // Negative control: without 0057 the list is the one 0054 wrote, so 0048 alone could never carry the operation.
-    const without = await listAfter(manifest.filter((file) => file.version !== 57));
+    // Negative control: without 0060 the list is the one 0054 wrote, so 0048 alone could never carry the operation.
+    const without = await listAfter(manifest.filter((file) => file.version !== 60));
     assert.ok(!without.includes('work.creation.revert'));
     assert.deepEqual(without, [...AGENT_OPERATIONS].filter((operation) => operation !== 'work.creation.revert').sort());
   } finally { client.release(); }

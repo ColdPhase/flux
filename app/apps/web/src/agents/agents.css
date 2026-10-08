@@ -1,4 +1,4 @@
-/* Agents (Studio 11.6 UI116-2, #136): one centred reading column over the project's work. */
+/* Agents (UI116-2): one centred reading column over the project's work. */
 .agents-scroll { display: flex; flex-direction: column; }
 .agents {
   width: min(100%, 854px);
@@ -12,7 +12,7 @@
 .agents__head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-4); flex-wrap: wrap; }
 .agents__title { margin: 0; font-size: var(--fs-2xl); font-weight: 600; letter-spacing: -0.025em; }
 .agents__connect { display: inline-flex; align-items: center; gap: var(--s-1); font-size: var(--fs-sm); }
-.agents__no-connections { margin: 0; color: var(--text-3); font-size: var(--fs-sm); line-height: 1.5; }
+.agents__no-connections { margin: 0; color: var(--t3); font-size: var(--fs-sm); line-height: 1.5; }
 
 /* Every connection is its own entry, so one person's second agent is never hidden. */
 .agents__connections {
@@ -20,33 +20,26 @@
   display: flex; flex-wrap: wrap; gap: var(--s-4) var(--s-6);
   border-bottom: 1px solid var(--line);
 }
-.agents-conn { display: flex; gap: var(--s-2); align-items: flex-start; min-width: 0; max-width: 100%; }
-.agents-conn__icon { flex: none; width: 25px; height: 25px; display: grid; place-items: center; color: var(--text-3); }
+.agents-conn { display: flex; flex: 1 1 0; gap: var(--s-2); align-items: flex-start; min-width: 0; max-width: 100%; }
 .agents-conn__body { display: flex; flex-direction: column; min-width: 0; gap: 1px; font-size: var(--fs-xs); line-height: var(--lh-tight); }
-.agents-conn__who b { font-weight: 500; color: var(--text); }
-.agents-conn__who span { color: var(--text-3); }
-.agents-conn__name { color: var(--text-2); overflow-wrap: anywhere; }
-.agents-conn__state, .agents-conn__activity { color: var(--text-3); display: inline-flex; align-items: center; gap: 6px; }
-.agents-conn__dot { width: 6px; height: 6px; border-radius: 50%; border: 1px solid var(--text-3); flex: none; }
-.agents-conn[data-state="session_open"] .agents-conn__dot { background: var(--ok); border-color: var(--ok); }
-.agents-conn[data-state="offline"] .agents-conn__dot { background: transparent; }
-.agents-conn[data-state="unavailable"] .agents-conn__dot { border-color: var(--warning); background: transparent; }
-.agents-conn[data-state="unavailable"] .agents-conn__state { color: var(--warning); }
+.agents-conn__name { color: var(--t2); overflow-wrap: anywhere; }
+.agents-conn__state, .agents-conn__activity { color: var(--t3); display: inline-flex; align-items: center; gap: 6px; }
+.agents-conn[data-state="unavailable"] .agents-conn__state { color: var(--t2); }
 
 .agents__task {
   display: flex; align-items: center; gap: var(--s-3); flex-wrap: wrap;
   padding-bottom: var(--s-4); border-bottom: 1px solid var(--line);
 }
-.agents__task-label { font-size: var(--fs-xs); color: var(--text-3); }
+.agents__task-label { font-size: var(--fs-xs); color: var(--t3); }
 .agents__task select {
   flex: 1 1 260px; min-width: 0; min-height: var(--ctl); max-width: 100%;
-  font: inherit; font-size: var(--fs-md); font-weight: 500; color: var(--text);
-  background: transparent; border: 1px solid var(--line-input); border-radius: var(--r);
+  font: inherit; font-size: var(--fs-md); font-weight: 500; color: var(--t1);
+  background: transparent; border: 1px solid var(--line2); border-radius: var(--r);
   padding: 0 var(--s-3);
 }
-.agents__task select:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.agents__task select:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
 .agents__open { display: inline-flex; align-items: center; gap: 2px; font-size: var(--fs-sm); }
-.agents__no-tasks { color: var(--text-3); font-size: var(--fs-sm); margin: 0; }
+.agents__no-tasks { color: var(--t3); font-size: var(--fs-sm); margin: 0; }
 
 /* On a tall screen the thread and its composer sit together at the bottom, as in a conversation.
    An auto margin on the first item takes only free space; justify-content: flex-end would push
@@ -57,18 +50,20 @@
 .agents-thread > :first-child { margin-top: auto; }
 /* Starting a thread keeps its first-message box beside the task picker. */
 .agents-thread[data-empty="true"] > :first-child { margin-top: 0; }
-.agents-thread__top { margin: 0; font-size: var(--fs-xs); color: var(--text-3); }
-.agents-thread__empty { margin: 0; color: var(--text-3); font-size: var(--fs-sm); }
-.agents-thread__error { margin: 0; color: var(--danger); font-size: var(--fs-sm); }
+.agents-thread__top { margin: 0; font-size: var(--fs-xs); color: var(--t3); }
+.agents-thread__empty { margin: 0; color: var(--t3); font-size: var(--fs-sm); }
+.agents-thread__error { margin: 0; color: var(--t1); font-size: var(--fs-sm); }
 .agents-thread__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-5); }
 
-.agents-msg { display: flex; flex-direction: column; gap: 6px; max-width: min(640px, 100%); }
-.agents-msg__meta { display: flex; gap: var(--s-2); align-items: baseline; font-size: var(--fs-xs); color: var(--text-3); }
-.agents-msg__meta b { font-weight: 600; color: var(--text); }
-.agents-msg__kind { color: var(--text-3); }
+.agents-msg { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding-left: 44px; max-width: min(640px, 100%); }
+.agents-msg > :is(.ui-avatar, .author-face) { position: absolute; left: 0; top: 0; }
+.agents-msg > :not(.ui-avatar, .author-face) { min-width: 0; max-width: 100%; }
+.agents-msg__meta { display: flex; flex-wrap: wrap; gap: 4px 9px; align-items: baseline; font-size: var(--fs-xs); color: var(--t3); }
+.agents-msg__meta b { min-width: 0; overflow-wrap: anywhere; font-size: var(--fs-sm); font-weight: 550; color: var(--t1); }
+.agents-msg__meta .agent-id__name { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+.agents-msg__kind { color: var(--t3); }
 .agents-msg__body { margin: 0; font-size: var(--fs-base); line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
-.agents-msg--own { align-self: flex-end; align-items: flex-end; }
-.agents-msg--own .agents-msg__body { background: var(--accent-soft); border-radius: 10px 3px 10px 10px; padding: var(--s-3) var(--s-4); }
+.agents-msg--own .agents-msg__body { background-color: var(--inv); background-image: var(--grad-inv); color: var(--oninv); border-radius: var(--r-lg) 6px var(--r-lg) var(--r-lg); padding: 9px 13px; }
 
 .agents-composer {
   position: sticky; bottom: 0;
@@ -76,15 +71,16 @@
 }
 .agents-composer textarea {
   width: 100%; min-height: 64px; max-height: 40vh; resize: vertical;
-  font: inherit; font-size: var(--fs-base); line-height: 1.65; color: var(--text);
-  background: var(--bg); border: 1px solid var(--line-input); border-radius: 10px; padding: var(--s-3) var(--s-4);
+  font: inherit; font-size: var(--fs-base); line-height: 1.65; color: var(--t1);
+  background: var(--el); border: 1px solid var(--line2); border-radius: 10px; padding: var(--s-3) var(--s-4);
 }
-.agents-composer textarea:focus-visible { outline: none; border-color: var(--focus); }
+.agents-composer textarea:focus-visible { outline: none; border-color: var(--t1); }
 .agents-composer__row { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); margin-top: var(--s-2); }
-.agents-composer__hint { font-size: var(--fs-xs); color: var(--text-3); }
-.agents-composer__error { margin: var(--s-2) 0 0; font-size: var(--fs-sm); color: var(--danger); }
+.agents-composer__hint { font-size: var(--fs-xs); color: var(--t3); }
+.agents-composer__error { margin: var(--s-2) 0 0; font-size: var(--fs-sm); color: var(--t1); }
 
 @media (max-width: 680px) {
+  .agents-msg { padding-left: 42px; }
   .agents { padding: var(--s-4); gap: var(--s-4); }
   .agents__title { font-size: var(--fs-xl); }
   .agents__connections { gap: var(--s-3); padding-bottom: var(--s-4); }

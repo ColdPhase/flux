@@ -1,24 +1,58 @@
 .message-files { list-style: none; padding: 0; margin: 4px 0; display: flex; flex-direction: column; gap: 3px; max-width: 100%; }
-.message-files a { display: flex; align-items: center; gap: 6px; color: var(--text); font-size: var(--fs-sm); text-decoration: none; min-height: 32px; }
+.message-files a { display: flex; align-items: center; gap: 6px; color: var(--t1); font-size: var(--fs-sm); text-decoration: none; min-height: 32px; }
 .message-files a:hover { text-decoration: underline; }
-.message-files a span { overflow-wrap: anywhere; min-width: 0; }
-.message-files small { flex: none; color: var(--text-3); font-size: var(--fs-xs); }
+.message-files a span { overflow-wrap: anywhere; min-width: 0; font-family: var(--mono); }
+.message-files small { flex: none; color: var(--t3); font-size: var(--fs-xs); font-family: var(--mono); }
 .message-files svg { flex: none; }
-.message-files a:focus-visible, .composer-files button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.message-files a:focus-visible, .composer-files button:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
 .composer-files { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; margin: 4px 0; font-size: var(--fs-xs); }
-.composer-files button { font: inherit; color: var(--text-2); border: 0; background: transparent; min-height: 32px; padding: 4px 6px; border-radius: var(--r); cursor: pointer; }
+.composer-files button { font: inherit; color: var(--t2); border: 0; background: transparent; min-height: 32px; padding: 4px 6px; border-radius: var(--r); cursor: pointer; }
 .composer-files button:disabled { opacity: .5; cursor: default; }
 .composer-files__add { display: inline-flex; gap: 4px; align-items: center; }
-.composer-files__privacy { margin: 0; color: var(--text-3); line-height: 1.5; }
+.composer-files__privacy { margin: 0; color: var(--t3); line-height: 1.5; }
 .composer-files__list { list-style: none; padding: 0; margin: 0; width: 100%; max-height: 150px; overflow-y: auto; }
 .composer-files__list li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 3px 0; border-bottom: 1px solid var(--line); }
-.composer-files__name { min-width: 0; flex: 1; overflow-wrap: anywhere; color: var(--text); }
-.composer-files__name small { display: block; color: var(--text-3); font-size: var(--fs-xs); }
+.composer-files__name { min-width: 0; flex: 1; overflow-wrap: anywhere; color: var(--t1); font-family: var(--mono); }
+.composer-files__name small { display: block; color: var(--t3); font-size: var(--fs-xs); }
 .composer-files__list li > button { flex: none; }
-.composer-files__error { color: var(--danger); width: 100%; margin: 3px 0; line-height: 1.5; }
-.composer-files__ref { display: flex; align-items: center; gap: 6px; width: 100%; color: var(--text-2); }
+.composer-files__error { color: var(--t1); width: 100%; margin: 3px 0; line-height: 1.5; }
+.composer-files__ref { display: flex; align-items: center; gap: 6px; width: 100%; color: var(--t2); }
 .composer-files__ref span { min-width: 0; flex: 1; overflow-wrap: anywhere; }
 @media (hover: none), (max-width: 680px) {
   .composer-files button, .message-files a { min-height: 44px; }
   .composer-files__list li > button { min-width: 44px; }
 }
+/* Instant sending (#264): a sent message's state on the message itself, and the offline line. */
+.message-files.is-pending .message-files__name { display: flex; align-items: center; gap: 6px; color: var(--t2); font-size: var(--fs-sm); min-height: 32px; }
+.message-files.is-pending .message-files__name span { overflow-wrap: anywhere; min-width: 0; }
+.message-files.is-pending small { flex: none; color: var(--t3); font-size: var(--fs-sm); }
+.outbox-source { display: block; margin: 2px 0 0; color: var(--t2); font-size: var(--fs-sm); }
+.outbox-status { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; margin: 4px 0 0; color: var(--t3); font-size: var(--fs-sm); line-height: 1.4; }
+.outbox-status__dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .7; }
+.outbox-status.is-waiting svg { flex: none; }
+.outbox-status.is-failed { color: var(--t1); }
+.outbox-status.is-failed svg { flex: none; }
+.outbox-status__why { color: var(--t2); }
+.outbox-status__acts { display: inline-flex; gap: 4px; }
+.outbox-status__b { font: inherit; font-weight: 550; color: var(--t1); background: transparent; border: 0; border-radius: var(--r); min-height: 28px; padding: 2px 8px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; touch-action: manipulation; }
+.outbox-status__b:hover { background: var(--hov); }
+.outbox-status__b:active { background: var(--sub); transform: scale(.97); }
+.outbox-status__b:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
+.is-pending > p, .is-pending .dm-msg__body, .is-pending .agents-msg__body { opacity: .82; }
+.is-pending.is-failed-send > p, .is-pending.is-failed-send .dm-msg__body, .is-pending.is-failed-send .agents-msg__body { opacity: 1; }
+/* Empty while online: kept in place as a live region, but out of the flow so it adds no gap. */
+.connection-line-region:empty { position: absolute; }
+.connection-line { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; padding: 6px 10px; border-radius: var(--r); background: var(--sub); color: var(--t2); font-size: var(--fs-sm); line-height: 1.45; }
+.connection-line::before { content: ''; flex: none; width: 6px; height: 6px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px currentColor; }
+@media (pointer: coarse) {
+  .outbox-status, .message-files.is-pending .message-files__name, .message-files.is-pending small, .connection-line { font-size: var(--fs-xs); }
+  .outbox-status__b { min-height: 44px; min-width: 44px; padding: 0 10px; }
+}
+@media (prefers-reduced-motion: reduce) { .outbox-status__b:active { transform: none; } }
+/* The stream's queued root holds the place of the reply row the stored root will show; in a thread the
+   status sits in the meta row, where the time will be. */
+.project-convo__message.is-pending-stream > .outbox-status { min-height: 26px; margin: 6px 0 0; }
+.project-convo__message.is-mine.is-pending-stream > .outbox-status { justify-content: flex-end; }
+.project-convo__message-meta > .outbox-status, .agents-msg__meta > .outbox-status { display: inline-flex; margin: 0; font-size: inherit; line-height: inherit; }
+.project-convo__message-meta > .outbox-status span { visibility: visible; }
+@media (pointer: coarse) { .project-convo__message.is-pending-stream > .outbox-status { min-height: 44px; } }

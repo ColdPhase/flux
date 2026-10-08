@@ -169,6 +169,8 @@ export interface ClaimableEmail {
   userId: string;
   addressKind: EmailAddressKind;
   status: 'queued' | 'sending' | 'sent' | 'skipped';
+  /** SMTP attempts made so far (counted when the row is marked `sending`). */
+  attempts: number;
   notification: { id: string; source: NotificationSourceRef; reason: NotificationReason | null };
 }
 
@@ -191,6 +193,15 @@ export interface EmailDeliveryPorts {
   markSent(id: string): Promise<void>;
   /** Back to queued after a send that failed before SMTP accepted it, so the retry may send. */
   requeue(id: string, error: string): Promise<void>;
+  /** Ends a `sending` row that will not be retried (skipped, with the error); false if it was not sending. */
+  failPermanently(id: string, reason: string, error: string): Promise<boolean>;
+  /**
+   * Back to queued: one other copy of this notification skipped with `skipReason` (the same
+   * mailbox), so it can be sent instead. Returns its id, or null when there is none.
+   */
+  promoteSkippedCopy(notificationId: string, exceptId: string, skipReason: string): Promise<string | null>;
+  /** Queues the email job in this transaction, so it commits with the promoted row. */
+  enqueueEmail(job: EmailJob): Promise<unknown>;
 }
 
 export interface EmailDeliveryUnitOfWork {

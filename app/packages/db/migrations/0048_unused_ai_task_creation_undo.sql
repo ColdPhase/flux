@@ -1,7 +1,7 @@
 -- #238: undo an unused AI-created task while keeping its history. Additive: every existing task keeps NULL origin,
 -- baseline and use facts (its eligibility stays unknown, never guessed), and no notice is backfilled. Order-
 -- independent with the shipped 0049-0054: it touches neither their tables nor the standing-grant operation list,
--- which 0057 widens after the latest rewrite of that list.
+-- which 0060 widens after the latest rewrite of that list.
 ALTER TABLE project_work_items
   ADD COLUMN creation_origin text CHECK (creation_origin IN ('native_agent', 'ai_proposal', 'human')),
   ADD COLUMN creation_baseline jsonb,

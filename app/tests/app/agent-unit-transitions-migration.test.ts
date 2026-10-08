@@ -94,7 +94,7 @@ test('0054 adds exactly unit completion/transfer to the grant CHECK and a guarde
     assertExactMigrationLedger(upToCurrent, after);
 
     // After: rows are untouched; the database list is exactly the prior list plus the two operations. (The contract list
-    // grew later, by 0057's `work.creation.revert`; the exact head-list equality lives in its test.)
+    // grew later, by 0060's `work.creation.revert`; the exact head-list equality lives in its test.)
     assert.deepEqual((await client.query('SELECT * FROM agent_standing_grants WHERE id=$1', [historicGrant])).rows[0], historic);
     const definition = (await constraint('agent_standing_grants', 'agent_standing_grants_operation_check'))[0]!.definition as string;
     assert.deepEqual(listed(definition), [...OPERATIONS_AT_0054].sort());

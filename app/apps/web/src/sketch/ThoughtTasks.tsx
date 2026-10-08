@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import { createPortal } from 'react-dom';
 import { Link, useRevalidator } from 'react-router';
 import type { ThoughtTaskRow, WorkThoughtTasks } from '@flux/contracts';
-import { Icon, IconButton, MEDIA, Sheet, duration, play, trapTab, useMediaQuery } from '../ui';
+import { AgentTag, Icon, IconButton, MEDIA, Sheet, StatusGlyph, duration, play, trapTab, useMediaQuery } from '../ui';
 import { STATUS_LABEL } from '../work/format';
 import { getWorkThoughtTasks, thoughtChunks } from '../work/read-api';
 import { useWorkRead } from '../work/useWorkRead';
@@ -114,11 +114,11 @@ export function ThoughtTasks({ thought, tasks: entry, projectId, variant, onOpen
         {tasks.map((item) => (
           <li key={item.id}>
             <Link className="sk-task" to={taskHref(projectId, item.id)} title={`Task ${item.id}`} data-work-id={item.id} onClick={(event) => choose(event, item.id)}>
-              <span className={`ws-dot ws-dot--${item.parked ? 'parked' : item.status}`} aria-hidden="true" />
+              <StatusGlyph status={item.status} className={item.parked ? 'ui-glyph--parked' : undefined} />
               <span className="sk-task__b">
                 <span className="sk-task__t">{item.title}</span>
                 <span className="sk-task__m"><span className="sk-task__id">{taskId(item.id)}</span> · {STATUS_LABEL[item.status]}{item.parked ? ' · parked' : ''}</span>
-                <span className="sk-task__m sk-task__people">{item.owner ? `Owner ${item.owner.name}${item.owner.kind === 'agent' ? ' (agent)' : ''}` : 'No owner yet'} · added by {item.createdBy.name}{item.createdBy.kind === 'agent' ? ' (agent)' : ''}</span>
+                <span className="sk-task__m sk-task__people">{item.owner ? <>Owner {item.owner.name}{item.owner.kind === 'agent' ? <> <AgentTag /></> : null}</> : 'No owner yet'} · added by {item.createdBy.name}{item.createdBy.kind === 'agent' ? <> <AgentTag /></> : null}</span>
               </span>
               <Icon name="chevron-right" size={14} />
             </Link>

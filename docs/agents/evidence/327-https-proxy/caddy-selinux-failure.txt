@@ -1,0 +1,1 @@
+{"level":"error","ts":1791407347.8630986,"msg":"reading config from file: open /etc/caddy/Caddyfile: permission denied"}

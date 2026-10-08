@@ -97,12 +97,12 @@ history, and the inbox labels it "Task creation undone".
   scoped checks and foreign keys, the `task.creation_reverted` notice kind, the receipt table and two guards: a
   receipt is immutable, and a reverted task is read only for every column 0048 knows (a later migration can still
   backfill its own new column, for example a task number). No history is inferred or backfilled.
-- **0057** adds `work.creation.revert` to the closed standing-grant operation list. It cannot live in 0048:
+- **0060** adds `work.creation.revert` to the closed standing-grant operation list. It cannot live in 0048:
   0049, 0050 and 0054 each rewrite the whole list after 0048 on a fresh database. A later rewrite must keep it.
-- On an existing database (ledger at 0054) the migrator applies the lower missing 0048 and then 0057;
-  `FLUX_SCHEMA_VERSION` is 57.
+- On an existing database (ledger at 0054) the migrator applies the lower missing 0048 and then 0060;
+  `FLUX_SCHEMA_VERSION` is 60.
 
-<a id="reversal"></a>**Reversal.** `reverse/0057_…down.sql` and `reverse/0048_…down.sql` are guarded: they refuse
+<a id="reversal"></a>**Reversal.** `reverse/0060_…down.sql` and `reverse/0048_…down.sql` are guarded: they refuse
 and change nothing once any feature fact exists (a baseline, which every task created after the upgrade has, a use
 latch, a reversion notice or receipt, or a `work.creation.revert` grant). After that, recover from the paired
 pre-upgrade database and files backup with the matching image. Before that, with the API and worker stopped:
@@ -112,7 +112,7 @@ FLUX_REVERSE_0048_QUIESCED=true node tooling/dist/reverse-task-creation-undo.js 
 ```
 
 It holds the migrator's advisory lock, takes the affected tables `ACCESS EXCLUSIVE NOWAIT` (an active holder is
-refused), requires the exact ledger of this image, runs both downs and removes exactly the 57 and 48 ledger rows in
+refused), requires the exact ledger of this image, runs both downs and removes exactly the 60 and 48 ledger rows in
 one transaction. An uncertain COMMIT is reported as unknown and the client is destroyed. Without `--execute` it
 prints the plan. Start only the matching prior image afterwards.
 

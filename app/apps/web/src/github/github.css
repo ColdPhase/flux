@@ -2,22 +2,22 @@
 .github-settings__head { display: flex; justify-content: space-between; gap: 16px; align-items: baseline; }
 .github-settings h2 { margin: 0; font-size: var(--fs-lg); }
 .github-settings h3 { margin: 0 0 6px; font-size: var(--fs-base); }
-.github-settings p { font-size: var(--fs-sm); line-height: 1.5; color: var(--text-2); margin: 6px 0 14px; }
+.github-settings p { font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); margin: 6px 0 14px; }
 .github-settings section { padding: 18px 0; border-top: 1px solid var(--line); }
 .github-settings__actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 16px; }
 .github-settings__form { display: grid; grid-template-columns: minmax(120px, 160px) minmax(0, 1fr); gap: 10px 14px; align-items: center; margin: 14px 0 0; }
 .github-settings__form > .ui-btn, .github-settings__form > .github-settings__actions { grid-column: 2; justify-self: start; }
-.github-settings label { font-size: var(--fs-sm); color: var(--text-2); }
-.github-settings select, .github-settings input:not([type=checkbox]) { width: 100%; min-width: 0; min-height: 36px; border: 1px solid var(--line-strong); border-radius: var(--r-sm); padding: 6px 9px; background: var(--bg); color: var(--text); font: inherit; }
+.github-settings label { font-size: var(--fs-sm); color: var(--t2); }
+.github-settings select, .github-settings input:not([type=checkbox]) { width: 100%; min-width: 0; min-height: 36px; border: 1px solid var(--line2); border-radius: var(--r-sm); padding: 6px 9px; background: var(--el); color: var(--t1); font: inherit; }
 .github-settings__repos, .github-settings__pulls { list-style: none; padding: 0; margin: 8px 0; }
 .github-settings__repos li { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
 .github-settings__repos li > a { flex: 1; overflow-wrap: anywhere; }
-.github-settings__repos span, .github-settings__pulls span { color: var(--text-3); font-size: var(--fs-sm); }
+.github-settings__repos span, .github-settings__pulls span { color: var(--t3); font-size: var(--fs-sm); }
 .github-settings__pulls li { display: grid; gap: 4px; padding: 10px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
-.github-settings a { color: var(--accent); }
-.github-settings .github-settings__error { color: var(--danger); }
+.github-settings a { color: var(--t1); }
+.github-settings .github-settings__error { color: var(--t1); }
 .github-settings__note { max-width: 75ch; }
-.github-settings .github-settings__disclose { grid-column: 2; margin: 0; color: var(--text); }
-.github-settings__check { display: flex; align-items: center; gap: 10px; min-height: var(--ctl); font-size: var(--fs-md) !important; color: var(--text) !important; }
-.github-settings__check input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+.github-settings .github-settings__disclose { grid-column: 2; margin: 0; color: var(--t1); }
+.github-settings__check { display: flex; align-items: center; gap: 10px; min-height: var(--ctl); font-size: var(--fs-md) !important; color: var(--t1) !important; }
+.github-settings__check input { width: 18px; height: 18px; margin: 0; accent-color: var(--t1); }
 @media(max-width: 640px) { .github-settings__head { flex-direction: column; gap: 6px; } .github-settings__form { grid-template-columns: 1fr; gap: 6px; } .github-settings__form > .ui-btn, .github-settings__form > .github-settings__actions, .github-settings .github-settings__disclose { grid-column: 1; } .github-settings select, .github-settings input:not([type=checkbox]) { min-height: 44px; } .github-settings__check { min-height: 44px; } .github-settings__repos li { flex-wrap: wrap; } }

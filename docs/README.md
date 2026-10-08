@@ -27,24 +27,13 @@ direction is in the [decision register](product/decisions.md).
 
 - [Product direction](product/README.md), including the full founder document.
 - [Decision register](product/decisions.md) — accepted direction, proposals, open choices.
-- [Design workflow](design/README.md) — realistic variants, density and independent review.
+- [Final design "Prostota"](design/final/README.md) — the only UI/UX: rules, tokens, Kreska and every screen.
+- [Design workflow](design/README.md) — how to implement and review against the final design.
 - [Container development](development/containers.md) — Docker/Compose for the application and services.
 - [Application foundation](development/application-foundation.md) — clean start, integration fixture and operations.
+- [Time to first run](development/time-to-first-run.md) — measured time from `git clone` to a running Flux, and what the README missed.
 - [Operations](operations/README.md) — backup schedule, restore, project export, upgrade and disk hygiene.
 - [Integrations](integrations/README.md) — the public extension contracts of v0.1 (MCP tools, project export), their
   compatibility rules, permissions, retries and errors, for integrators and operators.
 - [Architecture](development/architecture.md) — layers, dependency direction, where code and tests go, known debt.
 - [Access policy](development/access-policy.md) — workspaces, projects, grants, agents, drafts and the single authorization choke point.
-
-## Prototype
-
-The v8 design documents are currently in Polish:
-
-- [Walkthrough](prototype/README.md) — what to try and how the prototype behaves.
-- [Specification](prototype/SPECIFICATION.md) — interactions and design decisions.
-- [Changelog](prototype/CHANGELOG.md) — changes from v7 to v8.
-- [Audit](prototype/AUDIT.md) — historical verification and remaining limitations.
-
-The runnable prototype is [flux-ux-v8.html](../flux-ux-v8.html) in the repository
-root. The design notes refer to earlier test materials that were not included in
-this repository; they are not an automated test suite.
