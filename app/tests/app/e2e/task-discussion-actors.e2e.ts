@@ -5,7 +5,7 @@ import http from 'node:http';
 import net from 'node:net';
 import { join } from 'node:path';
 import { after, afterEach, before, test } from 'node:test';
-import { chromium, type Browser, type BrowserContext, type Locator } from 'playwright';
+import { chromium, type Browser, type BrowserContext, type Locator, type Page } from 'playwright';
 import { taskDiscussionPath, type ConversationMessage, type WorkItem } from '@flux/contracts';
 import { workUseCases } from '../../../apps/server/src/work/adapters.js';
 import { taskDiscussionUseCases } from '../../../apps/server/src/work/task-discussions.js';
@@ -120,6 +120,51 @@ async function assertAuthorColumn(row: Locator, width: number) {
   assert.ok(Math.abs(geometry.metaX - geometry.faceRight - (width <= 680 ? 10 : 12)) <= 1,
     'the author name follows the common face column and required gap');
   assert.equal(geometry.direction, 'row', 'own authors keep the same order');
+}
+
+async function captureVisibleAuthor(page: Page, row: Locator, name: string, evidence: string | undefined) {
+  const meta = row.locator('.project-convo__message-meta, .convo-notice__meta');
+  await meta.scrollIntoViewIfNeeded();
+  await page.evaluate(() => document.fonts.ready);
+  await page.waitForFunction(() => document.getAnimations().every((animation) =>
+    animation.effect?.getTiming().iterations === Infinity || (!animation.pending && animation.playState !== 'running')));
+  const inspect = () => row.evaluate((element) => {
+    const label = element.querySelector<HTMLElement>('.agent-for, .convo-notice__meta strong')!;
+    const meta = element.querySelector<HTMLElement>('.project-convo__message-meta, .convo-notice__meta')!;
+    const face = element.querySelector<HTMLElement>(':scope > :is(.ui-avatar, .author-face)')!;
+    const bounds = (node: HTMLElement) => {
+      const r = node.getBoundingClientRect();
+      return { x: r.x, y: r.y, width: r.width, height: r.height,
+        inViewport: r.x >= 0 && r.y >= 0 && r.right <= innerWidth && r.bottom <= innerHeight };
+    };
+    const ancestors = [];
+    for (let node: HTMLElement | null = label; node; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      ancestors.push({ opacity: Number(style.opacity), display: style.display,
+        visibility: style.visibility, hidden: node.hidden, inert: node.inert, ariaHidden: node.getAttribute('aria-hidden') });
+    }
+    const r = label.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+    return { text: label.innerText, label: bounds(label), meta: bounds(meta), face: bounds(face), ancestors,
+      uncovered: !!hit && (hit === label || label.contains(hit)) };
+  });
+  const samples = [];
+  for (let i = 0; i < 3; i++) {
+    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    const sample = await inspect();
+    assert.ok(sample.label.inViewport && sample.meta.inViewport && sample.face.inViewport && sample.uncovered,
+      `${name}: the actual full author and face are in the viewport and uncovered`);
+    assert.ok(sample.ancestors.every((a) => a.opacity === 1 && a.display !== 'none' && a.visibility === 'visible'
+      && !a.hidden && !a.inert && a.ariaHidden !== 'true'), `${name}: no hidden or leaving panel covers the author`);
+    samples.push(sample);
+  }
+  assert.deepEqual(samples[2], samples[0], `${name}: visible identity is stable over rendered frames`);
+  if (evidence) {
+    await page.screenshot({ path: join(evidence, `${name}.png`), fullPage: true });
+    const after = await inspect();
+    assert.deepEqual(after, samples[2], `${name}: the author stays visible throughout the raw capture`);
+    writeFileSync(join(evidence, `${name}-visibility.json`), JSON.stringify({ before: samples[2], after }, null, 2));
+  }
 }
 
 test('agent root renders without a human DM link, real human reply persists, and readers retain genuine history',
@@ -240,18 +285,14 @@ test('agent root renders without a human DM link, real human reply persists, and
         assert.equal(await view.evaluate(() => document.documentElement.scrollWidth - innerWidth), 0,
           'full author names and faces fit the phone at enlarged text');
         if (evidence) await view.screenshot({ path: join(evidence, 'mixed-authors-reader-390-text200.png'), fullPage: true });
-        await agentRow.scrollIntoViewIfNeeded();
+        await view.getByRole('button', { name: 'Close replies', exact: true }).click();
+        await view.locator('#thread').waitFor({ state: 'detached' });
         await assertAuthorColumn(agentRow, width);
-        const ownerLabel = agentRow.locator('.agent-for');
-        const visibleOwner = await ownerLabel.boundingBox();
-        assert.ok(visibleOwner && visibleOwner.x >= 0 && visibleOwner.x + visibleOwner.width <= width,
-          'the enlarged agent owner is fully within the phone');
-        if (evidence) await view.screenshot({ path: join(evidence, 'agent-owner-reader-390-text200.png'), fullPage: true });
+        await captureVisibleAuthor(view, agentRow, 'agent-owner-reader-390-text200', evidence);
         const event = view.locator(`.convo-notice[data-work-id="${task.id}"]`);
-        await event.scrollIntoViewIfNeeded();
         await assertAuthorColumn(event, width);
         assert.equal(await event.locator('.convo-notice__meta strong').innerText(), 'Casey Human');
-        if (evidence) await view.screenshot({ path: join(evidence, 'task-event-reader-390-text200.png'), fullPage: true });
+        await captureVisibleAuthor(view, event, 'task-event-reader-390-text200', evidence);
       }
     }
     assert.deepEqual((await pool.query('SELECT * FROM project_messages WHERE id=$1', [root.id])).rows[0], stored);
@@ -272,19 +313,19 @@ test('agent root renders without a human DM link, real human reply persists, and
     await workspaceView.emulateMedia({ colorScheme: 'dark' });
     await workspaceView.goto(`/projects/${place.id}/conversations/${workspaceRoot.conversationId}`);
     await workspaceView.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
+    await workspaceView.getByRole('button', { name: 'Close replies', exact: true }).click();
+    await workspaceView.locator('#thread').waitFor({ state: 'detached' });
     const workspaceEvent = workspaceView.locator(`.convo-notice[data-work-id="${workspaceTask.id}"]`);
-    await workspaceEvent.scrollIntoViewIfNeeded();
     await assertAuthorColumn(workspaceEvent, 390);
     await workspaceEvent.locator('.agent-for').filter({ hasText: 'for the workspace' }).waitFor();
     assert.match(await workspaceEvent.innerText(), /Workspace analyst\s*Agent/);
-    if (evidence) await workspaceView.screenshot({ path: join(evidence, 'workspace-agent-event-390-dark-text200.png'), fullPage: true });
+    await captureVisibleAuthor(workspaceView, workspaceEvent, 'workspace-agent-event-390-dark-text200', evidence);
     const workspaceRow = workspaceView.locator(`#message-${workspaceRoot.id}`);
-    await workspaceRow.scrollIntoViewIfNeeded();
     await assertAuthorColumn(workspaceRow, 390);
     await workspaceRow.locator('.agent-for').filter({ hasText: 'for the workspace' }).waitFor();
     assert.equal(await workspaceRow.locator('a[href*="/dm/new"]').count(), 0);
     assert.equal(await workspaceView.evaluate(() => document.documentElement.scrollWidth - innerWidth), 0);
-    if (evidence) await workspaceView.screenshot({ path: join(evidence, 'workspace-agent-author-390-dark-text200.png'), fullPage: true });
+    await captureVisibleAuthor(workspaceView, workspaceRow, 'workspace-agent-author-390-dark-text200', evidence);
     assert.deepEqual(errors, []);
   });
 
