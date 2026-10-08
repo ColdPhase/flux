@@ -1,5 +1,5 @@
 import type { DocState } from '@flux/contracts';
-import { forgetReloadRetention, setReloadRetention } from '../app/reload-retention';
+import { forgetReloadRetention, setReloadRetention } from '../app/reload-retention.js';
 
 // Unsaved editor text, kept per person and page in this tab (#112) so a reload or a move to
 // another page or tab does not lose it. The reader says when a page has some (#136).

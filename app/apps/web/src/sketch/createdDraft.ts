@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { FILE_LIMITS, SKETCH_LIMITS, type SketchDetail, type ThoughtFile } from '@flux/contracts';
-import { forgetReloadRetention, setReloadRetention } from '../app/reload-retention';
+import { forgetReloadRetention, setReloadRetention } from '../app/reload-retention.js';
 
 /** One future thought of a pasted list (#252): its own thought ID, link ID, request key and spot. */
 export interface DraftLine {

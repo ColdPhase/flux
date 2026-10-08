@@ -58,3 +58,22 @@ device privacy retirement and durable command/file/reference identities intact.
 This changes no acceptance criteria or runtime budget. Pin the resulting clean
 tree and compare all incoming main blobs/modes and retained recovery artifacts;
 source composition and repository checks are not a current application result.
+
+## First current recovery verification
+
+On 2026-10-08 the explicitly admitted private v3 `current-routes` run used
+`26da4e908856eb8d160e3746572ace75fd21a0cb`. Its actual maintained child and
+driver both exited 1 during the Docker build/type check: TS2835 requires explicit
+`.js` import specifiers for the reload-retention module in `docs/drafts.ts` and
+`sketch/createdDraft.ts` when those modules enter the NodeNext test graph.
+The fourteen route-browser methods did not execute. The private result also
+records that the incomplete build produced no required foundation image; this
+is not a browser or persistence failure observation.
+
+The run's own cleanup reported no containers, volumes, networks or image tags,
+and its recorded main/probe groups settled without a deadline. Keep the frozen
+26da source, v3 preparation/review and failed run unchanged. Adding the two
+required import extensions changes no retention, permission or recovery
+criterion; a fresh pinned source review and explicitly admitted preparation/build
+and actual route/browser checks remain required. No application acceptance is
+inferred from source, setup or whitespace checks.
