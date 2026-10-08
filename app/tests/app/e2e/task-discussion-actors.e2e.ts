@@ -125,6 +125,7 @@ async function assertAuthorColumn(row: Locator, width: number) {
 async function captureVisibleAuthor(page: Page, row: Locator, name: string, evidence: string | undefined) {
   const meta = row.locator('.project-convo__message-meta, .convo-notice__meta');
   await meta.scrollIntoViewIfNeeded();
+  if (await page.evaluate(() => matchMedia('(hover: hover)').matches)) await meta.hover();
   await page.evaluate(() => document.fonts.ready);
   await page.waitForFunction(() => document.getAnimations().every((animation) =>
     animation.effect?.getTiming().iterations === Infinity || (!animation.pending && animation.playState !== 'running')));
@@ -133,7 +134,11 @@ async function captureVisibleAuthor(page: Page, row: Locator, name: string, evid
     const meta = element.querySelector<HTMLElement>('.project-convo__message-meta, .convo-notice__meta')!;
     const face = element.querySelector<HTMLElement>(':scope > :is(.ui-avatar, .author-face)')!;
     const parts = [];
-    for (const [name, part] of [['label', label], ['meta', meta], ['face', face]] as const) {
+    const authorName = meta.querySelector<HTMLElement>('.agent-id__name, :scope > strong')!;
+    const tag = meta.querySelector<HTMLElement>('.agent-tag');
+    const identities = [['label', label], ['meta', meta], ['face', face], ['name', authorName]] as const;
+    const targets = [...identities, ...(tag ? [['tag', tag] as const] : [])];
+    for (const [name, part] of targets) {
       const ancestors = [];
       for (let node: HTMLElement | null = part; node; node = node.parentElement) {
         const style = getComputedStyle(node);
@@ -141,10 +146,14 @@ async function captureVisibleAuthor(page: Page, row: Locator, name: string, evid
           visibility: style.visibility, hidden: node.hidden, inert: node.inert, ariaHidden: node.getAttribute('aria-hidden') });
       }
       const r = part.getBoundingClientRect();
-      const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+      const points = [[0.1, 0.5], [0.5, 0.5], [0.9, 0.5]];
+      const uncovered = points.every(([x, y]) => {
+        const hit = document.elementFromPoint(r.x + r.width * x, r.y + r.height * y);
+        return !!hit && (hit === part || part.contains(hit));
+      });
       parts.push({ name, x: r.x, y: r.y, width: r.width, height: r.height, ancestors,
         inViewport: r.x >= 0 && r.y >= 0 && r.right <= innerWidth && r.bottom <= innerHeight,
-        uncovered: !!hit && (hit === part || part.contains(hit)) });
+        uncovered });
     }
     return { text: label.innerText, parts };
   });
