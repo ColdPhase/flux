@@ -112,6 +112,7 @@
    author-column width is narrow relative to the reader's font size. Container em units scale with it. */
 @container task-notice (max-width: 14em) {
   .convo-notice__title { display: block; -webkit-line-clamp: unset; }
-  .convo-notice__meta { flex-direction: column; align-items: flex-start; }
+  .convo-notice__meta { align-self: stretch; }
+  .convo-notice__meta time { flex-basis: 100%; }
 }
 @media (max-width: 680px) { .convo-notice { padding-left: 42px; margin: 14px 0; } .convo-notice + .convo-notice { margin-top: -6px; } }
