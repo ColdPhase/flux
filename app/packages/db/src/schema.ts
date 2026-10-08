@@ -1659,6 +1659,7 @@ export const githubTaskRules = pgTable('github_task_rules', {
   expectedVersion: integer('expected_version').notNull(), expectedStatus: text('expected_status', { enum: WORK_STATUS }).notNull(),
   expectedBlocker: text('expected_blocker'), blockedBy: text('blocked_by', { enum: ['check', 'closed'] }),
   readyToClose: boolean('ready_to_close').notNull().default(false),
+  revision: integer('revision').notNull().default(1),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [foreignKey({ columns: [t.workspaceId, t.projectId, t.taskId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade')]);
 export const githubTaskRuleChanges = pgTable('github_task_rule_changes', {

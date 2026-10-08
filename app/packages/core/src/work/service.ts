@@ -355,6 +355,10 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       if (command.criteria !== undefined) changes.criteria = valid.criteria(command.criteria);
       const dependencyIds = command.dependencyIds === undefined ? undefined : valid.dependencyIds(command.dependencyIds);
       if (!Object.keys(changes).length && dependencyIds === undefined) throw new InvalidInputError('Nothing to change');
+      // Status, blocker and parking are what a GitHub rule moves; changing any of them, also to the same value, overrides it.
+      const overrides = command.status !== undefined || command.blocker !== undefined || command.parked !== undefined;
+      const ruleRevision = command.expectedGithubRuleRevision;
+      if (ruleRevision !== undefined && (!Number.isSafeInteger(ruleRevision) || ruleRevision < 0)) throw new InvalidInputError('expectedGithubRuleRevision must be a non-negative integer');
       // The exact text the person explicitly saved; undefined/cleared/empty contribute nothing.
       const savedBlocker = changes.blocker || null;
       return uow.run(async (ports) => {
@@ -392,6 +396,8 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         // completes its stage so the append can only follow the complete task set.
         const current = contribution ? (await ports.contributions.lockTasks(contribution))[0]! : (await ports.work.findWork(id, { lock: true }))!;
         if (current.version !== version) throw new VersionConflictError(current.version, await presentWork(ports, current));
+        if (ruleRevision !== undefined && ((await ports.work.githubRules([id])).get(id)?.revision ?? 0) !== ruleRevision)
+          throw new VersionConflictError(current.version, await presentWork(ports, current));
         const nextStatus = changes.status ?? current.status;
         // A person who explicitly finishes parked work with its current version also takes it
         // out of the parked list; work is never both finished and parked.
@@ -403,6 +409,9 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         if (changes.owner !== undefined) await requireOwner(ports, projectId, changes.owner);
         if (dependencyIds !== undefined) await assertNoDependencyCycle(ports.work, workspaceId, id, dependencyIds);
         const record = await ports.work.updateWork(id, changes);
+        // A person's override suspends the task's rule now, not at the next delivery. Finishing work leaves it: a rule
+        // never acts on finished work, and its one-tap Done is how "Ready to close" ends.
+        if (overrides && !FINISHED.has(nextStatus)) await ports.work.suspendGithubRule({ id, fromStatus: current.status, status: record.status, version: record.version });
         if (dependencyIds !== undefined) await ports.work.replaceDependencies({ workspaceId, projectId }, id, dependencyIds);
         // It starts or finishes only with every prerequisite done and unparked, and keeps that while it
         // is active. The check reads the edges as just replaced; a failure rolls back the whole change.

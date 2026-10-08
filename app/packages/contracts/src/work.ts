@@ -227,6 +227,12 @@ export interface UpdateWorkCommand extends VersionPrecondition {
    * version precondition alone fences a stale identical retry.
    */
   clientCommandId?: string;
+  /**
+   * Optional second precondition for a change of status, blocker or parking on a task with a GitHub rule: the rule
+   * `revision` the person saw (0: no rule). A mismatch is a 409 with the current task and rule, so a person overrides
+   * the state they saw, not a newer automatic change. Without it the change is an explicit manual override.
+   */
+  expectedGithubRuleRevision?: number;
   title?: string;
   outcome?: string;
   owner?: PrincipalRef | null;

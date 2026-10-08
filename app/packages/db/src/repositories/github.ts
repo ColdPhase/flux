@@ -17,6 +17,7 @@ const ruleView = (row: Rule) => row;
 const changeView = (row: RuleChange) => row;
 const linkView = (row: Link) => { const { id, workspaceId, projectId, taskId, bindingId, role, facts, verifiedAt, state } = row; return { id, workspaceId, projectId, taskId, bindingId, role, facts, verifiedAt, state }; };
 const LOCAL = { origin: 'binding' as const, deliveryId: null };
+type GithubOverrideStatus = typeof s.githubTaskRuleChanges.$inferSelect['fromStatus'];
 const ids = (rows: { id: string }[]) => rows.map((row) => row.id);
 export function githubRows(db: DbExecutor) {
   const b = s.githubBindings; const l = s.githubTaskLinks; const p = s.githubProcessing; const d = s.githubDeliveries;
@@ -52,7 +53,7 @@ export function githubRows(db: DbExecutor) {
     const rules = (await db.select().from(r).where(and(inArray(r.taskId, taskIds), eq(r.state, 'active'))).orderBy(asc(r.taskId)).for('update')).filter(ours);
     if (!rules.length) return 0;
     const now = new Date();
-    await db.update(r).set({ state: 'suspended', suspendedReason: reason, readyToClose: false, updatedAt: now })
+    await db.update(r).set({ state: 'suspended', suspendedReason: reason, readyToClose: false, revision: sql`${r.revision} + 1`, updatedAt: now })
       .where(inArray(r.taskId, rules.map((rule) => rule.taskId)));
     const history = rules.flatMap((rule) => {
       const task = tasks.get(rule.taskId); const bindingId = bindingOf.get(rule.taskId);
@@ -179,6 +180,23 @@ export function githubRows(db: DbExecutor) {
     /** After an explicit authorization revoke: the rules reading its bindings and the rules this person set up (see `suspendRules`). */
     async suspendRulesFor(bindingIds: string[], authorUserId: string) {
       return await suspendRules({ bindingIds }, LOCAL) + await suspendRules({ authorUserId }, LOCAL);
+    },
+    /**
+     * A person's explicit change of a task's status, blocker or parking is a manual override (#74): the active rule is
+     * suspended in the same transaction, one history line is kept, and its revision grows. The caller holds the task
+     * row lock; this takes the rule row after it, as processing does. Returns whether a rule was suspended.
+     */
+    async suspendRuleForOverride(task: { id: string; fromStatus: GithubOverrideStatus; status: GithubOverrideStatus; version: number }) {
+      const [rule] = await db.select().from(r).where(and(eq(r.taskId, task.id), eq(r.state, 'active'))).for('update');
+      if (!rule) return false;
+      const now = new Date();
+      await db.update(r).set({ state: 'suspended', suspendedReason: 'manual_change', readyToClose: false, blockedBy: null, revision: rule.revision + 1, updatedAt: now })
+        .where(eq(r.taskId, task.id));
+      const [read] = await db.select({ bindingId: l.bindingId }).from(l).where(and(eq(l.taskId, task.id), eq(l.role, 'required_output'))).orderBy(asc(l.bindingId)).limit(1);
+      if (read) await db.insert(c).values({ id: randomUUID(), workspaceId: rule.workspaceId, projectId: rule.projectId, taskId: task.id, code: 'suspended_manual',
+        fromStatus: task.fromStatus, toStatus: task.status, blocker: null, readyToClose: false, authorUserId: rule.authorUserId, linkId: null, pullNumber: null,
+        headSha: null, checkName: null, deliveryId: null, bindingId: read.bindingId, origin: 'binding', taskVersion: task.version, createdAt: now }).onConflictDoNothing();
+      return true;
     },
     async rule(taskId: string, lock = false) {
       const query = db.select().from(r).where(eq(r.taskId, taskId));

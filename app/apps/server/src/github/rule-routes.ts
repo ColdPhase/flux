@@ -8,15 +8,16 @@ import type { createGithubRuleUseCases } from './adapters.js';
 // Reading and turning off work without App configuration; turning on needs the person's own current GitHub access.
 const mode = { type: 'string', enum: [...GITHUB_RULE_MODES] } as const;
 const version = { type: 'integer', minimum: 1 } as const;
-const ruleBody = { type: 'object', additionalProperties: false, required: ['enabled', 'expectedVersion'], properties: { enabled: { type: 'boolean' }, mode, expectedVersion: version } } as const;
-const resumeBody = { type: 'object', additionalProperties: false, required: ['expectedVersion'], properties: { expectedVersion: version } } as const;
+const expectedRuleRevision = { type: 'integer', minimum: 0 } as const;
+const ruleBody = { type: 'object', additionalProperties: false, required: ['enabled', 'expectedVersion'], properties: { enabled: { type: 'boolean' }, mode, expectedVersion: version, expectedRuleRevision } } as const;
+const resumeBody = { type: 'object', additionalProperties: false, required: ['expectedVersion'], properties: { expectedVersion: version, expectedRuleRevision } } as const;
 const defaultBody = { type: 'object', additionalProperties: false, required: ['enabled'], properties: { enabled: { type: 'boolean' }, mode: { type: ['string', 'null'], enum: [...GITHUB_RULE_MODES, null] } } } as const;
 
 export function githubRuleRoutes(app: FastifyInstance, rules: ReturnType<typeof createGithubRuleUseCases>, principal: (request: FastifyRequest) => Promise<Principal>) {
   app.get<{ Params: { taskId: string } }>('/api/v1/work/:taskId/github-rule', async (request) => rules.read(await principal(request), request.params.taskId));
   app.put<{ Params: { taskId: string }; Body: SetGithubTaskRuleCommand }>('/api/v1/work/:taskId/github-rule', { schema: { body: ruleBody } },
     async (request) => rules.set(await principal(request), request.params.taskId, request.body));
-  app.post<{ Params: { taskId: string }; Body: { expectedVersion: number } }>('/api/v1/work/:taskId/github-rule/resume', { schema: { body: resumeBody } },
+  app.post<{ Params: { taskId: string }; Body: { expectedVersion: number; expectedRuleRevision?: number } }>('/api/v1/work/:taskId/github-rule/resume', { schema: { body: resumeBody } },
     async (request) => rules.resume(await principal(request), request.params.taskId, request.body));
   app.put<{ Params: { projectId: string }; Body: SetGithubRuleDefaultCommand }>('/api/v1/projects/:projectId/github/rule-default', { schema: { body: defaultBody } },
     async (request) => ({ ruleDefault: await rules.setRuleDefault(await principal(request), request.params.projectId, request.body) }));

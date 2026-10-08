@@ -281,6 +281,48 @@ describe('linked PRs move the same Flux task (#74 G-1a)', () => {
     assert.equal(off.rule?.state, 'off', 'any writer can turn it off without GitHub');
   });
 
+  test('a manual override suspends the rule in its own transaction; the rule revision is its optional compare-and-set', async () => {
+    const { owner, writer, task, binding } = await setup('Cas');
+    fixture.set(REPO, 70, {});
+    await github.link(actor(owner), task.id, { bindingId: binding.id, number: 70, role: 'required_output' });
+    const first = await enable(writer, task); await settle(binding);
+    assert.equal(first.rule?.revision, 1, 'turning it on is revision 1');
+    let current = await work(owner, task);
+    assert.deepEqual([current.status, current.githubRule?.revision], ['in_progress', 2], 'an automatic task change is a new revision');
+
+    // Someone else turns it off and on again: the rule moves on while this person still holds revision 2.
+    const off = await call(writer, 'PUT', rulePath(task), { enabled: false, expectedVersion: current.version, expectedRuleRevision: 2 });
+    assert.deepEqual([off.status, off.json.rule.state, off.json.rule.revision], [200, 'off', 3]);
+    const stale = await call(owner, 'PUT', rulePath(task), { enabled: true, expectedVersion: current.version, expectedRuleRevision: 2 });
+    assert.deepEqual([stale.status, stale.json.code], [409, 'VERSION_CONFLICT'], 'a rule changed since the person saw it conflicts');
+    const again = await call(owner, 'PUT', rulePath(task), { enabled: true, expectedVersion: current.version, expectedRuleRevision: 3 });
+    assert.deepEqual([again.status, again.json.rule.state, again.json.rule.revision], [200, 'active', 4]);
+
+    // A status change pinned to a stale rule revision is refused without mutation; the current one overrides.
+    current = await work(owner, task);
+    const refused = await owner.browser.request('PATCH', `/api/v1/work/${task.id}`, { body: { status: 'blocked', blocker: 'Supplier', expectedVersion: current.version, expectedGithubRuleRevision: 3 } });
+    assert.equal(refused.status, 409, 'the rule changed after the person saw it');
+    const unchanged = await work(owner, task);
+    assert.deepEqual([unchanged.status, unchanged.version, unchanged.githubRule?.state], [current.status, current.version, 'active']);
+    const rev = current.githubRule!.revision;
+    current = expectStatus(await owner.browser.request('PATCH', `/api/v1/work/${task.id}`,
+      { body: { status: 'blocked', blocker: 'Supplier', expectedVersion: current.version, expectedGithubRuleRevision: rev } }), 200) as WorkItem;
+    assert.deepEqual([current.githubRule?.state, current.githubRule?.suspendedReason, current.githubRule?.revision], ['suspended', 'manual_change', rev + 1]);
+    const stored = await pool.query('SELECT state, suspended_reason, revision FROM github_task_rules WHERE task_id=$1', [task.id]);
+    assert.deepEqual(stored.rows[0], { state: 'suspended', suspended_reason: 'manual_change', revision: rev + 1 }, 'persisted in the same transaction, before any delivery');
+    assert.equal((await changes(owner, task))[0]!.code, 'suspended_manual');
+
+    // Title edits are not overrides; a same-value status correction is. Without a precondition it is an explicit override.
+    await call(owner, 'POST', `${rulePath(task)}/resume`, { expectedVersion: current.version, expectedRuleRevision: rev + 1 });
+    current = await work(owner, task);
+    current = await patch(owner, current, { title: 'Keep a manual off switch, renamed' });
+    assert.equal(current.githubRule?.state, 'active', 'other edits keep it');
+    current = await patch(owner, current, { status: current.status });
+    assert.deepEqual([current.githubRule?.state, current.githubRule?.suspendedReason], ['suspended', 'manual_change']);
+    const negative = await owner.browser.request('PATCH', `/api/v1/work/${task.id}`, { body: { status: 'open', expectedVersion: current.version, expectedGithubRuleRevision: -1 } });
+    assert.equal(negative.status, 400);
+  });
+
   test('a manager\'s project default turns the rule on for new required links, as the person linking', async () => {
     const { owner, writer, viewer, place, binding } = await setup('Default');
     const path = `/api/v1/projects/${place.id}/github/rule-default`;
