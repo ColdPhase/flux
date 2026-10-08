@@ -65,6 +65,8 @@ export function WikiLayout() {
     return () => observer.disconnect();
   }, []);
   useEffect(() => { if (docId) writeKey(pageKey(project.id), docId); }, [project.id, docId]);
+  // Focus is a computer setting: on a phone the pages are always a row of chips (nothing to exit),
+  // and the choice returns when the wiki is wide again.
   const value = useMemo<WikiState>(() => ({
     project, docs, focus, compact, writable: project.access !== 'viewer',
     setFocus(next: boolean) { writeKey(FOCUS_KEY, next ? '1' : null); setFocusState(next); },
@@ -72,8 +74,8 @@ export function WikiLayout() {
   return (
     <WikiContext.Provider value={value}>
       <div className="wiki-frame" ref={frame}>
-        <div className={`wiki${focus ? ' wiki--focus' : ''}${editing ? ' wiki--editing' : ''}`}>
-          <WikiIndex activeId={docId ?? null} hidden={focus} />
+        <div className={`wiki${focus && !compact ? ' wiki--focus' : ''}${editing ? ' wiki--editing' : ''}`}>
+          <WikiIndex activeId={docId ?? null} hidden={focus && !compact} />
           <div className="wiki-main pane-scroll"><Outlet /></div>
         </div>
       </div>

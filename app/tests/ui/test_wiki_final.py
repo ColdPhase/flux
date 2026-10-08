@@ -59,6 +59,12 @@ class WikiFinal(unittest.TestCase):
                       {"idempotency-key": str(uuid.uuid4())})
             if title == "Hardware":
                 cls.doc_id = doc["id"]
+        header = "| " + " | ".join(f"Column {i}" for i in range(1, 17)) + " |\n| " + " | ".join("---" for _ in range(16)) + " |\n"
+        row = "| " + " | ".join(f"cell {i}" for i in range(1, 16)) + " | LAST |\n"
+        wide = api("POST", f"/api/v1/projects/{project['id']}/docs", {"title": "Wide table", "body": "Sixteen columns.\n\n" + header + row, "state": "published"},
+                   {"idempotency-key": str(uuid.uuid4())})
+        cls.wide_id = wide["id"]
+        cls.sensors = {"Overview": 0}
         cls.state = ctx.storage_state()
         ctx.close()
 
@@ -103,13 +109,47 @@ class WikiFinal(unittest.TestCase):
                 expect(page.locator(".doc-prose h2", has_text="Range")).to_be_focused()
                 shot(page, f"wiki-final-desktop-1440-{theme}")
 
+    def test_focus_never_traps_a_narrow_wiki(self) -> None:
+        # Focus hides the list on a computer; on a phone the chips stay, and the choice comes back wide.
+        page = self.open(DESKTOP, "light")
+        index = page.get_by_role("navigation", name="Wiki pages")
+        page.get_by_role("button", name="Focus on the page").click()
+        expect(index).to_be_hidden()
+        page.set_viewport_size(PHONE)
+        expect(index).to_be_visible()
+        expect(index.get_by_role("link", name="Overview")).to_be_visible()
+        page.reload()
+        expect(index.get_by_role("link", name="Overview")).to_be_visible()
+        page.set_viewport_size(DESKTOP)
+        expect(index).to_be_hidden()
+        expect(page.get_by_role("button", name="Focus on the page")).to_have_attribute("aria-pressed", "true")
+        page.get_by_role("button", name="Focus on the page").click()
+        expect(index).to_be_visible()
+
+    def test_wide_table_scrolls_inside_its_card(self) -> None:
+        for size in ({"width": 320, "height": 640}, PHONE, {"width": 820, "height": 900}):
+            with self.subTest(width=size["width"]):
+                page = self.open(size, "light", touch=size["width"] < 600)
+                page.goto(f"/projects/{self.project_id}/docs/{self.wide_id}")
+                card = page.locator(".doc-table")
+                expect(card).to_have_count(1)
+                self.assertGreater(card.evaluate("e => e.scrollWidth - e.clientWidth"), 100, "the table is wider than its card")
+                self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), size["width"], "the page does not widen")
+                card.evaluate("e => { e.scrollLeft = e.scrollWidth; }")
+                last = page.get_by_role("cell", name="LAST")
+                box, frame = last.bounding_box(), card.bounding_box()
+                self.assertLessEqual(box["x"] + box["width"], frame["x"] + frame["width"] + 1, "the last column is reachable")
+                self.assertGreaterEqual(box["x"], frame["x"] - 1)
+                card.focus()
+                self.assertTrue(card.evaluate("e => e.matches(':focus')"), "the scrolling region takes the keyboard")
+
     def test_phone_title_chips_and_edit(self) -> None:
         for theme in ("light", "dark"):
             with self.subTest(theme=theme):
                 page = self.open(PHONE, theme, touch=True)
-                expect(page.locator(".wiki-bar__title")).to_have_text("Wiki · 4 pages")
+                expect(page.locator(".wiki-bar__title")).to_have_text("Wiki · 5 pages")
                 chips = page.get_by_role("navigation", name="Wiki pages")
-                expect(chips.locator(".wiki-page")).to_have_count(4)
+                expect(chips.locator(".wiki-page")).to_have_count(5)
                 expect(chips.get_by_role("link", name="Hardware")).to_have_attribute("aria-current", "page")
                 self.assertEqual(page.locator(".doc-prose").evaluate("e => [getComputedStyle(e).fontSize, getComputedStyle(e).lineHeight]"), ["16px", "25px"])
                 edit = page.get_by_role("link", name="Edit")
@@ -160,6 +200,11 @@ class WikiReferences(unittest.TestCase):
         api("POST", f"/api/v1/decisions/{accepted['id']}/accept", {"expectedVersion": accepted["version"]})
         proposed = api("POST", f"/api/v1/projects/{pid}/decisions", {"title": "Add frost warnings later"})
         foreign = api("POST", f"/api/v1/projects/{other['id']}/work", {"title": "Not in this project"})
+        agent = api("POST", f"/api/v1/workspaces/{ws['id']}/agents", {"name": "Alex", "owner": "self"})
+        api("POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "agent", "id": agent["id"]}, "role": "contributor"})
+        cls.agent_id = agent["id"]
+        cls.task_id, cls.task_version = task["id"], task["version"]
+        cls.proposed_id, cls.proposed_version = proposed["id"], proposed["version"]
         body = (f"Intro.\n\n[Measure soil moisture first](flux:decision/{accepted['id']})\n\n"
                 f"[Add frost warnings later](flux:decision/{proposed['id']})\n\n## Parts\n\n"
                 f"Probes: [Order the probes](flux:work/{task['id']}) and [Elsewhere](flux:work/{foreign['id']}).\n")
@@ -173,6 +218,14 @@ class WikiReferences(unittest.TestCase):
     def tearDownClass(cls) -> None:
         cls.browser.close()
         cls.pw.stop()
+
+    def other_session(self, method, path, body):
+        context = self.browser.new_context(base_url=ORIGIN, storage_state=self.state)
+        self.addCleanup(context.close)
+        response = context.request.fetch(f"{ORIGIN}{path}", method=method, data=json.dumps(body),
+                                         headers={"origin": ORIGIN, "content-type": "application/json"})
+        self.assertLess(response.status, 300, response.text())
+        return json.loads(response.text() or "{}")
 
     def read(self, viewport, touch=False, theme="light"):
         options = dict(base_url=ORIGIN, viewport=viewport, storage_state=self.state, color_scheme=theme, locale="en-GB")
@@ -211,6 +264,71 @@ class WikiReferences(unittest.TestCase):
 
     def test_phone_dark(self) -> None:
         self.check(self.read(PHONE, touch=True, theme="dark"), "wiki-refs-phone-390-dark", True)
+
+    def test_a_failed_read_is_retried_without_a_reload(self) -> None:
+        context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP, storage_state=self.state)
+        self.addCleanup(context.close)
+        page = context.new_page()
+        calls = []
+
+        def flaky(route):
+            calls.append(1)
+            route.abort() if len(calls) == 1 else route.continue_()
+        page.route("**/work-reference-rows?**", flaky)
+        page.goto(self.url)
+        expect(page.get_by_role("heading", level=2, name="References")).to_be_visible()
+        # The plain links stay until the read answers; the retry marks them, once each.
+        expect(page.locator("a.doc-task")).to_have_count(1, timeout=15000)
+        expect(page.locator("a.doc-task .doc-task__mark")).to_have_count(1)
+        expect(page.locator("a.doc-decision")).to_have_count(2)
+
+    def test_zz_marks_follow_the_objects_while_the_page_is_unchanged(self) -> None:
+        page = self.read(DESKTOP)
+        expect(page.locator("a.doc-task svg.ui-glyph--in_progress")).to_have_count(1)
+        expect(page.locator("a.doc-decision").nth(1)).to_contain_text("Decision proposed")
+        html = page.locator(".doc-prose").evaluate("e => e.innerHTML.length")
+        self.other_session("PATCH", f"/api/v1/work/{self.task_id}", {"status": "done", "expectedVersion": self.task_version})
+        self.other_session("POST", f"/api/v1/decisions/{self.proposed_id}/accept", {"expectedVersion": self.proposed_version})
+        # The reader's own refresh (focus), no reload and no change to the page's text.
+        page.evaluate("window.dispatchEvent(new Event('focus'))")
+        expect(page.locator("a.doc-task svg.ui-glyph--done")).to_have_count(1)
+        expect(page.locator("a.doc-task")).to_contain_text("Done")
+        expect(page.locator("a.doc-decision").nth(1)).to_contain_text("Decision accepted")
+        expect(page.locator("a.doc-task .doc-task__mark")).to_have_count(1)
+        expect(page.locator("a.doc-task .doc-task__word")).to_have_count(1)
+        expect(page.locator("a.doc-decision .doc-decision__body")).to_have_count(2)
+        self.assertEqual(page.locator(".doc-prose").evaluate("e => e.querySelectorAll('.doc-decision__body, .doc-task__mark, .doc-task__word').length"), 4)
+        self.assertTrue(html > 0)
+
+    def test_agents_keep_their_tag_and_owner_beside_a_person_of_the_same_name(self) -> None:
+        context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP, storage_state=self.state)
+        self.addCleanup(context.close)
+        page = context.new_page()
+        agent = {"kind": "agent", "id": self.agent_id, "name": "Alex"}
+        human = {"kind": "human", "id": "00000000-0000-0000-0000-000000000abc", "name": "Alex"}
+
+        def doc(route):
+            data = route.fetch().json()
+            data["author"], data["createdBy"] = agent, human
+            route.fulfill(json=data)
+
+        def rows(route):
+            data = route.fetch().json()
+            for item in data["items"]:
+                if item["kind"] == "decision":
+                    item["proposedBy"], item["decidedBy"] = agent, None
+                    item["status"], item["decidedAt"] = "proposed", None
+            route.fulfill(json=data)
+        page.route(re.compile(r".*/api/v1/docs/[0-9a-f-]{36}$"), doc)
+        page.route("**/work-reference-rows?**", rows)
+        page.goto(self.url)
+        who = page.locator(".wiki-who")
+        expect(who.locator(".agent-tag")).to_have_count(1)
+        expect(who.locator(".agent-for")).to_have_text("for Ada Kowalska")
+        expect(who.locator(".ui-avatar")).to_have_count(1)  # the person named Alex has initials and no tag
+        expect(who.locator("svg").first).to_be_visible()
+        expect(page.locator("a.doc-decision").first.locator(".doc-decision__meta .agent-tag")).to_have_count(1)
+        expect(page.locator("a.doc-decision").first.locator(".doc-decision__meta .agent-for")).to_have_text("for Ada Kowalska")
 
 
 if __name__ == "__main__":

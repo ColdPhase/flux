@@ -7,7 +7,7 @@ import { useShellData } from '../app/data';
 import { createDoc, docUrl, getDoc, previewDoc, updateDoc } from './api';
 import { diffDocs, readableRefs, type DiffRow } from './diff';
 import { draftKey, keep, readKept, type Fields, type Kept } from './drafts';
-import { STATE_LABEL, authorLabel, longDate } from './format';
+import { STATE_LABEL, authorLabel, longDate, wrapTables } from './format';
 import { LinkPicker, type PickedRef } from './LinkPicker';
 import { WikiBar } from './WikiParts';
 import { useWiki } from './wiki-context';
@@ -245,7 +245,7 @@ function ScopedDocEditor({ project, doc, accountId }: EditData & { project: Proj
           ) : null}
           {mode !== 'write' ? (
             <div className="doc-edit__preview" aria-live="polite" aria-label="Preview">
-              {preview ? <div className="doc-prose" dangerouslySetInnerHTML={{ __html: preview.html || '<p class="doc-muted">Nothing to preview yet.</p>' }} /> : <p className="doc-muted" aria-busy="true">Rendering…</p>}
+              {preview ? <div className="doc-prose" dangerouslySetInnerHTML={{ __html: wrapTables(preview.html) || '<p class="doc-muted">Nothing to preview yet.</p>' }} /> : <p className="doc-muted" aria-busy="true">Rendering…</p>}
               {preview?.missing ? <p className="doc-notice"><Icon name="alert" size={14} />{preview.missing === 1 ? 'One link does' : `${preview.missing} links do`} not point to anything in this project and will show as plain text.</p> : null}
             </div>
           ) : null}

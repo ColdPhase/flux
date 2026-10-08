@@ -59,3 +59,11 @@ export function pathOfLink(projectId: string, link: ObjectLink, end: 'from' | 't
   if (ref.type === 'material') return `/materials/${ref.id}/versions/${ref.version}`;
   return null;
 }
+
+/**
+ * Each table of a rendered page sits in its own scrolling region, so a wide table stays reachable
+ * on a phone without widening the page. The HTML is the server's sanitized output; this adds only the wrapper.
+ */
+export const wrapTables = (html: string) => html
+  .replace(/<table(\s|>)/g, '<div class="doc-table" role="region" aria-label="Table" tabindex="0"><table$1')
+  .replace(/<\/table>/g, '</table></div>');

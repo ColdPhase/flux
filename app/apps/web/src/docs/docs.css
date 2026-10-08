@@ -145,6 +145,7 @@
 .wiki-who { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 10px 0 0; font-size: var(--fs-sm); line-height: 1.5; color: var(--t3); }
 .wiki-who__by { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .wiki-who time { font-family: var(--font); }
+.wiki-who__agent { color: var(--t2); }
 .wiki-who__dot { color: var(--line2); }
 .doc-head__change { margin: 6px 0 0; font-size: var(--fs-sm); color: var(--t3); line-height: 1.55; }
 .doc-head__change span:first-child { color: var(--t2); font-weight: 500; }
@@ -155,7 +156,7 @@
 .doc-prose :is(h1, h2, h3, h4, h5, h6, strong, li) { color: var(--t1); }
 /* A readable measure inside the 820px column (#151): running text keeps at most about 90
    characters a line; tables, code and images keep the column's width. */
-.doc-prose > :is(p, ul, ol, blockquote, dl) { max-width: 78ch; }
+.doc-prose > :is(p, ul, ol, blockquote, dl) { max-width: 64ch; }
 .doc-prose > * { margin-top: 0; margin-bottom: 0; }
 .doc-prose > * + * { margin-top: 18px; }
 .doc-prose h1, .doc-prose h2, .doc-prose h3, .doc-prose h4, .doc-prose h5, .doc-prose h6 { line-height: 1.5; font-weight: 600; letter-spacing: -0.025em; }
@@ -175,9 +176,11 @@
 .doc-prose pre { padding: 16px 18px; border: 1px solid var(--line); border-radius: var(--r); background: var(--sub); overflow-x: auto; line-height: 1.65; }
 .doc-prose pre code { padding: 0; background: none; box-shadow: none; font-size: 12px; }
 .doc-prose hr { border: 0; border-top: 1px solid var(--line); margin: 29px 0; }
-/* A table is a card: a quiet header row, then rows under hairlines. */
-.doc-prose table { width: 100%; border-collapse: separate; border-spacing: 0; overflow: hidden; border-radius: var(--r-card); background: var(--el); box-shadow: var(--sh-card); font-size: var(--fs-base); line-height: 1.5; }
-.doc-prose th, .doc-prose td { padding: 10px 14px; border-top: 1px solid var(--line); text-align: left; vertical-align: top; color: var(--t1); }
+/* A table is a card in its own scrolling region: a quiet header row, then rows under hairlines; a wide table scrolls inside the card. */
+.doc-table { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; border-radius: var(--r-card); background: var(--el); box-shadow: var(--sh-card); }
+.doc-table:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
+.doc-prose table { width: 100%; border-collapse: collapse; font-size: var(--fs-base); line-height: 1.5; }
+.doc-prose th, .doc-prose td { min-width: 6.5rem; padding: 10px 14px; border-top: 1px solid var(--line); text-align: left; vertical-align: top; color: var(--t1); overflow-wrap: break-word; }
 .doc-prose th { border-top: 0; background: var(--sub); font-size: var(--fs-sm); font-weight: 500; color: var(--t3); }
 .doc-prose thead + tbody tr:first-child td { border-top: 0; }
 .doc-prose strong { font-weight: 600; }

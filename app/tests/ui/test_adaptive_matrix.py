@@ -395,7 +395,7 @@ class AdaptiveMatrix(AdaptiveBase):
         # Wiki.
         self.tab(page, "Wiki")
         expect(page.get_by_role("heading", level=2, name=fx.WIKI_PAGE)).to_be_visible()
-        self.primary(page, page.locator(".wiki-bar").get_by_role("link", name="Edit", exact=True), "Edit")
+        self.primary(page, page.get_by_role("link", name="Edit", exact=True), "Edit")
         index = page.get_by_role("navigation", name="Wiki pages")
         self.primary(page, index.get_by_role("link", name=fx.WIKI_PAGE), "the page in the index")
         self.measure(page, ".doc-prose p, .doc-prose li", "Wiki prose")

@@ -8,7 +8,7 @@ import { useShellActions } from '../app/shellContext';
 import { docUrl, getDoc, getVersion, listVersions, listWorkspaceDocs } from './api';
 import { diffDocs, diffStats, readableRefs, type DiffRow } from './diff';
 import { draftKey, readKept } from './drafts';
-import { STATE_LABEL, authorLabel, docLinks, kindLabel, longDate, pathOfLink, shortDate } from './format';
+import { STATE_LABEL, wrapTables, authorLabel, docLinks, kindLabel, longDate, pathOfLink, shortDate } from './format';
 import { DownloadButton, PageMenu, ShareButton, WikiBar, WikiIcon } from './WikiParts';
 import { EditedBy, Outline, useProse } from './WikiRead';
 import { useAgentOwners } from '../agents/owners';
@@ -184,8 +184,9 @@ export function DocReader() {
   const { me } = useShellData();
   const navigate = useNavigate();
   const owners = useAgentOwners(project);
+  const tabled = useMemo(() => wrapTables(shown.html), [shown.html]);
   const [prose, setProse] = useState<HTMLElement | null>(null);
-  const { headings, marks } = useProse(prose, shown.html, project.id);
+  const { headings, marks } = useProse(prose, tabled, project.id, owners);
   useRefresh();
   const onClick = useReferenceClicks();
   const current = shown.version === doc.version;
@@ -249,7 +250,7 @@ export function DocReader() {
             <EditedBy editor={shown.author} at={shown.createdAt} reason={shown.reason} starter={doc.createdBy} startedAt={doc.startedAt} owners={owners} />
           </header>
           {shown.body.trim()
-            ? <><div className="doc-prose" ref={setProse} onClick={onClick} dangerouslySetInnerHTML={{ __html: shown.html }} />{marks}</>
+            ? <><div className="doc-prose" ref={setProse} onClick={onClick} dangerouslySetInnerHTML={{ __html: tabled }} />{marks}</>
             : <p className="doc-muted doc-empty">This page has no text yet.{writable && current ? <> <Link to={edit}>Start writing</Link></> : null}</p>}
           {missing ? <p className="doc-notice"><Icon name="alert" size={14} />{missing === 1 ? 'One link points' : `${missing} links point`} to something that is not in this project or no longer exists. It shows as plain text.</p> : null}
           <div className="doc-foot">
