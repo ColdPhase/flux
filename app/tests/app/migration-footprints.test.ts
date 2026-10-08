@@ -22,7 +22,7 @@ async function entrypoint(url: string, entry = 'tooling/dist/migrate.js') {
     let output = '';
     child.stdout.on('data', (chunk: Buffer) => { output += chunk.toString(); });
     child.stderr.on('data', (chunk: Buffer) => { output += chunk.toString(); });
-    const timer = setTimeout(() => { child.kill('SIGKILL'); }, 90_000);
+    const timer = setTimeout(() => { child.kill('SIGKILL'); }, entry === 'tooling/dist/migrate.js' ? 90_000 : 10_000);
     child.on('error', (error) => { clearTimeout(timer); reject(error); });
     child.on('close', (code) => { clearTimeout(timer); resolve({ code, output }); });
   });
@@ -73,7 +73,9 @@ async function snapshot(db: Pool) {
     ARRAY(SELECT k.conname || ':' || pg_get_constraintdef(k.oid,false) || ':' || k.convalidated::text
       FROM pg_constraint k WHERE k.conrelid=c.oid ORDER BY k.conname) AS constraints,
     ARRAY(SELECT pg_get_triggerdef(t.oid,false) || ':' || t.tgenabled FROM pg_trigger t
-      WHERE t.tgrelid=c.oid AND NOT t.tgisinternal ORDER BY t.tgname) AS triggers
+      WHERE t.tgrelid=c.oid AND NOT t.tgisinternal ORDER BY t.tgname) AS triggers,
+    ARRAY(SELECT pg_get_indexdef(i.indexrelid) || ':' || i.indisvalid::text || ':' || i.indisready::text
+      FROM pg_index i JOIN pg_class x ON x.oid=i.indexrelid WHERE i.indrelid=c.oid ORDER BY x.relname) AS indexes
     FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
     WHERE n.nspname IN ('public','pgboss') AND c.relkind IN ('r','p','S','v','m') ORDER BY n.nspname,c.relname`)).rows;
   const data: Record<string, string[]> = {};
@@ -146,11 +148,14 @@ const badCatalogs: [string, number, string][] = [
   ['unvalidated sign-in check', 57, "ALTER TABLE agent_runtime_connections DROP CONSTRAINT agent_runtime_connections_notice_check; ALTER TABLE agent_runtime_connections ADD CONSTRAINT agent_runtime_connections_notice_check CHECK (account_changed_at IS NOT NULL OR previous_account_label IS NULL) NOT VALID"],
   ['wrong baseline 56 type', 56, 'ALTER TABLE agent_runtime_connections ALTER COLUMN signed_in_at TYPE timestamp'],
   ['weakened baseline privacy check', 56, 'ALTER TABLE agent_runtime_connections DROP CONSTRAINT agent_runtime_connections_account_label_check; ALTER TABLE agent_runtime_connections ADD CONSTRAINT agent_runtime_connections_account_label_check CHECK (true)'],
+  ['missing baseline live-owner fence', 56, 'DROP INDEX agent_runtime_bindings_owner_live_idx'],
   ['mixed focus and sign-in 57', 57, 'ALTER TABLE notification_preferences ADD COLUMN paused_until timestamptz'],
   ['untracked partial auth 58', 57, 'CREATE TABLE agent_runtime_console_nonces(nonce_digest text)'],
   ['missing auth 58 table', 58, 'DROP TABLE agent_runtime_console_nonces'],
   ['wrong auth 58 type', 58, 'ALTER TABLE agent_runtime_auth_operations ALTER COLUMN revision TYPE bigint'],
   ['weakened auth 58 check', 58, 'ALTER TABLE agent_runtime_auth_operations DROP CONSTRAINT agent_runtime_auth_operations_revision_check; ALTER TABLE agent_runtime_auth_operations ADD CONSTRAINT agent_runtime_auth_operations_revision_check CHECK (true)'],
+  ['missing auth 58 key', 58, 'ALTER TABLE agent_runtime_auth_operations DROP CONSTRAINT agent_runtime_auth_operations_operation_id_key'],
+  ['missing auth 58 expiry index', 58, 'DROP INDEX agent_runtime_auth_expiry_idx'],
   ['missing auth 58 lifecycle fence', 58, 'DROP TRIGGER agent_runtime_auth_lifecycle ON agent_runtime_bindings'],
   ['altered auth 58 lifecycle function', 58, 'CREATE OR REPLACE FUNCTION invalidate_runtime_auth_operations() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$'],
 ];
