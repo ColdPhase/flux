@@ -97,6 +97,25 @@ export const authSessionIdentities = pgTable('auth_session_identities', {
   confirmedAt: timestamp('confirmed_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * The standing check of a person's account at the identity provider (migration 0070, #311). The sealed
+ * offline refresh token lives only here; backups keep this table's definition but not its rows.
+ */
+export const authIdpStanding = pgTable('auth_idp_standing', {
+  userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  providerId: text('provider_id').notNull(),
+  state: text('state').notNull().default('ok'),
+  reason: text('reason'),
+  refreshTokenEnc: text('refresh_token_enc'),
+  confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+  stateChangedAt: timestamp('state_changed_at', { withTimezone: true }).notNull().defaultNow(),
+  lastCheckAt: timestamp('last_check_at', { withTimezone: true }),
+  lastOutcome: text('last_outcome'),
+  nextCheckAt: timestamp('next_check_at', { withTimezone: true }).notNull().defaultNow(),
+  leaseId: text('lease_id'),
+  leaseUntil: timestamp('lease_until', { withTimezone: true }),
+}, (table) => [primaryKey({ columns: [table.userId, table.providerId] })]);
+
 // Better Auth MCP/OAuth provider models (migration 0009).
 export const jwks = pgTable("jwks", {
   id: text("id").primaryKey(),

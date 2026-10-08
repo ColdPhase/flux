@@ -10,9 +10,10 @@ export * from './repositories/agent-proposals.js';
 export * from './repositories/agent-connections.js';
 export * from './repositories/project-agents.js';
 export * from './repositories/agent-project-objects.js';
+export * from './repositories/idp-standing.js';
 export * from './migrations/ledger.js';
 // Highest numbered file in packages/db/migrations. The API refuses other versions.
-export const FLUX_SCHEMA_VERSION = 66;
+export const FLUX_SCHEMA_VERSION = 70;
 // pg-boss 12.35.0 declares schema 43. Update this with the pinned package.
 export const PG_BOSS_SCHEMA_VERSION = 43;
 

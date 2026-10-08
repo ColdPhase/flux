@@ -42,6 +42,8 @@
       "credentials": [{ "type": "password", "value": "__USER_PASSWORD__", "temporary": false }] },
     { "username": "erin", "email": "erin@acme.test", "emailVerified": true, "enabled": true, "firstName": "Erin", "lastName": "Agent",
       "credentials": [{ "type": "password", "value": "__USER_PASSWORD__", "temporary": false }] },
+    { "username": "frank", "email": "frank@acme.test", "emailVerified": true, "enabled": true, "firstName": "Frank", "lastName": "Standing",
+      "credentials": [{ "type": "password", "value": "__USER_PASSWORD__", "temporary": false }] },
     { "username": "dave", "email": "dave@acme.test", "emailVerified": true, "enabled": true, "firstName": "Dave", "lastName": "Collision",
       "credentials": [{ "type": "password", "value": "__USER_PASSWORD__", "temporary": false }] }
   ]

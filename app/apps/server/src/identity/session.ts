@@ -2,6 +2,7 @@ import type { IncomingHttpHeaders } from 'node:http';
 import { fromNodeHeaders } from 'better-auth/node';
 import type { Principal } from '@flux/core';
 import type { FluxAuth } from './auth.js';
+import type { IdpStanding } from './standing.js';
 
 export interface HumanPrincipal extends Principal {
   kind: 'human';
@@ -29,7 +30,7 @@ export interface SessionResolver {
   requirePrincipal(request: { headers: IncomingHttpHeaders }): Promise<SessionContext>;
 }
 
-export function createSessionResolver(auth: FluxAuth): SessionResolver {
+export function createSessionResolver(auth: FluxAuth, standing: Pick<IdpStanding, 'stands'> | null = null): SessionResolver {
   async function resolveSession(headers: IncomingHttpHeaders): Promise<SessionContext | null> {
     if (!headers.cookie) return null;
     const result = await auth.api.getSession({
@@ -38,6 +39,9 @@ export function createSessionResolver(auth: FluxAuth): SessionResolver {
     });
     if (!result) return null;
     const { session, user } = result;
+    // A person whose account no longer stands at the identity provider is signed out (S4, #311); the stored
+    // state is read, the provider is not called.
+    if (standing && !await standing.stands(user.id)) return null;
     return {
       principal: { id: user.id, kind: 'human' },
       sessionId: session.id,

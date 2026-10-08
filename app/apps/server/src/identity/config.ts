@@ -18,7 +18,13 @@ export interface OidcConfig {
   clientId: string;
   clientSecret: string;
   label: string;
+  /** `refresh` runs the standing check of the person's account at the provider (F-024 S4, #311); `off` keeps only logout and age. */
+  standing: 'refresh' | 'off';
+  /** How often a live identity is checked (default 15 minutes, FLUX_OIDC_STANDING_INTERVAL_SECONDS). */
+  standingIntervalMs: number;
 }
+
+export const DEFAULT_STANDING_INTERVAL_SECONDS = 900;
 
 export interface IdentityConfig {
   /** The only origin browsers may use for state-changing requests, e.g. https://flux.example.org. */
@@ -107,7 +113,11 @@ export function loadOidcConfig(env: NodeJS.ProcessEnv, readSecret: (path: string
   if (!clientSecret) throw new Error('FLUX_OIDC_CLIENT_SECRET_FILE is empty');
   const label = env.FLUX_OIDC_LABEL?.trim() || 'single sign-on';
   if (label.length > 60) throw new Error('FLUX_OIDC_LABEL must be at most 60 characters');
-  return { providerId: oidcProviderId(issuer), issuer, clientId: clientId!, clientSecret, label };
+  const standing = (env.FLUX_OIDC_STANDING ?? 'refresh').trim().toLowerCase();
+  if (standing !== 'refresh' && standing !== 'off') throw new Error('FLUX_OIDC_STANDING must be refresh or off');
+  const interval = Number(env.FLUX_OIDC_STANDING_INTERVAL_SECONDS?.trim() || DEFAULT_STANDING_INTERVAL_SECONDS);
+  if (!Number.isInteger(interval) || interval < 5 || interval > 86_400) throw new Error('FLUX_OIDC_STANDING_INTERVAL_SECONDS must be an integer from 5 to 86400');
+  return { providerId: oidcProviderId(issuer), issuer, clientId: clientId!, clientSecret, label, standing, standingIntervalMs: interval * 1000 };
 }
 
 export function loadIdentityConfig(env: NodeJS.ProcessEnv = process.env): IdentityConfig {

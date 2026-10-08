@@ -5,6 +5,7 @@ import type { AgentConnection, CreateAgentConnectionCommand } from '@flux/contra
 type AgentOauthFlow = { fingerprint: string; clientId: string; scopes: readonly string[]; expiresAt: Date };
 type AgentOauthGrant = { referenceId: string; clientId: string | null; connection: AgentConnection };
 import * as schema from '../schema.js';
+import { idpStandingRepository } from './idp-standing.js';
 import type { createDatabase } from '../index.js';
 
 type Database = Pick<ReturnType<typeof createDatabase>['db'], 'transaction'>;
@@ -35,6 +36,8 @@ export function agentConnectionRepository(db: Database, policy: AgentConnectionP
       eq(schema.agentConnections.id, connectionId), eq(schema.agentConnections.ownerUserId, ownerUserId),
       isNull(schema.agentConnections.revokedAt))).for('share');
     if (!row) return null;
+    // The owner's account must still stand at the identity provider (F-024 S4, #311). Nothing is revoked.
+    if (await idpStandingRepository(tx).refuses(ownerUserId)) return null;
     const [agent] = await tx.select({ id: schema.agents.id }).from(schema.agents).where(and(
       eq(schema.agents.id, row.agentId), eq(schema.agents.ownerUserId, ownerUserId),
       isNull(schema.agents.revokedAt))).for('share');

@@ -5,10 +5,12 @@ import { toNodeHandler } from '@modelcontextprotocol/node';
 import type { Database } from '@flux/core';
 import type { FluxAuth } from '../identity/auth.js';
 import { createFluxMcpServer } from './mcp-tools.js';
+import { signInAgainMessage, type IdpStanding } from '../identity/standing.js';
 import { createAgentConnectionStore } from './store.js';
 
 /** The only remote MCP entry point. A new tool server is bound to each verified bearer request. */
-export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxAuth, publicOrigin: string) {
+export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxAuth, publicOrigin: string,
+  standing: { checker: Pick<IdpStanding, 'stands'>; label: string } | null = null) {
   const connections = createAgentConnectionStore(db);
   const handleVerified = async (request: Request, token: Record<string, unknown>) => {
     const ownerUserId = token.flux_owner_user_id;
@@ -18,6 +20,15 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
       return new Response(JSON.stringify({ error: 'Agent connection is unavailable' }), {
         status: 403, headers: { 'content-type': 'application/json' },
       });
+    }
+    // The owner's account must still stand at the identity provider, whatever the bearer (S4, #311). This reads
+    // the stored state, so an outage at the provider adds no latency here. Nothing is revoked: the grant stays.
+    if (standing && !await standing.checker.stands(ownerUserId)) {
+      const description = signInAgainMessage(standing.label);
+      return new Response(JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message: description }, id: null }), { status: 401, headers: {
+        'content-type': 'application/json', 'cache-control': 'no-store',
+        'www-authenticate': `Bearer resource_metadata="${publicOrigin}/.well-known/oauth-protected-resource/mcp", error="invalid_token", error_description="${description}"`,
+      } });
     }
     // A signed JWT remains valid until expiry, so revocation must be checked
     // against the live connection before even listing tools.
