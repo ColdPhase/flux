@@ -1,6 +1,7 @@
-"""Browser tests for task announcements in the project conversation (UI116-3, #154).
+"""Browser tests for task announcements in the project conversation (UI116-3, #154, F-026 P5).
 
-Creating a task shows one compact "New task" line in the project's stream; the task's first genuine
+Creating a task shows one compact line in the project's stream, "<name> made a task from <name>'s message"
+with the task as a row under it; the task's first genuine
 contribution is a root of the stream that names its task, and replies grow under it. Runs with the
 other tests/ui modules through scripts/check_ui.sh against the running Compose application. Ada
 manages the project, Jonas writes and Lee only reads. Every count is checked against the API, so
@@ -180,11 +181,10 @@ class TaskAnnouncements(unittest.TestCase):
         made = self.notice(page, self.ids["from_message"])
         expect(made).to_have_count(1)
         expect(made.locator(".convo-notice__meta strong")).to_have_text("Jonas Berg")
-        expect(made.locator(".convo-notice__kind")).to_have_text("New task · ")
+        # P5: the line says where the task came from; there is no "New task" label.
+        expect(made.locator(".convo-notice__what")).to_have_text("made a task from Ada’s message")
+        self.assertEqual(page.locator(".convo-notice__kind").count(), 0)
         assert_author_column(self, made, DESKTOP["width"], "task event author")
-        self.assertAlmostEqual(made.locator(".convo-notice__kind").bounding_box()["x"],
-                               made.locator(".convo-notice__meta").bounding_box()["x"], delta=1,
-                               msg="the event text starts in the author content column")
         expect(made.get_by_role("button", name=opens_task(FROM_MESSAGE))).to_be_visible()
         expect(made.locator(".convo-notice__num")).to_have_text(f"#{self.ids['from_message_number']}")
         expect(self.notice(page, self.ids["measure"]).locator(".convo-notice__meta strong")).to_have_text("Ada Kowalska · you")
@@ -280,7 +280,7 @@ class TaskAnnouncements(unittest.TestCase):
         before = self.counts(page)
         later = page.locator(f"#message-{self.ids['later']}")
         later.hover()
-        later.get_by_role("button", name="Task", exact=True).click()
+        later.get_by_role("button", name="Create task").click()
         details = page.locator("#details")
         expect(details.get_by_role("heading", name=LATER)).to_be_visible()
         work = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/work?limit=100", status=200)
@@ -296,7 +296,7 @@ class TaskAnnouncements(unittest.TestCase):
         expect(made.locator(".convo-notice__meta strong")).to_have_text("Ada Kowalska")
         made.get_by_role("button", name=opens_task(MEASURE)).click()
         expect(page.locator("#details").get_by_role("heading", name=MEASURE)).to_be_visible()
-        expect(page.get_by_role("button", name="Task", exact=True)).to_have_count(0)
+        expect(page.get_by_role("button", name="Create task")).to_have_count(0)
 
     def test_08_phone_keeps_the_announcement_one_line_and_readable(self) -> None:
         self.check_phone_announcements()
@@ -317,8 +317,6 @@ class TaskAnnouncements(unittest.TestCase):
                 made = self.notice(page, self.ids["from_message"])
                 made.scroll_into_view_if_needed()
                 assert_author_column(self, made, viewport["width"], "phone task event author")
-                self.assertAlmostEqual(made.locator(".convo-notice__kind").bounding_box()["x"],
-                                       made.locator(".convo-notice__meta").bounding_box()["x"], delta=1)
                 button = made.get_by_role("button", name=opens_task(FROM_MESSAGE))
                 box, row = button.bounding_box(), made.bounding_box()
                 assert box and row
@@ -341,9 +339,6 @@ class TaskAnnouncements(unittest.TestCase):
                 page.evaluate("document.documentElement.style.fontSize = '200%'")
                 made.scroll_into_view_if_needed()
                 assert_author_column(self, made, viewport["width"], "enlarged phone task event author")
-                self.assertAlmostEqual(made.locator(".convo-notice__kind").bounding_box()["x"],
-                                       made.locator(".convo-notice__meta").bounding_box()["x"], delta=1,
-                                       msg="enlarged event text keeps the common content edge")
                 expect(made.locator(".convo-notice__meta strong")).to_have_text("Jonas Berg")
                 self.assertTrue(page.evaluate("document.documentElement.scrollWidth <= innerWidth"))
                 shot(page, f"task-announcements-phone-{viewport['width']}{'-dark' if dark else ''}-text200{suffix}")
@@ -363,8 +358,7 @@ class TaskAnnouncements(unittest.TestCase):
                         return rect(range);
                     };
                     const number = notice.querySelector('.ui-task-number');
-                    let word = number.nextSibling;
-                    while (word && (word.nodeType !== Node.TEXT_NODE || !word.textContent.trim())) word = word.nextSibling;
+                    const word = notice.querySelector('.convo-notice__title').firstChild;
                     if (!word) throw new Error('The task title has no first word');
                     const first = word.textContent.search(/\\S/);
                     const range = document.createRange();
@@ -547,7 +541,7 @@ class TaskAnnouncements(unittest.TestCase):
         held = self.hold_earlier_announcements(page)
         page.goto(f"/projects/{self.ids['busy']}")
         newest = page.locator(".project-convo__message", has_text=f"Later note {LATER_NOTES - 1:02} on the board.")
-        newest.get_by_role("button", name="Reply").click()
+        newest.get_by_role("button", name="Reply", exact=True).click()
         expect(page.locator("#thread")).to_be_visible()
         page.wait_for_timeout(1200)
         # Search is a link inside the open stream: the thread changes, the stream stays mounted.

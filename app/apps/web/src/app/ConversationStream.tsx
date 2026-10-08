@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router';
-import type { Conversation, ConversationMessage, ConversationRoot, ConversationRootWindow, NativeWorkRow, Page, Project, TaskCreationNotice } from '@flux/contracts';
-import { AgentIdentity, Button, EmptyState, Icon, useArrivals } from '../ui';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Link, useNavigate } from 'react-router';
+import type { Conversation, ConversationMessage, ConversationRoot, ConversationRootWindow, NativeWorkRow, Page, Project, ReturnSummary, TaskCreationNotice } from '@flux/contracts';
+import { AgentIdentity, Avatar, Button, EmptyState, Icon, IconButton, Kreska, StatusGlyph, useArrivals } from '../ui';
 import { newBelowText } from '../ui/motion-rules';
-import { MessageActions, MessageObjects, useCreateWorkFromMessage } from '../work/inline';
+import { MessageObjects, useCreateWorkFromMessage } from '../work/inline';
+import { MessageActions, useTouchActions } from '../work/messageActions';
 import { useMessageWorkRead, type MessageWorkRead } from '../work/useMessageWork';
 import { useReferenceWork } from '../work/useReferenceWork';
 import { useProjectWorkSummary } from '../work/WorkReadContext';
@@ -14,6 +15,12 @@ import { AgentAuthor, AuthorFace, ContributionMark, OPENING_REVEAL_MS, SourceCit
 import { agentAuthorOwner, useAgentOwners, type AgentOwners } from '../agents/owners';
 import { MessageFiles } from '../composer/Files';
 import { onSent, outboxView, useComposerDraft, type PendingSend } from '../composer/draft';
+import { getReturnSummary } from '../returns/api';
+import { useProjectShell } from '../project/data';
+import { mentionNodes } from './ComposerMenu';
+import { cite as citeMessage, quoteOf } from './citeBus';
+import { foldEntries, foldSummary, firstUnread, noticeSource, rootAuthor, sinceLine, sourcePhrase } from './conversationEvents';
+import './conversation-final.css';
 
 // One project conversation (UI116-1, 2026-10-02): a chronological stream of roots. Each root is the
 // opening message of a stored conversation; its replies open beside it in a one-level thread.
@@ -265,6 +272,10 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
   const rootKey = (root: ConversationRoot) => { const key = outbox.keyOf(root.message.id); return key === root.message.id ? root.conversationId : key; };
   const domId = (root: ConversationRoot) => { const key = outbox.keyOf(root.message.id); return key === root.message.id ? `message-${root.message.id}` : key; };
   const entries = streamEntries(roots, notices, stream.hasOlder);
+  const display = foldEntries<Extract<StreamEntry, { kind: 'root' }>, Extract<StreamEntry, { kind: 'notice' }>>(entries);
+  const authorOf = useMemo(() => rootAuthor(roots, author), [roots, author]);
+  const rootMessageIds = useMemo(() => new Set(roots.map((root) => root.message.id)), [roots]);
+  const navigate = useNavigate();
   const writable = project.access !== 'viewer';
   const feedRef = useRef<HTMLDivElement>(null);
   const [feedNode, setFeedNode] = useState<HTMLDivElement | null>(null);
@@ -317,7 +328,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     const feed = feedRef.current;
     const column = columnRef.current;
     if (reveal || !feed || !column) return;
-    return openOnWholeMessages(feed, column, '.project-convo__message, .convo-notice');
+    return openOnWholeMessages(feed, column, '.project-convo__message, .convo-notice, .convo-fold');
     // Once, when the stream opens; later arrivals are handled below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -393,6 +404,25 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     setNewBelow({ messages: 0, tasks: 0 });
   };
 
+  // "Since you left" (S7): the first unread item comes into view, or opens in its thread when it is a reply.
+  const jump = (target: NonNullable<ReturnType<typeof firstUnread>>) => {
+    const feed = feedRef.current;
+    if (!feed) return;
+    if ('workId' in target) {
+      const notice = feed.querySelector<HTMLElement>(`.convo-notice[data-work-id="${CSS.escape(target.workId)}"]`);
+      if (!notice) return;
+      notice.closest('.convo-fold')?.querySelector<HTMLButtonElement>('.convo-fold__b[aria-expanded="false"]')?.click();
+      requestAnimationFrame(() => { stickRef.current = false; notice.scrollIntoView({ block: 'start' }); notice.querySelector<HTMLElement>('.convo-notice__task')?.focus({ preventScroll: true }); });
+      return;
+    }
+    if (target.conversationId) { navigate(`/projects/${project.id}/conversations/${target.conversationId}#message-${target.messageId}`); return; }
+    const message = document.getElementById(`message-${target.messageId}`);
+    if (!message) return;
+    stickRef.current = false;
+    message.scrollIntoView({ block: 'start' });
+    message.focus({ preventScroll: true });
+  };
+
   // The thread docks beside the stream and leaves again: the root whose replies the person opened stays
   // at the same place (otherwise the first root in view, or the end when they were reading the end).
   useEffect(() => {
@@ -421,7 +451,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
         pinRef.current = pinned && pinned.bottom > top && pinned.top < bottom ? { id: pinRef.current!.id, offset: pinned.top - top } : null;
       }
       anchorRef.current = null;
-      for (const item of feed.querySelectorAll<HTMLElement>('.project-convo__message, .convo-notice')) {
+      for (const item of feed.querySelectorAll<HTMLElement>('.project-convo__message, .convo-notice, .convo-fold')) {
         const box = item.getBoundingClientRect();
         if (box.bottom > top + 1) { anchorRef.current = { id: item.id, offset: box.top - top }; break; }
       }
@@ -488,10 +518,11 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     catch (cause) { onDenied(cause); setFailure('Earlier messages could not be loaded.'); }
   }
 
-  const dayOf = entries.map((entry) => day(entry.at));
+  const dayOf = display.map((entry) => day(entry.at));
   const below = newBelowText(newBelow.messages, newBelow.tasks);
   return (<>
     <div className="convo-stream">
+    <SinceLine projectId={project.id} roots={roots} onJump={jump} />
     <div className={`project-convo__feed is-stream${revealed ? '' : ' is-opening'}`} ref={attachFeed} aria-busy={revealed ? undefined : true}
       data-associations-observed-at={messageWork.page?.observedAt} data-associations-phase={messageWork.state.phase}
       data-references-observed-at={referenceWork.observation?.observedAt} data-references-phase={referenceWork.state.phase}>
@@ -501,11 +532,17 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
           {failure ? <p className="project-convo__error" role="alert">{failure} <button type="button" onClick={() => void loadOlder()}>Retry</button></p> : null}
           {entries.length || outbox.pending.length ? (
             <ol className="project-convo__message-list">
-              {[...entries.flatMap((entry, index) => {
+              {[...display.flatMap((entry, index) => {
                 const label = dayOf[index]!;
                 const key = entry.kind === 'root' ? rootKey(entry.root) : entry.key;
                 const divider = index === 0 || dayOf[index - 1] !== label ? <li className="project-convo__day" key={`day-${key}`}><span>{label}</span></li> : null;
-                if (entry.kind === 'notice') return [divider, <NoticeItem key={entry.key} notice={entry.notice} meId={meId} owners={owners} row={referenceWork.rows.get(`work:${entry.notice.workId}`) ?? null} onOpenTask={(id) => openDetails({ kind: 'work', id })} />];
+                const noticeItem = (notice: TaskCreationNotice) => <NoticeItem key={`notice-${notice.id}`} notice={notice} meId={meId} owners={owners} row={referenceWork.rows.get(`work:${notice.workId}`) ?? null}
+                  authorOf={authorOf} hasMessage={(id) => rootMessageIds.has(id)} onOpenTask={(id) => openDetails({ kind: 'work', id })} />;
+                if (entry.kind === 'notice') return [divider, noticeItem(entry.notice)];
+                if (entry.kind === 'fold') {
+                  const folded = entry.notices.map((item) => item.notice);
+                  return [divider, <NoticeFold key={entry.key} fold={{ key: entry.key, notices: folded }} summary={foldSummary(folded, authorOf, (notice) => notice.createdBy.name?.split(/\s+/)[0] ?? 'Someone')}>{folded.map(noticeItem)}</NoticeFold>];
+                }
                 const { root } = entry;
                 // A root confirmed from its queued message keeps that list item: it does not move or arrive twice (#264).
                 return [divider, <RootItem key={key} owners={owners} root={root} project={project} meId={meId} author={author} messageWork={messageWork}
@@ -536,30 +573,91 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
 }
 
 /**
- * One compact announcement that a task was created (UI116-3): who created it, its current title and a
- * link that opens exactly that task. It is not a message, so it has no replies or actions of its own.
+ * One announcement that a task was created (UI116-3, F-026 P5): who made it and where it came from in one
+ * line, then the task as a row with its current state and owner. It is information, not a message: it has
+ * no replies or actions of its own.
  */
-function NoticeItem({ notice, meId, owners, row, onOpenTask }: { notice: TaskCreationNotice; meId: string; owners: AgentOwners; row: NativeWorkRow | null; onOpenTask: (workId: string) => void }) {
+function NoticeItem({ notice, meId, owners, row, authorOf, hasMessage, onOpenTask }: {
+  notice: TaskCreationNotice; meId: string; owners: AgentOwners; row: NativeWorkRow | null;
+  authorOf: (messageId: string) => string | null; hasMessage: (messageId: string) => boolean; onOpenTask: (workId: string) => void;
+}) {
   // The task's current title from the visible reference read (#155); the announced title until it answers.
   const current = row?.kind === 'work' && row.id === notice.workId ? row : null;
   const title = current?.title ?? notice.workTitle;
   const creator = notice.createdBy;
   const name = creator.name ?? (creator.kind === 'agent' ? 'Agent' : 'Member');
   const mine = creator.kind === 'human' && creator.id === meId;
+  const source = noticeSource(notice, authorOf);
+  const phrase = sourcePhrase(source);
+  const owner = current?.owner ?? null;
+  const toMessage = () => {
+    if (source.kind !== 'message') return;
+    const message = document.getElementById(`message-${source.messageId}`);
+    if (!message) return;
+    message.scrollIntoView({ block: 'center' });
+    message.focus({ preventScroll: true });
+  };
   return (
     <li className="convo-notice" id={`notice-${notice.id}`} data-work-id={notice.workId}>
       <AuthorFace kind={creator.kind} name={name} mine={mine} />
-      <span className="convo-notice__body">
-        <span className="convo-notice__meta">
-          {creator.kind === 'agent' ? <AgentIdentity name={name} owner={owners.get(creator.id)} icon={false} /> : <strong>{name}{mine ? ' · you' : ''}</strong>}
+      <div className="convo-notice__body">
+        <p className="convo-notice__meta">
+          {creator.kind === 'agent' ? <strong><AgentIdentity name={name} owner={owners.get(creator.id)} icon={false} /></strong> : <strong>{name}{mine ? ' · you' : ''}</strong>}
+          <span className="convo-notice__what" data-source={source.kind}>{phrase.lead}{phrase.link ? <> {source.kind === 'message' && hasMessage(source.messageId)
+            ? <button type="button" className="convo-notice__src" onClick={toMessage}>{phrase.link}</button> : <span className="convo-notice__src">{phrase.link}</span>}</> : null}</span>
           <time dateTime={notice.createdAt} title={when(notice.createdAt)}>{clock(notice.createdAt)}</time>
-        </span>
+        </p>
         <button type="button" className="convo-notice__task" data-native-ref={`work:${notice.workId}`} onClick={() => onOpenTask(notice.workId)} aria-label={`Open task #${notice.workNumber} ${title}`}>
+          <StatusGlyph status={current?.status ?? 'open'} size={16} />
           {/* The immutable announcement number names the task before and after the current row arrives. */}
-          <span className="convo-notice__title"><span className="convo-notice__kind">New task · </span><span className="convo-notice__num ui-task-number">#{notice.workNumber}</span> {title}</span><Icon name="chevron-right" size={14} />
+          <span className="convo-notice__num ui-task-number">#{notice.workNumber}</span>
+          <span className="convo-notice__title">{title}</span>
+          {owner ? <span className="convo-notice__owner">{owner.kind === 'agent' ? <Kreska size={20} /> : <Avatar name={owner.name} size="sm" />}<span className="convo-notice__owner-name">{owner.name}</span></span> : null}
         </button>
-      </span>
+      </div>
     </li>
+  );
+}
+
+/**
+ * Several announcements in a row as one line (S8): how many, who and what, opening to the announcements
+ * themselves. Folded ones stay in the page, hidden, so a link to one can still find and open it.
+ */
+function NoticeFold({ fold, summary, children }: { fold: { key: string; notices: TaskCreationNotice[] }; summary: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const faces = [...new Map(fold.notices.map((notice) => [`${notice.createdBy.kind}:${notice.createdBy.id}`, notice.createdBy])).values()].slice(0, 2);
+  const listId = `${fold.key}-list`;
+  return (
+    <li className="convo-fold" id={fold.key}>
+      <button type="button" className="convo-fold__b" aria-expanded={open} aria-controls={listId} onClick={() => setOpen((value) => !value)}>
+        <span className="convo-fold__faces" aria-hidden="true">{faces.map((who) => who.kind === 'agent' ? <Kreska key={who.id} size={20} /> : <Avatar key={who.id} name={who.name} size="sm" />)}</span>
+        <span className="convo-fold__t"><b>{fold.notices.length} task updates</b><span className="convo-fold__s"> · {summary}</span></span>
+        <Icon name={open ? 'chevron-up' : 'chevron-down'} size={16} />
+      </button>
+      <ol id={listId} className="convo-fold__list" hidden={!open}>{children}</ol>
+    </li>
+  );
+}
+
+/** "Since you left: …" with a jump to the first unread item (S7). It floats over the stream and takes no room. */
+function SinceLine({ projectId, roots, onJump }: { projectId: string; roots: ConversationRoot[]; onJump: (target: NonNullable<ReturnType<typeof firstUnread>>) => void }) {
+  const [summary, setSummary] = useState<ReturnSummary | null>(null);
+  const [dismissed, setDismissed] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    getReturnSummary({ type: 'project', id: projectId }, controller.signal).then(setSummary, () => { /* the line is optional */ });
+    return () => controller.abort();
+  }, [projectId]);
+  if (!summary || dismissed || !summary.point.savedAt || !summary.items.length) return null;
+  const target = firstUnread(summary, roots);
+  const line = sinceLine(summary);
+  return (
+    <div className="convo-since" role="region" aria-label="Since you left">
+      <Kreska size={22} />
+      <span className="convo-since__t"><b>Since you left:</b> {line}</span>
+      {target ? <button type="button" className="convo-since__jump" aria-label="Jump to the first unread" onClick={() => { onJump(target); setDismissed(true); }}>Jump <Icon name="chevron-down" size={14} /></button> : null}
+      <IconButton icon="x" size={14} label="Dismiss" className="convo-since__x" onClick={() => setDismissed(true)} />
+    </div>
   );
 }
 
@@ -577,27 +675,39 @@ type QueuedRootProps = { pending: PendingSend; name: string; onRetry: () => void
  * item for both, so the stored root reuses the queued message's item (same key) and nothing moves.
  */
 function RootItem(props: RootItemProps | QueuedRootProps) {
-  if ('pending' in props) return pendingMessageRow({ place: 'stream', keyed: false, item: props.pending, name: props.name, onRetry: props.onRetry, onRemove: props.onRemove });
-  const { root, project, owners, meId, author, messageWork, taskRow, open, arrived, makeWork, onOpen, onOpenResult, onDenied } = props;
-  const { message } = root;
-  const writable = project.access !== 'viewer';
+  const people = useProjectShell()?.people ?? null;
+  const stored = 'pending' in props ? null : props;
+  const message = stored?.root.message;
+  const name = stored && message ? stored.author(message) : '';
+  const writable = !!stored && stored.project.access !== 'viewer';
+  const actions = stored && message ? {
+    projectId: stored.project.id, message, writable, busy: stored.makeWork.busy === message.id, onCreateWork: () => void stored.makeWork.create(message),
+    onReply: () => stored.onOpen(stored.root, true), onCite: () => citeMessage('stream', quoteOf(message.body, name)),
+  } : null;
+  // The same hooks run for the queued root and the stored one, so the stored root keeps the queued root's list item.
+  const touch = useTouchActions(actions);
+  if (!stored || !message || !actions) {
+    const queued = props as QueuedRootProps;
+    return pendingMessageRow({ place: 'stream', keyed: false, item: queued.pending, name: queued.name, onRetry: queued.onRetry, onRemove: queued.onRemove });
+  }
+  const { root, project, owners, meId, messageWork, taskRow, open, arrived, makeWork, onOpen, onOpenResult, onDenied } = stored;
   const mine = message.authorId === meId;
-  const name = author(message);
   return (
-    <li id={`message-${message.id}`} data-message-id={message.id} tabIndex={-1} data-conversation-id={root.conversationId}
-      className={`project-convo__message${mine ? ' is-mine' : ''}${arrived ? ' is-arrived' : ''}${open ? ' is-open' : ''}`}>
+    <li {...touch.props} id={`message-${message.id}`} data-message-id={message.id} tabIndex={-1} data-conversation-id={root.conversationId}
+      className={`project-convo__message${mine ? ' is-mine' : ''}${arrived ? ' is-arrived' : ''}${open ? ' is-open' : ''} ${touch.props.className}`}>
       <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} name={name} mine={mine} />
       <div className="project-convo__message-meta">
         <strong>{mine ? `${name} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</Link>}</strong>
         <time dateTime={message.createdAt} title={when(message.createdAt)}>{clock(message.createdAt)}</time>
       </div>
-      {message.body ? <p>{message.body}</p> : null}
+      {message.body ? <p>{mentionNodes(message.body, people)}</p> : null}
       <MessageFiles files={message.files} />
       {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={onOpenResult} /> : null}
       {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
       <MessageObjects message={message} projectId={project.id} preview={messageWork.previews?.get(message.id) ?? null} thread={root.task ?? null} threadRow={taskRow} />
       <Replies root={root} open={open} writable={writable} onOpen={(reply) => onOpen(root, reply)} />
-      <MessageActions projectId={project.id} message={message} writable={writable} busy={makeWork.busy === message.id} onCreateWork={() => void makeWork.create(message)} />
+      <MessageActions {...actions} />
+      {touch.node}
       {makeWork.failed?.messageId === message.id ? <p className="ws-act-error" role="alert">{makeWork.failed.text} <button type="button" onClick={() => void makeWork.create(message)}>Retry</button></p> : null}
     </li>
   );

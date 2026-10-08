@@ -53,6 +53,7 @@ from pathlib import Path
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
+from message_gestures import open_message_menu
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "a lamp that listens to hands"
@@ -582,11 +583,8 @@ class ScenarioJourney:
         page = self.page("ada")
         page.goto(f"/projects/{lamp}")
         message = page.locator(f"#message-{s['m1']}")
-        if self.phone:
-            message.get_by_role("button", name="Make from this message").tap()
-        else:
-            message.hover()
-        self.tap(message.get_by_role("button", name="Decision", exact=True))
+        menu = open_message_menu(message, phone=self.phone)
+        self.tap(menu.get_by_role("menuitem", name="Propose a decision"))
         panel = self.details(page)
         expect(panel.get_by_role("heading", name="Propose a decision")).to_be_visible()
         panel.get_by_label("Decision").fill(D1)

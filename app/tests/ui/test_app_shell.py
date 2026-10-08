@@ -88,13 +88,20 @@ def start_forwarder(origin: str, upstream: str) -> None:
 def open_sources(page: Page, scope=None) -> None:
     """Opens the project's sources above a composer (#117), where materials are saved and cited.
 
-    With a thread open (UI116-1) both the stream's and the thread's composer have Sources: pass the
-    thread as `scope` to use its composer."""
+    A writer types "/source" in the composer (F-026 S5: no Sources button); a reader has no composer, so
+    its Sources button stays. With a thread open (UI116-1) pass the thread as `scope` to use its composer."""
     within = scope or page
-    button = within.get_by_role("button", name=re.compile("^Sources"))
-    if button.get_attribute("aria-expanded") != "true":
-        button.click()
-    expect(within.get_by_role("region", name="Project materials")).to_be_visible()
+    region = within.get_by_role("region", name="Project materials")
+    if not region.is_visible():
+        button = within.get_by_role("button", name=re.compile("^Sources"))
+        if button.count():
+            if button.get_attribute("aria-expanded") != "true":
+                button.click()
+        else:
+            field = scope.get_by_role("textbox") if scope else page.locator("#project-composer")
+            field.fill("/source")
+            field.press("Enter")
+    expect(region).to_be_visible()
 
 
 def thread_of(page: Page):

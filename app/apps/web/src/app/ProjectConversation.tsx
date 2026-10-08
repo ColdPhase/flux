@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { Link, useLoaderData, useLocation, useNavigate, useRevalidator, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from 'react-router';
-import type { AssistantAnswer, ConversationMessage, Conversation, ConversationRootWindow, Draft, Material, Page, Project, TaskCreationNotice, WorkspaceMember } from '@flux/contracts';
+import type { AssistantAnswer, ConversationMessage, Conversation, ConversationRootWindow, Draft, Material, Page, Project, ProjectPerson, TaskCreationNotice, WorkspaceMember } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
+import { outboxView, useComposerDraft, useComposerScope, type PendingSend } from '../composer/draft';
 import { AttachButton, ComposerFiles, MessageFiles } from '../composer/Files';
 import { ConnectionLine, SendAnnouncer } from '../composer/Outbox';
 import { fluxAnswers, onFluxAnswered } from '../composer/connection';
@@ -10,8 +10,10 @@ import { Button, Icon, Input, MEDIA, sendsOnEnter, useArrivals, useMediaQuery } 
 import { getConversation, getMaterialVersion, getProject, listConversationRoots, listDrafts, listMaterials, listTaskNotices, listWorkspaceMembers, olderMessages, publishMaterial } from './conversation-api';
 import { pageBackTo } from './seekMessage';
 import { useShellData } from './data';
-import { MessageActions, MessageObjects, useCreateWorkFromMessage } from '../work/inline';
+import { MessageObjects, useCreateWorkFromMessage } from '../work/inline';
+import { MessageActions, useTouchActions } from '../work/messageActions';
 import { useMessageWork } from '../work/useMessageWork';
+import type { MessageWorkPreview } from '../work/message-associations';
 import { useProjectWorkSummary } from '../work/WorkReadContext';
 import { useReferenceWork } from '../work/useReferenceWork';
 import { MessageWorkPages } from '../work/MessageWorkPages';
@@ -23,9 +25,10 @@ import { askError as askErrorText, askState } from '../assistant/format';
 import { grantAgentProject } from '../agent-connection/api';
 import { agentAuthorLabel } from '../docs/format';
 import { AgentAuthor, AuthorFace, ContributionMark, OPENING_REVEAL_MS, SourceCitation, clock, day, openOnWholeMessages, pendingMessageRow, when } from './messageParts';
-import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
+import { agentAuthorOwner, useAgentOwners, type AgentOwners } from '../agents/owners';
 import { OneConversation, type PaneProps } from './OneConversation';
-import { ThreadMessageActions } from './ThreadDrawer';
+import { ComposerHint, ComposerMenu, composerOptions, composerTrigger, mentionNodes, type ComposerOption } from './ComposerMenu';
+import { cite as citeMessage, onCite, quoteOf } from './citeBus';
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
 import './project-conversation.css';
@@ -113,6 +116,17 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const helperComposer = useComposerDraft(me.user.id, project.id, `helper:${conversation?.id ?? 'new'}`);
   const composer = asking ? helperComposer : publicComposer;
   const draft = composer.draft.body;
+  // "@" and "/" in the composer (F-026 S5): the caret decides which menu shows, if any.
+  const [caret, setCaret] = useState(0);
+  const [menuIndex, setMenuIndex] = useState(0);
+  const [menuClosedAt, setMenuClosedAt] = useState<string | null>(null);
+  const [commandHint, setCommandHint] = useState('');
+  const canWrite = project.access !== 'viewer';
+  const trigger = canWrite && !asking ? composerTrigger(draft, caret) : null;
+  const options = trigger ? composerOptions(trigger, { people, meId: me.user.id, inThread: !!conversation }) : [];
+  const menuOpen = !!trigger && options.length > 0 && menuClosedAt !== draft;
+  const activeIndex = Math.min(menuIndex, Math.max(0, options.length - 1));
+  const phone = useMediaQuery(MEDIA.phone);
   const captureScope = useComposerScope(publicComposer.key);
   const captureHelperScope = useComposerScope(helperComposer.key);
   const savedMaterial = useMemo(() => savedMaterialForm(materialFormKey), [materialFormKey]);
@@ -309,8 +323,9 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     field.style.height = `${field.scrollHeight}px`;
   }, [draft, composerId]);
 
-  function changeDraft(input: string) {
-    typing.input(Boolean(input.trim()) && !asking && !/^\/ai(\s|$)/.test(input));
+  function changeDraft(input: string, position = input.length) {
+    setCaret(position); setMenuIndex(0); setMenuClosedAt(null); setCommandHint('');
+    typing.input(Boolean(input.trim()) && !asking && !/^\/(ai|task|decide|handoff)(\s|$)/.test(input));
     // Private prompts keep their own draft; invoking /ai never overwrites a public task draft.
     if (!asking && conversation && writable && /^\/ai(\s|$)/.test(input)) {
       helperComposer.setBody(input.replace(/^\/ai\s?/, '')); setAsking(true); setAskFailure(''); return;
@@ -336,9 +351,52 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
       assistant.refreshStatus();
     }
   }
+  // A quoted message lands at the start of this pane's composer (Cite in the message menu).
+  const quoteRef = useRef((quote: string) => { void quote; });
+  useEffect(() => { quoteRef.current = (quote: string) => {
+    if (!canWrite) return;
+    const field = document.getElementById(composerId);
+    publicComposer.setBody(`${quote}${publicComposer.draft.body}`);
+    setAsking(false);
+    requestAnimationFrame(() => { if (field instanceof HTMLTextAreaElement) { field.focus(); field.setSelectionRange(field.value.length, field.value.length); } });
+  }; });
+  useEffect(() => onCite(conversation ? 'thread' : 'stream', (quote) => quoteRef.current(quote)), [conversation]);
+
+  // The caret goes after what was inserted, unless the person has already typed on (fast typing).
+  const placeCaret = (position: number, value: string) => requestAnimationFrame(() => {
+    const field = document.getElementById(composerId);
+    if (!(field instanceof HTMLTextAreaElement)) return;
+    field.focus();
+    if (field.value !== value) return;
+    field.setSelectionRange(position, position); setCaret(position);
+  });
+  function pick(option: ComposerOption) {
+    if (!trigger) return;
+    const before = draft.slice(0, trigger.start);
+    const after = draft.slice(caret);
+    // /file and /source open what the old buttons opened, and leave the draft as it was.
+    if (option.slash === 'file') {
+      changeDraft(before + after, before.length);
+      document.getElementById(composerId)?.closest('.composer')?.querySelector<HTMLButtonElement>('.composer__attach')?.click();
+      return;
+    }
+    if (option.slash === 'source') { changeDraft(before + after, before.length); setSourcesOpen(true); placeCaret(before.length, before + after); return; }
+    changeDraft(before + option.insert + after, before.length + option.insert.length);
+    placeCaret(before.length + option.insert.length, before + option.insert + after);
+  }
+  // `/task …`, `/decide …` and `/handoff …` act when sent; the words after the command are the title.
+  const COMMAND_EXAMPLE = { task: 'Order the probes', decide: 'Use the second supplier', handoff: 'Calibrate the probes' } as const;
+  async function runCommand(name: keyof typeof COMMAND_EXAMPLE, text: string) {
+    if (!text) { setCommandHint(`Say what it is after the command, for example /${name} ${COMMAND_EXAMPLE[name]}.`); document.getElementById(composerId)?.focus(); return; }
+    if (name === 'decide') { openDetails({ kind: 'propose-decision', projectId: project.id, title: text }); composer.setBody(''); return; }
+    // A hand-off is a task for an agent; its owner is chosen in Details, where it opens (there is no hand-off command yet).
+    if (await makeWork.createText(text)) composer.setBody('');
+  }
   async function send() {
     typing.stop();
     if (asking) { await sendToAssistant(); return; }
+    const command = writable ? /^\/(task|decide|handoff)(?:\s+([\s\S]*))?$/.exec(draft.trim()) : null;
+    if (command) { await runCommand(command[1] as keyof typeof COMMAND_EXAMPLE, (command[2] ?? '').trim()); return; }
     // A private helper prompt is never published as a root (UI116-3); it stays in the private draft.
     if (!writable || assistantInStream) return;
     // The message joins the end of the stream or thread at once and the field empties (#264); the
@@ -360,6 +418,15 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     }
   }
   function onComposerKey(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (menuOpen && !event.nativeEvent.isComposing) {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        setMenuIndex((activeIndex + (event.key === 'ArrowDown' ? 1 : options.length - 1)) % options.length);
+        return;
+      }
+      if ((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') { event.preventDefault(); pick(options[activeIndex]!); return; }
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setMenuClosedAt(draft); return; }
+    }
     if (asking && (event.key === 'Escape' || (event.key === 'Backspace' && !draft))) { event.preventDefault(); event.stopPropagation(); exitAsk(); return; }
     if (sendsOnEnter(event, touch)) { event.preventDefault(); void send(); }
   }
@@ -463,24 +530,15 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
                   onAskAbout={writable ? () => { setAsking(true); document.getElementById(composerId)?.focus(); } : null} />];
               }
               const message = entry.message;
-              const mine = message.authorId === me.user.id;
               // A reply confirmed from its queued message keeps that list item: it does not move or arrive twice (#264).
-              return [divider, <li key={outbox.keyOf(message.id)} id={`message-${message.id}`} data-message-id={message.id} tabIndex={-1} className={`project-convo__message${mine ? ' is-mine' : ''}${arrived === message.id ? ' is-arrived' : ''}`}>
-                <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} name={messageAuthor(message)} mine={mine} />
-                <div className="project-convo__message-meta"><strong>{mine ? `${messageAuthor(message)} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${messageAuthor(message)} directly`}>{messageAuthor(message)}</Link>}</strong><time dateTime={message.createdAt} title={when(message.createdAt)}>{clock(message.createdAt)}</time><span>#{message.sequence}</span></div>
-                {message.body ? <p>{message.body}</p> : null}
-                <MessageFiles files={message.files} />
-                {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={(resultId) => openDetails({ kind: 'result', id: resultId })} /> : null}
-                {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={hideIfDenied} /> : null}
-                <MessageObjects message={message} projectId={project.id} preview={messageWork.previews?.get(message.id) ?? null} />
-                <ThreadMessageActions writable={writable}><MessageActions projectId={project.id} message={message} writable={writable} busy={makeWork.busy === message.id} onCreateWork={() => void makeWork.create(message)} /></ThreadMessageActions>
-                {makeWork.failed?.messageId === message.id ? <p className="ws-act-error" role="alert">{makeWork.failed.text} <button type="button" onClick={() => void makeWork.create(message)}>Retry</button></p> : null}
-              </li>];
+              return [divider, <ThreadReply key={outbox.keyOf(message.id)} message={message} mine={message.authorId === me.user.id} arrived={arrived === message.id} name={messageAuthor(message)}
+                project={project} owners={owners} people={people} preview={messageWork.previews?.get(message.id) ?? null} makeWork={makeWork} writable={writable}
+                onOpenResult={(resultId) => openDetails({ kind: 'result', id: resultId })} onDenied={hideIfDenied} />];
             }), ...outbox.pending.flatMap((item) => {
               const label = day(item.at);
               const divider = label !== lastDay ? <li className="project-convo__day" key={`day-pending-${item.id}`}><span>{label}</span></li> : null;
               lastDay = label;
-              return [divider, pendingMessageRow({ place: 'thread', item, name: me.user.name, onRetry: () => publicComposer.retry(item.id), onRemove: () => publicComposer.remove(item.id) })];
+              return [divider, <ThreadReply key={`pending-${item.id}`} pending={item} name={me.user.name} onRetry={() => publicComposer.retry(item.id)} onRemove={() => publicComposer.remove(item.id)} />];
             })]}
             {assistant.run ? <WorkingLine key={assistant.run.id} run={assistant.run} onStop={assistant.stop} onRetry={() => assistant.retry(assistant.run!.id)} onDismiss={assistant.dismissRun} /> : null}
             </ol>
@@ -514,14 +572,58 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
       </div>}
       {writable && !asking ? <ComposerFiles state={publicComposer} attach="none" /> : null}
       {/* A tap on the card's empty space goes to the field, as in a messenger (#266 PF-3). */}
-      <div className="composer__box" onClick={(event) => { if (event.target === event.currentTarget) document.getElementById(composerId)?.focus(); }}>{writable && !asking ? <AttachButton state={publicComposer} /> : null}<button type="button" className="composer__ask project-convo__sources-btn" aria-expanded={trayOpen} aria-controls={trayOpen ? `${conversation ? 'thread' : 'project'}-sources` : undefined} aria-label={`Sources${materialTotal ? `, ${materialTotal} saved` : ''}`} data-tip={writable ? 'Sources to cite' : 'Saved sources to read'} data-tip-align="start" onClick={() => { if (trayOpen) { setSourcesOpen(false); if (writable) setShowMaterialForm(false); } else setSourcesOpen(true); }}><Icon name="doc" /><span className="project-convo__sources-t" aria-hidden="true">Sources</span>{materialTotal ? <span className="project-convo__sources-n" aria-hidden="true">{materialTotal > 99 ? '99+' : materialTotal}</span> : null}</button>{conversation && writable ? <button type="button" className="composer__ask" aria-pressed={asking} aria-label="Ask my assistant" aria-controls={asking ? 'project-ask' : undefined} data-tip="Ask my assistant · /ai" data-tip-align="start"
-        onClick={() => { if (asking) exitAsk(); else { setAsking(true); document.getElementById(composerId)?.focus(); } }}><Icon name="spark" /></button> : null}{writable ? <><label className="ui-vh" htmlFor={composerId}>{asking ? 'Ask your assistant' : conversation ? 'Reply' : 'Write a message'}</label><textarea id={composerId} value={draft} onChange={(event) => changeDraft(event.target.value)} onBlur={typing.stop} onKeyDown={onComposerKey} disabled={!writable || busy || askBusy} aria-describedby={asking ? 'project-ask' : assistantInStream ? `${composerId}-ai-hint` : undefined} placeholder={asking ? 'Ask your assistant…' : conversation ? replyHint : 'Write a message…'} rows={1} /><button className="composer__send" aria-label={asking ? 'Send to your assistant' : conversation ? 'Send reply' : 'Send message'} aria-disabled={!composer.canSend || !writable || busy || askBusy || assistantInStream || (asking && ask.kind !== 'ready')} type="button" onClick={() => void send()}><Icon name="send" /></button></> : <p className="project-convo__read-only">Read-only · <span>You have read access to this project.</span></p>}</div>
+      <div className="composer__box" onClick={(event) => { if (event.target === event.currentTarget) document.getElementById(composerId)?.focus(); }}>{writable && !asking ? <AttachButton state={publicComposer} /> : null}{writable ? (asking ? null : <ComposerHint />) : <button type="button" className="composer__ask project-convo__sources-btn" aria-expanded={trayOpen} aria-controls={trayOpen ? `${conversation ? 'thread' : 'project'}-sources` : undefined} aria-label={`Sources${materialTotal ? `, ${materialTotal} saved` : ''}`} data-tip="Saved sources to read" data-tip-align="start" onClick={() => { if (trayOpen) setSourcesOpen(false); else setSourcesOpen(true); }}><Icon name="doc" /><span className="project-convo__sources-t" aria-hidden="true">Sources</span>{materialTotal ? <span className="project-convo__sources-n" aria-hidden="true">{materialTotal > 99 ? '99+' : materialTotal}</span> : null}</button>}{writable ? <><label className="ui-vh" htmlFor={composerId}>{asking ? 'Ask your assistant' : conversation ? 'Reply' : 'Write a message'}</label><textarea id={composerId} value={draft} onChange={(event) => changeDraft(event.target.value, event.target.selectionStart)} onSelect={(event) => setCaret(event.currentTarget.selectionStart)} onBlur={typing.stop} onKeyDown={onComposerKey} disabled={!writable || busy || askBusy} aria-describedby={asking ? 'project-ask' : assistantInStream ? `${composerId}-ai-hint` : undefined} aria-controls={menuOpen ? `${composerId}-menu` : undefined} aria-activedescendant={menuOpen ? `${composerId}-menu-${options[activeIndex]!.id}` : undefined} placeholder={asking ? 'Ask your assistant…' : conversation ? replyHint : phone ? 'Message · @ · /' : 'Write a message…'} rows={1} /><button className="composer__send" aria-label={asking ? 'Send to your assistant' : conversation ? 'Send reply' : 'Send message'} aria-disabled={!composer.canSend || !writable || busy || askBusy || assistantInStream || (asking && ask.kind !== 'ready')} type="button" onClick={() => void send()}><Icon name="send" /></button>{menuOpen ? <ComposerMenu id={`${composerId}-menu`} options={options} active={activeIndex} trigger={trigger!.char} onPick={pick} onHover={setMenuIndex} /> : null}</> : <p className="project-convo__read-only">Read-only · <span>You have read access to this project.</span></p>}</div>
       {conversation && !accessLost ? <TypingNotice {...typing} /> : null}
       {writable ? <SendAnnouncer pending={publicComposer.pending} /> : null}
       {writable && assistantInStream ? <p id={`${composerId}-ai-hint`} className="project-convo__hint" role="status">Your assistant answers inside a conversation. Open one and type /ai there. This text is not posted.</p> : null}
+      {commandHint ? <p className="project-convo__hint" role="status">{commandHint}</p> : null}
+      {makeWork.failed?.messageId.startsWith('text:') ? <p className="project-convo__error" role="alert">{makeWork.failed.text}</p> : null}
       {readFailure ? <p className="project-convo__error" role="alert">{readFailure.message} <button type="button" onClick={readFailure.retry}>Retry read</button></p> : null}
     </div></div>
   </div>;
+}
+
+/** One reply of the open thread: the message with its actions (hover, swipe, long press) and what was made from it. */
+type ThreadReplyProps = {
+  message: ConversationMessage; mine: boolean; arrived: boolean; name: string; project: Project; owners: AgentOwners; people: ProjectPerson[] | null;
+  preview: MessageWorkPreview | null; makeWork: ReturnType<typeof useCreateWorkFromMessage>; writable: boolean;
+  onOpenResult: (resultId: string) => void; onDenied: (cause: unknown) => void;
+};
+type QueuedReplyProps = { pending: PendingSend; name: string; onRetry: () => void; onRemove: () => void };
+
+/**
+ * One reply of the open thread, or the person's queued reply that becomes it: one component and one list
+ * item for both, so the stored reply reuses the queued one's item (#264). The reply has its actions (hover,
+ * swipe, long press) and what was made from it.
+ */
+function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
+  const stored = 'pending' in props ? null : props;
+  const message = stored?.message;
+  const actions = stored && message ? {
+    projectId: stored.project.id, message, writable: stored.writable, busy: stored.makeWork.busy === message.id, onCreateWork: () => void stored.makeWork.create(message),
+    onReply: () => document.getElementById('thread-composer')?.focus(),
+    onCite: () => citeMessage('thread', quoteOf(message.body, stored.name)),
+  } : null;
+  const touch = useTouchActions(actions);
+  if (!stored || !message || !actions) {
+    const queued = props as QueuedReplyProps;
+    return pendingMessageRow({ place: 'thread', keyed: false, item: queued.pending, name: queued.name, onRetry: queued.onRetry, onRemove: queued.onRemove });
+  }
+  const { mine, arrived, name, project, owners, people, preview, makeWork, onOpenResult, onDenied } = stored;
+  return (
+    <li {...touch.props} id={`message-${message.id}`} data-message-id={message.id} tabIndex={-1} className={`project-convo__message${mine ? ' is-mine' : ''}${arrived ? ' is-arrived' : ''} ${touch.props.className}`}>
+      <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} name={name} mine={mine} />
+      <div className="project-convo__message-meta"><strong>{mine ? `${name} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</Link>}</strong><time dateTime={message.createdAt} title={when(message.createdAt)}>{clock(message.createdAt)}</time><span>#{message.sequence}</span></div>
+      {message.body ? <p>{mentionNodes(message.body, people)}</p> : null}
+      <MessageFiles files={message.files} />
+      {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={onOpenResult} /> : null}
+      {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
+      <MessageObjects message={message} projectId={project.id} preview={preview} />
+      <MessageActions {...actions} />
+      {touch.node}
+      {makeWork.failed?.messageId === message.id ? <p className="ws-act-error" role="alert">{makeWork.failed.text} <button type="button" onClick={() => void makeWork.create(message)}>Retry</button></p> : null}
+    </li>
+  );
 }
 
 type FeedEntry =

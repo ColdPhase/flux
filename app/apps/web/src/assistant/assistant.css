@@ -14,8 +14,10 @@
 .assistant-answer__foot .ui-btn--link { min-height: 28px; font-size: var(--fs-xs); }
 .assistant-answer__error, .assistant-working__error { margin-top: 4px; font-size: var(--fs-sm); color: var(--t1); }
 
-.assistant-working { position: relative; display: flex; align-items: flex-start; gap: 10px; margin-top: 6px; padding: 8px 0 8px 46px; list-style: none; }
-.assistant-working .assistant-avatar { top: 8px; }
+.assistant-working { position: relative; display: flex; align-items: flex-start; gap: 10px; margin-top: 24px; padding: 0 0 0 44px; list-style: none; max-width: min(600px, 100%); }
+.assistant-working .assistant-avatar { top: 0; }
+.assistant-working__text { min-height: 32px; }
+.assistant-working__text b { font-weight: 600; color: var(--t1); }
 .assistant-working__body { flex: 1; min-width: 0; }
 .assistant-working__text { display: flex; align-items: center; gap: 8px; font-size: var(--fs-md); color: var(--t2); }
 .assistant-working__who { display: flex; align-items: center; gap: 5px; margin-top: 2px; font-size: var(--fs-xs); color: var(--t3); overflow-wrap: anywhere; }
@@ -47,7 +49,7 @@
   .assistant-answer .project-convo__message-meta { flex-wrap: wrap; row-gap: 0; }
   .assistant-proposal__claims > div { grid-template-columns: 1fr; gap: 0; }
   .assistant-proposal__actions .ui-btn { flex: 1; }
-  .assistant-working { padding-left: 44px; flex-wrap: wrap; }
+  .assistant-working { padding-left: 42px; flex-wrap: wrap; }
 }
 @media (pointer: coarse) {
   .assistant-cite { min-width: 24px; height: 24px; }
@@ -83,4 +85,3 @@
 @media (pointer: coarse) { .aset__field select, .aset__agent select { min-height: 44px; } .aset__consent input { width: 20px; height: 20px; } }
 /* Phones show no avatars; the name row already says it is an assistant, so its mark gives way too
    instead of covering the quoted request. */
-@media (max-width: 680px) { .project-convo__message > .assistant-avatar { display: none; } }

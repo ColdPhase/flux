@@ -524,7 +524,7 @@ function ProposeDecision({ view, context, contextStatus, revision, isCurrent }: 
   const { me } = useShellData();
   const candidates = useWorkChoices(me.user.id, view.projectId, { purpose: 'choices', choice: 'accepted_decisions' }, !!context, revision);
   const current = candidates.page?.items.filter((item) => item.kind === 'decision') ?? [];
-  const [title, setTitle] = useState(view.source ? firstLine(view.source.text) : '');
+  const [title, setTitle] = useState(view.source ? firstLine(view.source.text) : view.title ?? '');
   const [rationale, setRationale] = useState('');
   const [supersedes, setSupersedes] = useState('');
   const selected = useNativeOwn(me.user.id, view.projectId, 'decision', supersedes || undefined, !!context, revision);

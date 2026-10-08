@@ -1,10 +1,12 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type KeyboardEvent, type ReactNode } from 'react';
 import type { ConversationMessage, NativeWorkRow } from '@flux/contracts';
-import { Icon, IconButton, useMediaQuery } from '../ui';
+import { IconButton } from '../ui';
 import { DiscussedTask, MessageObjects } from '../work/inline';
 import type { MessageWorkPreview } from '../work/message-associations';
 import { AgentAuthor, AuthorFace, SourceCitation, clock, day, when } from './messageParts';
 import { MessageFiles } from '../composer/Files';
+import { useProjectShell } from '../project/data';
+import { mentionNodes } from './ComposerMenu';
 
 export type ThreadMode = 'docked' | 'sheet';
 
@@ -39,25 +41,6 @@ export function ThreadDrawer({ mode, count, focusOnOpen, onClose, children }: { 
   );
 }
 
-/**
- * A reply's actions in the narrow thread (Create work, Propose decision, Attach result, Details): as on touch,
- * one quiet ⋯ in the reply's corner opens them under the reply, so the full bar never covers its author or
- * leaves empty rows between replies. Touch already has its own ⋯; a reader has only Details.
- */
-export function ThreadMessageActions({ writable, children }: { writable: boolean; children: ReactNode }) {
-  const touch = useMediaQuery('(hover: none)');
-  const [open, setOpen] = useState(false);
-  if (touch || !writable) return <>{children}</>;
-  return (
-    <>
-      <div className="ws-acts ws-acts--more thread__more">
-        <button type="button" className="ws-act ws-more" aria-expanded={open} aria-label="Make from this message" data-tip={open ? 'Hide actions' : 'Make from this message'} onClick={() => setOpen((value) => !value)}><Icon name="more" size={16} /></button>
-      </div>
-      {open ? <div className="thread__acts">{children}</div> : null}
-    </>
-  );
-}
-
 /** The message the thread answers, at its top: who said it, when, and what, with its cited source. */
 export function ThreadRoot({ message, projectId, body, author, agentOwner = null, meId, writable, replies, task = null, taskRow = null, preview = null, onDenied }: {
   message: ConversationMessage | null; projectId: string; body: string; author: string | null; agentOwner?: string | null; meId: string; writable: boolean; replies: number;
@@ -67,6 +50,7 @@ export function ThreadRoot({ message, projectId, body, author, agentOwner = null
   preview?: MessageWorkPreview | null; onDenied: (cause: unknown) => void;
 }) {
   const mine = !!message && message.authorId === meId;
+  const people = useProjectShell()?.people ?? null;
   return (
     <>
       <article className={`thread__root${mine ? ' is-mine' : ''}`} id={message ? `thread-root-${message.id}` : undefined} data-message-id={message?.id} aria-label={author ? `Message from ${mine ? 'you' : author}` : 'Opening message'}>
@@ -77,7 +61,7 @@ export function ThreadRoot({ message, projectId, body, author, agentOwner = null
             <time dateTime={message.createdAt} title={when(message.createdAt)}>{day(message.createdAt)} · {clock(message.createdAt)}</time>
           </div>
         ) : null}
-        {message?.body || !message ? <p>{body}</p> : null}
+        {message?.body || !message ? <p>{mentionNodes(body, people)}</p> : null}
         <MessageFiles files={message?.files} />
         {message?.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
         {message ? <MessageObjects message={message} projectId={projectId} preview={preview} thread={task} threadRow={taskRow} />

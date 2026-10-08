@@ -17,16 +17,6 @@
 .ws-dot--need { box-shadow: none; background: var(--inv); }
 
 /* ---------- Actions and objects under a message ---------- */
-.ws-acts { display: flex; flex-wrap: wrap; gap: 2px; margin: 4px 0 0 -6px; opacity: 0; transition: opacity var(--dur-1) var(--ease-out); }
-.project-convo__message:hover .ws-acts, .project-convo__message:focus-within .ws-acts, .ws-acts:focus-within { opacity: 1; }
-@media (hover: none) { .ws-acts { opacity: 1; } }
-@media (hover: hover) {
-  .project-convo__message .ws-acts { position: absolute; top: -10px; right: 0; margin: 0; padding: 2px; border-radius: var(--r); background: var(--el); box-shadow: 0 0 0 1px var(--line), 0 4px 12px rgb(0 0 0 / .06); pointer-events: none; }
-  .project-convo__message:hover .ws-acts, .project-convo__message:focus-within .ws-acts { pointer-events: auto; }
-}
-.ws-act { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 0 7px; border-radius: var(--r-sm); font-size: var(--fs-xs); font-weight: 500; color: var(--t3); transition: var(--tr); }
-.ws-act:hover { background: var(--hov); color: var(--t1); }
-.ws-act:disabled { cursor: progress; }
 .ws-act-error { margin-top: 4px; font-size: var(--fs-xs); color: var(--t1); }
 .ws-act-error button { text-decoration: underline; min-height: 28px; }
 .ws-attach { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
@@ -134,7 +124,7 @@
 .wd-pivot__c { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; font-size: var(--fs-sm); color: var(--t2); }
 
 @media (pointer: coarse) {
-  .ws-act, .ws-seg, .wd-pivot__c { min-height: 44px; }
+  .ws-seg, .wd-pivot__c { min-height: 44px; }
   .wd-link { min-height: 44px; }
   .wd-seg__b { min-height: 44px; }
   .wd-controls select, .wd-form select { min-height: 44px; font-size: 16px; }
@@ -145,19 +135,11 @@
   .ws-state::-webkit-scrollbar { display: none; }
   .ws-part { flex: none; max-width: 80vw; }
   .ws-seg span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .ws-acts { margin-left: -4px; }
   .ws-add .ui-btn { padding: 0 12px; }
 }
-/* Touch: the actions of a message start as one overflow button in its top corner (#117). */
-.project-convo__message .ws-acts--more { position: absolute; top: 0; right: -10px; margin: 0; }
-.ws-more { justify-content: center; width: 44px; height: 44px; padding: 0; color: var(--t3); }
-.project-convo__message:has(.ws-acts--more) .project-convo__message-meta { padding-right: 36px; }
-/* The message is only as wide as its own author line and bubble, so the button sits at the bubble's
-   corner instead of floating at a fixed 260px measure beside a short message (#189). */
-.project-convo__message:has(.ws-acts--more) { min-width: 0; }
 /* A wider task or decision chip under a short bubble does not widen the message either: the chips take
    the message's own width (at least a readable 200px) and shorten their titles. */
-.project-convo__message:has(.ws-acts--more) .ws-attach { contain: inline-size; align-self: stretch; min-width: min(100%, 200px); }
+.msg-touch .ws-attach { contain: inline-size; align-self: stretch; min-width: min(100%, 200px); }
 /* Quiet, project-scoped comparison proposals on the Tasks return surface. */
 .ws-proposals__intro { margin: 0 0 8px; color: var(--t2); font-size: var(--fs-sm); }
 .ws-proposals__jumps { display: flex; gap: 12px; margin: -4px 0 6px; }

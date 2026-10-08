@@ -18,6 +18,7 @@ import uuid
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 from author_columns import assert_author_column
+from message_gestures import open_message_menu
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "decisions need reasons"
@@ -127,7 +128,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(page.get_by_label("Current state")).to_contain_text("No decisions or work yet")
         message = page.locator(f"#message-{self.messages['idea']}")
         message.hover()
-        message.get_by_role("button", name="Task", exact=True).click()
+        message.get_by_role("button", name="Create task").click()
         panel = self.details(page)
         expect(panel.get_by_role("heading", name=IDEA)).to_be_visible()
         expect(panel.get_by_label("Status")).to_have_value("open")
@@ -160,7 +161,9 @@ class WorkDecisionsJourney(unittest.TestCase):
     def test_03_propose_and_accept_a_decision_with_the_keyboard(self) -> None:
         page = self.open_conversation("owner")
         message = page.locator(f"#message-{self.messages['idea']}")
-        message.get_by_role("button", name="Decision", exact=True).focus()
+        message.get_by_role("button", name="More actions").focus()
+        page.keyboard.press("Enter")
+        page.get_by_role("menuitem", name="Propose a decision").focus()
         page.keyboard.press("Enter")
         panel = self.details(page)
         expect(panel.get_by_role("heading", name="Propose a decision")).to_be_visible()
@@ -190,10 +193,8 @@ class WorkDecisionsJourney(unittest.TestCase):
     def test_04_attach_a_negative_result_that_finishes_the_experiment(self) -> None:
         page = self.open_conversation("partner")
         message = page.locator(f"#message-{self.messages['finding']}")
-        message.hover()
-        # A reply sits in the thread beside the stream (UI116-1); its actions open from one ⋯ in its corner.
-        message.get_by_role("button", name="Make from this message").click()
-        message.get_by_role("button", name="Result", exact=True).click()
+        # A reply sits in the thread beside the stream (UI116-1); its actions float over its corner on hover.
+        open_message_menu(message, phone=False).get_by_role("menuitem", name="Attach a result").click()
         panel = self.details(page)
         expect(panel.get_by_role("heading", name="Attach a result")).to_be_visible()
         panel.get_by_label("Finding").fill("The camera cannot track gestures below 10 lux")
@@ -236,9 +237,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         # open the original conversation explicitly.
         page.goto(f"/projects/{self.project_id}/conversations/{self.conversation_id}")
         message = page.locator(f"#message-{self.messages['pivot']}")
-        message.hover()
-        message.get_by_role("button", name="Make from this message").click()
-        message.get_by_role("button", name="Decision", exact=True).click()
+        open_message_menu(message, phone=False).get_by_role("menuitem", name="Propose a decision").click()
         panel.get_by_label("Why").fill("The camera failed in low light; a ToF sensor works in the dark and stores no images")
         panel.get_by_label("Replaces").select_option(label="Use a camera for gesture control")
         panel.get_by_role("button", name="Propose decision").click()
@@ -271,15 +270,11 @@ class WorkDecisionsJourney(unittest.TestCase):
     def test_06_phone_creates_work_and_reads_the_tasks_tab(self) -> None:
         page = self.open_conversation("partner", phone=True)
         message = page.locator(f"#message-{self.messages['finding']}")
-        # On touch one quiet button per message opens its actions.
-        expect(message.get_by_role("button", name="Task", exact=True)).to_have_count(0)
-        more = message.get_by_role("button", name="Make from this message")
-        box = more.bounding_box()
-        assert box
-        self.assertGreaterEqual(box["height"], 44, "touch target")
+        # On touch a long press opens a message's actions (F-026 S6); nothing sits under the message.
+        expect(message.get_by_role("button", name="Create task")).to_have_count(0)  # the swipe actions stay hidden at rest
+        expect(message.locator(".msg-acts")).to_have_count(0)
         shot(page, "work-phone-390-conversation")
-        more.tap()
-        create = message.get_by_role("button", name="Task", exact=True)
+        create = open_message_menu(message, phone=True).get_by_role("menuitem", name="Create task")
         self.assertGreaterEqual(create.bounding_box()["height"], 44, "touch target")
         create.tap()
         sheet = page.get_by_role("dialog", name="Details")
@@ -457,7 +452,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         for key in ("finding", "idea"):
             message = page.locator(f"#message-{self.messages[key]}")
             message.hover()
-            acts = message.locator(".ws-acts").bounding_box()
+            acts = message.locator(".msg-acts").bounding_box()
             for part in (message.locator(".project-convo__message-meta strong"), message.locator(".project-convo__message-meta time")):
                 box = part.bounding_box()
                 assert acts and box
