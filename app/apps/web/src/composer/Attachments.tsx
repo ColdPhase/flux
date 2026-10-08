@@ -188,7 +188,7 @@ export function PhotoViewer({ photos, start, context, onClose }: { photos: Messa
   }, []);
   const step = useCallback((by: number) => { setNote(''); setIndex((value) => Math.min(photos.length - 1, Math.max(0, value + by))); }, [photos.length]);
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (event.key === 'Escape') { event.preventDefault(); onClose(); return; }
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onClose(); return; }
     if (event.key === 'ArrowLeft') { event.preventDefault(); step(-1); return; }
     if (event.key === 'ArrowRight') { event.preventDefault(); step(1); return; }
     trapTab(event, root.current);
@@ -207,10 +207,9 @@ export function PhotoViewer({ photos, start, context, onClose }: { photos: Messa
       if (!(cause instanceof DOMException && cause.name === 'AbortError')) setNote('Could not share');
     }
   };
-  const act = (run?: () => void) => run ? () => { onClose(); run(); } : undefined;
   const actions: { key: string; icon: IconName; label: string; run?: () => void }[] = [
-    { key: 'reply', icon: 'reply', label: 'Reply', run: act(context?.onReply) },
-    { key: 'task', icon: 'add-task', label: 'Create task', run: act(context?.onCreateTask) },
+    { key: 'reply', icon: 'reply', label: 'Reply', run: context?.onReply },
+    { key: 'task', icon: 'add-task', label: 'Create task', run: context?.onCreateTask },
   ];
   const meta = [context?.at ? new Date(context.at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : null, photos.length > 1 ? `${index + 1} of ${photos.length}` : null].filter(Boolean).join(' · ');
   return createPortal(
@@ -233,7 +232,10 @@ export function PhotoViewer({ photos, start, context, onClose }: { photos: Messa
         <span className="photo-viewer__note" role="status">{note}</span>
       </div>
       <div className="photo-viewer__actions" role="group" aria-label="Photo actions">
-        {actions.filter((item) => item.run).map((item) => <button key={item.key} type="button" onClick={item.run}><Icon name={item.icon} size={20} />{item.label}</button>)}
+        {actions.filter((item) => item.run).map((item) => <button key={item.key} type="button" onClick={() => {
+          // The action takes focus where it leads (the composer, the new task), so the opener does not take it back.
+          returnTo.current = null; onClose(); item.run?.();
+        }}><Icon name={item.icon} size={20} />{item.label}</button>)}
         <a href={filePath(file.id)} download={file.name}><Icon name="download" size={20} />Save</a>
         <button type="button" onClick={() => void share()} disabled={bytes.status !== 'ready'}><Icon name="share" size={20} />Share</button>
       </div>

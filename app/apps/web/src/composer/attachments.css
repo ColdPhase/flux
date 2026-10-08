@@ -131,4 +131,4 @@ span.photo-grid__open { cursor: default; }
 .link-preview__site { display: flex; align-items: center; gap: 6px; color: var(--t3); font-size: var(--fs-xs); }
 .link-preview strong { font-size: var(--fs-base); font-weight: 600; overflow-wrap: anywhere; }
 .link-preview small { color: var(--t2); font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-@media (pointer: coarse) { .file-row, .link-preview { min-height: 56px; } .voice-note__play { width: 44px; height: 44px; } }
+@media (pointer: coarse) { .file-row, .link-preview { min-height: 56px; } .voice-note__play { width: 44px; height: 44px; } .photo-grid__retry { min-height: 44px; min-width: 44px; } }

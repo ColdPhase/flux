@@ -21,6 +21,7 @@ import { ProjectPolicy } from './ProjectPolicy';
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
 import './agents.css';
+import { useCreateWorkFromMessage } from '../work/inline';
 
 /**
  * Agents (UI116-2): a view of the project's existing work, not a second
@@ -165,6 +166,7 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
   const reload = useRef(() => { /* set while mounted */ });
   // Per account and task, kept across views and reloads like every other composer (#40).
   const composer = useComposerDraft(meId, projectId, `task:${task.id}`);
+  const makeWork = useCreateWorkFromMessage({ id: projectId });
   const captureScope = useComposerScope(composer.key);
   const blocked = changingScope || !discussion || !canWrite || accessLost;
   // Typing (#155 AC-2) is the task thread's: the same canonical conversation as the task's thread in
@@ -297,7 +299,8 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
                 {message.contribution ? <span className="agents-msg__kind"> · {message.contribution.kind}</span> : null}
               </span>
               {message.body ? <p className="agents-msg__body">{message.body}</p> : null}
-              <MessageFiles files={message.files} />
+              <MessageFiles files={message.files} context={{ author: name, at: message.createdAt, caption: message.body, onReply: blocked ? undefined : () => box.current?.focus(), onCreateTask: canWrite && !accessLost ? () => void makeWork.create(message) : undefined }} />
+              {makeWork.failed?.messageId === message.id ? <p className="agents-thread__error" role="alert">{makeWork.failed.text}</p> : null}
             </li>
           );
         }), ...outbox.pending.map((item) => (

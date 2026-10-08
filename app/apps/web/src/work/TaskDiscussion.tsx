@@ -10,6 +10,7 @@ import { useProjectShell } from '../project/data';
 import { getTaskDiscussion } from '../composer/api';
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import { agentDisplayName } from '../docs/format';
+import { useCreateWorkFromMessage } from './inline';
 
 /**
  * A task's discussion in Details (UI116-3, #154): its root, which is the task's first genuine
@@ -25,6 +26,7 @@ export function TaskDiscussionSection({ workId, project, members, me }: {
   const fieldId = useId();
   const navigate = useNavigate();
   const writable = project.access !== 'viewer';
+  const makeWork = useCreateWorkFromMessage(project);
   // People the project shell already knows, for a reader who cannot list the workspace's members.
   const people = useProjectShell()?.people ?? null;
   const [discussion, setDiscussion] = useState<Discussion | null>(null);
@@ -76,7 +78,8 @@ export function TaskDiscussionSection({ workId, project, members, me }: {
                 {root.body ? <span className="wd-discussion__body">{root.body}</span> : null}
                 <span className="wd-discussion__more">{replies ? `${replies} ${replies === 1 ? 'reply' : 'replies'}` : 'No replies yet'} · Open in Conversation<Icon name="chevron-right" size={14} /></span>
               </Link>
-              <MessageFiles files={root.files} />
+              <MessageFiles files={root.files} context={{ author: author(root), at: root.createdAt, caption: root.body, place: project.name, onReply: writable ? () => document.getElementById(fieldId)?.focus() : undefined, onCreateTask: writable ? () => void makeWork.create(root) : undefined }} />
+              {makeWork.failed?.messageId === root.id ? <p className="wd-error" role="alert">{makeWork.failed.text}</p> : null}
             </> : null}
             {composer.pending.length ? <ol className="wd-pending" aria-label="Messages you are sending">{composer.pending.map((item) => (
               <li key={item.id} id={`pending-${item.id}`} data-client-message-id={item.id} data-send-state={item.state} className={`wd-pending__item is-pending${item.state === 'failed' ? ' is-failed-send' : ''}`}>

@@ -154,7 +154,7 @@ export function MessageObjects({ message, projectId, preview, thread = null, thr
  * Creates work from a message in one action. A failed attempt keeps its Idempotency-Key, so
  * retrying after a lost response returns the same work item instead of a duplicate.
  */
-export function useCreateWorkFromMessage(project: Project) {
+export function useCreateWorkFromMessage(project: Pick<Project, 'id'>) {
   const { openDetails } = useShellActions();
   const revalidator = useRevalidator();
   const keys = useRef(new Map<string, string>());

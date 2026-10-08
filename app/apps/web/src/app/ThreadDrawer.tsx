@@ -4,7 +4,7 @@ import { Icon, IconButton, useMediaQuery } from '../ui';
 import { DiscussedTask, MessageObjects } from '../work/inline';
 import type { MessageWorkPreview } from '../work/message-associations';
 import { AgentAuthor, AuthorFace, SourceCitation, clock, day, when } from './messageParts';
-import { MessageFiles } from '../composer/Files';
+import { MessageFiles, type PhotoActions } from '../composer/Files';
 
 export type ThreadMode = 'docked' | 'sheet';
 
@@ -59,12 +59,14 @@ export function ThreadMessageActions({ writable, children }: { writable: boolean
 }
 
 /** The message the thread answers, at its top: who said it, when, and what, with its cited source. */
-export function ThreadRoot({ message, projectId, body, author, agentOwner = null, meId, writable, replies, task = null, taskRow = null, preview = null, onDenied }: {
+export function ThreadRoot({ message, projectId, body, author, agentOwner = null, meId, writable, replies, task = null, taskRow = null, preview = null, onDenied, photo }: {
   message: ConversationMessage | null; projectId: string; body: string; author: string | null; agentOwner?: string | null; meId: string; writable: boolean; replies: number;
   /** The task whose discussion this thread is (UI116-3), and its row from the thread's visible reference read (#155). */
   task?: { workId: string; title: string; number?: number } | null; taskRow?: NativeWorkRow | null;
   /** What was made from the root, from the thread's bounded association read (#155): the root is shown whole here. */
   preview?: MessageWorkPreview | null; onDenied: (cause: unknown) => void;
+  /** Reply and Create task in the photo viewer, as this reader may use them (#348). */
+  photo?: PhotoActions & { place?: string };
 }) {
   const mine = !!message && message.authorId === meId;
   return (
@@ -78,7 +80,7 @@ export function ThreadRoot({ message, projectId, body, author, agentOwner = null
           </div>
         ) : null}
         {message?.body || !message ? <p>{body}</p> : null}
-        <MessageFiles files={message?.files} />
+        <MessageFiles files={message?.files} context={message ? { author: author ?? undefined, at: message.createdAt, caption: message.body, ...photo } : undefined} />
         {message?.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
         {message ? <MessageObjects message={message} projectId={projectId} preview={preview} thread={task} threadRow={taskRow} />
           : task ? <div className="ws-attach"><DiscussedTask task={task} row={taskRow} /></div> : null}

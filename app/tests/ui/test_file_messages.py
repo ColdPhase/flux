@@ -118,7 +118,8 @@ CSV = b"bed,rssi\nfar east,-112\nnorth,-98\n" * 40
 VOICE = b"\x00\x00\x00\x18ftypM4A " + b"\x00" * 40_000
 NOT_A_PHOTO = b"this is a text file named like a photo\n"
 SHOTS = os.environ.get("FLUX_UI_SCREENSHOTS")
-PEOPLE = {"ada": ("Ada Kowalska", f"ada.files+{STAMP}@example.test"), "jonas": ("Jonas Berg", f"jonas.files+{STAMP}@example.test")}
+PEOPLE = {"ada": ("Ada Kowalska", f"ada.files+{STAMP}@example.test"), "jonas": ("Jonas Berg", f"jonas.files+{STAMP}@example.test"),
+          "ida": ("Ida Lund", f"ida.files+{STAMP}@example.test")}
 
 
 class FilesReferencesPhotos(unittest.TestCase):
@@ -161,11 +162,14 @@ class FilesReferencesPhotos(unittest.TestCase):
         project = post("ada", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Community garden sensors", "visibility": "restricted"})
         pid = project["id"]
         post("ada", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": cls.ids["jonas"]}, "role": "contributor"})
+        post("ada", f"/api/v1/workspaces/{ws['id']}/members", {"email": PEOPLE["ida"][1], "role": "member"})
+        post("ada", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": cls.ids["ida"]}, "role": "viewer"})
 
         def root(who: str, body: str, files: list[tuple[str, bytes]]) -> str:
             ids = [upload(who, name, data) for name, data in files]
             cls.ids.setdefault("photo", ids[0]) if body.startswith("Sensor 3") else None
             started = post(who, f"/api/v1/projects/{pid}/conversations", {"body": body, "attachmentIds": ids, "clientMessageId": str(uuid.uuid4())})
+            cls.ids.setdefault("conversation:two", started["messages"][0]["conversationId"]) if body.startswith("Sensor 3") else None
             return started["messages"][0]["id"]
 
         cls.ids["files"] = root("jonas", "Drawing and range readings from Saturday, see #8 and ask @Ada: https://www.thethingsnetwork.org/docs/gateways/placement-guide/",
@@ -174,6 +178,10 @@ class FilesReferencesPhotos(unittest.TestCase):
         cls.ids["six"] = root("jonas", "All the beds after planting", [(f"bed-{n}.png", data) for n, data in enumerate([SHED, BOARD, BEDS, FIELD, SHED, BEDS])])
         cls.ids["fake"] = root("jonas", "", [("notaphoto.jpg", NOT_A_PHOTO)])
         cls.ids["project"] = pid
+        task = post("ada", f"/api/v1/projects/{pid}/work", {"title": "Check the mount on sensor 3"})
+        cls.ids["task"] = task["id"]
+        cls.ids["task-root"] = post("jonas", f"/api/v1/work/{task['id']}/discussion", {"body": "Mount after the rain", "attachmentIds": [upload("jonas", "IMG_2050.png", BEDS)],
+                                                                                   "clientMessageId": str(uuid.uuid4()), "kind": "text"})["id"]
         for context in contexts.values():
             context.close()
 
@@ -246,7 +254,7 @@ class FilesReferencesPhotos(unittest.TestCase):
         expect(preview).to_have_attribute("rel", "noopener noreferrer nofollow")
         expect(self.message(page, "two").locator(".link-previews")).to_have_count(0)  # negative control: no address, no card
         if phone:
-            self.assertGreaterEqual(voice.get_by_role("button").bounding_box()["height"], 43.5)
+            at_least_44(self, voice.get_by_role("button").bounding_box()["height"])
             self.assertLessEqual(page.locator("body").evaluate("el => el.scrollWidth"), PHONE["width"])
 
     def check_photos(self, page: Page) -> None:
@@ -327,10 +335,89 @@ class FilesReferencesPhotos(unittest.TestCase):
                 self.assertEqual(viewer.evaluate("el => getComputedStyle(el).backgroundColor"), "rgb(0, 0, 0)")
                 for control in (viewer.get_by_role("button", name="Reply", exact=True), viewer.get_by_role("button", name="Create task", exact=True),
                                 viewer.get_by_role("link", name="Save"), viewer.get_by_role("button", name="Share", exact=True)):
-                    self.assertGreaterEqual(control.bounding_box()["height"], 43.5)
+                    at_least_44(self, control.bounding_box()["height"])
                 self.shot(page, f"viewer-390-{'dark' if dark else 'light'}")
                 viewer.get_by_role("button", name="Create task", exact=True).tap()
                 expect(viewer).to_have_count(0)
+
+    def open_in(self, page: Page, scope, name: str):
+        opener = scope.get_by_role("button", name=name)
+        opener.scroll_into_view_if_needed()
+        opener.click()
+        viewer = page.get_by_role("dialog", name="Jonas Berg")
+        expect(viewer.locator("img[src^='blob:']")).to_be_visible()
+        return opener, viewer
+
+    def create_task_from(self, page: Page, viewer, message_id: str) -> None:
+        """Create task in the viewer stores a task whose source is that message (read back from the API)."""
+        with page.expect_response(lambda r: r.request.method == "POST" and r.url.endswith("/work")) as created:
+            viewer.get_by_role("button", name="Create task", exact=True).click()
+        expect(viewer).to_have_count(0)
+        self.assertEqual(created.value.status, 201, created.value.text())
+        work_id = created.value.json()["id"]
+        stored = page.request.get(f"/api/v1/projects/{self.ids['project']}/work-associations?messageIds={message_id}&relation=source&limit=100")
+        self.assertEqual(stored.status, 200, stored.text())
+        body = stored.json()
+        self.assertIn(work_id, [row["id"] for row in body["items"]], "the stored task is associated with the photo's message as its source")
+        self.assertGreaterEqual(next(item["work"] for item in body["sources"] if item["messageId"] == message_id), 1)
+
+    def test_photo_actions_and_escape_in_threads_details_and_agents(self) -> None:
+        """#369 review: Reply/Create task stay on an opening message; Escape closes only the photo."""
+        for phone in (False, True):
+            with self.subTest(phone=phone, surface="thread"):
+                page = self.page("ada", phone=phone)
+                page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation:two']}")
+                root = page.locator(".thread__root")
+                opener, viewer = self.open_in(page, root, "Open photo IMG_2041.png, 1 of 2")
+                page.keyboard.press("Escape")
+                expect(viewer).to_have_count(0)
+                expect(root).to_be_visible()  # the thread stays open
+                expect(opener).to_be_focused()
+                _, viewer = self.open_in(page, root, "Open photo IMG_2041.png, 1 of 2")
+                viewer.get_by_role("button", name="Reply", exact=True).click()
+                expect(viewer).to_have_count(0)
+                expect(page.locator("#thread-composer")).to_be_focused()
+                if not phone:
+                    _, viewer = self.open_in(page, root, "Open photo IMG_2041.png, 1 of 2")
+                    self.create_task_from(page, viewer, self.ids["two"])
+            with self.subTest(phone=phone, surface="details"):
+                page = self.page("ada", phone=phone)
+                page.goto(f"/projects/{self.ids['project']}/tasks?open=work:{self.ids['task']}")
+                details = page.get_by_role("region", name="Discussion")
+                opener, viewer = self.open_in(page, details, "Open photo IMG_2050.png")
+                page.keyboard.press("Escape")
+                expect(viewer).to_have_count(0)
+                expect(details).to_be_visible()  # Escape closed the photo, not Details
+                expect(opener).to_be_focused()
+                page.keyboard.press("Escape")  # a second Escape still closes Details (negative control)
+                expect(details).to_have_count(0)
+                page.goto(f"/projects/{self.ids['project']}/tasks?open=work:{self.ids['task']}")
+                _, viewer = self.open_in(page, details, "Open photo IMG_2050.png")
+                viewer.get_by_role("button", name="Reply", exact=True).click()
+                expect(details.get_by_label("Write to this task")).to_be_focused()
+                if phone:
+                    _, viewer = self.open_in(page, details, "Open photo IMG_2050.png")
+                    self.create_task_from(page, viewer, self.ids["task-root"])
+            with self.subTest(phone=phone, surface="agents"):
+                page = self.page("jonas", phone=phone)
+                page.goto(f"/projects/{self.ids['project']}/agents?task={self.ids['task']}")
+                thread = page.get_by_role("region", name="Thread of Check the mount on sensor 3")
+                opener, viewer = self.open_in(page, thread, "Open photo IMG_2050.png")
+                expect(viewer.get_by_role("button", name="Create task", exact=True)).to_be_visible()
+                viewer.get_by_role("button", name="Reply", exact=True).click()
+                expect(page.get_by_label("Write to this task")).to_be_focused()
+                if not phone:
+                    _, viewer = self.open_in(page, thread, "Open photo IMG_2050.png")
+                    self.create_task_from(page, viewer, self.ids["task-root"])
+            with self.subTest(phone=phone, surface="reader"):
+                page = self.page("ida", phone=phone)
+                page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation:two']}")
+                _, viewer = self.open_in(page, page.locator(".thread__root"), "Open photo IMG_2041.png, 1 of 2")
+                expect(viewer.get_by_role("button", name="Save")).to_have_count(0)
+                expect(viewer.get_by_role("link", name="Save")).to_be_visible()
+                for name in ("Reply", "Create task"):  # a reader cannot reply or add work
+                    expect(viewer.get_by_role("button", name=name, exact=True)).to_have_count(0)
+                page.keyboard.press("Escape")
 
     def test_composer_thumbnails_drop_and_photo_states(self) -> None:
         for phone in (False, True):
@@ -351,7 +438,7 @@ class FilesReferencesPhotos(unittest.TestCase):
                 if phone:
                     expect(orders).to_have_text(["Sends 1.", "Sends 2.", "Sends 3."])
                     remove = draft.get_by_role("button", name="Remove IMG_3001.png").bounding_box()
-                    self.assertGreaterEqual(min(remove["width"], remove["height"]), 43.5)
+                    at_least_44(self, min(remove["width"], remove["height"]))
                 else:
                     expect(orders).to_have_count(0)  # numbering is the phone's
                 field.fill("Here are the offsets for the volunteers")
@@ -393,7 +480,12 @@ class FilesReferencesPhotos(unittest.TestCase):
                 expect(pending.get_by_role("button", name="Retry", exact=True)).to_have_count(1)  # one Retry for assistive technology
                 self.shot(page, f"failed-{'390' if phone else '1440'}", pending)
                 page.unroute("**/api/v1/projects/*/conversations")
-                pending.locator(".photo-grid__retry").first.click()
+                if phone:
+                    retry = pending.locator(".photo-grid__retry").first.bounding_box()
+                    at_least_44(self, min(retry["width"], retry["height"]))
+                    pending.locator(".photo-grid__retry").first.tap()
+                else:
+                    pending.locator(".photo-grid__retry").first.click()
                 expect(page.locator("[data-client-message-id]")).to_have_count(0)
                 sent = page.locator(".project-convo__message").filter(has_text="Here are the offsets for the volunteers").last
                 expect(sent.get_by_role("list", name="2 photos").locator("img[src^='blob:']")).to_have_count(2)
@@ -439,6 +531,20 @@ class FilesReferencesPhotos(unittest.TestCase):
         mine = owner.new_page()
         mine.goto(f"/projects/{self.ids['project']}")
         expect(mine.locator(f"#message-{self.ids['two']} img[src^='blob:']")).to_have_count(2)
+
+
+def at_least_44(case: unittest.TestCase, size: float) -> None:
+    """The accepted 44 px touch minimum, with only a measurement tolerance of 0.001 px."""
+    case.assertGreaterEqual(size, 44 - 0.001, f"{size} px is under the 44 px touch minimum")
+
+
+class TouchMinimum(unittest.TestCase):
+    def test_rejects_anything_under_44_px(self) -> None:
+        for size in (43.5, 43.75, 43.99):
+            with self.assertRaises(AssertionError):
+                at_least_44(self, size)
+        for size in (44, 43.9995, 48):
+            at_least_44(self, size)
 
 
 def lambda_re(text: str):
