@@ -281,7 +281,7 @@ class ConversationFinal(unittest.TestCase):
         self.assertEqual(attach.count(), 1, "one attach button")
         self.assertTrue(attach.is_enabled(), "the attach button is enabled")
         with page.expect_file_chooser(timeout=15000) as chooser:
-            page.keyboard.press("Enter")
+            page.get_by_role("listbox", name="Actions").get_by_role("option", selected=True).click()
         chooser.value.set_files({"name": "bed-readings.csv", "mimeType": "text/csv", "buffer": b"bed,dbm\nfar east,-112\n"})
         expect(page.get_by_text("bed-readings.csv")).to_be_visible()
         expect(page.get_by_text("Ready, private", exact=False)).to_be_visible()
@@ -482,6 +482,7 @@ class ConversationFinal(unittest.TestCase):
             page.wait_for_timeout(300)
             expect(composer).to_have_value(newer)
             self.assertEqual(self.work_titles(page).count(title), 1, "exactly the original task exists")
+            page.unroute("**/api/v1/projects/*/work")
             page.reload()
             expect(page.locator("#project-composer")).to_have_value(newer)
             # Positive control: an unchanged draft is consumed by its command.
