@@ -145,6 +145,10 @@ function scopeUnit(context: CoWorkContext, scope: LockedClaimScope, requestedUni
     throw new NotFoundError('Work unit', 'COWORK_UNIT_NOT_FOUND');
   return unit;
 }
+/** A person ended this work (#347 S13). The agent is told so, not that its claim was merely lost. */
+export function stoppedError(): ConflictError {
+  return new ConflictError('A person stopped this work. Do not continue it; ask in the task thread.', 'COWORK_STOPPED');
+}
 function version(unit: CoWorkUnit, expected: number): void {
   if (unit.version !== expected) throw new ConflictError('The unit changed; recover current state', 'COWORK_VERSION_CONFLICT');
 }
@@ -152,6 +156,7 @@ function fence(context: CoWorkContext, scope: LockedClaimScope, input: RenewComm
   const unit = scopeUnit(context, scope, input.unitId);
   if (!Number.isSafeInteger(input.generation) || input.generation < 1 || !identifier(input.leaseId))
     throw new InvalidInputError('A claim generation and lease ID are required');
+  if (unit.state === 'stopped') throw stoppedError();
   version(unit, input.expectedVersion);
   if (unit.state !== 'claimed' || unit.generation !== input.generation
     || unit.lease?.id !== input.leaseId || unit.lease.runtimeSessionId !== context.runtimeSessionId
@@ -204,8 +209,9 @@ export function coWorkClaimUseCases(uow: CoWorkClaimUnitOfWork) {
       return uow.run(context, 'claim', input, async (scope) => {
         const unit = scopeUnit(context, scope, input.unitId);
         if (scope.replay) return replay(scope);
+        if (unit.state === 'stopped') throw stoppedError();
         version(unit, input.expectedVersion);
-        if (unit.state === 'completed' || unit.state === 'stopped')
+        if (unit.state === 'completed')
           throw new ConflictError('This unit is no longer claimable', 'COWORK_UNIT_CLOSED');
         if (unit.state === 'claimed' && unit.lease && unit.lease.expiresAt.getTime() > scope.now.getTime())
           throw new ConflictError('This unit already has a live claim', 'COWORK_UNIT_BUSY');

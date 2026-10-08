@@ -33,6 +33,8 @@ import { joinRateLimiter } from './live/rate-limit.js';
 import { agentProposalRoutes } from './agent-connection/routes.js';
 import { projectAgentRoutes } from './agent-connection/project-agents.js';
 import { agentPolicyRoutes } from './agent-connection/project-policy.js';
+import { agentStopRoutes } from './agent-connection/agent-stops.js';
+import { agentQuestionRoutes } from './agent-connection/agent-questions.js';
 import { proactiveComparisonRoutes } from './proactive-comparison/routes.js';
 import { registerMcpRoute } from './agent-connection/mcp-route.js';
 import { returnRoutes } from './returns/routes.js';
@@ -164,6 +166,8 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await app.register(agentProposalRoutes, { db, sessions: identity, oauthSecret: identityConfig.secret, publicOrigin: identityConfig.publicOrigin });
   await app.register(projectAgentRoutes, { db, sessions: identity });
   await app.register(agentPolicyRoutes, { db, sessions: identity });
+  await app.register(agentStopRoutes, { db, sessions: identity });
+  await app.register(agentQuestionRoutes, { db, sessions: identity });
   await app.register(proactiveComparisonRoutes, { db, sessions: identity, backgroundMasterKey: config.backgroundMasterKey,
     comparisonsEnabled: config.backgroundComparisons });
   registerMcpRoute(app, db, identity.auth, identityConfig.publicOrigin);

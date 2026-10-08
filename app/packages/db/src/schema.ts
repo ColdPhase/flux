@@ -754,6 +754,50 @@ export const agentProjectPolicies = pgTable('agent_project_policies', {
   publishedAt: timestamp('published_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [primaryKey({ columns: [table.projectId, table.revision] })]);
 
+// A person ended an external agent's work on a task (migration 0065, #347 S13). The task, its owner and its co-work
+// units change through their own commands in the same transaction; this is the record of who did it and when.
+export const agentStops = pgTable('agent_stops', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  taskId: uuid('task_id').notNull(),
+  agentId: uuid('agent_id').notNull(),
+  stoppedBy: text('stopped_by').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  unitsStopped: integer('units_stopped').notNull(),
+  stoppedAt: timestamp('stopped_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index('agent_stops_project_idx').on(table.projectId, table.stoppedAt.desc()),
+  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.taskId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }).onDelete('cascade'),
+]);
+
+// An agent's question to a person with ready-made answers (migration 0065, #347 S14). The question is the agent's
+// ordinary message; this adds the options and, once given, the single answer (a chosen option or free text).
+export const agentQuestions = pgTable('agent_questions', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  conversationId: uuid('conversation_id').notNull(),
+  messageId: uuid('message_id').notNull().unique(),
+  taskId: uuid('task_id'),
+  agentId: uuid('agent_id').notNull(),
+  askedUserId: text('asked_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  question: text('question').notNull(),
+  options: jsonb('options').$type<string[]>().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  answeredOption: integer('answered_option'),
+  answerText: text('answer_text'),
+  answeredBy: text('answered_by').references(() => authUsers.id, { onDelete: 'set null' }),
+  answerMessageId: uuid('answer_message_id'),
+  answeredAt: timestamp('answered_at', { withTimezone: true }),
+}, (table) => [
+  index('agent_questions_project_idx').on(table.projectId, table.createdAt.desc()),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.conversationId], foreignColumns: [projectConversations.workspaceId, projectConversations.projectId, projectConversations.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.messageId], foreignColumns: [projectMessages.workspaceId, projectMessages.projectId, projectMessages.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }).onDelete('cascade'),
+]);
+
 // Sketches: thoughts on a map and the links between them (migration 0007, issue #69).
 export const sketches = pgTable('sketches', {
   id: uuid('id').primaryKey(),

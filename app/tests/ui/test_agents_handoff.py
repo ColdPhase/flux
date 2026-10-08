@@ -142,7 +142,7 @@ class HandOffJourney(unittest.TestCase):
         row.click()
         expect(page.get_by_role("region", name="Agent policy")).to_have_count(0)
 
-    def test_04_the_detail_panel_opens_on_the_working_agent_and_has_no_stop_it_cannot_honour(self) -> None:
+    def test_04_the_detail_panel_opens_on_the_working_agent(self) -> None:
         page = self.open_agents()
         detail = page.get_by_role("complementary", name="Claude Code agent, details")
         expect(detail).to_be_visible()
@@ -152,8 +152,9 @@ class HandOffJourney(unittest.TestCase):
         expect(detail.get_by_role("region", name="Now")).to_contain_text("Calibrate the probes at two soil depths")
         expect(detail.get_by_role("region", name="Can")).to_contain_text("It can’t accept decisions")
         expect(detail.get_by_role("region", name="Recent")).to_be_visible()
-        # Flux has no operation that stops an external agent, so no button pretends to.
-        expect(page.get_by_role("button", name=re.compile("^Stop"))).to_have_count(0)
+        # Stop (S13) is on the working agent's row and in its panel, for its owner; test_agent_stop_questions exercises it.
+        expect(detail.get_by_role("button", name="Stop Claude Code agent")).to_be_visible()
+        expect(page.get_by_role("button", name="Stop Reader agent")).to_have_count(0)
         shot(page, "handoff-agents-detail-desktop")
         page.locator(f'.agents-row[data-agent="{self.ids["agent_reader"]}"] .agents-row__btn').click()
         expect(page.get_by_role("complementary", name="Reader agent, details")).to_be_visible()
@@ -206,7 +207,7 @@ class HandOffJourney(unittest.TestCase):
         dialog = page.get_by_role("dialog", name="Hand off a task")
         dialog.get_by_label("Task", exact=True).select_option(label="#3 · Ask the supplier for the probe drawing")
         for name, note in (("Outside agent", "has no access to Garden sensors"), ("Reader agent", "can only read Garden sensors")):
-            dialog.get_by_role("radio", name=re.compile(name)).check(force=True)
+            dialog.locator("label.handoff__agent", has_text=name).click()
             dialog.get_by_role("button", name="Next").click()
             expect(dialog).to_contain_text(note)
             expect(dialog).to_contain_text("Nothing is granted from here")
@@ -242,7 +243,7 @@ class HandOffJourney(unittest.TestCase):
         dialog = page.get_by_role("dialog", name="Hand off a task")
         expect(dialog).to_contain_text("Hand off #4 · Photograph the north bed")
         expect(dialog.get_by_label("Task", exact=True)).to_have_count(0)
-        dialog.get_by_role("radio", name=re.compile("Claude Code agent")).check(force=True)
+        dialog.locator("label.handoff__agent", has_text="Claude Code agent").click()
         dialog.get_by_role("button", name="Next").click()
         page.keyboard.press("Control+Enter")
         expect(page.get_by_role("dialog", name="Hand off a task")).to_have_count(0)

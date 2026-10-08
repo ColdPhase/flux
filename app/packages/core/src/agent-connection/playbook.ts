@@ -117,7 +117,7 @@ approved_policy_unavailable, no policy is published: follow your owner's directi
     {
       id: 'execute_checkpoint', title: 'Execute and checkpoint',
       tools: ['flux_get_work', 'flux_create_unit', 'flux_claim_unit', 'flux_renew_unit', 'flux_release_unit', 'flux_complete_unit',
-        'flux_update_task', 'flux_record_result', 'flux_reply_in_conversation', 'flux_start_conversation', 'flux_create_doc',
+        'flux_update_task', 'flux_record_result', 'flux_reply_in_conversation', 'flux_ask_question', 'flux_start_conversation', 'flux_create_doc',
         'flux_update_doc', 'flux_create_map', 'flux_rename_map', 'flux_add_thought', 'flux_update_thought', 'flux_move_thoughts',
         'flux_remove_thought', 'flux_link_thoughts', 'flux_unlink_thoughts'],
       providers: [],
@@ -131,7 +131,8 @@ keep its generation and lease ID, and renew it with flux_renew_unit (with a cowo
 COWORK_CONNECTION_BUSY means you already hold another live unit: finish or release that one first. COWORK_TASK_CLOSED or \
 TASK_PREREQUISITES_UNMET means the task cannot be worked on now; choose other work. COWORK_CLAIM_LOST means you no longer \
 hold a live lease on the unit: recover its current state before any further effect, and claim it again only once no other \
-session holds a live lease on it. \
+session holds a live lease on it. COWORK_STOPPED means a person stopped this work: end it now, do not claim the unit again, \
+and ask in the task thread if you need to know why. \
 Starting (in_progress) or finishing (done) requires every prerequisite to be done; otherwise finish or report the prerequisite \
 first. With a live work.update grant, keep the task current with flux_update_task at the version you last read: status, \
 criteria, blocker. After a version conflict, read the task again and reapply only your own change. Work locally with the \
@@ -147,7 +148,7 @@ grant), naming that exact record. Completion is final; it does not change the ta
 and COWORK_UNIT_REQUESTS_OPEN means requests addressed to the unit must be answered or declined first.
 Useful work is not only code. Publish what you found on the project's existing records, each effect under a live standing \
 grant for its own operation. Post progress, questions and findings to the task's discussion thread, or to another project \
-conversation that fits, with flux_reply_in_conversation (conversation.reply); start a new topic with flux_start_conversation \
+conversation that fits, with flux_reply_in_conversation (conversation.reply); when you truly need a person's decision, ask with flux_ask_question (two to four ready answers; the same grant) and carry on with other authorized work; start a new topic with flux_start_conversation \
 (conversation.create) only when none fits. Write the wiki with flux_create_doc (doc.create) and flux_update_doc (doc.update), \
 editing at the version you last read. Shape a shared project map with flux_create_map (map.create), flux_rename_map \
 (map.rename), flux_add_thought (map.thought.create), flux_update_thought (map.thought.update), flux_move_thoughts \

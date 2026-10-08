@@ -12,6 +12,8 @@ export interface AgentEntry {
   name: string;
   /** "Ada", "Ada (you)" or "the workspace"; null when it cannot be told. */
   owner: string | null;
+  /** The owning person's id; null for a workspace agent or when it cannot be told. */
+  ownerId: string | null;
   /** The client and connection name, e.g. "Claude Code · Desk laptop". */
   via: string | null;
   connection: ProjectAgentConnection | null;
@@ -27,7 +29,7 @@ export function agentEntries(people: readonly ProjectPerson[] | null, connection
   const accessOf = new Map((people ?? []).filter((person) => person.kind === 'agent').map((person) => [person.id, person]));
   const entries: AgentEntry[] = connections.map((connection) => ({
     key: `connection:${connection.id}`, agentId: connection.agent.id, name: connection.agent.name,
-    owner: `${connection.owner.name}${connection.own ? ' (you)' : ''}`,
+    owner: `${connection.owner.name}${connection.own ? ' (you)' : ''}`, ownerId: connection.owner.id,
     via: `${CLIENT_LABEL[connection.clientDesignation]} · ${connection.name}`,
     connection, access: accessOf.get(connection.agent.id)?.access ?? null,
   }));
@@ -36,13 +38,15 @@ export function agentEntries(people: readonly ProjectPerson[] | null, connection
     if (seen.has(person.id)) continue;
     seen.add(person.id);
     entries.push({ key: `agent:${person.id}`, agentId: person.id, name: person.name, connection: null, via: null, access: person.access,
-      owner: person.agentOwner ? person.agentOwner.kind === 'workspace' ? 'the workspace' : person.agentOwner.name : null });
+      owner: person.agentOwner ? person.agentOwner.kind === 'workspace' ? 'the workspace' : person.agentOwner.name : null,
+      ownerId: person.agentOwner?.kind === 'human' ? person.agentOwner.id : null });
   }
   for (const agent of workspaceAgents) {
     if (seen.has(agent.id) || agent.revokedAt) continue;
     seen.add(agent.id);
     entries.push({ key: `agent:${agent.id}`, agentId: agent.id, name: agent.name, connection: null, via: null, access: null,
-      owner: agent.owner.kind === 'workspace' ? 'the workspace' : humans.get(agent.owner.id) ?? null });
+      owner: agent.owner.kind === 'workspace' ? 'the workspace' : humans.get(agent.owner.id) ?? null,
+      ownerId: agent.owner.kind === 'human' ? agent.owner.id : null });
   }
   return entries;
 }

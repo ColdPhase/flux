@@ -130,7 +130,10 @@ export function notificationFactRows(db: DbExecutor) {
         .where(and(eq(pm.conversationId, message.conversationId), sql`${pm.sequence} < ${message.sequence}`, isNotNull(pm.authorId)));
       const [agent] = message.authorAgentId ? await db.select({ name: schema.agents.name }).from(schema.agents)
         .where(and(eq(schema.agents.workspaceId, message.workspaceId), eq(schema.agents.id, message.authorAgentId))) : [];
+      const [asked] = await db.select({ userId: schema.agentQuestions.askedUserId, question: schema.agentQuestions.question }).from(schema.agentQuestions)
+        .where(eq(schema.agentQuestions.messageId, message.id));
       return {
+        asked: asked ?? null,
         id: message.id, workspaceId: message.workspaceId, projectId: message.projectId, projectName: await projectName(message.projectId),
         conversationId: message.conversationId, opening: messagePreview(opening?.body ?? message.body, opening?.attachmentCount ?? message.attachmentCount), conversationCreatedBy: row.createdBy !== null ? { kind: 'human' as const, id: row.createdBy } : { kind: 'agent' as const, id: row.createdByAgentId! },
         author: message.authorId !== null ? { kind: 'human' as const, id: message.authorId } : { kind: 'agent' as const, id: message.authorAgentId! },

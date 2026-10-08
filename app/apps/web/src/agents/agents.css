@@ -197,3 +197,19 @@
 .agents-detail__thread { padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: 600; text-align: left; cursor: pointer; text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 3px; min-width: 0; overflow-wrap: anywhere; }
 .agents-detail__recent .agents-detail__thread { font-weight: 400; }
 .agents-detail__thread:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
+
+/* Stop (S13, #347): the filled square of the sidebar card with its word; a row has it at its right edge, the panel in its actions. */
+.agents-row { display: flex; align-items: center; }
+.agents-row__btn { flex: 1; min-width: 0; width: auto; }
+.agents-stop {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2); flex: none; height: 32px; padding: 0 var(--s-3);
+  border: 0; border-radius: var(--r-pill); background: var(--sub); color: var(--t1); font: inherit; font-size: var(--fs-sm); font-weight: 500; cursor: pointer; transition: var(--tr);
+}
+.agents-stop:hover:not(:disabled) { background: var(--hov); }
+.agents-stop:disabled { color: var(--t3); cursor: default; }
+.agents-stop:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
+.agents-row__stop { margin-right: var(--s-3); }
+.agents-detail__actions { flex-wrap: wrap; }
+@media (pointer: coarse) { .agents-stop { min-height: 44px; min-width: 44px; } }
+.agents-row:has(.agents-row__btn:hover), .agents-row:has(.agents-row__btn[aria-pressed="true"]) { background: var(--sub); }
+.agents-row .agents-row__btn:hover, .agents-row .agents-row__btn[aria-pressed="true"] { background: transparent; }

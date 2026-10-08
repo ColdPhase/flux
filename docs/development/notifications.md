@@ -14,7 +14,7 @@ A notification exists only for a reason a person can act on (`reason` on every r
 | Reason | Event | Who |
 | --- | --- | --- |
 | `mention` | `project.message_sent.v1` / `project.conversation_created.v1` | People named with `@Name` (or opened with `Name,`), as the return view (#106) matches them. |
-| `question` | same | A mention that asks something (`?`). |
+| `question` | same | A mention that asks something (`?`); or, for an agent's question card (`flux_ask_question`, #347), exactly the one person asked, and nobody else because of that message. |
 | `reply` | same | The conversation's starter and earlier writers, unless the message mentions them. |
 | `dm` | `dm.message_sent.v1` (now carries `messageId`) | The other current participants. |
 | `assigned` | `project.work_created.v1` / `project.work_updated.v1` with `assignedTo` | A person someone else made the owner. |

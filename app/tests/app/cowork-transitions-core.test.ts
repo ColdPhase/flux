@@ -57,8 +57,10 @@ test('only the current holder under its live claim completes or transfers, and n
     refuse({ unit: { ...s.unit, assignmentConnectionId: randomUUID() } }, 'COWORK_UNIT_NOT_FOUND');
     refuse({ unit: { ...s.unit, projectId: randomUUID() } }, 'COWORK_UNIT_NOT_FOUND');
     refuse({}, 'COWORK_VERSION_CONFLICT', {}, { expectedVersion: 3 });
-    for (const state of ['pending', 'paused', 'completed', 'stopped'] as const)
+    for (const state of ['pending', 'paused', 'completed'] as const)
       refuse({ unit: { ...s.unit, state, lease: null } }, 'COWORK_CLAIM_LOST');
+    // A person's Stop is reported as such, not as a lost claim (#347).
+    refuse({ unit: { ...s.unit, state: 'stopped', lease: null } }, 'COWORK_STOPPED');
     refuse({}, 'COWORK_CLAIM_LOST', {}, { generation: 2 });
     refuse({}, 'COWORK_CLAIM_LOST', {}, { leaseId: randomUUID() });
     refuse({}, 'COWORK_CLAIM_LOST', { runtimeSessionId: randomUUID() });

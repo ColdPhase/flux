@@ -11,6 +11,7 @@ import { registerAgentWorkActions } from './work-actions.js';
 import { registerAgentMapActions } from './map-actions.js';
 import { registerAgentDocActions } from './doc-actions.js';
 import { registerAgentConversationActions } from './conversation-actions.js';
+import { registerAgentQuestionActions } from './agent-questions.js';
 import { registerAgentCoworkActions } from './cowork-actions.js';
 import { withAgentConnection, type FluxMcpClaims } from './context.js';
 import { toolError, toolResult } from './tool-results.js';
@@ -30,6 +31,7 @@ export function createFluxMcpServer(db: Database, claims: FluxMcpClaims, cursorS
   registerAgentMapActions(tools, db, claims);
   registerAgentDocActions(tools, db, claims);
   registerAgentConversationActions(tools, db, claims);
+  registerAgentQuestionActions(tools, db, claims);
   registerAgentCoworkActions(tools, db, claims);
   tools.forScope('flux.proposal.write').registerTool('flux_create_proposal', {
     title: 'Propose a sourced project action',

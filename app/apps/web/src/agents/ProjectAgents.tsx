@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { flushSync } from 'react-dom';
 import { Link, useLoaderData, useLocation, useNavigation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
-import type { AgentOperation, ConversationMessage, ProjectAgentConnection, ProjectAgents as ProjectAgentsData, TaskDiscussion, WorkRowProjection, WorkStatus } from '@flux/contracts';
+import type { AgentOperation, AgentStop, ConversationMessage, ProjectAgentConnection, ProjectAgents as ProjectAgentsData, TaskDiscussion, WorkRowProjection, WorkStatus } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
@@ -17,6 +17,9 @@ import { WorkPagination } from '../work/WorkPagination';
 import { agentDisplayName } from '../docs/format';
 import { getProjectAgents } from './api';
 import { HandOffDialog, type HandOffTask } from './HandOff';
+import { useAgentStops, useStopAgent } from './stop';
+import { QuestionCard } from './QuestionCard';
+import { useProjectQuestions } from './questions';
 import { agentAuthorOwner, useAgentOwners } from './owners';
 import { ProjectPolicy } from './ProjectPolicy';
 import { agentEntries, mayDo, tasksHeldBy, type AgentEntry } from './roster';
@@ -130,6 +133,7 @@ interface ThreadTask { id: string; title: string; status: WorkStatus }
 
 function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: { task: ThreadTask; projectId: string; meId: string; names: Map<string, string>; canWrite: boolean; changingScope: boolean }) {
   const owners = useAgentOwners(useProjectShell()?.project);
+  useProjectQuestions(projectId, meId);
   const [discussion, setDiscussion] = useState<TaskDiscussion | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [accessLost, setAccessLost] = useState(false);
@@ -274,6 +278,7 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
                 {message.contribution ? <span className="agents-msg__kind"> · {message.contribution.kind}</span> : null}
               </span>
               {message.body ? <p className="agents-msg__body">{message.body}</p> : null}
+              <QuestionCard projectId={projectId} messageId={message.id} meId={meId} writable={canWrite} />
               <MessageFiles files={message.files} />
             </li>
           );
@@ -354,19 +359,35 @@ function useConnections(projectId: string, meId: string, initial: ProjectAgentCo
   return { list: fetched && fetched.base === initial ? fetched.list : initial, now };
 }
 
+/** A stop stays the row's second line for a day; after that the connection's own state is again the truth. */
+const STOPPED_SHOWN_MS = 24 * 60 * 60 * 1000;
+
 const RANK: Record<ProjectAgentConnection['state'], number> = { session_open: 0, offline: 1, not_signed_in: 2, unavailable: 3 };
 
 /** The row's second line: what the agent holds now, else what Flux can prove about its connection. */
-function nowLine(entry: AgentEntry, held: WorkRowProjection[], now: number): string {
+function nowLine(entry: AgentEntry, held: WorkRowProjection[], now: number, stopped: AgentStop | null): string {
   const task = held[0];
   if (task?.status === 'in_progress') return `Working on #${task.number} · ${task.title}`;
   if (task) return `Handed #${task.number} · ${task.title}`;
+  if (stopped && now - Date.parse(stopped.stoppedAt) < STOPPED_SHOWN_MS) return `Stopped by ${stopped.stoppedBy.name} · #${stopped.taskNumber}`;
   if (!entry.connection) return entry.access === 'viewer' ? 'Can read here · nothing handed to it' : 'Nothing handed to it';
   return stateLine(entry.connection, now);
 }
 
-function AgentRow({ entry, held, now, selected, dropping, onOpen, onDropTask, onDropping }: {
-  entry: AgentEntry; held: WorkRowProjection[]; now: number; selected: boolean; dropping: boolean;
+/** Stop (S13): the filled square of the sidebar card, with its word so a row and a panel say what it does. */
+function StopButton({ label, busy, onClick, className }: { label: string; busy: boolean; onClick: () => void; className?: string }) {
+  return (
+    <button type="button" className={`agents-stop${className ? ` ${className}` : ''}`} aria-label={label} aria-busy={busy || undefined} disabled={busy} onClick={onClick}>
+      <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><rect width="10" height="10" rx="2" fill="currentColor" /></svg>
+      <span>{busy ? 'Stopping…' : 'Stop'}</span>
+    </button>
+  );
+}
+
+function AgentRow({ entry, held, now, selected, dropping, stopped, onStop, stopping, onOpen, onDropTask, onDropping }: {
+  entry: AgentEntry; held: WorkRowProjection[]; now: number; selected: boolean; dropping: boolean; stopped: AgentStop | null;
+  /** Present when this person may stop the agent now. */
+  onStop: (() => void) | null; stopping: boolean;
   onOpen: () => void; onDropTask: (taskId: string) => void; onDropping: (on: boolean) => void;
 }) {
   const working = held[0]?.status === 'in_progress';
@@ -382,11 +403,12 @@ function AgentRow({ entry, held, now, selected, dropping, onOpen, onDropTask, on
         <Kreska size={36} expression={expression} hue={agentHue(entry.agentId)} className="agents-row__icon" />
         <span className="agents-row__body">
           <span className="agents-row__who"><AgentIdentity name={entry.name} owner={owner || undefined} icon={false} /></span>
-          <span className="agents-row__now">{nowLine(entry, held, now)}</span>
+          <span className="agents-row__now">{nowLine(entry, held, now, stopped)}</span>
         </span>
         {last ? <time className="agents-row__time" dateTime={last.at}>{when(last.at)}</time> : null}
         <Icon name="chevron-right" size={14} className="agents-row__go" />
       </button>
+      {working && onStop ? <StopButton className="agents-row__stop" label={`Stop ${entry.name}`} busy={stopping} onClick={onStop} /> : null}
     </li>
   );
 }
@@ -395,11 +417,12 @@ const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 /**
  * One agent in the detail panel (P9, AC-5): who owns it, what it is doing now, what Flux has recorded
- * and what its grant here lets it do. There is no Stop: Flux has no operation that stops an external
- * agent, and a button that did nothing would be a false promise (see the report on #347).
+ * and what its grant here lets it do. Stop (S13) ends the agent's hold on its working task and its
+ * co-work claim; Flux cannot kill the agent's own program, so the panel says what was stopped, and by whom.
  */
-function AgentDetail({ entry, held, projectId, now, canHandOff, onHandOff, onClose, onThread }: {
-  entry: AgentEntry; held: WorkRowProjection[]; projectId: string; now: number; canHandOff: boolean; onHandOff: () => void; onClose: () => void; onThread: (taskId: string) => void;
+function AgentDetail({ entry, held, projectId, now, canHandOff, stops, onStop, stopping, onHandOff, onClose, onThread }: {
+  entry: AgentEntry; held: WorkRowProjection[]; projectId: string; now: number; canHandOff: boolean; stops: AgentStop[];
+  onStop: (() => void) | null; stopping: boolean; onHandOff: () => void; onClose: () => void; onThread: (taskId: string) => void;
 }) {
   const task = held[0];
   const last = entry.connection?.lastActivity;
@@ -429,8 +452,9 @@ function AgentDetail({ entry, held, projectId, now, canHandOff, onHandOff, onClo
       </section>
       <section aria-label="Recent">
         <h3>Recent</h3>
-        {last || held.length > 1 ? (
+        {last || held.length > 1 || stops.length ? (
           <ul className="agents-detail__recent">
+            {stops.slice(0, 3).map((stop) => <li key={stop.id} data-stop={stop.id}><span>Stopped by {stop.stoppedBy.name} · <span className="ui-task-number">#{stop.taskNumber}</span></span><time dateTime={stop.stoppedAt}>{when(stop.stoppedAt)}</time></li>)}
             {last ? <li><span>{sentence(OPERATION_LABEL[last.operation])}</span><time dateTime={last.at}>{when(last.at)}</time></li> : null}
             {held.slice(1).map((row) => <li key={row.id}><button type="button" className="agents-detail__thread" onClick={() => onThread(row.id)}>Also holds #{row.number} · {row.title}</button></li>)}
           </ul>
@@ -440,7 +464,11 @@ function AgentDetail({ entry, held, projectId, now, canHandOff, onHandOff, onClo
         <h3>Can</h3>
         <p className="agents-detail__note">{sentence(grant.can)}</p>
       </section>
-      {canHandOff ? <div className="agents-detail__actions"><Button variant="secondary" onClick={onHandOff} disabled={!grant.canTake}>Hand off to {entry.name}</Button></div> : null}
+      <div className="agents-detail__actions">
+        {task?.status === 'in_progress' && onStop ? <StopButton label={`Stop ${entry.name}`} busy={stopping} onClick={onStop} /> : null}
+        {task ? <Button variant="secondary" onClick={() => onThread(task.id)}>Message</Button> : null}
+        {canHandOff ? <Button variant="secondary" onClick={onHandOff} disabled={!grant.canTake}>Hand off to {entry.name}</Button> : null}
+      </div>
     </aside>
   );
 }
@@ -478,9 +506,25 @@ export function ProjectAgents() {
   // Flush the pending navigation guard before a fast next input can reach the old keyed thread.
   const select = (id: string) => setSearch((current) => { const next = new URLSearchParams(current); next.set('task', id); return next; }, { replace: true, flushSync: true });
   const connections = useConnections(projectId, me.user.id, data.connections);
+  const canWrite = shell?.project.access !== 'viewer';
+  const agentStops = useAgentStops(projectId, me.user.id);
+  const { reload: reloadStops } = agentStops;
+  const refreshChoices = choices.onRefresh;
+  const stopper = useStopAgent(projectId, useCallback(() => { reloadStops(); refreshChoices(); }, [reloadStops, refreshChoices]));
 
   const entries = useMemo(() => agentEntries(shell?.people ?? null, [...connections.list].sort((a, b) => RANK[shownState(a, connections.now)] - RANK[shownState(b, connections.now)])), [shell?.people, connections.list, connections.now]);
   const heldBy = (agentId: string) => tasksHeldBy(agentId, rows);
+  // Stop is offered to who the server lets stop: a manager and the agent's owner (the task's creator is told by the server).
+  const stopOf = (entry: AgentEntry) => {
+    const task = heldBy(entry.agentId)[0];
+    return task?.status === 'in_progress' && canWrite && (shell?.project.access === 'manager' || entry.ownerId === me.user.id)
+      ? () => { void stopper.stop(entry.agentId, task); } : null;
+  };
+  const lastStopOf = (agentId: string) => agentStops.stops.find((item) => item.agent.id === agentId) ?? null;
+  const stoppingOf = (entry: AgentEntry) => {
+    const task = heldBy(entry.agentId)[0];
+    return !!task && stopper.busy === `${entry.agentId}:${task.id}`;
+  };
   const working = entries.filter((entry) => heldBy(entry.agentId)[0]?.status === 'in_progress').length;
   const picked = search.get('agent');
   // Where the panel fits beside the list it is open from the start, on the working agent as drawn; narrow panes open it by choice.
@@ -492,7 +536,6 @@ export function ProjectAgents() {
   const [dropping, setDropping] = useState<string | null>(null);
   // `?policy=open` opens the policy (a link to it, and where a reload leaves a reader who had it open).
   const [policyOpen, setPolicyOpen] = useState(search.get('policy') === 'open');
-  const canWrite = shell?.project.access !== 'viewer';
   const dropTask = (agentId: string, taskId: string) => {
     const row = rows.find((item) => item.id === taskId);
     if (row) setHandOff({ agentId, task: { id: row.id, version: row.version, number: row.number, title: row.title } });
@@ -513,7 +556,7 @@ export function ProjectAgents() {
           <ul className="agents-list" aria-label="Agents in this project">
             {entries.map((entry) => (
               <AgentRow key={entry.key} entry={entry} held={heldBy(entry.agentId)} now={connections.now} selected={selected?.key === entry.key}
-                dropping={dropping === entry.key} onOpen={() => open(entry.key)}
+                dropping={dropping === entry.key} stopped={lastStopOf(entry.agentId)} onStop={stopOf(entry)} stopping={stoppingOf(entry)} onOpen={() => open(entry.key)}
                 onDropTask={(id) => dropTask(entry.agentId, id)} onDropping={(on) => setDropping((current) => on ? entry.key : current === entry.key ? null : current)} />
             ))}
           </ul>
@@ -564,6 +607,7 @@ export function ProjectAgents() {
       </div>
       {selected ? (
         <AgentDetail key={selected.key} entry={selected} held={heldBy(selected.agentId)} projectId={projectId} now={connections.now}
+          stops={agentStops.stops.filter((item) => item.agent.id === selected.agentId)} onStop={stopOf(selected)} stopping={stoppingOf(selected)}
           canHandOff={canWrite && !!shell} onHandOff={() => setHandOff({ agentId: selected.agentId, task: null })} onClose={() => open(null)} onThread={select} />
       ) : null}
     </div>
