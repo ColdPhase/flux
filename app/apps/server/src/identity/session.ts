@@ -2,6 +2,7 @@ import type { IncomingHttpHeaders } from 'node:http';
 import { fromNodeHeaders } from 'better-auth/node';
 import type { Principal } from '@flux/core';
 import type { FluxAuth } from './auth.js';
+import type { Confirmation } from './confirmation.js';
 
 export interface HumanPrincipal extends Principal {
   kind: 'human';
@@ -29,7 +30,8 @@ export interface SessionResolver {
   requirePrincipal(request: { headers: IncomingHttpHeaders }): Promise<SessionContext>;
 }
 
-export function createSessionResolver(auth: FluxAuth): SessionResolver {
+/** `confirmation` ends a provider session whose provider confirmation lapsed (F-024 S2, #312). */
+export function createSessionResolver(auth: FluxAuth, confirmation?: Confirmation): SessionResolver {
   async function resolveSession(headers: IncomingHttpHeaders): Promise<SessionContext | null> {
     if (!headers.cookie) return null;
     const result = await auth.api.getSession({
@@ -38,6 +40,7 @@ export function createSessionResolver(auth: FluxAuth): SessionResolver {
     });
     if (!result) return null;
     const { session, user } = result;
+    if (await confirmation?.endIfLapsed(session.id)) return null;
     return {
       principal: { id: user.id, kind: 'human' },
       sessionId: session.id,

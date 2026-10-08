@@ -24,6 +24,8 @@ export interface AgentOauthPort {
   flowForOauth(ownerId: string, sessionId: string, fingerprint: string): Promise<AgentOauthGrant | null>;
   consentForOauth(ownerId: string, sessionId: string, flow: AgentOauthFlow): Promise<AgentOauthConsentRecord | null>;
   grantForOauth(ownerId: string, referenceId: string): Promise<AgentOauthGrant | null>;
+  /** The live connection this owner last bound to this client, so a client that must authorize again is offered it first (#312). */
+  heldConnectionId(ownerId: string, clientId: string): Promise<string | null>;
 }
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', '[::1]', 'localhost']);
@@ -61,5 +63,6 @@ export function agentOauthUseCases(port: AgentOauthPort) {
     },
     flowForOauth: (ownerId: string, sessionId: string, fingerprint: string) => port.flowForOauth(ownerId, sessionId, fingerprint),
     grantForOauth: (ownerId: string, referenceId: string) => port.grantForOauth(ownerId, referenceId),
+    heldConnectionId: (ownerId: string, clientId: string) => port.heldConnectionId(ownerId, clientId),
   };
 }

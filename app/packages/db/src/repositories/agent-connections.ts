@@ -168,5 +168,15 @@ export function agentConnectionRepository(db: Database, policy: AgentConnectionP
       });
     },
 
+    async heldConnectionId(ownerUserId: string, clientId: string): Promise<string | null> {
+      return db.transaction(async (tx) => {
+        const bindings = await tx.select({ connectionId: schema.agentOauthBindings.connectionId }).from(schema.agentOauthBindings)
+          .where(and(eq(schema.agentOauthBindings.ownerUserId, ownerUserId), eq(schema.agentOauthBindings.clientId, clientId)))
+          .orderBy(desc(schema.agentOauthBindings.createdAt), desc(schema.agentOauthBindings.id));
+        for (const binding of bindings) if (await resolveCurrent(tx, ownerUserId, binding.connectionId)) return binding.connectionId;
+        return null;
+      });
+    },
+
   };
 }

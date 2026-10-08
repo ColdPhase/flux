@@ -72,7 +72,7 @@ describe('identity configuration', () => {
     assert.throws(() => loadOidcConfig({ FLUX_OIDC_ISSUER: oidc.FLUX_OIDC_ISSUER, FLUX_OIDC_CLIENT_ID: 'flux' }, secret), /SECRET_FILE is required/);
     const loaded = loadOidcConfig(oidc, secret)!;
     assert.deepEqual(loaded, { providerId: oidcProviderId('https://id.example.org/realms/flux'), issuer: 'https://id.example.org/realms/flux',
-      clientId: 'flux', clientSecret: 'client-secret-value', label: 'single sign-on' });
+      clientId: 'flux', clientSecret: 'client-secret-value', label: 'single sign-on', confirmationMaxAgeMs: 7 * 24 * 3_600_000 });
     assert.match(loaded.providerId, /^oidc-[0-9a-f]{12}$/);
     assert.notEqual(oidcProviderId('https://id.example.org/realms/other'), loaded.providerId, 'another issuer is another identity namespace');
     assert.equal(loadOidcConfig({ ...oidc, FLUX_OIDC_LABEL: 'Acme login' }, secret)!.label, 'Acme login');

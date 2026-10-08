@@ -4,6 +4,7 @@ import { AUTH_BASE_PATH, type ApiError, type IdentityCapabilities } from '@flux/
 import { CLIENT_IP_HEADER, type FluxAuth } from './auth.js';
 import { oauthRequestContext, type OauthRequests } from './oauth-flow.js';
 import type { SignIns } from './sign-in.js';
+import type { SessionResolver } from './session.js';
 
 // Forwarding headers are dropped before Better Auth sees a request. Client addresses come
 // from Fastify's request.ip, which honours only the configured trusted proxies.
@@ -40,10 +41,12 @@ export interface AuthBridgeOptions {
   passwordReset: IdentityCapabilities['passwordReset'];
   oauthRequests: OauthRequests;
   signIns: SignIns;
+  /** Reads the cookie's session, which ends it when the provider's confirmation lapsed (F-024 S2, #312). */
+  sessions: Pick<SessionResolver, 'resolveSession'>;
 }
 
 /** Forwards auth endpoints and the exact OAuth discovery paths to Better Auth. */
-export function registerAuthBridge(app: FastifyInstance, { auth, publicOrigin, passwordReset, oauthRequests, signIns }: AuthBridgeOptions) {
+export function registerAuthBridge(app: FastifyInstance, { auth, publicOrigin, passwordReset, oauthRequests, signIns, sessions }: AuthBridgeOptions) {
   // OAuth token and revocation endpoints use HTML form encoding. Preserve the
   // bounded raw payload so Better Auth validates it, rather than Fastify's 415.
   app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_request, body, done) => done(null, body));
@@ -59,6 +62,10 @@ export function registerAuthBridge(app: FastifyInstance, { auth, publicOrigin, p
       if (passwordReset === 'unavailable' && PASSWORD_RESET_REQUEST_PATHS.has(url.pathname)) {
         return reply.code(503).send({ error: 'Password reset is unavailable', code: 'PASSWORD_RESET_UNAVAILABLE' } satisfies ApiError);
       }
+      // Better Auth reads the session itself on the authorization steps. Resolving it first ends a session whose
+      // provider confirmation lapsed, so the person is sent through the provider again.
+      if (request.headers.cookie && (url.pathname.startsWith(`${AUTH_BASE_PATH}/oauth2/`) || url.pathname === `${AUTH_BASE_PATH}/get-session`))
+        await sessions.resolveSession(request.headers);
       const headers = fromNodeHeaders(request.headers);
       for (const name of UNTRUSTED_FORWARDING_HEADERS) headers.delete(name);
       headers.set(CLIENT_IP_HEADER, request.ip);

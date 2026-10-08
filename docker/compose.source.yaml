@@ -109,6 +109,8 @@ services:
       FLUX_OIDC_CLIENT_ID: ${FLUX_OIDC_CLIENT_ID:-}
       FLUX_OIDC_CLIENT_SECRET_FILE: /run/secrets/flux_oidc_client_secret
       FLUX_OIDC_LABEL: ${FLUX_OIDC_LABEL:-}
+      # How long the provider's last confirmation of a person keeps their access, 1h to 30d (F-024 S2); empty is 7d.
+      FLUX_OIDC_CONFIRMATION_MAX_AGE: ${FLUX_OIDC_CONFIRMATION_MAX_AGE:-}
       FLUX_AUTH_RATE_LIMIT: ${FLUX_AUTH_RATE_LIMIT:-true}
       # Web Push (issue #41). The API only needs the public key; empty reports push unavailable.
       FLUX_VAPID_PUBLIC_KEY: ${FLUX_VAPID_PUBLIC_KEY:-}

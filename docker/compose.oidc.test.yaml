@@ -60,6 +60,8 @@ services:
       FLUX_OIDC_CLIENT_ID: flux
       FLUX_OIDC_ALLOW_HTTP_ISSUER: "true"
       FLUX_OIDC_LABEL: Keycloak
+      # The confirmation-age check (F-024 S2, #312) is exercised against this value, not the 7d default.
+      FLUX_OIDC_CONFIRMATION_MAX_AGE: 12h
     depends_on:
       keycloak:
         condition: service_healthy

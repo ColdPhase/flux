@@ -4,11 +4,12 @@ import { createMcpHandler } from '@modelcontextprotocol/server';
 import { toNodeHandler } from '@modelcontextprotocol/node';
 import type { Database } from '@flux/core';
 import type { FluxAuth } from '../identity/auth.js';
+import { CONFIRMATION_LAPSED, type Confirmation } from '../identity/confirmation.js';
 import { createFluxMcpServer } from './mcp-tools.js';
 import { createAgentConnectionStore } from './store.js';
 
 /** The only remote MCP entry point. A new tool server is bound to each verified bearer request. */
-export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxAuth, publicOrigin: string) {
+export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxAuth, publicOrigin: string, confirmation?: Confirmation) {
   const connections = createAgentConnectionStore(db);
   const handleVerified = async (request: Request, token: Record<string, unknown>) => {
     const ownerUserId = token.flux_owner_user_id;
@@ -17,6 +18,14 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
     if (typeof ownerUserId !== 'string' || typeof connectionId !== 'string' || token.sub !== ownerUserId) {
       return new Response(JSON.stringify({ error: 'Agent connection is unavailable' }), {
         status: 403, headers: { 'content-type': 'application/json' },
+      });
+    }
+    // The provider's confirmation of a managed person has a maximum age (F-024 S2, #312). A client that gets this
+    // authorizes again, which goes through the provider; the connection it held is offered again.
+    if (await confirmation?.lapsed(ownerUserId)) {
+      return new Response(JSON.stringify({ error: 'invalid_token', error_description: CONFIRMATION_LAPSED }), {
+        status: 401, headers: { 'content-type': 'application/json', 'cache-control': 'no-store',
+          'www-authenticate': `Bearer error="invalid_token", error_description="${CONFIRMATION_LAPSED}", resource_metadata="${publicOrigin}/.well-known/oauth-protected-resource/mcp"` },
       });
     }
     // A signed JWT remains valid until expiry, so revocation must be checked

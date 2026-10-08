@@ -85,6 +85,13 @@ export function getConsentContext(oauthQuery: string, signal?: AbortSignal) {
   return request<ConsentContext>(`/api/v1/agent-oauth/consent-context?oauth_query=${encodeURIComponent(oauthQuery)}`, { signal });
 }
 
+/** The saved connection this client held before, or null (#312). A failure only means no preselection. */
+export async function getHeldConnection(oauthQuery: string, signal?: AbortSignal) {
+  try {
+    return (await request<{ connectionId: string | null }>(`/api/v1/agent-oauth/held-connection?oauth_query=${encodeURIComponent(oauthQuery)}`, { signal })).connectionId;
+  } catch { return null; }
+}
+
 interface OAuthRedirect { url?: string; redirect_uri?: string }
 
 export async function continueAgentOAuth(oauthQuery: string) {

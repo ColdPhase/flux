@@ -9,6 +9,7 @@ import { createSmtpMailer, type Mailer } from './mailer.js';
 import { originViolation } from './origin.js';
 import { createOauthRequests } from './oauth-flow.js';
 import { createSignIns } from './sign-in.js';
+import { createConfirmation, type Confirmation } from './confirmation.js';
 import { cachedReachability, waitForDiscovery } from './discovery.js';
 import { registerAgentOauthContext } from './oauth-context.js';
 import { registerIdentityRoutes } from './routes.js';
@@ -27,6 +28,7 @@ export interface IdentityOptions {
 export interface Identity extends SessionResolver {
   passwordReset: IdentityCapabilities['passwordReset'];
   auth: FluxAuth;
+  confirmation: Confirmation;
 }
 
 /**
@@ -39,7 +41,8 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
   if (mailer) app.addHook('onClose', async () => mailer.close());
   const oauthRequests = createOauthRequests();
   const signIns = createSignIns();
-  const auth = createAuth({ db, config, mailer, oauthRequests, signIns, onMailError: (error) => app.log.error({ error }, 'Password reset mail failed') });
+  const confirmation = createConfirmation(db, config.oidc);
+  const auth = createAuth({ db, config, mailer, oauthRequests, signIns, confirmation, onMailError: (error) => app.log.error({ error }, 'Password reset mail failed') });
   // OAuth resource seeding runs during Better Auth initialization. Complete it before
   // accepting requests or allowing an in-process server to close its database pool.
   // The provider reads its discovery document while Better Auth initializes, so an identity provider that
@@ -48,7 +51,7 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
     if (config.oidc && !await waitForDiscovery(config.oidc)) app.log.warn({ issuer: config.oidc.issuer }, 'The identity provider did not answer; single sign-on is reported as not reachable');
     await auth.$context;
   });
-  const sessions = createSessionResolver(auth);
+  const sessions = createSessionResolver(auth, confirmation);
   const passwordReset: IdentityCapabilities['passwordReset'] = mailer ? 'available' : 'unavailable';
 
   app.addHook('onRequest', async (request, reply) => {
@@ -59,7 +62,7 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
     }
   });
 
-  registerAuthBridge(app, { auth, publicOrigin: config.publicOrigin, passwordReset, oauthRequests, signIns });
+  registerAuthBridge(app, { auth, publicOrigin: config.publicOrigin, passwordReset, oauthRequests, signIns, sessions });
   const reachable = config.oidc ? cachedReachability(config.oidc) : null;
   const sso = async (): Promise<IdentityCapabilities['sso']> =>
     config.oidc && reachable ? { providerId: config.oidc.providerId, label: config.oidc.label, reachable: await reachable() } : null;
@@ -68,5 +71,5 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
   registerIdentityRoutes(app, { sessions, store: createSessionRepository(db), passwordReset, sso });
   registerAgentOauthContext(app, db, sessions, auth, config.publicOrigin);
 
-  return { ...sessions, passwordReset, auth };
+  return { ...sessions, passwordReset, auth, confirmation };
 }

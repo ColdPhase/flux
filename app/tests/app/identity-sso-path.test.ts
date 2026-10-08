@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
+import { randomUUID } from 'node:crypto';
 import { withoutIdpTokens } from '../../apps/server/src/identity/auth.js';
+import { createConfirmation } from '../../apps/server/src/identity/confirmation.js';
+import { loadOidcConfig, parseConfirmationMaxAge, type OidcConfig } from '../../apps/server/src/identity/config.js';
 import { cachedReachability, discoveryReachable, waitForDiscovery } from '../../apps/server/src/identity/discovery.js';
-import { pool } from './support/db.js';
+import { db, pool } from './support/db.js';
 import { register, signIn, uniqueEmail } from './support/http.js';
 import { password } from './support/people.js';
 
@@ -73,5 +76,74 @@ describe('the provider\'s discovery document is read lazily and retried', () => 
     assert.equal(probes, 1);
     clock = 5000;
     assert.equal(await reachable(), true, 'asked again after the interval');
+  });
+});
+
+describe('the confirmation age (F-024 S2, #312)', () => {
+  const HOUR = 3_600_000;
+  const oidc: OidcConfig = { providerId: 'oidc-test', issuer: 'http://idp.test/realms/flux', clientId: 'flux', clientSecret: 's', label: 'IdP', confirmationMaxAgeMs: 12 * HOUR };
+  const at = new Date('2026-10-10T12:00:00Z');
+  const confirmation = createConfirmation(db, oidc, () => at);
+
+  /** A person with a provider identity confirmed `hoursAgo` (null: never), and a session that signed in with `method`. */
+  async function person(hoursAgo: number | null, method: string = oidc.providerId) {
+    const userId = randomUUID(); const sessionId = randomUUID();
+    await pool.query('INSERT INTO auth_users (id, name, email, email_verified) VALUES ($1, $2, $3, true)', [userId, 'P', `${userId}@example.test`]);
+    await pool.query('INSERT INTO auth_accounts (id, user_id, account_id, provider_id, confirmed_at) VALUES ($1, $2, $3, $4, $5)',
+      [randomUUID(), userId, userId, oidc.providerId, hoursAgo === null ? null : new Date(at.getTime() - hoursAgo * HOUR)]);
+    await pool.query(`INSERT INTO auth_sessions (id, user_id, token, expires_at) VALUES ($1, $2, $3, now() + interval '1 day')`, [sessionId, userId, randomUUID()]);
+    await pool.query('INSERT INTO auth_session_identities (session_id, method) VALUES ($1, $2)', [sessionId, method]);
+    return { userId, sessionId };
+  }
+  const sessionExists = async (id: string) => (await pool.query('SELECT 1 FROM auth_sessions WHERE id = $1', [id])).rowCount === 1;
+
+  test('the setting takes whole hours or days from 1h to 30d, and 7d when empty', () => {
+    assert.equal(parseConfirmationMaxAge(undefined), 7 * 24 * HOUR);
+    assert.equal(parseConfirmationMaxAge(' '), 7 * 24 * HOUR);
+    assert.equal(parseConfirmationMaxAge('1h'), HOUR);
+    assert.equal(parseConfirmationMaxAge('36h'), 36 * HOUR);
+    assert.equal(parseConfirmationMaxAge('30d'), 30 * 24 * HOUR);
+    for (const bad of ['59m', '0h', '0d', '31d', '721h', '7', 'd', '1.5d', '-1h', '7days', '1h30m', '99999d']) {
+      assert.throws(() => parseConfirmationMaxAge(bad), /FLUX_OIDC_CONFIRMATION_MAX_AGE must be from 1h to 30d/, bad);
+    }
+    const env = { FLUX_OIDC_ISSUER: 'https://id.example.org/realms/flux', FLUX_OIDC_CLIENT_ID: 'flux', FLUX_OIDC_CLIENT_SECRET_FILE: '/s' };
+    assert.equal(loadOidcConfig(env, () => 'x')!.confirmationMaxAgeMs, 7 * 24 * HOUR);
+    assert.equal(loadOidcConfig({ ...env, FLUX_OIDC_CONFIRMATION_MAX_AGE: '12h' }, () => 'x')!.confirmationMaxAgeMs, 12 * HOUR);
+    assert.throws(() => loadOidcConfig({ ...env, FLUX_OIDC_CONFIRMATION_MAX_AGE: '31d' }, () => 'x'), /1h to 30d/);
+  });
+
+  test('a provider identity is lapsed only once its confirmation is older than the age', async () => {
+    assert.equal(await confirmation.lapsed((await person(11)).userId), false, 'within the age');
+    assert.equal(await confirmation.lapsed((await person(13)).userId), true, 'past the age');
+    assert.equal(await confirmation.lapsed((await person(null)).userId), true, 'never confirmed');
+  });
+
+  test('negative controls: a password-only person, a stranger and an installation without a provider are never lapsed', async () => {
+    const { userId } = await register(uniqueEmail('confirmation-password'), password).then(async ({ browser }) =>
+      ({ userId: ((await browser.request('GET', '/api/v1/me')).json as { user: { id: string } }).user.id }));
+    assert.equal(await confirmation.lapsed(userId), false, 'a password account has no provider identity');
+    assert.equal(await confirmation.lapsed(randomUUID()), false);
+    const expired = await person(1000);
+    assert.equal(await createConfirmation(db, null, () => at).lapsed(expired.userId), false, 'no provider configured');
+  });
+
+  test('confirming a provider sign-in renews the identity', async () => {
+    const { userId } = await person(100);
+    assert.equal(await confirmation.lapsed(userId), true);
+    await confirmation.confirm(userId, oidc.providerId);
+    assert.equal(await confirmation.lapsed(userId), false);
+  });
+
+  test('a lapsed provider session ends and stays ended; a fresh one, and a password session of the same person, do not', async () => {
+    const lapsed = await person(13);
+    assert.equal(await confirmation.endIfLapsed(lapsed.sessionId), true);
+    assert.equal(await sessionExists(lapsed.sessionId), false);
+    assert.equal(await confirmation.endIfLapsed(lapsed.sessionId), false, 'already gone');
+    const fresh = await person(11);
+    assert.equal(await confirmation.endIfLapsed(fresh.sessionId), false);
+    assert.equal(await sessionExists(fresh.sessionId), true);
+    const password = await person(13, 'password');
+    assert.equal(await confirmation.endIfLapsed(password.sessionId), false, 'S5b, not S2, decides password sessions');
+    assert.equal(await sessionExists(password.sessionId), true);
   });
 });

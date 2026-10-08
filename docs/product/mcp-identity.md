@@ -645,6 +645,14 @@ The worker reads standing from the database; it never calls the IdP.
   - the client re-runs authorization, which goes through the IdP;
   - the `/connect-agent` step preselects the connection this client held, so the
     person does not set it up again.
+- **As built (#312).** The confirmation is `auth_accounts.confirmed_at` (migration 0071) on the
+  provider identity, so it survives sign-out and covers MCP tokens that have no session. A
+  provider sign-in sets it; S4 will renew it. A managed account with no recorded confirmation is
+  lapsed. Browser sessions that signed in with the provider are ended when it lapses (a password
+  session of the same person is S5b's concern, not this check). The 401 carries
+  `WWW-Authenticate: Bearer error="invalid_token", error_description="…"`; the refresh grant's
+  `invalid_grant` carries the same description. `GET /api/v1/agent-oauth/held-connection` names the
+  connection the client last held for `/connect-agent` to preselect.
 - S2 lands only after S4. Without the standing check, nothing renews confirmation
   between sign-ins, and every managed account would have to re-authorize its
   clients every 7 days.

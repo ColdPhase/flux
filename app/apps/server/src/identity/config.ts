@@ -18,6 +18,8 @@ export interface OidcConfig {
   clientId: string;
   clientSecret: string;
   label: string;
+  /** How long the provider's last confirmation of a person keeps their access (F-024 S2, #312). */
+  confirmationMaxAgeMs: number;
 }
 
 export interface IdentityConfig {
@@ -66,6 +68,19 @@ export function parsePublicOrigin(value: string | undefined): string {
   return url.origin;
 }
 
+const HOUR_MS = 3_600_000;
+export const DEFAULT_CONFIRMATION_MAX_AGE_MS = 7 * 24 * HOUR_MS;
+
+/** `FLUX_OIDC_CONFIRMATION_MAX_AGE`: whole hours (`36h`) or days (`7d`), from 1h to 30d; empty means 7d. */
+export function parseConfirmationMaxAge(value: string | undefined): number {
+  const text = value?.trim();
+  if (!text) return DEFAULT_CONFIRMATION_MAX_AGE_MS;
+  const match = /^([1-9]\d{0,4})([hd])$/.exec(text);
+  const ms = match ? Number(match[1]) * (match[2] === 'd' ? 24 : 1) * HOUR_MS : NaN;
+  if (!(ms >= HOUR_MS && ms <= 30 * 24 * HOUR_MS)) throw new Error('FLUX_OIDC_CONFIRMATION_MAX_AGE must be from 1h to 30d, such as 12h or 7d');
+  return ms;
+}
+
 export function oidcProviderId(issuer: string) {
   return `oidc-${createHash('sha256').update(issuer).digest('hex').slice(0, 12)}`;
 }
@@ -107,7 +122,8 @@ export function loadOidcConfig(env: NodeJS.ProcessEnv, readSecret: (path: string
   if (!clientSecret) throw new Error('FLUX_OIDC_CLIENT_SECRET_FILE is empty');
   const label = env.FLUX_OIDC_LABEL?.trim() || 'single sign-on';
   if (label.length > 60) throw new Error('FLUX_OIDC_LABEL must be at most 60 characters');
-  return { providerId: oidcProviderId(issuer), issuer, clientId: clientId!, clientSecret, label };
+  return { providerId: oidcProviderId(issuer), issuer, clientId: clientId!, clientSecret, label,
+    confirmationMaxAgeMs: parseConfirmationMaxAge(env.FLUX_OIDC_CONFIRMATION_MAX_AGE) };
 }
 
 export function loadIdentityConfig(env: NodeJS.ProcessEnv = process.env): IdentityConfig {

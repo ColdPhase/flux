@@ -280,3 +280,79 @@ test('/login says the provider is reachable, and offers the password form beside
   const capabilities = await (await page.context().request.get(`${origin}/api/v1/auth/capabilities`)).json() as { sso: { reachable: boolean } };
   assert.equal(capabilities.sso.reachable, true);
 });
+
+/** Moves the person's last provider confirmation back, as if that long had passed (the age is 12h for this run). */
+const confirmedHoursAgo = (hours: number) => pool.query(
+  `UPDATE auth_accounts SET confirmed_at = now() - make_interval(hours => $3) WHERE user_id = $1 AND provider_id = $2`, [state.userId, providerId, hours]);
+const refreshGrant = (token: string) => fetch(new URL('/api/auth/oauth2/token', upstream), { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+  body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: token, client_id: clientId, resource }) });
+
+test('confirmation age (S2): within the age everything works, past it the browser, MCP and the refresh grant are refused', async () => {
+  const context = await fresh();
+  const page = await context.newPage();
+  const { verifier, challenge } = pkce();
+  await toProvider(page, authorizeUrl(clientId, loopback, challenge));
+  await providerLogin(page, 'erin');
+  const callback = await chooseAndConsent(context, page, loopback);
+  let tokens = await redeem(callback, verifier, loopback, clientId);
+  const confirmed = (await pool.query('SELECT confirmed_at > now() - interval \'5 minutes\' AS recent FROM auth_accounts WHERE user_id = $1 AND provider_id = $2', [state.userId, providerId])).rows;
+  assert.deepEqual(confirmed, [{ recent: true }], 'the provider sign-in confirmed the identity');
+
+  // Within the configured 12h (not the 7d default): all three still work.
+  await confirmedHoursAgo(11);
+  assert.equal((await mcp(tokens.access_token, 10, 'tools/list')).status, 200, 'MCP within the age');
+  assert.equal((await context.request.get(`${origin}/api/v1/me`)).status(), 200, 'browser session within the age');
+  const renewed = await refreshGrant(tokens.refresh_token);
+  assert.equal(renewed.status, 200, await renewed.clone().text());
+  tokens = await renewed.json() as typeof tokens;
+
+  // Past it.
+  await confirmedHoursAgo(13);
+  const refused = await mcp(tokens.access_token, 11, 'tools/list');
+  assert.equal(refused.status, 401, 'MCP past the age');
+  assert.match(refused.headers.get('www-authenticate') ?? '', /^Bearer error="invalid_token", error_description="[\x20-\x7e]+", resource_metadata=/);
+  assert.equal((refused.message as { error?: string } | null)?.error, 'invalid_token');
+  assert.equal(refused.headers.get('cache-control'), 'no-store');
+  const refresh = await refreshGrant(tokens.refresh_token);
+  assert.equal(refresh.status, 400);
+  const body = await refresh.json() as { error: string; error_description: string };
+  assert.equal(body.error, 'invalid_grant');
+  assert.match(body.error_description, /Sign in again/);
+  // The authorization step no longer finds a session: it asks for the provider again.
+  const { challenge: second } = pkce();
+  await page.goto(authorizeUrl(clientId, loopback, second));
+  assert.equal(new URL(page.url()).pathname, '/login', 'the authorization step returns to sign-in');
+  assert.equal((await context.request.get(`${origin}/api/v1/me`)).status(), 401, 'the browser session is gone');
+
+  // Negative control: a person who never used the provider keeps today's lifetimes.
+  const password = await fresh();
+  const email = `confirmation-${randomUUID()}@example.test`;
+  await api(password, 'POST', '/api/auth/sign-up/email', { email, password: `pw-${randomUUID()}`, name: 'Pat' });
+  assert.equal((await password.request.get(`${origin}/api/v1/me`)).status(), 200, 'a password-only person is not subject to the age');
+});
+
+test('confirmation age (S2): the client authorizes again through the provider and finds the connection it held chosen', async () => {
+  await confirmedHoursAgo(13);
+  const context = await fresh();
+  const page = await context.newPage();
+  const { verifier, challenge } = pkce();
+  await toProvider(page, authorizeUrl(clientId, loopback, challenge));
+  await providerLogin(page, 'erin');
+  await page.waitForURL((target) => target.pathname === '/connect-agent', { timeout: 20_000 });
+  const held = await api<{ connectionId: string | null }>(context, 'GET', `/api/v1/agent-oauth/held-connection?oauth_query=${encodeURIComponent(page.url().split('?')[1]!)}`);
+  assert.equal(held.connectionId, state.connectionId, 'the connection this client held is offered first');
+  const callback = await chooseAndConsent(context, page, loopback);
+  const tokens = await redeem(callback, verifier, loopback, clientId);
+  assert.equal((await mcp(tokens.access_token, 12, 'tools/list')).status, 200, 'the provider sign-in confirmed the person again');
+  assert.equal((await refreshGrant(tokens.refresh_token)).status, 200);
+  // Negative control: a client that never held a connection is offered none, and the question needs a signed request.
+  const other = await registerClient('http://127.0.0.1:19740/callback');
+  const { challenge: otherChallenge } = pkce();
+  const otherPage = await context.newPage();
+  await otherPage.goto(authorizeUrl(other, 'http://127.0.0.1:19740/callback', otherChallenge));
+  await otherPage.waitForURL((target) => target.pathname === '/connect-agent', { timeout: 20_000 });
+  const none = await api<{ connectionId: string | null }>(context, 'GET', `/api/v1/agent-oauth/held-connection?oauth_query=${encodeURIComponent(otherPage.url().split('?')[1]!)}`);
+  assert.equal(none.connectionId, null);
+  const forged = await context.request.get(`${origin}/api/v1/agent-oauth/held-connection?oauth_query=${encodeURIComponent(otherPage.url().split('?')[1]!.replace('flux.proposal.write', 'flux.action.execute'))}`);
+  assert.equal(forged.status(), 400);
+});
