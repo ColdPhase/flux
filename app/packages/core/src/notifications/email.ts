@@ -61,7 +61,9 @@ export type EmailOutcome =
   | { outcome: 'deferred'; until: Date }
   | { outcome: 'skipped'; reason: string }
   /** The last attempt failed; `promoted` is the same-mailbox copy queued in its place, if any (#329). */
-  | { outcome: 'failed'; reason: string; promoted: string | null };
+  | { outcome: 'failed'; reason: string; promoted: string | null }
+  /** Provider handoff occurred but its admission transaction is uncertain; retain the sending mailbox claim. */
+  | { outcome: 'unknown'; reason: string };
 
 /** Thrown when SMTP did not accept the message, so the queue retries with bounded backoff. */
 export class RetryableEmailError extends Error {}
@@ -119,8 +121,13 @@ export async function deliverNotificationEmail(options: EmailDeliveryOptions, jo
   const { row, address, token } = claim;
   const mail = buildNotificationEmail({ origin: options.origin, to: address, emailId: row.id, notificationId: row.notification.id, token });
   const admission = await options.uow.admitSend(row.notification.id, () => options.mailer.send(mail));
-  if (admission.status !== 'started') {
-    const reason = admission.status === 'suppressed' ? 'task creation was undone before delivery' : 'delivery outcome unknown after provider admission';
+  if (admission.status === 'unknown') {
+    // SMTP may already have accepted it. A skipped row would free its mailbox for another copy.
+    // The sending claim is terminal here: no requeue, promotion or second provider handoff.
+    return { outcome: 'unknown', reason: 'delivery outcome unknown after provider admission' };
+  }
+  if (admission.status === 'suppressed') {
+    const reason = 'task creation was undone before delivery';
     await options.uow.run((ports) => ports.markSkipped(row.id, reason));
     return { outcome: 'skipped', reason };
   }

@@ -32,8 +32,9 @@ type Database = Pick<ReturnType<typeof createDatabase>['db'], 'transaction'>;
 export async function assignmentDeliveryAdmission<T>(db: Database, notificationId: string, send: () => Promise<T>): Promise<
   { status: 'suppressed' } | { status: 'started'; response: T } | { status: 'unknown' }> {
   let initiated = false;
+  let admitted: { response: Promise<T> } | null;
   try {
-    const admitted = await db.transaction(async (tx) => {
+    admitted = await db.transaction(async (tx) => {
       const [notification] = await tx.select({ reason: schema.notifications.reason, eventId: schema.notifications.eventId })
         .from(schema.notifications).where(eq(schema.notifications.id, notificationId));
       if (!notification) return null;
@@ -56,10 +57,12 @@ export async function assignmentDeliveryAdmission<T>(db: Database, notificationI
       void response.catch(() => undefined);
       return { response };
     });
-    if (!admitted) return { status: 'suppressed' };
-    return { status: 'started', response: await admitted.response };
   } catch (error) {
     if (initiated) return { status: 'unknown' };
     throw error;
   }
+  if (!admitted) return { status: 'suppressed' };
+  // A confirmed SQL transaction must not erase the concrete provider's exception. Only an
+  // uncertain transaction after handoff is the typed unknown outcome; the caller owns transport failures.
+  return { status: 'started', response: await admitted.response };
 }

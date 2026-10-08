@@ -17,10 +17,12 @@ import { agentDisplayName } from '../docs/format';
  * Before anyone has written, a person who can write starts it here. The structured draft and its
  * retry identity belong to the account/project/task, as in every place that writes to it.
  */
-export function TaskDiscussionSection({ workId, project, members, me, readOnly = false }: {
+export function TaskDiscussionSection({ workId, project, members, me, readOnly = false, revision = 0 }: {
   workId: string; project: Project; members: WorkspaceMember[]; me: { id: string; name: string };
   /** A task whose creation was undone (#238) keeps its discussion as read-only history. */
   readOnly?: boolean;
+  /** A fresh authorized Details observation also refreshes the independently stored discussion. */
+  revision?: number | string;
 }) {
   const owners = useAgentOwners(project);
   const headingId = useId();
@@ -37,9 +39,11 @@ export function TaskDiscussionSection({ workId, project, members, me, readOnly =
 
   useEffect(() => {
     const controller = new AbortController();
-    getTaskDiscussion(workId, { limit: 1, signal: controller.signal }).then((next) => { if (!controller.signal.aborted) setDiscussion(next); }).catch(() => { if (!controller.signal.aborted) setFailed(true); });
+    getTaskDiscussion(workId, { limit: 1, signal: controller.signal }).then((next) => {
+      if (!controller.signal.aborted) { setDiscussion(next); setFailed(false); }
+    }).catch(() => { if (!controller.signal.aborted) setFailed(true); });
     return () => controller.abort();
-  }, [workId, project.id, me.id, attempt]);
+  }, [workId, project.id, me.id, attempt, revision]);
 
   const thread = discussion?.conversationId ? `/projects/${project.id}/conversations/${discussion.conversationId}` : null;
   const author = (message: ConversationMessage) => {

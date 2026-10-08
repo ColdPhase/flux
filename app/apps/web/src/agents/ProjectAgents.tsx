@@ -385,14 +385,19 @@ export function ProjectAgents() {
   const navigation = useNavigation();
   const [search, setSearch] = useSearchParams();
   const projectId = shell?.project.id ?? data.projectId;
+  const [taskRevision, setTaskRevision] = useState(0);
+  useStreamEvents(me.user.id, (event) => {
+    if (event.objectType === 'project' && event.objectId === projectId && /^project\.(work|decision|result|link)_/.test(event.kind))
+      setTaskRevision((value) => value + 1);
+  }, () => setTaskRevision((value) => value + 1));
   // Open, unparked tasks come one bounded native page at a time (#155), never the whole project.
-  const choices = useWorkChoices(me.user.id, projectId, { purpose: 'choices', choice: 'pivot_work' });
+  const choices = useWorkChoices(me.user.id, projectId, { purpose: 'choices', choice: 'pivot_work' }, true, taskRevision);
   const tasks = useMemo<ThreadTask[]>(() => (choices.page?.items ?? []).flatMap((row) => row.kind === 'work' ? [{ id: row.id, title: row.title, status: row.status }] : []), [choices.page]);
   // A `?task=` outside this page is read by itself; one that is not this project's task (or
   // cannot be read) falls back to the first open one.
   const wanted = search.get('task');
   const onPage = tasks.find((item) => item.id === wanted) ?? null;
-  const own = useNativeOwn(me.user.id, projectId, 'work', wanted && !onPage ? wanted : undefined);
+  const own = useNativeOwn(me.user.id, projectId, 'work', wanted && !onPage ? wanted : undefined, true, taskRevision);
   // A task whose creation was undone (#238) is history: it opens in Details, never as a thread to work on here.
   const ownTask = own.value?.object.kind === 'work' && own.value.object.id === wanted && own.value.object.projectId === projectId
     && own.value.object.lifecycle?.state !== 'creation_reverted'
