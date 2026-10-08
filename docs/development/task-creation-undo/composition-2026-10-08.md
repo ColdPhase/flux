@@ -131,3 +131,21 @@ access, counts and no-mutation assertions remain. Include that entire maintained
 announcement module alongside the existing bounded verification. New runtime and
 fresh neutral visual acceptance are pending; historical `04e4bb9e` results and the
 full AC-U1–AC-U5/live/migration/release gates retain their original qualifications.
+
+
+### Actual e9 announcement reflow failure
+
+The pinned `e9e592d00655f2918fc1d3f4f8cdab136ed9ac73` Docker run finished
+2026-10-08 at 11:46:10Z with actual driver/child exit 1. The six earlier
+phases passed all 355 cases. The added complete maintained announcement module
+passed 15/17: Chromium and WebKit enlarged phone text exposed the first title
+word above a vertically centered task number. No timeout, cancellation, skip or
+TODO occurred. Owned processes and Docker resources were confirmed absent.
+Raw log SHA256 `8bf468a6c880ac3a94d852769cc5ba273f1c53f0007eac18c7097e6c67e86c6c`.
+
+The corrective CSS aligns the card's glyph, number and title at their top edge
+only inside the existing narrow font-relative container. It retains ordinary
+two-line titles, full enlarged reflow, existing gap, native open behavior, all
+original assertions and phone target geometry. The current correction is not
+runtime or visual acceptance. Fresh pinned verification and neutral visual
+evaluation remain required alongside the full live/migration/integration gates.
