@@ -88,12 +88,17 @@
 .ui-overlay--bottom .create .create__other { padding: 0 20px 14px; }
 .ui-overlay--bottom .create .create__title { font-size: 26px; }
 
-@media (pointer: coarse) {
-  .create__chip, .create__other button, .create__results button { min-height: 44px; }
-  .create__x { width: 44px; height: 44px; }
-  .create__place { min-height: 44px; }
-}
 .create__place--plain { background: none; box-shadow: none; padding: 0; min-height: 28px; gap: 4px; font-size: var(--fs-base); color: var(--t2); }
 .create__place--plain:hover { background: none; }
 .create__place--plain .create__tile { display: none; }
 .ui-overlay--bottom .create .create__sw { order: 2; }
+
+/* Touch: every control is a 44 x 44 target. These sit after the plain and phone rules and are as specific as
+   the most specific of them, so none of those restores a smaller size. */
+@media (pointer: coarse) {
+  .ui-overlay .create .create__chip, .ui-overlay .create .create__results button { min-height: 44px; }
+  .ui-overlay .create .create__other button { min-height: 44px; min-width: 44px; }
+  .ui-overlay .create .create__x { width: 44px; height: 44px; }
+  .ui-overlay .create .create__place, .ui-overlay .create .create__place--plain { min-height: 44px; min-width: 44px; }
+  .ui-overlay .create .create__chip--link button { flex: none; width: 44px; height: 44px; margin: -12px -4px -12px 0; }
+}

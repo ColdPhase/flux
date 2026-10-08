@@ -102,7 +102,10 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
   const inProject = phone && !!here && (scope === 'all' || scope === 'tasks' || scope === 'wiki');
   const place = inProject && where === 'here' ? `project:${here}` : null;
   const { state } = useSearch(asked, { limit: 8, type: SEARCH_TYPE[scope], place });
-  const agents = useAgents(workspaces.map((space) => space.id), scope === 'people' || scope === 'agents');
+  // An agent opens in a project of its own workspace: the one in view when it shares it, else the first the person can open.
+  const hereSpace = projects.find((project) => project.id === here)?.workspaceId;
+  const agentProject = (agent: Agent) => (hereSpace === agent.workspaceId ? here : projects.find((project) => project.workspaceId === agent.workspaceId)?.id) ?? '';
+  const agents = useAgents(workspaces.map((space) => space.id), scope === 'people' || scope === 'agents').filter((agent) => agentProject(agent));
   const text = query.trim();
   useEffect(() => { inputRef.current?.focus(); }, []);
 
@@ -130,7 +133,7 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
     if (!option) return;
     if (option.kind === 'recent') { setQuery(option.text); inputRef.current?.focus(); return; }
     if (option.kind === 'create') { onClose(); option.run(); return; }
-    if (option.kind === 'agent') { onClose(); navigate(`/projects/${here ?? projects[0]?.id ?? ''}/agents`); return; }
+    if (option.kind === 'agent') { onClose(); navigate(`/projects/${agentProject(option.agent)}/agents`); return; }
     recent.remember(text);
     onClose();
     if (option.kind === 'all') navigate(`/search?q=${encodeURIComponent(text)}`);

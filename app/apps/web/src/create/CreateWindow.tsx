@@ -39,7 +39,7 @@ function CreateBody({ request, phone, onClose }: { request: CreateRequest; phone
   const here = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const known = (id: string | undefined) => (id && projects.some((project) => project.id === id) ? id : undefined);
   const [projectId, setProjectId] = useState(() => known(request.projectId) ?? known(here) ?? projects[0]?.id ?? '');
-  if (choosing) return <ChooseStep projectId={projectId} onProject={setProjectId} here={known(here) ?? ''} onTask={(text) => setTyped(text)} onClose={onClose} />;
+  if (choosing) return <ChooseStep projectId={projectId} onProject={setProjectId} onTask={(text) => setTyped(text)} onClose={onClose} />;
   return <TaskForm request={request} typed={typed} phone={phone} projectId={projectId} onProject={setProjectId} onClose={onClose} />;
 }
 
@@ -61,7 +61,7 @@ function PlacePicker({ projectId, onChange, compact = false, plain = false }: { 
   );
 }
 
-function ChooseStep({ projectId, onProject, here, onTask, onClose }: { projectId: string; onProject: (id: string) => void; here: string; onTask: (text: string) => void; onClose: () => void }) {
+function ChooseStep({ projectId, onProject, onTask, onClose }: { projectId: string; onProject: (id: string) => void; onTask: (text: string) => void; onClose: () => void }) {
   const go = useNavigate();
   const { openDetails } = useShellActions();
   const [text, setText] = useState('');
@@ -70,7 +70,7 @@ function ChooseStep({ projectId, onProject, here, onTask, onClose }: { projectId
     { label: 'Task', icon: 'tasks', run: () => onTask(text) },
     { label: 'Thought', icon: 'map', off: !projectId, run: () => after(() => go(`/projects/${projectId}/map`)) },
     { label: 'Message', icon: 'chat', run: () => after(() => go('/dm/new')) },
-    { label: 'Decision', icon: 'rule', off: !here, run: () => after(() => openDetails({ kind: 'propose-decision', projectId: here })) },
+    { label: 'Decision', icon: 'rule', off: !projectId, run: () => after(() => openDetails({ kind: 'propose-decision', projectId })) },
     { label: 'Project', icon: 'plus', run: () => after(() => go('/projects/new')) },
     { label: 'Private note', icon: 'lock', run: () => after(() => startCapture(go)) },
   ];
@@ -110,6 +110,20 @@ function PickChip({ label, icon, shown, value, onChange, children }: { label: st
   );
 }
 
+interface SavedForm { title: string; outcome: string; status: WorkStatus; blocker: string; owner: string; sources: { ref: ObjectRef; label: string }[] }
+const sameRefs = (a: ObjectRef[], b: ObjectRef[]) => a.length === b.length && a.every((ref, i) => ref.type === b[i]!.type && ref.id === b[i]!.id);
+
+/** The form of the pending command, when it is the one this opening would send (same title; for a message, the same source). */
+function savedForm(pending: string, title: string, sources: ObjectRef[] | null): SavedForm | null {
+  try {
+    const record: unknown = JSON.parse(pending);
+    const form = record && typeof record === 'object' && 'form' in record ? (record as { form: SavedForm }).form : null;
+    if (!form || typeof form.title !== 'string' || form.title !== title || !Array.isArray(form.sources)) return null;
+    if (sources && !sameRefs(form.sources.map((s) => s.ref), sources)) return null;
+    return form;
+  } catch { return null; }
+}
+
 interface Context { project: Project; members: WorkspaceMember[]; agents: Agent[] }
 const forbidden = (error: unknown) => (error instanceof ApiError && error.status === 403 ? [] : Promise.reject(error));
 
@@ -130,14 +144,16 @@ function TaskForm({ request, typed, phone, projectId, onProject, onClose }: { re
   const [own, setOwn] = useState(typed || request.title || '');
   const title = prefilled ? own : draft.text;
   const setTitle = (text: string) => { if (prefilled) setOwn(text); else { draft.setText(text); pending.clear(); } setError(''); };
-  const [outcome, setOutcome] = useState('');
-  const [status, setStatus] = useState<WorkStatus>(request.status ?? 'open');
-  const [blocker, setBlocker] = useState('');
-  const [ownerPick, setOwnerPick] = useState({ projectId, value: '' });
+  // An unresolved command (its response was lost) comes back whole: every field it sent, not just the title.
+  const [saved] = useState(() => savedForm(pending.text, prefilled ? (typed || request.title || '') : draft.text.trim(), prefilled ? (request.sources ?? []).map((s) => s.ref) : null));
+  const [outcome, setOutcome] = useState(saved?.outcome ?? '');
+  const [status, setStatus] = useState<WorkStatus>(saved?.status ?? request.status ?? 'open');
+  const [blocker, setBlocker] = useState(saved?.blocker ?? '');
+  const [ownerPick, setOwnerPick] = useState({ projectId, value: saved?.owner ?? '' });
   // An owner belongs to one project's people: another project starts with none.
   const owner = ownerPick.projectId === projectId ? ownerPick.value : '';
   const setOwner = (value: string) => setOwnerPick({ projectId, value });
-  const [sources, setSources] = useState(request.sources ?? []);
+  const [sources, setSources] = useState(saved?.sources ?? request.sources ?? []);
   const [linking, setLinking] = useState(false);
   const [another, setAnother] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -188,20 +204,22 @@ function TaskForm({ request, typed, phone, projectId, onProject, onClose }: { re
     const original = draft.text; const revision = draft.revision;
     let key = crypto.randomUUID() as string;
     if (attempt.current?.payload === payload) key = attempt.current.key;
-    else if (!prefilled) {
+    else {
+      // Every way in keeps its unresolved command: a lost response is retried with the same identity, whatever the entry point.
       try {
         const previous: unknown = JSON.parse(pending.text);
         if (previous && typeof previous === 'object' && 'payload' in previous && previous.payload === payload && 'key' in previous && typeof previous.key === 'string' && UUID.test(previous.key)) key = previous.key;
       } catch { /* no valid pending command */ }
     }
     attempt.current = { payload, key };
-    const pendingText = JSON.stringify({ payload, key });
-    const pendingRevision = prefilled ? 0 : pending.setText(pendingText);
+    const pendingText = JSON.stringify({ payload, key, form: { title: text, outcome, status, blocker, owner, sources } });
+    const pendingRevision = pending.setText(pendingText);
     setBusy(true); setError('');
     try {
       const item = await createWork(projectId, command, key);
       attempt.current = null;
-      if (!prefilled && draft.clearIfMatches(original, revision) === 'device') pending.clearIfMatches(pendingText, pendingRevision);
+      if (prefilled) pending.clearIfMatches(pendingText, pendingRevision);
+      else if (draft.clearIfMatches(original, revision) === 'device') pending.clearIfMatches(pendingText, pendingRevision);
       revalidator.revalidate();
       if (!mounted.current) return;
       if (another) { done(item); return; }

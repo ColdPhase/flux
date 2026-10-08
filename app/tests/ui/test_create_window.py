@@ -16,6 +16,8 @@ import uuid
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
 from create_window import dialog, open_from_tasks, submit_button, title_field
+from native_work_performance import TASKS_READY, close_create, draft_value, open_create
+from touch_targets import has_minimum_touch_size
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "one way to create"
@@ -41,14 +43,14 @@ class CreateWindow(unittest.TestCase):
         cls.browser.close()
         cls.pw.stop()
 
-    def page(self, scheme: str = "light", phone: bool = False) -> Page:
+    def page(self, scheme: str = "light", phone: bool = False, browser: Browser | None = None) -> Page:
         options: dict = {"base_url": ORIGIN, "color_scheme": scheme, "locale": "en-GB", "timezone_id": "Europe/Warsaw",
                          "service_workers": "block", "viewport": PHONE if phone else DESKTOP, "device_scale_factor": 1}
         if phone:
             options.update(is_mobile=True, has_touch=True)
         if self.state:
             options["storage_state"] = self.state
-        context = self.browser.new_context(**options)
+        context = (browser or self.browser).new_context(**options)
         self.addCleanup(context.close)
         page = context.new_page()
         errors: list[str] = []
@@ -328,6 +330,226 @@ class CreateWindow(unittest.TestCase):
             # The create action opens the sheet with the text.
             sheet.get_by_role("option", name=re.compile("^New task “zzqxunmatched”")).tap()
             expect(title_field(page)).to_have_value("zzqxunmatched")
+
+    # ---------------------------------------------------------------- review fixes (#377)
+
+    def thread(self, page: Page, body: str) -> dict:
+        thread = self.api(page, "POST", f"/api/v1/projects/{self.ids['project']}/conversations", {"body": body, "clientMessageId": str(uuid.uuid4())}, 201)
+        return {"conversation": thread["id"], "message": thread["messages"][0]["id"]}
+
+    def lose_first_response(self, page: Page, keys: list[str]) -> None:
+        """The first create really commits on the server, but its response never arrives."""
+        def lose(route):
+            if route.request.method != "POST":
+                return route.continue_()
+            keys.append(route.request.headers["idempotency-key"])
+            response = route.fetch()
+            self.assertEqual(response.status, 201, response.text())
+            if len(keys) == 1:
+                route.fulfill(status=503, json={"message": "The response was lost"})
+            else:
+                route.fulfill(response=response)
+        page.route(f"**/api/v1/projects/{self.ids['project']}/work", lose)
+
+    def test_10_a_lost_response_is_retried_with_the_same_identity_from_every_entry_point(self) -> None:
+        self.ensure_account()
+        notices = lambda page: self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/task-notices?limit=100", status=200)["total"]  # noqa: E731
+        # From a message: source, details and status all come back after closing and reopening.
+        page = self.page()
+        made = self.thread(page, "Lost response from a message: check the ESP32 kits")
+        page.goto(f"/projects/{self.ids['project']}/conversations/{made['conversation']}")
+        keys: list[str] = []
+        self.lose_first_response(page, keys)
+        before = notices(page)
+        message = page.locator(f"#message-{made['message']}")
+        message.hover()
+        message.get_by_role("button", name="Task", exact=True).click()
+        window = dialog(page)
+        window.get_by_label("Details").fill("Done when both kits are counted")
+        window.get_by_role("combobox", name="Status").select_option("in_progress")
+        submit_button(page).click()
+        expect(window.get_by_role("alert")).to_have_text("The response was lost")
+        page.keyboard.press("Escape")
+        expect(window).to_have_count(0)
+        message.hover()
+        message.get_by_role("button", name="Task", exact=True).click()
+        expect(title_field(page)).to_have_value("Lost response from a message: check the ESP32 kits")
+        expect(window.get_by_label("Details")).to_have_value("Done when both kits are counted")
+        expect(window.get_by_role("combobox", name="Status")).to_have_value("in_progress")
+        expect(window.get_by_role("button", name=re.compile("^Remove link to"))).to_have_count(1)
+        submit_button(page).click()
+        expect(window).to_have_count(0)
+        self.assertEqual(len(keys), 2)
+        self.assertEqual(keys[0], keys[1], "the retry carries the first attempt's identity")
+        stored = [item for item in self.work(page) if item["title"].startswith("Lost response from a message")]
+        self.assertEqual(len(stored), 1, "one persisted task")
+        self.assertEqual((stored[0]["outcome"], stored[0]["status"]), ("Done when both kits are counted", "in_progress"))
+        self.assertEqual(notices(page), before + 1, "one notice")
+        # From the palette: the typed title is the command.
+        page = self.page()
+        page.goto(f"/projects/{self.ids['project']}")
+        keys = []
+        self.lose_first_response(page, keys)
+        expect(page.get_by_role("button", name="Search", exact=True)).to_be_visible()
+        palette, field = self.jump(page, "Lost response from the palette")
+        field.press("Enter")
+        title_field(page)
+        submit_button(page).click()
+        expect(dialog(page).get_by_role("alert")).to_have_text("The response was lost")
+        page.keyboard.press("Escape")
+        palette, field = self.jump(page, "Lost response from the palette")
+        field.press("Enter")
+        submit_button(page).click()
+        expect(dialog(page)).to_have_count(0)
+        self.assertEqual(keys[0], keys[1])
+        self.assertEqual(len([item for item in self.work(page) if item["title"] == "Lost response from the palette"]), 1)
+        # From a blank form: details, status and owner survive too (the title-only control).
+        page = self.page()
+        page.goto(f"/projects/{self.ids['project']}/tasks")
+        keys = []
+        self.lose_first_response(page, keys)
+        field = open_from_tasks(page)
+        field.fill("Lost response from a blank form")
+        dialog(page).get_by_label("Details").fill("Blank form details")
+        dialog(page).get_by_role("combobox", name="Status").select_option("in_progress")
+        submit_button(page).click()
+        expect(dialog(page).get_by_role("alert")).to_have_text("The response was lost")
+        page.keyboard.press("Escape")
+        field = open_from_tasks(page)
+        expect(field).to_have_value("Lost response from a blank form")
+        expect(dialog(page).get_by_label("Details")).to_have_value("Blank form details")
+        expect(dialog(page).get_by_role("combobox", name="Status")).to_have_value("in_progress")
+        submit_button(page).click()
+        expect(dialog(page)).to_have_count(0)
+        self.assertEqual(keys[0], keys[1])
+        stored = [item for item in self.work(page) if item["title"] == "Lost response from a blank form"]
+        self.assertEqual(len(stored), 1)
+        self.assertEqual((stored[0]["outcome"], stored[0]["status"]), ("Blank form details", "in_progress"))
+
+    def second_workspace(self, page: Page) -> dict:
+        if "b_project" not in self.ids:
+            workspace = self.api(page, "POST", "/api/v1/workspaces", {"name": "Bike co-op space"}, 201)
+            project = self.api(page, "POST", f"/api/v1/workspaces/{workspace['id']}/projects", {"name": "Frame builds", "visibility": "restricted"}, 201)
+            self.api(page, "POST", f"/api/v1/workspaces/{workspace['id']}/agents", {"name": "Gearbox helper", "owner": "self"}, 201)
+            self.ids["b_project"] = project["id"]
+        return self.ids
+
+    def test_11_an_agent_opens_in_its_own_workspace_from_home_and_from_another_project(self) -> None:
+        self.ensure_account()
+        page = self.page()
+        self.second_workspace(page)
+        a_projects = rf"/projects/({self.ids['project']}|{self.ids['other']})/agents$"
+        for start, query, expected in (("/", "@gearbox", rf"/projects/{self.ids['b_project']}/agents$"),
+                                       (f"/projects/{self.ids['project']}", "@gearbox", rf"/projects/{self.ids['b_project']}/agents$"),
+                                       (f"/projects/{self.ids['b_project']}", "@probe", a_projects),
+                                       ("/", "@probe", a_projects)):
+            with self.subTest(start=start, query=query):
+                page = self.page()
+                page.goto(start)
+                expect(page.get_by_role("button", name="Search", exact=True)).to_be_visible()
+                palette, field = self.jump(page, query)
+                option = palette.get_by_role("option", name=re.compile("(Gearbox|Probe) helper"))
+                expect(option).to_have_count(1)
+                field.press("Enter")
+                expect(page).to_have_url(re.compile(expected))
+
+    def test_12_the_phone_chooser_proposes_a_decision_in_the_project_it_shows(self) -> None:
+        self.ensure_account()
+        page = self.page(phone=True)
+        for start in (f"/projects/{self.ids['project']}", "/"):
+            with self.subTest(start=start):
+                title = f"Decide in the shown project from {'a project' if start != '/' else 'home'}"
+                page = self.page(phone=True)
+                page.goto(start)
+                page.get_by_role("button", name="Open navigation").click()
+                page.get_by_role("dialog", name="Flux").get_by_role("button", name=re.compile("^New")).tap()
+                sheet = dialog(page)
+                sheet.get_by_role("combobox", name="Project").select_option(self.ids["other"])
+                tile = sheet.get_by_role("group", name="What to create").get_by_role("button", name="Decision")
+                expect(tile).not_to_have_attribute("aria-disabled", "true")
+                tile.tap()
+                panel = page.get_by_role("dialog", name="Details")
+                expect(panel.get_by_role("heading", name="Propose a decision")).to_be_visible()
+                panel.get_by_label("Decision").fill(title)
+                panel.get_by_label("Why").fill("Because the picker said so")
+                panel.get_by_role("button", name="Propose decision", exact=True).tap()
+                expect(panel.locator(".wd-eyebrow")).to_contain_text("Proposed decision")
+                titles = lambda project: [item["title"] for item in self.api(page, "GET", f"/api/v1/projects/{project}/decisions?limit=100", status=200)["items"]]  # noqa: E731
+                self.assertIn(title, titles(self.ids["other"]))
+                self.assertNotIn(title, titles(self.ids["project"]))
+
+    def test_13_close_project_and_remove_link_are_44px_targets_on_touch_chromium_and_webkit(self) -> None:
+        self.ensure_account()
+        self.assertFalse(has_minimum_touch_size(43.99), "a 43.99 px target is rejected")
+        self.assertTrue(has_minimum_touch_size(43.9995), "layout noise within 0.001 is not")
+        page0 = self.page()
+        made = self.thread(page0, "Touch targets of the Create sheet")
+        webkit = self.pw.webkit.launch()
+        self.addCleanup(webkit.close)
+        for engine, browser in (("chromium", self.browser), ("webkit", webkit)):
+            with self.subTest(engine=engine):
+                page = self.page(phone=True, browser=browser)
+                page.goto(f"/projects/{self.ids['project']}")
+                message = page.locator(f"#message-{made['message']}")
+                expect(message).to_be_visible()
+                page.evaluate("() => Promise.all(document.getAnimations().filter((a) => a.effect?.getTiming().iterations !== Infinity).map((a) => a.finished.catch(() => null)))")
+                message.get_by_role("button", name="Make from this message").tap()
+                message.get_by_role("button", name="Task", exact=True).tap()
+                sheet = dialog(page)
+                expect(sheet.get_by_role("button", name=re.compile("^Remove link to"))).to_be_visible()
+                page.evaluate("() => Promise.all(document.getAnimations().filter((a) => a.effect?.getTiming().iterations !== Infinity).map((a) => a.finished.catch(() => null)))")
+                targets = {"Close": sheet.get_by_role("button", name="Close"), "Project picker": sheet.locator(".create__place"),
+                           "Project": sheet.get_by_role("group", name="Create something else").get_by_role("button", name="Project", exact=True),
+                           "Remove link": sheet.get_by_role("button", name=re.compile("^Remove link to"))}
+                for name, target in targets.items():
+                    box = target.bounding_box()
+                    assert box
+                    self.assertTrue(has_minimum_touch_size(box["width"]), f"{engine} {name} width {box['width']}")
+                    self.assertTrue(has_minimum_touch_size(box["height"]), f"{engine} {name} height {box['height']}")
+                    # The middle of each edge receives the touch (trial: checks the hit target, does not click); rounded
+                    # controls have no corners to hit.
+                    w, h = box["width"], box["height"]
+                    for x, y in ((w / 2, 1), (w / 2, h - 1), (1, h / 2), (w - 1, h / 2)):
+                        target.click(position={"x": x, "y": y}, trial=True)
+
+    # ---------------------------------------------------------------- keyboard-only and focus (kept from the old assertions)
+
+    def test_14_keyboard_only_opens_a_result_and_focus_returns_to_the_opener(self) -> None:
+        self.ensure_account()
+        page = self.page()
+        page.goto(f"/projects/{self.ids['project']}")
+        new = page.get_by_role("complementary", name="Sidebar").get_by_role("button", name=re.compile("^New"))
+        new.focus()
+        page.keyboard.press("Enter")
+        expect(title_field(page)).to_be_focused()
+        page.keyboard.press("Escape")
+        expect(new).to_be_focused()
+        palette, field = self.jump(page, "probes")
+        # Create rows first; arrows reach the results and Enter opens the highlighted one.
+        selected = lambda: palette.locator("[role=option][aria-selected=true]")  # noqa: E731
+        expect(palette.locator("[role=option].sr").first).to_be_visible()
+        for _ in range(4):  # three create rows, then the first result
+            field.press("ArrowDown")
+        expect(selected()).to_have_class(re.compile(r"\bsr\b"))
+        self.assertEqual(page.evaluate("document.activeElement === document.querySelector('[role=dialog][aria-label=\"Jump to\"] input')"), True, "focus stays in the field")
+        field.press("Enter")
+        expect(palette).to_have_count(0)
+
+    def test_15_the_performance_harness_predicates_follow_the_portalled_window(self) -> None:
+        """Bounded ordinary-fixture smoke of the migrated harness helpers; the load generator is not run."""
+        self.ensure_account()
+        page = self.page()
+        page.goto(f"/projects/{self.ids['project']}/tasks")
+        page.get_by_role("radio", name="List", exact=True).click()
+        page.wait_for_function(f"({TASKS_READY})()")
+        self.assertFalse(page.locator(".create__title").count(), "closed: no input, yet Tasks is ready")
+        open_create(page)
+        self.assertEqual(page.evaluate(f"({TASKS_READY})()"), True, "open: Tasks readiness does not depend on the dialog")
+        self.assertFalse(page.evaluate("!!document.querySelector('.create__title').closest('.ws-tasks')"), "the input is outside .ws-tasks")
+        page.locator(".create__title").fill("Harness draft")
+        self.assertEqual(draft_value(page), "Harness draft")
+        close_create(page)
+        self.assertEqual(page.locator(".create__title").count(), 0)
 
 
 if __name__ == "__main__":
