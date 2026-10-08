@@ -134,7 +134,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(panel).to_contain_text("Everyone with access to Gesture lamp")
         expect(panel.get_by_role("link", name=re.compile("^Message: Test the camera"))).to_be_visible()
         # The source stays in place, and the work shows up under it.
-        expect(message.locator(".project-convo__message-meta ~ p").first).to_have_text(IDEA)
+        expect(message.locator(":scope > .message-bubble > p").first).to_have_text(IDEA)
         expect(message.get_by_role("button", name=f"Work: {IDEA}")).to_be_visible()
         # The panel's controls change the stored work (If-Match under the hood).
         panel.get_by_label("Status").select_option("in_progress")
