@@ -81,7 +81,7 @@ export function TaskDiscussionSection({ workId, project, members, me }: {
             {composer.pending.length ? <ol className="wd-pending" aria-label="Messages you are sending">{composer.pending.map((item) => (
               <li key={item.id} id={`pending-${item.id}`} data-client-message-id={item.id} data-send-state={item.state} className={`wd-pending__item is-pending${item.state === 'failed' ? ' is-failed-send' : ''}`}>
                 {item.body ? <span className="wd-pending__body">{item.body}</span> : null}
-                <PendingFiles files={item.files} />
+                <PendingFiles files={item.files} send={{ state: item.state, onRetry: () => composer.retry(item.id) }} />
                 <PendingSource item={item} />
                 <OutboxStatus item={item} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} />
               </li>

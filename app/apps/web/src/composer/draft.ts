@@ -50,6 +50,11 @@ const listeners = new Map<string, Set<() => void>>();
 const places = new Map<string, { accountId: string; projectId: string; context: string }>();
 // The selected bytes live only in this visit. After reload, failed uploads ask for the same file.
 const selected = new Map<string, Map<string, File>>();
+/** The bytes a person picked in this visit, for a thumbnail of a draft or of a message not stored yet (#348). */
+export function selectedFile(uploadId: string): File | undefined {
+  for (const bytes of selected.values()) { const file = bytes.get(uploadId); if (file) return file; }
+  return undefined;
+}
 const PREFIX = 'flux:composer:';
 const RETIREMENT_KEY = 'flux:session:composer-retirement';
 let sessionGeneration = 0;

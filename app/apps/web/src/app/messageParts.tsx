@@ -104,7 +104,7 @@ export function pendingMessageRow({ item, name, place, keyed = true, onRetry, on
       <Avatar name={name} size="lg" tone="me" />
       <div className="project-convo__message-meta"><strong>{name} · you</strong>{inMeta ? status : null}</div>
       {item.body ? <p>{item.body}</p> : null}
-      <PendingFiles files={item.files} />
+      <PendingFiles files={item.files} send={{ state: item.state, onRetry }} />
       <PendingSource item={item} className="project-convo__source" />
       {inMeta ? null : status}
     </li>

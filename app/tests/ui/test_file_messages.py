@@ -1,19 +1,24 @@
-"""Browser test for a file-only message in a project conversation (#154, PR #225).
+"""Browser tests for files, references and photos inside the message (#154 PR #225, #348 F-026 §6).
 
 Runs with the other tests/ui journeys through scripts/check_ui.sh. A message posted through the API
 with attachments and no text shows its files as downloads, not an empty bubble, and a task made from
-it gets a readable title instead of an empty one.
+it gets a readable title instead of an empty one. File rows carry the type icon and Download, photos
+form a frameless grid read only through the access-checked route, the viewer is always dark, and the
+composer stages thumbnails (#348).
 """
 
 from __future__ import annotations
 
+import os
+import struct
 import time
 import unittest
 import uuid
+import zlib
 
-from playwright.sync_api import Browser, expect, sync_playwright
+from playwright.sync_api import Browser, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, UPSTREAM, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, start_forwarder
 
 PASSWORD = "files need a place"
 STAMP = int(time.time() * 1000)
@@ -86,6 +91,359 @@ class FileOnlyMessage(unittest.TestCase):
         items = request.get(f"/api/v1/projects/{project['id']}/work?limit=100").json()["items"]
         self.assertEqual([item["title"] for item in items], ["1 attached file"])
         self.assertEqual(errors, [], "no uncaught page errors")
+
+
+
+def png(width: int, height: int, bands: list[tuple[float, tuple[int, int, int]]], post: tuple[int, int, int] | None = None) -> bytes:
+    """A real PNG of horizontal bands (sky, hills, soil), with an optional sensor post in the middle."""
+    rows = []
+    for y in range(height):
+        colour = next(c for limit, c in bands if y < limit * height)
+        row = bytearray()
+        for x in range(width):
+            row += bytes(post if post and abs(x - width // 2) < 3 and 0.3 * height < y < 0.85 * height else colour)
+        rows.append(b"\x00" + bytes(row))
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(b"".join(rows))) + chunk(b"IEND", b"")
+
+
+FIELD = png(320, 240, [(0.42, (205, 223, 232)), (0.6, (122, 158, 104)), (0.66, (156, 110, 70)), (1.0, (96, 70, 46))], (90, 90, 90))
+BOARD = png(320, 240, [(0.2, (196, 160, 116)), (0.24, (120, 92, 64)), (0.5, (196, 160, 116)), (0.54, (120, 92, 64)), (1.0, (40, 40, 40))])
+SHED = png(320, 240, [(0.55, (196, 216, 230)), (0.85, (150, 104, 64)), (1.0, (110, 140, 90))])
+BEDS = png(320, 240, [(0.3, (118, 150, 98)), (0.5, (110, 72, 48)), (0.6, (118, 150, 98)), (0.8, (110, 72, 48)), (1.0, (118, 150, 98))])
+PDF = b"%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n" + b"0" * 310_000
+CSV = b"bed,rssi\nfar east,-112\nnorth,-98\n" * 40
+VOICE = b"\x00\x00\x00\x18ftypM4A " + b"\x00" * 40_000
+NOT_A_PHOTO = b"this is a text file named like a photo\n"
+SHOTS = os.environ.get("FLUX_UI_SCREENSHOTS")
+PEOPLE = {"ada": ("Ada Kowalska", f"ada.files+{STAMP}@example.test"), "jonas": ("Jonas Berg", f"jonas.files+{STAMP}@example.test")}
+
+
+class FilesReferencesPhotos(unittest.TestCase):
+    """#348: one project with a file message, a photo message, a six-photo message and a renamed non-photo."""
+
+    pw = None
+    browser: Browser
+    states: dict[str, dict] = {}
+    ids: dict[str, str] = {}
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        if UPSTREAM:
+            start_forwarder(ORIGIN, UPSTREAM)
+        cls.pw = sync_playwright().start()
+        cls.browser = cls.pw.chromium.launch()
+        expect.set_options(timeout=10000)
+        contexts = {}
+        for key, (name, email) in PEOPLE.items():
+            context = cls.browser.new_context(base_url=ORIGIN)
+            response = context.request.post("/api/auth/sign-up/email", data={"email": email, "password": PASSWORD, "name": name}, headers={"origin": ORIGIN})
+            assert response.status == 200, response.text()
+            cls.ids[key] = context.request.get("/api/v1/me").json()["user"]["id"]
+            cls.states[key] = context.storage_state()
+            contexts[key] = context
+
+        def post(who: str, path: str, body: dict) -> dict:
+            response = contexts[who].request.post(path, data=body, headers={"origin": ORIGIN})
+            assert response.status in (200, 201), f"{path}: {response.status} {response.text()}"
+            return response.json()
+
+        def upload(who: str, name: str, data: bytes) -> str:
+            response = contexts[who].request.post(f"/api/v1/projects/{pid}/files?uploadId={uuid.uuid4()}&name={name}", data=data,
+                                                  headers={"origin": ORIGIN, "content-type": "application/octet-stream"})
+            assert response.status == 201, response.text()
+            return response.json()["id"]
+
+        ws = post("ada", "/api/v1/workspaces", {"name": "Community garden"})
+        post("ada", f"/api/v1/workspaces/{ws['id']}/members", {"email": PEOPLE["jonas"][1], "role": "member"})
+        project = post("ada", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Community garden sensors", "visibility": "restricted"})
+        pid = project["id"]
+        post("ada", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": cls.ids["jonas"]}, "role": "contributor"})
+
+        def root(who: str, body: str, files: list[tuple[str, bytes]]) -> str:
+            ids = [upload(who, name, data) for name, data in files]
+            cls.ids.setdefault("photo", ids[0]) if body.startswith("Sensor 3") else None
+            started = post(who, f"/api/v1/projects/{pid}/conversations", {"body": body, "attachmentIds": ids, "clientMessageId": str(uuid.uuid4())})
+            return started["messages"][0]["id"]
+
+        cls.ids["files"] = root("jonas", "Drawing and range readings from Saturday, see #8 and ask @Ada: https://www.thethingsnetwork.org/docs/gateways/placement-guide/",
+                                [("probe-v2-drawing.pdf", PDF), ("lora-range-far-beds.csv", CSV), ("voice-note.m4a", VOICE)])
+        cls.ids["two"] = root("jonas", "Sensor 3 is in, far east bed", [("IMG_2041.png", FIELD), ("IMG_2042.png", BOARD)])
+        cls.ids["six"] = root("jonas", "All the beds after planting", [(f"bed-{n}.png", data) for n, data in enumerate([SHED, BOARD, BEDS, FIELD, SHED, BEDS])])
+        cls.ids["fake"] = root("jonas", "", [("notaphoto.jpg", NOT_A_PHOTO)])
+        cls.ids["project"] = pid
+        for context in contexts.values():
+            context.close()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.browser.close()
+        cls.pw.stop()
+
+    def page(self, who: str = "ada", phone: bool = False, dark: bool = False) -> Page:
+        options: dict = {"base_url": ORIGIN, "locale": "en-GB", "timezone_id": "Europe/Warsaw", "storage_state": self.states[who],
+                         "color_scheme": "dark" if dark else "light"}
+        if phone:
+            options.update(viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
+        else:
+            options.update(viewport=DESKTOP, device_scale_factor=1)
+        context = self.browser.new_context(**options)
+        self.addCleanup(context.close)
+        page = context.new_page()
+        errors: list[str] = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
+        page.goto(f"/projects/{self.ids['project']}")
+        expect(page.locator(f"#message-{self.ids['two']}")).to_be_visible()
+        return page
+
+    def shot(self, page: Page, name: str, target=None) -> None:
+        if not SHOTS:
+            return
+        page.evaluate("document.fonts.ready.then(() => true)")
+        page.wait_for_timeout(400)
+        (target or page).screenshot(path=os.path.join(SHOTS, f"{name}.png"))
+
+    def message(self, page: Page, key: str):
+        return page.locator(f"#message-{self.ids[key]}")
+
+    def check_files_and_references(self, page: Page, phone: bool) -> None:
+        files = self.message(page, "files")
+        files.scroll_into_view_if_needed()
+        rows = files.get_by_role("list", name="3 attached files")
+        pdf = rows.get_by_role("link", name="probe-v2-drawing.pdf")
+        expect(pdf).to_have_attribute("download", "probe-v2-drawing.pdf")
+        expect(pdf).to_contain_text("PDF · 302.8 KiB")
+        expect(pdf).to_contain_text("Download")
+        expect(pdf.locator("svg.file-icon[data-kind=pdf] .file-icon__band")).to_have_count(1)
+        expect(pdf.locator(".file-icon__label")).to_have_text("PDF")
+        csv = rows.get_by_role("link", name="lora-range-far-beds.csv")
+        expect(csv).to_contain_text("Table · ")
+        expect(csv.locator(".file-icon__label")).to_have_text("CSV")
+        expect(csv.locator(".file-icon__band")).to_have_count(0)  # negative control: only PDF has the band
+        voice = rows.locator(".voice-note")
+        expect(voice.get_by_role("button", name="Play voice-note.m4a")).to_be_visible()
+        expect(voice.locator(".voice-note__wave rect")).to_have_count(22)
+        expect(voice.get_by_role("link")).to_have_count(0)
+        # The rows sit inside the message's bubble: same width line and no gap under the text.
+        gap = files.evaluate("el => { const p = el.querySelector(':scope > p').getBoundingClientRect(); const f = el.querySelector(':scope > .message-files').getBoundingClientRect(); return Math.round(f.top - p.bottom); }")
+        self.assertEqual(gap, 0, "file rows continue the bubble")
+        # Inline chips on the text baseline, and the link's preview.
+        body = files.locator("> p")
+        expect(body.locator(".ref-chip[data-ref=task]")).to_have_text("#8")
+        expect(body.locator(".ref-chip[data-ref=person]")).to_have_text("@Ada")
+        expect(body).to_contain_text("see #8 and ask @Ada:")
+        for chip in (body.locator(".ref-chip[data-ref=task]"), body.locator(".ref-chip[data-ref=person]")):
+            self.assertEqual(chip.evaluate("el => getComputedStyle(el).verticalAlign"), "baseline")
+            drift = chip.evaluate("""el => { const r = document.createRange(); const t = el.previousSibling; r.setStart(t, t.length - 1); r.setEnd(t, t.length);
+                const a = r.getBoundingClientRect(), b = el.getBoundingClientRect(); return Math.abs((a.top + a.bottom) / 2 - (b.top + b.bottom) / 2); }""")
+            self.assertLessEqual(drift, 3, "chip sits on the text line")
+        preview = files.get_by_role("list", name="Link preview").get_by_role("link")
+        expect(preview).to_contain_text("thethingsnetwork.org")
+        expect(preview).to_contain_text("placement guide")
+        expect(preview).to_have_attribute("rel", "noopener noreferrer nofollow")
+        expect(self.message(page, "two").locator(".link-previews")).to_have_count(0)  # negative control: no address, no card
+        if phone:
+            self.assertGreaterEqual(voice.get_by_role("button").bounding_box()["height"], 43.5)
+            self.assertLessEqual(page.locator("body").evaluate("el => el.scrollWidth"), PHONE["width"])
+
+    def check_photos(self, page: Page) -> None:
+        two = self.message(page, "two")
+        two.scroll_into_view_if_needed()
+        grid = two.get_by_role("list", name="2 photos")
+        tiles = grid.get_by_role("listitem")
+        expect(tiles).to_have_count(2)
+        expect(grid.locator("img[src^='blob:']")).to_have_count(2)
+        self.assertEqual(grid.evaluate("el => getComputedStyle(el).borderTopLeftRadius"), "16px")
+        expect(two.locator(".file-row")).to_have_count(0)  # no file frame around a photo
+        six = self.message(page, "six")
+        six.scroll_into_view_if_needed()
+        expect(six.get_by_role("list", name="6 photos").get_by_role("listitem")).to_have_count(4)
+        expect(six.locator(".photo-grid__more")).to_have_text("+2")
+        expect(six.locator(".photo-grid__more")).to_have_count(1)
+        fake = self.message(page, "fake")
+        fake.scroll_into_view_if_needed()
+        expect(fake.get_by_role("link", name="notaphoto.jpg")).to_be_visible()  # negative control: bytes decide, not the name
+        expect(fake.locator("img")).to_have_count(0)
+
+    def check_viewer(self, page: Page) -> None:
+        two = self.message(page, "two")
+        opener = two.get_by_role("button", name="Open photo IMG_2041.png, 1 of 2")
+        opener.click()
+        viewer = page.get_by_role("dialog")
+        expect(viewer).to_contain_text("Jonas Berg")
+        expect(viewer).to_contain_text("1 of 2")
+        expect(viewer).to_contain_text("Sensor 3 is in, far east bed")
+        self.assertEqual(viewer.evaluate("el => getComputedStyle(el).backgroundColor"), "rgb(0, 0, 0)")
+        box = viewer.bounding_box()
+        size = page.viewport_size
+        self.assertEqual((round(box["width"]), round(box["height"])), (size["width"], size["height"]), "full screen")
+        for name in ("Reply", "Create task", "Share"):
+            expect(viewer.get_by_role("button", name=name, exact=True)).to_be_visible()
+        expect(viewer.get_by_role("link", name="Save")).to_have_attribute("download", "IMG_2041.png")
+        expect(viewer.locator("img[src^='blob:']")).to_be_visible()
+        expect(viewer.get_by_role("button", name="Close photo")).to_be_focused()
+        page.keyboard.press("ArrowRight")
+        expect(viewer).to_contain_text("2 of 2")
+        expect(viewer).to_contain_text("IMG_2042.png")
+        page.keyboard.press("Tab")
+        page.keyboard.press("Shift+Tab")
+        self.assertTrue(viewer.evaluate("el => el.contains(document.activeElement)"), "focus stays in the viewer")
+
+    def close_viewer(self, page: Page) -> None:
+        page.keyboard.press("Escape")
+        expect(page.get_by_role("dialog")).to_have_count(0)
+
+    def test_desktop_light_and_dark(self) -> None:
+        for dark in (False, True):
+            with self.subTest(dark=dark):
+                page = self.page(dark=dark)
+                self.check_files_and_references(page, phone=False)
+                self.check_photos(page)
+                mode = 'dark' if dark else 'light'
+                self.shot(page, f"desktop-1440-files-{mode}", self.message(page, "files"))
+                self.shot(page, f"desktop-1440-photos-{mode}", self.message(page, "two"))
+                self.shot(page, f"desktop-1440-grid-{mode}", self.message(page, "six"))
+                self.check_viewer(page)
+                self.shot(page, f"viewer-1440-{'dark' if dark else 'light'}")
+                self.close_viewer(page)
+                expect(self.message(page, "two").get_by_role("button", name="Open photo IMG_2041.png, 1 of 2")).to_be_focused()
+
+    def test_phone_touch_light_and_dark(self) -> None:
+        for dark in (False, True):
+            with self.subTest(dark=dark):
+                page = self.page(phone=True, dark=dark)
+                self.check_files_and_references(page, phone=True)
+                self.check_photos(page)
+                mode = 'dark' if dark else 'light'
+                self.shot(page, f"phone-390-files-{mode}", self.message(page, "files"))
+                self.shot(page, f"phone-390-photos-{mode}", self.message(page, "two"))
+                self.shot(page, f"phone-390-grid-{mode}", self.message(page, "six"))
+                self.message(page, "two").get_by_role("button", name="Open photo IMG_2041.png, 1 of 2").tap()
+                viewer = page.get_by_role("dialog")
+                expect(viewer).to_contain_text("1 of 2")
+                self.assertEqual(viewer.evaluate("el => getComputedStyle(el).backgroundColor"), "rgb(0, 0, 0)")
+                for control in (viewer.get_by_role("button", name="Reply", exact=True), viewer.get_by_role("button", name="Create task", exact=True),
+                                viewer.get_by_role("link", name="Save"), viewer.get_by_role("button", name="Share", exact=True)):
+                    self.assertGreaterEqual(control.bounding_box()["height"], 43.5)
+                self.shot(page, f"viewer-390-{'dark' if dark else 'light'}")
+                viewer.get_by_role("button", name="Create task", exact=True).tap()
+                expect(viewer).to_have_count(0)
+
+    def test_composer_thumbnails_drop_and_photo_states(self) -> None:
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page = self.page(phone=phone)
+                field = page.get_by_label("Write a message", exact=True)
+                with page.expect_file_chooser() as chooser:
+                    page.get_by_role("button", name="Attach files").click()
+                chooser.value.set_files([{"name": "IMG_3001.png", "mimeType": "image/png", "buffer": FIELD},
+                                         {"name": "IMG_3002.png", "mimeType": "image/png", "buffer": BOARD},
+                                         {"name": "probe-offsets.xlsx", "mimeType": "application/octet-stream", "buffer": b"PK\x03\x04" + b"0" * 12000}])
+                draft = page.get_by_role("list", name="Files in your draft")
+                expect(draft.get_by_role("listitem")).to_have_count(3)
+                expect(draft.get_by_text("Ready, private", exact=False)).to_have_count(3)
+                expect(draft.locator(".composer-thumb.is-photo img[src^='blob:']")).to_have_count(2)
+                expect(draft.locator(".composer-thumb:not(.is-photo) .file-icon__label")).to_have_text("XLSX")
+                orders = draft.locator(".composer-thumb__order")
+                if phone:
+                    expect(orders).to_have_text(["Sends 1.", "Sends 2.", "Sends 3."])
+                    remove = draft.get_by_role("button", name="Remove IMG_3001.png").bounding_box()
+                    self.assertGreaterEqual(min(remove["width"], remove["height"]), 43.5)
+                else:
+                    expect(orders).to_have_count(0)  # numbering is the phone's
+                field.fill("Here are the offsets for the volunteers")
+                self.shot(page, f"composer-{'390' if phone else '1440'}")
+                draft.get_by_role("button", name="Remove probe-offsets.xlsx").click()
+                expect(draft.get_by_role("listitem")).to_have_count(2)
+                if phone:
+                    expect(orders).to_have_text(["Sends 1.", "Sends 2."])
+                # Dropping a file onto the conversation attaches it; a drag without files does not.
+                target = page.locator(".project-convo")
+                transfer = page.evaluate_handle("""() => { const t = new DataTransfer(); t.items.add(new File(['bed,rssi\\n'], 'dropped.csv', { type: 'text/csv' })); return t; }""")
+                target.dispatch_event("dragenter", {"dataTransfer": transfer})
+                expect(target).to_have_class(lambda_re("is-dropping"))
+                target.dispatch_event("drop", {"dataTransfer": transfer})
+                expect(draft.get_by_role("listitem")).to_have_count(3)
+                expect(draft).to_contain_text("dropped.csv")
+                text_only = page.evaluate_handle("() => { const t = new DataTransfer(); t.setData('text/plain', 'just words'); return t; }")
+                target.dispatch_event("drop", {"dataTransfer": text_only})
+                expect(draft.get_by_role("listitem")).to_have_count(3)
+                draft.get_by_role("button", name="Remove dropped.csv").click()
+                # Sending: the photos show the state on themselves; a server failure puts Retry on the photo.
+                held = []
+                page.route("**/api/v1/projects/*/conversations", lambda route: held.append(route) if route.request.method == "POST" else route.continue_())
+                if phone:
+                    page.get_by_role("button", name="Send message").tap()
+                else:
+                    field.press("Enter")
+                pending = page.locator("[data-client-message-id]").last
+                expect(pending.locator(".photo-grid__tile[data-photo-state=sending]")).to_have_count(2)
+                expect(pending.locator(".photo-grid__tile img[src^='blob:']")).to_have_count(2)
+                self.shot(page, f"sending-{'390' if phone else '1440'}", pending)
+                for _ in range(50):
+                    if held:
+                        break
+                    page.wait_for_timeout(100)
+                held[0].fulfill(status=500, json={"code": "TEST", "message": "Test failure"})
+                expect(pending.locator(".photo-grid__tile[data-photo-state=failed]")).to_have_count(2)
+                expect(pending.locator(".photo-grid__retry")).to_have_count(2)
+                expect(pending.get_by_role("button", name="Retry", exact=True)).to_have_count(1)  # one Retry for assistive technology
+                self.shot(page, f"failed-{'390' if phone else '1440'}", pending)
+                page.unroute("**/api/v1/projects/*/conversations")
+                pending.locator(".photo-grid__retry").first.click()
+                expect(page.locator("[data-client-message-id]")).to_have_count(0)
+                sent = page.locator(".project-convo__message").filter(has_text="Here are the offsets for the volunteers").last
+                expect(sent.get_by_role("list", name="2 photos").locator("img[src^='blob:']")).to_have_count(2)
+
+    def test_photo_waits_offline_on_the_photo(self) -> None:
+        page = self.page()
+        with page.expect_file_chooser() as chooser:
+            page.get_by_role("button", name="Attach files").click()
+        chooser.value.set_files([{"name": "IMG_4001.png", "mimeType": "image/png", "buffer": SHED}])
+        expect(page.get_by_role("list", name="Files in your draft").get_by_text("Ready, private", exact=False)).to_have_count(1)
+        page.get_by_label("Write a message", exact=True).fill("Shed sensor, once I am back in range")
+        page.context.set_offline(True)
+        page.get_by_label("Write a message", exact=True).press("Enter")
+        pending = page.locator("[data-client-message-id]").last
+        expect(pending.locator(".photo-grid__tile[data-photo-state=waiting]")).to_contain_text("Sends when you're back")
+        self.shot(page, "offline-1440", pending)
+        page.context.set_offline(False)
+        expect(page.locator("[data-client-message-id]")).to_have_count(0, timeout=20000)
+
+    def test_a_reader_who_loses_access_cannot_open_the_file_or_preview(self) -> None:
+        page = self.page("jonas")
+        two = self.message(page, "two")
+        expect(two.locator("img[src^='blob:']")).to_have_count(2)
+        owner = self.browser.new_context(base_url=ORIGIN, storage_state=self.states["ada"])
+        self.addCleanup(owner.close)
+        photo = self.ids["photo"]
+        self.assertEqual(page.request.get(f"/api/v1/files/{photo}").status, 200)
+        grant = owner.request.post(f"/api/v1/projects/{self.ids['project']}/grants", data={"principal": {"kind": "human", "id": self.ids["jonas"]}, "role": "denied"}, headers={"origin": ORIGIN})
+        self.assertIn(grant.status, (200, 201), grant.text())
+        self.addCleanup(lambda: owner.request.post(f"/api/v1/projects/{self.ids['project']}/grants", data={"principal": {"kind": "human", "id": self.ids["jonas"]}, "role": "contributor"}, headers={"origin": ORIGIN}))
+        self.assertIn(page.request.get(f"/api/v1/files/{photo}").status, (403, 404), "the download refuses")
+        # The page still on screen reads the photo again for the viewer: it shows nothing of it.
+        two.get_by_role("button", name="Open photo IMG_2041.png, 1 of 2").click()
+        viewer = page.get_by_role("dialog")
+        expect(viewer.get_by_role("alert")).to_have_text("You no longer have access to this photo.")
+        expect(viewer.locator("img")).to_have_count(0)
+        expect(viewer.get_by_role("button", name="Share")).to_be_disabled()
+        self.shot(page, "access-lost-1440")
+        page.keyboard.press("Escape")
+        # A fresh read previews nothing (negative control: the owner still sees both photos).
+        page.reload()
+        expect(page.locator("img[src^='blob:']")).to_have_count(0)
+        mine = owner.new_page()
+        mine.goto(f"/projects/{self.ids['project']}")
+        expect(mine.locator(f"#message-{self.ids['two']} img[src^='blob:']")).to_have_count(2)
+
+
+def lambda_re(text: str):
+    import re
+    return re.compile(rf"(^|\s){re.escape(text)}(\s|$)")
 
 
 if __name__ == "__main__":

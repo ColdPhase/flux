@@ -13,6 +13,7 @@ import { listConversationRoots, listTaskNotices } from './conversation-api';
 import { AgentAuthor, AuthorFace, ContributionMark, OPENING_REVEAL_MS, SourceCitation, clock, day, openOnWholeMessages, pendingMessageRow, when } from './messageParts';
 import { agentAuthorOwner, useAgentOwners, type AgentOwners } from '../agents/owners';
 import { MessageFiles } from '../composer/Files';
+import { LinkPreviews, MessageText } from './MessageText';
 import { onSent, outboxView, useComposerDraft, type PendingSend } from '../composer/draft';
 
 // One project conversation (UI116-1, 2026-10-02): a chronological stream of roots. Each root is the
@@ -591,8 +592,9 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
         <strong>{mine ? `${name} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</Link>}</strong>
         <time dateTime={message.createdAt} title={when(message.createdAt)}>{clock(message.createdAt)}</time>
       </div>
-      {message.body ? <p>{message.body}</p> : null}
-      <MessageFiles files={message.files} />
+      {message.body ? <p><MessageText body={message.body} /></p> : null}
+      <MessageFiles files={message.files} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: () => onOpen(root, true), onCreateTask: writable ? () => void makeWork.create(message) : undefined }} />
+      <LinkPreviews body={message.body} />
       {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={onOpenResult} /> : null}
       {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
       <MessageObjects message={message} projectId={project.id} preview={messageWork.previews?.get(message.id) ?? null} thread={root.task ?? null} threadRow={taskRow} />

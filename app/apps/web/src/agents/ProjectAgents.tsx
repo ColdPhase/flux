@@ -307,7 +307,7 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
             {/* "Sending…" stands where the stored message's time will be, so it takes that message's exact space. */}
             <span className="agents-msg__meta"><b>{names.get(meId) ?? 'Someone'} · you</b>{item.state === 'sending' || item.state === 'uploading' ? <OutboxStatus inline item={item} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} /> : null}</span>
             {item.body ? <p className="agents-msg__body">{item.body}</p> : null}
-            <PendingFiles files={item.files} />
+            <PendingFiles files={item.files} send={{ state: item.state, onRetry: () => composer.retry(item.id) }} />
             <PendingSource item={item} />
             {item.state === 'sending' || item.state === 'uploading' ? null : <OutboxStatus item={item} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} />}
           </li>
