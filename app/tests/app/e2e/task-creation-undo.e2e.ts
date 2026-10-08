@@ -136,6 +136,7 @@ async function open(context: BrowserContext, f: Scene, item: WorkItem, surface =
 async function storedDraft(page: Page, key: string) {
   return await page.evaluate((value) => JSON.parse(localStorage.getItem(value) ?? sessionStorage.getItem(value) ?? 'null'), key) as {
     body: string; files: { state: string; staged: { id: string }; name: string }[]; references: { materialId: string; version: number; title: string }[]; commandId: string;
+    pending: { id: string; body: string; state: string; error?: string; files: unknown[]; references: unknown[] }[];
   };
 }
 async function stageDraft(page: Page, f: Scene, item: WorkItem) {
@@ -212,6 +213,77 @@ async function holdUndo(page: Page, item: WorkItem, lostResponse = false) {
       finally { await page.unroute(matches, handler); } if (failure) throw failure; } };
 }
 const detailPath = (f: Scene, item: WorkItem) => projectWorkDetailPath(f.place.id, 'work', item.id);
+
+test('pending contribution cannot be retried from undone read-only history and both private drafts survive', { timeout: 120_000 }, async () => {
+  const f = await fixture(); const item = await f.create(); const context = await signedIn(f.author);
+  await withContexts([context], async () => {
+    const page = await open(context, f, item);
+    const held = gate<{ clientMessageId: string }>(); const release = gate(); const settled = gate();
+    const matches = (url: URL) => url.pathname === taskDiscussionPath(item.id);
+    const writes: string[] = [];
+    let used = false; let failure: unknown;
+    const handler = async (route: Route) => {
+      if (route.request().method() !== 'POST') { await route.continue(); return; }
+      if (used) { await route.continue(); return; }
+      used = true;
+      try {
+        held.resolve(route.request().postDataJSON());
+        // No task use has reached the server: Undo may still win its real transaction.
+        await finite(release.promise, 'held contribution release', 30_000);
+        const response = await route.fetch({ timeout: 15_000 });
+        assert.equal(response.status(), 409, await response.text());
+        await route.fulfill({ response });
+      } catch (error) { failure = error; }
+      finally { settled.resolve(); }
+    };
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && new URL(request.url()).pathname === taskDiscussionPath(item.id))
+        writes.push(request.postDataJSON().clientMessageId);
+    });
+    await page.route(matches, handler);
+    try {
+      const unsent = 'This measurement has not been sent to the task.';
+      await panel(page).getByRole('textbox', { name: 'First message about this task', exact: true }).fill(unsent);
+      await panel(page).getByRole('button', { name: 'Start the discussion', exact: true }).click();
+      const command = await finite(held.promise, 'outgoing contribution');
+      const original = await stageDraft(page, f, item);
+      const pendingBefore = original.pending.find((entry) => entry.id === command.clientMessageId)!;
+      assert.equal(pendingBefore.body, unsent);
+      await f.undo(item); await reverted(page, item);
+      release.resolve(); await finite(settled.promise, 'contribution refusal settlement');
+      if (failure) throw failure;
+      const pending = panel(page).locator(`[data-client-message-id="${command.clientMessageId}"]`);
+      await finite((async () => {
+        while ((await storedDraft(page, draftKey(f, item))).pending.find((entry) => entry.id === command.clientMessageId)?.state !== 'failed'
+          || await pending.getAttribute('data-send-state') !== 'failed')
+          await page.waitForTimeout(100);
+      })(), 'refused pending contribution kept');
+      assert.equal(await pending.getByRole('button', { name: 'Retry', exact: true }).count(), 0,
+        'read-only history has no contribution retry control');
+      assert.equal(await pending.getByRole('button', { name: 'Remove', exact: true }).count(), 0,
+        'the history presentation keeps the unsent record intact');
+      const current = await storedDraft(page, draftKey(f, item));
+      assert.deepEqual({ body: current.body, files: current.files, references: current.references, commandId: current.commandId },
+        { body: original.body, files: original.files, references: original.references, commandId: original.commandId }, 'second private draft kept');
+      const pendingAfter = current.pending.find((entry) => entry.id === command.clientMessageId)!;
+      assert.deepEqual({ id: pendingAfter.id, body: pendingAfter.body, files: pendingAfter.files, references: pendingAfter.references },
+        { id: pendingBefore.id, body: pendingBefore.body, files: pendingBefore.files, references: pendingBefore.references }, 'unsent command and content kept');
+      const discussion = expectStatus(await f.author.browser.request('GET', taskDiscussionPath(item.id)), 200) as { root: ConversationMessage | null; messages: ConversationMessage[] };
+      assert.equal(discussion.root, null); assert.deepEqual(discussion.messages, []);
+      assert.equal((await notices(f, item)).length, 2); assert.equal(await receipts(item), 1);
+      await page.reload(); await reverted(page, item);
+      const reloaded = panel(page).locator(`[data-client-message-id="${command.clientMessageId}"]`);
+      await reloaded.waitFor(); assert.equal(await reloaded.getByRole('button').count(), 0);
+      assert.deepEqual(await storedDraft(page, draftKey(f, item)), current, 'reload keeps both private records');
+      assert.deepEqual(writes, [command.clientMessageId], 'history and reload never retry the refused command');
+    } finally {
+      release.resolve();
+      try { if (used) await finite(settled.promise, 'contribution cleanup'); }
+      finally { await page.unroute(matches, handler); }
+      if (failure) throw failure;
+    }
+  });
+});
 
 test('two accounts keep Conversation, Tasks, Map and Agents current after real Undo, with one retained notice history and private draft', { timeout: 120_000 }, async () => {
   const f = await fixture(); const item = await f.create();
