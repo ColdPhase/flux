@@ -45,6 +45,8 @@ const sorted = (items: NeedsYouItem[]) => {
 export function useNeedsYou(userId: string): Queue {
   const [state, setState] = useState<{ userId: string; response: NeedsYouResponse | null; failed: boolean }>({ userId, response: null, failed: false });
   const [version, setVersion] = useState(0);
+  // Showing an item again re-renders even when the answer already holds it (it was only filtered out).
+  const [, redraw] = useState(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reload = useCallback(() => setVersion((n) => n + 1), []);
   const soon = useCallback(() => {
@@ -77,8 +79,8 @@ export function useNeedsYou(userId: string): Queue {
   const mine = state.userId === userId ? state : { userId, response: null, failed: false };
   const hide = useCallback((key: string) => setState((previous) => previous.response
     ? { ...previous, response: { ...previous.response, items: previous.response.items.filter((item) => item.key !== key), count: Math.max(0, previous.response.count - 1) } } : previous), []);
-  const show = useCallback((item: NeedsYouItem) => setState((previous) => previous.response && !previous.response.items.some((entry) => entry.key === item.key)
-    ? { ...previous, response: { ...previous.response, items: sorted([...previous.response.items, item]), count: previous.response.count + 1 } } : previous), []);
+  const show = useCallback((item: NeedsYouItem) => { redraw((n) => n + 1); setState((previous) => previous.response && !previous.response.items.some((entry) => entry.key === item.key)
+    ? { ...previous, response: { ...previous.response, items: sorted([...previous.response.items, item]), count: previous.response.count + 1 } } : previous); }, []);
   // A decision this person just accepted is not shown while the accept is waiting or on its way.
   const accepting = acceptingIds();
   const items = mine.response ? mine.response.items.filter((item) => !(item.decision && accepting.has(item.decision.id))) : null;
