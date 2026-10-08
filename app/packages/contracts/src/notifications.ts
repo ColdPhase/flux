@@ -10,6 +10,20 @@
 export const NOTIFICATION_REASONS = ['mention', 'question', 'reply', 'dm', 'assigned', 'review', 'invitation'] as const;
 export type NotificationReason = typeof NOTIFICATION_REASONS[number];
 
+/**
+ * The reasons that "need you" (F-026 S22): decisions and results about your work, questions and
+ * mentions, direct messages, work assigned to you and invitations. Replies in conversations you
+ * joined are the rest of "Everything".
+ */
+export const NEEDS_YOU_REASONS = ['mention', 'question', 'dm', 'assigned', 'review', 'invitation'] as const satisfies readonly NotificationReason[];
+
+/**
+ * What may interrupt you with push and email (F-026 S22). The inbox keeps every reason in each
+ * level. `custom` is reported when the per-reason channels match none of the three.
+ */
+export const NOTIFICATION_LEVELS = ['needsYou', 'everything', 'nothing'] as const;
+export type NotificationLevel = typeof NOTIFICATION_LEVELS[number];
+
 export const NOTIFICATION_CHANNELS = ['inApp', 'push', 'email'] as const;
 export type NotificationChannel = typeof NOTIFICATION_CHANNELS[number];
 export type ChannelChoice = Record<NotificationChannel, boolean>;
@@ -37,6 +51,17 @@ export interface QuietHours {
   end: string;
   /** IANA time zone, e.g. "Europe/Warsaw". */
   timeZone: string;
+}
+
+/**
+ * One push at a local time (in the quiet-hours time zone) counting what still waits in your
+ * inbox. While it is on, push and email held back by quiet hours are not sent one by one when
+ * quiet hours end: the summary covers them and the inbox keeps them.
+ */
+export interface MorningSummary {
+  enabled: boolean;
+  /** Local time "HH:MM". */
+  at: string;
 }
 
 export type MutablePlaceType = 'project' | 'dm';
@@ -70,6 +95,9 @@ export interface NotificationPreferences {
     lastFailureAt: string | null;
   };
   quietHours: QuietHours;
+  morningSummary: MorningSummary;
+  /** Which of the three levels the channels match, or `custom`. */
+  level: NotificationLevel | 'custom';
   muted: MutedPlace[];
 }
 
@@ -78,6 +106,9 @@ export interface UpdateNotificationPreferencesCommand {
   channels?: Partial<Record<NotificationReason, Partial<ChannelChoice>>>;
   emailDestination?: EmailDestination;
   quietHours?: Partial<QuietHours>;
+  /** Applies the level's push and email choice to every reason, before `channels`. */
+  level?: NotificationLevel;
+  morningSummary?: Partial<MorningSummary>;
 }
 
 /** `PUT /api/v1/notification-preferences/mutes`: mute or unmute a place you can read. */

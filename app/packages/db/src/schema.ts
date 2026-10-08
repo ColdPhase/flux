@@ -1352,6 +1352,10 @@ export const notificationPreferences = pgTable('notification_preferences', {
   quietStart: integer('quiet_start').notNull().default(1320),
   quietEnd: integer('quiet_end').notNull().default(420),
   timeZone: text('time_zone').notNull().default('UTC'),
+  // Migration 0057 (#350, F-026 S22): the morning summary and the local day it last went out.
+  summaryEnabled: boolean('summary_enabled').notNull().default(false),
+  summaryAt: integer('summary_at').notNull().default(540),
+  summaryLastOn: date('summary_last_on', { mode: 'string' }),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

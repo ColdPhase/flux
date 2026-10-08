@@ -325,8 +325,8 @@ function AppLayoutContent() {
   ] : null;
   const place = location.pathname === '/projects'
     ? { crumb: null, title: 'Projects', topic: 'Every project you can open', views: false, noDetails: true }
-    : location.pathname === '/settings'
-    ? { crumb: null, title: 'Settings', topic: 'Your account, this device and your AI', views: false, noDetails: true }
+    : /^\/settings(\/(appearance|account|notifications|agents|shortcuts)(\/.*)?)?$/.test(location.pathname)
+    ? { crumb: null, title: 'Settings', topic: 'Appearance, notifications, agents and AI', views: false, noDetails: true }
     : backgroundSettings
     ? { crumb: null, title: 'Background suggestions', topic: 'Your connection and allowance', views: false, noDetails: true }
     : location.pathname === '/search'

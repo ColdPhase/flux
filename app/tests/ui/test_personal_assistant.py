@@ -242,6 +242,11 @@ class PersonalAssistantJourney(unittest.TestCase):
         self.assertEqual((status["enablement"]["consent"]["provider"], status["enablement"]["consent"]["model"]), ("anthropic", "claude-sonnet-5"))
         type(self).ids["agent"] = status["enablement"]["agents"][0]["agentId"]
         shot(page, "assistant-1440-settings-ready")
+        # Settings → Agents and AI lists the assistant with its colour and its state (#350).
+        page.goto("/settings/agents")
+        row = page.get_by_role("link", name=re.compile("^Your assistant · for you · in Flux"))
+        expect(row).to_have_attribute("href", "/settings/assistant")
+        self.assertRegex(row.locator(".kreska").get_attribute("class") or "", r"kreska--[a-z]+")
         # Kai sees his own, not-set-up state: Jo's assistant is never offered to him.
         kai = self.page("kai")
         self.assertEqual(self.status(kai)["state"], "not_enabled")

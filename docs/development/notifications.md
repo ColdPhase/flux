@@ -63,9 +63,15 @@ defaults if missing), the given fields are merged and written in one transaction
 edits of different fields never overwrite each other; for the same field the later request wins.
 The settings page sends its saves one after another, numbered, and shows only the newest answer.
 
-- **Channels per reason** (`inApp`, `push`, `email`). Defaults: inbox and push on for every
-  reason; email on for `mention`, `question` and `dm` only (an `invitation` is quiet: inbox and
-  push, no email, never a ringing call). With the inbox off but push or email
+- **Level** (#350, F-026 S22): `needsYou` (default), `everything` or `nothing`, a preset over
+  the channels below. `PATCH { level }` sets every reason's inbox on and push on for the
+  needs-you reasons (`mention`, `question`, `dm`, `assigned`, `review`, `invitation`), for all
+  reasons, or for none; `nothing` also turns email off, and leaving `nothing` restores the email
+  defaults. `GET` reports the level the channels match by push (`nothing`: no push and no
+  email), or `custom`.
+- **Channels per reason** (`inApp`, `push`, `email`). Defaults (Only "Needs you"): inbox on for
+  every reason, push on for every reason except `reply`; email on for `mention`, `question` and
+  `dm` only (an `invitation` is quiet: inbox and push, no email, never a ringing call). With the inbox off but push or email
   on, the row is kept (`in_inbox = false`) to back those channels and the tap-time recheck, but
   the inbox list leaves it out. All off: nothing is stored.
 - **Mute a place** (a project or DM the person can read): nothing from it notifies, on any
@@ -77,6 +83,14 @@ The settings page sends its saves one after another, numbered, and shows only th
   send re-evaluates the person's *current* quiet hours: a job queued before they were turned on
   is deferred (queued again with `startAfter` at the window's end, the email row stays
   `queued`). The inbox is never held back.
+- **Morning summary** (#350, S22; `morningSummary: { enabled, at }`, off by default, `at`
+  09:00 in the quiet-hours time zone): the worker's `notification.morning-summary.v1` job runs
+  every 15 minutes and, once per local day from `at` until three hours later, claims the day
+  (`summary_last_on`) and stores one notification outside the inbox (`in_inbox = false`, no
+  reason, `url` `/inbox`) titled with the count of unread inbox items the person can still read,
+  then queues its push to each device. Nothing is sent for an empty inbox. While the summary is
+  on, push and email that quiet hours would hold are not queued one by one; the inbox keeps them
+  and the summary counts them. Email digests are not part of it.
 - **Where email goes**: `account` (the sign-in/SSO address, default), `extra` (the verified
   extra address), `both`, or `none` (in-app only).
 
@@ -144,8 +158,9 @@ starting mail to the sign-in address by itself. The sign-in address cannot be ad
 The rail has an **Inbox** button between Home and Direct messages with a quiet lime dot when
 something is unread — never a count (#44 no guilt). `/inbox` lists "New" and "Earlier" items,
 each with its reason, title, excerpt and time; opening one marks it read and opens the source;
-"Mark all read" only quiets the dot. `/settings/notifications` holds the channel table, email
-destination and extra address, quiet hours and muted places. `/inbox/:id` (email link) and
+"Mark all read" only quiets the dot. `/settings/notifications` (Settings → Notifications, #350)
+holds the level (Only "Needs you", Everything, Nothing), quiet hours, the morning summary, then
+the channel table, push on this device, email destination and extra address, and muted places. `/inbox/:id` (email link) and
 `/settings/notifications/verify` are routes of the signed-in app.
 
 ## Tests

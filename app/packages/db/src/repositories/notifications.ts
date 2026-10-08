@@ -29,7 +29,15 @@ export interface StoredPreferenceRow {
   quietStart: number;
   quietEnd: number;
   timeZone: string;
+  summaryEnabled: boolean;
+  summaryAt: number;
 }
+
+type PreferenceRecord = typeof schema.notificationPreferences.$inferSelect;
+const storedRow = (row: PreferenceRecord): StoredPreferenceRow => ({
+  channels: row.channels ?? {}, emailDestination: row.emailDestination, quietEnabled: row.quietEnabled, quietStart: row.quietStart,
+  quietEnd: row.quietEnd, timeZone: row.timeZone, summaryEnabled: row.summaryEnabled, summaryAt: row.summaryAt,
+});
 
 /** What the generator reads and writes inside its transaction. */
 export function notificationGeneratorRows(db: DbExecutor) {
@@ -217,8 +225,7 @@ export function notificationPreferenceRows(db: DbExecutor) {
   return {
     async find(userId: string): Promise<StoredPreferenceRow | null> {
       const [row] = await db.select().from(p).where(eq(p.userId, userId));
-      if (!row) return null;
-      return { channels: row.channels ?? {}, emailDestination: row.emailDestination, quietEnabled: row.quietEnabled, quietStart: row.quietStart, quietEnd: row.quietEnd, timeZone: row.timeZone };
+      return row ? storedRow(row) : null;
     },
     async save(userId: string, values: StoredPreferenceRow) {
       const set = { ...values, updatedAt: new Date() };
@@ -228,7 +235,7 @@ export function notificationPreferenceRows(db: DbExecutor) {
     async lock(userId: string): Promise<StoredPreferenceRow> {
       await db.insert(p).values({ userId }).onConflictDoNothing();
       const [row] = await db.select().from(p).where(eq(p.userId, userId)).for('update');
-      return { channels: row!.channels ?? {}, emailDestination: row!.emailDestination, quietEnabled: row!.quietEnabled, quietStart: row!.quietStart, quietEnd: row!.quietEnd, timeZone: row!.timeZone };
+      return storedRow(row!);
     },
     async isMuted(userId: string, source: { type: string; id: string }) {
       if (source.type !== 'project' && source.type !== 'dm') return false;
@@ -401,4 +408,32 @@ export function notificationEmailRows(db: DbExecutor) {
 export async function markAllNotificationsRead(db: DbExecutor, userId: string) {
   const rows = await db.update(n).set({ readAt: sql`now()` }).where(and(eq(n.userId, userId), isNull(n.readAt))).returning({ id: n.id });
   return rows.length;
+}
+
+/** The morning summary (#350): who has it on, the per-day claim, unread inbox rows and the summary row. */
+export function morningSummaryRows(db: DbExecutor) {
+  return {
+    async candidates() {
+      const rows = await db.select({ userId: p.userId, summaryEnabled: p.summaryEnabled, summaryAt: p.summaryAt, timeZone: p.timeZone, lastOn: p.summaryLastOn })
+        .from(p).where(eq(p.summaryEnabled, true));
+      return rows.map(({ userId, lastOn, ...preferences }) => ({ userId, lastOn, preferences }));
+    },
+    async claimDay(userId: string, day: string) {
+      const rows = await db.update(p).set({ summaryLastOn: day })
+        .where(and(eq(p.userId, userId), eq(p.summaryEnabled, true), sql`${p.summaryLastOn} IS DISTINCT FROM ${day}::date`))
+        .returning({ userId: p.userId });
+      return rows.length > 0;
+    },
+    async unread(userId: string, limit: number) {
+      const rows = await db.select({ id: n.id, workspaceId: n.workspaceId, type: n.sourceType, sourceId: n.sourceId }).from(n)
+        .where(and(eq(n.userId, userId), eq(n.inInbox, true), isNull(n.readAt))).orderBy(sql`${n.createdAt} DESC`).limit(limit);
+      return rows.map((row) => ({ id: row.id, source: { workspaceId: row.workspaceId, type: row.type, id: row.sourceId } }));
+    },
+    async insertSummary(row: { id: string; userId: string; source: { workspaceId: string; type: SourceType; id: string }; title: string; body: string; url: string }) {
+      await db.insert(n).values({
+        id: row.id, userId: row.userId, workspaceId: row.source.workspaceId, sourceType: row.source.type, sourceId: row.source.id,
+        title: row.title, body: row.body, url: row.url, inInbox: false,
+      });
+    },
+  };
 }
