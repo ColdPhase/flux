@@ -204,7 +204,7 @@ export async function assertMigrationFootprint(db: Reader, manifest: readonly Mi
       LEFT JOIN pg_class r ON r.oid=k.confrelid LEFT JOIN pg_namespace rn ON rn.oid=r.relnamespace
       WHERE n.nspname=current_schema() AND c.relname=ANY($1::text[])) AS constraints,
     (SELECT coalesce(jsonb_agg(jsonb_build_object('name',p.proname,'body',p.prosrc,'arguments',p.pronargs,'result',format_type(p.prorettype,NULL),
-      'language',l.lanname,'security_definer',p.prosecdef,'config',p.proconfig) ORDER BY p.oid),'[]')
+      'language',l.lanname,'security_definer',p.prosecdef,'config',p.proconfig,'volatility',p.provolatile,'returns_set',p.proretset,'strict',p.proisstrict) ORDER BY p.oid),'[]')
       FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace JOIN pg_language l ON l.oid=p.prolang WHERE n.nspname=current_schema()
       AND p.proname=ANY($2::text[])) AS functions,
     (SELECT coalesce(jsonb_agg(jsonb_build_object('name',t.tgname,'table',c.relname,'type',t.tgtype,'enabled',t.tgenabled,
@@ -219,7 +219,8 @@ export async function assertMigrationFootprint(db: Reader, manifest: readonly Mi
       JOIN pg_namespace n ON n.oid=t.relnamespace WHERE n.nspname=current_schema() AND t.relname=ANY($1::text[])) AS indexes,
     current_schema() AS schema`, [tablesToRead, functionsToRead, triggersToRead]);
   const catalog = result.rows[0] as { relations: Relation[]; columns: ActualColumn[]; constraints: Constraint[];
-    functions: { name: string; body: string; arguments: number; result: string; language: string; security_definer: boolean; config: unknown }[];
+    functions: { name: string; body: string; arguments: number; result: string; language: string; security_definer: boolean; config: unknown;
+      volatility: string; returns_set: boolean; strict: boolean }[];
     triggers: { name: string; table: string; type: number; enabled: string; function: string; function_schema: string; arguments: number; condition: string | null; columns: string[] }[];
     indexes: { name: string; table: string; definition: string; valid: boolean; ready: boolean; nulls_not_distinct: boolean }[];
     schema: string };
@@ -228,7 +229,7 @@ export async function assertMigrationFootprint(db: Reader, manifest: readonly Mi
   for (const declaration of declarations.filter((declaration) => applied.includes(declaration.file.version))) {
     if (!manifest.some((file) => file.name === declaration.file.name)) refuse(`recorded ${declaration.file.name} has no matching image declaration`);
     for (const [table, footprint] of Object.entries(declaration.tables)) {
-      const previous = expected.get(table) ?? { columns: [], checks: {} };
+      const previous: TableFootprint = expected.get(table) ?? { columns: [], checks: {} };
       expected.set(table, { columns: [...previous.columns, ...footprint.columns], checks: { ...previous.checks, ...footprint.checks }, exact: footprint.exact ?? previous.exact });
     }
   }
@@ -288,7 +289,8 @@ export async function assertMigrationFootprint(db: Reader, manifest: readonly Mi
   for (const fence of activeFences) {
     const functions = catalog.functions.filter((fn) => fn.name === fence.function);
     if (functions.length !== 1 || functions[0]!.arguments !== 0 || functions[0]!.result !== 'trigger' || functions[0]!.language !== 'plpgsql' ||
-      functions[0]!.security_definer || functions[0]!.config !== null || sqlTokens(functions[0]!.body) !== sqlTokens(fence.body)) refuse(`missing or altered lifecycle function ${fence.function}`);
+      functions[0]!.security_definer || functions[0]!.config !== null || functions[0]!.volatility !== 'v' || functions[0]!.returns_set || functions[0]!.strict ||
+      sqlTokens(functions[0]!.body) !== sqlTokens(fence.body)) refuse(`missing or altered lifecycle function ${fence.function}`);
     const triggers = catalog.triggers.filter((trigger) => trigger.name === fence.trigger);
     const trigger = triggers[0];
     if (triggers.length !== 1 || !trigger || trigger.table !== fence.table || trigger.type !== fence.type || trigger.enabled !== 'O' ||
