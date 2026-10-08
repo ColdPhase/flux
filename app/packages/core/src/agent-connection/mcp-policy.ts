@@ -39,6 +39,24 @@ export function mcpPolicyWithinConsent(connection: AgentConnection, input: SaveA
     && input.selectedProjectIds.every((id) => connection.selectedProjectIds.includes(id));
 }
 
+/** Admit only the newly configured authority, never an unrelated retained-but-unavailable effect. */
+export function mcpPolicyAdmissionActions(previous: AgentMcpPolicy, input: SaveAgentMcpPolicy):
+  { projectId: string; action: 'project.read' | 'project.write' }[] {
+  const capabilities = input.enabledCapabilityIds.filter((id) => !previous.enabledCapabilityIds.includes(id));
+  const entries = AGENT_MCP_ENTRIES.filter((entry) => input.enabledEntryIds.includes(entry.id)
+    && entry.requiredCapabilities.every((id) => input.enabledCapabilityIds.includes(id)));
+  const addedEntries = entries.filter((entry) => !previous.enabledEntryIds.includes(entry.id));
+  const widened = capabilities.length > 0 || addedEntries.length > 0;
+  const writes = capabilities.some((id) => !id.endsWith('.read'))
+    || addedEntries.some((entry) => entry.requiredScope !== 'flux.context.read');
+  return input.selectedProjectIds.flatMap((projectId) => {
+    const addedProject = !previous.selectedProjectIds.includes(projectId);
+    if (!widened && !addedProject) return [];
+    const needsWrite = writes || (addedProject && entries.some((entry) => entry.requiredScope !== 'flux.context.read'));
+    return [{ projectId, action: needsWrite ? 'project.write' as const : 'project.read' as const }];
+  }).sort((a, b) => a.projectId.localeCompare(b.projectId));
+}
+
 const owner = (principal: Principal, connectionId: string) => {
   if (principal.kind !== 'human' || !isUuid(connectionId)) throw new NotFoundError('Connection', 'CONNECTION_NOT_FOUND');
   return principal.id;
@@ -54,10 +72,10 @@ export function agentMcpPolicyUseCases(port: AgentMcpPolicyPort) {
     async save(principal: Principal, connectionId: string, expectedVersion: number, input: SaveAgentMcpPolicy) {
       const ownerId = owner(principal, connectionId);
       if (!Number.isInteger(expectedVersion) || expectedVersion < 1 || expectedVersion >= 2_147_483_647)
-        throw new DomainError(412, 'POLICY_VERSION_CONFLICT', 'Reload these permissions before saving');
+        throw new DomainError(409, 'POLICY_VERSION_CONFLICT', 'Reload these permissions before saving');
       const result = await port.save(ownerId, connectionId, expectedVersion, validateMcpPolicy(input));
       if (result === 'CONNECTION_NOT_FOUND') throw new NotFoundError('Connection', result);
-      if (result === 'POLICY_VERSION_CONFLICT') throw new DomainError(412, result, 'These permissions changed; reload before saving');
+      if (result === 'POLICY_VERSION_CONFLICT') throw new DomainError(409, result, 'These permissions changed; reload before saving');
       if (result === 'MCP_POLICY_OUTSIDE_CONSENT') throw new DomainError(403, result, 'These permissions require explicit connection authorization');
       if (result === 'MCP_POLICY_AUTHORITY_UNAVAILABLE') throw new DomainError(403, result, 'Current project access does not allow these permissions');
       return result;

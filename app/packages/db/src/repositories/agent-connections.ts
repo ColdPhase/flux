@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { and, desc, eq, gt, inArray, isNull, or } from 'drizzle-orm';
-import type { AgentConnection, CreateAgentConnectionCommand } from '@flux/contracts';
+import type { AgentConnection, AgentMcpPolicy, CreateAgentConnectionCommand } from '@flux/contracts';
 // Structural adapter inputs avoid the current core/db build cycle; core owns the port.
 type AgentOauthFlow = { fingerprint: string; clientId: string; scopes: readonly string[]; expiresAt: Date };
 type AgentOauthGrant = { referenceId: string; clientId: string | null; connection: AgentConnection };
@@ -13,6 +13,7 @@ type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
 type Row = typeof schema.agentConnections.$inferSelect;
 
 export interface AgentConnectionPolicy {
+  initialMcpPolicy(connection: AgentConnection): AgentMcpPolicy;
   authorizeProject(agentId: string, projectId: string, action: 'project.read' | 'project.write', tx: Transaction): Promise<string>;
 }
 
@@ -39,7 +40,7 @@ export function agentConnectionRepository(db: Database, policy: AgentConnectionP
     const selectedProjectIds = await projects(tx, row.id);
     const connection = serialize(row, selectedProjectIds);
     if (mcp) {
-      await initializeAgentMcpPolicy(tx, connection);
+      await initializeAgentMcpPolicy(tx, connection, policy.initialMcpPolicy);
       if (!await lockAgentMcpPolicy(tx, row.id)) return null;
     }
     const [agent] = await tx.select({ id: schema.agents.id }).from(schema.agents).where(and(
@@ -89,7 +90,7 @@ export function agentConnectionRepository(db: Database, policy: AgentConnectionP
           workspaceId: agent.workspaceId, connectionId: created!.id, projectId,
         })));
         const connection = serialize(created!, command.selectedProjectIds);
-        await initializeAgentMcpPolicy(tx, connection);
+        await initializeAgentMcpPolicy(tx, connection, policy.initialMcpPolicy);
         return connection;
       });
     },

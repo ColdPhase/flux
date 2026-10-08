@@ -1,8 +1,8 @@
 # MCP capability switches — implementation contract
 
 2026-10-08. #316, assigned to PelikanFix16; isolated
-`codex/316-mcp-switches`, initially protected main197f5216. **Restrictive-overlay direction independently accepted at5ec7907; the
-operational amendment below awaits independent delta review before code.** This does not accept a
+`codex/316-mcp-switches`, initially protected main197f5216. **Restrictive-overlay direction independently accepted at5ec7907;
+the operational amendment was independently accepted at88444d03 before code.** This does not accept a
 runtime, migration or UI. The accepted [S6 product contract](../product/mcp-identity.md)
 and [issue316](https://github.com/ColdPhase/flux/issues/316) remain the complete
 criteria. In particular there is no recent-auth, second password or SSO prompt.
