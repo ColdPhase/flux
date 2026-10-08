@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { chmod } from 'node:fs/promises';
+import { chmod, writeFile } from 'node:fs/promises';
 import { createServer as createHttpServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, describe, test } from 'node:test';
@@ -73,9 +73,11 @@ describe('runtime-manager with two slots', () => {
     assert.equal(forwarded.length, before, 'nothing invalid reached a supervisor');
   });
 
-  test('cannot report sign-out success when a CLI is missing or logout is skipped', async () => {
-    for (const scenario of ['missing_cli', 'missing_binding', 'unsafe_binding'] as const) {
-      const slot = await startTestSlot({ withClis: scenario !== 'missing_cli', enabled: [] });
+  test('cannot report sign-out success when a CLI is missing with a session left, or logout is skipped', async () => {
+    // never_installed: no CLI and nothing of it in the binding, so there is no session to sign out and the
+    // release is confirmed. The other scenarios leave a session or an unknown state and stay unconfirmed.
+    for (const scenario of ['never_installed', 'missing_cli', 'missing_binding', 'unsafe_binding'] as const) {
+      const slot = await startTestSlot({ withClis: false, enabled: [] });
       const manager = createManagerServer({ secret, slots: new Map([
         ['runtime-1', { host: '127.0.0.1', port: portOf(slot.url), secret: slot.config.secret }],
       ]), log: () => undefined });
@@ -84,9 +86,10 @@ describe('runtime-manager with two slots', () => {
         const port = runtimeManagerPort(client);
         const binding = randomUUID();
         if (scenario !== 'missing_binding') assert.ok((await port.bind('runtime-1', binding)).ok);
+        if (scenario === 'missing_cli') await writeFile(`${slot.config.dataDir}/${binding}/claude/credentials.json`, '{}');
         if (scenario === 'unsafe_binding') await chmod(`${slot.config.dataDir}/${binding}`, 0o755);
-        // Missing CLI gives not_installed; missing/unsafe bindings give skipped.
-        assert.deepEqual(await port.release('runtime-1', binding), { ok: true, value: { dataEmpty: true, logoutFailed: true } });
+        // Missing CLI without files gives not_installed (confirmed); with files failed; missing/unsafe bindings give skipped.
+        assert.deepEqual(await port.release('runtime-1', binding), { ok: true, value: { dataEmpty: true, logoutFailed: scenario !== 'never_installed' } });
       } finally { manager.close(); await slot.close(); }
     }
   });

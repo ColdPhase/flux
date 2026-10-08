@@ -2,7 +2,7 @@ import { access, constants } from 'node:fs/promises';
 import {
   RUNTIME_CLIENTS, type RuntimeClient, type StepOutcome, type SupervisorError, type SupervisorFrame, type SupervisorRequest, type SupervisorResult,
 } from '@flux/runtime-protocol';
-import { bindingBytes, clearClientFiles, createBinding, credentialFileState, dataEntries, isEmpty, openBinding, removeBinding, tmpIsEmpty } from './data.js';
+import { bindingBytes, clearClientFiles, clientHasFiles, createBinding, credentialFileState, dataEntries, isEmpty, openBinding, removeBinding, tmpIsEmpty } from './data.js';
 import { runFixed } from './process.js';
 import { cliEnvironment, LOGOUT_TEMPLATES, STATUS_TEMPLATES } from './templates.js';
 
@@ -51,7 +51,11 @@ export async function slotReport(config: SupervisorConfig, busy: boolean): Promi
 }
 
 async function cliStep(config: SupervisorConfig, client: RuntimeClient, dir: string, args: readonly string[]): Promise<StepOutcome> {
-  if (!(await installed(config.cliPaths[client]))) return 'not_installed';
+  if (!(await installed(config.cliPaths[client]))) {
+    // Never installed for this binding: no session of this client can exist, so there is nothing to sign
+    // out. If its files are here the CLI is gone but a session may remain, which is a failed sign-out.
+    return (await clientHasFiles(dir, client)) ? 'failed' : 'not_installed';
+  }
   const run = await runFixed(config.cliPaths[client], args, { env: cliEnvironment(client, dir, config.egressHost), cwd: dir, timeoutMs: config.cliTimeoutMs });
   if (run.timedOut) return 'timeout';
   return run.code === 0 ? 'ok' : 'failed';

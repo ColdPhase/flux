@@ -18,8 +18,10 @@ import { CLI_PATHS } from './templates.js';
 if (process.execArgv.length !== 1 || process.execArgv[0] !== '--disable-sigusr1' || process.env.NODE_OPTIONS || inspectorUrl()) {
   throw new Error('Runtime slots require only --disable-sigusr1, empty NODE_OPTIONS and no active inspector; no slot was admitted');
 }
-const ptraceScope = (await readFile('/proc/sys/kernel/yama/ptrace_scope', 'utf8')).trim();
-if (!/^[1-3]$/.test(ptraceScope)) throw new Error('Runtime slots require Linux Yama ptrace_scope >= 1; no slot was admitted');
+// No Yama module at all (Docker Desktop's LinuxKit kernel) is the same refusal as scope 0: absence never
+// bypasses the gate.
+const ptraceScope = (await readFile('/proc/sys/kernel/yama/ptrace_scope', 'utf8').catch(() => '')).trim();
+if (!/^[1-3]$/.test(ptraceScope)) throw new Error('Runtime slots require Linux Yama ptrace_scope >= 1, and this kernel has none or allows 0 (Docker Desktop is unsupported); no slot was admitted');
 createRequire(import.meta.url)('../../native/protect.node');
 
 const env = process.env;

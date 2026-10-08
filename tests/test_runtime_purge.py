@@ -14,7 +14,7 @@ class RuntimePurgeTest(unittest.TestCase):
     def test_cleanup_outcome_reaches_persisted_history(self) -> None:
         for scenario in ("ok", "retry", "failed", "missing-image", "start-failed", "no-volume"):
             with self.subTest(scenario=scenario), tempfile.TemporaryDirectory(prefix="flux-purge-test-") as directory:
-                base = Path(directory)
+                base = Path(directory).resolve()
                 checkout = base / "checkout"
                 (checkout / "docker").mkdir(parents=True)
                 shutil.copy2(ROOT / "flux", checkout / "flux")

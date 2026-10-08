@@ -81,6 +81,13 @@ export async function clearClientFiles(bindingDir: string, client: RuntimeClient
   }
 }
 
+/** Whether the binding directory holds anything of this client: its home directory is not empty, or Claude's `~/.claude*` exists. */
+export async function clientHasFiles(bindingDir: string, client: RuntimeClient): Promise<boolean> {
+  if (((await readdir(join(bindingDir, CLIENT_DIRS[client])).catch(() => [] as string[]))).length > 0) return true;
+  if (client !== 'claude_code') return false;
+  return (await readdir(join(bindingDir, 'home')).catch(() => [] as string[])).some((entry) => entry.startsWith('.claude'));
+}
+
 export async function credentialFileState(bindingDir: string, client: RuntimeClient): Promise<'ok' | 'missing' | 'loose_mode'> {
   const stat = await lstat(join(bindingDir, CLIENT_DIRS[client], CREDENTIAL_FILES[client])).catch(() => null);
   if (!stat) return 'missing';

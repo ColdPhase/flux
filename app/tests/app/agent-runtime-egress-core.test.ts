@@ -4,7 +4,7 @@ import { createServer as createHttpServer, type IncomingHttpHeaders, type Server
 import { connect, createServer as createTcpServer, type AddressInfo } from 'node:net';
 import { after, before, describe, test } from 'node:test';
 import { allowedHosts, INSTALL_HOSTS, isMcpRequest, isPublicAddress, parseConnectTarget, VENDOR_HOSTS } from '../../apps/runtime/src/egress/policy.js';
-import { createMcpForwarder, createProxyServer, EGRESS_LIMITS } from '../../apps/runtime/src/egress/server.js';
+import { capConnectionsPerSource, createMcpForwarder, createProxyServer, EGRESS_LIMITS } from '../../apps/runtime/src/egress/server.js';
 
 // F-022 T3: runtime-egress, the one way out of a slot. Its parsers see bytes a compromised slot
 // controls, so they are checked case by case and fuzzed, and the live listeners are fed garbage and
@@ -188,5 +188,33 @@ describe('the /mcp forwarder', () => {
     }
     assert.equal(seen.length, before);
     assert.equal((await fetch(`http://127.0.0.1:${port(forwarder)}/mcp`, { method: 'POST', body: '{}', headers: { 'content-type': 'application/json' } })).status, 401);
+  });
+});
+
+describe('the per-source connection cap', () => {
+  test('one source address cannot hold more than its share and gets it back on close', async () => {
+    const server = createHttpServer((_req, res) => res.end('ok'));
+    server.maxConnections = EGRESS_LIMITS.connections;
+    capConnectionsPerSource(server, 2);
+    await listen(server);
+    const open: ReturnType<typeof connect>[] = [];
+    try {
+      for (let i = 0; i < 2; i += 1) {
+        const socket = connect(port(server), '127.0.0.1');
+        await new Promise<void>((done) => socket.once('connect', () => done()));
+        open.push(socket);
+      }
+      const third = connect(port(server), '127.0.0.1');
+      third.on('error', () => undefined);
+      await new Promise<void>((done) => third.once('close', () => done()));
+      assert.ok(third.destroyed, 'the third connection from the same source is closed');
+      open[0]!.destroy();
+      await new Promise((done) => setTimeout(done, 50));
+      assert.match(await rawExchange(port(server), 'GET / HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n'), /^HTTP\/1\.1 200/);
+    } finally { for (const socket of open) socket.destroy(); server.closeAllConnections(); server.close(); }
+  });
+
+  test('the proxy and the forwarder carry a per-source cap below the global one', () => {
+    assert.ok(EGRESS_LIMITS.connectionsPerSource < EGRESS_LIMITS.connections);
   });
 });

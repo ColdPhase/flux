@@ -19,6 +19,12 @@ SKIP = {".git", ".worktrees", ".harness", "node_modules", "dist"}
 COMPOSE_NAME = re.compile(r"(^|[./-])(compose|docker-compose)[^/]*\.ya?ml$|runtime-slot[^/]*\.ya?ml$")
 
 SOCKET = re.compile(r"(docker|podman|containerd|crio|cri-dockerd)\.sock|/var/run/docker\b|/run/podman\b|/run/user/[^/\s]+/(docker|podman)", re.I)
+# A host path mounted into a container comes from the checkout (a relative path, or an operator secret file
+# or an operator-chosen FLUX_* variable whose default is not an absolute path). Absolute host paths are refused: /var/run, /run or / would hand over a directory
+# holding an engine socket without naming it.
+BIND = re.compile(r"""^\s*-\s*["']?(?P<src>\$\{[^}]*\}|[^\s:"'$]+):(?P<dst>/[^\s"':]*)(?::[A-Za-z,]+)?["']?\s*$""")
+ALLOWED_BIND_SOURCE = re.compile(r"^(?:\.\.?/[^\s]*|\$\{(?:FLUX_[A-Z0-9_]+|MOBILE_STATE)(?::[-?](?!\s*[/~$])[^}]*)?\})$")
+NAMED_VOLUME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 FORBIDDEN = [
     (re.compile(r"^\s*DOCKER_HOST\s*[:=]", re.M), "DOCKER_HOST"),
     (re.compile(r"^\s*CONTAINER_HOST\s*[:=]", re.M), "CONTAINER_HOST"),
@@ -60,6 +66,29 @@ class ContainerIsolationTest(unittest.TestCase):
             text = "\n".join(line for line in path.read_text(encoding="utf-8").splitlines() if not line.lstrip().startswith("#"))
             for pattern, what in FORBIDDEN:
                 self.assertIsNone(pattern.search(text), f"{path.relative_to(ROOT)} uses {what}")
+
+    def test_bind_mounts_come_only_from_the_checkout(self) -> None:
+        for path in compose_files():
+            text = path.read_text(encoding="utf-8")
+            self.assertNotRegex(text, r"(?m)^\s*type:\s*bind", f"{path.relative_to(ROOT)} uses a long-form bind mount; use the short form")
+            for number, line in enumerate(text.splitlines(), 1):
+                match = BIND.match(line)
+                if line.lstrip().startswith("#") or not match:
+                    continue
+                source = match.group("src")
+                self.assertTrue(NAMED_VOLUME.match(source) or ALLOWED_BIND_SOURCE.match(source),
+                                f"{path.relative_to(ROOT)}:{number} binds a host path outside the checkout: {line.strip()}")
+
+    def test_the_bind_check_notices_directory_mounts(self) -> None:
+        for line in ["      - /var/run:/host-run", "      - /run:/host-run:ro", "      - /:/host", "      - ${FLUX_X:-/var/run}:/x", "      - ~/sock:/sock"]:
+            match = BIND.match(line)
+            self.assertIsNotNone(match, line)
+            source = match.group("src")
+            self.assertFalse(NAMED_VOLUME.match(source) or ALLOWED_BIND_SOURCE.match(source), line)
+        for line in ["      - pgdata:/var/lib/postgresql", "      - ../app/tooling/migrate.ts:/app/tooling/migrate.ts:ro,z",
+                     "      - ${FLUX_BACKGROUND_KEY_HOST_FILE:-./background-key-unavailable}:/run/secrets/flux_background_key:ro,z"]:
+            source = BIND.match(line).group("src")
+            self.assertTrue(NAMED_VOLUME.match(source) or ALLOWED_BIND_SOURCE.match(source), line)
 
     def test_the_check_notices_a_socket(self) -> None:
         for line in ["      - /var/run/docker.sock:/var/run/docker.sock", "- ${XDG_RUNTIME_DIR}/podman/podman.sock:/run/podman.sock:z",
