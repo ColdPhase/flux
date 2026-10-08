@@ -156,13 +156,19 @@ async function captureVisibleAuthor(page: Page, row: Locator, name: string, evid
         inViewport: r.x >= 0 && r.y >= 0 && r.right <= innerWidth && r.bottom <= innerHeight,
         uncovered });
     }
-    return { text: label.innerText, parts };
+    const sample = { text: label.innerText, parts };
+    const feed = element.closest<HTMLElement>('.project-convo__feed');
+    const bounds = element.getBoundingClientRect();
+    return { sample, frameSignals: { rowY: bounds.y, rowHeight: bounds.height, scrollTop: feed?.scrollTop,
+      scrollHeight: feed?.scrollHeight, feedWidth: feed?.clientWidth, feedHeight: feed?.clientHeight,
+      opening: feed?.classList.contains('is-opening') } };
   });
   const samples = [];
   const frameSignals = [];
   for (let i = 0; i < 3; i++) {
     await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
-    const sample = await inspect();
+    const observation = await inspect();
+    const sample = observation.sample;
     assert.ok(sample.parts.every((part) => part.width > 0 && part.height > 0 && part.inViewport && part.uncovered),
       `${name}: the actual full author and face are in the viewport and uncovered`);
     assert.ok(sample.parts.every((part) => part.ancestors.every((a, index) => a.opacity === 1 && a.display !== 'none'
@@ -170,20 +176,14 @@ async function captureVisibleAuthor(page: Page, row: Locator, name: string, evid
       && (a.ariaHidden !== 'true' || (part.name === 'face' && index === 0)))),
     `${name}: visible identity has no hidden ancestor; only the decorative face itself may be aria-hidden`);
     samples.push(sample);
-    frameSignals.push(await row.evaluate((element) => {
-      const feed = element.closest<HTMLElement>('.project-convo__feed');
-      const bounds = element.getBoundingClientRect();
-      return { rowY: bounds.y, rowHeight: bounds.height, scrollTop: feed?.scrollTop,
-        scrollHeight: feed?.scrollHeight, feedWidth: feed?.clientWidth, feedHeight: feed?.clientHeight,
-        opening: feed?.classList.contains('is-opening') };
-    }));
+    frameSignals.push(observation.frameSignals);
   }
   if (evidence) writeFileSync(join(evidence, `${name}-frame-observations.json`), JSON.stringify({ samples, frameSignals }, null, 2), { mode: 0o600 });
   assert.deepEqual(samples[1], samples[0], `${name}: visible identity is stable over rendered frames`);
   assert.deepEqual(samples[2], samples[1], `${name}: visible identity remains stable over rendered frames`);
   if (evidence) {
     await page.screenshot({ path: join(evidence, `${name}.png`), fullPage: true });
-    const after = await inspect();
+    const { sample: after } = await inspect();
     assert.deepEqual(after, samples[2], `${name}: the author stays visible throughout the raw capture`);
     writeFileSync(join(evidence, `${name}-visibility.json`), JSON.stringify({ before: samples[2], after }, null, 2));
   }
