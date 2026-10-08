@@ -15,8 +15,8 @@
   "files": [
     {
       "file": "README.md",
-      "bytes": 7024,
-      "sha256": "16ceccd5f7f9c5ad5104c0b3bfa11ab4940dd17b183453b0b335eae190fb0bb6"
+      "bytes": 7675,
+      "sha256": "37ebc29d2447d8946d2122fb990d418f613bcf4d203ffea9fe246f592c265a2e"
     },
     {
       "file": "application-result.json",
@@ -226,5 +226,16 @@
       "uncompressedBytes": 2691,
       "uncompressedSHA256": "e280d06da55e50c1e626d5dadf64b8760643754c2aadabfb957043e2713a6267"
     }
-  ]
+  ],
+  "documentationAmendment": {
+    "date": "2026-10-08",
+    "scope": "README identifies source-pinned earlier runs as historical; no new application result",
+    "composition": "bdb13e604c912b9a189fd1084d2452457a10642e",
+    "priorReadme": {
+      "retainedGitCommit": "bdb13e604c912b9a189fd1084d2452457a10642e",
+      "file": "README.md",
+      "bytes": 7024,
+      "sha256": "16ceccd5f7f9c5ad5104c0b3bfa11ab4940dd17b183453b0b335eae190fb0bb6"
+    }
+  }
 }
