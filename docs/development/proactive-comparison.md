@@ -127,6 +127,31 @@ The adapter shape was checked on 2026-09-28 against the provider's
 Those pages describe the request fields; the local HTTP fixture proves only
 Flux's serialization and parsing, not acceptance by the live provider.
 
+## Running-app gates with a fake provider (#58)
+
+Founder direction 2026-10-08: provider gates use mocks only; no real provider key or spend is
+required or used. `scripts/check_application.sh` therefore runs, with
+`FLUX_BACKGROUND_COMPARISONS=on` on the API and worker and the Compose `providermock` as the
+owner's OpenAI-compatible endpoint (never a real provider):
+
+- `e2e/background-comparisons.e2e.ts`: the owner enables the rule in settings, the worker's own
+  scheduled tick pays the mock once for a contributor's negative result, and the quiet proposal
+  appears; a private draft never reaches the provider.
+- `background-comparisons-live.ts cancel`: the mock never answers; pausing the rule in flight
+  aborts the open request within seconds, the possible 13-cent charge stays counted as `unknown`
+  (`AUTHORIZATION_CHANGED`), nothing is published, and a later tick does not retry it.
+- `background-comparisons-live.ts crash-start` / `crash-verify`: the worker container is killed
+  with a request open and restarted. Its own recovery job (sent by hand, with the 20-minute stale
+  cutoff reached by SQL instead of waiting) settles the interrupted reservation as `unknown`
+  (`WORKER_INTERRUPTED_AFTER_DISPATCH_INTENT`), keeps the possible charge, publishes nothing and
+  sends no second request.
+
+These prove Flux's cancellation and reconciliation against a fake that hangs. They do not prove a
+real provider's behavior, an observed invoice or the quality of a real model's comparison; the
+real-provider call with an observed bill stays outside the required checks (founder direction
+2026-10-08), as does the independent quality evaluation. Acceptance of the operator switch as an
+O-007 amendment (`docs/product/background-compute.md`) remains a pending peer decision.
+
 ## Deterministic human context snapshot
 
 The [accepted source amendment](../product/background-compute.md#source-and-outcome-amendment-accepted-2026-09-29)
