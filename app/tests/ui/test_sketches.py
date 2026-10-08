@@ -408,8 +408,13 @@ class SketchJourney(unittest.TestCase):
         self.assertLessEqual(bar["height"], 100, "the tools take two compact rows on a phone")
         # The toolbar says what each action does.
         tools = page.get_by_role("toolbar", name="Sketch tools")
-        for label in ("Thought", "Connect", "Edit", "Shape", "Remove", "Undo"):
+        # S15: the phone views and adds; connecting and shaping belong to the computer.
+        for label in ("Edit", "Remove", "Undo"):
             expect(tools.get_by_text(label, exact=True)).to_be_visible()
+        for label in ("Connect", "Shape"):
+            expect(tools.get_by_text(label, exact=True)).to_have_count(0)
+        expect(page.get_by_role("button", name="Add a thought", exact=True)).to_be_visible()
+        expect(page.get_by_text("Connect and arrange on a computer")).to_be_visible()
         # Selecting shows a labelled Edit action beside the +.
         node = self.thought(page, "Gesture-controlled desk lamp")
         node.tap()

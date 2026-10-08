@@ -104,6 +104,8 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     setSelectedFor(location.key);
     if (liveSelect) setSelection(liveSelect);
   }
+  // AC-2: no Shift key on touch, so a tablet's toolbar can switch tapping to adding to the selection.
+  const [selectSeveral, setSelectSeveral] = useState(false);
   const [connectState, setConnectFrom] = useState<string | null>(null);
   const [editingState, setEditing] = useState<Editing | null>(null);
   const editSaveInFlight = useRef(false);
@@ -214,15 +216,17 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     say(`Linked ${quote(a.text)} and ${quote(b.text)}`, true);
   };
 
-  const pick = (id: string, additive: boolean) => {
+  const pick = (id: string, extend: boolean) => {
     if (connectFrom) { connectTo(connectFrom, id); return; }
+    // Phones select one thought at a time (S15); tablets add by touch while "Select several" is on.
+    const additive = !phone && (extend || selectSeveral);
     const next = additive ? (selection.includes(id) ? selection.filter((x) => x !== id) : [...selection, id]) : [id];
     setSelection(next);
     describe(next);
   };
 
   const toggle = (id: string) => {
-    const next = selection.includes(id) ? selection.filter((x) => x !== id) : [...selection, id];
+    const next = phone ? [id] : selection.includes(id) ? selection.filter((x) => x !== id) : [...selection, id];
     setSelection(next);
     describe(next);
   };
@@ -282,14 +286,24 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     });
   };
 
-  const add = (parentId: string | null, text = '', replace = false) => {
+  /** `at` is where a dragged dot was released (P12); the draft stays local until it is saved. */
+  const add = (parentId: string | null, text = '', replace = false, at?: { x: number; y: number }) => {
     if (blocked(replace)) return;
-    const [spot] = spots(parentId, 1, { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height });
+    const [spot] = at ? [at] : spots(parentId, 1, { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height });
     capture.set({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), text, x: spot!.x, y: spot!.y, parentId });
     setConnectFrom(null);
     setEditing(null);
-    say(!text ? 'Private thought draft · Enter saves, Escape cancels'
+    say(!text ? (at ? 'Private connected thought draft · Enter saves, Escape cancels' : 'Private thought draft · Enter saves, Escape cancels')
       : `Private ${linkOf(text) ? 'link' : 'thought'} draft from the clipboard · Enter saves, Escape cancels`);
+  };
+
+  /** The dot without a pointer: Enter or Space starts a connection from this thought; choose the other one next. */
+  const connectFromDot = (id: string) => {
+    if (!canWrite || phone) return;
+    if (connectFrom === id) { setConnectFrom(null); say('Connect cancelled'); return; }
+    setSelection([id]);
+    setConnectFrom(id);
+    say(`Choose the thought to link to ${quote(find(id)?.text ?? '')} · Esc cancels`);
   };
 
   // #252: what is pasted becomes a private draft with the same parent rule as the Thought button; pasting into the
@@ -611,15 +625,16 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
         {canWrite ? (
           <div className={`sk-bar${doc.problem ? ' sk-bar--problem' : ''}`}>
             <div className={`sk-tools${sketch.scope === 'project' ? ' sk-tools--seven' : ''}`} role="toolbar" aria-label="Sketch tools">
-            <button type="button" className="ui-btn ui-btn--quiet sk-add" onClick={() => add(selection[selection.length - 1] ?? null)}><Icon name="plus" size={14} />Thought</button>
-            <button type="button" className="ui-btn ui-btn--quiet" aria-pressed={!!connectFrom} onClick={connect} aria-label="Connect"><Icon name="link" size={14} /><span className="sk-bl">Connect</span></button>
+            {phone && mode === 'map' ? null : <button type="button" className="ui-btn ui-btn--quiet sk-add" onClick={() => add(selection[selection.length - 1] ?? null)}><Icon name="plus" size={14} />Thought</button>}
+            {phone ? null : <button type="button" className="ui-btn ui-btn--quiet" aria-pressed={!!connectFrom} onClick={connect} aria-label="Connect"><Icon name="link" size={14} /><span className="sk-bl">Connect</span></button>}
+            {coarse && !phone ? <button type="button" className="ui-btn ui-btn--quiet" aria-pressed={selectSeveral} onClick={() => { setSelectSeveral(!selectSeveral); say(selectSeveral ? 'Tapping selects one thought' : 'Tap thoughts to add them to the selection'); }}><Icon name="check" size={14} /><span className="sk-bl">Select several</span></button> : null}
             <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={selection.length !== 1} onClick={() => {
               if (selection.length !== 1) { say('Select one thought, then Edit'); return; }
               startEdit(selection[0]!);
             }} aria-label="Edit"><Icon name="edit" size={14} /><span className="sk-bl">Edit</span></button>
-            <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={cycleShape} aria-label="Change shape"><Icon name="shape" size={14} /><span className="sk-bl">Shape</span></button>
+            {phone ? null : <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={cycleShape} aria-label="Change shape"><Icon name="shape" size={14} /><span className="sk-bl">Shape</span></button>}
             <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={() => remove(selection)} aria-label="Remove from sketch"><Icon name="trash" size={14} /><span className="sk-bl">Remove</span></button>
-            {sketch.scope === 'project' ? <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={() => void makeWork()} aria-label="Create work from selected thoughts"><Icon name="tasks" size={14} /><span className="sk-bl sk-bl--long">Create work</span><span className="sk-bl sk-bl--short">Task</span></button> : null}
+            {sketch.scope === 'project' ? <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={() => void makeWork()} aria-label="Create work from selected thoughts"><Icon name="tasks" size={14} /><span className="sk-bl sk-bl--long">Create task</span><span className="sk-bl sk-bl--short">Task</span></button> : null}
             <span className="sk-div" aria-hidden="true" />
             <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!doc.canUndo} onClick={undo} aria-label="Undo"><Icon name="undo" size={14} /><span className="sk-bl">Undo</span></button>
             </div>
@@ -663,7 +678,9 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
         {mode === 'map' ? (
           sketch.thoughts.length || canWrite ? (
             <>
-              <SketchMap {...shared} coarse={coarse} compact={phone} helpId={helpId} heights={heights} onMove={move} onResize={resize} onClear={() => { if (connectFrom) return; setSelection([]); say(''); }} />
+              <SketchMap {...shared} coarse={coarse} compact={phone} helpId={helpId} heights={heights}
+                onConnect={connectTo} onAddAt={(parentId, x, y) => add(parentId, '', false, { x, y })} onConnectFrom={connectFromDot} onAddThought={() => add(selection[selection.length - 1] ?? null)}
+                draft={capture.draft && !capture.draft.lines ? { x: capture.draft.x, y: capture.draft.y, parentId: capture.draft.parentId } : null} onMove={move} onResize={resize} onClear={() => { if (connectFrom) return; setSelection([]); say(''); }} />
               {!sketch.thoughts.length ? <p className="sk-first">An empty sketch. Add the first thought with <b>Thought</b>, then keep adding with the <b>+</b> beside it.</p> : null}
             </>
           ) : <p className="sk-empty-list">No thoughts yet.</p>
@@ -672,9 +689,11 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
         )}
 
         <p className="sk-help" id={helpId}>
-          {coarse
-            ? 'Tap a thought to select it, then drag it. Add links a new thought to it. Thought, then Paste, turns copied lines, a link or an image into a draft. List shows the same thoughts in order.'
-            : 'Drag to move, drag empty space to pan, Shift-click to select several. On a focused thought: arrows move (Shift further, Alt resizes) · Enter edits · Space selects · + adds a linked thought · Delete removes · Ctrl/⌘ Z undoes · Ctrl/⌘ V pastes lines, a link or an image as a draft.'}
+          {phone
+            ? 'Tap a thought to select it. Add a thought, then Paste, fills a draft from copied lines, a link or an image. List shows the same thoughts in order.'
+            : coarse
+            ? 'Tap a thought to select it, then drag it, or drag its dot onto another thought to connect them. Add links a new thought to it. Select several adds taps to the selection. Thought, then Paste, turns copied lines, a link or an image into a draft. List shows the same thoughts in order.'
+            : 'Drag to move, drag a thought’s dot onto another thought to connect, or release it on empty space for a connected draft thought. Drag empty space to pan, Shift-click to select several. On a focused thought: arrows move (Shift further, Alt resizes) · Enter edits · Space selects · Enter on the dot connects · + adds a linked thought · Delete removes · Ctrl/⌘ Z undoes · Ctrl/⌘ V pastes lines, a link or an image as a draft.'}
         </p>
       </div>
     </div>

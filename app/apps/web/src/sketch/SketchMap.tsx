@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type WheelEvent } from 'react';
-import { SKETCH_LIMITS, type SketchDetail, type Thought } from '@flux/contracts';
+import { DEFAULT_THOUGHT_SIZE, SKETCH_LIMITS, type SketchDetail, type Thought } from '@flux/contracts';
 import { Icon } from '../ui';
 import { linkPath, PAD, project, rectOf, type Rect } from './geometry';
 import { provenance, quote } from './format';
@@ -33,6 +33,15 @@ export interface SketchMapProps {
   onEditText(text: string): void;
   onFinishEdit(text: string | null): void;
   onAdd(parentId: string | null): void;
+  /** P12: a dot was dragged onto another thought, or released on empty space at a plane position. */
+  onConnect(fromId: string, toId: string): void;
+  onAddAt(parentId: string, x: number, y: number): void;
+  /** The dot used without a pointer (Enter or Space): the next thought chosen is linked. */
+  onConnectFrom(id: string): void;
+  /** S15: phones show an Add a thought button on the map itself. */
+  onAddThought(): void;
+  /** The single local draft that is not saved yet, shown on the map where it will land. */
+  draft: { x: number; y: number; parentId: string | null } | null;
   onMove(moves: { id: string; x: number; y: number }[], how: 'drag' | 'keyboard'): void;
   onResize(id: string, width: number, height: number, how: 'drag' | 'keyboard'): void;
   onRemove(ids: string[]): void;
@@ -53,7 +62,7 @@ interface Camera { left: number; top: number; id?: string | null; whole?: boolea
 const near = (a: { left: number; top: number }, b: { left: number; top: number }) => Math.abs(a.left - b.left) < 1 && Math.abs(a.top - b.top) < 1;
 
 interface Drag {
-  kind: 'move' | 'resize' | 'pan';
+  kind: 'move' | 'resize' | 'pan' | 'link';
   id?: string;
   ids: string[];
   pointerId: number;
@@ -66,7 +75,8 @@ interface Drag {
 
 /**
  * The Map: thoughts on a dotted plane with soft curved links (direction C, `#lamp-map`).
- * Drag a thought to move it (the whole selection moves together), drag empty space to pan,
+ * Drag a thought to move it (the whole selection moves together), drag from its dot to connect (release on
+ * empty space for a connected draft thought; phones only view and add, S15), drag empty space to pan,
  * Ctrl/⌘-wheel or the corner controls to zoom. Every pointer action has a keyboard path on a
  * focused thought. Nothing here opens a panel: selecting only highlights and shows the "+".
  */
@@ -79,6 +89,11 @@ export function SketchMap(props: SketchMapProps) {
   const [offset, setOffset] = useState<{ ids: string[]; dx: number; dy: number } | null>(null);
   const [size, setSize] = useState<{ id: string; w: number; h: number } | null>(null);
   const [panning, setPanning] = useState(false);
+  // The dot shows while the pointer is over its thought or itself (mouse only; touch shows it on the selection).
+  const [hover, setHover] = useState<string | null>(null);
+  const zoomedRef = useRef<HTMLDivElement>(null);
+  /** P12: a connection being drawn from a dot; `x`,`y` are in stored plane units, `over` the thought under the pointer. */
+  const [wire, setWire] = useState<{ from: string; x: number; y: number; over: string | null } | null>(null);
   // Each projection keeps its own zoom: the phone's two columns already fit at full size (#151).
   const mode: Mode = compact ? 'compact' : 'plane';
   const [zooms, setZooms] = useState<Record<Mode, number>>({ plane: 1, compact: 1 });
@@ -89,6 +104,8 @@ export function SketchMap(props: SketchMapProps) {
     return { ...all, [key]: typeof next === 'function' ? next(all[key]) : next };
   }), []);
   const [, remeasure] = useState(0);
+  // S15: on a phone nothing is connected or arranged; people who can write may still add and edit text.
+  const arrange = canWrite && !compact;
   const observer = useRef<ResizeObserver | null>(null);
 
   // Measure rendered heights so links attach to the real edges of each thought.
@@ -318,10 +335,16 @@ export function SketchMap(props: SketchMapProps) {
   };
 
   const onNodePointerDown = (event: ReactPointerEvent<HTMLButtonElement>, id: string) => {
-    if (event.button !== 0 || editing?.id === id || !canWrite) return;
+    if (event.button !== 0 || editing?.id === id || !arrange) return;
     // On touch, only a selected thought drags; elsewhere a finger scrolls the map.
     if (event.pointerType !== 'mouse' && !selection.includes(id)) return;
     begin(event, { kind: 'move', id, ids: selection.includes(id) ? selection : [id] });
+  };
+
+  const onDotPointerDown = (event: ReactPointerEvent<HTMLButtonElement>, id: string) => {
+    event.stopPropagation();
+    if (event.button !== 0 || !arrange) return;
+    begin(event, { kind: 'link', id, ids: [id] });
   };
 
   const onResizePointerDown = (event: ReactPointerEvent<HTMLSpanElement>, thought: Thought) => {
@@ -353,6 +376,11 @@ export function SketchMap(props: SketchMapProps) {
       const canvas = canvasRef.current!;
       canvas.scrollLeft = d.scrollLeft! - (event.clientX - d.sx);
       canvas.scrollTop = d.scrollTop! - (event.clientY - d.sy);
+    } else if (d.kind === 'link') {
+      const box = zoomedRef.current!.getBoundingClientRect();
+      const hit = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('.sk-node, .sk-dot');
+      const over = hit?.dataset.id ?? hit?.dataset.for ?? null;
+      setWire({ from: d.id!, x: Math.max(0, Math.round((event.clientX - box.left) / zoom + origin.x)), y: Math.max(0, Math.round((event.clientY - box.top) / zoom + origin.y)), over: over && over !== d.id ? over : null });
     } else if (d.kind === 'move') {
       // Offsets are in stored plane units; the phone projection compresses x.
       setOffset({ ids: d.ids, dx: Math.round(dx * scaleX), dy: Math.round(dy) });
@@ -375,6 +403,14 @@ export function SketchMap(props: SketchMapProps) {
     if (!d.moved) return;
     suppressClick.current = true;
     window.setTimeout(() => { suppressClick.current = false; }, 0);
+    if (d.kind === 'link') {
+      const end = wire;
+      setWire(null);
+      if (!end) return;
+      if (end.over) props.onConnect(d.id!, end.over);
+      else if (!hitsDot(event, d.id!)) props.onAddAt(d.id!, end.x, Math.max(0, end.y - Math.round(DEFAULT_THOUGHT_SIZE.height / 2)));
+      return;
+    }
     if (d.kind === 'move' && offset) {
       props.onMove(d.ids.flatMap((id) => {
         const t = sketch.thoughts.find((x) => x.id === id);
@@ -386,8 +422,15 @@ export function SketchMap(props: SketchMapProps) {
     setSize(null);
   };
 
+  /** Released back on its own dot: nothing was meant. */
+  const hitsDot = (event: ReactPointerEvent, id: string) => {
+    const hit = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('.sk-node, .sk-dot');
+    return (hit?.dataset.id ?? hit?.dataset.for) === id;
+  };
+
   const onPointerCancel = () => {
     drag.current = null;
+    setWire(null);
     setPanning(false);
     setOffset(null);
     setSize(null);
@@ -398,10 +441,12 @@ export function SketchMap(props: SketchMapProps) {
     if (key === 'Enter' || key === 'F2') { event.preventDefault(); if (connectFrom) props.onPick(thought.id, false); else if (canWrite) props.onEdit(thought.id); return; }
     if (key === ' ') { event.preventDefault(); if (connectFrom) props.onPick(thought.id, false); else props.onToggle(thought.id); return; }
     if (key === 'Escape') { if (props.onEscape()) { event.preventDefault(); event.stopPropagation(); } return; }
-    if (!canWrite) return;
+    if (!arrange && !canWrite) return;
     if (key === '+' || key === '=') { event.preventDefault(); props.onAdd(thought.id); return; }
     if (key === 'Delete' || key === 'Backspace') { event.preventDefault(); props.onRemove(selection.includes(thought.id) ? selection : [thought.id]); return; }
     if (!key.startsWith('Arrow')) return;
+    // Phones view and add only (S15): arrows leave the thought where it is.
+    if (!arrange) return;
     event.preventDefault();
     const step = event.shiftKey ? 48 : 12;
     const [dx, dy] = ({ ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] } as Record<string, [number, number]>)[key] ?? [0, 0];
@@ -420,6 +465,9 @@ export function SketchMap(props: SketchMapProps) {
     requestAnimationFrame(() => nodes.current.get(thought.id)?.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
   };
 
+  const ghost = (x: number, y: number): Rect => ({ x, y, w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height });
+  const wireFrom = wire ? rects.get(wire.from) : undefined;
+  const draftFrom = props.draft?.parentId ? rects.get(props.draft.parentId) : undefined;
   const editingRect = editing ? rects.get(editing.id) : undefined;
   const editingThought = editing ? byId.get(editing.id) : undefined;
   const plus = last && lastThought && !editing && !connectFrom && canWrite && !offset ? place(last) : null;
@@ -432,10 +480,11 @@ export function SketchMap(props: SketchMapProps) {
   ) : null;
 
   return (
+    <>
     <div className="sk-canvas-wrap sk-canvas-wrap--controls">
-    <div className={`sk-canvas${panning ? ' is-panning' : ''}${connectFrom ? ' is-connecting' : ''}`} ref={canvasRef} role="group"
+    <div className={`sk-canvas${panning ? ' is-panning' : ''}${connectFrom ? ' is-connecting' : ''}${wire ? ' is-wiring' : ''}`} ref={canvasRef} role="group"
       aria-label={`Sketch: ${sketch.title}`} aria-describedby={helpId} onWheel={onWheel}>
-      <div className="sk-zoomed" style={{ width: width * zoom, height: height * zoom }}
+      <div className="sk-zoomed" ref={zoomedRef} style={{ width: width * zoom, height: height * zoom }}
         onPointerDown={onPlanePointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}>
         <div className="sk-plane" style={{ width, height, transform: zoom === 1 ? undefined : `scale(${zoom})` }}>
           <svg className="sk-edges" width={width} height={height} aria-hidden="true">
@@ -447,6 +496,10 @@ export function SketchMap(props: SketchMapProps) {
               const on = highlighted(link.fromId) || highlighted(link.toId);
               return <path key={link.id} d={d} className={on ? 'is-on' : undefined} />;
             })}
+          </svg>
+          <svg className="sk-wires" width={width} height={height} aria-hidden="true">
+            {wireFrom && wire ? <path className="sk-wire" d={linkPath({ ...wireFrom, ...place(wireFrom) }, wire.over && rects.get(wire.over) ? { ...rects.get(wire.over)!, ...place(rects.get(wire.over)!) } : { ...ghost(wire.x, wire.y), x: wire.x - origin.x, y: wire.y - origin.y }).d} /> : null}
+            {draftFrom && props.draft ? <path className="sk-wire" d={linkPath({ ...draftFrom, ...place(draftFrom) }, { ...ghost(props.draft.x, props.draft.y), x: props.draft.x - origin.x, y: props.draft.y - origin.y }).d} /> : null}
           </svg>
           <div className="sk-labels" aria-hidden="true">
             {sketch.links.map((link) => {
@@ -481,6 +534,8 @@ export function SketchMap(props: SketchMapProps) {
                 onPointerDown={(event) => onNodePointerDown(event, thought.id)}
                 onClick={(event) => { if (suppressClick.current) return; props.onPick(thought.id, event.shiftKey || event.metaKey || event.ctrlKey); }}
                 onDoubleClick={() => { if (canWrite && !connectFrom) props.onEdit(thought.id); }}
+                onPointerEnter={(event) => { if (event.pointerType === 'mouse') setHover(thought.id); }}
+                onPointerLeave={() => setHover((id) => id === thought.id ? null : id)}
                 onKeyDown={(event) => onNodeKeyDown(event, thought)}>
                 {meta ? <span className="sk-k"><Icon name={thought.placement ? 'doc' : 'link'} size={12} />{meta}</span> : null}
                 {thought.file ? <ThoughtImage className="sk-img" fileId={thought.file.id} name={thought.file.name}
@@ -489,7 +544,7 @@ export function SketchMap(props: SketchMapProps) {
                 <span className="sk-p">{provenance(thought, meId)}</span>
                 {/* Room for the count, which is its own button beside this one. */}
                 {linked?.count ? <span className="sk-work-gap" aria-hidden="true" /> : null}
-                {selected && selection.length === 1 && canWrite && !coarse && !editing ? (
+                {selected && selection.length === 1 && arrange && !coarse && !editing ? (
                   <span className="sk-resize" aria-hidden="true" onPointerDown={(event) => onResizePointerDown(event, thought)} />
                 ) : null}
               </button>
@@ -497,6 +552,14 @@ export function SketchMap(props: SketchMapProps) {
                 <div className={`sk-work-slot sk-work-slot--${thought.shape}${dragging ? ' is-dragging' : ''}`} style={{ transform: `translate(${p.x}px, ${p.y}px)`, width: r.w, height: r.h }}>
                   <ThoughtTasks thought={thought} tasks={linked} projectId={projectId} variant="map" onOpenTask={props.onOpenTask} />
                 </div>
+              ) : null}
+              {arrange && !editing && !measuring ? (
+                <button type="button" tabIndex={selected ? 0 : -1} data-for={thought.id} aria-label={`Connect from ${quote(thought.text)}: drag to another thought, or press Enter and choose one`}
+                  onPointerEnter={() => setHover(thought.id)} onPointerLeave={() => setHover((id) => id === thought.id ? null : id)}
+                  className={`sk-dot${selected || connectFrom === thought.id || hover === thought.id ? ' is-on' : ''}${dragging ? ' is-dragging' : ''}`}
+                  style={{ transform: `translate(${p.x + r.w}px, ${p.y + r.h / 2}px) scale(${1 / zoom}) translate(-50%, -50%)` }}
+                  onPointerDown={(event) => onDotPointerDown(event, thought.id)}
+                  onClick={() => { if (!suppressClick.current) props.onConnectFrom(thought.id); }} />
               ) : null}
               </Fragment>
             );
@@ -523,6 +586,15 @@ export function SketchMap(props: SketchMapProps) {
             const at = place(last);
             return <div className="sk-actions" style={{ transform: `translate(${at.x + last.w / 2}px, ${at.y + last.h + 6}px) scale(${1 / zoom}) translateX(-50%)` }}>{linkAnchor}</div>;
           })() : null}
+          {wire && !wire.over && wireFrom ? (
+            <>
+              <div className="sk-ghost" aria-hidden="true" style={{ transform: `translate(${wire.x - origin.x}px, ${wire.y - origin.y}px)`, width: DEFAULT_THOUGHT_SIZE.width, height: DEFAULT_THOUGHT_SIZE.height }}>New thought</div>
+              <p className="sk-ghost__hint" aria-hidden="true" style={{ transform: `translate(${wire.x - origin.x}px, ${wire.y - origin.y + DEFAULT_THOUGHT_SIZE.height + 6}px)` }}>Release to add a connected thought</p>
+            </>
+          ) : null}
+          {props.draft ? (
+            <div className="sk-ghost sk-ghost--draft" aria-hidden="true" style={{ transform: `translate(${props.draft.x - origin.x}px, ${props.draft.y - origin.y}px)`, width: DEFAULT_THOUGHT_SIZE.width, height: DEFAULT_THOUGHT_SIZE.height }}>Draft · not saved</div>
+          ) : null}
           {editing && editingRect && editingThought && canWrite ? (
             <ThoughtEditor key={`${editing.id}:${editing.attempt}`} className="sk-edit" initial={editing.initial} disabled={editing.saving} onChange={props.onEditText}
               style={{ transform: `translate(${place(editingRect).x + 6}px, ${place(editingRect).y + 6}px)`, width: editingRect.w - 12 }}
@@ -538,6 +610,13 @@ export function SketchMap(props: SketchMapProps) {
         <button type="button" aria-label="Zoom in" data-tip="Zoom in" disabled={zoom >= ZOOMS[ZOOMS.length - 1]!} onClick={() => setZoom(zoomIn(zoom))}><Icon name="plus" size={14} /></button>
       </div>
     </div>
+      {compact && canWrite ? (
+        <div className="sk-phone">
+          <p className="sk-phone__note"><Icon name="monitor" size={16} />Connect and arrange on a computer</p>
+          <button type="button" className="sk-fab" onClick={props.onAddThought}><Icon name="plus" size={18} />Add a thought</button>
+        </div>
+      ) : null}
+    </>
   );
 }
 

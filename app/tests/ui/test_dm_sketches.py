@@ -275,8 +275,11 @@ class DmSketchJourney(unittest.TestCase):
                 assert b
                 self.assertGreaterEqual(b["height"], 43.5, f"{label}: tool {index} is a touch target")
             self.assertLessEqual(tools.bounding_box()["height"], 100, f"{label}: the labelled tools take two compact rows")
-            for text in ("Thought", "Connect", "Edit", "Shape", "Remove", "Undo"):
+            for text in ("Edit", "Remove", "Undo"):
                 expect(tools.get_by_text(text, exact=True)).to_be_visible()
+            for text in ("Connect", "Shape"):
+                expect(tools.get_by_text(text, exact=True)).to_have_count(0)
+            expect(page.get_by_role("button", name="Add a thought", exact=True)).to_be_visible()
             self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), PHONE["width"], f"{label}: no horizontal scrolling")
             shot(page, f"dm-sketch-phone-{label}")
         # The copy still says where it came from and that the conversation stays private.

@@ -688,8 +688,8 @@ class AdaptiveTransitions(AdaptiveBase):
         self.assertEqual(self.thoughts(page), len(fx.THOUGHTS), "nothing is saved")
         self.no_problems()
 
-    def test_16_dragging_the_top_thought_on_a_phone_moves_the_thought_not_the_view(self) -> None:
-        """T151-E: the phone camera anchors on the top thought; dragging that thought must not scroll the map with it."""
+    def test_16_dragging_the_top_thought_on_a_phone_does_not_arrange_the_thought_or_move_the_view(self) -> None:
+        """T151-E, S15: the phone camera anchors on the top thought; dragging it neither arranges it nor scrolls the map."""
         page = self.page(390, 844)
         canvas = self.open_map(page)
         self.set_camera(page, 0, 160)
@@ -716,18 +716,12 @@ class AdaptiveTransitions(AdaptiveBase):
             page.wait_for_timeout(50)
             self.assertEqual(page.evaluate(CAMERA), camera, f"the view stays still {25 * step} px into the drag")
         page.mouse.up()
-        expect(page.locator(".sk-status")).to_contain_text("Moved")
         page.wait_for_timeout(300)
-        self.assertGreater(node.bounding_box()["y"], start["y"], "the dragged thought moves down on screen")
-        self.assertEqual(page.evaluate(CAMERA), camera, "dropping keeps the view")
-        moved = {t["id"]: (t["x"], t["y"]) for t in self.api(page, "GET", f"/api/v1/sketches/{self.ids['sketch']}")["thoughts"]}
-        self.assertEqual(moved[top][1], stored[top][1] + 150, "the drop saves the dragged distance")
-        # Put the shared fixture back.
-        page.keyboard.press("Control+z")
-        expect(page.locator(".sk-status")).to_contain_text("Undid")
-        page.wait_for_timeout(300)
-        restored = {t["id"]: (t["x"], t["y"]) for t in self.api(page, "GET", f"/api/v1/sketches/{self.ids['sketch']}")["thoughts"]}
-        self.assertEqual(restored[top], stored[top], "undo puts the thought back")
+        # S15 (#349): the phone only views and adds; the drag arranges nothing and the view stays put.
+        self.assertEqual(node.bounding_box()["y"], start["y"], "the thought stays where it is on a phone")
+        self.assertEqual(page.evaluate(CAMERA), camera, "releasing keeps the view")
+        after = {t["id"]: (t["x"], t["y"]) for t in self.api(page, "GET", f"/api/v1/sketches/{self.ids['sketch']}")["thoughts"]}
+        self.assertEqual(after, stored, "nothing was moved on the shared map")
         self.no_problems()
 
 
