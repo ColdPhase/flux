@@ -115,3 +115,19 @@ The new visual code and strengthened capture fixture are unexecuted. Fresh sourc
 runtime and neutral visual evaluation are required again. Full #153/live, semantic
 legacy migration/restore, protected-main composition and integratedv0.1 gates
 remain open; this is not a completed task or merge candidate.
+
+
+### Pre-run visual-correction review
+
+Independent source review of `d8d55f27edab4ae242dfdfb8f33f0965af96699c`
+identified an invalid fallback status, a stale event-label assertion and an
+ordinary task-announcement two-line regression. No runtime was admitted for that
+head. The correction uses the existing `open` task status, keeps the event label
+separate from the native card and limits full-title display to retained Undo
+history. Ordinary creation announcements retain their existing two-line limit and
+enlarged-text reflow. Their maintained tests now measure the title's actual text
+node inside the card and expect the separate event label; all prior geometry,
+access, counts and no-mutation assertions remain. Include that entire maintained
+announcement module alongside the existing bounded verification. New runtime and
+fresh neutral visual acceptance are pending; historical `04e4bb9e` results and the
+full AC-U1–AC-U5/live/migration/release gates retain their original qualifications.

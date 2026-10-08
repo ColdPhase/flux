@@ -547,7 +547,7 @@ function NoticeItem({ notice, meId, owners, row, onOpenTask }: { notice: TaskCre
   const name = creator.name ?? (creator.kind === 'agent' ? 'Agent' : 'Member');
   const mine = creator.kind === 'human' && creator.id === meId;
   return (
-    <li className="convo-notice" id={`notice-${notice.id}`} data-work-id={notice.workId}>
+    <li className={`convo-notice${notice.kind === 'task.creation_reverted' || notice.lifecycle?.state === 'creation_reverted' ? ' convo-notice--undone' : ''}`} id={`notice-${notice.id}`} data-work-id={notice.workId}>
       <AuthorFace kind={creator.kind} name={name} mine={mine} />
       <span className="convo-notice__body">
         <span className="convo-notice__meta">
@@ -557,7 +557,7 @@ function NoticeItem({ notice, meId, owners, row, onOpenTask }: { notice: TaskCre
         <span className="convo-notice__kind">{notice.kind === 'task.creation_reverted' ? 'Task creation undone' : 'New task'}{notice.kind === 'task.created' && notice.lifecycle?.state === 'creation_reverted' ? ' · creation undone' : ''}</span>
         <button type="button" className="convo-notice__task" data-native-ref={`work:${notice.workId}`} onClick={() => onOpenTask(notice.workId)} aria-label={`Open task #${notice.workNumber} ${title}`}>
           {/* The immutable announcement number names the task before and after the current row arrives. */}
-          <StatusGlyph status={current?.status ?? 'todo'} size={16} />
+          <StatusGlyph status={current?.status ?? 'open'} size={16} />
           <span className="convo-notice__num ui-task-number">#{notice.workNumber}</span>
           <span className="convo-notice__title">{title}</span><Icon name="chevron-right" size={14} />
         </button>
