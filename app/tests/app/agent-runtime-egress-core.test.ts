@@ -46,6 +46,20 @@ describe('egress policy', () => {
     for (const hosts of Object.values(VENDOR_HOSTS)) for (const host of INSTALL_HOSTS) assert.ok(!hosts.includes(host));
   });
 
+  test('switching a client off keeps sign-out hosts without opening the installer or other hosts', async () => {
+    const vendor = createTcpServer((socket) => { socket.on('data', (data) => socket.write(data)); });
+    await listen(vendor);
+    const proxy = createProxyServer({ allow: allowedHosts([], { includeSignOut: true }),
+      resolve: async () => ['8.8.8.8'], connect: () => connect(port(vendor), '127.0.0.1'), log: () => undefined });
+    await listen(proxy);
+    try {
+      assert.match(await rawExchange(port(proxy), 'CONNECT api.anthropic.com:443 HTTP/1.1\r\n\r\nsign-out', 500), /200 Connection Established[\s\S]*sign-out$/);
+      for (const host of ['downloads.claude.ai', 'example.com', 'api.openai.com']) {
+        assert.match(await rawExchange(port(proxy), `CONNECT ${host}:443 HTTP/1.1\r\n\r\n`), /^HTTP\/1\.1 403/, host);
+      }
+    } finally { proxy.closeAllConnections(); proxy.close(); vendor.close(); }
+  });
+
   test('fuzz: a random target is accepted only in the exact shape', () => {
     const alphabet = 'abcdefghijklmnopqrstuvwxyzABC0123456789.-:@/[]% _é';
     for (let i = 0; i < 20_000; i += 1) {
