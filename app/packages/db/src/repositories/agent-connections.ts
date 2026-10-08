@@ -48,11 +48,19 @@ export function agentConnectionRepository(db: Database, policy: AgentConnectionP
       isNull(schema.agents.revokedAt))).for('share');
     if (!agent) return null;
     if (!selectedProjectIds.length) return null;
+    const action = row.scopes.some((scope) => scope === 'flux.proposal.write' || scope === 'flux.action.execute') ? 'project.write' : 'project.read';
     if (!mcp) {
-      const action = row.scopes.some((scope) => scope === 'flux.proposal.write' || scope === 'flux.action.execute') ? 'project.write' : 'project.read';
       for (const projectId of selectedProjectIds.sort()) {
         if (await policy.authorizeProject(row.agentId, projectId, action, tx) !== row.workspaceId) return null;
       }
+    } else {
+      // An inaccessible original project must not poison an authorized subset, but a bearer
+      // whose agent reaches none of its selected projects is unavailable (HTTP 403) before dispatch.
+      let reachable = false;
+      for (const projectId of selectedProjectIds.sort()) {
+        try { if (await policy.authorizeProject(row.agentId, projectId, action, tx) === row.workspaceId) { reachable = true; break; } } catch { /* excluded */ }
+      }
+      if (!reachable) return null;
     }
     return connection;
   };

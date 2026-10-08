@@ -351,3 +351,17 @@ offline-save, immutable-consent/no-standing-grant and two-engine 320/390 phone
 controls remain. All five browser cases and fresh visual evaluation are UNRUN.
 These changes do not establish queued MCP-byte fencing, full S6 acceptance or
 protected-main integration.
+
+
+### No reachable selected project: the bearer is refused (decision 2026-10-08)
+
+Main's contract is kept. When the connection's agent has no current reachable
+selected project, because its project grant was deleted or its owner's workspace
+membership was removed, the bearer is refused with HTTP 403 before any tool,
+resource or prompt dispatch, and the body carries no data. A project the agent
+cannot reach does not poison an authorized subset: while at least one selected
+project remains reachable the bearer is valid and a project-level refusal is a
+tool error. Per-entry switch refusals while the agent still has access stay the
+structured `MCP_ENTRY_UNAVAILABLE`. Removal-only owner management stays available.
+This supersedes the structured-refusal expectation in the section above for the
+no-reachable-project case.

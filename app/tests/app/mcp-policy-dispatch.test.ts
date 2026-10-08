@@ -161,9 +161,15 @@ test('removed owner membership refuses project-independent resources and runtime
   expect(await f.owner.request('DELETE', `/api/v1/workspaces/${f.workspaceId}/members/${ownerId}`), 204);
   assert.equal((await pool.query('SELECT revoked_at FROM agents WHERE id=$1', [f.agentId])).rows[0].revoked_at, null,
     'the actual membership removal leaves the agent row unrevoked, isolating the current-membership boundary');
-  unavailable(await f.call('resources/read', { uri: reference.retrievalReference }));
-  unavailable(await f.tool('flux_acknowledge_playbook', acknowledgement));
-  unavailable(await f.tool('flux_acknowledge_playbook', { ...acknowledgement, clientSessionId: randomUUID() }));
+  // With no reachable selected project the bearer is refused before any dispatch (main's contract).
+  const refused = (response: Awaited<ReturnType<typeof mcp>>) => {
+    assert.equal(response.status, 403);
+    for (const secret of ['Hidden knowledge reference', 'Knowledge-secret-78419', 'Hidden original material', 'Material-secret-32917', reference.digest])
+      assert.ok(!JSON.stringify(response.message).includes(secret), 'a refused bearer discloses no data');
+  };
+  refused(await f.call('resources/read', { uri: reference.retrievalReference }));
+  refused(await f.tool('flux_acknowledge_playbook', acknowledgement));
+  refused(await f.tool('flux_acknowledge_playbook', { ...acknowledgement, clientSessionId: randomUUID() }));
   assert.equal(await countRuntimes(), before, 'refused ACKs neither reuse authority nor create another runtime');
   assert.deepEqual(await f.get(), f.initial, 'an ordinary owner session can still inspect the structural saved policy');
   await f.save({ enabledCapabilityIds: [], enabledEntryIds: [], selectedProjectIds: [] });
