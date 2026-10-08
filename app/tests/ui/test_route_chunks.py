@@ -18,6 +18,18 @@ from playwright.sync_api import Browser, BrowserContext, Page, Route, expect, sy
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
+# Exhaust real browser storage; a subsequent larger write must be refused by its own quota.
+# No storage API, React state or success response is replaced.
+EXHAUST_STORAGE = """kind => {
+  const storage = kind === 'local' ? localStorage : sessionStorage;
+  const fits = size => { try { storage.setItem('quota-route-recovery', 'x'.repeat(size)); return true; }
+    catch (error) { if (error.name !== 'QuotaExceededError') throw error; return false; } };
+  let low = 0, high = 1 << 25;
+  while (low < high) { const middle = Math.ceil((low + high) / 2); if (fits(middle)) low = middle; else high = middle - 1; }
+  try { storage.setItem('quota-route-probe', 'x'); } catch (error) { return error.name; }
+  storage.removeItem('quota-route-probe'); return 'accepted';
+}"""
+
 
 class RouteChunksJourney(unittest.TestCase):
     pw = None
@@ -121,6 +133,84 @@ class RouteChunksJourney(unittest.TestCase):
             self.assertLess(time.monotonic(), deadline, "The actual route code request did not arrive")
             page.wait_for_timeout(5)
         self.assertEqual(len(held), 1, "Exactly one actual code download is held")
+
+    def refused_home_draft(self, page: Page, engine: str):
+        self.home(page)
+        response = page.request.get(f"{ORIGIN}/api/v1/me")
+        self.assertEqual(response.status, 200)
+        key = f"flux:draft:{response.json()['user']['id']}:home"
+        earlier = f"Earlier device draft A {engine}"
+        latest = f"Latest visit-only draft B {engine}: " + "Keep the newest private garden notes. " * 40
+        field = page.get_by_placeholder("Write a note…")
+        field.fill(earlier)
+        page.wait_for_function("([key,text]) => localStorage.getItem(key) === text", arg=[key, earlier])
+        self.assertEqual(page.evaluate(EXHAUST_STORAGE, 'local'), 'QuotaExceededError')
+        field.fill(latest)
+        expect(page.get_by_text("Draft kept until you close this tab", exact=True)).to_be_visible()
+        self.assertEqual(page.evaluate("key => localStorage.getItem(key)", key), earlier)
+        return key, earlier, latest
+
+    def test_10_refused_latest_home_draft_blocks_destructive_reload_then_recovers(self):
+        for engine in self.browsers:
+            with self.subTest(engine=engine):
+                page = self.page(engine)
+                key, earlier, latest = self.refused_home_draft(page, engine)
+                pattern = re.compile(r"/assets/SettingsHome-[^/]+\.js(?:\?.*)?$")
+                def refused(route):
+                    route.fulfill(status=503, headers={"cache-control": "no-store"}, content_type="text/plain", body="Real refused route delivery")
+                page.route(pattern, refused)
+                self.settings(page)
+                expect(page.get_by_role("heading", name="This page couldn’t be loaded", exact=True)).to_be_visible()
+                page.unroute(pattern, refused)
+                reload = page.get_by_role("button", name="Reload Flux", exact=True)
+                origin = page.evaluate("performance.timeOrigin")
+                if reload.is_enabled():
+                    # Old-source control follows the real unsafe action and observes its actual loss.
+                    with page.expect_navigation(wait_until="domcontentloaded"):
+                        reload.click()
+                    self.home(page)
+                    self.assertEqual(page.get_by_placeholder("Write a note…").input_value(), latest,
+                        "unguarded document reload must not restore the older stored A over the latest visit-only B")
+                    self.fail("visit-only work must make automatic code-error Reload unavailable")
+                expect(reload).to_be_disabled()
+                expect(page.get_by_text("Keep this tab open", exact=False)).to_be_visible()
+                page.get_by_role("link", name="Go to Home", exact=True).click()
+                expect(page.get_by_placeholder("Write a note…")).to_have_value(latest)
+                self.assertEqual(page.evaluate("performance.timeOrigin"), origin)
+                self.assertEqual(page.evaluate("key => localStorage.getItem(key)", key), earlier)
+                page.evaluate("localStorage.removeItem('quota-route-recovery')")
+                persisted = latest + "Storage accepts the newest copy again."
+                page.get_by_placeholder("Write a note…").fill(persisted)
+                page.wait_for_function("([key,text]) => localStorage.getItem(key) === text", arg=[key, persisted])
+                self.settings(page)
+                expect(page.get_by_role("heading", name="This page couldn’t be loaded", exact=True)).to_be_visible()
+                expect(page.get_by_role("button", name="Reload Flux", exact=True)).to_be_enabled()
+                with page.expect_navigation(wait_until="domcontentloaded"):
+                    page.get_by_role("button", name="Reload Flux", exact=True).click()
+                self.assertGreater(page.evaluate("performance.timeOrigin"), origin)
+                expect(page.get_by_role("heading", name="This device", exact=True)).to_be_visible()
+                self.home(page)
+                expect(page.get_by_placeholder("Write a note…")).to_have_value(persisted)
+
+    def test_11_failed_optional_surface_keeps_refused_draft_and_close_recovery(self):
+        for engine in self.browsers:
+            with self.subTest(engine=engine):
+                page = self.page(engine)
+                key, earlier, latest = self.refused_home_draft(page, engine)
+                pattern = re.compile(r"/assets/JumpTo-[^/]+\.js(?:\?.*)?$")
+                def refused(route):
+                    route.fulfill(status=503, headers={"cache-control": "no-store"}, content_type="text/plain", body="Real refused search delivery")
+                page.route(pattern, refused)
+                page.keyboard.press("Control+k")
+                dialog = page.get_by_role("dialog", name="Jump to", exact=True)
+                expect(dialog).to_contain_text("Search couldn’t be loaded")
+                page.unroute(pattern, refused)
+                expect(dialog.get_by_role("button", name="Reload Flux", exact=True)).to_be_disabled()
+                expect(dialog.get_by_text("Keep this tab open", exact=False)).to_be_visible()
+                page.keyboard.press("Escape")
+                expect(dialog).to_have_count(0)
+                expect(page.get_by_placeholder("Write a note…")).to_have_value(latest)
+                self.assertEqual(page.evaluate("key => localStorage.getItem(key)", key), earlier)
 
     def test_01_cold_home_omits_secondary_and_closed_surface_imports(self):
         for engine in self.browsers:
