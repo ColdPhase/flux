@@ -1,5 +1,5 @@
 import { isIP } from 'node:net';
-import type { RuntimeClient } from '@flux/runtime-protocol';
+import { RUNTIME_CLIENTS, type RuntimeClient } from '@flux/runtime-protocol';
 
 // `runtime-egress` policy (F-022 "Network"). A slot reaches the internet only through CONNECT to the
 // hosts its CLI documents, on port 443, and Flux only through the exact `/mcp` route. These parsers
@@ -26,8 +26,10 @@ export function parseConnectTarget(target: unknown): { host: string; port: 443 }
   return { host, port: 443 };
 }
 
-export function allowedHosts(clients: readonly RuntimeClient[]): Set<string> {
-  return new Set(clients.flatMap((client) => VENDOR_HOSTS[client]));
+export function allowedHosts(clients: readonly RuntimeClient[], options: { includeSignOut?: boolean } = {}): Set<string> {
+  // TLS hides the request path: cleanup needs the recorded vendor hosts even after the
+  // operator switches clients off. The supervisor still refuses login/status/run then.
+  return new Set((options.includeSignOut ? RUNTIME_CLIENTS : clients).flatMap((client) => VENDOR_HOSTS[client]));
 }
 
 /** The one Flux route a slot may use: exactly `/mcp`, with the methods of MCP's HTTP transport. */
