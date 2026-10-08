@@ -1,0 +1,92 @@
+[
+  {
+    "engine": "chromium",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "dark": true,
+    "deviceScaleFactor": 3,
+    "rootFontSize": "200%",
+    "title": {
+      "clientHeight": 107,
+      "scrollHeight": 107,
+      "clientWidth": 294,
+      "scrollWidth": 294,
+      "fontSize": "25px",
+      "text": "New task \u00b7 #2 Order two ToF boards for the dark-room test",
+      "lineClamp": "none"
+    },
+    "textBoundaries": {
+      "number": {
+        "x": 186,
+        "y": 398.234375,
+        "right": 201,
+        "bottom": 430.234375
+      },
+      "firstWord": {
+        "x": 222,
+        "y": 398.234375,
+        "right": 286,
+        "bottom": 430.234375
+      },
+      "author": {
+        "x": 59,
+        "y": 319.734375,
+        "right": 194,
+        "bottom": 351.734375
+      },
+      "time": {
+        "x": 59,
+        "y": 360.484375,
+        "right": 134,
+        "bottom": 392.484375
+      }
+    }
+  },
+  {
+    "engine": "chromium",
+    "viewport": {
+      "width": 320,
+      "height": 640
+    },
+    "dark": false,
+    "deviceScaleFactor": 3,
+    "rootFontSize": "200%",
+    "title": {
+      "clientHeight": 143,
+      "scrollHeight": 143,
+      "clientWidth": 224,
+      "scrollWidth": 224,
+      "fontSize": "25px",
+      "text": "New task \u00b7 #2 Order two ToF boards for the dark-room test",
+      "lineClamp": "none"
+    },
+    "textBoundaries": {
+      "number": {
+        "x": 186,
+        "y": 279.59375,
+        "right": 201,
+        "bottom": 311.59375
+      },
+      "firstWord": {
+        "x": 59,
+        "y": 315.34375,
+        "right": 123,
+        "bottom": 347.34375
+      },
+      "author": {
+        "x": 59,
+        "y": 201.09375,
+        "right": 194,
+        "bottom": 233.09375
+      },
+      "time": {
+        "x": 59,
+        "y": 241.84375,
+        "right": 134,
+        "bottom": 273.84375
+      }
+    }
+  }
+]

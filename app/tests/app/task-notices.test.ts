@@ -42,7 +42,7 @@ test('task creation keeps source messages intact and stores exactly one distinct
   assert.equal(page.total, 1);
   const notice = page.items[0]!;
   assert.deepEqual({ ...notice, id: undefined }, { id: undefined, workspaceId: f.ws.id, projectId: f.place.id,
-    workId: item.id, workTitle: item.title, kind: 'task.created', createdBy: item.createdBy,
+    workId: item.id, workTitle: item.title, workNumber: item.number, kind: 'task.created', createdBy: item.createdBy,
     sources: command.sources, createdAt: item.createdAt });
   assert.notEqual(notice.id, item.id);
   assert.equal(notice.createdBy.id, f.writer.id);

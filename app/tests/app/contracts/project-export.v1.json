@@ -791,6 +791,10 @@
             "minLength": 1,
             "type": "string"
           },
+          "number": {
+            "minimum": 1,
+            "type": "integer"
+          },
           "outcome": {
             "type": "string"
           },
@@ -855,6 +859,7 @@
           "createdAt",
           "createdBy",
           "id",
+          "number",
           "outcome",
           "owner",
           "parked",
