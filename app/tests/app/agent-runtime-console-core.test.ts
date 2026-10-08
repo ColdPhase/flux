@@ -17,6 +17,7 @@ import type { ConsoleClock } from '../../apps/runtime/src/supervisor/pty.js';
 import { CLAUDE_LOGIN_HELP_OPTIONS, LOGIN_TEMPLATES, unofferedLoginOptions } from '../../apps/runtime/src/supervisor/templates.js';
 import { maskAccount, statusFacts } from '../../apps/runtime/src/supervisor/status.js';
 import { portOf, slotSecret, startTestSlot, type TestSlot } from './support/runtime-slot.js';
+import { pastedLine } from './support/runtime-login.js';
 
 // F-022 T4 (#279): the Claude Code sign-in console in a slot's supervisor and through runtime-manager,
 // in process, with real PTYs (node-pty) and the TEST ONLY fake `claude`, whose `auth login` behaves as
@@ -120,7 +121,7 @@ describe('each sign-in method runs exactly its command in a PTY', () => {
       assert.equal(alive(started[0]!.pid), true);
       // Not signed in before the code: the CLI is still at its prompt.
       assert.equal(result(login), undefined);
-      login.link.send(encodeInput(Buffer.from('fake-code-abc123\r')));
+      login.link.send(encodeInput(Buffer.from(pastedLine(login.output, 'fake-code-abc123'))));
       await login.ended;
       const done = result(login);
       assert.ok(done?.kind === 'login', JSON.stringify(login.controls));
@@ -131,7 +132,7 @@ describe('each sign-in method runs exactly its command in a PTY', () => {
         accountLabel: 'a***@example.org', accountDigest: done.status.facts!.accountDigest });
       assert.match(done.status.facts!.accountDigest!, /^[0-9a-f]{64}$/);
       const all = await calls(home);
-      assert.equal(all.find((entry) => entry.event === 'code')?.code, 'fake-code-abc123', 'the pasted code reached the CLI\'s prompt');
+      assert.equal(all.find((entry) => entry.event === 'code')?.code, pastedLine(login.output, 'fake-code-abc123').trim(), 'the pasted code reached the CLI\'s prompt');
       assert.deepEqual(all.filter((entry) => !entry.event).map((entry) => entry.argv), [[...LOGIN_TEMPLATES.claude_code[method]!], ['auth', 'status']],
         'the login command and then its status, nothing else');
       // The PTY ended with the command; the seeded login is only in the CLI's own file.
@@ -149,7 +150,7 @@ describe('the console signs in only when the CLI\'s status says so', () => {
     const login = await connect(portOf(slot.url), slot.config.secret);
     login.link.send(open(bindingId, 'claude_account'));
     await until('the prompt', () => login.output.includes(PROMPT));
-    login.link.send(encodeInput(Buffer.from('fake-code-ok\r')));
+    login.link.send(encodeInput(Buffer.from(pastedLine(login.output, 'fake-code-ok'))));
     await login.ended;
     const done = result(login);
     assert.ok(done?.kind === 'login');
@@ -165,10 +166,13 @@ describe('the console signs in only when the CLI\'s status says so', () => {
     await until('the prompt', () => login.output.includes(PROMPT));
     const marker = join(slot.config.tmpDir, 'pwned');
     login.link.send(encodeInput(Buffer.from(`$(touch ${marker}); sh -c 'touch ${marker}'\r`)));
+    // Like the real CLI, a malformed paste gets the message and the prompt stays; it is not a sign-in.
+    await until('the refusal', () => login.output.includes('Invalid code. Please make sure the full code was copied.'));
+    assert.equal(result(login), undefined, 'still at the prompt');
+    login.link.send(encodeInput(Buffer.from(pastedLine(login.output, 'fake-code-after-refusal'))));
     await login.ended;
-    assert.match(login.output, /Invalid code/);
     const done = result(login);
-    assert.ok(done?.kind === 'login' && done.exitCode === 1 && !done.status.signedIn);
+    assert.ok(done?.kind === 'login' && done.exitCode === 0 && done.status.signedIn);
     assert.deepEqual((await readdir(slot.config.tmpDir)), [], 'nothing ran');
     assert.deepEqual((await calls(home)).filter((entry) => !entry.event).map((entry) => entry.argv), [['auth', 'login'], ['auth', 'status']]);
   }));
@@ -336,7 +340,7 @@ test('late destructive auth targets cannot reach a fresh boot/binding on the sam
     const login=await connect(port,freshConfig.secret);
     login.link.send(encodeOpen({ bindingId,bootId:freshConfig.bootId,client:'claude_code',method:'sso',cols:60,rows:20 }));
     await until('fresh-boot PTY prompt',()=>login.output.includes(PROMPT));
-    login.link.send(encodeInput(Buffer.from('fake-code-fresh-boot-control\r')));await login.ended;
+    login.link.send(encodeInput(Buffer.from(pastedLine(login.output, 'fake-code-fresh-boot-control'))));await login.ended;
     assert.ok(result(login)?.kind==='login');
     const home=join(freshConfig.dataDir,bindingId,'claude'),file=join(home,'.credentials.json');
     const credentialBefore=await readFile(file,'utf8'),callsBefore=await calls(home);
@@ -372,7 +376,7 @@ describe('runtime-manager relays the console and checks it', () => {
     login.link.send(open(bindingId, 'console'));
     login.link.send(encodeResize(80, 24));
     await until('the prompt', () => login.output.includes(PROMPT));
-    login.link.send(encodeInput(Buffer.from('fake-code-relay\r')));
+    login.link.send(encodeInput(Buffer.from(pastedLine(login.output, 'fake-code-relay'))));
     await login.ended;
     const done = result(login);
     assert.ok(done?.kind === 'login' && done.status.signedIn, JSON.stringify(login.controls));

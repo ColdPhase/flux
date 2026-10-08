@@ -337,7 +337,11 @@ root on the host or every owner's credentials.
      of it under a key derived from the API's secret: compared, never shown, and
      unable to hold a token (T4, migration 0057).
 6. The CLI keeps its login as a file in the binding directory and refreshes it
-   itself. For Claude Code that is `CLAUDE_CONFIG_DIR`. For Codex,
+   itself. For Claude Code that is `CLAUDE_CONFIG_DIR`, with one exception: the keyless Console
+   sign-in (Claude Code 2.1.242 and later) keeps an Anthropic profile outside it, by default in
+   `$HOME/.config/anthropic`, which is inside the binding directory's `home/`. Sign out and Remove
+   delete that profile too, even when the CLI's logout fails (source: Claude Code authentication page,
+   read 2026-10-08). For Codex,
    `cli_auth_credentials_store=file` is passed on every Codex command; `auto` and
    `keyring` are refused.
 
@@ -393,6 +397,17 @@ PostgreSQL claim/nonce CAS, crash recovery and late effects after fresh binding
 reuse with controlled barriers. Retain its fixed commands, notices, seeded-secret
 checks and phone/theme criteria; a passing source or core test is not acceptance
 of the integrated runtime or final design.
+
+T4 and the later Codex sign-in are accepted on **mocks and fakes only** (founder direction on #279,
+2026-10-08): no test, check or acceptance step uses a real vendor account, subscription or spend, and
+actual vendor sign-in, logout and readback are not criteria. The fake `claude` and `codex` print the real
+CLIs' streams, messages and exit codes (the `auth login` three lines, the `code#state` paste rule,
+`Login successful.`, the status JSON keys, Codex's status and logout on stderr, `Not logged in` with
+exit 0), and one assertion table (`apps/runtime/src/contract/auth-table.ts`, with golden `--help` texts)
+runs against the fakes in the normal checks and against the pinned real CLIs, account-free in
+`docker run --network none`, in the opt-in `scripts/check_runtime_cli_contract.sh`. The real Claude Code
+login cannot be redirected to a mock (its OAuth hosts are fixed), so it stays fake-only. The optional
+`scripts/check_vendor_live.sh` refuses without `FLUX_LIVE_VENDOR=1` and is in no required check.
 
 ### Agent connection and permissions
 

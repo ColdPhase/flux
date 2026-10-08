@@ -196,7 +196,9 @@ class RuntimeConsole(unittest.TestCase):
         shot(page, "runtime-console-phone-390")
         code = page.get_by_label("Paste the code from the sign-in page")
         code.tap()
-        code.fill("fake-code-from-the-phone")
+        # Claude Code accepts only `code#state`, with the state of the URL it printed.
+        state = re.search(r"[?&]state=([\w-]+)", opener.get_attribute("href")).group(1)
+        code.fill(f"fake-code-from-the-phone#{state}")
         page.get_by_role("button", name="Send").tap()
         outcome = page.locator(".rt-outcome")
         expect(outcome.get_by_role("heading", name="Signed in")).to_be_visible()

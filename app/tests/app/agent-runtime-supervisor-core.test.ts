@@ -206,6 +206,20 @@ describe('fixed command templates and a clean CLI environment', () => {
     assert.ok(failed.ok && failed.result.kind === 'logout' && failed.result.logout === 'failed');
     assert.deepEqual(await readdir(join(slot.config.dataDir, bindingId, 'claude')), [], 'the credential file is deleted anyway');
   });
+
+  test('logout also deletes the keyless Console profile that lives outside CLAUDE_CONFIG_DIR, even when the CLI\'s logout fails', async () => {
+    const profile = join(slot.config.dataDir, bindingId, 'home', '.config', 'anthropic');
+    for (const scenario of ['', 'logout_fails']) {
+      await signIn(slot, bindingId);
+      await mkdir(join(profile, 'configs'), { recursive: true });
+      await writeFile(join(profile, 'active_config'), 'default');
+      await writeFile(join(profile, 'configs', 'default.json'), '{"authentication":{"type":"oauth"}}');
+      if (scenario) await writeFile(join(slot.config.dataDir, bindingId, 'claude', 'fake-scenario'), scenario);
+      assert.ok((await call(slot, { kind: 'logout', bindingId, client: 'claude_code' })).ok);
+      await assert.rejects(lstat(profile), { code: 'ENOENT' }, `the Console profile survived sign-out (${scenario || 'logout ok'})`);
+      assert.deepEqual(await readdir(join(slot.config.dataDir, bindingId, 'claude')), []);
+    }
+  });
 });
 
 describe('release', () => {

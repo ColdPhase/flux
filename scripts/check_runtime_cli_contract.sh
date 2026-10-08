@@ -5,7 +5,12 @@
 # It builds the release runtime image (Codex rust-v0.160.1, downloaded by checksum) and the installer
 # image, installs Claude Code at the pinned version from Anthropic's GPG-signed release manifest into a
 # throwaway volume (exactly what runtime-install does), then runs apps/runtime/dist/contract/check-flags.js:
-# every flag and subcommand of the fixed command templates must appear in the CLIs' own help.
+# every flag and subcommand of the fixed command templates must appear in the CLIs' own help. It then
+# runs apps/runtime/dist/contract/check-auth.js in `--network none` (T4 #279): the sign-in, status and
+# sign-out assertion table (golden `--help` texts, status JSON keys, exit codes, stdout vs stderr, the
+# `code#state` paste rule, the device-code banner against a loopback mock issuer) against the real CLIs.
+# The same table runs against the fakes in the normal checks, so a fake cannot drift from the vendor.
+# No account, no login and no network: nothing here may sign in.
 #
 # Needs internet access to github.com and downloads.claude.ai and about 0.6 GB of disk; it removes its
 # image tags and volume afterwards. Run it alone under the shared Docker lock and record the dated
@@ -32,3 +37,7 @@ docker run --rm $harden --tmpfs /tmp:rw,size=64m -e FLUX_AGENT_RUNTIME=claude_co
 # shellcheck disable=SC2086
 docker run --rm $harden --network none --tmpfs /tmp:rw,size=64m \
   -v "$volume:/opt/flux-tools:ro" "flux-agent-runtime-install:$tag" node apps/runtime/dist/contract/check-flags.js
+# shellcheck disable=SC2086
+docker run --rm $harden --network none --tmpfs /tmp:rw,size=64m \
+  -v "$volume:/opt/flux-tools:ro" "flux-agent-runtime-install:$tag" \
+  node apps/runtime/dist/contract/check-auth.js /opt/flux-tools/claude/bin/claude /opt/flux-runtime/codex/bin/codex

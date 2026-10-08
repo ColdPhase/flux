@@ -15,6 +15,7 @@ import WebSocket from 'ws';
 import { Browser } from './support/http.js';
 import { pool,db,connectionString } from './support/db.js';
 import { startTestSlot, portOf, slotSecret } from './support/runtime-slot.js';
+import { pastedLine } from './support/runtime-login.js';
 
 const origin='http://127.0.0.1:18279';
 // All API replicas on one DB share the instance secret, including its encrypted JWT signing keys.
@@ -74,7 +75,7 @@ test('two actual API processes share one-use tickets and operation ownership acr
     await until(()=>left.output.includes('Paste code')||right.output.includes('Paste code'));
     const winner=left.output.includes('Paste code')?left:right,loser=winner===left?right:left;
     assert.equal(await loser.closed,4403,'shared nonce admits exactly one API');
-    winner.ws.send(JSON.stringify({t:'in',d:'fake-code-process-control\r'}));assert.equal(await winner.closed,1000);
+    winner.ws.send(JSON.stringify({t:'in',d:pastedLine(winner.output,'fake-code-process-control')}));assert.equal(await winner.closed,1000);
     const done=winner.messages.at(-1);assert.ok(done?.t==='done');assert.equal(done.disposition,'accepted');assert.equal(done.signedIn,true);
     await stop(first.child);
     const restarted=await api(managerUrl,managerSecret);children.push(restarted.child);
@@ -132,7 +133,7 @@ test('a held real manager response arriving after a second HTTP process requests
     const b=new Browser(second.url,origin);for(const[n,v]of a.cookies)b.cookies.set(n,v);
     const issue=await a.request('POST',AGENT_RUNTIME_CONSOLE_PATH,{body:{client:'claude_code',method:'sso'}});assert.equal(issue.status,200,JSON.stringify(first.diagnostics));
     const login=await socket(a);sockets.push(login.ws);login.ws.send(JSON.stringify({t:'attach',ticket:(issue.json as{ticket:string}).ticket,cols:60,rows:20}));
-    await until(()=>login.output.includes('Paste code'));login.ws.send(JSON.stringify({t:'in',d:'fake-code-held-http\r'}));assert.equal(await login.closed,1000);
+    await until(()=>login.output.includes('Paste code'));login.ws.send(JSON.stringify({t:'in',d:pastedLine(login.output,'fake-code-held-http')}));assert.equal(await login.closed,1000);
     holdNext=true;
     const checking=a.request('POST','/api/v1/agent-runtime/check',{body:{client:'claude_code'}});pending=checking;
     await Promise.race([reached,delay(5000).then(()=>{throw new Error('manager response barrier deadline');})]);
@@ -181,7 +182,7 @@ test('API crash with an undelivered old logout requires full recovery; late logo
     const signin=async(browser:Browser)=>{
       const issue=await browser.request('POST',AGENT_RUNTIME_CONSOLE_PATH,{body:{client:'claude_code',method:'sso'}});assert.equal(issue.status,200,JSON.stringify([...first.diagnostics,...second.diagnostics]));
       const view=await socket(browser);sockets.push(view.ws);view.ws.send(JSON.stringify({t:'attach',ticket:(issue.json as{ticket:string}).ticket,cols:60,rows:20}));
-      await until(()=>view.output.includes('Paste code'));view.ws.send(JSON.stringify({t:'in',d:'fake-code-crash-recovery\r'}));assert.equal(await view.closed,1000);
+      await until(()=>view.output.includes('Paste code'));view.ws.send(JSON.stringify({t:'in',d:pastedLine(view.output,'fake-code-crash-recovery')}));assert.equal(await view.closed,1000);
       const done=view.messages.at(-1);assert.ok(done?.t==='done'&&done.disposition==='accepted'&&done.signedIn);
     };
     await signin(a);

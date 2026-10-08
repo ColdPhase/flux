@@ -24,6 +24,7 @@ import { connectionString } from './support/db.js';
 import { Browser } from './support/http.js';
 import { expectStatus, password, person, type Person } from './support/people.js';
 import { slotSecret, startTestSlot, type TestSlot } from './support/runtime-slot.js';
+import { pastedLine } from './support/runtime-login.js';
 
 // F-022 T4 (#279): the Claude Code sign-in console end to end in process: the API's routes and
 // WebSocket with its own Better Auth (same database and secret as the API container), runtime-manager
@@ -205,7 +206,7 @@ describe('signing in through the console', () => {
     assert.ok(view.output.includes('\u001b]8;;https://claude.com/cai/oauth/authorize?'), 'the CLI\'s sign-in URL, as its own hyperlink');
     assert.deepEqual(view.messages, [{ t: 'state', state: 'starting' }, { t: 'state', state: 'running' }]);
     assert.equal((await status(browser)).connections.claude_code, null, 'not signed in while the CLI waits');
-    typeInto(view, `${code}\r`);
+    typeInto(view, pastedLine(view.output, code));
     assert.equal(await view.closed, 1000);
     const done = view.messages.at(-1);
     assert.ok(done?.t === 'done', JSON.stringify(view.messages));
@@ -250,7 +251,7 @@ describe('signing in through the console', () => {
     const view = await openConsole(browser);
     attach(view, await ticketFor(browser, 'sso'));
     await until('the prompt', () => view.output.includes(PROMPT));
-    typeInto(view, 'fake-code-second\r');
+    typeInto(view, pastedLine(view.output, 'fake-code-second'));
     await view.closed;
     const done = view.messages.at(-1);
     assert.ok(done?.t === 'done' && done.signedIn, JSON.stringify(view.messages));

@@ -6,11 +6,12 @@ import { ACCOUNT_LABEL, AUTH_METHOD, PLAN_LABEL, type ClientFacts, type RuntimeC
 // account-change notice. The address itself never leaves the slot, and nothing here reads a credential
 // file: only the status command's own output, kept in memory and never logged.
 //
-// `claude auth status` prints JSON and exits 0 when signed in. Signed out, Claude Code 2.1.285 printed
-// (2026-10-06, pinned binary, no account): {"loggedIn": false, "authMethod": "none", "apiProvider":
-// "firstParty", …} with exit 1. The fields of a signed-in status are not documented; the names read
-// below are the likely ones and are UNVERIFIED until the real-account check (T10). A field that is
-// missing or does not match its pattern is left out, never guessed.
+// `claude auth status` prints JSON and exits 0 when signed in, 1 when not. Claude Code 2.1.285 was
+// observed account-free on 2026-10-08 (src/contract/auth-table.ts keeps the assertions): signed out it
+// prints {"loggedIn": false, "authMethod": "none", "apiProvider": "firstParty", "analyticsDisabled",
+// "projectsDirectory", "configDirectory"}; with a claude.ai login it adds "email", "orgId", "orgName"
+// (null when the global config has no account) and "subscriptionType". A field that is missing, null or
+// does not match its pattern is left out, never guessed. What a keyless Console profile reports is unknown.
 
 type Json = Record<string, unknown>;
 const isObject = (value: unknown): value is Json => typeof value === 'object' && value !== null && !Array.isArray(value);

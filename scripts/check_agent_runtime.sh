@@ -239,7 +239,7 @@ assert commands == [json.loads(sys.argv[1]), ["auth", "status"]], commands
 login = next(c for c in calls if "event" not in c)
 assert login["tty"] is True and login["env"]["TERM"] == "xterm-256color", login
 assert not [n for n in login["envNames"] if "FLUX" in n or "SECRET" in n], login["envNames"]
-assert next(c for c in calls if c.get("event") == "code")["code"] == sys.argv[2]
+assert next(c for c in calls if c.get("event") == "code")["code"].startswith(sys.argv[2] + "#")
 print("ran exactly", commands[0], "in a terminal, then auth status")' "$expected" "$console_code"
   [ "$(logins_running)" = 0 ] || fail "$method: the login command still runs after it exited"
   docker exec "$t_cid" grep -q "$console_secret" "/data/$t_binding/claude/.credentials.json" || fail "control: the fake login is not in the slot"

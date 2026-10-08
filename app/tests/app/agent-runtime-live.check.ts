@@ -9,6 +9,7 @@ import {
 import { createDatabase } from '@flux/db';
 import { apiUrl, publicOrigin, signIn } from './support/http.js';
 import { expectStatus, password, person, type Person } from './support/people.js';
+import { pastedLine } from './support/runtime-login.js';
 
 // F-022 T3 (#278): the API side of scripts/check_agent_runtime.sh, against a stack whose runtime profile
 // runs with the TEST ONLY fake CLIs. One step per call; owners are kept in /state between steps. Steps
@@ -91,7 +92,7 @@ function runConsole(someone: Person, ticketValue: string, input: string | null):
       if (!typed && run.output.includes(PROMPT)) {
         typed = true;
         if (input === null) socket.close(1000, 'left');
-        else socket.send(JSON.stringify({ t: 'in', d: `${input}\r` }));
+        else socket.send(JSON.stringify({ t: 'in', d: pastedLine(run.output, input) }));
       }
     });
     socket.on('close', (code) => { clearTimeout(timer); run.code = code; resolve(run); });

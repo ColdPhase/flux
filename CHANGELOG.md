@@ -20,6 +20,7 @@ repository was created on 2026-09-26.
 #### Run and operate Flux
 
 - Operators can offer owners their own Claude Code inside Flux (off by default, `FLUX_AGENT_RUNTIME`): a fixed pool of isolated runtime slots with no Docker socket, `./flux runtime status|release|purge`, and slot volumes kept out of backups ([#303](https://github.com/ColdPhase/flux/pull/303)).
+- Owners sign in to Claude Code from a console in Flux (a terminal on the real CLI's own sign-in, with no key or token field), and signing out or removing the runtime also deletes the keyless Console profile Claude Code keeps outside its configuration directory ([#279](https://github.com/ColdPhase/flux/issues/279)).
 - One Docker Compose application with the API, a separate worker, PostgreSQL and a
   durable job queue. Migrations are reviewed SQL with health checks ([#34](https://github.com/ColdPhase/flux/pull/34)).
 - `./flux up`, `./flux demo` and `./flux dev` start, seed and develop Flux with only

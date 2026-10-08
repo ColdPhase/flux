@@ -90,7 +90,10 @@ async function snapshot(db: Pool) {
   const data: Record<string, string[]> = {};
   for (const row of catalog) {
     if (!['r', 'p', 'S'].includes(row.relkind)) continue;
-    const rows = (await db.query(`SELECT to_jsonb(t) AS row FROM ${quote(row.nspname)}.${quote(row.relname)} t`)).rows;
+    // Newer PostgreSQL releases refuse to_jsonb on a sequence relation ("does not have a composite type").
+    const rows = (await db.query(row.relkind === 'S'
+      ? `SELECT jsonb_build_object('last_value', last_value, 'is_called', is_called) AS row FROM ${quote(row.nspname)}.${quote(row.relname)}`
+      : `SELECT to_jsonb(t) AS row FROM ${quote(row.nspname)}.${quote(row.relname)} t`)).rows;
     data[`${row.nspname}.${row.relname}`] = rows.map((row) => JSON.stringify(row.row)).sort();
   }
   const functions = (await db.query(`SELECT p.proname, pg_get_function_identity_arguments(p.oid) AS args,
