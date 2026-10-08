@@ -199,10 +199,12 @@ class WorkingAgentJourney(unittest.TestCase):
 
     def test_02_the_rail_has_native_keyboard_stop_and_preserves_width(self) -> None:
         for engine in self.browsers:
-            for width, dark, touch in ((1440, False, False), (1280, True, False), (1280, False, True)):
+            for width, dark, touch in ((1440, False, False), (1440, True, False), (1280, False, False), (1280, True, False), (1280, False, True)):
                 with self.subTest(engine=engine, width=width, dark=dark, touch=touch):
                     page, ids = self.person(engine, width=width, dark=dark, touch=touch)
                     run = self.start(page, ids)
+                    expect(page.locator(".agentlive__text")).to_contain_text("writing an answer")
+                    shot(page, f"340-working-expanded-{engine}-{width}-{'dark' if dark else 'light'}{'-coarse' if touch else ''}")
                     page.keyboard.press("[")
                     rail = page.locator(".side--rail")
                     expect(rail).to_be_visible()
@@ -215,6 +217,11 @@ class WorkingAgentJourney(unittest.TestCase):
                     self.assertEqual(stop.evaluate("el => el.tagName"), "BUTTON")
                     self.assertEqual(stop.evaluate("el => el.closest('a')"), None, "Stop is separate from navigation")
                     link.focus(); page.keyboard.press("Tab"); expect(stop).to_be_focused()
+                    focus = stop.evaluate("el => ({visible: el.matches(':focus-visible'), width: parseFloat(getComputedStyle(el).outlineWidth), style: getComputedStyle(el).outlineStyle})")
+                    self.assertTrue(focus["visible"] and focus["width"] >= 2 and focus["style"] == "solid", "the real keyboard Stop has visible focus")
+                    if dark:
+                        page.emulate_media(reduced_motion="reduce")
+                        self.assertTrue(card.locator(".kreska__brow").evaluate("el => getComputedStyle(el).animationName === 'none'"))
                     if touch:
                         bounds = stop.bounding_box()
                         self.assertTrue(has_minimum_touch_size(bounds["width"]) and has_minimum_touch_size(bounds["height"]))
@@ -225,27 +232,37 @@ class WorkingAgentJourney(unittest.TestCase):
 
     def test_03_failed_stop_says_so_and_retry_uses_the_real_api(self) -> None:
         for engine in self.browsers:
-            with self.subTest(engine=engine):
-                page, ids = self.person(engine)
-                run = self.start(page, ids)
-                attempts = []
-                def refuse_once(route: Route) -> None:
-                    attempts.append(route.request.url)
-                    if len(attempts) == 1:
-                        route.fulfill(status=503, content_type="application/json", body='{"code":"TEMPORARY_UNAVAILABLE"}')
-                    else:
-                        route.continue_()
-                page.route(f"**/api/v1/assistant-runs/{run['id']}/stop", refuse_once)
-                card = page.locator(".agentlive")
-                card.get_by_role("button", name="Stop your assistant").click()
-                expect(card.get_by_role("alert")).to_contain_text("stop")
-                self.assertFalse(self.api(page, "GET", f"/api/v1/assistant-runs/{run['id']}")["stopRequested"],
-                                 "the network refusal is not a successful Stop")
-                expect(card.get_by_role("button", name="Stop your assistant")).to_be_enabled()
-                shot(page, f"340-working-stop-failed-{engine}")
-                card.get_by_role("button", name="Stop your assistant").click()
-                self.stopped(page, run)
-                self.assertEqual(len(attempts), 2)
+            for compact in (False, True):
+                with self.subTest(engine=engine, compact=compact):
+                    page, ids = self.person(engine, width=1280 if compact else 1440, dark=compact)
+                    run = self.start(page, ids)
+                    if compact:
+                        page.keyboard.press("[")
+                        expect(page.locator(".side--rail")).to_be_visible()
+                        page.evaluate("document.documentElement.style.fontSize = '200%'")
+                    attempts = []
+                    def refuse_once(route: Route) -> None:
+                        attempts.append(route.request.url)
+                        if len(attempts) == 1:
+                            route.fulfill(status=503, content_type="application/json", body='{"code":"TEMPORARY_UNAVAILABLE"}')
+                        else:
+                            route.continue_()
+                    page.route(f"**/api/v1/assistant-runs/{run['id']}/stop", refuse_once)
+                    card = page.locator(".agentlive")
+                    card.get_by_role("button", name="Stop your assistant").click()
+                    error = card.get_by_role("alert")
+                    expect(error).to_contain_text(re.compile("stop", re.I))
+                    self.assertFalse(self.api(page, "GET", f"/api/v1/assistant-runs/{run['id']}")["stopRequested"],
+                                     "the network refusal is not a successful Stop")
+                    expect(card.get_by_role("button", name="Stop your assistant")).to_be_enabled()
+                    if compact:
+                        self.assertTrue(error.evaluate("el => el.scrollWidth <= el.clientWidth + .001"),
+                                        "the enlarged failure message remains in the compact card")
+                        self.assertEqual(page.evaluate("document.documentElement.scrollWidth - innerWidth"), 0)
+                    shot(page, f"340-working-stop-failed-{engine}{'-rail-text200' if compact else ''}")
+                    card.get_by_role("button", name="Stop your assistant").click()
+                    self.stopped(page, run)
+                    self.assertEqual(len(attempts), 2)
 
     def test_04_old_read_and_stop_completion_do_not_cross_real_sign_out(self) -> None:
         for engine in self.browsers:
@@ -257,6 +274,8 @@ class WorkingAgentJourney(unittest.TestCase):
                 page.evaluate("window.__workingWire.arm('old-stop', 'stop')")
                 page.locator(".agentlive").get_by_role("button", name="Stop your assistant").click()
                 page.wait_for_function("window.__workingWire.gates['old-stop']?.held")
+                expect(page.locator(".agentlive")).to_have_attribute("aria-label", "Stopping your assistant…")
+                expect(page.locator(".agentlive").get_by_role("button", name="Stop your assistant")).to_be_disabled()
                 stopped = self.wait_run(page, run["id"], lambda current: current["status"] == "stopped")
                 self.assertIsNone(stopped["answer"])
                 page.evaluate("window.__sameWorkingDocument = true")
