@@ -43,8 +43,10 @@ Precedence when several are present (first wins) [D]: cloud provider vars; `ANTH
 ```
 Opening browser to sign in…
 If the browser didn't open, visit: <authorize URL>
-Paste code here if prompted > 
+Paste code here if prompted >␠
 ```
+
+`␠` marks the prompt's trailing space: the real CLI prints `"Paste code here if prompted > "` (ending in one space, no newline) and waits for input.
 
 (no trailing newline after the `>` prompt), then on success `Login successful.\n` and exit 0. The doc says the paste-code prompt is used "when the browser can't reach Claude Code's local callback server, which is common in WSL2, SSH sessions, and containers" [D, https://code.claude.com/docs/en/authentication]. The interactive `claude` first-run screen shows `Login successful` plus "press Enter" [D]; the `auth login` subcommand exits instead [B].
 
