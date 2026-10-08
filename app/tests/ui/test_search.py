@@ -10,6 +10,7 @@ on the phone. Olek never sees the restricted project, and recent searches go awa
 from __future__ import annotations
 
 import json
+import math
 import re
 import time
 import unittest
@@ -18,6 +19,7 @@ import uuid
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from touch_targets import has_minimum_touch_size
 
 PASSWORD = "finding things calmly"
 STAMP = int(time.time() * 1000)
@@ -81,7 +83,7 @@ class SearchJourney(unittest.TestCase):
 
     def jump(self, page: Page, query: str):
         # The shortcut works once the app shell has loaded.
-        expect(page.get_by_role("button", name=re.compile("Jump to"))).to_be_visible()
+        expect(page.get_by_role("button", name="Search", exact=True)).to_be_visible()
         page.keyboard.press("Control+k")
         dialog = page.get_by_role("dialog", name="Jump to")
         expect(dialog).to_be_visible()
@@ -141,7 +143,7 @@ class SearchJourney(unittest.TestCase):
     def test_02_ctrl_k_searches_as_you_type_and_opens_the_exact_message(self) -> None:
         page = self.page("nia")
         page.goto("/")
-        expect(page.get_by_role("button", name=re.compile("Jump to"))).to_be_visible()
+        expect(page.get_by_role("button", name="Search", exact=True)).to_be_visible()
         dialog, field = self.jump(page, "sensor")
         options = dialog.get_by_role("option")
         expect(options.first).to_be_visible()
@@ -162,7 +164,7 @@ class SearchJourney(unittest.TestCase):
     def test_03_arrow_keys_choose_and_old_versions_open_at_their_version(self) -> None:
         page = self.page("nia")
         page.goto("/")
-        page.get_by_role("button", name=re.compile("Jump to")).click()
+        page.get_by_role("button", name="Search", exact=True).click()
         dialog = page.get_by_role("dialog", name="Jump to")
         field = dialog.get_by_role("combobox", name="Jump to")
         expect(field).to_be_focused()
@@ -303,11 +305,17 @@ class SearchJourney(unittest.TestCase):
 
     # ---------------------------------------------------------------- phone
 
+    def test_07b_target_measurement_preserves_the_44px_boundary(self) -> None:
+        for size in (44, 48, 43.99997):
+            self.assertTrue(has_minimum_touch_size(size), str(size))
+        for size in (43.5, 43.75, 43.99, 43.9989, 0, -1, float("nan"), float("inf")):
+            self.assertFalse(has_minimum_touch_size(size), str(size))
+
     def test_08_phone_search_from_the_drawer_and_the_page(self) -> None:
         page = self.page("nia", phone=True)
         page.goto("/")
         page.get_by_role("button", name="Open navigation").click()
-        page.get_by_role("dialog", name="Flux").get_by_role("button", name=re.compile("Jump to")).click()
+        page.get_by_role("dialog", name="Flux").get_by_role("button", name="Search", exact=True).click()
         dialog = page.get_by_role("dialog", name="Jump to")
         expect(dialog).to_be_visible()
         box = dialog.bounding_box()
@@ -318,11 +326,15 @@ class SearchJourney(unittest.TestCase):
         options = dialog.get_by_role("option")
         expect(options.first).to_be_visible()
         cancel = dialog.get_by_role("button", name="Cancel")
+        # Read a settled sheet rather than accepting a genuinely undersized target by rounding.
+        dialog.evaluate("el => Promise.all(el.getAnimations({subtree: true}).filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished))")
         cancel_box = cancel.bounding_box()
         assert cancel_box is not None
-        self.assertGreaterEqual(cancel.evaluate("el => parseFloat(getComputedStyle(el).minHeight)"), 44)
-        # Chromium can report44px as43.999996 at a fractional transformed origin.
-        # Keep the actual44px style and reject a physically shorter target beyond float noise.
+        minimum = cancel.evaluate("el => parseFloat(getComputedStyle(el).minHeight)")
+        self.assertTrue(math.isfinite(minimum))
+        self.assertGreaterEqual(minimum, 44)
+        # Keep the newer main's stricter noise tolerance; never round a shorter target up.
+        self.assertTrue(math.isfinite(cancel_box["height"]))
         self.assertGreaterEqual(cancel_box["height"], 44 - 0.0001)
         for index in range(min(options.count(), 5)):
             option_box = options.nth(index).bounding_box()

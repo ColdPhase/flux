@@ -104,10 +104,11 @@ export function ProjectStateRow({ summary, phase }: { summary: ProjectWorkSummar
  * read (#155: never the whole project's work); it opens the task in Details. Until that read answers,
  * the title stored with the thread is shown.
  */
-export function DiscussedTask({ task, row }: { task: { workId: string; title: string }; row: NativeWorkRow | null }) {
+export function DiscussedTask({ task, row }: { task: { workId: string; title: string; number?: number }; row: NativeWorkRow | null }) {
   const { openDetails } = useShellActions();
   const item = row?.kind === 'work' && row.id === task.workId ? row : null;
-  return <ObjectChip icon="tasks" number={item?.number} kind={item ? rest(workLine(item)) : 'Task'} title={item?.title ?? task.title} label="Discussion of task"
+  // The root carries the immutable number, so the chip does not grow when the reference row arrives (#367).
+  return <ObjectChip icon="tasks" number={item?.number ?? task.number} kind={item ? rest(workLine(item)) : 'Task'} title={item?.title ?? task.title} label="Discussion of task"
     objectKind="work" objectId={task.workId} nativeRef={`work:${task.workId}`} onOpen={() => openDetails({ kind: 'work', id: task.workId })} />;
 }
 
@@ -130,7 +131,7 @@ const rest = (line: string) => line.replace(/^Work · /, '');
 export function MessageObjects({ message, projectId, preview, thread = null, threadRow = null }: {
   message: ConversationMessage; projectId: string; preview: MessageWorkPreview | null;
   /** The task whose discussion this message opened (UI116-3), and its row from the visible reference read. */
-  thread?: { workId: string; title: string } | null; threadRow?: NativeWorkRow | null;
+  thread?: { workId: string; title: string; number?: number } | null; threadRow?: NativeWorkRow | null;
 }) {
   const { openDetails } = useShellActions();
   const { me } = useShellData();

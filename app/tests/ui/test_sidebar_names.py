@@ -97,14 +97,24 @@ class SidebarNames(unittest.TestCase):
                 messages = drawer.get_by_text("Messages", exact=True)
                 messages.scroll_into_view_if_needed()
                 expect(messages).to_be_in_viewport()
-        # A two-line row as the current project keeps its marker and its workspace line.
+        # A two-line row as the current project keeps its workspace line, and its raised pill (the row's
+        # own, or the travelling highlight once settled on it) covers exactly that row (F-026 §4).
         current = self.page()
         current.goto("/")
         current.locator('.side__project[title="Gesture lamp · Lamp studio Berlin"]').click()
         row = current.locator(".side__project.is-open")
         expect(row).to_contain_text("Lamp studio Berlin")
-        marker = row.evaluate("el => { const r = el.getBoundingClientRect(), b = getComputedStyle(el, '::before'); return { top: parseFloat(b.top), height: parseFloat(b.height), row: r.height }; }")
-        self.assertLessEqual(marker["top"] + marker["height"], marker["row"], f"the marker sits within the row: {marker}")
+        measure = """el => { const r = el.getBoundingClientRect(), glide = el.closest('.side__list')?.querySelector('.side__glide');
+          const pill = glide && getComputedStyle(glide).opacity === '1' ? glide.getBoundingClientRect() : r;
+          return { top: r.top, row: r.height, pillTop: pill.top, pill: pill.height }; }"""
+        for _ in range(20):
+            marker = row.evaluate(measure)
+            if abs(marker["pillTop"] - marker["top"]) <= 1 and abs(marker["pill"] - marker["row"]) <= 1:
+                break
+            current.wait_for_timeout(100)
+        self.assertGreater(marker["row"], 40, f"a two-line row: {marker}")
+        self.assertAlmostEqual(marker["pillTop"], marker["top"], delta=1, msg=f"the pill sits on the row: {marker}")
+        self.assertAlmostEqual(marker["pill"], marker["row"], delta=1, msg=f"the pill covers the whole row: {marker}")
         shot(current, "sidebar-same-names-current-desktop")
 
 
