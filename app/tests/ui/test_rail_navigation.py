@@ -184,6 +184,7 @@ class RailNavigation(unittest.TestCase):
                 rail = page.locator(".side--rail")
                 stop = rail.get_by_role("button", name="Stop your assistant", exact=True)
                 expect(stop).to_be_visible()
+                shot(page, f"340-rail-populated-before-controls-{engine}")
                 expect(stop).to_be_in_viewport()
                 expect(rail.get_by_role("button", name=re.compile("Ada Kowalska.*account and sign out"))).to_be_in_viewport()
                 expect(rail.get_by_role("link", name="Settings", exact=True)).to_be_in_viewport()
