@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { agentMcpPolicyPath, type AgentMcpPolicy, type SaveAgentMcpPolicy } from '@flux/contracts';
-import { coworkPlaybookUri } from '@flux/core';
+import { coworkPlaybookReference, coworkPlaybookUri } from '@flux/core';
 import { pool } from './support/db.js';
 import { publicOrigin, register, uniqueEmail } from './support/http.js';
 import { beginOauth, expect, mcp, oauthToken, toolValue } from './support/mcp.js';
@@ -56,7 +56,8 @@ async function connected() {
   let id = 100;
   const call = (method: string, params: Record<string, unknown>) => mcp(token, id++, method, params);
   const tool = (name: string, args: Record<string, unknown> = {}) => call('tools/call', { name, arguments: args });
-  return { owner, projects, grants, projectId, doc, material, work, initial, connection, connectionId, get, save, input, call, tool };
+  return { owner, workspaceId: String(workspace.id), agentId: String(agent.id), projects, grants, projectId,
+    doc, material, work, initial, connection, connectionId, get, save, input, call, tool };
 }
 
 function unavailable(response: Awaited<ReturnType<typeof mcp>>) {
@@ -138,4 +139,36 @@ test('all Off stays manageable and an excluded inaccessible original project can
   assert.deepEqual([...original.scopes].sort(), [...f.connection.scopes as string[]].sort());
   expect(await f.owner.request('DELETE', `/api/v1/agent-connections/${f.connectionId}`), 204);
   assert.equal((await f.tool('flux_list_contexts')).status, 403);
+});
+
+
+test('removed owner membership refuses project-independent resources and runtime ACKs on the old bearer without blocking removal-only management', async () => {
+  const f = await connected();
+  const ownerId = (expect(await f.owner.request('GET', '/api/v1/me'), 200).user as { id: string }).id;
+  const otherEmail = uniqueEmail('remaining-switch-owner');
+  await register(otherEmail, 'correct horse battery staple');
+  expect(await f.owner.request('POST', `/api/v1/workspaces/${f.workspaceId}/members`,
+    { body: { email: otherEmail, role: 'owner' } }), 201);
+  const reference = coworkPlaybookReference(); const clientSessionId = randomUUID();
+  const acknowledgement = { clientSessionId, bundleId: reference.bundleId, version: reference.version, digest: reference.digest };
+  const acknowledged = toolValue((await f.tool('flux_acknowledge_playbook', acknowledgement)).message);
+  assert.equal(typeof acknowledged.runtimeSessionId, 'string');
+  assert.ok(JSON.stringify((await f.call('resources/read', { uri: reference.retrievalReference })).message).includes(reference.digest));
+  const countRuntimes = async () => (await pool.query(
+    'SELECT count(*)::int AS n FROM agent_runtime_sessions WHERE connection_id=$1', [f.connectionId])).rows[0].n as number;
+  const before = await countRuntimes(); assert.equal(before, 1);
+  const original = expect(await f.owner.request('GET', agentMcpPolicyPath(f.connectionId)), 200).connection;
+  expect(await f.owner.request('DELETE', `/api/v1/workspaces/${f.workspaceId}/members/${ownerId}`), 204);
+  assert.equal((await pool.query('SELECT revoked_at FROM agents WHERE id=$1', [f.agentId])).rows[0].revoked_at, null,
+    'the actual membership removal leaves the agent row unrevoked, isolating the current-membership boundary');
+  unavailable(await f.call('resources/read', { uri: reference.retrievalReference }));
+  unavailable(await f.tool('flux_acknowledge_playbook', acknowledgement));
+  unavailable(await f.tool('flux_acknowledge_playbook', { ...acknowledgement, clientSessionId: randomUUID() }));
+  assert.equal(await countRuntimes(), before, 'refused ACKs neither reuse authority nor create another runtime');
+  assert.deepEqual(await f.get(), f.initial, 'an ordinary owner session can still inspect the structural saved policy');
+  await f.save({ enabledCapabilityIds: [], enabledEntryIds: [], selectedProjectIds: [] });
+  assert.deepEqual(expect(await f.owner.request('GET', agentMcpPolicyPath(f.connectionId)), 200).connection, original,
+    'removal-only management changes no original consent');
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM agent_standing_grants WHERE connection_id=$1',
+    [f.connectionId])).rows[0].n, 0, 'management creates no execution authority');
 });

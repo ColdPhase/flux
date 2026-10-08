@@ -1,5 +1,5 @@
 import { AGENT_MCP_SOURCE_CAPABILITIES, type AgentMcpPolicy, type AgentScope } from '@flux/contracts';
-import { agentProjectReads, DomainError, enforce, evaluateProject, requireAgentMcpEntry, requireAgentSelection, type AgentConnectionContext,
+import { agentProjectReads, DomainError, enforce, evaluateProject, loadActor, requireAgentMcpEntry, requireAgentSelection, type AgentConnectionContext,
   type AgentProjectObjectKind, type Database, type Transaction } from '@flux/core';
 import { agentProjectObjectRows, lockAgentMcpPolicy } from '@flux/db';
 import { createAgentConnectionStore } from './store.js';
@@ -52,6 +52,11 @@ export async function agentConnectionInTransaction(tx: Transaction, claims: Flux
         throw new DomainError(403, 'MCP_SCOPE_REQUIRED', 'The connection lacks the required scope');
       requireAgentMcpEntry(mcpPolicy, claims.dispatch.dependencies.capturedVersion, entry,
         claims.dispatch.dependencies.capabilities);
+      // Project-independent resources and runtime ACKs also require the owned
+      // agent's current owner membership, under the same protected lock prefix.
+      const actor = await loadActor({ kind: 'agent', id: row.agentId }, row.workspaceId, tx, { lock: true });
+      if (!actor.active || actor.agent?.ownerUserId !== row.ownerUserId)
+        throw new DomainError(403, 'MCP_ENTRY_UNAVAILABLE', 'This capability is unavailable');
     }
     const connection: AgentConnectionContext = {
       connectionId: row.id, ownerUserId: row.ownerUserId, agentId: row.agentId,

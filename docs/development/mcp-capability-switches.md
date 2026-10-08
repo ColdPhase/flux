@@ -268,3 +268,17 @@ its distinct verification. This admission continuation still uses the existing S
 Node relay: queued headers/bytes, runtime/grant/source/post-state delivery fences,
 real held write/two-API races, browser controls, migration/identity composition and
 complete S6 acceptance remain unimplemented or unverified. It is not a merge candidate.
+
+
+### Current owner membership for project-independent entries
+
+The trusted MCP admission continuation also locks the current owned agent and its
+owner's workspace membership before any project-independent playbook resource or
+runtime acknowledgement. Removing membership through the ordinary workspace API
+need not revoke the agent row; the old bearer must nevertheless refuse both an
+existing session ACK and a new session ACK without creating a runtime. An added
+fourth real OAuth/API/SQL admission case covers that boundary and retained ordinary
+owner inspection/removal-only policy management. It is prepared, not executed.
+The earlier `62fd94a63e12882547dc5d3816e8b5713086eb59` source review is historical
+and qualified by this omitted boundary. No relay, complete S6 or runtime acceptance
+is claimed by this correction.
