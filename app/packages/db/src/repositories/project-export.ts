@@ -162,6 +162,23 @@ export function projectExportRows(db: DbExecutor) {
       return rows.map((row) => ({ id: row.id, title: row.title, finding: row.finding, evidence: row.evidence, createdBy: { kind: row.createdByKind, id: row.createdById }, createdAt: iso(row.createdAt) }));
     },
 
+    async githubSources(projectId: string) {
+      const [bindings, rules, [defaults]] = await Promise.all([
+        db.select().from(schema.githubBindings).where(eq(schema.githubBindings.projectId, projectId)).orderBy(asc(schema.githubBindings.createdAt), asc(schema.githubBindings.id)),
+        db.select().from(schema.githubTaskRules).where(eq(schema.githubTaskRules.projectId, projectId)).orderBy(asc(schema.githubTaskRules.taskId)),
+        db.select().from(schema.githubRuleDefaults).where(eq(schema.githubRuleDefaults.projectId, projectId)),
+      ]);
+      const defaultMode = defaults?.mode ?? null;
+      if (!bindings.length && !rules.length && !defaultMode) return null;
+      // Identity of the repository and the rule's intent only: no installation, App, author, generation or expected-state columns.
+      return {
+        dormant: true as const, defaultMode,
+        bindings: bindings.map((row) => ({ id: row.id, host: 'github.com' as const, repositoryId: row.repositoryId, owner: row.owner, name: row.name, private: row.private,
+          url: row.url, recordedState: row.state, enabled: false as const, createdAt: iso(row.createdAt) })),
+        rules: rules.map((row) => ({ taskId: row.taskId, mode: row.mode, recordedState: row.state, enabled: false as const })),
+      };
+    },
+
     async links(projectId: string) {
       const rows = await db.select().from(l).where(eq(l.projectId, projectId)).orderBy(asc(l.createdAt), asc(l.id));
       return rows.map((row) => ({

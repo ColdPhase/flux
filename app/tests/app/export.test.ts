@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { gunzipSync } from 'node:zlib';
 import { before, describe, test } from 'node:test';
+import { createDatabase } from '@flux/db';
 import Fastify from 'fastify';
 import {
   PROJECT_EXPORT_EXCLUDED,
@@ -233,6 +234,41 @@ describe('project export', () => {
     assert.equal(broken.valid, false, 'the schema rejects another format version');
     const extra = await validate({ ...data, dms: [] });
     assert.equal(extra.valid, false, 'the schema rejects unknown top-level parts');
+  });
+
+  test('GitHub bindings and rules export dormant: identity and intent only, no installation, tokens or people', async () => {
+    const connectionString = process.env.DATABASE_URL;
+    if (!connectionString) throw new Error('DATABASE_URL is required');
+    const { pool } = createDatabase(connectionString);
+    try {
+      const gh = await createProject(owner, ws.id, `GitHub export ${tag}`, 'workspace');
+      assert.equal(json<ProjectExport>(await owner.browser.request('GET', projectExportPath(gh.id)), 200).githubSources, undefined, 'no GitHub, no section');
+      const task = json<WorkItem>(await post(owner, `/api/v1/projects/${gh.id}/work`, { title: token('GH-task') }), 201, 'github task');
+      const bindingId = randomUUID(); const generation = randomUUID();
+      const SECRET = `SECRET-installation-${tag}`;
+      await pool.query(`INSERT INTO github_bindings (id, workspace_id, project_id, installation_id, repository_id, owner, name, private, url, author_user_id, author_github_user_id, app_id, authorization_generation, state)
+        VALUES ($1,$2,$3,'4242','777','lamp-team','firmware',true,'https://github.com/lamp-team/firmware',$4,'7001','9911',$5,'active')`, [bindingId, ws.id, gh.id, owner.id, generation]);
+      await pool.query(`INSERT INTO github_credentials (user_id, generation, github_user_id, app_id, encrypted_tokens, state) VALUES ($1,$2,'7001','9911',$3,'active')`, [owner.id, generation, SECRET]);
+      await pool.query(`INSERT INTO github_task_rules (task_id, workspace_id, project_id, mode, state, author_user_id, author_github_user_id, author_generation, app_id, expected_version, expected_status)
+        VALUES ($1,$2,$3,'complete','active',$4,'7001',$5,'9911',$6,'open')`, [task.id, ws.id, gh.id, owner.id, generation, task.version]);
+      await pool.query(`INSERT INTO github_rule_defaults (project_id, workspace_id, mode) VALUES ($1,$2,'ready')`, [gh.id, ws.id]);
+
+      const response = await owner.browser.request('GET', projectExportPath(gh.id));
+      const data = json<ProjectExport>(response, 200, 'github export');
+      assert.deepEqual(data.githubSources, {
+        dormant: true, defaultMode: 'ready',
+        bindings: [{ id: bindingId, host: 'github.com', repositoryId: '777', owner: 'lamp-team', name: 'firmware', private: true, url: 'https://github.com/lamp-team/firmware',
+          recordedState: 'active', enabled: false, createdAt: data.githubSources!.bindings[0]!.createdAt }],
+        rules: [{ taskId: task.id, mode: 'complete', recordedState: 'active', enabled: false }],
+      });
+      const text = JSON.stringify(data);
+      for (const hidden of ['4242', '9911', '7001', generation, SECRET]) assert.ok(!text.includes(hidden), `export leaks ${hidden}`);
+      const checked = await (await validator())(data);
+      assert.ok(checked.valid, `github export does not match its JSON Schema: ${checked.errors}`);
+      const enabled = await (await validator())({ ...data, githubSources: { ...data.githubSources, rules: [{ ...data.githubSources!.rules[0], enabled: true }] } });
+      assert.equal(enabled.valid, false, 'the schema rejects an enabled rule');
+      assert.equal(json<ProjectExport>(await owner.browser.request('GET', projectExportPath(lamp.id)), 200).githubSources, undefined, 'another project has none');
+    } finally { await pool.end(); }
   });
 
   test('the bundle is a tar.gz with project.json, docs as Markdown, the schema and a checked manifest', async () => {

@@ -71,6 +71,7 @@ names.
 | `docs` | Docs with every version: title, Markdown text, `draft`/`published`, reason, author, time, and `file` (the Markdown file of the current text). |
 | `sketches` | Project sketches with their thoughts (text, position, size, shape, author, version) and links between thoughts (label). |
 | `work`, `decisions`, `results` | All fields of #101: status, blocker, owner, parking, who proposed and who accepted, supersession, finding, evidence. |
+| `githubSources` (optional) | Only for projects that connected GitHub (#74): `dormant: true`, the project's default rule mode, `bindings` (stable repository id, owner, name, privacy, URL, the state it had, `enabled: false`) and `rules` (task id, mode, the state it had, `enabled: false`). It never carries installation or App ids, tokens, authorization generations, who connected the repository, webhook deliveries or pull request data, and nothing in it runs. Nothing imports it yet (`reimportSupported: false`); a future import must create it disabled and require a person to reconnect and re-authorize each repository on the destination. |
 | `links` | Typed links (`source`, `affects`, `still_applies`, `about`, `related`, `mentions`) whose two ends are both in the export. |
 
 ## What is never exported
