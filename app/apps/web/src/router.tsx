@@ -14,7 +14,8 @@ import { DocHistory, DocReader, WikiHome, WorkspaceDocs, docHistoryLoader, docLo
 import { DocEditor, docEditLoader } from './docs/DocEditor';
 import { WikiLayout, wikiLoader, wikiShouldRevalidate } from './docs/Wiki';
 import { Booting, RouteErrorPage } from './app/errors';
-import { ConversationView, NotFoundView, TasksView } from './app/views';
+import { NotFoundView, TasksView } from './app/views';
+import { Home } from './app/Home';
 import { DmIndex, NewDm } from './dm/DmIndex';
 import { DmConversation, dmLoader } from './dm/DmConversation';
 import { DmSketches } from './dm/DmSketches';
@@ -76,7 +77,7 @@ export const router = createBrowserRouter([
         Component: AppLayout,
         ErrorBoundary: RouteErrorPage,
         children: [
-          { index: true, Component: ConversationView },
+          { index: true, Component: Home },
           { path: 'projects', Component: ProjectsIndex },
           { path: 'projects/new', Component: ProjectSetup },
           {

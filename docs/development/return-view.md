@@ -14,10 +14,11 @@ person's **own** `event_audience` rows (an event `seq`). It is never sent to cli
 conversation points are deleted with their place.
 
 - **Visiting acknowledges nothing (HOME-1, #190; amends #106 AC-1).** Home reads the summary and
-  never moves its point. "I have the context" at the end of Home's "Since you left" saves the
-  summary's opaque `mark` (the id of the reader's last audience row when the summary was built),
-  as a project's What matters does (#133). A reload, a glance on the phone or leaving Home keeps
-  the list. The one automatic save is the first visit to a place with no point
+  never moves its point. The summary's opaque `mark` (the id of the reader's last audience row when the
+  summary was built) is saved by "I have the context" in a project's What matters (#133) and, since #342,
+  by following Home's "Continue where you left off" card (its next step is this summary's `nextStep`;
+  the list itself left Home with the final design). A reload, a glance on the phone or leaving Home keeps
+  the card. The one automatic save is the first visit to a place with no point
   (`point.savedAt === null`): nothing was shown, so it saves a starting point at the mark.
 - **Saving.** The server accepts only a mark that is one of the caller's own audience rows. Saving
   is forward-only: an older mark never moves the point back. `POST /api/v1/return-points/restore`

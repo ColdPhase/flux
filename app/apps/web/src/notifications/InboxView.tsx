@@ -1,129 +1,121 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
-import type { InboxItem, NotificationReason } from '@flux/contracts';
-import { Button, EmptyState, ErrorState, Icon, IconButton, Spinner, useToast, type IconName } from '../ui';
-import { announceInboxChange, getInbox, getInboxItem, markAllInboxRead, markInboxRead } from './api';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
+import type { NeedsYouItem, NeedsYouKind } from '@flux/contracts';
+import { Button, ErrorState, Icon, Kreska, Spinner, Tabs, type TabItem } from '../ui';
+import { useShellData } from '../app/data';
+import { announceInboxChange, getInboxItem, markInboxRead } from './api';
+import { NeedsYouCard, type CardHandlers } from './NeedsYouCard';
+import { useNeedsYou } from './needsYou';
+import { useNeedsYouActions } from './useNeedsYouActions';
 import './notifications.css';
+import './needs-you.css';
 
-/** Why an item is here, in words, with a quiet icon (#116: every notification has a reason). */
-export const REASONS: Record<NotificationReason, { label: string; icon: IconName }> = {
-  mention: { label: 'Mentioned you', icon: 'people' },
-  question: { label: 'Asked you', icon: 'chat' },
-  reply: { label: 'Reply', icon: 'chat' },
-  dm: { label: 'Direct message', icon: 'mail' },
-  assigned: { label: 'Assigned to you', icon: 'tasks' },
-  review: { label: 'For your review', icon: 'rule' },
-  invitation: { label: 'Invited you', icon: 'people' },
+type Filter = 'all' | NeedsYouKind;
+const FILTERS: { id: Filter; label: string }[] = [
+  { id: 'all', label: 'All' }, { id: 'decision', label: 'Decisions' }, { id: 'question', label: 'Questions' },
+  { id: 'blocked', label: 'Blocked' }, { id: 'mention', label: 'Mentions' },
+];
+const ASKING: Record<Filter, string> = {
+  all: 'Nothing needs you right now', decision: 'No decisions wait for you', question: 'No questions wait for you',
+  blocked: 'None of your tasks is blocked', mention: 'No mentions wait for you',
 };
 
-const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
-const day = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
-
-export function when(iso: string, now = new Date()) {
-  const date = new Date(iso);
-  const minutes = Math.round((now.getTime() - date.getTime()) / 60_000);
-  if (minutes < 1) return 'now';
-  if (minutes < 60) return `${minutes} min`;
-  if (date.toDateString() === now.toDateString()) return time.format(date);
-  return day.format(date);
-}
-
-function Row({ item, onRead }: { item: InboxItem; onRead: (id: string) => void }) {
-  const reason = item.reason ? REASONS[item.reason] : { label: 'Update', icon: 'bell' as IconName };
-  const unread = !item.readAt;
-  const open = (event: MouseEvent<HTMLAnchorElement>) => {
-    if (event.button !== 0) return;
-    if (unread) onRead(item.id);
-  };
-  return (
-    <li className={`inbox__row${unread ? ' is-unread' : ''}`}>
-      <Link to={item.url ?? `/inbox/${item.id}`} className="inbox__item" onClick={open}>
-        <span className={`inbox__ic inbox__ic--${item.reason ?? 'other'}`} aria-hidden="true"><Icon name={reason.icon} size={14} /></span>
-        <span className="inbox__text">
-          <span className="inbox__title">{item.title}</span>
-          {item.body ? <span className="inbox__body">{item.body}</span> : null}
-          <span className="inbox__meta">{reason.label}<span aria-hidden="true"> · </span><time dateTime={item.createdAt}>{when(item.createdAt)}</time></span>
-        </span>
-        {unread ? <span className="inbox__dot"><span className="ui-vh">, unread</span></span> : null}
-      </Link>
-      {unread ? <IconButton icon="check" label="Mark as read" className="inbox__read" onClick={() => onRead(item.id)} /> : null}
-    </li>
-  );
+/** Keys of the queue (F-026 §4): outside fields and dialogs, J and K move, A accepts, E marks done, S asks when. */
+function useQueueKeys(items: NeedsYouItem[], selected: string | null, select: (key: string) => void, handlers: CardHandlers, openMenu: (key: string) => void) {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"], [role="dialog"], [role="menu"], #details')) return;
+      const key = event.key.toLowerCase();
+      const at = items.findIndex((item) => item.key === selected);
+      const current = items[at] ?? null;
+      if (key === 'j' || key === 'k') {
+        event.preventDefault();
+        const next = items[key === 'j' ? Math.min(items.length - 1, at + 1) : Math.max(0, at < 0 ? 0 : at - 1)];
+        if (next) select(next.key);
+      } else if (key === 'a' && current?.kind === 'decision') { event.preventDefault(); handlers.accept(current); }
+      else if (key === 'e' && current) { event.preventDefault(); handlers.done(current); }
+      else if (key === 's' && current) { event.preventDefault(); openMenu(current.key); }
+      // Enter on the page itself opens the item; on a button or link it does what that control does.
+      else if (event.key === 'Enter' && current && (!target || target === document.body || target.id === 'content')) { event.preventDefault(); handlers.open(current); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [items, selected, select, handlers, openMenu]);
 }
 
 /**
- * The inbox (#116): what involves you, newest first, each with why it matters and a link to
- * the exact source. Opening an item marks it read. Nothing has to be cleared; there is no count.
+ * The Inbox (#342, F-026 S1): "Needs you" is the one queue. Decisions you can accept, questions to you,
+ * your blocked tasks and mentions, across projects, with the filters All, Decisions, Questions, Blocked
+ * and Mentions. There is no Decisions view: a decision waits here until someone accepts it.
  */
 export function InboxView() {
-  const [items, setItems] = useState<InboxItem[] | null>(null);
-  const [failed, setFailed] = useState(false);
-  const toast = useToast();
-  const fetchInbox = useCallback((signal?: AbortSignal) => {
-    getInbox(signal).then((inbox) => { setFailed(false); setItems(inbox.items); }, (error: unknown) => {
-      if (!(error instanceof DOMException && error.name === 'AbortError')) setFailed(true);
-    });
+  const { me } = useShellData();
+  const queue = useNeedsYou(me.user.id);
+  const handlers = useNeedsYouActions(queue);
+  // `?show=decisions` is where the retired Decisions view's links lead.
+  const [asked] = useSearchParams();
+  const [filter, setFilter] = useState<Filter>(() => FILTERS.find((entry) => `${entry.id}s` === asked.get('show') || entry.id === asked.get('show'))?.id ?? 'all');
+  const [selected, setSelected] = useState<string | null>(null);
+  const [menu, setMenu] = useState<string | null>(null);
+
+  const all = useMemo(() => queue.items ?? [], [queue.items]);
+  const counts = useMemo(() => {
+    const result: Record<Filter, number> = { all: all.length, decision: 0, question: 0, blocked: 0, mention: 0 };
+    for (const item of all) result[item.kind] += 1;
+    return result;
+  }, [all]);
+  const shown = useMemo(() => (filter === 'all' ? all : all.filter((item) => item.kind === filter)), [all, filter]);
+  // The selection stays on its item, and moves to the neighbour at its place when that item leaves.
+  const at = shown.findIndex((item) => item.key === selected);
+  const [place, setPlace] = useState({ key: selected, index: 0 });
+  if (at >= 0 && (place.key !== selected || place.index !== at)) setPlace({ key: selected, index: at });
+  const current = at >= 0 ? shown[at]! : shown[Math.min(place.index, shown.length - 1)] ?? null;
+  const select = useCallback((key: string) => {
+    setSelected(key);
+    document.querySelector<HTMLElement>(`.nyc[data-key="${CSS.escape(key)}"]`)?.scrollIntoView({ block: 'nearest' });
   }, []);
-  const load = () => { setFailed(false); fetchInbox(); };
-  useEffect(() => {
-    const controller = new AbortController();
-    fetchInbox(controller.signal);
-    const onFocus = () => fetchInbox();
-    window.addEventListener('focus', onFocus);
-    return () => { controller.abort(); window.removeEventListener('focus', onFocus); };
-  }, [fetchInbox]);
+  const openMenu = useCallback((key: string) => { setSelected(key); setMenu((open) => (open === key ? null : key)); }, []);
+  useQueueKeys(shown, current?.key ?? null, select, handlers, openMenu);
 
-  const read = (id: string) => {
-    const at = new Date().toISOString();
-    setItems((list) => list?.map((item) => (item.id === id ? { ...item, readAt: item.readAt ?? at } : item)) ?? null);
-    void markInboxRead(id).then(announceInboxChange, () => undefined);
-  };
-  const readAll = () => {
-    const at = new Date().toISOString();
-    setItems((list) => list?.map((item) => ({ ...item, readAt: item.readAt ?? at })) ?? null);
-    void markAllInboxRead().then(announceInboxChange, () => toast({ message: 'Could not mark everything read. Try again.', tone: 'danger' }));
-  };
+  const tabs: TabItem[] = FILTERS.map((entry) => ({ id: entry.id, label: entry.label, count: counts[entry.id], countLabel: `, ${counts[entry.id]}` }));
+  const summary = queue.items === null ? '' : counts.all ? `${counts.all} need${counts.all === 1 ? 's' : ''} you · all projects` : 'all clear · all projects';
 
-  const fresh = items?.filter((item) => !item.readAt) ?? [];
-  const earlier = items?.filter((item) => item.readAt) ?? [];
   return (
-    <div className="pane-scroll"><div className="pane-in inbox">
-      <div className="inbox__head">
-        <div>
-          <p>Mentions, questions, replies, direct messages, and work or reviews for you. Nothing here needs clearing.</p>
-        </div>
-        <div className="inbox__tools">
-          {fresh.length ? <Button variant="quiet" icon="check" onClick={readAll}>Mark all read</Button> : null}
-          <Link className="ui-btn ui-btn--secondary" to="/settings/notifications"><Icon name="bell" size={14} />Settings</Link>
-        </div>
+    <div className="pane-scroll"><div className="pane-in nyq">
+      <div className="nyq__bar">
+        <p className="nyq__summary" aria-live="polite">{summary}{queue.later ? ` · ${queue.later} for later` : ''}</p>
+        <Tabs variant="segmented" className="nyq__filters" label="Show" items={tabs} value={filter} onChange={(id) => setFilter(id as Filter)} />
       </div>
-      {failed ? (
-        <ErrorState title="The inbox could not load" actions={<Button onClick={() => load()}>Retry</Button>}>
+      {queue.failed && queue.items === null ? (
+        <ErrorState title="The Inbox could not load" actions={<Button onClick={queue.reload}>Retry</Button>}>
           <p>Check your connection. Nothing was lost.</p>
         </ErrorState>
-      ) : items === null ? (
-        <p className="inbox__loading"><Spinner label="Loading the inbox" /></p>
-      ) : !items.length ? (
-        <div className="view-empty">
-          <EmptyState icon="inbox" title="Nothing for you yet" action={<Link className="ui-btn ui-btn--secondary" to="/settings/notifications">Choose what reaches you</Link>}>
-            <p>When someone mentions you, asks you something, replies in your conversation, writes to you directly or hands you work, it appears here.</p>
-          </EmptyState>
+      ) : queue.items === null ? (
+        <p className="inbox__loading"><Spinner label="Loading the Inbox" /></p>
+      ) : !shown.length ? (
+        <div className="nyq__clear">
+          <Kreska size={96} expression="done" />
+          <h2>{ASKING[filter]}</h2>
+          <p>{filter === 'all' ? 'Enjoy the quiet. Flux will ping you when a decision or question comes in.' : 'Everything else is under All.'}</p>
+          <div className="nyq__clear-actions">
+            {filter === 'all' && queue.doneToday ? <span className="nyq__done">{queue.doneToday} done today</span> : null}
+            {filter !== 'all' ? <Button variant="secondary" onClick={() => setFilter('all')}>Show all</Button> : null}
+            <Link className="ui-btn ui-btn--quiet" to="/settings/notifications">Notification settings</Link>
+          </div>
         </div>
       ) : (
         <>
-          {fresh.length ? (
-            <section aria-labelledby="inbox-new">
-              <h3 className="inbox__h" id="inbox-new">New</h3>
-              <ul className="inbox__list">{fresh.map((item) => <Row key={item.id} item={item} onRead={read} />)}</ul>
-            </section>
-          ) : null}
-          {earlier.length ? (
-            <section aria-labelledby="inbox-earlier">
-              {fresh.length ? null : <p className="inbox__caught">All caught up. Everything below stays here as long as you can open it.</p>}
-              <h3 className="inbox__h" id="inbox-earlier">Earlier</h3>
-              <ul className="inbox__list">{earlier.map((item) => <Row key={item.id} item={item} onRead={read} />)}</ul>
-            </section>
-          ) : null}
+          <ul className="nyq__list" aria-label="Needs you">
+            {shown.map((item) => (
+              <NeedsYouCard key={item.key} item={item} selected={item.key === current?.key} handlers={handlers}
+                menuOpen={menu === item.key} onMenuOpen={(open) => setMenu(open ? item.key : null)} />
+            ))}
+          </ul>
+          <p className="nyq__keys" aria-hidden="true">
+            <span><kbd>J</kbd><kbd>K</kbd> move</span><span><kbd>A</kbd> accept</span><span><kbd>E</kbd> done</span><span><kbd>S</kbd> not now</span><span><kbd>↵</kbd> open</span>
+          </p>
         </>
       )}
     </div></div>

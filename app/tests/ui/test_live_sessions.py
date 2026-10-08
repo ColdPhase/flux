@@ -291,11 +291,11 @@ class LiveJourney(LiveBase):
 
         jonas = self.page("jonas")
         jonas.goto("/inbox")
-        item = jonas.get_by_role("link", name=re.compile("Nia Okafor invited you to work together"))
+        item = jonas.locator(".nyc", has_text="Nia Okafor invited you to work together")
         expect(item).to_have_count(1)
         expect(item).to_contain_text(TASK)
         shot(jonas, "live-desktop-1440-inbox")
-        item.click()
+        item.get_by_role("button", name="Open").click()
         card = jonas.get_by_role("region", name="Invitation to work together")
         expect(card).to_contain_text("Nia Okafor asked you to work together on")
         expect(card.get_by_role("button", name="Later")).to_be_visible()

@@ -250,7 +250,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         # Home's spark button switches ask mode for the owner's own assistant. A note on Home stays private:
         # ask mode only explains where the assistant answers, never sends, and Esc or "Stop asking" leaves it.
         page = self.page("jo")
-        page.goto("/")
+        page.goto("/map")
         composer = page.get_by_label("Private note")
         composer.fill("Which sensor works in the dark?")
         ask = page.get_by_role("button", name="Ask my assistant")
@@ -273,7 +273,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(composer).to_be_focused()
         # Kai has no assistant: the same button leads to "Connect your AI" and never toggles.
         kai = self.page("kai")
-        kai.goto("/")
+        kai.goto("/map")
         expect(kai.locator(".composer__ask")).to_have_accessible_name("Connect your AI")
         expect(kai.locator(".composer__ask")).not_to_have_attribute("aria-pressed", re.compile(".*"))
 
