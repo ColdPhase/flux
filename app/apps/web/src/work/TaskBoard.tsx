@@ -3,9 +3,10 @@ import { createPortal } from 'react-dom';
 import { Link, useRevalidator } from 'react-router';
 import type { ObjectLink, Project, ProjectWorkView, WorkGroup, WorkItem, WorkRelations, WorkRowProjection, WorkStatus } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
-import { AgentTag, Button, Icon, IconButton, Kreska, initials, type IconName } from '../ui';
+import { AgentTag, Button, Icon, IconButton, Kreska, StatusGlyph, initials, type IconName } from '../ui';
 import { createWork, updateWork } from './api';
-import { isFinished, taskNumber } from './format';
+import { STATUS_LABEL, isFinished, taskNumber } from './format';
+import { STATE_KEYS, useStateChange } from './taskState';
 import { getProjectWorkView, getWorkRelations, workRelationReadUrl, workViewReadUrl } from './read-api';
 import type { ReadState } from './read-state';
 import { useWorkRead } from './useWorkRead';
@@ -133,7 +134,7 @@ function MoveMenu({ item, column, busy, buttonRef, onMove, onOpen, onClose }: {
       {COLUMNS.map((choice) => (
         <button key={choice.id} type="button" role="menuitemradio" className="tb-menu__i" tabIndex={-1} aria-checked={choice.id === column}
           disabled={busy} onClick={() => onMove(choice.id)}>
-          <span className={`tb-ring tb-ring--${choice.id}`} aria-hidden="true" /><span>{choice.label}</span>
+          <StatusGlyph status={choice.status} /><span>{choice.label}</span>
           {choice.id === column ? <Icon name="check" size={14} className="tb-menu__check" /> : null}
         </button>
       ))}
@@ -163,7 +164,7 @@ function Card({ item, agentOwner, from, column, meId, writable, hintId, saving, 
   const waiting = isFinished(item) ? 0 : item.prerequisiteCounts.unmet;
   const results = item.relations.results;
   const owner = item.owner;
-  const state = saving ? 'Saving…' : blocked ? 'Blocked' : item.status === 'not_pursued' ? 'Not pursued' : null;
+  const state = saving ? 'Saving…' : item.status === 'not_pursued' ? 'Not pursued' : null;
   const classes = ['tb-card', blocked && 'tb-card--blocked', item.status === 'not_pursued' && 'tb-card--set-aside',
     dragged && 'is-dragging', lifted && 'is-lifted', arrived && 'is-arrived', saving && 'is-saving', menuOpen && 'has-menu'].filter(Boolean).join(' ');
   return (
@@ -171,7 +172,8 @@ function Card({ item, agentOwner, from, column, meId, writable, hintId, saving, 
       onPointerDown={onPointerDown} onClickCapture={onClickCapture} onDragStart={(event) => event.preventDefault()}>
       <div className="tb-card__top">
         <span className="tb-card__id" title={`Task ${taskNumber(item)} · ${item.id}`}><span className="ui-vh">Task </span><span className="ui-task-number">{taskNumber(item)}</span></span>
-        {state ? <span className={`tb-card__state${blocked ? ' tb-card__state--blocked' : ''}`}>{blocked ? <Icon name="alert" size={12} /> : null}{state}</span> : null}
+        {blocked ? <span className="ui-pill ui-pill--inv">Blocked</span> : null}
+        {state ? <span className="tb-card__state">{state}</span> : null}
         {writable ? (
           <IconButton ref={menuButton} icon="more" size={15} label="Move to…" className="tb-card__menu" aria-haspopup="menu" aria-expanded={menuOpen}
             onClick={() => onMenu(!menuOpen)} />
@@ -191,7 +193,7 @@ function Card({ item, agentOwner, from, column, meId, writable, hintId, saving, 
         {owner ? (
           <span className={`tb-card__owner${owner.kind === 'agent' ? ' tb-card__owner--agent' : ''}`}>
             {owner.kind === 'agent' ? <Kreska size={20} /> : <span className="tb-av" aria-hidden="true">{initials(owner.name)}</span>}
-            <span className="tb-card__name">{owner.name}{owner.id === meId && owner.kind === 'human' ? <span className="tb-card__kind"> · you</span> : null}</span>
+            <span className="tb-card__name">{owner.id === meId && owner.kind === 'human' ? 'You' : owner.name}</span>
             {owner.kind === 'agent' ? <><AgentTag />{agentOwner ? <span className="agent-for">for {agentOwner}</span> : null}</> : null}
           </span>
         ) : <span className="tb-card__owner tb-card__owner--none">No owner</span>}
@@ -311,6 +313,13 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
   const attempts = useRef(new Map<string, string>());
   const timers = useRef<{ notice?: number; arrived?: number }>({});
   const latest = useRef<BoardTask[]>([]);
+  const shownSaved = useCallback((saved: WorkItem) => {
+    setConfirmed((now) => ({ ...now, [saved.id]: saved }));
+    window.clearTimeout(timers.current.arrived);
+    setArrived(saved.id);
+    timers.current.arrived = window.setTimeout(() => setArrived(null), 1200);
+  }, []);
+  const changeState = useStateChange(shownSaved, refresh);
 
   // The Open column is the Tasks tab's own read; the other groups are read here, each a bounded
   // first page that re-reads with the tab's refreshes and the router's revalidation.
@@ -536,6 +545,16 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
   const onCardKey = (event: ReactKeyboardEvent<HTMLButtonElement>, item: BoardTask, from: ColumnId) => {
     if (!writable) return;
     if (!lifted || lifted.id !== item.id) {
+      // 1-5 set the state at once (F-026 S9); the toast offers Undo.
+      const status = STATE_KEYS[event.key];
+      if (status && !event.ctrlKey && !event.metaKey && !event.altKey && !event.repeat && !(item.id in pending)) {
+        event.preventDefault();
+        if (status === item.status) { say(`“${item.title}” is already ${STATUS_LABEL[status]}.`); return; }
+        focusCard.current = { id: item.id, until: focusDeadline() };
+        setPicked(columnOf(status));
+        void changeState(item, status).then((stored) => { if (stored) say(`${taskNumber(item)} is now ${STATUS_LABEL[status]}.`); else setPicked(from); });
+        return;
+      }
       if (event.key !== ' ' || event.repeat || item.id in pending) return;
       event.preventDefault();
       spaceLift.current = true;
@@ -587,7 +606,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
 
   return (
     <div className="tb-wrap">
-      <p id={hintId} className="ui-vh">Space picks the task up to move it between columns. “Move to…” offers the same choices.</p>
+      <p id={hintId} className="ui-vh">Space picks the task up to move it between columns; “Move to…” offers the same choices. The keys 1 to 5 set its state: Open, In progress, Blocked, Done, Not pursued. Z undoes the last change.</p>
       <p className="ui-vh" aria-live="polite">{spoken}</p>
       {/* While a card is picked up by keyboard, say where it goes and how, on screen too (the live
           region above already speaks it, so this copy is hidden from assistive technology). */}
@@ -601,7 +620,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
       <nav className="tb-overview" aria-label="Task status">
         {COLUMNS.map((column) => (
           <button key={column.id} type="button" className="tb-ov" aria-pressed={current === column.id} onClick={() => { setPicked(column.id); if (adding && adding !== column.id) dismissAdding(); }}>
-            <span className="tb-ov__l"><span className={`tb-ring tb-ring--${column.id}`} aria-hidden="true" />{column.label}</span>
+            <span className="tb-ov__l"><StatusGlyph status={column.status} />{column.label}</span>
             <span className="tb-ov__n">{totals[column.id]}<span className="ui-vh"> {totals[column.id] === 1 ? 'task' : 'tasks'}</span>
               {column.id === 'in_progress' && blocked ? <span className="tb-ov__b"><Icon name="alert" size={12} />{blocked} blocked</span> : null}
             </span>
@@ -640,7 +659,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
           return (
             <section key={column.id} className="tb-col" data-column={column.id} aria-labelledby={headingId}>
               <div className="tb-col__head">
-                <span className={`tb-ring tb-ring--${column.id}`} aria-hidden="true" />
+                <StatusGlyph status={column.status} className="tb-col__g" />
                 <h2 className="tb-col__h" id={headingId}>{column.label}</h2>
                 <span className="tb-col__n">{totals[column.id]}<span className="ui-vh"> {totals[column.id] === 1 ? 'task' : 'tasks'}</span></span>
                 {column.id === 'in_progress' && blocked ? <span className="tb-col__b"><Icon name="alert" size={12} />{blocked} blocked</span> : null}

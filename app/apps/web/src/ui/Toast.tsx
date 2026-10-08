@@ -10,10 +10,13 @@ export interface ToastOptions {
   tone?: ToastTone;
   /** Milliseconds before it leaves on its own; errors stay until dismissed. */
   timeout?: number;
+  /** One button after the message, e.g. "Undo". The key Z runs the newest toast's action while it is shown. */
+  action?: { label: string; onClick: () => void };
 }
 
-interface ToastEntry extends Required<Omit<ToastOptions, 'timeout'>> {
+interface ToastEntry extends Required<Omit<ToastOptions, 'timeout' | 'action'>> {
   id: number;
+  action: ToastOptions['action'] | null;
   timeout: number | null;
   leaving: boolean;
 }
@@ -51,6 +54,11 @@ function ToastItem({ toast, onDone }: { toast: ToastEntry; onDone: (id: number) 
     <div ref={ref} className={`ui-toast ui-toast--${toast.tone}`} onMouseEnter={disarm} onMouseLeave={arm} onFocus={disarm} onBlur={arm}>
       {toast.tone === 'success' ? <Icon name="check" /> : toast.tone === 'danger' ? <Icon name="alert" /> : null}
       <span className="ui-toast__msg">{toast.message}</span>
+      {toast.action ? (
+        <button type="button" className="ui-toast__action" onClick={() => { toast.action!.onClick(); dismiss(); }}>
+          {toast.action.label}{toast.action.label === 'Undo' ? <kbd aria-hidden="true">Z</kbd> : null}
+        </button>
+      ) : null}
       <button type="button" className="ui-toast__close" onClick={dismiss} aria-label="Dismiss notification"><Icon name="x" size={14} /></button>
     </div>
   );
@@ -62,12 +70,29 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const nextId = useRef(1);
   const show = useCallback((options: ToastOptions) => {
     const tone = options.tone ?? 'neutral';
-    const entry: ToastEntry = { id: nextId.current++, message: options.message, tone, timeout: options.timeout ?? (tone === 'danger' ? null : 5000), leaving: false };
+    const entry: ToastEntry = { id: nextId.current++, message: options.message, tone, action: options.action ?? null, timeout: options.timeout ?? (tone === 'danger' ? null : options.action ? 8000 : 5000), leaving: false };
     // Keep at most three; older ones leave.
     setToasts((current) => [...current.slice(-2), entry]);
   }, []);
   const remove = useCallback((id: number) => setToasts((current) => current.filter((toast) => toast.id !== id)), []);
   const value = useMemo(() => show, [show]);
+  // Z undoes the newest toast that offers it, unless the person is typing.
+  const latest = useRef(toasts);
+  useEffect(() => { latest.current = toasts; });
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== 'z' || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || event.defaultPrevented) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]')) return;
+      const entry = [...latest.current].reverse().find((toast) => toast.action && !toast.leaving);
+      if (!entry) return;
+      event.preventDefault();
+      entry.action!.onClick();
+      setToasts((current) => current.map((toast) => toast.id === entry.id ? { ...toast, leaving: true } : toast));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   return (
     <ToastContext.Provider value={value}>
       {children}
