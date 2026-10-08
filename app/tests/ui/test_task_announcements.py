@@ -179,11 +179,12 @@ class TaskAnnouncements(unittest.TestCase):
         assert_author_column(self, made, DESKTOP["width"], "task event author")
         expect(made.get_by_role("button", name=f"Open task: {FROM_MESSAGE}")).to_be_visible()
         expect(self.notice(page, self.ids["measure"]).locator(".convo-notice__meta strong")).to_have_text("Ada Kowalska · you")
-        # An announcement is not a message: no replies, no actions, no avatar.
+        # Authored events share the creator's column, while retaining no message actions or replies.
         for work_id in (self.ids["from_message"], self.ids["measure"]):
             item = self.notice(page, work_id)
             expect(item.get_by_role("button", name=re.compile("Reply|Create work|Details"))).to_have_count(0)
-            expect(item.locator(".ui-avatar")).to_have_count(0)
+            expect(item.locator(".ui-avatar")).to_have_count(1)
+            assert_author_column(self, item, DESKTOP["width"], "actual task event creator")
         # The early task's announcement waits with the earlier roots, then appears in its place.
         expect(self.notice(page, self.ids["early"])).to_have_count(0)
         stream.get_by_role("button", name="Load earlier messages").click()
