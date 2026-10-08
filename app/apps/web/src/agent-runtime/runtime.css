@@ -52,5 +52,6 @@
 @media (pointer: coarse) {
   /* HIG-14: a link inside running text is at least 28px tall; one standing alone is a 44px target. */
   .rt a.ui-link, .rt-page a.ui-link, .rt button.ui-link { padding-block: 4px; }
+  .rt p a.ui-link, .rt li a.ui-link, .rt-page p a.ui-link, .rt-page li a.ui-link { display: inline-flex; align-items: center; min-height: 28px; }
   .rt-page .aset__actions > .ui-link { display: inline-flex; align-items: center; min-height: 44px; }
 }

@@ -92,7 +92,13 @@ class RuntimeConsole(unittest.TestCase):
               inline: el.matches('a.ui-link, button.ui-link') && !el.parentElement.matches('.aset__actions') }))
             // HIG-14: 44 px for controls; 28 px for a link inside running text.
             .filter((t) => t.inline ? t.h < 28 : t.h < 44);
-          const fields = [...document.querySelectorAll('input:not([type=radio]), textarea, select')].map((el) => parseFloat(getComputedStyle(el).fontSize)).filter((size) => size < 16);
+          // HIG-08's 16px font prevents text-entry focus zoom; it does not apply to native toggles.
+          const fields = [...document.querySelectorAll('input:not([type=radio]):not([type=checkbox]):not([type=hidden]), textarea, select')]
+            .filter(visible).map((el) => parseFloat(getComputedStyle(el).fontSize)).filter((size) => size < 16);
+          const toggles = [...document.querySelectorAll('input[type=checkbox], input[type=radio]')].filter(visible)
+            .map((el) => { const target = [...(el.labels || [])].find(visible) || el; return { type: el.type, h: target.getBoundingClientRect().height }; })
+            .filter((target) => target.h < 44);
+
           const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
           const tiny = [];
           while (walker.nextNode()) {
@@ -102,10 +108,11 @@ class RuntimeConsole(unittest.TestCase):
             if (size < 11) tiny.push(node.textContent.trim().slice(0, 30));
           }
           const wide = [...root.querySelectorAll('*')].filter(visible).filter((el) => el.getBoundingClientRect().right > window.innerWidth + 1).map((el) => el.className).slice(0, 5);
-          return { small, fields, tiny, wide };
+          return { small, fields, toggles, tiny, wide };
         }""", scope)
         self.assertEqual(report["small"], [], "every control is a 44 px target")
-        self.assertEqual(report["fields"], [], "every field is at least 16 px (no zoom on focus)")
+        self.assertEqual(report["fields"], [], "every editable field is at least 16 px (no zoom on focus)")
+        self.assertEqual(report["toggles"], [], "every native toggle has a 44 px labelled target")
         self.assertEqual(report["tiny"], [], "no text under 11 px")
         self.assertEqual(report["wide"], [], "nothing extends past the screen")
 
