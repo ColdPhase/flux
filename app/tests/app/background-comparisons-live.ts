@@ -168,11 +168,15 @@ try {
     assert.ok(usage.conservativeCountedCents >= 26, 'the cancelled and the interrupted request both stay counted');
 
     // The restarted worker neither resumes nor repeats it.
-    // (A killed worker's active tick job can hold the tick queue until pg-boss expires it, so the tick
-    // may not be worked within this minute; either way nothing may be sent.)
+    // A killed worker's active tick job must not hold the singleton tick queue: its heartbeat lapses,
+    // pg-boss fails it, and the restarted worker's scheduled ticks run again within a bounded time.
     await script({});
-    const worked = await tickWorked(75_000);
-    console.log(`background-comparisons-live: a tick after the restart was ${worked ? 'worked' : 'not worked within 75 s'}`);
+    const restartedAt = new Date();
+    const ran = await until('a scheduled tick to run after the restart', async () => (await pool.query(
+      "SELECT 1 FROM pgboss.job WHERE name=$1 AND state='completed' AND started_on > $2", [COMPARISON_TICK_JOB, restartedAt])).rowCount, 180_000, 2_000);
+    assert.ok(ran);
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM pgboss.job WHERE name=$1 AND state='active'", [COMPARISON_TICK_JOB])).rows[0].n <= 1, true, 'never two ticks at once');
+    console.log(`background-comparisons-live: a scheduled tick ran ${Math.round((Date.now() - restartedAt.getTime()) / 1000)} s after crash-verify started`);
     assert.equal((await mockRequests()).length, 3, 'no second request after the crash');
     assert.deepEqual(await outbox(candidateId), settled);
     console.log('background-comparisons-live: the restarted worker reconciled the interrupted request as unknown, 13 cents kept, no retry');
