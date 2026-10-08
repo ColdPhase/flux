@@ -19,7 +19,7 @@ import uuid
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 from author_columns import assert_author_column
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, SHOTS, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "one announcement then the discussion"
 STAMP = int(time.time() * 1000)
@@ -299,8 +299,19 @@ class TaskAnnouncements(unittest.TestCase):
         expect(page.get_by_role("button", name="Task", exact=True)).to_have_count(0)
 
     def test_08_phone_keeps_the_announcement_one_line_and_readable(self) -> None:
+        self.check_phone_announcements()
+
+    def test_08b_webkit_keeps_enlarged_announcement_titles_readable(self) -> None:
+        self.browser = self.pw.webkit.launch()
+        self.addCleanup(self.browser.close)
+        self.check_phone_announcements()
+
+    def check_phone_announcements(self) -> None:
+        engine = self.browser.browser_type.name
+        suffix = "-webkit" if engine == "webkit" else ""
+        observations: list[dict] = []
         for viewport, dark in (({"width": 390, "height": 844}, True), ({"width": 320, "height": 640}, False)):
-            with self.subTest(width=viewport["width"]):
+            with self.subTest(engine=engine, width=viewport["width"]):
                 page = self.page("ada", phone=True, dark=dark, viewport=viewport)
                 page.goto(f"/projects/{self.ids['project']}")
                 made = self.notice(page, self.ids["from_message"])
@@ -322,7 +333,11 @@ class TaskAnnouncements(unittest.TestCase):
                 # #266 PF-6: a long title wraps to at most two lines instead of being cut to one.
                 self.assertLessEqual(height, 2 * line + 1, "a long title takes at most two lines")
                 self.assertEqual(page.evaluate("document.documentElement.scrollWidth <= innerWidth"), True)
-                shot(page, f"task-announcements-phone-{viewport['width']}{'-dark' if dark else ''}")
+                shot(page, f"task-announcements-phone-{viewport['width']}{'-dark' if dark else ''}{suffix}")
+                before = self.counts(page)
+                work_path = f"/api/v1/projects/{self.ids['project']}/work?limit=100"
+                native_before = next(item for item in self.api(page, "GET", work_path, status=200)["items"]
+                                     if item["id"] == self.ids["from_message"])
                 page.evaluate("document.documentElement.style.fontSize = '200%'")
                 made.scroll_into_view_if_needed()
                 assert_author_column(self, made, viewport["width"], "enlarged phone task event author")
@@ -331,7 +346,28 @@ class TaskAnnouncements(unittest.TestCase):
                                        msg="enlarged event text keeps the common content edge")
                 expect(made.locator(".convo-notice__meta strong")).to_have_text("Jonas Berg")
                 self.assertTrue(page.evaluate("document.documentElement.scrollWidth <= innerWidth"))
-                shot(page, f"task-announcements-phone-{viewport['width']}{'-dark' if dark else ''}-text200")
+                shot(page, f"task-announcements-phone-{viewport['width']}{'-dark' if dark else ''}-text200{suffix}")
+                geometry = title.evaluate("""node => ({
+                    clientHeight: node.clientHeight, scrollHeight: node.scrollHeight,
+                    clientWidth: node.clientWidth, scrollWidth: node.scrollWidth,
+                    fontSize: getComputedStyle(node).fontSize, text: node.textContent,
+                    lineClamp: getComputedStyle(node).webkitLineClamp
+                })""")
+                observations.append({"engine": engine, "viewport": viewport, "dark": dark,
+                                     "deviceScaleFactor": 3, "rootFontSize": "200%", "title": geometry})
+                if SHOTS:
+                    (SHOTS / f"task-announcements-enlarged-reflow{suffix}.json").write_text(
+                        json.dumps(observations, indent=2) + "\n", encoding="utf-8")
+                self.assertLessEqual(geometry["scrollHeight"], geometry["clientHeight"] + 1,
+                                     "enlarged text exposes the full task title instead of clipping its purpose")
+                self.assertLessEqual(geometry["scrollWidth"], geometry["clientWidth"] + 1)
+                self.assertEqual(button.get_attribute("data-native-ref"), f"work:{self.ids['from_message']}")
+                button.tap()
+                expect(page.locator("#details").get_by_role("heading", name=FROM_MESSAGE)).to_be_visible()
+                native_after = next(item for item in self.api(page, "GET", work_path, status=200)["items"]
+                                    if item["id"] == self.ids["from_message"])
+                self.assertEqual(native_after, native_before, "opening an enlarged notice changes no native task field")
+                self.assertEqual(self.counts(page), before, "opening an enlarged notice creates no task, event or message")
 
 
     def open_task_from_stream(self, page: Page, work_id: str, title: str):
