@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
+import { chmod } from 'node:fs/promises';
 import { createServer as createHttpServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, describe, test } from 'node:test';
@@ -70,6 +71,24 @@ describe('runtime-manager with two slots', () => {
     assert.equal((await post('/v1/slots/runtime-1/logout', { bindingId: randomUUID(), client: 'claude_code', argv: ['--all'] })).status, 400);
     assert.equal((await post('/v1/slots/runtime-1/status/../../v1/slots', {})).status, 404);
     assert.equal(forwarded.length, before, 'nothing invalid reached a supervisor');
+  });
+
+  test('cannot report sign-out success when a CLI is missing or logout is skipped', async () => {
+    for (const scenario of ['missing_cli', 'missing_binding', 'unsafe_binding'] as const) {
+      const slot = await startTestSlot({ withClis: scenario !== 'missing_cli', enabled: [] });
+      const manager = createManagerServer({ secret, slots: new Map([
+        ['runtime-1', { host: '127.0.0.1', port: portOf(slot.url), secret: slot.config.secret }],
+      ]), log: () => undefined });
+      try {
+        const client = createRuntimeManagerClient({ url: await listen(manager), secret });
+        const port = runtimeManagerPort(client);
+        const binding = randomUUID();
+        if (scenario !== 'missing_binding') assert.ok((await port.bind('runtime-1', binding)).ok);
+        if (scenario === 'unsafe_binding') await chmod(`${slot.config.dataDir}/${binding}`, 0o755);
+        // Missing CLI gives not_installed; missing/unsafe bindings give skipped.
+        assert.deepEqual(await port.release('runtime-1', binding), { ok: true, value: { dataEmpty: true, logoutFailed: true } });
+      } finally { manager.close(); await slot.close(); }
+    }
   });
 
   test('slot targets come only from FLUX_RUNTIME_SLOT_<n>', () => {

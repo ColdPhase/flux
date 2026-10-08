@@ -265,6 +265,7 @@ stop_runtime() {
 # Best effort before slot volumes are deleted: each CLI signs out (the vendor ends the session where it
 # can), each binding directory is deleted and each supervisor confirms an empty /data.
 runtime_sign_out() {
+  runtime_sign_out_result=unconfirmed
   [ -n "$(runtime_volumes | grep -- '-data$' || true)" ] || return 0
   say "Signing out the agent runtime logins first (best effort)..."
   if ! docker image inspect "flux-agent-runtime:$PROJECT" >/dev/null 2>&1 || ! docker image inspect "flux-foundation:$PROJECT" >/dev/null 2>&1; then
@@ -286,6 +287,9 @@ runtime_sign_out() {
     fi
     sleep 2
   done
+  # A failed attempt may already have deleted a binding directory. A later empty retry
+  # cannot prove that its vendor session ended, so keep that failure in owner history.
+  if [ "$tries" -eq 0 ]; then runtime_sign_out_result=confirmed; fi
 }
 
 start_main() {
@@ -1037,7 +1041,7 @@ cmd_runtime() {
       # shellcheck disable=SC2046
       compose_main --profile runtime rm -sf $(runtime_services) >/dev/null 2>&1 || true
       for volume in $(runtime_volumes); do docker volume rm "$volume" >/dev/null || die "Could not remove $volume; is a runtime container still using it?"; done
-      if docker volume inspect "${PROJECT}_pgdata" >/dev/null 2>&1; then image_op runtime-forget; fi
+      if docker volume inspect "${PROJECT}_pgdata" >/dev/null 2>&1; then image_op runtime-forget "$runtime_sign_out_result"; fi
       say "The agent runtime of $PROJECT is purged. Set FLUX_AGENT_RUNTIME= (empty) in ${ENV_FILE#"$FLUX_ROOT"/} so ./flux up keeps it off." ;;
     *) die "usage: ./flux runtime status | release runtime-<n> | purge [-y]" ;;
   esac

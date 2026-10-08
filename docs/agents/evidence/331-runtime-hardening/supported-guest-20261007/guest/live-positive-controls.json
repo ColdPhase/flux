@@ -1,0 +1,43 @@
+{
+  "project": "flux-8c90dc32",
+  "exit": 0,
+  "results": [
+    {
+      "name": "public same runtime probe",
+      "host": "1.1.1.1",
+      "port": 443,
+      "outcome": "open"
+    },
+    {
+      "name": "actual database",
+      "host": "172.18.0.2",
+      "port": 5432,
+      "outcome": "open"
+    },
+    {
+      "name": "actual API default",
+      "host": "172.18.0.4",
+      "port": 8080,
+      "outcome": "open"
+    },
+    {
+      "name": "guest service on actual default bridge",
+      "host": "172.18.0.1",
+      "port": 18009,
+      "outcome": "open"
+    },
+    {
+      "name": "host reach same runtime probe SSH",
+      "host": "172.18.0.1",
+      "port": 22,
+      "outcome": "open"
+    },
+    {
+      "name": "host reach same runtime probe Docker API",
+      "host": "172.18.0.1",
+      "port": 2375,
+      "outcome": "refused"
+    }
+  ],
+  "stderr": ""
+}
