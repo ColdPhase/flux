@@ -385,25 +385,19 @@ class ProjectSurfaceJourney(unittest.TestCase):
         page = self.open_project("ada")
         row = page.locator(".side__project.is-open")
         expect(row).to_have_count(1)
-        bar = row.evaluate("""el => {
-          const r = el.getBoundingClientRect();
-          const before = getComputedStyle(el, '::before');
-          const x = r.left + parseFloat(before.left) + parseFloat(before.width) / 2;
-          const y = r.top + parseFloat(before.top) + parseFloat(before.height) / 2;
-          const box = el.closest('.side__scroll').getBoundingClientRect();
-          const hit = document.elementFromPoint(x, y);
-          return { x, inside: x >= box.left && x <= box.right, hit: !!hit && (hit === el || el.contains(hit)), width: parseFloat(before.width) };
+        pill = row.evaluate("""el => {
+          const r = el.getBoundingClientRect(), box = el.closest('.side__scroll').getBoundingClientRect();
+          return { inside: r.left >= box.left - 1 && r.right <= box.right + 1, raised: getComputedStyle(el).boxShadow !== 'none' };
         }""")
-        self.assertEqual(bar["width"], 3, "the 3px accent bar (#266 PF-1)")
-        self.assertTrue(bar["inside"], f"the bar lies inside the sidebar's scroll box: {bar}")
-        self.assertTrue(bar["hit"], "the bar is painted, not clipped")
-        # On a phone every sidebar control is a 44px target: +, Jump to, places and projects.
+        self.assertTrue(pill["raised"], "the current project is a raised pill (F-026 §4)")
+        self.assertTrue(pill["inside"], f"the pill lies inside the sidebar's scroll box: {pill}")
+        # On a phone every sidebar control is a 44px target: +, Search, places and projects.
         phone = self.open_project("ada", phone=True)
         phone.get_by_role("button", name="Open navigation").tap()
         drawer = phone.get_by_role("dialog")
         expect(drawer.locator(".side__project.is-open")).to_be_visible()
         targets = [drawer.get_by_role("link", name="New project"), drawer.get_by_role("link", name="New message"),
-                   drawer.locator(".side__jump"), drawer.get_by_role("link", name="Home"), drawer.locator(".side__project.is-open")]
+                   drawer.locator(".side__search"), drawer.get_by_role("link", name="Home"), drawer.locator(".side__project.is-open")]
         # One project conversation (UI116-1): the sidebar lists no conversation threads under the project.
         expect(drawer.locator(".side__thread")).to_have_count(0)
         for target in targets:

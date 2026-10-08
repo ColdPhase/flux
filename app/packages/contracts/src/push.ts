@@ -73,6 +73,6 @@ export interface InboxItem {
 
 export interface InboxResponse {
   items: InboxItem[];
-  /** The client shows at most a quiet dot for this, never a count (#44 no guilt). */
+  /** The sidebar shows this number next to Inbox (F-026 §4). */
   unread: number;
 }
