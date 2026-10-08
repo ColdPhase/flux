@@ -123,7 +123,12 @@ async function assertAuthorColumn(row: Locator, width: number) {
   assert.equal(geometry.direction, 'row', 'own authors keep the same order');
 }
 
-async function captureVisibleAuthor(page: Page, row: Locator, name: string, evidence: string | undefined) {
+/**
+ * Samples the author over rendered frames. `disturb` runs after the first sample and exists only for the
+ * negative control: a late layout change that moves the identity must fail this check (#367).
+ */
+async function captureVisibleAuthor(page: Page, row: Locator, name: string, evidence: string | undefined,
+  disturb?: () => Promise<unknown>) {
   const meta = row.locator('.project-convo__message-meta, .convo-notice__meta');
   await meta.scrollIntoViewIfNeeded();
   if (await page.evaluate(() => matchMedia('(hover: hover)').matches)) await meta.hover();
@@ -177,6 +182,7 @@ async function captureVisibleAuthor(page: Page, row: Locator, name: string, evid
     `${name}: visible identity has no hidden ancestor; only the decorative face itself may be aria-hidden`);
     samples.push(sample);
     frameSignals.push(observation.frameSignals);
+    if (i === 0 && disturb) await disturb();
   }
   if (evidence) writeFileSync(join(evidence, `${name}-frame-observations.json`), JSON.stringify({ samples, frameSignals }, null, 2), { mode: 0o600 });
   assert.deepEqual(samples[1], samples[0], `${name}: visible identity is stable over rendered frames`);
@@ -351,6 +357,14 @@ test('agent root renders without a human DM link, real human reply persists, and
       assert.equal(await workspaceRow.locator('a[href*="/dm/new"]').count(), 0);
       assert.equal(await workspaceView.evaluate(() => document.documentElement.scrollWidth - innerWidth), 0);
       await captureVisibleAuthor(workspaceView, workspaceRow, `workspace-agent-author-390-dark-text200${touch ? '-touch' : ''}`, evidence);
+      if (touch) {
+        // Negative control (#367): a late line above the author, as when a task chip used to gain its number
+        // after the reference read answered, moves the identity about 39px between frames and must fail.
+        await assert.rejects(captureVisibleAuthor(workspaceView, workspaceEvent, 'negative-control-late-line', undefined,
+          () => workspaceEvent.evaluate((element: HTMLElement) => { element.style.paddingTop = '39px'; })),
+        (cause: unknown) => cause instanceof assert.AssertionError && cause.message.includes('visible identity is stable over rendered frames'));
+        await workspaceEvent.evaluate((element: HTMLElement) => { element.style.paddingTop = ''; });
+      }
     }
     assert.deepEqual(errors, []);
   });
