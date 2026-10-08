@@ -164,6 +164,24 @@ async function withContexts(contexts: BrowserContext[], run: () => Promise<void>
   if (failures.length === 1) throw failures[0];
   if (failures.length > 1) throw new AggregateError(failures, 'Browser control and context cleanup failed');
 }
+async function withHeldContribution(page: Page, matches: (url: URL) => boolean, handler: (route: Route) => Promise<void>,
+  hold: { release: () => void; used: () => boolean; settled: Promise<void>; failure: () => unknown }, run: () => Promise<void>) {
+  const failures: unknown[] = [];
+  try { await page.route(matches, handler); await run(); }
+  catch (error) { failures.push(error); }
+  finally {
+    try { hold.release(); }
+    catch (error) { failures.push(error); }
+    try { if (hold.used()) await finite(hold.settled, 'held contribution cleanup'); }
+    catch (error) { failures.push(error); }
+    try { await page.unroute(matches, handler); }
+    catch (error) { failures.push(error); }
+    const handlerFailure = hold.failure();
+    if (handlerFailure && !failures.includes(handlerFailure)) failures.push(handlerFailure);
+  }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) throw new AggregateError(failures, 'Contribution scenario, handler and route cleanup failed');
+}
 async function notices(f: Scene, item: WorkItem) {
   const value = expectStatus(await f.author.browser.request('GET', `/api/v1/projects/${f.place.id}/task-notices?limit=100`), 200) as { items: TaskCreationNotice[] };
   return value.items.filter((notice) => notice.workId === item.id);
@@ -241,8 +259,8 @@ test('pending contribution cannot be retried from undone read-only history and b
       if (request.method() === 'POST' && new URL(request.url()).pathname === taskDiscussionPath(item.id))
         writes.push(request.postDataJSON().clientMessageId);
     });
-    await page.route(matches, handler);
-    try {
+    await withHeldContribution(page, matches, handler,
+      { release: () => release.resolve(), used: () => used, settled: settled.promise, failure: () => failure }, async () => {
       const unsent = 'This measurement has not been sent to the task.';
       await panel(page).getByRole('textbox', { name: 'First message about this task', exact: true }).fill(unsent);
       await panel(page).getByRole('button', { name: 'Start the discussion', exact: true }).click();
@@ -277,12 +295,7 @@ test('pending contribution cannot be retried from undone read-only history and b
       await reloaded.waitFor(); assert.equal(await reloaded.getByRole('button').count(), 0);
       assert.deepEqual(await storedDraft(page, draftKey(f, item)), current, 'reload keeps both private records');
       assert.deepEqual(writes, [command.clientMessageId], 'history and reload never retry the refused command');
-    } finally {
-      release.resolve();
-      try { if (used) await finite(settled.promise, 'contribution cleanup'); }
-      finally { await page.unroute(matches, handler); }
-      if (failure) throw failure;
-    }
+    });
   });
 });
 
@@ -313,8 +326,8 @@ test('a committed contribution with a held answer stays unconfirmed after write 
       if (request.method() === 'POST' && new URL(request.url()).pathname === taskDiscussionPath(item.id))
         writes.push(request.postDataJSON().clientMessageId);
     });
-    await page.route(matches, handler);
-    try {
+    await withHeldContribution(page, matches, handler,
+      { release: () => release.resolve(), used: () => used, settled: settled.promise, failure: () => failure }, async () => {
       const body = 'The sensor measurement is saved while its answer is still on the way.';
       await panel(page).getByRole('textbox', { name: 'First message about this task', exact: true }).fill(body);
       await panel(page).getByRole('button', { name: 'Start the discussion', exact: true }).click();
@@ -355,12 +368,7 @@ test('a committed contribution with a held answer stays unconfirmed after write 
       const after = expectStatus(await f.author.browser.request('GET', taskDiscussionPath(item.id)), 200) as { messages: ConversationMessage[] };
       assert.deepEqual(after.messages.map((message) => message.id), [command.message.id]);
       assert.equal((await notices(f, item)).length, 1); assert.equal(await receipts(item), 0);
-    } finally {
-      release.resolve();
-      try { if (used) await finite(settled.promise, 'committed contribution cleanup'); }
-      finally { await page.unroute(matches, handler); }
-      if (failure) throw failure;
-    }
+    });
   });
 });
 
