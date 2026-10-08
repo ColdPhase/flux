@@ -1,0 +1,18 @@
+{
+  "sourceCommit": "6f962f6335cc7c560609a0c99c8309e1e83bf925",
+  "observations": 18,
+  "methods": {
+    "locator": {
+      "observed": 6,
+      "shifted": 6
+    },
+    "locator-none": {
+      "observed": 6,
+      "shifted": 0
+    },
+    "coordinate": {
+      "observed": 6,
+      "shifted": 0
+    }
+  }
+}

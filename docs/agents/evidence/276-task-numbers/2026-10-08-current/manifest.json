@@ -1,0 +1,173 @@
+{
+  "testedSource": "1b7c3c03690b4fe4027001b38f7facb69e3c0c63",
+  "baseMain": "94e708cdcdc8607e004d37846165cd6ec6479211",
+  "appAndTestPublication": "unchanged from testedSource; documentation-only checkpoint",
+  "files": [
+    {
+      "file": "892-check-summary.json",
+      "bytes": 2670,
+      "sha256": "7aeef861197179a038a83def824316ecb38d01e97bb00c96fec6fc5a53c1a0de"
+    },
+    {
+      "file": "README.md",
+      "bytes": 6033,
+      "sha256": "79d25a00b8934fcdfae6e7e9870243842da0a008a83f431973f1e32b0c81f7b6"
+    },
+    {
+      "file": "capture-metadata.json",
+      "bytes": 3938,
+      "sha256": "1d554e019c7c6700ee35a7d3ae49fe97e7966cdb75b35dfafe3d270df179fcbb"
+    },
+    {
+      "file": "control-summary.json",
+      "bytes": 1476,
+      "sha256": "28651f87ed0a31cca771e357e5388143030e29fe676feda02882b3721f8b8b76"
+    },
+    {
+      "file": "current-cleanup.json",
+      "bytes": 115,
+      "sha256": "800e93708b76487c9285e6f908d418f2412e9c09a94242a6f3e0838e52c1dd4e"
+    },
+    {
+      "file": "enlarged-reflow-chromium.json",
+      "bytes": 1887,
+      "sha256": "7238e54963a450bbf97907d061df0a7962eafa315ca26767c974e52798f095ee"
+    },
+    {
+      "file": "enlarged-reflow-webkit.json",
+      "bytes": 2007,
+      "sha256": "28e2e6b8d8b86f55568c4af69382d1eb5329431beb8ebf2480dc0bc63c709d24"
+    },
+    {
+      "file": "independent-892-review.md",
+      "bytes": 8060,
+      "sha256": "687810bb04f68f4c3051fec7ac39b1d3471256f0355c09477bd1966860574b86"
+    },
+    {
+      "file": "independent-892-review.original.txt",
+      "bytes": 7715,
+      "sha256": "d553d535f5ae3998a2ccbecd82d7ca4c9e75e9d4818ba2a66296cb4b368d168e"
+    },
+    {
+      "file": "independent-current-source-review.md",
+      "bytes": 8197,
+      "sha256": "2dcf80929587860a3324ff4e9144d3c413a222f80d6de4cc1c21cdf8f859d8ae"
+    },
+    {
+      "file": "independent-current-source-review.original.txt",
+      "bytes": 7824,
+      "sha256": "faabc7dc624f64e29d99bbd707bfc715d4b0c75f1edd41b2987b65105a9b6175"
+    },
+    {
+      "file": "independent-current-visual-review.md",
+      "bytes": 6914,
+      "sha256": "f15c644e0e876555c9aeabdd22d15f4569f6a577f6d2918fc308b558fc7d907d"
+    },
+    {
+      "file": "independent-current-visual-review.original.txt",
+      "bytes": 7175,
+      "sha256": "393a873ff24fc0b2563ce92c91c5a3a14320ad54ff6c1dded91aa94e45ab0c20"
+    },
+    {
+      "file": "independent-failed-d957-review.md",
+      "bytes": 6335,
+      "sha256": "c099ba06afc3a0ce60143f1f46d91ee4253098af0f1b28aac9e996db6ed65870"
+    },
+    {
+      "file": "independent-failed-d957-review.original.txt",
+      "bytes": 5868,
+      "sha256": "f9b8150c0a646c599f4ce607045579bf225ca68050223ac6ca9567956e696703"
+    },
+    {
+      "file": "spacing-controls-cleanup.json",
+      "bytes": 313,
+      "sha256": "22e3d2ae7f10355e327959b458f853ea09acac900dc18a5ffd53b153749f4247"
+    },
+    {
+      "file": "task-announcements-desktop.png",
+      "bytes": 116795,
+      "sha256": "283e2bfdb6e0ecf71f63ad0381fa0d12c2b1691747d834f0241bdd0bf6cfe059",
+      "raster": [
+        1440,
+        900
+      ]
+    },
+    {
+      "file": "task-announcements-phone-320-text200-webkit.png",
+      "bytes": 199649,
+      "sha256": "80a59e880a15768e6023f506b1bbc080ce65d0b31c46519d27537f7a93a6d80f",
+      "raster": [
+        960,
+        1920
+      ]
+    },
+    {
+      "file": "task-announcements-phone-320-text200.png",
+      "bytes": 152562,
+      "sha256": "c1d9c84338c740cf3ebfce7840db3ee7451ea8d733a356c3b8dfd2d0ca214363",
+      "raster": [
+        960,
+        1920
+      ]
+    },
+    {
+      "file": "task-announcements-phone-320-webkit.png",
+      "bytes": 205097,
+      "sha256": "a3b616bb1cde547776f6745eb8e515269b29f666a495aa1fe1f9332de2dbe5fa",
+      "raster": [
+        960,
+        1920
+      ]
+    },
+    {
+      "file": "task-announcements-phone-320.png",
+      "bytes": 162712,
+      "sha256": "854f38c3f3bf9d4a8cdfbf0b0ef943cdcb2546e689f557065b6f69f71ab89215",
+      "raster": [
+        960,
+        1920
+      ]
+    },
+    {
+      "file": "task-announcements-phone-390-dark-text200-webkit.png",
+      "bytes": 272832,
+      "sha256": "32c33217e38fc0ee419da3a0e0901ba763f60cf64b20f7261148b0e94306094e",
+      "raster": [
+        1170,
+        2532
+      ]
+    },
+    {
+      "file": "task-announcements-phone-390-dark-text200.png",
+      "bytes": 203355,
+      "sha256": "a8b6dbef00a57ee90d29d94707ee0db03bf004e76805d478e281b50d754b6373",
+      "raster": [
+        1170,
+        2532
+      ]
+    },
+    {
+      "file": "task-announcements-phone-390-dark-webkit.png",
+      "bytes": 283223,
+      "sha256": "8a51a1b82fb927ac7930f047d02a4cecb7a8406e95d0dd7c5521c637c1b936db",
+      "raster": [
+        1170,
+        2532
+      ]
+    },
+    {
+      "file": "task-announcements-phone-390-dark.png",
+      "bytes": 216433,
+      "sha256": "178668f8a8c93bdd738bcbca3567da781282a9371e2282d6323558ce32765874",
+      "raster": [
+        1170,
+        2532
+      ]
+    },
+    {
+      "file": "title-controls-cleanup.json",
+      "bytes": 313,
+      "sha256": "ae4acd121ccfbdfabbbc941b33e094046b9f13988ccf44de32799425eb0baf60"
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+[
+  {
+    "phase": "title-negative",
+    "sourceCommit": "e81d8961524696646ba01f9ef8f9a360e6b7fb75",
+    "exitCode": 1,
+    "result": "2 methods / 4 title-clipping failures, 17.072s",
+    "logSha256": "a47065a9b9f869596a211511b7bc1183b86b4df7cb5e609c1e9fcb434d74c10f"
+  },
+  {
+    "phase": "title-positive",
+    "sourceCommit": "e6a5242121e4a7d2643d25cdcc1815b5475a4601",
+    "exitCode": 0,
+    "result": "17/17, 57.220s; later visual spacing findings remained",
+    "logSha256": "f203be3b4d216e9dc37d560aa941a51268e8a9b5bf660f0ed0fe89617c7b6c2c"
+  },
+  {
+    "phase": "spacing-negative",
+    "sourceCommit": "003a052fe872d2a5948c2ab52afe7bdf6b33cf4e",
+    "exitCode": 1,
+    "result": "2 methods / 4 timestamp-line failures, 17.302s; number Range guard already passed",
+    "logSha256": "f1d6d861f8a344be0893a4b1281582f09d0214578c6cd6949cbebf936f656f5c"
+  },
+  {
+    "phase": "spacing-failed-repair",
+    "sourceCommit": "d95720a51dfb12615505bcbe4dbf819b179b7db8",
+    "exitCode": 1,
+    "result": "17 methods / 4 unchanged exact-author-row failures, 54.647s; no positive reflow JSON",
+    "logSha256": "66c88007a4f76eac72f298365b223b621e4fb4b353721261136560820ed9b0a9"
+  },
+  {
+    "phase": "current-positive",
+    "sourceCommit": "1b7c3c03690b4fe4027001b38f7facb69e3c0c63",
+    "exitCode": 0,
+    "result": "17/17, 57.298s; full affected module, dual engines for phone helper only",
+    "logSha256": "6313643f7b7480cb6a62f351aa29f45bbb3950e2f6ce4cfce893256cf20f5908"
+  }
+]

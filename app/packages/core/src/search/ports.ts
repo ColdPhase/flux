@@ -30,6 +30,8 @@ export interface SearchPlan {
   text: string;
   prefix: string | null;
   fuzzy: boolean;
+  /** The task number the query names on its own ("#12"); that task ranks first (#276). */
+  number: number | null;
   /** The plain words of the prefix query (letters and digits), also looked up in the index. */
   words: string;
   kinds: SearchKind[] | null;

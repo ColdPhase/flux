@@ -5,7 +5,7 @@ import type { ObjectLink, Project, ProjectWorkView, WorkGroup, WorkItem, WorkRel
 import { ApiError, NetworkError } from '../api/client';
 import { AgentTag, Button, Icon, IconButton, Kreska, initials, type IconName } from '../ui';
 import { createWork, updateWork } from './api';
-import { isFinished } from './format';
+import { isFinished, taskNumber } from './format';
 import { getProjectWorkView, getWorkRelations, workRelationReadUrl, workViewReadUrl } from './read-api';
 import type { ReadState } from './read-state';
 import { useWorkRead } from './useWorkRead';
@@ -43,10 +43,11 @@ export const shortId = (id: string) => id.replace(/-/g, '').slice(0, 8).toUpperC
 /** One card: a bounded native task row, not a full WorkItem. */
 type BoardTask = WorkRowProjection;
 
-/** The board's search over its loaded cards: the title, owner, what it waits for, or its id. */
-export function matchesTask(item: Pick<BoardTask, 'id' | 'title' | 'owner' | 'blocker'>, query: string) {
+/** The board's search over its loaded cards: the title, owner, what it waits for, its number ("#12") or its id. */
+export function matchesTask(item: Pick<BoardTask, 'id' | 'number' | 'title' | 'owner' | 'blocker'>, query: string) {
   if (!query) return true;
-  const q = query.toLowerCase();
+  const q = query.toLowerCase().trim();
+  if (/^#\d+$/.test(q)) return taskNumber(item) === q;
   return [item.title, item.owner?.name ?? '', item.blocker ?? '', shortId(item.id), item.id].some((text) => text.toLowerCase().includes(q));
 }
 
@@ -89,7 +90,7 @@ const without = <T,>(record: Record<string, T>, key: string) => {
 };
 
 interface Drag {
-  id: string; title: string; from: ColumnId; pointerId: number;
+  id: string; number: number; title: string; from: ColumnId; pointerId: number;
   x0: number; y0: number; dx: number; dy: number; width: number;
   started: boolean; cancelled: boolean; over: ColumnId | null;
 }
@@ -169,7 +170,7 @@ function Card({ item, agentOwner, from, column, meId, writable, hintId, saving, 
     <li className={classes} data-card-id={item.id} aria-busy={saving || undefined}
       onPointerDown={onPointerDown} onClickCapture={onClickCapture} onDragStart={(event) => event.preventDefault()}>
       <div className="tb-card__top">
-        <span className="tb-card__id" title={`Task ${item.id}`}><span className="ui-vh">Task ID </span>{shortId(item.id)}</span>
+        <span className="tb-card__id" title={`Task ${taskNumber(item)} · ${item.id}`}><span className="ui-vh">Task </span><span className="ui-task-number">{taskNumber(item)}</span></span>
         {state ? <span className={`tb-card__state${blocked ? ' tb-card__state--blocked' : ''}`}>{blocked ? <Icon name="alert" size={12} /> : null}{state}</span> : null}
         {writable ? (
           <IconButton ref={menuButton} icon="more" size={15} label="Move to…" className="tb-card__menu" aria-haspopup="menu" aria-expanded={menuOpen}
@@ -300,7 +301,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
   const [arrived, setArrived] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [picked, setPicked] = useState<ColumnId | null>(null);
-  const [dragging, setDragging] = useState<{ id: string; title: string; width: number; x: number; y: number } | null>(null);
+  const [dragging, setDragging] = useState<{ id: string; number: number; title: string; width: number; x: number; y: number } | null>(null);
   const [over, setOver] = useState<ColumnId | null>(null);
   const [lifted, setLifted] = useState<{ id: string; from: ColumnId; to: ColumnId } | null>(null);
   const drag = useRef<Drag | null>(null);
@@ -449,7 +450,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
     if (!writable || event.button !== 0 || event.pointerType === 'touch' || item.id in pending || drag.current) return;
     if ((event.target as Element).closest('a, .tb-card__menu, .tb-menu')) return;
     const rect = event.currentTarget.getBoundingClientRect();
-    const state: Drag = { id: item.id, title: item.title, from, pointerId: event.pointerId, x0: event.clientX, y0: event.clientY,
+    const state: Drag = { id: item.id, number: item.number, title: item.title, from, pointerId: event.pointerId, x0: event.clientX, y0: event.clientY,
       dx: event.clientX - rect.left, dy: event.clientY - rect.top, width: rect.width, started: false, cancelled: false, over: null };
     drag.current = state;
     const scroller = boardRef.current?.closest<HTMLElement>('.pane-scroll') ?? null;
@@ -474,7 +475,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
         document.documentElement.classList.add('tb-is-dragging');
         setMenuFor(null);
         setLifted(null);
-        setDragging({ id: state.id, title: state.title, width: state.width, x: pointer.clientX - state.dx, y: pointer.clientY - state.dy });
+        setDragging({ id: state.id, number: state.number, title: state.title, width: state.width, x: pointer.clientX - state.dx, y: pointer.clientY - state.dy });
       }
       pointer.preventDefault();
       if (ghostRef.current) ghostRef.current.style.transform = `translate(${pointer.clientX - state.dx}px, ${pointer.clientY - state.dy}px)`;
@@ -680,7 +681,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
       </div>
       {dragging ? createPortal(
         <div ref={ghostRef} className="tb-ghost" aria-hidden="true" style={{ width: dragging.width }}>
-          <span className="tb-card__id">{shortId(dragging.id)}</span>
+          <span className="tb-card__id"><span className="ui-task-number">{taskNumber(dragging)}</span></span>
           <span className="tb-ghost__t">{dragging.title}</span>
         </div>,
         document.body,

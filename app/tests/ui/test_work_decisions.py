@@ -139,6 +139,11 @@ class WorkDecisionsJourney(unittest.TestCase):
         # The panel's controls change the stored work (If-Match under the hood).
         panel.get_by_label("Status").select_option("in_progress")
         expect(panel.locator(".wd-eyebrow")).to_contain_text("In progress")
+        # Details names the task by its number in the project (#276).
+        expect(panel.locator(".wd-eyebrow")).to_have_text(re.compile(r"^Task #[1-9]\d* · Gesture lamp · In progress"))
+        expect(panel.locator(".wd-eyebrow .ui-task-number")).to_have_text("#1")
+        expect(message.locator(".ws-chip .ui-task-number")).to_have_text("#1")
+        self.assertTrue(message.locator(".ws-chip").evaluate("node => node.querySelector('.ui-task-number').compareDocumentPosition(node.querySelector('.ws-chip__t')) & Node.DOCUMENT_POSITION_FOLLOWING"), "the number leads the title in a task reference")
         panel.get_by_label("Owner").select_option(f"human:{PARTNER['id']}")
         expect(message.get_by_role("button", name=f"Work: {IDEA}")).to_contain_text("Kai Berg")
         stored = self.work(page)["work"]

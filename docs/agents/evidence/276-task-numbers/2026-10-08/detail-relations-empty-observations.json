@@ -1,0 +1,24 @@
+[
+  {
+    "phone": false,
+    "targetWorkId": "a1a534ff-86bd-43c2-9bdb-cba3620e2773",
+    "url": "http://127.0.0.1:19583/api/v1/projects/68dcb5e5-f726-4040-966f-3f4b9824e440/work-relations?objects=work%3Aa1a534ff-86bd-43c2-9bdb-cba3620e2773&limit=50",
+    "objects": [
+      "work:a1a534ff-86bd-43c2-9bdb-cba3620e2773"
+    ],
+    "before": 0,
+    "total": 0,
+    "itemCount": 0
+  },
+  {
+    "phone": true,
+    "targetWorkId": "a1a534ff-86bd-43c2-9bdb-cba3620e2773",
+    "url": "http://127.0.0.1:19583/api/v1/projects/68dcb5e5-f726-4040-966f-3f4b9824e440/work-relations?objects=work%3Aa1a534ff-86bd-43c2-9bdb-cba3620e2773&limit=50",
+    "objects": [
+      "work:a1a534ff-86bd-43c2-9bdb-cba3620e2773"
+    ],
+    "before": 0,
+    "total": 0,
+    "itemCount": 0
+  }
+]
