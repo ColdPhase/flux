@@ -132,11 +132,6 @@ async function captureVisibleAuthor(page: Page, row: Locator, name: string, evid
     const label = element.querySelector<HTMLElement>('.agent-for, .convo-notice__meta strong')!;
     const meta = element.querySelector<HTMLElement>('.project-convo__message-meta, .convo-notice__meta')!;
     const face = element.querySelector<HTMLElement>(':scope > :is(.ui-avatar, .author-face)')!;
-    const bounds = (node: HTMLElement) => {
-      const r = node.getBoundingClientRect();
-      return { x: r.x, y: r.y, width: r.width, height: r.height,
-        inViewport: r.x >= 0 && r.y >= 0 && r.right <= innerWidth && r.bottom <= innerHeight };
-    };
     const ancestors = [];
     for (let node: HTMLElement | null = label; node; node = node.parentElement) {
       const style = getComputedStyle(node);
@@ -144,8 +139,16 @@ async function captureVisibleAuthor(page: Page, row: Locator, name: string, evid
         visibility: style.visibility, hidden: node.hidden, inert: node.inert, ariaHidden: node.getAttribute('aria-hidden') });
     }
     const r = label.getBoundingClientRect();
+    const m = meta.getBoundingClientRect();
+    const f = face.getBoundingClientRect();
     const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
-    return { text: label.innerText, label: bounds(label), meta: bounds(meta), face: bounds(face), ancestors,
+    return { text: label.innerText,
+      label: { x: r.x, y: r.y, width: r.width, height: r.height,
+        inViewport: r.x >= 0 && r.y >= 0 && r.right <= innerWidth && r.bottom <= innerHeight },
+      meta: { x: m.x, y: m.y, width: m.width, height: m.height,
+        inViewport: m.x >= 0 && m.y >= 0 && m.right <= innerWidth && m.bottom <= innerHeight },
+      face: { x: f.x, y: f.y, width: f.width, height: f.height,
+        inViewport: f.x >= 0 && f.y >= 0 && f.right <= innerWidth && f.bottom <= innerHeight }, ancestors,
       uncovered: !!hit && (hit === label || label.contains(hit)) };
   });
   const samples = [];
