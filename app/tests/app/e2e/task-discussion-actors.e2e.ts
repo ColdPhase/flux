@@ -132,36 +132,36 @@ async function captureVisibleAuthor(page: Page, row: Locator, name: string, evid
     const label = element.querySelector<HTMLElement>('.agent-for, .convo-notice__meta strong')!;
     const meta = element.querySelector<HTMLElement>('.project-convo__message-meta, .convo-notice__meta')!;
     const face = element.querySelector<HTMLElement>(':scope > :is(.ui-avatar, .author-face)')!;
-    const ancestors = [];
-    for (let node: HTMLElement | null = label; node; node = node.parentElement) {
-      const style = getComputedStyle(node);
-      ancestors.push({ opacity: Number(style.opacity), display: style.display,
-        visibility: style.visibility, hidden: node.hidden, inert: node.inert, ariaHidden: node.getAttribute('aria-hidden') });
+    const parts = [];
+    for (const [name, part] of [['label', label], ['meta', meta], ['face', face]] as const) {
+      const ancestors = [];
+      for (let node: HTMLElement | null = part; node; node = node.parentElement) {
+        const style = getComputedStyle(node);
+        ancestors.push({ opacity: Number(style.opacity), display: style.display,
+          visibility: style.visibility, hidden: node.hidden, inert: node.inert, ariaHidden: node.getAttribute('aria-hidden') });
+      }
+      const r = part.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+      parts.push({ name, x: r.x, y: r.y, width: r.width, height: r.height, ancestors,
+        inViewport: r.x >= 0 && r.y >= 0 && r.right <= innerWidth && r.bottom <= innerHeight,
+        uncovered: !!hit && (hit === part || part.contains(hit)) });
     }
-    const r = label.getBoundingClientRect();
-    const m = meta.getBoundingClientRect();
-    const f = face.getBoundingClientRect();
-    const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
-    return { text: label.innerText,
-      label: { x: r.x, y: r.y, width: r.width, height: r.height,
-        inViewport: r.x >= 0 && r.y >= 0 && r.right <= innerWidth && r.bottom <= innerHeight },
-      meta: { x: m.x, y: m.y, width: m.width, height: m.height,
-        inViewport: m.x >= 0 && m.y >= 0 && m.right <= innerWidth && m.bottom <= innerHeight },
-      face: { x: f.x, y: f.y, width: f.width, height: f.height,
-        inViewport: f.x >= 0 && f.y >= 0 && f.right <= innerWidth && f.bottom <= innerHeight }, ancestors,
-      uncovered: !!hit && (hit === label || label.contains(hit)) };
+    return { text: label.innerText, parts };
   });
   const samples = [];
   for (let i = 0; i < 3; i++) {
     await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
     const sample = await inspect();
-    assert.ok(sample.label.inViewport && sample.meta.inViewport && sample.face.inViewport && sample.uncovered,
+    assert.ok(sample.parts.every((part) => part.width > 0 && part.height > 0 && part.inViewport && part.uncovered),
       `${name}: the actual full author and face are in the viewport and uncovered`);
-    assert.ok(sample.ancestors.every((a) => a.opacity === 1 && a.display !== 'none' && a.visibility === 'visible'
-      && !a.hidden && !a.inert && a.ariaHidden !== 'true'), `${name}: no hidden or leaving panel covers the author`);
+    assert.ok(sample.parts.every((part) => part.ancestors.every((a, index) => a.opacity === 1 && a.display !== 'none'
+      && a.visibility === 'visible' && !a.hidden && !a.inert
+      && (a.ariaHidden !== 'true' || (part.name === 'face' && index === 0)))),
+    `${name}: visible identity has no hidden ancestor; only the decorative face itself may be aria-hidden`);
     samples.push(sample);
   }
-  assert.deepEqual(samples[2], samples[0], `${name}: visible identity is stable over rendered frames`);
+  assert.deepEqual(samples[1], samples[0], `${name}: visible identity is stable over rendered frames`);
+  assert.deepEqual(samples[2], samples[1], `${name}: visible identity remains stable over rendered frames`);
   if (evidence) {
     await page.screenshot({ path: join(evidence, `${name}.png`), fullPage: true });
     const after = await inspect();
