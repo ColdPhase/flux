@@ -8,7 +8,7 @@ import uuid
 from urllib.parse import parse_qs, urlsplit
 
 from playwright.sync_api import expect, sync_playwright
-from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
+from test_app_shell import ORIGIN, UPSTREAM, open_details, shot, start_forwarder
 from test_work_pagination import api
 
 
@@ -79,7 +79,7 @@ class OverviewWorkJourney(unittest.TestCase):
     def open(self, page):
         page.goto(f"/projects/{self.project}/conversations/{self.conversation}")
         expect(page.get_by_label("Reply", exact=True)).to_be_visible()
-        page.locator("header.top").get_by_role("button", name="Details", exact=True).click()
+        open_details(page)
         return self.ready(page)
 
     def identities(self, page):

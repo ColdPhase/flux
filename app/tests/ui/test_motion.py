@@ -28,7 +28,7 @@ GLIDE_AT = """(id) => {
   const a = g.getBoundingClientRect(), b = r.getBoundingClientRect();
   return { top: a.top - b.top, height: a.height - b.height, left: a.left - b.left, width: a.width - b.width, running: g.getAnimations().length };
 }"""
-SETTLED = """() => { const glide = document.querySelector('.side__glide'), mark = document.querySelector('.views .ui-tabs__indicator');
+SETTLED = """() => { const glide = document.querySelector('.side__glide'), mark = document.querySelector('.top__views .ui-tabs__indicator');
   return !!glide && !!glide.dataset.target && !glide.getAnimations().length && !(mark && mark.getAnimations().length); }"""
 FIRST_IN_VIEW = """() => { const feed = document.querySelector('.project-convo__feed.is-stream'); const top = feed.getBoundingClientRect().top;
   for (const item of feed.querySelectorAll('.project-convo__message, .convo-notice')) { const box = item.getBoundingClientRect();
@@ -215,7 +215,7 @@ class MotionJourney(unittest.TestCase):
         page.goto(f"/projects/{self.projects[0]}")
         self.stream_ready(page)
         page.locator("#project-composer").fill("PRIVATE draft kept across views")
-        indicator = page.locator(".views .ui-tabs__indicator")
+        indicator = page.locator(".top__views .ui-tabs__indicator")
         expect(indicator).to_have_attribute("data-target", "conversation")
         tabs = page.get_by_role("navigation", name="Project views")
         held, release = self.hold(page, f"**/api/v1/projects/{self.projects[0]}**")
@@ -230,7 +230,7 @@ class MotionJourney(unittest.TestCase):
         page.wait_for_function(SETTLED)
         expect(tabs.get_by_role("link", name="Map")).to_be_focused()
         box = tabs.get_by_role("link", name="Map").bounding_box(); mark = indicator.bounding_box()
-        self.assertTrue(box and mark and box["x"] <= mark["x"] <= box["x"] + box["width"], f"the mark is under Map: {mark} in {box}")
+        self.assertTrue(box and mark and box["x"] - 1 <= mark["x"] <= box["x"] + box["width"], f"the pill is on Map: {mark} in {box}")
         shot(page, "motion-tabs-settled-on-latest")
         tabs.get_by_role("link", name="Conversation").click()
         expect(page.locator("#project-composer")).to_have_value("PRIVATE draft kept across views")
@@ -247,14 +247,14 @@ class MotionJourney(unittest.TestCase):
         tasks = page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks"))
         tasks.focus()
         page.keyboard.press("Enter")
-        expect(page.locator(".views .ui-tabs__indicator")).to_have_attribute("data-target", "tasks")
+        expect(page.locator(".top__views .ui-tabs__indicator")).to_have_attribute("data-target", "tasks")
         expect(tasks).to_be_focused()
 
     def test_05_reduced_motion_places_at_once_without_any_animation(self):
         page = self.page(reduced=True)
         page.goto(f"/projects/{self.projects[0]}")
         self.stream_ready(page)
-        durations = page.evaluate("""() => [document.querySelector('.side__glide'), document.querySelector('.views .ui-tabs__indicator')]
+        durations = page.evaluate("""() => [document.querySelector('.side__glide'), document.querySelector('.top__views .ui-tabs__indicator')]
           .map(el => getComputedStyle(el).transitionDuration.split(',').every(value => parseFloat(value) === 0))""")
         self.assertEqual(durations, [True, True])
         self.link(page, 1).click()
@@ -278,9 +278,9 @@ class MotionJourney(unittest.TestCase):
         page.goto(f"/projects/{self.projects[1]}")
         self.assert_glide_on(page, 1)
         self.assertLessEqual(page.evaluate("() => document.documentElement.scrollWidth"), 720)
-        mark = page.locator(".views .ui-tabs__indicator").bounding_box()
+        mark = page.locator(".top__views .ui-tabs__indicator").bounding_box()
         tab = page.get_by_role("navigation", name="Project views").get_by_role("link", name="Conversation").bounding_box()
-        self.assertTrue(mark and tab and tab["x"] <= mark["x"] <= tab["x"] + tab["width"])
+        self.assertTrue(mark and tab and tab["x"] - 1 <= mark["x"] <= tab["x"] + tab["width"])
         shot(page, "motion-zoom-200")
         phone = self.page(viewport={"width": 390, "height": 844}, scale=3)
         phone.goto(f"/projects/{self.projects[2]}")

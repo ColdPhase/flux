@@ -11,7 +11,7 @@ import { placeOf } from './place';
 import { ShellContext, type DetailsView } from './shellContext';
 import { Sidebar } from './Sidebar';
 import { VIEWS, viewIndex } from './views';
-import { ProjectStateLine, ProjectStateRow } from '../work/inline';
+import { ProjectStateRow } from '../work/inline';
 import { audienceLine, useProjectShell } from '../project/data';
 import { useDmSketchCount } from '../dm/DmSketches';
 import { LiveProvider } from '../live/LiveProvider';
@@ -24,6 +24,8 @@ import { useNeedsYou } from '../returns/useNeedsYou';
 import { WorkReadProvider, useProjectWorkSummary } from '../work/WorkReadContext';
 import { OverviewContext } from '../project/ProjectOverview';
 import { remember, remembered } from './remembered';
+import { useFocus } from './focus';
+import { FocusPill, HeaderFaces, MoreMenu, NeedsYouChip, type MoreItem } from './HeaderParts';
 
 const lastConversationPath = (userId: string, projectId: string) => remembered('conversation', userId, projectId) ?? `/projects/${projectId}`;
 /** The Tasks view last chosen in this project (#136), e.g. `?status=blocked&show=mine`. */
@@ -36,6 +38,8 @@ function lastMapPath(userId: string, projectId: string, sketches: { items: { id:
   const only = sketches?.total === 1 ? sketches.items[0] : undefined;
   return remembered('map', userId, projectId) ?? (only ? `/projects/${projectId}/map/${only.id}` : `/projects/${projectId}/map`);
 }
+
+const PROJECT_VIEW_NAMES = ['Conversation', 'Map', 'Tasks', 'Wiki', 'Agents'];
 
 /** Tab order for the slide direction: Home's views, or a project's Conversation · Map · Tasks · Wiki · Agents. */
 function viewOrder(pathname: string) {
@@ -140,6 +144,9 @@ function AppLayoutContent() {
     try { if (next) localStorage.setItem(SIDEBAR_KEY, 'rail'); else localStorage.removeItem(SIDEBAR_KEY); } catch { /* this visit only */ }
     return next;
   }), []);
+  // Focus mode (`F`, F-026 S19): the rail, a quiet header, and push and email held by the server.
+  const focus = useFocus(me.user.id);
+  const focusing = !!focus.until && !navDrawer;
 
   const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const detailsOwner = useMemo(() => ({ accountId: me.user.id, projectId }), [me.user.id, projectId]);
@@ -197,7 +204,9 @@ function AppLayoutContent() {
     return () => document.removeEventListener('keydown', onKey);
   }, []);
 
-  // "[" collapses or expands the sidebar; "G" then "I" goes to the Inbox (F-026 §4 keyboard).
+  // "[" collapses or expands the sidebar, "F" turns focus on and off, and "G" then "I" goes to the
+  // Inbox (F-026 §4 keyboard).
+  const toggleFocus = focus.toggle;
   useEffect(() => {
     let leader = 0;
     const onKey = (event: KeyboardEvent) => {
@@ -205,26 +214,13 @@ function AppLayoutContent() {
       if (document.getElementById('root')?.inert) return;
       if (event.key === '[') { event.preventDefault(); toggleRail(); return; }
       const key = event.key.toLowerCase();
+      if (key === 'f' && !navDrawer) { event.preventDefault(); void toggleFocus(); return; }
       if (key === 'g') { leader = Date.now(); return; }
       if (key === 'i' && Date.now() - leader < 1200) { event.preventDefault(); leader = 0; navigate('/inbox'); }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [toggleRail, navigate]);
-
-  // "]" toggles Details, as in the header tooltip, only where the header offers Details.
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (!detailsButtonRef.current) return;
-      if (event.key !== ']' || event.metaKey || event.ctrlKey || event.altKey || isTyping(event.target)) return;
-      if (document.getElementById('root')?.inert && !detailsOpen) return;
-      event.preventDefault();
-      setDetailsView('place');
-      toggleDetails();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [toggleDetails, detailsOpen]);
+  }, [toggleRail, toggleFocus, navigate, navDrawer]);
 
 
   // Typing on a touch phone (#266 PF-3): the view bar steps aside for the keyboard once a text field
@@ -294,7 +290,8 @@ function AppLayoutContent() {
     void play(paneRef.current, [{ opacity: 0, transform: `translateX(${direction * distance}px)` }, { opacity: 1, transform: 'none' }], duration('--dur-2'), '--ease-out', { fill: 'backwards' });
   }, [location.pathname]);
 
-  const sidebarProps = { workspace, projects, directMessages, user: me.user, session: me.session, inboxUnread };
+  // In focus the rail shows no counts.
+  const sidebarProps = { workspace, projects, directMessages, user: me.user, session: me.session, inboxUnread: focusing ? 0 : inboxUnread };
   const where = placeOf(location.pathname);
   const activeProject = projects.find((project) => project.id === projectId);
   // The Conversation tab returns to the conversation that was open before Tasks, Map, Docs or project
@@ -328,12 +325,14 @@ function AppLayoutContent() {
   const recapOpen = detailsOpen && typeof detailsView === 'object' && detailsView.kind === 'recap';
   // "What matters" (#133): a quiet count of what needs you; refreshed when the panel closes.
   const needsYou = useNeedsYou(activeProject ? projectId ?? null : null, recapOpen);
-  // One stable entry at the end of the project's view tabs, so the header keeps
-  // its room for the title, audience and state line.
+  const toggleRecap = () => {
+    if (!projectId) return;
+    if (recapOpen) toggleDetails(false); else { setDetailsView({ kind: 'recap', projectId }); toggleDetails(true); }
+  };
+  // On the phone, one stable entry after the project's state row (#266 PF-2).
   const recapEntry = activeProject && projectId ? (
     <Button variant="quiet" icon="leaf" className="views__recap" aria-expanded={recapOpen}
-      aria-controls={recapOpen ? 'details' : undefined}
-      onClick={() => { if (recapOpen) toggleDetails(false); else { setDetailsView({ kind: 'recap', projectId }); toggleDetails(true); } }}>
+      aria-controls={recapOpen ? 'details' : undefined} onClick={toggleRecap}>
       What matters
       {needsYou ? <span className="views__recap-n">{needsYou}<span className="ui-vh"> {needsYou === 1 ? 'needs' : 'need'} you</span></span> : null}
     </Button>
@@ -375,6 +374,21 @@ function AppLayoutContent() {
   // A place without its own Details (Search, Inbox, the DM list) never keeps the generic panel open.
   if ('noDetails' in place && detailsOpen && detailsView === 'place') setDetailsOpen(false);
 
+  // The computer's header is one row (F-026 §4): the name, the place's views as a segmented control,
+  // then what needs you, the people and agents, and More. Focus keeps only the name, the view and
+  // the way out.
+  const rowViews = phone ? null
+    : activeProject && projectViews ? { items: projectViews, label: 'Project views' }
+      : dmViews ? { items: dmViews, label: 'Direct message views' }
+        : place.views ? { items: homeViews, label: 'Views' } : null;
+  const viewName = activeProject ? PROJECT_VIEW_NAMES[Math.max(0, viewOrder(location.pathname))] : null;
+  const moreItems: MoreItem[] = [
+    ...('noDetails' in place ? [] : [{ label: 'Details', run: () => { setDetailsView('place'); toggleDetails(true); } }]),
+    ...(activeProject && projectId ? [{ label: 'What matters', run: () => { setDetailsView({ kind: 'recap', projectId }); toggleDetails(true); } }] : []),
+    { label: 'Focus', keys: 'F', checked: focusing, run: () => void focus.toggle() },
+    { label: railed ? 'Show the sidebar' : 'Hide the sidebar', keys: '[', run: toggleRail },
+  ];
+
   return (
     <ShellContext.Provider value={shell}>
     {/* One live session per tab, above the routes, so navigation keeps it (#62). */}
@@ -386,11 +400,11 @@ function AppLayoutContent() {
           <Sidebar {...sidebarProps} onClose={() => setNavOpen(false)} titleId={drawerTitleId} />
         </Drawer>
       ) : (
-        <aside className={`app__side${railed ? ' app__side--rail' : ''}`} aria-label="Sidebar"><Sidebar {...sidebarProps} collapsed={railed} onToggleCollapsed={toggleRail} /></aside>
+        <aside className={`app__side${railed || focusing ? ' app__side--rail' : ''}`} aria-label="Sidebar"><Sidebar {...sidebarProps} collapsed={railed || focusing} onToggleCollapsed={focusing ? () => void focus.toggle() : toggleRail} /></aside>
       )}
 
       <div className="app__main">
-        <header className={`top${activeProject ? ' top--project' : ''}`}>
+        <header className={`top${activeProject ? ' top--project' : ''}${phone ? '' : ' top--row'}${focusing ? ' top--focus' : ''}`}>
           {phone && settingsPage ? (
             <IconButton icon="chevron-left" label="Back" size={20} className="top__back" data-tip-align="start"
               onClick={() => { if (location.key !== 'default') navigate(-1); else navigate('/settings'); }} />
@@ -398,18 +412,24 @@ function AppLayoutContent() {
             <IconButton icon="menu" label="Open navigation" size={18} aria-expanded={navOpen} aria-controls={navOpen ? 'nav-drawer' : undefined}
               aria-haspopup="dialog" data-tip-align="start" onClick={() => { setDetailsOpen(false); setNavOpen(true); }} className="top__menu" />
           ) : null}
-          {activeProject ? (
+          {!phone ? (
+            <div className="top__title">
+              {place.crumb && !activeProject ? <><span className="top__crumb">{place.crumb}</span><span className="top__slash" aria-hidden="true">/</span></> : null}
+              <h1 title={place.title}>{place.title}</h1>
+              {focusing && viewName ? <span className="top__topic">{viewName}</span>
+                : !rowViews || where === 'dm' ? <span className="top__topic">{activeProject ? null : place.topic}</span> : null}
+            </div>
+          ) : activeProject ? (
             <div className="top__head">
               <div className="top__title top__title--project">
                 {place.crumb ? <><span className="top__crumb">{place.crumb}</span><span className="top__slash" aria-hidden="true">/</span></> : null}
                 <h1 title={place.title}>{place.title}</h1>
               </div>
               <div className="top__meta">
-                {/* Who can read the project, then its current state; Details retains the full names. */}
+                {/* Who can read the project; Details retains the full names. */}
                 <button type="button" className="top__audience" onClick={openAudience} aria-haspopup="dialog" title={audience}>
                   <Icon name={audienceOpen ? 'people' : 'lock'} size={12} /><span>{audience}</span><span className="ui-vh">, who can see this project</span>
                 </button>
-                {project && !phone ? <ProjectStateLine summary={workSummary.summary} phase={workSummary.phase} /> : null}
               </div>
             </div>
           ) : (
@@ -419,31 +439,40 @@ function AppLayoutContent() {
             <span className="top__topic">{place.topic}</span>
           </div>
           )}
+          {rowViews && !focusing ? <Tabs variant="segmented" className="top__views" label={rowViews.label} items={rowViews.items} /> : null}
           <div className="top__right" data-shift>
             {/* A view can put one quiet action here (a DM's Select, #96). */}
             <span className="top__actions" ref={setActionSlot} />
-            {activeProject ? <LiveEntry /> : null}
-            {/* The inbox and its settings have nothing to show in Details. */}
-            {/* Labelled on every size (#264: icons alone left people unsure what to tap). */}
-            {'noDetails' in place ? null : <Button ref={detailsButtonRef} variant="quiet" icon="panel" className="top__details" aria-expanded={detailsOpen && !recapOpen}
-              aria-controls={detailsOpen ? 'details' : undefined} aria-keyshortcuts="]" data-tip={'Toggle details   ]'}
-              onClick={() => { setDetailsView('place'); if (!recapOpen) toggleDetails(); }}>
-              Details
-            </Button>}
+            {focusing && focus.until ? <FocusPill until={focus.until} onEnd={() => void focus.toggle()} /> : phone ? (
+              <>
+                {activeProject ? <LiveEntry /> : null}
+                {/* The inbox and its settings have nothing to show in Details. Labelled (#264). */}
+                {'noDetails' in place ? null : <Button ref={detailsButtonRef} variant="quiet" icon="panel" className="top__details" aria-expanded={detailsOpen && !recapOpen}
+                  aria-controls={detailsOpen ? 'details' : undefined}
+                  onClick={() => { setDetailsView('place'); if (!recapOpen) toggleDetails(); }}>
+                  Details
+                </Button>}
+              </>
+            ) : (
+              <>
+                {activeProject && needsYou ? <NeedsYouChip count={needsYou} open={recapOpen} onToggle={toggleRecap} /> : null}
+                {project?.people ? <HeaderFaces people={project.people} audience={audience} onOpen={openAudience} /> : null}
+                {activeProject ? <LiveEntry /> : null}
+                <MoreMenu items={moreItems} />
+              </>
+            )}
           </div>
         </header>
-        {/* The project's state line (needs you, rule, blocked) with "What matters" stays on the phone's
-            Conversation, where people orient themselves (#266 PF-2). */}
+        {/* The phone keeps its state line and view chips until its own header lands (#341). */}
         {project && phone && !onOtherView ? <div className="state-row"><ProjectStateRow summary={workSummary.summary} phase={workSummary.phase} />{recapEntry}</div> : null}
-        {/* A place's views: tabs on wider screens, a row of chips with the current one filled on the phone
-            (#266 PF-1), so where you are is never a guess. */}
-        {place.views
-          ? <Tabs className={`views${phone ? ' views--chips' : ''}`} label="Views" items={homeViews} />
-          : activeProject && projectViews
-            ? <div className={`views views--project${phone ? ' views--chips' : ''}`}><Tabs className="views__tabs" label="Project views" items={projectViews} />{phone ? null : recapEntry}</div>
-            : dmViews
-              ? <Tabs className={`views${phone ? ' views--chips' : ''}`} label="Direct message views" items={dmViews} />
-              : <div className="views views--none" aria-hidden="true" />}
+        {!phone ? null
+          : place.views
+            ? <Tabs className="views views--chips" label="Views" items={homeViews} />
+            : activeProject && projectViews
+              ? <div className="views views--project views--chips"><Tabs className="views__tabs" label="Project views" items={projectViews} /></div>
+              : dmViews
+                ? <Tabs className="views views--chips" label="Direct message views" items={dmViews} />
+                : <div className="views views--none" aria-hidden="true" />}
         <LiveBar />
         <div className="app__pane" id="content" ref={paneRef} tabIndex={-1}>
           <Outlet />

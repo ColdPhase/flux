@@ -18,7 +18,7 @@ import uuid
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 from author_columns import assert_author_column
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, shot, start_forwarder
 
 PASSWORD = "decisions need reasons"
 STAMP = int(time.time() * 1000)
@@ -124,7 +124,9 @@ class WorkDecisionsJourney(unittest.TestCase):
 
     def test_02_create_work_from_a_message_in_one_action(self) -> None:
         page = self.open_conversation("owner")
-        expect(page.get_by_label("Current state")).to_contain_text("No decisions or work yet")
+        # The computer's header is one row without a state line (#340); the project starts empty.
+        expect(page.get_by_label("Current state")).to_have_count(0)
+        self.assertEqual(self.work(page), {"work": [], "decisions": [], "results": []})
         message = page.locator(f"#message-{self.messages['idea']}")
         message.hover()
         message.get_by_role("button", name="Task", exact=True).click()
@@ -172,13 +174,12 @@ class WorkDecisionsJourney(unittest.TestCase):
         panel.get_by_role("button", name="Propose decision", exact=True).focus()
         page.keyboard.press("Enter")
         expect(panel.locator(".wd-eyebrow")).to_contain_text("Proposed decision")
-        expect(page.get_by_label("Current state")).to_contain_text("Needs you: a proposed decision")
+        self.assertEqual(self.work(page)["decisions"][0]["status"], "proposed")
         shot(page, "decision-desktop-1440-proposed")
         panel.get_by_role("button", name="Accept decision").focus()
         page.keyboard.press("Enter")
         expect(panel.locator(".wd-eyebrow")).to_contain_text("Current rule")
         expect(panel).to_contain_text("Ada Lind")
-        expect(page.get_by_label("Current state")).to_contain_text("Current rule: Use a camera for gesture control")
         decision = self.work(page)["decisions"][0]
         self.assertEqual((decision["status"], decision["decidedBy"]["id"]), ("accepted", OWNER["id"]))
         self.assertEqual([link["to"]["id"] for link in decision["links"] if link["role"] == "source"], [self.messages["idea"]])
@@ -249,7 +250,6 @@ class WorkDecisionsJourney(unittest.TestCase):
         panel.get_by_role("button", name="Accept and pivot").click()
         expect(panel.locator(".wd-eyebrow")).to_contain_text("Current rule")
         expect(panel.get_by_role("region", name="At this pivot")).to_contain_text("parked")
-        expect(page.get_by_label("Current state")).to_contain_text(f"Current rule: {PIVOT}")
 
         stored = self.work(page)
         by_title = {item["title"]: item for item in stored["work"]}
@@ -313,7 +313,10 @@ class WorkDecisionsJourney(unittest.TestCase):
         self.assertEqual(self.api(page, "GET", f"{base}/work?limit=1", status=200)["total"], 101)
         page.goto(f"/projects/{project['id']}/tasks")
         page.get_by_role("radio", name="List", exact=True).click()
-        expect(page.get_by_label("Current state")).to_contain_text("Current rule: Oldest rule: battery powered")
+        # The project's state is in Details (#340): the rule in force, found among 101 tasks.
+        open_details(page)
+        expect(page.locator("#details").get_by_role("region", name="Now in this project").get_by_role("button", name=re.compile("^Current rule"))).to_contain_text("Oldest rule: battery powered")
+        page.get_by_role("button", name="Close details", exact=True).click()
         views=page.get_by_role("navigation",name="Task views")
         expect(views.get_by_role("button",name=re.compile("^Open"))).to_contain_text("101")
         expect(views.get_by_role("button",name=re.compile("^Needs you"))).to_contain_text("101")

@@ -196,18 +196,19 @@ class PhoneShellJourney(unittest.TestCase):
         expect(page).to_have_url(re.compile("/map$"))
         expect(page.locator(".state-row")).to_have_count(0)
 
-    def test_04_desktop_tab_mark_spans_the_whole_label_and_slides(self):
+    def test_04_desktop_view_pill_covers_the_whole_tab_and_slides(self):
         page = self.page({"width": 1440, "height": 900}, touch=False)
         page.goto(f"/projects/{self.project['id']}/tasks")
         tabs = page.get_by_role("navigation", name="Project views")
         current = tabs.get_by_role("link", name=re.compile("^Tasks"))
         expect(current).to_have_attribute("aria-current", "page")
-        indicator = page.locator(".views .ui-tabs__indicator")
+        # The views are a segmented control in the header's one row (F-026 §4, #340).
+        expect(page.locator("header.top").get_by_role("navigation", name="Project views")).to_be_visible()
+        indicator = page.locator(".top__views .ui-tabs__indicator")
         self.settle(page)
-        label = current.locator(".ui-tabs__label")
-        width = label.evaluate("el => el.getBoundingClientRect().width")
+        width = current.evaluate("el => el.getBoundingClientRect().width")
         mark = indicator.evaluate("el => el.getBoundingClientRect().width")
-        self.assertAlmostEqual(mark, width, delta=1.5, msg="the mark is as wide as the current label")
+        self.assertAlmostEqual(mark, width, delta=1.5, msg="the raised pill is as wide as the current tab")
         before = indicator.evaluate("el => el.getBoundingClientRect().left")
         tabs.get_by_role("link", name="Wiki").click()
         expect(tabs.get_by_role("link", name="Wiki")).to_have_attribute("aria-current", "page")

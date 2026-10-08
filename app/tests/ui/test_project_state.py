@@ -1,4 +1,7 @@
-"""Persisted native state agrees across the project header, phone overview and Tasks (#136).
+"""Persisted native state agrees across Details, the phone's state row and Tasks (#136).
+
+On the computer the project's current state is in Details ("Now in this project"): its header is one
+row without a state line (F-026 §4, #340). The phone keeps its state row until its own header (#341).
 
 Actual authenticated browser/API data; viewport captures are emulation, not device acceptance.
 """
@@ -11,7 +14,7 @@ import uuid
 
 from playwright.sync_api import expect, sync_playwright
 
-from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
+from test_app_shell import ORIGIN, UPSTREAM, open_details, shot, start_forwarder
 from test_project_surface import LONG_NAME
 
 
@@ -77,21 +80,30 @@ class ProjectStateJourney(unittest.TestCase):
             {"principal": {"kind": "human", "id": self.accounts["Jonas Reader"]["id"]}, "role": "viewer"}, 201)
         return owner, project
 
+    def now_in_project(self, page):
+        """The computer's current state: Details, then "Now in this project"."""
+        open_details(page)
+        return page.locator("#details").get_by_role("region", name="Now in this project")
+
+    def faces(self, page):
+        return page.locator("header.top").get_by_role("button", name=re.compile("who can see this project$"))
+
     def work(self, page, project, title, status="open"):
         return self.call(page, "POST", f"/api/v1/projects/{project['id']}/work", {"title": title, "status": status}, 201)
 
-    def test_01_open_task_is_visible_in_header_and_tasks_and_opens_the_actual_object(self):
+    def test_01_open_task_is_visible_in_details_and_tasks_and_opens_the_actual_object(self):
         page, project = self.scene()
         page.goto(f"/projects/{project['id']}")
-        state = page.locator("header.top").get_by_label("Current state")
-        expect(state).to_contain_text("No decisions or work yet")
+        expect(page.locator("header.top").get_by_label("Current state")).to_have_count(0)
+        expect(self.now_in_project(page)).to_have_count(0)
+        page.get_by_role("button", name="Close details", exact=True).click()
         task = self.work(page, project, "Prepare the ToF sensor experiment for the library")
         page.reload()
+        now = self.now_in_project(page)
+        row = now.get_by_role("button", name=re.compile("^Open task.*" + re.escape(task["title"])))
+        expect(row).to_be_visible()
         shot(page, "136-state-single-open-desktop")
-        expect(state).to_contain_text("1 open task")
-        self.assert_text_is_unclipped(state.locator('[data-seg="open"] > span'))
-        expect(state).not_to_contain_text("No decisions or work yet")
-        state.locator('[data-seg="open"]').click()
+        row.click()
         expect(page.locator("#details").get_by_role("heading", name=task["title"], exact=True)).to_be_visible()
         page.get_by_role("button", name="Close details", exact=True).click()
         page.locator('[data-tab="tasks"]').click()
@@ -103,25 +115,24 @@ class ProjectStateJourney(unittest.TestCase):
         page, project = self.scene()
         task = self.work(page, project, "Measure low-light gesture reliability")
         page.goto(f"/projects/{project['id']}")
-        state = page.locator("header.top").get_by_label("Current state")
-        expect(state).to_contain_text("1 open task")
+        expect(self.now_in_project(page).get_by_role("button", name=re.compile("^Open task"))).to_be_visible()
         task = self.call(page, "PATCH", f"/api/v1/work/{task['id']}", {"status": "blocked", "blocker": "Waiting for the sensor delivery"},
             headers={"if-match": f'"{task["version"]}"'})
         page.reload()
-        expect(state).to_contain_text("1 blocked")
-        expect(state.locator('[data-seg="open"]')).to_have_count(0)
+        now = self.now_in_project(page)
+        expect(now.get_by_role("button", name=re.compile("^Blocked.*" + re.escape(task["title"])))).to_be_visible()
+        expect(now.get_by_role("button", name=re.compile("^Open task"))).to_have_count(0)
         self.call(page, "PATCH", f"/api/v1/work/{task['id']}", {"status": "done", "blocker": None},
             headers={"if-match": f'"{task["version"]}"'})
         page.reload()
-        expect(state).to_contain_text("1 completed task")
-        expect(state).not_to_contain_text("No decisions or work yet")
-        state.locator('[data-seg="history"]').click()
+        history = self.now_in_project(page).get_by_role("button", name=re.compile("^Earlier work"))
+        expect(history).to_contain_text(task["title"])
+        history.click()
         expect(page.locator("#details").get_by_role("heading", name=task["title"], exact=True)).to_be_visible()
         self.work(page, project, "Camera-only direction was not pursued", "not_pursued")
         page.get_by_role("button", name="Close details", exact=True).click()
         page.reload()
-        expect(state).to_contain_text("1 completed task · 1 not pursued")
-        self.assert_text_is_unclipped(state.locator('[data-seg="history"] > span'))
+        expect(self.now_in_project(page).get_by_role("button", name=re.compile("^Earlier work"))).to_have_count(1)
         shot(page, "136-state-retained-history-desktop")
 
     def test_03_phone_and_tablet_readers_share_current_counts_and_reachable_details_without_write_access(self):
@@ -140,7 +151,10 @@ class ProjectStateJourney(unittest.TestCase):
                 expect(page.locator(".project-convo__read-only")).to_be_visible()
                 expect(page.locator("#project-composer")).to_have_count(0)
                 expect(page.get_by_role("button", name="Send message", exact=True)).to_have_count(0)
-                self.assert_text_is_unclipped(page.locator("header.top .top__audience > span").first)
+                if width <= 640:
+                    self.assert_text_is_unclipped(page.locator("header.top .top__audience > span").first)
+                else:
+                    expect(self.faces(page)).to_be_visible()
                 self.assert_text_is_unclipped(page.locator(".composer__audience > span").first)
                 if width <= 640:
                     row = page.get_by_role("button", name=re.compile("open project details"))
@@ -156,8 +170,8 @@ class ProjectStateJourney(unittest.TestCase):
                     expect(panel.get_by_role("heading", name="Keep a manual switch available", exact=True)).to_be_visible()
                     panel.get_by_role("button", name="Close details", exact=True).click()
                 else:
-                    expect(page.locator("header.top").get_by_label("Current state")).to_contain_text("2 open tasks")
-                    self.assert_text_is_unclipped(page.locator('header.top [data-seg="open"] > span'))
+                    expect(self.now_in_project(page).get_by_role("button", name=re.compile("^Open task"))).to_be_visible()
+                    page.get_by_role("button", name="Close details", exact=True).click()
                     expect(page.get_by_role("link", name="New conversation", exact=True)).to_have_count(0)
                 self.assertLessEqual(page.locator("body").evaluate("el => el.scrollWidth"), width)
                 shot(page, f"136-state-reader-{width}-{'dark' if dark else 'light'}")
@@ -224,7 +238,7 @@ class ProjectStateJourney(unittest.TestCase):
         reader.goto(f"/projects/{project['id']}")
         expect(reader.get_by_label("Write a message", exact=True)).to_have_value("Unsent sensor notes remain mine")
 
-    def test_05_long_project_title_yields_to_readable_audience_and_compact_header(self):
+    def test_05_long_project_title_keeps_one_row_with_views_and_people(self):
         for name in (LONG_NAME, LONG_NAME + " — sensor calibration and accessible night lighting"):
             owner, project = self.scene(name)
             self.work(owner, project, "Check low-light reliability")
@@ -233,12 +247,16 @@ class ProjectStateJourney(unittest.TestCase):
                     page = self.page(width=width, height=1180)
                     page.goto(f"/projects/{project['id']}")
                     header = page.locator("header.top")
-                    expect(header.get_by_label("Current state")).to_contain_text("1 open task")
-                    self.assertLessEqual(header.bounding_box()["height"], 90, "long title must not turn audience into a vertical column")
-                    self.assert_text_is_unclipped(header.locator(".top__audience > span").first)
-                    expect(header.get_by_role("heading", level=1)).to_have_attribute("title", name)
+                    # One row from 1280 px (F-026 §4); a narrower panel gives the views their own line.
+                    # A long name shortens; the views, the people and More stay.
+                    self.assertLessEqual(header.bounding_box()["height"], 72 if width >= 1280 else 130, "a long title never stacks the header")
+                    title = header.get_by_role("heading", level=1)
+                    expect(title).to_have_attribute("title", name)
+                    self.assertGreaterEqual(title.bounding_box()["width"], 80, "the name keeps a readable start")
+                    expect(header.get_by_role("navigation", name="Project views")).to_be_visible()
+                    expect(header.get_by_role("button", name="More", exact=True)).to_be_in_viewport()
                     self.assertLessEqual(page.locator("body").evaluate("el => el.scrollWidth"), width)
-                    header.locator(".top__audience").click()
+                    self.faces(page).click()
                     expect(page.locator("#details").get_by_role("heading", name=name, exact=True)).to_be_visible()
                     page.get_by_role("button", name="Close details", exact=True).click()
                     if width in (744, 820, 1280):

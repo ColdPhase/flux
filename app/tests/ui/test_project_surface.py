@@ -18,7 +18,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, shot, start_forwarder
 
 PASSWORD = "a lamp that reads the room"
 STAMP = int(time.time() * 1000)
@@ -168,7 +168,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         # Studio 11.6 order and vocabulary (#136); quiet tabs without visible counts.
         self.assertEqual([text.split("\n")[0] for text in tabs.get_by_role("link").all_inner_texts()[:4]], ["Conversation", "Map", "Tasks", "Wiki"])
         expect(tabs.get_by_role("link", name="Tasks, 2 open")).to_be_visible()
-        expect(header.get_by_role("button", name="Details")).to_be_visible()
+        expect(header.get_by_role("button", name="More", exact=True)).to_be_visible()
         # One project conversation (UI116-1): the sidebar lists no threads; the stream shows the root
         # with its thread open beside it, and the centre uses the pane (#136) with readable bubbles.
         expect(page.get_by_role("complementary", name="Sidebar").get_by_role("link", name=re.compile("^Should the lamp react"))).to_have_count(0)
@@ -188,7 +188,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         shot(page, "project-conversation-desktop-1440")
         small = self.page("ada", viewport={"width": 1280, "height": 800})
         small.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
-        expect(small.locator("header.top").get_by_label("Current state")).to_be_visible()
+        expect(small.locator("header.top").get_by_role("navigation", name="Project views")).to_be_visible()
         expect(small.locator(f"#message-{self.ids['m4']}")).to_be_visible()
         self.assert_whole_messages(small)
         shot(small, "project-conversation-desktop-1280")
@@ -211,18 +211,31 @@ class ProjectSurfaceJourney(unittest.TestCase):
 
     # ---------------------------------------------------------------- current state
 
-    def test_03_each_state_segment_opens_its_object(self) -> None:
+    def test_03_needs_you_and_details_open_the_projects_objects(self) -> None:
+        """The computer's header is one row (F-026 §4, #340): "N needs you" is the recap's own count and opens
+        it; the rule, the work, the result and the proposal open from Details."""
         page = self.open_project("ada")
-        state = page.locator("header.top").get_by_label("Current state")
-        expect(state).to_contain_text("Current rule: Use a ToF sensor, not the camera, for gestures")
-        expect(state).to_contain_text("In progress: Test the camera in low light (Nia Okafor)")
-        expect(state).to_contain_text("Negative result: Camera caught 38% of gestures at 5 lux")
-        expect(state).to_contain_text("Needs you: a proposed decision")
+        header = page.locator("header.top")
+        expect(header.get_by_label("Current state")).to_have_count(0)
+        recap = self.api(page, "GET", f"/api/v1/return?place=project&id={self.ids['project']}&scope=all&from=last-visit", status=200)
+        chip = header.get_by_role("button", name=re.compile(r"needs you$"))
         panel = self.details(page)
-        for segment, heading in (("rule", "Use a ToF sensor, not the camera, for gestures"), ("work", "Test the camera in low light"),
-                                 ("result", "Camera caught 38% of gestures at 5 lux"), ("proposal", "Keep a manual off switch on the base")):
-            state.locator(f'[data-seg="{segment}"]').click()
+        if recap["needsYou"]:
+            expect(chip).to_have_text(f"{recap['needsYou']} needs you")
+            chip.click()
+            expect(chip).to_have_attribute("aria-expanded", "true")
+            expect(panel.get_by_role("heading", name="What matters")).to_be_visible()
+            chip.click()
+            expect(panel).to_be_hidden()
+        else:
+            expect(chip).to_have_count(0)
+        open_details(page)
+        linked = panel.get_by_role("region", name="Linked in this conversation")
+        for heading in ("Use a ToF sensor, not the camera, for gestures", "Test the camera in low light",
+                        "Camera caught 38% of gestures at 5 lux", "Keep a manual off switch on the base"):
+            linked.get_by_role("button", name=re.compile(re.escape(heading))).click()
             expect(panel.get_by_role("heading", name=heading)).to_be_visible()
+            open_details(page)
         panel.get_by_role("button", name="Close details").click()
         expect(panel).to_be_hidden()
 
@@ -250,10 +263,10 @@ class ProjectSurfaceJourney(unittest.TestCase):
         tabs.get_by_role("link", name=re.compile("^Conversation")).click()
         expect(page, "Conversation returns to the open conversation").to_have_url(conversation_url)
         expect(page.locator(f"#message-{self.ids['m_camera']}")).to_be_visible()
-        # The state line stays with the project on every tab, and Map returns to the list chosen last.
+        # The header stays with the project on every tab, and Map returns to the list chosen last.
         tabs.get_by_role("link", name=re.compile("^Map")).click()
         expect(page).to_have_url(re.compile(r"/map$"))
-        expect(page.locator("header.top").get_by_label("Current state")).to_contain_text("Current rule")
+        expect(page.locator("header.top").get_by_role("heading", level=1, name="Gesture lamp")).to_be_visible()
         # At 320px the tab strip scrolls sideways; the current tab is brought into view.
         page.set_viewport_size({"width": 320, "height": 640})
         tabs.get_by_role("link", name=re.compile("^Wiki")).click()
@@ -269,7 +282,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
 
     def test_05_details_overview_links_everything_one_step_away(self) -> None:
         page = self.open_project("ada")
-        page.locator("header.top").get_by_role("button", name="Details").click()
+        open_details(page)
         panel = self.details(page)
         expect(panel.get_by_role("heading", name=OPENING)).to_be_visible()
         linked = panel.get_by_role("region", name="Linked in this conversation")
@@ -286,8 +299,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         # One step to an object, and back.
         linked.get_by_role("button", name=re.compile("Order two VL53L5CX boards")).click()
         expect(panel.get_by_role("heading", name="Order two VL53L5CX boards")).to_be_visible()
-        page.locator("header.top").get_by_role("button", name="Details").click()
-        page.locator("header.top").get_by_role("button", name="Details").click()
+        open_details(page)
         expect(panel.get_by_role("region", name="Sources")).to_be_visible()
         panel.get_by_role("region", name="Sources").get_by_role("link", name=re.compile("Low-light test notes")).click()
         expect(page).to_have_url(re.compile(rf"/materials/{self.ids['material']}/versions/1$"))
@@ -420,7 +432,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
     def focus_ring(self, page: Page) -> dict | None:
         return page.evaluate("""() => {
           const tab = document.activeElement;
-          if (!tab || !tab.matches('.views .ui-tabs__tab:focus-visible')) return null;
+          if (!tab || !tab.matches('.top__views .ui-tabs__tab:focus-visible, .views .ui-tabs__tab:focus-visible')) return null;
           const style = getComputedStyle(tab);
           const out = parseFloat(style.outlineOffset) + parseFloat(style.outlineWidth);
           const r = tab.getBoundingClientRect(), bar = tab.closest('.ui-tabs__bar').getBoundingClientRect();

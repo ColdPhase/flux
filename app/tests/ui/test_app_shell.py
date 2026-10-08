@@ -108,6 +108,37 @@ def new_from_sidebar(page: Page, item: str) -> None:
     page.get_by_role("menu", name="New").get_by_role("menuitem", name=item, exact=True).click()
 
 
+def open_details(page: Page) -> None:
+    """Details: More, then Details, in the computer's one-row header (#340); the phone keeps its
+    labelled Details button until its own header (#341)."""
+    header = page.locator("header.top")
+    header.locator("button[aria-label='More'], .top__details").first.wait_for()
+    more = header.get_by_role("button", name="More", exact=True)
+    if more.count():
+        more.click()
+        page.get_by_role("menu", name="More").get_by_role("menuitem", name="Details").click()
+    else:
+        header.get_by_role("button", name="Details", exact=True).click()
+
+
+def open_what_matters(page: Page, tap: bool = False) -> None:
+    """"What matters" (#133): on the computer "N needs you" in the header opens it, or More when nothing
+    needs you (#340); the phone keeps its entry after the state row until #341."""
+    header = page.locator("header.top")
+    header.locator("button[aria-label='More'], .top__details").first.wait_for()
+    more = header.get_by_role("button", name="More", exact=True)
+    if not more.count():
+        entry = page.get_by_role("button", name=re.compile("^What matters"))
+        entry.tap() if tap else entry.click()
+        return
+    chip = header.get_by_role("button", name=re.compile("needs you$"))
+    if chip.count():
+        chip.click()
+        return
+    more.click()
+    page.get_by_role("menu", name="More").get_by_role("menuitem", name="What matters").click()
+
+
 def shot(page: Page, name: str) -> None:
     if not SHOTS:
         return
@@ -344,6 +375,8 @@ class AppShellJourney(unittest.TestCase):
         expect(sidebar.get_by_text("No projects yet")).to_be_visible()
         expect(sidebar.get_by_role("button", name=re.compile("^New"))).to_have_attribute("aria-keyshortcuts", "C")
         views = page.get_by_role("navigation", name="Views")
+        # The views sit in the header's one row as a segmented control (F-026 §4, #340).
+        expect(page.locator("header.top").get_by_role("navigation", name="Views")).to_be_visible()
         for label in ("Conversation", "Map", "Tasks", "Wiki"):
             expect(views.get_by_role("link", name=label, exact=True)).to_be_visible()
         expect(views.get_by_role("link", name="Conversation")).to_have_attribute("aria-current", "page")
@@ -375,23 +408,23 @@ class AppShellJourney(unittest.TestCase):
         self.assertEqual(len(page.evaluate("fetch('/api/v1/workspaces').then(r => r.json())")), 1, "still one space")
         shot(page, "desktop-1440-light")
 
-        indicator = page.locator(".views .ui-tabs__indicator")
+        indicator = page.locator(".top__views .ui-tabs__indicator")
         before = indicator.evaluate("el => el.style.transform")
         views.get_by_role("link", name="Tasks").click()
         expect(page).to_have_url(f"{ORIGIN}/tasks")
         expect(views.get_by_role("link", name="Tasks")).to_have_attribute("aria-current", "page")
         expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
-        self.assertNotEqual(before, indicator.evaluate("el => el.style.transform"), "the underline moves to the chosen view")
+        self.assertNotEqual(before, indicator.evaluate("el => el.style.transform"), "the pill moves to the chosen view")
         views.get_by_role("link", name="Map").click()
         expect(page.get_by_role("heading", name="Start a sketch")).to_be_visible()
         shot(page, "desktop-1440-map-light")
 
-        details_button = page.get_by_role("button", name="Details", exact=True)
-        expect(details_button).to_have_attribute("aria-expanded", "false")
-        details_button.click()
+        # Details is in More (#340); the header has no separate Details button on the computer.
+        more = page.locator("header.top").get_by_role("button", name="More", exact=True)
+        expect(page.locator("header.top").get_by_role("button", name="Details", exact=True)).to_have_count(0)
+        open_details(page)
         panel = page.get_by_role("complementary", name="Details")
         expect(panel).to_be_visible()
-        expect(details_button).to_have_attribute("aria-expanded", "true")
         expect(panel.get_by_role("heading", name="Nothing selected")).to_be_visible()
         expect(panel.get_by_text(EMAIL)).to_have_count(0)
         # Docked: the work area stays usable beside the panel.
@@ -401,8 +434,11 @@ class AppShellJourney(unittest.TestCase):
         shot(page, "desktop-1440-details-light")
         page.keyboard.press("Escape")
         expect(panel).to_have_count(0)
-        expect(details_button).to_be_focused()
+        expect(more).to_be_focused()
+        # "]" is not a key of the final design (§4 keyboard); it opens nothing.
         page.keyboard.press("]")
+        expect(page.get_by_role("complementary", name="Details")).to_have_count(0)
+        open_details(page)
         expect(page.get_by_role("complementary", name="Details")).to_be_visible()
         page.get_by_role("button", name="Close details").click()
         expect(page.get_by_role("complementary", name="Details")).to_have_count(0)
@@ -544,7 +580,7 @@ class AppShellJourney(unittest.TestCase):
         self.assertEqual(page.evaluate("getComputedStyle(document.body).backgroundColor"), "rgb(11, 11, 11)", "the dark outer background")
         self.assertEqual(page.locator(".app__main").evaluate("el => getComputedStyle(el).backgroundColor"), "rgb(17, 17, 17)", "the dark panel")
         shot(page, "desktop-1440-dark")
-        page.get_by_role("button", name="Details", exact=True).click()
+        open_details(page)
         expect(page.get_by_role("complementary", name="Details")).to_be_visible()
         shot(page, "desktop-1440-details-dark")
 
@@ -675,7 +711,7 @@ class AppShellJourney(unittest.TestCase):
         calm = self.page(reduced_motion="reduce")
         calm.goto("/")
         self.assertEqual(calm.evaluate("parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--dur-3'))"), 0)
-        calm.get_by_role("button", name="Details", exact=True).click()
+        open_details(calm)
         panel = calm.get_by_role("complementary", name="Details")
         expect(panel).to_be_visible()
         self.assertEqual(panel.evaluate("el => el.getAnimations().length"), 0, "no panel animation under reduced motion")

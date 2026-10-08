@@ -161,7 +161,7 @@ def journey(page: Page, rec: Recorder) -> None:
     expect(panel.get_by_role("button", name="Accept decision")).to_be_visible()
     rec.hold(900)
     rec.click(panel.get_by_role("button", name="Accept decision"))
-    expect(page.get_by_label("Current state").first).to_contain_text("Current rule")
+    expect(panel.locator(".wd-eyebrow")).to_contain_text("Current rule")
     # End on the rule where it was decided: under Jonas's message, linked to it.
     rec.point(moisture.get_by_role("button", name=re.compile("^Decision: Measure soil moisture first")))
     rec.hold(3400)

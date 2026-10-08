@@ -47,7 +47,7 @@ PROBE = r"""(() => {
   // One trusted click on a project row or a work tab: feedback (the highlight/mark on the chosen item,
   // then two following frames), the motion's end, the route committing that choice, and frame gaps.
   document.addEventListener('click', (event) => {
-    const el = event.target instanceof Element ? event.target.closest('.views [data-tab], .side .side__project') : null;
+    const el = event.target instanceof Element ? event.target.closest('.views [data-tab], .top__views [data-tab], .side .side__project') : null;
     if (!el || !event.isTrusted) return;
     const kind = el.matches('.side__project') ? 'project' : 'tab';
     const id = kind === 'tab' ? el.dataset.tab : el.dataset.glideId;
@@ -55,7 +55,7 @@ PROBE = r"""(() => {
     const run = { kind, id, feedback: null, motionEnd: null, committed: null, maxGap: 0 };
     probe.result = null;
     let last = performance.now(), seen = false, committing = false;
-    const mark = () => document.querySelector(kind === 'tab' ? '.views .ui-tabs__indicator' : '.side .side__glide');
+    const mark = () => document.querySelector(kind === 'tab' ? '.views .ui-tabs__indicator, .top__views .ui-tabs__indicator' : '.side .side__glide');
     const step = (now) => {
       run.maxGap = Math.max(run.maxGap, now - last); last = now;
       const m = mark();
@@ -64,7 +64,7 @@ PROBE = r"""(() => {
         requestAnimationFrame(() => requestAnimationFrame(() => { run.feedback = performance.now() - start; }));
       }
       if (run.feedback !== null && run.motionEnd === null && m && !m.getAnimations().some((a) => a.playState === 'running')) run.motionEnd = performance.now() - start;
-      const current = kind === 'tab' ? document.querySelector(`.views [data-tab="${id}"][aria-current="page"]`) : document.querySelector(`.side .side__project.is-open[data-glide-id="${id}"]`);
+      const current = kind === 'tab' ? document.querySelector(`:is(.views, .top__views) [data-tab="${id}"][aria-current="page"]`) : document.querySelector(`.side .side__project.is-open[data-glide-id="${id}"]`);
       if (current && !committing) { committing = true; requestAnimationFrame(() => requestAnimationFrame(() => { run.committed = performance.now() - start; })); }
       if (run.feedback !== null && run.motionEnd !== null && run.committed !== null) { probe.result = run; return; }
       if (now - start > 20000) { probe.result = { ...run, timeout: true }; return; }
@@ -161,7 +161,7 @@ class MotionPerformance(unittest.TestCase):
         if cpu > 1:
             context.new_cdp_session(page).send("Emulation.setCPUThrottlingRate", {"rate": cpu})
         page.goto(path)
-        page.wait_for_selector(".views .ui-tabs__indicator[data-target]")
+        page.wait_for_selector(":is(.views, .top__views) .ui-tabs__indicator[data-target]")
         page.wait_for_timeout(1000)
         return context, page
 
@@ -190,7 +190,7 @@ class MotionPerformance(unittest.TestCase):
             profile = {"label": label, "viewport": viewport, "cpuThrottle": cpu, "reducedMotion": reduced, "distributions": {},
                        "note": "maxFrameGap spans click to committed paint, so it includes the chosen view's own render"}
             context, page = self.open("ada", viewport, cpu, f"/projects/{self.projects[0]}", reduced)
-            tabs = page.locator(".views")
+            tabs = page.locator(".views, .top__views").first
             go = lambda name: (lambda: tabs.locator(f'[data-tab="{name}"]').click())
             results, seconds = self.series(page, [go("tasks"), go("conversation")], "tab")
             profile["distributions"]["workTab"] = {"seconds": seconds,

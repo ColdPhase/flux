@@ -53,7 +53,7 @@ from pathlib import Path
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, open_what_matters, shot, start_forwarder
 
 PASSWORD = "a lamp that listens to hands"
 NAMES = {"ada": "Ada Kowalska", "jonas": "Jonas Berg", "mia": "Mia Novak", "lee": "Lee Moreno"}
@@ -418,7 +418,10 @@ class ScenarioJourney:
 
         # She adds the others to the space by email (Home → Details → People).
         page.goto("/")
-        self.tap(page.get_by_role("button", name="Details", exact=True))
+        if self.phone:
+            self.tap(page.get_by_role("button", name="Details", exact=True))
+        else:
+            open_details(page)
         self.tap(page.get_by_role("region", name="People").get_by_role("button", name=re.compile(f"^{WORKSPACE}")))
         expect(page.get_by_role("heading", name="People", exact=True)).to_be_visible()
         for key in ("jonas", "mia", "lee"):
@@ -906,7 +909,7 @@ class ScenarioJourney:
 
         # In the project, "What matters" works without AI.
         page.goto(f"/projects/{lamp}")
-        self.tap(page.get_by_role("button", name=re.compile("^What matters")))
+        open_what_matters(page, tap=self.phone)
         recap = page.locator("#details")
         expect(recap.get_by_role("heading", name="What matters")).to_be_visible()
         self.tap(recap.get_by_role("button", name="Summarize"))

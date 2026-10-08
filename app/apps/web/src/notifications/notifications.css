@@ -137,6 +137,8 @@
   .nset__row input { min-width: 0; }
 }
 .nset__device .pwa-action { width: auto; }
+.nset__focus { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; margin: 0 0 12px; padding: 10px 12px; border-radius: var(--r); background: var(--sub); font-size: var(--fs-sm); line-height: 1.45; color: var(--t1); }
+.nset__focus > span { flex: 1 1 16em; }
 .nset__problem { display: flex; gap: 8px; align-items: flex-start; margin: 0 0 12px; padding: 10px 12px; border-radius: var(--r); background: var(--sub); font-size: var(--fs-sm); line-height: 1.45; color: var(--t2); }
 .nset__problem svg { flex: none; margin-top: 2px; color: var(--t2); }
 .nset__problem b { font-weight: 600; color: var(--t1); }
