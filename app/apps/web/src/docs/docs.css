@@ -88,8 +88,7 @@
 @media (pointer: coarse) { .wiki-bar__primary { min-width: 44px; justify-content: center; } }
 .wiki-bar__back { gap: 4px; padding: 0 8px; font-size: var(--fs-sm); color: var(--t2); }
 /* On a phone Edit floats at the bottom right of the page, as drawn. */
-.wiki-edit { position: sticky; bottom: 16px; z-index: 6; margin: auto 16px 16px auto; min-height: 48px; padding: 0 20px; gap: 8px; font-size: .9375rem; background: var(--el); color: var(--t1); box-shadow: var(--sh-pop); }
-.wiki-edit:hover { background: var(--el); filter: brightness(.98); color: var(--t1); }
+.wiki-edit { position: sticky; bottom: 16px; z-index: 6; margin: auto 16px 16px auto; min-height: 48px; padding: 0 20px; gap: 8px; font-size: .9375rem; box-shadow: var(--sh-pri), 0 10px 24px -8px rgba(0, 0, 0, .35); }
 .wiki-pop__item { text-decoration: none; }
 
 /* Share and Download: a small card hanging from the bar's right end (the bar is its containing

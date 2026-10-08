@@ -118,7 +118,99 @@ class WikiFinal(unittest.TestCase):
                 self.assertGreater(box["y"] + box["height"], PHONE["height"] * 0.6, "Edit stays low on the screen")
                 expect(page.get_by_role("complementary", name="On this page")).to_have_count(0)
                 self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), PHONE["width"])
+                # Edit is the one primary action: the primary pill, never the page's own surface.
+                look = edit.evaluate("e => { const c = getComputedStyle(e); return [c.backgroundColor, c.backgroundImage, c.color, getComputedStyle(document.documentElement).getPropertyValue('--inv').trim()]; }")
+                self.assertNotEqual(look[1], "none", "the primary gradient")
+                self.assertNotEqual(look[0], page.evaluate("getComputedStyle(document.body).backgroundColor"))
+                self.assertNotEqual(look[0], "rgba(0, 0, 0, 0)")
                 shot(page, f"wiki-final-phone-390-{theme}")
+
+
+class WikiReferences(unittest.TestCase):
+    """Task and decision references in a page, and a reference that is not in the project."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        if UPSTREAM:
+            start_forwarder(ORIGIN, UPSTREAM)
+        cls.pw = sync_playwright().start()
+        cls.browser = cls.pw.chromium.launch()
+        expect.set_options(timeout=8000)
+        ctx = cls.browser.new_context(base_url=ORIGIN)
+        page = ctx.new_page()
+        email = f"ada.wikirefs+{STAMP}@example.test"
+        page.goto("/sign-up")
+        page.get_by_label("Name").fill("Ada Kowalska")
+        page.get_by_label("Email").fill(email)
+        page.get_by_label("Password").fill(PASSWORD)
+        page.get_by_role("button", name="Create account").click()
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+
+        def api(method, path, body=None, headers=None):
+            response = page.request.fetch(f"{ORIGIN}{path}", method=method, data=json.dumps(body) if body is not None else None,
+                                          headers={"origin": ORIGIN, "content-type": "application/json", **(headers or {})})
+            assert response.status < 300, response.text()
+            return json.loads(response.text() or "{}")
+        ws = api("POST", "/api/v1/workspaces", {"name": "Garden refs"})
+        project = api("POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Refs garden", "visibility": "restricted"})
+        other = api("POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Elsewhere", "visibility": "restricted"})
+        pid = project["id"]
+        task = api("POST", f"/api/v1/projects/{pid}/work", {"title": "Order the probes", "status": "in_progress"})
+        accepted = api("POST", f"/api/v1/projects/{pid}/decisions", {"title": "Measure soil moisture first"})
+        api("POST", f"/api/v1/decisions/{accepted['id']}/accept", {"expectedVersion": accepted["version"]})
+        proposed = api("POST", f"/api/v1/projects/{pid}/decisions", {"title": "Add frost warnings later"})
+        foreign = api("POST", f"/api/v1/projects/{other['id']}/work", {"title": "Not in this project"})
+        body = (f"Intro.\n\n[Measure soil moisture first](flux:decision/{accepted['id']})\n\n"
+                f"[Add frost warnings later](flux:decision/{proposed['id']})\n\n## Parts\n\n"
+                f"Probes: [Order the probes](flux:work/{task['id']}) and [Elsewhere](flux:work/{foreign['id']}).\n")
+        doc = api("POST", f"/api/v1/projects/{pid}/docs", {"title": "References", "body": body, "state": "published"}, {"idempotency-key": str(uuid.uuid4())})
+        cls.url = f"/projects/{pid}/docs/{doc['id']}"
+        cls.number = task["number"]
+        cls.state = ctx.storage_state()
+        ctx.close()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.browser.close()
+        cls.pw.stop()
+
+    def read(self, viewport, touch=False, theme="light"):
+        options = dict(base_url=ORIGIN, viewport=viewport, storage_state=self.state, color_scheme=theme, locale="en-GB")
+        if touch:
+            options.update(is_mobile=True, has_touch=True, device_scale_factor=2)
+        context = self.browser.new_context(**options)
+        self.addCleanup(context.close)
+        page = context.new_page()
+        page.goto(self.url)
+        expect(page.get_by_role("heading", level=2, name="References")).to_be_visible()
+        return page
+
+    def check(self, page, name, phone):
+        task = page.locator("a.doc-task")
+        expect(task).to_have_count(1)
+        expect(task.locator("svg.ui-glyph--in_progress")).to_have_count(1)
+        expect(task).to_contain_text(f"#{self.number}")
+        expect(task).to_contain_text("In progress")
+        card = page.locator("a.doc-decision")
+        expect(card).to_have_count(2)
+        first = card.first
+        expect(first).to_contain_text("Decision accepted")
+        expect(first).to_contain_text("Measure soil moisture first")
+        if not phone:
+            expect(first.locator(".doc-decision__meta")).to_contain_text("Ada Kowalska")
+            expect(first.locator(".doc-decision__meta")).to_contain_text(re.compile(r"\d{1,2} \w{3}|\w{3} \d{1,2}"))
+        expect(card.nth(1)).to_contain_text("Decision proposed")
+        # A reference that is not in this project stays plain text, without a glyph or card.
+        missing = page.locator(".doc-ref--missing")
+        expect(missing).to_have_count(1)
+        expect(missing.locator("svg")).to_have_count(0)
+        shot(page, name)
+
+    def test_computer(self) -> None:
+        self.check(self.read(DESKTOP), "wiki-refs-desktop-1440", False)
+
+    def test_phone_dark(self) -> None:
+        self.check(self.read(PHONE, touch=True, theme="dark"), "wiki-refs-phone-390-dark", True)
 
 
 if __name__ == "__main__":
