@@ -52,3 +52,18 @@ and every prior failure stay historical, open evidence.
 All four F-021 gates, current design/behavior review, eligible independent protected
 approval and integrated release acceptance remain open. The PR stays draft and live
 stays disabled until the original gates actually pass at the reviewed candidate.
+
+## Accepted-main refresh after #367
+
+Later on 2026-10-08, refresh the preserved clean candidate
+`0a0efb8b71575f151b0b89ad9f38a7029287c3e9` with protected main
+`197f52162e6eb0091870aab0435bce4dc71f27b3`. Include the complete accepted
+conversation-root task-number projection and its real actor-layout negative
+control. Preserve all disabled live production, migrations 0046/0047 and the
+existing four-gate criteria. Record the exact merge and any conflict union; obtain
+fresh independent source evaluation before pushing the updated existing PR.
+
+The old private driver remains pinned to 0a0. It must not execute against the
+refreshed candidate or automatically select HEAD. A new explicit immutable pin,
+reviewed driver and isolated heavy window are required. Neither main's passing
+checks nor this source refresh accepts live, Undo, phone interaction or latency.
