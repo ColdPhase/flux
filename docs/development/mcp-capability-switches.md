@@ -296,3 +296,28 @@ the explicit existing projection shape without changing values or authorization.
 The owner/core/architecture tests from that run remain unexecuted. Preparation or
 source-review PASS never counts as application acceptance; a new pinned build and
 actual selected tests are still required.
+
+
+### Ordinary owner control surface continuation
+
+The existing personal connection page now hosts the selected connection's ordinary
+session permission form outside the OAuth chooser. It groups the actual shared
+manifest into Read/Suggest/Act switches plus original native project selection;
+known labels and current server entry identity are required before an explicit On
+adds aliases. Loading never enables newly introduced entries. Original scopes
+remain the ceiling, unavailable project selections can be removed, and Disable all
+sets a genuinely empty policy without creating grants. Saving uses the loaded CAS
+version; drafts are explicitly unsaved until the API confirms them. Stale or
+unconfirmed writes require reloading before another save. A confirmed save followed
+by a failed availability refresh is reported distinctly. This is browser source
+only and not yet compiled, exercised or visually accepted. Full S6 transport and
+current-authority fences remain required; this surface is not a completion claim.
+
+
+Three new browser scenarios are prepared for genuine sessions/API/CAS/persistence
+and an already-issued MCP bearer: draft/save/reload/knowledge Off and all-Off;
+two tabs competing on one version plus a genuinely offline unconfirmed save; and
+Chromium/WebKit 320/390 controls, 44px geometry, Space activation and persisted
+all-Off management. Each phone iteration has its own account/project/connection,
+so earlier all-Off state cannot silently disable a later iteration's save. No
+browser scenario has been executed and no screenshot exists for this continuation.
