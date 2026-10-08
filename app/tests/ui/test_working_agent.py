@@ -239,7 +239,6 @@ class WorkingAgentJourney(unittest.TestCase):
                     if compact:
                         page.keyboard.press("[")
                         expect(page.locator(".side--rail")).to_be_visible()
-                        page.evaluate("document.documentElement.style.fontSize = '200%'")
                     attempts = []
                     def refuse_once(route: Route) -> None:
                         attempts.append(route.request.url)
@@ -250,16 +249,33 @@ class WorkingAgentJourney(unittest.TestCase):
                     page.route(f"**/api/v1/assistant-runs/{run['id']}/stop", refuse_once)
                     card = page.locator(".agentlive")
                     card.get_by_role("button", name="Stop your assistant").click()
-                    error = card.get_by_role("alert")
-                    expect(error).to_contain_text(re.compile("stop", re.I))
+                    error = page.locator(".agentlive__notice") if compact else card.get_by_role("alert")
+                    expect(error).to_contain_text("Couldn’t stop your assistant. Try again.")
                     self.assertFalse(self.api(page, "GET", f"/api/v1/assistant-runs/{run['id']}")["stopRequested"],
                                      "the network refusal is not a successful Stop")
                     expect(card.get_by_role("button", name="Stop your assistant")).to_be_enabled()
                     if compact:
-                        self.assertTrue(error.evaluate("el => el.scrollWidth <= el.clientWidth + .001"),
-                                        "the enlarged failure message remains in the compact card")
-                        self.assertEqual(page.evaluate("document.documentElement.scrollWidth - innerWidth"), 0)
-                    shot(page, f"340-working-stop-failed-{engine}{'-rail-text200' if compact else ''}")
+                        for scale in (100, 200):
+                            page.evaluate("scale => document.documentElement.style.fontSize = scale + '%'", scale)
+                            self.assertTrue(error.locator(".ui-toast__msg").evaluate(r"""el => {
+                                const r=el.getBoundingClientRect(), node=el.firstChild;
+                                const words=[...node.textContent.matchAll(/\S+/g)];
+                                return r.left>=0 && r.top>=0 && r.right<=innerWidth && r.bottom<=innerHeight
+                                  && el.scrollWidth<=el.clientWidth+.001 && words.every(word => {
+                                    const range=document.createRange();range.setStart(node,word.index);range.setEnd(node,word.index+word[0].length);
+                                    return range.getClientRects().length===1;
+                                  });
+                            }"""), "complete error words stay visible and never fragment across lines")
+                            self.assertEqual(page.evaluate("document.documentElement.scrollWidth - innerWidth"), 0)
+                            self.assertEqual(card.locator(".agentlive__error").count(), 0)
+                            shot(page, f"340-working-stop-failed-{engine}-rail-text{scale}")
+                        error.get_by_role("button", name="Dismiss Stop error").click()
+                        expect(error).to_have_count(0)
+                        expect(card.get_by_role("button", name="Stop your assistant")).to_be_focused()
+                        self.assertFalse(self.api(page, "GET", f"/api/v1/assistant-runs/{run['id']}")["stopRequested"],
+                                         "Dismiss only clears local feedback")
+                    else:
+                        shot(page, f"340-working-stop-failed-{engine}")
                     card.get_by_role("button", name="Stop your assistant").click()
                     self.stopped(page, run)
                     self.assertEqual(len(attempts), 2)
@@ -292,6 +308,7 @@ class WorkingAgentJourney(unittest.TestCase):
                 page.evaluate("window.__workingWire.watchIdle()")
                 self.release(page, "old-identity")
                 self.release(page, "old-stop")
+                expect(page.locator(".agentlive__notice")).to_have_count(0)
                 expect(page.locator(".agentlive")).to_have_count(0)
                 self.assertEqual(page.evaluate("window.__workingWire.breaches"), [])
                 self.assertTrue(page.evaluate("window.__sameWorkingDocument"))
@@ -314,6 +331,51 @@ class WorkingAgentJourney(unittest.TestCase):
                 self.assertEqual(self.api(page, "GET", f"/api/v1/assistant-runs/{run['id']}")["status"], "dispatching")
                 page.locator(".agentlive").get_by_role("button", name="Stop your assistant").click()
                 self.stopped(page, run)
+
+
+    def test_06_compact_error_belongs_only_to_its_active_instance(self) -> None:
+        for engine in self.browsers:
+            for ending in ("unmount", "terminal", "late-failure-after-sign-out"):
+                with self.subTest(engine=engine, ending=ending):
+                    page, ids = self.person(engine)
+                    run = self.start(page, ids)
+                    def refuse(route: Route) -> None:
+                        route.fulfill(status=503, content_type="application/json", body='{"code":"TEMPORARY_UNAVAILABLE"}')
+                    page.route(f"**/api/v1/assistant-runs/{run['id']}/stop", refuse)
+                    if ending == "late-failure-after-sign-out":
+                        other, other_ids = self.person(engine, enabled=False)
+                        page.evaluate("window.__workingWire.arm('late-failure', 'stop')")
+                        page.locator(".agentlive").get_by_role("button", name="Stop your assistant").click()
+                        page.wait_for_function("window.__workingWire.gates['late-failure']?.held")
+                        self.assertFalse(self.api(page, "GET", f"/api/v1/assistant-runs/{run['id']}")["stopRequested"])
+                        page.get_by_role("button", name=re.compile("Ada Kowalska.*account and sign out")).click()
+                        page.get_by_role("dialog", name="Account", exact=True).get_by_role("button", name="Sign out", exact=True).click()
+                        expect(page.get_by_role("heading", name="Sign in to Flux", exact=True)).to_be_visible()
+                        page.get_by_label("Email").fill(other_ids["email"])
+                        page.get_by_label("Password", exact=True).fill(PASSWORD)
+                        page.get_by_role("button", name="Sign in", exact=True).click()
+                        expect(page.get_by_role("heading", name="Home", exact=True)).to_be_visible()
+                        self.assertEqual(self.api(page, "GET", "/api/v1/me")["user"]["id"], other_ids["user"])
+                        self.release(page, "late-failure")
+                        expect(page.locator(".agentlive__notice")).to_have_count(0)
+                        expect(page.locator(".agentlive")).to_have_count(0)
+                        other.close()
+                        continue
+                    page.keyboard.press("[")
+                    expect(page.locator(".side--rail")).to_be_visible()
+                    page.locator(".agentlive").get_by_role("button", name="Stop your assistant").click()
+                    notice = page.locator(".agentlive__notice")
+                    expect(notice).to_be_visible()
+                    if ending == "unmount":
+                        page.get_by_role("button", name="Expand sidebar").click()
+                        expect(notice).to_have_count(0)
+                        expect(page.locator(".agentlive")).to_be_visible()
+                        self.assertFalse(self.api(page, "GET", f"/api/v1/assistant-runs/{run['id']}")["stopRequested"])
+                    else:
+                        # APIRequestContext bypasses the simulated page delivery refusal: a real Stop.
+                        self.api(page, "POST", f"/api/v1/assistant-runs/{run['id']}/stop")
+                        self.stopped(page, run)
+                        expect(notice).to_have_count(0)
 
 
 if __name__ == "__main__":

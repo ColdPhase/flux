@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router';
 import type { AssistantRun } from '@flux/contracts';
 import { useStreamEvents } from '../api/stream';
 import { listOwnRuns, stopRun } from '../assistant/api';
 import { isWorking } from '../assistant/format';
-import { Kreska, type KreskaExpression } from '../ui';
+import { Icon, Kreska, type KreskaExpression } from '../ui';
 import { useShellData } from './data';
 
 const POLL_WHILE_WORKING_MS = 3000;
@@ -75,7 +76,10 @@ function useWorkingRun(identity: string) {
       }
     }
   }, [identity, run, refresh]);
-  return { run, stop, stopping: snapshot.identity === identity && snapshot.stopping, failed: snapshot.identity === identity && snapshot.failed };
+  const dismissFailure = useCallback(() => {
+    setSnapshot((previous) => previous.identity === identity ? { ...previous, failed: false } : previous);
+  }, [identity]);
+  return { run, stop, dismissFailure, stopping: snapshot.identity === identity && snapshot.stopping, failed: snapshot.identity === identity && snapshot.failed };
 }
 
 const face = (run: AssistantRun): KreskaExpression =>
@@ -87,11 +91,13 @@ const doing = (run: AssistantRun) =>
 /** Own-assistant Stop uses its existing permission-backed command; external agents join in #347. */
 export function WorkingAgent({ compact = false }: { compact?: boolean }) {
   const { me } = useShellData();
-  const { run, stop, stopping, failed } = useWorkingRun(me.user.id);
+  const { run, stop, dismissFailure, stopping, failed } = useWorkingRun(me.user.id);
+  const stopButton = useRef<HTMLButtonElement>(null);
   if (!run) return null;
   const label = stopping ? 'Stopping your assistant…' : `Your assistant is ${doing(run)}`;
   const destination = `/projects/${run.projectId}/conversations/${run.conversationId}`;
   return (
+    <>
     <div className={`agentlive${compact ? ' agentlive--compact' : ''}`} role="status" aria-label={label}>
       {compact ? (
         <Link className="agentlive__link" to={destination} title={label} aria-label={label}>
@@ -106,11 +112,23 @@ export function WorkingAgent({ compact = false }: { compact?: boolean }) {
           </Link>
         </>
       )}
-      <button type="button" className="agentlive__stop" aria-label="Stop your assistant" title={stopping || run.stopRequested ? 'Stopping…' : 'Stop your assistant'}
+      <button ref={stopButton} type="button" className="agentlive__stop" aria-label="Stop your assistant" title={stopping || run.stopRequested ? 'Stopping…' : 'Stop your assistant'}
         disabled={stopping || run.stopRequested} onClick={() => void stop()}>
         <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><rect width="10" height="10" rx="2" fill="currentColor" /></svg>
       </button>
-      {failed ? <span className="agentlive__error" role="alert">{compact ? 'Stop failed' : 'Couldn’t stop your assistant. Try again.'}</span> : null}
+      {failed && !compact ? <span className="agentlive__error" role="alert">Couldn’t stop your assistant. Try again.</span> : null}
     </div>
+    {failed && compact ? createPortal(
+      <div className="ui-toasts agentlive__notices">
+        <div className="ui-toast ui-toast--danger agentlive__notice" role="alert">
+          <Icon name="alert" />
+          <span className="ui-toast__msg">Couldn’t stop your assistant. Try again.</span>
+          <button type="button" className="ui-toast__close" aria-label="Dismiss Stop error" onClick={() => { dismissFailure(); stopButton.current?.focus(); }}>
+            <Icon name="x" size={14} />
+          </button>
+        </div>
+      </div>, document.body,
+    ) : null}
+    </>
   );
 }
