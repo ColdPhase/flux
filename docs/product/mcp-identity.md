@@ -317,8 +317,12 @@ S1 tests them on the IdP path:
 - **`localhost`:** RFC 8252 §8.3 says "the use of localhost is NOT RECOMMENDED",
   but Flux must accept it. Claude Code uses "a pre-registered redirect URI of the
   form `http://localhost:PORT/callback`", and Cursor's desktop app uses
-  `http://localhost:8787/callback`. Codex uses
-  `http://127.0.0.1:<port>/callback/<callback_id>`.
+  `http://localhost:8787/callback`. With a pre-registered client, Codex uses the
+  stable `http://127.0.0.1/callback` when the server advertises
+  `authorization_response_iss_parameter_supported` and an issuer, as Flux does; the
+  `http://127.0.0.1:<port>/callback/<callback_id>` form applies only without that
+  support (review follow-up N2, #310). The operator guide tells operators to
+  register the callback that Codex displays.
 - **Everything else** (an `https` address or an app's private-use scheme) must
   match a registered redirect exactly. Consent warns about it (#294).
 - **Flux's own redirect at the IdP** (`<origin>/api/auth/callback/<providerId>`) is

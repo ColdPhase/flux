@@ -20,6 +20,17 @@
       "redirectUris": ["__PUBLIC_ORIGIN__/api/auth/callback/__PROVIDER_ID__"],
       "webOrigins": [],
       "attributes": { "pkce.code.challenge.method": "S256" }
+    },
+    {
+      "clientId": "probe",
+      "name": "Token probe (test only, #310)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": [],
+      "webOrigins": []
     }
   ],
   "users": [
@@ -28,6 +39,8 @@
     { "username": "bob", "email": "bob@acme.test", "emailVerified": true, "enabled": true, "firstName": "Bob", "lastName": "Lis",
       "credentials": [{ "type": "password", "value": "__USER_PASSWORD__", "temporary": false }] },
     { "username": "carol", "email": "carol@acme.test", "emailVerified": false, "enabled": true, "firstName": "Carol", "lastName": "Unverified",
+      "credentials": [{ "type": "password", "value": "__USER_PASSWORD__", "temporary": false }] },
+    { "username": "erin", "email": "erin@acme.test", "emailVerified": true, "enabled": true, "firstName": "Erin", "lastName": "Agent",
       "credentials": [{ "type": "password", "value": "__USER_PASSWORD__", "temporary": false }] },
     { "username": "dave", "email": "dave@acme.test", "emailVerified": true, "enabled": true, "firstName": "Dave", "lastName": "Collision",
       "credentials": [{ "type": "password", "value": "__USER_PASSWORD__", "temporary": false }] }

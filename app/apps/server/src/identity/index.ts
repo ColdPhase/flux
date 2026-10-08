@@ -8,6 +8,8 @@ import type { IdentityConfig } from './config.js';
 import { createSmtpMailer, type Mailer } from './mailer.js';
 import { originViolation } from './origin.js';
 import { createOauthRequests } from './oauth-flow.js';
+import { createSignIns } from './sign-in.js';
+import { cachedReachability, waitForDiscovery } from './discovery.js';
 import { registerAgentOauthContext } from './oauth-context.js';
 import { registerIdentityRoutes } from './routes.js';
 import { createSessionResolver, type SessionResolver } from './session.js';
@@ -36,10 +38,16 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
   const mailer = options.mailer === undefined ? (config.smtp ? createSmtpMailer(config.smtp) : null) : options.mailer;
   if (mailer) app.addHook('onClose', async () => mailer.close());
   const oauthRequests = createOauthRequests();
-  const auth = createAuth({ db, config, mailer, oauthRequests, onMailError: (error) => app.log.error({ error }, 'Password reset mail failed') });
+  const signIns = createSignIns();
+  const auth = createAuth({ db, config, mailer, oauthRequests, signIns, onMailError: (error) => app.log.error({ error }, 'Password reset mail failed') });
   // OAuth resource seeding runs during Better Auth initialization. Complete it before
   // accepting requests or allowing an in-process server to close its database pool.
-  app.addHook('onReady', async () => { await auth.$context; });
+  // The provider reads its discovery document while Better Auth initializes, so an identity provider that
+  // starts a little after Flux is waited for with backoff rather than leaving sign-on off (#310 AC-4).
+  app.addHook('onReady', async () => {
+    if (config.oidc && !await waitForDiscovery(config.oidc)) app.log.warn({ issuer: config.oidc.issuer }, 'The identity provider did not answer; single sign-on is reported as not reachable');
+    await auth.$context;
+  });
   const sessions = createSessionResolver(auth);
   const passwordReset: IdentityCapabilities['passwordReset'] = mailer ? 'available' : 'unavailable';
 
@@ -51,8 +59,10 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
     }
   });
 
-  registerAuthBridge(app, { auth, publicOrigin: config.publicOrigin, passwordReset, oauthRequests });
-  const sso: IdentityCapabilities['sso'] = config.oidc ? { providerId: config.oidc.providerId, label: config.oidc.label } : null;
+  registerAuthBridge(app, { auth, publicOrigin: config.publicOrigin, passwordReset, oauthRequests, signIns });
+  const reachable = config.oidc ? cachedReachability(config.oidc) : null;
+  const sso = async (): Promise<IdentityCapabilities['sso']> =>
+    config.oidc && reachable ? { providerId: config.oidc.providerId, label: config.oidc.label, reachable: await reachable() } : null;
   // Operators register this exact redirect URI with their identity provider (#113).
   if (config.oidc) app.log.info({ issuer: config.oidc.issuer, redirectUri: `${config.publicOrigin}/api/auth/callback/${config.oidc.providerId}` }, 'Single sign-on is on');
   registerIdentityRoutes(app, { sessions, store: createSessionRepository(db), passwordReset, sso });

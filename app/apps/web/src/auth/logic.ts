@@ -35,6 +35,22 @@ export interface FormResult {
 
 const AUTH_PATHS = ['/sign-in', '/sign-up', '/sign-out', '/forgot-password', '/reset-password'];
 
+/**
+ * The part of an MCP authorization request's address that the server signed (#310): `sig` plus the
+ * parameters named by `ba_param`. Anything else on the address (an `sso=failed` return, `error`) is ours or
+ * the provider's and is not part of the signature, so it must not travel with the request. Null without a
+ * signature.
+ */
+export function signedOauthQuery(search: string): string | null {
+  const params = new URLSearchParams(search);
+  if (!params.has('sig')) return null;
+  const names = new Set(params.getAll('ba_param'));
+  if (!names.size) return null;
+  const signed = new URLSearchParams();
+  for (const [key, value] of params) if (key === 'sig' || key === 'ba_param' || names.has(key)) signed.append(key, value);
+  return signed.toString();
+}
+
 /** Only same-origin app paths may be used as a post-sign-in destination. */
 export function safeNext(value: string | null | undefined): string {
   if (!value || !value.startsWith('/') || value.startsWith('//') || value.startsWith('/\\')) return '/';
@@ -109,7 +125,7 @@ export async function signInAction({ request }: ActionFunctionArgs): Promise<For
   if (hasErrors(fieldErrors)) return { fieldErrors, values: { email } };
   try {
     const url = new URL(request.url);
-    const oauthQuery = url.pathname === '/login' ? url.search.slice(1) : undefined;
+    const oauthQuery = url.pathname === '/login' ? signedOauthQuery(url.search) ?? undefined : undefined;
     const result = await signIn({ email, password, ...(oauthQuery ? { oauth_query: oauthQuery } : {}) });
     if (oauthQuery) {
       const response = result as { url?: string; redirect_uri?: string };

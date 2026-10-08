@@ -12,6 +12,7 @@ import { createAgentConnectionStore } from '../agent-connection/store.js';
 import type { IdentityConfig, OidcConfig } from './config.js';
 import type { Mailer } from './mailer.js';
 import type { OauthRequests } from './oauth-flow.js';
+import { createSignIns, type SignIns } from './sign-in.js';
 
 /** Set by the Fastify bridge from the socket or trusted-proxy address; client copies are dropped. */
 export const CLIENT_IP_HEADER = 'x-flux-client-ip';
@@ -24,6 +25,8 @@ export interface AuthDependencies {
   mailer: Mailer | null;
   onMailError?: (error: unknown) => void;
   oauthRequests: OauthRequests;
+  /** Per-request facts about the sign-in in progress; the bridge runs each auth request inside it (#310). */
+  signIns?: SignIns;
 }
 
 /**
@@ -43,6 +46,15 @@ export function oidcUser(oidc: Pick<OidcConfig, 'issuer'>, claims: Record<string
   return { id: subject, sub: subject, email, emailVerified: true, name: (name ?? email).trim().slice(0, 200) };
 }
 
+const IDP_TOKEN_FIELDS = ['accessToken', 'refreshToken', 'idToken', 'accessTokenExpiresAt', 'refreshTokenExpiresAt'] as const;
+
+/** Drops every provider token from an auth_accounts write; the password hash and identity keys stay. */
+export function withoutIdpTokens<T extends Record<string, unknown>>(account: T): T {
+  const clean: Record<string, unknown> = { ...account };
+  for (const field of IDP_TOKEN_FIELDS) if (field in clean) clean[field] = null;
+  return clean as T;
+}
+
 /** The payload of an ID token the plugin verified before calling getUserInfo. */
 function idTokenClaims(idToken: string | undefined): Record<string, unknown> | null {
   const payload = idToken?.split('.')[1];
@@ -55,7 +67,7 @@ function idTokenClaims(idToken: string | undefined): Record<string, unknown> | n
   }
 }
 
-export function createAuth({ db, config, mailer, onMailError, oauthRequests }: AuthDependencies) {
+export function createAuth({ db, config, mailer, onMailError, oauthRequests, signIns = createSignIns() }: AuthDependencies) {
   const connections = agentOauthUseCases(createAgentConnectionStore(db));
   const resource = `${config.publicOrigin}/mcp`;
   const connectionForGrant = async (userId: string, sessionId: string, scopes: readonly string[]) => {
@@ -131,8 +143,27 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests }: A
         },
       }),
       cimd({ fetchClientMetadataResource, metadataProfile: 'mcp-2026-07-28' }),
-      ...(config.oidc ? [oidcPlugin(config.oidc)] : []),
+      ...(config.oidc ? [oidcPlugin(config.oidc, signIns)] : []),
     ],
+    databaseHooks: {
+      session: {
+        create: {
+          // Every session records how it signed in: password, or the provider id with its IdP `sid` (#310).
+          after: async (session) => {
+            const sign = signIns.getStore();
+            await db.insert(schema.authSessionIdentities).values({
+              sessionId: session.id, method: sign?.providerId ?? 'password', idpSid: sign?.idpSid ?? null,
+            }).onConflictDoNothing();
+          },
+        },
+      },
+      // The provider's access, ID and refresh tokens never reach auth_accounts. Flux needs only the
+      // verified identity; S4 keeps the refresh token in its own encrypted table (#310 AC-8).
+      account: {
+        create: { before: async (account) => ({ data: withoutIdpTokens(account) }) },
+        update: { before: async (account) => ({ data: withoutIdpTokens(account) }) },
+      },
+    },
     emailAndPassword: {
       enabled: true,
       autoSignIn: true,
@@ -173,7 +204,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests }: A
 export type FluxAuth = ReturnType<typeof createAuth>;
 
 /** One operator-configured OpenID Connect provider for human sign-in (#113). */
-function oidcPlugin(oidc: OidcConfig) {
+function oidcPlugin(oidc: OidcConfig, signIns: SignIns) {
   return genericOAuth({
     config: [{
       providerId: oidc.providerId,
@@ -186,7 +217,16 @@ function oidcPlugin(oidc: OidcConfig) {
       requireIdTokenVerification: true,
       // The same subject keeps the same Flux person; a changed (verified) email updates it.
       overrideUserInfo: true,
-      getUserInfo: async (tokens) => oidcUser(oidc, idTokenClaims(tokens.idToken)),
+      getUserInfo: async (tokens) => {
+        const claims = idTokenClaims(tokens.idToken);
+        const user = oidcUser(oidc, claims);
+        const sign = signIns.getStore();
+        if (user && sign) {
+          sign.providerId = oidc.providerId;
+          if (typeof claims?.sid === 'string' && claims.sid && claims.sid.length <= 512) sign.idpSid = claims.sid;
+        }
+        return user;
+      },
     }],
   });
 }

@@ -328,7 +328,9 @@ function ConsentDestination({ context }: { context: ConsentContext }) {
         : <dd>Registered on this Flux server</dd>}</div>
     </dl>
     {redirect.kind === 'loopback'
-      ? <p>This address is on your own computer, where your agent client runs.</p>
+      ? <p>This address is on your own computer, where your agent client runs.{clientIdHost
+        ? <> Access goes to a program on this computer that names itself as the client at <strong>{clientIdHost}</strong>; Flux cannot check that claim.</>
+        : null}</p>
       : <p className="connection__warning" role="note">
         <Icon name="alert" size={16} />
         {redirect.kind === 'app'

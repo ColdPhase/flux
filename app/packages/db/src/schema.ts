@@ -89,6 +89,14 @@ export const authVerifications = pgTable('auth_verifications', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [index('auth_verifications_identifier_idx').on(table.identifier)]);
 
+/** How a session signed in (migration 0066, #310): password or provider id, the IdP's `sid`, and when it vouched. */
+export const authSessionIdentities = pgTable('auth_session_identities', {
+  sessionId: text('session_id').primaryKey().references(() => authSessions.id, { onDelete: 'cascade' }),
+  method: text('method').notNull(),
+  idpSid: text('idp_sid'),
+  confirmedAt: timestamp('confirmed_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 // Better Auth MCP/OAuth provider models (migration 0009).
 export const jwks = pgTable("jwks", {
   id: text("id").primaryKey(),
