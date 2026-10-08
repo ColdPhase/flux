@@ -632,7 +632,7 @@ class ThoughtDraftJourney(unittest.TestCase):
             self.tab(page, name, touch=touch)
             page.wait_for_url(re.compile(rf"/projects/{self.project}{path}"))
             if name == "Agents":
-                expect(page.get_by_role("heading", level=1, name="Working together")).to_be_visible()
+                expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
             expect(page.locator(".sk-head")).to_have_count(0)
             expect(page.get_by_role("form", name="New thought draft")).to_have_count(0)
         self.back_to_map(page, touch=touch)

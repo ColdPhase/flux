@@ -112,8 +112,9 @@ class ProjectPolicyJourney(unittest.TestCase):
 
     def open_agents(self, who: str, **kwargs) -> Page:
         page = self.page(who, **kwargs)
-        page.goto(f"/projects/{self.ids['project']}/agents")
-        expect(page.get_by_role("heading", level=1, name="Working together")).to_be_visible()
+        # The policy is one row of the Agents list; `?policy=open` opens it, as its row does.
+        page.goto(f"/projects/{self.ids['project']}/agents?policy=open")
+        expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
         return page
 
     def policy(self, page: Page):
@@ -266,9 +267,9 @@ class ProjectPolicyJourney(unittest.TestCase):
         policy.get_by_role("button", name="Show policy").click()
         expect(policy.get_by_role("button", name="Hide policy")).to_have_attribute("aria-expanded", "true")
         expect(policy.get_by_role("definition").filter(has_text="Battery life through the winter.")).to_have_count(1)
-        # The thread and the connection list are still there below and above it.
-        expect(page.get_by_role("list", name="Agent connections in this project").get_by_role("listitem")).to_have_count(1)
-        expect(page.get_by_label("Write to this task")).to_be_visible()
+        # The agent list and its one primary button are still there above it.
+        expect(page.get_by_role("list", name="Agents in this project").get_by_role("listitem")).to_have_count(1)
+        expect(page.get_by_role("button", name="Hand off a task")).to_be_visible()
 
     def lose_answers(self, page: Page, state: dict) -> None:
         """The next PUT is saved by the server but its answer never arrives; GETs fail while `offline` is set."""

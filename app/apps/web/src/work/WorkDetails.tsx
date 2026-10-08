@@ -13,6 +13,7 @@ import { acceptDecision, createResult, listAgents, proposeDecision, updateWork }
 import { STATUS_LABEL, decisionLine, firstLine, isFinished, linked, resultLine, shortDate, taskNumber } from './format';
 import { docsLinking } from '../docs/AddToDoc';
 import { useAgentOwners } from '../agents/owners';
+import { HandOffDialog } from '../agents/HandOff';
 import { useProjectShell } from '../project/data';
 import { useWorkRead } from './useWorkRead';
 import { useNativeOwn, useWorkChoices, useDetailRelations, type DetailRelations, type DetailChoices } from './useDetailReads';
@@ -217,6 +218,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   const blocker = commands.state.blocker ?? item.blocker ?? '';
   const statusId = useId();
   const ownerId = useId();
+  const [handingOff, setHandingOff] = useState(false);
   const decisions = linked(relations.links, item.id, 'decision');
   const results = linked(relations.links, item.id, 'result');
   const parkedBy = item.parked ? detail.context.find((decision) => decision.id === item.parked!.decisionId) : null;
@@ -267,6 +269,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
             <optgroup label="People">{people.map((person) => <option key={person.value} value={person.value}>{person.label}</option>)}</optgroup>
             {agents.length ? <optgroup label="Agents">{agents.map((agent) => <option key={agent.value} value={agent.value}>{agent.label}</option>)}</optgroup> : null}
           </select>
+          {!isFinished(item) ? <Button variant="secondary" className="wd-handoff" onClick={() => setHandingOff(true)}>Hand off to an agent</Button> : null}
           {item.status === 'blocked' ? (
             <form className="wd-blocker-form" onSubmit={(event) => { event.preventDefault(); void change({ blocker: blocker.trim() || null }); }}>
               <Input label="What is it waiting for?" value={blocker} onChange={(event) => setBlocker(event.target.value)} maxLength={2000} />
@@ -275,6 +278,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
           ) : null}
         </fieldset>
       ) : null}
+      {writable ? <HandOffDialog open={handingOff} onClose={() => setHandingOff(false)} project={context.project} task={{ id: item.id, version: item.version, number: item.number, title: item.title }} onDone={reload} /> : null}
       {error ? <p className="wd-error" role="alert">{error}</p> : null}
 
       {item.parked ? (

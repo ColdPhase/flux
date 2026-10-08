@@ -9,22 +9,125 @@
   gap: var(--s-5);
   flex: 1 0 auto;
 }
-.agents__head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-4); flex-wrap: wrap; }
+.agents__head { display: flex; align-items: baseline; gap: var(--s-3); flex-wrap: wrap; }
 .agents__title { margin: 0; font-size: var(--fs-2xl); font-weight: 600; letter-spacing: -0.025em; }
-.agents__connect { display: inline-flex; align-items: center; gap: var(--s-1); font-size: var(--fs-sm); }
 .agents__no-connections { margin: 0; color: var(--t3); font-size: var(--fs-sm); line-height: 1.5; }
 
-/* Every connection is its own entry, so one person's second agent is never hidden. */
-.agents__connections {
-  list-style: none; margin: 0; padding: 0 0 var(--s-5);
-  display: flex; flex-wrap: wrap; gap: var(--s-4) var(--s-6);
-  border-bottom: 1px solid var(--line);
+/* One list (P9): each agent with its owner and what it is doing now, then Requests, Policy and Connect. */
+.agents__main { display: flex; flex-direction: column; gap: var(--s-5); min-width: 0; flex: 1 0 auto; }
+.agents__count { flex: 1; min-width: 0; font-size: var(--fs-sm); color: var(--t3); }
+.agents-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; background: var(--el); border-radius: var(--r-card); box-shadow: var(--sh-card); overflow: hidden; }
+.agents-row { position: relative; border-top: 1px solid var(--line); }
+.agents-row:first-child { border-top: 0; }
+.agents-row[data-drop] { background: var(--sub); box-shadow: inset 0 0 0 2px var(--t1); }
+.agents-row__btn {
+  display: flex; align-items: center; gap: var(--s-3); width: 100%; min-height: 64px; padding: var(--s-3) var(--s-4);
+  border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer;
 }
-.agents-conn { display: flex; flex: 1 1 0; gap: var(--s-2); align-items: flex-start; min-width: 0; max-width: 100%; }
-.agents-conn__body { display: flex; flex-direction: column; min-width: 0; gap: 1px; font-size: var(--fs-xs); line-height: var(--lh-tight); }
-.agents-conn__name { color: var(--t2); overflow-wrap: anywhere; }
-.agents-conn__state, .agents-conn__activity { color: var(--t3); display: inline-flex; align-items: center; gap: 6px; }
-.agents-conn[data-state="unavailable"] .agents-conn__state { color: var(--t2); }
+.agents-row__btn:hover, .agents-row__btn[aria-pressed="true"] { background: var(--sub); }
+.agents-row__btn:focus-visible { outline: 2px solid var(--t1); outline-offset: -2px; }
+.agents-row__body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.agents-row__who .agent-id__name { font-size: var(--fs-base); }
+.agents-row__now { font-size: var(--fs-sm); color: var(--t2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agents-row[data-working] .agents-row__now { color: var(--t1); }
+.agents-row__time { flex: none; font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
+.agents-row__go { flex: none; color: var(--t3); }
+
+.agents-links { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.agents-link {
+  display: flex; align-items: center; gap: var(--s-3); width: 100%; min-height: 48px; padding: 0 var(--s-1);
+  border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--t1); font: inherit; font-size: var(--fs-base);
+  text-align: left; text-decoration: none; cursor: pointer;
+}
+.agents-links li:last-child .agents-link { border-bottom: 0; }
+.agents-link:hover { background: var(--sub); border-radius: var(--r-sm); }
+.agents-link:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; border-radius: var(--r-sm); }
+.agents-link__icon { display: inline-grid; place-items: center; width: 24px; height: 24px; flex: none; color: var(--t1); }
+.agents-link__text { flex: 1; min-width: 0; color: var(--t2); }
+.agents-link__text b { color: var(--t1); font-weight: 600; }
+.agents-link__go { display: inline-flex; align-items: center; gap: 2px; flex: none; font-size: var(--fs-sm); color: var(--t3); }
+.agents-link > svg:last-child { flex: none; color: var(--t3); }
+.agents-link--connect { border-bottom: 0; }
+
+/* A task dragged onto an agent hands it off (computer only; the button does the same by keyboard and touch). */
+.agents-drag { display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-3); border: 1px dashed var(--line2); border-radius: var(--r-card); }
+.agents-drag__hint { margin: 0; text-align: center; font-size: var(--fs-sm); color: var(--t2); }
+.agents-drag__list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s-2); }
+.agents-drag__task {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-height: var(--ctl); padding: 0 var(--s-3);
+  border-radius: var(--r-pill); background: var(--el); box-shadow: var(--sh-1), inset 0 0 0 1px var(--line); font-size: var(--fs-sm); cursor: grab;
+}
+.agents-drag__task:active { cursor: grabbing; }
+.agents-drag__title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (pointer: coarse), (hover: none) { .agents-drag { display: none; } }
+
+/* The detail of one agent: beside the list on a wide pane, in place of it on a narrow one (phone: its own page). */
+.agents[data-detail] { width: min(100%, 1180px); display: grid; grid-template-columns: minmax(0, 1fr) 380px; align-items: start; column-gap: var(--s-8); }
+.agents-detail { display: flex; flex-direction: column; gap: var(--s-4); min-width: 0; position: sticky; top: var(--s-6); }
+.agents-detail h3 { margin: 0 0 var(--s-2); font-size: var(--fs-base); font-weight: 600; }
+.agents-detail__bar { display: none; }
+.agents-detail__back { display: inline-flex; align-items: center; gap: 4px; min-height: var(--ctl); padding: 0 var(--s-2); border: 0; border-radius: var(--r-pill); background: var(--el); box-shadow: var(--sh-1); color: var(--t1); font: inherit; font-size: var(--fs-sm); cursor: pointer; }
+.agents-detail__head { display: flex; align-items: center; gap: var(--s-3); }
+.agents-detail__name { margin: 0; font-size: var(--fs-lg); font-weight: 600; outline: none; }
+.agents-detail__for { margin: 2px 0 0; font-size: var(--fs-sm); color: var(--t3); }
+.agents-detail__now { background: var(--sub); border-radius: var(--r-card); padding: var(--s-3) var(--s-4); }
+.agents-detail__now h3 { font-weight: 400; color: var(--t3); font-size: var(--fs-sm); }
+.agents-detail__task { display: flex; align-items: center; gap: var(--s-2); margin: 0; font-size: var(--fs-base); }
+.agents-detail__task b { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.agents-detail__note { margin: var(--s-1) 0 0; font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); }
+.agents-detail__recent { list-style: none; margin: 0; padding: 0; }
+.agents-detail__recent li { display: flex; justify-content: space-between; gap: var(--s-3); padding: var(--s-2) 0; border-bottom: 1px solid var(--line); font-size: var(--fs-base); }
+.agents-detail__recent li:last-child { border-bottom: 0; }
+.agents-detail__recent time { color: var(--t3); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.agents-detail__actions { display: flex; gap: var(--s-2); }
+@media (max-width: 1000px) {
+  .agents[data-detail] { display: flex; width: min(100%, 854px); }
+  .agents[data-detail] .agents__main { display: none; }
+  .agents-detail { position: static; }
+  .agents-detail__bar { display: block; }
+}
+
+/* The hand-off dialog (S12): the agent, then what it may do here, then confirm. */
+.handoff { display: flex; flex-direction: column; min-height: 0; flex: 1; padding: var(--s-4) var(--s-5) var(--s-5); gap: var(--s-4); }
+.handoff__head { display: flex; align-items: center; gap: var(--s-3); min-width: 0; }
+.handoff__step { flex: none; padding: 3px 10px; border-radius: var(--r-pill); background: var(--sub); font-size: var(--fs-sm); font-weight: 600; }
+.handoff__what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); color: var(--t2); }
+.handoff__close { flex: none; display: inline-grid; place-items: center; width: var(--ctl); height: var(--ctl); border: 0; border-radius: var(--r-pill); background: transparent; color: var(--t1); cursor: pointer; }
+.handoff__close:hover { background: var(--sub); }
+.handoff__body { display: flex; flex-direction: column; gap: var(--s-3); min-height: 0; flex: 1; overflow-y: auto; }
+.handoff__title { margin: 0; font-size: var(--fs-xl); font-weight: 600; letter-spacing: -0.02em; }
+.handoff__list { display: flex; flex-direction: column; gap: var(--s-1); }
+.handoff__agent {
+  position: relative; display: flex; align-items: center; gap: var(--s-3); min-height: 60px; padding: var(--s-2) var(--s-3);
+  border-radius: var(--r); cursor: pointer; box-shadow: inset 0 0 0 2px transparent;
+}
+.handoff__agent:hover { background: var(--sub); }
+.handoff__agent[data-checked] { background: var(--sub); box-shadow: inset 0 0 0 2px var(--t1); }
+.handoff__agent:has(input:focus-visible) { outline: 2px solid var(--t1); outline-offset: 2px; }
+.handoff__agent input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.handoff__who { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.handoff__who b { font-weight: 600; font-size: var(--fs-base); }
+.handoff__who small { font-size: var(--fs-sm); color: var(--t2); overflow-wrap: anywhere; }
+.handoff__mark { flex: none; display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--t2); color: var(--oninv); }
+.handoff__agent[data-checked] .handoff__mark { background: var(--inv); box-shadow: none; }
+.handoff__chosen { display: flex; align-items: center; gap: var(--s-3); }
+.handoff__can { margin: 0; padding: var(--s-3) var(--s-4); border-radius: var(--r); background: var(--sub); font-size: var(--fs-base); line-height: 1.55; color: var(--t2); }
+.handoff__can b { color: var(--t1); font-weight: 600; }
+.handoff__can:not([data-allowed]) { box-shadow: inset 0 0 0 1px var(--line2); }
+.handoff__note { margin: 0; font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); }
+.handoff__error { margin: 0; font-size: var(--fs-sm); color: var(--t1); font-weight: 600; }
+.handoff__task { display: flex; align-items: center; gap: var(--s-2); }
+.handoff__task label { font-size: var(--fs-sm); color: var(--t3); }
+.handoff__task select { flex: 1; min-width: 0; min-height: var(--ctl); font: inherit; font-size: var(--fs-base); color: var(--t1); background: transparent; border: 1px solid var(--line2); border-radius: var(--r); padding: 0 var(--s-3); }
+.handoff__foot { display: flex; align-items: center; justify-content: flex-end; gap: var(--s-2); }
+.handoff__tip { flex: 1; min-width: 0; font-size: var(--fs-xs); color: var(--t3); }
+.handoff__kbd { margin-left: var(--s-2); }
+@media (pointer: coarse), (hover: none) { .handoff__tip, .handoff__kbd { display: none; } }
+@media (max-width: 640px) {
+  .handoff { padding-bottom: calc(var(--s-5) + env(safe-area-inset-bottom)); }
+  .handoff__foot .ui-btn { min-height: var(--ctl-lg); flex: 1; }
+  .handoff__foot .ui-btn--primary { flex: 2; }
+}
 
 .agents__task {
   display: flex; align-items: center; gap: var(--s-3); flex-wrap: wrap;
@@ -83,6 +186,10 @@
   .agents-msg { padding-left: 42px; }
   .agents { padding: var(--s-4); gap: var(--s-4); }
   .agents__title { font-size: var(--fs-xl); }
-  .agents__connections { gap: var(--s-3); padding-bottom: var(--s-4); }
+  /* The title and count stay on top; the one primary button waits above the navigation (phone-agents). */
+  .agents__head { display: contents; }
+  .agents__title { order: -2; }
+  .agents__count { order: -1; flex: none; margin-top: calc(var(--s-4) * -1); }
+  .agents__handoff { order: 99; position: sticky; bottom: var(--s-3); width: 100%; min-height: var(--ctl-lg); margin-top: auto; }
   .agents-composer__hint { display: none; }
 }

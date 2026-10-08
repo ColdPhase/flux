@@ -278,8 +278,8 @@ class GrantControlsJourney(unittest.TestCase):
         # The project Agents view lists Hubert's connections for Marek, but offers no grant controls there.
         agents = self.page("marek")
         agents.goto(f"/projects/{self.ids['sensor']}/agents")
-        expect(agents.get_by_role("heading", level=1, name="Working together")).to_be_visible()
-        expect(agents.get_by_role("list", name="Agent connections in this project")).to_contain_text("Desk laptop")
+        expect(agents.get_by_role("heading", level=1, name="Agents")).to_be_visible()
+        expect(agents.get_by_role("list", name="Agents in this project")).to_contain_text("Desk laptop")
         expect(agents.get_by_text("Standing grants")).to_have_count(0)
         expect(agents.get_by_role("button", name="Revoke")).to_have_count(0)
         # And Hubert's page never shows Marek's connection or grant.
