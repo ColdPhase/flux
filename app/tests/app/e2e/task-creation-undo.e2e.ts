@@ -316,7 +316,22 @@ test('pending contribution cannot be retried from undone read-only history and b
       const discussion = expectStatus(await f.author.browser.request('GET', taskDiscussionPath(item.id)), 200) as { root: ConversationMessage | null; messages: ConversationMessage[] };
       assert.equal(discussion.root, null); assert.deepEqual(discussion.messages, []);
       assert.equal((await notices(f, item)).length, 2); assert.equal(await receipts(item), 1);
-      await page.reload(); await reverted(page, item);
+      await page.reload();
+      assert.deepEqual(await storedDraft(page, draftKey(f, item)), current, 'reload keeps both private records before reopening history');
+      assert.deepEqual(writes, [command.clientMessageId], 'reload never retries the refused command');
+      // The initial ?open address is consumed by the shell. Re-enter through the
+      // genuine retained notice, rather than expecting bare reload to reopen Details.
+      await page.goto(`/projects/${f.place.id}`);
+      const reversion = (await notices(f, item)).find((notice) => notice.kind === 'task.creation_reverted');
+      assert.ok(reversion, 'the real reversion notice remains available after reload');
+      assert.equal(reversion.workId, item.id); assert.equal(reversion.workNumber, item.number);
+      const historyRow = page.locator(`#notice-${reversion.id}`);
+      await historyRow.waitFor();
+      assert.equal(await historyRow.locator('time').getAttribute('datetime'), reversion.createdAt);
+      const historyLink = historyRow.getByRole('button', { name: `Open task #${item.number} ${item.title}`, exact: true });
+      assert.equal(await historyLink.getAttribute('data-native-ref'), `work:${item.id}`);
+      await historyLink.click();
+      await reverted(page, item);
       const reloaded = panel(page).locator(`[data-client-message-id="${command.clientMessageId}"]`);
       await reloaded.waitFor(); assert.equal(await reloaded.getByRole('button').count(), 0);
       assert.deepEqual(await storedDraft(page, draftKey(f, item)), current, 'reload keeps both private records');
@@ -429,7 +444,8 @@ test('two accounts keep Conversation, Tasks, Map and Agents current after real U
     const appended = history.find((notice) => notice.kind === 'task.creation_reverted')!;
     assert.equal(appended.id, result.noticeId); assert.equal(appended.createdBy.id, f.author.id);
     assert.equal(history.find((notice) => notice.kind === 'task.created')!.createdBy.kind, 'agent', 'the original creator stays the genuine agent');
-    await pages[0]!.reload(); await title(pages[0]!, item).waitFor();
+    await pages[0]!.reload();
+    assert.deepEqual(await storedDraft(pages[0]!, draftKey(f, item)), original, 'reload keeps the private staged draft before reopening history');
     for (const notice of history) {
       const row = pages[0]!.locator(`#notice-${notice.id}`); await row.waitFor();
       assert.equal(await row.locator('time').getAttribute('datetime'), notice.createdAt);
@@ -444,6 +460,7 @@ test('two accounts keep Conversation, Tasks, Map and Agents current after real U
     assert.equal(await receipts(item), 1);
     assert.deepEqual(expectStatus(await f.author.browser.request('GET', `/api/v1/sketches/${sketch.id}`), 200), mapBefore,
       'the map is unchanged; it never had a task node to remove');
+    await undoNotice.getByRole('button').click(); await reverted(pages[0]!, item);
     await pages[0]!.getByRole('button', { name: 'Close details', exact: true }).click();
     await pages[0]!.locator(`#notice-${appended.id}`).getByRole('button').click(); await reverted(pages[0]!, item);
   });

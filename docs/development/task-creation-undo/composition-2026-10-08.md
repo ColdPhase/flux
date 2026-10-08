@@ -63,3 +63,25 @@ Publish a reviewable continuation with normal ancestry when an implementation PR
 Do not force-update the stacked original draft or import an unreviewed live branch merely to reuse its
 number. The final evaluator must be independent of every code-changing implementer. Keep #238 open until
 all accepted criteria pass on the composed candidate.
+
+## Reload and retained history verification
+
+The bounded current run at `6380aa7ed69f8bb1e6582f4c7545936b7a8b0676` (tree
+`6b09006c799975ba19e71d79dbdd22400d69c99d`) completed with actual exit 1 on
+2026-10-08. API 295/295, Push 33/33, contribution browser 1/1, actor browser 2/2
+and instant-send UI 14/14 passed; Undo browser passed 8/10. Both remaining failures
+occurred after bare reload, with the Details panel absent. Other open surfaces
+showed the correct read-only history. Preserve this failed result and its original
+captures; it is not candidate acceptance.
+
+The existing shell consumes `?open=work:<id>` when it first opens the object.
+AC-U4 requires retained historical links to reopen read-only history; it does not
+require a consumed query to survive reload. The corrected scenarios keep actual
+reload and exact private draft/pending-command assertions, then activate the real
+persisted reversion-notice button. They still require the unchanged task identity,
+read-only controls, one receipt, intact staged files/references and no automatic
+retry. Production route behavior and the accepted criteria are unchanged.
+
+This correction requires fresh independent source evaluation and a new pinned
+Docker run. The earlier API results do not certify a changed candidate, current
+main, migration compatibility, live writer composition or AC-U1–AC-U5 completion.
