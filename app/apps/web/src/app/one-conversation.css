@@ -91,7 +91,7 @@
 /* A task event retains the actual creator's author column. */
 .convo-notice { position: relative; padding-left: 44px; margin: 24px 0; }
 .convo-notice > :is(.ui-avatar, .author-face) { position: absolute; left: 0; top: 0; }
-.convo-notice__body { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+.convo-notice__body { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; container-name: task-notice; container-type: inline-size; }
 .convo-notice__meta { display: flex; flex-wrap: wrap; gap: 4px 9px; align-items: baseline; min-width: 0; max-width: 100%; font-size: var(--fs-xs); color: var(--t3); }
 .convo-notice__meta strong { min-width: 0; max-width: 100%; overflow-wrap: anywhere; font-size: var(--fs-sm); font-weight: 550; color: var(--t1); }
 .convo-notice__meta .agent-id__name { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
@@ -108,4 +108,7 @@
    two lines instead of being cut to one. */
 .convo-notice + .convo-notice { margin-top: -12px; }
 .convo-notice__title { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
+/* Keep compact titles at ordinary text sizes, but expose their full purpose when the available
+   author-column width is narrow relative to the reader's font size. Container em units scale with it. */
+@container task-notice (max-width: 14em) { .convo-notice__title { -webkit-line-clamp: unset; } }
 @media (max-width: 680px) { .convo-notice { padding-left: 42px; margin: 14px 0; } .convo-notice + .convo-notice { margin-top: -6px; } }
