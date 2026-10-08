@@ -535,6 +535,8 @@ class LiveEditingJourney(LiveFixture):
         await expect(peer).not_to_have_attribute("data-thought-x", str(thought["x"]))
         unchanged = await self.api(kai, "GET", f"/api/v1/sketches/{self.map_id}")
         self.assertEqual(unchanged["thoughts"][0]["version"], thought["version"], "The finger is still down: nothing is saved yet")
+        # The five-second drag lease is renewed only by movement; a held finger nudges before release.
+        await cdp.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": x + 49, "y": y + 41}]})
         await cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
         await expect(page.locator(".sk-status")).to_contain_text("Saved")
         await expect(peer).not_to_have_attribute("data-live-mover", "Ada North")
@@ -563,4 +565,9 @@ class LiveEditingJourney(LiveFixture):
             text = await page.locator('.cm-content[aria-label="Shared Markdown"]').inner_text()
             self.assertEqual(text.count("日本"), 1, text[-80:])
             self.assertNotIn("にほん", text)
-        self.assertEqual(await ada_field.inner_text(), await kai_field.inner_text())
+        # Each copy also renders the peer's named cursor label inside the content; compare the text itself.
+        def shared_text(raw: str) -> str:
+            for label in ("Ada North", "Kai South"):
+                raw = raw.replace(label, "")
+            return "".join(raw.split())
+        self.assertEqual(shared_text(await ada_field.inner_text()), shared_text(await kai_field.inner_text()))

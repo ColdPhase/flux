@@ -133,7 +133,7 @@ test('server-named relative cursor presence uses current writing rights, exact p
     const end = Buffer.from(Y.encodeRelativePosition(Y.createRelativePositionFromTypeIndex(text, text.length))).toString('base64');
     assert.equal(Y.decodeRelativePosition(Buffer.from(anchor,'base64')).tname,null,'Public item-ID encoding omits the root name');
     assert.equal(Y.decodeRelativePosition(Buffer.from(end,'base64')).tname,'body','Public end-of-root encoding includes the root name');
-    const connection = randomUUID(); const events = (await pool.query('SELECT count(*)::int n FROM events')).rows[0].n;
+    const connection = randomUUID(); const events = (await pool.query('SELECT count(*)::int n FROM events WHERE workspace_id=$1', [f.ws.id])).rows[0].n;
     await authority.cursor(owner, f.doc.id, head.generation, connection, { anchor, head: end });
     let peers: { connectionId: string; actor: { id: string; name: string } }[] = [];
     await authority.deliver(peer, f.doc.id, head.generation, 0, (result) => { peers = result.presence; });
@@ -146,7 +146,7 @@ test('server-named relative cursor presence uses current writing rights, exact p
       const extraRoot=Buffer.from(Y.encodeRelativePosition(Y.createRelativePositionFromTypeIndex(foreign.getText('another-root'),0))).toString('base64');
       await assert.rejects(authority.cursor(owner,f.doc.id,head.generation,connection,{anchor:extraRoot,head:end}),refused('INVALID_CURSOR'));
     }finally{foreign.destroy();}
-    assert.equal((await pool.query('SELECT count(*)::int n FROM events')).rows[0].n, events);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM events WHERE workspace_id=$1', [f.ws.id])).rows[0].n, events);
     await grant(f.owner, f.place.id, f.peer, 'viewer');
     await assert.rejects(authority.cursor(peer, f.doc.id, head.generation, randomUUID(), { anchor, head: end }), refused('FORBIDDEN'));
     await authority.cursor(owner, f.doc.id, head.generation, connection, null);

@@ -112,6 +112,8 @@ export class SharedMap {
       case 'revoked': this.retire('Access ended. Your unfinished movement is kept locally.'); return;
       case 'resync': this.disconnected(); return;
       case 'error':
+        // A preview already in flight when the commit consumed its lease is refused by design; the commit result decides.
+        if (message.code === 'EDITING_LEASE_CHANGED' && !this.gesture && this.completedGesture) break;
         this.problem = `The map change is not confirmed (${message.code}).`;
         if (message.outcome === 'refused') this.cancel(true); break;
     }
@@ -166,6 +168,8 @@ export class SharedMap {
     });
   }
   cancel(keep = false) {
+    // A late view cancel (pointercancel, touch end) after the commit must not cancel the consumed lease.
+    if (keep && !this.gesture && this.completedGesture) return;
     const gesture = this.gesture ?? this.completedGesture; this.gesture = null; this.completedGesture = null;
     if (!gesture) return;
     if (keep && gesture.active) this.keepMovement(gesture);
