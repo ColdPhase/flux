@@ -136,7 +136,6 @@ body:has(.app) { background: var(--side); }
 .side__dm .ui-avatar { flex: none; }
 .side__threads { margin: 0 0 6px 18px; padding-left: 8px; border-left: 1px solid var(--line); }
 .side__threads .side__item { min-height: 32px; padding: 5px 8px; font-size: var(--fs-sm); }
-.side__spacer { flex: 1; }
 
 /* A working agent with Stop (S13): only while a real run executes. */
 .agentlive { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 8px 0; padding: 8px 8px 8px 10px; border-radius: 14px; background: var(--el); box-shadow: var(--sh-card); }
@@ -153,8 +152,12 @@ body:has(.app) { background: var(--side); }
 /* The 64px rail (S19): icons only. */
 .app__side--rail { width: var(--rail-w); }
 .side--rail { align-items: center; gap: 6px; padding: 14px 12px 12px; }
-.side__rail-places, .side__rail-projects { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-.side__rail-projects { margin-top: 10px; }
+.side--rail > :not(.side__rail-scroll) { flex-shrink: 0; }
+.side__rail-places, .side__rail-projects, .side__rail-dms { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+/* Project and private-conversation lists scroll; Stop and the current account stay at the foot. */
+.side__rail-scroll { flex: 1; min-height: 0; width: var(--rail-w); padding: 4px; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: thin; }
+.side__rail-scroll::-webkit-scrollbar { width: 4px; }
+.side__rail-projects, .side__rail-dms { width: 44px; margin: 10px 0 0 6px; }
 .side__ib { position: relative; display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--r-pill); color: var(--t2); transition: var(--tr); }
 .side__ib:hover { background: var(--hov); color: var(--t1); }
 .side__ib[aria-current="page"] { background: var(--el); color: var(--t1); box-shadow: var(--sh-1); }
@@ -162,6 +165,10 @@ body:has(.app) { background: var(--side); }
 .side__rail-project { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; text-decoration: none; }
 .side__rail-project.is-open { background: var(--el); box-shadow: var(--sh-1); }
 .side__rail-project .side__pj { font-size: .75rem; }
+.side__rail-dm { position: relative; display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--r-pill); }
+.side__rail-dm:hover { background: var(--hov); }
+.side__rail-dm[aria-current="page"] { background: var(--el); box-shadow: var(--sh-1); }
+.side__rail-dm .side__dot { position: absolute; top: 2px; right: 1px; }
 
 .me { position: relative; margin: 0 -4px; padding: 4px 0 0; padding-bottom: max(0px, env(safe-area-inset-bottom)); }
 .me__btn {
@@ -180,6 +187,10 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 .me__row .me__btn { flex: 1; min-width: 0; }
 .me__settings { display: grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: 50%; color: var(--t2); transition: var(--tr); }
 .me__settings:hover { background: var(--hov); color: var(--t1); }
+.me--compact { flex: none; margin: 0; padding: 0; }
+.me--compact .me__row { flex-direction: column; gap: 4px; }
+.me--compact .me__btn { flex: none; justify-content: center; width: 40px; height: 40px; min-height: 40px; padding: 0; border-radius: var(--r-pill); }
+.me--compact .me__pop { left: calc(100% + 8px); bottom: 0; width: min(320px, calc(100vw - 88px)); transform-origin: 0 100%; }
 .me__pop {
   position: absolute; left: 8px; width: max(calc(100% - 16px), 280px); bottom: calc(100% - 2px); z-index: var(--z-menu);
   padding: 6px; border-radius: var(--r-lg); background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line);
@@ -394,7 +405,7 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
   .side__item, .side__person, .side__threads .side__item { min-height: 44px; }
   .side__new, .side__search { min-height: 44px; }
   .side__search { width: 44px; }
-  .me__settings { width: 44px; height: 44px; }
+  .me__settings, .side__ib, .side__rail-project, .side__rail-dm, .newmenu--compact .side__new, .me--compact .me__btn { width: 44px; height: 44px; min-height: 44px; }
   .side__add { width: 44px; height: 44px; margin: -10px -10px -10px 0; }
   /* The 44px "+" reaches 10px below its heading row: an empty state there starts below it. */
   .side__head + .side__empty { padding-top: 12px; }

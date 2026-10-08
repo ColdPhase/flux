@@ -15,11 +15,11 @@ function until(iso: string) {
  * Account button at the foot of the sidebar; opens a small popover with this device's session,
  * its notifications (#41), the theme and sign out.
  */
-export function UserMenu({ name, email, sessionExpiresAt, asLink = false, onNavigate }: { name: string; email: string; sessionExpiresAt: string; asLink?: boolean; onNavigate?: () => void }) {
+export function UserMenu({ name, email, sessionExpiresAt, asLink = false, compact = false, onNavigate }: { name: string; email: string; sessionExpiresAt: string; asLink?: boolean; compact?: boolean; onNavigate?: () => void }) {
   // In the phone drawer the account row is a plain way into Settings (#266 PF-5), not a popover
   // squeezed over the drawer's own list.
   if (asLink) return <AccountLink name={name} email={email} onNavigate={onNavigate} />;
-  return <AccountMenu name={name} email={email} sessionExpiresAt={sessionExpiresAt} />;
+  return <AccountMenu name={name} email={email} sessionExpiresAt={sessionExpiresAt} compact={compact} />;
 }
 
 function AccountLink({ name, email, onNavigate }: { name: string; email: string; onNavigate?: () => void }) {
@@ -36,7 +36,7 @@ function AccountLink({ name, email, onNavigate }: { name: string; email: string;
   );
 }
 
-function AccountMenu({ name, email, sessionExpiresAt }: { name: string; email: string; sessionExpiresAt: string }) {
+function AccountMenu({ name, email, sessionExpiresAt, compact }: { name: string; email: string; sessionExpiresAt: string; compact: boolean }) {
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
@@ -71,7 +71,7 @@ function AccountMenu({ name, email, sessionExpiresAt }: { name: string; email: s
   };
 
   return (
-    <div className="me">
+    <div className={`me${compact ? ' me--compact' : ''}`}>
       {open ? (
         <div ref={popRef} id={popId} className="me__pop" role="dialog" aria-label="Account" onKeyDown={onKeyDown}>
           <div className="me__who">
@@ -101,9 +101,10 @@ function AccountMenu({ name, email, sessionExpiresAt }: { name: string; email: s
       {/* The account and Settings (F-026 §4): the name opens the account; the gear is Settings. */}
       <div className="me__row">
         <button ref={buttonRef} type="button" className="me__btn" aria-expanded={open} aria-controls={open ? popId : undefined}
-          aria-haspopup="dialog" onClick={() => (open ? close(false) : setOpen(true))}>
-          <Avatar name={name} tone="me" size="sm" />
-          <span className="me__text"><b>{name}</b><span className="ui-vh">{email}</span></span>
+          aria-haspopup="dialog" title={compact ? `${name}, account and sign out` : undefined} onClick={() => (open ? close(false) : setOpen(true))}>
+          <Avatar name={name} tone="me" size={compact ? 'lg' : 'sm'} />
+          {compact ? <span className="ui-vh">{name}, {email}</span>
+            : <span className="me__text"><b>{name}</b><span className="ui-vh">{email}</span></span>}
           <span className="ui-vh">, account and sign out</span>
         </button>
         <Link to="/settings" className="me__settings" aria-label="Settings" title="Settings"><Icon name="gear" size={17} /></Link>
