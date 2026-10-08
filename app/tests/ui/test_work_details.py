@@ -332,7 +332,7 @@ class NativeDetailsJourney(unittest.TestCase):
                         route.continue_()
 
                 page.route("**/work-relations?**", fail_current_relations)
-                page.reload()
+                page.goto(f"/projects/{self.project}/tasks?open=work:{task['id']}")
                 expect(panel.locator("[data-detail-relations-phase]")).to_have_attribute("data-detail-relations-phase", "unavailable")
                 expect(nav).to_be_visible()
                 expect(panel.get_by_role("alert")).to_contain_text("Relationships could not be loaded")
