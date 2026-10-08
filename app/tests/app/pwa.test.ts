@@ -141,7 +141,11 @@ describe('compressed app files', () => {
     const assets = [...html.matchAll(/(?:src|href)="(\/assets\/[^"]+\.(?:js|css))"/g)].map((match) => match[1]!);
     assert.ok(assets.length >= 2, `assets in index.html: ${assets.join(', ')}`);
     const entry = html.match(/<script\b[^>]*\bsrc="(\/assets\/[^" ]+\.js)"/)?.[1];
-    const style = html.match(/<link\b[^>]*\brel="stylesheet"[^>]*\bhref="(\/assets\/[^" ]+\.css)"/)?.[1];
+    // Vite can link a tiny shared dependency stylesheet before the primary app stylesheet.
+    // Keep the strong main-delivery guards on the largest eager stylesheet, regardless of order;
+    // every linked stylesheet below still has its exact delivery/threshold/benefit checks.
+    const styles = [...html.matchAll(/<link\b[^>]*\brel="stylesheet"[^>]*\bhref="(\/assets\/[^" ]+\.css)"/g)].map((match) => match[1]!);
+    const style = styles.sort((a, b) => readFileSync(`apps/web/dist${b}`).length - readFileSync(`apps/web/dist${a}`).length)[0];
     assert.ok(entry && style, 'actual entry script and main stylesheet are present');
     for (const asset of assets) {
       const plain = await raw(asset, 'identity');

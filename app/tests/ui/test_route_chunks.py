@@ -327,7 +327,7 @@ class RouteChunksJourney(unittest.TestCase):
                 self.assertLess(geometry["textRight"], geometry["actionLeft"])
                 self.assertGreaterEqual(geometry["left"], 0)
                 self.assertLessEqual(geometry["right"], page.viewport_size["width"])
-                self.assertFalse(any(re.search(r"/assets/(?:ProjectViews|SketchView)-[^/]+\\.js", url) for url in requested),
+                self.assertFalse(any(re.search(r"/assets/(?:ProjectViews|SketchView)-[^/]+\.js", url) for url in requested),
                                  "The first project/Details render never depends on Map code")
                 shot(page, f"route-chunks-first-project-details-{engine}-phone")
 
