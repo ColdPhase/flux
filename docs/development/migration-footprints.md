@@ -42,7 +42,7 @@ normalization, ledger repair, data rewrite or paired conversion is allowed.
 
 The descriptor registry is the composition point: each supported migration name
 declares the catalog objects it owns, expected types/nullability, required
-validated constraints and lifecycle fence. A present object whose owner is absent
+  validated constraints, keys/indexes and lifecycle fences. A present object whose owner is absent
 from this image, or whose applied ledger does not justify it, is refused. For
 this 57/58 image, the focus pause and Undo facts/grant are unsupported footprints.
 That is not a permanent prohibition: the future 48/59/60 owners must add explicit
@@ -55,3 +55,11 @@ table, vendor sign-in behavior, or permission contract. No runtime PASS follows
 from source inspection. Application build/type/lint, actual refused no-write
 controls, allowed upgrades/restart and backup/restore execute through Docker in
 an explicitly assigned verification window.
+
+Catalog interpretation follows PostgreSQL's [constraint catalog](https://www.postgresql.org/docs/current/catalog-pg-constraint.html),
+[trigger catalog](https://www.postgresql.org/docs/current/catalog-pg-trigger.html)
+and [catalog-information functions](https://www.postgresql.org/docs/current/functions-info.html),
+checked 2026-10-08. Constraint definitions are compared as read from the actual
+catalog, with whitespace normalization only: operators, literals, casts and
+parentheses remain significant. This deliberately refuses unrecognized semantic
+shapes rather than trying to prove equivalence of arbitrary SQL expressions.

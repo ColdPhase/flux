@@ -1,5 +1,5 @@
 import { PgBoss } from 'pg-boss';
-import { assertExactMigrationLedger, createDatabase, FLUX_SCHEMA_VERSION, loadBackgroundMasterKey, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
+import { assertExactMigrationLedger, assertMigrationFootprint, createDatabase, FLUX_SCHEMA_VERSION, loadBackgroundMasterKey, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
 import { backgroundComparisonsEnabled, loadAgentRuntimeConfig } from '@flux/core';
 import { startAgentRuntimeReconciler } from './agent-runtime/index.js';
 import { registerDraftSummaryWorker } from './jobs/draft-summary.js';
@@ -16,7 +16,10 @@ import { comparisonProviders } from './proactive-comparison/providers.js';
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error('DATABASE_URL is required');
 const { pool, db } = createDatabase(connectionString);
-assertExactMigrationLedger(await readMigrationManifest('packages/db/migrations', FLUX_SCHEMA_VERSION), await readAppliedMigrationVersions(pool));
+const migrationManifest = await readMigrationManifest('packages/db/migrations', FLUX_SCHEMA_VERSION);
+const applied = await readAppliedMigrationVersions(pool);
+assertExactMigrationLedger(migrationManifest, applied);
+await assertMigrationFootprint(pool, migrationManifest, applied);
 pool.on('error', (error) => console.error('Database connection interrupted', error));
 const boss = new PgBoss({ connectionString, migrate: false });
 boss.on('error', (error) => console.error(error));
