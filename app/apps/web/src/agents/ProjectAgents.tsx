@@ -10,7 +10,7 @@ import { AttachButton, ComposerFiles, MessageFiles } from '../composer/Files';
 import { ConnectionLine, OutboxStatus, PendingFiles, PendingSource } from '../composer/Outbox';
 import { getTaskDiscussion } from '../composer/api';
 import { useProjectShell } from '../project/data';
-import { AgentIdentity, AuthorFace, Button, Icon, Kreska, StatusGlyph, agentHue, type KreskaExpression } from '../ui';
+import { AgentIdentity, AuthorFace, Button, Icon, Kreska, StatusGlyph, agentHue, useMediaQuery, type KreskaExpression } from '../ui';
 import { STATUS_LABEL } from '../work/format';
 import { useNativeOwn, useWorkChoices } from '../work/useDetailReads';
 import { WorkPagination } from '../work/WorkPagination';
@@ -398,8 +398,8 @@ const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
  * and what its grant here lets it do. There is no Stop: Flux has no operation that stops an external
  * agent, and a button that did nothing would be a false promise (see the report on #347).
  */
-function AgentDetail({ entry, held, projectId, now, canHandOff, onHandOff, onClose }: {
-  entry: AgentEntry; held: WorkRowProjection[]; projectId: string; now: number; canHandOff: boolean; onHandOff: () => void; onClose: () => void;
+function AgentDetail({ entry, held, projectId, now, canHandOff, onHandOff, onClose, onThread }: {
+  entry: AgentEntry; held: WorkRowProjection[]; projectId: string; now: number; canHandOff: boolean; onHandOff: () => void; onClose: () => void; onThread: (taskId: string) => void;
 }) {
   const task = held[0];
   const last = entry.connection?.lastActivity;
@@ -422,7 +422,7 @@ function AgentDetail({ entry, held, projectId, now, canHandOff, onHandOff, onClo
         <h3>Now</h3>
         {task ? (
           <>
-            <p className="agents-detail__task"><StatusGlyph status={task.status} size={14} /><span className="ui-task-number">#{task.number}</span><b>{task.title}</b></p>
+            <p className="agents-detail__task"><StatusGlyph status={task.status} size={14} /><span className="ui-task-number">#{task.number}</span><button type="button" className="agents-detail__thread" onClick={() => onThread(task.id)}>{task.title}</button></p>
             <p className="agents-detail__note">{task.status === 'in_progress' ? 'In progress' : 'Handed to it, not started'}{held.length > 1 ? ` · ${held.length - 1} more` : ''} · <Link className="ui-link" to={`/projects/${projectId}/tasks?open=work:${task.id}`}>Open task</Link></p>
           </>
         ) : <p className="agents-detail__note">{entry.connection ? stateLine(entry.connection, now) : 'Nothing is handed to it.'}</p>}
@@ -432,7 +432,7 @@ function AgentDetail({ entry, held, projectId, now, canHandOff, onHandOff, onClo
         {last || held.length > 1 ? (
           <ul className="agents-detail__recent">
             {last ? <li><span>{sentence(OPERATION_LABEL[last.operation])}</span><time dateTime={last.at}>{when(last.at)}</time></li> : null}
-            {held.slice(1).map((row) => <li key={row.id}><span>Also holds #{row.number} · {row.title}</span></li>)}
+            {held.slice(1).map((row) => <li key={row.id}><button type="button" className="agents-detail__thread" onClick={() => onThread(row.id)}>Also holds #{row.number} · {row.title}</button></li>)}
           </ul>
         ) : <p className="agents-detail__note">Nothing recorded yet.</p>}
       </section>
@@ -440,7 +440,7 @@ function AgentDetail({ entry, held, projectId, now, canHandOff, onHandOff, onClo
         <h3>Can</h3>
         <p className="agents-detail__note">{sentence(grant.can)}</p>
       </section>
-      {canHandOff ? <div className="agents-detail__actions"><Button variant="primary" onClick={onHandOff} disabled={!grant.canTake}>Hand off a task</Button></div> : null}
+      {canHandOff ? <div className="agents-detail__actions"><Button variant="secondary" onClick={onHandOff} disabled={!grant.canTake}>Hand off to {entry.name}</Button></div> : null}
     </aside>
   );
 }
@@ -483,7 +483,9 @@ export function ProjectAgents() {
   const heldBy = (agentId: string) => tasksHeldBy(agentId, rows);
   const working = entries.filter((entry) => heldBy(entry.agentId)[0]?.status === 'in_progress').length;
   const picked = search.get('agent');
-  const selected = entries.find((entry) => entry.key === picked) ?? null;
+  // Where the panel fits beside the list it is open from the start, on the working agent as drawn; narrow panes open it by choice.
+  const beside = useMediaQuery('(min-width: 1001px)');
+  const selected = entries.find((entry) => entry.key === picked) ?? (beside ? entries.find((entry) => heldBy(entry.agentId)[0]?.status === 'in_progress') ?? entries[0] ?? null : null);
   const open = (key: string | null) => setSearch((current) => { const next = new URLSearchParams(current); if (key) next.set('agent', key); else next.delete('agent'); return next; }, { replace: true });
 
   const [handOff, setHandOff] = useState<{ agentId: string | null; task: HandOffTask | null } | null>(null);
@@ -511,7 +513,7 @@ export function ProjectAgents() {
           <ul className="agents-list" aria-label="Agents in this project">
             {entries.map((entry) => (
               <AgentRow key={entry.key} entry={entry} held={heldBy(entry.agentId)} now={connections.now} selected={selected?.key === entry.key}
-                dropping={dropping === entry.key} onOpen={() => open(selected?.key === entry.key ? null : entry.key)}
+                dropping={dropping === entry.key} onOpen={() => open(entry.key)}
                 onDropTask={(id) => dropTask(entry.agentId, id)} onDropping={(on) => setDropping((current) => on ? entry.key : current === entry.key ? null : current)} />
             ))}
           </ul>
@@ -556,22 +558,13 @@ export function ProjectAgents() {
             {choices.page && (choices.page.previousCursor || choices.page.nextCursor) ? <WorkPagination {...choices} label="Open task choices" noun="open tasks" /> : null}
             <TaskThread key={`${me.user.id}:${projectId}:${task.id}`} task={task} projectId={projectId} meId={me.user.id} names={names} canWrite={shell?.project.access !== 'viewer'} changingScope={changingScope} />
           </>
-        ) : tasks.length && !settling ? (
-          // Without a chosen task there is no thread; this opens one (it is the same thread as in Conversation).
-          <div className="agents__task">
-            <label className="agents__task-label" htmlFor="agents-task">Task</label>
-            <select id="agents-task" value="" onChange={(event) => select(event.target.value)}>
-              <option value="" disabled>Read a task’s thread…</option>
-              {tasks.map((item) => <option key={item.id} value={item.id}>{item.title} · {STATUS_LABEL[item.status]}</option>)}
-            </select>
-          </div>
         ) : wanted && choices.read.phase === 'unavailable' ? (
           <p className="agents__no-tasks" role="alert">Open tasks could not be loaded. <button type="button" className="ui-link" onClick={choices.onRefresh}>Refresh tasks</button></p>
         ) : null}
       </div>
       {selected ? (
         <AgentDetail key={selected.key} entry={selected} held={heldBy(selected.agentId)} projectId={projectId} now={connections.now}
-          canHandOff={canWrite && !!shell} onHandOff={() => setHandOff({ agentId: selected.agentId, task: null })} onClose={() => open(null)} />
+          canHandOff={canWrite && !!shell} onHandOff={() => setHandOff({ agentId: selected.agentId, task: null })} onClose={() => open(null)} onThread={select} />
       ) : null}
     </div>
     {shell ? (

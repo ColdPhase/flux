@@ -324,7 +324,7 @@ class AgentsViewJourney(unittest.TestCase):
         page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks")).click()
         page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Agents")).click()
         expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
-        page.get_by_label("Task", exact=True).select_option(self.ids["task"])
+        page.evaluate("([url]) => { history.pushState({}, '', url); window.dispatchEvent(new PopStateEvent('popstate')); }", [f"/projects/{self.ids['project']}/agents?task={self.ids['task']}"])
         expect(page.get_by_label("Write to this task")).to_have_value("Half-written note about the firmware")
 
     def test_04b_a_draft_belongs_to_its_account(self) -> None:

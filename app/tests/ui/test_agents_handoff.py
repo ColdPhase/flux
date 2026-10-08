@@ -142,22 +142,27 @@ class HandOffJourney(unittest.TestCase):
         row.click()
         expect(page.get_by_role("region", name="Agent policy")).to_have_count(0)
 
-    def test_04_an_agent_opens_in_a_detail_panel_without_a_stop_it_cannot_honour(self) -> None:
+    def test_04_the_detail_panel_opens_on_the_working_agent_and_has_no_stop_it_cannot_honour(self) -> None:
         page = self.open_agents()
-        page.get_by_role("button", name=re.compile("Claude Code agent")).click()
         detail = page.get_by_role("complementary", name="Claude Code agent, details")
         expect(detail).to_be_visible()
+        claude = page.locator(f'.agents-row[data-agent="{self.ids["agent_claude"]}"] .agents-row__btn')
+        expect(claude).to_have_attribute("aria-pressed", "true")
         expect(detail).to_contain_text("for Ada Kowalska (you)")
         expect(detail.get_by_role("region", name="Now")).to_contain_text("Calibrate the probes at two soil depths")
         expect(detail.get_by_role("region", name="Can")).to_contain_text("It can’t accept decisions")
         expect(detail.get_by_role("region", name="Recent")).to_be_visible()
         # Flux has no operation that stops an external agent, so no button pretends to.
         expect(page.get_by_role("button", name=re.compile("^Stop"))).to_have_count(0)
-        expect(page).to_have_url(re.compile(r"agent=connection"))
         shot(page, "handoff-agents-detail-desktop")
-        # On the computer the same row closes it again (the list's Back button is for narrow screens).
+        page.locator(f'.agents-row[data-agent="{self.ids["agent_reader"]}"] .agents-row__btn').click()
+        expect(page.get_by_role("complementary", name="Reader agent, details")).to_be_visible()
+        expect(page).to_have_url(re.compile(r"agent=connection|agent=agent"))
         page.locator(f'.agents-row[data-agent="{self.ids["agent_claude"]}"] .agents-row__btn').click()
-        expect(detail).to_have_count(0)
+        # The agent's task opens its thread under the list.
+        page.get_by_role("complementary", name="Claude Code agent, details").get_by_role("button", name="Calibrate the probes at two soil depths").click()
+        expect(page.get_by_role("region", name="Thread of Calibrate the probes at two soil depths")).to_be_visible()
+        expect(page.get_by_label("Task", exact=True)).to_have_value(self.ids["busy"])
 
     def test_05_two_steps_choose_the_agent_then_see_what_it_may_do(self) -> None:
         page = self.open_agents()
