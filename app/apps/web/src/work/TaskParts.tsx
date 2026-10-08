@@ -113,19 +113,20 @@ function StatusMenu({ status, disabled, onChoose }: { status: WorkStatus; disabl
 
 /**
  * The title, edited where it is read: it looks like the heading, a click or Enter makes it a field,
- * Enter or leaving it saves, Esc puts the old title back.
+ * Enter or leaving it saves, Esc puts the old title back. The field stays open with the person's
+ * text until the save is confirmed, so a failed save can be retried without retyping.
  */
-export function TitleField({ title, editable, onSave }: { title: string; editable: boolean; onSave: (title: string) => void }) {
+export function TitleField({ title, editable, onSave }: { title: string; editable: boolean; onSave: (title: string) => Promise<boolean> }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(title);
+  const [saving, setSaving] = useState(false);
   const field = useRef<HTMLTextAreaElement>(null);
   const opener = useRef<HTMLButtonElement>(null);
   const labelId = useId();
-  const finished = useRef(false);
+  const attempted = useRef<string | null>(null);
   useLayoutEffect(() => {
     const el = field.current;
     if (!editing || !el) return;
-    finished.current = false;
     el.focus({ preventScroll: true });
     el.setSelectionRange(el.value.length, el.value.length);
   }, [editing]);
@@ -136,14 +137,26 @@ export function TitleField({ title, editable, onSave }: { title: string; editabl
     el.style.height = `${el.scrollHeight}px`;
   }, [draft, editing]);
 
-  function finish(save: boolean) {
-    if (finished.current) return;
-    finished.current = true;
-    const next = draft.trim();
+  function leave() {
     setEditing(false);
-    if (save && next && next !== title) onSave(next);
-    else setDraft(title);
     requestAnimationFrame(() => opener.current?.focus({ preventScroll: true }));
+  }
+  async function save(fromBlur: boolean) {
+    const next = draft.trim();
+    if (saving) return;
+    if (!next || next === title) { leave(); return; }
+    // Leaving the field after a failed attempt does not send the same text again by itself.
+    if (fromBlur && attempted.current === next) return;
+    attempted.current = next;
+    setSaving(true);
+    const ok = await onSave(next);
+    setSaving(false);
+    if (ok) { attempted.current = null; leave(); }
+  }
+  function cancel() {
+    attempted.current = null;
+    setDraft(title);
+    leave();
   }
   if (!editable) return <h3 className="details__title">{title}</h3>;
   return (
@@ -151,12 +164,12 @@ export function TitleField({ title, editable, onSave }: { title: string; editabl
       {editing ? (
         <>
           <span className="ui-vh" id={labelId}>Task title</span>
-          <textarea ref={field} aria-labelledby={labelId} rows={1} maxLength={200} value={draft} className="wd-title__field"
+          <textarea ref={field} aria-labelledby={labelId} rows={1} maxLength={200} value={draft} className="wd-title__field" aria-busy={saving}
             onChange={(event) => setDraft(event.target.value.replace(/\n/g, ' '))}
-            onBlur={() => finish(true)}
+            onBlur={() => void save(true)}
             onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.nativeEvent.isComposing) { event.preventDefault(); finish(true); }
-              else if (event.key === 'Escape' && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); finish(false); }
+              if (event.key === 'Enter' && !event.nativeEvent.isComposing) { event.preventDefault(); void save(false); }
+              else if (event.key === 'Escape' && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); cancel(); }
             }} />
         </>
       ) : (

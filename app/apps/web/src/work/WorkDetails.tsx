@@ -241,9 +241,11 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   // One tap or a key changes the state at once, and the toast takes it back (S9).
   async function setState(next: WorkStatus) {
     if (!writable || busy || next === item.status) return;
-    const before = item.status;
+    // Undo restores what this change replaced: leaving "blocked" clears its reason, so the reason goes back too.
+    const before = { status: item.status, blocker: item.status === 'blocked' ? item.blocker : null };
     if (await change({ status: next })) {
-      toast({ message: `${taskNumber(item)} is now ${STATUS_LABEL[next].toLowerCase()}`, timeout: 8000, action: { label: 'Undo', onClick: () => { void change({ status: before }, latest.current); } } });
+      const restore = before.status === 'blocked' && before.blocker ? { status: before.status, blocker: before.blocker } : { status: before.status };
+      toast({ message: `${taskNumber(item)} is now ${STATUS_LABEL[next].toLowerCase()}`, timeout: 8000, action: { label: 'Undo', onClick: () => { void change(restore, latest.current); } } });
     }
   }
   useStateKeys(writable, (status) => void setState(status));
@@ -258,7 +260,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
     <div className="details wd" data-detail-kind="work" data-detail-id={item.id}>
       <PanelMeta>{taskNumber(item)}</PanelMeta>
       <p className="wd-where"><span className="ui-task-number">{taskNumber(item)}</span> · <span className="wd-project-name">{context.project.name}</span>{item.parked ? ' · parked, not done' : ''}</p>
-      <TitleField title={item.title} editable={writable} onSave={(title) => void change({ title })} />
+      <TitleField title={item.title} editable={writable} onSave={(title) => change({ title })} />
       {item.outcome ? <p className="details__lead">{item.outcome}</p> : null}
 
       <dl className="wd-rows">

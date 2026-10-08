@@ -60,6 +60,19 @@ export interface OverlayProps {
   children: ReactNode;
 }
 
+/**
+ * The handle of a two-height sheet: a real 44px target with a small bar. It is a div with the button role,
+ * not a button: Chrome cancels a touch drag that starts on a <button>, and this one must drag.
+ */
+export function SheetGrabber({ full, onToggle }: { full: boolean; onToggle: () => void }) {
+  return (
+    <div role="button" tabIndex={0} className="ui-grabber" aria-label={full ? 'Show half height' : 'Show full height'} aria-expanded={full}
+      onClick={onToggle} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onToggle(); } }}>
+      <span aria-hidden="true" />
+    </div>
+  );
+}
+
 /** The sheet's current height; dragging down from half closes, from full it goes back to half. */
 interface Detent { full: boolean; setFull: (full: boolean) => void }
 
@@ -220,9 +233,7 @@ export function Overlay({ open, onClose, placement, label, labelledBy, initialFo
         {...drag}
       >
         {detents ? (
-          <button type="button" className="ui-grabber" aria-label={full ? 'Show half height' : 'Show full height'} aria-expanded={full} onClick={() => setFull((value) => !value)}>
-            <span aria-hidden="true" />
-          </button>
+          <SheetGrabber full={full} onToggle={() => setFull((value) => !value)} />
         ) : null}
         {children}
       </div>

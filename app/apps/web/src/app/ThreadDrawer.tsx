@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode 
 import type { ConversationMessage, NativeWorkRow } from '@flux/contracts';
 import { Icon, IconButton, useMediaQuery } from '../ui';
 import { useSheetDetents } from '../ui/useSheetDetents';
+import { SheetGrabber } from '../ui/Overlay';
 import { DiscussedTask, MessageObjects } from '../work/inline';
 import type { MessageWorkPreview } from '../work/message-associations';
 import { AgentAuthor, AuthorFace, SourceCitation, clock, day, when } from './messageParts';
@@ -32,7 +33,7 @@ export function ThreadDrawer({ mode, count, focusOnOpen, onClose, children }: { 
   return (
     <aside ref={ref} id="thread" className={`thread thread--${mode}`} data-height={mode === 'sheet' ? (sheet.full ? 'full' : 'half') : undefined} aria-labelledby={titleId} tabIndex={-1} onKeyDown={onKeyDown} {...(mode === 'sheet' ? sheet.handlers : {})}>
       {mode === 'sheet' ? (
-        <button type="button" className="ui-grabber" aria-label={sheet.full ? 'Show half height' : 'Show full height'} aria-expanded={sheet.full} onClick={sheet.toggle}><span aria-hidden="true" /></button>
+        <SheetGrabber full={sheet.full} onToggle={sheet.toggle} />
       ) : null}
       <div className="thread__head">
         <h2 className="thread__title" id={titleId}><span className="ui-vh">Replies: </span><span className="ui-panel__kind">Thread</span></h2>

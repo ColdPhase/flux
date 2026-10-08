@@ -165,6 +165,70 @@ class DetailPanelFinal(unittest.TestCase):
         page.keyboard.press("Escape")
         expect(thread).to_have_count(0)
 
+    def test_03b_undo_restores_the_blocker_reason(self):
+        task = self.new_task("Mount the rain gauge", owner=True, blocker="Waiting for the bracket from the supplier")
+        page = self.page()
+        panel = self.open_task(page, task)
+        panel.get_by_role("button", name="Resolve").click()
+        expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("In progress")
+        stored = self.stored(task)
+        self.assertEqual((stored["status"], stored["blocker"]), ("in_progress", None))
+        page.get_by_role("status").get_by_role("button", name="Undo").click()
+        expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("Blocked")
+        expect(panel.get_by_label("What is it waiting for?")).to_have_value("Waiting for the bracket from the supplier")
+        stored = self.stored(task)
+        self.assertEqual((stored["status"], stored["blocker"]), ("blocked", "Waiting for the bracket from the supplier"))
+
+    def test_03c_a_failed_title_save_keeps_the_draft_until_it_is_saved(self):
+        task = self.new_task("Name the gateway")
+        page = self.page()
+        panel = self.open_task(page, task)
+        title = panel.locator(".wd-title__text")
+        # Escape leaves the stored title alone.
+        title.click()
+        panel.get_by_role("textbox", name="Task title").fill("Never saved")
+        page.keyboard.press("Escape")
+        expect(panel.locator(".details__title")).to_have_text("Name the gateway")
+        self.assertEqual(self.stored(task)["title"], "Name the gateway")
+        # One failed PATCH: the server is unchanged, the whole draft stays, and a retry saves it.
+        failures = []
+        def fail_once(route):
+            if route.request.method == "PATCH" and not failures:
+                failures.append(1)
+                route.fulfill(status=503, json={"code": "UNAVAILABLE", "error": "Fixture unavailable"})
+            else:
+                route.continue_()
+        page.route(re.compile(r"/api/v1/work/"), fail_once)
+        title.click()
+        field = panel.get_by_role("textbox", name="Task title")
+        field.fill("Name the gateway and the antenna")
+        page.keyboard.press("Enter")
+        expect(panel.get_by_role("alert")).to_be_visible()
+        expect(field).to_have_value("Name the gateway and the antenna")
+        self.assertEqual(self.stored(task)["title"], "Name the gateway")
+        page.keyboard.press("Enter")
+        expect(panel.locator(".details__title")).to_have_text("Name the gateway and the antenna")
+        self.assertEqual(self.stored(task)["title"], "Name the gateway and the antenna")
+        page.unroute(re.compile(r"/api/v1/work/"))
+
+    def test_03d_a_title_save_that_conflicts_keeps_the_draft(self):
+        task = self.new_task("Choose the mast")
+        page = self.page()
+        panel = self.open_task(page, task)
+        # Someone else changes the task after the panel loaded.
+        api(self.ctx, "PATCH", f"/api/v1/work/{task['id']}", {"outcome": "Changed elsewhere", "expectedVersion": task["version"]})
+        panel.locator(".wd-title__text").click()
+        field = panel.get_by_role("textbox", name="Task title")
+        field.fill("Choose the mast and the mount")
+        page.keyboard.press("Enter")
+        expect(panel.get_by_role("alert")).to_contain_text("Someone changed this")
+        expect(field).to_have_value("Choose the mast and the mount")
+        self.assertEqual(self.stored(task)["title"], "Choose the mast")
+        page.wait_for_timeout(1500)  # the latest version has loaded
+        page.keyboard.press("Enter")
+        expect(panel.locator(".details__title")).to_have_text("Choose the mast and the mount")
+        self.assertEqual(self.stored(task)["title"], "Choose the mast and the mount")
+
     # --------------------------------------------------------------------- phone
 
     def drag(self, page, from_y, to_y, x=195):
@@ -193,8 +257,17 @@ class DetailPanelFinal(unittest.TestCase):
                 # Five state pills, one checked; touch targets are at least 44px.
                 pills = sheet.get_by_role("radiogroup", name="Status").get_by_role("radio")
                 expect(pills).to_have_count(5)
-                self.assertGreaterEqual(pills.first.bounding_box()["height"], 43.5)
-                self.assertGreaterEqual(grabber.bounding_box()["height"], 24)
+                for index in range(5):
+                    box = pills.nth(index).bounding_box()
+                    self.assertGreaterEqual(box["height"], 44, "a real 44px target, no rounding allowance")
+                    self.assertGreaterEqual(box["width"], 44)
+                box = grabber.bounding_box()
+                self.assertGreaterEqual(box["height"], 44, "the grabber is a real 44px target")
+                self.assertGreaterEqual(box["width"], 44)
+                # The visible bar stays small, and the close button is not covered by the hit area.
+                self.assertLess(grabber.locator("span").bounding_box()["height"], 8)
+                close = sheet.get_by_role("button", name="Close details").bounding_box()
+                self.assertTrue(close["x"] >= box["x"] + box["width"] or close["y"] >= box["y"] + box["height"], "the grabber does not overlap Close")
                 shot(page, f"detail-panel-final-phone-half-{scheme}")
                 # Drag up for full; the hint goes away.
                 self.drag(page, half["y"] + 14, 120)
@@ -202,7 +275,7 @@ class DetailPanelFinal(unittest.TestCase):
                 self.assertLess(sheet.bounding_box()["y"], 40)
                 shot(page, f"detail-panel-final-phone-full-{scheme}")
                 # Drag down: back to half, then closed.
-                self.drag(page, 64, 640)
+                self.drag(page, 30, 640)  # from the grabber itself
                 expect(sheet).to_have_attribute("data-height", "half")
                 page.wait_for_timeout(700)  # the height settles before the next touch
                 start_y = sheet.bounding_box()["y"] + 14
@@ -234,6 +307,9 @@ class DetailPanelFinal(unittest.TestCase):
         thread = page.get_by_role("complementary", name="Replies")
         expect(thread).to_be_visible()
         expect(thread).to_have_attribute("data-height", "full")
+        handle = thread.get_by_role("button", name="Show half height").bounding_box()
+        self.assertGreaterEqual(handle["height"], 44, "the thread grabber is a real 44px target")
+        self.assertGreaterEqual(handle["width"], 44)
         thread.get_by_role("button", name="Show half height").tap()
         expect(thread).to_have_attribute("data-height", "half")
         shot(page, "detail-panel-final-thread-phone-half")
