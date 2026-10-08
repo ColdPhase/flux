@@ -32,7 +32,7 @@ export const PROJECT_EXPORT_EXCLUDED = [
   'accounts, e-mail addresses, sessions, push subscriptions and notifications',
   'agent connections, OAuth clients and tokens, and pending agent proposals',
   'approved project policies for agents (kept in full backups)',
-  'GitHub installations, authorizations, tokens, webhook deliveries, pull request snapshots and who connected a repository (source bindings and rules are exported dormant)',
+  'GitHub installations, authorizations, tokens, webhook deliveries, pull request snapshots and who connected a repository (task rules are exported dormant; repository bindings are never exported here)',
   'events, idempotency records and other internal rows',
 ] as const;
 
@@ -198,22 +198,6 @@ export interface ProjectExportFile extends MessageFile {
   path: string;
 }
 
-/** A repository the project had connected, exported dormant (#74): identity only, never usable as a connection. */
-export interface ProjectExportGithubBinding {
-  id: string;
-  host: 'github.com';
-  /** Stable GitHub repository id, kept as a string. */
-  repositoryId: string;
-  owner: string;
-  name: string;
-  private: boolean;
-  url: string;
-  /** The state on the exporting instance; the exported binding is always disabled. */
-  recordedState: 'active' | 'disconnected' | 'revoked';
-  enabled: false;
-  createdAt: string;
-}
-
 /** A task's "let linked PRs move this task" rule, exported dormant (#74). */
 export interface ProjectExportGithubRule {
   taskId: string;
@@ -223,20 +207,20 @@ export interface ProjectExportGithubRule {
 }
 
 /**
- * GitHub source bindings and rules (#74), present only when the project has any. Dormant: no
- * installation or App identifiers, tokens, authorization, connecting person or pull request
- * data, and nothing is enabled. A destination must reconnect and re-authorize each repository.
+ * Task rules and the default mode (#74), present only when the project has any. Dormant and
+ * disabled. Repository bindings are deliberately absent: their names, URLs and ids are private
+ * GitHub facts that need the exporter's own current GitHub proof, which this ordinary export does
+ * not perform. A destination must connect and authorize repositories itself.
  */
 export interface ProjectExportGithubSources {
   dormant: true;
   /** The project's default rule mode on the exporting instance, if one was set. */
   defaultMode: 'complete' | 'ready' | null;
-  bindings: ProjectExportGithubBinding[];
   rules: ProjectExportGithubRule[];
 }
 
 export interface ProjectExport {
-  /** GitHub source bindings and rules, dormant. Absent for projects that never connected GitHub. */
+  /** GitHub task rules, dormant. Absent when the project has none; never holds repositories. */
   githubSources?: ProjectExportGithubSources;
   /** Published attachments only. Exact bytes are in the bundle paths. Absent in legacy file-free exports. */
   files?: ProjectExportFile[];
@@ -381,8 +365,6 @@ const baseExportSchema = {
 const modeSchema = { enum: ['complete', 'ready'] } as const;
 const githubSourcesSchema = object({
   dormant: { const: true }, defaultMode: nullable(modeSchema),
-  bindings: list(object({ id, host: { const: 'github.com' }, repositoryId: { type: 'string', pattern: '^[1-9][0-9]*$' }, owner: text, name: text, private: { type: 'boolean' }, url: text,
-    recordedState: { enum: ['active', 'disconnected', 'revoked'] }, enabled: { const: false }, createdAt: time })),
   rules: list(object({ taskId: id, mode: modeSchema, recordedState: { enum: ['active', 'suspended', 'off'] }, enabled: { const: false } })),
 });
 

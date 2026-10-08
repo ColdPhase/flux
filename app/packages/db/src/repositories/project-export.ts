@@ -163,18 +163,16 @@ export function projectExportRows(db: DbExecutor) {
     },
 
     async githubSources(projectId: string) {
-      const [bindings, rules, [defaults]] = await Promise.all([
-        db.select().from(schema.githubBindings).where(eq(schema.githubBindings.projectId, projectId)).orderBy(asc(schema.githubBindings.createdAt), asc(schema.githubBindings.id)),
+      // Bindings are never read: repository identity needs the exporter's own current GitHub authority (core/github/service.ts).
+      const [rules, [defaults]] = await Promise.all([
         db.select().from(schema.githubTaskRules).where(eq(schema.githubTaskRules.projectId, projectId)).orderBy(asc(schema.githubTaskRules.taskId)),
         db.select().from(schema.githubRuleDefaults).where(eq(schema.githubRuleDefaults.projectId, projectId)),
       ]);
       const defaultMode = defaults?.mode ?? null;
-      if (!bindings.length && !rules.length && !defaultMode) return null;
-      // Identity of the repository and the rule's intent only: no installation, App, author, generation or expected-state columns.
+      if (!rules.length && !defaultMode) return null;
+      // The rule's intent only: no repository, installation, App, author, generation or expected-state columns.
       return {
         dormant: true as const, defaultMode,
-        bindings: bindings.map((row) => ({ id: row.id, host: 'github.com' as const, repositoryId: row.repositoryId, owner: row.owner, name: row.name, private: row.private,
-          url: row.url, recordedState: row.state, enabled: false as const, createdAt: iso(row.createdAt) })),
         rules: rules.map((row) => ({ taskId: row.taskId, mode: row.mode, recordedState: row.state, enabled: false as const })),
       };
     },
