@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import type { AssistantRun } from '@flux/contracts';
 import { useStreamEvents } from '../api/stream';
@@ -8,14 +8,43 @@ import { Kreska, type KreskaExpression } from '../ui';
 import { useShellData } from './data';
 
 const POLL_WHILE_WORKING_MS = 3000;
+interface WorkingSnapshot { identity: string; run: AssistantRun | null; stopping: boolean; failed: boolean }
+interface WorkingLifetime { identity: string; live: boolean; revision: number; read: AbortController | null; stopping: boolean }
 
-/** The person's own run that is working now, if any; refreshed by the stream and while one works. */
+/** Reads and Stop share one owner/lifetime fence; neither may restore an older working answer. */
 function useWorkingRun(identity: string) {
-  const [run, setRun] = useState<AssistantRun | null>(null);
+  const [snapshot, setSnapshot] = useState<WorkingSnapshot>({ identity, run: null, stopping: false, failed: false });
+  const lifetime = useRef<WorkingLifetime | null>(null);
   const refresh = useCallback(() => {
-    void listOwnRuns().then((page) => setRun(page.items.find(isWorking) ?? null), () => undefined);
-  }, []);
-  useEffect(() => { refresh(); }, [refresh, identity]);
+    const scope = lifetime.current;
+    if (!scope?.live || scope.identity !== identity || scope.stopping) return;
+    scope.read?.abort();
+    const controller = new AbortController();
+    scope.read = controller;
+    const revision = ++scope.revision;
+    const current = () => scope.live && lifetime.current === scope && revision === scope.revision && !controller.signal.aborted;
+    void listOwnRuns(controller.signal).then((page) => {
+      if (!current()) return;
+      const run = page.items.find(isWorking) ?? null;
+      setSnapshot((previous) => ({ identity, run, stopping: false,
+        failed: previous.identity === identity && previous.run?.id === run?.id && previous.failed }));
+    }, () => {
+      if (current()) setSnapshot({ identity, run: null, stopping: false, failed: false });
+    });
+  }, [identity]);
+  useEffect(() => {
+    const scope: WorkingLifetime = { identity, live: true, revision: 0, read: null, stopping: false };
+    lifetime.current = scope;
+    refresh();
+    return () => {
+      scope.live = false;
+      ++scope.revision;
+      scope.read?.abort();
+      if (lifetime.current === scope) lifetime.current = null;
+    };
+  }, [identity, refresh]);
+  // The previous owner's snapshot is hidden immediately, before effect cleanup runs.
+  const run = snapshot.identity === identity ? snapshot.run : null;
   useEffect(() => {
     if (!run) return undefined;
     const timer = setInterval(refresh, POLL_WHILE_WORKING_MS);
@@ -26,7 +55,27 @@ function useWorkingRun(identity: string) {
     return () => window.removeEventListener('focus', refresh);
   }, [refresh]);
   useStreamEvents(identity, refresh, refresh);
-  return { run, refresh, setRun };
+  const stop = useCallback(async () => {
+    const scope = lifetime.current;
+    if (!run || !scope?.live || scope.identity !== identity || scope.stopping || run.stopRequested) return;
+    scope.stopping = true;
+    const revision = ++scope.revision;
+    scope.read?.abort();
+    setSnapshot({ identity, run, stopping: true, failed: false });
+    const current = () => scope.live && lifetime.current === scope && scope.identity === identity && revision === scope.revision;
+    try {
+      const stopped = await stopRun(run.id);
+      if (current()) setSnapshot({ identity, run: isWorking(stopped) ? stopped : null, stopping: false, failed: false });
+    } catch {
+      if (current()) setSnapshot({ identity, run, stopping: false, failed: true });
+    } finally {
+      if (current()) {
+        scope.stopping = false;
+        refresh();
+      }
+    }
+  }, [identity, run, refresh]);
+  return { run, stop, stopping: snapshot.identity === identity && snapshot.stopping, failed: snapshot.identity === identity && snapshot.failed };
 }
 
 const face = (run: AssistantRun): KreskaExpression =>
@@ -35,40 +84,33 @@ const face = (run: AssistantRun): KreskaExpression =>
 const doing = (run: AssistantRun) =>
   run.stopRequested ? 'stopping…' : run.status === 'queued' ? 'getting ready' : run.status === 'reading' ? 'reading the conversation' : 'writing an answer';
 
-/**
- * A working agent is always visible, with Stop (F-026 S13): this card in the sidebar, only while a real
- * run executes, so it never claims activity that is not happening. Stop ends it through the run's own
- * stop command. External agents' Stop joins it with #347.
- */
+/** Own-assistant Stop uses its existing permission-backed command; external agents join in #347. */
 export function WorkingAgent({ compact = false }: { compact?: boolean }) {
   const { me } = useShellData();
-  const { run, refresh, setRun } = useWorkingRun(me.user.id);
-  const [stopping, setStopping] = useState(false);
+  const { run, stop, stopping, failed } = useWorkingRun(me.user.id);
   if (!run) return null;
-  const stop = async () => {
-    setStopping(true);
-    try { setRun(await stopRun(run.id)); } catch { /* the next refresh shows the truth */ } finally { setStopping(false); refresh(); }
-  };
-  const label = `Your assistant is ${doing(run)}`;
-  if (compact) {
-    return (
-      <Link className="agentlive agentlive--compact" to={`/projects/${run.projectId}/conversations/${run.conversationId}`} title={label} aria-label={label}>
-        <Kreska size={24} expression={face(run)} />
-      </Link>
-    );
-  }
+  const label = stopping ? 'Stopping your assistant…' : `Your assistant is ${doing(run)}`;
+  const destination = `/projects/${run.projectId}/conversations/${run.conversationId}`;
   return (
-    <div className="agentlive" role="status" aria-label={label}>
-      <Kreska size={24} expression={face(run)} />
-      <Link className="agentlive__text" to={`/projects/${run.projectId}/conversations/${run.conversationId}`}>
-        <b>Your assistant</b>
-        <span>{doing(run)}</span>
-      </Link>
-      {!run.stopRequested ? (
-        <button type="button" className="agentlive__stop" aria-label="Stop your assistant" disabled={stopping} onClick={() => void stop()}>
-          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><rect width="10" height="10" rx="2" fill="currentColor" /></svg>
-        </button>
-      ) : null}
+    <div className={`agentlive${compact ? ' agentlive--compact' : ''}`} role="status" aria-label={label}>
+      {compact ? (
+        <Link className="agentlive__link" to={destination} title={label} aria-label={label}>
+          <Kreska size={24} expression={face(run)} />
+        </Link>
+      ) : (
+        <>
+          <Kreska size={24} expression={face(run)} />
+          <Link className="agentlive__text" to={destination}>
+            <b>Your assistant</b>
+            <span>{stopping ? 'requesting Stop…' : doing(run)}</span>
+          </Link>
+        </>
+      )}
+      <button type="button" className="agentlive__stop" aria-label="Stop your assistant" title={stopping || run.stopRequested ? 'Stopping…' : 'Stop your assistant'}
+        disabled={stopping || run.stopRequested} onClick={() => void stop()}>
+        <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><rect width="10" height="10" rx="2" fill="currentColor" /></svg>
+      </button>
+      {failed ? <span className="agentlive__error" role="alert">{compact ? 'Stop failed' : 'Couldn’t stop your assistant. Try again.'}</span> : null}
     </div>
   );
 }
