@@ -21,6 +21,14 @@ git pull --ff-only && ./flux upgrade      # or: ./flux upgrade --pull
 The downtime is the backup, the build and the migration. It prints
 `Upgraded <project> from schema A to B` and keeps the backup.
 
+The [semantic migration gate](../development/migration-footprints.md) checks the
+actual runtime catalog before migration SQL or queue startup. A legacy version
+57 can mean sign-in, focus or Undo; its number alone does not admit an upgrade.
+If the image refuses a partial, mixed or unsupported footprint, keep the backup
+and restore its matching image/database. Do not edit the ledger or rename a
+migration to make the compatibility check pass. Future composed 48/59/60 images
+need their own reviewed descriptors and upgrade evidence.
+
 ## When it fails
 
 If any step fails, the launcher stops the API and worker, confirms that both are stopped, and
