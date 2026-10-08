@@ -1,0 +1,135 @@
+{
+  "tested_head": "1cc086f20f7ea8bd5690e69e26e90a5b2b6623a0",
+  "runtime_head": "d5c99322412b4906e082e554963a326a5c021312",
+  "command": "env -u FLUX_IMAGE_TAG -u COMPOSE_PROJECT_NAME FLUX_TEST_PORT=19366 FLUX_TEST_MAILPIT_PORT=19367 TMPDIR=/private/tmp ./scripts/check_application.sh",
+  "exit_code": 0,
+  "log_path": "/tmp/flux369-application-current.log",
+  "log_sha256": "8a29421255ecf10335d32eb58dac38a4af24465219360b756254b86e6d5e54ce",
+  "compose_project": "flux-test-1791490023-9384",
+  "tests": {
+    "sum": 1124,
+    "reported_groups": [
+      1101,
+      3,
+      1,
+      1,
+      2,
+      1,
+      1,
+      1,
+      6,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ]
+  },
+  "pass": {
+    "sum": 1124,
+    "reported_groups": [
+      1101,
+      3,
+      1,
+      1,
+      2,
+      1,
+      1,
+      1,
+      6,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ]
+  },
+  "fail": {
+    "sum": 0,
+    "reported_groups": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "skipped": {
+    "sum": 0,
+    "reported_groups": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "cancelled": {
+    "sum": 0,
+    "reported_groups": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "todo": {
+    "sum": 0,
+    "reported_groups": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  }
+}

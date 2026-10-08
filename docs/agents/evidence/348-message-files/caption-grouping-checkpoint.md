@@ -116,6 +116,17 @@ abort/catch fencing in the read store, not proof of an authorization denial. Let
 that scenario open its intended surface directly; rerun before claiming this
 fixture diagnosis confirmed. Do not filter the error string or call it fixed yet.
 
-A complete application check is running at committed test/evidence head
-`1cc086f20f7ea8bd5690e69e26e90a5b2b6623a0`; its runtime source remains `d5c99322`.
-Log: `/tmp/flux369-application-current.log`. No final total is claimed until it exits.
+The complete standard application check at test head
+`1cc086f20f7ea8bd5690e69e26e90a5b2b6623a0` finished with **exit 0**:
+**1124/1124 tests passed**, zero failed/cancelled/skipped/TODO. The main suite has
+1101 tests; 15 separately reported browser/availability groups add23 tests.
+Build, typecheck, lint, architecture checks, real session/attachment restart,
+background operator off/on/off and the provider-key log guard also completed.
+The scheduled comparison used the local provider mock, not a real paid provider.
+
+Command: `env -u FLUX_IMAGE_TAG -u COMPOSE_PROJECT_NAME FLUX_TEST_PORT=19366 FLUX_TEST_MAILPIT_PORT=19367 TMPDIR=/private/tmp ./scripts/check_application.sh`.
+Log: `/tmp/flux369-application-current.log`; Compose project
+flux-test-1791490023-9384. Cleanup removed this run's containers, three networks,
+four volumes and three image tags. No other project's resources were modified.
+The runtime source remains `d5c99322`; subsequent commits contain evidence only.
+This full check does not override the separately observed WebKit/visual failures.
