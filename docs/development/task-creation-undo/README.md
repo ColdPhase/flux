@@ -3,9 +3,12 @@
 Issue [#238](https://github.com/ColdPhase/flux/issues/238), child of #154 AC-3 and F-017 UI116-3. The accepted
 contract (AC-U1–AC-U5) and its independent review are kept verbatim beside this page:
 [accepted contract](accepted-contract.md), [contract review](contract-review.md). This page records how the
-implementation meets it on `main`. The first implementation (draft #244) composed the live map and wiki editing
+implementation candidate meets it; the feature is not accepted on `main`. The first implementation (draft #244) composed the live map and wiki editing
 work of #239; this one stands on `main` alone. What that means for #239 is in
 [Live editing (#239)](#live-editing-239).
+
+The [current composition contract](composition-2026-10-08.md) supersedes the older migration numbering and
+release-scope notes below. The original accepted criteria and independent review remain historical records.
 
 ## What a person sees
 
@@ -115,8 +118,9 @@ prints the plan. Start only the matching prior image afterwards.
 
 ## Live editing (#239)
 
-The live map and wiki editing of #239 is out of v0.1 (founder decision, 2026-10-06) and not on `main`, so none of
-its writers exist here. When #239 lands, each of its task-targeting writers (shared wiki text saves, native map
+The founder's current scope requires live map/wiki editing (#228/#231, draft #239) in v0.1. It is not yet on
+`main`, so none of its writers exist in this candidate. When #239 composes, each of its task-targeting writers (shared wiki text saves, native map
 writes that place a task) must join `taskUseRows`/`prepareReferencedTaskUse` before its effect, exactly as the
 native doc writer does in `app/packages/core/src/docs/service.ts`. Its memory accounting is its own. Until then the
-interface has no live caller and nothing is gated on it.
+interface has no live caller. This missing composition remains an explicit v0.1 acceptance gate; standalone
+Undo progress does not complete #238, #228/#231 or the release.
