@@ -6,7 +6,7 @@ import unittest
 import uuid
 from urllib.parse import parse_qs, urlsplit
 from playwright.sync_api import expect, sync_playwright
-from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
+from test_app_shell import ORIGIN, UPSTREAM, SHOTS, shot, start_forwarder
 from test_work_pagination import api
 
 
@@ -281,15 +281,20 @@ class NativeDetailsJourney(unittest.TestCase):
     def test_11_empty_relations_keep_loading_failure_and_retry_visible(self):
         task = api(self.ctx, "POST", self.root + "/work", {"title": "Record the next shield reading"}, 201)
         before = self.native("work", task["id"])
+        self.assertEqual(before["links"], [], "the real task starts without relationships")
+        observations = []
         for phone in (False, True):
             with self.subTest(phone=phone):
                 page = self.page(phone)
                 held = []
 
                 def hold(route):
+                    if parse_qs(urlsplit(route.request.url).query).get("objects") != [f"work:{task['id']}"]:
+                        route.continue_()
+                        return
                     response = route.fetch()
                     self.assertEqual(response.status, 200)
-                    held.append((route, response))
+                    held.append((route, response, route.request.url))
 
                 page.route("**/work-relations?**", hold)
                 page.goto(f"/projects/{self.project}/tasks?open=work:{task['id']}")
@@ -301,11 +306,14 @@ class NativeDetailsJourney(unittest.TestCase):
                 expect(panel).not_to_contain_text("Added directly on the Tasks tab.")
                 self.assertTrue(held, "the loading state comes from actual held relation reads")
                 page.unroute("**/work-relations?**", hold)
-                # Router/context revalidation can retire an earlier read. Release every
-                # real response, without assuming there is only one dispatch per opening.
-                for route, response in held:
+                # Only this task's selector is held. Retain every genuine observation
+                # of it, without intercepting relationship reads for other objects.
+                for route, response, url in held:
                     payload = response.json()
                     self.assertEqual((payload["before"], payload["total"], payload["items"]), (0, 0, []))
+                    observations.append({"phone": phone, "targetWorkId": task["id"], "url": url,
+                                         "objects": parse_qs(urlsplit(url).query)["objects"],
+                                         "before": payload["before"], "total": payload["total"], "itemCount": len(payload["items"])})
                     route.fulfill(response=response)
                 self.ready(panel)
                 expect(nav).to_have_count(0)
@@ -313,7 +321,13 @@ class NativeDetailsJourney(unittest.TestCase):
                 expect(panel).to_contain_text("Added directly on the Tasks tab.")
                 shot(page, f"detail-relations-empty-{'phone' if phone else 'desktop'}")
 
-                page.route("**/work-relations?**", lambda route: route.fulfill(status=503, json={"code": "WORK_READ_UNAVAILABLE", "error": "Fixture unavailable"}))
+                def fail_current_relations(route):
+                    if parse_qs(urlsplit(route.request.url).query).get("objects") == [f"work:{task['id']}"]:
+                        route.fulfill(status=503, json={"code": "WORK_READ_UNAVAILABLE", "error": "Fixture unavailable"})
+                    else:
+                        route.continue_()
+
+                page.route("**/work-relations?**", fail_current_relations)
                 page.reload()
                 expect(panel.locator("[data-detail-relations-phase]")).to_have_attribute("data-detail-relations-phase", "unavailable")
                 expect(nav).to_be_visible()
@@ -326,6 +340,8 @@ class NativeDetailsJourney(unittest.TestCase):
                 expect(nav).to_have_count(0)
                 expect(panel).to_contain_text("Added directly on the Tasks tab.")
         self.assertEqual(self.native("work", task["id"]), before, "empty/read/retry never changes native work or links")
+        if SHOTS:
+            (SHOTS / "detail-relations-empty-observations.json").write_text(json.dumps(observations, indent=2) + "\n")
 
     def test_12_empty_later_relation_page_still_returns_to_first_page(self):
         page = self.page()
@@ -333,7 +349,8 @@ class NativeDetailsJourney(unittest.TestCase):
         nav = panel.get_by_role("navigation", name="Object relationship pages")
 
         def empty_later_page(route):
-            if not parse_qs(urlsplit(route.request.url).query).get("cursor"):
+            query = parse_qs(urlsplit(route.request.url).query)
+            if query.get("objects") != [f"work:{self.target['id']}"] or not query.get("cursor"):
                 route.continue_()
                 return
             response = route.fetch()
