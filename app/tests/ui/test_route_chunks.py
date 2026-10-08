@@ -212,6 +212,95 @@ class RouteChunksJourney(unittest.TestCase):
                 expect(page.get_by_placeholder("Write a note…")).to_have_value(latest)
                 self.assertEqual(page.evaluate("key => localStorage.getItem(key)", key), earlier)
 
+    def test_12_wiki_quota_copy_preserves_fields_base_and_attempt_before_reload(self):
+        for engine in self.browsers:
+            with self.subTest(engine=engine):
+                page = self.page(engine)
+                self.home(page)
+                created = page.request.post(f"{ORIGIN}/api/v1/projects/{self.project_id}/docs",
+                    headers={"origin": ORIGIN, "idempotency-key": str(uuid.uuid4())},
+                    data={"title": f"Owned Wiki recovery {engine}", "body": "Server baseline", "state": "draft"})
+                self.assertEqual(created.status, 201, created.text())
+                doc = created.json()
+                me = page.request.get(f"{ORIGIN}/api/v1/me").json()
+                key = f"flux:doc-edit:{me['user']['id']}:{doc['id']}"
+                page.goto(f"/projects/{self.project_id}/docs/{doc['id']}/edit")
+                field = page.get_by_label("Text (Markdown)", exact=True)
+                earlier = f"Earlier Wiki A {engine}"
+                latest = f"Latest Wiki B {engine}: " + "Retain the complete private edit and its save identity. " * 35
+                field.fill(earlier)
+                page.wait_for_function("([key,text]) => JSON.parse(sessionStorage.getItem(key) ?? '{}').body === text", arg=[key, earlier])
+                before = page.evaluate("key => JSON.parse(sessionStorage.getItem(key))", key)
+                self.assertEqual(page.evaluate(EXHAUST_STORAGE, 'session'), 'QuotaExceededError')
+                field.fill(latest)
+                self.assertEqual(page.evaluate("key => JSON.parse(sessionStorage.getItem(key)).body", key), earlier)
+                pattern = re.compile(r"/assets/SettingsHome-[^/]+\.js(?:\?.*)?$")
+                def refused(route):
+                    route.fulfill(status=503, headers={"cache-control": "no-store"}, content_type="text/plain", body="Real refused Wiki recovery delivery")
+                page.route(pattern, refused)
+                self.settings(page)
+                expect(page.get_by_role("heading", name="This page couldn’t be loaded", exact=True)).to_be_visible()
+                page.unroute(pattern, refused)
+                expect(page.get_by_role("button", name="Reload Flux", exact=True)).to_be_disabled()
+                page.get_by_role("link", name="Go to Home", exact=True).click()
+                # Navigate through the public router, preserving the same document and visit copy.
+                page.get_by_role("link", name="Chunk boundaries", exact=True).click()
+                page.get_by_role("link", name="Wiki", exact=True).click()
+                page.get_by_role("link", name=doc["title"], exact=True).click()
+                page.get_by_role("link", name="Edit", exact=True).click()
+                expect(page.get_by_label("Text (Markdown)", exact=True)).to_have_value(latest)
+                page.evaluate("sessionStorage.removeItem('quota-route-recovery')")
+                persisted = latest + " Storage is writable again."
+                page.get_by_label("Text (Markdown)", exact=True).fill(persisted)
+                page.wait_for_function("([key,text]) => JSON.parse(sessionStorage.getItem(key) ?? '{}').body === text", arg=[key, persisted])
+                after = page.evaluate("key => JSON.parse(sessionStorage.getItem(key))", key)
+                self.assertEqual(after["base"], before["base"])
+                self.assertEqual(after["state"], before["state"])
+                self.assertEqual(after["title"], before["title"])
+                self.assertNotEqual(after["attempt"], before["attempt"], "editing B legitimately creates its own new save attempt")
+                # A failed save keeps this exact captured command for a later retry.
+                attempted = []
+                api_pattern = re.compile(rf"/api/v1/docs/{doc['id']}$")
+                def failed_save(route):
+                    if route.request.method != 'PATCH':
+                        route.continue_(); return
+                    attempted.append({"body": route.request.post_data_json, "key": route.request.headers.get("idempotency-key")})
+                    route.fulfill(status=503, content_type="application/json", body='{"message":"Save temporarily unavailable"}')
+                page.route(api_pattern, failed_save)
+                page.get_by_role("button", name="Save changes", exact=True).click()
+                expect(page.locator(".doc-error")).to_be_visible()
+                self.assertEqual(len(attempted), 1)
+                kept = page.evaluate("key => JSON.parse(sessionStorage.getItem(key))", key)
+                self.assertEqual(kept["attempt"], attempted[0]["key"])
+                self.assertEqual(kept["body"], persisted)
+                self.assertEqual(kept["base"], before["base"])
+                page.unroute(api_pattern, failed_save)
+
+    def test_13_failed_fresh_session_check_never_performs_document_reload(self):
+        for engine in self.browsers:
+            with self.subTest(engine=engine):
+                page = self.page(engine)
+                self.home(page)
+                pattern = re.compile(r"/assets/SettingsHome-[^/]+\.js(?:\?.*)?$")
+                def refused(route):
+                    route.fulfill(status=503, headers={"cache-control": "no-store"}, body="Real refused code")
+                page.route(pattern, refused)
+                self.settings(page)
+                expect(page.get_by_role("button", name="Reload Flux", exact=True)).to_be_enabled()
+                page.unroute(pattern, refused)
+                me_pattern = re.compile(r"/api/v1/me$")
+                def unavailable(route):
+                    route.fulfill(status=503, content_type="application/json", body='{"message":"Session check temporarily unavailable"}')
+                page.route(me_pattern, unavailable)
+                origin = page.evaluate("performance.timeOrigin")
+                page.get_by_role("button", name="Reload Flux", exact=True).click()
+                expect(page.get_by_role("button", name="Check again", exact=True)).to_be_visible()
+                expect(page.get_by_role("button", name="Reload Flux", exact=True)).to_be_disabled()
+                self.assertEqual(page.evaluate("performance.timeOrigin"), origin)
+                page.unroute(me_pattern, unavailable)
+                page.get_by_role("button", name="Check again", exact=True).click()
+                expect(page.get_by_role("button", name="Reload Flux", exact=True)).to_be_enabled()
+
     def test_01_cold_home_omits_secondary_and_closed_surface_imports(self):
         for engine in self.browsers:
             with self.subTest(engine=engine):
