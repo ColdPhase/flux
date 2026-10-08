@@ -54,7 +54,9 @@ function viewOrder(pathname: string) {
  * to different sections of your app"). Inside a project or a conversation its section stays current.
  * Only a modal sheet or the on-screen keyboard covers it.
  */
-function mainPlaces(pathname: string, inboxUnread: boolean): BottomNavItem[] {
+const SIDEBAR_KEY = 'flux.sidebar';
+
+function mainPlaces(pathname: string, inboxUnread: number): BottomNavItem[] {
   const home = /^\/(map|tasks|docs)?(\/|$)/.test(pathname);
   const inbox = /^\/inbox(\/|$)/.test(pathname);
   const messages = /^\/dm(\/|$)/.test(pathname);
@@ -131,6 +133,13 @@ function AppLayoutContent() {
   }, () => revalidator.revalidate());
 
   const inboxUnread = useInboxDot(me.user.id, location.pathname);
+  // The computer's sidebar collapses to its 64px rail with "[" (F-026 S19), remembered on this device.
+  const [railed, setRailed] = useState(() => { try { return localStorage.getItem(SIDEBAR_KEY) === 'rail'; } catch { return false; } });
+  const toggleRail = useCallback(() => setRailed((current) => {
+    const next = !current;
+    try { if (next) localStorage.setItem(SIDEBAR_KEY, 'rail'); else localStorage.removeItem(SIDEBAR_KEY); } catch { /* this visit only */ }
+    return next;
+  }), []);
 
   const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const detailsOwner = useMemo(() => ({ accountId: me.user.id, projectId }), [me.user.id, projectId]);
@@ -187,6 +196,21 @@ function AppLayoutContent() {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, []);
+
+  // "[" collapses or expands the sidebar; "G" then "I" goes to the Inbox (F-026 §4 keyboard).
+  useEffect(() => {
+    let leader = 0;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented || isTyping(event.target)) return;
+      if (document.getElementById('root')?.inert) return;
+      if (event.key === '[') { event.preventDefault(); toggleRail(); return; }
+      const key = event.key.toLowerCase();
+      if (key === 'g') { leader = Date.now(); return; }
+      if (key === 'i' && Date.now() - leader < 1200) { event.preventDefault(); leader = 0; navigate('/inbox'); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [toggleRail, navigate]);
 
   // "]" toggles Details, as in the header tooltip, only where the header offers Details.
   useEffect(() => {
@@ -362,7 +386,7 @@ function AppLayoutContent() {
           <Sidebar {...sidebarProps} onClose={() => setNavOpen(false)} titleId={drawerTitleId} />
         </Drawer>
       ) : (
-        <aside className="app__side" aria-label="Sidebar"><Sidebar {...sidebarProps} /></aside>
+        <aside className={`app__side${railed ? ' app__side--rail' : ''}`} aria-label="Sidebar"><Sidebar {...sidebarProps} collapsed={railed} onToggleCollapsed={toggleRail} /></aside>
       )}
 
       <div className="app__main">
