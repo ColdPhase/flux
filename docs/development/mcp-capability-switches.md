@@ -244,3 +244,27 @@ This checkpoint wires owner management only. The actual MCP dispatcher, effectiv
 selection, every tool/resource/prompt alias, real transport delivery, native action
 and Off/On races, browser switches and compatible migration/identity composition
 remain required and unverified. It is not a completed S6 feature or a merge candidate.
+
+## Registered entry admission continuation
+
+The continuation now captures one trusted live policy version at the verified HTTP
+entry point and supplies request-owned dispatch to every actual registered tool,
+resource and prompt. Registration checks assert the exact shared manifest and real
+scope/operation metadata. Native authorization applies the saved capability and
+exact-entry allowlists inside its caller-owned transaction, retains original OAuth
+consent/scopes and restricts the effective project selection. Only actual selected
+project dependencies are authorized; an excluded inaccessible original project does
+not invalidate another readable subset. Source-kind requirements are registered
+before aggregate queries, counts or snippets; knowledge and playbook aliases share
+their semantic switches. Bootstrap's scope/policy availability is still only one
+part of effective runtime/grant availability, not a promise of action authority.
+
+Four new core/dispatch controls and three real OAuth/API/persistence scenarios cover
+captured-version non-resurrection, exact alias membership, concurrent request scope,
+complete registration coverage, knowledge/search aliases, playbook/policy resources
+and prompts, all-Off management, subset selection and unchanged consent. They are
+prepared, not executed. The earlier frozen owner-only checkpoint is preserved for
+its distinct verification. This admission continuation still uses the existing SDK
+Node relay: queued headers/bytes, runtime/grant/source/post-state delivery fences,
+real held write/two-API races, browser controls, migration/identity composition and
+complete S6 acceptance remain unimplemented or unverified. It is not a merge candidate.

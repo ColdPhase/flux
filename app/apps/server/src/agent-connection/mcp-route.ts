@@ -3,13 +3,14 @@ import { requireMcpAuth } from '@better-auth/mcp';
 import { createMcpHandler } from '@modelcontextprotocol/server';
 import { toNodeHandler } from '@modelcontextprotocol/node';
 import type { Database } from '@flux/core';
+import { lockAgentMcpPolicy } from '@flux/db';
 import type { FluxAuth } from '../identity/auth.js';
 import { createFluxMcpServer } from './mcp-tools.js';
 import { createAgentConnectionStore } from './store.js';
+import { createMcpDispatch, type McpDispatch } from './mcp-dispatch.js';
 
 /** The only remote MCP entry point. A new tool server is bound to each verified bearer request. */
 export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxAuth, publicOrigin: string) {
-  const connections = createAgentConnectionStore(db);
   const handleVerified = async (request: Request, token: Record<string, unknown>) => {
     const ownerUserId = token.flux_owner_user_id;
     const connectionId = token.flux_connection_id;
@@ -21,23 +22,28 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
     }
     // A signed JWT remains valid until expiry, so revocation must be checked
     // against the live connection before even listing tools.
+    let dispatch: McpDispatch;
     try {
       const referenceId = token.flux_grant_reference;
       // New references bind the verified, AS-owned client_id to one durable grant.
       // Explicit historic JWTs have no grant-reference claim and retain their existing format.
-      if (referenceId !== undefined) {
-        if (typeof referenceId !== 'string') throw new Error('Invalid grant');
-        const grant = await connections.grantForOauth(ownerUserId, referenceId);
+      if (referenceId !== undefined && typeof referenceId !== 'string') throw new Error('Invalid grant');
+      dispatch = await db.transaction(async (tx) => {
+        const grant = await createAgentConnectionStore(tx).grantForMcp(ownerUserId,
+          typeof referenceId === 'string' ? referenceId : connectionId);
         if (!grant || grant.connection.id !== connectionId || grant.clientId !== null && grant.clientId !== token.client_id)
           throw new Error('Invalid grant');
-      } else if (!await connections.resolve(ownerUserId, connectionId)) throw new Error('Connection revoked');
+        const policy = await lockAgentMcpPolicy(tx, connectionId);
+        if (!policy) throw new Error('Policy unavailable');
+        return createMcpDispatch(policy.version);
+      });
     } catch {
       return new Response(JSON.stringify({ error: 'Agent connection is unavailable' }), {
         status: 403, headers: { 'content-type': 'application/json' },
       });
     }
     const cursorSecret = (await auth.$context).secret;
-    const handler = createMcpHandler(() => createFluxMcpServer(db, { ownerUserId, connectionId, scopes,
+    const handler = createMcpHandler(() => createFluxMcpServer(db, { ownerUserId, connectionId, scopes, dispatch,
       clientId: typeof token.client_id === 'string' ? token.client_id : null,
       grantReferenceId: typeof token.flux_grant_reference === 'string' ? token.flux_grant_reference : null,
     }, cursorSecret), { legacy: 'reject' });

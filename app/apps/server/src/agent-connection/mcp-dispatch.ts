@@ -17,10 +17,20 @@ export interface McpDeliveryDependencies {
 export function createMcpDispatch(capturedVersion: number) {
   if (!Number.isInteger(capturedVersion) || capturedVersion < 1) throw new Error('A captured policy version is required');
   const scope = new AsyncLocalStorage<AgentMcpEntry>();
+  const registered = new Set<string>();
   const dependencies: McpDeliveryDependencies = { capturedVersion, entryIds: new Set(), capabilities: new Set(),
     projects: new Map(), objects: new Map(), protectedOutput: false };
   return {
     dependencies,
+    declare(kind: AgentMcpEntry['kind'], name: string) {
+      const entry = AGENT_MCP_ENTRIES.find((candidate) => candidate.kind === kind && candidate.name === name);
+      if (!entry || registered.has(entry.id)) throw new Error('Every MCP registration needs one exact permission');
+      registered.add(entry.id);
+    },
+    verifyRegistrations() {
+      if (registered.size !== AGENT_MCP_ENTRIES.length || AGENT_MCP_ENTRIES.some((entry) => !registered.has(entry.id)))
+        throw new Error('The MCP manifest must match every actual tool, resource and prompt');
+    },
     current() {
       const entry = scope.getStore();
       if (!entry) throw new DomainError(403, 'MCP_ENTRY_UNAVAILABLE', 'A registered permission is required');

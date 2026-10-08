@@ -1,4 +1,4 @@
-import { AGENT_MCP_ENTRIES, type AgentConnection, type AgentMcpCapabilityId, type AgentMcpPolicy,
+import { AGENT_MCP_ENTRIES, type AgentConnection, type AgentMcpCapabilityId, type AgentMcpEntry, type AgentMcpPolicy,
   type SaveAgentMcpPolicy } from '@flux/contracts';
 import { DomainError, InvalidInputError, NotFoundError } from '../access/errors.js';
 import { isUuid } from '../access/policy.js';
@@ -8,6 +8,15 @@ export interface AgentMcpPolicyPort {
   get(ownerUserId: string, connectionId: string): Promise<{ connection: AgentConnection; policy: AgentMcpPolicy } | null>;
   save(ownerUserId: string, connectionId: string, expectedVersion: number, input: SaveAgentMcpPolicy):
     Promise<AgentMcpPolicy | 'CONNECTION_NOT_FOUND' | 'POLICY_VERSION_CONFLICT' | 'MCP_POLICY_OUTSIDE_CONSENT' | 'MCP_POLICY_AUTHORITY_UNAVAILABLE'>;
+}
+
+/** A request cannot adopt a policy saved after it was admitted, even after Off then On. */
+export function requireAgentMcpEntry(policy: AgentMcpPolicy, capturedVersion: number, entry: AgentMcpEntry,
+  capabilities: Iterable<AgentMcpCapabilityId> = entry.requiredCapabilities): void {
+  if (!Number.isInteger(capturedVersion) || capturedVersion < 1 || policy.version !== capturedVersion
+    || !policy.enabledEntryIds.includes(entry.id)
+    || [...entry.requiredCapabilities, ...capabilities].some((id) => !policy.enabledCapabilityIds.includes(id)))
+    throw new DomainError(403, 'MCP_ENTRY_UNAVAILABLE', 'This capability is unavailable');
 }
 
 /** Exact registered membership and the original scopes define the ceiling, including for aliases. */
