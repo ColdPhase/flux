@@ -36,8 +36,8 @@
   "files": [
     {
       "path": "README.md",
-      "sha256": "23667ebad4a0a33015cd9d1d65ac0598658688ff775eccf43151261eff4e42b3",
-      "bytes": 3549
+      "sha256": "c3980b0edd9799f5d3dcab9e1d2c9bbc00b15f59b02a87c658e8a7d365a56fef",
+      "bytes": 3903
     },
     {
       "path": "bounded-details-pivot-desktop.png",
@@ -99,9 +99,15 @@
       ]
     },
     {
-      "path": "camera-actionability.json",
-      "sha256": "d653dd39d41ac85a65ef9e62213384cfb3b239f6ef998e36681f07b5f85bf2dd",
-      "bytes": 1438417
+      "path": "camera-actionability.json.gz",
+      "sha256": "0d1930610c8128f2f259768dd10814b939d3977a44ff72263b24bbe2774aba5e",
+      "bytes": 38233,
+      "encoding": "gzip",
+      "uncompressed": {
+        "path": "camera-actionability.json",
+        "sha256": "d653dd39d41ac85a65ef9e62213384cfb3b239f6ef998e36681f07b5f85bf2dd",
+        "bytes": 1438417
+      }
     },
     {
       "path": "camera-arrival-summary.json",

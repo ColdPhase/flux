@@ -293,9 +293,9 @@ class NativeDetailsJourney(unittest.TestCase):
                     if not holding[0] or parse_qs(urlsplit(route.request.url).query).get("objects") != [f"work:{task['id']}"]:
                         route.continue_()
                         return
-                    response = route.fetch()
-                    self.assertEqual(response.status, 200)
-                    held.append((route, response, route.request.url))
+                    # Register the genuine request before any upstream I/O. Loading
+                    # is observable as soon as the request starts, before fetch returns.
+                    held.append((route, route.request.url))
 
                 page.route("**/work-relations?**", hold)
                 page.goto(f"/projects/{self.project}/tasks?open=work:{task['id']}")
@@ -309,7 +309,9 @@ class NativeDetailsJourney(unittest.TestCase):
                 holding[0] = False
                 # Only this task's selector is held. Retain every genuine observation
                 # of it, without intercepting relationship reads for other objects.
-                for route, response, url in held:
+                for route, url in held:
+                    response = route.fetch()
+                    self.assertEqual(response.status, 200)
                     payload = response.json()
                     self.assertEqual((payload["before"], payload["total"], payload["items"]), (0, 0, []))
                     observations.append({"phone": phone, "targetWorkId": task["id"], "url": url,
