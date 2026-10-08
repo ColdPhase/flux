@@ -82,6 +82,25 @@ class RailNavigation(unittest.TestCase):
             rect = locator.bounding_box()
             self.assertTrue(has_minimum_touch_size(rect["width"]) and has_minimum_touch_size(rect["height"]), str(rect))
 
+    def assert_appearance_labels_fit(self, popup):
+        radios = popup.get_by_role("radio")
+        self.assertEqual(radios.count(), 3)
+        for label in ("Light", "Dark", "Match system"):
+            radio = popup.get_by_role("radio", name=label, exact=True)
+            measured = radio.evaluate("""el => {
+              const box = el.getBoundingClientRect(), range = document.createRange();
+              range.selectNodeContents(el);
+              const rects = [...range.getClientRects()].filter(r => r.width > 0 && r.height > 0);
+              return {width: box.width, height: box.height, count: rects.length,
+                fits: rects.every(r => r.left >= box.left - .01 && r.right <= box.right + .01 &&
+                  r.top >= box.top - .01 && r.bottom <= box.bottom + .01),
+                uncovered: rects.every(r => [.25, .5, .75].every(part =>
+                  el.contains(document.elementFromPoint(r.left + r.width * part, r.top + r.height / 2))))};
+            }""")
+            self.assertGreater(measured["count"], 0, label)
+            self.assertTrue(measured["fits"] and measured["uncovered"], f"complete {label} label belongs to its own control: {measured}")
+            self.assertTrue(has_minimum_touch_size(measured["width"]) and has_minimum_touch_size(measured["height"]), label)
+
     def test_01_sketchbook_and_settings_keep_native_routes_in_the_rail(self):
         for engine in self.browsers:
             for coarse in (False, True):
@@ -126,6 +145,14 @@ class RailNavigation(unittest.TestCase):
                     name = popup.get_by_text("Ada Kowalska", exact=True)
                     expect(name).to_be_visible()
                     self.assertTrue(name.evaluate("el => el.scrollWidth <= el.clientWidth && el.scrollHeight <= el.clientHeight"), "current full account name is readable")
+                    self.assert_appearance_labels_fit(popup)
+                    system = popup.get_by_role("radio", name="Match system", exact=True)
+                    system.focus()
+                    page.keyboard.press("ArrowLeft")
+                    expect(popup.get_by_role("radio", name="Dark", exact=True)).to_have_attribute("aria-checked", "true")
+                    page.keyboard.press("ArrowRight")
+                    expect(system).to_have_attribute("aria-checked", "true")
+                    expect(system).to_be_focused()
                     shot(page, f"340-rail-account-{engine}-{'text200' if text200 else 'default'}")
                 page.evaluate("document.documentElement.style.fontSize = ''")
                 page.keyboard.press("Escape")
