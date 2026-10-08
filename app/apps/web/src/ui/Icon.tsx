@@ -39,6 +39,7 @@ const paths = {
   'sign-out': <><path d="M6.5 2.75h-2a1.5 1.5 0 00-1.5 1.5v7.5a1.5 1.5 0 001.5 1.5h2" /><path d="M10 5l3 3-3 3M13 8H6.5" /></>,
   refresh: <><path d="M12.75 5.5A5 5 0 103 8" /><path d="M13 2.5v3h-3" /></>,
   plus: <path d="M8 3v10M3 8h10" />,
+  sidebar: <><rect x="2" y="2.75" width="12" height="10.5" rx="2" /><path d="M6 2.75v10.5" /></>,
   terminal: <><rect x="2" y="2.75" width="12" height="10.5" rx="2" /><path d="M5 6.25L7 8l-2 1.75M8.5 10.25h2.5" /></>,
   more: <><circle cx="3.5" cy="8" r=".9" fill="currentColor" /><circle cx="8" cy="8" r=".9" fill="currentColor" /><circle cx="12.5" cy="8" r=".9" fill="currentColor" /></>,
   minus: <path d="M3 8h10" />,
