@@ -160,7 +160,7 @@ class OneConversationJourney(unittest.TestCase):
         stream = self.stream(page)
         roots = stream.locator(".project-convo__message")
         expect(roots).to_have_count(50)
-        self.assertEqual([text.strip() for text in stream.locator(".project-convo__message > p").all_inner_texts()[-3:]], [OPENING, NUMBERS, ORDER], "chronological, newest last")
+        self.assertEqual([text.strip() for text in stream.locator(".project-convo__message > .message-bubble > p").all_inner_texts()[-3:]], [OPENING, NUMBERS, ORDER], "chronological, newest last")
         expect(self.root(page, "r1")).to_have_class(re.compile("is-mine"))
         expect(self.root(page, "r2")).not_to_have_class(re.compile("is-mine"))
         expect(self.root(page, "r2")).to_contain_text("Jonas Berg")
@@ -201,7 +201,7 @@ class OneConversationJourney(unittest.TestCase):
         after = anchor.bounding_box()
         assert before and after
         self.assertAlmostEqual(before["y"], after["y"], delta=4, msg="loading earlier roots keeps the reader's place")
-        self.assertTrue(stream.locator(".project-convo__message > p").first.inner_text().startswith("Earlier note 01"))
+        self.assertTrue(stream.locator(".project-convo__message > .message-bubble > p").first.inner_text().startswith("Earlier note 01"))
 
     def test_02_a_thread_opens_beside_the_stream_and_takes_a_reply(self) -> None:
         page = self.page("ada")
@@ -607,8 +607,8 @@ class OneConversationJourney(unittest.TestCase):
                 page.goto(self.project_url(f"/conversations/{self.ids['c1']}"))
                 expect(self.thread(page).locator(f"#message-{self.ids['first']}")).to_be_visible()
                 for selector in (f"#message-{self.ids['r1']} .convo-replies__open", f"#message-{self.ids['r1']} .convo-replies__when",
-                                 ".thread__title", ".thread__n", ".thread__hint", ".thread__root-meta time", ".thread__root > p",
-                                 f"#message-{self.ids['first']} > p", f"#message-{self.ids['r3']} .convo-replies__reply"):
+                                 ".thread__title", ".thread__n", ".thread__hint", ".thread__root-meta time", ".thread__root > .message-bubble > p",
+                                 f"#message-{self.ids['first']} > .message-bubble > p", f"#message-{self.ids['r3']} .convo-replies__reply"):
                     if selector.endswith("convo-replies__reply"):
                         page.locator(selector).hover()
                     page.wait_for_function("""selector => {
@@ -631,7 +631,7 @@ class OneConversationJourney(unittest.TestCase):
                 self.assertGreaterEqual(hovered["ratio"], 4.5, (theme, "reply link on hover", hovered))
                 page.mouse.move(1, 1)
                 page.wait_for_timeout(250)
-                outline = page.locator(f"{root} > p").evaluate("e => { const s = getComputedStyle(e); return [s.outlineStyle, s.outlineWidth, s.outlineColor]; }")
+                outline = page.locator(f"{root} > .message-bubble").evaluate("e => { const s = getComputedStyle(e); return [s.outlineStyle, s.outlineWidth, s.outlineColor]; }")
                 ink = page.evaluate("""() => { const probe = document.createElement('i'); probe.style.color = 'var(--t1)';
                   document.body.append(probe); const color = getComputedStyle(probe).color; probe.remove(); return color; }""")
                 self.assertEqual(outline, ["solid", "2px", ink], (theme, "the open root has a solid ring in the primary ink"))

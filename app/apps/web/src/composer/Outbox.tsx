@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Icon } from '../ui';
 import { useConnection } from './connection';
 import type { DraftFile, PendingSend } from './draft';
@@ -51,8 +51,7 @@ function PendingStatus({ item, onRetry, onRemove }: { item: PendingSend; onRetry
  * picked bytes with the send state on the photo itself (#348): sending, "sends when you're back", Retry.
  * The on-photo Retry repeats the message's own Retry for the pointer, so assistive technology hears one.
  */
-export function PendingFiles({ files, send }: { files: readonly DraftFile[]; send?: { state: PendingSend['state']; onRetry: () => void } }) {
-  if (!files.length) return null;
+export function PendingFiles({ files, send, body }: { files: readonly DraftFile[]; send?: { state: PendingSend['state']; onRetry: () => void }; body?: ReactNode }) {
   const photos = files.filter((file) => looksLikePhoto(file.name) && selectedFile(file.uploadId));
   const others = files.filter((file) => !photos.includes(file));
   return <>
@@ -61,9 +60,11 @@ export function PendingFiles({ files, send }: { files: readonly DraftFile[]; sen
         {photos.slice(0, 4).map((file, index) => <PendingPhoto key={file.uploadId} file={file} send={send} more={index === 3 ? photos.length - 4 : 0} />)}
       </ul>
     </div> : null}
-    {others.length ? <ol className="message-files is-pending" aria-label={others.length === 1 ? '1 attached file' : `${others.length} attached files`}>{others.map((file) => <li key={file.uploadId}>
-      <span className="file-row"><FileIcon name={file.name} /><span className="file-row__text"><span className="file-row__name">{file.name}</span><small>{fileSize(file.size)}</small></span></span>
-    </li>)}</ol> : null}
+    <div className="message-bubble">{body}
+      {others.length ? <ol className="message-files is-pending" aria-label={others.length === 1 ? '1 attached file' : `${others.length} attached files`}>{others.map((file) => <li key={file.uploadId}>
+        <span className="file-row"><FileIcon name={file.name} /><span className="file-row__text"><span className="file-row__name">{file.name}</span><small>{fileSize(file.size)}</small></span></span>
+      </li>)}</ol> : null}
+    </div>
   </>;
 }
 

@@ -75,7 +75,7 @@ class FileOnlyMessage(unittest.TestCase):
         expect(link).to_have_attribute("href", f"/api/v1/files/{file['id']}")
         expect(link).to_have_attribute("download", "readings.csv")
         expect(files).to_contain_text(f"{len(BYTES)} B")
-        expect(message.locator("> p")).to_have_count(0)
+        expect(message.locator("> .message-bubble > p")).to_have_count(0)
         downloaded = page.request.get(f"/api/v1/files/{file['id']}")
         self.assertEqual(downloaded.body(), BYTES)
 
@@ -170,6 +170,7 @@ class FilesReferencesPhotos(unittest.TestCase):
             cls.ids.setdefault("photo", ids[0]) if body.startswith("Sensor 3") else None
             started = post(who, f"/api/v1/projects/{pid}/conversations", {"body": body, "attachmentIds": ids, "clientMessageId": str(uuid.uuid4())})
             cls.ids.setdefault("conversation:two", started["messages"][0]["conversationId"]) if body.startswith("Sensor 3") else None
+            cls.ids[f"conversation:{started['messages'][0]['id']}"] = started["messages"][0]["conversationId"]
             return started["messages"][0]["id"]
 
         cls.ids["files"] = root("jonas", "Drawing and range readings from Saturday, see #8 and ask @Ada: https://www.thethingsnetwork.org/docs/gateways/placement-guide/",
@@ -178,6 +179,16 @@ class FilesReferencesPhotos(unittest.TestCase):
         cls.ids["six"] = root("jonas", "All the beds after planting", [(f"bed-{n}.png", data) for n, data in enumerate([SHED, BOARD, BEDS, FIELD, SHED, BEDS])])
         cls.ids["fake"] = root("jonas", "", [("notaphoto.jpg", NOT_A_PHOTO)])
         cls.ids["project"] = pid
+        # Real source associations exercise root, thread-root and reply consumers independently.
+        cls.ids["files-task"] = post("ada", f"/api/v1/projects/{pid}/work", {
+            "title": "Check Saturday range readings", "sources": [{"type": "message", "id": cls.ids["files"]}]})["id"]
+        files_conversation = cls.ids[f"conversation:{cls.ids['files']}"]
+        cls.ids["photo-reply"] = post("jonas", f"/api/v1/conversations/{files_conversation}/messages", {
+            "body": "Reply with the far bed mounting point", "attachmentIds": [upload("jonas", "reply-mount.png", BEDS)],
+            "clientMessageId": str(uuid.uuid4())})["id"]
+        cls.ids["reply-task"] = post("ada", f"/api/v1/projects/{pid}/work", {
+            "title": "Inspect the reply mounting point", "sources": [{"type": "message", "id": cls.ids["photo-reply"]}]})["id"]
+        cls.ids["photo-only"] = root("jonas", "", [("bed-without-caption.png", FIELD)])
         task = post("ada", f"/api/v1/projects/{pid}/work", {"title": "Check the mount on sensor 3"})
         cls.ids["task"] = task["id"]
         cls.ids["task-root"] = post("jonas", f"/api/v1/work/{task['id']}/discussion", {"body": "Mount after the rain", "attachmentIds": [upload("jonas", "IMG_2050.png", BEDS)],
@@ -217,6 +228,22 @@ class FilesReferencesPhotos(unittest.TestCase):
     def message(self, page: Page, key: str):
         return page.locator(f"#message-{self.ids[key]}")
 
+    def assert_caption_below(self, scope, caption_selector: str = ":scope > .message-bubble > p") -> None:
+        grid = scope.locator(":scope > .photo-grid")
+        caption = scope.locator(caption_selector)
+        expect(grid).to_have_count(1)
+        expect(caption).to_be_visible()
+        # Both reading order and geometry matter: CSS-only reordering is insufficient.
+        self.assertTrue(grid.evaluate("(media, caption) => !!(media.compareDocumentPosition(caption) & Node.DOCUMENT_POSITION_FOLLOWING)", caption.element_handle()), "caption follows the media in document order")
+        photo_box, caption_box = grid.bounding_box(), caption.bounding_box()
+        self.assertGreaterEqual(caption_box["y"], photo_box["y"] + photo_box["height"] - 0.001, "descriptive caption is below the complete photo/grid")
+
+    def assert_inside_bubble(self, scope, child) -> None:
+        expect(scope.locator(":scope > .message-bubble")).to_be_visible()
+        expect(child).to_be_visible()
+        contained = child.evaluate("e => { const b = e.closest('.message-bubble'); if (!b) return false; const a = b.getBoundingClientRect(), r = e.getBoundingClientRect(); return r.left >= a.left && r.top >= a.top && r.right <= a.right + .001 && r.bottom <= a.bottom + .001; }")
+        self.assertTrue(contained, "the complete file/reference card sits inside the message's single bubble")
+
     def check_files_and_references(self, page: Page, phone: bool) -> None:
         files = self.message(page, "files")
         files.scroll_into_view_if_needed()
@@ -235,11 +262,11 @@ class FilesReferencesPhotos(unittest.TestCase):
         expect(voice.get_by_role("button", name="Play voice-note.m4a")).to_be_visible()
         expect(voice.locator(".voice-note__wave rect")).to_have_count(22)
         expect(voice.get_by_role("link")).to_have_count(0)
-        # The rows sit inside the message's bubble: same width line and no gap under the text.
-        gap = files.evaluate("el => { const p = el.querySelector(':scope > p').getBoundingClientRect(); const f = el.querySelector(':scope > .message-files').getBoundingClientRect(); return Math.round(f.top - p.bottom); }")
-        self.assertEqual(gap, 0, "file rows continue the bubble")
+        # Text and files are children of one padded surface, rather than adjacent lookalike cards.
+        self.assert_inside_bubble(files, rows)
+        expect(files.locator(":scope > .message-bubble > p")).to_have_count(1)
         # Inline chips on the text baseline, and the link's preview.
-        body = files.locator("> p")
+        body = files.locator("> .message-bubble > p")
         expect(body.locator(".ref-chip[data-ref=task]")).to_have_text("#8")
         expect(body.locator(".ref-chip[data-ref=person]")).to_have_text("@Ada")
         expect(body).to_contain_text("see #8 and ask @Ada:")
@@ -266,11 +293,17 @@ class FilesReferencesPhotos(unittest.TestCase):
         expect(grid.locator("img[src^='blob:']")).to_have_count(2)
         self.assertEqual(grid.evaluate("el => getComputedStyle(el).borderTopLeftRadius"), "16px")
         expect(two.locator(".file-row")).to_have_count(0)  # no file frame around a photo
+        self.assert_caption_below(two)
         six = self.message(page, "six")
         six.scroll_into_view_if_needed()
         expect(six.get_by_role("list", name="6 photos").get_by_role("listitem")).to_have_count(4)
         expect(six.locator(".photo-grid__more")).to_have_text("+2")
         expect(six.locator(".photo-grid__more")).to_have_count(1)
+        self.assert_caption_below(six)
+        photo_only = self.message(page, "photo-only")
+        expect(photo_only.locator(".photo-grid img[src^='blob:']")).to_have_count(1)
+        expect(photo_only.locator(":scope > .message-bubble")).to_be_hidden()
+        self.assertEqual(photo_only.locator(":scope > .message-bubble").evaluate("e => [e.offsetWidth, e.offsetHeight]"), [0, 0], "no empty padded bubble below a captionless photo")
         fake = self.message(page, "fake")
         fake.scroll_into_view_if_needed()
         expect(fake.get_by_role("link", name="notaphoto.jpg")).to_be_visible()  # negative control: bytes decide, not the name
@@ -368,6 +401,7 @@ class FilesReferencesPhotos(unittest.TestCase):
                 page = self.page("ada", phone=phone)
                 page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation:two']}")
                 root = page.locator(".thread__root")
+                self.assert_caption_below(root)
                 opener, viewer = self.open_in(page, root, "Open photo IMG_2041.png, 1 of 2")
                 page.keyboard.press("Escape")
                 expect(viewer).to_have_count(0)
@@ -384,6 +418,7 @@ class FilesReferencesPhotos(unittest.TestCase):
                 page = self.page("ada", phone=phone)
                 page.goto(f"/projects/{self.ids['project']}/tasks?open=work:{self.ids['task']}")
                 details = page.get_by_role("region", name="Discussion")
+                self.assert_caption_below(details, ":scope > .message-bubble .wd-discussion__body")
                 opener, viewer = self.open_in(page, details, "Open photo IMG_2050.png")
                 page.keyboard.press("Escape")
                 expect(viewer).to_have_count(0)
@@ -402,6 +437,7 @@ class FilesReferencesPhotos(unittest.TestCase):
                 page = self.page("jonas", phone=phone)
                 page.goto(f"/projects/{self.ids['project']}/agents?task={self.ids['task']}")
                 thread = page.get_by_role("region", name="Thread of Check the mount on sensor 3")
+                self.assert_caption_below(thread.locator(f'[data-message-id="{self.ids["task-root"]}"]'))
                 opener, viewer = self.open_in(page, thread, "Open photo IMG_2050.png")
                 expect(viewer.get_by_role("button", name="Create task", exact=True)).to_be_visible()
                 viewer.get_by_role("button", name="Reply", exact=True).click()
@@ -418,6 +454,42 @@ class FilesReferencesPhotos(unittest.TestCase):
                 for name in ("Reply", "Create task"):  # a reader cannot reply or add work
                     expect(viewer.get_by_role("button", name=name, exact=True)).to_have_count(0)
                 page.keyboard.press("Escape")
+
+    def test_native_references_share_root_and_reply_bubbles(self) -> None:
+        for phone in (False, True):
+            for dark in (False, True):
+                with self.subTest(phone=phone, dark=dark):
+                    page = self.page(phone=phone, dark=dark)
+                    root = self.message(page, "files")
+                    reference = root.locator(f'.ws-chip[data-work-id="{self.ids["files-task"]}"]')
+                    root.scroll_into_view_if_needed()
+                    self.assert_inside_bubble(root, reference)
+                    expect(reference).to_have_count(1)
+                    expect(root.locator(":scope > .message-bubble > p")).to_contain_text("Drawing and range readings")
+                    if not phone and not dark:
+                        # Negative controls reproduce the exact prior defects without mocking the API.
+                        reference.evaluate("e => { const card = e.parentElement; card.before(Object.assign(document.createElement('span'), {id: 'reference-slot'})); card.closest('[data-message-id]').append(card); }")
+                        try:
+                            with self.assertRaises(AssertionError):
+                                self.assert_inside_bubble(root, reference)
+                        finally:
+                            reference.evaluate("e => { const slot = document.getElementById('reference-slot'); slot.replaceWith(e.parentElement); }")
+                        self.assert_inside_bubble(root, reference)
+                        photo = self.message(page, "two")
+                        photo.evaluate("e => e.insertBefore(e.querySelector(':scope > .message-bubble'), e.querySelector(':scope > .photo-grid'))")
+                        try:
+                            with self.assertRaises(AssertionError):
+                                self.assert_caption_below(photo)
+                        finally:
+                            photo.evaluate("e => e.querySelector(':scope > .photo-grid').after(e.querySelector(':scope > .message-bubble'))")
+                        self.assert_caption_below(photo)
+                    conversation = self.ids[f"conversation:{self.ids['files']}"]
+                    page.goto(f"/projects/{self.ids['project']}/conversations/{conversation}")
+                    thread_root = page.locator(".thread__root")
+                    self.assert_inside_bubble(thread_root, thread_root.locator(f'.ws-chip[data-work-id="{self.ids["files-task"]}"]'))
+                    reply = page.locator(f'#message-{self.ids["photo-reply"]}')
+                    self.assert_inside_bubble(reply, reply.locator(f'.ws-chip[data-work-id="{self.ids["reply-task"]}"]'))
+                    self.assert_caption_below(reply)
 
     def test_composer_thumbnails_drop_and_photo_states(self) -> None:
         for phone in (False, True):
@@ -469,6 +541,7 @@ class FilesReferencesPhotos(unittest.TestCase):
                 pending = page.locator("[data-client-message-id]").last
                 expect(pending.locator(".photo-grid__tile[data-photo-state=sending]")).to_have_count(2)
                 expect(pending.locator(".photo-grid__tile img[src^='blob:']")).to_have_count(2)
+                self.assert_caption_below(pending)
                 self.shot(page, f"sending-{'390' if phone else '1440'}", pending)
                 for _ in range(50):
                     if held:

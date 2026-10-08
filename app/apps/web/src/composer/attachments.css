@@ -22,14 +22,19 @@ a.file-row:focus-visible, .voice-note__play:focus-visible, .photo-grid__open:foc
 .file-row__act { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; color: var(--t2); }
 a.file-row:hover .file-row__act { color: var(--t1); }
 
-/* In a message the files sit inside its bubble: the text and the files read as one card. */
-.project-convo__message > .message-files, .project-convo__message > .link-previews { padding: 8px; border-radius: var(--r-lg); background: var(--el); box-shadow: var(--sh-1); box-sizing: border-box; }
-.project-convo__message > p:has(+ .message-files), .project-convo__message > p:has(+ .link-previews) { align-self: stretch; border-bottom-left-radius: 0; border-bottom-right-radius: 0; box-shadow: none; }
-.project-convo__message > p + .message-files, .project-convo__message > p + .link-previews, .project-convo__message > .message-files + .link-previews { align-self: stretch; }
-.project-convo__message > .message-files:has(+ .link-previews) { border-bottom-left-radius: 0; border-bottom-right-radius: 0; padding-bottom: 4px; }
-.project-convo__message > .message-files + .link-previews { margin-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; padding-top: 2px; }
-.project-convo__message > p + .message-files, .project-convo__message > p + .link-previews { margin-top: 0; padding-top: 2px; border-top-left-radius: 0; border-top-right-radius: 0; width: auto; min-width: min(100%, 320px); }
-.project-convo__message.is-mine > .message-files, .project-convo__message.is-mine > .link-previews { background-color: var(--inv); background-image: var(--grad-inv); color: var(--oninv); }
+/* One real bubble contains the caption/text, file rows, previews and native object cards. */
+.message-bubble { display: flex; flex-direction: column; gap: 6px; min-width: 0; max-width: 100%; padding: 9px 13px; border-radius: 6px var(--r-lg) var(--r-lg) var(--r-lg); background: var(--el); box-shadow: var(--sh-1); box-sizing: border-box; }
+.message-bubble:empty { display: none; }
+.message-bubble > p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--fs-base); line-height: var(--lh); }
+.message-bubble > :is(.message-files, .link-previews, .ws-attach) { min-width: 0; max-width: 100%; margin: 0; }
+.is-mine > .message-bubble, .agents-msg--own > .message-bubble { border-radius: var(--r-lg) 6px var(--r-lg) var(--r-lg); background-color: var(--inv); background-image: var(--grad-inv); color: var(--oninv); }
+@media (max-width: 760px) { .message-bubble { padding: 11px 14px; } }
+/* A wrapper alone does not turn legacy unframed text-only excerpts into cards. */
+.thread__root > .message-bubble:not(:has(.message-files, .ws-attach)):not(.photo-grid + .message-bubble),
+.agents-msg:not(.agents-msg--own) > .message-bubble:not(:has(.message-files)):not(.photo-grid + .message-bubble),
+.wd-pending__item > .message-bubble:not(:has(.message-files)):not(.photo-grid + .message-bubble),
+.details__sec > .message-bubble { padding: 0; border-radius: 0; background: none; box-shadow: none; color: inherit; }
+
 .project-convo__message.is-mine .file-row, .project-convo__message.is-mine .link-preview { background: rgba(255, 255, 255, .1); color: var(--oninv); }
 .project-convo__message.is-mine .file-row__text small, .project-convo__message.is-mine .file-row__act, .project-convo__message.is-mine .link-preview small, .project-convo__message.is-mine .link-preview__site { color: inherit; opacity: .78; }
 
@@ -120,8 +125,8 @@ span.photo-grid__open { cursor: default; }
 .ref-chip svg { align-self: center; flex: none; }
 .ref-chip__face { align-self: center; display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--el); font-size: 7.5px; font-weight: 700; letter-spacing: .02em; }
 .ref-chip__face::before { content: attr(data-initials); }
-.is-mine > p .ref-chip { background: rgba(255, 255, 255, .14); color: var(--oninv); }
-.is-mine > p .ref-chip__face { background: rgba(255, 255, 255, .2); }
+.is-mine > .message-bubble .ref-chip { background: rgba(255, 255, 255, .14); color: var(--oninv); }
+.is-mine > .message-bubble .ref-chip__face { background: rgba(255, 255, 255, .2); }
 .msg-link { color: inherit; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
 
 /* A link shows its preview: the site, the domain and a title. */

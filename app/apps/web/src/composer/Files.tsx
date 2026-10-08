@@ -5,7 +5,7 @@ import { selectedFile, type ComposerState, type DraftFile } from './draft';
 import { looksLikePhoto } from './fileKind';
 import './composer.css';
 
-export { MessageFiles, fileSize } from './Attachments';
+export { MessageFiles, MessageContent, hasPhotos, fileSize } from './Attachments';
 export type { PhotoActions, PhotoContext } from './Attachments';
 
 const fileStatus = (file: DraftFile, unconfirmed: boolean) => file.state === 'uploading' ? 'Uploading…'

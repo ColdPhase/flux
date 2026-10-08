@@ -292,7 +292,7 @@ class AdaptiveMatrix(AdaptiveBase):
         self.no_sideways_scroll(page, "Conversation")
         self.primary(page, composer, "the message field")
         self.primary(page, page.get_by_role("button", name="Send message"), "Send message")
-        self.measure(page, ".project-convo__message > p", "Conversation messages")
+        self.measure(page, ".project-convo__message > .message-bubble > p", "Conversation messages")
         mine_row = page.locator(".project-convo__message.is-mine").first
         their_row = page.locator(".project-convo__message:not(.is-mine)").first
         assert_author_column(self, mine_row, width, f"own author at {size}")
@@ -312,7 +312,7 @@ class AdaptiveMatrix(AdaptiveBase):
         self.primary(page, thread.get_by_label("Reply", exact=True), "the reply field")
         self.primary(page, thread.get_by_role("button", name="Send reply"), "Send reply")
         self.primary(page, thread.get_by_role("button", name="Close replies"), "Close replies")
-        self.measure(page, "#thread .project-convo__message > p, #thread .thread__root p", "Replies")
+        self.measure(page, "#thread .project-convo__message > .message-bubble > p, #thread .thread__root p", "Replies")
         self.no_sideways_scroll(page, "the thread")
         stream = page.locator(".project-convo__feed").bounding_box()
         drawer = thread.bounding_box()

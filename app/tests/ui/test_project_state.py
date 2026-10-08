@@ -191,7 +191,7 @@ class ProjectStateJourney(unittest.TestCase):
             {"title": "Low-light sensor notes", "body": "ToF detects gestures without saving camera images.", "clientMutationId": str(uuid.uuid4())}, 201)
         reader.reload()
         # The existing root is in the one stream (UI116-1); the reader has no composer.
-        expect(reader.locator(".project-convo__message > p")).to_have_text("Sensor calibration plan for the library")
+        expect(reader.locator(".project-convo__message > .message-bubble > p")).to_have_text("Sensor calibration plan for the library")
         expect(reader.get_by_role("heading", name="No messages yet", exact=True)).to_have_count(0)
         expect(reader.locator("#project-composer")).to_have_count(0)
         expect(reader.get_by_text("Unsent sensor notes remain mine", exact=True)).to_have_count(0)
@@ -213,7 +213,7 @@ class ProjectStateJourney(unittest.TestCase):
         reader.goto(f"/projects/{project['id']}/conversations/{thread['id']}")
         thread_view = reader.get_by_role("complementary", name="Replies")
         expect(thread_view.locator(".thread__root")).to_contain_text("Sensor calibration plan for the library")
-        expect(reader.locator(".project-convo__message > p")).to_have_text("Sensor calibration plan for the library")
+        expect(reader.locator(".project-convo__message > .message-bubble > p")).to_have_text("Sensor calibration plan for the library")
         expect(thread_view.locator(".project-convo__read-only")).to_be_visible()
         expect(thread_view.locator(".project-convo__current-thread")).to_contain_text("Conversation · Sensor calibration")
         expect(thread_view.locator(".project-convo__current-thread")).not_to_contain_text("Replying to")

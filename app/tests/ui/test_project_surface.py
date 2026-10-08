@@ -177,7 +177,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         column = page.locator(".project-convo__in").bounding_box()
         assert column
         self.assertLessEqual(column["width"], 1000, "conversation pane")
-        for bubble in page.locator(".project-convo__message > p").all():
+        for bubble in page.locator(".project-convo__message > .message-bubble").all():
             box = bubble.bounding_box()
             assert box
             self.assertLessEqual(box["width"], 700, "readable measure per message")

@@ -103,8 +103,7 @@ export function pendingMessageRow({ item, name, place, keyed = true, onRetry, on
       className={`project-convo__message is-mine is-pending is-pending-${place}${item.state === 'failed' ? ' is-failed-send' : ''}`}>
       <Avatar name={name} size="lg" tone="me" />
       <div className="project-convo__message-meta"><strong>{name} · you</strong>{inMeta ? status : null}</div>
-      {item.body ? <p>{item.body}</p> : null}
-      <PendingFiles files={item.files} send={{ state: item.state, onRetry }} />
+      <PendingFiles body={item.body ? <p>{item.body}</p> : null} files={item.files} send={{ state: item.state, onRetry }} />
       <PendingSource item={item} className="project-convo__source" />
       {inMeta ? null : status}
     </li>

@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router';
 import type { ConversationMessage, Project, TaskDiscussion as Discussion, WorkspaceMember } from '@flux/contracts';
 import { AgentIdentity, Button, Icon } from '../ui';
 import { useComposerDraft, useComposerScope } from '../composer/draft';
-import { ComposerFiles, MessageFiles } from '../composer/Files';
+import { ComposerFiles, MessageContent, hasPhotos } from '../composer/Files';
 import { ConnectionLine, OutboxStatus, PendingFiles, PendingSource, SendAnnouncer } from '../composer/Outbox';
 import { clock, day, when } from '../app/messageParts';
 import { useProjectShell } from '../project/data';
@@ -65,6 +65,8 @@ export function TaskDiscussionSection({ workId, project, members, me }: {
   };
 
   const root = discussion?.root ?? null;
+  const rootHasPhotos = hasPhotos(root?.files);
+  const rootAuthor = root ? <span className={`wd-discussion__who${rootHasPhotos ? ' wd-discussion__author' : ''}`}>{root.author?.kind === 'agent' ? <AgentIdentity name={author(root)} owner={agentAuthorOwner(root.author, owners)} /> : <b>{author(root)}</b>} <time dateTime={root.createdAt} title={when(root.createdAt)}>{day(root.createdAt)} · {clock(root.createdAt)}</time></span> : null;
   const replies = root ? Math.max(0, (discussion?.messages.at(-1)?.sequence ?? 1) - 1) : 0;
   return (
     <section className="details__sec" aria-labelledby={headingId}>
@@ -73,18 +75,19 @@ export function TaskDiscussionSection({ workId, project, members, me }: {
         : !discussion ? <p className="wd-muted" aria-busy="true">Loading…</p>
           : <>
             {root && thread ? <>
-              <Link className="wd-discussion" to={thread}>
-                <span className="wd-discussion__who">{root.author?.kind === 'agent' ? <AgentIdentity name={author(root)} owner={agentAuthorOwner(root.author, owners)} /> : <b>{author(root)}</b>} <time dateTime={root.createdAt} title={when(root.createdAt)}>{day(root.createdAt)} · {clock(root.createdAt)}</time></span>
-                {root.body ? <span className="wd-discussion__body">{root.body}</span> : null}
-                <span className="wd-discussion__more">{replies ? `${replies} ${replies === 1 ? 'reply' : 'replies'}` : 'No replies yet'} · Open in Conversation<Icon name="chevron-right" size={14} /></span>
-              </Link>
-              <MessageFiles files={root.files} context={{ author: author(root), at: root.createdAt, caption: root.body, place: project.name, onReply: writable ? () => document.getElementById(fieldId)?.focus() : undefined, onCreateTask: writable ? () => void makeWork.create(root) : undefined }} />
+              {rootHasPhotos ? rootAuthor : null}
+              <MessageContent files={root.files} context={{ author: author(root), at: root.createdAt, caption: root.body, place: project.name, onReply: writable ? () => document.getElementById(fieldId)?.focus() : undefined, onCreateTask: writable ? () => void makeWork.create(root) : undefined }} body={
+                <Link className="wd-discussion" to={thread}>
+                  {rootHasPhotos ? null : rootAuthor}
+                  {root.body ? <span className="wd-discussion__body">{root.body}</span> : null}
+                  <span className="wd-discussion__more">{replies ? `${replies} ${replies === 1 ? 'reply' : 'replies'}` : 'No replies yet'} · Open in Conversation<Icon name="chevron-right" size={14} /></span>
+                </Link>
+              } />
               {makeWork.failed?.messageId === root.id ? <p className="wd-error" role="alert">{makeWork.failed.text}</p> : null}
             </> : null}
             {composer.pending.length ? <ol className="wd-pending" aria-label="Messages you are sending">{composer.pending.map((item) => (
               <li key={item.id} id={`pending-${item.id}`} data-client-message-id={item.id} data-send-state={item.state} className={`wd-pending__item is-pending${item.state === 'failed' ? ' is-failed-send' : ''}`}>
-                {item.body ? <span className="wd-pending__body">{item.body}</span> : null}
-                <PendingFiles files={item.files} send={{ state: item.state, onRetry: () => composer.retry(item.id) }} />
+                <PendingFiles body={item.body ? <span className="wd-pending__body">{item.body}</span> : null} files={item.files} send={{ state: item.state, onRetry: () => composer.retry(item.id) }} />
                 <PendingSource item={item} />
                 <OutboxStatus item={item} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} />
               </li>

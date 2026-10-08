@@ -6,7 +6,7 @@ import { ApiError, NetworkError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
 import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
-import { AttachButton, ComposerFiles, MessageFiles } from '../composer/Files';
+import { AttachButton, ComposerFiles, MessageContent } from '../composer/Files';
 import { ConnectionLine, OutboxStatus, PendingFiles, PendingSource } from '../composer/Outbox';
 import { getTaskDiscussion } from '../composer/api';
 import { useProjectShell } from '../project/data';
@@ -298,8 +298,7 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
                 <time dateTime={message.createdAt}>{when(message.createdAt)}</time>
                 {message.contribution ? <span className="agents-msg__kind"> · {message.contribution.kind}</span> : null}
               </span>
-              {message.body ? <p className="agents-msg__body">{message.body}</p> : null}
-              <MessageFiles files={message.files} context={{ author: name, at: message.createdAt, caption: message.body, onReply: blocked ? undefined : () => box.current?.focus(), onCreateTask: canWrite && !accessLost ? () => void makeWork.create(message) : undefined }} />
+              <MessageContent body={message.body ? <p className="agents-msg__body">{message.body}</p> : null} files={message.files} context={{ author: name, at: message.createdAt, caption: message.body, onReply: blocked ? undefined : () => box.current?.focus(), onCreateTask: canWrite && !accessLost ? () => void makeWork.create(message) : undefined }} />
               {makeWork.failed?.messageId === message.id ? <p className="agents-thread__error" role="alert">{makeWork.failed.text}</p> : null}
             </li>
           );
@@ -309,8 +308,7 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
             <AuthorFace kind="human" name={names.get(meId) ?? 'Someone'} mine />
             {/* "Sending…" stands where the stored message's time will be, so it takes that message's exact space. */}
             <span className="agents-msg__meta"><b>{names.get(meId) ?? 'Someone'} · you</b>{item.state === 'sending' || item.state === 'uploading' ? <OutboxStatus inline item={item} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} /> : null}</span>
-            {item.body ? <p className="agents-msg__body">{item.body}</p> : null}
-            <PendingFiles files={item.files} send={{ state: item.state, onRetry: () => composer.retry(item.id) }} />
+            <PendingFiles body={item.body ? <p className="agents-msg__body">{item.body}</p> : null} files={item.files} send={{ state: item.state, onRetry: () => composer.retry(item.id) }} />
             <PendingSource item={item} />
             {item.state === 'sending' || item.state === 'uploading' ? null : <OutboxStatus item={item} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} />}
           </li>

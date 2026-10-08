@@ -3,7 +3,7 @@ import { Link, useLoaderData, useLocation, useNavigate, useRevalidator, type Loa
 import type { AssistantAnswer, ConversationMessage, Conversation, ConversationRootWindow, Draft, Material, Page, Project, TaskCreationNotice, WorkspaceMember } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
-import { AttachButton, ComposerFiles, MessageFiles, useFileDrop } from '../composer/Files';
+import { AttachButton, ComposerFiles, MessageContent, useFileDrop } from '../composer/Files';
 import { LinkPreviews, MessageText } from './MessageText';
 import { ConnectionLine, SendAnnouncer } from '../composer/Outbox';
 import { fluxAnswers, onFluxAnswered } from '../composer/connection';
@@ -471,12 +471,12 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
               return [divider, <li key={outbox.keyOf(message.id)} id={`message-${message.id}`} data-message-id={message.id} tabIndex={-1} className={`project-convo__message${mine ? ' is-mine' : ''}${arrived === message.id ? ' is-arrived' : ''}`}>
                 <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} name={messageAuthor(message)} mine={mine} />
                 <div className="project-convo__message-meta"><strong>{mine ? `${messageAuthor(message)} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${messageAuthor(message)} directly`}>{messageAuthor(message)}</Link>}</strong><time dateTime={message.createdAt} title={when(message.createdAt)}>{clock(message.createdAt)}</time><span>#{message.sequence}</span></div>
-                {message.body ? <p><MessageText body={message.body} /></p> : null}
-                <MessageFiles files={message.files} context={{ author: messageAuthor(message), at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? () => document.getElementById(composerId)?.focus() : undefined, onCreateTask: writable ? () => void makeWork.create(message) : undefined }} />
-                <LinkPreviews body={message.body} />
+                <MessageContent body={message.body ? <p><MessageText body={message.body} /></p> : null} files={message.files} context={{ author: messageAuthor(message), at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? () => document.getElementById(composerId)?.focus() : undefined, onCreateTask: writable ? () => void makeWork.create(message) : undefined }}>
+                  <LinkPreviews body={message.body} />
+                  <MessageObjects message={message} projectId={project.id} preview={messageWork.previews?.get(message.id) ?? null} />
+                </MessageContent>
                 {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={(resultId) => openDetails({ kind: 'result', id: resultId })} /> : null}
                 {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={hideIfDenied} /> : null}
-                <MessageObjects message={message} projectId={project.id} preview={messageWork.previews?.get(message.id) ?? null} />
                 <ThreadMessageActions writable={writable}><MessageActions projectId={project.id} message={message} writable={writable} busy={makeWork.busy === message.id} onCreateWork={() => void makeWork.create(message)} /></ThreadMessageActions>
                 {makeWork.failed?.messageId === message.id ? <p className="ws-act-error" role="alert">{makeWork.failed.text} <button type="button" onClick={() => void makeWork.create(message)}>Retry</button></p> : null}
               </li>];

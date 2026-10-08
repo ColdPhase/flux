@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { filePath, imageTypeOf, type MessageFile } from '@flux/contracts';
 import { Icon, trapTab, type IconName } from '../ui';
@@ -255,6 +255,16 @@ export function MessageFiles({ files, context }: { files?: MessageFile[]; contex
     {others.length ? <ol className="message-files" aria-label={others.length === 1 ? '1 attached file' : `${others.length} attached files`}>{others.map((file) => <li key={file.id}>
       {fileKind(file.name) === 'audio' ? <VoiceNote file={file} /> : <FileRow file={file} />}
     </li>)}</ol> : null}
+  </>;
+}
+
+/** The media comes first; its caption, file rows and native references share one message bubble. */
+export function MessageContent({ files, context, body, children }: { files?: MessageFile[]; context?: PhotoContext; body?: ReactNode; children?: ReactNode }) {
+  const photos = files?.filter((file) => looksLikePhoto(file.name)) ?? [];
+  const others = files?.filter((file) => !looksLikePhoto(file.name));
+  return <>
+    {photos.length ? <PhotoGrid photos={photos} context={context} /> : null}
+    <div className="message-bubble">{body}<MessageFiles files={others} />{children}</div>
   </>;
 }
 
