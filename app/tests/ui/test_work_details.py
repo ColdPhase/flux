@@ -287,9 +287,10 @@ class NativeDetailsJourney(unittest.TestCase):
             with self.subTest(phone=phone):
                 page = self.page(phone)
                 held = []
+                holding = [True]
 
                 def hold(route):
-                    if parse_qs(urlsplit(route.request.url).query).get("objects") != [f"work:{task['id']}"]:
+                    if not holding[0] or parse_qs(urlsplit(route.request.url).query).get("objects") != [f"work:{task['id']}"]:
                         route.continue_()
                         return
                     response = route.fetch()
@@ -305,7 +306,7 @@ class NativeDetailsJourney(unittest.TestCase):
                 expect(nav).to_have_attribute("aria-busy", "true")
                 expect(panel).not_to_contain_text("Added directly on the Tasks tab.")
                 self.assertTrue(held, "the loading state comes from actual held relation reads")
-                page.unroute("**/work-relations?**", hold)
+                holding[0] = False
                 # Only this task's selector is held. Retain every genuine observation
                 # of it, without intercepting relationship reads for other objects.
                 for route, response, url in held:
@@ -314,6 +315,8 @@ class NativeDetailsJourney(unittest.TestCase):
                     observations.append({"phone": phone, "targetWorkId": task["id"], "url": url,
                                          "objects": parse_qs(urlsplit(url).query)["objects"],
                                          "before": payload["before"], "total": payload["total"], "itemCount": len(payload["items"])})
+                    if SHOTS:
+                        (SHOTS / "detail-relations-empty-observations.json").write_text(json.dumps(observations, indent=2) + "\n")
                     route.fulfill(response=response)
                 self.ready(panel)
                 expect(nav).to_have_count(0)
@@ -321,6 +324,7 @@ class NativeDetailsJourney(unittest.TestCase):
                 expect(panel).to_contain_text("Added directly on the Tasks tab.")
                 shot(page, f"detail-relations-empty-{'phone' if phone else 'desktop'}")
 
+                page.unroute("**/work-relations?**", hold)
                 def fail_current_relations(route):
                     if parse_qs(urlsplit(route.request.url).query).get("objects") == [f"work:{task['id']}"]:
                         route.fulfill(status=503, json={"code": "WORK_READ_UNAVAILABLE", "error": "Fixture unavailable"})
@@ -340,8 +344,6 @@ class NativeDetailsJourney(unittest.TestCase):
                 expect(nav).to_have_count(0)
                 expect(panel).to_contain_text("Added directly on the Tasks tab.")
         self.assertEqual(self.native("work", task["id"]), before, "empty/read/retry never changes native work or links")
-        if SHOTS:
-            (SHOTS / "detail-relations-empty-observations.json").write_text(json.dumps(observations, indent=2) + "\n")
 
     def test_12_empty_later_relation_page_still_returns_to_first_page(self):
         page = self.page()
