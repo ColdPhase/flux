@@ -70,7 +70,7 @@ function notFound(type: WorkObjectType) {
  * The links from or to `ids`, with the current titles of both ends, as a lookup per id. Titles
  * come only from each link's own project, so a link never shows something outside it.
  */
-export async function linkReader(repo: WorkRepository, ids: string[]): Promise<(id: string) => ObjectLink[]> {
+export async function linkReader(repo: Pick<WorkRepository, 'links' | 'titles'>, ids: string[]): Promise<(id: string) => ObjectLink[]> {
   const links = ids.length ? await repo.links(ids) : [];
   const target = (link: ObjectLinkRecord): ObjectRef =>
     (link.toType === 'material' ? { type: 'material', id: link.toId, version: link.toVersion! } : { type: link.toType, id: link.toId }) as ObjectRef;
