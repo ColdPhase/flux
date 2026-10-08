@@ -1,0 +1,112 @@
+{
+  "sourceCommit": "892f1cf5c1a131af71c65873416a17f4847f617c",
+  "allPhaseExitCodes": 0,
+  "checks": [
+    {
+      "phase": "details-1",
+      "logSha256": "a2affd8160324f021dc4b4097a1c0b03afe1320276c52a53abfd3b9435e19dfa",
+      "summary": [
+        "Ran 12 tests in 28.774s",
+        "OK"
+      ],
+      "projects": [
+        "flux-ui-1791428239-370677"
+      ]
+    },
+    {
+      "phase": "details-2",
+      "logSha256": "855e744adce9e51a929703db99ade5997b0c2828b429d276ce42bb6b97b90769",
+      "summary": [
+        "Ran 12 tests in 28.581s",
+        "OK"
+      ],
+      "projects": [
+        "flux-ui-1791428382-387071"
+      ]
+    },
+    {
+      "phase": "details-3",
+      "logSha256": "c49dc432b8533ff31ab3c3c28184289c20cba2c2bab19b2c5c72a4e0d30abcf9",
+      "summary": [
+        "Ran 12 tests in 28.894s",
+        "OK"
+      ],
+      "projects": [
+        "flux-ui-1791428449-396411"
+      ]
+    },
+    {
+      "phase": "affected-ui",
+      "logSha256": "4744542ad0a2ba04823d7bc7a8471ff4ad8437fc1fe3624df6b01fe98c0541ff",
+      "summary": [
+        "Ran 59 tests in 147.966s",
+        "OK"
+      ],
+      "projects": [
+        "flux-ui-1791428528-406797"
+      ]
+    },
+    {
+      "phase": "bounded-api",
+      "logSha256": "a21f5150a2d016064633b9c754c0eae20bbc031437a67a55aaeda6978e215ab7",
+      "summary": [
+        "\u2139 tests 155",
+        "\u2139 suites 12",
+        "\u2139 pass 155",
+        "\u2139 fail 0",
+        "\u2139 cancelled 0",
+        "\u2139 skipped 0",
+        "\u2139 todo 0",
+        "\u2139 duration_ms 64258.765847"
+      ],
+      "projects": [
+        "flux282-892-api-1791428710-433184"
+      ]
+    }
+  ],
+  "cleanup": [
+    {
+      "project": "flux-ui-1791428239-370677",
+      "containers": 0,
+      "volumes": 0,
+      "networks": 0,
+      "imageTags": 0
+    },
+    {
+      "project": "flux-ui-1791428382-387071",
+      "containers": 0,
+      "volumes": 0,
+      "networks": 0,
+      "imageTags": 0
+    },
+    {
+      "project": "flux-ui-1791428449-396411",
+      "containers": 0,
+      "volumes": 0,
+      "networks": 0,
+      "imageTags": 0
+    },
+    {
+      "project": "flux-ui-1791428528-406797",
+      "containers": 0,
+      "volumes": 0,
+      "networks": 0,
+      "imageTags": 0
+    },
+    {
+      "project": "flux282-892-api-1791428710-433184",
+      "containers": 0,
+      "volumes": 0,
+      "networks": 0,
+      "imageTags": 0
+    }
+  ],
+  "outerHostSessionExitCode": 143,
+  "outerSessionCause": "unverified; separately retained from five completed phase exit codes",
+  "completionAudit": {
+    "sourceStillClean": true,
+    "allPhasesCompleted": true,
+    "allOwnedResourcesAbsent": true,
+    "auditExit": 0
+  }
+}

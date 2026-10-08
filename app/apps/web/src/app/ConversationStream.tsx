@@ -541,7 +541,8 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
  */
 function NoticeItem({ notice, meId, owners, row, onOpenTask }: { notice: TaskCreationNotice; meId: string; owners: AgentOwners; row: NativeWorkRow | null; onOpenTask: (workId: string) => void }) {
   // The task's current title from the visible reference read (#155); the announced title until it answers.
-  const title = row?.kind === 'work' && row.id === notice.workId ? row.title : notice.workTitle;
+  const current = row?.kind === 'work' && row.id === notice.workId ? row : null;
+  const title = current?.title ?? notice.workTitle;
   const creator = notice.createdBy;
   const name = creator.name ?? (creator.kind === 'agent' ? 'Agent' : 'Member');
   const mine = creator.kind === 'human' && creator.id === meId;
@@ -553,8 +554,9 @@ function NoticeItem({ notice, meId, owners, row, onOpenTask }: { notice: TaskCre
           {creator.kind === 'agent' ? <AgentIdentity name={name} owner={owners.get(creator.id)} icon={false} /> : <strong>{name}{mine ? ' · you' : ''}</strong>}
           <time dateTime={notice.createdAt} title={when(notice.createdAt)}>{clock(notice.createdAt)}</time>
         </span>
-        <button type="button" className="convo-notice__task" data-native-ref={`work:${notice.workId}`} onClick={() => onOpenTask(notice.workId)} aria-label={`Open task: ${title}`}>
-          <span className="convo-notice__title"><span className="convo-notice__kind">New task · </span>{title}</span><Icon name="chevron-right" size={14} />
+        <button type="button" className="convo-notice__task" data-native-ref={`work:${notice.workId}`} onClick={() => onOpenTask(notice.workId)} aria-label={`Open task #${notice.workNumber} ${title}`}>
+          {/* The immutable announcement number names the task before and after the current row arrives. */}
+          <span className="convo-notice__title"><span className="convo-notice__kind">New task · </span><span className="convo-notice__num ui-task-number">#{notice.workNumber}</span> {title}</span><Icon name="chevron-right" size={14} />
         </button>
       </span>
     </li>

@@ -18,6 +18,10 @@ a { color: inherit; }
 svg { flex: none; }
 [hidden] { display: none !important; }
 
+/* Task names use the shared mono face (F-026); #338 supplies Geist Mono. */
+.ui-task-number { font-family: var(--mono); font-size: max(12px, 1em); font-variant-numeric: tabular-nums; }
+@media (pointer: coarse) { .ui-task-number { font-size: max(12.5px, 1em); } }
+
 /* Focus: a ring that fades in and settles 2px out, only for keyboard focus. */
 :root[data-theme-switching] *, :root[data-theme-switching] *::before, :root[data-theme-switching] *::after { transition: none !important; }
 

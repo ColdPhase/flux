@@ -1,0 +1,54 @@
+# Independent #282 current source/evidence review — 1b7
+
+Date: 2026-10-08. Reviewer: current_source_evaluator, independent of implementation. Exact clean frozen pin `1b7c3c03690b4fe4027001b38f7facb69e3c0c63`, tree `460e8b14f6168153cdc7344a66fde0a8e923b3b8`, in `/home/hubert/.codex/worktrees/276-task-number-composition/flux`. Source stayed at this pin through the final check.
+
+**Verdict: bounded PASS for the current notice CSS delta, retained author-column requirements and actual affected regression evidence. No material source/functional finding remains within this bounded review. No visual verdict is given; glyph painting and final appearance require the separate fresh neutral reviewer. Whole #276, all F-026 surfaces, application/release acceptance and remote eligible approval remain open.**
+
+## Current source delta and repaired finding
+
+Only notice CSS changes from d957 to1b7. The14em narrow container retains block-flow/full-height titles, removes the metadata `flex-direction:column` override, stretches that metadata row to the available content width and gives its timestamp `flex-basis:100%`. Existing `flex-wrap:wrap` therefore puts time on a separate following line while preserving the exact row direction. Default compact clamp2 and all typography/face/number/native destination/read/write logic remain unchanged.
+
+The previous required exact-row failure is fixed by production layout. `author_columns.py` is byte-identical to892, with its exact row, visible32px face, common left column and10/12px content-gap assertions unchanged. The full TaskAnnouncements test blob is unchanged from negative003a and failed d957: `2a3a1295dd8335fbd12faaa462247a41dc91d918`. No test guard was removed, weakened or replaced to make this review pass. Whitespace checks passed.
+
+The width predicate remains container-relative14em; its inherited computed font scales with existing rem tokens. Ordinary320/390 text keeps compact clamp2, while root200% produces real25px title text and activates the narrow relative-width adaptation. No global scaling, reduced font, altered zoom or DOM/data mutation is introduced.
+
+## Actual current verification
+
+The coordinator's frozen wrapper guards exact1b7/clean status before and after `./scripts/check_ui.sh test_task_announcements`. The completed command exits0: **17/17 methods,57.298s**. Raw log SHA-256 independently verified: `6313643f7b7480cb6a62f351aa29f45bbb3950e2f6ce4cfce893256cf20f5908`. The log includes actual package builds, both TypeScript checks and ESLint before the running application/browser cohort. This evaluator inspected source/artifacts only and executed no Docker/application command.
+
+Only the phone helper is exercised in both Chromium and WebKit; the entire17-method module is not claimed to be dual-engine. All four phone cases now reach and pass the exact author-column check, title/metadata/boundary checks, exact `data-native-ref`, real touch open of the expected Details heading, full native API projection equality and unchanged task/notice/root counts. The other module scenarios retain true creator/source/one-notice ordering, actual first discussion/root, reader access, instant sending, lost answer, anchoring and revoked-write no-persistence checks.
+
+| Current requirement | Assessment |
+| --- | --- |
+| Ordinary320/light and390/dark clamp2, readable Mono number, author edge and44px target | Pass in the actual current run |
+| Exact32px author face/common column/metadata row after enlargement | Pass, original helper unchanged |
+| Timestamp on secondary line below the complete fixture author | Pass in both engines/widths,8.75px text-rectangle gap and shared content x |
+| Full title and no horizontal clipping/overflow | Pass in all four current cases |
+| Native UUID/number destination, real tap open, equal API task and stable counts | Pass in all four current cases |
+| Number/first-word DOM-range rule | Pass within its measurement limits below |
+| Glyph painting/final appearance/all wrapped actor names | Unverified by this source reviewer; independent visual/expanded content evidence remains separate |
+
+The retained current JSON files in `/tmp/flux282-final-spacing-evidence/positive/` give identical engine results for root200%, title25px, deviceScaleFactor3:
+
+| Viewport/theme, both engines | Client/scroll title height | Client/scroll title width | Clamp | Time top minus author bottom |
+| --- | --- | --- | --- | --- |
+|390/dark |107/107 |294/294 |none |8.75 |
+|320/light |143/143 |224/224 |none |8.75 |
+
+`cleanup.json` reports zero owned containers/volumes/networks/image tags for current project `flux-ui-1791431819-717655`. Checked completion metadata is not represented as an independently executed Docker inventory.
+
+## Negative controls and limits of the number guard
+
+The real003a negative remains intact: two phone methods, exit1,17.302s, exactly four timestamp-secondary-line failures. Their timestamps share the author's line (top minus author bottom−32px). Its number/first-word Range rule already passed. Thus this negative control demonstrates the timestamp-flow regression only; it does not reproduce the earlier painted Chromium number boundary. The current full-title/block-flow repair was also motivated by that separate visual finding, which this source reviewer does not adjudicate.
+
+The test uses `Range.getClientRects()[0]`, so it observes a first layout fragment rather than a union of every text fragment or painted glyph bounds. In particular, that number rect must not be treated as the complete rendered width of every digit. The current fixture has one short one-line human author and one task number; arbitrary long/multiline author identity and every numbered-title composition are not certified by these four rectangles. Source intentions, geometry equality and a passing score do not approve final visual quality.
+
+The failed d957 run is preserved separately and is still FAIL:17 methods/54.647s with four exact-row failures before enlarged downstream checks and no positive reflow JSON. Report `/tmp/flux282-d957-independent-source-review.md` remains historical; current1b7 evidence fixes its bounded failure rather than relabeling it as passed. Both003a/d957 cleanup records report zero owned resources. Earlier e81 title-negative and e6a17-pass records likewise keep their original pins/qualifications.
+
+## Unchanged source and earlier evidence
+
+Only two repository paths differ from892: `one-conversation.css` and `test_task_announcements.py`. All DB/core/server/worker source, WorkDetails, all app tests and Details/Search/Map-count/Tasks-board/Work-decisions UI modules are Git-identical to892. Exact Git blob checks include Details `ce674952ed30557a92cdd2b2d89adbaea24f8173`, Details UI `fbcda399dff7efbb793bb5e23328a3c5c6c160c8` and task-number API test `53892c66f68e9b7625d7c6b0ac35d2d9e41a0448`.
+
+The five892 log hashes still independently match its check summary: Details12/12 repeated three times, affectedUI59/59 and boundedAPI155/155. They remain892 executions supporting unchanged source; they are not relabeled current1b7 runs. The earlier outer-wrapper143 cause remains unverified as documented, distinct from completed child phase exits/cleanup. The current17-case cohort supplies fresh evidence for the affected announcement source.
+
+No screenshot was inspected, no source/test edit occurred, and no push/GitHub mutation was performed. Complete F-026, whole #276 (including still-open import/reference/placement work), full configured application/dump/restore/external-client/release acceptance and remote checks are not certified. Next action: combine this bounded report with the separate fresh neutral visual result, preserve provenance/failures and use required checks/eligible independent review through the normal protected integration path when WIP permits.
