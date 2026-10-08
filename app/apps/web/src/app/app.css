@@ -228,6 +228,9 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 .seg__b:hover { color: var(--t1); }
 .seg__b[aria-checked="true"] { background: var(--el); color: var(--t1); box-shadow: var(--sh-raise); }
 .seg__b:focus-visible { outline-offset: 0; }
+/* Keep complete appearance choices in their own targets as the compact account's text grows. */
+.me--compact .appearance .seg { flex-wrap: wrap; }
+.me--compact .appearance .seg__b { flex: 1 1 auto; white-space: normal; }
 
 
 
