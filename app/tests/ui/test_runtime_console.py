@@ -123,8 +123,11 @@ class RuntimeConsole(unittest.TestCase):
         page.get_by_label("Name").fill(RAE["name"])
         page.get_by_label("Email").fill(RAE["email"])
         page.get_by_label("Password").fill(PASSWORD)
-        page.get_by_role("button", name="Create account").click()
-        expect(page.get_by_role("heading", level=1)).to_be_visible()
+        with page.expect_response(lambda response: response.url.endswith("/api/auth/sign-up/email") and response.request.method == "POST") as registered:
+            page.get_by_role("button", name="Create account").click()
+        self.assertEqual(registered.value.status, 200)
+        expect(page).not_to_have_url(re.compile(r"/sign-up(?:\?|$)"))
+        self.api(page, "GET", "/api/v1/me")  # prove the session before sharing its cookie state
         type(self).state = page.context.storage_state()
 
     @unittest.skipIf(RUNTIME, "the runtime is on in this stack")
