@@ -5,12 +5,20 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { createDatabase, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
+import type { QueryConfig } from 'pg';
 import { guardFixturePool } from './support/fixture-database.js';
 
 const directory = 'packages/db/migrations';
 const legacyDirectory = 'tests/app/support/legacy-migration-fixtures';
 type Pool = ReturnType<typeof createDatabase>['pool'];
 const quote = (name: string) => `"${name.replaceAll('"', '""')}"`;
+
+// TEST ONLY: pg 8.23.0 reads this per-query override; QueryConfig omits its public type.
+// Keep fixture DDL's existing 60-second bound without changing production pool defaults.
+async function fixtureStatement(db: Pool, text: string) {
+  const query: QueryConfig & { query_timeout: number } = { text, query_timeout: 60_000 };
+  return db.query(query);
+}
 
 // Invoke the real built entry point; these controls cannot pass through a mocked gate.
 async function entrypoint(url: string, entry = 'tooling/dist/migrate.js') {
@@ -36,11 +44,11 @@ async function fixture(version: number, action: (db: Pool, url: string) => Promi
   let db: Pool | undefined;
   let guard: ReturnType<typeof guardFixturePool> | undefined;
   try {
-    await admin.query({ text: `CREATE DATABASE ${quote(name)}`, query_timeout: 60_000 });
+    await fixtureStatement(admin, `CREATE DATABASE ${quote(name)}`);
     db = createDatabase(url.toString()).pool; guard = guardFixturePool(db);
     const files = await readMigrationManifest(directory, FLUX_SCHEMA_VERSION);
     for (const file of files.filter((file) => file.version <= version)) {
-      await db.query({ text: await readFile(join(directory, file.name), 'utf8'), query_timeout: 60_000 });
+      await fixtureStatement(db, await readFile(join(directory, file.name), 'utf8'));
       await db.query('INSERT INTO flux_schema_version(version) VALUES ($1) ON CONFLICT DO NOTHING', [file.version]);
     }
     if (version >= 56) {
@@ -59,7 +67,7 @@ async function fixture(version: number, action: (db: Pool, url: string) => Promi
     await action(db, url.toString());
   } finally {
     guard?.cleanup(); await db?.end();
-    await admin.query({ text: `DROP DATABASE IF EXISTS ${quote(name)} WITH (FORCE)`, query_timeout: 60_000 });
+    await fixtureStatement(admin, `DROP DATABASE IF EXISTS ${quote(name)} WITH (FORCE)`);
     await admin.end();
   }
   guard?.assertNoEarlyErrors();
@@ -103,7 +111,7 @@ async function refuseWithoutWrites(db: Pool, url: string, entry?: string) {
 }
 
 async function legacy(db: Pool, name: string) {
-  await db.query({ text: await readFile(join(legacyDirectory, name), 'utf8'), query_timeout: 60_000 });
+  await fixtureStatement(db, await readFile(join(legacyDirectory, name), 'utf8'));
 }
 
 for (const version of [0, 54, 56, 57, 58]) {
