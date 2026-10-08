@@ -99,7 +99,7 @@ class RailNavigation(unittest.TestCase):
             }""")
             self.assertGreater(measured["count"], 0, label)
             self.assertTrue(measured["fits"] and measured["uncovered"], f"complete {label} label belongs to its own control: {measured}")
-            self.assertTrue(has_minimum_touch_size(measured["width"]) and has_minimum_touch_size(measured["height"]), label)
+            self.assertTrue(has_minimum_touch_size(measured["width"]) and has_minimum_touch_size(measured["height"]), f"{label}: {measured}")
 
     def test_01_sketchbook_and_settings_keep_native_routes_in_the_rail(self):
         for engine in self.browsers:
@@ -135,6 +135,12 @@ class RailNavigation(unittest.TestCase):
                 popup = page.get_by_role("dialog", name="Account", exact=True)
                 expect(popup).to_be_visible()
                 expect(popup).to_contain_text(ids["email"])
+                # Measure the actual targets after the account's finite opening animation.
+                # Its initial scale(.98) temporarily turns a genuine 44px control into 43.12px.
+                popup.evaluate("""async el => {
+                  await Promise.all(el.getAnimations().map(animation => animation.finished));
+                  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+                }""")
                 for text200 in (False, True):
                     page.evaluate("large => document.documentElement.style.fontSize = large ? '200%' : ''", text200)
                     rect = popup.bounding_box()
