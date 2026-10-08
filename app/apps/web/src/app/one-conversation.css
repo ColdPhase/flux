@@ -110,5 +110,8 @@
 .convo-notice__title { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
 /* Keep compact titles at ordinary text sizes, but expose their full purpose when the available
    author-column width is narrow relative to the reader's font size. Container em units scale with it. */
-@container task-notice (max-width: 14em) { .convo-notice__title { -webkit-line-clamp: unset; } }
+@container task-notice (max-width: 14em) {
+  .convo-notice__title { display: block; -webkit-line-clamp: unset; }
+  .convo-notice__meta { flex-direction: column; align-items: flex-start; }
+}
 @media (max-width: 680px) { .convo-notice { padding-left: 42px; margin: 14px 0; } .convo-notice + .convo-notice { margin-top: -6px; } }
