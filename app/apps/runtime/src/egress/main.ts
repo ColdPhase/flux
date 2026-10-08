@@ -13,7 +13,8 @@ const clients = parseRuntimeSwitch(env.FLUX_AGENT_RUNTIME);
 const log = (event: Record<string, unknown>) => console.log(JSON.stringify(event));
 const [apiHost, apiPort] = (env.FLUX_RUNTIME_EGRESS_API ?? 'api:8080').split(':');
 
-const proxy = createProxyServer({ allow: allowedHosts(clients), log });
+const hosts = allowedHosts(clients, { includeSignOut: true });
+const proxy = createProxyServer({ allow: hosts, log });
 proxy.listen(RUNTIME_PORTS.egressProxy, '0.0.0.0');
 const mcp = createMcpForwarder({ upstream: { host: apiHost!, port: Number(apiPort ?? 8080) }, log });
 mcp.listen(RUNTIME_PORTS.egressMcp, '0.0.0.0');
@@ -22,7 +23,7 @@ const installName = env.FLUX_RUNTIME_EGRESS_INSTALL_LISTEN ?? 'runtime-egress-in
 const install = clients.includes('claude_code') ? await lookup(installName, { family: 4 }).catch(() => null) : null;
 const installServer = install ? createProxyServer({ allow: new Set(INSTALL_HOSTS), log }) : null;
 installServer?.listen(RUNTIME_PORTS.egressInstall, install!.address);
-log({ event: 'ready', clients, hosts: [...allowedHosts(clients)], install: installServer ? `${installName}:${RUNTIME_PORTS.egressInstall}` : 'off' });
+log({ event: 'ready', clients, hosts: [...hosts], signOutAvailable: true, install: installServer ? `${installName}:${RUNTIME_PORTS.egressInstall}` : 'off' });
 
 const stop = () => { proxy.close(); mcp.close(); installServer?.close(); process.exit(0); };
 process.on('SIGTERM', stop);

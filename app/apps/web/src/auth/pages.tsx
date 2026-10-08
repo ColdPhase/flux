@@ -2,15 +2,15 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Form, Link, Outlet, useActionData, useLoaderData, useLocation, useNavigate, useNavigation, useSearchParams } from 'react-router';
 import type { IdentityCapabilities } from '@flux/contracts';
 import { PASSWORD_MIN_LENGTH, getCapabilities, startSso } from '../api/auth';
-import { Button, ErrorState, FluxMark, Icon, Input, useToast } from '../ui';
+import { Button, ErrorState, FluxLogo, Icon, Input, useToast } from '../ui';
 import { safeNext, type FormResult, type forgotPasswordLoader } from './logic';
 
-/** The app's own mark and wordmark, as in the sidebar (#189). */
+/** The Flux logo tile and wordmark, as in the sidebar (#189, F-026 §3). */
 function Brand() {
   return (
     <Link to="/" className="brand" aria-label="Flux home">
-      <FluxMark size={21} />
-      <span className="brand__name" aria-hidden="true">flux<span>.</span></span>
+      <FluxLogo size={28} />
+      <span className="brand__name" aria-hidden="true">flux</span>
     </Link>
   );
 }

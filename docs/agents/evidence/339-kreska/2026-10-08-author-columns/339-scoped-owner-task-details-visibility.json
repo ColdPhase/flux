@@ -1,0 +1,281 @@
+{
+  "url": "http://127.0.0.1:19631/projects/2cc8b467-8cf9-4055-a493-dcc74beb1eab/tasks",
+  "before": [
+    {
+      "text": "for Scoped Casey",
+      "rect": {
+        "x": 1243,
+        "y": 441.234375,
+        "width": 99,
+        "height": 17.15625
+      },
+      "inViewport": true,
+      "uncovered": true,
+      "hitTarget": {
+        "tag": "SPAN",
+        "className": "agent-for"
+      },
+      "ancestors": [
+        {
+          "tag": "SPAN",
+          "className": "agent-for",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "SPAN",
+          "className": "agent-id",
+          "display": "inline-flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "SPAN",
+          "className": "wd-discussion__who",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "A",
+          "className": "wd-discussion",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "SECTION",
+          "className": "details__sec",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "details wd",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "ui-panel__body",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "ASIDE",
+          "className": "ui-panel ui-panel--docked",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "app",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "BODY",
+          "className": "",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "HTML",
+          "className": "",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        }
+      ]
+    }
+  ],
+  "after": [
+    {
+      "text": "for Scoped Casey",
+      "rect": {
+        "x": 1243,
+        "y": 441.234375,
+        "width": 99,
+        "height": 17.15625
+      },
+      "inViewport": true,
+      "uncovered": true,
+      "hitTarget": {
+        "tag": "SPAN",
+        "className": "agent-for"
+      },
+      "ancestors": [
+        {
+          "tag": "SPAN",
+          "className": "agent-for",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "SPAN",
+          "className": "agent-id",
+          "display": "inline-flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "SPAN",
+          "className": "wd-discussion__who",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "A",
+          "className": "wd-discussion",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "SECTION",
+          "className": "details__sec",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "details wd",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "ui-panel__body",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "ASIDE",
+          "className": "ui-panel ui-panel--docked",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "app",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "BODY",
+          "className": "",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "HTML",
+          "className": "",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        }
+      ]
+    }
+  ]
+}

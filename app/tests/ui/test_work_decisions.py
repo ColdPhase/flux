@@ -17,6 +17,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
+from author_columns import assert_author_column
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "decisions need reasons"
@@ -398,9 +399,9 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(desk.get_by_role("region", name=re.compile("^In progress"))).to_contain_text("Measure the lamp current")
         shot(desk, "tasks-desktop-1440-in-progress")
 
-    # ---------------------------------------------------------------- own messages right, others left (#136 AC-1)
+    # ---------------------------------------------------------------- common author column (F-026, superseding #136 AC-1)
 
-    def assert_sides(self, page: Page, label: str) -> None:
+    def assert_columns(self, page: Page, label: str) -> None:
         # Opening Details slides the pane; measure once it has settled.
         page.wait_for_function("""() => new Promise((resolve) => {
           const el = document.querySelector('.thread__in');
@@ -408,21 +409,23 @@ class WorkDecisionsJourney(unittest.TestCase):
           setTimeout(() => resolve(el.getBoundingClientRect().x === first), 250);
         })""")
         # One project conversation (UI116-1): the root is in the stream and its replies in the thread
-        # beside it (over it on a phone). Sides hold in each column: Kai's reply right, Ada's left.
+        # beside it (over it on a phone). Every author keeps the same full face/name column.
         feed = page.locator(".thread__in").bounding_box()
         mine = page.locator(f"#message-{self.messages['finding']} > p").bounding_box()
         theirs = page.locator(f"#message-{self.messages['pivot']} > p").bounding_box()
         stream = page.locator(".project-convo__in").bounding_box()
         root = page.locator(f"#message-{self.messages['idea']} > p").bounding_box()
         assert feed and mine and theirs and stream and root
-        self.assertLess(root["x"] - stream["x"], 80, f"{label}: another person's root starts at the stream's left edge (beside its avatar)")
-        middle = feed["x"] + feed["width"] / 2
-        self.assertGreater(mine["x"] + mine["width"], middle, f"{label}: own message ends on the right")
-        self.assertLess(theirs["x"], middle, f"{label}: another person's message starts on the left")
-        if label != "phone":  # a long message fills a phone's width; the edges and avatar sides still differ
-            self.assertGreater(mine["x"], theirs["x"], f"{label}: own bubble starts further right")
-        self.assertLess(feed["x"] + feed["width"] - (mine["x"] + mine["width"]), 80, f"{label}: own bubble ends at the right edge (beside its avatar)")
-        self.assertLess(theirs["x"] - feed["x"], 80, f"{label}: another person's bubble starts at the left edge (beside its avatar)")
+        for key in ("finding", "pivot", "idea"):
+            message = page.locator(f"#message-{self.messages[key]}")
+            assert_author_column(self, message, page.viewport_size["width"], f"{label}: {key}")
+            meta = message.locator(".project-convo__message-meta").bounding_box()
+            bubble = message.locator(":scope > p").bounding_box()
+            self.assertAlmostEqual(bubble["x"], meta["x"], delta=1, msg=f"{label}: {key} starts at the author-name edge")
+        self.assertAlmostEqual(mine["x"], theirs["x"], delta=1, msg=f"{label}: own and other messages share one left edge")
+        own_fill = page.locator(f"#message-{self.messages['finding']} > p").evaluate("el => getComputedStyle(el).backgroundColor")
+        other_fill = page.locator(f"#message-{self.messages['pivot']} > p").evaluate("el => getComputedStyle(el).backgroundColor")
+        self.assertNotEqual(own_fill, other_fill, f"{label}: the own-message treatment still distinguishes it")
         self.assertLessEqual(mine["x"] + mine["width"], feed["x"] + feed["width"] + 1, f"{label}: inside the pane")
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.viewport_size["width"], f"{label}: no sideways scroll")
         # Linked work, decisions and results stay inside their column and the viewport on both sides.
@@ -436,15 +439,15 @@ class WorkDecisionsJourney(unittest.TestCase):
                 self.assertLessEqual(box["x"] + box["width"], pane["x"] + pane["width"] + 1, f"{label}: linked object {index} ends inside {column}")
                 self.assertLessEqual(box["x"] + box["width"], page.viewport_size["width"], f"{label}: linked object {index} is not cut off")
 
-    def test_09_own_messages_sit_right_and_others_left(self) -> None:
+    def test_09_authors_share_the_full_avatar_column_on_every_viewport(self) -> None:
         page = self.open_conversation("partner")
         expect(page.locator(f"#message-{self.messages['finding']}")).to_have_class(re.compile("is-mine"))
         expect(page.locator(f"#message-{self.messages['pivot']}")).not_to_have_class(re.compile("is-mine"))
         expect(page.locator(f"#message-{self.messages['idea']}")).not_to_have_class(re.compile("is-mine"))
-        # Authors stay visible on both sides.
+        # Complete names and genuine own-message identity remain visible.
         expect(page.locator(f"#message-{self.messages['finding']}")).to_contain_text("Kai Berg · you")
         expect(page.locator(f"#message-{self.messages['idea']}")).to_contain_text("Ada Lind")
-        self.assert_sides(page, "desktop")
+        self.assert_columns(page, "desktop")
         # Hover actions never cover the author or time on either side.
         for key in ("finding", "idea"):
             message = page.locator(f"#message-{self.messages[key]}")
@@ -455,15 +458,15 @@ class WorkDecisionsJourney(unittest.TestCase):
                 assert acts and box
                 apart = acts["x"] + acts["width"] <= box["x"] or box["x"] + box["width"] <= acts["x"] or acts["y"] + acts["height"] <= box["y"] or box["y"] + box["height"] <= acts["y"]
                 self.assertTrue(apart, f"{key}: actions clear of the meta line")
-        shot(page, "conversation-sides-1440")
+        shot(page, "conversation-author-column-1440")
         # Narrowed beside an open panel.
         page.locator(f"#message-{self.messages['finding']}").get_by_role("button", name=re.compile("^Work: ")).first.click()
         expect(page.locator("#details")).to_be_visible()
-        self.assert_sides(page, "beside details")
-        shot(page, "conversation-sides-1440-details")
+        self.assert_columns(page, "beside details")
+        shot(page, "conversation-author-column-1440-details")
         phone = self.open_conversation("partner", phone=True)
-        self.assert_sides(phone, "phone")
-        shot(phone, "conversation-sides-390")
+        self.assert_columns(phone, "phone")
+        shot(phone, "conversation-author-column-390")
 
     # ---------------------------------------------------------------- reading position (#136 AC-2)
 

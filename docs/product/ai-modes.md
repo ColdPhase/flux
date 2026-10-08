@@ -231,6 +231,10 @@ root on the host or every owner's credentials.
     against a fixed pattern) and the caps.
   - It builds every CLI command from a fixed template and starts the CLI with a
     clean environment.
+  - Before reading its secret or listening it makes itself non-dumpable
+    (`PR_SET_DUMPABLE=0`). The CLI's uid cannot read its process environment or write
+    its memory. Linux Yama `ptrace_scope` must be at least 1; a missing policy or 0
+    refuses startup, leaving the slot unreachable and unavailable to the worker.
   - It accepts only its own slot secret. The launcher generates one secret per
     slot in `docker/.env`; Compose passes each slot only its own, and the manager
     all of them.
@@ -263,6 +267,9 @@ root on the host or every owner's credentials.
     Claude Code: `api.anthropic.com`, `claude.ai`, `claude.com` and
     `platform.claude.com`. No primary source lists Codex's OpenAI hosts yet. T6
     records them from the pinned Codex source, and Codex stays off until then.
+    The recorded hosts remain reachable during cleanup even after the operator
+    turns clients off, so their logout commands can run. Login and runs still refuse
+    while disabled. TLS hides paths, so CONNECT cannot restrict this to a logout URL.
   - It is a reverse proxy that forwards only the Flux MCP route (`/mcp`) to the API.
     It reaches the API on the `runtime-api` network, which holds only the API and
     `runtime-egress`. No other API path is reachable. Neither are the database,

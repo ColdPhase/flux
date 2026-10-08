@@ -2,10 +2,12 @@ import { fileRows, taskDiscussionRows, workRows } from '@flux/db';
 import { lockAttachments, createTaskDiscussionUseCases, type FileStorage, type Database, type Transaction, type TaskDiscussionEventIntent, type TaskDiscussionPorts, type TaskDiscussionUnitOfWork } from '@flux/core';
 import { policyWorkAccess } from './access.js';
 import { transactionEventSession, type TransactionEventSession } from './transaction-events.js';
+import { projectAuthorOwners } from '../conversation/author-owners.js';
 
 /** Reusable composition inside the caller's existing transaction; no independent commit. */
 export function taskDiscussionPorts(tx: Transaction, events: TaskDiscussionPorts['events'], storage?: FileStorage): TaskDiscussionPorts {
   return {
+    authorOwners: { read: (projectId, workspaceId, agentIds) => projectAuthorOwners(tx, projectId, workspaceId, agentIds) },
     access: policyWorkAccess(tx), work: workRows(tx), discussion: taskDiscussionRows(tx),
     events,
     ...(storage ? { attachments: { lock: async (projectId: string, author: { kind: 'human' | 'agent'; id: string }, ids: readonly string[]) =>

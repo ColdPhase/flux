@@ -1,9 +1,9 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { ConversationMessage, NativeWorkRow } from '@flux/contracts';
-import { Avatar, Icon, IconButton, useMediaQuery } from '../ui';
+import { Icon, IconButton, useMediaQuery } from '../ui';
 import { DiscussedTask, MessageObjects } from '../work/inline';
 import type { MessageWorkPreview } from '../work/message-associations';
-import { SourceCitation, clock, day, when } from './messageParts';
+import { AgentAuthor, AuthorFace, SourceCitation, clock, day, when } from './messageParts';
 import { MessageFiles } from '../composer/Files';
 
 export type ThreadMode = 'docked' | 'sheet';
@@ -59,8 +59,8 @@ export function ThreadMessageActions({ writable, children }: { writable: boolean
 }
 
 /** The message the thread answers, at its top: who said it, when, and what, with its cited source. */
-export function ThreadRoot({ message, projectId, body, author, meId, writable, replies, task = null, taskRow = null, preview = null, onDenied }: {
-  message: ConversationMessage | null; projectId: string; body: string; author: string | null; meId: string; writable: boolean; replies: number;
+export function ThreadRoot({ message, projectId, body, author, agentOwner = null, meId, writable, replies, task = null, taskRow = null, preview = null, onDenied }: {
+  message: ConversationMessage | null; projectId: string; body: string; author: string | null; agentOwner?: string | null; meId: string; writable: boolean; replies: number;
   /** The task whose discussion this thread is (UI116-3), and its row from the thread's visible reference read (#155). */
   task?: { workId: string; title: string } | null; taskRow?: NativeWorkRow | null;
   /** What was made from the root, from the thread's bounded association read (#155): the root is shown whole here. */
@@ -72,8 +72,8 @@ export function ThreadRoot({ message, projectId, body, author, meId, writable, r
       <article className={`thread__root${mine ? ' is-mine' : ''}`} id={message ? `thread-root-${message.id}` : undefined} data-message-id={message?.id} aria-label={author ? `Message from ${mine ? 'you' : author}` : 'Opening message'}>
         {message && author ? (
           <div className="thread__root-meta">
-            <Avatar name={author} size="sm" tone={mine ? 'me' : 'neutral'} />
-            <strong>{mine ? `${author} · you` : author}</strong>
+            <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} name={author} mine={mine} />
+            <strong>{mine ? `${author} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentOwner} /> : author}</strong>
             <time dateTime={message.createdAt} title={when(message.createdAt)}>{day(message.createdAt)} · {clock(message.createdAt)}</time>
           </div>
         ) : null}

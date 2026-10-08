@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import type { ConversationMessage } from '@flux/contracts';
-import { Avatar, Icon } from '../ui';
+import { AgentIdentity, Avatar, Icon } from '../ui';
 import type { PendingSend } from '../composer/draft';
 import { OutboxStatus, PendingFiles, PendingSource } from '../composer/Outbox';
 import { getMaterialVersion } from './conversation-api';
@@ -77,6 +77,13 @@ export function SourceCitation({ materialId, version, onDenied }: { materialId: 
   return <Link to={`/materials/${materialId}/versions/${version}`} className="project-convo__source">Source: {title} · v{version}</Link>;
 }
 
+export { AuthorFace } from '../ui';
+
+/** An agent author's name line: its name, the "Agent" tag and "for <owner>" when the reader may know it. */
+export function AgentAuthor({ message, owner }: { message: Extract<ConversationMessage, { authorId: null }>; owner?: string | null }) {
+  return <AgentIdentity name={message.author.name ?? 'Agent'} owner={owner} icon={false} />;
+}
+
 /**
  * The person's own message from the moment they press Send until it is stored (#264): at the end of
  * the stream or thread, shaped like the stored message that replaces it. It is a plain list item (not
@@ -94,7 +101,7 @@ export function pendingMessageRow({ item, name, place, keyed = true, onRetry, on
   return (
     <li key={keyed ? `pending-${item.id}` : undefined} id={`pending-${item.id}`} data-client-message-id={item.id} data-send-state={item.state}
       className={`project-convo__message is-mine is-pending is-pending-${place}${item.state === 'failed' ? ' is-failed-send' : ''}`}>
-      <Avatar name={name} size="md" tone="me" />
+      <Avatar name={name} size="lg" tone="me" />
       <div className="project-convo__message-meta"><strong>{name} · you</strong>{inMeta ? status : null}</div>
       {item.body ? <p>{item.body}</p> : null}
       <PendingFiles files={item.files} />

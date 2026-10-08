@@ -138,6 +138,11 @@ for an account-erasure policy. Reads of past messages do not require the old aut
 to retain present access. Search/export/helper/notifications/return digests and
 browser author actions must preserve the actor before agent writes are enabled.
 
+The optional current-project owner display projection described in
+[conversations](conversations.md#project-capture-and-conversation-backend-36) also
+applies to the canonical root and bounded task message window. It is read-only;
+contribution receipts and exact retries retain their original author JSON.
+
 Migration0033 is frozen at the implemented human-root source. Reserve **0037 for
 this #154 actor extension**, after0034/#152,0035/#153 and0036/#74 agreed on the
 coordination issue. No old migration or historical author/time/source is rewritten.

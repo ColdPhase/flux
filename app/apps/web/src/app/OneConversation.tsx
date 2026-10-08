@@ -4,6 +4,7 @@ import type { Conversation, ConversationMessage, ConversationRoot, NativeWorkRow
 import type { MessageWorkPreview } from '../work/message-associations';
 import { ApiError } from '../api/client';
 import { MEDIA, useMediaQuery } from '../ui';
+import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import { excerpt } from '../live/anchors';
 import { audienceLine, useProjectShell } from '../project/data';
@@ -63,6 +64,7 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   if ((conversation?.id ?? null) !== shownId) { setShownId(conversation?.id ?? null); setClosing(null); }
   const thread = conversation && conversation.id !== closing ? conversation : null;
   const writable = project.access !== 'viewer';
+  const owners = useAgentOwners(project);
 
   const onDenied = useCallback((cause: unknown) => {
     // A lost project or session reloads the route, which shows why instead of stale content.
@@ -148,7 +150,7 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
           <Pane key={thread.id} data={data} variant="thread" rootMessageId={rootMessage?.id ?? null}
             focusComposer={!!state?.focusComposer} onThreadSize={roots.threadSize}
             rootHeader={({ preview, taskRow }) => <ThreadRoot message={rootMessage} projectId={project.id} body={rootMessage?.body ?? thread.firstMessageBody} author={rootMessage ? author(rootMessage) : null}
-              meId={me.user.id} writable={writable} replies={replies} task={root?.task ?? null} taskRow={taskRow} preview={preview} onDenied={onDenied} />} />
+              agentOwner={rootMessage?.authorId === null ? agentAuthorOwner(rootMessage.author, owners) ?? null : null} meId={me.user.id} writable={writable} replies={replies} task={root?.task ?? null} taskRow={taskRow} preview={preview} onDenied={onDenied} />} />
         </ThreadDrawer>
       ) : null}
     </div>

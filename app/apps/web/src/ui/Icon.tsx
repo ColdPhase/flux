@@ -73,7 +73,6 @@ const paths = {
   board: <><rect x="2.25" y="2.5" width="3" height="11" rx="1" /><rect x="6.5" y="2.5" width="3" height="7" rx="1" /><rect x="10.75" y="2.5" width="3" height="9" rx="1" /></>,
   list: <><path d="M6 4.5h7.5M6 8h7.5M6 11.5h7.5" /><circle cx="3" cy="4.5" r=".8" fill="currentColor" stroke="none" /><circle cx="3" cy="8" r=".8" fill="currentColor" stroke="none" /><circle cx="3" cy="11.5" r=".8" fill="currentColor" stroke="none" /></>,
   person: <><circle cx="8" cy="5.25" r="2.5" /><path d="M3.25 13.5c.55-2.5 2.4-3.9 4.75-3.9s4.2 1.4 4.75 3.9" /></>,
-  agent: <><rect x="2.75" y="4.5" width="10.5" height="8.5" rx="2" /><path d="M8 4.5V2.5" /><circle cx="6" cy="8.5" r=".8" fill="currentColor" stroke="none" /><circle cx="10" cy="8.5" r=".8" fill="currentColor" stroke="none" /></>,
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof paths;
@@ -103,16 +102,6 @@ export function Icon({ name, size = 16, label, ...rest }: IconProps) {
       {...rest}
     >
       {paths[name]}
-    </svg>
-  );
-}
-
-/** The Flux mark from flux-ux-v8.html: two slanted strokes. Decorative unless labelled. */
-export function FluxMark({ size = 22, label }: { size?: number; label?: string }) {
-  return (
-    <svg width={size} height={Math.round(size * 27 / 24)} viewBox="0 0 24 27" fill="none" aria-hidden={label ? undefined : true}
-      role={label ? 'img' : undefined} aria-label={label} focusable="false">
-      <path d="M3.6 21.2L10.4 6.2M14 9.2l4 8.4" stroke="currentColor" strokeWidth={4} strokeLinecap="round" />
     </svg>
   );
 }
