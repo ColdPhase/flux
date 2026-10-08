@@ -234,6 +234,20 @@ class RouteChunksJourney(unittest.TestCase):
                 self.assertEqual(page.evaluate(EXHAUST_STORAGE, 'session'), 'QuotaExceededError')
                 field.fill(latest)
                 self.assertEqual(page.evaluate("key => JSON.parse(sessionStorage.getItem(key)).body", key), earlier)
+                attempted = []
+                api_pattern = re.compile(rf"/api/v1/docs/{doc['id']}$")
+                def failed_save(route):
+                    if route.request.method != 'PATCH':
+                        route.continue_(); return
+                    attempted.append({"body": route.request.post_data_json, "key": route.request.headers.get("idempotency-key"),
+                        "base": route.request.headers.get("if-match")})
+                    route.fulfill(status=503, content_type="application/json", body='{"message":"Save temporarily unavailable"}')
+                page.route(api_pattern, failed_save)
+                page.get_by_role("button", name="Save version", exact=True).click()
+                expect(page.locator(".doc-error")).to_be_visible()
+                self.assertEqual(len(attempted), 1)
+                self.assertEqual(attempted[0]["body"]["body"], latest)
+                self.assertNotEqual(attempted[0]["key"], before["attempt"])
                 pattern = re.compile(r"/assets/SettingsHome-[^/]+\.js(?:\?.*)?$")
                 def refused(route):
                     route.fulfill(status=503, headers={"cache-control": "no-store"}, content_type="text/plain", body="Real refused Wiki recovery delivery")
@@ -244,37 +258,28 @@ class RouteChunksJourney(unittest.TestCase):
                 expect(page.get_by_role("button", name="Reload Flux", exact=True)).to_be_disabled()
                 page.get_by_role("link", name="Go to Home", exact=True).click()
                 # Navigate through the public router, preserving the same document and visit copy.
-                page.get_by_role("link", name="Chunk boundaries", exact=True).click()
-                page.get_by_role("link", name="Wiki", exact=True).click()
+                page.locator(".app__side").get_by_role("link", name=re.compile("^Chunk boundaries(?:, new activity)?$")).click()
+                page.get_by_role("navigation", name="Project views").get_by_role("link", name="Wiki", exact=True).click()
                 page.get_by_role("link", name=doc["title"], exact=True).click()
-                page.get_by_role("link", name="Edit", exact=True).click()
+                page.locator(".wiki-bar").get_by_role("link", name="Edit", exact=True).click()
                 expect(page.get_by_label("Text (Markdown)", exact=True)).to_have_value(latest)
                 page.evaluate("sessionStorage.removeItem('quota-route-recovery')")
-                persisted = latest + " Storage is writable again."
-                page.get_by_label("Text (Markdown)", exact=True).fill(persisted)
-                page.wait_for_function("([key,text]) => JSON.parse(sessionStorage.getItem(key) ?? '{}').body === text", arg=[key, persisted])
-                after = page.evaluate("key => JSON.parse(sessionStorage.getItem(key))", key)
-                self.assertEqual(after["base"], before["base"])
-                self.assertEqual(after["state"], before["state"])
-                self.assertEqual(after["title"], before["title"])
-                self.assertNotEqual(after["attempt"], before["attempt"], "editing B legitimately creates its own new save attempt")
-                # A failed save keeps this exact captured command for a later retry.
-                attempted = []
-                api_pattern = re.compile(rf"/api/v1/docs/{doc['id']}$")
-                def failed_save(route):
-                    if route.request.method != 'PATCH':
-                        route.continue_(); return
-                    attempted.append({"body": route.request.post_data_json, "key": route.request.headers.get("idempotency-key")})
-                    route.fulfill(status=503, content_type="application/json", body='{"message":"Save temporarily unavailable"}')
-                page.route(api_pattern, failed_save)
-                page.get_by_role("button", name="Save changes", exact=True).click()
+                page.get_by_role("button", name="Save version", exact=True).click()
                 expect(page.locator(".doc-error")).to_be_visible()
-                self.assertEqual(len(attempted), 1)
-                kept = page.evaluate("key => JSON.parse(sessionStorage.getItem(key))", key)
-                self.assertEqual(kept["attempt"], attempted[0]["key"])
-                self.assertEqual(kept["body"], persisted)
-                self.assertEqual(kept["base"], before["base"])
+                self.assertEqual(len(attempted), 2)
+                self.assertEqual(attempted[1], attempted[0], "B's exact body/base/save identity survives code recovery")
                 page.unroute(api_pattern, failed_save)
+                delivered = []
+                page.on("request", lambda request: delivered.append({"body": request.post_data_json,
+                    "key": request.headers.get("idempotency-key"), "base": request.headers.get("if-match")})
+                    if request.method == 'PATCH' and request.url.endswith(f"/api/v1/docs/{doc['id']}") else None)
+                with page.expect_response(lambda response: response.request.method == 'PATCH' and response.url.endswith(f"/api/v1/docs/{doc['id']}")) as saved:
+                    page.get_by_role("button", name="Save version", exact=True).click()
+                self.assertEqual(saved.value.status, 200)
+                self.assertEqual(delivered, [attempted[0]])
+                current = page.request.get(f"{ORIGIN}/api/v1/docs/{doc['id']}").json()
+                self.assertEqual(current["body"], latest)
+                self.assertEqual(current["version"], before["base"] + 1)
 
     def test_13_failed_fresh_session_check_never_performs_document_reload(self):
         for engine in self.browsers:
