@@ -30,6 +30,39 @@ EXHAUST_STORAGE = """kind => {
   storage.removeItem('quota-route-probe'); return 'accepted';
 }"""
 
+# Hold one genuine fresh-session HTTP response, preserving its AbortSignal. Release it only after
+# a public MutationObserver witnesses the requested committed Home/sign-in view. No identity is made up.
+HELD_SESSION_RESPONSE = """(() => {
+  const fetch = window.fetch.bind(window);
+  const probe = window.__reloadSession = {armed:false, held:false, settled:false, commitSeen:false, delivery:null};
+  window.fetch = async (input, init = {}) => {
+    const path = new URL(input instanceof Request ? input.url : String(input), location.href).pathname;
+    if (path !== '/api/v1/me' || !probe.armed) return fetch(input, init);
+    probe.armed = false;
+    const signal = init.signal ?? (input instanceof Request ? input.signal : null);
+    try {
+      const response = await fetch(input, init), actual = await response.clone().json();
+      probe.status = response.status; probe.actual = {owner: actual.user?.id, session: actual.session?.id}; probe.held = true;
+      await new Promise((resolve, reject) => {
+        let done = false;
+        const finish = action => { if (done) return; done = true; signal?.removeEventListener('abort', abort); action(); };
+        const abort = () => finish(() => reject(signal.reason ?? new DOMException('Aborted','AbortError')));
+        probe.release = () => finish(resolve);
+        if (signal?.aborted) abort(); else signal?.addEventListener('abort', abort, {once:true});
+      });
+      probe.delivery = 'delivered'; return response;
+    } catch (error) { probe.delivery = error.name === 'AbortError' ? 'aborted' : 'failed'; throw error; }
+    finally { probe.settled = true; }
+  };
+  probe.afterCommit = heading => {
+    const observer = new MutationObserver(() => {
+      if (![...document.querySelectorAll('h1')].some(el => el.textContent.trim() === heading)) return;
+      probe.commitSeen = true; observer.disconnect(); probe.release();
+    });
+    observer.observe(document, {childList:true,subtree:true});
+  };
+})();"""
+
 
 class RouteChunksJourney(unittest.TestCase):
     pw = None
@@ -292,6 +325,7 @@ class RouteChunksJourney(unittest.TestCase):
                 page.route(pattern, refused)
                 self.settings(page)
                 expect(page.get_by_role("button", name="Reload Flux", exact=True)).to_be_enabled()
+
                 page.unroute(pattern, refused)
                 me_pattern = re.compile(r"/api/v1/me$")
                 def unavailable(route):
@@ -305,6 +339,56 @@ class RouteChunksJourney(unittest.TestCase):
                 page.unroute(me_pattern, unavailable)
                 page.get_by_role("button", name="Check again", exact=True).click()
                 expect(page.get_by_role("button", name="Reload Flux", exact=True)).to_be_enabled()
+
+    def test_14_held_real_reload_check_cannot_cross_committed_home_or_device_retirement(self):
+        for engine in self.browsers:
+            for retiring in (False, True):
+                with self.subTest(engine=engine, retiring=retiring):
+                    page = self.page(engine)
+                    page.add_init_script(HELD_SESSION_RESPONSE)
+                    self.home(page)
+                    me = page.request.get(f"{ORIGIN}/api/v1/me").json()
+                    durable = f"Durable same-account work before held reload {engine}"
+                    page.get_by_placeholder("Write a note…").fill(durable)
+                    page.wait_for_function("([id,text]) => localStorage.getItem(`flux:draft:${id}:home`) === text", arg=[me["user"]["id"], durable])
+                    pattern = re.compile(r"/assets/SettingsHome-[^/]+\.js(?:\?.*)?$")
+                    def refused(route):
+                        route.fulfill(status=503, headers={"cache-control":"no-store"}, body="Real refused route")
+                    page.route(pattern, refused)
+                    self.settings(page)
+                    expect(page.get_by_role("button", name="Reload Flux", exact=True)).to_be_enabled()
+                    page.unroute(pattern, refused)
+                    origin = page.evaluate("performance.timeOrigin")
+                    page.evaluate("window.__reloadSession.armed = true")
+                    page.get_by_role("button", name="Reload Flux", exact=True).click()
+                    page.wait_for_function("window.__reloadSession.held")
+                    actual = page.evaluate("window.__reloadSession.actual")
+                    self.assertEqual(actual, {"owner":me["user"]["id"], "session":me["session"]["id"]})
+                    self.assertEqual(page.evaluate("window.__reloadSession.status"), 200)
+                    if retiring:
+                        page.evaluate("window.__reloadSession.afterCommit('Sign in to Flux')")
+                        page.get_by_role("button", name=re.compile(self.name)).click()
+                        page.get_by_role("button", name="Sign out", exact=True).click()
+                        expect(page.get_by_role("heading", name="Sign in to Flux", exact=True)).to_be_visible()
+                        self.assertEqual(page.request.get(f"{ORIGIN}/api/v1/me").status, 401)
+                    else:
+                        page.evaluate("window.__reloadSession.afterCommit('Home')")
+                        page.get_by_role("link", name="Go to Home", exact=True).click()
+                        expect(page.get_by_placeholder("Write a note…")).to_have_value(durable)
+                    page.wait_for_function("window.__reloadSession.commitSeen && window.__reloadSession.settled")
+                    page.evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
+                    self.assertEqual(page.evaluate("performance.timeOrigin"), origin, "old checked response cannot reload a different committed lifetime")
+                    self.assertIn(page.evaluate("window.__reloadSession.delivery"), ('delivered','aborted'))
+                    if retiring:
+                        page.get_by_label("Email").fill(me["user"]["email"])
+                        page.get_by_label("Password", exact=True).fill("a quiet route loading passphrase")
+                        page.get_by_role("button", name="Sign in", exact=True).click()
+                        expect(page.get_by_role("heading", name="Home", exact=True)).to_be_visible()
+                        restored = page.request.get(f"{ORIGIN}/api/v1/me").json()
+                        self.assertEqual(restored["user"]["id"], me["user"]["id"])
+                        self.assertNotEqual(restored["session"]["id"], me["session"]["id"])
+                        type(self).state = page.context.storage_state()
+
 
     def test_01_cold_home_omits_secondary_and_closed_surface_imports(self):
         for engine in self.browsers:

@@ -50,6 +50,15 @@ test('a new risk or successful settlement invalidates the decision revision, ind
   assert.notEqual(reloadRetentionRevision(), beforeSavedEdit, 'even a safe newer edit invalidates an earlier in-flight reload decision');
 });
 
+test('confirmed device retirement invalidates a held reload decision even with no unsafe work', () => {
+  for (const store of ['draft', 'composer', 'thought', 'wiki'] as const) forgetReloadRetention(store);
+  assert.equal(reloadRetention(owner), 'safe');
+  const before = reloadRetentionRevision();
+  forgetReloadRetention('composer');
+  assert.notEqual(reloadRetentionRevision(), before, 'empty/safe retirement still changes the action ownership epoch');
+  assert.equal(reloadRetention(owner), 'safe');
+});
+
 test('Wiki refused newer bytes retain exact fields/base/attempt over older storage; a refused clear remains a tombstone', () => {
   const { items, refusal } = storage();
   const key = draftKey(owner, 'doc', 'project');
