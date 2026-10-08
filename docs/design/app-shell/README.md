@@ -1,9 +1,8 @@
 # App shell and design system (issue #40)
 
-> **Superseded appearance, 2026-10-02.** The shell now follows the measured Studio 11.6 system
-> ([contract](../studio-v11.6.md), measured mapping in #182, #136): no identity rail, one 220px sidebar on the chrome,
-> a rounded sheet, the system UI font instead of Inter, and a neutral `--action` for primary buttons.
-> The structure below is kept as the history of #40.
+> **Superseded appearance.** The shell's appearance and structure follow the
+> [final design](../final/README.md) (F-026, 2026-10-07). The text below is kept only as the
+> history of #40.
 
 **Status:** implemented on branch `claude-maurycy/40-app-shell`, awaiting independent
 evaluation. Direction: O-003 variant C ("calm messenger", #15 / PR #33), adjusted for the

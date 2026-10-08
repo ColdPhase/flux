@@ -16,6 +16,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
+from author_columns import assert_author_column
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "two agents share one lamp"
@@ -167,20 +168,31 @@ class AgentsViewJourney(unittest.TestCase):
         thread = page.get_by_role("region", name=f"Thread of {TASK}")
         expect(thread.get_by_text("I'll take the reconnect bug with Codex")).to_be_visible()
         expect(box).to_have_value("")
+        # Sending is instant (#264): the message shows at once and is stored a moment later.
+        expect(thread.locator("[data-client-message-id]")).to_have_count(0)
         discussion = self.api(page, "GET", f"/api/v1/work/{self.ids['task']}/discussion", status=200)
         self.assertEqual(discussion["root"]["body"], "I'll take the reconnect bug with Codex; Claude Code reviews it.")
         self.assertEqual(discussion["root"]["authorId"], HUBERT["id"])
+        own = thread.locator(f'[data-message-id="{discussion["root"]["id"]}"]')
+        assert_author_column(self, own, DESKTOP["width"], "stored Agents author")
+        expect(own.locator(".agents-msg__meta b")).to_have_text("Hubert Nowak · you")
         marek = self.open_agents("marek")
         expect(marek.get_by_role("region", name=f"Thread of {TASK}").get_by_text("I'll take the reconnect bug with Codex")).to_be_visible()
         reply = marek.get_by_label("Write to this task")
         reply.fill("OK. Workshop PC is offline until tonight.")
         marek.get_by_role("button", name="Send to task").click()
         expect(marek.get_by_role("region", name=f"Thread of {TASK}").get_by_text("Workshop PC is offline until tonight")).to_be_visible()
+        expect(marek.locator("[data-client-message-id]")).to_have_count(0)
         page.reload()
         expect(page.get_by_role("region", name=f"Thread of {TASK}").get_by_text("Workshop PC is offline until tonight")).to_be_visible()
         discussion = self.api(page, "GET", f"/api/v1/work/{self.ids['task']}/discussion", status=200)
         bodies = [discussion["root"]["body"], *[m["body"] for m in discussion["messages"] if m["id"] != discussion["root"]["id"]]]
         self.assertEqual(bodies.count("OK. Workshop PC is offline until tonight."), 1, "one send, one message")
+        rows = self.thread(page).locator(".agents-msg")
+        for row in rows.all():
+            assert_author_column(self, row, DESKTOP["width"], "shared Agents author column")
+        self.assertAlmostEqual(rows.nth(0).bounding_box()["x"], rows.nth(1).bounding_box()["x"], delta=1,
+                               msg="own and other task replies use the same column")
 
     def thread(self, page: Page):
         return page.get_by_role("region", name=f"Thread of {TASK}")
@@ -339,12 +351,17 @@ class AgentsViewJourney(unittest.TestCase):
         box = page.get_by_label("Write to this task")
         box.fill("Firmware 1.4 fixes the reconnect loop.")
         box.press("Enter")
-        expect(page.get_by_role("alert")).to_contain_text("Your text is kept")
-        expect(box).to_have_value("Firmware 1.4 fixes the reconnect loop.")
-        page.reload()
-        expect(box).to_have_value("Firmware 1.4 fixes the reconnect loop.")
-        page.get_by_role("button", name="Send to task").click()
+        # Sending is instant (#264): the field empties at once and the message itself says it was not sent.
+        queued = self.thread(page).locator("[data-client-message-id]").filter(has_text="Firmware 1.4 fixes the reconnect loop.")
+        expect(queued.get_by_role("alert")).to_contain_text("Not sent")
         expect(box).to_have_value("")
+        page.reload()
+        # The unsent message and its command survive the reload.
+        expect(queued.get_by_role("alert")).to_contain_text("Not sent")
+        expect(box).to_have_value("")
+        queued.get_by_role("button", name="Retry").click()
+        expect(queued).to_have_count(0)
+        expect(self.thread(page).get_by_text("Firmware 1.4 fixes the reconnect loop.")).to_have_count(1)
         discussion = self.api(page, "GET", path, status=200)
         bodies = [discussion["root"]["body"], *[m["body"] for m in discussion["messages"] if m["id"] != discussion["root"]["id"]]]
         self.assertEqual(bodies.count("Firmware 1.4 fixes the reconnect loop."), 1, "the retry reused the first attempt's message id")
@@ -355,8 +372,15 @@ class AgentsViewJourney(unittest.TestCase):
         page.route(f"**/api/v1/work/{self.ids['task']}/discussion", lambda route: route.abort() if route.request.method == "POST" else route.continue_())
         page.get_by_label("Write to this task").fill("Battery check tonight")
         page.get_by_role("button", name="Send to task").click()
-        expect(page.get_by_role("alert")).to_be_visible()
-        expect(page.get_by_role("alert")).to_contain_text("Could not confirm the send")
+        # No answer from Flux (#264): the message waits on the page and the quiet line says why.
+        queued = self.thread(page).locator("[data-client-message-id]").filter(has_text="Battery check tonight")
+        expect(queued).to_contain_text("Waiting to send")
+        assert_author_column(self, queued, PHONE["width"], "queued phone Agents author")
+        expect(queued.locator(".agents-msg__meta b")).to_have_text("Hubert Nowak · you")
+        expect(page.get_by_text("Flux isn’t responding. Messages wait here and send when it’s back.")).to_be_visible()
+        queued.get_by_role("button", name="Remove").click()
+        expect(page.get_by_label("Write to this task")).to_have_value("Battery check tonight")
+        page.get_by_label("Write to this task").fill("")
 
     def test_05_outsiders_cannot_open_the_view(self) -> None:
         outsider = self.page("outsider")
@@ -447,6 +471,8 @@ class AgentsViewJourney(unittest.TestCase):
         # offline: "Offline" can only come from the client comparing expiresAt with its clock on
         # the 15 s tick. No focus or reload is triggered.
         page = self.page("hubert")
+        # The 15 s refetch can be in flight as the test ends: stop answering it before the context closes.
+        self.addCleanup(lambda: page.unroute_all(behavior="ignoreErrors"))
         reads: list[str] = []
 
         def session_ending_soon(route) -> None:
@@ -458,6 +484,7 @@ class AgentsViewJourney(unittest.TestCase):
             target = next(item for item in body["connections"] if item["name"] == "Desk laptop")
             target["state"] = "session_open"
             target["session"] = {"startedAt": started, "expiresAt": expires}
+            target["lastActivity"] = {"operation": "work.create", "at": started}
             reads.append(route.request.url)
             route.fulfill(response=response, json=body)
 
@@ -472,6 +499,7 @@ class AgentsViewJourney(unittest.TestCase):
         desk = page.get_by_role("list", name="Agent connections in this project").get_by_role("listitem").filter(has_text="Desk laptop")
         expect(desk).to_contain_text("Session open since")
         expect(desk).to_have_attribute("data-state", "session_open")
+        expect(desk.locator(".agents-conn__icon")).to_have_attribute("data-expression", "idle")
         expect(desk).to_contain_text("Offline", timeout=25000)
         expect(desk).to_have_attribute("data-state", "offline")
         expect(desk).not_to_contain_text("Session open since")

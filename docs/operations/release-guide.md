@@ -86,7 +86,8 @@ gh attestation verify oci://ghcr.io/coldphase/flux@sha256:<digest from release.j
    curl -fsS http://127.0.0.1:8081/api/v1/health    # {"status":"ok","schemaVersion":N}; use your FLUX_PORT
    ```
 
-4. Put a TLS reverse proxy in front of `127.0.0.1:<FLUX_PORT>` for `FLUX_PUBLIC_ORIGIN`, open that
+4. Follow the tested [HTTPS reverse-proxy example](https://github.com/ColdPhase/flux/blob/f3a253ce860d7f22b6cd28fa0525a4589df3daf7/docs/operations/reverse-proxy.md)
+   to put TLS in front of `127.0.0.1:<FLUX_PORT>` for `FLUX_PUBLIC_ORIGIN`, open that
    URL and create the first account. If startup fails, read
    `docker compose --env-file .env -f compose.yaml logs migrate api worker` before changing data.
 

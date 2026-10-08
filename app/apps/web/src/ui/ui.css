@@ -9,6 +9,8 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 button, input, textarea, select { font: inherit; color: inherit; letter-spacing: inherit; }
+input:is([type="checkbox"], [type="radio"]) { accent-color: var(--t1); }
+time { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 button { cursor: pointer; background: none; border: 0; padding: 0; }
 p { margin: 0; }
 h1, h2, h3 { margin: 0; font-weight: 600; }
@@ -130,7 +132,7 @@ svg { flex: none; }
 /* The label keeps the width of its bold form, so selecting a tab never nudges the others. */
 .ui-tabs__label { display: inline-flex; flex-direction: column; }
 .ui-tabs__label::after { content: attr(data-text); height: 0; overflow: hidden; visibility: hidden; font-weight: 650; pointer-events: none; user-select: none; }
-.ui-tabs__count { font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
+.ui-tabs__count { font-family: var(--mono); font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
 .ui-tabs__indicator {
   position: absolute; left: 0; bottom: 0; width: 1px; height: 2px; border-radius: 1px; background: var(--inv);
   transform-origin: 0 0; pointer-events: none; opacity: 0; transition: transform var(--dur-3) var(--ease-glide), opacity var(--dur-1) ease;
@@ -238,7 +240,7 @@ svg { flex: none; }
 /* ---------- Task state glyphs (StatusGlyph.tsx): shape, not colour ---------- */
 .ui-glyph { flex: none; color: var(--t1); vertical-align: -3px; }
 .ui-glyph--open, .ui-glyph--not_pursued { color: var(--t3); }
-.ui-glyph--parked { opacity: .55; }
+.ui-glyph--parked { color: var(--t3); }
 .ui-glyph__knock { fill: var(--el); }
 .ui-glyph__knock-line { stroke: var(--el); }
 .ui-state { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-sm); font-weight: 500; color: var(--t1); white-space: nowrap; }
@@ -284,14 +286,14 @@ svg { flex: none; }
 .flux-lockup b { font-size: 1.25rem; font-weight: 600; letter-spacing: -.04em; line-height: 1; }
 
 /* An agent: Kreska, its name, the "Agent" tag and "for <owner>" (AgentIdentity.tsx). */
-.agent-id { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.agent-id { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; font-family: var(--font); }
 .agent-id__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--t1); }
 .agent-tag {
   display: inline-flex; align-items: center; gap: 3px; flex: none; height: 18px; padding: 0 7px 0 4px; border-radius: var(--r-pill);
   background: var(--el); box-shadow: var(--sh-1), inset 0 0 0 1px var(--line); font-size: .6875rem; font-weight: 600; color: var(--t1);
 }
-.agent-for { flex: none; color: var(--t2); font-weight: 400; white-space: nowrap; }
-@media (max-width: 680px) { .agent-tag { height: 20px; font-size: .71875rem; } }
+.agent-for { flex: 0 1 auto; min-width: 0; max-width: 100%; color: var(--t2); font-weight: 400; white-space: normal; overflow-wrap: anywhere; }
+@media (max-width: 680px) { .agent-tag { min-height: 20px; height: auto; font-size: var(--fs-xs); } }
 
 /* ---------- Avatar: people are grey circles with initials ---------- */
 .ui-avatar {

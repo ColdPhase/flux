@@ -146,7 +146,7 @@
 .sk--map .sk-canvas { height: 100%; }
 .sk-zoom { position: absolute; right: 8px; bottom: 8px; z-index: 6; display: flex; align-items: center; gap: 0;
   padding: 2px; border-radius: var(--r); background: var(--el); box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); }
-.sk-zoom button { display: grid; place-items: center; min-width: 28px; height: 28px; border-radius: 6px; color: var(--t3); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; transition: var(--tr); }
+.sk-zoom button { font-family: var(--mono); display: grid; place-items: center; min-width: 28px; height: 28px; border-radius: 6px; color: var(--t3); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; transition: var(--tr); }
 .sk-zoom button:hover:not(:disabled) { background: var(--hov); color: var(--t1); }
 .sk-zoom button:disabled { opacity: .45; cursor: default; }
 .sk-zoom .sk-zoom__level { min-width: 44px; }
@@ -292,7 +292,7 @@
 .sk-draft__lines li { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 2px var(--s-2); }
 .sk-draft__lines input { width: 100%; min-width: 0; min-height: 32px; padding: 0 var(--s-2); font-family: var(--font); font-size: var(--fs-md); }
 .sk-draft__lines li > svg { justify-self: end; color: var(--t3); }
-.sk-draft__n { justify-self: end; font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
+.sk-draft__n { font-family: var(--mono); justify-self: end; font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
 .sk-draft__lines li.is-invalid input { border-color: var(--t1); }
 .sk-draft__remove { width: 32px; min-height: 32px; padding: 0; justify-content: center; }
 .sk-draft__warn { grid-column: 2 / -1; font-size: var(--fs-xs); color: var(--t1); }

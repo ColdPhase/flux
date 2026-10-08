@@ -4,7 +4,7 @@
 adds separate local-agent execution/review records and disclosed GitHub rules
 for the same work item, with manual correction suspending automation. Existing
 work statuses, parking and human-only domain decision acceptance remain.
-[UI116-3](../design/studio-v11.6.md) changes new-task notice/first-contribution flow
+UI116-3 ([final design](../design/final/README.md#5-behaviour) rule P5) changes new-task notice/first-contribution flow
 without rewriting historical threads. Implementation is tracked in the new
 contract's delivery table; this notice is not runtime evidence.
 

@@ -111,7 +111,7 @@ export function LinkPicker({ projectId, workspaceId, selfId, onPick, onClose }: 
       </select></div>
       <p className="doc-picker__keys doc-picker__touch">Tap a match to insert its link.</p>
       {failed ? <p className="doc-muted doc-picker__empty" role="alert">Could not load this project’s objects. <button type="button" className="ui-link" onClick={retry}>Retry objects</button></p> : null}
-      {busy && !failed ? <p className="doc-muted doc-picker__empty" aria-busy="true">Loading…</p> : null}
+      {busy && !failed ? <p className="doc-muted doc-picker__empty" aria-busy="true">Finding project objects…</p> : null}
       {!busy && !failed && !shown.length ? <p className="doc-muted doc-picker__empty">Nothing matches “{query}”.</p> : null}
       {native ? <WorkPagination page={native.page} busy={busy || failed} label="Reference pages" noun="matches" onCursor={native.onCursor} onRefresh={native.onRefresh} /> : null}
       {type === 'all' && !busy && !failed ? <p className="doc-muted doc-picker__browse">Showing up to 40 matches. Choose a type to browse more.</p> : null}

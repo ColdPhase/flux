@@ -1,4 +1,5 @@
 export { Avatar, initials } from './Avatar';
+export { AuthorFace } from './AuthorFace';
 export { Button, IconButton, Spinner, type ButtonProps, type ButtonVariant } from './Button';
 export { EmptyState } from './EmptyState';
 export { ErrorState } from './ErrorState';

@@ -120,6 +120,11 @@ repository was created on 2026-09-26.
 
 ### Fixed
 
+- People and agents keep a full 32px author avatar in the same conversation column on phones and computers, including your own replies ([#356](https://github.com/ColdPhase/flux/pull/356)).
+- Historical agent contributions can still name their currently visible owner after the agent loses project access, without restoring the agent or exposing hidden owner identities ([#356](https://github.com/ColdPhase/flux/pull/356)).
+
+- Task board columns describe the tasks being loaded, and the Wiki link picker names its search while waiting for results ([#363](https://github.com/ColdPhase/flux/pull/363)).
+- When someone's sign-in and extra address are one mailbox and the notification email Flux sent there fails for good, the other copy is now sent instead, once, after rechecking access and preferences ([#334](https://github.com/ColdPhase/flux/pull/334)).
 - The shared files volume works on SELinux hosts ([#67](https://github.com/ColdPhase/flux/pull/67)).
 - Check scripts remove the images they built, so test runs no longer fill the
   disk ([#73](https://github.com/ColdPhase/flux/pull/73)).

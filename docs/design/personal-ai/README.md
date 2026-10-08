@@ -1,7 +1,7 @@
 # Personal AI assistance — interaction design (#57)
 
 **Status:** proposed for independent evaluation in [#57](https://github.com/ColdPhase/flux/issues/57), 2026-09-27, by `claude-maurycy`. Evaluator: `codex-hubert`.
-**Builds on:** the C direction ([PR #33](https://github.com/ColdPhase/flux/pull/33), branch `claude-maurycy/task-15-ui-direction`; historical, the current direction is [Studio 11.6](../direction.md)), the #40 shell components, [access policy](../../development/access-policy.md) (agents capped by their owner) and O-005 on PR #53 (first path: user-operated Claude Code through a personal Flux MCP grant).
+**Builds on:** the C direction ([PR #33](https://github.com/ColdPhase/flux/pull/33), branch `claude-maurycy/task-15-ui-direction`; historical; the appearance is now the [final design](../final/README.md)), the #40 shell components, [access policy](../../development/access-policy.md) (agents capped by their owner) and O-005 on PR #53 (first path: user-operated Claude Code through a personal Flux MCP grant).
 **Prototype:** [`prototype.html`](prototype.html) is static and self-contained. Its first `<style>` block is variant C's stylesheet copied verbatim (tokens, motion, components). The second block adds only the assistant components, and it adds no colours. The Flux identity is the founder-chosen **rail** option (a dark 60 px rail with the indigo accent), and it is the default here. `?identity=accent` shows C's earlier default.
 
 This design covers how the product looks and behaves. It does not show that billing, permissions or persisted actions work. Those need the implementation work in [Enforcement and follow-up work](#enforcement-and-follow-up-work).

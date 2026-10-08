@@ -25,7 +25,7 @@ The later [F-015 adaptive-workspace contract](../design/adaptive-workspaces.md)
 extends this to a continuous small-phone → tablet → desktop → 4K/ultrawide
 experience. ADAPT-1–ADAPT-5 and [#151](https://github.com/ColdPhase/flux/issues/151)
 add useful wide-screen capacity and cross-layout continuity without reducing any
-MOB criterion. #136 owns integrated UX; #20 remains responsible for mobile
+MOB criterion. The final design (#336) owns integrated UX; #20 remains responsible for mobile
 installation, interaction and notification evidence.
 
 ## Required outcomes

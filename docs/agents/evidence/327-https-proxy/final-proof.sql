@@ -1,0 +1,2 @@
+select u.email,s.ip_address from auth_sessions s join auth_users u on u.id=s.user_id where u.email in ('proxy.trusted+64800e6a-fb08-457a-a586-74d39c05efe7@example.test','proxy.trusted+a3144459-c775-4873-a108-fcbba96a86d4@example.test') order by u.email,s.created_at;
+select id,kind,object_id,data->>'conversationId',data->>'messageId' from events where id='e54f5646-9f7e-4e23-a4f3-a9fe0c2d46d9' and data->>'messageId'='c8b81bf9-1353-4058-b7e8-1d991485636a';

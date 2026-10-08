@@ -29,7 +29,7 @@
 .tb-mine:hover, .tb-dr:hover { background: var(--hov); color: var(--t1); }
 .tb-dr svg { color: var(--t3); }
 .tb-dr { position: relative; }
-.tb-dr__n { min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: var(--inv); color: var(--oninv);
+.tb-dr__n { font-family: var(--mono); min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: var(--inv); color: var(--oninv);
   font-size: 10px; font-weight: 700; line-height: 17px; text-align: center; font-variant-numeric: tabular-nums; }
 .tb-mine[aria-pressed="true"] { background: var(--sub); color: var(--t1); box-shadow: inset 0 0 0 1px var(--line2); }
 .tb-add.ui-btn { gap: 6px; padding: 0 10px; font-size: var(--fs-sm); }
@@ -60,7 +60,7 @@
 /* 40px = the 25px add button, the padding and the rule: a column without the button (Done, readers) lines up. */
 .tb-col__head { display: flex; align-items: center; gap: 8px; min-height: 40px; padding-bottom: 14px; margin-bottom: 15px; border-bottom: 1px solid var(--line); }
 .tb-col__h { font-size: var(--fs-md); font-weight: 500; line-height: 1.4; color: var(--t1); }
-.tb-col__n { font-size: var(--fs-sm); color: var(--t3); font-variant-numeric: tabular-nums; }
+.tb-col__n { font-family: var(--mono); font-size: var(--fs-sm); color: var(--t3); font-variant-numeric: tabular-nums; }
 .tb-col__b { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
 .tb-col__add.ui-icon-btn { width: 25px; height: 25px; margin-left: auto; }
 /* The card-list area is the drop target that lights up; the header, title and count stay neutral. */
@@ -92,7 +92,7 @@
 html.tb-is-dragging .tb-card:hover { border-color: var(--line); background: var(--el); }
 .tb-card:has(.tb-card__open:focus-visible) { outline: 2px solid var(--t1); outline-offset: 2px; }
 .tb-card__top { display: flex; align-items: center; gap: 8px; min-height: 20px; margin: -4px -6px 0 0; }
-.tb-card__id { font-size: var(--fs-xs); letter-spacing: .5px; color: var(--t3); font-variant-numeric: tabular-nums; }
+.tb-card__id { font-family: var(--mono); font-size: var(--fs-xs); letter-spacing: .5px; color: var(--t3); font-variant-numeric: tabular-nums; }
 .tb-card__state { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-xs); font-weight: 500; color: var(--t2); }
 .tb-card__state--blocked { color: var(--t2); }
 .tb-card__menu.ui-icon-btn { position: relative; z-index: 2; width: 28px; height: 28px; margin-left: auto; }
@@ -110,8 +110,8 @@ html.tb-is-dragging .tb-card:hover { border-color: var(--line); background: var(
 .tb-card__from > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tb-card__from svg { color: var(--t3); }
 .tb-card__from:hover { color: var(--t1); text-decoration: underline; text-underline-offset: 3px; }
-.tb-card__foot { display: flex; align-items: center; gap: 8px; min-width: 0; margin-top: 12px; font-size: var(--fs-sm); }
-.tb-card__owner { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+.tb-card__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; margin-top: 12px; font-size: var(--fs-sm); }
+.tb-card__owner { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 7px; min-width: 0; }
 .tb-card__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--t1); }
 .tb-card__kind { color: var(--t3); }
 .tb-card__owner--none { color: var(--t3); }
@@ -172,7 +172,7 @@ html.tb-is-dragging, html.tb-is-dragging * { cursor: grabbing !important; user-s
   .tb-ov:focus-visible { outline-offset: -2px; }
   .tb-ov__l { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; font-size: var(--fs-md); font-weight: 500; white-space: nowrap; }
   .tb-ov[aria-pressed="true"] .tb-ov__l { font-weight: 600; }
-  .tb-ov__n { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; font-size: var(--fs-lg); font-weight: 600; line-height: 1.3; color: var(--t1); font-variant-numeric: tabular-nums; }
+.tb-ov__n { font-family: var(--mono); display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; font-size: var(--fs-lg); font-weight: 600; line-height: 1.3; color: var(--t1); font-variant-numeric: tabular-nums; }
   .tb-ov__b { display: inline-flex; align-items: center; gap: 3px; font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
   .tb-board { grid-template-columns: minmax(0, 1fr); gap: 0; padding-top: 18px; }
   .tb-board[data-current="open"] .tb-col:not([data-column="open"]),

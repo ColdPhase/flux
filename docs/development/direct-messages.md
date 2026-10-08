@@ -6,7 +6,7 @@ admins who are not in a DM cannot read it, count it or learn that it exists. Age
 through an explicit participant grant, which is not part of this slice, so agents see no DMs.
 This follows the "DMs and growing an idea" requirement in
 [#44](https://github.com/ColdPhase/flux/issues/44) and the design rule that every place shows its
-audience ([direction](../design/direction.md), principle 5).
+audience ([final design](../design/final/README.md#1-principles)).
 
 ## Model
 
@@ -118,8 +118,13 @@ on their behalf and no message goes to an audience of one:
 - **The DM view.** `/dm/:dmId` shows a reading column with the people and the audience, day lines
   and the messages, plus the shared composer. The composer reads "Only you and Kai · direct
   message". The header topic and Details show the same audience. The view refetches on its own
-  stream events and when the tab regains focus. A failed send keeps the text and its
-  `clientMessageId` in session storage, so **Retry** never duplicates. **Leave** asks for
+  stream events and when the tab regains focus. Sending is instant, with the shared
+  composer queue ([conversations](conversations.md#instant-sending-and-the-offline-queue-264-2026-10-06)):
+  the message shows at once as "Sending…", a failed one stays as "Not sent" with **Retry** and
+  **Remove**, and messages written offline wait and go when the connection is back. The queue
+  and its `clientMessageId`s stay in session storage, so **Retry** never duplicates. A `409
+  DM_RECIPIENT_LEFT` / `DM_RECIPIENT_UNAVAILABLE` stored nothing: the text returns to the field
+  and the notice below explains why. **Leave** asks for
   confirmation first. A DM that is no longer visible shows one quiet line and no old content.
 - **When the other person left.** Choosing them (in New message or from their name) shows the
   server's calm explanation instead of a thread. An open 1:1 whose other person left keeps its

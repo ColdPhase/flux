@@ -4,7 +4,7 @@
 [#62](https://github.com/ColdPhase/flux/issues/62), on the #61 server slice
 ([PR #109](https://github.com/ColdPhase/flux/pull/109)). It follows the
 [live collaboration contract](../../product/live-collaboration.md) and the accepted
-[O-003 C direction](../direction.md). The supplied
+[final design](../final/README.md) for appearance. The supplied
 [interaction reference](../references/live/README.md) stays outside the app bundle; its
 palette, demo data and single-file script were not copied.
 

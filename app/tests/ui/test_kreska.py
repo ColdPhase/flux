@@ -58,7 +58,7 @@ class KreskaJourney(unittest.TestCase):
             return
         page = self.page(signed_in=False)
         page.goto("/sign-up")
-        page.get_by_label("Name").fill("Ada Kreska")
+        page.get_by_label("Name").fill("Ada Zamojska-Kreska Research Lead")
         page.get_by_label("Email").fill(EMAIL)
         page.get_by_label("Password").fill(PASSWORD)
         page.get_by_role("button", name="Create account").click()
@@ -103,15 +103,16 @@ class KreskaJourney(unittest.TestCase):
         owner = agent_card.locator(".tb-card__owner")
         expect(owner.locator(":scope > .kreska")).to_have_count(1)
         expect(owner.locator(".agent-tag")).to_have_text("Agent")
+        expect(owner.locator(".agent-for")).to_have_text("for Ada Zamojska-Kreska Research Lead")
         expect(agent_card.locator(".tb-av")).to_have_count(0)
         person_card = page.locator(".tb-card", has_text="Order the enclosures")
-        expect(person_card.locator(".tb-av")).to_have_text("AK")
+        expect(person_card.locator(".tb-av")).to_have_text("AL")
         expect(person_card.locator(".kreska")).to_have_count(0)
         # Outside the Agents section an agent is monochrome: no colour class.
         self.assertEqual(owner.locator(":scope > .kreska").get_attribute("class").strip(), "kreska")
         shot(page, "339-tasks-agent-owner")
 
-    def test_03_every_expression_is_a_complete_static_frame_under_reduced_motion(self) -> None:
+    def test_03_integrated_task_owner_is_static_under_reduced_motion(self) -> None:
         self.ensure_account()
         page = self.page(reduced=True)
         page.goto(f"/projects/{self.ids['project']}/tasks")
@@ -120,6 +121,37 @@ class KreskaJourney(unittest.TestCase):
         # The frame, both eyes and the brow are drawn, and nothing animates.
         self.assertGreaterEqual(face.locator("path").count(), 3)
         self.assertEqual(page.evaluate("document.getAnimations().filter(a => a.effect?.target?.closest?.('.kreska')).length"), 0)
+
+    def test_03b_native_list_and_phone_metadata_include_scoped_owner(self) -> None:
+        self.ensure_account()
+        webkit = self.pw.webkit.launch()
+        self.addCleanup(webkit.close)
+        for engine in (self.browser, webkit):
+            for scheme in ("light", "dark"):
+                context = engine.new_context(base_url=ORIGIN, storage_state=self.state, viewport=PHONE, is_mobile=True, has_touch=True, color_scheme=scheme, service_workers="block")
+                self.addCleanup(context.close)
+                page = context.new_page()
+                for mode in ("list", "board"):
+                    page.goto(f"/projects/{self.ids['project']}/tasks?view={mode}")
+                    agent_row = page.locator(".ws-item" if mode == "list" else ".tb-card", has_text="Calibrate the probes")
+                    relation = agent_row.locator(".agent-for")
+                    expect(relation).to_have_text("for Ada Zamojska-Kreska Research Lead")
+                    expect(agent_row.locator(".agent-tag")).to_have_text("Agent")
+                    expect(agent_row.locator(".ws-av, .tb-av")).to_have_count(0)
+                    human_row = page.locator(".ws-item" if mode == "list" else ".tb-card", has_text="Order the enclosures")
+                    expect(human_row.locator(".ws-av, .tb-av")).to_have_text("A" if mode == "list" else "AL")
+                    expect(human_row.locator(".kreska")).to_have_count(0)
+                    tag = agent_row.locator(".agent-tag")
+                    for enlarged in (False, True):
+                        if enlarged:
+                            page.evaluate("document.documentElement.style.fontSize = '32px'")
+                        self.assertGreaterEqual(tag.evaluate("e => parseFloat(getComputedStyle(e).fontSize)"), 25 if enlarged else 12.5)
+                        expect(tag).to_be_visible()
+                        expect(relation).to_be_visible()
+                        self.assertLessEqual(relation.evaluate("e => e.scrollWidth - e.clientWidth"), 1, "full owner relation wraps within its box")
+                        self.assertTrue(relation.evaluate("e => { const r=e.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; }"), "the full owner stays in the phone viewport")
+                        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth - innerWidth"), 1)
+                        shot(page, f"339-native-{mode}-{engine.browser_type.name}-phone-{scheme}{'-text200' if enlarged else ''}")
 
     def test_04_install_icons_and_the_tab_icon_are_the_logo(self) -> None:
         page = self.page(signed_in=False)

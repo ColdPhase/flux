@@ -1,8 +1,11 @@
 # Adaptive layout rules: panes, breakpoints, input and surfaces (#151 AC-1)
 
+**Appearance target since 2026-10-07: the [final design](final/README.md) (F-026); the measured
+rules below describe the application before it.**
+
 **Proposed amendment to [F-015 adaptive workspaces](adaptive-workspaces.md), 2026-10-05,
 Zamojski5 (claude-maurycy). Independent peer review is pending; it is not accepted yet.**
-It records the current rules of the Studio 11.6 application as implemented and measured at
+It records the current rules of the application as implemented and measured at
 branch `claude-maurycy/151-adaptive-matrix`, the three rules this slice adds (readable
 measure, coarse-pointer targets, map camera), and the gaps that remain. Pixel values are CSS
 pixels at 100% browser zoom. A rule chosen by the space a pane actually has is marked
@@ -29,7 +32,8 @@ Content:
 - six tasks: open, in progress, blocked with its blocker, and done, each linked to thoughts;
 - a published wiki page with long prose, a list and code.
 
-Agents lists the three connections as three entries (F-017 UI116-2).
+Agents lists the three connections as three entries under the
+[CO-1 connection model](../product/mcp-cowork.md#connections-and-owner-authorized-autonomy--co-1).
 
 ## Pane and breakpoint rules
 

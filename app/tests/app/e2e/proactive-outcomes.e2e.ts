@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { hasMinimumTouchSize } from '../support/touch-target.js';
 import { readFileSync } from 'node:fs';
 import http from 'node:http';
 import { after, before, test } from 'node:test';
@@ -95,7 +96,7 @@ test('all pages render quiet comparisons and insufficient evidence with current 
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'the expanded outcomes fit the viewport');
       for (const node of await page.locator('.ws-proposal__evidence a, .ws-proposal__evidence button, .ws-proposal__evidence summary').all()) {
         const bounds = await node.boundingBox(); assert.ok(bounds && bounds.x >= 0 && bounds.x + bounds.width <= viewport.width + 1, 'checked references stay inside the column');
-        if (touch) assert.ok(bounds.height >= 44, 'checked-source controls have 44px touch height');
+        if (touch) assert.ok(hasMinimumTouchSize(bounds.height), 'checked-source controls have 44px touch height');
       }
       await comparison.scrollIntoViewIfNeeded();
       await page.screenshot({ path: `/state/comparison-outcomes-${viewport.width}-checked.png`, fullPage: true });
@@ -178,10 +179,10 @@ test('owner usage distinguishes known, uncertain and no-cost requests and surviv
       await shortcut.scrollIntoViewIfNeeded();
       await usagePage.screenshot({ path: `/state/comparison-usage-${width}-shortcut.png`, fullPage: true });
       if (width < 1440) {
-        assert.ok((await shortcut.boundingBox())!.height >= 44, 'history shortcut has 44px touch height');
+        assert.ok(hasMinimumTouchSize((await shortcut.boundingBox())!.height), 'history shortcut has 44px touch height');
         await shortcut.tap();
         for (const control of [usage.locator('summary'), usage.getByRole('button', { name: 'Refresh usage', exact: true })]) {
-          assert.ok((await control.boundingBox())!.height >= 44, 'owner usage controls have 44px touch height');
+          assert.ok(hasMinimumTouchSize((await control.boundingBox())!.height), 'owner usage controls have 44px touch height');
         }
       } else { await shortcut.focus(); await usagePage.keyboard.press('Enter'); }
       assert.ok(await usage.locator('summary').evaluate((node) => node === document.activeElement), 'history shortcut moves keyboard focus to the request summary');
@@ -198,7 +199,7 @@ test('owner usage distinguishes known, uncertain and no-cost requests and surviv
       assert.match(await usage.locator('.background-usage__trigger').first().innerText(), /Request without available key[\s\S]*Bedside gesture lamp/);
       const destination = usage.getByRole('link', { name: `View triggering result for request ${stopped.id}`, exact: true });
       assert.ok((await destination.locator('..').innerText()).includes(`Request ${stopped.id.slice(0, 8)}`));
-      if (width < 1440) assert.ok((await destination.boundingBox())!.height >= 44, 'request destination has 44px touch height');
+      if (width < 1440) assert.ok(hasMinimumTouchSize((await destination.boundingBox())!.height), 'request destination has 44px touch height');
       assert.ok(!(await usage.innerText()).includes('sk-ant-'));
       await usage.scrollIntoViewIfNeeded(); await usagePage.screenshot({ path: `/state/comparison-usage-${width}-owner.png`, fullPage: true });
       await usage.locator('li').nth(4).scrollIntoViewIfNeeded();

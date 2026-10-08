@@ -113,6 +113,8 @@ class DirectMessageJourney(unittest.TestCase):
             self.composer(page).press("Enter")
         expect(page.locator(".dm-msg__body", has_text=text)).to_be_visible()
         expect(self.composer(page)).to_have_value("")
+        # Sending is instant (#264): the message shows at once and is stored a moment later.
+        expect(page.locator("[data-client-message-id]")).to_have_count(0)
 
     # ---------------------------------------------------------------- start and reply
 
@@ -198,13 +200,21 @@ class DirectMessageJourney(unittest.TestCase):
             route.continue_()
 
         page.route(re.compile(r".*/api/v1/dms/[0-9a-f-]+/messages$"), lose_first_response)
+        sent: list[str] = []
+        page.on("request", lambda request: sent.append(request.post_data_json["clientMessageId"]) if request.method == "POST" and request.url.endswith("/messages") else None)
         self.composer(page).fill("I’ll order two sensors today.")
         self.composer(page).press("Enter")
-        alert = page.get_by_role("alert")
-        expect(alert).to_contain_text("Not sent")
-        expect(self.composer(page)).to_have_value("I’ll order two sensors today.")
-        alert.get_by_role("button", name="Retry").click()
+        # Sending is instant (#264): with no answer the message waits on the page with its id (or, once the
+        # live refresh brings the stored copy, that copy shows instead), and it is sent again when Flux answers.
+        expect(self.composer(page)).to_have_value("")
         expect(page.locator(".dm-msg__body", has_text="I’ll order two sensors today.")).to_have_count(1)
+        # The queue (in this tab's session storage) empties only after the resend confirms the stored message.
+        key = f"flux:composer:{self.ids['kai']}:dm:dm:{self.dm_id()}"
+        page.wait_for_function("key => !JSON.parse(sessionStorage.getItem(key) ?? '{}').pending", arg=key, timeout=20000)
+        expect(page.locator("[data-client-message-id]")).to_have_count(0)
+        expect(page.locator(".dm-msg__body", has_text="I’ll order two sensors today.")).to_have_count(1)
+        self.assertEqual(len(sent), 2)
+        self.assertEqual(sent[0], sent[1], "the resend reuses the first attempt's client message id")
         expect(self.composer(page)).to_have_value("")
         status, dm = self.api(page, f"/api/v1/dms/{self.dm_id()}")
         self.assertEqual(status, 200)

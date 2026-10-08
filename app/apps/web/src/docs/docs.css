@@ -16,7 +16,7 @@
 .doc-list__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
 .doc-group { margin-top: 20px; }
 .doc-group__h { display: flex; gap: 6px; margin: 0 0 4px; font-size: var(--fs-xs); font-weight: 500; color: var(--t3); }
-.doc-group__h span { font-variant-numeric: tabular-nums; }
+.doc-group__h span { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .doc-ul { list-style: none; margin: 0; padding: 0; }
 .doc-ul > li + li { border-top: 1px solid var(--line); }
 .doc-item { display: flex; align-items: flex-start; gap: 12px; width: calc(100% + 16px); margin: 0 -8px; padding: 11px 8px; border-radius: var(--r); color: inherit; text-decoration: none; transition: var(--tr); }
@@ -26,7 +26,7 @@
 .doc-item__t { display: block; font-size: var(--fs-md); font-weight: 500; color: var(--t1); line-height: 1.5; overflow-wrap: anywhere; }
 .doc-item__s { display: block; font-size: var(--fs-sm); color: var(--t3); line-height: 1.5; overflow-wrap: anywhere; }
 .doc-item__x { display: -webkit-box; margin-top: 2px; font-size: var(--fs-sm); color: var(--t2); line-height: 1.5; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
-.doc-item__r { flex: none; padding-top: 2px; font-size: var(--fs-sm); color: var(--t3); font-variant-numeric: tabular-nums; }
+.doc-item__r { font-family: var(--mono); flex: none; padding-top: 2px; font-size: var(--fs-sm); color: var(--t3); font-variant-numeric: tabular-nums; }
 
 /* ---------- Wiki: page index beside the document (UI116-4) ---------- */
 /* The frame is the size container: the wiki stacks the index above the document when its own
@@ -195,7 +195,7 @@
 .doc-version { flex: 1; min-width: 0; display: flex; gap: 10px; padding: 9px 8px; margin-left: -8px; border-radius: var(--r); text-align: left; transition: var(--tr); }
 .doc-version:hover { background: var(--hov); }
 .doc-version[aria-current="true"] { background: var(--sub); }
-.doc-version__n { flex: none; width: 28px; font-size: var(--fs-sm); font-weight: 600; color: var(--t2); font-variant-numeric: tabular-nums; }
+.doc-version__n { flex: none; width: 28px; font-family: var(--mono); font-size: var(--fs-sm); font-weight: 600; color: var(--t2); font-variant-numeric: tabular-nums; }
 .doc-version__b { min-width: 0; }
 .doc-version__t { display: block; font-size: var(--fs-md); color: var(--t1); line-height: 1.45; overflow-wrap: anywhere; }
 .doc-version__s { display: block; font-size: var(--fs-xs); color: var(--t3); line-height: 1.5; }
