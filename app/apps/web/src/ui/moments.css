@@ -1,0 +1,42 @@
+/* ---------- Kreska's small moments (Moments.tsx, F-026 §3) ----------
+   Static frames under reduced motion; Settings → Appearance can remove the mascot altogether. */
+.mascot { color: var(--t1); }
+
+/* Empty screens with the big Kreska (empty Inbox, no results): centred, with the text beside the meaning. */
+.ui-empty--mascot { align-items: center; text-align: center; margin: 0 auto; }
+.ui-empty--mascot .ui-empty__mascot { margin-bottom: 18px; }
+.ui-empty--mascot .ui-empty__action { justify-content: center; }
+
+/* Opening a project. */
+.opening { position: absolute; inset: 0 0 auto 0; z-index: 1; padding: 20px 24px; max-width: calc(var(--col) + 48px); margin: 0 auto; background: var(--bg); pointer-events: none; opacity: 0; }
+.opening__line { display: flex; align-items: center; gap: 8px; color: var(--t3); font-size: var(--fs-sm); }
+.opening__rows { display: grid; gap: 18px; margin-top: 22px; }
+.opening__row { display: flex; align-items: center; gap: 12px; }
+.opening__row i { flex: none; width: 32px; height: 32px; border-radius: var(--r-pill); background: var(--sub); }
+.opening__row span { display: grid; gap: 8px; flex: 1; }
+.opening__row b { display: block; height: 9px; border-radius: var(--r-pill); background: var(--sub); }
+/* It appears after a beat, so a fast open never flashes it. */
+@media (prefers-reduced-motion: no-preference) {
+  .opening { animation: opening-in var(--dur-3) var(--ease-out) 350ms both; }
+  .opening__rows { animation: opening-pulse 1.6s ease-in-out infinite; }
+}
+@media (prefers-reduced-motion: reduce) { .opening { opacity: 1; } }
+@keyframes opening-in { to { opacity: 1; } }
+@keyframes opening-pulse { 50% { opacity: .55; } }
+
+/* Pull to refresh: Kreska peeks over the edge of the list. */
+.pull { overflow: hidden; display: flex; align-items: flex-end; justify-content: center; }
+.pull__in { display: grid; justify-items: center; gap: 4px; padding-bottom: 8px; color: var(--t3); font-size: var(--fs-xs); }
+.pull[data-ready] .pull__in, .pull[data-refreshing] .pull__in { color: var(--t2); }
+
+/* Goal reached. */
+.goal { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 24px 16px; border-radius: var(--r-lg); background: var(--el); box-shadow: var(--sh-card); text-align: center; }
+.goal .kreska { margin-bottom: 12px; }
+.goal__title { font-size: var(--fs-lg); letter-spacing: var(--tracking-title); }
+.goal__sub { color: var(--t3); font-size: var(--fs-sm); }
+.goal__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 14px; }
+
+/* The wink in the toast and Asleep in the offline line. */
+.ui-toast .kreska { color: var(--oninv); }
+.ui-toast .kreska__frame { fill: none; }
+.connection-line .kreska { margin-right: 2px; }

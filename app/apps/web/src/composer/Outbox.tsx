@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { Icon } from '../ui';
+import { Icon, Kreska, useMoments } from '../ui';
 import { useConnection } from './connection';
 import type { DraftFile, PendingSend } from './draft';
 import { fileSize } from './Files';
@@ -95,6 +95,7 @@ const subscribeLines = (listener: () => void) => { lineListeners.add(listener); 
 /** A quiet line above a composer while sends cannot reach Flux (HIG-67): why, and what happens to messages. */
 export function ConnectionLine() {
   const state = useConnection();
+  const moments = useMoments();
   const [me] = useState(() => Symbol('connection-line'));
   useLayoutEffect(() => {
     lines.push(me);
@@ -106,5 +107,5 @@ export function ConnectionLine() {
     : state === 'unreachable' ? 'Flux isn’t responding. Messages wait here and send when it’s back.' : '';
   // The live region stays in place and empty while online, so the line is announced when it appears.
   // One line per screen: only the newest composer's line shows it.
-  return <div className="connection-line-region" role={live ? 'status' : undefined} data-connection={state}>{text && live ? <p className="connection-line">{text}</p> : null}</div>;
+  return <div className="connection-line-region" role={live ? 'status' : undefined} data-connection={state}>{text && live ? <p className={`connection-line${moments && state === 'offline' ? ' has-face' : ''}`}>{moments && state === 'offline' ? <Kreska expression="asleep" size={28} /> : null}{text}</p> : null}</div>;
 }

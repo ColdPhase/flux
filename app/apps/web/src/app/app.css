@@ -2,6 +2,14 @@
 
 /* ---------- Shared page frames ---------- */
 .page-center { min-height: 100%; display: grid; place-items: center; padding: 40px 20px; }
+:root:not([data-moments="off"]) .booting__plain { display: none; }
+.appearance__switch { position: relative; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 0 12px; width: 100%; min-height: 44px; padding: 4px 6px; border-radius: var(--r); text-align: left; color: var(--t1); font-size: var(--fs-md); }
+.appearance__switch small { grid-column: 1; color: var(--t3); font-size: var(--fs-xs); }
+.appearance__switch i { grid-column: 2; grid-row: 1 / span 2; position: relative; width: 38px; height: 22px; border-radius: var(--r-pill); background: var(--line2); transition: var(--tr); }
+.appearance__switch i::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--el); box-shadow: var(--sh-1); transition: var(--tr); }
+.appearance__switch[aria-checked="true"] i { background: var(--inv); }
+.appearance__switch[aria-checked="true"] i::after { transform: translateX(16px); background: var(--oninv); }
+.appearance__switch:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
 .booting__msg { display: inline-flex; align-items: center; gap: 10px; color: var(--t3); font-size: var(--fs-md); animation: rise var(--dur-3) var(--ease-out) both; }
 @keyframes rise { from { opacity: 0; transform: translateY(4px); } }
 

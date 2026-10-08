@@ -1,4 +1,5 @@
 import { useRef, type KeyboardEvent } from 'react';
+import { setMoments, useMoments } from '../ui';
 import { setTheme, useTheme, type ThemeChoice } from './theme';
 
 const THEMES: { id: ThemeChoice; label: string }[] = [
@@ -15,6 +16,7 @@ const THEMES: { id: ThemeChoice; label: string }[] = [
 export function AppearanceControls({ idPrefix, sectionClass = 'me__sec' }: { idPrefix: string; sectionClass?: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const theme = useTheme();
+  const moments = useMoments();
   const move = (event: KeyboardEvent<HTMLDivElement>) => {
     const index = THEMES.findIndex((item) => item.id === theme);
     const delta = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 0;
@@ -36,6 +38,14 @@ export function AppearanceControls({ idPrefix, sectionClass = 'me__sec' }: { idP
             </button>
           ))}
         </div>
+      </div>
+      <div className={`${sectionClass} appearance__moments`}>
+        <span className="me__label" id={`${idPrefix}-moments`}>Kreska</span>
+        <button type="button" role="switch" className="appearance__switch" aria-checked={moments} aria-labelledby={`${idPrefix}-moments ${idPrefix}-moments-text`} onClick={() => setMoments(!moments)}>
+          <span id={`${idPrefix}-moments-text`}>Small moments</span>
+          <small>Kreska while loading and on empty screens</small>
+          <i aria-hidden="true" />
+        </button>
       </div>
     </div>
   );

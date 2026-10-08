@@ -5,10 +5,12 @@ import './ui/tokens.css';
 import './ui/ui.css';
 import './app/app.css';
 import { applyStoredTheme } from './app/theme';
+import { applyStoredMoments } from './ui';
 import { registerServiceWorker } from './pwa';
 import { router } from './router';
 
 applyStoredTheme();
+applyStoredMoments();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

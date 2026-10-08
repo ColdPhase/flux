@@ -105,7 +105,8 @@ export function InboxView() {
         <p className="inbox__loading"><Spinner label="Loading the inbox" /></p>
       ) : !items.length ? (
         <div className="view-empty">
-          <EmptyState icon="inbox" title="Nothing for you yet" action={<Link className="ui-btn ui-btn--secondary" to="/settings/notifications">Choose what reaches you</Link>}>
+          <EmptyState icon="inbox" mascot="done" title="Nothing needs you right now" action={<Link className="ui-btn ui-btn--secondary" to="/settings/notifications">Choose what reaches you</Link>}>
+            <p>Enjoy the quiet.</p>
             <p>When someone mentions you, asks you something, replies in your conversation, writes to you directly or hands you work, it appears here.</p>
           </EmptyState>
         </div>
