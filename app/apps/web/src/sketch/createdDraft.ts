@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { FILE_LIMITS, SKETCH_LIMITS, type SketchDetail, type ThoughtFile } from '@flux/contracts';
+import { forgetReloadRetention, setReloadRetention } from '../app/reload-retention';
 
 /** One future thought of a pasted list (#252): its own thought ID, link ID, request key and spot. */
 export interface DraftLine {
@@ -46,9 +47,12 @@ function validFile(file: unknown): boolean {
 const PREFIX = 'flux:thought-draft:';
 // This visit's newest copy of each draft. Session storage can refuse a write (quota) and keep an
 // older copy, so it only supplies a draft this visit has not touched, such as after a reload.
-const memory = new Map<string, ThoughtDraft>();
+const memory = new Map<string, ThoughtDraft | null>();
+let draftGeneration = 0;
+let retiredStorage = false;
 
 function persisted(key: string): ThoughtDraft | null {
+  if (retiredStorage) return null;
   try {
     const value: unknown = JSON.parse(sessionStorage.getItem(key) ?? 'null');
     if (value && typeof value === 'object') {
@@ -68,19 +72,25 @@ function persisted(key: string): ThoughtDraft | null {
 
 /** The newest draft for this key: this visit's own copy, else one persisted before a reload. */
 export function readThoughtDraft(key: string | null): ThoughtDraft | null {
-  return key ? memory.get(key) ?? persisted(key) : null;
+  return key ? memory.has(key) ? memory.get(key) ?? null : persisted(key) : null;
 }
 
 /** Saves the draft, or clears it everywhere with `null`. A refused storage write keeps the visit's copy. */
-export function writeThoughtDraft(key: string, draft: ThoughtDraft | null) {
-  if (draft) memory.set(key, draft); else memory.delete(key);
+export function writeThoughtDraft(key: string, draft: ThoughtDraft | null, generation = draftGeneration) {
+  if (generation !== draftGeneration) return;
+  memory.set(key, draft);
+  let refused = false;
   try {
     if (draft) sessionStorage.setItem(key, JSON.stringify(draft)); else sessionStorage.removeItem(key);
-  } catch { /* Keep the visit-local copy. */ }
+  } catch { refused = true; /* Keep the newest copy, including an empty-clear tombstone. */ }
+  setReloadRetention('thought', key, key.slice(PREFIX.length).split(':')[0]!, refused, true);
 }
 
 export function forgetThoughtDrafts() {
+  draftGeneration++;
+  retiredStorage = true;
   memory.clear();
+  forgetReloadRetention('thought');
   try {
     for (const key of Object.keys(sessionStorage)) if (key.startsWith(PREFIX)) sessionStorage.removeItem(key);
   } catch { /* Refused storage never received these drafts. */ }
@@ -91,12 +101,13 @@ export function forgetThoughtDrafts() {
 export function recoverableThoughtDraftKey(personId: string, sketchId: string): string | null {
   const privateKeys = new Set(memory.keys());
   try { for (const item of Object.keys(sessionStorage)) privateKeys.add(item); } catch { /* memory fallback */ }
-  return [...privateKeys].find((item) => item.startsWith(`${PREFIX}${personId}:`) && item.endsWith(`:${sketchId}`)) ?? null;
+  return [...privateKeys].find((item) => item.startsWith(`${PREFIX}${personId}:`) && item.endsWith(`:${sketchId}`) && readThoughtDraft(item) !== null) ?? null;
 }
 
 /** One private capture for this account and actual authorized map audience. */
 export function useThoughtDraft(personId: string, sketchId: string, sketch: SketchDetail | null) {
   const key = sketch ? `${PREFIX}${personId}:${sketch.workspaceId}:${sketch.scope}:${sketch.projectId ?? sketch.dmId ?? personId}:${sketch.id}` : recoverableThoughtDraftKey(personId, sketchId);
+  const generation = useMemo(() => draftGeneration, [key]);
   const [loaded, setLoaded] = useState(() => ({ key, draft: readThoughtDraft(key) }));
   let current = loaded;
   if (loaded.key !== key) {
@@ -105,10 +116,11 @@ export function useThoughtDraft(personId: string, sketchId: string, sketch: Sket
   }
   const set = (draft: ThoughtDraft | null) => {
     if (!key) return;
-    writeThoughtDraft(key, draft);
+    if (generation !== draftGeneration) return;
+    writeThoughtDraft(key, draft, generation);
     setLoaded({ key, draft });
   };
   /** The newest copy now, even from an earlier render's callback (an upload that finished later). */
-  const peek = () => readThoughtDraft(key);
+  const peek = () => generation === draftGeneration ? readThoughtDraft(key) : null;
   return { draft: current.draft, set, peek };
 }

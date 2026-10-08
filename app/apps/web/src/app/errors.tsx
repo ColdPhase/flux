@@ -5,6 +5,7 @@ import { getMe } from '../api/auth';
 import { useThoughtDraft } from '../sketch/createdDraft';
 import { Button, ErrorState, Spinner } from '../ui';
 import { routeLabel } from './routeLabel';
+import { ReloadRecovery } from './ReloadRecovery';
 
 /** Code download/evaluation failed; retry needs a fresh document/module cache, not API revalidation. */
 export class RouteCodeLoadError extends Error {
@@ -30,11 +31,11 @@ export function RouteErrorPage() {
     return () => { window.removeEventListener('online', retry); window.clearInterval(timer); };
   }, [unreachable, revalidator]);
   let title = 'Something went wrong';
-  let body = 'Flux hit an unexpected problem while opening this page. Nothing you wrote was lost.';
+  let body = 'Flux hit an unexpected problem while opening this page. You can return to Home and try again.';
   let detail: string | undefined;
   if (codeUnavailable) {
     title = 'This page couldn’t be loaded';
-    body = `Flux couldn’t open ${destination}. Your work is kept in this browser. Check your connection and reload Flux to try again.`;
+    body = `Flux couldn’t open ${destination}. Check your connection. Return to your work or reload when this tab can do so safely.`;
   } else if (error instanceof NetworkError) {
     title = 'Flux can’t be reached';
     body = 'Your device couldn’t connect to the Flux server. Check your connection; this page will work again once the server answers.';
@@ -52,7 +53,7 @@ export function RouteErrorPage() {
       <ErrorState level={1} title={title} detail={detail}
         actions={<>
           {codeUnavailable
-            ? <Button variant="primary" size="lg" icon="refresh" onClick={() => window.location.reload()}>Reload Flux</Button>
+            ? <ReloadRecovery />
             : <Button variant="primary" size="lg" icon={retrying ? undefined : 'refresh'} busy={retrying} onClick={() => revalidator.revalidate()}>Try again</Button>}
           <Link className="ui-btn ui-btn--quiet ui-btn--lg" to="/">Go to Home</Link>
         </>}>

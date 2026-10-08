@@ -3,6 +3,7 @@ import { Button, ErrorState, MEDIA, Overlay, Spinner, useMediaQuery } from '../u
 import { useLive } from '../live/LiveProvider';
 import type { Details } from './Details';
 import type { JumpTo } from '../search/JumpTo';
+import { ReloadRecovery } from './ReloadRecovery';
 
 const DetailsContent = lazy(async () => ({ default: (await import('./Details')).Details }));
 const SearchContent = lazy(async () => ({ default: (await import('../search/JumpTo')).JumpTo }));
@@ -15,8 +16,8 @@ class SurfaceBoundary extends Component<{ label: string; children: ReactNode; wr
   render() {
     if (!this.state.failed) return this.props.children;
     const content = <div className="deferred-surface"><ErrorState title={`${this.props.label} couldn’t be loaded`}
-      actions={<Button onClick={() => window.location.reload()}>Reload Flux</Button>}>
-      <p>Your current work is still here. Check your connection before reloading.</p>
+      actions={<ReloadRecovery />}>
+      <p>Check your connection. Close this view to return to your work.</p>
     </ErrorState></div>;
     return this.props.wrap ? this.props.wrap(content) : content;
   }

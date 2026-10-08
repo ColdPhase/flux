@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useSyncExternalStore, type RefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore, type RefObject } from 'react';
+import { forgetReloadRetention, setReloadRetention } from './reload-retention';
 
 /**
  * Unfinished work survives a view switch and a reload (#40): the text in a composer before it
@@ -15,13 +16,27 @@ interface DraftEntry { state: DraftState; listeners: Set<() => void>; local: boo
 // `local`: this tab has edited the value. Its own text then stays what this tab shows; another
 // tab's write only advances the fence (two tabs typing at once each keep their own draft, #211).
 const memory = new Map<string, DraftEntry>();
+let draftGeneration = 0;
+let retiredStorage = false;
 
 function retain(key: string, text: string, storage: DraftStorage, edit = false, local = false): DraftEntry {
   const previous = memory.get(key);
   if (previous && !edit && previous.state.text === text && previous.state.storage === storage) return previous;
   const entry = { state: { text, storage, revision: (previous?.state.revision ?? 0) + 1 }, listeners: previous?.listeners ?? new Set<() => void>(), local: local || !!previous?.local };
   memory.set(key, entry);
+  if (key.startsWith('flux:draft:')) setReloadRetention('draft', key, key.split(':')[2]!,
+    storage === 'visit' && (entry.local || !!text), edit);
   return entry;
+}
+
+/** Existing confirmed sign-out retires this visit's private overrides, including failed clears. */
+export function forgetBrowserDrafts() {
+  draftGeneration++;
+  retiredStorage = true;
+  const notify = [...memory.values()].flatMap((entry) => [...entry.listeners]);
+  memory.clear();
+  forgetReloadRetention('draft');
+  queueMicrotask(() => notify.forEach((listener) => listener()));
 }
 
 export const draftKey = (userId: string, context: string) => `flux:draft:${userId}:${context}`;
@@ -34,7 +49,7 @@ function read(key: string): DraftState {
   const previous = memory.get(key);
   if (previous?.state.storage === 'visit' || previous?.local) return previous.state;
   try {
-    const stored = localStorage.getItem(key);
+    const stored = retiredStorage ? null : localStorage.getItem(key);
     return retain(key, stored ?? '', 'device').state;
   } catch { return retain(key, previous?.state.text ?? '', 'visit').state; }
 }
@@ -70,6 +85,7 @@ if (typeof window !== 'undefined') window.addEventListener('storage', (event) =>
  */
 export function useDraft(userId: string, context: string) {
   const key = draftKey(userId, context);
+  const generation = useMemo(() => draftGeneration, [key]);
   const subscribe = useCallback((listener: () => void) => {
     read(key);
     const entry = memory.get(key)!;
@@ -79,17 +95,19 @@ export function useDraft(userId: string, context: string) {
   const getSnapshot = useCallback(() => read(key), [key]);
   const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const setText = useCallback((text: string) => {
+    if (generation !== draftGeneration) return -1;
     const next = write(key, text);
     return next.revision;
-  }, [key]);
+  }, [key, generation]);
   const clear = useCallback(() => setText(''), [setText]);
   // A command can finish after navigation. Never clear a newer draft from a later mount.
   const clearIfMatches = useCallback((expected: string, revision: number): DraftStorage | null => {
+    if (generation !== draftGeneration) return null;
     const current = read(key);
     if (current.text !== expected || current.revision !== revision) return null;
     setText('');
     return read(key).storage;
-  }, [key, setText]);
+  }, [key, setText, generation]);
   return { text: state.text, storage: state.storage, revision: state.revision, setText, clear, clearIfMatches };
 }
 
