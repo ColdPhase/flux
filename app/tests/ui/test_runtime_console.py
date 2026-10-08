@@ -92,9 +92,9 @@ class RuntimeConsole(unittest.TestCase):
               inline: el.matches('a.ui-link, button.ui-link') && !el.parentElement.matches('.aset__actions') }))
             // HIG-14: 44 px for controls; 28 px for a link inside running text.
             .filter((t) => t.inline ? t.h < 28 : t.h < 44);
-          // HIG-08's 16px font prevents text-entry focus zoom; it does not apply to native toggles.
+          // HIG-41's 16px text-entry rule also covers hidden-until-opened fields, not native toggles.
           const fields = [...document.querySelectorAll('input:not([type=radio]):not([type=checkbox]):not([type=hidden]), textarea, select')]
-            .filter(visible).map((el) => parseFloat(getComputedStyle(el).fontSize)).filter((size) => size < 16);
+            .map((el) => parseFloat(getComputedStyle(el).fontSize)).filter((size) => size < 16);
           const toggles = [...document.querySelectorAll('input[type=checkbox], input[type=radio]')].filter(visible)
             .map((el) => { const target = [...(el.labels || [])].find(visible) || el; return { type: el.type, h: target.getBoundingClientRect().height }; })
             .filter((target) => target.h < 44);
