@@ -268,8 +268,8 @@ and its real discussion under [P5](../design/final/README.md#5-behaviour):
   loaded root stay hidden with them; loading those roots shows them in their place, and older announcement pages
   are read as far back as the loaded roots reach. A refresh that skipped past the loaded announcements reads
   forward until it meets them. Reading never creates an announcement, task or root.
-- **The task's root.** `GET /api/v1/projects/:id/conversation-roots` adds `task: { workId, title }` (the current
-  title) to a root that opened a task's discussion. The stream and the thread header show it as the task's chip;
+- **The task's root.** `GET /api/v1/projects/:id/conversation-roots` adds `task: { workId, title, number }` (the current
+  title and the immutable task number, #367) to a root that opened a task's discussion. The stream and the thread header show it as the task's chip;
   replies from the thread drawer use the task contribution operation and the shared task draft described below.
 
 - **Details of a task.** A Discussion section reads `GET /api/v1/work/:id/discussion?limit=1`: the root with its
@@ -379,8 +379,8 @@ and uses the [DOM RouterProvider](https://reactrouter.com/api/data-routers/Route
 that supplies it (React Router 8.4, checked 2026-10-03).
 
 **Additive wire delta, independently agreed by the coordinator before mapping:**
-`ConversationFields.task?: { workId, title }` has the same shape and current title
-as `ConversationRoot.task`. After ordinary current project authorization, the
+`ConversationFields.task?: { workId, title }` has the same identity and current title
+as `ConversationRoot.task` (the root also carries the task number, #367). After ordinary current project authorization, the
 conversation GET reads the exact binding scoped to the same workspace, project,
 conversation and genuine canonical sequence-1 root. Every bounded message window
 carries this identity, even when neither its root nor the stream's old root is

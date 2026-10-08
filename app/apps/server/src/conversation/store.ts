@@ -255,6 +255,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
           lastReplyAt: sql<string | null>`(SELECT max(r.created_at) FROM project_messages r WHERE r.conversation_id = ${conversations.id} AND r.sequence > 1)`,
           taskId: discussions.workId,
           taskTitle: schema.projectWorkItems.title,
+          taskNumber: schema.projectWorkItems.number,
         }).from(conversations)
           .innerJoin(schema.projectMessages, and(eq(schema.projectMessages.conversationId, conversations.id), eq(schema.projectMessages.sequence, 1)))
           // A task's discussion is a conversation of the same project, so it shares the audience checked above.
@@ -271,7 +272,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
         const owners = await projectAuthorOwners(tx, projectId, authorizedProject.workspaceId, page.flatMap((row) => row.root.authorAgentId ? [row.root.authorAgentId] : []));
         const roots = page.map((row) => ({ conversationId: row.root.conversationId, message: message({ ...row.root, files: files.get(row.root.id) }, names, owners), replyCount: Number(row.replyCount),
           lastReplyAt: row.lastReplyAt === null ? null : new Date(row.lastReplyAt).toISOString(),
-          ...(row.taskId !== null && row.taskTitle !== null ? { task: { workId: row.taskId, title: row.taskTitle } } : {}) }));
+          ...(row.taskId !== null && row.taskTitle !== null && row.taskNumber !== null ? { task: { workId: row.taskId, title: row.taskTitle, number: row.taskNumber } } : {}) }));
         return { projectId, roots, rootPage: { hasMoreBefore, nextBefore: hasMoreBefore ? roots[0]!.conversationId : null, limit: window.limit } };
       }, { isolationLevel: 'repeatable read', accessMode: 'read only' });
     },
