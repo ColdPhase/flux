@@ -18,6 +18,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
+from author_columns import assert_author_column
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "one announcement then the discussion"
@@ -178,16 +179,21 @@ class TaskAnnouncements(unittest.TestCase):
                          "announcements sit in time order between the roots, and the first contribution is the task's root")
         made = self.notice(page, self.ids["from_message"])
         expect(made).to_have_count(1)
-        expect(made.locator(".convo-notice__meta")).to_have_text("New task · Jonas Berg")
+        expect(made.locator(".convo-notice__meta strong")).to_have_text("Jonas Berg")
+        expect(made.locator(".convo-notice__kind")).to_have_text("New task · ")
+        assert_author_column(self, made, DESKTOP["width"], "task event author")
+        self.assertAlmostEqual(made.locator(".convo-notice__kind").bounding_box()["x"],
+                               made.locator(".convo-notice__meta").bounding_box()["x"], delta=1,
+                               msg="the event text starts in the author content column")
         expect(made.get_by_role("button", name=opens_task(FROM_MESSAGE))).to_be_visible()
-        # The announcement names the task by its number in the project (#276).
         expect(made.locator(".convo-notice__num")).to_have_text(f"#{self.ids['from_message_number']}")
-        expect(self.notice(page, self.ids["measure"]).locator(".convo-notice__meta")).to_have_text("New task · Ada Kowalska · you")
-        # An announcement is not a message: no replies, no actions, no avatar.
+        expect(self.notice(page, self.ids["measure"]).locator(".convo-notice__meta strong")).to_have_text("Ada Kowalska · you")
+        # Authored events share the creator's column, while retaining no message actions or replies.
         for work_id in (self.ids["from_message"], self.ids["measure"]):
             item = self.notice(page, work_id)
             expect(item.get_by_role("button", name=re.compile("Reply|Create work|Details"))).to_have_count(0)
-            expect(item.locator(".ui-avatar")).to_have_count(0)
+            expect(item.locator(".ui-avatar")).to_have_count(1)
+            assert_author_column(self, item, DESKTOP["width"], "actual task event creator")
         # The early task's announcement waits with the earlier roots, then appears in its place.
         expect(self.notice(page, self.ids["early"])).to_have_count(0)
         stream.get_by_role("button", name="Load earlier messages").click()
@@ -263,7 +269,7 @@ class TaskAnnouncements(unittest.TestCase):
                            {"title": LIVE_TASK, "clientCommandId": str(uuid.uuid4())}, status=201)
         arrived = self.notice(page, created["id"])
         expect(arrived).to_have_count(1, timeout=25000)
-        expect(arrived.locator(".convo-notice__meta")).to_have_text("New task · Jonas Berg")
+        expect(arrived.locator(".convo-notice__meta strong")).to_have_text("Jonas Berg")
         expect(arrived, "a reader at the end follows the new announcement").to_be_in_viewport()
         self.assertEqual(self.stream_order(page)[-1], f"task:{created['id']}")
         self.ids["live"] = created["id"]
@@ -280,14 +286,14 @@ class TaskAnnouncements(unittest.TestCase):
         work = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/work?limit=100", status=200)
         made = next(item for item in work["items"] if item["title"] == LATER)
         expect(self.notice(page, made["id"])).to_have_count(1)
-        expect(self.notice(page, made["id"]).locator(".convo-notice__meta")).to_have_text("New task · Ada Kowalska · you")
+        expect(self.notice(page, made["id"]).locator(".convo-notice__meta strong")).to_have_text("Ada Kowalska · you")
         self.assertEqual(self.counts(page), (before[0] + 1, before[1] + 1, before[2]), "one task and one announcement; no root")
 
     def test_07_a_reader_sees_announcements_and_opens_the_task(self) -> None:
         page = self.page("lee")
         page.goto(f"/projects/{self.ids['project']}")
         made = self.notice(page, self.ids["measure"])
-        expect(made.locator(".convo-notice__meta")).to_have_text("New task · Ada Kowalska")
+        expect(made.locator(".convo-notice__meta strong")).to_have_text("Ada Kowalska")
         made.get_by_role("button", name=opens_task(MEASURE)).click()
         expect(page.locator("#details").get_by_role("heading", name=MEASURE)).to_be_visible()
         expect(page.get_by_role("button", name="Task", exact=True)).to_have_count(0)
@@ -299,6 +305,9 @@ class TaskAnnouncements(unittest.TestCase):
                 page.goto(f"/projects/{self.ids['project']}")
                 made = self.notice(page, self.ids["from_message"])
                 made.scroll_into_view_if_needed()
+                assert_author_column(self, made, viewport["width"], "phone task event author")
+                self.assertAlmostEqual(made.locator(".convo-notice__kind").bounding_box()["x"],
+                                       made.locator(".convo-notice__meta").bounding_box()["x"], delta=1)
                 button = made.get_by_role("button", name=opens_task(FROM_MESSAGE))
                 box, row = button.bounding_box(), made.bounding_box()
                 assert box and row
@@ -314,6 +323,15 @@ class TaskAnnouncements(unittest.TestCase):
                 self.assertLessEqual(height, 2 * line + 1, "a long title takes at most two lines")
                 self.assertEqual(page.evaluate("document.documentElement.scrollWidth <= innerWidth"), True)
                 shot(page, f"task-announcements-phone-{viewport['width']}{'-dark' if dark else ''}")
+                page.evaluate("document.documentElement.style.fontSize = '200%'")
+                made.scroll_into_view_if_needed()
+                assert_author_column(self, made, viewport["width"], "enlarged phone task event author")
+                self.assertAlmostEqual(made.locator(".convo-notice__kind").bounding_box()["x"],
+                                       made.locator(".convo-notice__meta").bounding_box()["x"], delta=1,
+                                       msg="enlarged event text keeps the common content edge")
+                expect(made.locator(".convo-notice__meta strong")).to_have_text("Jonas Berg")
+                self.assertTrue(page.evaluate("document.documentElement.scrollWidth <= innerWidth"))
+                shot(page, f"task-announcements-phone-{viewport['width']}{'-dark' if dark else ''}-text200")
 
 
     def open_task_from_stream(self, page: Page, work_id: str, title: str):

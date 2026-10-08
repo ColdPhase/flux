@@ -18,11 +18,12 @@
 .project-convo__day::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .project-convo__message { position: relative; padding: 8px 0 8px 46px; border-radius: var(--r); }
 .project-convo__message + .project-convo__message { margin-top: 6px; }
-.project-convo__message > .ui-avatar { position: absolute; left: 0; top: 10px; width: 32px; height: 32px; font-size: 12px; }
+.project-convo__message > :is(.ui-avatar, .author-face) { position: absolute; left: 0; top: 10px; }
+.project-convo__message > .ui-avatar { width: 32px; height: 32px; font-size: 12px; }
 .project-convo__message-meta { display: flex; gap: 8px; align-items: baseline; color: var(--t3); font-size: var(--fs-xs); }
 .project-convo__message-meta strong { color: var(--t1); font-size: var(--fs-md); font-weight: 600; }
-.project-convo__message-meta span { font-family: var(--mono); visibility: hidden; font-variant-numeric: tabular-nums; }
-.project-convo__message:hover .project-convo__message-meta span, .project-convo__message:focus-within .project-convo__message-meta span { visibility: visible; }
+.project-convo__message-meta > span { font-family: var(--mono); visibility: hidden; font-variant-numeric: tabular-nums; }
+.project-convo__message:hover .project-convo__message-meta > span, .project-convo__message:focus-within .project-convo__message-meta > span { visibility: visible; }
 .project-convo__message > p, .material-view__body { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; margin: 2px 0 0; }
 .project-convo__source { display: inline-flex; align-items: center; min-height: 24px; margin-top: 4px; padding: 0 8px; border-radius: var(--r-sm); background: var(--sub); font-size: var(--fs-xs); color: var(--t2); text-decoration: none; }
 .project-convo__source:hover { background: var(--hov); color: var(--t1); }
@@ -84,18 +85,19 @@ button.project-convo__contribution { cursor: pointer; }
 /* Ask my assistant (#68) sits after Sources; only Sources pulls into the box's padding. */
 .project-convo__sources-btn + .composer__ask { margin-left: 0; }
 
-/* The conversation (#132): one centred 790px column; own messages on the right and
-   other people's on the left, 27px avatars on both sides, the author and time always shown. Each
+/* F-026: one author column for people and agents, with a 32px face and 12px gap. Each
    bubble is only as wide as its content (up to 560px), so its actions stay beside it. */
 .project-convo__in { max-width: calc(var(--col) + 2 * var(--space-page)); padding: 30px var(--space-page) 12px; }
 .project-convo__day { justify-content: center; gap: 12px; margin: 5px 0 27px; font-size: var(--fs-sm); font-weight: 400; color: var(--t3); }
 .project-convo__day::before, .project-convo__day::after { content: ""; flex: 0 0 25px; height: 1px; background: var(--line); }
-.project-convo__message { display: flex; flex-direction: column; align-items: flex-start; width: fit-content; min-width: min(260px, 100%); max-width: min(600px, 87%); padding: 0 0 0 39px; }
+.project-convo__message { display: flex; flex-direction: column; align-items: flex-start; width: fit-content; min-width: min(260px, 100%); max-width: min(600px, 100%); padding: 0 0 0 44px; }
 .project-convo__message + .project-convo__message { margin-top: 24px; }
-.project-convo__message > .ui-avatar { top: 0; width: 27px; height: 27px; font-size: 10px; font-weight: 500; background: var(--sub); color: var(--t2); box-shadow: inset 0 0 0 1px var(--line); }
-.project-convo__message-meta { gap: 9px; margin-bottom: 7px; font-size: var(--fs-xs); }
-.project-convo__message-meta strong { font-size: var(--fs-sm); font-weight: 550; }
-.project-convo__message-meta span { visibility: visible; color: var(--t3); }
+.project-convo__message > :is(.ui-avatar, .author-face) { top: 0; }
+.project-convo__message > .ui-avatar { width: 32px; height: 32px; font-size: 12px; font-weight: 500; background: var(--sub); color: var(--t2); box-shadow: inset 0 0 0 1px var(--line); }
+.project-convo__message-meta { flex-wrap: wrap; gap: 4px 9px; margin-bottom: 7px; font-size: var(--fs-xs); }
+.project-convo__message-meta strong { min-width: 0; max-width: 100%; overflow-wrap: anywhere; font-size: var(--fs-sm); font-weight: 550; }
+.project-convo__message-meta .agent-id__name { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+.project-convo__message-meta > span:not(.agent-tag) { visibility: visible; color: var(--t3); }
 /* With a mouse the actions (about 375px) appear over the top edge, at the far side from the name.
    The box takes the full 600px measure, so they stay clear of the name, time and number; the
    bubble inside stays as wide as its text. */
@@ -103,19 +105,9 @@ button.project-convo__contribution { cursor: pointer; }
 .project-convo__message > p { max-width: 100%; margin: 0; padding: 9px 13px; border-radius: 6px var(--r-lg) var(--r-lg) var(--r-lg); background: var(--el); box-shadow: var(--sh-1); font-size: var(--fs-base); line-height: var(--lh); }
 /* Everything under a message (sources, linked work, decisions, results, actions) stays inside its
    column; a long linked title shortens with an ellipsis instead of running off the side. */
-.project-convo__message > :not(.ui-avatar) { max-width: 100%; min-width: 0; }
+.project-convo__message > :not(.ui-avatar, .author-face) { max-width: 100%; min-width: 0; }
 .project-convo__message .ws-attach { max-width: 100%; }
-.project-convo__message.is-mine .ws-attach { justify-content: flex-end; }
-.project-convo__message.is-mine { margin-left: auto; align-items: flex-end; padding-left: 0; padding-right: 39px; }
-.project-convo__message.is-mine > .ui-avatar { left: auto; right: 0; }
 .project-convo__message.is-mine > p { border-radius: var(--r-lg) 6px var(--r-lg) var(--r-lg); background-color: var(--inv); background-image: var(--grad-inv); color: var(--oninv); }
-.project-convo__message.is-mine .project-convo__message-meta { flex-direction: row-reverse; }
-.project-convo__message.is-mine .ws-acts { justify-content: flex-end; margin-left: 0; margin-right: -6px; }
-.project-convo__message.is-arrived { padding-left: 51px; }
-.project-convo__message.is-mine.is-arrived { box-shadow: inset -3px 0 0 var(--t1); padding-left: 0; padding-right: 51px; }
-@media (hover: hover) { .project-convo__message.is-mine .ws-acts { right: auto; left: 0; margin: 0; } }
-.project-convo__message.is-mine .ws-acts--more { right: auto; left: -10px; }
-.project-convo__message.is-mine:has(.ws-acts--more) .project-convo__message-meta { padding-right: 0; padding-left: 36px; }
 
 /* Composer: a two-row card in the same column, text above and its tools below, with the
    audience and keyboard hint under the card. */
@@ -133,11 +125,8 @@ button.project-convo__contribution { cursor: pointer; }
 .project-convo__composer .project-convo__error, .project-convo__composer .project-convo__hint { order: 3; }
 @media (max-width: 680px) {
   .project-convo__in { padding: 22px 17px 12px; }
-  /* Phones give the text the width: no avatars. */
-  .project-convo__message, .project-convo__message.is-mine { max-width: 91%; padding-left: 0; padding-right: 0; }
-  .project-convo__message > .ui-avatar { display: none; }
-  .project-convo__message.is-arrived { padding-left: 10px; }
-  .project-convo__message.is-mine.is-arrived { padding-right: 10px; }
+  /* The same author column on the phone: 32px face plus a 10px gap. */
+  .project-convo__message { max-width: 100%; padding-left: 42px; }
   .project-convo__message > p { padding: 11px 14px; }
   .project-convo__composer { padding: 8px 14px 15px; padding-bottom: max(15px, env(safe-area-inset-bottom)); }
   .project-convo__composer .composer__box { padding: 11px 13px; border-radius: 9px; }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import { createPortal } from 'react-dom';
 import { Link, useRevalidator } from 'react-router';
 import type { ThoughtTaskRow, WorkThoughtTasks } from '@flux/contracts';
-import { Icon, IconButton, MEDIA, Sheet, StatusGlyph, duration, play, trapTab, useMediaQuery } from '../ui';
+import { AgentTag, Icon, IconButton, MEDIA, Sheet, StatusGlyph, duration, play, trapTab, useMediaQuery } from '../ui';
 import { STATUS_LABEL, taskNumber } from '../work/format';
 import { getWorkThoughtTasks, thoughtChunks } from '../work/read-api';
 import { useWorkRead } from '../work/useWorkRead';
@@ -116,7 +116,7 @@ export function ThoughtTasks({ thought, tasks: entry, projectId, variant, onOpen
               <span className="sk-task__b">
                 <span className="sk-task__t">{item.title}</span>
                 <span className="sk-task__m"><span className="sk-task__id"><span className="ui-task-number">{taskNumber(item)}</span></span> · {STATUS_LABEL[item.status]}{item.parked ? ' · parked' : ''}</span>
-                <span className="sk-task__m sk-task__people">{item.owner ? `Owner ${item.owner.name}${item.owner.kind === 'agent' ? ' (agent)' : ''}` : 'No owner yet'} · added by {item.createdBy.name}{item.createdBy.kind === 'agent' ? ' (agent)' : ''}</span>
+                <span className="sk-task__m sk-task__people">{item.owner ? <>Owner {item.owner.name}{item.owner.kind === 'agent' ? <> <AgentTag /></> : null}</> : 'No owner yet'} · added by {item.createdBy.name}{item.createdBy.kind === 'agent' ? <> <AgentTag /></> : null}</span>
               </span>
               <Icon name="chevron-right" size={14} />
             </Link>

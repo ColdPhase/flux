@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { aiConnectionLabel, type AssistantAnswer, type AssistantProposal, type AssistantRun, type AssistantSourceRef, type ConversationMessage, type NativeWorkRow } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { Button, Icon, IconButton, useLoopPause } from '../ui';
+import { AgentTag, Button, Icon, IconButton, Kreska, useLoopPause, type KreskaExpression } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { canRetry, endedText, isWorking, workingText, type AskState } from './format';
 import { agentAuthorLabel } from '../docs/format';
@@ -13,9 +13,21 @@ import './assistant.css';
 // an assistant and never as the person; the working line and its Stop are the owner's alone; a
 // proposal is the one framed object and only a person with authority sees Accept.
 
-/** The rounded-square ✦ avatar of an assistant: never a person's initials. */
-export function AssistantAvatar() {
-  return <span className="assistant-avatar" aria-hidden="true"><Icon name="spark" size={15} /></span>;
+/** The assistant's face: Kreska, never a person's initials (F-026 P3). Its expression follows the run. */
+export function AssistantAvatar({ expression = 'idle' }: { expression?: KreskaExpression }) {
+  return <Kreska size={32} expression={expression} className="assistant-avatar" />;
+}
+
+/** What the assistant is doing, as Kreska shows it: only real states (#155 AC-3). */
+function runExpression(run: AssistantRun): KreskaExpression {
+  if (run.stopRequested || run.status === 'stopped') return 'idle';
+  switch (run.status) {
+    case 'queued': return 'waiting';
+    case 'reading': return 'reading';
+    case 'paused': case 'revoked': return 'asleep';
+    case 'denied': case 'cap_reached': case 'unavailable': case 'input_too_large': case 'provider_failed': return 'worried';
+    default: return isWorking(run) ? 'thinking' : 'idle';
+  }
 }
 
 /** "Your assistant ×" above the box, and what will happen: who sees it and who pays, or why not. */
@@ -26,7 +38,7 @@ export function AskBar({ id, state, onExit, onAction, error, errorAction = null 
 }) {
   return (
     <div className="ask assistant-ask" id={id}>
-      <span className="ask__who"><Icon name="spark" size={13} />Your assistant
+      <span className="ask__who"><Kreska size={14} />Your assistant
         <IconButton icon="x" size={12} label="Stop asking your assistant" className="ask__off" onClick={onExit} />
       </span>
       <span className={`ask__note${state.kind === 'blocked' ? ' assistant-ask__blocked' : ''}`}>{state.note}</span>
@@ -52,10 +64,9 @@ export function WorkingLine({ run, onStop, onRetry, onDismiss }: { run: Assistan
   const loop = useLoopPause<HTMLLIElement>();
   return (
     <li ref={loop} className={`assistant-working${executing ? ' is-working' : ''}`} aria-live="polite" data-run-status={run.status}>
-      <AssistantAvatar />
+      <AssistantAvatar expression={runExpression(run)} />
       <div className="assistant-working__body">
         <p className="assistant-working__text">
-          {executing ? <span className="assistant-working__pulse" aria-hidden="true" /> : null}
           {working ? workingText(run) : ended}
         </p>
         <p className="assistant-working__who"><Icon name="lock" size={12} />Only you see this · “{run.prompt.length > 90 ? `${run.prompt.slice(0, 90)}…` : run.prompt}”</p>
@@ -138,7 +149,7 @@ export function AnswerItem({ answer, mine, lookups, when, clock, proposal, propo
       <AssistantAvatar />
       <div className="project-convo__message-meta">
         <strong>{answer.assistant.label}</strong>
-        <span className="assistant-tag">Assistant</span>
+        <AgentTag />
         <span className="assistant-answer__asked">asked by {mine ? 'you' : answer.askedBy.name}</span>
         <time dateTime={answer.committedAt} title={when(answer.committedAt)}>{clock(answer.committedAt)}</time>
       </div>

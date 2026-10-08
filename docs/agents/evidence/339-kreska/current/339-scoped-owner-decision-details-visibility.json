@@ -1,0 +1,261 @@
+{
+  "url": "http://127.0.0.1:18695/projects/1bcf3534-b825-4a6c-b8b0-a6aada68044c/tasks",
+  "before": [
+    {
+      "text": "for Scoped Casey",
+      "rect": {
+        "x": 1143,
+        "y": 209.953125,
+        "width": 104,
+        "height": 18.578125
+      },
+      "inViewport": true,
+      "uncovered": true,
+      "hitTarget": {
+        "tag": "SPAN",
+        "className": "agent-for"
+      },
+      "ancestors": [
+        {
+          "tag": "SPAN",
+          "className": "agent-for",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "SPAN",
+          "className": "agent-id",
+          "display": "inline-flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DD",
+          "className": "",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DL",
+          "className": "details__dl wd-dl",
+          "display": "grid",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "details wd",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "ui-panel__body",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "ASIDE",
+          "className": "ui-panel ui-panel--docked",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "app",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "BODY",
+          "className": "",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "HTML",
+          "className": "",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        }
+      ]
+    }
+  ],
+  "after": [
+    {
+      "text": "for Scoped Casey",
+      "rect": {
+        "x": 1143,
+        "y": 209.953125,
+        "width": 104,
+        "height": 18.578125
+      },
+      "inViewport": true,
+      "uncovered": true,
+      "hitTarget": {
+        "tag": "SPAN",
+        "className": "agent-for"
+      },
+      "ancestors": [
+        {
+          "tag": "SPAN",
+          "className": "agent-for",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "SPAN",
+          "className": "agent-id",
+          "display": "inline-flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DD",
+          "className": "",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DL",
+          "className": "details__dl wd-dl",
+          "display": "grid",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "details wd",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "ui-panel__body",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "ASIDE",
+          "className": "ui-panel ui-panel--docked",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "app",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "DIV",
+          "className": "",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "BODY",
+          "className": "",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        },
+        {
+          "tag": "HTML",
+          "className": "",
+          "display": "block",
+          "visibility": "visible",
+          "opacity": 1,
+          "hidden": false,
+          "inert": false,
+          "ariaHidden": null
+        }
+      ]
+    }
+  ]
+}

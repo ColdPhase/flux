@@ -216,7 +216,9 @@ test('a genuine agent creates the canonical root; human and agent command identi
   await assert.rejects(taskDiscussionUseCases(db).contribute(principal, f.task.id,
     { ...command, body: 'Changed intent' }), ConflictError);
   const discussion = await f.read('?limit=1');
-  assert.deepEqual(discussion.root, root, 'the agent root remains outside the newest bounded window');
+  assert.deepEqual(discussion.root, { ...root, author: { ...root.author!, projectOwner: { kind: 'human', id: f.owner.id } } },
+    'the real agent root stays outside the window, with optional current-project display metadata');
+  assert.equal(Object.hasOwn(root.author!, 'projectOwner'), false, 'the contribution receipt retains its original author JSON');
   const canonical = expectStatus(await f.reader.browser.request('GET', `/api/v1/conversations/${root.conversationId}`), 200) as Conversation;
   assert.equal(canonical.createdBy, null);
   assert.deepEqual(canonical.createdByActor, root.author);
@@ -263,7 +265,8 @@ test('simultaneous first human/two-agent sends keep one root and kind-scoped rec
   assert.deepEqual(await taskDiscussionUseCases(db).contribute(second, f.task.id, otherCommand), other);
   const first = [human, agent, other].find((row) => row.sequence === 1)!;
   const discussion = await f.read();
-  assert.deepEqual(discussion.root, first);
+  assert.deepEqual(discussion.root, first.authorId !== null ? first
+    : { ...first, author: { ...first.author, projectOwner: { kind: 'human', id: f.owner.id } } });
   assert.equal(discussion.messages.length, 3);
   assert.equal((await f.counts()).bindings, 1);
 });
@@ -335,7 +338,8 @@ test('agent first-send rollback is atomic; current grant revocation blocks retri
   await assert.rejects(taskDiscussionUseCases(db).contribute(principal, f.task.id, command), NotFoundError);
   await assert.rejects(taskDiscussionUseCases(db).contribute(principal, f.task.id,
     { ...command, clientMessageId: randomUUID() }), NotFoundError);
-  assert.deepEqual((await f.read()).root, root);
+  assert.deepEqual((await f.read()).root, { ...root, author: { ...root.author!, projectOwner: { kind: 'human', id: f.owner.id } } },
+    'grant revocation preserves actual authorship and currently visible owner display');
   assert.deepEqual((await pool.query('SELECT * FROM project_messages WHERE id=$1', [root.id])).rows[0], old);
   await assert.rejects(pool.query('DELETE FROM agents WHERE id=$1', [agent.id]), /foreign key constraint/,
     'recorded authors cannot be deleted out of genuine history');

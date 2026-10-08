@@ -4,7 +4,7 @@ import { and, asc, desc, eq, lt, sql, type SQL } from 'drizzle-orm';
 import { fileRows, schema, taskDiscussionRows, workRows } from '@flux/db';
 import type {
   Conversation, ConversationMessage, ConversationRootWindow, ConversationSummary, Material, MaterialOrDoc,
-  MaterialVersion, Page, PageQuery,
+  AgentProjectOwner, MaterialVersion, Page, PageQuery,
 } from '@flux/contracts';
 import {
   ConflictError, conversationUseCases, enforce, evaluateDraft, evaluateProject, InvalidInputError, NotFoundError,
@@ -13,6 +13,7 @@ import {
 } from '@flux/core';
 import type { ConversationPort } from '@flux/core';
 import { eventPorts } from '../events.js';
+import { projectAuthorOwners } from './author-owners.js';
 import type { TransactionEventSession } from '../work/transaction-events.js';
 
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -53,13 +54,15 @@ function creator(row: ConversationRow, names: Map<string, string>) {
   return row.createdBy !== null ? { createdBy: row.createdBy } : { createdBy: null,
     createdByActor: { kind: 'agent' as const, id: row.createdByAgentId!, name: names.get(`agent:${row.createdByAgentId}`) ?? 'Agent' } };
 }
-function message(row: MessageRow & { files?: import('@flux/contracts').MessageFile[] }, names: Map<string, string> = new Map()): ConversationMessage {
+function message(row: MessageRow & { files?: import('@flux/contracts').MessageFile[] }, names: Map<string, string> = new Map(), owners: ReadonlyMap<string, AgentProjectOwner> = new Map()): ConversationMessage {
   const contribution = messageContribution(row.contributionKind, row.resultId);
   return { id: row.id, conversationId: row.conversationId, ...(row.authorId !== null ? { authorId: row.authorId } : { authorId: null,
-    author: { kind: 'agent' as const, id: row.authorAgentId!, name: names.get(`agent:${row.authorAgentId}`) ?? 'Agent' } }), body: row.body,
+    author: { kind: 'agent' as const, id: row.authorAgentId!, name: names.get(`agent:${row.authorAgentId}`) ?? 'Agent',
+      ...(owners.has(row.authorAgentId!) ? { projectOwner: owners.get(row.authorAgentId!)! } : {}) } }), body: row.body,
     source: row.sourceMaterialId && row.sourceMaterialVersion ? { materialId: row.sourceMaterialId, version: row.sourceMaterialVersion } : null,
     sequence: row.sequence, createdAt: row.createdAt.toISOString(), ...(contribution ? { contribution } : {}), ...(row.files?.length ? { files: row.files } : {}) };
 }
+
 
 function versionFields(row: VersionRow, principal: Principal) {
   return { materialId: row.materialId, version: row.version, title: row.title, body: row.body, url: row.url,
@@ -235,7 +238,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
      */
     async listRoots(principal: Principal, projectId: string, window: Parameters<ConversationPort['listRoots']>[2]): Promise<ConversationRootWindow> {
       return db.transaction(async (tx) => {
-        await requireProject(principal, projectId, tx);
+        const authorizedProject = await requireProject(principal, projectId, tx);
         const conversations = schema.projectConversations;
         let before: SQL | undefined;
         if (window.before !== null) {
@@ -265,7 +268,8 @@ export function conversationStore(db: Database, options: ConversationStoreOption
         const names = await workRows(tx).names(page.filter((row) => row.root.authorAgentId !== null)
           .map((row) => ({ kind: 'agent' as const, id: row.root.authorAgentId! })));
         const files = await fileRows(tx).messageFiles(page.map((row) => row.root.id));
-        const roots = page.map((row) => ({ conversationId: row.root.conversationId, message: message({ ...row.root, files: files.get(row.root.id) }, names), replyCount: Number(row.replyCount),
+        const owners = await projectAuthorOwners(tx, projectId, authorizedProject.workspaceId, page.flatMap((row) => row.root.authorAgentId ? [row.root.authorAgentId] : []));
+        const roots = page.map((row) => ({ conversationId: row.root.conversationId, message: message({ ...row.root, files: files.get(row.root.id) }, names, owners), replyCount: Number(row.replyCount),
           lastReplyAt: row.lastReplyAt === null ? null : new Date(row.lastReplyAt).toISOString(),
           ...(row.taskId !== null && row.taskTitle !== null ? { task: { workId: row.taskId, title: row.taskTitle } } : {}) }));
         return { projectId, roots, rootPage: { hasMoreBefore, nextBefore: hasMoreBefore ? roots[0]!.conversationId : null, limit: window.limit } };
@@ -282,7 +286,9 @@ export function conversationStore(db: Database, options: ConversationStoreOption
       const names = await workRows(db).names([row.createdByAgentId, ...rows.map((item) => item.authorAgentId)]
         .filter((actorId): actorId is string => actorId !== null).map((actorId) => ({ kind: 'agent' as const, id: actorId })));
       const files = await fileRows(db).messageFiles(rows.map((item) => item.id));
-      const messages = rows.slice(0, window.limit).reverse().map((item) => message({ ...item, files: files.get(item.id) }, names));
+      const selected = rows.slice(0, window.limit).reverse();
+      const owners = await projectAuthorOwners(db, row.projectId, row.workspaceId, selected.flatMap((item) => item.authorAgentId ? [item.authorAgentId] : []));
+      const messages = selected.map((item) => message({ ...item, files: files.get(item.id) }, names, owners));
       const openingInWindow = messages.find((item) => item.sequence === 1);
       const [opening] = openingInWindow ? [] : await db.select({ body: schema.projectMessages.body, attachmentCount: schema.projectMessages.attachmentCount }).from(schema.projectMessages)
         .where(eq(schema.projectMessages.conversationId, row.id)).orderBy(asc(schema.projectMessages.sequence)).limit(1);

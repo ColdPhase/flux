@@ -120,6 +120,8 @@ export interface ProjectPerson {
   id: string;
   name: string;
   access: ProjectAccess;
+  /** Agent owner label: a human only when already in this project's current audience. No workspace roster. */
+  agentOwner?: { kind: 'workspace' } | { kind: 'human'; id: string; name: string };
 }
 
 export interface ProjectGrant {

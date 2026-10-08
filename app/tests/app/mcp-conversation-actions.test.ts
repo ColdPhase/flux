@@ -36,9 +36,11 @@ test('standing conversation grants start a project conversation and reply in a t
   assert.deepEqual([started.sequence, started.replayed], [1, false]);
   let conversation = await read(f, conversationId);
   const agent = { kind: 'agent', id: f.agentId, name: 'Planning agent' };
+  const ownerId = (expect(await f.owner.request('GET', '/api/v1/me'), 200) as unknown as { user: { id: string } }).user.id;
   assert.deepEqual([conversation.audience, conversation.createdBy, conversation.createdByActor], [{ kind: 'project', projectId: f.projectId }, null, agent]);
   assert.deepEqual(conversation.messages.map((item) => [item.id, item.authorId, item.author, item.body, item.source]),
-    [[started.messageId, null, agent, 'The baseline holds at four hours.', f.source]], 'the agent is the real author, acting for its owner');
+    [[started.messageId, null, { ...agent, projectOwner: { kind: 'human', id: ownerId } }, 'The baseline holds at four hours.', f.source]],
+    'the agent is the real author; its current-project owner is optional read metadata');
   assert.deepEqual([await messages(conversationId), await messageEvents(conversationId), await f.used(start.id)], [1, 1, 1]);
 
   // A lost response is retried with the same command ID: the stored outcome, no second conversation, message, event or debit.

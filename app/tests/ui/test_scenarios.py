@@ -857,7 +857,7 @@ class ScenarioJourney:
         expect(jonas).to_have_url(re.compile(rf"/projects/{lamp}/tasks"))
         panel = self.details(jonas)
         expect(panel.get_by_role("heading", name="Accept as a pivot")).to_be_visible()
-        expect(panel).to_contain_text("(agent)")
+        expect(panel.locator(".agent-tag").first).to_be_visible()
         panel.get_by_role("radiogroup", name=CAMERA_TASK).get_by_label("Park").check()
         panel.get_by_role("radiogroup", name=ORDER_TASK).get_by_label("Still applies").check()
         accept = panel.get_by_role("button", name="Accept and pivot")
