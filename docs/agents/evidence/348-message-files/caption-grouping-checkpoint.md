@@ -67,12 +67,14 @@ unresolved, not suppressed. The composer DataTransfer/drop method was explicitly
 outside this bounded WebKit run. Both runs used flux-ui-1791489577-6980, cleaned its
 own resources, and made no product changes.
 
-The earlier WebKit missing-photo report remains **undiagnosed and unresolved**
-in the original reported circumstances. The current WebKit captures and decode
-diagnostics show loaded images with positive natural dimensions; this does not
-establish the cause or a fix for that earlier report. Fresh visual review is underway. Full application checks,
-fresh independent visual acceptance and Hubert's eligible current-head approval
-remain required. No global Docker restart or protected-preview action occurred.
+The earlier WebKit missing-photo report is not resolved. Normal loaded-image
+captures show positive natural dimensions, but the new offline full-viewport
+capture visibly contains a broken photo. The limited visual review below records
+that failure and the own-message caption alignment gap. Its reviewer had prior
+implementation context, so this is not the required fresh-context acceptance gate.
+Full application checks, fresh independent visual acceptance and Hubert's eligible
+current-head approval remain required. No global Docker restart or protected-preview
+action occurred.
 
 ## Next validation
 
@@ -91,3 +93,29 @@ Run serially in an isolated Compose project, with unique 19xxx ports and at leas
 
 Remaining #348 criteria, missing card/metadata/progress outcomes and integrated
 acceptance remain open. No whole-issue or release completion is claimed.
+
+## Captured visual failure and next repair
+
+The [limited visual review](caption-grouping-current/visual-review-limited.md) and
+18 actual WebKit full-viewport captures and six inspected Chromium captures are retained in
+[the current evidence folder](caption-grouping-current/). This reviewer had prior
+implementation context from preparing the wrapper, so this is explicitly **not a
+fresh-context visual acceptance gate**. It found a material visible failure:
+[offline WebKit](caption-grouping-current/offline-1440-full-1440x900-webkit.png)
+shows the pending image as a grey/broken-image tile, while the caption starts far
+left of its photo. The equivalent Chromium offline capture also shows the alignment
+gap. Normal loaded photos have visible pixels; that does not discharge offline
+behavior. The existing offline test checks waiting text and a visible blob element,
+not successful decode, so its green result is insufficient for this criterion.
+
+Next repair: add an offline decode/visible-photo control and check own-message
+photo/caption alignment, then repair the product and rerun both browsers. Keep the
+page-error guard: a separate fixture issue likely comes from loading the project
+and immediately hard-navigating before reference rows settle. Source tracing finds
+abort/catch fencing in the read store, not proof of an authorization denial. Let
+that scenario open its intended surface directly; rerun before claiming this
+fixture diagnosis confirmed. Do not filter the error string or call it fixed yet.
+
+A complete application check is running at committed test/evidence head
+`1cc086f20f7ea8bd5690e69e26e90a5b2b6623a0`; its runtime source remains `d5c99322`.
+Log: `/tmp/flux369-application-current.log`. No final total is claimed until it exits.
