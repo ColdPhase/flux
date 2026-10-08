@@ -89,8 +89,9 @@ The settings page sends its saves one after another, numbered, and shows only th
   (`summary_last_on`) and stores one notification outside the inbox (`in_inbox = false`, no
   reason, `url` `/inbox`) titled with the count of unread inbox items the person can still read,
   then queues its push to each device. Nothing is sent for an empty inbox. While the summary is
-  on, push and email that quiet hours would hold are not queued one by one; the inbox keeps them
-  and the summary counts them. Email digests are not part of it.
+  on, pushes that quiet hours would hold are not queued one by one; the inbox keeps them and the
+  summary counts them. Email is unaffected (still held until quiet hours end); there is no email
+  digest.
 - **Where email goes**: `account` (the sign-in/SSO address, default), `extra` (the verified
   extra address), `both`, or `none` (in-app only).
 

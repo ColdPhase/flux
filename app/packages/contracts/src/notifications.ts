@@ -55,7 +55,7 @@ export interface QuietHours {
 
 /**
  * One push at a local time (in the quiet-hours time zone) counting what still waits in your
- * inbox. While it is on, push and email held back by quiet hours are not sent one by one when
+ * inbox. While it is on, pushes held back by quiet hours are not sent one by one when
  * quiet hours end: the summary covers them and the inbox keeps them.
  */
 export interface MorningSummary {

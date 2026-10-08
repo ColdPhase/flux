@@ -191,10 +191,9 @@ async function deliver(ports: GeneratorPorts, event: GeneratorEvent, candidate: 
   const now = options.now?.() ?? new Date();
   const at = deliverableAt(preferences, now);
   const startAfter = at.getTime() > now.getTime() ? at : null;
-  // With the morning summary on, what quiet hours hold back is not sent one by one when they
-  // end: the summary counts it and the inbox keeps it (S22).
-  if (startAfter && preferences.summaryEnabled) return true;
-  if (channels.push) {
+  // With the morning summary on, pushes that quiet hours hold back are not sent one by one when
+  // they end: the summary counts them and the inbox keeps them (S22). Email is unaffected.
+  if (channels.push && !(startAfter && preferences.summaryEnabled)) {
     for (const subscriptionId of await ports.deliverableSubscriptions(candidate.userId)) {
       await ports.enqueuePush({ notificationId, subscriptionId, userId: candidate.userId }, startAfter);
     }

@@ -142,10 +142,10 @@ describe('quiet hours with the morning summary', () => {
   const quiet = { ...fresh(), quietEnabled: true, quietStart: 1, quietEnd: 0, timeZone: 'UTC' };
   const now = () => new Date('2026-10-08T12:00:00Z');
 
-  test('held messages are not pinged one by one when the summary is on; the inbox keeps them', async () => {
+  test('held pushes are not pinged one by one when the summary is on; the inbox keeps them and email still waits for the end', async () => {
     const { counts, uow } = generator({ ...quiet, summaryEnabled: true });
     await generateNotifications(uow, { emailAvailable: true, now });
-    assert.deepEqual(counts, { notifications: 1, pushes: 0, emails: 0 });
+    assert.deepEqual(counts, { notifications: 1, pushes: 0, emails: 1 });
   });
 
   test('negative control: with the summary off they are queued for the end of quiet hours', async () => {
