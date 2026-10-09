@@ -461,9 +461,14 @@ class ProjectSurfaceJourney(unittest.TestCase):
         link = page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks"))
         if project:
             expect(link).to_have_attribute("href", re.compile(rf"^/projects/{project}/tasks"))
+        href = link.get_attribute("href")
         link.click()
-        # The List holds the private "New task" draft field; Kanban is the default view (#136).
-        page.get_by_role("radio", name="List", exact=True).click()
+        # The List holds the private "New task" draft field; the board is the default view (#136). On the phone the
+        # list is the only view and its field appears when New → Task asks for it (F-026 S-P-Tasks).
+        if page.viewport_size["width"] <= 640:
+            page.goto(re.sub(r"\?.*$", "", href) + "?new=task")
+        else:
+            page.get_by_role("radio", name="List", exact=True).click()
         expect(page.get_by_label("New task", exact=True)).to_be_visible()
         if project:
             expect(page).to_have_url(re.compile(rf"/projects/{project}/tasks"))
@@ -481,13 +486,14 @@ class ProjectSurfaceJourney(unittest.TestCase):
                 field.evaluate("el => el.setSelectionRange(6, 18)")
                 page.set_viewport_size({"width": 412 if phone else 1500, "height": 900})
                 self.assertEqual(field.evaluate("el => [document.activeElement === el, el.selectionStart, el.selectionEnd]"), [True, 6, 18])
-                views = page.get_by_role("navigation", name="Task views")
-                views.get_by_label("Only mine").check()
-                views.get_by_role("button", name="Needs you", exact=False).click()
-                expect(field).to_have_value(draft)
-                views.get_by_label("Only mine").uncheck()
-                views.get_by_role("button", name="In progress", exact=False).click()
-                views.get_by_role("button", name="All", exact=True).click()
+                if not phone:  # the phone has no group views
+                    views = page.get_by_role("navigation", name="Task views")
+                    views.get_by_label("Only mine").check()
+                    views.get_by_role("button", name="Needs you", exact=False).click()
+                    expect(field).to_have_value(draft)
+                    views.get_by_label("Only mine").uncheck()
+                    views.get_by_role("button", name="In progress", exact=False).click()
+                    views.get_by_role("button", name="All", exact=True).click()
                 page.locator(".ws-list").get_by_role("button", name=re.compile("Test the camera in low light")).click()
                 expect(self.details(page).get_by_role("heading", name="Test the camera in low light")).to_be_visible()
                 source = self.details(page).get_by_role("link", name=re.compile("I ran the camera prototype"))

@@ -7,6 +7,7 @@ import { useShellActions } from '../app/shellContext';
 import { useShellData } from '../app/data';
 import { remember } from '../app/remembered';
 import { NewWorkComposer } from './NewWorkComposer';
+import { useDraft } from '../app/drafts';
 import { isFinished, shortDate } from './format';
 import { TaskRow, type TaskRowProps } from './TaskRow';
 import { useStateChange } from './taskState';
@@ -221,6 +222,8 @@ export function ProjectTasks() {
   const [adding, setAdding] = useState<ColumnId | null>(null);
   // On the phone the task field is not on the page until "New → Task" asks for it.
   const [composing, setComposing] = useState(false);
+  // A kept private draft brings the field back after a reload or a return, on the phone too.
+  const keptDraft = useDraft(me.user.id, `project-work:${project.id}`).text.trim() !== '';
   // A router POP, account switch or project switch selects its actual URL immediately.
   const view = stored.routeKey === routeKey ? stored : fromUrl();
   const { status: viewStatus, mine, cursor: viewCursor, mode: viewMode } = view;
@@ -441,7 +444,7 @@ export function ProjectTasks() {
         </div>
       ) : (
       <div className="pane-in ws-tasks" data-shift data-work-observed-at={data?.summary.observedAt}>
-        {writable && (!phone || composing) ? <NewWorkComposer key={`${me.user.id}:${project.id}`} userId={me.user.id} projectId={project.id} /> : null}
+        {writable && (!phone || composing || keptDraft) ? <NewWorkComposer key={`${me.user.id}:${project.id}`} userId={me.user.id} projectId={project.id} /> : null}
         {proposals}
         <div className="ws-task-controls">
           {phone ? (
