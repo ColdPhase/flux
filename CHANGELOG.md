@@ -108,6 +108,7 @@ repository was created on 2026-09-26.
 
 ### Changed
 
+- Settings is one calm place with Account, Appearance (Light, Dark or Match system, and a switch for Kreska's small moments), Notifications, Agents and AI and Keyboard shortcuts. Notifications now default to Only "Needs you" (replies no longer push), with Everything or Nothing, quiet hours and an optional morning summary push ([#370](https://github.com/ColdPhase/flux/pull/370)).
 - One neutral look from the final design: Soft volume surfaces in light, dark or Match system, Geist type served with Flux, pill buttons, and task states shown as shapes with words. The accent colours and their picker are gone ([#353](https://github.com/ColdPhase/flux/pull/353)).
 - Kreska, a face drawn in a few lines, is the Flux logo, the app icon and every agent's icon. Agents carry an "Agent" tag and, where you may know them, the person they work for; the personal assistant's face shows what its run is doing ([#356](https://github.com/ColdPhase/flux/pull/356)).
 - Tasks as drawn: board columns and list rows show each task's state as a glyph with its word, its `#number`, title and owner, with Blocked as an inverted pill. One tap on the glyph or the keys `1`–`5` change the state, on the phone you can also swipe left then Done, and a toast offers Undo (or `Z`); the phone Tasks screen is a list with only Mine | All ([#346](https://github.com/ColdPhase/flux/issues/346)).
