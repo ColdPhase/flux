@@ -228,6 +228,9 @@ test('two API processes: Off, narrowing and Off-then-On committed on one are enf
   assert.ok(!JSON.stringify(refusedOff.message).includes('Hidden knowledge reference'));
 
   // Off then On with identical content: the held request keeps its captured version and cannot adopt the new one.
+  // Restore On first and prove the request is admitted under it, so the 403 below comes from the delivery fence.
+  await f.patchOn2(f.input(f.initial));
+  assert.equal(toolValue((await f.tool('flux_get_doc', doc)).message).title, 'Hidden knowledge reference');
   const cycle = await f.held('flux_get_doc', doc, async () => {
     const saved = await f.patchOn2({ ...f.input(f.initial), enabledCapabilityIds: [] });
     assert.ok(saved);
@@ -245,6 +248,7 @@ test('two API processes: Off, narrowing and Off-then-On committed on one are enf
   await f.patchOn2(f.input(f.initial));
 
   // Deleting the agent's project grant on the other API also refuses held bytes.
+  assert.equal(toolValue((await f.tool('flux_get_doc', doc)).message).title, 'Hidden knowledge reference');
   const grant = await f.held('flux_get_doc', doc, async () => {
     expect(await f.second.request('DELETE', `/api/v1/projects/${f.projectId}/grants/${f.grants[0]}`), 204);
   });
