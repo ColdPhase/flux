@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { and, eq } from 'drizzle-orm';
 import { betterAuth } from 'better-auth';
 import { APIError } from 'better-auth/api';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
@@ -44,6 +45,22 @@ export function oidcUser(oidc: Pick<OidcConfig, 'issuer'>, claims: Record<string
   const name = [claims.name, claims.preferred_username].find((value): value is string => typeof value === 'string' && !!value.trim());
   // The plugin keys the Flux account by `sub` (the stable OIDC subject), never by email.
   return { id: subject, sub: subject, email, emailVerified: true, name: (name ?? email).trim().slice(0, 200) };
+}
+
+/**
+ * Copies how the consenting sign-in happened onto the durable agent binding the grant refers to (#310 AC-3),
+ * so the grant keeps that provenance after the browser session is gone. Only a fresh consent calls this;
+ * token refresh leaves the facts as they are.
+ */
+export async function recordGrantAuthentication(db: Database, userId: string, sessionId: string, referenceId: string) {
+  const bindingId = referenceId.startsWith('flux-grant:') ? referenceId.slice('flux-grant:'.length) : null;
+  if (!bindingId) return;
+  const [facts] = await db.select({ method: schema.authSessionIdentities.method, idpSid: schema.authSessionIdentities.idpSid,
+    confirmedAt: schema.authSessionIdentities.confirmedAt }).from(schema.authSessionIdentities)
+    .where(eq(schema.authSessionIdentities.sessionId, sessionId));
+  if (!facts) throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'Sign-in is unavailable' });
+  await db.update(schema.agentOauthBindings).set({ authMethod: facts.method, authIdpSid: facts.idpSid, authConfirmedAt: facts.confirmedAt })
+    .where(and(eq(schema.agentOauthBindings.id, bindingId), eq(schema.agentOauthBindings.ownerUserId, userId)));
 }
 
 const IDP_TOKEN_FIELDS = ['accessToken', 'refreshToken', 'idToken', 'accessTokenExpiresAt', 'refreshTokenExpiresAt'] as const;
@@ -127,8 +144,11 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
             const request = oauthRequests.getStore();
             return !request || !await connections.flowForOauth(user.id, session.id, request.fingerprint);
           },
-          consentReferenceId: async ({ user, session, scopes }) =>
-            (await connectionForGrant(user.id, session.id, scopes)).referenceId,
+          consentReferenceId: async ({ user, session, scopes }) => {
+            const { referenceId } = await connectionForGrant(user.id, session.id, scopes);
+            await recordGrantAuthentication(db, user.id, session.id, referenceId);
+            return referenceId;
+          },
         },
         customAccessTokenClaims: async ({ user, referenceId, scopes, resources }) => {
           if (!user || !referenceId || resources?.length !== 1 || resources[0] !== resource) {

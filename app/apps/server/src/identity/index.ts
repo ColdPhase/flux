@@ -4,12 +4,12 @@ import type { Database } from '@flux/core';
 import type { ApiError, IdentityCapabilities } from '@flux/contracts';
 import { createAuth, type FluxAuth } from './auth.js';
 import { registerAuthBridge } from './bridge.js';
-import type { IdentityConfig } from './config.js';
+import type { IdentityConfig, OidcConfig } from './config.js';
 import { createSmtpMailer, type Mailer } from './mailer.js';
 import { originViolation } from './origin.js';
 import { createOauthRequests } from './oauth-flow.js';
 import { createSignIns } from './sign-in.js';
-import { cachedReachability, waitForDiscovery } from './discovery.js';
+import { cachedReachability, discoveryReachable, waitForDiscovery } from './discovery.js';
 import { registerAgentOauthContext } from './oauth-context.js';
 import { registerIdentityRoutes } from './routes.js';
 import { createSessionResolver, type SessionResolver } from './session.js';
@@ -39,14 +39,54 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
   if (mailer) app.addHook('onClose', async () => mailer.close());
   const oauthRequests = createOauthRequests();
   const signIns = createSignIns();
-  const auth = createAuth({ db, config, mailer, oauthRequests, signIns, onMailError: (error) => app.log.error({ error }, 'Password reset mail failed') });
-  // OAuth resource seeding runs during Better Auth initialization. Complete it before
-  // accepting requests or allowing an in-process server to close its database pool.
-  // The provider reads its discovery document while Better Auth initializes, so an identity provider that
-  // starts a little after Flux is waited for with backoff rather than leaving sign-on off (#310 AC-4).
+  const onMailError = (error: unknown) => app.log.error({ error }, 'Password reset mail failed');
+  const build = (oidc: OidcConfig | null) => createAuth({ db, config: { ...config, oidc }, mailer, oauthRequests, signIns, onMailError });
+  // The OIDC plugin reads the provider's discovery document once, when its Better Auth instance starts, and
+  // drops the provider if that read fails. The instance is therefore created at startup, and again once the
+  // provider answers if it was down then (#310 AC-4), so no restart is needed. Routes hold this stable reference.
+  let current: FluxAuth | null = null;
+  let providerInstalled = false;
+  let stopped = false;
+  let retry: NodeJS.Timeout | undefined;
+  const auth = new Proxy({} as FluxAuth, {
+    get(_target, key) {
+      if (!current) throw new Error('Identity is starting');
+      return Reflect.get(current, key);
+    },
+  });
+  const start = async (withProvider: boolean) => {
+    const next = build(withProvider ? config.oidc : null);
+    await next.$context;
+    current = next;
+    providerInstalled = withProvider;
+  };
+  // Retries with backoff (2 s doubling to 30 s) until the provider answers, then installs it once.
+  const awaitProvider = (oidc: OidcConfig, delayMs = 2000) => {
+    retry = setTimeout(async () => {
+      if (stopped) return;
+      if (await discoveryReachable(oidc)) {
+        try {
+          await start(true);
+          app.log.info({ issuer: oidc.issuer }, 'Single sign-on is available');
+          return;
+        } catch (error) {
+          app.log.error({ error }, 'Single sign-on could not start; retrying');
+        }
+      }
+      awaitProvider(oidc, Math.min(delayMs * 2, 30_000));
+    }, delayMs);
+    retry.unref();
+  };
+  app.addHook('onClose', async () => { stopped = true; clearTimeout(retry); });
+  // Startup waits briefly for the provider: two probes stay inside Fastify's 10 s onReady limit. A provider that
+  // is still down is then awaited in the background, so an outage at boot never stops Flux from starting.
   app.addHook('onReady', async () => {
-    if (config.oidc && !await waitForDiscovery(config.oidc)) app.log.warn({ issuer: config.oidc.issuer }, 'The identity provider did not answer; single sign-on is reported as not reachable');
-    await auth.$context;
+    if (config.oidc && await waitForDiscovery(config.oidc, { attempts: 2 })) await start(true);
+    else await start(false);
+    if (config.oidc && !providerInstalled) {
+      app.log.warn({ issuer: config.oidc.issuer }, 'The identity provider did not answer; single sign-on is reported as not reachable until it does');
+      awaitProvider(config.oidc);
+    }
   });
   const sessions = createSessionResolver(auth);
   const passwordReset: IdentityCapabilities['passwordReset'] = mailer ? 'available' : 'unavailable';
@@ -61,8 +101,9 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
 
   registerAuthBridge(app, { auth, publicOrigin: config.publicOrigin, passwordReset, oauthRequests, signIns });
   const reachable = config.oidc ? cachedReachability(config.oidc) : null;
+  // The provider is offered from configuration; it is reachable only once installed and answering.
   const sso = async (): Promise<IdentityCapabilities['sso']> =>
-    config.oidc && reachable ? { providerId: config.oidc.providerId, label: config.oidc.label, reachable: await reachable() } : null;
+    config.oidc && reachable ? { providerId: config.oidc.providerId, label: config.oidc.label, reachable: providerInstalled && await reachable() } : null;
   // Operators register this exact redirect URI with their identity provider (#113).
   if (config.oidc) app.log.info({ issuer: config.oidc.issuer, redirectUri: `${config.publicOrigin}/api/auth/callback/${config.oidc.providerId}` }, 'Single sign-on is on');
   registerIdentityRoutes(app, { sessions, store: createSessionRepository(db), passwordReset, sso });

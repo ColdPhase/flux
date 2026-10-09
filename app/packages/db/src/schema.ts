@@ -661,6 +661,10 @@ export const agentOauthBindings = pgTable('agent_oauth_bindings', {
   clientId: text('client_id').notNull(),
   generation: integer('generation').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  // How the sign-in that last consented to this grant happened (migration 0083, #310 AC-3). Kept after the browser session ends.
+  authMethod: text('auth_method'),
+  authIdpSid: text('auth_idp_sid'),
+  authConfirmedAt: timestamp('auth_confirmed_at', { withTimezone: true }),
 }, (table) => [unique().on(table.ownerUserId, table.connectionId, table.clientId)]);
 
 export const agentOauthFlows = pgTable('agent_oauth_flows', {
