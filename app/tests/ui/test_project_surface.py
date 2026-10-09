@@ -473,7 +473,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
                 self.assertEqual(field.evaluate("el => [document.activeElement === el, el.selectionStart, el.selectionEnd]"), [True, 6, 18])
                 views = page.get_by_role("navigation", name="Task views")
                 views.get_by_label("Only mine").check()
-                views.get_by_role("button", name="Needs you", exact=False).click()
+                views.get_by_role("button", name="All", exact=True).click()
                 expect(field).to_have_value(draft)
                 views.get_by_label("Only mine").uncheck()
                 views.get_by_role("button", name="In progress", exact=False).click()
@@ -712,20 +712,20 @@ class ProjectSurfaceJourney(unittest.TestCase):
 
     def test_17_home_draft_changes_account_on_current_loader_revalidation(self) -> None:
         page = self.page("ada")
-        page.goto("/")
+        page.goto("/map")
         field = page.get_by_label("Private note", exact=True)
         expect(field).to_be_visible()
         field.fill("Ada's private Home draft before revalidation")
         page.context.clear_cookies()
         page.context.add_cookies(self.states["jonas"]["cookies"])
         # Same-route router navigation revalidates the mounted Home, without a document reload.
-        page.get_by_role("navigation", name="Places").get_by_role("link", name="Home", exact=True).click()
+        page.get_by_role("navigation", name="Places").get_by_role("link", name="Sketchbook", exact=True).click()
         expect(page.get_by_role("button", name=re.compile("^Jonas Berg .*account and sign out"))).to_be_visible()
         expect(field).to_have_value("")
         field.fill("Jonas's private Home draft")
         page.context.clear_cookies()
         page.context.add_cookies(self.states["ada"]["cookies"])
-        page.get_by_role("navigation", name="Places").get_by_role("link", name="Home", exact=True).click()
+        page.get_by_role("navigation", name="Places").get_by_role("link", name="Sketchbook", exact=True).click()
         expect(page.get_by_role("button", name=re.compile("^Ada Kowalska .*account and sign out"))).to_be_visible()
         expect(field).to_have_value("Ada's private Home draft before revalidation")
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getPreferences, updatePreferences } from '../notifications/api';
+import { PAUSE_CHANGED, getPreferences, updatePreferences } from '../notifications/api';
 import { useToast } from '../ui';
 
 const MIN_FOCUS_MS = 30 * 60_000;
@@ -20,20 +20,41 @@ export const clock = (at: Date) => at.toLocaleTimeString([], { hour: '2-digit', 
  */
 export function useFocus(identity: string) {
   const toast = useToast();
-  const [until, setUntil] = useState<Date | null>(null);
+  // The pause belongs to the identity that read it; another identity never sees it.
+  const [state, setState] = useState<{ owner: string; until: Date | null }>({ owner: identity, until: null });
+  const until = state.owner === identity ? state.until : null;
   const busy = useRef(false);
-  const refresh = useCallback(() => {
-    void getPreferences().then((prefs) => setUntil(prefs.pause.until ? new Date(prefs.pause.until) : null), () => undefined);
+  const who = useRef(identity);
+  // Every applied state is numbered. A read applies only if nothing newer (a confirmed change,
+  // another read's answer or a new identity) has been applied since it was asked for.
+  const version = useRef(0);
+  const apply = useCallback((pause: string | null) => {
+    version.current += 1;
+    setState({ owner: who.current, until: pause ? new Date(pause) : null });
   }, []);
-  useEffect(() => { refresh(); }, [refresh, identity]);
+  const refresh = useCallback(() => {
+    const mine = version.current;
+    void getPreferences().then((prefs) => { if (mine === version.current) apply(prefs.pause.until); }, () => undefined);
+  }, [apply]);
+  useEffect(() => {
+    who.current = identity;
+    version.current += 1;
+    refresh();
+  }, [refresh, identity]);
   useEffect(() => {
     window.addEventListener('focus', refresh);
     return () => window.removeEventListener('focus', refresh);
   }, [refresh]);
+  // A change confirmed elsewhere in this tab (Notification settings) shows here at once.
+  useEffect(() => {
+    const onChange = (event: Event) => apply((event as CustomEvent<string | null>).detail);
+    window.addEventListener(PAUSE_CHANGED, onChange);
+    return () => window.removeEventListener(PAUSE_CHANGED, onChange);
+  }, [apply]);
   // A pause ends on its own at its time; nothing claims it is still running after that.
   useEffect(() => {
     if (!until) return undefined;
-    const timer = window.setTimeout(() => setUntil(null), Math.max(0, until.getTime() - Date.now()));
+    const timer = window.setTimeout(() => setState((current) => ({ ...current, until: null })), Math.max(0, until.getTime() - Date.now()));
     return () => window.clearTimeout(timer);
   }, [until]);
 
@@ -42,15 +63,18 @@ export function useFocus(identity: string) {
     busy.current = true;
     // Focus shows only once the server holds notifications, so "paused" is never claimed early.
     const next = until ? null : focusEnd();
+    const owner = who.current;
     try {
       const prefs = await updatePreferences({ pause: { until: next ? next.toISOString() : null } });
-      setUntil(prefs.pause.until ? new Date(prefs.pause.until) : null);
+      // The confirmed change is the newest state and drops any read still in flight; only a
+      // different signed-in identity makes it obsolete.
+      if (owner === who.current) apply(prefs.pause.until);
     } catch {
       toast({ message: next ? 'Focus did not start: notifications are not paused' : 'Focus did not end; try again', tone: 'danger' });
     } finally {
       busy.current = false;
     }
-  }, [until, toast]);
+  }, [until, toast, apply]);
 
   return { until, toggle };
 }

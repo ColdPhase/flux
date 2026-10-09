@@ -13,7 +13,7 @@ import json
 import re
 import time
 import unittest
-from datetime import datetime
+from datetime import datetime, timezone
 
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
@@ -22,6 +22,11 @@ from test_app_shell import DESKTOP, ORIGIN, UPSTREAM, shot, start_forwarder
 PASSWORD = "one calm header"
 EMAIL = f"ada.header+{int(time.time() * 1000)}@example.test"
 PROJECT = "Community garden sensors"
+
+
+def soon() -> str:
+    """A pause end the server accepts: a few hours ahead."""
+    return datetime.fromtimestamp(time.time() + 3 * 3600, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
 
 class ProjectHeader(unittest.TestCase):
@@ -196,6 +201,138 @@ class ProjectHeader(unittest.TestCase):
         # The computer learns it when it is used again.
         page.evaluate("window.dispatchEvent(new Event('focus'))")
         expect(self.header(page).get_by_role("button", name=re.compile("^Focus"))).to_have_count(0)
+
+    def pause(self, page: Page):
+        return self.api(page, "GET", "/api/v1/notification-preferences", status=200)["pause"]["until"]
+
+    def hold_next_read(self, page: Page) -> dict:
+        """Answers the next preference GET from the server at once but delivers it to the page only when released."""
+        held: dict = {}
+
+        def handler(route) -> None:
+            if route.request.method != "GET" or "ready" in held:
+                route.continue_()
+                return
+            held["response"] = route.fetch()
+            held["route"] = route
+            held["ready"] = True
+
+        page.route("**/api/v1/notification-preferences", handler)
+        return held
+
+    def release(self, held: dict) -> None:
+        for _ in range(50):
+            if "ready" in held:
+                break
+            time.sleep(0.1)
+        self.assertIn("ready", held, "the read was never made")
+        held["route"].fulfill(response=held["response"])
+
+    def test_05_a_late_read_never_undoes_a_newer_focus_change(self) -> None:
+        self.ensure_project()
+        page = self.page()
+        page.goto(f"/projects/{self.ids['project']}")
+        header = self.header(page)
+        views = header.get_by_role("navigation", name="Project views")
+        pill = header.get_by_role("button", name=re.compile("^Focus"))
+        expect(views).to_be_visible()
+        # A read made while nothing is paused arrives after Focus was turned on.
+        held = self.hold_next_read(page)
+        page.evaluate("window.dispatchEvent(new Event('focus'))")
+        for _ in range(50):
+            if "ready" in held:
+                break
+            time.sleep(0.1)
+        page.locator("body").press("f")
+        expect(pill).to_be_visible()
+        self.assertIsNotNone(self.pause(page))
+        self.release(held)
+        page.wait_for_timeout(400)
+        expect(pill).to_be_visible()
+        self.assertIsNotNone(self.pause(page))
+        page.unroute_all()
+        # And the other way: a read made during a pause arrives after Focus was ended.
+        held = self.hold_next_read(page)
+        page.evaluate("window.dispatchEvent(new Event('focus'))")
+        for _ in range(50):
+            if "ready" in held:
+                break
+            time.sleep(0.1)
+        pill.click()
+        expect(views).to_be_visible()
+        self.assertIsNone(self.pause(page))
+        self.release(held)
+        page.wait_for_timeout(400)
+        expect(pill).to_have_count(0)
+        expect(views).to_be_visible()
+        page.unroute_all()
+        # Control: a current read still shows a change made elsewhere.
+        self.api(page, "PATCH", "/api/v1/notification-preferences", {"pause": {"until": soon()}}, status=200)
+        page.evaluate("window.dispatchEvent(new Event('focus'))")
+        expect(pill).to_be_visible()
+
+    def test_06_resume_now_in_settings_updates_the_header_in_the_same_tab(self) -> None:
+        self.ensure_project()
+        page = self.page()
+        page.goto(f"/projects/{self.ids['project']}")
+        header = self.header(page)
+        pill = header.get_by_role("button", name=re.compile("^Focus"))
+        expect(header.get_by_role("navigation", name="Project views")).to_be_visible()
+        page.locator("body").press("f")
+        expect(pill).to_be_visible()
+        # Move within the app (no reload, no window focus) to the settings and fail a first resume.
+        page.evaluate("history.pushState({}, '', '/settings/notifications'); window.dispatchEvent(new PopStateEvent('popstate'))")
+        note = page.get_by_role("status").filter(has_text="Focus: push and email are paused until")
+        expect(note).to_be_visible()
+        page.route("**/api/v1/notification-preferences", lambda route: route.fulfill(status=500, body="{}") if route.request.method == "PATCH" else route.continue_())
+        note.get_by_role("button", name="Resume now").click()
+        expect(page.get_by_text("Could not save").first).to_be_visible()
+        self.assertIsNotNone(self.pause(page))
+        expect(pill).to_be_visible()
+        page.unroute_all()
+        expect(note).to_be_visible()
+        note.get_by_role("button", name="Resume now").click()
+        expect(pill).to_have_count(0)
+        expect(note).to_have_count(0)
+        self.assertIsNone(self.pause(page))
+        expect(page.get_by_role("complementary", name="Sidebar").locator(".side--rail")).to_have_count(0)
+
+    def test_07_focus_is_offered_and_shown_consistently_at_every_width(self) -> None:
+        self.ensure_project()
+        for width in (681, 660):
+            with self.subTest(width=width):
+                page = self.page(viewport={"width": width, "height": 800})
+                page.goto(f"/projects/{self.ids['project']}")
+                header = self.header(page)
+                pill = header.get_by_role("button", name=re.compile(r"^Focus · notifications paused until"))
+                header.get_by_role("button", name="More", exact=True).click()
+                focus = page.get_by_role("menu", name="More").get_by_role("menuitemcheckbox", name="Focus")
+                expect(focus).to_have_attribute("aria-checked", "false")
+                focus.click()
+                expect(pill).to_be_visible()
+                self.assertIsNotNone(self.pause(page))
+                # The reopened menu, the pill and the server agree; F ends it.
+                page.locator("body").press("f")
+                expect(pill).to_have_count(0)
+                self.assertIsNone(self.pause(page))
+                page.locator("body").press("f")
+                expect(pill).to_be_visible()
+                self.assertIsNotNone(self.pause(page))
+                pill.click()
+                expect(pill).to_have_count(0)
+                self.assertIsNone(self.pause(page))
+                # A pause set elsewhere shows with the menu's mark too.
+                self.api(page, "PATCH", "/api/v1/notification-preferences", {"pause": {"until": soon()}}, status=200)
+                page.reload()
+                expect(pill).to_be_visible()
+                self.api(page, "PATCH", "/api/v1/notification-preferences", {"pause": {"until": None}}, status=200)
+        # At 640 px the phone header offers no Focus and F does nothing: nothing is paused silently.
+        page = self.page(viewport={"width": 640, "height": 800})
+        page.goto(f"/projects/{self.ids['project']}")
+        expect(self.header(page).get_by_role("button", name="More", exact=True)).to_have_count(0)
+        page.locator("body").press("f")
+        page.wait_for_timeout(500)
+        self.assertIsNone(self.pause(page))
 
 
 if __name__ == "__main__":

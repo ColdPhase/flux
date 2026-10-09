@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { useLoaderData, useLocation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
-import type { DecisionRowProjection, Project, ProactiveComparisonOutcome, ProjectWorkViewQuery, ResultRowProjection, WorkCounts, WorkObjectType, WorkRowProjection } from '@flux/contracts';
+import { Link, Navigate, useLoaderData, useLocation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
+import type { Project, ProactiveComparisonOutcome, ProjectWorkViewQuery, WorkCounts, WorkObjectType, WorkRowProjection } from '@flux/contracts';
 import { AgentIdentity, Button, EmptyState, ErrorState, Icon, StatusGlyph } from '../ui';
 import { getProject } from '../app/conversation-api';
 import { useShellActions } from '../app/shellContext';
 import { useShellData } from '../app/data';
 import { remember } from '../app/remembered';
 import { NewWorkComposer } from './NewWorkComposer';
-import { STATUS_LABEL, isFinished, shortDate } from './format';
+import { STATUS_LABEL, isFinished } from './format';
 import { getProjectWorkView, getWorkReferenceRows, workReferenceReadUrl, workViewReadUrl } from './read-api';
 import { useWorkRead } from './useWorkRead';
 import { OPENING_REVEAL_MS } from '../app/messageParts';
@@ -41,22 +41,27 @@ function Group({ id, title, count, children }: { id: string; title: string; coun
   );
 }
 
-/** The groups of the Tasks tab, in reading order. `status` in the URL shows one of them. */
-const GROUPS = ['needs', 'in_progress', 'blocked', 'open', 'parked', 'finished', 'rules', 'results'] as const;
+/**
+ * The groups of the Tasks tab, in reading order. `status` in the URL shows one of them. Decisions wait in
+ * the Inbox, not here (F-026 S1), and a result shows in its task's details (#342); the old `needs`, `rules`
+ * and `results` views are not groups any more and their links lead to the Inbox or to All.
+ */
+const GROUPS = ['in_progress', 'blocked', 'open', 'parked', 'finished'] as const;
 type GroupId = typeof GROUPS[number];
 const GROUP_LABEL: Record<GroupId, string> = {
-  needs: 'Needs you', in_progress: 'In progress', blocked: 'Blocked', open: 'Open',
-  parked: 'Parked', finished: 'Finished', rules: 'Decisions', results: 'Results',
+  in_progress: 'In progress', blocked: 'Blocked', open: 'Open', parked: 'Parked', finished: 'Finished',
 };
 const isGroup = (value: string | null): value is GroupId => GROUPS.includes(value as GroupId);
+/** Old links to the Decisions view (`?status=needs` or `rules`) lead to the Inbox's Decisions filter. */
+const RETIRED_DECISION_VIEWS = ['needs', 'rules'];
 
 /**
  * One readable row of views instead of a board of clipped columns (#136 AC-2): All, then only
  * the groups that have something. The chosen view and "Only mine" live in the URL, so returning
  * from a source or Details comes back to the same view and reading position.
  */
-function TaskViews({ counts, status, mine, writable, onStatus, onMine }: {
-  counts: WorkCounts | null; status: GroupId | null; mine: boolean; writable: boolean;
+function TaskViews({ counts, status, mine, onStatus, onMine }: {
+  counts: WorkCounts | null; status: GroupId | null; mine: boolean;
   onStatus: (status: GroupId | null) => void; onMine: (mine: boolean) => void;
 }) {
   const row = useRef<HTMLDivElement>(null);
@@ -77,8 +82,8 @@ function TaskViews({ counts, status, mine, writable, onStatus, onMine }: {
       <div className="ws-views__row" ref={row}>
         <button type="button" className="ws-view" aria-pressed={!status} onClick={() => onStatus(null)}>All</button>
         {shown.map((id) => (
-          <button key={id} type="button" className={`ws-view${id === 'needs' && counts?.needs ? ' ws-view--need' : ''}`} aria-pressed={status === id} onClick={() => onStatus(id)}>
-            {id === 'needs' && !writable ? 'Waiting for a decision' : GROUP_LABEL[id]} <span className="ws-view__n">{counts ? counts[id] : '…'}</span>
+          <button key={id} type="button" className="ws-view" aria-pressed={status === id} onClick={() => onStatus(id)}>
+            {GROUP_LABEL[id]} <span className="ws-view__n">{counts ? counts[id] : '…'}</span>
           </button>
         ))}
       </div>
@@ -132,16 +137,13 @@ function rememberMode(userId: string, mode: Mode) {
 }
 
 /**
- * The Tasks toolbar: an underline search, the way to the project's decisions and
- * results, Kanban | List, Mine on the board and the one primary action, "+ Task". The List keeps
+ * The Tasks toolbar: an underline search, Kanban | List, Mine on the board and the one primary action, "+ Task". The List keeps
  * its own "Only mine" among its views. The search filters the board's loaded cards; the List is
  * read in bounded pages from the server, so it has no search that could only see one page.
  */
-function Toolbar({ mode, onMode, query, onQuery, mine, onMine, writable, onNew, onDecisions, needs = 0 }: {
+function Toolbar({ mode, onMode, query, onQuery, mine, onMine, writable, onNew }: {
   mode: Mode; onMode: (mode: Mode) => void; query: string; onQuery: (query: string) => void;
-  mine: boolean; onMine: (mine: boolean) => void; writable: boolean; onNew: () => void; onDecisions: () => void;
-  /** Proposed decisions waiting for someone: a count on Decisions & results (#266 PF-6). */
-  needs?: number;
+  mine: boolean; onMine: (mine: boolean) => void; writable: boolean; onNew: () => void;
 }) {
   const searchId = useId();
   const radios = useRef<HTMLDivElement>(null);
@@ -165,9 +167,6 @@ function Toolbar({ mode, onMode, query, onQuery, mine, onMine, writable, onNew, 
             onKeyDown={(event) => { if (event.key === 'Escape' && query) { event.preventDefault(); event.stopPropagation(); onQuery(''); } }} />
         </div>
       ) : null}
-      {/* The current rule and what was learned stay one step away from the board (Journey A). */}
-      <button type="button" className="tb-dr" onClick={onDecisions}><Icon name="rule" size={14} /><span className="tb-dr__l">Decisions &amp; results</span><span className="tb-dr__s" aria-hidden="true">Decisions</span>
-        {needs ? <span className="tb-dr__n">{needs}<span className="ui-vh">, {needs === 1 ? 'one waits' : `${needs} wait`} for a decision</span></span> : null}</button>
       <div className="tb-bar__end">
         <div className="tb-mode" role="radiogroup" aria-label="Show tasks as" ref={radios} onKeyDown={onRadioKey}>
           {(['board', 'list'] as const).map((value) => (
@@ -188,8 +187,7 @@ function Toolbar({ mode, onMode, query, onQuery, mine, onMine, writable, onNew, 
 
 /** List section anchors (`g-…`) and the List view that holds each of them. */
 const SECTION_GROUP: Record<string, GroupId> = {
-  'g-proposed': 'needs', 'g-progress': 'in_progress', 'g-blocked': 'blocked', 'g-open': 'open',
-  'g-parked': 'parked', 'g-finished': 'finished', 'g-rules': 'rules', 'g-results': 'results',
+  'g-progress': 'in_progress', 'g-blocked': 'blocked', 'g-open': 'open', 'g-parked': 'parked', 'g-finished': 'finished',
 };
 
 const cursors = new Map<string, string | null>();
@@ -215,6 +213,7 @@ export function ProjectTasks() {
   const { openDetails } = useShellActions();
   const revalidator = useRevalidator();
   const [search, setSearch] = useSearchParams();
+  const retired = RETIRED_DECISION_VIEWS.includes(search.get('status') ?? '');
   const { me } = useShellData();
   const scroller = useRef<HTMLDivElement>(null);
   const location = useLocation();
@@ -241,8 +240,8 @@ export function ProjectTasks() {
   // The List reads its chosen view page by page. The board's Open column is the same bounded read
   // of the open group; its other columns are read by the board (see TaskBoard).
   const query = useMemo<ProjectWorkViewQuery>(() => mode === 'list'
-    ? { purpose: 'tasks', group: status ?? 'all', mine, ...(cursor ? { cursor } : {}) }
-    : { purpose: 'tasks', group: 'open', mine }, [mode, status, mine, cursor]);
+    ? { purpose: 'tasks', group: status ?? 'all', mine, kinds: 'work', ...(cursor ? { cursor } : {}) }
+    : { purpose: 'tasks', group: 'open', mine, kinds: 'work' }, [mode, status, mine, cursor]);
   const selector = workViewReadUrl(project.id, query);
   const load = useCallback((signal: AbortSignal) => getProjectWorkView(project.id, query, signal), [project.id, query]);
   const { page: read, refresh: refreshPage } = useProjectWorkPage(project.id, selector, load);
@@ -367,36 +366,33 @@ export function ProjectTasks() {
   }, [revalidator]);
 
   const work = data?.items.filter((item): item is WorkRowProjection => item.kind === 'work') ?? [];
-  const decisions = data?.items.filter((item): item is DecisionRowProjection => item.kind === 'decision') ?? [];
-  const results = data?.items.filter((item): item is ResultRowProjection => item.kind === 'result') ?? [];
   const by = (state: WorkRowProjection['status']) => work.filter((item) => item.status === state && !item.parked);
   const parked = work.filter((item) => item.parked && !isFinished(item));
   const finished = work.filter(isFinished);
-  const proposed = decisions.filter((item) => item.status === 'proposed');
-  const current = decisions.filter((item) => item.status === 'accepted');
-  const earlier = decisions.filter((item) => item.status === 'superseded');
   const groupCount = (id: GroupId, visible: number) => visible ? counts?.[id] ?? 0 : 0;
   const openObject = (kind: WorkObjectType, id: string) => () => { saveReading(); openDetails({ kind, id }); };
   const workRow = (item: WorkRowProjection, muted = false) => <Row key={item.id} kind="work" id={item.id} icon={glyph(item)} title={item.title} sub={workSub(item, owners)} right={item.owner?.kind === 'human' ? <span className="ws-av" aria-hidden="true">{item.owner.name.slice(0, 1)}</span> : null} onOpen={openObject('work', item.id)} muted={muted} />;
   const summaryCounts = data ? mine ? data.summary.mine : data.summary.all : null;
-  // What the board leaves to the List, one step away: a decision waiting for someone and work a pivot set aside.
-  const elsewhere: { id: GroupId; text: string; need?: boolean }[] = [];
-  if (summaryCounts?.needs) elsewhere.push({ id: 'needs', text: writable ? `${summaryCounts.needs} ${summaryCounts.needs === 1 ? 'decision needs' : 'decisions need'} you` : `${summaryCounts.needs} waiting for a decision`, need: true });
-  if (summaryCounts?.parked) elsewhere.push({ id: 'parked', text: `${summaryCounts.parked} parked by a pivot` });
-  // "Decisions & results" opens the whole List at the first of them: proposals, then rules, then results.
-  const toDecisions = () => jumpToSection(data?.summary.all.needs ? 'g-proposed' : data?.summary.all.rules ? 'g-rules' : 'g-results');
+  // What the board leaves to other places, one step away: work a pivot set aside, and decisions that wait in the Inbox.
+  const parkedCount = summaryCounts?.parked ?? 0;
+  const waiting = summaryCounts?.needs ?? 0;
+  // Only people who can accept find a decision in their Inbox; others are told one waits.
+  const inboxLink = !waiting ? null : writable ? (
+    <Link className="tb-also__b tb-also__b--need" to="/inbox?show=decisions">
+      {`${waiting} ${waiting === 1 ? 'decision needs' : 'decisions need'} you in the Inbox`}
+    </Link>
+  ) : <span className="tb-also__b">{`${waiting} waiting for a decision`}</span>;
   const nothing = data !== null && cursor === null && !Object.values(data.summary.all).some(Boolean)
     && !outcomes.some((outcome) => outcome.kind === 'comparison' ? outcome.proposal.status === 'proposed' : outcome.status === 'open');
   const emptyContinuation = data !== null && cursor !== null && !data.items.length;
 
   const resultTitles = new Map<string, string>();
   if (outcomeRead.phase === 'ready' || outcomeRead.phase === 'refreshing') for (const row of outcomeRead.value.items) if (row.kind === 'result') resultTitles.set(row.id, row.title);
-  for (const result of results) resultTitles.set(result.id, result.title);
   const proposals = (
     <div className="ws-proposals-gate" style={titlesShown ? undefined : { visibility: 'hidden' }} aria-busy={titlesShown ? undefined : true}>
     <ProjectProposals outcomes={outcomes} people={shell?.people ?? null} projectName={project.name}
       resultTitles={resultTitles}
-      workCount={data?.summary.workTotal ?? 0} resultCount={data?.summary.all.results ?? 0}
+      workCount={data?.summary.workTotal ?? 0} resultCount={0}
       workJumpId={data?.summary.all.in_progress ? 'g-progress' : data?.summary.all.blocked ? 'g-blocked' : data?.summary.all.open ? 'g-open' : data?.summary.all.parked ? 'g-parked' : 'g-finished'}
       jumpToSection={jumpToSection} writable={writable} refresh={() => { if (mode === 'list') refresh(); else refreshBoard(); revalidator.revalidate(); }}
       openResult={(id) => openDetails({ kind: 'result', id, projectId: project.id })}
@@ -404,34 +400,30 @@ export function ProjectTasks() {
     </div>
   );
 
+  // The Decisions view is gone (F-026 S1): its old links open the Inbox's Decisions filter.
+  if (retired) return <Navigate to="/inbox?show=decisions" replace />;
   return (
     <div className="tb-root">
-      <Toolbar mode={mode} onMode={chooseMode} query={boardSearch} onQuery={setBoardSearch} mine={mine} onMine={(next) => setView({ mine: next })} writable={writable} onNew={startNew} onDecisions={toDecisions} needs={summaryCounts?.needs ?? 0} />
+      <Toolbar mode={mode} onMode={chooseMode} query={boardSearch} onQuery={setBoardSearch} mine={mine} onMine={(next) => setView({ mine: next })} writable={writable} onNew={startNew} />
       <div className="pane-scroll" ref={scroller}>
       {mode === 'board' ? (
         <div className="tb" data-work-observed-at={data?.summary.observedAt}>
-          {elsewhere.length ? (
-            <nav className="tb-also" aria-label="Also in the List">
-              <span className="tb-also__k">In the List:</span>
-              {elsewhere.map((entry) => (
-                <button key={entry.id} type="button" className={`tb-also__b${entry.need ? ' tb-also__b--need' : ''}`} onClick={() => setView({ mode: 'list', status: entry.id })}>{entry.text}</button>
-              ))}
-            </nav>
-          ) : null}
+          {parkedCount || waiting ? <nav className="tb-also" aria-label="Also elsewhere">{inboxLink}{parkedCount ? <button type="button" className="tb-also__b" onClick={() => setView({ mode: 'list', status: 'parked' })}>{parkedCount} parked by a pivot</button> : null}</nav> : null}
           <div className="tb-aside">{proposals}</div>
           <TaskBoard project={project} openRead={read} meId={me.user.id} mine={mine} query={boardSearch.trim().toLowerCase()} writable={writable}
             revision={boardRevision} adding={adding} onAdding={setAdding}
             openWork={(id) => { saveReading(); openDetails({ kind: 'work', id }); }} refresh={refreshBoard}
-            showInList={(group) => setView({ mode: 'list', status: group })}
+            showInList={(group) => { if (isGroup(group)) setView({ mode: 'list', status: group }); }}
             clearFilters={() => { setBoardSearch(''); setView({ mine: false }); }} />
         </div>
       ) : (
       <div className="pane-in ws-tasks" data-shift data-work-observed-at={data?.summary.observedAt}>
+        {waiting ? <nav className="tb-also tb-also--list" aria-label="Also elsewhere">{inboxLink}</nav> : null}
         {writable ? <NewWorkComposer key={`${me.user.id}:${project.id}`} userId={me.user.id} projectId={project.id} /> : null}
         {proposals}
         <div className="ws-task-controls">
-          <TaskViews counts={counts} status={status} mine={mine} writable={writable} onStatus={(next) => setView({ status: next })} onMine={(next) => setView({ mine: next })} />
-          <WorkPagination page={data} busy={read.phase !== 'ready' && read.phase !== 'unavailable'} onCursor={movePage} onRefresh={refresh} />
+          <TaskViews counts={counts} status={status} mine={mine} onStatus={(next) => setView({ status: next })} onMine={(next) => setView({ mine: next })} />
+          <WorkPagination noun="tasks" page={data} busy={read.phase !== 'ready' && read.phase !== 'unavailable'} onCursor={movePage} onRefresh={refresh} />
         </div>
         {read.phase === 'unavailable' ? <ErrorState title="Work could not be loaded" actions={<button type="button" className="ws-none__b" onClick={refresh}>Refresh work</button>}><p>Your private draft is kept. Refresh to read the current view.</p></ErrorState> : null}
         {nothing ? <div className="view-empty"><EmptyState icon="tasks" title="No tasks yet"><p>A task starts when one of you makes it from a message, or adds it here. Not every idea has to become a task.</p></EmptyState></div> : null}
@@ -440,21 +432,11 @@ export function ProjectTasks() {
           {mine ? `Nothing of yours${status ? ` in ${GROUP_LABEL[status].toLowerCase()}` : ''} right now.` : `Nothing in ${status ? GROUP_LABEL[status].toLowerCase() : 'this view'} right now.`}{' '}
           <button type="button" className="ws-none__b" onClick={() => setView(mine ? { mine: false } : { status: null })}>{mine ? 'Show everyone’s' : 'Show all'}</button>
         </p> : null}
-        <Group id="proposed" title={writable ? 'Needs you' : 'Waiting for a decision'} count={groupCount('needs', proposed.length)}>
-          {proposed.map((item) => <Row key={item.id} kind="decision" id={item.id} icon={<Icon name="rule" size={16} />} iconClass="ws-need" title={item.title} sub={<>Proposed by {item.proposedBy.kind === 'agent' ? <AgentIdentity name={item.proposedBy.name} owner={owners.get(item.proposedBy.id)} /> : item.proposedBy.name}{item.supersedes ? ' · would replace the current rule' : ''}{writable ? <> · <span className="ws-need">you can accept it</span></> : null}</>} right={shortDate(item.createdAt)} onOpen={openObject('decision', item.id)} />)}
-        </Group>
         <Group id="progress" title="In progress" count={groupCount('in_progress', by('in_progress').length)}>{by('in_progress').map((item) => workRow(item))}</Group>
         <Group id="blocked" title="Blocked" count={groupCount('blocked', by('blocked').length)}>{by('blocked').map((item) => workRow(item))}</Group>
         <Group id="open" title="Open" count={groupCount('open', by('open').length)}>{by('open').map((item) => workRow(item))}</Group>
         <Group id="parked" title="Parked by a pivot" count={groupCount('parked', parked.length)}>{parked.map((item) => workRow(item, true))}</Group>
         <Group id="finished" title="Finished" count={groupCount('finished', finished.length)}>{finished.map((item) => workRow(item, true))}</Group>
-        <Group id="rules" title="Decisions" count={groupCount('rules', current.length + earlier.length)}>
-          {current.map((item) => <Row key={item.id} kind="decision" id={item.id} icon={<Icon name="rule" size={16} />} title={item.title} sub={<>Current rule · {item.decidedBy?.kind === 'agent' ? <AgentIdentity name={item.decidedBy.name} owner={owners.get(item.decidedBy.id)} /> : item.decidedBy?.name ?? ''} · {shortDate(item.decidedAt!)}</>} onOpen={openObject('decision', item.id)} />)}
-          {earlier.map((item) => <Row key={item.id} kind="decision" id={item.id} icon={<Icon name="rule" size={16} />} title={item.title} sub={`Earlier rule · replaced ${shortDate(item.supersededAt!)}`} onOpen={openObject('decision', item.id)} muted />)}
-        </Group>
-        <Group id="results" title="Results" count={groupCount('results', results.length)}>
-          {results.map((item) => <Row key={item.id} kind="result" id={item.id} icon={<Icon name="result" size={16} />} iconClass={item.finding === 'negative' ? 'ws-neg' : 'ws-pos'} title={item.title} sub={<>{item.finding === 'negative' ? 'Negative' : 'Positive'} · {item.createdBy.kind === 'agent' ? <AgentIdentity name={item.createdBy.name} owner={owners.get(item.createdBy.id)} /> : item.createdBy.name}</>} right={shortDate(item.createdAt)} onOpen={openObject('result', item.id)} />)}
-        </Group>
       </div>
       )}
       </div>

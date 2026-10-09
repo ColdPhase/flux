@@ -241,14 +241,14 @@ class PhoneShellJourney(unittest.TestCase):
         shot(page, "266-composer-phone")
 
         # The places bar steps aside while a text field has focus, and comes back after.
-        page.goto("/")
+        page.goto("/map")  # the Sketchbook holds the private note (#342)
         bar = page.get_by_role("navigation", name="Main places")
         note = page.get_by_label("Private note", exact=True)
         expect(bar).to_be_visible()
         note.focus()
         expect(bar).to_be_hidden()
         note.fill("Ask about the hedge")
-        page.locator(".phead__sub").click()
+        page.locator("header h1").click()
         expect(bar).to_be_visible()
         expect(note).to_have_value("Ask about the hedge")
 
@@ -342,7 +342,7 @@ class PhoneShellJourney(unittest.TestCase):
         page.locator(".tb-ov", has_text="In progress").click()
         search = page.get_by_label("Search tasks")
         # Every tool names itself; Search is a target as wide as its tile.
-        for tool in ("Search", "Decisions"):
+        for tool in ("Search",):
             expect(toolbar.get_by_text(tool, exact=True)).to_be_visible()
         tile = self.box(page.locator(".tb-search"))
         self.assertGreaterEqual(min(tile["width"], tile["height"]), 44)

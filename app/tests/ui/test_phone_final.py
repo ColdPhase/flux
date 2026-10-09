@@ -196,7 +196,7 @@ class PhoneFinal(unittest.TestCase):
         page.goto("/inbox")
         page.get_by_role("button", name="Create", exact=True).click()
         page.get_by_role("dialog", name="Create").get_by_role("button", name=re.compile("^Thought")).click()
-        expect(page).to_have_url(f"{ORIGIN}/")
+        expect(page).to_have_url(f"{ORIGIN}/map")
         expect(page.get_by_label("Private note", exact=True)).to_be_focused()
 
     # ------------------------------------------------------------------ AC-3
@@ -293,17 +293,20 @@ class PhoneFinal(unittest.TestCase):
     def test_09_every_place_stays_reachable(self):
         page = self.page(SIZES[0])
         page.goto("/")
-        # Settings through the avatar; the Sketchbook and Home's tasks through the title; Messages through Projects.
+        # Settings through the avatar; Home's pages, the Sketchbook and Details from Home; Messages through Projects.
         page.get_by_role("link", name="Settings and account").click()
         expect(page).to_have_url(f"{ORIGIN}/settings")
         expect(page.get_by_role("heading", level=1, name="Settings")).to_be_visible()
-        page.goto("/")
-        page.get_by_role("heading", level=1).get_by_role("button").click()
-        menu = page.get_by_role("dialog", name=re.compile("Home"))
-        self.assertEqual([text.strip().split("\n")[0] for text in menu.locator(".phone-menu__item").all_inner_texts()],
-            ["Conversation", "Tasks", "Map", "Wiki", "Details"])
-        menu.get_by_role("link", name="Map").click()
-        expect(page).to_have_url(f"{ORIGIN}/map")
+        for link, path, title in (("All my tasks", "/tasks", "Your tasks"), ("Wiki", "/docs", "Wiki"), ("Sketchbook", "/map", "Sketchbook")):
+            page.goto("/")
+            page.locator(".home__more").get_by_role("link", name=link).click()
+            expect(page).to_have_url(f"{ORIGIN}{path}")
+            expect(page.get_by_role("heading", level=1, name=title)).to_be_visible()
+            page.get_by_role("button", name="Back", exact=True).click()
+            expect(page).to_have_url(f"{ORIGIN}/")
+        page.locator(".home__more").get_by_role("button", name="Details", exact=True).click()
+        expect(page.get_by_role("dialog", name="Details")).to_be_visible()
+        page.keyboard.press("Escape")
         page.goto("/inbox")
         expect(page.get_by_role("link", name="Settings and account")).to_be_visible()
 

@@ -1,4 +1,4 @@
-"""Browser tests for the inbox and notification settings (issue #116, AC-2/AC-3/AC-4/AC-6).
+"""Browser tests for the inbox and notification settings (issue #116, AC-2/AC-3/AC-4/AC-6; #342: the Inbox is the "Needs you" queue).
 
 Runs with the other tests/ui modules through scripts/check_ui.sh against the running Compose
 application, whose worker turns committed events into notifications. Kai creates real activity
@@ -146,76 +146,93 @@ class NotificationJourney(unittest.TestCase):
 
     # ---------------------------------------------------------------- the inbox from the rail
 
+    def wait_for_needs(self, page: Page, count: int) -> dict:
+        for _ in range(80):
+            queue = self.api(page, "GET", "/api/v1/needs-you")
+            if queue["count"] >= count:
+                return queue
+            time.sleep(0.25)
+        raise AssertionError(f"expected {count} things that need Ada, found {queue}")
+
     def test_01_inbox_from_the_sidebar_with_its_count(self) -> None:
         page = self.page("ada")
         self.wait_for_inbox(page, 6)
+        queue = self.wait_for_needs(page, 3)
+        self.assertEqual([item["kind"] for item in queue["items"]], ["decision", "question", "mention"])
         page.goto("/")
         rail = page.get_by_role("navigation", name="Places")
         inbox_link = rail.get_by_role("link", name=re.compile(r"^Inbox, \d+ new$"))
         expect(inbox_link).to_be_visible()
-        # The final design's Inbox count (F-026 §4): the same number the link's name gives.
+        # The final design's Inbox count (F-026 §4): what needs you, and the same number the link's name gives.
         count = inbox_link.locator(".side__count")
-        expect(count).to_have_text(re.compile(r"^\d+$"))
+        expect(count).to_have_text("3")
         self.assertEqual(re.search(r"\d+", inbox_link.get_attribute("aria-label")).group(), count.inner_text())
         inbox_link.click()
         expect(page).to_have_url(re.compile(r"/inbox$"))
         expect(page.get_by_role("heading", level=1, name="Inbox")).to_be_visible()
-        rows = page.locator(".inbox__row")
-        expect(rows).to_have_count(6)
-        new = page.get_by_role("region", name="New")
-        for title, why in [
-            ("Kai Tanaka mentioned you in Garden sensors", "Mentioned you"),
-            ("Decision to review: Switch to capacitive probes", "For your review"),
-            ("Kai Tanaka assigned you “Replace the corroded probe in bed 4”", "Assigned to you"),
-            ("Kai Tanaka sent you a message", "Direct message"),
-            ("Kai Tanaka asked you in Garden sensors", "Asked you"),
-            ("Kai Tanaka replied in “Wiring plan for the east beds”", "Reply"),
+        cards = page.locator(".nyc")
+        expect(cards).to_have_count(3)
+        # Every item has its reason in words and says where it came from; replies, direct messages and assigned
+        # work are notifications, not needs, and stay out of the queue (they reach you where they happen).
+        for title, kind in [
+            ("Decision to review", None),
+            ("Kai Tanaka asked you in Garden sensors", "Question"),
+            ("Kai Tanaka mentioned you in Garden sensors", None),
         ]:
-            row = new.locator(".inbox__row", has_text=title)
-            expect(row).to_have_count(1)
-            expect(row.locator(".inbox__meta")).to_contain_text(why)
-        expect(new.get_by_text("Can you bring the soldering iron tomorrow?")).to_be_visible()
+            if kind:
+                expect(page.locator(".nyc", has_text=title)).to_contain_text(kind)
+        expect(page.locator(".nyc", has_text="Switch to capacitive probes")).to_contain_text("They do not corrode in wet soil")
+        expect(cards.filter(has_text="soldering iron")).to_have_count(0)
+        expect(cards.filter(has_text="replied in")).to_have_count(0)
+        # Nothing was removed: the notifications are all still there for the API and for push and email links.
+        self.assertEqual(len(self.api(page, "GET", "/api/v1/inbox?limit=100")["items"]), 6)
         page.mouse.move(900, 880)  # no hover tooltip in the capture
         shot(page, "notifications-desktop-1440-inbox")
 
-    def test_02_open_the_exact_source_and_mark_read(self) -> None:
+    def test_02_open_the_exact_source_and_done_reads_it(self) -> None:
         page = self.page("ada")
         page.goto("/inbox")
-        page.locator(".inbox__row", has_text="asked you in Garden sensors").get_by_role("link").click()
+        page.locator(".nyc", has_text="asked you in Garden sensors").get_by_role("button", name="Reply").click()
         expect(page).to_have_url(re.compile(re.escape(self.urls["question"]) + "$"))
         message = page.locator("#" + self.urls["question"].split("#", 1)[1])
         expect(message).to_be_visible()
         expect(message).to_contain_text("could you check the calibration table before Friday?")
 
+        # A proposed decision opens in Details on its project, and nothing is read or decided by looking.
         page.get_by_role("navigation", name="Places").get_by_role("link", name=re.compile("^Inbox")).click()
-        question = page.locator(".inbox__row", has_text="asked you in Garden sensors")
-        expect(question).not_to_have_class(re.compile("is-unread"))
-        expect(page.get_by_role("region", name="Earlier")).to_contain_text("asked you in Garden sensors")
-
-        # Assigned work opens in Details on its project.
-        page.locator(".inbox__row", has_text="assigned you").get_by_role("link").click()
-        expect(page).to_have_url(re.compile(rf"/projects/{self.project_id}/tasks$"))
-        expect(page.locator("#details")).to_contain_text("Replace the corroded probe in bed 4")
+        page.locator(".nyc", has_text="Switch to capacitive probes").get_by_role("button", name="Switch to capacitive probes").click()
+        expect(page.locator("#details")).to_contain_text("Switch to capacitive probes")
         page.keyboard.press("Escape")
+        self.assertEqual(self.api(page, "GET", "/api/v1/needs-you")["count"], 3)
 
-        # A single item marks read from its button; "Mark all read" quiets the dot, and nothing is removed.
-        page.goto("/inbox")
-        page.locator(".inbox__row", has_text="sent you a message").hover()
-        page.locator(".inbox__row", has_text="sent you a message").get_by_role("button", name="Mark as read").click()
-        expect(page.locator(".inbox__row.is-unread", has_text="sent you a message")).to_have_count(0)
-        page.get_by_role("button", name="Mark all read").click()
-        expect(page.locator(".inbox__row.is-unread")).to_have_count(0)
-        expect(page.locator(".inbox__row")).to_have_count(6)
-        expect(page.get_by_text("All caught up.")).to_be_visible()
-        expect(page.get_by_role("navigation", name="Places").get_by_role("link", name="Inbox", exact=True)).to_be_visible()
-        self.assertEqual(self.api(page, "GET", "/api/v1/inbox")["unread"], 0)
+        # Done leaves the queue and reads the notification; Undo (Z) brings both back. Nothing is deleted.
+        mention = page.locator(".nyc", has_text="mentioned you")
+        mention.hover()
+        mention.get_by_role("button", name="Done").click()
+        expect(mention).to_have_count(0)
+        expect(page.get_by_role("status").filter(has_text="Marked done")).to_be_visible()
+        read = lambda: next(item for item in self.api(page, "GET", "/api/v1/inbox?limit=100")["items"] if "mentioned you" in item["title"])["readAt"]  # noqa: E731
+        for _ in range(40):
+            if self.api(page, "GET", "/api/v1/needs-you")["count"] == 2 and read():
+                break
+            time.sleep(0.25)
+        self.assertEqual(self.api(page, "GET", "/api/v1/needs-you")["count"], 2)
+        self.assertTrue(read())
+        page.keyboard.press("z")
+        expect(page.locator(".nyc", has_text="mentioned you")).to_have_count(1)
+        for _ in range(40):
+            if not read():
+                break
+            time.sleep(0.25)
+        self.assertIsNone(read())
+        expect(page.get_by_role("navigation", name="Places").get_by_role("link", name="Inbox, 3 new")).to_be_visible()
 
     # ---------------------------------------------------------------- preferences
 
     def test_03_preferences_quiet_hours_and_a_muted_place(self) -> None:
         page = self.page("ada")
         page.goto("/inbox")
-        page.locator(".app__main").get_by_role("link", name="Settings", exact=True).click()
+        page.get_by_role("navigation", name="Places").get_by_role("link", name="Notification settings").click()
         expect(page).to_have_url(re.compile(r"/settings/notifications$"))
         expect(page.get_by_role("heading", level=1, name="Notification settings")).to_be_visible()
         replies_email = page.get_by_label("Replies: Email")
@@ -295,10 +312,10 @@ class NotificationJourney(unittest.TestCase):
         page.goto("/inbox")
         expect(page.get_by_role("heading", level=1, name="Inbox")).to_be_visible()
         expect(page.get_by_role("button", name="Details")).to_have_count(0)
-        rows = page.locator(".inbox__row")
-        expect(rows).to_have_count(6)
+        cards = page.locator(".nyc")
+        expect(cards).to_have_count(3)
         self.assertLessEqual(page.evaluate("document.scrollingElement.scrollWidth"), PHONE["width"], "no sideways scroll")
-        first = rows.first.get_by_role("link")
+        first = cards.first.get_by_role("button", name=re.compile("^Accept"))
         self.assertGreaterEqual(box(page, first)["height"], 44)
         shot(page, "notifications-phone-390-inbox")
         # The capsule marks the Inbox; Settings are one tap on the avatar away (#341).
@@ -318,7 +335,7 @@ class NotificationJourney(unittest.TestCase):
     def test_06_dark_inbox_and_unsubscribe_page(self) -> None:
         page = self.page("ada", dark=True)
         page.goto("/inbox")
-        expect(page.locator(".inbox__row")).to_have_count(6)
+        expect(page.locator(".nyc")).to_have_count(3)
         shot(page, "notifications-desktop-1440-inbox-dark")
         anonymous = self.browser.new_context(base_url=ORIGIN, viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
         self.addCleanup(anonymous.close)

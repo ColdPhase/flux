@@ -324,7 +324,7 @@ class OneConversationJourney(unittest.TestCase):
             time.sleep(0.25)
         self.assertEqual(url, self.project_url(f"/conversations/{self.ids['c2']}#message-{asked['id']}"), "the notification links the exact message")
         page.goto("/inbox")
-        page.locator(".inbox__row", has_text="asked you in Night lamp").get_by_role("link").click()
+        page.locator(".nyc", has_text="asked you in Night lamp").first.get_by_role("button", name="Reply").click()
         expect(page).to_have_url(re.compile(re.escape(url) + "$"))
         message = self.thread(page).locator(f"#message-{asked['id']}")
         expect(message).to_have_class(re.compile("is-arrived"))

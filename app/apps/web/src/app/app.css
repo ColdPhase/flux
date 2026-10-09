@@ -502,6 +502,7 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 }
 .phead__menu svg { flex: none; color: var(--t2); }
 .phead__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.phead__word { font-size: 1.5rem; font-weight: 600; letter-spacing: -.04em; }
 .phead__sub { margin: 0; font-size: .8125rem; line-height: 1.35; color: var(--t2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .phead__right { display: flex; align-items: center; gap: 8px; flex: none; }
 .phead__round.ui-icon-btn, .phead__avatar {
@@ -577,3 +578,9 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 .proj-index__dms { display: grid; gap: 10px; margin-top: 22px; justify-items: start; }
 .proj-index__dms h2 { margin: 0; font-size: .9375rem; font-weight: 500; color: var(--t2); }
 .proj-index__dms .dm-index { width: 100%; }
+
+/* Home as drawn (#342): no header row on the computer; the name stays for assistive technology. */
+.top.top--bare { height: 0; min-height: 0; padding: 0; margin: 0; border: 0; overflow: visible; }
+.top--bare .top__title { position: static; min-width: 0; }
+.top--bare .top__title h1 { position: absolute; width: 1px; height: 1px; min-width: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.top--bare .top__topic, .top--bare .top__crumb, .top--bare .top__slash, .top--bare .top__right { display: none; }

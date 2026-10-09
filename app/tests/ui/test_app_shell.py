@@ -125,14 +125,23 @@ def view_tab(page: Page, name: str, tap: bool = False) -> None:
 
 
 def open_details(page: Page, tap: bool = False) -> None:
-    """Details: More, then Details, in the computer's one-row header (#340); on the phone the title's
-    view menu ends with "Details, goal and people" (#341)."""
+    """Details: More, then Details, in the computer's one-row header (#340); Home has its own quiet
+    Details button (#342); on the phone a project's title menu ends with "Details, goal and people" (#341)."""
+    home = page.locator("#content .home").get_by_role("button", name="Details", exact=True)
     if page.viewport_size["width"] <= 640:
+        page.locator("#content .home button:text-is('Details'), header .phead__menu").first.wait_for()
+        if home.count():
+            home.tap() if tap else home.click()
+            return
         row = phone_menu(page, tap).locator(".phone-menu__details")
         row.tap() if tap else row.click()
         return
     header = page.locator("header.top")
-    header.locator("button[aria-label='More']").wait_for()
+    # Home has no header row (#342): its Details are one quiet button under what needs you.
+    page.locator("#content .home button:text-is('Details'), header.top:not(.top--bare) button[aria-label='More']").first.wait_for()
+    if home.count():
+        home.click()
+        return
     header.get_by_role("button", name="More", exact=True).click()
     page.get_by_role("menu", name="More").get_by_role("menuitem", name="Details").click()
 
@@ -353,7 +362,7 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("heading", name="No docs yet")).to_be_visible()
         page.reload()
         expect(page).to_have_url(f"{ORIGIN}/docs")
-        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        expect(page.get_by_role("heading", level=1, name="Wiki")).to_be_visible()
         # A signed-in person who opens sign-in is taken to their work.
         page.goto("/sign-in")
         expect(page).to_have_url(f"{ORIGIN}/")
@@ -390,18 +399,23 @@ class AppShellJourney(unittest.TestCase):
         self.assertEqual(marker, ["rgb(255, 255, 255)", True], "the current place is a raised white pill (F-026 §4)")
         expect(sidebar.get_by_text("No projects yet")).to_be_visible()
         expect(sidebar.get_by_role("button", name=re.compile("^New"))).to_have_attribute("aria-keyshortcuts", "C")
-        views = page.get_by_role("navigation", name="Views")
-        # The views sit in the header's one row as a segmented control (F-026 §4, #340).
-        expect(page.locator("header.top").get_by_role("navigation", name="Views")).to_be_visible()
-        for label in ("Conversation", "Map", "Tasks", "Wiki"):
-            expect(views.get_by_role("link", name=label, exact=True)).to_be_visible()
-        expect(views.get_by_role("link", name="Conversation")).to_have_attribute("aria-current", "page")
+        # Home as drawn (#342): no header row and no views; the page starts with the greeting.
+        expect(page.get_by_role("navigation", name="Views")).to_have_count(0)
+        self.assertLessEqual(box(page, page.locator("header.top"))["height"], 2, "no header row on Home")
+        expect(page.get_by_role("link", name="All my tasks")).to_be_visible()
+        # Home is the date, a greeting and what needs you (#342); the private notes moved to the Sketchbook.
+        expect(page.get_by_role("heading", level=2, name=re.compile(r"^Good (morning|afternoon|evening), Jo$"))).to_be_visible()
+        expect(page.get_by_text("Nothing needs you right now. Enjoy the quiet.")).to_be_visible()
+        shot(page, "desktop-1440-empty-light")
+        places.get_by_role("link", name="Sketchbook").click()
+        expect(page).to_have_url(f"{ORIGIN}/map")
+        expect(page.get_by_role("heading", level=1, name="Sketchbook")).to_be_visible()
+        expect(page.get_by_role("heading", level=2, name="Your notes")).to_be_visible()
         expect(page.get_by_role("heading", name="Nothing here yet")).to_be_visible()
         composer = page.get_by_label("Private note", exact=True)
-        # The composer sits at the bottom of the work area and always shows its audience.
-        self.assertGreater(box(page, composer)["y"], DESKTOP["height"] - 130)
+        # The composer always shows its audience.
         expect(page.locator(".composer__audience")).to_contain_text("Only you")
-        shot(page, "desktop-1440-empty-light")
+        shot(page, "desktop-1440-notes-empty-light")
 
         # Quick capture: Enter saves a private note, which survives a reload.
         save = page.get_by_role("button", name="Save note")
@@ -424,14 +438,11 @@ class AppShellJourney(unittest.TestCase):
         self.assertEqual(len(page.evaluate("fetch('/api/v1/workspaces').then(r => r.json())")), 1, "still one space")
         shot(page, "desktop-1440-light")
 
-        indicator = page.locator(".top__views .ui-tabs__indicator")
-        before = indicator.evaluate("el => el.style.transform")
-        views.get_by_role("link", name="Tasks").click()
+        page.goto("/")
+        page.get_by_role("link", name="All my tasks").click()
         expect(page).to_have_url(f"{ORIGIN}/tasks")
-        expect(views.get_by_role("link", name="Tasks")).to_have_attribute("aria-current", "page")
         expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
-        self.assertNotEqual(before, indicator.evaluate("el => el.style.transform"), "the pill moves to the chosen view")
-        views.get_by_role("link", name="Map").click()
+        places.get_by_role("link", name="Sketchbook").click()
         expect(page.get_by_role("heading", name="Start a sketch")).to_be_visible()
         shot(page, "desktop-1440-map-light")
 
@@ -480,8 +491,7 @@ class AppShellJourney(unittest.TestCase):
 
     def test_04a_draft_survives_view_switch_and_reload(self) -> None:
         page = self.page()
-        page.goto("/")
-        views = page.get_by_role("navigation", name="Views")
+        page.goto("/map")
         composer = page.get_by_label("Private note", exact=True)
         state = page.locator(".composer__state")
         expect(state).to_have_text("Private until you explicitly publish a selected version")
@@ -492,9 +502,9 @@ class AppShellJourney(unittest.TestCase):
         self.assertEqual(page.evaluate(f"localStorage.getItem('flux:draft:{user_id}:home')"), unfinished, "stored per account and context")
 
         # A view switch remounts the composer; the text comes back.
-        views.get_by_role("link", name="Tasks").click()
-        expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
-        views.get_by_role("link", name="Conversation").click()
+        page.get_by_role("link", name="Home", exact=True).first.click()
+        expect(page.get_by_role("heading", level=2, name=re.compile("^Good ")) ).to_be_visible()
+        page.get_by_role("navigation", name="Places").get_by_role("link", name="Sketchbook").click()
         expect(composer).to_have_value(unfinished)
         expect(state).to_have_text("Draft kept on this device")
 
@@ -519,7 +529,7 @@ class AppShellJourney(unittest.TestCase):
 
     def test_04b_reading_position_is_kept_per_view(self) -> None:
         page = self.page()
-        page.goto("/")
+        page.goto("/map")
         user_id = page.evaluate("fetch('/api/v1/me').then(r => r.json()).then(b => b.user.id)")
         key = f"flux.captures.{user_id}"
         saved = page.evaluate(f"localStorage.getItem('{key}')")
@@ -527,7 +537,7 @@ class AppShellJourney(unittest.TestCase):
         page.evaluate(f"localStorage.setItem('{key}', JSON.stringify({json.dumps(notes)}))")
         try:
             page.reload()
-            scroller = page.locator(".convo .pane-scroll")
+            scroller = page.locator(".sk-page")
             expect(page.get_by_text("note 40:")).to_be_attached()
             # Home loads blocks above these notes after they render (private drafts, the offer to move
             # browser notes, #190 HOME-3); the position is a pixel offset, so it is taken once they have.
@@ -537,20 +547,19 @@ class AppShellJourney(unittest.TestCase):
             page.wait_for_timeout(100)
             # The note at the top of the column: blocks above the notes can load later and change the
             # pixel offset (the browser keeps the same note in view), so the place is checked by content.
-            first_visible = """() => { const s = document.querySelector('.convo .pane-scroll'); const top = s.getBoundingClientRect().top;
+            first_visible = """() => { const s = document.querySelector('.sk-page'); const top = s.getBoundingClientRect().top;
               const note = [...s.querySelectorAll('.note')].find((el) => el.getBoundingClientRect().bottom > top + 1);
               return note ? note.querySelector('.note__text').textContent : null; }"""
             anchor = page.evaluate(first_visible)
             self.assertIsNotNone(anchor)
-            views = page.get_by_role("navigation", name="Views")
-            views.get_by_role("link", name="Wiki").click()
+            page.goto("/docs")
             expect(page.get_by_role("heading", name="No docs yet")).to_be_visible()
-            views.get_by_role("link", name="Conversation").click()
+            page.get_by_role("navigation", name="Places").get_by_role("link", name="Sketchbook").click()
             expect(page.get_by_role("button", name=re.compile(r"^Move 40 notes"))).to_be_visible()
             page.wait_for_load_state("networkidle")
             # Restored by content, not pixels: a block that loads above the notes after the restore (drafts,
             # the move offer) shifts the offset while the browser keeps the same note in view.
-            self.assertGreater(page.locator(".convo .pane-scroll").evaluate("el => el.scrollTop"), 0, "a position was restored")
+            self.assertGreater(page.locator(".sk-page").evaluate("el => el.scrollTop"), 0, "a position was restored")
             self.assertEqual(page.evaluate(first_visible), anchor, "the same note is at the top after a view switch")
             page.reload()
             expect(page.get_by_text("note 40:")).to_be_attached()
@@ -559,12 +568,12 @@ class AppShellJourney(unittest.TestCase):
             page.wait_for_load_state("networkidle")
             self.assertEqual(page.evaluate(first_visible), anchor, "the same note is at the top after a reload")
         finally:
-            page.evaluate(f"localStorage.setItem('{key}', {json.dumps(saved)}); localStorage.removeItem('flux:scroll:{user_id}:/')" if saved else f"localStorage.removeItem('{key}'); localStorage.removeItem('flux:scroll:{user_id}:/')")
+            page.evaluate(f"localStorage.setItem('{key}', {json.dumps(saved)}); localStorage.removeItem('flux:scroll:{user_id}:/map')" if saved else f"localStorage.removeItem('{key}'); localStorage.removeItem('flux:scroll:{user_id}:/map')")
             self.save_state(page)
 
     def test_04c_personal_assistant_needs_a_connection(self) -> None:
         page = self.page()
-        page.goto("/")
+        page.goto("/map")
         composer = page.get_by_label("Private note", exact=True)
         composer.fill("Which sensor works in the dark?")
         # With no assistant of their own, the spark button leads to "Connect your AI" (#189); nothing is
@@ -614,44 +623,24 @@ class AppShellJourney(unittest.TestCase):
         page.goto("/")
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         expect(page.get_by_role("complementary", name="Sidebar")).to_have_count(0)
-        composer = page.get_by_label("Private note", exact=True)
-        composer_box = box(page, page.locator(".composer"))
-        # #341: the capsule floats at the bottom with the round Search and the one "+"; the composer is above
-        # them, clear of the "+"; the views are in the title.
+        # #341: the capsule floats at the bottom with the round Search and the one "+"; Home has no view chips (#342).
         bar_box = box(page, page.get_by_role("navigation", name="Main places"))
         self.assertLess(bar_box["y"] + bar_box["height"], PHONE["height"] - 6, "the places capsule floats above the bottom edge")
-        self.assertLessEqual(composer_box["y"] + composer_box["height"], bar_box["y"], "the composer sits above the places capsule")
-        fab_box = box(page, page.get_by_role("button", name="Create", exact=True))
-        self.assertLessEqual(composer_box["y"] + composer_box["height"], fab_box["y"] + 1, "the plus does not cover the composer")
+        greeting = page.get_by_role("heading", level=2, name=re.compile(r"^Good (morning|afternoon|evening), Jo$"))
+        expect(greeting).to_be_visible()
+        expect(page.get_by_role("navigation", name="Views")).to_have_count(0)
         shot(page, "phone-390-light")
 
         # Coarse pointer: primary targets are at least 44px.
-        menu = page.get_by_role("heading", level=1).get_by_role("button")
-        targets = [menu, page.get_by_role("link", name="Settings and account"), page.get_by_role("button", name="Search", exact=True), page.get_by_role("button", name="Create", exact=True)]
+        targets = [page.get_by_role("link", name="Settings and account"), page.get_by_role("button", name="Search", exact=True),
+                   page.get_by_role("button", name="Create", exact=True), page.get_by_role("link", name="All my tasks")]
         for target in targets:
             size = box(page, target)
-            self.assertGreaterEqual(min(size["width"], size["height"]), 44 if target is not menu else 28, f"touch target: {target}")
-        self.assertGreaterEqual(box(page, page.get_by_role("button", name="Save note"))["height"], 44)
-        expect(composer).to_be_editable()
+            self.assertGreaterEqual(min(size["width"], size["height"]), 44, f"44px target: {target}")
 
-        menu.click()
-        views = page.get_by_role("dialog", name=re.compile("Home"))
-        expect(views).to_be_visible()
-        expect(menu).to_have_attribute("aria-expanded", "true")
-        self.assertTrue(views.evaluate("el => el.contains(document.activeElement)"), "focus moves into the menu")
-        self.assertTrue(page.evaluate("document.getElementById('root').inert"), "the page behind the menu is inert")
-        for name in ("Conversation", "Tasks", "Map", "Wiki"):
-            self.assertGreaterEqual(box(page, views.get_by_role("link", name=name))["height"], 44, f"44px row: {name}")
-        for _ in range(8):
-            page.keyboard.press("Tab")
-            self.assertTrue(views.evaluate("el => el.contains(document.activeElement)"), "focus stays in the menu")
-        shot(page, "phone-390-menu-light")
-        page.keyboard.press("Escape")
-        expect(page.get_by_role("dialog")).to_have_count(0)
-        expect(menu).to_be_focused()
-
-        menu.click()
-        page.get_by_role("dialog", name=re.compile("Home")).get_by_role("button", name="Details", exact=True).click()
+        # Home's quiet Details button opens a full-screen sheet; the title menus of projects are in test_phone_final.
+        details = page.locator("#content .home").get_by_role("button", name="Details", exact=True)
+        details.click()
         sheet = page.get_by_role("dialog", name="Details")
         expect(sheet).to_be_visible()
         page.wait_for_timeout(400)
@@ -660,8 +649,7 @@ class AppShellJourney(unittest.TestCase):
         shot(page, "phone-390-details-light")
         page.keyboard.press("Escape")
         expect(page.get_by_role("dialog")).to_have_count(0)
-        menu.click()
-        page.get_by_role("dialog", name=re.compile("Home")).get_by_role("button", name="Details", exact=True).click()
+        details.click()
         page.get_by_role("dialog", name="Details").get_by_role("button", name="Close details").click()
         expect(page.get_by_role("dialog")).to_have_count(0)
 
@@ -670,11 +658,6 @@ class AppShellJourney(unittest.TestCase):
         page.goto("/")
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         shot(page, "phone-390-dark")
-        page.get_by_role("heading", level=1).get_by_role("button").click()
-        expect(page.get_by_role("dialog", name=re.compile("Home"))).to_be_visible()
-        shot(page, "phone-390-menu-dark")
-
-        page.keyboard.press("Escape")
         page.goto("/map")
         # Sketching itself is covered by tests/ui/test_sketches.py (#69).
         expect(page.get_by_role("button", name="New sketch")).to_be_visible()
@@ -930,7 +913,7 @@ class AppShellJourney(unittest.TestCase):
         ws = spaces[0]
         projects = owner.context.request.get(f"{ORIGIN}/api/v1/workspaces/{ws['id']}/projects?limit=100").json()
         self.assertEqual([p["id"] for p in projects["items"]], [project_id], "a retried project whose first response was lost is not created twice")
-        owner.get_by_role("link", name="Home").click()
+        owner.get_by_role("link", name="Sketchbook").click()
         owner.get_by_label("Private note", exact=True).fill("home address 123; PIR avoids storing images")
         lost_draft = lose_first_committed(f"**/api/v1/workspaces/{ws['id']}/drafts")
         owner.get_by_role("button", name="Save note").click()
