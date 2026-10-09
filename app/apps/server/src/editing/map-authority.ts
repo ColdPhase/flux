@@ -6,7 +6,7 @@ import { EditingOutputBudget, EditingOutputError } from './output.js';
 import { editingResourcesChanged } from './resource-observation.js';
 
 type Reservation = ReturnType<EditingOutputBudget['lease']>;
-interface Waiter { lease: Reservation; inputBytes: number; worstResult: number; timer: NodeJS.Timeout; grant: () => void; reject: (error: unknown) => void }
+interface Waiter { ticket: number; lease: Reservation; inputBytes: number; worstResult: number; timer: NodeJS.Timeout; grant: () => void; reject: (error: unknown) => void }
 export interface MapPreparation {
   /** Protected JSON text; EditingOutput reserves its wire backing before allocating it. */
   encode(value: unknown): string;
@@ -77,20 +77,25 @@ export function mapAuthority(backend: LiveMapBackend, outputBudget: EditingOutpu
   const operations = new Set<Promise<void>>();
   let running = 0, closing = false, pumping = false;
   const identity = (session: SessionContext): MapIdentity => ({ sessionId: session.sessionId, actorId: session.principal.id });
+  // The map FIFO takes its turns with every other queue of the shared budget, in arrival order.
+  const queue = { get oldest() { return waiting[0]?.ticket ?? Infinity; } };
+  const leave = outputBudget.join(queue);
   function pump() {
     if (pumping || closing) return;
-    pumping = true;
+    pumping = true; let granted = false;
     try {
       while (running < 4 && waiting.length) {
         const item = waiting[0]!;
+        if (!outputBudget.mayGrant(queue, item.ticket)) break;
         try { item.lease.resize(item.inputBytes + item.worstResult); }
         catch (error) {
           if (error instanceof EditingOutputError && error.code === 'EDITING_OUTPUT_CAPACITY') break;
           waiting.shift();editingResourcesChanged(); clearTimeout(item.timer); item.lease.release(); item.reject(error); continue;
         }
-        waiting.shift(); clearTimeout(item.timer); running++;editingResourcesChanged(); item.grant();
+        waiting.shift(); clearTimeout(item.timer); running++;editingResourcesChanged(); item.grant(); granted = true;
       }
     } finally { pumping = false; }
+    if (granted) outputBudget.wake();
   }
   const unsubscribe = outputBudget.onCapacity(pump);
   function admit(context: unknown, rawBytes: number, worstResult: number) {
@@ -99,9 +104,9 @@ export function mapAuthority(backend: LiveMapBackend, outputBudget: EditingOutpu
     const inputBytes = rawBytes + editingMapContextCharge(context);
     const lease = outputBudget.lease(inputBytes);
     return { lease, inputBytes, ready: new Promise<void>((grant, reject) => {
-      const item: Waiter = { lease, inputBytes, worstResult, grant, reject, timer: setTimeout(() => {
+      const item: Waiter = { ticket: outputBudget.ticket(), lease, inputBytes, worstResult, grant, reject, timer: setTimeout(() => {
         const index = waiting.indexOf(item); if (index < 0) return;
-        waiting.splice(index, 1);editingResourcesChanged(); lease.release(); reject(capacity()); pump();
+        waiting.splice(index, 1);editingResourcesChanged(); lease.release(); reject(capacity()); outputBudget.wake();
       }, 10_000) };
       item.timer.unref(); waiting.push(item);editingResourcesChanged(); pump();
     }) };
@@ -189,7 +194,8 @@ export function mapAuthority(backend: LiveMapBackend, outputBudget: EditingOutpu
           ...(worst < LARGE_RESULT ? { prepare: (need: MapDeliveryNeed) => {
             const needed = need.delta ? LARGE_RESULT : transientCharge(need);
             if (needed <= worst) return;
-            if (waiting.length) throw new PreparationTooSmall();
+            // Nobody may be waiting on the shared budget, in this FIFO or in any other queue.
+            if (waiting.length || outputBudget.queued) throw new PreparationTooSmall();
             try { lease.resize(bytes + LARGE_RESULT); } catch { throw new PreparationTooSmall(); }
           } } : {}) }));
       try { return await read(TRANSIENT_RESULT); }
@@ -199,7 +205,7 @@ export function mapAuthority(backend: LiveMapBackend, outputBudget: EditingOutpu
       return run({ session, sketchId, connectionId }, 0, SMALL_RESULT, () => backend.disconnect(identity(session), sketchId, connectionId));
     },
     async close() {
-      closing = true; unsubscribe();
+      closing = true; unsubscribe(); leave();
       const pending=waiting.splice(0);editingResourcesChanged();
       for (const item of pending) { clearTimeout(item.timer); item.lease.release(); item.reject(capacity()); }
       // Includes granted continuations which have not resumed their microtask,

@@ -731,7 +731,13 @@ from the shared output budget through its own admission queue, and that queue wa
 notified before the HTTP routes' queue. Enrollment renewals waited the full 10 s and
 failed with 503 (about ten in four cases); each failure reconnected the writer and
 blurred its editor. Requests of every admission sharing one budget now take their
-turns in arrival order. The fourth run had no 503 and no reconnect.
+turns in arrival order. The fourth run had no 503 and no reconnect. Later runs still
+showed map bootstraps refused after 10 s (three to four per run). The cause in the code: the map authority's
+FIFO was a separate queue on the same budget, notified after the HTTP and read
+admissions, and a running map read could grow its charge while others waited. Every
+queue of the budget (HTTP, read preparation, native journal, map authority) now takes
+its turn by one arrival ticket, and a map read grows its charge only when no queue of
+the budget waits (2026-10-10).
 
 Not fixed here, with evidence from the same runs:
 

@@ -7,11 +7,32 @@ export class EditingOutputError extends Error {
   constructor(readonly code: 'EDITING_OUTPUT_CAPACITY' | 'EDITING_OUTPUT_CLOSED' | 'EDITING_OUTPUT_FRAME_LIMIT' | 'INVALID_DELIVERY_ACK') { super(code); }
 }
 
+/** A queue waiting on the budget: the arrival ticket of its oldest waiter, Infinity when it has none. */
+export interface EditingOutputQueue { readonly oldest: number }
 /** Payloads plus every outstanding ws-owned frame share this API-wide hard limit. */
 export class EditingOutputBudget {
   bytes = 0;
   private capacity = new Set<() => void>();
+  private queues = new Set<EditingOutputQueue>();
+  private tickets = 0;
   onCapacity(callback: () => void) { this.capacity.add(callback); return () => { this.capacity.delete(callback); }; }
+  /**
+   * The queues waiting on this budget (HTTP and read preparations, the map authority) take their
+   * turns in arrival order. Otherwise whichever queue a release notifies first takes the capacity
+   * an older waiter elsewhere needs: live reads starved enrollment renewals and map bootstraps into
+   * ten-second refusals (#228 Gate 4).
+   */
+  join(queue: EditingOutputQueue) { this.queues.add(queue); return () => { this.queues.delete(queue); }; }
+  ticket() { return ++this.tickets; }
+  /** No other queue has a waiter older than `ticket`. */
+  mayGrant(queue: EditingOutputQueue, ticket: number) {
+    for (const other of this.queues) if (other !== queue && other.oldest < ticket) return false;
+    return true;
+  }
+  /** Some queue has a waiter: growing a running reservation would take capacity it waits for. */
+  get queued() { for (const queue of this.queues) if (queue.oldest !== Infinity) return true; return false; }
+  /** After a queue grants or loses a waiter, every queue looks again. */
+  wake() { for (const callback of this.capacity) callback(); }
   lease(bytes: number) {
     if (!Number.isSafeInteger(bytes) || bytes < 0 || this.bytes + bytes > 32 * 1024 * 1024) throw new EditingOutputError('EDITING_OUTPUT_CAPACITY');
     this.bytes += bytes; let amount = bytes; let released = false;editingResourcesChanged();

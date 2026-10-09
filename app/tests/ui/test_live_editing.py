@@ -571,3 +571,45 @@ class LiveEditingJourney(LiveFixture):
                 raw = raw.replace(label, "")
             return "".join(raw.split())
         self.assertEqual(shared_text(await ada_field.inner_text()), shared_text(await kai_field.inner_text()))
+
+    async def test_15_a_collaborators_caret_at_the_end_never_takes_the_last_character_selection(self):
+        # #228 Gate 4: Shift+ArrowLeft at the end of the text must select the last character even
+        # when the other person's named caret sits at that same end position.
+        await self.create_doc("Field note ends here")
+        ada, kai = self.pages["ada"], self.pages["kai"]
+        ada_field, kai_field = await self.editor("ada"), await self.editor("kai")
+        shared = """(ending) => {
+          const content = document.querySelector('.cm-content'), walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+          let text = '', node; while ((node = walker.nextNode())) if (!node.parentElement.closest('.editing-caret')) text += node.data;
+          return text === 'Field note ends he' + ending;
+        }"""
+
+        async def replace_last(character: str) -> None:
+            await ada.keyboard.press("Control+End")
+            await ada.keyboard.press("Shift+ArrowLeft")
+            await ada.keyboard.insert_text(character)
+            # Both copies hold the same length of text, with this character replacing the last one.
+            for page in (ada, kai):
+                await page.wait_for_function(shared, arg="r" + character, timeout=5000)
+
+        # Control: Kai's caret at the start, away from the end of the text.
+        await kai_field.click()
+        await kai.keyboard.press("Control+Home")
+        await expect(ada.locator('.editing-caret[aria-label="Kai South\'s cursor"]')).to_have_count(1)
+        await ada_field.click()
+        await replace_last("A")
+        # Kai's caret moves to the very end, the position Ada's own cursor goes to.
+        await kai_field.click()
+        await kai.keyboard.press("Control+End")
+        await ada.wait_for_function("""() => {
+          const caret = document.querySelector('.editing-caret[aria-label="Kai South\\'s cursor"]');
+          const content = document.querySelector('.cm-content'), walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+          let last = null, node; while ((node = walker.nextNode())) if (node.data.trim() && !node.parentElement.closest('.editing-caret')) last = node;
+          if (!caret || !last) return false;
+          const range = document.createRange(); range.setStart(last, last.data.length - 1); range.setEnd(last, last.data.length);
+          return Math.abs(caret.getBoundingClientRect().left - range.getBoundingClientRect().right) <= 2;
+        }""", timeout=5000)
+        await ada_field.click()
+        for character in "BCDEF":
+            await replace_last(character)
+        self.assertEqual(await ada_field.locator(".editing-caret").count(), 0, "The named caret is drawn outside the editable text")

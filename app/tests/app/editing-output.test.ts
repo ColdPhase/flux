@@ -7,6 +7,8 @@ import { EDITING_LIMITS } from '@flux/contracts';
 import { EDITING_OUTPUT_DELIVERIES, EditingOutput, EditingOutputBudget, EditingOutputError } from '../../apps/server/src/editing/output.js';
 import { EditingHTTPAdmission } from '../../apps/server/src/editing/http-admission.js';
 import { editingMapContextCharge } from '../../apps/server/src/editing/context-charge.js';
+import { mapAuthority } from '../../apps/server/src/editing/map-authority.js';
+import type { SessionContext } from '../../apps/server/src/identity/session.js';
 
 const header = { type: 'preview' as const, generation: 'generation', sequence: 1, hash: 'hash' };
 function boundary() {
@@ -130,4 +132,27 @@ test('a read batch is an ordered, bounded set of deliveries: frames leave in ord
   for (const frame of frames.slice(3)) output.received(frame.deliveryId, 0);
   assert.equal(completed.length, EDITING_OUTPUT_DELIVERIES); assert.equal(output.busy, false);
   for (const callback of f.callbacks) callback(); output.close(); assert.equal(budget.bytes, 0);
+});
+
+test('a map bootstrap and the HTTP admissions of one budget take their turns in arrival order', async () => {
+  const budget = new EditingOutputBudget(); const order: string[] = [];
+  // The HTTP admission is notified first on every release, so it used to win every time.
+  const http = new EditingHTTPAdmission(budget, 1000);
+  const backend = { async bootstrap() { order.push('map bootstrap'); }, async close() {} } as unknown as Parameters<typeof mapAuthority>[0];
+  const maps = mapAuthority(backend, budget);
+  const session: SessionContext = { sessionId: 'session', expiresAt: new Date(Date.now() + 60_000), principal: { kind: 'human', id: 'person' },
+    user: { id: 'person', name: 'Map reader', email: 'map-reader@example.test' } };
+  const occupying = budget.reserve(16 * 1024 * 1024);
+  const bootstrap = maps.bootstrap(session, 'sketch', () => {});
+  await new Promise((resolve) => setImmediate(resolve));
+  const later = http.admit(1024).then((release) => { order.push('native command'); return release; });
+  try {
+    occupying(); await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(order[0], 'map bootstrap', 'The older map bootstrap takes the released capacity first');
+    await bootstrap; (await later)();
+    assert.deepEqual(order, ['map bootstrap', 'native command']);
+  } finally {
+    occupying(); http.close(); await maps.close(); await bootstrap.catch(() => {}); await later.then((release) => release(), () => {});
+  }
+  assert.equal(budget.bytes, 0);
 });

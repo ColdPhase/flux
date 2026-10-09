@@ -1,8 +1,8 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
 import * as Y from 'yjs';
-import { EditorState, Prec, StateEffect, StateField, type Range } from '@codemirror/state';
-import { Decoration, EditorView, WidgetType, drawSelection, keymap, type DecorationSet } from '@codemirror/view';
+import { EditorSelection, EditorState, Prec, StateEffect, StateField, type Range } from '@codemirror/state';
+import { Decoration, EditorView, RectangleMarker, drawSelection, keymap, layer, type DecorationSet, type LayerMarker } from '@codemirror/view';
 import { yCollab, yUndoManagerKeymap } from 'y-codemirror.next';
 import { DOC_LIMITS, docRef, type Doc, type DocState, type Project } from '@flux/contracts';
 import { Button, Icon, useMediaQuery } from '../ui';
@@ -32,16 +32,50 @@ function color(id: string) {
   let hash = 0; for (const character of id) hash = (hash * 31 + character.charCodeAt(0)) | 0;
   return ['#365fba', '#93613c', '#a54b87', '#287c6a'][Math.abs(hash) % 4]!;
 }
-class NamedCaret extends WidgetType {
-  constructor(private name: string, private ink: string) { super(); }
-  eq(other: NamedCaret) { return other.name === this.name && other.ink === this.ink; }
-  toDOM() {
-    const element = document.createElement('span'); element.className = 'editing-caret';
-    element.style.borderColor = this.ink; element.setAttribute('aria-label', `${this.name}'s cursor`);
-    const label = document.createElement('span'); label.textContent = this.name; label.style.backgroundColor = this.ink;
-    element.append(label); return element;
+/**
+ * A collaborator's named caret is drawn in its own layer, like the local selection, never as an
+ * inline widget: a widget at the same position as the local cursor became a cursor stop, so
+ * Shift+ArrowLeft at the end of the text stepped over the other person's caret instead of
+ * selecting the last character.
+ */
+class NamedCaret implements LayerMarker {
+  constructor(readonly name: string, readonly ink: string, readonly left: number, readonly top: number, readonly height: number) {}
+  eq(other: LayerMarker): boolean { return other instanceof NamedCaret && other.name === this.name && other.ink === this.ink
+    && other.left === this.left && other.top === this.top && other.height === this.height; }
+  draw() {
+    const element = document.createElement('div'); element.className = 'editing-caret';
+    element.setAttribute('aria-label', `${this.name}'s cursor`);
+    const label = document.createElement('span'); label.textContent = this.name; element.append(label);
+    this.place(element); return element;
+  }
+  update(element: HTMLElement, previous: LayerMarker): boolean {
+    if (!(previous instanceof NamedCaret) || previous.name !== this.name) return false;
+    this.place(element); return true;
+  }
+  private place(element: HTMLElement) {
+    element.style.left = `${this.left}px`; element.style.top = `${this.top}px`; element.style.height = `${this.height}px`;
+    element.style.borderColor = this.ink; (element.firstElementChild as HTMLElement).style.backgroundColor = this.ink;
   }
 }
+interface RemoteCaret { head: number; name: string; ink: string }
+const remoteCaretsChanged = StateEffect.define<RemoteCaret[]>();
+const remoteCarets = StateField.define<RemoteCaret[]>({
+  create: () => [],
+  update(value, transaction) {
+    if (transaction.docChanged) value = value.map((caret) => ({ ...caret, head: transaction.changes.mapPos(caret.head, 1) }));
+    for (const effect of transaction.effects) if (effect.is(remoteCaretsChanged)) value = effect.value;
+    return value;
+  },
+});
+const remoteCaretLayer = layer({
+  above: true, class: 'editing-carets',
+  update: (update) => update.docChanged || update.geometryChanged || update.viewportChanged
+    || update.transactions.some((transaction) => transaction.effects.some((effect) => effect.is(remoteCaretsChanged))),
+  markers: (view) => view.state.field(remoteCarets).flatMap((caret) => {
+    const at = RectangleMarker.forRange(view, 'editing-caret', EditorSelection.cursor(Math.min(caret.head, view.state.doc.length)))[0];
+    return at ? [new NamedCaret(caret.name, caret.ink, at.left, at.top, at.height)] : [];
+  }),
+});
 const remoteMarks = StateEffect.define<DecorationSet>();
 const marked = StateField.define<DecorationSet>({
   create: () => Decoration.none,
@@ -64,9 +98,16 @@ function marks(client: SharedWiki) {
     const anchor = relativeIndex(client, peer.cursor.anchor), head = relativeIndex(client, peer.cursor.head);
     if (anchor === null || head === null) continue;
     if (anchor !== head) ranges.push(Decoration.mark({ attributes: { style: `background:${color(peer.actor.id)}25` } }).range(Math.min(anchor, head), Math.max(anchor, head)));
-    ranges.push(Decoration.widget({ widget: new NamedCaret(peer.actor.name, color(peer.actor.id)), side: 1 }).range(head));
   }
   return Decoration.set(ranges, true);
+}
+function carets(client: SharedWiki): RemoteCaret[] {
+  const result: RemoteCaret[] = [];
+  for (const peer of client.peers.values()) {
+    const head = peer.cursor ? relativeIndex(client, peer.cursor.head) : null;
+    if (head !== null) result.push({ head, name: peer.actor.name, ink: color(peer.actor.id) });
+  }
+  return result;
 }
 
 interface EditorHandle { insert(text: string): void; focus(): void }
@@ -96,7 +137,7 @@ function CollaborativeText({ client, handleRef }: { client: SharedWiki; handleRe
         yCollab(client.text, null, { undoManager: client.undo }), keymap.of(yUndoManagerKeymap.map((binding) => ({ ...binding,
           run: (view: EditorView) => history(binding.run, view),
           shift: binding.shift ? (view: EditorView) => history(binding.shift, view) : undefined,
-        }))), drawSelection(), EditorView.lineWrapping, marked, writableField,
+        }))), drawSelection(), EditorView.lineWrapping, marked, remoteCarets, remoteCaretLayer, writableField,
         EditorView.contentAttributes.of({ 'aria-label': 'Shared Markdown', role: 'textbox', 'aria-multiline': 'true', spellcheck: 'true' }),
         EditorState.transactionFilter.of((transaction) => {
           if (transaction.isUserEvent('input') || transaction.isUserEvent('delete') || transaction.isUserEvent('undo') || transaction.isUserEvent('redo')) {
@@ -120,7 +161,7 @@ function CollaborativeText({ client, handleRef }: { client: SharedWiki; handleRe
       scheduled = true;
       // y-sync can report a local transaction from inside a CodeMirror update. Defer
       // decorations/editability until that update has completed; never reenter dispatch.
-      queueMicrotask(() => { scheduled = false; if (!destroyed) view.dispatch({ effects: [writable.of(client.editable), remoteMarks.of(marks(client))] }); });
+      queueMicrotask(() => { scheduled = false; if (!destroyed) view.dispatch({ effects: [writable.of(client.editable), remoteMarks.of(marks(client)), remoteCaretsChanged.of(carets(client))] }); });
     };
     const unsubscribe = client.subscribe(update); update();
     return () => { destroyed = true; unsubscribe(); handleRef.current = null; view.destroy(); };
