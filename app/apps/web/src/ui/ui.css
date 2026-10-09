@@ -193,18 +193,21 @@ svg { flex: none; }
   content: ""; position: absolute; left: 50%; top: calc(env(safe-area-inset-top) + 6px); width: 36px; height: 5px; margin-left: -18px;
   border-radius: 3px; background: var(--line2);
 }
-/* Two heights (F-026 S4): half leaves the conversation in view, full is dragged up; down from half closes. */
-.ui-overlay--bottom .ui-overlay__surface--detent {
-  inset: auto 0 0 0; height: 56dvh; border-radius: var(--r-sheet) var(--r-sheet) 0 0; background: var(--el); box-shadow: var(--sh-pop);
+/* The one two-height sheet (F-026 S4, DetentSheet): half leaves the work behind in view, full is dragged up; down from half closes.
+   It sits at the bottom of its positioned parent: a transparent full-screen overlay frame for Details, the conversation for a thread. */
+.ui-overlay__surface--bare { inset: 0; background: transparent; box-shadow: none; pointer-events: none; }
+.ui-detent-sheet {
+  position: absolute; inset: auto 0 0 0; z-index: var(--z-panel); display: flex; flex-direction: column; min-height: 0; overflow: hidden; pointer-events: auto; outline: none;
+  height: 56%; border-radius: var(--r-sheet) var(--r-sheet) 0 0; background: var(--el); box-shadow: var(--sh-pop);
   transition: height var(--dur-3) var(--ease-sheet), border-radius var(--dur-3) var(--ease-sheet);
 }
-.ui-overlay--bottom .ui-overlay__surface--detent[data-height="full"] { height: calc(100dvh - 12px); }
+.ui-detent-sheet[data-height="full"] { height: calc(100% - 12px); }
 .ui-grabber { position: relative; flex: none; display: grid; place-items: center; align-self: center; width: 120px; max-width: 100%; height: 44px; margin: 0 auto -16px; z-index: 1; padding: 0; touch-action: none; }
 .ui-grabber span { width: 36px; height: 5px; border-radius: 3px; background: var(--line2); transition: width var(--dur-2) ease; }
-.ui-grabber, .ui-grabber * , .ui-sheet--detent .ui-panel__head, .ui-sheet--detent .ui-panel__head * { touch-action: none; }
+.ui-grabber, .ui-grabber *, .ui-detent-sheet .ui-panel__head, .ui-detent-sheet .ui-panel__head *, .ui-detent-sheet .thread__head, .ui-detent-sheet .thread__head * { touch-action: none; }
 .ui-grabber:hover span { width: 44px; }
 .ui-grabber:focus-visible { outline-offset: -4px; border-radius: 12px; }
-@media (prefers-reduced-motion: reduce) { .ui-overlay--bottom .ui-overlay__surface--detent { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .ui-detent-sheet { transition: none; } }
 @media (max-width: 640px) { .ui-overlay--left .ui-overlay__surface { width: 100%; } }
 
 /* ---------- Side panel ---------- */
@@ -229,10 +232,9 @@ svg { flex: none; }
 }
 .ui-panel__body:focus-visible { outline: none; }
 .ui-sheet .ui-panel__head { height: calc(56px + env(safe-area-inset-top)); padding-top: env(safe-area-inset-top); padding-left: 16px; padding-right: 4px; }
-.ui-sheet--detent .ui-panel__head { height: 52px; padding: 0 12px 0 20px; border-bottom: 0; }
-.ui-sheet--detent[data-height="full"] .ui-panel__head { padding-top: env(safe-area-inset-top); height: calc(52px + env(safe-area-inset-top)); }
-.ui-sheet--detent.ui-panel { background: var(--el); }
-.ui-sheet--detent[data-height="full"] .ui-panel__hint { display: none; }
+.ui-detent-sheet .ui-panel__head { height: 52px; padding: 0 12px 0 20px; border-bottom: 0; }
+.ui-detent-sheet[data-height="full"] .ui-panel__head { padding-top: env(safe-area-inset-top); height: calc(52px + env(safe-area-inset-top)); }
+.ui-detent-sheet[data-height="full"] .ui-panel__hint { display: none; }
 .ui-sheet .ui-panel__body { padding: 18px 16px 28px; }
 
 /* ---------- Toast: an inverted pill ---------- */

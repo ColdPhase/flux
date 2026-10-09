@@ -1,6 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, type KeyboardEvent, type ReactNode, type Ref } from 'react';
 import { IconButton } from './Button';
 import { MEDIA, duration, play, useMediaQuery } from './motion';
+import { DetentSheet } from './DetentSheet';
 import { Overlay, Sheet, usePresence } from './Overlay';
 
 export type SidePanelMode = 'docked' | 'overlay' | 'sheet';
@@ -96,7 +97,15 @@ export function SidePanel(props: SidePanelProps) {
   if (mode === 'docked') return <DockedPanel {...props} />;
   const content = <PanelContent title={props.title} titleId={titleId} headerStart={props.headerStart} chip={props.chip} hint={mode === 'sheet'} context={props.context} onClose={props.onClose} bodyRef={bodyRef}>{props.children}</PanelContent>;
   if (mode === 'sheet') {
-    return <Sheet open={props.open} onClose={props.onClose} labelledBy={titleId} id={props.id} initialFocus={bodyRef} detents={!!props.chip} className="ui-panel">{content}</Sheet>;
+    // A task, decision or result opens in the one two-height sheet; other Details stay a full sheet.
+    if (props.chip) {
+      return (
+        <Overlay placement="bottom" bare open={props.open} onClose={props.onClose} initialFocus={bodyRef}>
+          <DetentSheet id={props.id} role="dialog" aria-modal aria-labelledby={titleId} onClose={props.onClose} className="ui-panel">{content}</DetentSheet>
+        </Overlay>
+      );
+    }
+    return <Sheet open={props.open} onClose={props.onClose} labelledBy={titleId} id={props.id} initialFocus={bodyRef} className="ui-panel">{content}</Sheet>;
   }
   return <Overlay placement="right" open={props.open} onClose={props.onClose} labelledBy={titleId} id={props.id} initialFocus={bodyRef} className="ui-panel ui-panel--overlay">{content}</Overlay>;
 }

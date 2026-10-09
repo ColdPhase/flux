@@ -309,6 +309,61 @@ class DetailPanelFinal(unittest.TestCase):
         sheet.get_by_role("button", name="Close details").tap()
         expect(sheet).to_have_count(0)
 
+    def test_08_details_and_thread_are_one_sheet_component_with_identical_behaviour(self):
+        """AC-2: the phone Details sheet and the Thread sheet are the same component: same root marker, grabber, heights, drag and Esc."""
+        task = self.new_task("Share one sheet", owner=True)
+        cases = {
+            "details": (f"/projects/{self.project}/tasks?open=work:{task['id']}", "#details", "half"),
+            "thread": (f"/projects/{self.project}/conversations/{self.thread['id']}", "#thread", "full"),
+        }
+        for name, (url, selector, opens) in cases.items():
+            with self.subTest(sheet=name):
+                page = self.page(phone=True)
+                page.goto(url)
+                sheet = page.locator(selector)
+                expect(sheet).to_be_visible()
+                page.wait_for_timeout(1000)
+                # The same component renders both: one marked root, a grabber and a keyboard button as its first children.
+                expect(page.locator("[data-detent-sheet]")).to_have_count(1)
+                expect(sheet).to_have_attribute("data-detent-sheet", "")
+                self.assertIn("ui-detent-sheet", sheet.get_attribute("class"))
+                self.assertEqual(sheet.evaluate("el => [...el.children].slice(0, 2).map(c => c.className.split(' ')[0] + ':' + c.tagName)"), ["ui-grabber:DIV", "ui-vh:BUTTON"])
+                expect(sheet).to_have_attribute("data-height", opens)
+                # The same heights: the keyboard button toggles half and full.
+                other = "half" if opens == "full" else "full"
+                sheet.locator(":scope > button.ui-vh").focus()
+                page.keyboard.press("Enter")
+                expect(sheet).to_have_attribute("data-height", other)
+                page.keyboard.press("Enter")
+                expect(sheet).to_have_attribute("data-height", opens)
+                # The same drag: up opens full, down steps to half, down again closes.
+                page.wait_for_timeout(700)
+                top = sheet.bounding_box()["y"]
+                self.drag(page, top + 14, 120)
+                expect(sheet).to_have_attribute("data-height", "full")
+                page.wait_for_timeout(700)
+                self.drag(page, sheet.bounding_box()["y"] + 14, 640)
+                expect(sheet).to_have_attribute("data-height", "half")
+                page.wait_for_timeout(700)
+                self.drag(page, sheet.bounding_box()["y"] + 14, 820)
+                expect(sheet).to_have_count(0)
+                # Esc closes both the same way.
+                page.goto(url)
+                expect(sheet).to_be_visible()
+                sheet.focus()
+                page.keyboard.press("Escape")
+                expect(sheet).to_have_count(0)
+
+    def test_08b_a_sheet_that_is_not_this_component_is_not_marked(self):
+        """Negative control for test_08: the full-screen Details sheet (place details, no object) is not a two-height sheet."""
+        page = self.page(phone=True)
+        page.goto(f"/projects/{self.project}/tasks")
+        page.get_by_role("button", name="Details", exact=True).first.click()
+        sheet = page.get_by_role("dialog", name="Details")
+        expect(sheet).to_be_visible()
+        expect(page.locator("[data-detent-sheet]")).to_have_count(0)
+        expect(sheet.locator(".ui-grabber")).to_have_count(0)
+
     def test_07_phone_thread_is_a_sheet_with_a_grabber(self):
         page = self.page(phone=True)
         page.goto(f"/projects/{self.project}/conversations/{self.thread['id']}")
