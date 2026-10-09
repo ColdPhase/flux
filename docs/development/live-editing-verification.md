@@ -180,3 +180,11 @@ denominators and correlations are unchanged.
   Shift pressed for the next case. That case's first replacement then selected nearly
   the whole document: the 10k reader measured a two-character body. The task now
   finishes its input in progress and the owner's modifiers are released.
+
+**Fixture transport, 2026-10-10.** The same-origin forwarder the fixture shares with every
+browser check (`start_forwarder` in `tests/ui/test_app_shell.py`) left Nagle's algorithm on.
+A small frame written while the previous one awaited its TCP acknowledgement then waited
+for the receiver's delayed ACK, about 40 ms, on a hop that no deployment has: browsers,
+Node and real proxies set `TCP_NODELAY`. The forwarder now sets it on both sockets
+(`ForwarderTransport` in `tests/ui/test_live_editing.py`: 41 ms per small exchange before,
+3 ms after). The driver, thresholds, deadlines, denominators and correlations are unchanged.

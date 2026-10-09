@@ -74,3 +74,10 @@ ledger entries, the head and, every 64 updates, the complete state as a snapshot
 [proposal](live-editing-proposal.md)), distinguish definite rollback from uncertain COMMIT, and
 resolve the original receipt under the same authorized resource boundary. No current
 source test proves those requirements or current-rights delivery under revocation.
+
+Commit modes (2026-10-10, #228 Gate 4): text, enrollment, initialization, Save, native map
+changes and map bootstrap and undo commit durably, so an ACK follows a flushed commit.
+Confirmed reads, handoff and receipt fences, wiki cursor presence, and a map gesture's lease,
+preview and presence write nothing that must survive a crash. They commit with
+`synchronous_commit = off` (`EditingCommit` `transient`) and release their locks before the
+WAL flush. Durable data they read was on disk before it became visible.

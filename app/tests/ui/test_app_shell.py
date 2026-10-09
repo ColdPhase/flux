@@ -72,6 +72,12 @@ def start_forwarder(origin: str, upstream: str) -> None:
             client.close()
             return
         remote.settimeout(None)
+        # Browsers, Node and real proxies disable Nagle's algorithm. With it on here, a small frame
+        # written while the previous one awaited its TCP acknowledgement waited for the receiver's
+        # delayed ACK (up to 40 ms on Linux): about 40-60 ms on every live round trip that no
+        # deployment has, which the #228 Gate 4 latency driver measured through this hop.
+        for end in (client, remote):
+            end.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         a = threading.Thread(target=_pipe, args=(client, remote), daemon=True)
         b = threading.Thread(target=_pipe, args=(remote, client), daemon=True)
         a.start(); b.start(); a.join(); b.join()

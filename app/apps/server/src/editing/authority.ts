@@ -1,5 +1,5 @@
 import { liveWiki, ServiceUnavailableError, type WikiHead, type WikiIdentity, type WikiPorts, type WikiRows } from '@flux/core';
-import { editingSessionRows, editingTransactions, liveEditingRows, type createDatabase, type DbExecutor } from '@flux/db';
+import { editingSessionRows, editingTransactions, liveEditingRows, type createDatabase, type DbExecutor, type EditingCommit } from '@flux/db';
 import type { LiveCursor, LiveReceipt, SaveSharedDoc, WikiTextEnvelope } from '@flux/contracts';
 import { docPorts } from '../docs/adapters.js';
 import { UnauthenticatedError, type SessionContext } from '../identity/session.js';
@@ -93,14 +93,14 @@ export function wikiAuthority(database: { pool: Pick<ReturnType<typeof createDat
       session: { async lock(who) { const actor = await sessions.lock(who); if (!actor) throw new UnauthenticatedError(); return actor; },
         async assertCurrent(who) { if (!await sessions.current(who)) throw new UnauthenticatedError(); } } };
   }
-  async function run<T>(session: SessionContext, admission: AdmissionLease, action: (wiki: ReturnType<typeof liveWiki<CodecState, AdmissionLease>>, finalFence: () => Promise<void>,admission:AdmissionLease) => Promise<T>) {
+  async function run<T>(session: SessionContext, admission: AdmissionLease, action: (wiki: ReturnType<typeof liveWiki<CodecState, AdmissionLease>>, finalFence: () => Promise<void>,admission:AdmissionLease) => Promise<T>, commit: EditingCommit = 'durable') {
     const committed = new Map<string, Committed>();
     try {
       const work = transactions.run(async (db) => {
         const adapters = ports(db, committed); const result = await action(liveWiki(adapters), () => adapters.session.assertCurrent(identity(session)),admission);
         await adapters.session.assertCurrent(identity(session));
         return result;
-      });
+      }, commit);
       active.add(work);editingResourcesChanged();
       try {
         const result = await work;
@@ -109,11 +109,11 @@ export function wikiAuthority(database: { pool: Pick<ReturnType<typeof createDat
       } finally { active.delete(work);editingResourcesChanged(); }
     } finally { runtime.release(admission); }
   }
-  async function admitted<T>(session:SessionContext,context:unknown,action:Parameters<typeof run<T>>[2],maximumInputBytes?:number) {
+  async function admitted<T>(session:SessionContext,context:unknown,action:Parameters<typeof run<T>>[2],maximumInputBytes?:number,commit:EditingCommit='durable') {
     // Full immutable continuation metadata belongs to the ONE output/context budget.
     // Codec32MiB still owns raw input/state/result; it does not hide a second metadata budget.
     const release=outputBudget.reserve(editingContextCharge(context));
-    try {const admission=await runtime.admit(EMPTY,0,maximumInputBytes);return await run(session,admission,action);}
+    try {const admission=await runtime.admit(EMPTY,0,maximumInputBytes);return await run(session,admission,action,commit);}
     finally {release();}
   }
   return {
@@ -135,13 +135,14 @@ export function wikiAuthority(database: { pool: Pick<ReturnType<typeof createDat
       finally {release();runtime.release(admission);}
     },
     async cursor(session: SessionContext, docId: string, generation: string, connectionId: string, cursor: LiveCursor | null) {
-      return admitted(session,{session,docId,generation,connectionId,cursor},wiki=>wiki.cursor(identity(session),docId,generation,connectionId,cursor));
+      // Presence is transient: it expires in five seconds and a crash may lose it.
+      return admitted(session,{session,docId,generation,connectionId,cursor},wiki=>wiki.cursor(identity(session),docId,generation,connectionId,cursor),undefined,'transient');
     },
     async save(session: SessionContext, docId: string, command: SaveSharedDoc) {
       return admitted(session,{session,docId,command},wiki=>wiki.save(identity(session),docId,command));
     },
     async receipt(session: SessionContext, docId: string, commandId: string) {
-      return admitted(session,{session,docId,commandId},wiki=>wiki.receipt(identity(session),docId,commandId));
+      return admitted(session,{session,docId,commandId},wiki=>wiki.receipt(identity(session),docId,commandId),undefined,'transient');
     },
     /** All preparation and the synchronous socket handoff run under current SQL session/resource locks. */
     async deliver(session: SessionContext, docId: string, generation: string, afterSequence: number,
@@ -150,13 +151,14 @@ export function wikiAuthority(database: { pool: Pick<ReturnType<typeof createDat
       return admitted(session,{session,docId,generation,afterSequence,view},async (wiki,finalFence)=>{
         const result = await wiki.readConfirmed(identity(session), docId, generation, afterSequence, view);
         await boundary.beforeHandoff?.(); await finalFence(); handoff(result);
-      });
+      },undefined,'transient');
     },
     async handoff(session: SessionContext, docId: string, send: () => void) {
-      return admitted(session,{session,docId},async (wiki,finalFence)=> { await wiki.authorizeHandoff(identity(session), docId); await boundary.beforeHandoff?.(); await finalFence(); send(); });
+      return admitted(session,{session,docId},async (wiki,finalFence)=> { await wiki.authorizeHandoff(identity(session), docId); await boundary.beforeHandoff?.(); await finalFence(); send(); },undefined,'transient');
     },
     async deliverReceipt(session: SessionContext, docId: string, commandId: string, handoff: (receipt: LiveReceipt | null) => void) {
-      return admitted(session,{session,docId,commandId},async (wiki,finalFence)=> { const receipt = await wiki.receipt(identity(session), docId, commandId); await boundary.beforeHandoff?.(); await finalFence(); handoff(receipt); });
+      // The receipt was durable before the text's own COMMIT returned; this fence only re-reads it.
+      return admitted(session,{session,docId,commandId},async (wiki,finalFence)=> { const receipt = await wiki.receipt(identity(session), docId, commandId); await boundary.beforeHandoff?.(); await finalFence(); handoff(receipt); },undefined,'transient');
     },
     close: async () => { await runtime.close(); await Promise.allSettled([...active]); },
   };

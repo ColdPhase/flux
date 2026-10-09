@@ -852,3 +852,52 @@ locks, generations and the latency gate are unchanged.
   Export does not include live rooms.
 
 Evidence for the change and its gate results are in #389.
+
+### Remaining Gate 4 latency (2026-10-10)
+
+The quiet-host run at `0744de80` painted every row but six of nine cases stayed above
+200 ms. Map 500 lost its time between publication and peer receipt (p95 110–160 ms
+against 93 ms at 50 thoughts, with the same p50 of about 74 ms; slow rows came in bursts
+of 3–12 s). The wiki editor at 10k characters lost it between publication and the peer's
+update (p50 126, p95 175 ms; at 100k, 68 and 95 ms). Scratch runs with temporary timers
+in the API (never committed) and the driver's own map case on a shared host found four
+causes. Caps, budgets, deadlines, FIFOs, locks, generations, the driver and the gate are
+unchanged.
+
+- **Wiki fan-out order.** Confirmed reads take turns in the API. After a commit the room's
+  connections were read in connection order. When the author had connected first, its read,
+  which only carries back its own update, went before the peer's: the peer's update came
+  p50 34 ms and p95 110 ms after the author's ACK at 10k, and before it at 100k. A room's
+  reads now start with the connections that do not have the change, then the connection
+  whose commit is in flight.
+- **Every transaction waited for its WAL flush.** Two codec-admitted operations run at a
+  time in an API, one confirmed read at a time, and every operation locks the document row.
+  Each COMMIT waited for its commit record to reach disk, p50 7.6 ms of a 22.6 ms
+  transaction, also for reads, handoff and receipt fences and presence, which write nothing
+  but row locks and transient rows. Those now commit with `synchronous_commit = off`
+  (`EditingCommit` `transient`): their COMMIT took 0.1 ms, a transaction p50 10 ms, the
+  ACK left p50 31 ms after the frame (was 46) and the peer's update p50 18 ms after the
+  commit (was 36). Text, enrollment, initialization, Save, native map changes, map
+  bootstrap and undo stay durable: an ACK still follows a flushed commit, and durable data a
+  transient transaction reads was on disk before it became visible. The map's gesture lease, preview
+  and presence writes are transient too; a crash can lose them, as their expiry already allows.
+- **Map peer rendering.** Every preview re-rendered all thoughts on the peer, and each
+  thought's inline ref callback made React detach and re-attach it, so the ResizeObserver
+  unobserved, re-observed and re-measured every thought (a 40-thought map: 1080 element
+  observations for 22 previews). Thoughts now share one stable ref callback and are
+  memoized: a preview re-renders only the thoughts it moves.
+- **The test forwarder delayed small frames.** Every browser check reaches the API through
+  a same-origin forwarder in the UI test process. It left Nagle's algorithm on, so a small
+  frame written while the previous one awaited its TCP acknowledgement waited for the
+  receiver's delayed ACK, about 40 ms. Browsers, Node and real proxies disable it. The
+  forwarder now sets `TCP_NODELAY` on both sockets. In one back-to-back pair of 10k editor
+  runs, publication to ACK fell from p50 105 / p95 116 ms to 46 / 71 ms, and publication to
+  the peer's update from 115 / 139 ms to 47 / 75 ms. The driver, its thresholds,
+  deadlines and correlations are unchanged; see the
+  [verification revisions](live-editing-verification.md#driver-revisions-2026-10-09-389).
+
+With transient commits and the peer rendering changes (and the forwarder as before), the
+driver's own map-500-drag-1 case on the same shared host (load 5–7) went from p95 245 to
+136 ms: publication to peer receipt from p50 95 / p95 145 ms to 37 / 50 ms, and the peer's
+script time over the case from 5.1 s to 2.2 s. The forwarder change made no difference to
+that case (p95 142 ms). The quiet-host gate decides.

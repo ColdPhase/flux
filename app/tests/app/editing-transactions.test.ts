@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type pg from 'pg';
+import { sql } from 'drizzle-orm';
 import { createDatabase,EditingTransactionError, editingTransactions } from '@flux/db';
 
 function boundary(fail: 'work' | 'commit' | 'rollback' | null) {
@@ -53,4 +54,24 @@ test('actual pg BEGIN read timeout discards the ambiguous backend and preserves 
       assert.equal(old,false,'The ambiguous backend has exited, rather than merely leaving the JavaScript pool');
     } finally {next.release();}
   } finally {await pool.end();}
+});
+
+// #228 Gate 4: a transient transaction (a read, a fence, presence or a preview) does not wait for
+// its commit record's WAL flush; the default stays durable, and SET LOCAL ends with the transaction.
+test('a transient live transaction commits without waiting for the WAL flush; the default stays durable', { timeout: 7000 }, async () => {
+  const durable = boundary(null); await durable.transactions.run(async () => 'durable');
+  assert.ok(!durable.statements.includes('SET LOCAL synchronous_commit = off'));
+  const transient = boundary(null); await transient.transactions.run(async () => 'read', 'transient');
+  assert.ok(transient.statements.indexOf('SET LOCAL synchronous_commit = off') < transient.statements.indexOf('COMMIT'));
+  const databaseUrl = process.env.DATABASE_URL; assert.ok(databaseUrl, 'The application fixture requires its isolated PostgreSQL database');
+  const { pool } = createDatabase(databaseUrl);
+  try {
+    let backend = 0; const one = { async connect() { const client = await pool.connect(); backend = Number((await client.query('SELECT pg_backend_pid() id')).rows[0].id); return client; } };
+    const inside = await editingTransactions(one).run(async (db) => (await db.execute<{ synchronous_commit: string }>(sql`SHOW synchronous_commit`)).rows[0]?.synchronous_commit, 'transient');
+    assert.equal(inside, 'off');
+    const first = backend;
+    const after = await editingTransactions(one).run(async (db) => (await db.execute<{ synchronous_commit: string }>(sql`SHOW synchronous_commit`)).rows[0]?.synchronous_commit);
+    assert.equal(backend, first, 'The same pooled backend ran both transactions');
+    assert.equal(after, 'on', 'The setting ended with its transaction');
+  } finally { await pool.end(); }
 });

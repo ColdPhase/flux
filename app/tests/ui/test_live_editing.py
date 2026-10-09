@@ -11,6 +11,8 @@ import base64
 import json
 import os
 import re
+import socket
+import threading
 import time
 import unittest
 import uuid
@@ -132,6 +134,49 @@ class LiveFixture(unittest.IsolatedAsyncioTestCase):
 
     async def map_saved(self, page):
         await expect(page.locator(".sk-status")).to_contain_text("Saved")
+
+
+class ForwarderTransport(unittest.TestCase):
+    """The same-origin forwarder every browser check (and the Gate 4 latency driver) goes through."""
+
+    def test_small_frames_cross_the_forwarder_without_a_delayed_ack_stall(self):
+        # Two small writes, and the upstream answers once both arrived. With Nagle's algorithm the
+        # forwarder held the second write until the first was acknowledged, and the upstream, with
+        # nothing to send yet, delayed that ACK: about 40 ms per exchange (#228 Gate 4).
+        upstream = socket.socket()
+        upstream.bind(("127.0.0.1", 0))
+        upstream.listen(1)
+        def serve():
+            connection, _ = upstream.accept()
+            with connection:
+                while True:
+                    received = b""
+                    while len(received) < 2:
+                        chunk = connection.recv(2 - len(received))
+                        if not chunk:
+                            return
+                        received += chunk
+                    connection.sendall(b"!")
+        threading.Thread(target=serve, daemon=True).start()
+        probe = socket.socket()
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+        probe.close()
+        start_forwarder(f"http://127.0.0.1:{port}", f"127.0.0.1:{upstream.getsockname()[1]}")
+        client = socket.create_connection(("127.0.0.1", port), timeout=5)
+        client.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        rounds = []
+        with client:
+            for _ in range(40):
+                started = time.perf_counter()
+                client.sendall(b"a")
+                time.sleep(.003)  # The forwarder relays each write on its own.
+                client.sendall(b"b")
+                self.assertEqual(client.recv(1), b"!")
+                rounds.append((time.perf_counter() - started) * 1000)
+        upstream.close()
+        median = sorted(rounds)[len(rounds) // 2]
+        self.assertLess(median, 20, f"Median exchange {median:.1f} ms through the forwarder: {[round(value) for value in rounds]}")
 
 
 @unittest.skipUnless(os.environ.get("FLUX_LIVE_EDITING_TEST") == "1", "#228 Gate 4 needs explicitly enabled isolated candidate; not verified by capability-off")
@@ -613,3 +658,56 @@ class LiveEditingJourney(LiveFixture):
         for character in "BCDEF":
             await replace_last(character)
         self.assertEqual(await ada_field.locator(".editing-caret").count(), 0, "The named caret is drawn outside the editable text")
+
+    async def test_16_a_peers_live_preview_renders_and_measures_only_the_moved_thought(self):
+        # #228 Gate 4: a live preview arrives every 40 ms. The peer re-rendered every thought for each
+        # one, and each thought's new ref callback made the ResizeObserver re-measure all of them;
+        # with 500 thoughts that kept the peer busy. React's DevTools hook (also called by production
+        # builds) tells which thoughts a commit rendered: a thought that bails out keeps its fiber.
+        ada, kai = self.pages["ada"], self.pages["kai"]
+        await kai.add_init_script("""(() => {
+          const observe = ResizeObserver.prototype.observe; window.__observed = 0;
+          ResizeObserver.prototype.observe = function (...args) { window.__observed++; return observe.apply(this, args); };
+          const fibers = new Map(); window.__rendered = 0;
+          window.__REACT_DEVTOOLS_GLOBAL_HOOK__ = { supportsFiber: true, isDisabled: false, renderers: new Map(), inject() { return 1; },
+            checkDCE() {}, onCommitFiberUnmount() {}, onPostCommitFiberRoot() {},
+            onCommitFiberRoot(_id, root) {
+              const stack = [root.current];
+              while (stack.length) {
+                const fiber = stack.pop();
+                const props = fiber.memoizedProps;
+                if (fiber.type === 'button' && props && props['data-id'] && String(props.className).startsWith('sk-node')) {
+                  if (fibers.has(props['data-id']) && fibers.get(props['data-id']) !== fiber) window.__rendered++;
+                  fibers.set(props['data-id'], fiber);
+                  continue;
+                }
+                if (fiber.sibling) stack.push(fiber.sibling);
+                if (fiber.child) stack.push(fiber.child);
+              }
+            } };
+        })()""")
+        await self.create_map(40)
+        target = self.thoughts[0]
+        node = ada.locator(f'.sk-node[data-id="{target["id"]}"]')
+        peer = kai.locator(f'.sk-node[data-id="{target["id"]}"]')
+        await kai.wait_for_timeout(500)
+        before = await kai.evaluate("({observed: window.__observed, rendered: window.__rendered})")
+        received = len([row for row in self.frames["kai"] if row["direction"] == "received" and row["header"].get("type") == "map-move"])
+        bounds = await node.bounding_box()
+        await ada.mouse.move(bounds["x"] + 20, bounds["y"] + 20)
+        await ada.mouse.down()
+        for step in range(1, 25):
+            await ada.mouse.move(bounds["x"] + 20 + 4 * step, bounds["y"] + 20 + 2 * step)
+            await ada.wait_for_timeout(45)
+        await expect(peer).to_have_attribute("data-live-mover", "Ada North")
+        await kai.wait_for_timeout(200)
+        previews = len([row for row in self.frames["kai"] if row["direction"] == "received" and row["header"].get("type") == "map-move"]) - received
+        after = await kai.evaluate("({observed: window.__observed, rendered: window.__rendered})")
+        await ada.mouse.up()
+        await self.map_saved(ada)
+        # Controls: the peer received a stream of previews and the hook saw the moved thought render.
+        self.assertGreaterEqual(previews, 8, "The peer received a stream of live previews")
+        rendered, observed = after["rendered"] - before["rendered"], after["observed"] - before["observed"]
+        self.assertGreaterEqual(rendered, previews // 2, "The DevTools hook observes the moved thought's renders")
+        self.assertLess(observed, 8, f"{observed} element observations for {previews} previews of a 40-thought map")
+        self.assertLessEqual(rendered, 3 * previews, f"{rendered} thought renders for {previews} previews of a 40-thought map")

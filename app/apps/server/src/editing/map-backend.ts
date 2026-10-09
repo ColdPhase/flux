@@ -1,5 +1,5 @@
 import { eq,sql } from 'drizzle-orm';
-import { editingSessionRows,editingTransactions,liveMapRows,schema,type createDatabase } from '@flux/db';
+import { editingSessionRows,editingTransactions,liveMapRows,schema,type createDatabase,type EditingCommit } from '@flux/db';
 import { ConflictError,ForbiddenError,InvalidInputError,NotFoundError,ServiceUnavailableError,createSketchUseCases,policySketchAccess,
   presentSketch,presentThoughts,presentThoughtLink,type LiveMapBackend,type MapIdentity,type MapNativeChange,type MapTransient } from '@flux/core';
 import type { LiveMapDelta,LiveMapPosition,NamedPrincipal } from '@flux/contracts';
@@ -26,7 +26,11 @@ function positions(value:LiveMapPosition[],allowed:string[]) {
 export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>['pool'],'connect'>},boundary:{beforeHandoff?:()=>Promise<void>}={}):LiveMapBackend&{readonly sqlActive:number} {
   const transactions=editingTransactions(database.pool);const active=new Set<Promise<unknown>>();let closing=false;
   type Db=Parameters<Parameters<typeof transactions.run>[0]>[0];
-  async function run<T>(who:MapIdentity,sketchId:string,write:boolean,action:(c:{db:Db;actor:NamedPrincipal;principal:{kind:'human';id:string};room:NonNullable<Awaited<ReturnType<ReturnType<typeof liveMapRows<MapNativeChange>>['head']>>>;sketch:NonNullable<Awaited<ReturnType<ReturnType<typeof sketchRepository>['findSketch']>>>;access:'read'|'write';finalFence:()=>Promise<void>})=>Promise<T>) {
+  /**
+   * Reads, handoff fences and a gesture's lease, preview and presence commit `transient`; bootstrap
+   * (which may create the room's head) and undo stay durable (#228 Gate 4).
+   */
+  async function run<T>(who:MapIdentity,sketchId:string,write:boolean,action:(c:{db:Db;actor:NamedPrincipal;principal:{kind:'human';id:string};room:NonNullable<Awaited<ReturnType<ReturnType<typeof liveMapRows<MapNativeChange>>['head']>>>;sketch:NonNullable<Awaited<ReturnType<ReturnType<typeof sketchRepository>['findSketch']>>>;access:'read'|'write';finalFence:()=>Promise<void>})=>Promise<T>,commit:EditingCommit='durable') {
     if(closing)throw new ServiceUnavailableError('Live maps are closing','EDITING_MAP_CAPACITY');
     const work=transactions.run(async db=>{
       const sessions=editingSessionRows(db);const actor=await sessions.lock(who);if(!actor)throw new UnauthenticatedError();
@@ -35,7 +39,7 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
       const room=await liveMapRows(db,decodeMapChange).ensureHead(sketchId,sketch.workspaceId);
       const finalFence=async()=>{if(!await sessions.current(who))throw new UnauthenticatedError();};
       const result=await action({db,actor,principal,room,sketch,access,finalFence});await finalFence();return result;
-    });active.add(work);editingResourcesChanged();try{return await work;}finally{active.delete(work);editingResourcesChanged();}
+    },commit);active.add(work);editingResourcesChanged();try{return await work;}finally{active.delete(work);editingResourcesChanged();}
   }
   async function delta(db:Db,principal:{kind:'human';id:string},room:{generation:string;workspaceId:string},sketch:Parameters<typeof presentThoughts>[2],record:NonNullable<Awaited<ReturnType<ReturnType<typeof liveMapRows<MapNativeChange>>['after']>>>,access:'read'|'write'):Promise<LiveMapDelta> {
     const change=record.change;const accessPort=policySketchAccess(db);
@@ -63,7 +67,7 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
       await boundary.beforeHandoff?.();await c.finalFence();handoff({kind:'map',workspaceId:c.room.workspaceId,resourceId:sketchId,generation:c.room.generation,
         sequence:c.room.sequence,hash:mapHash(c.room.generation,c.room.sequence),sketch,canWrite:c.access==='write',actor:c.actor});
     });},
-    authorize(who,sketchId,handoff){return run(who,sketchId,false,async c=>{await boundary.beforeHandoff?.();await c.finalFence();handoff();});},
+    authorize(who,sketchId,handoff){return run(who,sketchId,false,async c=>{await boundary.beforeHandoff?.();await c.finalFence();handoff();},'transient');},
     deliverNative(who,sketchId,body,handoff){return run(who,sketchId,false,async c=>{
       async function project(value:unknown,depth=0):Promise<unknown> {
         if(depth>8)throw new InvalidInputError('The native response is too deep');
@@ -80,7 +84,7 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
         return result;
       }
       const current=await project(body);await boundary.beforeHandoff?.();await c.finalFence();handoff(current);
-    });},
+    },'transient');},
     acquire(who,sketchId,gesture){return run(who,sketchId,true,async c=>{
       closed(gesture,['gestureId','thoughts']);id(gesture.gestureId);if(!Array.isArray(gesture.thoughts)||!gesture.thoughts.length||gesture.thoughts.length>200)throw new InvalidInputError('A drag selects1–200 thoughts');
       const requested=gesture.thoughts.map(t=>{closed(t,['id','expectedVersion']);if(!Number.isSafeInteger(t.expectedVersion)||t.expectedVersion<1)throw new InvalidInputError('A native base version is required');return{id:id(t.id),expectedVersion:t.expectedVersion};});
@@ -93,7 +97,7 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
       if(leases.some(l=>l.lease.thoughts.some(t=>requested.some(w=>w.id===t.id))))throw new ConflictError('Another collaborator is moving a selected thought','EDITING_GESTURE_CONFLICT');
       await rows.capacity('gesture',sketchId);const added=await rows.insertGesture(sketchId,c.room.generation,who,gesture.gestureId,requested);
       return{leaseId:added.leaseId,gestureId:added.gestureId,generation:added.generation,expiresAt:added.expiresAt.toISOString()};
-    });},
+    },'transient');},
     move(who,sketchId,connectionId,command){return run(who,sketchId,true,async c=>{
       closed(command,['generation','gestureId','leaseId','sequence','positions']);const current=await lease(c,who,command.leaseId,command.gestureId,command.generation,connectionId);
       const next=positions(command.positions,current.thoughts.map(t=>t.id));const seq=sequence(command.sequence);
@@ -101,10 +105,10 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
       const packet={type:'map-move',generation:c.room.generation,connectionId,actor:c.actor,gestureId:current.gestureId,leaseId:current.leaseId,sequence:seq,positions:next,expiresAt:new Date().toISOString()};
       if(Buffer.byteLength(JSON.stringify(packet))>65_536)throw new ServiceUnavailableError('The bounded preview frame is full','EDITING_MAP_CAPACITY');
       const rows=liveMapRows(c.db,decodeMapChange);await rows.bindMove(current.leaseId,connectionId,seq,next);await rows.notify(sketchId);
-    });},
+    },'transient');},
     cancel(who,sketchId,connectionId,command){return run(who,sketchId,true,async c=>{closed(command,['generation','gestureId','leaseId']);const current=await lease(c,who,command.leaseId,command.gestureId,command.generation,connectionId);
       const rows=liveMapRows(c.db,decodeMapChange);await rows.removeGesture(current.leaseId);await rows.notify(sketchId);
-    });},
+    },'transient');},
     presence(who,sketchId,connectionId,command){return run(who,sketchId,true,async c=>{
       closed(command,['generation','selected','cursor']);if(id(command.generation)!==c.room.generation)throw new ConflictError('The map generation changed','EDITING_GENERATION_CHANGED');
       if(!Array.isArray(command.selected)||command.selected.length>16)throw new InvalidInputError('Presence names at most16 selected thoughts');
@@ -115,13 +119,13 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
       const packet={type:'map-presence',generation:c.room.generation,connectionId,actor:c.actor,selected,cursor:command.cursor,expiresAt:new Date().toISOString()};
       if(Buffer.byteLength(JSON.stringify(packet))>65_536)throw new ServiceUnavailableError('The bounded presence frame is full','EDITING_MAP_CAPACITY');
       await rows.setPresence(sketchId,c.room.generation,who,id(connectionId),selected,command.cursor);await rows.notify(sketchId);
-    });},
+    },'transient');},
     undo(who,sketchId,command){return run(who,sketchId,true,c=>undoMap(c.db,c.principal,c.room,c.sketch,command));},
     deliverUndo(who,sketchId,commandId,handoff){return run(who,sketchId,false,async c=>{
       const row=await liveMapRows(c.db,decodeMapChange).command({kind:'human',id:who.actorId},id(commandId));
       if(!row||row.sketchId!==sketchId||row.generation!==c.room.generation)throw new NotFoundError('Undo receipt');
       const value=await delta(c.db,c.principal,c.room,c.sketch,row,c.access);await boundary.beforeHandoff?.();await c.finalFence();handoff({commandId,delta:value});
-    });},
+    },'transient');},
     deliver(who,sketchId,generation,afterSequence,handoff,options={}){return run(who,sketchId,false,async c=>{
       if(id(generation)!==c.room.generation)throw new ConflictError('The map generation changed','EDITING_GENERATION_CHANGED');
       const after=sequence(afterSequence);if(after>c.room.sequence)throw new ConflictError('The confirmed map sequence has a gap','EDITING_SEQUENCE_GAP');
@@ -147,8 +151,8 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
       // No further await between this recipient+producer clock observation and the synchronous callback.
       const currentTransient=transient.filter(item=>item.type==='map-move'?gestures.has(item.leaseId):item.type==='map-presence'&&people.has(item.connectionId));
       handoff({generation,sequence:c.room.sequence,hash:mapHash(generation,c.room.sequence),workspaceId:c.room.workspaceId,resourceId:sketchId,actor:c.actor,canWrite:c.access==='write',delta:next,transient:currentTransient});
-    });},
-    disconnect(who,sketchId,connectionId){return run(who,sketchId,false,async c=>{const rows=liveMapRows(c.db,decodeMapChange);await rows.disconnect(sketchId,who,id(connectionId));await rows.notify(sketchId);});},
+    },'transient');},
+    disconnect(who,sketchId,connectionId){return run(who,sketchId,false,async c=>{const rows=liveMapRows(c.db,decodeMapChange);await rows.disconnect(sketchId,who,id(connectionId));await rows.notify(sketchId);},'transient');},
     async close(){closing=true;await Promise.allSettled([...active]);},
   };
 }

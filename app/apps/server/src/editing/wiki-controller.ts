@@ -131,6 +131,16 @@ export function wikiController(authority: ControllerAuthority, outputBudget: Edi
       // Periodic catch-up retries bounded capacity; it holds no additional input or promise queue.
     } finally { c.reading = false;reading--;editingResourcesChanged();completed(); }
   }
+  /**
+   * A room's reads after a change: the people who do not have it yet first, then any connection
+   * whose own text commit is in flight. Confirmed reads take turns API-wide, and the author's read
+   * would only carry back its own update, so reading it first delayed everyone else's (#228 Gate 4).
+   */
+  function fanOut(docId: string) {
+    const room = [...connections.values()].filter((other) => other.context.target.id === docId);
+    for (const other of room) if (!other.running) void catchup(other);
+    for (const other of room) if (other.running) void catchup(other);
+  }
   function pump(c: Connection) {
     if (c.closed || c.running || !c.assembly) return;
     let bytes:CompletedAssembly|null=c.assembly;const commandId=bytes.intent.uuid;
@@ -158,7 +168,7 @@ export function wikiController(authority: ControllerAuthority, outputBudget: Edi
           if (!c.closed && receipt) c.output.sendJSON({ type: 'ack', ...receipt });
           if(receipt)telemetry?.()?.schedule('wiki',{resourceId:c.context.target.id,generation:receipt.generation,commandId:receipt.commandId,confirmedSequence:receipt.sequence});
         });
-        for (const other of connections.values()) if (other.context.target.id === c.context.target.id) void catchup(other);
+        fanOut(c.context.target.id);
       } catch (error) { fail(c, error, commandId); }
       finally { bytes=null;c.running = false;writing--;editingResourcesChanged();completed(); pump(c); }
     })();
@@ -179,7 +189,7 @@ export function wikiController(authority: ControllerAuthority, outputBudget: Edi
     // This cursor owns its complete parsed continuation until the actual authority
     // operation settles. The one replaceable waiting slot is independently charged.
     void authority.cursor(c.context.session, c.context.target.id, retained.generation, c.context.connectionId, retained.cursor)
-      .then(() => { c.renewed = { key, at: started }; for (const other of connections.values()) if (other.context.target.id === c.context.target.id) void catchup(other); })
+      .then(() => { c.renewed = { key, at: started }; fanOut(c.context.target.id); })
       .catch((error) => fail(c, error))
       .finally(() => { retained.release(); c.cursorBusy = false; cursorActive--; editingResourcesChanged(); completed(); cursor(c); });
   }
@@ -242,7 +252,7 @@ export function wikiController(authority: ControllerAuthority, outputBudget: Edi
       });
     },
     notifyAll() { for (const c of connections.values()) void catchup(c); },
-    notify(docId: string) { for (const c of connections.values()) if (c.context.target.id === docId) void catchup(c); },
+    notify(docId: string) { fanOut(docId); },
     async close() { closing = true; clearInterval(timer); unsubscribeCapacity(); preparation.close(); for (const c of [...connections.values()]) { c.socket.terminate(); close(c); } await authority.close();await Promise.allSettled([...operations]); },
     get externalOutputBytes() { return outputBudget.bytes; }, get assemblyBytes() { return assemblies.bytes; },
     get resources(){let wikiCursorPending=0;for(const c of connections.values())if(c.cursor)wikiCursorPending++;return{wikiConnections:connections.size,wikiReading:reading,wikiWriting:writing,wikiCursorActive:cursorActive,wikiCursorPending,assemblyCount:assemblies.pending.size,assemblyBytes:assemblies.bytes};},
