@@ -468,7 +468,7 @@ test('native agent owners retry failed reads, fence stale permission answers and
     await capture('scoped-owner-task-details', '.wd-discussion .agent-for');
     await page.keyboard.press('Escape');
     await page.locator('#details').waitFor({ state: 'detached' });
-    await decision.getByRole('button').click();
+    await decision.locator('.ws-item').click();
     await page.locator('.details .agent-for').waitFor();
     assert.equal(await page.locator('.details .agent-for').innerText(), 'for Scoped Casey');
     await capture('scoped-owner-decision-details', '.details .agent-for');
