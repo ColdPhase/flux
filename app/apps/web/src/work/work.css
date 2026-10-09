@@ -141,8 +141,6 @@
 .wd-blocker p { margin: 10px 0 0; font-size: var(--fs-md); }
 .wd-sechead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .wd-sechead h4 { margin: 0; }
-.wd-activity .wd-discussion-form { position: sticky; bottom: calc(-28px - env(safe-area-inset-bottom)); z-index: 2; margin: 14px -22px -28px; padding: 10px 22px 14px; background: var(--el); border-top: 1px solid var(--line); }
-.ui-sheet .wd-activity .wd-discussion-form { margin-inline: -16px; padding-inline: 16px; }
 .wd-blocker-form .ui-field { flex: 1; }
 .wd-dl { margin-top: 16px; }
 .wd-links { list-style: none; margin: 0; padding: 0; }

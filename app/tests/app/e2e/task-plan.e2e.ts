@@ -97,7 +97,8 @@ test('a planned task shows its criteria, prerequisite states and plan revision; 
   if (evidence) { mkdirSync(evidence, { recursive: true }); await page.screenshot({ path: join(evidence, 'task-plan-desktop.png'), fullPage: true }); }
 
   // A start with an open prerequisite is refused in plain words and changes nothing.
-  await panel.getByLabel('Status').selectOption('in_progress');
+  await panel.getByRole('button', { name: 'Status', exact: true }).click();
+  await panel.getByRole('menuitemradio', { name: 'In progress' }).click();
   await panel.getByRole('alert').filter({ hasText: 'every task it waits for is done' }).waitFor();
   assert.equal(((expectStatus(await owner.browser.request('GET', `/api/v1/work/${planned.id}`), 200)) as WorkItem).status, 'open');
 
@@ -116,8 +117,9 @@ test('a planned task shows its criteria, prerequisite states and plan revision; 
   await page.getByRole('button', { name: /Measure gestures at 5 lux/ }).click();
   await heading(page).filter({ hasText: 'Measure gestures at 5 lux' }).waitFor();
   await page.locator('.details.wd').getByRole('region', { name: 'Waits for' }).getByRole('status').filter({ hasText: 'Every prerequisite is done.' }).waitFor();
-  await page.locator('.details.wd').getByLabel('Status').selectOption('in_progress');
-  await page.locator('.details.wd .wd-eyebrow').filter({ hasText: 'In progress' }).waitFor();
+  await page.locator('.details.wd').getByRole('button', { name: 'Status', exact: true }).click();
+  await page.locator('.details.wd').getByRole('menuitemradio', { name: 'In progress' }).click();
+  await page.locator('.details.wd').getByRole('button', { name: 'Status', exact: true }).filter({ hasText: 'In progress' }).waitFor();
   assert.equal(((expectStatus(await owner.browser.request('GET', `/api/v1/work/${planned.id}`), 200)) as WorkItem).status, 'in_progress');
 
   // A viewer on a phone reads the same plan without any control, and the page does not scroll sideways.

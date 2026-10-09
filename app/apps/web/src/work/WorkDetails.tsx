@@ -328,22 +328,23 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
 
       <RelationPages relations={relations} />
 
-      <section className="details__sec" aria-labelledby="wd-decisions">
-        <h4 id="wd-decisions">Decisions</h4>
-        <Linked empty={emptyLinks(relations, 'No decision refers to this work yet.')} items={decisions.map((entry) => ({ key: entry.link.id, label: entry.title, hint: entry.link.role === 'still_applies' ? 'still applies' : undefined, open: () => openDetails({ kind: 'decision', id: entry.id, projectId: context.project.id }) }))} />
-      </section>
-
       <section className="details__sec" aria-labelledby="wd-results">
         <div className="wd-sechead"><h4 id="wd-results">Results</h4>
           {writable ? <Button variant="secondary" icon="plus" onClick={() => openDetails({ kind: 'attach-result', projectId: item.projectId, workId: item.id })}>Attach a result</Button> : null}</div>
         <Linked empty={emptyLinks(relations, isFinished(item) ? 'Finished without a written result.' : 'No result yet. Small tasks do not need one.')} items={results.map((entry) => ({ key: entry.link.id, label: entry.title, open: () => openDetails({ kind: 'result', id: entry.id, projectId: context.project.id }) }))} />
       </section>
 
+      <TaskDiscussionSection key={`${me.user.id}:${context.project.id}:${item.id}`} workId={item.id} project={context.project} number={item.number} members={context.members} me={{ id: me.user.id, name: me.user.name }} />
+
+      <section className="details__sec" aria-labelledby="wd-decisions">
+        <h4 id="wd-decisions">Decisions</h4>
+        <Linked empty={emptyLinks(relations, 'No decision refers to this work yet.')} items={decisions.map((entry) => ({ key: entry.link.id, label: entry.title, hint: entry.link.role === 'still_applies' ? 'still applies' : undefined, open: () => openDetails({ kind: 'decision', id: entry.id, projectId: context.project.id }) }))} />
+      </section>
+
       <OtherRelationships object={item} relations={relations} project={context.project} />
       <InDocs object={item} project={context.project} relations={relations} />
       <Audience project={context.project} />
       <IdsLine>Added by {item.createdBy.name} · {shortDate(item.createdAt)} · version {item.version}</IdsLine>
-      <TaskDiscussionSection key={`${me.user.id}:${context.project.id}:${item.id}`} workId={item.id} project={context.project} number={item.number} members={context.members} me={{ id: me.user.id, name: me.user.name }} />
     </div>
   );
 }
