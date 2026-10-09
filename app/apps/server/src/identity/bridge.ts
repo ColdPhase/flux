@@ -3,7 +3,7 @@ import { fromNodeHeaders } from 'better-auth/node';
 import { AUTH_BASE_PATH, type ApiError, type IdentityCapabilities } from '@flux/contracts';
 import { CLIENT_IP_HEADER, type FluxAuth } from './auth.js';
 import { oauthRequestContext, type OauthRequests } from './oauth-flow.js';
-import type { SignIns } from './sign-in.js';
+import type { SignInFacts, SignIns } from './sign-in.js';
 import type { SessionResolver } from './session.js';
 
 // Forwarding headers are dropped before Better Auth sees a request. Client addresses come
@@ -74,11 +74,14 @@ export function registerAuthBridge(app: FastifyInstance, { auth, publicOrigin, p
       try { context = await oauthRequestContext(url, request.body, (await auth.$context).secret, `${publicOrigin}/mcp`); }
       catch { return reply.code(400).send({ error: 'Invalid OAuth request', code: 'INVALID_OAUTH_QUERY' }); }
       const incoming = new Request(url, { method: request.method, headers, body });
-      const handle = () => signIns.run({}, () => auth.handler(incoming));
+      const facts: SignInFacts = {};
+      const handle = () => signIns.run(facts, () => auth.handler(incoming));
       const response = context ? await oauthRequests.run(Object.freeze(context), handle) : await handle();
       reply.status(response.status);
       response.headers.forEach((value, key) => {
-        if (key !== 'set-cookie' && key !== 'content-length' && key !== 'transfer-encoding') reply.header(key, value);
+        if (key === 'set-cookie' || key === 'content-length' || key === 'transfer-encoding') return;
+        // A refused sign-in (the provider returned no refresh token, #311) comes back to the page with the reason.
+        reply.header(key, key === 'location' && facts.refused ? `${value}${value.includes('?') ? '&' : '?'}sso_reason=${facts.refused}` : value);
       });
       const cookies = response.headers.getSetCookie();
       if (cookies.length) reply.header('set-cookie', cookies);

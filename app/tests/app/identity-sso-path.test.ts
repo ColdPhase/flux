@@ -81,7 +81,7 @@ describe('the provider\'s discovery document is read lazily and retried', () => 
 
 describe('the confirmation age (F-024 S2, #312)', () => {
   const HOUR = 3_600_000;
-  const oidc: OidcConfig = { providerId: 'oidc-test', issuer: 'http://idp.test/realms/flux', clientId: 'flux', clientSecret: 's', label: 'IdP', confirmationMaxAgeMs: 12 * HOUR };
+  const oidc: OidcConfig = { providerId: 'oidc-test', issuer: 'http://idp.test/realms/flux', clientId: 'flux', clientSecret: 's', label: 'IdP', standing: 'off', standingIntervalMs: 900_000, confirmationMaxAgeMs: 12 * HOUR };
   const at = new Date('2026-10-10T12:00:00Z');
   const confirmation = createConfirmation(db, oidc, () => at);
 
@@ -116,6 +116,19 @@ describe('the confirmation age (F-024 S2, #312)', () => {
     assert.equal(await confirmation.lapsed((await person(11)).userId), false, 'within the age');
     assert.equal(await confirmation.lapsed((await person(13)).userId), true, 'past the age');
     assert.equal(await confirmation.lapsed((await person(null)).userId), true, 'never confirmed');
+  });
+
+  test('the standing check\'s success also confirms, and the newest of the two counts', async () => {
+    const { userId } = await person(100);
+    const standingConfirmed = (hours: number) => pool.query(
+      `INSERT INTO auth_idp_standing (user_id, provider_id, confirmed_at) VALUES ($1, $2, $3)
+       ON CONFLICT (user_id, provider_id) DO UPDATE SET confirmed_at = EXCLUDED.confirmed_at`, [userId, oidc.providerId, new Date(at.getTime() - hours * HOUR)]);
+    await standingConfirmed(2);
+    assert.equal(await confirmation.lapsed(userId), false, 'a recent standing success renews an old sign-in');
+    await standingConfirmed(50);
+    assert.equal(await confirmation.lapsed(userId), true, 'both old');
+    await pool.query('UPDATE auth_accounts SET confirmed_at = $2 WHERE user_id = $1', [userId, new Date(at.getTime() - HOUR)]);
+    assert.equal(await confirmation.lapsed(userId), false, 'a recent sign-in renews an old standing row');
   });
 
   test('negative controls: a password-only person, a stranger and an installation without a provider are never lapsed', async () => {

@@ -568,6 +568,13 @@ Default `FLUX_OIDC_STANDING=refresh`, interval 15 minutes.
    check one identity at once and a rotating refresh token is never raced. Each
    check is a `refresh_token` grant at the IdP's token endpoint, authenticated as
    Flux's client.
+
+   *Lease, not lock (N3).* The claim is one short statement that sets a lease on the row
+   (`lease_id`, `lease_until`, about 30 s, longer than the 10 s IdP timeout) and commits at once.
+   Flux then calls the IdP with no transaction and no row lock open, and writes the outcome with
+   a second statement that applies only while the lease is still its own. A replica that
+   crashed leaves a lease that simply runs out. A pass checks at most 20 identities, four at
+   a time.
 4. **Outcomes:**
    - **Success.** Confirmation becomes now. A rotated refresh token is stored in the
      same transaction that records the check; only then does Flux forget the
@@ -587,8 +594,14 @@ Default `FLUX_OIDC_STANDING=refresh`, interval 15 minutes.
      the previous token, which the IdP still accepts when it does not make refresh
      tokens single-use (Keycloak's realm setting "Revoke Refresh Token", off by
      default; the worked example keeps it off).
-   - **No stored refresh token** (after a restore, or when the IdP returned none):
-     sign-in required.
+   - **No stored refresh token** (after a restore): sign-in required. At startup every account
+     that signed in through the provider and has no stored token is put in sign-in required.
+   - **The IdP returned no refresh token at sign-in (N1).** With the standing check on, Flux
+     **refuses that sign-in**: no session is created, the browser returns to the sign-in page with
+     "Your identity provider didn’t let Flux keep checking your account … allow offline access
+     for Flux", and the API logs the operator-facing cause (grant `offline_access` and the
+     refresh grant to the Flux client, or set `FLUX_OIDC_STANDING=off`). Without the refusal,
+     each sign-in would clear the state and the next check would suspend the person again.
 5. **Sign-in required at an authoritative provider:**
    - Flux deletes the account's browser sessions;
    - MCP requests with any bearer (OAuth token, run token) get 401
@@ -596,7 +609,13 @@ Default `FLUX_OIDC_STANDING=refresh`, interval 15 minutes.
    - owner compute stops ([below](#standing-governs-all-of-the-persons-automation));
    - nothing is revoked: MCP grants, connections and standing grants
      stay the owner's and are only refused.
-6. **A successful sign-in through that identity** clears the state. Retained MCP
+6. **Checks continue for a suspended identity (N5).** While the identity still has a stored
+   token and a browser session or grant, the checker keeps asking at the normal interval. A later
+   successful check clears the state without a new sign-in, because Keycloak keeps offline
+   sessions when it disables a user, so a re-enabled user's old offline token works again. Deleted
+   browser sessions stay deleted; the person signs in again. A dead token (`invalid_grant` again)
+   changes nothing until a sign-in replaces it.
+7. **A successful sign-in through that identity** clears the state. Retained MCP
    grants become usable again, a client that kept its refresh token can refresh, and a client that
    re-authorizes finds its connection preselected.
 
@@ -645,13 +664,13 @@ The worker reads standing from the database; it never calls the IdP.
   - the client re-runs authorization, which goes through the IdP;
   - the `/connect-agent` step preselects the connection this client held, so the
     person does not set it up again.
-- **As built (#312).** The confirmation is `auth_accounts.confirmed_at` (migration 0071) on the
-  provider identity, so it survives sign-out and covers MCP tokens that have no session. A
-  provider sign-in sets it; S4 will renew it. A managed account with no recorded confirmation is
+- **As built (#312).** The confirmation is the newer of `auth_accounts.confirmed_at` (migration
+  0071, set by each provider sign-in, so it exists with the standing check off and survives
+  sign-out) and `auth_idp_standing.confirmed_at` (S4, renewed by each successful check). It is
+  per provider identity, so it covers MCP tokens that have no session. A managed account with no recorded confirmation is
   lapsed. Browser sessions that signed in with the provider are ended when it lapses (a password
-  session of the same person is S5b's concern, not this check). The 401 carries
-  `WWW-Authenticate: Bearer error="invalid_token", error_description="…"`; the refresh grant's
-  `invalid_grant` carries the same description. `GET /api/v1/agent-oauth/held-connection` names the
+  session of the same person is S5b's concern, not this check). The 401 and the
+  refresh grant's `invalid_grant` use S4's "Sign in again with <label>." description. `GET /api/v1/agent-oauth/held-connection` names the
   connection the client last held for `/connect-agent` to preselect.
 - S2 lands only after S4. Without the standing check, nothing renews confirmation
   between sign-ins, and every managed account would have to re-authorize its
@@ -787,6 +806,7 @@ inside the container.
 | Password signup/verification | Password mode only | S5a retains collision and verification safeguards; active SSO refuses ordinary password signup/reset |
 | Authoritative IdP / operator recovery | Preserve S5a standing/offboarding defaults | An operator recovery setting does not authorize ordinary password login while SSO is active or remove the required standing/offboarding gates; explicit host recovery is separately audited |
 | `FLUX_OIDC_STANDING` | `refresh` | `off` disables the offline standing check (S4) |
+| `FLUX_OIDC_STANDING_INTERVAL_SECONDS` | `900` | 5–86400. Seconds between checks of a live identity; the tests use 6 (S4) |
 | `FLUX_OIDC_CONFIRMATION_MAX_AGE` | `7d` | `1h`–`30d` (S2) |
 
 ### Who must reach what
@@ -1081,9 +1101,11 @@ scope and its observations are preserved in the dated research and GitHub record
 - **AC-1.** `offline_access` at sign-in. The IdP refresh token is stored encrypted in
   its own table, and the replaced token is revoked at the IdP.
 - **AC-2.** The check runs in `api` and claims identities with `FOR UPDATE SKIP
-  LOCKED`. It has success, sign-in required and unknown outcomes; a rotated token
+  LOCKED` inside one short leasing statement; no lock or transaction is held across the
+  IdP call (N3). It has success, sign-in required and unknown outcomes; a rotated token
   is stored before the previous one is forgotten; no stored token means sign-in
-  required.
+  required. A sign-in that returns no refresh token is refused (N1). Checks continue
+  for a suspended identity and a later success clears the state (N5).
 - **AC-3.** Sign-in required deletes the browser sessions, answers MCP requests with
   401 and an RFC 6750-safe `error_description`, refuses refresh, and revokes
   nothing. A new sign-in restores use of kept refresh tokens and grants.

@@ -87,6 +87,30 @@ provider can still sign in.
 The API reads discovery when it starts. If the provider is unreachable then, single sign-on fails
 until the next restart; password sign-in is unaffected.
 
+## Standing check
+
+Flux asks the provider for `offline_access` at sign-in and keeps the refresh token it returns,
+sealed with a key derived from `FLUX_AUTH_SECRET`, in `auth_idp_standing`. Every
+`FLUX_OIDC_STANDING_INTERVAL_SECONDS` (default 900) the API uses that token for each person with a
+live session or agent connection. If the provider answers `invalid_grant` (a disabled user, a removed
+offline session), the person is in *sign-in required*: their browser sessions end, MCP requests answer
+`401 invalid_token` with "Sign in again with <label>", the refresh grant answers `invalid_grant`, and
+automation that acts for them stops. Nothing is revoked. A network error, timeout, 5xx or
+`invalid_client` changes nothing.
+
+- **Restoring access.** Checks continue for a suspended person. When the provider honours the token
+  again (a re-enabled Keycloak user), the next check clears the state; their kept agent grants work
+  again, and they sign in again in the browser.
+- **The provider must return a refresh token.** Grant the Flux client the `refresh_token` grant and
+  let the people use `offline_access` (Keycloak: the `offline_access` role; Okta: the Refresh Token
+  grant). A sign-in that returns none is refused with a message, and the API logs
+  `The identity provider returned no refresh token`. For a provider that cannot, set
+  `FLUX_OIDC_STANDING=off`: then only the confirmation age (S2) and back-channel logout end access.
+- **Backups and restores.** `./flux backup` keeps the table's rows out of the archive. After a
+  restore, every person who signed in through the provider is in sign-in required until they sign in
+  again.
+- **Only the stored state is read per request;** an unreachable provider adds no latency to MCP calls.
+
 ## Verified behavior
 
 `./scripts/check_oidc.sh` runs a pinned, disposable Keycloak in Docker as the provider and drives

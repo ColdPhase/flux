@@ -1,10 +1,7 @@
-import { and, eq, lt, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { schema } from '@flux/db';
 import type { Database } from '@flux/core';
 import type { OidcConfig } from './config.js';
-
-/** What a refused person or client is told. ASCII only: it travels in a WWW-Authenticate parameter. */
-export const CONFIRMATION_LAPSED = 'Your identity provider has not confirmed this account recently. Sign in again.';
 
 export interface Confirmation {
   /**
@@ -23,16 +20,19 @@ export interface Confirmation {
 }
 
 export function createConfirmation(db: Database, oidc: OidcConfig | null, now: () => Date = () => new Date()): Confirmation {
-  const cutoff = () => new Date(now().getTime() - oidc!.confirmationMaxAgeMs);
-  // A managed account with no recorded confirmation has never been vouched for; it is lapsed.
-  const stale = (userId: string) => and(
-    eq(schema.authAccounts.userId, userId), eq(schema.authAccounts.providerId, oidc!.providerId),
-    sql`(${schema.authAccounts.confirmedAt} IS NULL OR ${lt(schema.authAccounts.confirmedAt, cutoff())})`);
+  const cutoff = () => new Date(now().getTime() - oidc!.confirmationMaxAgeMs).toISOString();
+  // The newest of the provider sign-in (auth_accounts.confirmed_at, kept even with the standing check off) and the
+  // standing check's last success (auth_idp_standing.confirmed_at, S4). A managed account with neither is lapsed.
+  const lapsedSql = (where: ReturnType<typeof sql>) => sql`
+    SELECT 1 FROM auth_accounts a
+    LEFT JOIN auth_idp_standing st ON st.user_id = a.user_id AND st.provider_id = a.provider_id
+    WHERE ${where} AND a.provider_id = ${oidc!.providerId}
+      AND (GREATEST(a.confirmed_at, st.confirmed_at) IS NULL OR GREATEST(a.confirmed_at, st.confirmed_at) < ${cutoff()}::timestamptz)
+    LIMIT 1`;
   return {
     async lapsed(userId) {
       if (!oidc) return false;
-      const rows = await db.select({ id: schema.authAccounts.id }).from(schema.authAccounts).where(stale(userId)).limit(1);
-      return rows.length > 0;
+      return ((await db.execute(lapsedSql(sql`a.user_id = ${userId}`))).rowCount ?? 0) > 0;
     },
     async confirm(userId, providerId) {
       await db.update(schema.authAccounts).set({ confirmedAt: now() })
@@ -42,11 +42,9 @@ export function createConfirmation(db: Database, oidc: OidcConfig | null, now: (
       if (!oidc) return false;
       const rows = await db.select({ userId: schema.authSessions.userId }).from(schema.authSessions)
         .innerJoin(schema.authSessionIdentities, eq(schema.authSessionIdentities.sessionId, schema.authSessions.id))
-        .innerJoin(schema.authAccounts, and(eq(schema.authAccounts.userId, schema.authSessions.userId),
-          eq(schema.authAccounts.providerId, schema.authSessionIdentities.method)))
-        .where(and(eq(schema.authSessions.id, sessionId), eq(schema.authSessionIdentities.method, oidc.providerId),
-          sql`(${schema.authAccounts.confirmedAt} IS NULL OR ${lt(schema.authAccounts.confirmedAt, cutoff())})`)).limit(1);
-      if (!rows.length) return false;
+        .where(and(eq(schema.authSessions.id, sessionId), eq(schema.authSessionIdentities.method, oidc.providerId))).limit(1);
+      const userId = rows[0]?.userId;
+      if (!userId || !await this.lapsed(userId)) return false;
       await db.delete(schema.authSessions).where(eq(schema.authSessions.id, sessionId));
       return true;
     },

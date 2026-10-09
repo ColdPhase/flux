@@ -72,7 +72,8 @@ describe('identity configuration', () => {
     assert.throws(() => loadOidcConfig({ FLUX_OIDC_ISSUER: oidc.FLUX_OIDC_ISSUER, FLUX_OIDC_CLIENT_ID: 'flux' }, secret), /SECRET_FILE is required/);
     const loaded = loadOidcConfig(oidc, secret)!;
     assert.deepEqual(loaded, { providerId: oidcProviderId('https://id.example.org/realms/flux'), issuer: 'https://id.example.org/realms/flux',
-      clientId: 'flux', clientSecret: 'client-secret-value', label: 'single sign-on', confirmationMaxAgeMs: 7 * 24 * 3_600_000 });
+      clientId: 'flux', clientSecret: 'client-secret-value', label: 'single sign-on', confirmationMaxAgeMs: 7 * 24 * 3_600_000,
+      standing: 'refresh', standingIntervalMs: 900_000 });
     assert.match(loaded.providerId, /^oidc-[0-9a-f]{12}$/);
     assert.notEqual(oidcProviderId('https://id.example.org/realms/other'), loaded.providerId, 'another issuer is another identity namespace');
     assert.equal(loadOidcConfig({ ...oidc, FLUX_OIDC_LABEL: 'Acme login' }, secret)!.label, 'Acme login');
@@ -85,6 +86,10 @@ describe('identity configuration', () => {
     assert.throws(() => loadOidcConfig(oidc, () => '  \n'), /is empty/);
     assert.throws(() => loadOidcConfig(oidc, () => { throw new Error('ENOENT'); }), /cannot be read/);
     assert.throws(() => loadOidcConfig({ ...oidc, FLUX_OIDC_LABEL: 'x'.repeat(61) }, secret), /at most 60/);
+    assert.equal(loadOidcConfig({ ...oidc, FLUX_OIDC_STANDING: 'off' }, secret)!.standing, 'off');
+    assert.throws(() => loadOidcConfig({ ...oidc, FLUX_OIDC_STANDING: 'sometimes' }, secret), /refresh or off/);
+    assert.equal(loadOidcConfig({ ...oidc, FLUX_OIDC_STANDING_INTERVAL_SECONDS: '60' }, secret)!.standingIntervalMs, 60_000);
+    for (const bad of ['4', '86401', 'x', '1.5']) assert.throws(() => loadOidcConfig({ ...oidc, FLUX_OIDC_STANDING_INTERVAL_SECONDS: bad }, secret), /from 5 to 86400/, bad);
   });
 
   test('only a verified email from the configured issuer signs in; groups and roles are ignored (#113)', () => {

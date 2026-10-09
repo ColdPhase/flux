@@ -14,6 +14,7 @@ import { cachedReachability, waitForDiscovery } from './discovery.js';
 import { registerAgentOauthContext } from './oauth-context.js';
 import { registerIdentityRoutes } from './routes.js';
 import { createSessionResolver, type SessionResolver } from './session.js';
+import { createIdpStanding, type IdpStanding } from './standing.js';
 
 export { loadIdentityConfig, type IdentityConfig } from './config.js';
 export { UnauthenticatedError, type SessionContext, type SessionResolver } from './session.js';
@@ -29,6 +30,8 @@ export interface Identity extends SessionResolver {
   passwordReset: IdentityCapabilities['passwordReset'];
   auth: FluxAuth;
   confirmation: Confirmation;
+  /** Null without a provider or with FLUX_OIDC_STANDING=off. */
+  standing: IdpStanding | null;
 }
 
 /**
@@ -41,8 +44,10 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
   if (mailer) app.addHook('onClose', async () => mailer.close());
   const oauthRequests = createOauthRequests();
   const signIns = createSignIns();
+  const idpStanding = config.oidc ? createIdpStanding({ db, oidc: config.oidc, authSecret: config.secret, log: app.log }) : null;
+  const standing = config.oidc?.standing === 'refresh' ? idpStanding : null;
   const confirmation = createConfirmation(db, config.oidc);
-  const auth = createAuth({ db, config, mailer, oauthRequests, signIns, confirmation, onMailError: (error) => app.log.error({ error }, 'Password reset mail failed') });
+  const auth = createAuth({ db, config, mailer, oauthRequests, signIns, standing, confirmation, log: app.log, onMailError: (error) => app.log.error({ error }, 'Password reset mail failed') });
   // OAuth resource seeding runs during Better Auth initialization. Complete it before
   // accepting requests or allowing an in-process server to close its database pool.
   // The provider reads its discovery document while Better Auth initializes, so an identity provider that
@@ -50,8 +55,12 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
   app.addHook('onReady', async () => {
     if (config.oidc && !await waitForDiscovery(config.oidc)) app.log.warn({ issuer: config.oidc.issuer }, 'The identity provider did not answer; single sign-on is reported as not reachable');
     await auth.$context;
+    // Accounts without a stored token (a restore left none) refuse until the person signs in again; with the check off no row may refuse anyone.
+    await idpStanding?.reconcile();
+    standing?.start();
   });
-  const sessions = createSessionResolver(auth, confirmation);
+  app.addHook('onClose', async () => standing?.stop());
+  const sessions = createSessionResolver(auth, standing, confirmation);
   const passwordReset: IdentityCapabilities['passwordReset'] = mailer ? 'available' : 'unavailable';
 
   app.addHook('onRequest', async (request, reply) => {
@@ -71,5 +80,5 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
   registerIdentityRoutes(app, { sessions, store: createSessionRepository(db), passwordReset, sso });
   registerAgentOauthContext(app, db, sessions, auth, config.publicOrigin);
 
-  return { ...sessions, passwordReset, auth, confirmation };
+  return { ...sessions, passwordReset, auth, standing, confirmation };
 }

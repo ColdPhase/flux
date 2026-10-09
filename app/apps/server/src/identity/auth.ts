@@ -13,7 +13,8 @@ import type { IdentityConfig, OidcConfig } from './config.js';
 import type { Mailer } from './mailer.js';
 import type { OauthRequests } from './oauth-flow.js';
 import { createSignIns, type SignIns } from './sign-in.js';
-import { CONFIRMATION_LAPSED, createConfirmation, type Confirmation } from './confirmation.js';
+import { createConfirmation, type Confirmation } from './confirmation.js';
+import { signInAgainMessage, type IdpStanding } from './standing.js';
 
 /** Set by the Fastify bridge from the socket or trusted-proxy address; client copies are dropped. */
 export const CLIENT_IP_HEADER = 'x-flux-client-ip';
@@ -30,6 +31,9 @@ export interface AuthDependencies {
   signIns?: SignIns;
   /** Defaults to one over `db` and the configured provider (F-024 S2, #312). */
   confirmation?: Confirmation;
+  /** Present with a provider and the standing check on (#311): sign-in stores the offline token. */
+  standing?: IdpStanding | null;
+  log?: { error(object: object, message: string): void };
 }
 
 /**
@@ -70,7 +74,7 @@ function idTokenClaims(idToken: string | undefined): Record<string, unknown> | n
   }
 }
 
-export function createAuth({ db, config, mailer, onMailError, oauthRequests, signIns = createSignIns(), confirmation = createConfirmation(db, config.oidc) }: AuthDependencies) {
+export function createAuth({ db, config, mailer, onMailError, oauthRequests, signIns = createSignIns(), standing = null, log, confirmation = createConfirmation(db, config.oidc) }: AuthDependencies) {
   const connections = agentOauthUseCases(createAgentConnectionStore(db));
   const resource = `${config.publicOrigin}/mcp`;
   const connectionForGrant = async (userId: string, sessionId: string, scopes: readonly string[]) => {
@@ -136,9 +140,13 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
         customAccessTokenClaims: async ({ user, referenceId, scopes, resources }) => {
           // The refresh grant and the code exchange both come through here: once the provider's confirmation is
           // older than the confirmation age the client must authorize again, through the provider (F-024 S2, #312).
-          if (user && await confirmation.lapsed(user.id)) throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: CONFIRMATION_LAPSED });
+          if (user && await confirmation.lapsed(user.id)) throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: signInAgainMessage(config.oidc?.label ?? '') });
           if (!user || !referenceId || resources?.length !== 1 || resources[0] !== resource) {
             throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'Agent connection is unavailable' });
+          }
+          // Refused while the provider no longer honours this person; nothing is revoked (S4, #311).
+          if (standing && !await standing.stands(user.id)) {
+            throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: signInAgainMessage(config.oidc?.label ?? '') });
           }
           const grant = await connections.grantForOauth(user.id, referenceId);
           const connection = grant?.connection;
@@ -149,7 +157,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
         },
       }),
       cimd({ fetchClientMetadataResource, metadataProfile: 'mcp-2026-07-28' }),
-      ...(config.oidc ? [oidcPlugin(config.oidc, signIns)] : []),
+      ...(config.oidc ? [oidcPlugin(config.oidc, signIns, log)] : []),
     ],
     databaseHooks: {
       session: {
@@ -162,6 +170,9 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
             }).onConflictDoNothing();
             // A provider sign-in is the provider vouching for the person now (F-024 S2, #312).
             if (sign?.providerId) await confirmation.confirm(session.userId, sign.providerId);
+            // The provider vouched for the person just now: keep its offline token for the standing check and
+            // clear sign-in required (#311). The token never reaches auth_accounts or a log.
+            if (sign?.providerId && sign.refreshToken && standing) await standing.recordSignIn(session.userId, sign.refreshToken);
           },
         },
       },
@@ -212,14 +223,15 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
 export type FluxAuth = ReturnType<typeof createAuth>;
 
 /** One operator-configured OpenID Connect provider for human sign-in (#113). */
-function oidcPlugin(oidc: OidcConfig, signIns: SignIns) {
+function oidcPlugin(oidc: OidcConfig, signIns: SignIns, log?: { error(object: object, message: string): void }) {
   return genericOAuth({
     config: [{
       providerId: oidc.providerId,
       discoveryUrl: `${oidc.issuer}/.well-known/openid-configuration`,
       clientId: oidc.clientId,
       clientSecret: oidc.clientSecret,
-      scopes: ['openid', 'email', 'profile'],
+      // offline_access asks for the refresh token the standing check keeps (#311).
+      scopes: oidc.standing === 'refresh' ? ['openid', 'email', 'profile', 'offline_access'] : ['openid', 'email', 'profile'],
       pkce: true,
       // Fail closed when discovery publishes no usable issuer/JWKS: claims must come from a verified ID token.
       requireIdTokenVerification: true,
@@ -229,8 +241,16 @@ function oidcPlugin(oidc: OidcConfig, signIns: SignIns) {
         const claims = idTokenClaims(tokens.idToken);
         const user = oidcUser(oidc, claims);
         const sign = signIns.getStore();
+        if (user && sign && oidc.standing === 'refresh' && !tokens.refreshToken) {
+          // N1: without a refresh token the next check would suspend this person again. Refuse the sign-in and
+          // tell the operator; the browser is told why by the bridge.
+          sign.refused = 'no_refresh_token';
+          log?.error({ issuer: oidc.issuer, providerId: oidc.providerId }, 'The identity provider returned no refresh token, so the sign-in was refused. Grant the offline_access scope and the refresh_token grant to the Flux client, or set FLUX_OIDC_STANDING=off');
+          return null;
+        }
         if (user && sign) {
           sign.providerId = oidc.providerId;
+          if (tokens.refreshToken) sign.refreshToken = tokens.refreshToken;
           if (typeof claims?.sid === 'string' && claims.sid && claims.sid.length <= 512) sign.idpSid = claims.sid;
         }
         return user;
