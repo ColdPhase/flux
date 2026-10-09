@@ -40,8 +40,9 @@ const proxy = http.createServer((request, response) => {
 });
 
 interface Running { output: () => string; done: Promise<number | null>; kill: () => void }
-function run(command: string, args: string[], env: Record<string, string>, cwd: string): Running {
+function run(command: string, args: string[], env: Record<string, string>, cwd: string, keepStdin = false): Running {
   const child: ChildProcess = spawn(command, args, { cwd, env: { ...process.env, ...env }, stdio: ['pipe', 'pipe', 'pipe'] });
+  if (!keepStdin) child.stdin!.end();
   let text = '';
   child.stdout!.on('data', (chunk: Buffer) => { text += chunk.toString(); });
   child.stderr!.on('data', (chunk: Buffer) => { text += chunk.toString(); });
@@ -139,7 +140,7 @@ test('real pinned Codex and Claude Code clients: three personal connections, one
         throw new Error(`${(error as Error).message}\nauthorization URL: ${url}`);
       } finally { await context.close(); }
     }
-    const authorizeUrl = /(https?:\/\/[^\s"']*\/api\/auth\/oauth2\/authorize\?[^\s"']+)/;
+    const authorizeUrl = /(https?:\/\/[^\s"'\u0000-\u001f]*\/api\/auth\/oauth2\/authorize\?[^\s"'\u0000-\u001f]+)/;
 
     // --- Each client's own commands: add, authenticate through Flux's OAuth, then ask it for its MCP status.
     const homes: Record<string, { env: Record<string, string>; cwd: string }> = {};
@@ -174,9 +175,10 @@ test('real pinned Codex and Claude Code clients: three personal connections, one
           const add = await sh(claudeBin, ['mcp', 'add', '--transport', 'http', '--scope', 'user', '--client-id', clientIds[spec.key]!, '--callback-port', String(spec.port), 'flux', mcpUrl], env, cwd);
           assert.equal(add.code, 0, add.output);
           // Claude Code refuses to log in without a terminal; `script` gives it one and the paste prompt waits on stdin.
-          const login = run('script', ['-qefc', `${claudeBin} mcp login flux --no-browser`, '/dev/null'], env, cwd);
+          const login = run('script', ['-qefc', `${claudeBin} mcp login flux --no-browser`, '/dev/null'], env, cwd, true);
           const match = await waitFor(login, authorizeUrl, 'claude mcp login');
-          await authorize(spec, match[1]!);
+          // The terminal output wraps the URL in an OSC-8 hyperlink, which repeats it after an escape.
+          await authorize(spec, match[1]!.split(/(?=https?:\/\/)/)[0]!.replace(/[\u0000-\u001f]+.*$/, ''));
           assert.equal(await login.done, 0, login.output());
           const listed = await sh(claudeBin, ['mcp', 'list'], env, cwd);
           assert.match(listed.output, /flux: .*Connected/, listed.output);
@@ -250,6 +252,13 @@ test('real pinned Codex and Claude Code clients: three personal connections, one
         const boot = JSON.parse((await tools.mcp__flux__flux_bootstrap({ projectId: ${JSON.stringify(projects.study)}, clientSessionId: ${JSON.stringify(randomUUID())} })).content[0].text);
         text(JSON.stringify(await tools.mcp__flux__flux_create_task({ projectId: ${JSON.stringify(projects.study)}, runtimeSessionId: boot.runtime.id, grantId: ${JSON.stringify(grant.id)},
           clientCommandId: ${JSON.stringify(randomUUID())}, peerRequestClass: 'execute', task: { title: ${JSON.stringify(title)} } })));`));
+      // The authenticated bootstrap envelope the real client received names the connection's capabilities and the trusted playbook
+      // reference (#160's Start/Resume consumes it; instruction loading by a model is not claimed here).
+      const boot = json(created.calls.find((call) => call.tool === 'flux_bootstrap'));
+      const capabilities = boot.capabilities as { name: string; available: boolean }[];
+      assert.deepEqual(capabilities.filter((item) => item.name === 'flux_create_task').map((item) => item.available), [true]);
+      assert.match((boot.trusted as { playbook: { digest: string } }).playbook.digest, /^sha256:[0-9a-f]{64}$/);
+      assert.deepEqual((boot.project as { id: string }).id, projects.study);
       const task = json(created.calls.find((call) => call.tool === 'flux_create_task'));
       assert.equal(typeof task.workId, 'string', JSON.stringify(task));
       const stored = expect(await owner.request('GET', `/api/v1/work/${task.workId}`), 200);
