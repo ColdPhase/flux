@@ -242,7 +242,8 @@
 .agents-thread-scroll { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; }
 .agents-thread-scroll > .agents-thread { flex: 1 0 auto; }
 /* Phone: a sheet over the Agents pane, with its head pinned and its messages scrolling inside (#347 review N2). */
-.agents-thread-sheet { position: absolute; inset: 0; z-index: var(--z-panel); display: flex; flex-direction: column; min-height: 0; background: var(--bg); }
+/* A fixed sheet over the screen: its height is the screen's, so its messages scroll inside it (#347 review N2). */
+.agents-thread-sheet { position: fixed; inset: 0; z-index: var(--z-panel); display: flex; flex-direction: column; min-height: 0; padding-top: env(safe-area-inset-top); background: var(--bg); }
 .agents-thread-sheet .thread--sheet { position: static; flex: 1; min-height: 0; display: flex; flex-direction: column; }
 @media (max-width: 1000px) {
   .agents[data-thread-open] .agents__handoff { display: none; }
