@@ -283,6 +283,7 @@ test('real pinned Codex and Claude Code clients: three personal connections, one
   } finally {
     await mock.current?.close();
     await browser.close();
+    proxy.closeAllConnections();
     await new Promise<void>((resolve) => proxy.close(() => resolve()));
     await pool.end();
   }
