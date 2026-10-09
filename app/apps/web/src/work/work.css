@@ -98,7 +98,7 @@ button.ws-task__glyph:active { background: var(--hov); }
   .ws-tasks .ws-task-controls { margin: 0 -16px; padding: 0 16px; }
   .ws-tasks .ws-group { margin-top: 12px; }
   /* Read by assistive technology, in the flow so the section jumps still land on it. */
-  .ws-tasks .ws-group__h { height: 0; margin: 0; overflow: hidden; white-space: nowrap; }
+  .ws-tasks .ws-group__h { height: 1px; margin: 0 0 -1px; overflow: hidden; white-space: nowrap; }
   .ws-tasks .ws-list { --task-bg: var(--el); overflow: hidden; border-radius: 18px; background: var(--el); box-shadow: var(--sh-card); }
   .ws-task { min-height: 62px; }
   .ws-task__fg { min-height: 62px; padding-left: 4px; }
