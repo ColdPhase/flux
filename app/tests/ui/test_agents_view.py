@@ -246,7 +246,12 @@ class AgentsViewJourney(unittest.TestCase):
         thread = self.thread(page)
         expect(thread.get_by_text("Cable ordered while your link was down")).to_be_visible()
         pane = page.locator(".agents-thread-scroll")
-        self.assertGreater(pane.evaluate("el => el.scrollHeight - el.clientHeight"), 100, "the phone pane scrolls")
+        # On a phone the thread is a sheet over the screen; its messages scroll inside it, so the thread must be longer than the sheet.
+        for index in range(8):
+            self.contribute("marek", f"Filler reading {index}: " + "the sensor log line repeats for the night " * 4)
+        expect(thread.get_by_text("Filler reading 7")).to_have_count(1, timeout=8000)
+        page.wait_for_timeout(300)
+        self.assertGreater(pane.evaluate("el => el.scrollHeight - el.clientHeight"), 100, "the phone thread scrolls")
         pane.evaluate("el => { el.scrollTop = 0; }")
         self.contribute("marek", "Reading earlier? This one waits below.")
         expect(thread.get_by_text("Reading earlier? This one waits below.")).to_have_count(1, timeout=6000)
