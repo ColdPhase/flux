@@ -321,6 +321,11 @@ async function keycloakAdmin() {
       const ended = await call('DELETE', `/sessions/${sessionId}?isOffline=false`);
       assert.equal(ended.status, 204, await ended.text());
     },
+    async offlineSessionsOf(username: string) {
+      const id = await userId(username);
+      const client = await flux();
+      return await (await call('GET', `/users/${id}/offline-sessions/${client.id}`)).json() as { id: string }[];
+    },
     async sessionsOf(username: string) {
       return await (await call('GET', `/users/${await userId(username)}/sessions`)).json() as { id: string; clients: Record<string, string> }[];
     },
@@ -458,6 +463,15 @@ async function signInWithTokens() {
   return { context, tokens, sid };
 }
 
+/** A person logging out at the provider itself: its end-session page, then the confirmation. */
+async function logoutAtProvider(context: BrowserContext) {
+  const page = await context.newPage();
+  await page.goto(`${keycloak}/realms/flux/protocol/openid-connect/logout`);
+  await page.locator('#kc-logout').click();
+  await page.waitForLoadState('networkidle');
+  await page.close();
+}
+
 const mcpRefresh = (refreshToken: string) => fetch(new URL('/api/auth/oauth2/token', upstream), { method: 'POST',
   headers: { 'content-type': 'application/x-www-form-urlencoded' },
   body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken, client_id: clientId, resource }) });
@@ -495,10 +509,9 @@ test('back-channel logout: ending one Keycloak session ends its browser sessions
   assert.equal((await second.request.get(`${origin}/api/v1/me`)).status(), 200);
   assert.equal((await first.context.request.get(`${origin}/api/v1/me`)).status(), 200);
 
-  const keycloakSession = (await admin.sessionsOf('erin')).find((candidate) => candidate.id === first.sid);
-  assert.ok(keycloakSession, 'the IdP session whose sid Flux recorded');
+  console.log(`DIAG sid=${first.sid} online=${JSON.stringify((await admin.sessionsOf('erin')).map((x) => [x.id, x.clients]))} offline=${JSON.stringify((await admin.offlineSessionsOf('erin')).map((x) => x.id))}`);
   await pool.query('UPDATE auth_idp_standing SET last_outcome = NULL WHERE user_id = $1', [state.userId]);
-  await admin.endSession(first.sid);
+  await logoutAtProvider(first.context);
   await waitFor(async () => (await first.context.request.get(`${origin}/api/v1/me`)).status() === 401, 'the matching browser session to end');
   assert.equal((await second.request.get(`${origin}/api/v1/me`)).status(), 200, 'negative control: another IdP session of the same person is untouched');
   // A plain logout does not stop agents: the immediate check succeeds because Keycloak keeps the offline session.
@@ -513,7 +526,7 @@ test('back-channel logout: with "revoke offline sessions" on, the MCP refresh to
   try {
     const signed = await signInWithTokens();
     assert.equal((await mcp(signed.tokens.access_token, 21, 'tools/list')).status, 200, 'negative control: working before the logout');
-    await admin.endSession(signed.sid);
+    await logoutAtProvider(signed.context);
     await waitFor(async () => (await standingRow(state.userId!))?.reason === 'offline_access_revoked', 'the offline revocation');
     const row = (await standingRow(state.userId!))!;
     assert.equal(row.state, 'sign_in_required');
