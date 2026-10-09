@@ -169,7 +169,8 @@ if (phase === 'cutover') {
       const me = await api<{ user: { id: string; email: string } }>(context, 'GET', '/api/v1/me');
       assert.equal(me.status, 200, JSON.stringify(me.body));
       assert.equal(me.body!.user.id, patId, 'the same Flux account, with its data and memberships');
-      assert.equal(me.body!.user.email, pat.email, 'the account address stays as it was');
+      // The same subject keeps the same Flux account; a sign-in takes the provider's verified address (#113).
+      assert.equal(me.body!.user.email, 'frank@acme.test', 'the account takes the verified provider address on sign-in');
     });
   });
 }
