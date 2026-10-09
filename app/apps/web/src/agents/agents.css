@@ -235,9 +235,11 @@
 .agents[data-thread-open] { position: relative; }
 .agents-thread-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .agents-thread-pane .thread--docked { width: 100%; border-left: 0; }
-.agents-thread-sheet { position: absolute; inset: 0; z-index: var(--z-panel); display: flex; }
-.agents-thread-sheet .thread--sheet { position: relative; inset: auto; flex: 1; min-width: 0; }
+.agents-thread-sheet { position: relative; display: flex; flex-direction: column; min-width: 0; }
+.agents-thread-sheet .thread--sheet { position: static; inset: auto; flex: 1; min-width: 0; }
 @media (max-width: 1000px) {
+  /* The thread is a sheet that takes the pane: the list is not drawn behind it (it grows in the pane's own flow). */
+  .agents[data-thread-open] .agents__main { display: none; }
   .agents[data-thread-open] .agents__handoff { display: none; }
 }
 @media (max-width: 640px) {

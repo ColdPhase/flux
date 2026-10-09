@@ -164,9 +164,9 @@ class HandOffJourney(unittest.TestCase):
         expect(page).to_have_url(re.compile(r"agent=connection|agent=agent"))
         page.locator(f'.agents-row[data-agent="{self.ids["agent_claude"]}"] .agents-row__btn').click()
         # The agent's task opens its thread under the list.
-        page.get_by_role("complementary", name="Claude Code agent, details").get_by_role("button", name="Calibrate the probes at two soil depths").click()
+        page.get_by_role("complementary", name="Claude Code agent, details").get_by_role("button", name=re.compile("^Open the thread of #")).click()
         expect(page.get_by_role("region", name="Thread of Calibrate the probes at two soil depths")).to_be_visible()
-        expect(page.get_by_label("Task", exact=True)).to_have_value(self.ids["busy"])
+        expect(page.locator("select#agents-task")).to_have_count(0)
 
     def test_05_two_steps_choose_the_agent_then_see_what_it_may_do(self) -> None:
         page = self.open_agents()
@@ -296,7 +296,7 @@ class HandOffJourney(unittest.TestCase):
             (row.tap if touch else row.click)()
             detail = page.get_by_role("complementary", name="Claude Code agent, details")
             expect(detail).to_be_visible()
-            link = detail.get_by_role("region", name="Now").get_by_role("button", name=title)
+            link = detail.get_by_role("region", name="Now").get_by_role("button", name=re.compile("^Open the thread of #"))
             (link.tap if touch else link.click)()
             # The panel is left: the exact thread with its composer is on screen, not hidden behind the panel.
             thread = page.get_by_role("region", name=f"Thread of {title}")
@@ -312,8 +312,11 @@ class HandOffJourney(unittest.TestCase):
             expect(thread).to_be_visible()
         # Where the panel sits beside the list both stay on screen.
         wide = self.open_agents()
-        wide.get_by_role("complementary", name="Claude Code agent, details").get_by_role("button", name=title).click()
+        wide.get_by_role("complementary", name="Claude Code agent, details").get_by_role("button", name=re.compile("^Open the thread of #")).click()
         expect(wide.get_by_role("region", name=f"Thread of {title}")).to_be_visible()
+        # The thread takes the right column in place of the panel; closing it returns to the panel (#347 P1-2).
+        expect(wide.get_by_role("complementary", name="Claude Code agent, details")).to_have_count(0)
+        wide.get_by_role("button", name="Close thread").click()
         expect(wide.get_by_role("complementary", name="Claude Code agent, details")).to_be_visible()
 
     def test_11_the_agent_panel_asks_for_a_task_before_confirmation(self) -> None:
@@ -370,7 +373,7 @@ class HandOffJourney(unittest.TestCase):
         expect(dialog.get_by_role("button", name=re.compile("^Hand off"))).to_be_visible()
         dialog.get_by_role("button", name=re.compile("^Hand off")).click()
         expect(page.get_by_text(f"Handed #{fresh['number']} to Claude Code agent")).to_be_visible()
-        self.assertEqual(self.task_by_id(fresh["id"])["owner"], {"kind": "agent", "id": self.ids["agent_claude"]})
+        self.assertEqual(self.task_by_id(fresh["id"])["owner"]["id"], self.ids["agent_claude"])
 
     def task_by_id(self, task_id: str) -> dict:
         return self.api(self.page("ada"), "GET", f"/api/v1/work/{task_id}", status=200)

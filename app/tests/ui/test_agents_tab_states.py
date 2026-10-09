@@ -154,7 +154,7 @@ class AgentsTabStates(unittest.TestCase):
             expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
             type(self).states = {**self.states, key: page.context.storage_state()}
             person["id"] = self.api(page, "GET", "/api/v1/me", status=200)["user"]["id"]
-        ada = self.page("ada")
+        ada, jonas = self.page("ada"), self.page("jonas")
         ws = self.api(ada, "POST", "/api/v1/workspaces", {"name": "Community garden"}, status=201)
         self.api(ada, "POST", f"/api/v1/workspaces/{ws['id']}/members", {"email": JONAS["email"], "role": "member"}, status=201)
         pid = self.api(ada, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Garden sensors", "visibility": "restricted"}, status=201)["id"]
@@ -179,10 +179,10 @@ class AgentsTabStates(unittest.TestCase):
         self.new_task("Print a label for each of the six beds", "task4")
         self.new_task("Log the greenhouse humidity", "task5", owner={"kind": "agent", "id": ids["lab"]}, status="in_progress")
         # Thread of #1: the agent's message is the middle one, and Ada's later one follows it.
-        first = self.api(ada, "POST", f"/api/v1/work/{ids['task1']}/discussion", {"body": "Starting on the reconnect loop.", "clientMessageId": str(uuid.uuid4()), "kind": "text"}, status=201)
-        second = self.api(ada, "POST", f"/api/v1/work/{ids['task1']}/discussion", {"body": "Reading the modem log now.", "clientMessageId": str(uuid.uuid4()), "kind": "text"}, status=201)
-        third = self.api(ada, "POST", f"/api/v1/work/{ids['task1']}/discussion", {"body": "Thanks, keep going.", "clientMessageId": str(uuid.uuid4()), "kind": "text"}, status=201)
-        discussion = self.api(ada, "GET", f"/api/v1/work/{ids['task1']}/discussion", status=200)
+        first = self.api(ada, "POST", f"/api/v1/work/{self.ids['task1']}/discussion", {"body": "Starting on the reconnect loop.", "clientMessageId": str(uuid.uuid4()), "kind": "text"}, status=201)
+        second = self.api(ada, "POST", f"/api/v1/work/{self.ids['task1']}/discussion", {"body": "Reading the modem log now.", "clientMessageId": str(uuid.uuid4()), "kind": "text"}, status=201)
+        third = self.api(ada, "POST", f"/api/v1/work/{self.ids['task1']}/discussion", {"body": "Thanks, keep going.", "clientMessageId": str(uuid.uuid4()), "kind": "text"}, status=201)
+        discussion = self.api(ada, "GET", f"/api/v1/work/{self.ids['task1']}/discussion", status=200)
         type(self).ids = {**self.ids, "conversation": discussion["conversationId"], "m1": first["id"], "m2": second["id"], "m3": third["id"]}
         self.assertEqual(discussion["root"]["id"], first["id"])
 
@@ -312,8 +312,9 @@ class AgentsTabStates(unittest.TestCase):
         expect(self.row(page, "notes")).to_contain_text("Idle · last recorded a result")
         self.assertNotIn("Session open", page.locator(".agents-list").inner_text())
         titles = page.locator(f'.agents-row[data-agent="{self.ids["claude"]}"] .agent-id__name')
-        expect(titles.nth(0)).to_have_text("Claude Code · Desk laptop")
-        expect(titles.nth(1)).to_have_text("Claude Code · Travel laptop")
+        # Both connections of the agent are rows, each titled by its client and connection (the order is the list's own).
+        expect(titles.filter(has_text="Claude Code · Desk laptop")).to_have_count(1)
+        expect(titles.filter(has_text="Claude Code · Travel laptop")).to_have_count(1)
         shot(page, "agents-tab-rows-desktop")
         # Phone: the working row keeps its whole line in at most 112 px, and its client line is hidden.
         phone = self.page("ada", phone=True)

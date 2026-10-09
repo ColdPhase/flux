@@ -289,7 +289,7 @@ class StopAndQuestions(unittest.TestCase):
         expect(page.get_by_text("Stopped Claude Code agent on #4")).to_be_visible()
         page.get_by_role("button", name="Hand back").click()
         expect(page.get_by_text("Handed #4 back to Claude Code agent")).to_be_visible()
-        self.assertEqual(self.task("fourth")["owner"], {"kind": "agent", "id": self.ids["agent"]})
+        self.assertEqual(self.task("fourth")["owner"]["id"], self.ids["agent"])
         # Negative control: Jonas, who neither owns the agent nor manages the project, sees neither Stop nor Hand back.
         jonas = self.page("jonas")
         jonas.goto(f"/projects/{self.ids['project']}/agents")

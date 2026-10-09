@@ -503,7 +503,7 @@ class AgentsViewJourney(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
         page.evaluate("() => { window.__fluxSameDocument = true; }")
         desk = page.get_by_role("list", name="Agents in this project").get_by_role("listitem").filter(has_text="Desk laptop")
-        expect(desk).to_contain_text("Session open since")
+        expect(desk).to_contain_text("Idle · last created a task")
         expect(desk).to_have_attribute("data-state", "session_open")
         expect(desk.locator(".agents-row__icon")).to_have_attribute("data-expression", "idle")
         expect(desk).to_contain_text("Offline", timeout=25000)
