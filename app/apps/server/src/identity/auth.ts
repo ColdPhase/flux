@@ -13,6 +13,7 @@ import type { IdentityConfig, OidcConfig } from './config.js';
 import type { Mailer } from './mailer.js';
 import type { OauthRequests } from './oauth-flow.js';
 import { createSignIns, type SignIns } from './sign-in.js';
+import { offlineStepProblem } from './offline-step.js';
 import { signInAgainMessage, type IdpStanding } from './standing.js';
 
 /** Set by the Fastify bridge from the socket or trusted-proxy address; client copies are dropped. */
@@ -164,7 +165,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
             }).onConflictDoNothing();
             // The provider vouched for the person just now: keep its offline token for the standing check and
             // clear sign-in required (#311). The token never reaches auth_accounts or a log.
-            if (sign?.providerId && sign.refreshToken && standing) await standing.recordSignIn(session.userId, sign.refreshToken);
+            if (sign?.providerId && sign.refreshToken && standing) await standing.recordSignIn(session.userId, sign.refreshToken, sign.idpSid);
           },
         },
       },
@@ -222,8 +223,9 @@ function oidcPlugin(oidc: OidcConfig, signIns: SignIns, log?: { error(object: ob
       discoveryUrl: `${oidc.issuer}/.well-known/openid-configuration`,
       clientId: oidc.clientId,
       clientSecret: oidc.clientSecret,
-      // offline_access asks for the refresh token the standing check keeps (#311).
-      scopes: oidc.standing === 'refresh' ? ['openid', 'email', 'profile', 'offline_access'] : ['openid', 'email', 'profile'],
+      // No offline_access here: asked first, it makes Keycloak 26.1+ delete the person's online session, and with it
+      // back-channel logout. The bridge fetches the offline token in a silent second step (S1, revised 2026-10-09).
+      scopes: ['openid', 'email', 'profile'],
       pkce: true,
       // Fail closed when discovery publishes no usable issuer/JWKS: claims must come from a verified ID token.
       requireIdTokenVerification: true,
@@ -233,17 +235,21 @@ function oidcPlugin(oidc: OidcConfig, signIns: SignIns, log?: { error(object: ob
         const claims = idTokenClaims(tokens.idToken);
         const user = oidcUser(oidc, claims);
         const sign = signIns.getStore();
-        if (user && sign && oidc.standing === 'refresh' && !tokens.refreshToken) {
-          // N1: without a refresh token the next check would suspend this person again. Refuse the sign-in and
-          // tell the operator; the browser is told why by the bridge.
+        const sid = typeof claims?.sid === 'string' && claims.sid && claims.sid.length <= 512 ? claims.sid : undefined;
+        const problem = user && sign && oidc.standing === 'refresh' ? offlineStepProblem(user.sub, sid, sign.offline) : null;
+        if (user && sign && problem) {
+          // N1: without an offline token for this person the next check would suspend them again. Refuse the sign-in
+          // and tell the operator; the browser is told why by the bridge. This includes a silent step that answered
+          // login_required or another error (S1, revised 2026-10-09).
           sign.refused = 'no_refresh_token';
-          log?.error({ issuer: oidc.issuer, providerId: oidc.providerId }, 'The identity provider returned no refresh token, so the sign-in was refused. Grant the offline_access scope and the refresh_token grant to the Flux client, or set FLUX_OIDC_STANDING=off');
+          if (problem === 'no_refresh_token') log?.error({ issuer: oidc.issuer, providerId: oidc.providerId }, 'The identity provider returned no refresh token, so the sign-in was refused. Grant the offline_access scope and the refresh_token grant to the Flux client, or set FLUX_OIDC_STANDING=off');
+          else log?.error({ issuer: oidc.issuer, providerId: oidc.providerId, cause: problem }, 'The identity provider refused the silent offline-access step, so the sign-in was refused');
           return null;
         }
         if (user && sign) {
           sign.providerId = oidc.providerId;
-          if (tokens.refreshToken) sign.refreshToken = tokens.refreshToken;
-          if (typeof claims?.sid === 'string' && claims.sid && claims.sid.length <= 512) sign.idpSid = claims.sid;
+          if (sign.offline && 'refreshToken' in sign.offline) sign.refreshToken = sign.offline.refreshToken;
+          if (sid) sign.idpSid = sid;
         }
         return user;
       },

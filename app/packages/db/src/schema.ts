@@ -107,6 +107,8 @@ export const authIdpStanding = pgTable('auth_idp_standing', {
   state: text('state').notNull().default('ok'),
   reason: text('reason'),
   refreshTokenEnc: text('refresh_token_enc'),
+  /** The provider session (`sid`) the stored token was issued for (migration 0077, #314). */
+  refreshTokenSid: text('refresh_token_sid'),
   confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
   stateChangedAt: timestamp('state_changed_at', { withTimezone: true }).notNull().defaultNow(),
   lastCheckAt: timestamp('last_check_at', { withTimezone: true }),

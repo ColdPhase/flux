@@ -316,6 +316,14 @@ async function keycloakAdmin() {
       const updated = await call('PUT', `/clients/${client.id}`, { ...client, attributes: { ...client.attributes, [name]: value } });
       assert.equal(updated.status, 204, await updated.text());
     },
+    /** The person's Keycloak sessions: each online one with its clients, and the ids of the Flux client's offline ones. */
+    async sessions(username: string) {
+      const id = await userId(username);
+      const client = await flux();
+      const online = await (await call('GET', `/users/${id}/sessions`)).json() as { id: string; clients: Record<string, string> }[];
+      const offline = await (await call('GET', `/users/${id}/offline-sessions/${client.id}`)).json() as { id: string }[];
+      return { online: new Map(online.map((session) => [session.id, Object.values(session.clients)])), offline: offline.map((session) => session.id) };
+    },
     /** `use.refresh.tokens` false makes Keycloak return no refresh token, even for offline_access. */
     async setRefreshTokens(on: boolean) {
       const client = await flux();
@@ -355,7 +363,9 @@ test('standing: sign-in stored the provider refresh token sealed, and a healthy 
   const row = await standingRow(state.userId!);
   assert.equal(row?.state, 'ok');
   assert.ok(row?.refresh_token_enc?.startsWith('v1.'), 'a sealed token, not a bare JWT');
-  assert.ok(!row!.refresh_token_enc!.includes('eyJ'), 'the provider token is not stored in the clear');
+  // A clear-text Keycloak token is a JWT (base64url JSON header, a dot, base64url JSON payload). A bare "eyJ" alone also
+  // turns up by chance in about 0.5% of sealed values (1200 random base64url characters), which failed a run once.
+  assert.ok(!/eyJ[\w-]*\.eyJ/.test(row!.refresh_token_enc!), 'the provider token is not stored in the clear');
   assert.ok((await mcp(standing.tokens.access_token, 10, 'tools/list')).status === 200, 'negative control: standing lets the bearer through');
 
   await pool.query(`UPDATE auth_idp_standing SET confirmed_at = now() - interval '2 hours', last_outcome = NULL WHERE user_id = $1 AND provider_id = $2`, [state.userId, providerId]);
@@ -523,4 +533,44 @@ test('back-channel logout: with "revoke offline sessions" on, the MCP refresh to
     assert.equal(live.rowCount, 0, 'every MCP refresh token of the person is revoked');
     assert.equal((await mcp(signed.tokens.access_token, 22, 'tools/list')).status, 401, 'and standing refuses the bearer');
   } finally { await admin.setClientAttribute('backchannel.logout.revoke.offline.tokens', 'false'); }
+});
+
+/** A person signing in to Flux on a device of their own (a fresh browser). Returns the provider session it came from. */
+async function signInOnDevice(username: string) {
+  const context = await fresh();
+  const page = await context.newPage();
+  await page.goto(`${origin}/sign-in`);
+  await page.getByRole('button', { name: 'Sign in with Keycloak', exact: true }).click();
+  await page.waitForURL((target) => target.origin === keycloak);
+  await providerLogin(page, username);
+  await page.waitForURL((target) => target.origin === origin, { timeout: 20_000 });
+  await page.waitForLoadState('networkidle');
+  assert.equal((await context.request.get(`${origin}/api/v1/me`)).status(), 200, `${username} is signed in`);
+  const sid = (await pool.query(`SELECT i.idp_sid FROM auth_session_identities i JOIN auth_sessions s ON s.id = i.session_id
+    WHERE s.user_id = $1 ORDER BY s.created_at DESC LIMIT 1`, [state.userId])).rows[0].idp_sid as string;
+  return { context, sid };
+}
+
+// Revised 2026-10-09 by founder direction (S1 AC-11, S4 AC-1, S3 AC-5): Keycloak 26.1+ keeps the browser session only
+// when offline_access is not its first request, and revoking an offline token takes Flux out of that token's session.
+test('back-channel logout: a sign-in on a second device does not stop the first device\'s provider logout from reaching Flux', async () => {
+  const admin = await keycloakAdmin();
+  const laptop = await signInOnDevice('erin');
+  const phone = await signInOnDevice('erin');
+  assert.notEqual(laptop.sid, phone.sid, 'two provider sessions');
+  const sessions = await admin.sessions('erin');
+  assert.ok(sessions.online.get(laptop.sid)?.includes('flux'), 'the first device keeps Flux in its Keycloak session after the second sign-in');
+  assert.ok(sessions.online.get(phone.sid)?.includes('flux'), 'a fresh sign-in leaves Keycloak a browser session with Flux in it');
+  assert.ok(sessions.offline.includes(laptop.sid), 'the replaced provider token is forgotten, not revoked, while its browser session lives');
+  assert.ok(sessions.offline.includes(phone.sid));
+
+  await logoutAtProvider(laptop.context);
+  await waitFor(async () => (await laptop.context.request.get(`${origin}/api/v1/me`)).status() === 401, 'the first device\'s browser session to end');
+  assert.equal((await phone.context.request.get(`${origin}/api/v1/me`)).status(), 200, 'negative control: the second device stays signed in');
+
+  // Negative control for the revoke: once no live Flux session carries a replaced token's provider session, it is revoked.
+  await api(phone.context, 'POST', '/api/auth/sign-out', {});
+  const tablet = await signInOnDevice('erin');
+  await waitFor(async () => { const now = await admin.sessions('erin'); return !now.offline.includes(phone.sid) && now.offline.includes(tablet.sid); },
+    'the signed-out device\'s provider token to be revoked');
 });

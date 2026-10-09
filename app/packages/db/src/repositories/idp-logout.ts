@@ -59,7 +59,7 @@ export function idpLogoutRepository(db: DbExecutor) {
     async dropToken(providerId: string, userId: string, now: Date): Promise<string | null> {
       const result = await db.execute(sql`
         WITH old AS (SELECT refresh_token_enc FROM auth_idp_standing WHERE user_id = ${userId} AND provider_id = ${providerId}),
-        upd AS (UPDATE auth_idp_standing SET refresh_token_enc = NULL, state = 'sign_in_required', reason = 'offline_access_revoked',
+        upd AS (UPDATE auth_idp_standing SET refresh_token_enc = NULL, refresh_token_sid = NULL, state = 'sign_in_required', reason = 'offline_access_revoked',
           state_changed_at = ${now.toISOString()}::timestamptz, lease_id = NULL, lease_until = NULL
           WHERE user_id = ${userId} AND provider_id = ${providerId} RETURNING 1)
         SELECT (SELECT refresh_token_enc FROM old) AS token, (SELECT count(*) FROM upd)::int AS n`);

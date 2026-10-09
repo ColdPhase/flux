@@ -188,10 +188,10 @@ describe('revoking offline access with the real standing service', () => {
     const service = createIdpStanding({ db, oidc: oidc(providerId), authSecret: 'a'.repeat(40), log: { info() {}, warn() {}, error() {} }, fetcher: fetcher as never });
     const human = await insertedHuman('bcl-real');
     await db.insert(schema.authAccounts).values({ id: randomUUID(), userId: human.id, accountId: 'sub-real', providerId });
-    await service.recordSignIn(human.id, 'stored-offline-token');
+    await service.recordSignIn(human.id, 'stored-offline-token', 'sid-real');
     await service.revokeOffline([human.id]);
-    const row = (await pool.query('SELECT state, reason, refresh_token_enc FROM auth_idp_standing WHERE user_id = $1', [human.id])).rows[0];
-    assert.deepEqual(row, { state: 'sign_in_required', reason: 'offline_access_revoked', refresh_token_enc: null });
+    const row = (await pool.query('SELECT state, reason, refresh_token_enc, refresh_token_sid FROM auth_idp_standing WHERE user_id = $1', [human.id])).rows[0];
+    assert.deepEqual(row, { state: 'sign_in_required', reason: 'offline_access_revoked', refresh_token_enc: null, refresh_token_sid: null });
     assert.ok(calls.some((call) => call.startsWith('http://idp.test/revoke') && call.includes('token=stored-offline-token')));
     assert.equal(await service.stands(human.id), false);
   });

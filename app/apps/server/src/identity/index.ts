@@ -15,6 +15,7 @@ import { registerIdentityRoutes } from './routes.js';
 import { createSessionResolver, type SessionResolver } from './session.js';
 import { registerBackchannelLogout } from './backchannel.js';
 import { createIdpStanding, type IdpStanding } from './standing.js';
+import { createOfflineStep } from './offline-step.js';
 
 export { loadIdentityConfig, type IdentityConfig } from './config.js';
 export { UnauthenticatedError, type SessionContext, type SessionResolver } from './session.js';
@@ -69,7 +70,8 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
     }
   });
 
-  registerAuthBridge(app, { auth, publicOrigin: config.publicOrigin, passwordReset, oauthRequests, signIns });
+  const offlineStep = config.oidc && standing ? createOfflineStep({ oidc: config.oidc, publicOrigin: config.publicOrigin, authSecret: config.secret, standing }) : null;
+  registerAuthBridge(app, { auth, publicOrigin: config.publicOrigin, passwordReset, oauthRequests, signIns, offlineStep });
   const reachable = config.oidc ? cachedReachability(config.oidc) : null;
   const sso = async (): Promise<IdentityCapabilities['sso']> =>
     config.oidc && reachable ? { providerId: config.oidc.providerId, label: config.oidc.label, reachable: await reachable() } : null;

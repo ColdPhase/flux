@@ -77,21 +77,55 @@ describe('a provider sign-in', () => {
     const id = provider();
     const { service, script } = standingFor(id, []);
     const userId = await person(id);
-    await service.recordSignIn(userId, 'first-token');
+    await service.recordSignIn(userId, 'first-token', 'sid-1');
     const stored = await row(userId);
     assert.equal(stored.state, 'ok');
     assert.equal(openToken(key, userId, id, stored.refresh_token_enc), 'first-token');
     assert.equal(script.calls.filter((call) => call.url.endsWith('/revoke')).length, 0, 'nothing to revoke the first time');
-    await service.recordSignIn(userId, 'first-token');
+    await service.recordSignIn(userId, 'first-token', 'sid-1');
     assert.equal(script.calls.filter((call) => call.url.endsWith('/revoke')).length, 0, 'the same token is not revoked');
     await pool.query(`UPDATE auth_idp_standing SET state = 'sign_in_required', reason = 'invalid_grant' WHERE user_id = $1`, [userId]);
     assert.equal(await service.stands(userId), false);
-    await service.recordSignIn(userId, 'second-token');
+    // No live browser session carries the first token's provider session (sid-1), so it is revoked.
+    await service.recordSignIn(userId, 'second-token', 'sid-2');
     assert.equal(await service.stands(userId), true, 'a new sign-in clears the state');
+    assert.equal((await row(userId)).refresh_token_sid, 'sid-2', 'the stored token keeps the provider session it belongs to');
     const revocations = script.calls.filter((call) => call.url.endsWith('/revoke'));
     assert.equal(revocations.length, 1);
     assert.match(revocations[0]!.body, /token=first-token/);
     assert.match(revocations[0]!.body, /token_type_hint=refresh_token/);
+  });
+
+  // Keycloak's revocation also takes Flux out of the online session of the token's sid, which would stop that
+  // browser session's back-channel logout (S4 AC-1, revised 2026-10-09).
+  test('a replaced token is revoked only when no live browser session carries its provider session', async () => {
+    const id = provider();
+    const { service, script } = standingFor(id, []);
+    const userId = await person(id, { session: false });
+    const signIn = async (sid: string, token: string, live = true) => {
+      const sessionId = randomUUID();
+      await db.insert(schema.authSessions).values({ id: sessionId, userId, token: randomUUID(), expiresAt: new Date(Date.now() + (live ? 3_600_000 : -1000)) });
+      await pool.query('INSERT INTO auth_session_identities (session_id, method, idp_sid) VALUES ($1, $2, $3)', [sessionId, id, sid]);
+      await service.recordSignIn(userId, token, sid);
+    };
+    const revoked = () => script.calls.filter((call) => call.url.endsWith('/revoke')).map((call) => new URLSearchParams(call.body).get('token'));
+
+    await signIn('sid-laptop', 'laptop-token');
+    await signIn('sid-phone', 'phone-token');
+    assert.deepEqual(revoked(), [], 'the laptop session is live, so its token is only forgotten');
+    await signIn('sid-phone', 'phone-token-2');
+    assert.deepEqual(revoked(), [], 'the same provider session: revoking would end the new token too');
+    // The phone signs out of Flux; its provider session no longer has a Flux browser session.
+    await pool.query('DELETE FROM auth_sessions WHERE id IN (SELECT session_id FROM auth_session_identities WHERE method = $1 AND idp_sid = $2)', [id, 'sid-phone']);
+    await signIn('sid-tablet', 'tablet-token');
+    assert.deepEqual(revoked(), ['phone-token-2'], 'negative control: once no live session carries its sid, the replaced token is revoked');
+    await signIn('sid-old', 'old-token', false);
+    assert.deepEqual(revoked(), ['phone-token-2'], 'the tablet session is live');
+    await signIn('sid-new', 'new-token');
+    assert.deepEqual(revoked(), ['phone-token-2', 'old-token'], 'an expired session carries nothing');
+    await pool.query('UPDATE auth_idp_standing SET refresh_token_sid = NULL WHERE user_id = $1', [userId]);
+    await signIn('sid-later', 'later-token');
+    assert.deepEqual(revoked(), ['phone-token-2', 'old-token'], 'a token without a known provider session is not revoked');
   });
 });
 
