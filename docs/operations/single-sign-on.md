@@ -207,6 +207,19 @@ in once the cutover is on. Move them first, in this order:
    At startup the log says how many password-only accounts are still left. They cannot sign in until they
    are moved; there is no ordinary password fallback.
 
-**Not yet available:** an audited operator re-key for accounts that cannot link (for example a lost
-provider account). Until it exists, keep `FLUX_SSO_MODE=prepare` for those accounts' owners, or plan the
-migration with [#315](https://github.com/ColdPhase/flux/issues/315)'s follow-ups.
+**Accounts that cannot link** (for example, the provider account was lost): the operator re-keys them with
+`./flux identity link <userId> --subject <provider subject> --reason "<why>"`. It names the account by its Flux id,
+never by an address, and refuses a subject another account holds. In SSO-only mode it refuses unless
+`--allow-sso` is given. A re-key writes an audit row (`auth_identity_audit`) with the actor, the reason and both
+subjects. A subject the account held before is replaced, and that account's sessions and MCP authority end; its
+data stays where it is.
+
+**Removing a sign-in.** Settings can remove the provider sign-in, unless it is the account's last way in. In SSO-only
+mode the provider is the only way, so it cannot be removed. In prepare mode a password on the account is the way back.
+Removing it ends the sessions that signed in through it and the account's MCP authority, and writes an audit row.
+
+**Provider claim rules.** Generic OpenID Connect providers use the verified `email_verified` claim. Microsoft Entra ID
+requires the token's tenant (`tid`) to match its issuer, and an address counts as verified only with the
+`xms_edov` (email domain owner verified) claim. Google requires `email_verified`. These rules are unit-tested against
+documented claim shapes. **Real Entra and Google tenants have not been tested**; their compatibility stays unverified
+until a recorded integration run exists.
