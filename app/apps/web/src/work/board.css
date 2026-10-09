@@ -186,8 +186,6 @@ html.tb-is-dragging, html.tb-is-dragging * { cursor: grabbing !important; user-s
    as wide as its tile; tapped, it opens to the full row, and a filter in use stays open beside the tools. */
 .tb-search__l, .tb-dr__s { display: none; }
 @media (max-width: 640px) {
-  /* The phone row keeps the search usable: the add button is tighter (12.5px labels since #338). */
-  .tb-add.ui-btn { padding: 0 8px; }
   .tb-bar { min-height: 0; flex-wrap: nowrap; gap: 2px; padding: 4px 8px; }
   .tb-bar :is(.tb-search, .tb-dr, .tb-mode__b, .tb-mine) {
     position: relative; flex: none; flex-direction: column; justify-content: center; align-items: center; gap: 2px;
@@ -208,7 +206,6 @@ html.tb-is-dragging, html.tb-is-dragging * { cursor: grabbing !important; user-s
   .tb-dr__s { display: block; }
   .tb-bar__end { order: 2; margin-left: auto; gap: 2px; }
   .tb-mode { gap: 2px; }
-  .tb-add.ui-btn { margin-left: 4px; min-height: 48px; }
   .tb-also { padding-top: 8px; }
   .tb-col__head { min-height: 0; }
   /* The count on Decisions & results says a decision waits; the List row stays only for parked work. */
@@ -229,6 +226,9 @@ html.tb-is-dragging, html.tb-is-dragging * { cursor: grabbing !important; user-s
     box-shadow: inset 0 0 0 1px var(--line); color: var(--t2); font-size: var(--fs-sm); }
   .tb-col__head .tb-col__add.ui-icon-btn::after { content: "New task"; }
 }
+
+/* The phone has one "+" (the floating Create), so neither the toolbar nor a column carries another (#341). */
+@media (max-width: 640px) { .tb-add.ui-btn, .tb-col__head .tb-col__add.ui-icon-btn { display: none; } }
 
 @media (pointer: coarse) {
   .tb-search input { font-size: 16px; }

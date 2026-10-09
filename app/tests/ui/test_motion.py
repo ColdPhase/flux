@@ -282,7 +282,8 @@ class MotionJourney(unittest.TestCase):
         tab = page.get_by_role("navigation", name="Project views").get_by_role("link", name="Conversation").bounding_box()
         self.assertTrue(mark and tab and tab["x"] - 1 <= mark["x"] <= tab["x"] + tab["width"])
         shot(page, "motion-zoom-200")
-        phone = self.page(viewport={"width": 390, "height": 844}, scale=3)
+        # Up to 680px the sidebar is still a drawer (the phone itself has none since #341).
+        phone = self.page(viewport={"width": 660, "height": 844}, scale=3)
         phone.goto(f"/projects/{self.projects[2]}")
         phone.get_by_role("button", name="Open navigation").click()
         drawer = phone.locator("#nav-drawer")
@@ -296,7 +297,8 @@ class MotionJourney(unittest.TestCase):
     def test_06b_script_driven_motion_lasts_its_token_in_the_production_build(self):
         # #264: the minifier turns `--dur-3: 200ms` into `.2s`; read as a bare number that made the drawer's
         # slide 0.2 ms long, a jump in one frame. Slowed tenfold so the running animation can be read.
-        phone = self.page(viewport={"width": 390, "height": 844}, scale=3)
+        # Up to 680px the sidebar is still a drawer (the phone itself has none since #341).
+        phone = self.page(viewport={"width": 660, "height": 844}, scale=3)
         phone.goto(f"/projects/{self.projects[2]}")
         cdp = phone.context.new_cdp_session(phone)
         cdp.send("Animation.enable")

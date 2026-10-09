@@ -1,14 +1,17 @@
 import { Link } from 'react-router';
-import { Icon } from '../ui';
+import { Icon, MEDIA, useMediaQuery } from '../ui';
+import { DmRows } from '../dm/DmIndex';
 import { useShellData } from './data';
 import './settings.css';
 
 /**
  * Projects (#266 PF-1): the list the phone's Projects place opens, like a messenger's list of chats.
+ * On the phone it also holds the direct messages (#341).
  * Each row opens the project on its conversation; a dot says something is new there.
  */
 export function ProjectsIndex() {
-  const { projects } = useShellData();
+  const { projects, directMessages } = useShellData();
+  const phone = useMediaQuery(MEDIA.phone);
   return (
     <div className="pane-scroll">
       <div className="pane-in set" data-shift>
@@ -38,6 +41,14 @@ export function ProjectsIndex() {
             <Link to="/projects/new" className="ui-btn ui-btn--primary"><Icon name="plus" />Create a project</Link>
           </div>
         )}
+        {/* Direct messages live in Projects on the phone, below the projects (F-026 S2). */}
+        {phone ? (
+          <section className="proj-index__dms" aria-labelledby="proj-index-dms">
+            <h2 id="proj-index-dms">Direct messages</h2>
+            {directMessages.length ? <DmRows /> : <p className="proj-index__lead">No conversations yet. Only the people in each one can read it.</p>}
+            <Link to="/dm/new" className="ui-btn ui-btn--secondary"><Icon name="plus" />New message</Link>
+          </section>
+        ) : null}
       </div>
     </div>
   );

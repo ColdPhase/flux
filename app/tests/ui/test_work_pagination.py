@@ -248,17 +248,10 @@ class WorkPaginationJourney(unittest.TestCase):
         task = api(owner, "POST", f"/api/v1/projects/{project}/work", {"title": "Check the wall socket before installation"}, 201)
         for phone in (False, True):
             page = self.page(phone=phone)
-            # On the phone the state line belongs to the project's Conversation (#266 PF-2).
-            if phone: page.goto(f"/projects/{project}")
-            else: page.goto(f"/projects/{project}/tasks?view=list"); self.ready(page)
-            if phone:
-                state = page.locator(".ws-state-row")
-                expect(state).to_contain_text("1 open task")
-                expect(state).not_to_contain_text("No decisions or work yet")
-                state.tap()
-            else:
-                # The computer's project state is in Details (#340).
-                open_details(page)
+            # The project's state is in Details on the computer (#340) and on the phone (#341, no state row).
+            page.goto(f"/projects/{project}/tasks?view=list") if not phone else page.goto(f"/projects/{project}")
+            if not phone: self.ready(page)
+            open_details(page, tap=phone)
             page.locator("#details").get_by_role("button", name=re.compile(r"Open.*Check the wall socket before installation")).click()
             expect(page.locator("#details").get_by_role("heading", name=task["title"], exact=True)).to_be_visible()
 

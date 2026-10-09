@@ -9,7 +9,7 @@ import uuid
 
 from playwright.sync_api import expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, SHOTS, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, SHOTS, UPSTREAM, shot, start_forwarder, view_tab
 from contrast import MEASURE
 
 STAMP = int(time.time() * 1000)
@@ -614,8 +614,7 @@ class ThoughtDraftJourney(unittest.TestCase):
         return writes
 
     def tab(self, page, name, *, touch=False):
-        link = page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile(f"^{name}"))
-        link.tap() if touch else link.click()
+        view_tab(page, name, tap=touch)
 
     def back_to_map(self, page, *, touch=False):
         """The Map tab returns to its last place (#189): this sketch, or the project's list of maps."""

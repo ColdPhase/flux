@@ -108,29 +108,45 @@ def new_from_sidebar(page: Page, item: str) -> None:
     page.get_by_role("menu", name="New").get_by_role("menuitem", name=item, exact=True).click()
 
 
-def open_details(page: Page) -> None:
-    """Details: More, then Details, in the computer's one-row header (#340); the phone keeps its
-    labelled Details button until its own header (#341)."""
-    header = page.locator("header.top")
-    header.locator("button[aria-label='More'], .top__details").first.wait_for()
-    more = header.get_by_role("button", name="More", exact=True)
-    if more.count():
-        more.click()
-        page.get_by_role("menu", name="More").get_by_role("menuitem", name="Details").click()
+def phone_menu(page: Page, tap: bool = False):
+    """The phone's view menu: the title opens it (#341)."""
+    opener = page.get_by_role("heading", level=1).get_by_role("button")
+    opener.tap() if tap else opener.click()
+    return page.get_by_role("dialog").filter(has=page.locator(".phone-menu__list"))
+
+
+def view_tab(page: Page, name: str, tap: bool = False) -> None:
+    """A project view by its name: the header's segmented control, or on the phone the title's menu (#341)."""
+    if page.viewport_size["width"] <= 640:
+        link = phone_menu(page, tap).get_by_role("link", name=re.compile(f"^{name}"))
     else:
-        header.get_by_role("button", name="Details", exact=True).click()
+        link = page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile(f"^{name}"))
+    link.tap() if tap else link.click()
+
+
+def open_details(page: Page, tap: bool = False) -> None:
+    """Details: More, then Details, in the computer's one-row header (#340); on the phone the title's
+    view menu ends with "Details, goal and people" (#341)."""
+    if page.viewport_size["width"] <= 640:
+        row = phone_menu(page, tap).locator(".phone-menu__details")
+        row.tap() if tap else row.click()
+        return
+    header = page.locator("header.top")
+    header.locator("button[aria-label='More']").wait_for()
+    header.get_by_role("button", name="More", exact=True).click()
+    page.get_by_role("menu", name="More").get_by_role("menuitem", name="Details").click()
 
 
 def open_what_matters(page: Page, tap: bool = False) -> None:
     """"What matters" (#133): on the computer "N needs you" in the header opens it, or More when nothing
-    needs you (#340); the phone keeps its entry after the state row until #341."""
-    header = page.locator("header.top")
-    header.locator("button[aria-label='More'], .top__details").first.wait_for()
-    more = header.get_by_role("button", name="More", exact=True)
-    if not more.count():
-        entry = page.get_by_role("button", name=re.compile("^What matters"))
-        entry.tap() if tap else entry.click()
+    needs you (#340); on the phone it ends the title's view menu (#341)."""
+    if page.viewport_size["width"] <= 640:
+        row = phone_menu(page, tap).get_by_role("button", name=re.compile("^What matters"))
+        row.tap() if tap else row.click()
         return
+    header = page.locator("header.top")
+    header.locator("button[aria-label='More']").wait_for()
+    more = header.get_by_role("button", name="More", exact=True)
     chip = header.get_by_role("button", name=re.compile("needs you$"))
     if chip.count():
         chip.click()
@@ -593,56 +609,49 @@ class AppShellJourney(unittest.TestCase):
 
     # ---------------------------------------------------------------- phone layout
 
-    def test_06_phone_drawer_sheet_and_targets(self) -> None:
+    def test_06_phone_capsule_sheet_and_targets(self) -> None:
         page = self.page(phone=True)
         page.goto("/")
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         expect(page.get_by_role("complementary", name="Sidebar")).to_have_count(0)
         composer = page.get_by_label("Private note", exact=True)
         composer_box = box(page, page.locator(".composer"))
-        # #266 PF-1: the bar of main places sits at the bottom and the composer right above it; the
-        # views are chips under the header.
+        # #341: the capsule floats at the bottom with the round Search and the one "+"; the composer is above
+        # them, clear of the "+"; the views are in the title.
         bar_box = box(page, page.get_by_role("navigation", name="Main places"))
-        self.assertAlmostEqual(bar_box["y"] + bar_box["height"], PHONE["height"], delta=2, msg="the places bar is pinned to the bottom")
-        self.assertAlmostEqual(composer_box["y"] + composer_box["height"], bar_box["y"], delta=2, msg="the composer sits right above the places bar")
-        self.assertLess(box(page, page.get_by_role("navigation", name="Views"))["y"], composer_box["y"], "the view chips sit at the top")
+        self.assertLess(bar_box["y"] + bar_box["height"], PHONE["height"] - 6, "the places capsule floats above the bottom edge")
+        self.assertLessEqual(composer_box["y"] + composer_box["height"], bar_box["y"], "the composer sits above the places capsule")
+        fab_box = box(page, page.get_by_role("button", name="Create", exact=True))
+        self.assertLessEqual(composer_box["y"] + composer_box["height"], fab_box["y"] + 1, "the plus does not cover the composer")
         shot(page, "phone-390-light")
 
         # Coarse pointer: primary targets are at least 44px.
-        menu = page.get_by_role("button", name="Open navigation")
-        details_button = page.get_by_role("button", name="Details", exact=True)
-        targets = [menu, details_button, *[page.get_by_role("navigation", name="Views").get_by_role("link", name=n, exact=True) for n in ("Conversation", "Map", "Tasks", "Wiki")]]
+        menu = page.get_by_role("heading", level=1).get_by_role("button")
+        targets = [menu, page.get_by_role("link", name="Settings and account"), page.get_by_role("button", name="Search", exact=True), page.get_by_role("button", name="Create", exact=True)]
         for target in targets:
             size = box(page, target)
-            self.assertGreaterEqual(min(size["width"], size["height"]), 44, f"44px target: {target}")
+            self.assertGreaterEqual(min(size["width"], size["height"]), 44 if target is not menu else 28, f"touch target: {target}")
         self.assertGreaterEqual(box(page, page.get_by_role("button", name="Save note"))["height"], 44)
         expect(composer).to_be_editable()
 
         menu.click()
-        drawer = page.get_by_role("dialog", name="Flux")
-        expect(drawer).to_be_visible()
+        views = page.get_by_role("dialog", name=re.compile("Home"))
+        expect(views).to_be_visible()
         expect(menu).to_have_attribute("aria-expanded", "true")
-        # The sidebar is a 260px drawer with the places as 44px+ rows.
-        drawer_places = drawer.get_by_role("navigation", name="Places")
-        expect(drawer_places).to_be_visible()
-        self.assertLessEqual(round(box(page, drawer)["width"]), 260)
-        for name in ("Home", "Inbox", "Sketchbook"):
-            self.assertGreaterEqual(box(page, drawer_places.get_by_role("link", name=name))["height"], 44, f"44px place target: {name}")
-        self.assertTrue(drawer.evaluate("el => el.contains(document.activeElement)"), "focus moves into the drawer")
-        self.assertTrue(page.evaluate("document.getElementById('root').inert"), "the page behind the drawer is inert")
-        # Tab stays inside the drawer.
+        self.assertTrue(views.evaluate("el => el.contains(document.activeElement)"), "focus moves into the menu")
+        self.assertTrue(page.evaluate("document.getElementById('root').inert"), "the page behind the menu is inert")
+        for name in ("Conversation", "Tasks", "Map", "Wiki"):
+            self.assertGreaterEqual(box(page, views.get_by_role("link", name=name))["height"], 44, f"44px row: {name}")
         for _ in range(8):
             page.keyboard.press("Tab")
-            self.assertTrue(drawer.evaluate("el => el.contains(document.activeElement)"), "focus stays in the drawer")
-        shot(page, "phone-390-drawer-light")
+            self.assertTrue(views.evaluate("el => el.contains(document.activeElement)"), "focus stays in the menu")
+        shot(page, "phone-390-menu-light")
         page.keyboard.press("Escape")
         expect(page.get_by_role("dialog")).to_have_count(0)
         expect(menu).to_be_focused()
-        menu.click()
-        page.get_by_role("dialog", name="Flux").get_by_role("button", name="Close navigation").click()
-        expect(page.get_by_role("dialog")).to_have_count(0)
 
-        details_button.click()
+        menu.click()
+        page.get_by_role("dialog", name=re.compile("Home")).get_by_role("button", name="Details", exact=True).click()
         sheet = page.get_by_role("dialog", name="Details")
         expect(sheet).to_be_visible()
         page.wait_for_timeout(400)
@@ -651,8 +660,8 @@ class AppShellJourney(unittest.TestCase):
         shot(page, "phone-390-details-light")
         page.keyboard.press("Escape")
         expect(page.get_by_role("dialog")).to_have_count(0)
-        expect(details_button).to_be_focused()
-        details_button.click()
+        menu.click()
+        page.get_by_role("dialog", name=re.compile("Home")).get_by_role("button", name="Details", exact=True).click()
         page.get_by_role("dialog", name="Details").get_by_role("button", name="Close details").click()
         expect(page.get_by_role("dialog")).to_have_count(0)
 
@@ -661,9 +670,9 @@ class AppShellJourney(unittest.TestCase):
         page.goto("/")
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         shot(page, "phone-390-dark")
-        page.get_by_role("button", name="Open navigation").click()
-        expect(page.get_by_role("dialog", name="Flux")).to_be_visible()
-        shot(page, "phone-390-drawer-dark")
+        page.get_by_role("heading", level=1).get_by_role("button").click()
+        expect(page.get_by_role("dialog", name=re.compile("Home"))).to_be_visible()
+        shot(page, "phone-390-menu-dark")
 
         page.keyboard.press("Escape")
         page.goto("/map")
@@ -778,10 +787,8 @@ class AppShellJourney(unittest.TestCase):
     def test_11_sign_out_then_protected_routes_redirect(self) -> None:
         page = self.page(phone=True)
         page.goto("/map")
-        page.get_by_role("button", name="Open navigation").click()
-        drawer = page.get_by_role("dialog", name="Flux")
-        # On the phone the drawer's account row opens Settings, which signs out (#266 PF-5).
-        drawer.get_by_role("link", name=re.compile(rf"{NAME}.*settings and sign out")).click()
+        # On the phone the avatar opens Settings, which signs out (#266 PF-5, #341).
+        page.get_by_role("link", name="Settings and account").click()
         expect(page).to_have_url(f"{ORIGIN}/settings")
         page.get_by_role("button", name=re.compile("^Sign out")).click()
         expect(page).to_have_url(f"{ORIGIN}/sign-in")
@@ -1090,9 +1097,8 @@ class AppShellJourney(unittest.TestCase):
         phone.goto(f"/projects/{project_id}/conversations/{conversation_id}")
         expect(phone.get_by_text("Agreed. Test low light too.", exact=True)).to_be_visible()
         phone.get_by_label("Reply", exact=True).fill("Phone draft survives a view switch")
-        # A project has its own context; leave through the drawer and return without losing text.
-        phone.get_by_role("button", name="Open navigation").click()
-        phone.get_by_role("dialog", name="Flux").get_by_role("link", name="Home").click()
+        # A project has its own context; leave to Home and return without losing text.
+        phone.goto("/")
         phone.go_back()
         expect(phone.get_by_label("Reply", exact=True)).to_have_value("Phone draft survives a view switch")
         expect(phone.locator(".project-convo__current-thread")).to_contain_text("Try a PIR sensor before considering a camera")

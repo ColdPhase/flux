@@ -538,9 +538,11 @@ class TasksBoardJourney(unittest.TestCase):
         assert column
         self.assertLessEqual(column["x"] + column["width"], PHONE["width"], "the column fits the phone")
         self.no_sideways_scroll(page, PHONE["width"], "phone")
+        # #341: the phone's one "+" is the floating Create; the board has no second one.
+        expect(page.get_by_role("button", name="New Task", exact=True)).to_have_count(0)
+        expect(page.get_by_role("button", name="New task in In progress")).to_have_count(0)
         for control in (*overview.get_by_role("button").all(), page.get_by_role("radio", name="List", exact=True),
-                        page.get_by_role("button", name="Mine", exact=True), page.get_by_role("button", name="New Task", exact=True),
-                        page.get_by_role("button", name="New task in In progress"),
+                        page.get_by_role("button", name="Mine", exact=True),
                         self.card(page, SOLDER).get_by_role("button", name="Move to…")):
             box = control.bounding_box()
             assert box

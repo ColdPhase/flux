@@ -157,7 +157,7 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
         <nav className="side__sec" aria-labelledby="side-projects">
           <div className="side__head">
             <h2 className="side__h" id="side-projects">Projects</h2>
-            {/* On the computer New (C) creates; the phone's drawer keeps its own "+" until #341. */}
+            {/* On the computer New (C) creates; the narrow-tablet drawer keeps its own "+". */}
             {onClose ? <Link to="/projects/new" className="side__add" aria-label="New project" onClick={navigate}><Icon name="plus" size={14} /></Link> : null}
           </div>
           {projects.length ? (

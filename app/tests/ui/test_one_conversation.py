@@ -534,7 +534,7 @@ class OneConversationJourney(unittest.TestCase):
         thread = self.thread(page)
         expect(thread).to_be_visible()
         page.wait_for_timeout(400)
-        sheet, header, pane = thread.bounding_box(), page.locator("header.top").bounding_box(), page.locator(".app__pane").bounding_box()
+        sheet, header, pane = thread.bounding_box(), page.locator("header").bounding_box(), page.locator(".app__pane").bounding_box()
         assert sheet and header and pane
         self.assertEqual((round(sheet["x"]), round(sheet["width"])), (0, PHONE["width"]), "a full-width sheet")
         self.assertAlmostEqual(sheet["y"], pane["y"], delta=1, msg="the sheet covers the whole work area")
