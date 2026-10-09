@@ -76,13 +76,15 @@ export function createMcpRelay(db: Database, options: { onerror(error: Error): v
         // Produce the next frame outside every database lock.
         const next = await Promise.race([reader.read(), closed.then(() => null)]);
         if (!next || next.done) break;
-        let backpressure = false;
+        // The drain waiter is registered inside the synchronous write, before `deliver` awaits its
+        // transaction. A drain emitted during that await would otherwise be lost and the stream would hang (#316).
+        const pending: { drained?: Promise<void> } = {};
         const ok = await deliver(() => {
           if (!res.headersSent) res.writeHead(response.status, headers);
-          backpressure = res.write(next.value) === false;
+          if (res.write(next.value) === false) pending.drained = new Promise<void>((resolve) => { drainResolve = resolve; });
         });
         if (!ok) { void reader.cancel().catch(() => undefined); return refuse(); }
-        if (backpressure) await Promise.race([new Promise<void>((resolve) => { drainResolve = resolve; }), closed]);
+        if (pending.drained) await Promise.race([pending.drained, closed]);
       }
     } catch { /* a failed stream ends the response */ }
     if (!res.headersSent && !handedOver) {
