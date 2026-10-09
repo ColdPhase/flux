@@ -26,10 +26,11 @@ export function fingerprint(envelope, bytes) {
   return createHash('sha256').update(canonical(intent)).update('\0').update(bytes).digest('hex');
 }
 
-/** Conservative charged storage, including retained original text and receipt metadata. */
+/** Conservative charged storage, including retained original text. Receipts and the
+ * update journal live in the append-only log (intents and updates), not in this state. */
 export function stateCharge(state) {
   return 2 * JSON.stringify(state).length + 512 * state.nodes.length
-    + 128 * state.deleted.length + 256 * Object.keys(state.receipts).length
+    + 128 * state.deleted.length
     + 128 * Object.keys(state.enrollments).length + 128 * (state.splits?.length ?? 0);
 }
 
@@ -232,15 +233,8 @@ export function admit(state, envelope, bytes, canWrite) {
   if (!(bytes instanceof Uint8Array) || bytes.byteLength > CAPS.assemblyBytes) refuse('BYTE_LIMIT');
   if (stateCharge(state) > CAPS.roomCacheBytes) refuse('ROOM_CACHE_LIMIT');
   if (typeof envelope.actor !== 'string' || typeof envelope.uuid !== 'string' || envelope.operation !== 'text') refuse('INVALID_ENVELOPE');
-  const namespace = { workspace: envelope.workspace, kind: envelope.kind, room: envelope.room,
-    generation: envelope.generation, actor: envelope.actor, operation: envelope.operation, uuid: envelope.uuid };
-  const key = canonical(namespace);
   const digest = fingerprint(envelope, bytes);
-  const receipt = state.receipts[key];
-  if (receipt) {
-    if (receipt.fingerprint !== digest) refuse('EDITING_IDEMPOTENCY_CONFLICT');
-    return { state, receipt, replay: true };
-  }
+  // Exact retries are answered from the immutable intent rows before this codec runs.
   if (envelope.workspace !== state.workspace || envelope.kind !== state.kind
     || envelope.room !== state.room || envelope.generation !== state.generation) refuse('ROOM_GENERATION');
   if (!integer(envelope.replica) || state.enrollments[String(envelope.replica)]?.actor !== envelope.actor) refuse('REPLICA_OWNERSHIP');
@@ -256,11 +250,7 @@ export function admit(state, envelope, bytes, canWrite) {
     generation: state.generation, actor: envelope.actor, uuid: envelope.uuid, replica: envelope.replica,
     semanticNoop: !candidate.changed,
     provenance: candidate.changed ? { actor: envelope.actor, sequence } : null };
-  if (!candidate.changed) {
-    const next = { ...state, receipts: { ...state.receipts, [key]: admitted } };
-    if (stateCharge(next) > CAPS.roomCacheBytes) refuse('ROOM_CACHE_LIMIT');
-    return { replay: false, receipt: admitted, state: next, receiptOnly: true };
-  }
+  if (!candidate.changed) return { replay: false, receipt: admitted, state, receiptOnly: true };
   const doc = new Y.Doc();
   try {
     Y.applyUpdate(doc, Uint8Array.from(Buffer.from(state.checkpoint, 'base64')), 'checkpoint');
@@ -274,9 +264,7 @@ export function admit(state, envelope, bytes, canWrite) {
     const checkpoint = Y.encodeStateAsUpdate(doc);
     if (checkpoint.byteLength > CAPS.assemblyBytes) refuse('CHECKPOINT_LIMIT');
     const next = { ...state, nodes: candidate.nodes, deleted: candidate.deleted, splits: candidate.splits, sequence,
-      checkpoint: Buffer.from(checkpoint).toString('base64'), body: body.toString(),
-      receipts: { ...state.receipts, [key]: admitted },
-      journal: [...state.journal, { sequence, actor: envelope.actor, fingerprint: digest }] };
+      checkpoint: Buffer.from(checkpoint).toString('base64'), body: body.toString() };
     if (stateCharge(next) > CAPS.roomCacheBytes) refuse('ROOM_CACHE_LIMIT');
     return { replay: false, receipt: admitted, state: next, receiptOnly: false };
   } finally { doc.destroy(); }
@@ -285,7 +273,7 @@ export function admit(state, envelope, bytes, canWrite) {
 export function emptyRoom(room = 'wiki-a', generation = 'generation-a', workspace = 'workspace-a') {
   const doc = new Y.Doc();
   try { return { workspace, kind: 'wiki', room, generation, body: '', sequence: 0, nodes: [], deleted: [], enrollments: {},
-    receipts: {}, journal: [], splits: [], checkpoint: Buffer.from(Y.encodeStateAsUpdate(doc)).toString('base64') }; }
+    splits: [], checkpoint: Buffer.from(Y.encodeStateAsUpdate(doc)).toString('base64') }; }
   finally { doc.destroy(); }
 }
 export function enroll(state, actor, clientId, canWrite) {
@@ -296,4 +284,63 @@ export function enroll(state, actor, clientId, canWrite) {
     workspace: state.workspace, kind: state.kind, room: state.room, generation: state.generation } } };
   if (stateCharge(next) > CAPS.roomCacheBytes) refuse('ROOM_CACHE_LIMIT');
   return next;
+}
+
+/** The ledger entries one admitted change appended: its new nodes, deletions and surrogate splits.
+ * With the update bytes, this is the append-only log record from which a state is rebuilt. */
+export function ledgerDelta(previous, next) {
+  if (next.sequence !== previous.sequence + 1 || next.deleted.length < previous.deleted.length
+    || next.splits.length < previous.splits.length) refuse('INVALID_LEDGER_DELTA');
+  return { nodes: next.nodes.filter((node) => node.admittedSequence === next.sequence),
+    deleted: next.deleted.slice(previous.deleted.length), splits: next.splits.slice(previous.splits.length) };
+}
+
+const ref = (value) => value === null || (value && integer(value.client) && integer(value.clock));
+function ledgerShape(delta, sequence) {
+  if (!delta || typeof delta !== 'object' || !Array.isArray(delta.nodes) || !Array.isArray(delta.deleted) || !Array.isArray(delta.splits)) refuse('INVALID_LEDGER_DELTA');
+  for (const node of delta.nodes) {
+    if (!integer(node.client) || !integer(node.clock) || !integer(node.length) || node.length < 1 || typeof node.text !== 'string'
+      || node.text.length !== node.length || !ref(node.origin) || !ref(node.rightOrigin) || node.root !== 'body' || node.declaredRoot !== 'body'
+      || typeof node.actor !== 'string' || node.admittedSequence !== sequence) refuse('INVALID_LEDGER_DELTA');
+  }
+  for (const range of delta.deleted) {
+    if (!integer(range.client) || !integer(range.clock) || !integer(range.length) || range.length < 1
+      || typeof range.actor !== 'string' || range.admittedSequence !== sequence) refuse('INVALID_LEDGER_DELTA');
+  }
+  for (const split of delta.splits) if (!integer(split.client) || !integer(split.clock)) refuse('INVALID_LEDGER_DELTA');
+}
+
+/**
+ * Rebuilds the state at the last logged sequence from an earlier state (a snapshot or a cached
+ * state) and the confirmed log entries after it: { sequence, bytes, ledger } in sequence order.
+ * Only confirmed, already validated updates are replayed. The rebuilt document must agree with
+ * the rebuilt ledger and with the persisted head body, or nothing is returned.
+ */
+export function rebuild(base, entries, expectedBody) {
+  if (!Array.isArray(entries)) refuse('INVALID_LEDGER_DELTA');
+  const doc = new Y.Doc();
+  try {
+    Y.applyUpdate(doc, Uint8Array.from(Buffer.from(base.checkpoint, 'base64')), 'checkpoint');
+    const nodes = [...base.nodes]; const deletions = [...base.deleted]; const splits = [...(base.splits ?? [])];
+    let sequence = base.sequence;
+    for (const entry of entries) {
+      if (entry.sequence !== sequence + 1 || !(entry.bytes instanceof Uint8Array)) refuse('LOG_GAP');
+      ledgerShape(entry.ledger, entry.sequence);
+      Y.applyUpdate(doc, entry.bytes, 'confirmed');
+      nodes.push(...entry.ledger.nodes); deletions.push(...entry.ledger.deleted); splits.push(...entry.ledger.splits);
+      sequence = entry.sequence;
+    }
+    sortNodes(nodes);
+    let expected;
+    try { expected = vector(nodes); } catch { refuse('LOG_STATE_MISMATCH'); }
+    const actual = Y.decodeStateVector(Y.encodeStateVector(doc));
+    if (canonical([...actual].sort()) !== canonical([...expected].sort())) refuse('LOG_STATE_MISMATCH');
+    const body = doc.getText('body').toString();
+    if (expectedBody !== undefined && body !== expectedBody) refuse('LOG_STATE_MISMATCH');
+    const checkpoint = Y.encodeStateAsUpdate(doc);
+    if (checkpoint.byteLength > CAPS.assemblyBytes) refuse('CHECKPOINT_LIMIT');
+    const state = { ...base, nodes, deleted: deletions, splits, sequence, body, checkpoint: Buffer.from(checkpoint).toString('base64') };
+    if (stateCharge(state) > CAPS.roomCacheBytes) refuse('ROOM_CACHE_LIMIT');
+    return state;
+  } finally { doc.destroy(); }
 }

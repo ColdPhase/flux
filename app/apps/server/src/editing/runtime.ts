@@ -1,7 +1,7 @@
 import { Buffer } from 'node:buffer';
 import { randomUUID } from 'node:crypto';
 import * as Y from 'yjs';
-import { emptyRoom, enroll, fingerprint, stateCharge, Refusal } from './codec/codec.mjs';
+import { emptyRoom, enroll, fingerprint, ledgerDelta, rebuild, stateCharge, Refusal } from './codec/codec.mjs';
 import { CodecPool } from './codec/worker-pool.mjs';
 import type { CodecEnvelope, CodecState } from './codec/types.js';
 import { EditingAdmission } from './admission.js';
@@ -26,6 +26,9 @@ export function editingRuntime() {
     prepareRead: (state: CodecState, lease: AdmissionLease) => pool.budget.bind(lease, state),
     stateCharge,
     enroll,
+    /** Log record of one admitted change, and the state rebuilt from a base plus confirmed log records. */
+    ledgerDelta,
+    rebuild,
     /** Called before any SQL/intent await. A controller keeps refused input in its charged assembly. */
     reserve: (bytes: Uint8Array, maximumInputBytes?: number) => pool.budget.reservePending(bytes, maximumInputBytes),
     /** The same reservation as `reserve`, taken in its turn in the admission FIFO. Until then the
@@ -57,7 +60,7 @@ export function editingRuntime() {
         // The server-owned baseline is sequence zero, not a user contribution or retry receipt.
         const baseline: CodecState = { ...result.state, sequence: 0,
           nodes: result.state.nodes.map((node) => ({ ...node, admittedSequence: 0 })),
-          deleted: result.state.deleted.map((range) => ({ ...range, admittedSequence: 0 })), receipts: {}, journal: [] };
+          deleted: result.state.deleted.map((range) => ({ ...range, admittedSequence: 0 })) };
         return { state: baseline, replicaId };
       } finally { doc.destroy(); }
     },

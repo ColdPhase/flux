@@ -276,6 +276,8 @@ bounded OT alternative**. Neither private API mutation nor weaker guards is a fa
 
 PostgreSQL stores the room generation, saved-version binding, checkpoint/state vector,
 confirmed text/hash, admitted updates and immutable scoped receipts described below.
+(Revised 2026-10-09 by founder direction, B1: the checkpoint/state is a bounded snapshot
+plus the append-only update log after it; see the end of this document.)
 A serialized document transaction rechecks policy, locks the material/live head in
 the established access-before-material-before-live-head order, validates against
 current committed state, and persists the
@@ -578,7 +580,9 @@ bounded future-capacity clarification addresses an actual healthy 100k read refu
 at `cdbf4a57`; the caps, FIFO, slots and deadlines stay unchanged and its repair
 still requires independent source and runtime checks.
 Each protected authority callback emits at most one frame; received-frame ACKs do
-not themselves send the next frame. Public ws-owned frame copies remain charged
+not themselves send the next frame. (Revised 2026-10-09 by founder direction, A1: a wiki
+confirmed read hands off its whole batch within the output window; see the end of this
+document.) Public ws-owned frame copies remain charged
 through their actual send callbacks after close or revocation. Rolled-back live
 errors carry scalar outcome/code only; current protected postimages require a new
 held-fence read. These are source integration choices, awaiting current-head
@@ -620,7 +624,8 @@ leases, original intent receipt and identifier-only NOTIFY commit together;
 ordinary identifier events are flushed after native/coordination writes. Separate
 API replicas re-read the journal immediately on transactional NOTIFY; periodic
 catch-up is recovery only. Each protected callback hands off at most one ordered
-delta or chunk; it also hands off every transient frame its read observed (map:
+delta or chunk (for the wiki, revised 2026-10-09 by founder direction, A1: every pending
+update and the head preview within the output window); it also hands off every transient frame its read observed (map:
 cleared lease, preview, presence; wiki: cursor presence), under the same held fence
 and output window (2026-10-06, below).
 
@@ -745,7 +750,8 @@ Caps, budgets, deadlines and the latency gate are unchanged.
 
 ### Options for the two remaining wiki causes (2026-10-09, for the founder's decision)
 
-Not implemented; the founder decides. Numbers come from the runs above. The 8fce745a
+Decided the same day: A1 + B1 (next section). The rest of this section is the proposal as
+written. Numbers come from the runs above. The 8fce745a
 run shared its host with other suites. The latency path is input → batch or wait for the
 command in flight (p50 67 / p95 144 ms) → commit and receipt (122 / 164) → the peer's
 read → peer render and two animation frames (about 45). Peer render is not the problem.
@@ -785,3 +791,58 @@ measurement. A1 + B1 is the only combination likely to pass Gate 4 at 10k and 10
 (2026-10-06 note), which would put the 1–50-thought cases near 200 ms. Measure on a
 quiet host before changing anything. The 200-thought drag (p95 361, paint p95 105) is
 unlikely to pass without peer render work.
+
+### Revised 2026-10-09 by founder direction: A1 + B1
+
+Hubert chose A1 (batched reads) and B1 (an append-only update log with periodic snapshot
+compaction) on 2026-10-09, in #389. They replace two rules above: "one update chunk per
+read" and "a commit rewrites the whole codec state". Caps, budgets, deadlines, the FIFO,
+locks, generations and the latency gate are unchanged.
+
+**A1, batched reads.**
+- **One read, every pending update.** A wiki confirmed read hands off every update after
+  the connection's sequence, up to 64 updates or 1 MiB of stored bytes (at least one), in
+  sequence order. Each update is its own frame and delivery, with its own sequence,
+  command UUID and hash. The stored sizes are summed before any bytes load.
+- **The head preview.** When the batch reaches the head, the read adds the head preview
+  as the last delivery, so a reader renders the head every read. A read no longer has to
+  find no newer update before it sends a preview.
+- **Ordering and limits.** The output holds one read's ordered set (at most 65
+  deliveries), every payload charged to the shared output budget. Frames leave in order;
+  deliveries complete in order whatever order a client acknowledges them in. The read
+  hands off every frame the 1 MiB per-connection window allows, under its one SQL fence.
+  Frames beyond the window leave on acknowledgments, each through a fresh authority
+  fence as before.
+- **Next read.** The next read starts once the whole batch is acknowledged.
+
+**B1, an append-only update log with snapshot compaction.**
+- **Codec state.** The state no longer carries receipts or a journal. Both already live
+  in the immutable intent and update rows, and exact retries are answered from the intent
+  rows before the codec runs.
+- **A commit.** A text commit appends its update row together with the ledger entries it
+  added (new nodes, deletion ranges, surrogate splits). It then advances the locked head's
+  sequence, body, hash and `revision`. It writes the complete state as the head's snapshot
+  (`snapshot_sequence`) only once the snapshot is 64 updates behind.
+- **Other writes.** Initialization and enrollment write a snapshot at the current
+  sequence. A retired generation archives its snapshot position.
+- **Rebuild.** The state at the head is the snapshot plus the updates logged after it.
+  Rebuilding re-applies the confirmed update bytes to a document and appends the logged
+  ledger entries. The result must reproduce the ledger's state vector and the head's
+  stored body, or it is refused. Only confirmed, already validated updates are replayed,
+  at most 63 after a snapshot.
+- **Compaction.** Compaction never deletes history. Contributors, receipts and
+  reconciliation still read the same rows.
+- **Decoded rooms.** Each API process keeps decoded rooms (at most 16, 128 MiB). It uses
+  one only at the locked head's revision. When only commits changed the revision, it
+  catches up from the log; otherwise it reloads the snapshot. A commit's state enters the
+  decoded rooms only after its transaction commits. A definite rollback or an unknown
+  COMMIT outcome therefore leaves at most a stale decoded room, never a wrong one.
+- **Two API processes.** They stay consistent through the same row locks, generations
+  and the head revision.
+- **Migration.** `0084_live_update_log.sql` keeps every existing room as a complete
+  snapshot at its sequence. Its guarded reversal is refused once any room depends on
+  logged updates after its snapshot.
+- **Backup and export.** Backup and restore copy the new columns with the database.
+  Export does not include live rooms.
+
+Evidence for the change and its gate results are in #389.

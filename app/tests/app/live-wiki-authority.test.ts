@@ -11,7 +11,8 @@ import { UnauthenticatedError } from '../../apps/server/src/identity/session.js'
 import type { SessionContext } from '../../apps/server/src/identity/session.js';
 import { editingRuntime, NATIVE_CHECKPOINT_BYTES } from '../../apps/server/src/editing/runtime.js';
 import { wikiAuthority } from '../../apps/server/src/editing/authority.js';
-import { pool } from './support/db.js';
+import { liveEditingRows } from '@flux/db';
+import { db, pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
 
 async function context(user: Awaited<ReturnType<typeof person>>): Promise<SessionContext> {
@@ -237,4 +238,115 @@ test('actual 100k live HTTP read waits behind two full codec leases before SQL a
     await app.close(); await authority.close();
   }
   assert.equal(runtime.codecLeases, 0); assert.equal(runtime.externalInputBytes, 0); assert.equal(outputBudget.bytes, 0);
+});
+
+/** Founder direction 2026-10-09 (B1): incremental public updates from one writer replica. */
+function typist(authority: ReturnType<typeof wikiAuthority>, who: SessionContext, head: Awaited<ReturnType<ReturnType<typeof wikiAuthority>['bootstrap']>>) {
+  const doc = new Y.Doc(); Y.applyUpdate(doc, Buffer.from(head.checkpoint, 'base64')); let vector = Y.encodeStateVector(doc);
+  return { doc,
+    learn(bytes: Uint8Array) { Y.applyUpdate(doc, bytes); vector = Y.encodeStateVector(doc); },
+    async type(text: string, through = authority) {
+      doc.getText('body').insert(doc.getText('body').length, text);
+      const bytes = Y.encodeStateAsUpdate(doc, vector); vector = Y.encodeStateVector(doc);
+      const envelope: WikiTextEnvelope = { workspace: head.workspaceId, kind: 'wiki', room: head.resourceId, generation: head.generation,
+        actor: who.principal.id, operation: 'text', uuid: randomUUID(), replica: doc.clientID, parameters: null };
+      const receipt = await through.submit(who, head.resourceId, envelope, bytes, through.reserve(bytes));
+      return { bytes, receipt };
+    } };
+}
+const liveHead = async (docId: string) => (await pool.query('SELECT sequence,snapshot_sequence,revision,codec_state::text AS codec FROM doc_live_heads WHERE doc_id=$1', [docId])).rows[0] as
+  { sequence: string; snapshot_sequence: string; revision: string; codec: string };
+
+test('a text commit appends its update and ledger to the log; the full state is rewritten only every 64 updates', { timeout: 30_000 }, async () => {
+  const f = await scene(); const authority = wikiAuthority({ pool });
+  try {
+    const owner = await context(f.owner); const head = await authority.bootstrap(owner, f.doc.id); const writer = typist(authority, owner, head);
+    await authority.enroll(owner, f.doc.id, { generation: head.generation, replicaId: writer.doc.clientID });
+    const enrolled = await liveHead(f.doc.id);
+    for (const text of ['One. ', 'Two. ', 'Three. ']) await writer.type(text);
+    const between = await liveHead(f.doc.id);
+    assert.equal(Number(between.sequence), 3); assert.equal(Number(between.snapshot_sequence), 0);
+    assert.equal(between.codec, enrolled.codec, 'A commit between snapshots leaves the stored snapshot untouched');
+    assert.equal(Number(between.revision), Number(enrolled.revision) + 3);
+    const logged = (await pool.query('SELECT sequence,ledger FROM doc_live_updates WHERE doc_id=$1 ORDER BY sequence', [f.doc.id])).rows as { sequence: string; ledger: { nodes: unknown[] } }[];
+    assert.deepEqual(logged.map((row) => Number(row.sequence)), [1, 2, 3]);
+    assert.ok(logged.every((row) => row.ledger.nodes.length === 1), 'Each logged update carries the ledger entries it added');
+    for (let index = 4; index <= 64; index++) await writer.type(`${index}. `);
+    const compacted = await liveHead(f.doc.id);
+    assert.equal(Number(compacted.snapshot_sequence), 64); assert.equal(JSON.parse(compacted.codec).sequence, 64);
+    assert.equal(JSON.parse(compacted.codec).receipts, undefined, 'Receipts stay in the immutable intent rows');
+    await writer.type('Sixty-five. ');
+    assert.equal(Number((await liveHead(f.doc.id)).snapshot_sequence), 64);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM doc_live_updates WHERE doc_id=$1', [f.doc.id])).rows[0].n, 65, 'Compaction never removes history');
+  } finally { await authority.close(); }
+});
+
+test('a fresh API process rebuilds a room from its snapshot and the log after it, and continues it (crash replay)', { timeout: 30_000 }, async () => {
+  const f = await scene(); const first = wikiAuthority({ pool }); let second: ReturnType<typeof wikiAuthority> | null = null;
+  try {
+    const owner = await context(f.owner); const head = await first.bootstrap(owner, f.doc.id); const writer = typist(first, owner, head);
+    await first.enroll(owner, f.doc.id, { generation: head.generation, replicaId: writer.doc.clientID });
+    for (let index = 1; index <= 70; index++) await writer.type(index % 7 ? `${index} ` : `\n${index}. `);
+    assert.equal(Number((await liveHead(f.doc.id)).snapshot_sequence), 64);
+    const before = first.rooms.get(f.doc.id, head.generation)!.state;
+    await first.close();
+    second = wikiAuthority({ pool });
+    const restarted = await second.bootstrap(owner, f.doc.id);
+    assert.equal(restarted.sequence, 70); assert.equal(restarted.body, writer.doc.getText('body').toString());
+    const rebuilt = second.rooms.get(f.doc.id, head.generation)!.state;
+    for (const field of ['sequence', 'body', 'nodes', 'deleted', 'splits', 'enrollments'] as const) assert.deepEqual(rebuilt[field], before[field], field);
+    const check = new Y.Doc(); try { Y.applyUpdate(check, Buffer.from(restarted.checkpoint, 'base64')); assert.equal(check.getText('body').toString(), restarted.body); } finally { check.destroy(); }
+    const next = await writer.type('After the restart.', second);
+    assert.equal(next.receipt.sequence, 71);
+    assert.equal((await second.bootstrap(owner, f.doc.id)).body, writer.doc.getText('body').toString());
+  } finally { await first.close(); await second?.close(); }
+});
+
+test('two API processes alternate commits on one room; an enrollment elsewhere makes a decoded room stale', { timeout: 30_000 }, async () => {
+  const f = await scene(); const one = wikiAuthority({ pool }); const two = wikiAuthority({ pool });
+  try {
+    const owner = await context(f.owner); const peer = await context(f.peer);
+    const head = await one.bootstrap(owner, f.doc.id); const ada = typist(one, owner, head);
+    await one.enroll(owner, f.doc.id, { generation: head.generation, replicaId: ada.doc.clientID });
+    await ada.type('Ada on one. ');
+    // Kai enrolls through the other process: one's decoded room is now at an older revision.
+    const kaiHead = await two.bootstrap(peer, f.doc.id); const kai = typist(two, peer, kaiHead);
+    await two.enroll(peer, f.doc.id, { generation: head.generation, replicaId: kai.doc.clientID });
+    for (let round = 0; round < 6; round++) {
+      const fromKai = await kai.type(`Kai ${round}. `, round % 2 ? one : two); ada.learn(fromKai.bytes);
+      const fromAda = await ada.type(`Ada ${round}. `, round % 2 ? two : one); kai.learn(fromAda.bytes);
+    }
+    const expected = ada.doc.getText('body').toString();
+    assert.equal(kai.doc.getText('body').toString(), expected);
+    const [viaOne, viaTwo] = [await one.bootstrap(owner, f.doc.id), await two.bootstrap(peer, f.doc.id)];
+    assert.equal(viaOne.body, expected); assert.equal(viaTwo.body, expected); assert.equal(viaOne.sequence, 13); assert.equal(viaTwo.hash, viaOne.hash);
+    const a = one.rooms.get(f.doc.id, head.generation)!.state; const b = two.rooms.get(f.doc.id, head.generation)!.state;
+    for (const field of ['sequence', 'body', 'nodes', 'deleted', 'splits', 'enrollments'] as const) assert.deepEqual(a[field], b[field], field);
+  } finally { await one.close(); await two.close(); }
+});
+
+test('one confirmed read hands off every pending update in order and the head preview with the batch that reaches it', { timeout: 30_000 }, async () => {
+  const f = await scene(); const authority = wikiAuthority({ pool });
+  try {
+    const owner = await context(f.owner); const peer = await context(f.peer);
+    const head = await authority.bootstrap(owner, f.doc.id); const writer = typist(authority, owner, head);
+    await authority.enroll(owner, f.doc.id, { generation: head.generation, replicaId: writer.doc.clientID });
+    for (const text of ['One. ', 'Two. ', 'Three. ']) await writer.type(text);
+    const read = async (afterSequence: number, previewAfterSequence: number) => {
+      let seen: { updates: number[]; preview: boolean } | null = null;
+      await authority.deliver(peer, f.doc.id, head.generation, afterSequence, (result) => {
+        seen = { updates: result.updates.map((item) => item.sequence), preview: result.preview !== null };
+      }, { previewAfterSequence, includeContent: true });
+      return seen;
+    };
+    assert.deepEqual(await read(0, -1), { updates: [1, 2, 3], preview: true });
+    assert.deepEqual(await read(1, 3), { updates: [2, 3], preview: false }, 'The head preview was already delivered');
+    assert.deepEqual(await read(3, 0), { updates: [], preview: true });
+    // The byte bound stops a batch before its stored size exceeds it, but never below one update.
+    const sizes = (await pool.query('SELECT octet_length(bytes)::int n FROM doc_live_updates WHERE doc_id=$1 ORDER BY sequence', [f.doc.id])).rows.map((row) => row.n as number);
+    const rows = liveEditingRows(db, (value) => value as never);
+    assert.deepEqual((await rows.updates(f.doc.id, head.generation, 0, 64, 1)).map((row) => row.sequence), [1]);
+    assert.deepEqual((await rows.updates(f.doc.id, head.generation, 0, 64, sizes[0]! + sizes[1]!)).map((row) => row.sequence), [1, 2]);
+    assert.deepEqual((await rows.updates(f.doc.id, head.generation, 0, 2, 1024 * 1024)).map((row) => row.sequence), [1, 2]);
+  } finally { await authority.close(); }
 });

@@ -6,6 +6,10 @@ import { isId } from '../work/validation.js';
 import type { WikiCodecState, WikiHead, WikiIdentity, WikiIntent, WikiPorts } from './wiki-ports.js';
 
 const hash = (body: string) => createHash('sha256').update(body).digest('hex');
+/** One confirmed read hands off every pending update (each its own frame) up to these bounds; the
+ * byte bound is the per-connection output window (founder direction 2026-10-09, A1). */
+export const WIKI_READ_BATCH = { updates: 64, bytes: 1024 * 1024 } as const;
+type Receipted = Pick<WikiHead<WikiCodecState>, 'workspaceId' | 'resourceId' | 'generation' | 'sequence' | 'hash'>;
 const conflict = () => new ConflictError('This command UUID has another immutable intent', 'EDITING_IDEMPOTENCY_CONFLICT');
 const generationChanged = () => new ConflictError('The shared generation changed; keep earlier pending text private', 'EDITING_GENERATION_CHANGED');
 function id(value: unknown) { if (!isId(value)) throw new InvalidInputError('A UUID is required'); return value.toLowerCase(); }
@@ -42,11 +46,11 @@ export function liveWiki<State extends WikiCodecState, Lease>(ports: WikiPorts<S
     if (generation && current.generation !== generation) throw generationChanged();
     return current;
   }
-  function receipt(head: WikiHead<State>, commandId: string, operation: LiveReceipt['operation'], fingerprint: string, changed: boolean): LiveReceipt {
+  function receipt(head: Receipted, commandId: string, operation: LiveReceipt['operation'], fingerprint: string, changed: boolean): LiveReceipt {
     return { workspaceId: head.workspaceId, resourceId: head.resourceId, generation: head.generation,
       sequence: head.sequence, hash: head.hash, commandId, operation, fingerprint, changed };
   }
-  async function replay(identity: WikiIdentity, commandId: string, current: WikiHead<State>, operation: string, fingerprint: string, bytes: number) {
+  async function replay(identity: WikiIdentity, commandId: string, current: Receipted, operation: string, fingerprint: string, bytes: number) {
     const old = await ports.rows.intent(identity.actorId, commandId);
     if (!old) return null;
     if (old.kind !== 'wiki' || old.workspaceId !== current.workspaceId || old.resourceId !== current.resourceId
@@ -55,7 +59,7 @@ export function liveWiki<State extends WikiCodecState, Lease>(ports: WikiPorts<S
     await ports.session.assertCurrent(identity);
     return originalReceipt(old.receipt);
   }
-  async function record(identity: WikiIdentity, current: WikiHead<State>, result: LiveReceipt, byteLength: number) {
+  async function record(identity: WikiIdentity, current: Receipted, result: LiveReceipt, byteLength: number) {
     const intent: Omit<WikiIntent, 'receipt'> & { receipt: LiveReceipt } = { actorId: identity.actorId, commandId: result.commandId, workspaceId: current.workspaceId,
       kind: 'wiki', resourceId: current.resourceId, generation: result.generation, operation: result.operation,
       fingerprint: result.fingerprint, byteLength, receipt: result };
@@ -124,10 +128,10 @@ export function liveWiki<State extends WikiCodecState, Lease>(ports: WikiPorts<S
       if (!owner || owner.ownerKind !== 'human' || owner.actorId !== identity.actorId) throw new ConflictError('The replica is not enrolled for this person and generation', 'EDITING_REPLICA_REQUIRED');
       const validated = await ports.codec.validate(current.codecState!, envelope, bytes, lease);
       if (!validated.ok) throw new RuleViolationError('The candidate text was refused before sharing', validated.code);
-      const next = { ...current, codecState: validated.state, sequence: validated.state.sequence, body: validated.state.body, hash: hash(validated.state.body) };
-      await ports.rows.replaceState(current, validated.state, next.hash);
       const changed = !validated.receipt.semanticNoop;
-      if (changed) await ports.rows.appendUpdate(next, envelope, bytes, fingerprint);
+      // A semantic no-op changes no state: only its immutable receipt is recorded.
+      const next = changed ? { ...current, codecState: validated.state, sequence: validated.state.sequence, body: validated.state.body, hash: hash(validated.state.body) } : current;
+      if (changed) await ports.rows.commitText(current, validated.state, next.hash, envelope, bytes, fingerprint);
       return record(identity, next, receipt(next, envelope.uuid, 'text', fingerprint, changed), bytes.byteLength);
     },
     async cursor(identity: WikiIdentity, docId: string, generation: string, connectionId: string, cursor: LiveCursor | null) {
@@ -140,7 +144,7 @@ export function liveWiki<State extends WikiCodecState, Lease>(ports: WikiPorts<S
     async save(identity: WikiIdentity, docId: string, command: SaveSharedDoc): Promise<LiveReceipt> {
       if (!command || Object.keys(command).some((key) => !['clientCommandId','expectedVersion','generation','headSequence','headHash','title','state','reason'].includes(key))) throw new InvalidInputError('Unknown snapshot parameter');
       const { principal } = await authorized(identity, docId, 'write', command.clientCommandId);
-      const current = await ports.rows.lockHead(docId);
+      const current = await ports.rows.lockHeadSummary(docId);
       if (!current) throw generationChanged();
       const parameters = { expectedVersion: command.expectedVersion, generation: command.generation, headSequence: command.headSequence,
         headHash: command.headHash, title: command.title ?? null, state: command.state ?? null, reason: command.reason ?? null };
@@ -153,7 +157,7 @@ export function liveWiki<State extends WikiCodecState, Lease>(ports: WikiPorts<S
     },
     async receipt(identity: WikiIdentity, docId: string, commandId: string): Promise<LiveReceipt | null> {
       await authorized(identity, docId, 'read', commandId);
-      const current = await ports.rows.lockHead(docId); // Original serialization boundary, including an uncertain older COMMIT.
+      const current = await ports.rows.lockHeadSummary(docId); // Original serialization boundary, including an uncertain older COMMIT.
       const found = await ports.rows.intent(identity.actorId, commandId);
       if (found && (found.kind !== 'wiki' || found.resourceId !== docId || found.workspaceId !== current?.workspaceId)) throw conflict();
       await ports.session.assertCurrent(identity); return found ? originalReceipt(found.receipt) : null;
@@ -166,12 +170,15 @@ export function liveWiki<State extends WikiCodecState, Lease>(ports: WikiPorts<S
       const current = await ports.rows.lockHeadSummary(docId);
       if (!current?.initialized || current.generation !== generation) throw generationChanged();
       if (!Number.isSafeInteger(afterSequence) || afterSequence < 0 || afterSequence > current.sequence) throw new InvalidInputError('Invalid confirmed sequence');
-      const updates = view.includeContent === false ? [] : await ports.rows.updates(docId, generation, afterSequence, 1);
-      if (view.includeContent !== false && afterSequence < current.sequence && updates[0]?.sequence !== afterSequence + 1) throw generationChanged();
+      const updates = view.includeContent === false ? [] : await ports.rows.updates(docId, generation, afterSequence, WIKI_READ_BATCH.updates, WIKI_READ_BATCH.bytes);
+      if (view.includeContent !== false && afterSequence < current.sequence
+        && (!updates.length || updates.some((update, index) => update.sequence !== afterSequence + 1 + index))) throw generationChanged();
       let canWrite = false;
       try { await ports.native.access.requireProject(principal, 'write', doc.doc.projectId, { lock: true }); canWrite = true; }
       catch (error) { if (!(error instanceof ForbiddenError)) throw error; }
-      const preview = view.includeContent !== false && !updates.length && current.sequence > (view.previewAfterSequence ?? -1)
+      // The head preview follows a batch that reaches the head, so continuous typing cannot starve it.
+      const atHead = !updates.length || updates.at(-1)!.sequence === current.sequence;
+      const preview = view.includeContent !== false && atHead && current.sequence > (view.previewAfterSequence ?? -1)
         ? await docs.previewShared(principal, docId, current.body) : null;
       const presence = [];
       for (const peer of await ports.rows.presence(docId, generation)) {

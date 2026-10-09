@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { and, eq, gt, lte } from 'drizzle-orm';
+import { and, eq, gt, lte, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import { docRows } from './docs.js';
 import type { DbExecutor } from './push.js';
@@ -32,10 +32,13 @@ export function docLiveVersions(db: DbExecutor) {
       if (old.savedVersion !== row.doc.currentVersion - 1 || old.body !== saved?.body) {
         throw new Error('Dirty shared head cannot be rebound by a native writer');
       }
+      // The retired generation's state is its snapshot plus its still retained update log.
       await db.insert(schema.docLiveArchives).values({ docId: old.docId, generation: old.generation, sequence: old.sequence,
-        body: old.body, hash: old.hash, savedVersion: old.savedVersion, savedSequence: old.savedSequence, codecState: old.codecState });
+        body: old.body, hash: old.hash, savedVersion: old.savedVersion, savedSequence: old.savedSequence, codecState: old.codecState,
+        snapshotSequence: old.codecState ? old.snapshotSequence : null });
       await db.update(heads).set({ generation, sequence: 0, body: row.current.body, hash: hash(row.current.body),
-        savedVersion: row.current.version, savedSequence: 0, codecState: null, updatedAt: new Date() }).where(eq(heads.docId, row.doc.id));
+        savedVersion: row.current.version, savedSequence: 0, codecState: null, snapshotSequence: 0, revision: sql`${heads.revision} + 1`,
+        updatedAt: new Date() }).where(eq(heads.docId, row.doc.id));
     },
     async bindSnapshot(row: SavedDoc, acknowledged: Pick<Head, 'generation' | 'sequence' | 'body' | 'hash' | 'savedVersion' | 'savedSequence'>) {
       const current = await locked(row.doc.id);

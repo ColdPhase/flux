@@ -17,9 +17,9 @@ export interface CodecState extends Record<string, unknown> {
   deleted: { client: number; clock: number; length: number; actor: string; admittedSequence: number }[];
   splits: CodecRef[];
   enrollments: Record<string, { actor: string; workspace: string; kind: 'wiki'; room: string; generation: string }>;
-  receipts: Record<string, CodecReceipt>;
-  journal: { sequence: number; actor: string; fingerprint: string }[];
 }
+/** What one admitted change appended to the ledger; logged beside its update bytes. */
+export interface CodecLedgerDelta { nodes: CodecNode[]; deleted: CodecState['deleted']; splits: CodecRef[] }
 export type CodecResult = { ok: false; code: string } | {
   ok: true; state: CodecState; receipt: CodecReceipt; replay: boolean; receiptOnly?: boolean;
 };

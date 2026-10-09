@@ -36,9 +36,13 @@ test('actual SQL/public ws 100k preview reserves before SQL and keeps source thr
     controller.accept(socket,{connectionId:randomUUID(),session,target:{kind:'wiki',id:doc.id}});
     peer.send(JSON.stringify({type:'subscribe',generation:head.generation,afterSequence:0}));
     await new Promise(resolve=>setTimeout(resolve,40));assert.equal(connections,0,'Shared output pressure queues BEFORE any SQL acquisition');assert.equal(binary,0);
-    occupying();await held.promise;await until(()=>frames.length===1);
+    occupying();await held.promise;await until(()=>frames.length>=1);
     const metadataLength=frames[0]!.readUInt32BE(0);const header=JSON.parse(frames[0]!.subarray(4,4+metadataLength).toString('utf8'));
     assert.equal(header.type,'preview');assert.ok(header.count>1,'The100k boundary takes bounded binary frames');
+    // Founder direction 2026-10-09 (A1): the read hands off every frame its window allows under its one fence.
+    await new Promise(resolve=>setTimeout(resolve,20));
+    assert.ok(frames.reduce((total,frame)=>total+frame.byteLength,0)<=1024*1024,'Frames in flight stay within the per-connection output window');
+    assert.ok(frames.every(frame=>JSON.parse(frame.subarray(4,4+frame.readUInt32BE(0)).toString('utf8')).deliveryId===header.deliveryId));
     assert.ok(budget.bytes>=24*1024*1024,'Protected source remains charged while its real COMMIT is withheld');
     const closed=controller.close();await new Promise(resolve=>setTimeout(resolve,20));assert.ok(budget.bytes>=24*1024*1024,'Closing the transport does not free a still-retained SQL result');
     commit.resolve();await closed;await until(()=>budget.bytes===0);

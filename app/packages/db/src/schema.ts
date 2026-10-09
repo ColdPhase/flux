@@ -1692,7 +1692,11 @@ export const docLiveHeads = pgTable('doc_live_heads', {
   generation: uuid('generation').notNull(), sequence: bigint('sequence', { mode: 'number' }).notNull().default(0),
   body: text('body').notNull(), hash: text('hash').notNull(), savedVersion: integer('saved_version').notNull(),
   savedSequence: bigint('saved_sequence', { mode: 'number' }).notNull().default(0),
+  /** The codec state snapshot at snapshotSequence; the logged updates after it complete the state (0084). */
   codecState: jsonb('codec_state').$type<Record<string, unknown>>(),
+  snapshotSequence: bigint('snapshot_sequence', { mode: 'number' }).notNull().default(0),
+  /** Changes with every codec state change (commit, enrollment, initialization, retirement). */
+  revision: bigint('revision', { mode: 'number' }).notNull().default(0),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   foreignKey({ columns: [t.workspaceId, t.projectId, t.docId], foreignColumns: [projectMaterials.workspaceId, projectMaterials.projectId, projectMaterials.id] }).onDelete('cascade'),
@@ -1701,6 +1705,7 @@ export const docLiveHeads = pgTable('doc_live_heads', {
   check('doc_live_head_hash', sql`${t.hash} ~ '^[a-f0-9]{64}$'`),
   check('doc_live_head_body', sql`char_length(${t.body}) <= 100000`),
   check('doc_live_head_codec_bytes', sql`${t.codecState} IS NULL OR octet_length(${t.codecState}::text) <= 8388608`),
+  check('doc_live_head_snapshot', sql`${t.snapshotSequence} BETWEEN 0 AND ${t.sequence} AND ${t.revision} BETWEEN 0 AND 9007199254740991`),
 ]);
 
 /** A native clean write changes generation, preserving the old ledger/receipts rather than rewriting them. */
@@ -1709,23 +1714,29 @@ export const docLiveArchives = pgTable('doc_live_archives', {
   generation: uuid('generation').notNull(), sequence: bigint('sequence', { mode: 'number' }).notNull(),
   body: text('body').notNull(), hash: text('hash').notNull(), savedVersion: integer('saved_version').notNull(),
   savedSequence: bigint('saved_sequence', { mode: 'number' }).notNull(), codecState: jsonb('codec_state').$type<Record<string, unknown>>(),
+  /** Snapshot position of codecState; NULL on archives from before 0084, whose state is complete. */
+  snapshotSequence: bigint('snapshot_sequence', { mode: 'number' }),
   retiredAt: timestamp('retired_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [primaryKey({ columns: [t.docId, t.generation] }),
   check('doc_live_archive_sequence', sql`${t.sequence} BETWEEN 0 AND 9007199254740991 AND ${t.savedSequence} BETWEEN 0 AND ${t.sequence}`),
   check('doc_live_archive_hash', sql`${t.hash} ~ '^[a-f0-9]{64}$'`),
   check('doc_live_archive_body', sql`char_length(${t.body}) <= 100000`),
-  check('doc_live_archive_codec_bytes', sql`${t.codecState} IS NULL OR octet_length(${t.codecState}::text) <= 8388608`)]);
+  check('doc_live_archive_codec_bytes', sql`${t.codecState} IS NULL OR octet_length(${t.codecState}::text) <= 8388608`),
+  check('doc_live_archive_snapshot', sql`${t.snapshotSequence} IS NULL OR ${t.snapshotSequence} BETWEEN 0 AND ${t.sequence}`)]);
 
 /** A semantic no-op has an immutable receipt but no contributing journal sequence. */
 export const docLiveUpdates = pgTable('doc_live_updates', {
   docId: uuid('doc_id').notNull().references(() => projectMaterials.id, { onDelete: 'cascade' }), generation: uuid('generation').notNull(),
   sequence: bigint('sequence', { mode: 'number' }).notNull(), actorId: text('actor_id').notNull().references(() => authUsers.id),
   commandId: uuid('command_id').notNull(), fingerprint: text('fingerprint').notNull(), bytes: text('bytes').notNull(),
+  /** The ledger entries this update appended (0084); NULL before 0084, when heads held the whole state. */
+  ledger: jsonb('ledger').$type<Record<string, unknown>>(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [primaryKey({ columns: [t.docId, t.generation, t.sequence] }), unique().on(t.actorId, t.commandId),
   check('doc_live_update_sequence', sql`${t.sequence} BETWEEN 1 AND 9007199254740991`),
   check('doc_live_update_fingerprint', sql`${t.fingerprint} ~ '^[a-f0-9]{64}$'`),
-  check('doc_live_update_bytes', sql`octet_length(${t.bytes}) <= 11184812`)]);
+  check('doc_live_update_bytes', sql`octet_length(${t.bytes}) <= 11184812`),
+  check('doc_live_update_ledger', sql`${t.ledger} IS NULL OR (jsonb_typeof(${t.ledger}) = 'object' AND octet_length(${t.ledger}::text) <= 8388608)`)]);
 
 /** Ownership never expires or changes; only the active instance lease is renewable. */
 export const docLiveReplicas = pgTable('doc_live_replicas', {

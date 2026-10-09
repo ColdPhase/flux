@@ -69,6 +69,8 @@ Prepared finite cases:
   journal/snapshot guards and rerun retention. Runtime is unexecuted.
 
 The next controller must persist the update, complete codec state and global immutable
-intent/result atomically, distinguish definite rollback from uncertain COMMIT, and
+intent/result atomically (revised 2026-10-09 by founder direction, B1: the update with its
+ledger entries, the head and, every 64 updates, the complete state as a snapshot; see the
+[proposal](live-editing-proposal.md)), distinguish definite rollback from uncertain COMMIT, and
 resolve the original receipt under the same authorized resource boundary. No current
 source test proves those requirements or current-rights delivery under revocation.

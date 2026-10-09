@@ -69,7 +69,7 @@ export function wikiController(authority: ControllerAuthority, outputBudget: Edi
           // A delivery awaiting its acknowledgment with no chunk to send needs no authority
           // operation; that acknowledgment starts the next read (#228 Gate 4).
           if(!c.output.canPump) break;
-          await authority.handoff(c.context.session,c.context.target.id,()=>{if(!c.closed)c.pendingRead=c.output.pump()&&c.output.canPump;});
+          await authority.handoff(c.context.session,c.context.target.id,()=>{if(!c.closed){while(c.output.pump()){/* every frame the window allows, under this fence */}c.pendingRead=c.output.canPump;}});
           continue;
         }
         const releasePreparation=await preparation.admit(editingContextCharge({session:c.context.session,docId:c.context.target.id}));
@@ -101,24 +101,29 @@ export function wikiController(authority: ControllerAuthority, outputBudget: Edi
             }
           }
           if (!c.output.busy) {
-            const update = result.updates[0];
-            if (update) {
+            // Every pending update of this read, each its own ordered delivery, then the head preview
+            // once the batch reaches the head (founder direction 2026-10-09, A1).
+            const updates = result.updates;
+            updates.forEach((update, index) => {
               const deliveredSequence = update.sequence;
               c.output.send({ type: 'update', generation: head.generation, sequence: update.sequence, hash: update.hash,
-                commandId: update.commandId, actor: update.actor }, update.bytes, () => { c.sequence = deliveredSequence; void catchup(c); });
-            } else if (result.preview && c.previewSequence < head.sequence) {
+                commandId: update.commandId, actor: update.actor }, update.bytes, () => { c.sequence = deliveredSequence; void catchup(c); }, index > 0);
+            });
+            const atHead = !updates.length || updates.at(-1)!.sequence === head.sequence;
+            if (atHead && result.preview && c.previewSequence < head.sequence) {
               const size=editingJSONSize(result.preview);
               const releaseText=outputBudget.reserve(size.textBytes);
               try {
               const text=JSON.stringify(result.preview);if(Buffer.byteLength(text)!==size.bytes||text.length*2!==size.textBytes)throw new ServiceUnavailableError('Invalid bounded preview','EDITING_OUTPUT_CAPACITY');
               const deliveredSequence = head.sequence;
               c.output.sendJSONPayload({ type: 'preview', generation: head.generation, sequence: head.sequence, hash: head.hash }, text,
-                () => { c.previewSequence = deliveredSequence; void catchup(c); });
+                () => { c.previewSequence = deliveredSequence; void catchup(c); }, updates.length > 0);
               } finally {releaseText();}
             }
-            c.pendingRead = c.output.canPump;
-          } else c.pendingRead = c.output.pump() && c.output.canPump;
-          // Each callback hands off at most one ordered update chunk. Every next chunk repeats current SQL clock/access checks.
+          }
+          while (c.output.pump()) { /* every frame of this batch the window allows, under this fence */ }
+          c.pendingRead = c.output.canPump;
+          // Frames beyond the window leave on later acknowledgments, each through a current SQL authority fence.
         }, { previewAfterSequence: c.previewSequence, includeContent: true });} finally {releasePreparation();}
       } while (c.pendingRead && !c.closed);
     } catch (error) {

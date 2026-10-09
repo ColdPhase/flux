@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { and, asc, eq, gt, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, lte, sql } from 'drizzle-orm';
 import type { LiveCursor, LiveReceipt } from '@flux/contracts';
 import * as schema from '../schema.js';
 import { docRows } from './docs.js';
@@ -21,28 +21,67 @@ function receipt(value: Record<string, unknown>): LiveReceipt {
 }
 /** Rows only. Current session/resource policy and the input lease precede every call in the composition. */
 export function liveEditingRows<Codec extends State>(db: DbExecutor, decodeState: (value: Record<string, unknown>) => Codec) {
-  const present = (row: typeof h.$inferSelect) => ({ resourceId: row.docId, workspaceId: row.workspaceId, projectId: row.projectId,
-    generation: row.generation, sequence: row.sequence, body: row.body, hash: row.hash,
-    savedVersion: row.savedVersion, savedSequence: row.savedSequence, codecState: row.codecState ? decodeState(row.codecState) : null });
+  const summary = { docId: h.docId, workspaceId: h.workspaceId, projectId: h.projectId, generation: h.generation, sequence: h.sequence,
+    body: h.body, hash: h.hash, savedVersion: h.savedVersion, savedSequence: h.savedSequence, snapshotSequence: h.snapshotSequence,
+    revision: h.revision, initialized: sql<boolean>`${h.codecState} IS NOT NULL` };
+  const presentSummary = (row: { docId: string; workspaceId: string; projectId: string; generation: string; sequence: number; body: string; hash: string;
+    savedVersion: number; savedSequence: number; snapshotSequence: number; revision: number; initialized: boolean }) => ({
+    resourceId: row.docId, workspaceId: row.workspaceId, projectId: row.projectId, generation: row.generation, sequence: row.sequence,
+    body: row.body, hash: row.hash, savedVersion: row.savedVersion, savedSequence: row.savedSequence,
+    snapshotSequence: row.snapshotSequence, revision: row.revision, initialized: row.initialized === true });
+  const present = (row: typeof h.$inferSelect) => ({ ...presentSummary({ ...row, initialized: row.codecState !== null }),
+    codecState: row.codecState ? decodeState(row.codecState) : null });
   return {
+    /** The locked head with its snapshot (codec state at snapshotSequence, not necessarily at sequence). */
     async lockHead(docId: string) { const [row] = await db.select().from(h).where(eq(h.docId, docId)).for('update'); return row ? present(row) : null; },
     async lockHeadSummary(docId: string) {
-      const [row] = await db.select({ docId: h.docId, workspaceId: h.workspaceId, projectId: h.projectId, generation: h.generation, sequence: h.sequence,
-        body: h.body, hash: h.hash, savedVersion: h.savedVersion, savedSequence: h.savedSequence, initialized: sql<boolean>`${h.codecState} IS NOT NULL` })
-        .from(h).where(eq(h.docId, docId)).for('update');
-      return row ? { resourceId: row.docId, workspaceId: row.workspaceId, projectId: row.projectId, generation: row.generation, sequence: row.sequence,
-        body: row.body, hash: row.hash, savedVersion: row.savedVersion, savedSequence: row.savedSequence, initialized: row.initialized === true } : null;
+      const [row] = await db.select(summary).from(h).where(eq(h.docId, docId)).for('update');
+      return row ? presentSummary(row) : null;
+    },
+    /** The snapshot of a head this transaction has locked. */
+    async snapshot(docId: string) {
+      const [row] = await db.select({ codecState: h.codecState, snapshotSequence: h.snapshotSequence }).from(h).where(eq(h.docId, docId));
+      return row?.codecState ? { state: decodeState(row.codecState), sequence: row.snapshotSequence } : null;
     },
     async insertHead(doc: SavedDoc, generation: string, state: Codec) {
       const [row] = await db.insert(h).values({ docId: doc.doc.id, workspaceId: doc.doc.workspaceId, projectId: doc.doc.projectId,
-        generation, sequence: 0, body: state.body, hash: hash(state.body), savedVersion: doc.current.version, savedSequence: 0, codecState: state }).returning();
+        generation, sequence: state.sequence, body: state.body, hash: hash(state.body), savedVersion: doc.current.version, savedSequence: 0,
+        codecState: state, snapshotSequence: state.sequence }).returning();
       return present(row!);
     },
+    /** Writes the complete state as the snapshot at its own sequence (initialization, enrollment). */
     async replaceState(head: { resourceId: string; generation: string }, state: Codec, bodyHash: string) {
       if (state.room !== head.resourceId || state.generation !== head.generation) throw new Error('Codec state has another namespace');
-      const changed = await db.update(h).set({ body: state.body, hash: bodyHash, sequence: state.sequence, codecState: state, updatedAt: new Date() })
-        .where(and(eq(h.docId, head.resourceId), eq(h.generation, head.generation))).returning({ id: h.docId });
+      const changed = await db.update(h).set({ body: state.body, hash: bodyHash, sequence: state.sequence, codecState: state,
+        snapshotSequence: state.sequence, revision: sql`${h.revision} + 1`, updatedAt: new Date() })
+        .where(and(eq(h.docId, head.resourceId), eq(h.generation, head.generation))).returning({ revision: h.revision });
       if (changed.length !== 1) throw new Error('The locked live head disappeared');
+      return changed[0]!.revision;
+    },
+    /**
+     * Appends one admitted text update to the log with the ledger entries it added and advances the
+     * locked head. The whole state is written only when `snapshot` is given (bounded compaction).
+     */
+    async commitUpdate(head: { resourceId: string; generation: string; sequence: number; revision: number },
+      next: { sequence: number; body: string; hash: string }, log: { actor: string; uuid: string; bytes: Uint8Array; fingerprint: string; ledger: Record<string, unknown> },
+      snapshot: Codec | null) {
+      if (next.sequence !== head.sequence + 1 || (snapshot && (snapshot.sequence !== next.sequence || snapshot.room !== head.resourceId || snapshot.generation !== head.generation))) {
+        throw new Error('A logged update must advance the locked head by one');
+      }
+      const changed = await db.update(h).set({ sequence: next.sequence, body: next.body, hash: next.hash, revision: sql`${h.revision} + 1`, updatedAt: new Date(),
+        ...(snapshot ? { codecState: snapshot, snapshotSequence: next.sequence } : {}) })
+        .where(and(eq(h.docId, head.resourceId), eq(h.generation, head.generation), eq(h.sequence, head.sequence), eq(h.revision, head.revision)))
+        .returning({ revision: h.revision });
+      if (changed.length !== 1) throw new Error('The locked live head changed');
+      await db.insert(u).values({ docId: head.resourceId, generation: head.generation, sequence: next.sequence, actorId: log.actor,
+        commandId: log.uuid, fingerprint: log.fingerprint, bytes: Buffer.from(log.bytes).toString('base64'), ledger: log.ledger });
+      return changed[0]!.revision;
+    },
+    /** Logged updates (afterSequence, upToSequence] with their ledger entries, for rebuilding a state. */
+    async log(docId: string, generation: string, afterSequence: number, upToSequence: number) {
+      const rows = await db.select({ sequence: u.sequence, bytes: sql<Buffer>`decode(${u.bytes}, 'base64')`, ledger: u.ledger }).from(u)
+        .where(and(eq(u.docId, docId), eq(u.generation, generation), gt(u.sequence, afterSequence), lte(u.sequence, upToSequence))).orderBy(asc(u.sequence));
+      return rows;
     },
     async replica(docId: string, generation: string, replicaId: number) {
       const [row] = await db.select().from(r).where(and(eq(r.docId, docId), eq(r.generation, generation), eq(r.replicaId, replicaId))).for('update');
@@ -70,16 +109,21 @@ export function liveEditingRows<Codec extends State>(db: DbExecutor, decodeState
       generation: string; operation: string; fingerprint: string; byteLength: number; receipt: LiveReceipt }) {
       await db.insert(i).values({ ...intent, receipt: { ...intent.receipt } });
     },
-    async appendUpdate(head: { resourceId: string; generation: string; sequence: number }, envelope: { actor: string; uuid: string }, bytes: Uint8Array, fingerprint: string) {
-      await db.insert(u).values({ docId: head.resourceId, generation: head.generation, sequence: head.sequence,
-        actorId: envelope.actor, commandId: envelope.uuid, fingerprint, bytes: Buffer.from(bytes).toString('base64') });
-    },
-    async updates(docId: string, generation: string, afterSequence: number, limit: number) {
+    /**
+     * Up to `limit` confirmed updates after `afterSequence`, in order. Their stored sizes are summed
+     * before any bytes load: the batch stops once it reaches `maxBytes`, but always holds the first.
+     */
+    async updates(docId: string, generation: string, afterSequence: number, limit: number, maxBytes = Number.MAX_SAFE_INTEGER) {
+      const sizes = await db.select({ sequence: u.sequence, size: sql<number>`octet_length(${u.bytes})::int` }).from(u)
+        .where(and(eq(u.docId, docId), eq(u.generation, generation), gt(u.sequence, afterSequence))).orderBy(asc(u.sequence)).limit(limit);
+      let last = afterSequence; let total = 0;
+      for (const row of sizes) { if (last > afterSequence && total + row.size > maxBytes) break; total += row.size; last = row.sequence; }
+      if (last === afterSequence) return [];
       const rows = await db.select({ sequence: u.sequence, bytes: sql<Buffer>`decode(${u.bytes}, 'base64')`, commandId: u.commandId,
         actorId: u.actorId, name: schema.authUsers.name, result: i.receipt }).from(u)
         .innerJoin(i, and(eq(i.actorId, u.actorId), eq(i.commandId, u.commandId)))
         .innerJoin(schema.authUsers, eq(schema.authUsers.id, u.actorId))
-        .where(and(eq(u.docId, docId), eq(u.generation, generation), gt(u.sequence, afterSequence))).orderBy(asc(u.sequence)).limit(limit);
+        .where(and(eq(u.docId, docId), eq(u.generation, generation), gt(u.sequence, afterSequence), lte(u.sequence, last))).orderBy(asc(u.sequence));
       return rows.map((row) => ({ sequence: row.sequence, bytes: row.bytes, commandId: row.commandId,
         actor: { kind: 'human' as const, id: row.actorId, name: row.name }, hash: receipt(row.result).hash }));
     },

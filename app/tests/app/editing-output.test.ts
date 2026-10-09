@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { test } from 'node:test';
 import WebSocket, { WebSocketServer } from 'ws';
 import { EDITING_LIMITS } from '@flux/contracts';
-import { EditingOutput, EditingOutputBudget, EditingOutputError } from '../../apps/server/src/editing/output.js';
+import { EDITING_OUTPUT_DELIVERIES, EditingOutput, EditingOutputBudget, EditingOutputError } from '../../apps/server/src/editing/output.js';
 import { EditingHTTPAdmission } from '../../apps/server/src/editing/http-admission.js';
 import { editingMapContextCharge } from '../../apps/server/src/editing/context-charge.js';
 
@@ -109,4 +109,25 @@ test('responses of every admission sharing one budget take their turns in arriva
   for (const pending of [renewal, ...later]) (await pending)();
   assert.deepEqual(order, ['enrollment renewal', 'read 1', 'read 2']);
   reads.close(); http.close(); assert.equal(budget.bytes, 0);
+});
+
+test('a read batch is an ordered, bounded set of deliveries: frames leave in order and deliveries complete in order', () => {
+  const f = boundary(); const budget = new EditingOutputBudget(); const output = new EditingOutput(f.socket, budget);
+  const completed: number[] = [];
+  output.send({ ...header, sequence: 1 }, Buffer.allocUnsafeSlow(10), () => completed.push(1));
+  assert.throws(() => output.send({ ...header, sequence: 2 }, Buffer.allocUnsafeSlow(10), () => {}), { code: 'EDITING_OUTPUT_CAPACITY' },
+    'Only the protected call that started a batch may extend it');
+  for (let sequence = 2; sequence <= EDITING_OUTPUT_DELIVERIES; sequence++) output.send({ ...header, sequence }, Buffer.allocUnsafeSlow(10), () => completed.push(sequence), true);
+  assert.throws(() => output.send({ ...header, sequence: 99 }, Buffer.allocUnsafeSlow(10), () => {}, true), { code: 'EDITING_OUTPUT_CAPACITY' }, 'A batch is bounded');
+  assert.equal(f.sent.length, 1, 'Starting a batch sends its first frame; its caller pumps the rest');
+  while (output.pump()) { /* the rest of the batch */ }
+  const frames = f.sent.map((frame) => decode(Buffer.from(frame as Uint8Array)) as unknown as { deliveryId: string; index: number; sequence: number });
+  assert.deepEqual(frames.map((frame) => frame.sequence), Array.from({ length: EDITING_OUTPUT_DELIVERIES }, (_, index) => index + 1));
+  output.received(frames[2]!.deliveryId, 0); output.received(frames[1]!.deliveryId, 0);
+  assert.deepEqual(completed, [], 'A later acknowledgment waits for the earlier delivery');
+  output.received(frames[0]!.deliveryId, 0);
+  assert.deepEqual(completed, [1, 2, 3]);
+  for (const frame of frames.slice(3)) output.received(frame.deliveryId, 0);
+  assert.equal(completed.length, EDITING_OUTPUT_DELIVERIES); assert.equal(output.busy, false);
+  for (const callback of f.callbacks) callback(); output.close(); assert.equal(budget.bytes, 0);
 });

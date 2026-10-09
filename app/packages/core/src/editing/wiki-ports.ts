@@ -9,6 +9,8 @@ export interface WikiCodecState extends Record<string, unknown> {
 }
 export interface WikiHead<State extends WikiCodecState> extends LiveDocHead {
   workspaceId: string; projectId: string; resourceId: string; codecState: State | null;
+  /** Changes with every codec state change; a decoded room is current only at this revision. */
+  revision: number;
 }
 export interface WikiIdentity { sessionId: string; actorId: string }
 export interface WikiSession {
@@ -31,11 +33,13 @@ export interface WikiPresence { connectionId: string; actor: NamedPrincipal; cur
 /** The locked head without its codec state: a confirmed read needs only whether it is initialized. */
 export type WikiHeadSummary = Omit<WikiHead<WikiCodecState>, 'codecState'> & { initialized: boolean };
 export interface WikiRows<State extends WikiCodecState> {
+  /** The locked head with its complete codec state at the head's sequence. */
   lockHead(docId: string): Promise<WikiHead<State> | null>;
   /** The same row lock as lockHead, without transferring or decoding the codec state. */
   lockHeadSummary(docId: string): Promise<WikiHeadSummary | null>;
   insertHead(doc: DocWithCurrent, generation: string, state: State): Promise<WikiHead<State>>;
-  replaceState(head: WikiHead<State>, state: State, hash: string): Promise<void>;
+  /** Writes a complete state at its own sequence (initialization, enrollment). */
+  replaceState(head: WikiHead<State>, state: State, hash: string): Promise<unknown>;
   replica(docId: string, generation: string, replicaId: number): Promise<WikiReplica | null>;
   insertReplica(docId: string, generation: string, replicaId: number, actorId: string | null, instanceId: string, ownerKind: 'human' | 'server'): Promise<EnrolledLiveDoc>;
   renewReplica(docId: string, generation: string, replicaId: number, instanceId: string): Promise<EnrolledLiveDoc>;
@@ -43,8 +47,10 @@ export interface WikiRows<State extends WikiCodecState> {
   lockIntent(actorId: string, commandId: string): Promise<void>;
   intent(actorId: string, commandId: string): Promise<WikiIntent | null>;
   insertIntent(intent: Omit<WikiIntent, 'receipt'> & { receipt: LiveReceipt }): Promise<void>;
-  appendUpdate(head: WikiHead<State>, envelope: WikiTextEnvelope, bytes: Uint8Array, fingerprint: string): Promise<void>;
-  updates(docId: string, generation: string, afterSequence: number, limit: number): Promise<WikiUpdate[]>;
+  /** Appends one admitted change to the update log and advances the head to `next` (sequence + 1). */
+  commitText(head: WikiHead<State>, next: State, hash: string, envelope: WikiTextEnvelope, bytes: Uint8Array, fingerprint: string): Promise<void>;
+  /** Up to `limit` contiguous updates after `afterSequence`, stopping once their stored bytes reach `maxBytes` (at least one). */
+  updates(docId: string, generation: string, afterSequence: number, limit: number, maxBytes: number): Promise<WikiUpdate[]>;
   setPresence(docId: string, generation: string, identity: WikiIdentity, connectionId: string, cursor: LiveCursor | null): Promise<void>;
   presence(docId: string, generation: string): Promise<WikiPresence[]>;
   /** PostgreSQL transactional NOTIFY identifiers only; no ordinary project event for characters. */

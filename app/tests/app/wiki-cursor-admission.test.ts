@@ -44,7 +44,7 @@ async function fixture() {
   const cursors: (LiveCursor | null)[] = [], submissions: { envelope: WikiTextEnvelope; bytes: Buffer }[] = [];
   const receipts = new Map<string, LiveReceipt>();
   const gate = barrier(); let permitted = true, refuseText = false, firstAlreadyAuthorized = false;
-  const counts = { reads: 0, handoffs: 0 }; let head = 0;
+  const counts = { reads: 0, handoffs: 0 }; let head = 0; let preview: { html: string; mentions: [] } | null = null;
   const authority: Authority = {
     runtime,
     queueInput: runtime.queueInput,
@@ -60,11 +60,12 @@ async function fixture() {
     async deliverReceipt(_session, _id, commandId, handoff) { handoff(receipts.get(commandId) ?? null); },
     async deliver(_session, _id, _generation, afterSequence, handoff) {
       counts.reads++;
-      // A controlled confirmed head: one update per read until the peer has the head.
+      // A controlled confirmed head: every pending update, and its preview when one is set.
       const principal = () => ({ kind: 'human' as const, id: actor, name: 'Controlled Cursor' });
-      const updates = afterSequence < head ? [{ sequence: afterSequence + 1, hash: `h${afterSequence + 1}`, commandId: randomUUID(), actor: principal(), bytes: new Uint8Array(8) }] : [];
+      const updates = Array.from({ length: head - afterSequence }, (_, index) => ({ sequence: afterSequence + 1 + index,
+        hash: `h${afterSequence + 1 + index}`, commandId: randomUUID(), actor: principal(), bytes: new Uint8Array(8) }));
       handoff({ current: { workspaceId: workspace, resourceId: room, generation, sequence: head, hash: `h${head}`, savedVersion: 1, savedSequence: 0 },
-        canWrite: true, actor: principal(), presence: [], updates, preview: null } as unknown as Parameters<typeof handoff>[0]);
+        canWrite: true, actor: principal(), presence: [], updates, preview: preview && { ...preview } } as unknown as Parameters<typeof handoff>[0]);
     },
     async handoff(_session, _id, handoff) { counts.handoffs++; handoff(); },
     async cursor(_session, _id, _generation, _connection, value) {
@@ -73,7 +74,7 @@ async function fixture() {
     },
     close: runtime.close,
   };
-  const controller = wikiController(authority, budget), messages: Message[] = [], updates: { deliveryId: string; sequence: number }[] = [];
+  const controller = wikiController(authority, budget), messages: Message[] = [], updates: { type: string; deliveryId: string; sequence: number }[] = [];
   const peaks = { active: 0, pending: 0 };
   sockets.on('connection', socket => controller.accept(socket, context));
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
@@ -82,7 +83,7 @@ async function fixture() {
   peer.on('error', () => {});
   peer.on('message', (raw, binary) => {
     if (!binary) { messages.push(JSON.parse(raw.toString()) as Message); return; }
-    const frame = raw as Buffer; updates.push(JSON.parse(frame.subarray(4, 4 + frame.readUInt32BE(0)).toString()) as { deliveryId: string; sequence: number });
+    const frame = raw as Buffer; updates.push(JSON.parse(frame.subarray(4, 4 + frame.readUInt32BE(0)).toString()) as { type: string; deliveryId: string; sequence: number });
   });
   await once(peer, 'open');
   peer.send(JSON.stringify({ type: 'subscribe', generation, afterSequence: 0 }));
@@ -103,6 +104,9 @@ async function fixture() {
   };
   return { peer, runtime, budget, controller, messages, cursors, submissions, peaks, resources, cursor, text, counts, updates, room,
     commit: () => { head++; controller.notify(room); },
+    /** Several commits arrive before the peer reads again. */
+    commitSilently: (count: number) => { head += count; },
+    preview: (html: string | null) => { preview = html === null ? null : { html, mentions: [] }; },
     acknowledge: (deliveryId: string) => peer.send(JSON.stringify({ type: 'received', deliveryId, index: 0 })),
     release: () => gate.release(),
     revokeAfterHeldAuthorized: () => { firstAlreadyAuthorized = true; permitted = false; }, refuseText: () => { refuseText = true; },
@@ -251,5 +255,25 @@ test('an unchanged cursor renews presence at most once a second; a moved one at 
     f.cursor({ anchor: 'moved', head: 'moved' }); await observed(() => f.cursors.length === 2 && settled(), 'A moved cursor goes through authority at once');
     await delay(1050);
     f.cursor({ anchor: 'moved', head: 'moved' }); await observed(() => f.cursors.length === 3 && settled(), 'The next heartbeat renews it');
+  } finally { await f.close(); }
+});
+
+test('one read hands off every pending update in order, then the head preview, each its own delivery', { timeout: 10_000 }, async () => {
+  const f = await fixture();
+  try {
+    await observed(() => f.counts.reads > 0 && f.resources().wikiReading === 0, 'The subscription read settles');
+    f.commitSilently(3); f.preview('<p>Head</p>'); const reads = f.counts.reads;
+    f.controller.notify(f.room);
+    await observed(() => f.updates.length === 4, 'Three updates and the head preview arrive');
+    assert.deepEqual(f.updates.map((update) => [update.type, update.sequence]), [['update', 1], ['update', 2], ['update', 3], ['preview', 3]]);
+    assert.equal(new Set(f.updates.map((update) => update.deliveryId)).size, 4, 'Each its own delivery');
+    assert.ok(f.counts.reads - reads <= 2, 'One read carried the whole batch');
+    f.preview(null);
+    // Acknowledging out of order still completes the deliveries in order.
+    for (const update of [...f.updates].reverse()) f.acknowledge(update.deliveryId);
+    f.commitSilently(1); f.controller.notify(f.room);
+    await observed(() => f.updates.length === 5, 'The next read starts after the batch completed');
+    assert.deepEqual([f.updates[4]!.type, f.updates[4]!.sequence], ['update', 4]);
+    f.acknowledge(f.updates[4]!.deliveryId);
   } finally { await f.close(); }
 });
