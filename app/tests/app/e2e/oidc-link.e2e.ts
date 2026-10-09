@@ -24,7 +24,8 @@ const quinn = { name: 'Quinn Link', email: 'quinn.link@example.test', password: 
 const { pool } = createDatabase(process.env.DATABASE_URL!);
 // The cutover leaves the realm's frank with a Flux account (Pat's). Remove the test accounts so later suites see none.
 after(async () => {
-  if (phase === 'cutover') await pool.query('DELETE FROM auth_users WHERE email = ANY($1)', [[pat.email, quinn.email]]);
+  // Pat's account takes the provider's address at the cutover sign-in, so match that address too.
+  if (phase === 'cutover') await pool.query('DELETE FROM auth_users WHERE email = ANY($1)', [[pat.email, quinn.email, 'frank@acme.test']]);
   await pool.end();
 });
 
