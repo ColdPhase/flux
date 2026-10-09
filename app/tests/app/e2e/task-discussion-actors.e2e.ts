@@ -475,7 +475,9 @@ test('native agent owners retry failed reads, fence stale permission answers and
     await page.keyboard.press('Escape');
     await page.locator('#details').waitFor({ state: 'detached' });
     await page.locator(`a[href^="/projects/${place.id}/agents"]`).click();
-    await page.getByLabel('Task', { exact: true }).selectOption(task.id);
+    // A task's thread opens from `?task=` (an agent's task link does the same); stay inside this page visit.
+    await page.getByRole('heading', { level: 1, name: 'Agents' }).waitFor();
+    await page.evaluate((url) => { history.pushState({}, '', url); window.dispatchEvent(new PopStateEvent('popstate')); }, `/projects/${place.id}/agents?task=${task.id}`);
     await page.waitForURL((url) => url.pathname === `/projects/${place.id}/agents` && url.searchParams.get('task') === task.id);
     await page.locator('#details').waitFor({ state: 'detached' });
     await page.locator('.agents-msg__meta .agent-for').waitFor();
