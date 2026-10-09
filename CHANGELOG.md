@@ -108,6 +108,7 @@ repository was created on 2026-09-26.
 
 ### Changed
 
+- Operators can re-key an account to its provider identity with `./flux identity link` (audited, refused in SSO-only mode without `--allow-sso`), and people cannot remove their last way to sign in ([#315](https://github.com/ColdPhase/flux/issues/315)).
 - With one sign-on provider, operators can run `FLUX_SSO_MODE=prepare` so existing password accounts link the provider in Settings before the cutover to `sso`, which closes password sign-in ([#315](https://github.com/ColdPhase/flux/issues/315)).
 - With a single sign-on provider, password sign-in, sign-up and reset are closed; a provider sign-in whose email another account holds is refused, or can claim the address only when that account is unverified and unlinked; and `FLUX_SIGNUP=verified` without email closes sign-up ([#313](https://github.com/ColdPhase/flux/issues/313)).
 
