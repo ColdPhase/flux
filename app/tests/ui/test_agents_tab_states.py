@@ -461,8 +461,10 @@ class AgentsTabStates(unittest.TestCase):
         row = self.row(phone, "notes")
         # Wait for the row to hold the new task first: a count of 0 before the read would pass trivially.
         expect(row).to_contain_text(f"#{notes['number']}")
-        take = row.get_by_role("button", name=f"Take back #{notes['number']}")
-        expect(take).to_have_count(1)
+        # A hidden control is not in the accessibility tree, so the row's Take back is found by its class and checked as hidden.
+        take = row.locator(".agents-row__stop--take")
+        self.assertEqual(take.count(), 1, "the row has the Take back control")
+        self.assertEqual(take.get_attribute("aria-label"), f"Take back #{notes['number']}")
         expect(take).to_be_hidden()
         row.locator(".agents-row__btn").tap()
         expect(phone.get_by_role("complementary", name="Notes, details").get_by_role("button", name=f"Take back #{notes['number']}")).to_be_visible()
