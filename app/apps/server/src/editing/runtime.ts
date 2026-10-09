@@ -10,6 +10,7 @@ import { editingResourcesChanged } from './resource-observation.js';
 
 // A fresh one-root/one-string update: UTF-8 is at most four bytes per UTF-16 unit, plus a conservative public framing bound.
 export const NATIVE_CHECKPOINT_BYTES = 400_256;
+const EMPTY = new Uint8Array(0);
 
 /** Only the typed server composition may call this codec; no model registry or client state enters SQL authority. */
 export function editingRuntime() {
@@ -27,6 +28,14 @@ export function editingRuntime() {
     enroll,
     /** Called before any SQL/intent await. A controller keeps refused input in its charged assembly. */
     reserve: (bytes: Uint8Array, maximumInputBytes?: number) => pool.budget.reservePending(bytes, maximumInputBytes),
+    /** The same reservation as `reserve`, taken in its turn in the admission FIFO. Until then the
+     * caller keeps the input charged where it is; a full queue refuses synchronously. */
+    queueInput(bytes: Uint8Array) {
+      return admissionQueue.reserve(EMPTY, 0, bytes.byteLength).then((lease) => {
+        try { pool.budget.replaceInput(lease, bytes); return lease; }
+        catch (error) { pool.budget.release(lease); throw error; }
+      });
+    },
     release: (lease: AdmissionLease) => pool.budget.release(lease),
     onCapacity: (callback: () => void) => pool.budget.onCapacity(callback),
     async initialize(workspaceId: string, docId: string, generation: string, body: string, admission: AdmissionLease) {

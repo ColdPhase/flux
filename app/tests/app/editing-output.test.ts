@@ -96,3 +96,17 @@ test('JSON payload bytes are reserved before allocation and transfer once to the
   const frame = decode(Buffer.from(f.sent[0] as Uint8Array)); output.received(frame.deliveryId,frame.index);
   f.callbacks[0]!(); output.close(); assert.equal(budget.bytes,0);
 });
+
+test('responses of every admission sharing one budget take their turns in arrival order', async () => {
+  const budget = new EditingOutputBudget();
+  // The live wiki reads' admission is created (and notified) before the HTTP routes' one.
+  const reads = new EditingHTTPAdmission(budget, 1000, 'wiki'); const http = new EditingHTTPAdmission(budget, 1000);
+  const occupying = budget.reserve(16 * 1024 * 1024); const order: string[] = [];
+  const renewal = http.admit(1024).then((release) => { order.push('enrollment renewal'); return release; });
+  const later = [1, 2].map((index) => reads.admit(1024).then((release) => { order.push(`read ${index}`); return release; }));
+  occupying();
+  const first = await Promise.race([renewal, ...later]); first();
+  for (const pending of [renewal, ...later]) (await pending)();
+  assert.deepEqual(order, ['enrollment renewal', 'read 1', 'read 2']);
+  reads.close(); http.close(); assert.equal(budget.bytes, 0);
+});

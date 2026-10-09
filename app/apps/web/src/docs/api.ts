@@ -3,7 +3,7 @@ import {
   type CreateDocCommand, type Doc, type DocPreview, type DocSectionSource, type DocSummary, type DocVersion, type DocVersionSummary,
   type Page, type UpdateDocCommand,
 } from '@flux/contracts';
-import { ApiError, NetworkError, request } from '../api/client';
+import { ApiError, NetworkError, request } from '../api/client.js';
 import { liveDocPath, liveDocEnrollPath, liveDocSavePath, liveDocReceiptPath, type LiveDocBootstrap, type EnrollLiveDoc, type EnrolledLiveDoc, type SaveSharedDoc, type LiveReceipt } from '@flux/contracts';
 
 export const getLiveDoc = (id: string, signal?: AbortSignal) => request<LiveDocBootstrap>(liveDocPath(id), { signal });

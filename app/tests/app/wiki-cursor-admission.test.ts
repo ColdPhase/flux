@@ -12,6 +12,7 @@ import type { LiveCursor, LiveReceipt, WikiTextEnvelope } from '@flux/contracts'
 import type { EditingContext } from '../../apps/server/src/editing/gate.js';
 import { EditingOutputBudget } from '../../apps/server/src/editing/output.js';
 import { editingRuntime } from '../../apps/server/src/editing/runtime.js';
+import type { AdmissionLease } from '../../apps/server/src/editing/codec/admission-budget.mjs';
 import { packet } from '../../apps/server/src/editing/codec/assembly.mjs';
 import { wikiController } from '../../apps/server/src/editing/wiki-controller.js';
 
@@ -43,9 +44,10 @@ async function fixture() {
   const cursors: (LiveCursor | null)[] = [], submissions: { envelope: WikiTextEnvelope; bytes: Buffer }[] = [];
   const receipts = new Map<string, LiveReceipt>();
   const gate = barrier(); let permitted = true, refuseText = false, firstAlreadyAuthorized = false;
+  const counts = { reads: 0, handoffs: 0 }; let head = 0;
   const authority: Authority = {
     runtime,
-    reserve: runtime.reserve,
+    queueInput: runtime.queueInput,
     async submit(_session, _id, envelope, bytes, admission) {
       try {
         if (refuseText) throw new DomainError(409, 'CONTROLLED_TEXT_REFUSAL', 'Controlled text refusal');
@@ -56,22 +58,32 @@ async function fixture() {
       } finally { runtime.release(admission); }
     },
     async deliverReceipt(_session, _id, commandId, handoff) { handoff(receipts.get(commandId) ?? null); },
-    async deliver() {},
-    async handoff(_session, _id, handoff) { handoff(); },
+    async deliver(_session, _id, _generation, afterSequence, handoff) {
+      counts.reads++;
+      // A controlled confirmed head: one update per read until the peer has the head.
+      const principal = () => ({ kind: 'human' as const, id: actor, name: 'Controlled Cursor' });
+      const updates = afterSequence < head ? [{ sequence: afterSequence + 1, hash: `h${afterSequence + 1}`, commandId: randomUUID(), actor: principal(), bytes: new Uint8Array(8) }] : [];
+      handoff({ current: { workspaceId: workspace, resourceId: room, generation, sequence: head, hash: `h${head}`, savedVersion: 1, savedSequence: 0 },
+        canWrite: true, actor: principal(), presence: [], updates, preview: null } as unknown as Parameters<typeof handoff>[0]);
+    },
+    async handoff(_session, _id, handoff) { counts.handoffs++; handoff(); },
     async cursor(_session, _id, _generation, _connection, value) {
       const first = cursors.length === 0; cursors.push(value); await gate.promise;
       if (!permitted && !(first && firstAlreadyAuthorized)) throw new DomainError(403, 'CONTROLLED_CURSOR_ACCESS_ENDED', 'Controlled current access ended');
     },
     close: runtime.close,
   };
-  const controller = wikiController(authority, budget), messages: Message[] = [];
+  const controller = wikiController(authority, budget), messages: Message[] = [], updates: { deliveryId: string; sequence: number }[] = [];
   const peaks = { active: 0, pending: 0 };
   sockets.on('connection', socket => controller.accept(socket, context));
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   const address = server.address(); assert.ok(address && typeof address === 'object');
   const peer = new WebSocket(`ws://127.0.0.1:${address.port}`, { perMessageDeflate: false });
   peer.on('error', () => {});
-  peer.on('message', (raw, binary) => { if (!binary) messages.push(JSON.parse(raw.toString()) as Message); });
+  peer.on('message', (raw, binary) => {
+    if (!binary) { messages.push(JSON.parse(raw.toString()) as Message); return; }
+    const frame = raw as Buffer; updates.push(JSON.parse(frame.subarray(4, 4 + frame.readUInt32BE(0)).toString()) as { deliveryId: string; sequence: number });
+  });
   await once(peer, 'open');
   peer.send(JSON.stringify({ type: 'subscribe', generation, afterSequence: 0 }));
   const cursor = (value: LiveCursor | null) => peer.send(JSON.stringify({ type: 'cursor', generation, cursor: value }));
@@ -89,7 +101,9 @@ async function fixture() {
     const frame = packet({ ...envelope, count: 1, index: 0 }, bytes); doc.destroy();
     peer.send(frame); return { envelope, bytes };
   };
-  return { peer, runtime, budget, controller, messages, cursors, submissions, peaks, resources, cursor, text,
+  return { peer, runtime, budget, controller, messages, cursors, submissions, peaks, resources, cursor, text, counts, updates, room,
+    commit: () => { head++; controller.notify(room); },
+    acknowledge: (deliveryId: string) => peer.send(JSON.stringify({ type: 'received', deliveryId, index: 0 })),
     release: () => gate.release(),
     revokeAfterHeldAuthorized: () => { firstAlreadyAuthorized = true; permitted = false; }, refuseText: () => { refuseText = true; },
     async close() {
@@ -185,5 +199,57 @@ test('a coalesced cursor goes through fresh current authority after the held pre
     await observed(() => f.resources().wikiCursorActive === 0 && f.resources().wikiConnections === 0, 'Revoked cursor settles without a later publish');
     assert.equal(f.resources().wikiCursorPending, 0); assert.equal(f.cursors.length, 2); assert.equal(f.budget.bytes, 0);
     assert.equal(f.messages.some(message => message.commandId !== undefined), false);
+  } finally { await f.close(); }
+});
+
+test('completed text takes its admission turn ahead of a later read instead of waiting for an idle budget', { timeout: 10_000 }, async () => {
+  const f = await fixture(); const empty = new Uint8Array();
+  const held = [await f.runtime.admit(empty, 0), await f.runtime.admit(empty, 0)], later: AdmissionLease[] = [];
+  try {
+    assert.equal(f.runtime.externalInputBytes, 32 * MiB, 'Two admitted operations (reads, cursors) hold the whole codec budget');
+    const input = f.text(); await observed(() => f.resources().assemblyCount === 1, 'Completed text waits in its charged assembly');
+    // Typing keeps producing reads and cursors. One queued after the text must not take the
+    // capacity the text needs whenever an earlier operation finishes.
+    const read = f.runtime.admit(empty, 0).then((lease) => { later.push(lease); return lease; });
+    f.runtime.release(held[0]!); await delay(50);
+    assert.deepEqual(later, [], 'The later read waits behind the text');
+    assert.equal(f.submissions.length, 0, 'The text still needs the capacity of the other operation');
+    f.runtime.release(held[1]!);
+    await observed(() => f.messages.some(message => message.type === 'ack' && message.commandId === input.envelope.uuid), 'The text is admitted and acknowledged');
+    assert.equal(f.resources().assemblyBytes, 0);
+    await read; assert.equal(later.length, 1, 'The later read follows the text');
+  } finally { for (const lease of [...held, ...later]) f.runtime.release(lease); await f.close(); }
+});
+
+test('a delivery awaiting its acknowledgment runs no authority operation that cannot send anything', { timeout: 10_000 }, async () => {
+  const f = await fixture();
+  try {
+    f.commit(); await observed(() => f.updates.length === 1, 'The confirmed update is delivered');
+    const handoffs = f.counts.handoffs, reads = f.counts.reads;
+    // Cursors and commits notify the room while the peer has not acknowledged the update yet,
+    // and the periodic catch-up runs at least once.
+    for (let index = 0; index < 5; index++) f.controller.notify(f.room);
+    await delay(400);
+    assert.equal(f.counts.handoffs, handoffs, 'Nothing can be pumped until the acknowledgment');
+    assert.equal(f.counts.reads, reads);
+    f.commit(); f.acknowledge(f.updates[0]!.deliveryId);
+    await observed(() => f.updates.length === 2, 'The acknowledgment starts the read of the next update');
+    assert.equal(f.updates[1]!.sequence, 2);
+    f.acknowledge(f.updates[1]!.deliveryId);
+  } finally { await f.close(); }
+});
+
+test('an unchanged cursor renews presence at most once a second; a moved one at once', { timeout: 10_000 }, async () => {
+  const f = await fixture(); f.release();
+  const settled = () => f.resources().wikiCursorActive === 0 && f.resources().wikiCursorPending === 0;
+  try {
+    const end = { anchor: 'end', head: 'end' };
+    f.cursor(end); await observed(() => f.cursors.length === 1 && settled(), 'The first cursor renews presence');
+    for (let index = 0; index < 5; index++) { f.cursor(end); await delay(20); }
+    await observed(settled, 'Repeated cursors settle');
+    assert.equal(f.cursors.length, 1, 'Typing at the same position is covered by the last renewal');
+    f.cursor({ anchor: 'moved', head: 'moved' }); await observed(() => f.cursors.length === 2 && settled(), 'A moved cursor goes through authority at once');
+    await delay(1050);
+    f.cursor({ anchor: 'moved', head: 'moved' }); await observed(() => f.cursors.length === 3 && settled(), 'The next heartbeat renews it');
   } finally { await f.close(); }
 });

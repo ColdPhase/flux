@@ -5,6 +5,7 @@ import { EditingTransactionError } from '@flux/db';
 import type { EditingClientMessage, LiveCursor } from '@flux/contracts';
 import type { EditingContext } from './gate.js';
 import { editingContextCharge,editingWikiResultCharge } from './context-charge.js';
+import type { AdmissionLease } from './codec/admission-budget.mjs';
 import { Assemblies, type CompletedAssembly } from './codec/assembly.mjs';
 import { EditingOutput, EditingOutputBudget } from './output.js';
 import type { WikiAuthority } from './authority.js';
@@ -17,10 +18,12 @@ interface Connection {
   socket: WebSocket; context: EditingContext; output: EditingOutput; generation: string | null;
   sequence: number; previewSequence: number; assemblyCommand: string | null; assembly: CompletedAssembly | null; running: boolean; reading: boolean;
   pendingRead: boolean; closed: boolean; subscribed: boolean; lastHead: string; lastSaved: string; presence: Map<string, { hash: string; release: () => void }>; cursorBusy: boolean; cursor: RetainedCursor | null; releaseBase: () => void;
+  /** The last presence this connection's cursor renewed, and when. */
+  renewed: { key: string; at: number } | null;
 }
 interface RetainedCursor { generation: string; cursor: LiveCursor | null; release: () => void; expiresAt: number }
-type ControllerAuthority = Pick<WikiAuthority, 'reserve' | 'submit' | 'deliverReceipt' | 'deliver' | 'handoff' | 'cursor' | 'close'> & {
-  runtime: Pick<WikiAuthority['runtime'], 'onCapacity'>;
+type ControllerAuthority = Pick<WikiAuthority, 'queueInput' | 'submit' | 'deliverReceipt' | 'deliver' | 'handoff' | 'cursor' | 'close'> & {
+  runtime: Pick<WikiAuthority['runtime'], 'onCapacity' | 'release'>;
 };
 const signature = (text: string) => createHash('sha256').update(text).digest('hex');
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -63,6 +66,9 @@ export function wikiController(authority: ControllerAuthority, outputBudget: Edi
       do {
         c.pendingRead = false;
         if(c.output.busy) {
+          // A delivery awaiting its acknowledgment with no chunk to send needs no authority
+          // operation; that acknowledgment starts the next read (#228 Gate 4).
+          if(!c.output.canPump) break;
           await authority.handoff(c.context.session,c.context.target.id,()=>{if(!c.closed)c.pendingRead=c.output.pump()&&c.output.canPump;});
           continue;
         }
@@ -122,13 +128,25 @@ export function wikiController(authority: ControllerAuthority, outputBudget: Edi
   }
   function pump(c: Connection) {
     if (c.closed || c.running || !c.assembly) return;
-    let admission;
-    try { admission = authority.reserve(c.assembly); }
-    catch (error) { if (!busy(error)) { fail(c, error, c.assembly.intent.uuid); assemblies.remove(c.context.connectionId); c.assembly = null; } return; }
-    let bytes:CompletedAssembly|null=c.assembly;const commandId=bytes.intent.uuid;c.assembly = null;
-    assemblies.remove(c.context.connectionId); c.assemblyCommand = null; c.running = true;writing++;editingResourcesChanged();const completed=operation();
+    let bytes:CompletedAssembly|null=c.assembly;const commandId=bytes.intent.uuid;
+    // The completed text takes its turn in the one admission FIFO, ahead of later reads and
+    // cursors, and stays charged in its assembly until that turn reserves it. Waiting for an
+    // idle budget instead let every later read or cursor take the capacity first (#228 Gate 4).
+    let turn: Promise<AdmissionLease>;
+    try { turn = authority.queueInput(bytes); }
+    catch (error) { if (!busy(error)) { fail(c, error, commandId); assemblies.remove(c.context.connectionId); c.assembly = null; c.assemblyCommand = null; } return; }
+    c.running = true;writing++;editingResourcesChanged();const completed=operation();
     void (async () => {
+      let admission: AdmissionLease;
       try {
+        try { admission = await turn; }
+        catch (error) {
+          if (c.assembly !== bytes) return; // Already refused (expired) or closed.
+          assemblies.remove(c.context.connectionId); c.assembly = null; c.assemblyCommand = null; throw error;
+        }
+        // Close or the finite assembly deadline may have ended this input while it waited.
+        if (c.closed || c.assembly !== bytes) { authority.runtime.release(admission); return; }
+        c.assembly = null; assemblies.remove(c.context.connectionId); c.assemblyCommand = null;
         await authority.submit(c.context.session, c.context.target.id, bytes!.intent, bytes!, admission);bytes=null;
         // Re-read the immutable original receipt under CURRENT authority AFTER the commit.
         await authority.deliverReceipt(c.context.session, c.context.target.id, commandId, (receipt) => {
@@ -146,11 +164,17 @@ export function wikiController(authority: ControllerAuthority, outputBudget: Edi
     if (retained.expiresAt <= Date.now()) {
       retained.release(); fail(c, new ServiceUnavailableError('The latest cursor expired before admission', 'EDITING_PRESENCE_CAPACITY')); return;
     }
+    // Unchanged presence is renewed at most once a second (the presence heartbeat); its expiry
+    // is five seconds. Typing re-sends the same cursor every 40 ms, and each renewal is a
+    // locked transaction plus a read on every connection of the room (#228 Gate 4).
+    const key = JSON.stringify([retained.generation, retained.cursor?.anchor ?? null, retained.cursor?.head ?? null]);
+    const started = Date.now();
+    if (c.renewed?.key === key && started - c.renewed.at < 1000) { retained.release(); editingResourcesChanged(); return; }
     c.cursorBusy = true; cursorActive++; editingResourcesChanged(); const completed = operation();
     // This cursor owns its complete parsed continuation until the actual authority
     // operation settles. The one replaceable waiting slot is independently charged.
     void authority.cursor(c.context.session, c.context.target.id, retained.generation, c.context.connectionId, retained.cursor)
-      .then(() => { for (const other of connections.values()) if (other.context.target.id === c.context.target.id) void catchup(other); })
+      .then(() => { c.renewed = { key, at: started }; for (const other of connections.values()) if (other.context.target.id === c.context.target.id) void catchup(other); })
       .catch((error) => fail(c, error))
       .finally(() => { retained.release(); c.cursorBusy = false; cursorActive--; editingResourcesChanged(); completed(); cursor(c); });
   }
@@ -178,7 +202,7 @@ export function wikiController(authority: ControllerAuthority, outputBudget: Edi
     accept(socket: WebSocket, context: EditingContext) {
       if (closing || context.target.kind !== 'wiki') { socket.close(1008, 'Unavailable'); return; }
       const c: Connection = { socket, context, output: new EditingOutput(socket, outputBudget), generation: null,
-        sequence: 0, previewSequence: -1, assemblyCommand: null, assembly: null, running: false, reading: false, pendingRead: false, closed: false, subscribed: false, lastHead: '', lastSaved: '', presence: new Map(), cursorBusy: false, cursor: null, releaseBase: outputBudget.reserve(2048 + editingContextCharge(context)) };
+        sequence: 0, previewSequence: -1, assemblyCommand: null, assembly: null, running: false, reading: false, pendingRead: false, closed: false, subscribed: false, lastHead: '', lastSaved: '', presence: new Map(), cursorBusy: false, cursor: null, renewed: null, releaseBase: outputBudget.reserve(2048 + editingContextCharge(context)) };
       connections.set(context.connectionId, c);editingResourcesChanged();
       socket.once('close', () => close(c));
       socket.on('message', (data: RawData, binary) => {

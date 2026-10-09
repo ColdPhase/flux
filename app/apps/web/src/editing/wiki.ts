@@ -1,8 +1,8 @@
 import * as Y from 'yjs';
 import { DOC_LIMITS, EDITING_LIMITS, type DocMention, type DocState, type EditingServerMessage, type LiveCursor, type LiveDocBootstrap, type NamedPrincipal, type SaveSharedDoc, type WikiTextEnvelope } from '@flux/contracts';
-import { ApiError } from '../api/client';
-import { enrollLiveDoc, getLiveDoc, saveLiveDoc } from '../docs/api';
-import { decode64, EditingConnection, encode64, type ReceivedEditing } from './wire';
+import { ApiError } from '../api/client.js';
+import { enrollLiveDoc, getLiveDoc, saveLiveDoc } from '../docs/api.js';
+import { decode64, EditingConnection, encode64, type ReceivedEditing } from './wire.js';
 
 const REMOTE = Symbol('authorized shared update');
 interface Pending { envelope: WikiTextEnvelope; bytes: string }
@@ -51,6 +51,11 @@ export class SharedWiki {
   private preview: Extract<EditingServerMessage, { type: 'preview' }> | null = null;
   private cursorTimer: number | null = null;
   private cursor: LiveCursor | null = null;
+  /** The latest cursor names this editor's own text that the server has not admitted yet. */
+  private cursorWaiting = false;
+  /** Own replica clock covered by each sealed command, and the clock its received receipts cover. */
+  private sealedClocks = new Map<string, number>();
+  private confirmedClock = 0;
   private saveAttempt: SaveSharedDoc | null = null;
   private initialized = false;
   private archivedRecovery: Recovery | null = null;
@@ -63,7 +68,7 @@ export class SharedWiki {
       let changed = false;
       for (const [key, peer] of this.peers) if (Date.parse(peer.expiresAt) <= Date.now()) { this.peers.delete(key); changed = true; }
       if (changed) this.changed();
-      if (this.editable && this.cursor) this.connection?.send({ type: 'cursor', generation: this.head.generation, cursor: this.cursor });
+      if (this.editable && this.cursor) this.publishCursor();
     }, 1000);
     this.renewalTimer = window.setInterval(() => {
       if (!this.writer || !this.head?.canWrite || this.status !== 'live' || this.renewing) return;
@@ -205,11 +210,13 @@ export class SharedWiki {
   }
   private localUpdate = (bytes: Uint8Array, origin: unknown) => {
     if (origin === REMOTE || this.stopped) return;
-    // These fresh local transactions are not persistent intents yet. One fixed
-    // deadline seals them; already sealed UUID/bytes are never merged or rewritten.
+    // These fresh local transactions are not persistent intents yet. They are sealed
+    // 40 ms after the first one or, while the previous command still awaits its
+    // receipt, by that receipt: one command per round trip, not a growing queue of
+    // 40 ms commands behind it. Already sealed UUID/bytes are never merged or rewritten.
     this.unsealed.push(bytes.slice()); this.unsealedBytes += bytes.length; this.inputRevision++;
     this.changed();
-    if (this.batchTimer === null) this.batchTimer = window.setTimeout(() => { this.batchTimer = null; this.seal(); }, 40);
+    if (this.batchTimer === null) this.batchTimer = window.setTimeout(() => { this.batchTimer = null; if (this.activeCommand === null) this.seal(); }, 40);
   };
   private seal() {
     if (this.batchTimer !== null) { window.clearTimeout(this.batchTimer); this.batchTimer = null; }
@@ -218,6 +225,7 @@ export class SharedWiki {
     this.unsealed = []; this.unsealedBytes = 0;
     const envelope: WikiTextEnvelope = { workspace: this.head.workspaceId, kind: 'wiki', room: this.id, generation: this.head.generation, actor: this.head.actor.id, operation: 'text', uuid: crypto.randomUUID(), replica: this.document.clientID, parameters: null };
     this.pending.set(envelope.uuid, { envelope, bytes: encode64(bytes) });
+    this.sealedClocks.set(envelope.uuid, Y.decodeStateVector(Y.encodeStateVector(this.document)).get(this.document.clientID) ?? 0);
     this.lastLocalCommand = envelope.uuid;
     this.sealedBatches = [...this.sealedBatches, { from: this.sealedRevision + 1, to: this.inputRevision, commandId: envelope.uuid }].slice(-64);
     this.sealedRevision = this.inputRevision;
@@ -280,10 +288,13 @@ export class SharedWiki {
         }
         this.pending.delete(message.commandId); this.sent.delete(message.commandId);
         if (this.activeCommand === message.commandId) this.activeCommand = null;
+        const confirmed = this.sealedClocks.get(message.commandId);
+        if (confirmed !== undefined) { this.sealedClocks.delete(message.commandId); this.confirmedClock = Math.max(this.confirmedClock, confirmed); }
         if (original && message.sequence === this.appliedSequence + 1) { this.appliedSequence = message.sequence; this.head.sequence = message.sequence; this.head.hash = message.hash; }
         if (message.savedDoc && message.savedDoc.version >= this.head.savedVersion) { this.head.savedVersion = message.savedDoc.version; this.head.savedSequence = message.sequence; }
         if (!this.pending.size) { this.recovering = false; this.privateBody = this.archivedRecovery?.body ?? null; this.privatePending = this.archivedRecovery?.pending ?? []; }
         this.persist(); this.scheduleSend();
+        if (this.cursorWaiting && this.editable) this.publishCursor();
         if (message.sequence > this.appliedSequence) { this.disconnected(); return; }
         break;
       }
@@ -313,9 +324,21 @@ export class SharedWiki {
     if (!this.editable) return;
     this.cursor = { anchor: encode64(Y.encodeRelativePosition(Y.createRelativePositionFromTypeIndex(this.text, anchor))), head: encode64(Y.encodeRelativePosition(Y.createRelativePositionFromTypeIndex(this.text, head))) };
     if (this.cursorTimer !== null) return;
-    this.cursorTimer = window.setTimeout(() => { this.cursorTimer = null; this.connection?.send({ type: 'cursor', generation: this.head.generation, cursor: this.cursor }); }, 40);
+    this.cursorTimer = window.setTimeout(() => { this.cursorTimer = null; this.publishCursor(); }, 40);
   }
-  blur() { this.cursor = null; this.connection?.send({ type: 'cursor', generation: this.head.generation, cursor: null }); }
+  /** The server names only admitted text and refuses a position inside text it has not
+   * admitted (INVALID_CURSOR). A cursor inside this editor's own unconfirmed text waits
+   * for the receipt that confirms that text, then the latest cursor is sent. */
+  private publishCursor() {
+    const admitted = (encoded: string) => {
+      const item = Y.decodeRelativePosition(decode64(encoded)).item;
+      return !item || item.client !== this.document.clientID || item.clock < this.confirmedClock;
+    };
+    if (this.cursor && !(admitted(this.cursor.anchor) && admitted(this.cursor.head))) { this.cursorWaiting = true; return; }
+    this.cursorWaiting = false;
+    this.connection?.send({ type: 'cursor', generation: this.head.generation, cursor: this.cursor });
+  }
+  blur() { this.cursor = null; this.cursorWaiting = false; this.connection?.send({ type: 'cursor', generation: this.head.generation, cursor: null }); }
   discardPrivateArchive() {
     if (!this.archivedRecovery) return;
     try { sessionStorage.removeItem(`${this.storageKey}:previous`); }

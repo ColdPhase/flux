@@ -62,6 +62,8 @@ export function wikiAuthority(database: { pool: Pick<ReturnType<typeof createDat
     },
     /** Completed bytes remain charged in assembly until this synchronous reservation succeeds. */
     reserve: runtime.reserve,
+    /** The controller's text input waits for its FIFO turn, so later reads and cursors cannot starve it. */
+    queueInput: runtime.queueInput,
     async submit(session: SessionContext, docId: string, envelope: WikiTextEnvelope, bytes: Uint8Array, admission: AdmissionLease) {
       let release=()=>{};try {release=outputBudget.reserve(editingContextCharge({session,docId,envelope}));return await run(session,admission,wiki=>wiki.submit(identity(session),docId,envelope,bytes,admission));}
       finally {release();runtime.release(admission);}

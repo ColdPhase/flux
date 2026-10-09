@@ -679,3 +679,66 @@ with the common cap, FIFO, deadlines and per-room row limits unchanged:
 
 The browser sends the first preview after 40 ms without one at once, and later
 ones at most every 40 ms as before.
+
+### Wiki text under continuous typing (2026-10-09, #228 Gate 4)
+
+The Gate 4 runs at `71367e69` timed out all 960 wiki rows: no sampled keystroke
+reached the peer within 1000 ms. A diagnostic run of the same source (10k cases,
+unloaded host) found three causes; each now has a regression test:
+
+- The editor sealed a new immutable command every 40 ms but sends one command at a
+  time and waits for its receipt (about 230 ms from frame to ACK). Commands queued
+  without bound (1025 waiting, past the 1024 recovery bound), so a sampled input's
+  command never reached the server in time. Input typed while a command awaits its
+  receipt now stays unsealed and that receipt seals it as the next command. With
+  nothing in flight the 40 ms window seals as before; sealed UUID/bytes are still
+  never merged or rewritten.
+- A completed text reserved its codec lease only when no other editing operation
+  held the budget, while reads and cursors in the admission FIFO took every freed
+  slot first. Texts waited p50 152 ms (max 1.3 s) and were refused 3319 times; in the
+  reader case one text was refused 232 times while 230 reads and cursors ran, until
+  its 10 s assembly deadline (`EDITING_ASSEMBLY_EXPIRED`). The text now takes its turn
+  in that FIFO and reserves the same charge at promotion. Until then it stays charged
+  in its assembly; both deadlines are unchanged.
+- A cursor inside the editor's own text that the server has not admitted yet was
+  refused (`INVALID_CURSOR`: the position named clock 768 of a replica admitted up to
+  211). Such a cursor now waits for the receipt that confirms that text; positions in
+  admitted text are sent as before.
+
+With these three fixed, a second diagnostic run (all four wiki cases, host shared with
+six other suites) still timed out every row: the peer received each update 1.6–2.4 s
+after its ACK, and the reader got 11–15 previews for 336–413 updates. Two costs on
+every update's path:
+
+- While a delivery waited for the client's acknowledgment, each room notification
+  still ran an authorized handoff transaction that could not send anything (about
+  1280 of 9850 operations). The acknowledgment then waited for it before the next read
+  (p50 300 ms from acknowledgment to the next update). A busy delivery with no chunk
+  to send now skips that transaction; its acknowledgment starts the next read.
+- The editor re-sends its unchanged cursor every 40 ms while typing (about 25 a
+  second); each was a locked transaction plus a read on every connection of the
+  room (3828 of 9850 operations). An unchanged cursor now renews presence at most
+  once a second, the presence heartbeat; a moved cursor goes through at once.
+
+The third run painted 238/240 and 239/240 editor rows (p95 686 and 527 ms on the
+shared host) but showed one more starvation: each live read reserves a 24 MiB response
+from the shared output budget through its own admission queue, and that queue was
+notified before the HTTP routes' queue. Enrollment renewals waited the full 10 s and
+failed with 503 (about ten in four cases); each failure reconnected the writer and
+blurred its editor. Requests of every admission sharing one budget now take their
+turns in arrival order. The fourth run had no 503 and no reconnect.
+
+Not fixed here, with evidence from the same runs:
+
+- **Reader previews starve under continuous typing.** A read sends a preview only when
+  it finds no newer update. Every read locks the document row and so waits behind the
+  next text commit, which the writer sends as soon as the previous one is
+  acknowledged; the reader received 1–12 previews for 340–380 updates and painted no
+  row. Sending the head's preview before the last update cost the peer one read per
+  commit and pushed the editor peer behind for good (run four), so it is not included.
+- **Commit cost grows with the room.** A text commit took p50 23 ms in the first 10 s
+  of a case and 84 ms after 60 s (reads 28 → 50 ms): every commit loads and rewrites
+  the whole codec state, which grows with each admitted command. As commits slow, the
+  peer, which needs one authorized read per update, falls further behind.
+
+Caps, budgets, deadlines and the latency gate are unchanged.
