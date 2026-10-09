@@ -140,7 +140,7 @@ test('real Codex and Claude Code onboard from clean configurations: connect, aut
               await tools.mcp__flux__flux_bootstrap({ projectId: ${JSON.stringify(projectId)}, clientSessionId: ${JSON.stringify(clientSessionId)} });
               text('started');` };
           });
-          assert.ok(result.turns[0]!.prompt.includes('flux_acknowledge_playbook'), `Codex did not pass Flux's server instructions to the model:\n${result.turns[0]!.prompt.slice(0, 600)}`);
+          assert.ok(result.turns[0]!.prompt.includes('flux_acknowledge_playbook'), `Codex did not pass Flux's server instructions to the model; Flux text in the raw request: ${result.turns[0]!.raw.match(/.{0,300}(flux_|Flux co-work).{0,300}/)?.[0] ?? 'none'}`);
         }
         const names = result.calls.map((call) => call.tool);
         for (const tool of ['flux_bootstrap', 'flux_acknowledge_playbook', 'flux_project_orientation', 'flux_create_task'])
