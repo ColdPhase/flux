@@ -203,7 +203,9 @@ test('real pinned Codex and Claude Code clients: three personal connections, one
       const model = mock.current = await startClientModelMock(plan);
       try {
         const result = spec.client === 'codex'
-          ? await sh('codex', ['exec', '--json', '--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', '-c', 'model_provider="mock"',
+          ? await sh('codex', ['exec', '--json', '--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox',
+            // Flux speaks MCP 2026-07-28 only; the pinned Codex asks for 2025-06-18 unless this under-development feature is on.
+            '--enable', 'mcp_2026_07_28', '-c', 'model_provider="mock"',
             '-c', `model_providers.mock={name="mock",base_url="http://127.0.0.1:${model.port}/v1",env_key="MOCK_MODEL_KEY",wire_api="responses",supports_websockets=false}`, 'Use the Flux tools'], env, cwd)
           : await sh(claudeBin, ['-p', 'Use the Flux tools', '--output-format', 'stream-json', '--verbose', '--allowedTools', 'mcp__flux', '--max-turns', '8'],
             { ...env, ANTHROPIC_BASE_URL: `http://127.0.0.1:${model.port}` }, cwd);
