@@ -189,7 +189,11 @@ class DocReferenceJourney(unittest.TestCase):
     def assert_account(self, page, name, phone):
         if phone:
             # On the phone the avatar leads to Settings (#266 PF-5, #341).
-            expect(page.get_by_role("link", name="Settings and account")).to_be_visible()
+            # The editor's header leads back; the account is read where the avatar leads, in Settings.
+            settings = page.context.new_page()
+            settings.goto("/settings")
+            expect(settings.get_by_text(re.compile(f"{name}"))).not_to_have_count(0)
+            settings.close()
             return
         expect(page.get_by_role("button", name=re.compile(f"^{name} .*account and sign out"))).to_be_visible()
 

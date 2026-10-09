@@ -14,7 +14,7 @@ import uuid
 
 from playwright.sync_api import expect, sync_playwright
 
-from test_app_shell import ORIGIN, UPSTREAM, open_details, shot, start_forwarder
+from test_app_shell import ORIGIN, UPSTREAM, open_details, shot, start_forwarder, view_tab
 from test_project_surface import LONG_NAME
 
 
@@ -173,7 +173,7 @@ class ProjectStateJourney(unittest.TestCase):
                     expect(page.get_by_role("link", name="New conversation", exact=True)).to_have_count(0)
                 self.assertLessEqual(page.locator("body").evaluate("el => el.scrollWidth"), width)
                 shot(page, f"136-state-reader-{width}-{'dark' if dark else 'light'}")
-                page.locator('[data-tab="tasks"]').click()
+                view_tab(page, "Tasks")
                 # A reader's board has no way to add or move a task (#136).
                 expect(page.locator(".tb-card").filter(has_text=task["title"])).to_have_count(1)
                 expect(page.get_by_role("button", name="New Task")).to_have_count(0)

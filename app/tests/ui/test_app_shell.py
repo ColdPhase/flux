@@ -769,7 +769,7 @@ class AppShellJourney(unittest.TestCase):
 
     def test_11_sign_out_then_protected_routes_redirect(self) -> None:
         page = self.page(phone=True)
-        page.goto("/map")
+        page.goto("/")
         # On the phone the avatar opens Settings, which signs out (#266 PF-5, #341).
         page.get_by_role("link", name="Settings and account").click()
         expect(page).to_have_url(f"{ORIGIN}/settings")

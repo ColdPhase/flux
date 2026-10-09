@@ -271,12 +271,15 @@ class ProjectSurfaceJourney(unittest.TestCase):
         page.set_viewport_size({"width": 320, "height": 640})
         view_tab(page, "Wiki")
         expect(page).to_have_url(re.compile(rf"/docs/{self.ids['doc']}$"))
-        current = tabs.get_by_role("link", name=re.compile("^Wiki"))
+        # At 320px the views are in the title's menu (#341): the current one is marked there.
+        page.get_by_role("heading", level=1).get_by_role("button").click()
+        current = page.get_by_role("dialog").get_by_role("link", name=re.compile("^Wiki"))
         expect(current).to_have_attribute("aria-current", "page")
         box = current.bounding_box()
         assert box
         self.assertGreaterEqual(box["x"], 0)
-        self.assertLessEqual(box["x"] + box["width"], 320, "the current tab is visible in the strip")
+        self.assertLessEqual(box["x"] + box["width"], 320, "the current view is visible in the menu")
+        page.keyboard.press("Escape")
 
     # ---------------------------------------------------------------- Details overview
 
