@@ -30,7 +30,13 @@ export class EditingConnection {
     url.searchParams.set('id', id);
     this.socket = new WebSocket(url);
     this.socket.binaryType = 'arraybuffer';
-    this.socket.onopen = () => { this.send({ type: 'subscribe', generation, afterSequence }); this.pump(); };
+    // The subscription must precede anything queued while the socket was still connecting (a cursor
+    // or a text intent): the server refuses both before it, so it goes to the head of the queue.
+    this.socket.onopen = () => {
+      const subscribe = JSON.stringify({ type: 'subscribe', generation, afterSequence });
+      this.outbound.unshift(subscribe); this.queuedBytes += new TextEncoder().encode(subscribe).length;
+      this.pump();
+    };
     this.socket.onmessage = (event) => {
       try {
         if (typeof event.data === 'string') {
