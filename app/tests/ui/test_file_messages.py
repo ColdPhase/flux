@@ -8,6 +8,7 @@ it gets a readable title instead of an empty one.
 from __future__ import annotations
 
 import time
+import re
 import unittest
 import uuid
 
@@ -78,8 +79,12 @@ class FileOnlyMessage(unittest.TestCase):
         more = message.get_by_role("button", name="Make from this message")
         if more.count():
             more.click()
+        message.get_by_role("button", name="Task", exact=True).click()
+        # The one Create window opens with the file-only message as source and a titled task (#345).
+        window = page.get_by_role("dialog", name="Create")
+        expect(window.get_by_label("Title", exact=True)).to_have_value("1 attached file")
         with page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith(f"/projects/{project['id']}/work")) as created:
-            message.get_by_role("button", name="Task", exact=True).click()
+            window.get_by_role("button", name=re.compile("^Create task")).click()
         self.assertEqual(created.value.status, 201, created.value.text())
         self.assertEqual(created.value.json()["title"], "1 attached file")
         expect(page.get_by_role("alert")).to_have_count(0)
