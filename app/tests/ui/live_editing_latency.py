@@ -483,11 +483,15 @@ async def cohort(fixture, case, owner, peer, producer, observer, local_observer,
         await asyncio.gather(*observations)
     finally:
         stop.set()
-        task.cancel()
+        # Let the input in progress finish: cancelling it between a key's down and up left the
+        # modifier pressed for the next case (a held Shift turned its first replacement into a
+        # selection of nearly the whole document).
         try:
-            await asyncio.wait_for(task, 1)
+            await asyncio.wait_for(task, 5)
         except (asyncio.CancelledError, asyncio.TimeoutError):
-            pass
+            task.cancel()
+        for key in ('Shift', 'Control', 'Alt', 'Meta'):
+            await owner.keyboard.up(key)
         await owner.context.tracing.stop(path=str(directory / f"{case}-owner-trace.zip"))
         await peer.context.tracing.stop(path=str(directory / f"{case}-peer-trace.zip"))
     observation_end = time.perf_counter()
@@ -608,9 +612,9 @@ async def wiki(fixture, units, reader):
           const el=document.querySelector(selector),content=document.querySelector(body);
           if(!el||!content||document.visibilityState!=='visible'||el.dataset.liveGeneration!==generation||Number(el.dataset.liveSequence)<sequence)return false;
           const walker=document.createTreeWalker(content,NodeFilter.SHOW_TEXT);let last=null,node;
-          while((node=walker.nextNode()))if(node.length&&!node.parentElement.closest('.editing-caret'))last=node;
+          while((node=walker.nextNode()))if(node.data.trim()&&!node.parentElement.closest('.editing-caret'))last=node;
           if(!last)return false;
-          const range=document.createRange();range.setStart(last,last.length-1);range.setEnd(last,last.length);
+          const end=last.data.trimEnd().length;const range=document.createRange();range.setStart(last,end-1);range.setEnd(last,end);
           const rect=range.getBoundingClientRect(),clip=content.closest('.cm-scroller')?.getBoundingClientRect();
           if(!(rect.width>0&&rect.height>0&&rect.top>=Math.max(0,clip?.top||0)&&rect.bottom<=Math.min(innerHeight,clip?.bottom||innerHeight)&&rect.left>=Math.max(0,clip?.left||0)&&rect.right<=Math.min(innerWidth,clip?.right||innerWidth)))return false;
           const name=reader?document.querySelector('.editing-people'):document.querySelector('.editing-caret[aria-label="Ada North\\'s cursor"]');
@@ -647,8 +651,8 @@ async def wiki(fixture, units, reader):
           const el=document.querySelector('[data-live-wiki-editor]'),content=document.querySelector('.cm-content');
           if(!el||!content||document.visibilityState!=='visible'||el.dataset.liveGeneration!==generation||Number(el.dataset.liveInputRevision)<revision)return false;
           const walker=document.createTreeWalker(content,NodeFilter.SHOW_TEXT);let last=null,node;
-          while((node=walker.nextNode()))if(node.length&&!node.parentElement.closest('.editing-caret'))last=node;
-          if(!last)return false;const range=document.createRange();range.setStart(last,last.length-1);range.setEnd(last,last.length);
+          while((node=walker.nextNode()))if(node.data.trim()&&!node.parentElement.closest('.editing-caret'))last=node;
+          if(!last)return false;const end=last.data.trimEnd().length;const range=document.createRange();range.setStart(last,end-1);range.setEnd(last,end);
           const rect=range.getBoundingClientRect(),clip=content.closest('.cm-scroller').getBoundingClientRect();
           if(!(rect.width>0&&rect.height>0&&rect.top>=Math.max(0,clip.top)&&rect.bottom<=Math.min(innerHeight,clip.bottom)&&rect.left>=Math.max(0,clip.left)&&rect.right<=Math.min(innerWidth,clip.right)))return false;
           return {generation,inputRevision:Number(el.dataset.liveInputRevision),characterRect:{left:rect.left,top:rect.top,right:rect.right,bottom:rect.bottom}};

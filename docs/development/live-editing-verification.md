@@ -165,3 +165,18 @@ Queue evidence is `COMPLETE` only with every expected instance's valid terminal 
 Run bounded protocol regressions in Docker before the real nine-case measurement: initial false plus a valid sealed final succeeds; initial true preflight, missing expected producer/final, stale source/measurement/finish hash, truncated/appended raw, wrong byte/record count, invalid UTF-8/duplicate JSON/NaN, symlink/FIFO/oversize, counter reset/drop/backpressure, non-drained final, current/peak budget overflow and collector timeout all fail. Prove short resource mutations survive in each recorded peak rather than computing peaks from sparse snapshots. Also run an honest partial/failed measurement: its finish counts and failures remain intact while the collector is allowed to drain.
 
 Finally exercise the actual backend shutdown/collector EOF path and all nine real two-account browser cases on the exact candidate. Retain the original 2160 rows and all traces, metadata, sanitized inspection output, raw log, marker, seal and summary. Independent evaluation must inspect those current source pins and actual checks. Screenshots or a protocol-unit test alone do not establish collaboration, persistence, keyboard behavior, physical phone evidence or the four-gate completion.
+
+## Driver revisions 2026-10-09 (#389)
+
+Two driver defects made rows fail whatever the product did. Thresholds, deadlines,
+denominators and correlations are unchanged.
+
+- **Last visible character.** The reader check took the last non-empty text node of
+  `.doc-prose`. Sanitized Markdown ends a block with a newline text node, which has
+  no glyph and a zero-size rectangle, so no reader row could ever paint (every row
+  timed out at the paint step). The check now takes the last character of the last text
+  node that has visible content; the editor checks are unaffected.
+- **Released keys.** The input task was cancelled between a key's down and up, leaving
+  Shift pressed for the next case. That case's first replacement then selected nearly
+  the whole document: the 10k reader measured a two-character body. The task now
+  finishes its input in progress and the owner's modifiers are released.
