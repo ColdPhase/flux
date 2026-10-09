@@ -1,12 +1,13 @@
 """#223: the real map uses the space left by the project header and Details."""
 from __future__ import annotations
 
+import re
 import unittest
 import uuid
 
 from playwright.sync_api import expect, sync_playwright
 
-from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
+from test_app_shell import ORIGIN, UPSTREAM, open_details, shot, start_forwarder
 
 
 class MapLayoutJourney(unittest.TestCase):
@@ -84,14 +85,19 @@ class MapLayoutJourney(unittest.TestCase):
         self.assertLessEqual(bounds['bottom'], bounds['pBottom'] + 1, 'hint stays above the scroll pane bottom')
         self.assertLessEqual(page.locator('body').evaluate('el => el.scrollWidth'), page.viewport_size['width'])
 
-    def test_01_task_details_and_wrapped_header_keep_the_complete_hint_visible(self):
+    def open_task(self, page, task):
+        """The project's open task from Details (#340: the computer's header has no state line)."""
+        open_details(page)
+        page.locator('#details').get_by_role('button', name=re.compile(re.escape(task['title']))).first.click()
+        expect(page.locator('#details').get_by_role('heading', name=task['title'], exact=True)).to_be_visible()
+
+    def test_01_task_details_and_the_one_row_header_keep_the_complete_hint_visible(self):
         page = self.page()
         task = self.scene(page)
-        page.locator('header.top [data-seg="open"]').click()
-        expect(page.locator('#details').get_by_role('heading', name=task['title'], exact=True)).to_be_visible()
-        state = page.locator('header.top [aria-label="Current state"]').bounding_box()
-        audience = page.locator('header.top .top__audience').bounding_box()
-        self.assertGreaterEqual(state['y'], audience['y'] + audience['height'], 'the fixture exercises a wrapped state row')
+        self.assertLessEqual(page.locator('header.top').bounding_box()['height'], 72, 'the header is one row')
+        self.open_task(page, task)
+        # With the panel docked the pane is under 900 px, where the header puts its views on their own line by design.
+        self.assertLessEqual(page.locator('header.top').bounding_box()['height'], 120, 'the header stays at most two short lines')
         shot(page, 'map-layout-task-details-1440-light')
         self.assert_hint_inside_pane(page)
         page.get_by_role('button', name='Close details', exact=True).click()
@@ -127,8 +133,7 @@ class MapLayoutJourney(unittest.TestCase):
         level = page.locator('.sk-zoom__level').get_attribute('aria-label')
         self.assertGreater(camera['left'], 0)
         self.assertGreater(camera['top'], 0)
-        page.locator('header.top [data-seg="open"]').click()
-        expect(page.locator('#details').get_by_role('heading', name=task['title'], exact=True)).to_be_visible()
+        self.open_task(page, task)
         self.assertEqual(canvas.evaluate('el => ({left:el.scrollLeft,top:el.scrollTop})'), camera)
         self.assertEqual(page.locator('.sk-zoom__level').get_attribute('aria-label'), level)
         self.assert_hint_inside_pane(page)
@@ -137,16 +142,16 @@ class MapLayoutJourney(unittest.TestCase):
         node.focus()
         page.keyboard.press('Space')
         expect(node).to_have_attribute('aria-pressed', 'true')
-        page.keyboard.press(']')
+        # Details opens from More (#340; "]" is not a key of the final design) and keeps the selection.
+        open_details(page)
         expect(page.locator('#details .ui-panel__body')).to_be_focused()
         expect(node).to_have_attribute('aria-pressed', 'true')
-        page.keyboard.press(']')
-        expect(node).to_be_focused()
+        page.get_by_role('button', name='Close details', exact=True).click()
+        expect(node).to_have_attribute('aria-pressed', 'true')
         page.get_by_role('toolbar', name='Sketch tools').get_by_role('button', name='Thought', exact=True).click()
         draft = page.get_by_role('form', name='New thought draft').get_by_label('Thought text')
         draft.fill('Unsent receiver measurements stay private')
-        page.locator('header.top [data-seg="open"]').click()
-        expect(page.locator('#details').get_by_role('heading', name=task['title'], exact=True)).to_be_visible()
+        self.open_task(page, task)
         expect(draft).to_have_value('Unsent receiver measurements stay private')
         page.get_by_role('button', name='Close details', exact=True).click()
         expect(draft).to_have_value('Unsent receiver measurements stay private')

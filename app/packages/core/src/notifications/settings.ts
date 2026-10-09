@@ -11,7 +11,7 @@ import { ConflictError, DomainError, InvalidInputError, NotFoundError } from '..
 import type { SourceReadAuthorizer } from '../push/ports.js';
 import { hashToken, newToken } from './email.js';
 import type { AddressRecord, AddressRepository, PreferenceRepository, UnsubscribeRepository, VerificationMailer } from './ports.js';
-import { applyPreferenceChange, channelsOf, formatClock, withoutAddress } from './preferences.js';
+import { applyPreferenceChange, channelsOf, formatClock, pausedUntil, withoutAddress } from './preferences.js';
 
 // Notification settings of one signed-in person (issue #116): preferences, muted places, the
 // extra delivery address and its verification, and one-click unsubscribe. A delivery address is
@@ -92,6 +92,7 @@ export function createNotificationSettings(ports: SettingsPorts) {
         lastFailureAt: (await ports.unsubscribes.lastFailure(account.userId, new Date(now().getTime() - 24 * 3600_000)))?.toISOString() ?? null,
       },
       quietHours: { enabled: stored.quietEnabled, start: formatClock(stored.quietStart), end: formatClock(stored.quietEnd), timeZone: stored.timeZone },
+      pause: { until: pausedUntil(stored, now())?.toISOString() ?? null },
       muted,
     };
   }
@@ -117,7 +118,7 @@ export function createNotificationSettings(ports: SettingsPorts) {
 
     async update(account: Account, command: UpdateNotificationPreferencesCommand) {
       // Applied under the row lock: two quick edits of different fields both stay.
-      await ports.preferences.modify(account.userId, (current) => applyPreferenceChange(current, command));
+      await ports.preferences.modify(account.userId, (current) => applyPreferenceChange(current, command, now()));
       return view(account);
     },
 

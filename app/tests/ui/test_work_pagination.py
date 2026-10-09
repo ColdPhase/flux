@@ -8,7 +8,7 @@ import uuid
 from urllib.parse import parse_qs, urlsplit
 
 from playwright.sync_api import expect, sync_playwright
-from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
+from test_app_shell import ORIGIN, UPSTREAM, open_details, shot, start_forwarder
 
 
 def api(context, method, path, body=None, status=200):
@@ -251,14 +251,15 @@ class WorkPaginationJourney(unittest.TestCase):
             # On the phone the state line belongs to the project's Conversation (#266 PF-2).
             if phone: page.goto(f"/projects/{project}")
             else: page.goto(f"/projects/{project}/tasks?view=list"); self.ready(page)
-            state = page.locator(".ws-state-row") if phone else page.get_by_label("Current state", exact=True)
-            expect(state).to_contain_text("1 open task")
-            expect(state).not_to_contain_text("No decisions or work yet")
             if phone:
+                state = page.locator(".ws-state-row")
+                expect(state).to_contain_text("1 open task")
+                expect(state).not_to_contain_text("No decisions or work yet")
                 state.tap()
-                page.locator("#details").get_by_role("button", name=re.compile(r"Open.*Check the wall socket before installation")).click()
             else:
-                state.locator('[data-seg="open"]').click()
+                # The computer's project state is in Details (#340).
+                open_details(page)
+            page.locator("#details").get_by_role("button", name=re.compile(r"Open.*Check the wall socket before installation")).click()
             expect(page.locator("#details").get_by_role("heading", name=task["title"], exact=True)).to_be_visible()
 
     def test_06_keyboard_rows_remain_exposed_below_the_scrolled_controls(self):

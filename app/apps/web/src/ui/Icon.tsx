@@ -34,6 +34,7 @@ const paths = {
   plus: <path d="M8 3v10M3 8h10" />,
   sidebar: <><rect x="2" y="2.75" width="12" height="10.5" rx="2" /><path d="M6 2.75v10.5" /></>,
   terminal: <><rect x="2" y="2.75" width="12" height="10.5" rx="2" /><path d="M5 6.25L7 8l-2 1.75M8.5 10.25h2.5" /></>,
+  focus: <><circle cx="8" cy="8" r="5.5" /><circle cx="8" cy="8" r="1.6" fill="currentColor" /></>,
   more: <><circle cx="3.5" cy="8" r=".9" fill="currentColor" /><circle cx="8" cy="8" r=".9" fill="currentColor" /><circle cx="12.5" cy="8" r=".9" fill="currentColor" /></>,
   minus: <path d="M3 8h10" />,
   edit: <><path d="M10.5 3.25l2.25 2.25L6 12.25H3.75V10z" /><path d="M9 4.75l2.25 2.25" /></>,

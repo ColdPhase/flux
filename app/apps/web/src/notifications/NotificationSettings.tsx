@@ -11,10 +11,11 @@ import {
 } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useShellData } from '../app/data';
+import { clock } from '../app/focus';
 import { NotificationsButton } from '../pwa';
 import { getPushState } from '../pwa/push';
 import { Button, ErrorState, Icon, Spinner, useToast } from '../ui';
-import { addAddress, getPreferences, removeAddress, resendVerification, setMute, unsubscribe, updatePreferences, verifyAddress } from './api';
+import { addAddress, announcePauseChange, getPreferences, removeAddress, resendVerification, setMute, unsubscribe, updatePreferences, verifyAddress } from './api';
 import './notifications.css';
 
 const ROWS: Record<NotificationReason, { label: string; hint: string }> = {
@@ -78,6 +79,8 @@ export function NotificationSettings() {
     const next = queue.current.then(async () => {
       try {
         const result = await run();
+        // Saves apply in order, so each confirmed answer is the server's state at that point.
+        announcePauseChange(result.pause.until);
         if (mine === sequence.current) { setPrefs(result); setSaved(done); }
       } catch (error) {
         toast({ message: message(error, 'Could not save. Try again.'), tone: 'danger' });
@@ -166,6 +169,13 @@ export function NotificationSettings() {
 
       <section className="nset__sec" aria-labelledby={ids.quiet}>
         <h3 id={ids.quiet}>Quiet hours</h3>
+        {/* Focus (F on the computer) pauses push and email on every device until its time. */}
+        {prefs.pause.until ? (
+          <p className="nset__focus" role="status">
+            <Icon name="focus" size={14} /><span>Focus: push and email are paused until <time dateTime={prefs.pause.until}>{clock(new Date(prefs.pause.until))}</time>.</span>
+            <Button variant="secondary" onClick={() => change({ pause: { until: null } }, (current) => ({ ...current, pause: { until: null } }))}>Resume now</Button>
+          </p>
+        ) : null}
         <QuietHoursForm prefs={prefs} onChange={change} />
       </section>
 

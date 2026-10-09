@@ -22,7 +22,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, box, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, box, open_details, shot, start_forwarder
 
 PASSWORD = "people before projects"
 STAMP = int(time.time() * 1000)
@@ -114,7 +114,7 @@ class PeopleJourney(unittest.TestCase):
         """Home → Details → People → the workspace, as a person finds it."""
         page.goto("/")
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
-        page.get_by_role("button", name="Details", exact=True).click()
+        open_details(page)
         people = page.get_by_role("region", name="People")
         people.get_by_role("button", name=re.compile(f"^{workspace}")).click()
         expect(page.get_by_role("heading", name="People", exact=True)).to_be_visible()
@@ -271,7 +271,7 @@ class PeopleJourney(unittest.TestCase):
         # Ada's Home lists both workspaces; in Harbour Studio she is a member, read-only.
         ada = self.page("ada")
         ada.goto("/")
-        ada.get_by_role("button", name="Details", exact=True).click()
+        open_details(ada)
         rows = ada.get_by_role("region", name="People")
         expect(rows.get_by_role("button", name=re.compile("^Riverside Makers.*owner"))).to_be_visible()
         expect(rows.get_by_role("button", name=re.compile("^Harbour Studio.*member"))).to_be_visible()

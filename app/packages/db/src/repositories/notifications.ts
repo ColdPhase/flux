@@ -29,6 +29,7 @@ export interface StoredPreferenceRow {
   quietStart: number;
   quietEnd: number;
   timeZone: string;
+  pausedUntil: Date | null;
 }
 
 /** What the generator reads and writes inside its transaction. */
@@ -218,7 +219,7 @@ export function notificationPreferenceRows(db: DbExecutor) {
     async find(userId: string): Promise<StoredPreferenceRow | null> {
       const [row] = await db.select().from(p).where(eq(p.userId, userId));
       if (!row) return null;
-      return { channels: row.channels ?? {}, emailDestination: row.emailDestination, quietEnabled: row.quietEnabled, quietStart: row.quietStart, quietEnd: row.quietEnd, timeZone: row.timeZone };
+      return { channels: row.channels ?? {}, emailDestination: row.emailDestination, quietEnabled: row.quietEnabled, quietStart: row.quietStart, quietEnd: row.quietEnd, timeZone: row.timeZone, pausedUntil: row.pausedUntil };
     },
     async save(userId: string, values: StoredPreferenceRow) {
       const set = { ...values, updatedAt: new Date() };
@@ -228,7 +229,7 @@ export function notificationPreferenceRows(db: DbExecutor) {
     async lock(userId: string): Promise<StoredPreferenceRow> {
       await db.insert(p).values({ userId }).onConflictDoNothing();
       const [row] = await db.select().from(p).where(eq(p.userId, userId)).for('update');
-      return { channels: row!.channels ?? {}, emailDestination: row!.emailDestination, quietEnabled: row!.quietEnabled, quietStart: row!.quietStart, quietEnd: row!.quietEnd, timeZone: row!.timeZone };
+      return { channels: row!.channels ?? {}, emailDestination: row!.emailDestination, quietEnabled: row!.quietEnabled, quietStart: row!.quietStart, quietEnd: row!.quietEnd, timeZone: row!.timeZone, pausedUntil: row!.pausedUntil };
     },
     async isMuted(userId: string, source: { type: string; id: string }) {
       if (source.type !== 'project' && source.type !== 'dm') return false;

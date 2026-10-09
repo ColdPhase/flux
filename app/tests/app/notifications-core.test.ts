@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { describe, test } from 'node:test';
 import {
   DEFAULT_PREFERENCES,
+  applyPreferenceChange,
   deliverableAt,
   localMinutes,
   GENERATION_MAX_ATTEMPTS,
@@ -133,5 +134,29 @@ describe('quiet hours across daylight-saving transitions', () => {
   test('a one-minute outside gap is not stepped over', () => {
     const preferences = quiet('Europe/Warsaw', '22:01', '22:00');
     assert.equal(deliverableAt(preferences, at('2026-03-28T21:30:00Z')).toISOString(), '2026-03-29T20:00:00.000Z');
+  });
+});
+
+describe('focus pauses push and email (#340, F-026 S19)', () => {
+  const now = new Date('2026-10-07T09:20:00Z');
+  const paused = (until: string | null) => applyPreferenceChange({ ...DEFAULT_PREFERENCES, channels: {} }, { pause: { until } }, now);
+
+  test('a running pause holds delivery until it ends, then quiet hours still apply', () => {
+    assert.equal(deliverableAt(paused('2026-10-07T10:00:00Z'), now).toISOString(), '2026-10-07T10:00:00.000Z');
+    const quietAfter = { ...paused('2026-10-07T10:00:00Z'), quietEnabled: true, quietStart: 9 * 60 + 50, quietEnd: 11 * 60, timeZone: 'UTC' };
+    assert.equal(deliverableAt(quietAfter, now).toISOString(), '2026-10-07T11:00:00.000Z');
+  });
+
+  test('an ended or cleared pause holds nothing', () => {
+    assert.equal(deliverableAt(paused('2026-10-07T10:00:00Z'), new Date('2026-10-07T10:00:00Z')).toISOString(), '2026-10-07T10:00:00.000Z');
+    assert.equal(paused(null).pausedUntil, null);
+    assert.equal(deliverableAt(paused(null), now).toISOString(), now.toISOString());
+  });
+
+  test('a pause must end in the future and within 12 hours', () => {
+    for (const until of ['2026-10-07T09:00:00Z', '2026-10-07T21:21:00Z', 'tomorrow', '', 42, undefined]) {
+      assert.throws(() => applyPreferenceChange(DEFAULT_PREFERENCES, { pause: { until } } as never, now), { code: 'INVALID_PAUSE' }, String(until));
+    }
+    assert.equal(paused('2026-10-07T21:20:00Z').pausedUntil?.toISOString(), '2026-10-07T21:20:00.000Z');
   });
 });

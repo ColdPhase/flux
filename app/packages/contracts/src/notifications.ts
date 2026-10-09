@@ -39,6 +39,18 @@ export interface QuietHours {
   timeZone: string;
 }
 
+/**
+ * Focus mode (F-026 S19): push and email wait until `until` and then arrive as usual; the Inbox
+ * still fills. A pause ends at `until` or when it is turned off, and lasts at most 12 hours.
+ */
+export interface NotificationPause {
+  /** ISO instant, or null when nothing is paused. */
+  until: string | null;
+}
+
+/** The longest a pause may last, so a forgotten focus never silences someone for days. */
+export const MAX_NOTIFICATION_PAUSE_HOURS = 12;
+
 export type MutablePlaceType = 'project' | 'dm';
 
 /** A place the person muted. `name` is shown only while they can still read it. */
@@ -70,6 +82,7 @@ export interface NotificationPreferences {
     lastFailureAt: string | null;
   };
   quietHours: QuietHours;
+  pause: NotificationPause;
   muted: MutedPlace[];
 }
 
@@ -78,6 +91,8 @@ export interface UpdateNotificationPreferencesCommand {
   channels?: Partial<Record<NotificationReason, Partial<ChannelChoice>>>;
   emailDestination?: EmailDestination;
   quietHours?: Partial<QuietHours>;
+  /** A future instant within MAX_NOTIFICATION_PAUSE_HOURS, or null to resume now. */
+  pause?: NotificationPause;
 }
 
 /** `PUT /api/v1/notification-preferences/mutes`: mute or unmute a place you can read. */

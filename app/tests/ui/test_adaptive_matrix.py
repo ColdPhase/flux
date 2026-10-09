@@ -29,7 +29,7 @@ from playwright.sync_api import Locator, Page, expect, sync_playwright
 
 import adaptive_fixture as fx
 from author_columns import assert_author_column
-from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
+from test_app_shell import ORIGIN, UPSTREAM, open_details, shot, start_forwarder
 
 # Width × height fixtures (CSS px). Phones and tablets use a coarse (touch) pointer.
 MATRIX = [(320, 568), (390, 844), (768, 1024), (1024, 768), (1440, 900), (1920, 1080), (2560, 1440), (3840, 2160), (5120, 1440)]
@@ -240,7 +240,9 @@ class AdaptiveBase(unittest.TestCase):
         expect(self.tabs(page).get_by_role("link", name=re.compile(f"^{name}"))).to_have_attribute("aria-current", "page")
 
     def details_button(self, page: Page) -> Locator:
-        return page.locator("header.top").get_by_role("button", name="Details", exact=True)
+        """The header's way to Details: More on the computer's one row (#340), the labelled button on the phone."""
+        header = page.locator("header.top")
+        return header.get_by_role("button", name="Details", exact=True) if page.viewport_size["width"] <= 640 else header.get_by_role("button", name="More", exact=True)
 
     def card(self, page: Page, title: str) -> Locator:
         return page.locator(".tb-card").filter(has_text=title).get_by_role("button", name=title, exact=True)
@@ -434,7 +436,7 @@ class AdaptiveMatrix(AdaptiveBase):
                 page.goto(f"/projects/{pid}/map/{self.ids['sketch']}")
                 expect(page.locator(".sk-node")).to_have_count(len(fx.THOUGHTS))
                 before = page.locator(".sk-canvas").bounding_box()["width"]
-                self.details_button(page).click()
+                open_details(page)
                 expect(page.locator("#details.ui-panel--docked")).to_be_visible()
                 page.wait_for_timeout(300)
                 after = page.locator(".sk-canvas").bounding_box()["width"]
@@ -469,7 +471,7 @@ class AdaptiveMatrix(AdaptiveBase):
                 question.locator(".convo-replies__open").click()
                 thread = page.get_by_role("complementary", name="Replies")
                 expect(thread).to_be_visible()
-                self.details_button(page).click()
+                open_details(page)
                 expect(page.locator("#details.ui-panel--docked")).to_be_visible()
                 page.wait_for_timeout(300)
                 self.assertIn("thread--docked", thread.get_attribute("class"))

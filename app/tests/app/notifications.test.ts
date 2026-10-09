@@ -320,6 +320,33 @@ describe('email and push delivery', () => {
     await prefs(reader, { emailDestination: 'account' });
   });
 
+  test('focus holds push and email until it ends, the Inbox still fills, and resuming clears it (#340)', async () => {
+    const focused = await person('Fen Ito');
+    await addMember(owner, workspaceId, focused, 'member');
+    const until = new Date(Date.now() + 45 * 60_000);
+    until.setMilliseconds(0);
+    const paused = await prefs(focused, { pause: { until: until.toISOString() } });
+    assert.equal(paused.pause.until, until.toISOString());
+    for (const bad of [new Date(Date.now() - 60_000).toISOString(), new Date(Date.now() + 13 * 3600_000).toISOString(), 'soon']) {
+      const refused = await focused.browser.request('PATCH', '/api/v1/notification-preferences', { body: { pause: { until: bad } } });
+      assert.equal(refused.status, 400, refused.text);
+      assert.match(refused.text, /INVALID_PAUSE/);
+    }
+    const thread = await conversation(owner, projectId, '@Fen Ito the seed order is in');
+    await waitForItem(focused, (entry) => entry.url?.endsWith(thread.messages[0]!.id) === true, 'the mention in the Inbox during focus');
+    const [email] = await waitFor(async () => { const rows = await emailRows(focused.id); return rows.length ? rows : null; }, 'the queued email');
+    const held = await pool.query(`SELECT start_after FROM pgboss.job WHERE name = $1 AND data->>'emailId' = $2`, [NOTIFICATION_EMAIL_JOB, email!.id]);
+    assert.equal(new Date(held.rows[0].start_after).getTime(), until.getTime(), 'the email job waits for the end of focus');
+    // While focus runs, a delivery attempt is deferred to its end.
+    const deferred = await deliverNotificationEmail({ available: true, origin, uow: emailUnitOfWork(db, queue), mailer: smtp }, { emailId: email!.id });
+    assert.deepEqual(deferred, { outcome: 'deferred', until });
+
+    const resumed = await prefs(focused, { pause: { until: null } });
+    assert.equal(resumed.pause.until, null);
+    const sent = await deliverNotificationEmail({ available: true, origin, uow: emailUnitOfWork(db, queue), mailer: smtp }, { emailId: email!.id });
+    assert.equal(sent.outcome, 'sent');
+  });
+
   test('access is rechecked before email and push: someone removed meanwhile receives nothing', async () => {
     const leaver = await person('Lena Vos');
     await addMember(owner, workspaceId, leaver, 'member');
