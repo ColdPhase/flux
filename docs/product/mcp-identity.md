@@ -1082,7 +1082,8 @@ scope and its observations are preserved in the dated research and GitHub record
 - **Implemented in #314:** `app/apps/server/src/identity/backchannel.ts`; the replay store is
   `auth_logout_tokens` (migration 0073, `jti` kept until `exp` plus 60 s). Decisions: a `sid` that
   Flux does not know ends nothing and answers 200 (§2.8); a refused token does not consume its
-  `jti`; with `revoke_offline_access` the MCP refresh tokens of the resolved person are revoked and
+  `jti`; with `revoke_offline_access` all MCP refresh tokens of the resolved person are revoked (the
+  managed-account rule; there is no managed flag yet, so the unmanaged narrowing waits for S2) and
   the identity goes to sign-in required with reason `offline_access_revoked` (no immediate check,
   there is no token left); otherwise the immediate check is queued and run in the background.
   Keycloak fixture: the `flux` client has the back-channel URL and `session.required` set.

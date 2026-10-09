@@ -316,19 +316,6 @@ async function keycloakAdmin() {
       const updated = await call('PUT', `/clients/${client.id}`, { ...client, attributes: { ...client.attributes, [name]: value } });
       assert.equal(updated.status, 204, await updated.text());
     },
-    /** Ends one Keycloak session; Keycloak then posts a logout token to the Flux client's back-channel URL. */
-    async endSession(sessionId: string) {
-      const ended = await call('DELETE', `/sessions/${sessionId}?isOffline=false`);
-      assert.equal(ended.status, 204, await ended.text());
-    },
-    async offlineSessionsOf(username: string) {
-      const id = await userId(username);
-      const client = await flux();
-      return await (await call('GET', `/users/${id}/offline-sessions/${client.id}`)).json() as { id: string }[];
-    },
-    async sessionsOf(username: string) {
-      return await (await call('GET', `/users/${await userId(username)}/sessions`)).json() as { id: string; clients: Record<string, string> }[];
-    },
     /** `use.refresh.tokens` false makes Keycloak return no refresh token, even for offline_access. */
     async setRefreshTokens(on: boolean) {
       const client = await flux();
@@ -497,7 +484,6 @@ test('back-channel logout: refusals answer 400 with no-store, whatever the token
 });
 
 test('back-channel logout: ending one Keycloak session ends its browser sessions only, and MCP continues', async () => {
-  const admin = await keycloakAdmin();
   const first = await signInWithTokens();
   const second = await fresh();
   const page = await second.newPage();
@@ -509,7 +495,6 @@ test('back-channel logout: ending one Keycloak session ends its browser sessions
   assert.equal((await second.request.get(`${origin}/api/v1/me`)).status(), 200);
   assert.equal((await first.context.request.get(`${origin}/api/v1/me`)).status(), 200);
 
-  console.log(`DIAG sid=${first.sid} online=${JSON.stringify((await admin.sessionsOf('erin')).map((x) => [x.id, x.clients]))} offline=${JSON.stringify((await admin.offlineSessionsOf('erin')).map((x) => x.id))}`);
   await pool.query('UPDATE auth_idp_standing SET last_outcome = NULL WHERE user_id = $1', [state.userId]);
   await logoutAtProvider(first.context);
   await waitFor(async () => (await first.context.request.get(`${origin}/api/v1/me`)).status() === 401, 'the matching browser session to end');
