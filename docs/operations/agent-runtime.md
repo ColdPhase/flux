@@ -127,10 +127,13 @@ A pool of four fills for good unless bindings are released:
 
 Flux has no in-app instance administrator role yet, so these operator steps are launcher commands.
 
-A release reports the sign-out as confirmed when every client either signed out (`ok`) or was never
-installed for that binding: the CLI is absent and nothing of that client is in the binding directory,
-so no session can exist (a Codex-only deployment has no Claude Code). A missing CLI with its files still
-present, a failed or timed-out sign-out, and a skipped step stay *not confirmed*.
+A release reports the sign-out as confirmed when every client either signed out (`ok`) or has no trace in
+the binding: the CLI is absent, nothing of that client is in the binding directory and no earlier sign-out
+of it failed (a Codex-only deployment has no Claude Code). The supervisor takes that as having no session
+to sign out. It is an inference from the binding directory, not a vendor confirmation. A failed or
+timed-out sign-out leaves an `unconfirmed-<client>` marker in the binding directory, which survives the
+client's files being deleted, so later releases stay *not confirmed*. So do a missing CLI with its files
+still present, a directory that cannot be read, and a skipped step.
 
 A slot whose supervisor cannot confirm an empty `/data` (for example a stray file) leaves the pool and
 `./flux runtime status` shows it `out_of_pool`. Remove the entry (`docker compose … exec runtime-<n> rm
@@ -153,9 +156,11 @@ Recorded from the T3 review (#331); none of them is hidden by the checks.
   only Claude Code's hosts are recorded, so a Codex-only deployment also allows them. Do not describe the
   runtime as isolating one vendor's hosts from another's.
 - **The proxy does not check the TLS server name against the `CONNECT` host (m6).** It relays bytes without
-  terminating TLS, so a slot can put another server name in its handshake to an allowed host's address.
-  Every allowed host is a vendor's own host and the address must be public, so this reaches nothing the
-  slot could not reach by naming it; it is accepted rather than fixed by inspecting handshakes.
+  terminating TLS, so it cannot see the name a slot asks for. An allowed host's address is not shown to
+  serve only that host: a vendor address may sit on shared infrastructure that also serves other names. A
+  slot may therefore reach another name served at an allowed address. This residual risk is accepted and
+  not measured. It is not harmless, and it is not the vendor-exclusive isolation the checks suggest. Closing
+  it would need TLS inspection or addresses verified against each vendor; neither is in place.
 - **Connection limits are per source address, not per slot identity (m6).** The proxy and the `/mcp`
   forwarder hold at most 256 connections in all and 32 from one address. Each slot has its own network,
   so its address identifies it; one busy slot cannot take every connection.

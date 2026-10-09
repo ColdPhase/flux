@@ -218,3 +218,42 @@ describe('the per-source connection cap', () => {
     assert.ok(EGRESS_LIMITS.connectionsPerSource < EGRESS_LIMITS.connections);
   });
 });
+
+describe('the per-source cap on the real listeners', () => {
+  // Opens the cap's worth of idle connections from this one address, then one more; true when the server closes that one.
+  async function closesTheExtraConnection(target: number): Promise<boolean> {
+    const open: ReturnType<typeof connect>[] = [];
+    try {
+      for (let i = 0; i < EGRESS_LIMITS.connectionsPerSource; i += 1) {
+        const socket = connect(target, '127.0.0.1');
+        socket.on('error', () => undefined);
+        await new Promise<void>((done) => socket.once('connect', () => done()));
+        open.push(socket);
+      }
+      const extra = connect(target, '127.0.0.1');
+      extra.on('error', () => undefined);
+      return await new Promise<boolean>((done) => {
+        const timer = setTimeout(() => done(false), 2_000);
+        extra.once('close', () => { clearTimeout(timer); done(true); });
+      });
+    } finally {
+      for (const socket of open) socket.destroy();
+    }
+  }
+
+  test('the proxy listener refuses the connection past the cap', async () => {
+    const proxy = createProxyServer({ allow: new Set() });
+    await listen(proxy);
+    try {
+      assert.equal(await closesTheExtraConnection(port(proxy)), true);
+    } finally { proxy.closeAllConnections(); proxy.close(); }
+  });
+
+  test('the /mcp forwarder listener refuses the connection past the cap', async () => {
+    const forwarder = createMcpForwarder({ upstream: { host: '127.0.0.1', port: 9 } });
+    await listen(forwarder);
+    try {
+      assert.equal(await closesTheExtraConnection(port(forwarder)), true);
+    } finally { forwarder.closeAllConnections(); forwarder.close(); }
+  });
+});
