@@ -742,3 +742,46 @@ Not fixed here, with evidence from the same runs:
   peer, which needs one authorized read per update, falls further behind.
 
 Caps, budgets, deadlines and the latency gate are unchanged.
+
+### Options for the two remaining wiki causes (2026-10-09, for the founder's decision)
+
+Not implemented; the founder decides. Numbers come from the runs above. The 8fce745a
+run shared its host with other suites. The latency path is input → batch or wait for the
+command in flight (p50 67 / p95 144 ms) → commit and receipt (122 / 164) → the peer's
+read → peer render and two animation frames (about 45). Peer render is not the problem.
+Even in the first 15 s of a case, before the slowdown, editor p95 was 346 ms (10k) and
+517 ms (100k).
+
+**Cause A: reader previews starve and the peer falls behind.** One read sends at most one
+update, previews only at the head, and the 24 MiB response charge allows one read at a
+time per API.
+
+| Option | What changes | Expected wiki p95 effect | Risk | Effort | Recorded decision |
+| --- | --- | --- | --- | --- | --- |
+| A1 Batched reads | One authorized read hands off every pending update, each still its own frame with sequence, UUID and hash. It adds the head preview when the batch reaches the head. The output holds that ordered set, not one delivery. | Removes the backlog: the peer is one read from the head however far behind. Readers get a preview every read; reader p95 becomes the editor path plus one preview render. | Larger output/charge per read; the reader preview render (100k) sits inside the locked read. | M | Changes the 2026-10-04 bound "one frame / one update chunk per callback". F-021 unchanged. |
+| A2 Room preview stream | Render the head preview once per room, at most every 100 ms after commits. Send it to each reader under its own fence. A reader shows the newest preview not newer than its applied update. | Readers render within about 100 ms + one handoff of a commit, with no extra read per update. Does not fix the editor peer's backlog. | Client rule change (a slightly older preview may show); preview cache memory. | M | Amends "preview generation/sequence" wording; F-021 unchanged. |
+| A3 Concurrent reads | Charge a read by its counted size (as maps did on 2026-10-06), not 24 MiB. Room reads take shared row locks. | Writer and peer reads stop queuing behind each other. Throughput maybe ×2; the peer still needs one read per update. | Memory accounting review; lock-order review. | M | Changes the "one worst-case response at a time" bound; F-021 unchanged. |
+
+**Cause B: every commit loads and rewrites the whole codec state** (submit 23 → 84 ms
+within 60 s; the receipts map and journal grow per command, plus nodes and deleted
+ranges).
+
+| Option | What changes | Expected wiki p95 effect | Risk | Effort | Recorded decision |
+| --- | --- | --- | --- | --- | --- |
+| B1 Append-only log + snapshot | A commit validates against a decoded room kept per API and checked by sequence. It appends the update, receipt and body/hash. A full checkpoint is written every N updates or T seconds. | Commit cost stays near the 23 ms case start; the commit cycle shortens to about 50–60 ms. | Two-API consistency (Gate 3), crash replay from the last snapshot, cache memory (already capped at 16 rooms/128 MiB). | L | Within "Storage compaction must keep confirmed text, receipt/provenance…"; needs a storage amendment. F-021 unchanged. |
+| B2 Slimmer state | Move receipts and journal out of the codec state (receipts are already immutable intent rows). | An estimated two-thirds of per-command growth by size, not measured; slower growth, not constant cost. | Codec replay checks must read the intent rows. | S–M | None. |
+| B3 Decoded-state cache only | Keep the parsed state per room. Skip parse and worker transfer when the head sequence matches, but still write the whole state. | Removes part of each commit; the write still grows. | Cache invalidation across APIs. | M | None. |
+
+**Recommendation:** A1 + B1, with B2 as a first step if B1 must wait. Neither cause alone is
+enough. With constant commits (about 25 ms) and the peer one read from the head (about
+30 ms on a quiet host), the p95 estimate is: wait for the command in flight (about 60) +
+commit (25) + read (30) + network (10) + render (45) ≈ 170 ms. That is an estimate, not a
+measurement. A1 + B1 is the only combination likely to pass Gate 4 at 10k and 100k. The
+100k cases also need B1, because their commits start slower.
+
+**Maps** (296–361 ms on the shared host): input to covering publication is 50 / 91 ms
+(the 40 ms batch). Publication to peer receipt is 131 / 199 ms. Receipt to paint is
+50–67 ms, 105 at 200 thoughts. On a quiet host, publication to receipt was p50 57 ms
+(2026-10-06 note), which would put the 1–50-thought cases near 200 ms. Measure on a
+quiet host before changing anything. The 200-thought drag (p95 361, paint p95 105) is
+unlikely to pass without peer render work.
