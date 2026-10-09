@@ -493,7 +493,7 @@ test('native agent owners retry failed reads, fence stale permission answers and
     // owner cache would wrongly reuse the first project's authorized name here.
     await page.getByRole('link', { name: 'Other owner scope', exact: true }).click();
     await page.locator(`a[data-tab="tasks"][href^="/projects/${elsewhere.id}/tasks"]`).click();
-    await page.getByRole('radio', { name: 'Kanban', exact: true }).click();
+    await page.getByRole('radio', { name: 'Board', exact: true }).click();
     await page.locator(`[data-card-id="${otherTask.id}"]`).waitFor();
     assert.equal(await page.locator(`[data-card-id="${otherTask.id}"] .agent-for`).count(), 0);
     await page.getByRole('link', { name: 'Owner scope', exact: true }).click();
