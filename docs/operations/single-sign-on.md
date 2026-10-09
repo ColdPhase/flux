@@ -9,10 +9,13 @@ remain unimplemented.
 Flux can let people sign in with your organisation's OpenID Connect identity provider (Keycloak,
 Google Workspace, Okta, Authentik and others), next to email and password
 ([#113](https://github.com/ColdPhase/flux/issues/113)). Flux supports **one** provider per
-instance. While it is set, single sign-on is the only ordinary way in: email/password sign-in,
-sign-up and password reset are closed (refused by the API, and hidden in the browser). To return to
-password mode, unset the `FLUX_OIDC_*` variables and restart. Moving existing password accounts to the
-provider is a separate migration ([#315](https://github.com/ColdPhase/flux/issues/315)).
+instance. Flux works with one provider. Its mode is set by `FLUX_SSO_MODE`:
+
+- `prepare` keeps email/password sign-in, sign-up and reset, and lets each existing password account
+  **link** the provider before cutover (see [Moving existing accounts](#moving-existing-accounts)).
+- `sso` (the default with a provider) is the cutover: email/password sign-in, sign-up and reset are refused
+  by the API and hidden in the browser, and a password-only session no longer continues. Only the provider
+  signs people in. To return to password mode, unset the `FLUX_OIDC_*` variables and restart.
 
 ## What it does and does not do
 
@@ -188,3 +191,22 @@ own policies (MFA, conditional access), which stay the provider's responsibility
   `http://127.0.0.1/callback` when the server advertises the issuer response parameter, as Flux does.
   Tested in `scripts/check_oidc.sh` against Keycloak with a scripted client; runs of the real Claude Code
   and Codex clients are not part of this change.
+
+## Moving existing accounts
+
+Accounts made with a password before the provider existed have no provider identity, so they cannot sign
+in once the cutover is on. Move them first, in this order:
+
+1. Set `FLUX_OIDC_*` and `FLUX_SSO_MODE=prepare`, then restart. Password sign-in keeps working.
+2. Each person signs in with their password, opens **Settings**, and selects **Link ...**. They complete one
+   provider sign-in as the same person. Flux links that provider identity to their existing account: the
+   account ID, data, memberships and grants stay. Flux matches nothing by email. An identity that another
+   account already holds, or an account already linked to another identity, is refused with the reason shown
+   in Settings, and nothing changes. A link lasts 10 minutes and works once.
+3. When everyone who needs access has linked, set `FLUX_SSO_MODE=sso` (or remove the setting) and restart.
+   At startup the log says how many password-only accounts are still left. They cannot sign in until they
+   are moved; there is no ordinary password fallback.
+
+**Not yet available:** an audited operator re-key for accounts that cannot link (for example a lost
+provider account). Until it exists, keep `FLUX_SSO_MODE=prepare` for those accounts' owners, or plan the
+migration with [#315](https://github.com/ColdPhase/flux/issues/315)'s follow-ups.

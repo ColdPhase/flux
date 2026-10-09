@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { createSessionRepository } from '@flux/db';
+import { sql } from 'drizzle-orm';
 import type { Database } from '@flux/core';
 import type { ApiError, IdentityCapabilities } from '@flux/contracts';
 import { createAuth, type FluxAuth } from './auth.js';
@@ -12,6 +13,8 @@ import { createSignIns } from './sign-in.js';
 import { createConfirmation, type Confirmation } from './confirmation.js';
 import { createEmailClaims } from './claim.js';
 import { registerClaimRoutes } from './claim-routes.js';
+import { createLinkIntents } from './link.js';
+import { registerLinkRoutes } from './link-routes.js';
 import { cachedReachability, waitForDiscovery } from './discovery.js';
 import { registerAgentOauthContext } from './oauth-context.js';
 import { registerIdentityRoutes } from './routes.js';
@@ -50,7 +53,8 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
   const standing = config.oidc?.standing === 'refresh' ? idpStanding : null;
   const confirmation = createConfirmation(db, config.oidc);
   const claims = createEmailClaims(db);
-  const auth = createAuth({ db, config, mailer, oauthRequests, signIns, standing, confirmation, claims, log: app.log, onMailError: (error) => app.log.error({ error }, 'Password reset mail failed') });
+  const links = createLinkIntents(db);
+  const auth = createAuth({ db, config, mailer, oauthRequests, signIns, standing, confirmation, claims, links, log: app.log, onMailError: (error) => app.log.error({ error }, 'Password reset mail failed') });
   // OAuth resource seeding runs during Better Auth initialization. Complete it before
   // accepting requests or allowing an in-process server to close its database pool.
   // The provider reads its discovery document while Better Auth initializes, so an identity provider that
@@ -61,11 +65,19 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
     // Accounts without a stored token (a restore left none) refuse until the person signs in again; with the check off no row may refuse anyone.
     await idpStanding?.reconcile();
     standing?.start();
+    // Password-only accounts cannot sign in once SSO-only mode is on. Say how many, so the cutover is never silent (#315).
+    if (config.ssoOnly) {
+      const result = await db.execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM auth_users u
+        WHERE EXISTS (SELECT 1 FROM auth_accounts c WHERE c.user_id = u.id AND c.provider_id = 'credential' AND c.password IS NOT NULL)
+          AND NOT EXISTS (SELECT 1 FROM auth_accounts p WHERE p.user_id = u.id AND p.provider_id <> 'credential')`);
+      const stranded = Number(result.rows[0]?.n ?? 0);
+      if (stranded > 0) app.log.warn({ accounts: stranded }, 'SSO-only mode: password-only accounts cannot sign in until they link the provider (run FLUX_SSO_MODE=prepare first)');
+    }
   });
   app.addHook('onClose', async () => standing?.stop());
   // With an active sole provider, ordinary authentication is single sign-on only (F-024 S5a, #313).
-  const sessions = createSessionResolver(auth, standing, confirmation, config.oidc ? { db, providerId: config.oidc.providerId } : null);
-  const passwordReset: IdentityCapabilities['passwordReset'] = mailer && !config.oidc ? 'available' : 'unavailable';
+  const sessions = createSessionResolver(auth, standing, confirmation, config.ssoOnly && config.oidc ? { db, providerId: config.oidc.providerId } : null);
+  const passwordReset: IdentityCapabilities['passwordReset'] = mailer && !config.ssoOnly ? 'available' : 'unavailable';
 
   app.addHook('onRequest', async (request, reply) => {
     const violation = originViolation(request.method, request.headers, config.publicOrigin);
@@ -75,13 +87,15 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
     }
   });
 
-  registerAuthBridge(app, { auth, publicOrigin: config.publicOrigin, passwordReset, oauthRequests, signIns, sessions });
+  registerAuthBridge(app, { auth, publicOrigin: config.publicOrigin, passwordReset, oauthRequests, signIns, sessions, links });
   const reachable = config.oidc ? cachedReachability(config.oidc) : null;
   const sso = async (): Promise<IdentityCapabilities['sso']> =>
     config.oidc && reachable ? { providerId: config.oidc.providerId, label: config.oidc.label, reachable: await reachable() } : null;
   // Operators register this exact redirect URI with their identity provider (#113).
   if (config.oidc) app.log.info({ issuer: config.oidc.issuer, redirectUri: `${config.publicOrigin}/api/auth/callback/${config.oidc.providerId}` }, 'Single sign-on is on');
-  registerIdentityRoutes(app, { sessions, store: createSessionRepository(db), passwordReset, signup: config.signup, sso });
+  registerIdentityRoutes(app, { sessions, store: createSessionRepository(db), passwordReset, signup: config.signup, ssoOnly: config.ssoOnly, linkable: config.oidc !== null && config.ssoMode === 'prepare', sso });
+  registerLinkRoutes(app, { db, sessions, links, ssoMode: config.ssoMode, publicOrigin: config.publicOrigin,
+    provider: config.oidc ? { providerId: config.oidc.providerId, label: config.oidc.label } : null });
   registerClaimRoutes(app, { claims, publicOrigin: config.publicOrigin });
   if (config.signupRequested !== config.signup) app.log.warn({ requested: config.signupRequested }, 'FLUX_SIGNUP=verified needs email (FLUX_SMTP_URL), and a sign-on provider closes password sign-up, so password sign-up is closed');
   registerAgentOauthContext(app, db, sessions, auth, config.publicOrigin);

@@ -1152,6 +1152,13 @@ addresses while a provider is set. Tests: `tests/app/identity-email-claims.test.
 <a id="s5b--password-switch-several-providers-linking-and-profiles"></a>
 ### S5b — Password mode, safe migration and provider claim adapters
 
+**Implemented in #315 (partial):** `FLUX_SSO_MODE=prepare|sso` (one provider; `sso` is the default with a provider).
+In `prepare`, a password account links the provider through its own session, one provider round trip, and
+nothing is matched by email (`auth_link_intents`, migration 0075; `POST /api/v1/identity/link`). In `sso`, the
+S5a refusals apply, linking is closed, and the startup log counts password-only accounts left behind. Not
+implemented yet: the audited operator re-key for accounts that cannot link, the last-usable-identity guard for
+removing a provider link, and the Entra/Google claim adapters.
+
 Required in v0.1 under [#315](https://github.com/ColdPhase/flux/issues/315).
 Depends on S1/#310 and S5a/#313, with S4/S2 standing/offboarding interfaces
 where applicable. S6 is capability control, not a linking reauthentication dependency.

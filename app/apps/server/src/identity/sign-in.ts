@@ -11,7 +11,11 @@ export interface SignInFacts {
   /** The provider's offline refresh token from this sign-in, for the standing check (S4, #311). Never logged or stored here. */
   refreshToken?: string;
   /** Set when Flux refused the sign-in itself; the bridge tells the browser why. */
-  refused?: 'no_refresh_token' | 'email_held' | 'email_claim';
+  refused?: 'no_refresh_token' | 'email_held' | 'email_claim' | 'linked' | 'identity_held' | 'already_linked' | 'link_expired';
+  /** A link round trip for this password session's intent (#315): the callback attaches the subject, signs nobody in. */
+  link?: { id: string; userId: string };
+  /** The callback carried a link cookie that matches no pending intent of this session (#315). */
+  linkRejected?: boolean;
   /** With `email_claim`: the secret for the browser that completed the provider sign-in (#313). Set as a cookie by the bridge. */
   claimToken?: string;
 }

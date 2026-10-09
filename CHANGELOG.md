@@ -108,6 +108,7 @@ repository was created on 2026-09-26.
 
 ### Changed
 
+- With one sign-on provider, operators can run `FLUX_SSO_MODE=prepare` so existing password accounts link the provider in Settings before the cutover to `sso`, which closes password sign-in ([#315](https://github.com/ColdPhase/flux/issues/315)).
 - With a single sign-on provider, password sign-in, sign-up and reset are closed; a provider sign-in whose email another account holds is refused, or can claim the address only when that account is unverified and unlinked; and `FLUX_SIGNUP=verified` without email closes sign-up ([#313](https://github.com/ColdPhase/flux/issues/313)).
 
 - When an agent app opens Flux's sign-in page, people can now use the operator's single sign-on there, then pick the connection and approve as before; a cancelled sign-in comes back to the same page, and the page says when the provider cannot be reached ([#310](https://github.com/ColdPhase/flux/issues/310)).

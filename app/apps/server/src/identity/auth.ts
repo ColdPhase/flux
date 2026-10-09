@@ -15,6 +15,7 @@ import type { Mailer } from './mailer.js';
 import type { OauthRequests } from './oauth-flow.js';
 import { createSignIns, type SignIns } from './sign-in.js';
 import { createEmailClaims, type EmailClaims } from './claim.js';
+import { createLinkIntents, type LinkIntents } from './link.js';
 import { createConfirmation, type Confirmation } from './confirmation.js';
 import { signInAgainMessage, type IdpStanding } from './standing.js';
 
@@ -41,6 +42,8 @@ export interface AuthDependencies {
   log?: { error(object: object, message: string): void };
   /** Defaults to one over `db` (#313): provider sign-ins whose email another account holds. */
   claims?: EmailClaims;
+  /** Explicit links of password accounts to the provider before cutover (#315). Defaults to one over `db`. */
+  links?: LinkIntents;
 }
 
 /**
@@ -81,7 +84,7 @@ function idTokenClaims(idToken: string | undefined): Record<string, unknown> | n
   }
 }
 
-export function createAuth({ db, config, mailer, onMailError, oauthRequests, signIns = createSignIns(), standing = null, log, confirmation = createConfirmation(db, config.oidc), claims = createEmailClaims(db) }: AuthDependencies) {
+export function createAuth({ db, config, mailer, onMailError, oauthRequests, signIns = createSignIns(), standing = null, log, confirmation = createConfirmation(db, config.oidc), claims = createEmailClaims(db), links = createLinkIntents(db) }: AuthDependencies) {
   const connections = agentOauthUseCases(createAgentConnectionStore(db));
   const resource = `${config.publicOrigin}/mcp`;
   const connectionForGrant = async (userId: string, sessionId: string, scopes: readonly string[]) => {
@@ -112,7 +115,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
     } catch (error) { onMailError?.(error); }
   };
   const verifiedSignUp = config.signup === 'verified';
-  const ssoOnly = config.oidc !== null;
+  const ssoOnly = config.ssoOnly;
   return betterAuth({
     appName: 'Flux',
     baseURL: config.publicOrigin,
@@ -183,7 +186,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
         },
       }),
       cimd({ fetchClientMetadataResource, metadataProfile: 'mcp-2026-07-28' }),
-      ...(config.oidc ? [oidcPlugin(config.oidc, signIns, claims, log)] : []),
+      ...(config.oidc ? [oidcPlugin(config.oidc, signIns, claims, links, log)] : []),
     ],
     // Sign-up is a Flux decision (#313): closed, or the new account must verify its address before it can sign in.
     hooks: {
@@ -297,7 +300,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
 export type FluxAuth = ReturnType<typeof createAuth>;
 
 /** One operator-configured OpenID Connect provider for human sign-in (#113). */
-function oidcPlugin(oidc: OidcConfig, signIns: SignIns, emailClaims: EmailClaims, log?: { error(object: object, message: string): void }) {
+function oidcPlugin(oidc: OidcConfig, signIns: SignIns, emailClaims: EmailClaims, links: LinkIntents, log?: { error(object: object, message: string): void }) {
   return genericOAuth({
     config: [{
       providerId: oidc.providerId,
@@ -315,6 +318,13 @@ function oidcPlugin(oidc: OidcConfig, signIns: SignIns, emailClaims: EmailClaims
         const claims = idTokenClaims(tokens.idToken);
         const user = oidcUser(oidc, claims);
         const sign = signIns.getStore();
+        // A link round trip (#315) never signs anyone in: it attaches the subject to the intent's account, or refuses.
+        if (sign?.linkRejected) { sign.refused = 'link_expired'; return null; }
+        if (user && sign?.link) {
+          const outcome = await links.attach(sign.link.id, oidc.providerId, user.sub);
+          sign.refused = outcome;
+          return null;
+        }
         if (user && sign && oidc.standing === 'refresh' && !tokens.refreshToken) {
           // N1: without a refresh token the next check would suspend this person again. Refuse the sign-in and
           // tell the operator; the browser is told why by the bridge.

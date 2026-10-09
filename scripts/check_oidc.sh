@@ -73,9 +73,23 @@ trap 'exit 143' TERM
 $compose build migrate e2e
 $compose up -d db migrate
 $compose --profile setup run --rm files-init
+# Migration phase first (#315): the API runs in prepare mode, so password accounts may link Keycloak before cutover.
+export FLUX_OIDC_TEST_SSO_MODE=prepare
 $compose up -d --wait keycloak oidc-mock mailpit api api-mock worker
 
 e2e() { $compose run --rm -e FLUX_OIDC_PROVIDER_ID="$provider_id" e2e node_modules/.bin/tsx --test --test-concurrency=1 "$@"; }
+
+# Link a password account before cutover, restart the API between the start and the finish, refuse held identities.
+link() { $compose run --rm -e FLUX_OIDC_PROVIDER_ID="$provider_id" -e FLUX_LINK_PHASE="$1" e2e node_modules/.bin/tsx --test --test-concurrency=1 --test-name-pattern "$2" tests/app/e2e/oidc-link.e2e.ts; }
+link prepare "prepare: a password account starts"
+$compose restart api
+$compose up -d --wait api
+link prepare "prepare: (after the API restart|a subject already held|a link cannot)"
+# Cutover (#315): the API restarts in SSO-only mode. The password-only accounts stay refused; the linked one signs in
+# with the provider and reaches the same account.
+export FLUX_OIDC_TEST_SSO_MODE=sso
+$compose up -d --wait api
+link cutover "cutover:"
 
 e2e tests/app/e2e/oidc.e2e.ts
 # Provider sign-in on the MCP authorization path (F-024 S1, #310): a scripted client, Keycloak, Chromium.

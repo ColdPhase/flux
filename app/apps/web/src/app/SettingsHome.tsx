@@ -1,5 +1,8 @@
-import { Form, Link, useNavigation } from 'react-router';
-import { Avatar, Icon, Spinner, type IconName } from '../ui';
+import { useEffect, useState } from 'react';
+import { Form, Link, useNavigation, useSearchParams } from 'react-router';
+import type { IdentityCapabilities } from '@flux/contracts';
+import { getCapabilities, startLink, startSso } from '../api/auth';
+import { Avatar, Button, Icon, Spinner, type IconName } from '../ui';
 import { NotificationsButton } from '../pwa';
 import { AppearanceControls } from './AppearanceControls';
 import { useShellData } from './data';
@@ -23,6 +26,50 @@ function Row({ to, icon, title, sub }: { to: string; icon: IconName; title: stri
  * Settings (#266 PF-5): one place for this account, this device and personal AI. Every earlier
  * settings address keeps working; this list is how a person finds them, on a phone in two taps.
  */
+const LINK_NOTES: Record<string, string> = {
+  linked: 'Single sign-on is linked to this account. Its address and data stay as they are.',
+  identity_held: 'That provider account already belongs to another Flux account, so nothing was linked.',
+  already_linked: 'This account is already linked to a different provider account, so nothing was linked.',
+};
+
+/** Prepare mode (#315): the owner links the provider to this password account before cutover. */
+function SingleSignOnLink() {
+  const [params] = useSearchParams();
+  const [capabilities, setCapabilities] = useState<IdentityCapabilities | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState('');
+  useEffect(() => {
+    const controller = new AbortController();
+    getCapabilities(controller.signal).then(setCapabilities).catch(() => undefined);
+    return () => controller.abort();
+  }, []);
+  if (!capabilities?.linkable || !capabilities.sso) return null;
+  const outcome = params.get('link');
+  const note = outcome ? (LINK_NOTES[outcome] ?? 'The link did not complete. Start again.') : '';
+  const start = async () => {
+    setBusy(true); setFailed('');
+    try {
+      await startLink();
+      const { url } = await startSso(capabilities.sso!.providerId, '/settings');
+      window.location.assign(url);
+    } catch {
+      setBusy(false);
+      setFailed('Linking did not start. Check your connection and try again.');
+    }
+  };
+  return (
+    <section className="set-sec" aria-labelledby="set-sso">
+      <h2 className="set-sec__h" id="set-sso">Single sign-on</h2>
+      <div className="set-card set-card--pad">
+        <p>Link {capabilities.sso.label} to this account before Flux moves to single sign-on. Your Flux account, data and memberships stay the same.</p>
+        {note ? <p role="status">{note}</p> : null}
+        {failed ? <p role="alert">{failed}</p> : null}
+        <Button variant="secondary" busy={busy} onClick={() => void start()}>{`Link ${capabilities.sso.label}`}</Button>
+      </div>
+    </section>
+  );
+}
+
 export function SettingsHome() {
   const { me } = useShellData();
   const navigation = useNavigation();
@@ -39,6 +86,8 @@ export function SettingsHome() {
             <span className="set-me__session">Signed in on this device until <time dateTime={me.session.expiresAt}>{Number.isNaN(expires.getTime()) ? me.session.expiresAt : dateFormat.format(expires)}</time></span>
           </div>
         </section>
+
+        <SingleSignOnLink />
 
         <section className="set-sec" aria-labelledby="set-appearance">
           <h2 className="set-sec__h" id="set-appearance">This device</h2>

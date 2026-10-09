@@ -82,17 +82,21 @@ const NOTICES: Record<string, string> = {
 };
 
 /** The operator's single sign-on, when configured (#113). Hidden while unknown or unavailable. */
-function useSso() {
-  const [sso, setSso] = useState<IdentityCapabilities['sso']>(null);
+function useCapabilities() {
+  const [capabilities, setCapabilities] = useState<IdentityCapabilities | null>(null);
   useEffect(() => {
     const controller = new AbortController();
-    getCapabilities(controller.signal).then((capabilities) => setSso(capabilities.sso ?? null)).catch(() => undefined);
+    getCapabilities(controller.signal).then(setCapabilities).catch(() => undefined);
     return () => controller.abort();
   }, []);
-  return sso;
+  return capabilities;
 }
 
-function SsoSignIn({ sso, next, oauthQuery }: { sso: NonNullable<IdentityCapabilities['sso']>; next: string | null; oauthQuery?: string }) {
+function useSso() {
+  return useCapabilities()?.sso ?? null;
+}
+
+function SsoSignIn({ sso, next, oauthQuery, divider = false }: { sso: NonNullable<IdentityCapabilities['sso']>; next: string | null; oauthQuery?: string; divider?: boolean }) {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState('');
   const unreachable = `${sso.label} is not reachable right now. Try again in a moment.`;
@@ -110,6 +114,7 @@ function SsoSignIn({ sso, next, oauthQuery }: { sso: NonNullable<IdentityCapabil
     <div className="auth__sso">
       <Button variant="secondary" size="lg" block busy={busy} disabled={!sso.reachable} onClick={() => void start()}>{`Sign in with ${sso.label}`}</Button>
       {failed || !sso.reachable ? <p className="auth__sso-error" role="alert">{failed || unreachable}</p> : null}
+      {divider ? <p className="auth__or" aria-hidden="true"><span>or</span></p> : null}
     </div>
   );
 }
@@ -125,7 +130,9 @@ export function SignInPage() {
   const location = useLocation();
   const next = location.pathname === '/login' ? `${location.pathname}${location.search}` : params.get('next');
   const shownRef = useRef<string | null>(null);
-  const sso = useSso();
+  const capabilities = useCapabilities();
+  const sso = capabilities?.sso ?? null;
+  const ssoOnly = capabilities?.ssoOnly ?? false;
   const ssoFailed = params.get('sso') === 'failed';
   const reason = params.get('sso_reason');
   const ssoMessage = reason === 'no_refresh_token'
@@ -147,8 +154,8 @@ export function SignInPage() {
   }, [notice, params, navigate, toast]);
 
   const suffix = next ? `?next=${encodeURIComponent(next)}` : '';
-  // With an active sole provider, single sign-on is the only ordinary way in: no password form (F-024 S5a, #313).
-  if (sso) {
+  // With the sole provider in SSO-only mode, single sign-on is the only way in: no password form (F-024 S5a/S5b).
+  if (sso && ssoOnly) {
     return (
       <>
         <Heading title="Sign in to Flux">Pick up your work where you left it.</Heading>
@@ -160,8 +167,9 @@ export function SignInPage() {
   return (
     <>
       <Heading title="Sign in to Flux">Pick up your work where you left it.</Heading>
+      {sso ? <SsoSignIn sso={sso} next={next} oauthQuery={oauthQuery} divider /> : null}
       <Form method="post" className="auth__form" noValidate ref={formRef} aria-label="Sign in">
-        <FormError message={result?.formError} />
+        <FormError message={result?.formError ?? (ssoFailed ? ssoMessage : undefined)} />
         <Input label="Email" name="email" type="email" autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false}
           defaultValue={result?.values?.email} error={result?.fieldErrors?.email} autoFocus />
         <Input label="Password" name="password" type="password" autoComplete="current-password" error={result?.fieldErrors?.password}

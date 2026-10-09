@@ -58,6 +58,8 @@ services:
         condition: service_healthy
   api:
     environment:
+      # prepare: password sign-in stays while owners link the provider; sso (the default): the cutover (#315).
+      FLUX_SSO_MODE: ${FLUX_OIDC_TEST_SSO_MODE:-sso}
       FLUX_OIDC_ISSUER: http://keycloak:8080/realms/flux
       FLUX_OIDC_CLIENT_ID: flux
       FLUX_OIDC_ALLOW_HTTP_ISSUER: "true"

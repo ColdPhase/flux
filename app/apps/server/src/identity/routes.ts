@@ -34,13 +34,17 @@ export interface IdentityRouteOptions {
   store: SessionStore;
   passwordReset: IdentityCapabilities['passwordReset'];
   signup: IdentityCapabilities['signup'];
+  /** With a provider in SSO-only mode, the sign-in page offers no password form (#315). */
+  ssoOnly: boolean;
+  /** Prepare mode with a provider: existing password accounts may link it (#315). */
+  linkable: boolean;
   /** Evaluated per request: the provider's reachability changes while Flux runs. */
   sso: () => Promise<IdentityCapabilities['sso']>;
 }
 
 /** Flux's own identity routes: capabilities, the current principal and session management. */
-export function registerIdentityRoutes(app: FastifyInstance, { sessions, store, passwordReset, signup, sso }: IdentityRouteOptions) {
-  app.get(IDENTITY_CAPABILITIES_PATH, async (): Promise<IdentityCapabilities> => ({ passwordReset, signup, sso: await sso() }));
+export function registerIdentityRoutes(app: FastifyInstance, { sessions, store, passwordReset, signup, ssoOnly, linkable, sso }: IdentityRouteOptions) {
+  app.get(IDENTITY_CAPABILITIES_PATH, async (): Promise<IdentityCapabilities> => ({ passwordReset, signup, ssoOnly, linkable, sso: await sso() }));
 
   app.get(ME_PATH, async (request): Promise<MeResponse> => {
     const context = await sessions.requirePrincipal(request);

@@ -53,6 +53,12 @@ describe('identity configuration', () => {
     assert.deepEqual([withMail.signupRequested, withMail.signup], ['verified', 'verified']);
     const provider = loadIdentityConfig({ ...base, ...smtp, ...oidc, FLUX_SIGNUP: 'open' });
     assert.equal(provider.signup, 'off', 'with an active provider, ordinary password sign-up is refused');
+    const prepare = loadIdentityConfig({ ...base, ...smtp, ...oidc, FLUX_SSO_MODE: 'prepare', FLUX_SIGNUP: 'open' });
+    assert.deepEqual([prepare.ssoMode, prepare.ssoOnly, prepare.signup], ['prepare', false, 'open'], 'prepare keeps password sign-up while linking');
+    assert.deepEqual([provider.ssoMode, provider.ssoOnly], ['sso', true], 'SSO-only is the default with a provider');
+    assert.equal(loadIdentityConfig({ ...base, ...smtp }).ssoOnly, false, 'no provider, no SSO-only');
+    assert.throws(() => loadIdentityConfig({ ...base, FLUX_SSO_MODE: 'prepare' }), /needs a sign-on provider/);
+    assert.throws(() => loadIdentityConfig({ ...base, ...oidc, FLUX_SSO_MODE: 'both' }), /FLUX_SSO_MODE must be prepare or sso/);
     assert.throws(() => loadIdentityConfig({ ...base, FLUX_SIGNUP: 'everyone' }), /FLUX_SIGNUP must be open, verified or off/);
     rmSync(secretDir, { recursive: true, force: true });
   });
@@ -184,7 +190,7 @@ describe('identity server behaviour', () => {
   test('password reset reports unavailable when SMTP is not configured', async () => {
     const server = await app(config());
     try {
-      assert.deepEqual((await server.inject({ method: 'GET', url: '/api/v1/auth/capabilities' })).json(), { passwordReset: 'unavailable', signup: 'open', sso: null });
+      assert.deepEqual((await server.inject({ method: 'GET', url: '/api/v1/auth/capabilities' })).json(), { passwordReset: 'unavailable', signup: 'open', ssoOnly: false, linkable: false, sso: null });
       const response = await server.inject({
         method: 'POST', url: '/api/auth/request-password-reset',
         headers: { origin: 'https://flux.example.org' },
