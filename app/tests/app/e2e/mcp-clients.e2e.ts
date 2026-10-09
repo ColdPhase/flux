@@ -140,7 +140,7 @@ test('real pinned Codex and Claude Code clients: three personal connections, one
         throw new Error(`${(error as Error).message}\nauthorization URL: ${url}`);
       } finally { await context.close(); }
     }
-    const authorizeUrl = /(https?:\/\/[^\s"'\u0000-\u001f]*\/api\/auth\/oauth2\/authorize\?[^\s"'\u0000-\u001f]+)/;
+    const authorizeUrl = /(https?:\/\/[^\s"']*\/api\/auth\/oauth2\/authorize\?[^\s"']+)/;
 
     // --- Each client's own commands: add, authenticate through Flux's OAuth, then ask it for its MCP status.
     const homes: Record<string, { env: Record<string, string>; cwd: string }> = {};
@@ -178,7 +178,7 @@ test('real pinned Codex and Claude Code clients: three personal connections, one
           const login = run('script', ['-qefc', `${claudeBin} mcp login flux --no-browser`, '/dev/null'], env, cwd, true);
           const match = await waitFor(login, authorizeUrl, 'claude mcp login');
           // The terminal output wraps the URL in an OSC-8 hyperlink, which repeats it after an escape.
-          await authorize(spec, match[1]!.split(/(?=https?:\/\/)/)[0]!.replace(/[\u0000-\u001f]+.*$/, ''));
+          await authorize(spec, match[1]!.split(String.fromCharCode(27))[0]!.split(/(?=https?:\/\/)/)[0]!);
           assert.equal(await login.done, 0, login.output());
           const listed = await sh(claudeBin, ['mcp', 'list'], env, cwd);
           assert.match(listed.output, /flux: .*Connected/, listed.output);
