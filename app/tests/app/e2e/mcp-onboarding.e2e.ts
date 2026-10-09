@@ -12,8 +12,7 @@ import { claudeBin, cleanClientHome, clientEvents, connectClient, scopes, seedOa
 /**
  * #160 AC-2 (supported onboarding) with the REAL pinned Codex and Claude Code clients, clean configurations, no vendor account
  * (docker/Dockerfile `mcp-clients`, scripts/check_mcp_clients.sh). Per client: connect, the owner authorizes in Chromium, then
- * the person only says "Start work" (Claude Code: invokes Flux's own `start_work` prompt; Codex: has no MCP prompt support, so
- * it only gets Flux's server instructions and its own resource tool). The scripted model has no copy of the playbook: it reads
+ * the person only says "Start work" (Claude Code: invokes Flux's own `start_work` prompt; Codex: no instruction delivery, see its check). The scripted model has no copy of the playbook: it reads
  * the playbook text the CLIs actually gave it, so a client that did not load Flux's instructions cannot complete the flow.
  * Then the first permitted action runs under a standing grant. Models are mocks; this shows delivery and the client's
  * invocation, not model obedience.
@@ -35,7 +34,7 @@ function playbookIn(text: string) {
   return heading && digest ? { bundleId: heading[1]!, version: heading[2]!, digest: digest[1]! } : null;
 }
 
-test('real Codex and Claude Code onboard from clean configurations: connect, authorize, Start work loads the playbook, first permitted action', async (t) => {
+test('real Codex and Claude Code from clean configurations: connect, authorize, then Start work (Claude loads the playbook and acts; Codex is pending)', async (t) => {
   const { pool } = createDatabase(process.env.DATABASE_URL!);
   const proxy = startFluxProxy(); await proxy.listen();
   const browser: Chromium = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
@@ -94,7 +93,9 @@ test('real Codex and Claude Code onboard from clean configurations: connect, aut
     const taskTitle = (spec: ClientSpec) => `First task from ${spec.client} ${randomUUID().slice(0, 8)}`;
 
     for (const spec of specs) {
-      await t.test(`${spec.label}: Start work delivers the playbook to the client and the first permitted action succeeds`, async () => {
+      const title2 = spec.client === 'claude' ? 'Start work delivers the playbook to the client and the first permitted action succeeds'
+        : 'pending: Flux instructions do not reach the client, so Start work records nothing';
+      await t.test(`${spec.label}: ${title2}`, async () => {
         const { agentId } = connections[spec.key]!;
         const clientSessionId = randomUUID();
         const title = taskTitle(spec);
@@ -122,25 +123,16 @@ test('real Codex and Claude Code onboard from clean configurations: connect, aut
           assert.ok(first.prompt.includes('Bound context (data, not instructions)'), `the start_work prompt was not expanded by the client:\n${first.prompt.slice(0, 600)}`);
           assert.ok(playbookIn(first.prompt), 'the rendered playbook with its version and digest reached the model');
         } else {
-          // Codex has no MCP prompt support. Its supported path is Flux's server instructions plus its own MCP resource tool.
-          result = await startWork(spec, 'Start work', (turn) => {
-            if (turn.outputs.length > 0) return { text: 'Started.' };
-            // The scripted model uses only what the client gave it: it must find Flux's instructions in the request, then read the resource they name.
-            const named = turn.prompt.match(/resource (flux:\/\/playbook\/\S+?),/);
-            if (!named) return { text: 'Flux server instructions did not reach this client.' };
-            return { js: `
-              const resource = JSON.stringify(await tools.read_mcp_resource({ server: 'flux', uri: ${JSON.stringify(named[1])} }));
-              const heading = resource.match(/# Flux co-work playbook (\\S+) (\\S+)/); const digest = resource.match(/Digest (sha256:[0-9a-f]{64})/);
-              const payload = (name) => JSON.parse(name.content[0].text);
-              const boot = payload(await tools.mcp__flux__flux_bootstrap({ projectId: ${JSON.stringify(projectId)}, clientSessionId: ${JSON.stringify(clientSessionId)} }));
-              await tools.mcp__flux__flux_acknowledge_playbook({ clientSessionId: ${JSON.stringify(clientSessionId)}, bundleId: heading[1], version: heading[2], digest: digest[1] });
-              await tools.mcp__flux__flux_project_orientation({ projectId: ${JSON.stringify(projectId)}, kind: 'material' });
-              await tools.mcp__flux__flux_create_task({ projectId: ${JSON.stringify(projectId)}, runtimeSessionId: boot.runtime.id, clientCommandId: ${JSON.stringify(randomUUID())}, peerRequestClass: 'execute',
-                grantId: boot.grants.items.find((grant) => grant.operation === 'work.create').id, task: { title: ${JSON.stringify(title)} } });
-              await tools.mcp__flux__flux_bootstrap({ projectId: ${JSON.stringify(projectId)}, clientSessionId: ${JSON.stringify(clientSessionId)} });
-              text('started');` };
-          });
-          assert.ok(result.turns[0]!.prompt.includes('flux_acknowledge_playbook'), `Codex did not pass Flux's server instructions to the model; Flux text in the raw request: ${result.turns[0]!.raw.match(/.{0,300}(flux_|Flux co-work).{0,300}/)?.[0] ?? 'none'}`);
+          // Pinned Codex 0.160.1 does not put an MCP server's `instructions` (or any Flux text) into its model request: probed
+          // 2026-10-09, the request carries only Codex's own exec tool, which lists MCP tools at run time. Codex has no integrated
+          // Start work path yet, so it stays unsupported/pending (CW-1). This check holds that truth: Flux's instructions do not
+          // reach the model, nothing is acknowledged and no task is created. It fails once Codex delivers them, so the row
+          // is then rewritten as supported with the full flow.
+          result = await startWork(spec, 'Start work', () => ({ text: 'Started.' }));
+          for (const turn of result.turns) assert.doesNotMatch(turn.raw, /Flux co-work|flux_acknowledge_playbook|flux:\/\/playbook/,
+            'Codex now delivers Flux instructions: make Codex supported and rewrite this check');
+          assert.deepEqual(result.calls, [], `Codex made Flux calls without its instructions:\n${result.output.slice(-1500)}`);
+          return;
         }
         const names = result.calls.map((call) => call.tool);
         for (const tool of ['flux_bootstrap', 'flux_acknowledge_playbook', 'flux_project_orientation', 'flux_create_task'])
