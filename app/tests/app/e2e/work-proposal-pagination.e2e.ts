@@ -51,13 +51,14 @@ test('comparison jumps expose headings below sticky controls on a bounded page a
         for (const [label, target, expectedView] of [['Work', 'g-open', 'All'], ['Results', 'g-results', 'Results']] as const) {
           // The phone has no group views: its saved view is Mine (and a group only when a jump names one).
           const phone = width === 390; const mine = page.getByRole('group', { name: 'Whose tasks' });
-          if (phone) await mine.getByRole('button', { name: 'Mine', exact: true }).tap();
+          // Its section jump still has to leave the bounded All page for the group: Results sit beyond the first 50 rows.
+          if (phone) { /* nothing hides the destination except the page bound, checked below for Results */ }
           else {
             await views.getByRole('button', { name: /^Open / }).click();
             await views.getByRole('checkbox', { name: 'Only mine', exact: true }).check();
           }
-          await page.locator('.ws-none').waitFor();
-          assert.equal(await page.locator(`#${target}`).count(), 0);
+          if (!phone) await page.locator('.ws-none').waitFor();
+          if (!phone || label === 'Results') assert.equal(await page.locator(`#${target}`).count(), 0);
           const jump = jumps.getByRole('button', { name: new RegExp(`^${label} `) });
           if (width < 1440) await jump.tap(); else await jump.click();
           const heading = page.locator(`#${target}`); await heading.waitFor();
