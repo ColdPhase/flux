@@ -375,6 +375,13 @@ test('an unverified account holding the provider\'s address: link first, and cla
     assert.ok(await page.getByRole('link', { name: 'Sign in to that account' }).isVisible(), 'linking is offered first');
     assert.equal((await me(attempt)).status, 401, 'no session before a claim');
     await page.getByRole('button', { name: 'Claim this address' }).click();
+    // The provider step runs again; its own session does not carry over, so the person signs in there once more.
+    await page.waitForURL((url) => url.origin === keycloak || (url.origin === origin && url.pathname !== '/claim'), { timeout: 20_000 });
+    if (new URL(page.url()).origin === keycloak) {
+      await page.locator('#username').fill('dave');
+      await page.locator('#password').fill(idpPassword);
+      await page.locator('#kc-login').click();
+    }
     await page.waitForURL((url) => url.origin === origin && url.pathname !== '/claim', { timeout: 20_000 });
     await page.waitForLoadState('networkidle');
     const signedIn = await me(attempt);
