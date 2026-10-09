@@ -96,7 +96,7 @@ class ConnectAiJourney(unittest.TestCase):
         ines = self.page("ines")
         ws = self.api(ines, "POST", "/api/v1/workspaces", {"name": "Connect studio"}, status=201)
         self.api(ines, "POST", f"/api/v1/workspaces/{ws['id']}/members", {"email": TOM["email"], "role": "member"}, status=201)
-        project = self.api(ines, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Two ways", "visibility": "open"}, status=201)
+        project = self.api(ines, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Two ways", "visibility": "workspace"}, status=201)
         agent = self.api(ines, "POST", f"/api/v1/workspaces/{ws['id']}/agents", {"name": "Ines's coding agent", "owner": "self"}, status=201)
         self.api(ines, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": {"kind": "agent", "id": agent["id"]}, "role": "contributor"}, status=201)
         connection = self.api(ines, "POST", "/api/v1/agent-connections", {"agentId": agent["id"], "selectedProjectIds": [project["id"]],
@@ -171,7 +171,7 @@ class ConnectAiJourney(unittest.TestCase):
         status = self.api(ines, "GET", "/api/v1/personal-assistant", status=200)
         self.assertEqual(status["state"], "not_enabled")
         self.api(ines, "POST", "/api/v1/personal-assistant", {"consentVersion": CONSENT, "agentId": self.ids["agent"], "perRunCents": 6,
-                 "dailyCapCents": 100, "timeZone": "Europe/Warsaw"}, status=200)
+                 "dailyCapCents": 100, "timeZone": "Europe/Warsaw"}, status=201)
         ines.goto(f"/projects/{self.ids['project']}/agents")
         rows = ines.get_by_role("list", name="Agent connections in this project").get_by_role("listitem")
         expect(rows).to_have_count(2)

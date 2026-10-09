@@ -162,7 +162,9 @@ function AgentsAndAi({ full, page = false }: { full: boolean; page?: boolean }) 
         <p className="sset-note sset-note--sub">Works inside Flux when you ask. You choose the AI and who pays for it.</p>
         <ul className="sset-card">
           <LinkRow to="/settings/assistant" icon={<Kreska size={22} hue={agentHue(`assistant:${me.user.id}`)} />}
-            title={<><span className="sset-row__identity">Your assistant{' '}<AgentTag /></span><span className="sset-row__meta"> · for you · {assistant ? ASSISTANT_STATE[assistant.state] : 'in Flux'}</span></>} action="Manage" />
+            title={<><span className="sset-row__identity">Your assistant{' '}<AgentTag /></span><span className="sset-row__meta"> · for you · {assistant ? ASSISTANT_STATE[assistant.state] : 'in Flux'}</span></>}
+            detail={page && assistant?.enablement ? `Paid by ${assistant.enablement.consent.payer.organization} · ${aiConnectionLabel(assistant.enablement.consent.provider, assistant.enablement.consent.model)} · Assistant ${assistant.enablement.status === 'active' ? 'on' : 'paused'}` : undefined}
+            action="Manage" />
           {page ? (keys ?? []).map((key) => (
             <LinkRow key={key.id} to="/settings/background-compute" icon={<Icon name="key" size={16} />}
               title={<>{key.name}<span className="sset-row__meta"> · {aiConnectionLabel(key.provider, key.model)}</span></>}
