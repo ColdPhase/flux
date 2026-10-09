@@ -23,6 +23,8 @@ export interface MockTurn {
   tools: string[];
   /** The output of every tool call so far, oldest first (Codex: the lines `exec` printed). */
   outputs: string[][];
+  /** Every piece of instruction and user text the client put in this request (system/developer messages and user turns), not tool outputs. */
+  prompt: string;
 }
 export type MockPlan = (turn: MockTurn) => MockStep;
 
@@ -34,17 +36,23 @@ const sse = (response: http.ServerResponse, events: [string, unknown][]) => {
 const textOf = (content: unknown): string => typeof content === 'string' ? content
   : Array.isArray(content) ? content.map((part) => (part as { text?: unknown }).text).filter((part): part is string => typeof part === 'string').join('\n') : '';
 
+const messageText = (items: unknown[]) => items.flatMap((item) => {
+  const record = item as { type?: string; content?: unknown };
+  return record.type === 'message' || record.type === undefined ? [textOf(record.content)] : [];
+}).join('\n');
+
 function codexTurn(body: { input?: Record<string, unknown>[] }): MockTurn {
   const outputs = (body.input ?? []).filter((item) => item.type === 'custom_tool_call_output' || item.type === 'function_call_output')
     .map((item) => Array.isArray(item.output) ? (item.output as { text?: string }[]).slice(1).map((part) => part.text ?? '') : [String(item.output)]);
-  return { client: 'codex', tools: [], outputs };
+  return { client: 'codex', tools: [], outputs, prompt: messageText(body.input ?? []) };
 }
 
-function claudeTurn(body: { tools?: { name: string }[]; messages?: { content: unknown }[] }): MockTurn {
+function claudeTurn(body: { tools?: { name: string }[]; system?: unknown; messages?: { content: unknown }[] }): MockTurn {
   const outputs: string[][] = [];
   for (const message of body.messages ?? []) for (const block of Array.isArray(message.content) ? message.content as Record<string, unknown>[] : [])
     if (block.type === 'tool_result') outputs.push([textOf(block.content)]);
-  return { client: 'claude', tools: (body.tools ?? []).map((tool) => tool.name), outputs };
+  return { client: 'claude', tools: (body.tools ?? []).map((tool) => tool.name), outputs,
+    prompt: [textOf(body.system), ...(body.messages ?? []).map((message) => textOf(message.content))].join('\n') };
 }
 
 export async function startClientModelMock(plan: MockPlan) {
