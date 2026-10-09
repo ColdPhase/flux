@@ -456,11 +456,8 @@ test('native agent owners retry failed reads, fence stale permission answers and
     await row.locator('.agent-for').waitFor();
     assert.equal(await row.locator('.agent-tag').innerText(), 'Agent');
     assert.equal(await row.locator('.ws-av').count(), 0);
-    const decision = page.locator(`[data-work-id="${proposal.id}"]`);
-    await decision.locator('.agent-for').waitFor();
-    assert.equal(await decision.locator('.agent-tag').innerText(), 'Agent');
-    assert.equal((await decision.innerText()).includes('(agent)'), false);
     await capture('scoped-owner-list', '.ws-item .agent-for');
+    // Decisions have no row in Tasks (#342); the proposing agent's owner shows in the decision's own details below.
     await row.getByRole('button').click();
     await page.locator('.wd-discussion .agent-for').waitFor();
     assert.equal(await page.locator('.wd-discussion .agent-tag').innerText(), 'Agent');
@@ -468,7 +465,7 @@ test('native agent owners retry failed reads, fence stale permission answers and
     await capture('scoped-owner-task-details', '.wd-discussion .agent-for');
     await page.keyboard.press('Escape');
     await page.locator('#details').waitFor({ state: 'detached' });
-    await decision.getByRole('button').click();
+    await page.goto(`/projects/${place.id}/tasks?open=decision:${proposal.id}`);
     await page.locator('.details .agent-for').waitFor();
     assert.equal(await page.locator('.details .agent-for').innerText(), 'for Scoped Casey');
     await capture('scoped-owner-decision-details', '.details .agent-for');
