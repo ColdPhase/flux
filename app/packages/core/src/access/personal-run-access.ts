@@ -1,4 +1,3 @@
-import { idpStandingRepository } from '@flux/db';
 import type { Executor } from '../types.js';
 import type { PersonalRunAccess } from '../personal-runs/ports.js';
 import { accessName, enforce, evaluateAgent, evaluateProject, evaluateSketch } from './policy.js';
@@ -27,8 +26,6 @@ export function policyPersonalRunAccess(db: Executor): PersonalRunAccess {
     },
 
     async canInvoke(principal, agentId, options) {
-      // A person whose account no longer stands at the identity provider starts and continues no compute (F-024 S4, #311).
-      if (principal.kind === 'human' && await idpStandingRepository(db).refuses(principal.id)) return false;
       const evaluation = await evaluateAgent(principal, 'agent.invoke', agentId, db, { lock: options?.lock });
       return evaluation.visible && evaluation.allowed;
     },

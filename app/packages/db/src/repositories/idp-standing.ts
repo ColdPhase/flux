@@ -56,7 +56,7 @@ export function idpStandingRepository(db: DbExecutor) {
     async reconcile(providerId: string, now: Date): Promise<number> {
       const result = await db.execute(sql`
         INSERT INTO auth_idp_standing (user_id, provider_id, state, reason, state_changed_at, next_check_at)
-        SELECT DISTINCT a.user_id, ${providerId}, 'sign_in_required', 'no_token', ${now}, ${now}
+        SELECT DISTINCT a.user_id, ${providerId}, 'sign_in_required', 'no_token', ${now.toISOString()}::timestamptz, ${now.toISOString()}::timestamptz
         FROM auth_accounts a WHERE a.provider_id = ${providerId}
         ON CONFLICT (user_id, provider_id) DO NOTHING`);
       return result.rowCount ?? 0;
@@ -74,15 +74,16 @@ export function idpStandingRepository(db: DbExecutor) {
      * lock held across the provider call (N3): this is one statement that commits at once.
      */
     async claim(now: Date, leaseMs: number, limit: number, leaseId: string): Promise<IdpStandingClaim[]> {
-      const until = new Date(now.getTime() + leaseMs);
+      const until = new Date(now.getTime() + leaseMs).toISOString();
+      const at = now.toISOString();
       const result = await db.execute(sql`
-        UPDATE auth_idp_standing AS st SET lease_id = ${leaseId}, lease_until = ${until}
+        UPDATE auth_idp_standing AS st SET lease_id = ${leaseId}, lease_until = ${until}::timestamptz
         WHERE (st.user_id, st.provider_id) IN (
           SELECT c.user_id, c.provider_id FROM auth_idp_standing c
-          WHERE c.refresh_token_enc IS NOT NULL AND c.next_check_at <= ${now}
-            AND (c.lease_until IS NULL OR c.lease_until <= ${now})
-            AND (EXISTS (SELECT 1 FROM auth_sessions x WHERE x.user_id = c.user_id AND x.expires_at > ${now})
-              OR EXISTS (SELECT 1 FROM oauth_refresh_token r WHERE r.user_id = c.user_id AND r.revoked IS NULL AND r.expires_at > ${now}))
+          WHERE c.refresh_token_enc IS NOT NULL AND c.next_check_at <= ${at}::timestamptz
+            AND (c.lease_until IS NULL OR c.lease_until <= ${at}::timestamptz)
+            AND (EXISTS (SELECT 1 FROM auth_sessions x WHERE x.user_id = c.user_id AND x.expires_at > ${at}::timestamptz)
+              OR EXISTS (SELECT 1 FROM oauth_refresh_token r WHERE r.user_id = c.user_id AND r.revoked IS NULL AND r.expires_at > ${at}::timestamptz))
           ORDER BY c.next_check_at LIMIT ${limit} FOR UPDATE SKIP LOCKED)
         RETURNING st.user_id AS "userId", st.provider_id AS "providerId", st.refresh_token_enc AS "refreshTokenEnc"`);
       return (result.rows as Omit<IdpStandingClaim, 'leaseId'>[]).map((row) => ({ ...row, leaseId }));
@@ -113,4 +114,17 @@ export function idpStandingRepository(db: DbExecutor) {
       return true;
     },
   };
+}
+
+/**
+ * Wraps a personal-run access policy so a person whose account no longer stands at the identity provider
+ * starts and continues no compute (F-024 S4, #311). The adapter lives here, not in core: core holds the policy
+ * and its port, and the apps compose this over it.
+ */
+export function withIdpStanding<A extends { canInvoke(principal: { kind: string; id: string }, agentId: string, options?: { lock?: boolean }): Promise<boolean> }>(access: A, db: DbExecutor): A {
+  const standing = idpStandingRepository(db);
+  return { ...access, async canInvoke(principal, agentId, options) {
+    if (principal.kind === 'human' && await standing.refuses(principal.id)) return false;
+    return access.canInvoke(principal, agentId, options);
+  } };
 }
