@@ -131,7 +131,7 @@ class StopAndQuestions(unittest.TestCase):
         card = page.locator(".agentlive--agent")
         expect(card).to_have_count(1)
         expect(card).to_contain_text("Claude Code agent")
-        expect(card).to_contain_text("holds #1 · offline")
+        expect(card).to_contain_text("holds #1 · not signed in yet")
         shot(page, "stop-sidebar-card")
         card.get_by_role("button", name="Stop Claude Code agent").click()
         expect(page.get_by_text("Stopped Claude Code agent on #1")).to_be_visible()
@@ -146,11 +146,12 @@ class StopAndQuestions(unittest.TestCase):
         page = self.page("ada")
         page.goto(f"/projects/{self.ids['project']}/agents")
         row = page.locator(f'.agents-row[data-agent="{self.ids["agent"]}"]')
-        expect(row).to_contain_text("Stopped by Ada Kowalska · #1")
+        # The stop is yours: the row says "you" (#347 review N9); the other reader below still sees your name.
+        expect(row).to_contain_text("Stopped by you · #1")
         expect(row.get_by_role("button", name=re.compile("^Stop"))).to_have_count(0)
         row.locator(".agents-row__btn").click()
         recent = page.get_by_role("complementary", name="Claude Code agent, details").get_by_role("region", name="Recent")
-        expect(recent).to_contain_text("Stopped by Ada Kowalska")
+        expect(recent).to_contain_text("Stopped by you")
         # Everyone who reads the project sees it.
         jonas = self.page("jonas")
         jonas.goto(f"/projects/{self.ids['project']}/agents")
@@ -174,7 +175,7 @@ class StopAndQuestions(unittest.TestCase):
         page.route(re.compile(r".*/api/v1/projects/[^/]+/agent-stops$"), stop_first)
         row.get_by_role("button", name="Stop Claude Code agent").click()
         expect(page.get_by_text("That agent was not working on this task any more.")).to_be_visible()
-        expect(row).to_contain_text("Stopped by Ada Kowalska · #2")
+        expect(row).to_contain_text("Stopped by you · #2")
         stops = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/agent-stops", status=200)["stops"]
         self.assertEqual(len(stops), 2)
 

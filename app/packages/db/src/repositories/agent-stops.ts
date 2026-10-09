@@ -98,9 +98,16 @@ export function agentStopRows(tx: DbExecutor) {
             gt(schema.agentRuntimeSessions.expiresAt, sql`now()`)));
         for (const row of await sessions) live.add(row.agentId);
       }
+      // Signed in: a client has ever opened a session for one of the agent's connections.
+      const signed = new Set<string>();
+      if (agentIds.length) {
+        for (const row of await tx.selectDistinct({ agentId: connections.agentId }).from(schema.agentRuntimeSessions)
+          .innerJoin(connections, eq(connections.id, schema.agentRuntimeSessions.connectionId))
+          .where(inArray(connections.agentId, agentIds))) signed.add(row.agentId);
+      }
       return rows.map((row) => ({ agent: { id: row.agentId, name: row.agentName },
         task: { id: row.taskId, projectId: row.projectId, projectName: row.projectName, number: row.number, title: row.title },
-        online: live.has(row.agentId) }));
+        online: live.has(row.agentId), signedIn: signed.has(row.agentId) }));
     },
     async get(id: string) { return (await this.list({ id }))[0] ?? null; },
     /** Newest first. */

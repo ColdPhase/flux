@@ -223,6 +223,8 @@ svg { flex: none; }
 }
 .ui-toast--success svg:first-child { color: var(--oninv); }
 .ui-toast__msg { padding: 6px 0; }
+.ui-toast__action { color: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; padding: 6px 8px; border-radius: var(--r-sm); }
+.ui-toast__action:focus-visible { outline: 2px solid var(--oninv); outline-offset: 2px; }
 .ui-toast__close { display: grid; place-items: center; width: 32px; height: 32px; border-radius: var(--r-pill); color: inherit; opacity: .7; transition: var(--tr); }
 .ui-toast__close:hover { opacity: 1; background: color-mix(in srgb, var(--oninv) 14%, transparent); }
 .ui-toast__close:focus-visible { outline-color: var(--oninv); }

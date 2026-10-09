@@ -34,13 +34,23 @@ const kreskaFor = (entry: AgentEntry, held: readonly WorkRowProjection[], online
  * What is known about an agent's load, from the tasks it owns. Working is claimed only with an open client session (P1-1);
  * an agent whose app is closed "holds" its task.
  */
-export function loadLine(held: readonly WorkRowProjection[], online: boolean): string {
+export function loadLine(held: readonly WorkRowProjection[], state: 'online' | 'offline' | 'not_signed_in'): string {
   const first = held[0];
   if (!first) return 'no task now';
   const working = first.status === 'in_progress';
-  const queued = held.length - (working ? 1 : 0);
-  const head = !online ? `holds #${first.number} · offline` : `${working ? `working on #${first.number}` : `has #${first.number}`}`;
+  const queued = held.length - 1;
+  const head = state === 'online'
+    ? `${working ? `working on #${first.number}` : `has #${first.number}, not started`}`
+    : `holds #${first.number} · ${state === 'not_signed_in' ? 'not signed in yet' : 'offline'}`;
   return `${head}${queued > 0 ? `, ${queued} more queued` : ''}`;
+}
+
+/** An agent's connection state for the load line: online only with an open session; an agent with no connection is not signed in. */
+export function agentState(entry: AgentEntry, loaded: Loaded | null): 'online' | 'offline' | 'not_signed_in' {
+  const connection = loaded?.connections.filter((item) => item.agent.id === entry.agentId) ?? [];
+  if (connection.some((item) => item.state === 'session_open')) return 'online';
+  if (connection.some((item) => item.state === 'offline')) return 'offline';
+  return 'not_signed_in';
 }
 
 /** What a failed hand-off says to the person; shared with the Agents view's Hand back. */
@@ -163,7 +173,7 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
     if (attempt.current?.key !== key) attempt.current = { key, id: crypto.randomUUID() };
     setBusy(true); setError('');
     try {
-      await contributeToTask(task.id, { body: `@${entry.owner} can your ${entry.name} take #${task.number} · ${task.title}?`, clientMessageId: attempt.current.id, kind: 'text' });
+      await contributeToTask(task.id, { body: `@${entry.owner} can your ${entry.name} take #${task.number} · ${task.title}? If yes, hand #${task.number} to it in Agents.`, clientMessageId: attempt.current.id, kind: 'text' });
       attempt.current = null;
       toast({ message: `Asked ${firstName(entry.owner ?? 'them')} about #${task.number}`, tone: 'success' });
       onClose();
@@ -230,7 +240,7 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
             <div className="handoff__list" role="radiogroup" aria-label="Agent">
               {entries.map((item, index) => {
                 const busyWith = held(item.agentId);
-                const note = item.access === null ? 'no access here yet' : loadLine(busyWith, online(item.agentId));
+                const note = item.access === null ? 'no access here yet' : loadLine(busyWith, agentState(item, loaded));
                 const asks = teammateOf(item, me.user.id);
                 const id = `${titleId}-${item.agentId}`;
                 return (
@@ -256,7 +266,7 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
                   <Kreska size={36} expression="idle" hue={agentHue(entry.agentId)} />
                   <span className="handoff__who"><b>{entry.name}</b><small>{[entry.owner ? `for ${entry.owner}` : null, entry.connection?.name].filter(Boolean).join(' · ')}</small></span>
                 </div>
-                <p className="handoff__can">{`${entry.name} works for ${entry.owner}. Only ${entry.owner} can hand work to it. Flux will ask ${entry.owner} in the thread of #${task?.number ?? ''}.`}</p>
+                <p className="handoff__can">{`${entry.name} works for ${entry.owner}. Only ${firstName(entry.owner ?? 'them')} can hand work to it. Flux will ask ${firstName(entry.owner ?? 'them')} in the thread of #${task?.number ?? ''}.`}</p>
               </>
             ) : (
               <>
@@ -264,7 +274,7 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
             {entry ? (
               <div className="handoff__chosen">
                 <Kreska size={36} expression="idle" hue={agentHue(entry.agentId)} />
-                <span className="handoff__who"><b>{entry.name}</b><small>{[entry.owner ? `for ${entry.owner}` : null, entry.connection?.name, entry.access ? loadLine(held(entry.agentId), online(entry.agentId)) : 'no access here yet'].filter(Boolean).join(' · ')}</small></span>
+                <span className="handoff__who"><b>{entry.name}</b><small>{[entry.owner ? `for ${entry.owner}` : null, entry.connection?.name, entry.access ? loadLine(held(entry.agentId), agentState(entry, loaded)) : 'no access here yet'].filter(Boolean).join(' · ')}</small></span>
               </div>
             ) : <p className="handoff__note" role="status">{status ?? 'That agent is no longer here. Go back and choose another.'}</p>}
             {entry ? (
@@ -277,7 +287,7 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
               </p>
             ) : null}
             {entry && grant.canTake && loaded?.policy ? <p className="handoff__note">The project’s agent policy (revision {loaded.policy.revision}) applies to its work.</p> : null}
-            {entry && grant.canTake && held(entry.agentId).some((row) => row.status === 'in_progress') ? <p className="handoff__note">{online(entry.agentId) ? 'It is' : 'It'} {loadLine(held(entry.agentId), online(entry.agentId))}; this task is queued behind that work.</p> : null}
+            {entry && grant.canTake && held(entry.agentId).some((row) => row.status === 'in_progress') ? <p className="handoff__note">{online(entry.agentId) ? 'It is' : 'It'} {loadLine(held(entry.agentId), agentState(entry, loaded))}; this task is queued behind that work.</p> : null}
               </>
             )}
           </>

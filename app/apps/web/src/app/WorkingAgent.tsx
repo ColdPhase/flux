@@ -136,13 +136,13 @@ function OwnAgentCard({ item, compact, onChanged }: { item: OwnWorkingAgent; com
   return (
     <div className={`agentlive agentlive--agent${compact ? ' agentlive--compact' : ''}`} role="status" aria-label={label} data-agent={item.agent.id}>
       {compact ? (
-        <Link className="agentlive__link" to={destination} title={label} aria-label={label}><Kreska size={24} expression="thinking" hue={hue} /></Link>
+        <Link className="agentlive__link" to={destination} title={label} aria-label={label}><Kreska size={24} expression={item.online ? 'thinking' : 'asleep'} hue={hue} /></Link>
       ) : (
         <>
-          <Kreska size={24} expression="thinking" hue={hue} />
+          <Kreska size={24} expression={item.online ? 'thinking' : 'asleep'} hue={hue} />
           <Link className="agentlive__text" to={destination}>
             <b>{item.agent.name}</b>
-            <span>{stopping ? 'Stopping…' : item.online ? `#${item.task.number} · ${item.task.title}` : `holds #${item.task.number} · offline`}</span>
+            <span>{stopping ? 'Stopping…' : item.online ? `#${item.task.number} · ${item.task.title}` : `holds #${item.task.number} · ${item.signedIn ? 'offline' : 'not signed in yet'}`}</span>
           </Link>
         </>
       )}

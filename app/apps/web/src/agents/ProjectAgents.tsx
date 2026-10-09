@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { Link, useLoaderData, useLocation, useNavigation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { AgentOperation, AgentQuestion, AgentStop, ConversationMessage, ProjectAgentConnection, ProjectAgents as ProjectAgentsData, TaskDiscussion, WorkRowProjection, WorkStatus } from '@flux/contracts';
@@ -95,7 +95,7 @@ function authorName(message: ConversationMessage, names: Map<string, string>) {
  * (scrollIntoView would ignore the composer and leave the message under it).
  */
 function scrollPaneToEnd(marker: HTMLElement | null) {
-  const pane = marker?.closest<HTMLElement>('.agents-scroll');
+  const pane = marker?.closest<HTMLElement>('.agents-thread-scroll, .agents-scroll');
   if (pane) pane.scrollTop = pane.scrollHeight;
 }
 
@@ -126,7 +126,7 @@ async function latestThread(workId: string, shown: TaskDiscussion, signal: Abort
 
 /** Whether the reader is at the end of the pane (within a few pixels), so new messages should follow. */
 function paneAtEnd(marker: HTMLElement | null) {
-  const pane = marker?.closest<HTMLElement>('.agents-scroll');
+  const pane = marker?.closest<HTMLElement>('.agents-thread-scroll, .agents-scroll');
   return !!pane && pane.scrollHeight - pane.scrollTop - pane.clientHeight < 40;
 }
 
@@ -379,6 +379,11 @@ function connectionRank(connection: ProjectAgentConnection | null, now: number):
   return shownState(connection, now) === 'session_open' ? 5 : 6;
 }
 
+/** The agent's name as a toast says it: a teammate's agent is "Jonas’s Claude Code", so it is not mistaken for one's own (#347 N10). */
+export function agentLabel(entry: AgentEntry, meId: string): string {
+  return entry.ownerId && entry.ownerId !== meId && entry.owner ? `${firstName(entry.owner)}’s ${entry.name}` : entry.name;
+}
+
 /** What a row says, its Kreska, whether it is working (live, on an in-progress task) and its place in the list. */
 interface RowView { line: ReactNode; expression: KreskaExpression; working: boolean; rank: number }
 
@@ -387,7 +392,7 @@ interface RowView { line: ReactNode; expression: KreskaExpression; working: bool
  * with an open client session); its blocked or open task; its recent stop; else what Flux can prove about the connection.
  * Only the agent's lead row (its first online connection, else its first row) speaks for its held task and questions.
  */
-function rowView(entry: AgentEntry, held: WorkRowProjection[], lead: boolean, now: number, stopped: AgentStop | null, asking: AgentQuestion | null): RowView {
+function rowView(entry: AgentEntry, held: WorkRowProjection[], lead: boolean, now: number, stopped: AgentStop | null, asking: AgentQuestion | null, meId: string): RowView {
   const connection = entry.connection;
   const task = lead ? held[0] : undefined;
   const base: KreskaExpression = connection ? connectionExpression(connection, now) : 'idle';
@@ -407,7 +412,7 @@ function rowView(entry: AgentEntry, held: WorkRowProjection[], lead: boolean, no
   }
   if (task?.status === 'open') return { line: `Has #${task.number}, not started`, expression: base, working: false, rank: 4 };
   if (lead && !held.length && stopped && now - Date.parse(stopped.stoppedAt) < STOPPED_SHOWN_MS) {
-    return { line: `Stopped by ${stopped.stoppedBy.name} · #${stopped.taskNumber}`, expression: base, working: false, rank: connectionRank(connection, now) };
+    return { line: `Stopped by ${stopped.stoppedBy.id === meId ? 'you' : stopped.stoppedBy.name} · #${stopped.taskNumber}`, expression: base, working: false, rank: connectionRank(connection, now) };
   }
   if (!connection) return { line: entry.access === 'viewer' ? 'Can read here · nothing handed to it' : 'Nothing handed to it', expression: 'idle', working: false, rank: 7 };
   return { line: stateLine(connection, now), expression: base, working: false, rank: connectionRank(connection, now) };
@@ -465,7 +470,7 @@ function AgentRow({ entry, view, duplicate, short, now, selected, dropping, stop
         {last ? <time className="agents-row__time" dateTime={last.at}>{when(last.at)}</time> : null}
         <Icon name="chevron-right" size={14} className="agents-row__go" />
       </button>
-      {stop ? <StopButton className="agents-row__stop" label={stop.label} text={stop.text} busy={stop.busy} onClick={stop.run} /> : null}
+      {stop ? <StopButton className={`agents-row__stop${stop.text.startsWith('Take back') ? ' agents-row__stop--take' : ''}`} label={stop.label} text={stop.text} busy={stop.busy} onClick={stop.run} /> : null}
     </li>
   );
 }
@@ -479,23 +484,35 @@ function progressNote(connection: ProjectAgentConnection | null, now: number): s
   return shownState(connection, now) === 'session_open' ? 'In progress' : 'In progress · its app is offline';
 }
 
+/** The panel's note on the held task, in the row's own words (#347 N5): a question to you first, then the task's state. */
+function taskNote(task: WorkRowProjection, asking: AgentQuestion | null, connection: ProjectAgentConnection | null, now: number): string {
+  if (asking) return 'Waiting for your answer';
+  if (task.status === 'in_progress') return progressNote(connection, now);
+  if (task.status === 'blocked') return task.blocker ? `Blocked · ${task.blocker}` : 'Blocked';
+  return 'Not started';
+}
+
 /**
  * One agent in the detail panel (P9, AC-5): who owns it, what it is doing now (its latest line on the task, one tap from the
  * thread), what Flux has recorded and what its grant here lets it do. Stop ends the agent's hold on its task; Flux cannot kill
  * the agent's own program, so the panel says what was stopped, and by whom.
  */
-function AgentDetail({ entry, held, meId, projectId, now, canHandOff, stops, stop, onHandOff, onClose, onThread }: {
-  entry: AgentEntry; held: WorkRowProjection[]; meId: string; projectId: string; now: number; canHandOff: boolean; stops: AgentStop[];
+function AgentDetail({ entry, held, meId, projectId, now, asking, canHandOff, stops, stop, refocus, onRefocused, onHandOff, onClose, onThread }: {
+  entry: AgentEntry; held: WorkRowProjection[]; meId: string; projectId: string; now: number; asking: AgentQuestion | null; canHandOff: boolean; stops: AgentStop[];
   /** Present when this person may stop the agent's task now. */
-  stop: RowStop | null; onHandOff: () => void; onClose: () => void; onThread: (taskId: string) => void;
+  stop: RowStop | null; refocus: boolean; onRefocused: () => void; onHandOff: () => void; onClose: () => void; onThread: (taskId: string) => void;
 }) {
   const task = held[0];
   const last = entry.connection?.lastActivity;
   const grant = mayDo(entry.access);
   const latest = useLatestAgentLine(task?.id ?? null, entry.agentId);
   const teammate = teammateOf(entry, meId);
+  const lineId = useId();
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => { heading.current?.focus({ preventScroll: true }); }, [entry.key]);
+  // After Stop or Take back the focus stays on this agent, not on the row that moved (#347 N4).
+  useEffect(() => { if (refocus) { heading.current?.focus({ preventScroll: true }); onRefocused(); } }, [refocus, onRefocused]);
+  const question = asking ? `Asks: “${asking.question}”` : null;
   return (
     <aside className="agents-detail" aria-label={`${entry.name}, details`}>
       <div className="agents-detail__bar">
@@ -512,12 +529,12 @@ function AgentDetail({ entry, held, meId, projectId, now, canHandOff, stops, sto
         <h3>Now</h3>
         {task ? (
           <>
-            <button type="button" className="agents-detail__card" aria-label={`Open the thread of #${task.number}`} onClick={() => onThread(task.id)}>
+            <button type="button" className="agents-detail__card" aria-label={`Open the thread of #${task.number}`} aria-describedby={lineId} onClick={() => onThread(task.id)}>
               <span className="agents-detail__task"><StatusGlyph status={task.status} size={14} /><span className="ui-task-number">#{task.number}</span><span className="agents-detail__tasktitle">{task.title}</span></span>
-              {latest === undefined ? null : <span className="agents-detail__latest">{latest ? latest.body : 'No message from it on this task yet.'}</span>}
-              {latest ? <span className="agents-detail__at">Last update {when(latest.at)}</span> : null}
+              <span id={lineId} className="agents-detail__latest">{question ?? (latest === undefined ? '' : latest ? latest.body : 'No message from it on this task yet.')}</span>
+              {latest && !question ? <span className="agents-detail__at">Last update {when(latest.at)}</span> : null}
             </button>
-            <p className="agents-detail__note">{task.status === 'in_progress' ? progressNote(entry.connection, now) : 'Handed to it, not started'}{held.length > 1 ? ` · ${held.length - 1} more` : ''} · <Link className="ui-link" to={`/projects/${projectId}/tasks?open=work:${task.id}`}>Open task</Link></p>
+            <p className="agents-detail__note">{taskNote(task, asking, entry.connection, now)}{held.length > 1 ? ` · ${held.length - 1} more` : ''} · <Link className="ui-link" to={`/projects/${projectId}/tasks?open=work:${task.id}`}>Open task</Link></p>
           </>
         ) : <p className="agents-detail__note">{entry.connection ? stateLine(entry.connection, now) : 'Nothing is handed to it.'}</p>}
       </section>
@@ -525,7 +542,7 @@ function AgentDetail({ entry, held, meId, projectId, now, canHandOff, stops, sto
         <h3>Recent</h3>
         {last || held.length > 1 || stops.length ? (
           <ul className="agents-detail__recent">
-            {stops.slice(0, 3).map((item) => <li key={item.id} data-stop={item.id}><span>Stopped by {item.stoppedBy.name} · <span className="ui-task-number">#{item.taskNumber}</span></span><time dateTime={item.stoppedAt}>{when(item.stoppedAt)}</time></li>)}
+            {stops.slice(0, 3).map((item) => <li key={item.id} data-stop={item.id}><span>Stopped by {item.stoppedBy.id === meId ? 'you' : item.stoppedBy.name} · <span className="ui-task-number">#{item.taskNumber}</span></span><time dateTime={item.stoppedAt}>{when(item.stoppedAt)}</time></li>)}
             {last ? <li><span>{sentence(OPERATION_LABEL[last.operation])}</span><time dateTime={last.at}>{when(last.at)}</time></li> : null}
             {held.slice(1).map((row) => <li key={row.id}><button type="button" className="agents-detail__thread" onClick={() => onThread(row.id)}>Also holds #{row.number} · {row.title}</button></li>)}
           </ul>
@@ -540,7 +557,9 @@ function AgentDetail({ entry, held, meId, projectId, now, canHandOff, stops, sto
         {task ? <Button variant="secondary" onClick={() => onThread(task.id)}>Message</Button> : null}
         {canHandOff ? <Button variant="secondary" onClick={onHandOff} disabled={!grant.canTake}>{teammate ? `Ask ${firstName(entry.owner ?? 'them')} to use ${entry.name}` : `Hand off to ${entry.name}`}</Button> : null}
       </div>
-      {stop && task ? <p className="agents-detail__note">{`Stop ends ${entry.name}’s hold on #${task.number}.`}{entry.connection ? ` Its app on ${entry.connection.name} may keep running.` : ''}</p> : null}
+      {stop && task ? <p className="agents-detail__note">{task.status === 'in_progress'
+        ? `Stop ends ${entry.name}’s hold on #${task.number}.${entry.connection ? ` Its app on ${entry.connection.name} may keep running.` : ''}`
+        : `Taking #${task.number} back ends ${entry.name}’s hold on it.${entry.connection ? ` Its app on ${entry.connection.name} may keep running.` : ''}`}</p> : null}
     </aside>
   );
 }
@@ -595,18 +614,24 @@ export function ProjectAgents() {
   const lastStopOf = (agentId: string) => agentStops.stops.find((item) => item.agent.id === agentId) ?? null;
   const leads = useMemo(() => leadKeys(listed, connections.now), [listed, connections.now]);
   const views = new Map(listed.map((entry) => [entry.key, rowView(entry, heldBy(entry.agentId), leads.has(entry.key), connections.now,
-    lastStopOf(entry.agentId), asked.find((question) => question.agent.id === entry.agentId) ?? null)]));
+    lastStopOf(entry.agentId), asked.find((question) => question.agent.id === entry.agentId) ?? null, me.user.id)]));
   // The list is ordered by what needs the person first (P2-1); ties keep the order above.
   const entries = [...listed].sort((a, b) => views.get(a.key)!.rank - views.get(b.key)!.rank);
   const beside = useMediaQuery('(min-width: 1001px)');
   // From an agent's panel a thread opens as a step forward: on a narrow pane the panel (which hides the list and
   // the thread) is left, and Back returns to it.
-  const openThread = (id: string) => setSearch((current) => {
-    const next = new URLSearchParams(current); next.set('task', id);
-    if (!beside) next.delete('agent');
-    return next;
-  }, { replace: beside, flushSync: true });
-  const closeThread = () => setSearch((current) => { const next = new URLSearchParams(current); next.delete('task'); return next; }, { replace: true });
+  // A thread opened by the person takes focus (#347 N8); it keeps the agent it was opened from, so "‹" and Close return to that agent.
+  const [focusThread, setFocusThread] = useState(false);
+  const openThread = (id: string) => {
+    setFocusThread(true);
+    setSearch((current) => { const next = new URLSearchParams(current); next.set('task', id); return next; }, { replace: beside, flushSync: true });
+  };
+  const closeThread = () => {
+    setFocusThread(false);
+    setSearch((current) => { const next = new URLSearchParams(current); next.delete('task'); return next; }, { replace: true });
+  };
+  // After Stop or Take back the panel stays on that agent, with focus on its heading (#347 N4).
+  const [refocusKey, setRefocusKey] = useState<string | null>(null);
   // Stop, or Take back, is offered to who the server lets stop: a manager and the agent's owner (the task's creator is told by the server).
   const stopOf = (entry: AgentEntry): RowStop | null => {
     const held = heldBy(entry.agentId)[0];
@@ -618,7 +643,12 @@ export function ProjectAgents() {
       text: inProgress ? 'Stop' : `Take back #${held.number}`,
       busy,
       // Hand back is offered for an agent this person owns (or a workspace agent), never a teammate's (P1-3).
-      run: () => { void stopper.stop(entry.agentId, held, entry.name, entry.ownerId === null || entry.ownerId === me.user.id); },
+      run: () => {
+        // The panel is pinned to the agent first, so the list re-sorting after Stop does not move it to another agent.
+        if (beside) open(entry.key);
+        setRefocusKey(entry.key);
+        void stopper.stop(entry.agentId, held, agentLabel(entry, me.user.id), entry.ownerId === null || entry.ownerId === me.user.id);
+      },
     };
   };
   const working = [...views.values()].filter((view) => view.working).length;
@@ -638,8 +668,11 @@ export function ProjectAgents() {
   };
   const canOpenThread = !!task;
   const threadPane = (mode: 'docked' | 'sheet') => task ? (
-    <ThreadDrawer mode={mode} focusOnOpen={false} title={`#${task.number} · ${task.title}`} closeLabel="Close thread" onClose={closeThread}>
-      <TaskThread key={`${me.user.id}:${projectId}:${task.id}`} task={task} projectId={projectId} meId={me.user.id} names={names} canWrite={canWrite} changingScope={changingScope} />
+    <ThreadDrawer mode={mode} focusOnOpen={focusThread} title={`#${task.number} · ${task.title}`} closeLabel="Close thread" onClose={closeThread}>
+      {/* The thread's own scroller: its head stays on screen while the messages scroll (#347 N3). */}
+      <div className="agents-thread-scroll">
+        <TaskThread key={`${me.user.id}:${projectId}:${task.id}`} task={task} projectId={projectId} meId={me.user.id} names={names} canWrite={canWrite} changingScope={changingScope} />
+      </div>
     </ThreadDrawer>
   ) : null;
   const latestDetail = selected;
@@ -707,6 +740,7 @@ export function ProjectAgents() {
       ) : latestDetail && !canOpenThread ? (
         <AgentDetail key={latestDetail.key} entry={latestDetail} held={heldBy(latestDetail.agentId)} meId={me.user.id} projectId={projectId} now={connections.now}
           stops={agentStops.stops.filter((item) => item.agent.id === latestDetail.agentId)} stop={leads.has(latestDetail.key) ? stopOf(latestDetail) : null}
+          asking={asked.find((question) => question.agent.id === latestDetail.agentId) ?? null} refocus={refocusKey === latestDetail.key} onRefocused={() => setRefocusKey(null)}
           canHandOff={canWrite && !!shell} onHandOff={() => setHandOff({ agentId: latestDetail.agentId, task: null })} onClose={() => open(null)} onThread={openThread} />
       ) : null}
       {task && !beside ? (

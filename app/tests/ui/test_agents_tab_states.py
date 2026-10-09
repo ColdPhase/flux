@@ -297,7 +297,8 @@ class AgentsTabStates(unittest.TestCase):
         ada = self.page("ada")
         ada.goto(f"/projects/{self.ids['project']}/agents")
         self.row(ada, "jonas_claude").get_by_role("button", name="Take back #2").click()
-        expect(ada.get_by_text("Took #2 back from Claude Code")).to_be_visible()
+        # A teammate's agent is named by its owner in the toast (#347 N10).
+        expect(ada.get_by_text("Took #2 back from Jonas’s Claude Code")).to_be_visible()
         self.assertIsNone(self.task("task2")["owner"])
         # Negative control: an agent that holds nothing (Notes) has neither Stop nor Take back.
         expect(self.row(ada, "notes")).to_be_visible()
@@ -343,6 +344,152 @@ class AgentsTabStates(unittest.TestCase):
         self.assertNotIn("1. Merge now", text)
         # Negative control: a message without a question still shows its body.
         expect(page.locator(f'[data-message-id="{self.ids["m3"]}"]')).to_contain_text("Thanks, keep going.")
+
+    def test_08_hand_back_is_readable_and_waits_for_the_person(self) -> None:
+        # #347 review N1: the action is drawn in the toast's text colour (4.5:1 or better) and stays until it is used or dismissed.
+        page = self.page("ada")
+        page.goto(f"/projects/{self.ids['project']}/agents")
+        self.row(page, "lab").get_by_role("button", name="Stop Lab helper").click()
+        expect(page.get_by_text("Stopped Lab helper on #5")).to_be_visible()
+        action = page.get_by_role("button", name="Hand back")
+        expect(action).to_be_visible()
+        ratio = page.evaluate(CONTRAST)
+        self.assertGreaterEqual(ratio, 4.5, f"Hand back contrast is {ratio:.2f}:1 on the toast")
+        # Negative control: the old 8 s timeout and the link colour (1.00:1, gone after 8 s) fail both assertions here.
+        page.wait_for_timeout(9000)
+        expect(action).to_be_visible()
+        action.click()
+        expect(page.get_by_text("Handed #5 back to Lab helper")).to_be_visible()
+        self.assertEqual(self.task("task5")["owner"]["id"], self.ids["lab"])
+
+    def test_09_the_phone_thread_is_a_sheet_over_the_list_with_a_way_back_to_the_agent(self) -> None:
+        # #347 review N2 and P1-2: on a phone the thread covers the Agents pane; its title and "‹" are on screen; "‹" returns to the agent.
+        page = self.page("ada", phone=True)
+        page.goto(f"/projects/{self.ids['project']}/agents")
+        self.row(page, "codex").locator(".agents-row__btn").tap()
+        page.get_by_role("button", name="Open the thread of #1").tap()
+        expect(page.locator(".agents-thread-sheet")).to_be_visible()
+        title = page.locator(".thread__title").bounding_box()
+        back = page.get_by_role("button", name="Close thread").bounding_box()
+        assert title and back
+        for name, box in (("title", title), ("back", back)):
+            self.assertTrue(0 <= box["y"] and box["y"] + box["height"] <= 844, f"the thread {name} is on screen: {box}")
+        expect(page.get_by_role("button", name="Hand off a task")).to_be_hidden()
+        page.get_by_role("button", name="Close thread").tap()
+        # Negative control: the old in-flow thread put its title below the fold, and "‹" went to the list instead of the agent.
+        expect(page.get_by_role("complementary", name="Codex, details")).to_be_visible()
+        shot(page, "agents-tab-phone-sheet")
+
+    def test_10_the_docked_thread_keeps_its_title_and_close_in_view(self) -> None:
+        # #347 review N3: opening the thread on the computer scrolls its title into view, not out of it.
+        page = self.page("ada")
+        page.goto(f"/projects/{self.ids['project']}/agents")
+        self.row(page, "codex").locator(".agents-row__btn").click()
+        page.get_by_role("button", name="Open the thread of #1").click()
+        expect(page.get_by_role("region", name="#1 · Fix the reconnect loop in the lamp firmware")).to_be_visible()
+        title = page.locator(".thread__title").bounding_box()
+        close = page.get_by_role("button", name="Close thread").bounding_box()
+        assert title and close
+        for name, box in (("title", title), ("close", close)):
+            self.assertTrue(0 <= box["y"] and box["y"] + box["height"] <= 900, f"the thread {name} is in view: {box}")
+        # Negative control: the old shared scroll left the head under the project header (y < 0 at 900 px).
+
+    def test_11_stop_keeps_the_panel_and_focus_on_the_stopped_agent(self) -> None:
+        # #347 review N4: Stop does not move the panel to another agent or the focus to its heading.
+        page = self.page("ada")
+        self.stub_connections(page, {self.ids["conn_codex"]: open_session()})
+        page.goto(f"/projects/{self.ids['project']}/agents")
+        detail = page.get_by_role("complementary", name="Codex, details")
+        expect(detail).to_be_visible()
+        detail.get_by_role("button", name="Stop Codex").click()
+        expect(page.get_by_text("Stopped Codex on #1")).to_be_visible()
+        expect(page.get_by_role("complementary", name="Codex, details")).to_be_visible()
+        focused = page.evaluate("() => document.activeElement && document.activeElement.classList.contains('agents-detail__name') ? document.activeElement.textContent : ''")
+        self.assertIn("Codex", focused, "focus stays on the stopped agent")
+        # Negative control: the old list re-sort moved the panel to Jonas's or Lab's agent and its heading took focus.
+        page.get_by_role("button", name="Hand back").click()
+        expect(page.get_by_text("Handed #1 back to Codex")).to_be_visible()
+
+    def test_12_the_panel_note_says_what_the_row_says(self) -> None:
+        # #347 review N5: a blocked or waiting agent reads the same state words in its panel as in its row.
+        page = self.page("ada")
+        self.stub_questions(page, [self.question(asked=ADA["id"], text="Merge PR 42 now, or wait?", message=self.ids["m2"], task=self.ids["task1"])])
+        page.goto(f"/projects/{self.ids['project']}/agents?agent=connection:{self.ids['conn_codex']}")
+        panel = page.get_by_role("complementary", name="Codex, details")
+        expect(panel.get_by_role("region", name="Now")).to_contain_text("Waiting for your answer")
+        expect(panel.get_by_role("region", name="Now")).to_contain_text("Asks: “Merge PR 42 now, or wait?”")
+        # Jonas's agent holds #2 again, blocked: the task is set back the way a person sets it.
+        ada = self.page("ada")
+        current = self.task("task2")
+        self.api(ada, "PATCH", f"/api/v1/work/{self.ids['task2']}", {"owner": {"kind": "agent", "id": self.ids["jonas_claude"]}, "status": "blocked",
+                 "blocker": "Waiting for the probe drawing"}, status=200, headers={"if-match": f'"{current["version"]}"'})
+        page.goto(f"/projects/{self.ids['project']}/agents?agent=connection:{self.ids['conn_jonas_claude']}")
+        expect(page.get_by_role("complementary", name="Claude Code, details").get_by_role("region", name="Now")).to_contain_text("Blocked · Waiting for the probe drawing")
+        # Negative control: the old panel said "Handed to it, not started" for the blocked agent and "In progress" for the waiting one.
+
+    def test_13_the_now_card_describes_its_latest_line(self) -> None:
+        # #347 review N14: the Now card's name is the task; its latest line is its description, so a screen reader hears what the agent said.
+        page = self.page("ada")
+        self.stub_thread(page, "task1", {self.ids["m2"]: {"body": "PR 42 is ready at a1b2c3d.", **self.as_agent("codex")}})
+        page.goto(f"/projects/{self.ids['project']}/agents?agent=connection:{self.ids['conn_codex']}")
+        card = page.get_by_role("button", name="Open the thread of #1")
+        describedby = card.get_attribute("aria-describedby")
+        assert describedby
+        expect(page.locator(f"[id='{describedby}']")).to_contain_text("PR 42 is ready at a1b2c3d.")
+        # Negative control: without aria-describedby the line is not announced with the card.
+
+    def test_14_a_keyboard_thread_opens_with_focus_in_it(self) -> None:
+        # #347 review N8: Enter on the Now card moves focus into the thread, not to the page body.
+        page = self.page("ada")
+        page.goto(f"/projects/{self.ids['project']}/agents?agent=connection:{self.ids['conn_codex']}")
+        card = page.get_by_role("button", name="Open the thread of #1")
+        card.focus()
+        page.keyboard.press("Enter")
+        expect(page.get_by_role("region", name="#1 · Fix the reconnect loop in the lamp firmware")).to_be_visible()
+        inside = page.evaluate("() => !!(document.activeElement && document.activeElement.closest('.thread'))")
+        self.assertTrue(inside, "focus is in the thread")
+        # Negative control: focus fell to the page body after Enter (the old unmount).
+
+    def test_15_on_a_phone_take_back_waits_in_the_panel(self) -> None:
+        # #347 review N7: a row's Take back does not crowd a phone row; the agent's panel offers it.
+        ada = self.page("ada")
+        notes = self.api(ada, "POST", f"/api/v1/projects/{self.ids['project']}/work", {"title": "Sort the seed packets", "owner": {"kind": "agent", "id": self.ids["notes"]}}, status=201)
+        phone = self.page("ada", phone=True)
+        phone.goto(f"/projects/{self.ids['project']}/agents")
+        row = self.row(phone, "notes")
+        expect(row.get_by_role("button", name=f"Take back #{notes['number']}")).to_have_count(0)
+        row.locator(".agents-row__btn").tap()
+        expect(phone.get_by_role("complementary", name="Notes, details").get_by_role("button", name=f"Take back #{notes['number']}")).to_be_visible()
+        # Negative control: the old row carried a wide Take back pill (visible on the phone).
+
+    def test_16_the_row_and_panel_say_stopped_by_you(self) -> None:
+        # #347 review N9: after your own Stop the panel reads "Stopped by you", not your name.
+        page = self.page("ada")
+        page.goto(f"/projects/{self.ids['project']}/agents")
+        page.goto(f"/projects/{self.ids['project']}/agents?agent=connection:{self.ids['conn_lab']}")
+        expect(page.get_by_role("complementary", name="Lab helper, details").get_by_role("region", name="Recent")).to_contain_text("Stopped by you · #5")
+        # Negative control: the old panel read "Stopped by Ada Kowalska · #5".
+
+    def test_17_the_sidebar_card_is_asleep_when_its_agent_is_offline(self) -> None:
+        # #347 review N12: the card's face shows the agent's state: asleep without an open session.
+        page = self.page("ada")
+        page.goto("/")
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        # Only the first working agent is drawn in the card; this fixture's working agent is Ada's Claude Code (#3, no session).
+        card = page.locator(".agentlive--agent").first
+        expect(card).to_contain_text("holds #3 · not signed in yet")
+        expect(card.locator("[data-expression]").first).to_have_attribute("data-expression", "asleep")
+        # Negative control: the old card kept the thinking face for an offline holder.
+
+
+CONTRAST = """() => {
+  const parse = (c) => c.match(/[\\d.]+/g).slice(0, 3).map(Number);
+  const lum = ([r, g, b]) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+  const button = document.querySelector('.ui-toast__action');
+  const toast = button.closest('.ui-toast');
+  const a = lum(parse(getComputedStyle(button).color)), b = lum(parse(getComputedStyle(toast).backgroundColor));
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}"""
 
 
 if __name__ == "__main__":

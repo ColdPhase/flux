@@ -188,7 +188,7 @@ class HandOffJourney(unittest.TestCase):
         expect(dialog.get_by_text("Step 2 of 2")).to_be_visible()
         expect(dialog.get_by_role("heading", name="What Claude Code agent may do")).to_be_visible()
         expect(dialog).to_contain_text("Claude Code agent will be able to read this project and write in it")
-        expect(dialog).to_contain_text("It holds #1 · offline")
+        expect(dialog).to_contain_text("It holds #1 · not signed in yet")
         shot(page, "handoff-step2-desktop")
         dialog.get_by_role("button", name="Back").click()
         expect(dialog.get_by_text("Step 1 of 2")).to_be_visible()
@@ -353,7 +353,7 @@ class HandOffJourney(unittest.TestCase):
         expect(dialog).to_contain_text("for Jonas Berg · Jonas decides")
         dialog.get_by_role("button", name="Next").click()
         expect(dialog.get_by_role("heading", name="Ask Jonas first")).to_be_visible()
-        expect(dialog).to_contain_text("Only Jonas Berg can hand work to it")
+        expect(dialog).to_contain_text("Only Jonas can hand work to it")
         expect(dialog.get_by_role("button", name="Ask Jonas")).to_be_visible()
         expect(dialog.get_by_role("button", name=re.compile("^Hand off"))).to_have_count(0)
         dialog.get_by_role("button", name="Ask Jonas").click()
@@ -377,6 +377,28 @@ class HandOffJourney(unittest.TestCase):
 
     def task_by_id(self, task_id: str) -> dict:
         return self.api(self.page("ada"), "GET", f"/api/v1/work/{task_id}", status=200)
+
+    def test_14_asking_a_teammate_says_how_to_say_yes_and_load_lines_name_the_sign_in(self) -> None:
+        # #347 review N6 and N11: the asked message says what a yes does; a never-signed-in agent reads "not signed in yet", not "offline".
+        ada, jonas = self.page("ada"), self.page("jonas")
+        pid, ws = self.ids["project"], self.ids["workspace"]
+        jonas_agent = self.api(jonas, "POST", f"/api/v1/workspaces/{ws}/agents", {"name": "Claude Code", "owner": "self"}, status=201)["id"]
+        self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "agent", "id": jonas_agent}, "role": "contributor"}, status=201)
+        ask = self.api(ada, "POST", f"/api/v1/projects/{pid}/work", {"title": "Label the compost bins"}, status=201)
+        page = self.open_agents()
+        page.get_by_role("button", name="Hand off a task").click()
+        dialog = page.get_by_role("dialog", name="Hand off a task")
+        dialog.get_by_label("Task", exact=True).select_option(label=f"#{ask['number']} · Label the compost bins")
+        # Ada's Claude Code holds #1 in progress and has never signed in: the load line says so (negative control: "holds #1 · offline").
+        expect(dialog.locator("label.handoff__agent", has_text="Claude Code agent")).to_contain_text("holds #1 · not signed in yet")
+        dialog.locator("label.handoff__agent", has_text="Claude Code").filter(has_text="Jonas Berg").first.click()
+        dialog.get_by_role("button", name="Next").click()
+        dialog.get_by_role("button", name="Ask Jonas").click()
+        expect(page.get_by_text(f"Asked Jonas about #{ask['number']}")).to_be_visible()
+        discussion = self.api(ada, "GET", f"/api/v1/work/{ask['id']}/discussion", status=200)
+        newest = sorted([discussion["root"] or {}, *discussion["messages"]], key=lambda m: m.get("sequence", 0))[-1]
+        # Negative control: the old message ended at the question mark, so Jonas was not told a yes hands the task over.
+        self.assertTrue(newest["body"].endswith(f"? If yes, hand #{ask['number']} to it in Agents."), newest["body"])
 
     def seed_paged_project(self, page: Page, free_first: bool) -> tuple[str, str]:
         """A project with 55 tasks owned by an agent and one free task, created in the given order."""

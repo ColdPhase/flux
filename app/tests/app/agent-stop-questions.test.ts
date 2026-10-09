@@ -220,3 +220,22 @@ test('the sidebar card says whether a working agent is online: an open session i
   await pool.query('UPDATE agent_runtime_sessions SET revoked_at=now() WHERE connection_id=$1', [f.connected.connectionId]);
   assert.deepEqual(await online(), [false], 'a revoked session is not an open client session');
 });
+
+test('the sidebar card says whether a working agent was ever signed in (#347 review N11)', async () => {
+  const f = await scene();
+  const item = await f.task();
+  // The first agent has signed in (its session exists): signedIn.
+  expectStatus(await f.hubert.browser.request('PATCH', `/api/v1/work/${item.id}`, { body: { owner: { kind: 'agent', id: f.agent.id }, status: 'in_progress' },
+    headers: { 'if-match': `"${item.version}"` } }), 200);
+  // A second agent has never opened a client session, and holds work: not signed in. Negative control: it must not read as signed in.
+  const never = expectStatus(await f.hubert.browser.request('POST', `/api/v1/workspaces/${f.ws.id}/agents`, { body: { name: 'Never connected', owner: 'self' } }), 201) as Agent;
+  expectStatus(await f.hubert.browser.request('POST', `/api/v1/projects/${f.p.id}/grants`, { body: { principal: { kind: 'agent', id: never.id }, role: 'contributor' } }), 201);
+  const second = await f.task(f.hubert, 'Never signed in task');
+  expectStatus(await f.hubert.browser.request('PATCH', `/api/v1/work/${second.id}`, { body: { owner: { kind: 'agent', id: never.id }, status: 'in_progress' },
+    headers: { 'if-match': `"${second.version}"` } }), 200);
+  const items = (expectStatus(await f.hubert.browser.request('GET', '/api/v1/working-agents'), 200) as OwnWorkingAgents).items;
+  const signed = items.find((entry) => entry.agent.id === f.agent.id);
+  const unsigned = items.find((entry) => entry.agent.id === never.id);
+  assert.deepEqual([signed?.signedIn, signed?.online], [true, true]);
+  assert.deepEqual([unsigned?.signedIn, unsigned?.online], [false, false]);
+});
