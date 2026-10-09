@@ -177,7 +177,7 @@ if (phase === 'cutover') {
       await loginAtProvider(page, 'frank', url);
       // Negative control: in SSO-only mode settings offers no link, because the provider is the only way in (#315).
       // Wait for the settings page itself, so the absence below is not just an unloaded page.
-      await page.getByRole('region', { name: 'Account' }).waitFor({ timeout: 20_000 });
+      await page.getByRole('heading', { name: 'This device' }).waitFor({ timeout: 20_000 });
       assert.equal(await page.getByRole('button', { name: 'Link Keycloak', exact: true }).count(), 0, 'no link row in SSO-only mode');
       assert.equal(await page.getByRole('heading', { name: 'Single sign-on' }).count(), 0, 'no single sign-on section in SSO-only mode');
       // The last-identity guard (#315): the provider is Pat's only way to sign in, so the link cannot be removed.
