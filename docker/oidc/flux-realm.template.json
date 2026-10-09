@@ -12,6 +12,7 @@
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": false,
+      "frontchannelLogout": false,
       "secret": "__CLIENT_SECRET__",
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
