@@ -366,6 +366,7 @@ test('standing: disabling the user at the provider suspends access without revok
   const admin = await keycloakAdmin();
   const { context, tokens } = standing;
   assert.equal((await context!.request.get(`${origin}/api/v1/me`)).status(), 200, 'negative control: the browser session works');
+  const revokedBefore = (await pool.query('SELECT 1 FROM oauth_refresh_token WHERE user_id = $1 AND revoked IS NOT NULL', [state.userId])).rowCount;
   await admin.setEnabled('erin', false);
   await dueNow(state.userId!);
   const suspended = await waitFor(async () => { const row = await standingRow(state.userId!); return row?.state === 'sign_in_required' ? row : null; }, 'sign in required');
@@ -385,7 +386,7 @@ test('standing: disabling the user at the provider suspends access without revok
   assert.match(body.error_description, /^Sign in again with Keycloak\.$/);
   // Nothing was revoked: the connection and the person's OAuth refresh tokens are as they were.
   const revoked = await pool.query('SELECT 1 FROM oauth_refresh_token WHERE user_id = $1 AND revoked IS NOT NULL', [state.userId]);
-  assert.equal(revoked.rowCount, 0, 'no MCP refresh token was revoked');
+  assert.equal(revoked.rowCount, revokedBefore, 'no MCP refresh token was revoked by the suspension');
   assert.equal((await pool.query('SELECT 1 FROM agent_connections WHERE id = $1 AND revoked_at IS NULL', [state.connectionId])).rowCount, 1, 'the connection stays the owner\'s');
   // The checks keep running for a suspended identity (N5): the next one is already scheduled.
   assert.ok((await standingRow(state.userId!))!.next_check_at.getTime() > Date.now() - 1000);
