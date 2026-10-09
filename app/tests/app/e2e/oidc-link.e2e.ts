@@ -22,7 +22,11 @@ const pat = { name: 'Pat Link', email: 'pat.link@example.test', password: `pw-${
 const quinn = { name: 'Quinn Link', email: 'quinn.link@example.test', password: `pw-${randomUUID()}` };
 
 const { pool } = createDatabase(process.env.DATABASE_URL!);
-after(() => pool.end());
+// The cutover leaves the realm's frank with a Flux account (Pat's). Remove the test accounts so later suites see none.
+after(async () => {
+  if (phase === 'cutover') await pool.query('DELETE FROM auth_users WHERE email = ANY($1)', [[pat.email, quinn.email]]);
+  await pool.end();
+});
 
 function proxy() {
   return http.createServer((request, response) => {
