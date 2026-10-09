@@ -90,6 +90,13 @@ link prepare "prepare: (after the API restart|a subject already held|a link cann
 export FLUX_OIDC_TEST_SSO_MODE=sso
 $compose up -d --wait api
 link cutover "cutover:"
+# The operator re-key (#315) in the running SSO-only API: refused without --allow-sso, and with it the lookup by Flux id
+# still refuses an address or an unknown id. The refusal names its code, and nothing is written.
+cli() { $compose exec -T api node apps/server/dist/identity/cli.js "$@"; }
+refused=$(cli link nobody@acme.test --subject sub-cli --reason "check" 2>&1 || true)
+echo "$refused" | grep -q 'refused (SSO_MODE)' || { echo "$refused" >&2; echo "Expected the SSO-only refusal from the operator command" >&2; exit 1; }
+missing=$(cli link nobody@acme.test --subject sub-cli --reason "check" --allow-sso 2>&1 || true)
+echo "$missing" | grep -q 'refused (NO_ACCOUNT)' || { echo "$missing" >&2; echo "Expected NO_ACCOUNT for an address, even with the flag" >&2; exit 1; }
 
 e2e tests/app/e2e/oidc.e2e.ts
 # Provider sign-in on the MCP authorization path (F-024 S1, #310): a scripted client, Keycloak, Chromium.
