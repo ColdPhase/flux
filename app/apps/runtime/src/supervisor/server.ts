@@ -95,7 +95,8 @@ export function createSupervisorServer(config: SupervisorConfig, onReleased: () 
       }
     };
     const lanePass = request.kind === 'stop' || (request.kind === 'status' && !request.client);
-    const running = lanePass ? work() : lane.run(work);
+    // A run never queues behind another: a second run while one is in the lane answers `busy` (F-022 "Caps").
+    const running = lanePass ? work() : request.kind === 'run' ? (lane.busy ? null : lane.run(work)) : lane.run(work);
     if (!running) { send({ t: 'error', code: 'busy' }); res.end(); return; }
     if (request.kind === 'release') { closing = true; for (const end of consoles) end(); }
     const outcome = await running;

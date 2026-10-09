@@ -64,6 +64,7 @@ export function callSupervisor(target: SupervisorTarget, request: SupervisorRequ
           steps.push({ step: frame.step, outcome: frame.outcome, ...(frame.client ? { client: frame.client } : {}) });
           return;
         }
+        if (frame.t === 'run') return;
         if (!resultMatches(request.kind, frame.result)) throw new FrameStreamError('invalid_frame');
         terminal = { ok: true, bootId, result: frame.result, steps };
       };

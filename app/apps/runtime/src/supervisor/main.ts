@@ -44,6 +44,8 @@ const config: SupervisorConfig = {
   egressHost: 'runtime-egress',
   bindingLimitBytes: 256 * 1024 * 1024,
   cliTimeoutMs: 30_000,
+  // The Flux MCP route a run connects to, through the runtime egress (F-022 "Run"). Unset refuses runs.
+  fluxMcpUrl: env.FLUX_MCP_URL || undefined,
 };
 
 const { server } = createSupervisorServer(config, () => {

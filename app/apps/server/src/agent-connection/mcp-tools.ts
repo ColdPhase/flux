@@ -5,6 +5,9 @@ import { agentProposalUseCases, enforce, evaluateProject, recordEvent, type Data
 import { registerAgentPlaybook } from './playbook.js';
 import { registerAgentPolicyResource } from './project-policy.js';
 import { agentToolRegistry } from './tool-registry.js';
+import type { AgentScope, AgentToolCapability } from '@flux/contracts';
+
+const AGENT_SCOPES: readonly AgentScope[] = ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'];
 import { registerAgentBootstrap } from './bootstrap.js';
 import { registerAgentDomainReads } from './domain-reads.js';
 import { registerAgentWorkActions } from './work-actions.js';
@@ -21,6 +24,21 @@ export type { FluxMcpClaims } from './context.js';
 /** A fresh server is bound to one verified bearer; each tool rechecks inside its transaction. */
 export function createFluxMcpServer(db: Database, claims: FluxMcpClaims, cursorSecret: string): McpServer {
   const server = new McpServer({ name: 'flux', version: '0.1.0' });
+  registerFluxTools(server, db, claims, cursorSecret);
+  return server;
+}
+
+/**
+ * The tools of this connection, as the live server registers them, with whether its scopes make each one
+ * available. A run's tool list is derived from this (run-tools.ts), so it follows the same registrations.
+ */
+export function fluxToolCapabilities(db: Database, claims: FluxMcpClaims, cursorSecret: string): AgentToolCapability[] {
+  const tools = registerFluxTools(new McpServer({ name: 'flux', version: '0.1.0' }), db, claims, cursorSecret);
+  const scopes = claims.scopes.filter((scope): scope is AgentScope => AGENT_SCOPES.includes(scope as AgentScope));
+  return tools.capabilities(scopes);
+}
+
+function registerFluxTools(server: McpServer, db: Database, claims: FluxMcpClaims, cursorSecret: string) {
   const tools = agentToolRegistry(server);
   registerAgentPlaybook(server, tools, db, claims);
   registerAgentPolicyResource(server, db, claims);
@@ -60,5 +78,5 @@ export function createFluxMcpServer(db: Database, claims: FluxMcpClaims, cursorS
       return toolResult(proposal);
     } catch (error) { return toolError(error); }
   });
-  return server;
+  return tools;
 }

@@ -175,7 +175,7 @@ export function serveBrowserConsole(socket: WebSocket, owner: { userId: string; 
       attachment.actualBoot = frame.bootId;
       return;
     }
-    if (frame.t === 'step') return;
+    if (frame.t === 'step' || frame.t === 'run') return;
     if (frame.t === 'console') { send({ t: 'state', state: frame.state === 'started' ? 'running' : 'checking' }); return; }
     if (frame.t === 'relay_error') { fail(frame.code === 'busy' ? 'busy' : 'unavailable', CONSOLE_CLOSE.unavailable); return; }
     if (frame.t === 'error') { fail(frame.code === 'busy' ? 'busy' : frame.code === 'internal' || frame.code === 'not_installed' ? 'unavailable' : 'refused', CONSOLE_CLOSE.unavailable); return; }

@@ -186,6 +186,47 @@ async function codexDeviceLogin(argv: string[]): Promise<number> {
   return 0;
 }
 
+/**
+ * `claude -p` (T5), TEST ONLY: reads the prompt from stdin and the MCP config named by `--mcp-config`, emits
+ * the `system` `init` event for the scenario, then makes a real HTTP JSON-RPC call to the configured Flux MCP
+ * URL with the header `Authorization: Bearer ${FLUX_RUN_TOKEN}` expanded from its environment, and answers
+ * with the call's text. Scenarios (`fake-scenario`): run_ok, run_extra_tool (init lists Bash), run_extra_server
+ * (init lists a second MCP server), run_crash (exits before a result), run_hang (no output), run_leaks (the
+ * answer contains the run token and a credential-shaped string), run_big_answer (answer above 16 KiB).
+ * Only a digest of the header is recorded, never the token.
+ */
+async function claudeRun(argv: string[]): Promise<number> {
+  const prompt = await new Promise<string>((resolve) => {
+    let text = '';
+    process.stdin.on('data', (chunk: Buffer) => { text += chunk.toString('utf8'); });
+    process.stdin.on('end', () => resolve(text));
+    process.stdin.on('error', () => resolve(text));
+  });
+  const allowed = argv.flatMap((arg, index) => (argv[index - 1] === '--allowedTools' ? [arg] : [])).map((tool) => tool.replace(/^mcp__flux__/, ''));
+  const configPath = argv[argv.indexOf('--mcp-config') + 1] ?? '';
+  const config = JSON.parse(readFileSync(configPath, 'utf8')) as { mcpServers: { flux: { url: string; headers: Record<string, string> } } };
+  const flux = config.mcpServers.flux;
+  const authorization = (flux.headers.Authorization ?? '').replaceAll('${FLUX_RUN_TOKEN}', process.env.FLUX_RUN_TOKEN ?? '');
+  const mode = scenario('claude_code');
+  const tools = [...allowed.map((tool) => `mcp__flux__${tool}`), ...(mode === 'run_extra_tool' ? ['Bash'] : [])];
+  const servers = [{ name: 'flux', status: 'connected' }, ...(mode === 'run_extra_server' ? [{ name: 'github', status: 'connected' }] : [])];
+  out(`${JSON.stringify({ type: 'system', subtype: 'init', session_id: 'fake', tools, mcp_servers: servers })}\n`);
+  if (mode === 'run_hang') return forever();
+  if (mode === 'run_crash') { err('fake claude: crashed\n'); return 3; }
+  const response = await fetch(flux.url, {
+    method: 'POST',
+    headers: { authorization: authorization, 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: allowed[0] ?? 'flux_get_doc', arguments: { prompt: prompt.slice(0, 200) } } }),
+  });
+  const body = await response.text();
+  appendFileSync(join(home('claude_code'), 'fake-calls.jsonl'), `${JSON.stringify({ mcpStatus: response.status, mcpAuthDigest: createHash('sha256').update(authorization).digest('hex') })}\n`, { mode: 0o600 });
+  let answer = `Flux said: ${body.slice(0, 400)}`;
+  if (mode === 'run_leaks') answer += ` ${process.env.FLUX_RUN_TOKEN ?? ''} sk-ant-fakeanswer0123456789`;
+  if (mode === 'run_big_answer') answer = 'x'.repeat(20 * 1024);
+  out(`${JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: answer })}\n`);
+  return 0;
+}
+
 export async function fakeCli(client: FakeClient, argv: string[]): Promise<number> {
   const words = command(argv);
   const key = words.join(' ');
@@ -193,6 +234,7 @@ export async function fakeCli(client: FakeClient, argv: string[]): Promise<numbe
   record(client, argv);
   if (client === 'claude_code' && words[0] === 'auth' && words[1] === 'login' && !flags.includes('--help')) return claudeLogin(argv, words.slice(2));
   if (client === 'codex' && key === 'login --device-auth') return codexDeviceLogin(argv);
+  if (client === 'claude_code' && flags.includes('-p')) return claudeRun(argv);
   const mode = scenario(client);
   if (key === '--version') { out(client === 'claude_code' ? '2.1.285 (Claude Code) [fake]\n' : 'codex-cli 0.160.1 [fake]\n'); return 0; }
   const help = GOLDEN_HELP[client][words.filter((word) => word !== '-h' && word !== '--help').concat('--help').join(' ')];

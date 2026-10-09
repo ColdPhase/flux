@@ -1,6 +1,6 @@
 import { BINDING_ID, BOOT_ID, RUNTIME_CLIENTS, SLOT_NAME, UUID, type RuntimeClient } from './names.js';
 import { SUPERVISOR_REQUESTS, type SupervisorRequestKind } from './requests.js';
-import { arrayOf, bool, int, isPlainObject, literal, object, oneOf, str, type Check } from './shape.js';
+import { arrayOf, bool, int, isPlainObject, literal, object, oneOf, str, text, type Check } from './shape.js';
 
 // What a supervisor answers: a stream of newline-delimited JSON frames. The manager reads it with the
 // bounded reader in ndjson.ts and checks every frame against these closed shapes, because this stream
@@ -14,6 +14,14 @@ export const SUPERVISOR_ERRORS = [
 export type SupervisorError = (typeof SUPERVISOR_ERRORS)[number];
 
 export const STEP_OUTCOMES = ['ok', 'failed', 'timeout', 'not_installed', 'skipped'] as const;
+/**
+ * How one run ended (F-022 "Run", "Caps", "Stop"). Only `answered` carries an answer, and the manager commits
+ * it only after its own access recheck. Every other outcome commits nothing and never falls back to an API key.
+ */
+export const RUN_OUTCOMES = [
+  'answered', 'init_rejected', 'failed', 'timed_out', 'idle_timed_out', 'stopped', 'answer_too_large', 'output_too_large', 'unknown',
+] as const;
+export type RunOutcome = (typeof RUN_OUTCOMES)[number];
 export type StepOutcome = (typeof STEP_OUTCOMES)[number];
 
 /** The most binding directories a slot report lists; a supervisor never holds more than one. */
@@ -72,6 +80,8 @@ export type SupervisorResult =
   | { kind: 'logout'; client: RuntimeClient; logout: StepOutcome }
   | { kind: 'release'; bindingId: string; logout: Record<RuntimeClient, StepOutcome>; dataEmpty: boolean; exiting: boolean }
   | { kind: 'stop'; runId: string; state: 'not_running' | 'stopping' }
+  /** The run ended. `answer` is set only for `answered`, already redacted by the supervisor. */
+  | { kind: 'run'; runId: string; outcome: RunOutcome; answer: string | null }
   /** The sign-in console ended: the CLI exited or reached the console's lifetime; then its status. */
   | { kind: 'login'; client: RuntimeClient; ended: 'exited' | 'timed_out'; exitCode: number | null; status: ClientStatus };
 
@@ -81,6 +91,8 @@ export type SupervisorFrame =
   | { t: 'result'; result: SupervisorResult }
   /** Sign-in console only: the PTY started, or its command ended (by exiting or after the lifetime). */
   | { t: 'console'; state: 'started' | 'exited' | 'timed_out' }
+  /** A run's progress: started, its first system event checked, or one more CLI event (no content). */
+  | { t: 'run'; runId: string; state: 'started' | 'init_checked' | 'progress' }
   | { t: 'error'; code: SupervisorError };
 
 const client = oneOf(RUNTIME_CLIENTS);
@@ -116,6 +128,7 @@ const RESULTS: Check<SupervisorResult>[] = [
   object({ kind: literal('logout'), client, logout: outcome }),
   object({ kind: literal('release'), bindingId: str(BINDING_ID, 36), logout: perClient(outcome), dataEmpty: bool, exiting: bool }),
   object({ kind: literal('stop'), runId: str(UUID, 36), state: oneOf(['not_running', 'stopping'] as const) }),
+  object({ kind: literal('run'), runId: str(UUID, 36), outcome: oneOf(RUN_OUTCOMES), answer: nullable(text(64 * 1024, 0)) }),
   object({ kind: literal('login'), client, ended: oneOf(['exited', 'timed_out'] as const), exitCode: nullable(int(-1, 255)), status: isClientStatus }),
 ] as unknown as Check<SupervisorResult>[];
 
@@ -127,6 +140,7 @@ const FRAMES: Check<SupervisorFrame>[] = [
   object({ t: literal('result'), result: isSupervisorResult }),
   object({ t: literal('error'), code: oneOf(SUPERVISOR_ERRORS) }),
   object({ t: literal('console'), state: oneOf(['started', 'exited', 'timed_out'] as const) }),
+  object({ t: literal('run'), runId: str(UUID, 36), state: oneOf(['started', 'init_checked', 'progress'] as const) }),
 ] as unknown as Check<SupervisorFrame>[];
 
 /** The frame, or null when the value is not exactly one of the closed frame shapes. */
