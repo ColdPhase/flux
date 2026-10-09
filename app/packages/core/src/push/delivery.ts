@@ -1,7 +1,7 @@
 import { GENERIC_PUSH_TITLE, type PushPayload } from '@flux/contracts';
 import { pushEndpointViolation } from './config.js';
-import { readsSource } from './notifications.js';
-import type { NotificationRecord, ProviderDeliveryAdmission, PushDeliveryRepository, PushSender, PushSendJob, PushSendResult, SourceReadAuthorizer, SourceReadDecision } from './ports.js';
+import { readsSource, summarySourcesReadable } from './notifications.js';
+import type { NotificationRecord, ProviderDeliveryAdmission, PushDeliveryRepository, PushSender, PushSendJob, SourceReadAuthorizer, SourceReadDecision } from './ports.js';
 
 export type DeliveryOutcome =
   | { outcome: 'sent'; status: number; preview: PushPayload['preview'] }
@@ -72,6 +72,7 @@ export async function deliverPushJob(ports: DeliveryPorts, job: PushSendJob): Pr
   const decision = await ports.authorizer.canRead(job.userId, notification.source);
   if (!decision.visible) return { outcome: 'skipped', reason: 'recipient can no longer see the notification source' };
   if (ports.stillWanted && !await ports.stillWanted(job.userId, notification)) return { outcome: 'skipped', reason: 'push turned off or place muted' };
+  if (notification.deliveryKind === 'morning_summary' && (!ports.stillWanted || !await summarySourcesReadable(ports.authorizer, job.userId, notification))) return { outcome: 'skipped', reason: 'summary preferences or source access unavailable' };
   const until = await ports.quietUntil?.(job.userId);
   if (until) return { outcome: 'deferred', until };
   const violation = pushEndpointViolation(subscription.endpoint);
