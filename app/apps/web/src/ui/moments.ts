@@ -5,7 +5,7 @@ import { useSyncExternalStore } from 'react';
  * the toast after a task is closed. Settings → Appearance turns every one of them off for this device,
  * which leaves the plain text states. On by default; the text always carries the meaning.
  */
-const KEY = 'flux.moments';
+const KEY = 'flux.kreska';
 const listeners = new Set<() => void>();
 
 function read(): boolean {
@@ -16,8 +16,8 @@ let current = typeof window === 'undefined' ? true : read();
 
 function publish() {
   if (typeof document !== 'undefined') {
-    if (current) delete document.documentElement.dataset.moments;
-    else document.documentElement.dataset.moments = 'off';
+    if (current) delete document.documentElement.dataset.kreska;
+    else document.documentElement.dataset.kreska = 'off';
   }
   listeners.forEach((listener) => listener());
 }

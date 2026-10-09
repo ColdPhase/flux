@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { aiConnectionLabel, type AssistantAnswer, type AssistantProposal, type AssistantRun, type AssistantSourceRef, type ConversationMessage, type NativeWorkRow } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { AgentTag, Button, Icon, IconButton, Kreska, useLoopPause, type KreskaExpression } from '../ui';
+import { AgentTag, Button, Icon, IconButton, Kreska, useLoopPause, useMoments, type KreskaExpression } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { canRetry, endedText, isWorking, workingText, type AskState } from './format';
 import { agentAuthorLabel } from '../docs/format';
@@ -62,9 +62,11 @@ export function WorkingLine({ run, onStop, onRetry, onDismiss }: { run: Assistan
   // Motion follows actual execution only (#155 AC-3): a queued or stopping run is static; its text says why.
   const executing = working && run.status !== 'queued' && !run.stopRequested;
   const loop = useLoopPause<HTMLLIElement>();
+  // Kreska's thinking face is a small moment: with Settings → Appearance off the working line keeps its words and Stop only.
+  const moments = useMoments();
   return (
     <li ref={loop} className={`assistant-working${executing ? ' is-working' : ''}`} aria-live="polite" data-run-status={run.status}>
-      <AssistantAvatar expression={runExpression(run)} />
+      {moments ? <AssistantAvatar expression={runExpression(run)} /> : null}
       <div className="assistant-working__body">
         <p className="assistant-working__text">
           {working ? workingText(run) : ended}

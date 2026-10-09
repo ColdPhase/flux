@@ -22,7 +22,10 @@
     .boot { --boot-ink: #18181B; --boot-on: #FFFFFF; --boot-line: rgba(0, 0, 0, .1); position: fixed; inset: 0; display: grid; place-content: center; justify-items: start; gap: 14px; background: var(--bg, #F4F4F5); color: var(--boot-ink); }
     @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .boot { --boot-ink: #F0F0F0; --boot-on: #111111; --boot-line: rgba(255, 255, 255, .12); } }
     :root[data-theme="dark"] .boot { --boot-ink: #F0F0F0; --boot-on: #111111; --boot-line: rgba(255, 255, 255, .12); }
-    :root[data-moments="off"] .boot--moment { display: none; }
+    :root[data-kreska="off"] .boot--moment { display: none; }
+    .boot--plain { display: none; }
+    :root[data-kreska="off"] .boot--plain { display: grid; }
+    .boot__text { font: 500 1rem/1.3 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--boot-ink); }
     .boot__lockup { display: flex; align-items: center; gap: 14px; }
     .boot__lockup b { font: 600 2.1rem/1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; letter-spacing: -.04em; }
     .boot__tile { fill: var(--boot-ink); }
@@ -36,12 +39,12 @@
     // Read before the first paint: the stored theme and whether Kreska's small moments are on.
     try {
       var t = localStorage.getItem('flux.theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
-      if (localStorage.getItem('flux.moments') === 'off') document.documentElement.dataset.moments = 'off';
+      if (localStorage.getItem('flux.kreska') === 'off') document.documentElement.dataset.kreska = 'off';
     } catch (e) {}
   </script>
 </head>
 <body>
-  <div id="root"><div class="boot boot--moment" role="status" aria-label="Opening Flux"><div class="boot__lockup"><svg class="boot__logo" viewBox="0 0 24 24" width="56" height="56" aria-hidden="true"><path d="M7 0H17C21.2 0 24 2.8 24 7V17C24 21.2 21.2 24 17 24H7C2.8 24 0 21.2 0 17V7C0 2.8 2.8 0 7 0Z" class="boot__tile"/><g class="boot__face" transform="translate(12 12) scale(1.14) translate(-12 -12.4)" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.3 11.2V13.8M14.7 11.2V13.8"/><path d="M7.3 8.1 10.5 7.2" stroke-width="1.55"/></g></svg><b>flux</b></div><i class="boot__bar" aria-hidden="true"><u></u></i></div></div>
+  <div id="root"><div class="boot boot--moment" role="status" aria-label="Opening Flux"><div class="boot__lockup"><svg class="boot__logo" viewBox="0 0 24 24" width="56" height="56" aria-hidden="true"><path d="M7 0H17C21.2 0 24 2.8 24 7V17C24 21.2 21.2 24 17 24H7C2.8 24 0 21.2 0 17V7C0 2.8 2.8 0 7 0Z" class="boot__tile"/><g class="boot__face" transform="translate(12 12) scale(1.14) translate(-12 -12.4)" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.3 11.2V13.8M14.7 11.2V13.8"/><path d="M7.3 8.1 10.5 7.2" stroke-width="1.55"/></g></svg><b>flux</b></div><i class="boot__bar" aria-hidden="true"><u></u></i></div><div class="boot boot--plain" role="status"><p class="boot__text">Opening Flux…</p></div></div>
   <script type="module" src="/src/main.tsx"></script>
 </body>
 </html>

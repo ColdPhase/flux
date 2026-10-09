@@ -3,7 +3,7 @@ import { Link, isRouteErrorResponse, useLocation, useRevalidator, useRouteError 
 import { ApiError, NetworkError } from '../api/client';
 import { getMe } from '../api/auth';
 import { useThoughtDraft } from '../sketch/createdDraft';
-import { Button, ErrorState, Spinner } from '../ui';
+import { Button, ErrorState, useMoments } from '../ui';
 
 /** Full-page failure when the shell itself can't load (e.g. the server is unreachable). */
 export function RouteErrorPage() {
@@ -66,15 +66,19 @@ function PrivateThoughtRecovery({ sketchId }: { sketchId: string }) {
   </div>;
 }
 
-/** Shown while the session is restored on a full load; appears only if that takes a moment. */
+/**
+ * Shown while the session is restored on a full load. The splash is the markup index.html already shows, so the
+ * hand-over from the static page to React is invisible. With small moments off it is the plain line, at once.
+ */
 export function Booting() {
-  const [visible, setVisible] = useState(false);
-  useEffect(() => {
-    const timer = window.setTimeout(() => setVisible(true), 400);
-    return () => window.clearTimeout(timer);
-  }, []);
-  // The splash is the markup index.html already shows, so the hand-over from the static page to React is invisible;
-  // with small moments off it is the plain line.
+  const moments = useMoments();
+  if (!moments) {
+    return (
+      <main className="page-center booting" aria-busy="true">
+        <div className="boot boot--plain" role="status"><p className="boot__text">Opening Flux…</p></div>
+      </main>
+    );
+  }
   return (
     <main className="page-center booting" aria-busy="true">
       <div className="boot boot--moment" role="status" aria-label="Opening Flux">
@@ -84,7 +88,6 @@ export function Booting() {
         </div>
         <i className="boot__bar" aria-hidden="true"><u /></i>
       </div>
-      {visible ? <p className="booting__msg booting__plain"><Spinner /> Opening Flux…</p> : null}
     </main>
   );
 }

@@ -77,15 +77,21 @@ export function PullToRefresh({ onRefresh, children }: { onRefresh: () => void; 
       setPull(0);
       if (go) { setRefreshing(true); refresh.current(); window.setTimeout(() => setRefreshing(false), 900); }
     };
+    // A cancelled touch (the browser took the gesture) only resets the pull; it never refreshes.
+    const cancel = () => {
+      active = false;
+      distance = 0;
+      setPull(0);
+    };
     host?.addEventListener('touchstart', start, { passive: true });
     host?.addEventListener('touchmove', move, { passive: true });
     host?.addEventListener('touchend', end);
-    host?.addEventListener('touchcancel', end);
+    host?.addEventListener('touchcancel', cancel);
     return () => {
       host?.removeEventListener('touchstart', start);
       host?.removeEventListener('touchmove', move);
       host?.removeEventListener('touchend', end);
-      host?.removeEventListener('touchcancel', end);
+      host?.removeEventListener('touchcancel', cancel);
     };
   }, []);
   const ready = pull >= THRESHOLD;

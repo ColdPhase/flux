@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#F4F4F5">
 <title>Flux — offline</title>
-<script>try { if (localStorage.getItem("flux.moments") === "off") document.documentElement.dataset.moments = "off"; } catch (e) {}</script>
+<script>try { if (localStorage.getItem("flux.kreska") === "off") document.documentElement.dataset.kreska = "off"; } catch (e) {}</script>
 <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
 <style>
   :root { color-scheme: light dark; --bg: #F4F4F5; --text: #18181B; --muted: #6B6B6B; --inv: #18181B; --on-inv: #FFFFFF; --line: rgba(0, 0, 0, .07); }
@@ -17,8 +17,8 @@
   main { max-width: 26rem; text-align: left; }
   .app-icon { width: 48px; height: 48px; border-radius: 12px; }
   .face { display: block; color: var(--text); overflow: visible; }
-  html[data-moments="off"] .face { display: none; }
-  html:not([data-moments="off"]) .app-icon { display: none; }
+  html[data-kreska="off"] .face { display: none; }
+  html:not([data-kreska="off"]) .app-icon { display: none; }
   h1 { font-size: 1.25rem; margin: 16px 0 4px; }
   p { margin: 0 0 16px; color: var(--muted); }
   button { min-height: 44px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--inv); color: var(--on-inv); font: inherit; font-weight: 600; cursor: pointer; }

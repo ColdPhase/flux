@@ -11,7 +11,7 @@ import { ConflictError, DomainError, InvalidInputError, NotFoundError } from '..
 import type { SourceReadAuthorizer } from '../push/ports.js';
 import { hashToken, newToken } from './email.js';
 import type { AddressRecord, AddressRepository, PreferenceRepository, UnsubscribeRepository, VerificationMailer } from './ports.js';
-import { applyPreferenceChange, channelsOf, formatClock, withoutAddress } from './preferences.js';
+import { applyPreferenceChange, channelsOf, formatClock, levelOf, withoutAddress } from './preferences.js';
 
 // Notification settings of one signed-in person (issue #116): preferences, muted places, the
 // extra delivery address and its verification, and one-click unsubscribe. A delivery address is
@@ -85,13 +85,16 @@ export function createNotificationSettings(ports: SettingsPorts) {
     // A place the person can no longer read stays muted but is not named or listed.
     const muted: MutedPlace[] = mutes.filter((place) => names.has(`${place.type}:${place.id}`))
       .map((place) => ({ ...place, name: names.get(`${place.type}:${place.id}`)! }));
+    const channels = channelsOf(stored);
     return {
-      channels: channelsOf(stored),
+      channels,
       email: {
         destination: stored.emailDestination, accountAddress: account.email, extra: addressView(await ports.addresses.find(account.userId)), available: ports.mailer.available,
         lastFailureAt: (await ports.unsubscribes.lastFailure(account.userId, new Date(now().getTime() - 24 * 3600_000)))?.toISOString() ?? null,
       },
       quietHours: { enabled: stored.quietEnabled, start: formatClock(stored.quietStart), end: formatClock(stored.quietEnd), timeZone: stored.timeZone },
+      morningSummary: { enabled: stored.summaryEnabled, at: formatClock(stored.summaryAt) },
+      level: levelOf(channels),
       muted,
     };
   }

@@ -8,6 +8,13 @@
 set -eu
 
 cd "$(dirname "$0")/.."
+# The settings/notifications modules share this engine selection; other modules keep their
+# existing browser choices. Reject typos before starting Docker or creating temporary secrets.
+export FLUX_UI_BROWSER="${FLUX_UI_BROWSER-chromium}"
+case "$FLUX_UI_BROWSER" in
+  chromium|webkit) ;;
+  *) printf '%s\n' 'FLUX_UI_BROWSER must be chromium or webkit' >&2; exit 2 ;;
+esac
 project="flux-ui-$(date +%s)-$$"
 export POSTGRES_USER=flux
 export POSTGRES_DB=flux
@@ -55,7 +62,7 @@ $compose up -d db migrate
 # The API writes uploaded files to the shared volume; give it to the runtime user first.
 $compose --profile setup run --rm files-init
 if [ "$#" -gt 0 ]; then
-  $compose run --rm -w /work/tests/ui ui-test python3 -m unittest -v "$@"
+  $compose run --rm -e FLUX_UI_BROWSER -w /work/tests/ui ui-test python3 -m unittest -v "$@"
 else
-  $compose run --rm ui-test
+  $compose run --rm -e FLUX_UI_BROWSER ui-test
 fi

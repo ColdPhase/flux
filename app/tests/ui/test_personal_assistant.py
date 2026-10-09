@@ -242,6 +242,11 @@ class PersonalAssistantJourney(unittest.TestCase):
         self.assertEqual((status["enablement"]["consent"]["provider"], status["enablement"]["consent"]["model"]), ("anthropic", "claude-sonnet-5"))
         type(self).ids["agent"] = status["enablement"]["agents"][0]["agentId"]
         shot(page, "assistant-1440-settings-ready")
+        # Settings → Agents and AI lists the assistant with its colour and its state (#350).
+        page.goto("/settings/agents")
+        row = page.get_by_role("link", name=re.compile("^Your assistant Agent · for you · in Flux"))
+        expect(row).to_have_attribute("href", "/settings/assistant")
+        self.assertRegex(row.locator(".sset-row__ic > .kreska").get_attribute("class") or "", r"kreska--[a-z]+")
         # Kai sees his own, not-set-up state: Jo's assistant is never offered to him.
         kai = self.page("kai")
         self.assertEqual(self.status(kai)["state"], "not_enabled")
@@ -437,6 +442,47 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(working).not_to_have_class(re.compile(r"\bis-working\b"))
         expect(working.locator('.kreska[data-expression="thinking"]')).to_have_count(0)
         expect(working).to_contain_text("Stopped. Nothing was posted.", timeout=15000)
+
+    def test_07c_small_moments_off_keeps_the_working_words_and_stop_without_the_face(self) -> None:
+        """#352 AC-2: with Settings → Appearance off, the thinking face is gone and the working line keeps its words,
+        Stop and the attributed answers; turning the moments back on brings the live face back."""
+        mock("/__script", {"reset": True, "delay": 12})
+        jo = self.conversation("jo")
+        expect(jo.locator(".assistant-answer").first).to_be_visible()
+        self.ask(jo, "Compare the two sensors a last time")
+        working = jo.locator(".assistant-working")
+        try:
+            expect(working).to_contain_text("Your assistant is writing an answer…", timeout=15000)
+            expect(working.locator('.kreska[data-expression="thinking"]')).to_have_count(1)
+            settings = jo.context.new_page()  # the same storage as the conversation
+            settings.goto("/settings")
+            settings.get_by_role("switch", name="Kreska in loading and empty screens").click()
+            expect(settings.get_by_role("switch", name="Kreska in loading and empty screens")).to_have_attribute("aria-checked", "false")
+            settings.close()
+            jo.reload()
+            expect(working).to_contain_text("Your assistant is writing an answer…", timeout=15000)
+            expect(working.get_by_role("button", name="Stop")).to_be_visible()
+            expect(working.locator(".kreska")).to_have_count(0)
+            self.assertEqual(jo.evaluate("document.documentElement.dataset.kreska"), "off")
+            # Control: an ordinary completed answer keeps its assistant face while the moments are off.
+            expect(jo.locator(".assistant-answer .kreska").first).to_be_visible()
+            # Turning the moments back on brings the live thinking face back.
+            settings = jo.context.new_page()  # the same storage as the conversation
+            settings.goto("/settings")
+            settings.get_by_role("switch", name="Kreska in loading and empty screens").click()
+            expect(settings.get_by_role("switch", name="Kreska in loading and empty screens")).to_have_attribute("aria-checked", "true")
+            settings.close()
+            jo.reload()
+            expect(working.locator('.kreska[data-expression="thinking"] .kreska__brow')).to_be_visible()
+        finally:
+            stop = working.get_by_role("button", name="Stop")
+            if stop.count():
+                stop.click()
+                expect(working).to_contain_text("Stopped. Nothing was posted.", timeout=20000)
+            dismiss = working.get_by_role("button", name="Dismiss")
+            if dismiss.count():
+                dismiss.click()
+            expect(working).to_have_count(0)
 
     # ---------------------------------------------------------------- the proposal: only authority accepts
 

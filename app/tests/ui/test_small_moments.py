@@ -17,6 +17,7 @@ from playwright.sync_api import Browser, Page, expect, sync_playwright
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "a quiet small moment"
+SWITCH = "Kreska in loading and empty screens"
 EMAIL = f"ada.moments+{int(time.time() * 1000)}@example.test"
 KRESKA_ANIMATIONS = "document.getAnimations().filter(a => a.effect?.target?.closest?.('.kreska, .opening, .boot, .pull, .goal')).length"
 
@@ -118,7 +119,7 @@ class SmallMomentsJourney(unittest.TestCase):
         self.ensure_account()
         page = self.page()
         page.goto("/settings")
-        switch = page.get_by_role("switch", name=re.compile("Small moments"))
+        switch = page.get_by_role("switch", name=SWITCH)
         expect(switch).to_have_attribute("aria-checked", "true")
         switch.focus()
         page.keyboard.press("Space")
@@ -131,7 +132,7 @@ class SmallMomentsJourney(unittest.TestCase):
         expect(page.get_by_role("heading", name="Nothing matches “zzqxv”")).to_be_visible()
         expect(page.locator(".ui-empty--mascot")).to_have_count(0)
         # The splash is gone too, and the choice is the page's before React starts.
-        self.assertEqual(page.evaluate("document.documentElement.dataset.moments"), "off")
+        self.assertEqual(page.evaluate("document.documentElement.dataset.kreska"), "off")
         page.goto(f"/projects/{self.ids['project']}")
         expect(page.get_by_role("textbox").first).to_be_visible()
         page.context.set_offline(True)
@@ -139,8 +140,8 @@ class SmallMomentsJourney(unittest.TestCase):
         expect(page.locator(".connection-line .kreska")).to_have_count(0)
         page.context.set_offline(False)
         page.goto("/settings")
-        page.get_by_role("switch", name=re.compile("Small moments")).click()
-        expect(page.get_by_role("switch", name=re.compile("Small moments"))).to_have_attribute("aria-checked", "true")
+        page.get_by_role("switch", name=SWITCH).click()
+        expect(page.get_by_role("switch", name=SWITCH)).to_have_attribute("aria-checked", "true")
 
     def test_05_the_splash_is_the_logo_and_a_line_and_moves_only_when_motion_is_allowed(self) -> None:
         self.ensure_account()
@@ -216,6 +217,75 @@ class SmallMomentsJourney(unittest.TestCase):
         expect(page.locator(".ui-error").first).to_be_visible()
         expect(page.locator(".ui-error .kreska, .ui-error--mascot")).to_have_count(0)
         expect(page.locator("[role=alert] .kreska")).to_have_count(0)
+
+
+    def test_10_with_moments_off_the_startup_line_is_plain_before_the_app_loads(self) -> None:
+        """Off is decided before the first paint, so the plain line is there while the bundle still downloads."""
+        self.ensure_account()
+        page = self.page(phone=True, signed_in=True)
+        page.add_init_script("try { localStorage.setItem('flux.kreska', 'off'); } catch (e) {}")
+        gate = {"open": False}
+        held: list = []
+
+        def hold(route) -> None:
+            if gate["open"]:
+                route.continue_()
+            else:
+                held.append(route)
+
+        page.route(re.compile(r"\.js(\?.*)?$"), hold)
+        page.goto("/", wait_until="commit")
+        # The only status on screen is the plain line; the splash logo is hidden.
+        expect(page.get_by_role("status")).to_have_text("Opening Flux…")
+        expect(page.locator(".boot--moment")).to_be_hidden()
+        self.assertEqual(page.evaluate("document.getAnimations().length"), 0)
+        shot(page, "352-startup-off-phone")
+        gate["open"] = True
+        for route in held:
+            route.continue_()
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+
+    def test_11_a_cancelled_pull_resets_without_refreshing(self) -> None:
+        """The browser cancelling a touch is not a release: only touchend refreshes."""
+        self.ensure_account()
+        page = self.page(phone=True)
+        page.goto("/")
+        page.get_by_role("navigation", name="Views").get_by_role("link", name="Tasks").click()
+        expect(page.get_by_role("heading", name=re.compile("Your tasks|Nothing is waiting for you"))).to_be_visible()
+        page.wait_for_load_state("networkidle")
+        reads: list[str] = []
+        page.on("request", lambda request: reads.append(request.url) if "/work" in request.url else None)
+        cdp = page.context.new_cdp_session(page)
+
+        def touch(kind: str, y: int | None = None) -> None:
+            points = [] if y is None else [{"x": 195, "y": y}]
+            cdp.send("Input.dispatchTouchEvent", {"type": kind, "touchPoints": points})
+
+        # Cancelled after crossing the threshold: the pull resets, nothing is announced, nothing is read.
+        touch("touchStart", 200)
+        for y in range(210, 420, 20):
+            touch("touchMove", y)
+        expect(page.locator(".pull")).to_have_attribute("data-ready", "true")
+        touch("touchCancel")
+        expect(page.locator(".pull")).not_to_have_attribute("data-ready", "true")
+        expect(page.get_by_text("Refreshing…")).to_have_count(0)
+        expect(page.locator(".pull .kreska")).to_have_count(0)
+        page.wait_for_timeout(1200)
+        self.assertEqual(reads, [], "a cancelled pull reads nothing")
+        # Control: released below the threshold does not refresh either.
+        touch("touchStart", 200)
+        touch("touchMove", 240)
+        touch("touchEnd")
+        page.wait_for_timeout(1200)
+        self.assertEqual(reads, [], "a short pull reads nothing")
+        # Control: released past the threshold refreshes exactly once.
+        touch("touchStart", 200)
+        for y in range(210, 420, 20):
+            touch("touchMove", y)
+        touch("touchEnd")
+        expect(page.get_by_text("Refreshing…")).to_be_visible()
+        page.wait_for_timeout(1500)
+        self.assertEqual(len(reads), 1, reads)
 
 
 if __name__ == "__main__":
