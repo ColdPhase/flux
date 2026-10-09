@@ -96,7 +96,7 @@
 .convo-notice__meta strong { min-width: 0; max-width: 100%; overflow-wrap: anywhere; font-size: var(--fs-sm); font-weight: 550; color: var(--t1); }
 .convo-notice__meta .agent-id__name { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
 .convo-notice__kind { color: var(--t3); font-size: var(--fs-sm); }
-.convo-notice__task { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 100%; min-height: 40px; padding: 8px 12px; margin-top: 4px; border: 0; border-radius: var(--r-lg, 12px); background: var(--bg); color: var(--t1); font: inherit; font-size: var(--fs-md); text-align: left; cursor: pointer; box-shadow: 0 1px 3px var(--line); }
+.convo-notice__task { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 100%; min-height: 32px; padding: 5px 12px; margin-top: 2px; border: 0; border-radius: var(--r-lg, 12px); background: var(--bg); color: var(--t1); font: inherit; font-size: var(--fs-md); text-align: left; cursor: pointer; box-shadow: 0 1px 3px var(--line); }
 .convo-notice__title { flex: 1; min-width: 0; white-space: normal; overflow-wrap: anywhere; line-height: 1.4; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .convo-notice--undone .convo-notice__title { display: block; -webkit-line-clamp: unset; overflow: visible; }
 .convo-notice__task svg { flex: none; color: var(--t3); }

@@ -551,10 +551,10 @@ function NoticeItem({ notice, meId, owners, row, onOpenTask }: { notice: TaskCre
       <AuthorFace kind={creator.kind} name={name} mine={mine} />
       <span className="convo-notice__body">
         <span className="convo-notice__meta">
+          <span className="convo-notice__kind">{notice.kind === 'task.creation_reverted' ? 'Task creation undone' : 'New task'}{notice.kind === 'task.created' && notice.lifecycle?.state === 'creation_reverted' ? ' · creation undone' : ''}</span>
           {creator.kind === 'agent' ? <AgentIdentity name={name} owner={owners.get(creator.id)} icon={false} /> : <strong>{name}{mine ? ' · you' : ''}</strong>}
           <time dateTime={notice.createdAt} title={when(notice.createdAt)}>{clock(notice.createdAt)}</time>
         </span>
-        <span className="convo-notice__kind">{notice.kind === 'task.creation_reverted' ? 'Task creation undone' : 'New task'}{notice.kind === 'task.created' && notice.lifecycle?.state === 'creation_reverted' ? ' · creation undone' : ''}</span>
         <button type="button" className="convo-notice__task" data-native-ref={`work:${notice.workId}`} onClick={() => onOpenTask(notice.workId)} aria-label={`Open task #${notice.workNumber} ${title}`}>
           {/* The immutable announcement number names the task before and after the current row arrives. */}
           <StatusGlyph status={current?.status ?? 'open'} size={16} />
