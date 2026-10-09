@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { schema } from '@flux/db';
 import { createEmailClaims, releasedEmail } from '../../apps/server/src/identity/claim.js';
-import { db, pool } from './support/db.js';
+import { db } from './support/db.js';
 
 // Email-collision takeover attempts (F-024 S5a, #313): a provider identity whose verified email belongs to another
 // Flux account. Negative controls: a verified account, a different person's account, an account already linked to

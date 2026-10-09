@@ -4,7 +4,6 @@ import http from 'node:http';
 import { after, before, test } from 'node:test';
 import { createDatabase } from '@flux/db';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
-import { password as localPassword } from '../support/people.js';
 
 /**
  * Human single sign-on (#113) through a real browser authorization-code flow against the disposable
