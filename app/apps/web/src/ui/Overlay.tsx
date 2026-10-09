@@ -61,15 +61,16 @@ export interface OverlayProps {
 }
 
 /**
- * The handle of a two-height sheet: a real 44px target with a small bar. It is a div with the button role,
- * not a button: Chrome cancels a touch drag that starts on a <button>, and this one must drag.
+ * The handle of a two-height sheet: a real 44px target with a small bar for touch and mouse, and a
+ * separate visually hidden button for keyboard and screen readers. The visible handle is neither a
+ * <button> nor focusable: Chrome cancels a touch drag that starts on either, and this one must drag.
  */
 export function SheetGrabber({ full, onToggle }: { full: boolean; onToggle: () => void }) {
   return (
-    <div role="button" tabIndex={0} className="ui-grabber" aria-label={full ? 'Show half height' : 'Show full height'} aria-expanded={full}
-      onClick={onToggle} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onToggle(); } }}>
-      <span aria-hidden="true" />
-    </div>
+    <>
+      <div className="ui-grabber" aria-hidden="true" onClick={onToggle}><span /></div>
+      <button type="button" className="ui-vh" aria-label={full ? 'Show half height' : 'Show full height'} aria-expanded={full} onClick={onToggle} />
+    </>
   );
 }
 
