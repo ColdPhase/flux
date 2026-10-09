@@ -238,8 +238,7 @@
 .agents-thread-sheet { position: relative; display: flex; flex-direction: column; min-width: 0; }
 .agents-thread-sheet .thread--sheet { position: static; inset: auto; flex: 1; min-width: 0; }
 @media (max-width: 1000px) {
-  /* The thread is a sheet that takes the pane: the list is not drawn behind it (it grows in the pane's own flow). */
-  .agents[data-thread-open] .agents__main { display: none; }
+  /* On a phone the thread follows the list in the pane's own flow and opens at its newest message; the hand-off button waits. */
   .agents[data-thread-open] .agents__handoff { display: none; }
 }
 @media (max-width: 640px) {
