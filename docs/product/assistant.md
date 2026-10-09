@@ -1,279 +1,119 @@
-# Assistant proposal: subscriptions, switches, edits and background work (2026-10-09)
+# F-027 — the assistant: subscriptions, switches, edits and background work
 
-> **Answered 2026-10-09.** Hubert accepted all 18 recommendations in §7 as written.
-> The decision is recorded as [F-027](../assistant.md), and the affected records carry
-> a dated "Revised 2026-10-09 by founder direction (F-027)" note. This document stays
-> as the record of the options considered; F-027 is the governing text.
+**Status: F-027 — Accepted by founder direction 2026-10-09 (questions 1–18 answered
+"recommended"), awaiting independent peer review of the contract text.** Owner:
+@PelikanFix16 (`claude-hubert`). The founder decided the product questions below; the
+peer review covers whether this text states them correctly and testably, not whether
+to make them. Implementation slices start from this text; a review finding that
+changes it is recorded here with its date.
 
-**Status: proposal for Hubert's answers. Not a decision.** Written 2026-10-09 by
-@PelikanFix16 (`claude-hubert`) at Hubert's request. Following his process rule of
-the same day ("Regarding earlier decisions, you have to ask me questions"), this
-document changes no decision or contract. [F-022](../ai-modes.md),
-[F-020](../model-providers.md), [O-007](../background-compute.md),
-[O-008](../personal-runs-compute.md), [F-018](../cowork-workflow.md),
-[CO-1](../mcp-cowork.md#connections-and-owner-authorized-autonomy--co-1) and
-[S6](../mcp-identity.md#s6--owner-mcp-capability-switches) stay exactly as recorded.
-Each suggested change below names the record it would change, the options, and a
-recommendation. The [questions for Hubert](#7-questions-for-hubert) at the end decide
-them. Only after his answers would an agent record a decision (it would become
-F-027), with independent peer review, and open the slices.
+**Evidence:** [dated sources, retrieved 2026-10-09](research/2026-10-09-assistant-subscriptions-and-edits.md).
+**Proposal and options considered:** [assistant proposal, 2026-10-09](research/2026-10-09-assistant-proposal.md)
+(suggested changes C1–C15 with options, pros and cons).
 
-**Evidence:** [dated sources, retrieved 2026-10-09](2026-10-09-assistant-subscriptions-and-edits.md).
+> **Founder direction, 2026-10-09.** Hubert (@PelikanFix16) asked for this work in a
+> supervising session (translated from Polish):
+>
+> - "Subscriptions must work normally, because everyone has a subscription, not a
+>   stupid API key. The assistant must have on/off switches for what it may read and
+>   what not, and it must also be able to modify things: the Wiki, the mind map, add
+>   tasks and other elements. The assistant has to be well designed."
+> - "The assistant should also have an option for whether the user wants to approve
+>   its changes, or whether … it may change things without asking and only say what
+>   it did, because not everyone wants to do approvals."
+> - "How can background use of a subscription be forbidden? … I pay for the account,
+>   so I can certainly use it in the background." And: "Cron".
+> - "The UX must be simple for the user, not complicated." "The UX must be really
+>   good, so good that I'll be surprised by the design. AI, agents and the Flux
+>   assistant are practically the pillar of our app: AI and people connected together
+>   in a messenger."
+> - "Regarding earlier decisions, you have to ask me questions."
+>
+> The questions he was asked, and his answers (all 18: "recommended"):
+>
+> | # | Question | Answer |
+> | --- | --- | --- |
+> | 1 | Let the assistant change things itself (tasks, Wiki, map, replies), not only propose? | Yes |
+> | 2 | Default for new users: "Do it and tell me" or "Ask me first"? | "Do it and tell me", always asking before removals and other people's things |
+> | 3 | In projects shared with others, may it change other people's things without asking? | No: new and your own things apply, other people's things wait for you |
+> | 4 | Always ask before removing anything, even in "Do it and tell me"? | Yes |
+> | 5 | Allow scheduled jobs on a Claude or ChatGPT subscription, opt-in per job with a short risk note? | Yes |
+> | 6 | Allow reactions on a subscription (task assigned to me, my task blocked, result failed, mentioned, PR ready), even though another person's action starts them? | Yes: opt-in, only events about you, capped |
+> | 7 | Minimum time between runs of a scheduled job: one hour, as Anthropic's own Routines? | Yes |
+> | 8 | Runs missed while Flux was off: skip, or run once when Flux is back? | Skip |
+> | 9 | One assistant per person, with one set of switches whichever account it uses? | Yes |
+> | 10 | Default switches for a new assistant: tasks, Wiki, maps, conversations and decisions all on; files later? | Yes |
+> | 11 | Should the API-key assistant edit too, so both accounts behave the same? | Yes |
+> | 12 | Installer asks once to turn on subscription sign-in, Enter = yes, with a typed "y" for Claude Code's Commercial Terms statement? | Yes |
+> | 13 | Connect AI shows "Sign in with Claude / ChatGPT" first and API keys under "Other ways"? | Yes |
+> | 14 | For Claude Max and Team owners, suggest the plan's monthly API credits for background work? | Yes, as a hint, never forced |
+> | 15 | Keep the existing comparison rule (#58), which any member's result starts, on API keys only? | Yes |
+> | 16 | Let the assistant hand tasks to your own agents ("ask my Codex to review")? | Yes, your own agents only |
+> | 17 | If Anthropic's 2026-11-12 Usage Policy stays ambiguous about hosted Claude Code, keep Claude subscription sign-in on? | Yes; switch off only if the text clearly covers Flux |
+> | 18 | Ship the runtime's first run (#280) read-only first, with edits in the next slice? | Yes |
 
-**How to read.** §1 is what Hubert asked. §2 summarises the research. §3 lists the
-suggested changes, each mapped to the current record. §4 is the contract the
-recommendations would produce (IDs AST-1 to AST-9, with testable acceptance
-criteria). §5 is the experience, journey by journey (AST-10). §6 is delivery: slices
-and the change list for open issues and PRs. §7 is the questions.
+## What this decision changes
 
-## 1. Founder input, 2026-10-09
-
-Hubert (@PelikanFix16), in a supervising session, translated from Polish:
-
-1. "Subscriptions must work normally, because everyone has a subscription, not a
-   stupid API key. The assistant must have on/off switches for what it may read and
-   what not, and it must also be able to modify things: the Wiki, the mind map, add
-   tasks and other elements. The assistant has to be well designed."
-2. "The assistant should also have an option for whether the user wants to approve
-   its changes, or whether, when the user writes to it, it may change things without
-   asking and only say what it did, because not everyone wants to do approvals."
-3. "How can background use of a subscription be forbidden? Running Codex in a
-   terminal in the background is not forbidden. I pay for the account, so I can
-   certainly use it in the background."
-4. "Cron": scheduled jobs the owner defines, as Hermes Agent and OpenClaw have.
-5. "The UX must be simple for the user, not complicated. These things must be
-   intuitive." The background part, schedules and event reactions, must also be
-   nicely designed.
-6. "Fix everything … do thorough research … check how OpenClaw or Hermes do it."
-7. "The UX must be really good, so good that I'll be surprised by the design. AI,
-   agents and the Flux assistant are practically the pillar of our app: AI and people
-   connected together in a messenger."
-8. "Regarding earlier decisions, you have to ask me questions. Opus should do the
-   research and possibly suggest changes relative to what we have now."
-
-## 2. Research in brief
-
-Full evidence, quotes, dates and labels are in the
-[evidence file](2026-10-09-assistant-subscriptions-and-edits.md). In short:
-
-- **What Flux has today.** The in-Flux assistant answers and drafts one kind of
-  proposal (a result); it edits nothing. Its API-key engine sends one request with no
-  tools (O-008 §3). The subscription engine (F-022 `runtime`) has sign-in in review
-  (PR #398) but no run yet (#280). MCP clients already have 45 tools, including every
-  write the founder listed (tasks, Wiki, map thoughts and links, replies, decisions),
-  through one executor with receipts. Owner switches for MCP connections (S6) are in
-  review (PR #390). [Evidence §1.](2026-10-09-assistant-subscriptions-and-edits.md#1-current-state-in-flux)
-- **No vendor text found forbids** the owner's own scheduled use of their own plan
-  through the official CLI. Anthropic itself runs scheduled Claude Code on Pro and Max:
-  its GitHub Action runs "on any GitHub event, including a cron schedule" with a
-  subscription token, and its Routines "draw down subscription usage the same way
-  interactive sessions do". OpenAI documents `codex exec` for "scheduled jobs" with the
-  saved login, as a non-default path. Both recommend API keys for automation.
-  [Evidence §3.](2026-10-09-assistant-subscriptions-and-edits.md#3-vendor-terms-retrieved-2026-10-09)
-- **New risk:** Anthropic's Usage Policy effective **2026-11-12** forbids providing
-  access to Claude "through unauthorized means, including services that route requests
-  through consumer subscriptions". Flux relies on the legal page's carve-out for "a
-  platform hosts Claude Code" with the user's own sign-in to the unmodified binary.
-- **New opportunity:** since 2026-10-07, Claude Max and Team plans include monthly API
-  credits usable "with an API key from your linked Claude Console organization",
-  covering `claude -p` and the Agent SDK: the vendor-recommended way to automate, paid
-  by the plan.
-- **OpenClaw and Hermes** (re-read 2026-10-09). OpenClaw runs the official `claude -p`
-  with a per-run MCP grant into its own tools and "never reads, persists, refreshes, or
-  forwards native tokens", the pattern F-022 already follows. Hermes reuses Claude
-  Code's OAuth client and bills as extra usage. Both ship cron: Hermes runs due jobs
-  in fresh sessions, forbids scheduled runs from creating jobs, collapses outages into
-  one run, alerts once on repeated failure, and denies dangerous actions when nobody is
-  present (`cron_mode: deny`). [Evidence §2.](2026-10-09-assistant-subscriptions-and-edits.md#2-precedent-how-others-use-a-subscription-and-run-in-the-background)
-- **Only one pattern survived 2026 without enforcement:** the unmodified official CLI
-  or SDK under the user's own login (Zed, Conductor, Cline, Happy, Omnara, OpenClaw's
-  CLI back end). opencode removed its Claude token plugin "per legal requests".
-
-## 3. Suggested changes to current decisions
-
-Each item: the current record (quoted), the options with pros and cons, and the
-recommendation. Nothing here is in force.
-
-### C1 — Background work on a subscription
-
-**Current:** F-022 AIM-1: `runtime` is for "Owner-triggered assistant runs only";
-"Background rules (O-007) keep `server` connections. A `runtime` connection cannot be
-chosen for one"; "Not offered … A `runtime` connection for unattended background
-rules — Rejected"; accepted risk 4 mitigation "owner-triggered runs only, no background
-rules".
-
-| Option | Pros | Cons |
+| Before (record) | Now | Question |
 | --- | --- | --- |
-| A. Keep API keys only for background work | Lowest vendor risk; matches both vendors' "use API keys for automation" | Contradicts founder input 3; most owners have no key, so they get no background work |
-| **B. Owner opt-in per scheduled job, with an honest note** | Matches founder input 3 and 4; Anthropic's own Routines and GitHub Action schedule on plans; no text forbids it | Vendor may restrict "without prior notice"; Flux cannot see plan limits |
-| C. On by default for every job | Fewest taps | Spends a plan without a conscious choice; weakest position if a vendor objects |
+| The assistant answers and drafts one kind of proposal, a result; "consequential changes become proposal objects" (O-008, #68, AIM-3) | It reads and changes tasks, the Wiki, maps, conversations and decisions through the same MCP tools and executor as external agents (AST-5, AST-6) | 1 |
+| No approval choice | "Do it and tell me" (default) or "Ask me first"; removals, other people's things, hand-offs to others, live-edited pages and changes beyond the limit always wait (AST-5) | 2, 3, 4 |
+| `runtime` for "Owner-triggered assistant runs only"; "A `runtime` connection cannot be chosen" for background rules (AIM-1) | The owner's own scheduled jobs and reactions to events about the owner may run on a subscription, as an opt-in per item with a risk note (AST-2, AST-7) | 5, 6, 7, 8 |
+| One agent connection per `runtime` connection, `owner_runtime` (AIM-3) | One assistant per person per workspace, one agent connection `owner_assistant`, one set of switches compiled into S6 (AST-3, AST-4) | 9, 10 |
+| `server` runs: one request, no tools (O-008 §3, PROV-2) | A bounded tool loop through the same `/mcp` route (AST-8) | 11 |
+| `FLUX_AGENT_RUNTIME` off unless the operator edits it (AIM-3) | The launcher asks once (AST-1) | 12 |
+| No order on Connect AI (#277) | Subscriptions first, API keys under *Other ways to connect* (AST-1) | 13, 14 |
+| "The first slice allows `flux.context.read` only" (AIM-3) | #280's first delivery step stays read-only; then the switches decide | 18 |
+| O-008 data boundary: "A run never reads … other projects" | A scheduled job tied to Home reads the projects the owner selected, reports only to the owner and changes nothing (AST-7) | Founder "Cron" direction: "tied to a project or to Home" |
 
-**Recommendation: B.** The owner's own jobs, on the owner's own instance, through the
-official CLI; one-hour minimum interval (Anthropic Routines' own minimum); no
-catch-up. Claude Max and Team owners are shown the monthly API credits path as a hint.
+Unchanged: F-019 owner-only invocation and payer; O-007's comparison rule on API keys
+(question 15); O-009 (only people accept decisions); no vendor credential in Flux; no
+fallback between accounts; AIM-3's isolation, hardening and redaction; S6's
+restrictive overlay and live Off; F-016, F-018, F-024, F-026. The records this changes
+carry a dated note "Revised 2026-10-09 by founder direction (F-027)":
+[F-022](ai-modes.md), [F-020](model-providers.md), [O-008](personal-runs-compute.md),
+[CO-1](mcp-cowork.md#connections-and-owner-authorized-autonomy--co-1) and the
+[decision register](decisions.md).
 
-### C2 — Reactions to events, which another person's action starts
+## Safety rules at a glance
 
-**Current:** F-022 accepted risk 3: "A member's action or mention never triggers
-another person's runtime". F-019 allows "a narrow standing rule the owner configured".
+The full rules and their reasons are in AST-5 to AST-9.
 
-| Option | Pros | Cons |
-| --- | --- | --- |
-| A. No reactions on a subscription (API key only) | Keeps risk 3 intact | No "when blocked, help" on the plan most owners have |
-| **B. A curated set of events about the owner only** (a task assigned to me, my task blocked, a result failed on my task, someone mentions me, a PR ready on my task), opt-in per reaction, debounced and capped | Useful; each event concerns the owner, like an assistant handling the owner's inbox; F-019 allows owner-configured rules | Another person's action does start the run, closer to Anthropic's "route third-party traffic against subscription limits"; risk medium–high to high for Claude Code |
-| C. Any event, generic rule builder | Flexible | Lets other people's activity spend the plan; complex UI (founder input 5) |
+- **It reaches only** the owner's current rights ∩ the assistant's project grant ∩
+  the switches ∩ the selected projects ∩ the run's place.
+- **Always waits for the owner, in both modes:** removing anything; changing other
+  people's things; handing work to another person or their agent; a Wiki page someone
+  else is typing in; changes beyond the run's limit (20, or 10 in the background).
+- **Never possible (no tool):** access changes of any kind, its own switches, jobs and
+  reactions; accepting or superseding decisions; anything outside the run's place.
+- **Outside the owner's rights:** a suggestion to whoever can decide it.
+- **Every change** is attributed ("Ada's assistant · asked by Ada"), versioned, logged
+  in the same transaction, listed in one result line, and undoable.
+- **Background runs** never create jobs, never catch up, run at most hourly, stop
+  after three failures and use only events about the owner; event text is data.
+- **Stop** refuses the next tool call at once; nothing falls back to another account.
 
-**Recommendation: B**, with the event text passed to the run as data, never as
-instructions.
+## Terms
 
-### C3 — The assistant changes things directly
+- **Assistant.** The owner's agent in Flux (F-022 mode (a)), shown as "Ada's
+  assistant" with the Agent tag and "for Ada" (F-026 principle 5).
+- **Engine.** The connection a run uses: a subscription signed into the official
+  CLI (`runtime`) or an API key (`server`). The UI calls it the *account*.
+- **Run.** One piece of assistant work: an owner request, a scheduled job firing,
+  or a reaction firing.
+- **Change.** One effect on a Flux object through one MCP effect tool.
+- **Waiting change.** A change the assistant prepared that waits for the owner's
+  Apply. Internally a pending change.
+- **Suggestion.** A project proposal addressed to whoever has authority over the
+  target (the #68 AC-7 proposal, extended to typed changes).
+- **Yours.** A task you created, your assistant created or you are responsible for;
+  a Wiki page, map, thought or link you or your assistant created; a hand-off to
+  your own agent. Everything else in a project is *other people's*.
+- **Scheduled job.** Work the owner wrote down, run on a schedule (AST-7).
+- **Reaction.** "When [event] → [action]" for a small fixed set of events about the
+  owner (AST-7).
 
-**Current:** O-008 and #68: "consequential changes become proposal objects"; F-022
-AIM-3: "Consequential changes become proposals"; CO-1's helper list: "chat, research,
-finding connections, map/wiki/task assistance and scoped proposals". (#68's scope
-already names "bounded requested actions … with actor/on-behalf-of attribution and
-undo".)
-
-| Option | Pros | Cons |
-| --- | --- | --- |
-| A. Proposals only | Safest; no change to records | Fails founder input 1 ("it must also be able to modify things") |
-| **B. Direct changes through the same MCP tools and executor, with an approval choice** | One path for people's agents and the assistant; receipts, versions, attribution exist already | Needs a change log, Undo for each operation and a result line |
-| C. Direct changes, no choice | Simplest | Fails founder input 2 |
-
-**Recommendation: B.**
-
-### C4 — Default approval mode for new users
-
-**Current:** none (the assistant cannot change anything today).
-
-| Option | Pros | Cons |
-| --- | --- | --- |
-| A. "Ask me first" | Familiar from coding agents; no surprise edits | Friction for every request; contradicts F-026 principle 6 "Undo instead of confirmations" and founder input 2 |
-| **B. "Do it and tell me", with a fixed always-ask list** (removals, other people's things, hand-offs to others, live-edited pages, beyond 20 changes) | Matches F-026 principle 6 and founder input 2; the risky cases still wait; every change has Undo; Hermes' default (`smart`) has the same shape | A wrong edit happens before the owner sees it (bounded and undoable) |
-| C. Ask the person at setup, no default | Explicit | One more step in the first minute |
-
-**Recommendation: B**, revisited if trials show more than one run in ten needing Undo.
-
-### C5 — Edits in projects shared with others
-
-**Current:** none.
-
-| Option | Pros | Cons |
-| --- | --- | --- |
-| A. Same as a solo project | Simplest | The assistant could rewrite a colleague's page because injected text asked it to |
-| **B. New things and your own things apply; other people's things always wait for you** | One rule, explained in one sentence; solo projects work without asking | A shared page edit needs one tap |
-| C. Always ask in shared projects | Safest | Shared projects are the main use (founder input 7, "a messenger") |
-
-**Recommendation: B.**
-
-### C6 — One assistant identity and one set of switches
-
-**Current:** F-022 AIM-3: enabling runs on a `runtime` connection "creates an agent
-connection … with a new `compute_source` value, `owner_runtime`", one per runtime
-connection; the API-key engine has no agent connection.
-
-| Option | Pros | Cons |
-| --- | --- | --- |
-| A. One agent connection per engine, as AIM-3 says | No change | Two or three sets of switches for one assistant |
-| **B. One assistant per person per workspace, one agent connection (`owner_assistant`), one set of switches for every engine** | One permission surface; engine and payer recorded per run | Changes AIM-3's text before #280 implements it |
-
-**Recommendation: B.** #280 has no code for this yet, so the change costs nothing.
-
-### C7 — The runtime's read-only first slice
-
-**Current:** F-022 AIM-3: "The first slice allows `flux.context.read` only."
-
-**Options:** A. keep read-only as a product limit; **B. keep it as #280's first
-delivery step, after which the owner's switches decide.** **Recommendation: B.**
-
-### C8 — Switches: reuse S6, and show them simply
-
-**Current:** S6 (#316, PR #390): owner switches for Read / Suggest / Execute
-capabilities and selected projects for MCP connections, a restrictive versioned overlay
-enforced live.
-
-| Option | Pros | Cons |
-| --- | --- | --- |
-| A. A separate assistant permission store | Independent | Two systems to secure and test |
-| **B. Compile plain switches into S6's overlay** ("Read and edit tasks", "Read and edit the Wiki", "Read and edit maps", "Read conversations and reply", "Read decisions and suggest new ones"); *Only read* and projects under *More* | One enforcement point; founder input 5 | S6 must merge first |
-| C. Show S6's Read / Suggest / Execute matrix | Exact | Jargon; founder input 5 rejects it |
-
-**Recommendation: B.**
-
-### C9 — The API-key engine gets a tool loop
-
-**Current:** O-008 §3: "Each run is **one** Messages API request … no … MCP connector
-or automatic tool loop"; F-020 `PersonalComputeRequest`: "no tools, no hosted search,
-no automatic retries".
-
-| Option | Pros | Cons |
-| --- | --- | --- |
-| A. Keep one request; only subscriptions can edit | No change | Two different assistants depending on the account |
-| **B. A bounded tool loop in the worker, calling the same `/mcp` route with the run token** | Same tools, switches and refusals for both engines | Money reservation must cover the turns; each adapter needs tool calling |
-| C. In-process tools in the worker | Fewer hops | A second enforcement path beside `/mcp` |
-
-**Recommendation: B.** Models without tool calling keep the one-request shape and say
-"This model can answer but can't make changes".
-
-### C10 — Authority for an owner's request
-
-**Current:** CO-1 standing grants (project, actions, limits, expiry; created through
-the owner plus `project.manage` route) authorize MCP effects.
-
-| Option | Pros | Cons |
-| --- | --- | --- |
-| A. Require a standing grant per operation for the assistant too | No new authority type | A confirmation step in disguise; non-managers could never let their assistant edit |
-| **B. The run is the authority** (owner's request, place-bound, capped, receipts record `owner_request`); scheduled jobs and reactions are the owner's configured rules (F-019) | Matches F-019 and the owner's own rights; the project manager still controls the assistant's project grant | A new receipt authority value |
-
-**Recommendation: B.**
-
-### C11 — Subscription sign-in on by default at install
-
-**Current:** F-022 AIM-3: `FLUX_AGENT_RUNTIME` "is empty (off) by default"; enabling
-Claude Code needs the operator's Commercial Terms statement.
-
-| Option | Pros | Cons |
-| --- | --- | --- |
-| A. Keep off; the operator edits `docker/.env` | No change | "Subscriptions must work normally" fails for most self-hosters |
-| **B. The launcher asks once: Enter = yes for ChatGPT/Codex; Claude Code needs a typed `y` for Anthropic's Commercial Terms statement** | One keystroke; a legal statement is never a default | The operator must still accept Anthropic's Commercial Terms for Claude Code |
-| C. On in the release Compose file | Zero steps | Silent statement; starts containers on hosts that fail the isolation checks |
-
-**Recommendation: B.**
-
-### C12 — Connect AI leads with subscriptions
-
-**Current:** #277's sections list connections and payers; no order rule.
-**Recommendation:** *Sign in with Claude* and *Sign in with ChatGPT* first, API keys
-under *Other ways to connect*, plus a folded "Which account should I use?" (Max/Team
-API credits; the EU non-business note for personal Claude plans).
-
-### C13 — Keep O-007's comparison rule on API keys
-
-**Current:** O-007 (#58): an event rule fired by any contributor's negative result.
-**Recommendation:** keep it on API keys. Its trigger is not about the owner (C2); a
-comparison on one's own plan can be a scheduled job instead.
-
-### C14 — Hand-offs from the assistant to the owner's own agents
-
-**Current:** CO-1 hand-offs are people's actions; F-022 lists no co-work tool for
-mode (a).
-**Recommendation:** allow `cowork.unit.create` to the **owner's own** agents only
-("ask my Codex to review #8"); a hand-off to another person's agent waits. Agents
-never start the assistant (F-019).
-
-### C15 — Dated re-check on 2026-11-12
-
-**Recommendation:** re-read Anthropic's Usage Policy and legal page when the policy
-takes effect. If the text clearly covers a platform hosting the official binary,
-switch Claude Code subscription sign-in off by default and point owners to API keys
-(including Max/Team credits). Codex and API keys are unaffected.
-
-## 4. Proposed contract (if Hubert agrees with the recommendations)
-
-These IDs and acceptance criteria are what the recommendations in §3 would become. They
-are written so that a reviewer can test them; they are not in force.
-
-### AST-1 — Subscriptions are the normal way to connect
+## AST-1 — Subscriptions are the normal way to connect
 
 The person signs in with the plan they already pay for. API keys stay available,
 second.
@@ -327,7 +167,7 @@ second.
     Max) are for non-business use. A Team plan or an API key covers work." (Consumer
     Terms §11, EEA text)
 
-#### Acceptance (AST-1)
+### Acceptance (AST-1)
 
 - **AST-1.1** With the runtime on, Connect AI lists *Sign in with Claude* and *Sign
   in with ChatGPT* first, and the API key choices only under *Other ways to
@@ -342,10 +182,10 @@ second.
 - **AST-1.4** On a host whose check fails, the prompt is not shown and the reason
   is printed (launcher test).
 
-### AST-2 — What a subscription may be used for
+## AST-2 — What a subscription may be used for
 
 The evidence and every quote are in the
-[research, §3 and §4](2026-10-09-assistant-subscriptions-and-edits.md#4-verdict-per-use).
+[research, §3 and §4](research/2026-10-09-assistant-subscriptions-and-edits.md#4-verdict-per-use).
 In short:
 
 | Use | Verdict | Conditions |
@@ -385,8 +225,8 @@ What remains real:
   through consumer subscriptions". Flux relies on the legal page's authorization for
   "an end user … signing in to the unmodified Claude Code binary … where a platform
   hosts Claude Code". Flux's egress proxy is a host allowlist tunnel and never
-  relays or reads requests [I]. This proposal does not raise the Claude Code rating
-  for this, but adds a dated re-check (C15).
+  relays or reads requests [I]. F-027 does not raise the Claude Code rating for this;
+  question 17 and the dated re-check in *Reconsider when* govern.
 
 Each background item therefore carries this note the first time the owner turns one
 on with a subscription:
@@ -400,7 +240,7 @@ For a Claude Max or Team plan the note adds one line with a link: "Your plan inc
 monthly API credits. Use them for background work instead ›", which connects an API
 key from the owner's Console organization (a `server` account, F-020).
 
-#### Acceptance (AST-2)
+### Acceptance (AST-2)
 
 - **AST-2.1** A scheduled job or reaction on a subscription account shows the note
   above once, before its first activation, and records the owner's Turn on with the
@@ -414,7 +254,7 @@ key from the owner's Console organization (a `server` account, F-020).
 - **AST-2.4** With paid hosting set, runtime sign-in, jobs and reactions on a
   subscription are refused with one plain sentence (app test).
 
-### AST-3 — One assistant, one permission surface
+## AST-3 — One assistant, one permission surface
 
 - **One assistant per person per workspace.** Its identity is the existing agent row
   chosen at enablement (`personal_run_agents`). Its MCP authority is one
@@ -424,7 +264,7 @@ key from the owner's Console organization (a `server` account, F-020).
   connections.
 - **Switches are S6.** The assistant's switches compile into the #316 restrictive
   policy overlay of that agent connection: enabled capability IDs, enabled entries
-  and selected projects ([S6](../mcp-identity.md#s6--owner-mcp-capability-switches),
+  and selected projects ([S6](mcp-identity.md#s6--owner-mcp-capability-switches),
   PR #390). The same enforcement at `/mcp` applies to both engines, because both
   call the same route with a run token (AST-6, AST-8). There is no second
   permission store.
@@ -447,7 +287,7 @@ key from the owner's Console organization (a `server` account, F-020).
   off until the owner allows it. The assistant screen shows one line, "New: it can
   now also *move tasks between projects* · Allow" (example copy).
 
-#### Acceptance (AST-3)
+### Acceptance (AST-3)
 
 - **AST-3.1** Turning the assistant on creates exactly one `owner_assistant` agent
   connection with its S6 policy, whichever engine is chosen; changing the engine
@@ -459,7 +299,7 @@ key from the owner's Console organization (a `server` account, F-020).
   owner's switches (403/404), and S6 AC-5's held-request race tests pass for the
   assistant's connection.
 
-### AST-4 — What it can do: the switches
+## AST-4 — What it can do: the switches
 
 The default view has five switches in everyday words. Each switch is one area. On
 means *read and edit*; Off means *neither*. Finer control sits under *More*.
@@ -492,7 +332,7 @@ means *read and edit*; Off means *neither*. Finer control sits under *More*.
     per-run and daily money caps;
   - **Today**: runs used and, for an API key, cost.
 
-#### Acceptance (AST-4)
+### Acceptance (AST-4)
 
 - **AST-4.1** Each switch persists, survives reload, and a failed or stale save
   shows an error and returns the switch to its saved state (S6 AC-1; Playwright).
@@ -504,7 +344,7 @@ means *read and edit*; Off means *neither*. Finer control sits under *More*.
 - **AST-4.4** Turning a switch off during a run refuses that area's next read or
   change, even with the run's existing token (S6 AC-3).
 
-### AST-5 — Changes: "Do it and tell me" or "Ask me first"
+## AST-5 — Changes: "Do it and tell me" or "Ask me first"
 
 One choice per assistant, shown as a two-option segmented control.
 
@@ -582,7 +422,7 @@ change is made by them and records "drafted by Ada's assistant".
 - They are visible only to the owner, and expire after 7 days ("Expired").
 - An applied waiting change records "Ada's assistant · approved by Ada".
 
-#### Acceptance (AST-5)
+### Acceptance (AST-5)
 
 - **AST-5.1** A new assistant has "Do it and tell me" selected; switching to "Ask me
   first" takes one tap and persists (Playwright).
@@ -598,7 +438,7 @@ change is made by them and records "drafted by Ada's assistant".
 - **AST-5.5** A waiting change is invisible to other members (403/404 on read and
   Apply), and expires after 7 days (clock-controlled test).
 
-### AST-6 — How a change is made
+## AST-6 — How a change is made
 
 - **Same tools, same executor.** A run lists exactly the MCP tools its switches
   allow (AIM-3 "lists exactly the run's tools"). Every effect goes through the same
@@ -644,7 +484,7 @@ change is made by them and records "drafted by Ada's assistant".
   The engine is stopped as AIM-3 says. Changes already made stay and are listed:
   "Stopped after 3 changes · Undo all".
 
-#### Acceptance (AST-6)
+### Acceptance (AST-6)
 
 - **AST-6.1** A fake CLI asked to "add two tasks and update the probes page" creates
   two tasks and one Wiki version authored by the assistant agent, three change-log
@@ -662,14 +502,14 @@ change is made by them and records "drafted by Ada's assistant".
   the run id; no receipt or log holds a vendor credential (seeded-secret absence
   test, AIM-3).
 
-### AST-7 — Background work: scheduled jobs and reactions
+## AST-7 — Background work: scheduled jobs and reactions
 
 Background work is the owner's own, configured only by the owner on the assistant
 screen. A run never creates, changes or deletes a job or reaction, and never changes
 a switch: no tool exists for it (as Hermes: "Cron-run sessions cannot recursively
 create more cron jobs").
 
-#### Scheduled jobs
+### Scheduled jobs
 
 - **What.** A plain sentence the owner writes, for example "Every morning summarise
   what changed and list what needs me". The saved sentence is the instruction; what
@@ -705,7 +545,7 @@ create more cron jobs").
 - **Text guard.** A job whose text contains a token-shaped string (the AIM-3
   redaction patterns) is refused at save, so no secret is stored in a job.
 
-#### Reactions
+### Reactions
 
 A reaction is one plain sentence built from two pickers: **When** [event ▾] **→**
 [action ▾]. The set is small and fixed. There is no generic rule builder.
@@ -731,7 +571,7 @@ A reaction is one plain sentence built from two pickers: **When** [event ▾] **
   day (default 10) within background runs per day. Events beyond that are recorded as
   "Skipped: daily limit" in Activity.
 
-#### Engine
+### Engine
 
 Reuse the worker and pg-boss, as O-007's comparisons and the morning summary do:
 
@@ -746,7 +586,7 @@ Reuse the worker and pg-boss, as O-007's comparisons and the morning summary do:
   until the missed-run window ends.
 - Recovery reuses #161's sweep.
 
-#### Acceptance (AST-7)
+### Acceptance (AST-7)
 
 - **AST-7.1** From the empty *Scheduled* part, tapping "Morning summary at 9:00"
   and then *Turn on* (2 taps) creates an enabled job whose row shows "Every day at
@@ -773,7 +613,7 @@ Reuse the worker and pg-boss, as O-007's comparisons and the morning summary do:
   once an hour"; a valid one shows its next three times in words (app test and
   Playwright).
 
-### AST-8 — Engines: the `server` tool loop and the `runtime`
+## AST-8 — Engines: the `server` tool loop and the `runtime`
 
 - **`runtime`** stays as AIM-3 specifies: the unmodified CLI, no local tool, the
   exact Flux tools, the read-back and JSONL checks, caps and Stop. Only its tool list
@@ -794,7 +634,7 @@ Reuse the worker and pg-boss, as O-007's comparisons and the morning summary do:
     applies per request.
   - The input bound applies per request; MCP result caps bound what tools return.
 
-#### Acceptance (AST-8)
+### Acceptance (AST-8)
 
 - **AST-8.1** Each provider adapter passes a recorded-fixture test of one tool call
   and its result in that provider's wire format (no real account or key).
@@ -804,7 +644,7 @@ Reuse the worker and pg-boss, as O-007's comparisons and the morning summary do:
 - **AST-8.3** A model marked without tool support gets one request with no tools and
   cannot change anything (app test).
 
-### AST-9 — Privacy, payer and failures
+## AST-9 — Privacy, payer and failures
 
 - **What leaves Flux.** Only what the switched-on areas return, from the run's place,
   within the owner's rights; the owner's request; and Flux's brief. Never DMs,
@@ -823,7 +663,7 @@ Reuse the worker and pg-boss, as O-007's comparisons and the morning summary do:
   again", "Claude refused this request", "Stopped", "Limit reached". No fallback to
   another account or payer. Human work continues (AIM-4 no-AI continuation).
 
-#### Acceptance (AST-9)
+### Acceptance (AST-9)
 
 - **AST-9.1** A seeded DM, private sketch and other-project canary never reach a fake
   provider's input or a fake CLI's MCP results, for interactive, scheduled and
@@ -833,20 +673,7 @@ Reuse the worker and pg-boss, as O-007's comparisons and the morning summary do:
 - **AST-9.3** A plan-limit result from a fake CLI ends the run as "Paused: plan
   limit" with no API key call (app test).
 
-### Reconsider when
-
-- **2026-11-12**, when Anthropic's new Usage Policy takes effect (C15).
-- Anthropic or OpenAI publish text that forbids a product running the official CLI on
-  a schedule for its subscriber, or that removes the official-binary carve-out: the
-  affected client's background items switch off and the owner is told; runs the owner
-  starts follow AIM-3's own revisit rule.
-- Trials show unwanted changes undone in more than one run in ten under "Do it and
-  tell me" (C4).
-- Owners ask for per-project approval choices or more reaction events with a concrete
-  need.
-- S6's overlay changes shape, or a file-reading tool is added (Files switch).
-
-## 5. The experience: journeys (AST-10)
+## AST-10 — The experience (UX)
 
 Founder direction, 2026-10-09: AI, agents and the Flux assistant are a pillar of
 Flux, "AI and people connected together in a messenger", and the experience should
@@ -856,8 +683,9 @@ already has: the conversation stream, the composer with `@` and `/`, result and
 notice lines (S8, P5), the working-agent card with Stop (S13), question cards with
 ready answers (S14), the detail panel and sheets (S4), Inbox "Needs you" (S1),
 segmented controls and switches (Settings · Appearance), toasts with Undo, and
-Kreska. The assistant screen and the result line are a **proposed addition, not part
-of the frozen canvas**; they must look native to it.
+Kreska. The assistant screen and the result line are an **addition to the frozen
+canvas**, accepted with F-027; they must look native to it, and the independent UX
+review of AST-10.12 examines them before the first A7 merge.
 
 **Five promises the journeys keep.**
 
@@ -1288,19 +1116,20 @@ decision, result.
   with demo data, and a neutral visual review (F-026 §9), pass before the first A7
   merge.
 
-## 6. Delivery: slices and change list
+## Delivery: slices A1–A11
 
 Every slice is issue-sized, has one owner, runs its tests in Docker, and uses fakes,
 mocks and recorded fixtures only. No slice uses a real vendor account, key or spend
 (founder direction on #279, 2026-10-08). Migration numbers start at the next free
 number, **0077**; each must be reserved on #153 before SQL is written, as the
-namespace record requires, and an unused reservation is released in its PR. No slice
-starts before Hubert's answers are recorded as a decision with independent review.
+namespace record requires, and an unused reservation is released in its PR. Slices
+may start now. The peer review of this text runs in parallel; a finding that changes
+the contract is recorded here before the affected slice merges.
 
 ### Order and dependencies
 
 ```text
-A0  Hubert's answers, then a recorded decision with independent review
+A0  F-027 (founder answers 2026-10-09; peer review of the text)
       │
       ├─ A10 subscriptions first (#277 order, launcher question)      independent
       │
@@ -1468,59 +1297,156 @@ typing in". #74's G-1 facts provide the "PR is ready" event for A9.
   "Read attached files" (off by default). Needs its own short decision on formats and
   limits. Not required for the first delivery of edits.
 
-### Change list for existing work
+### Acceptance criteria by slice
 
-| Item | Change | Kind |
-| --- | --- | --- |
-| **#277** Connect AI sections (branch `claude-hubert/277-connect-ai` at `42586a7d`) | New criteria AST-1.1 and AST-1.2: subscription sign-in first, API keys under *Other ways to connect*; plain account labels ("Claude · your subscription"). The F-022 payer text stays as the longer line | New acceptance criterion and a small code change in its open branch before its PR |
-| **#279 / PR #398** sign-in console | No contract change: every login method stays offered. The entry point copy becomes *Sign in with Claude* from Connect AI (A10). The console's surrounding copy avoids the AST-10.2 words; the CLI's own output is shown as is | No fix needed in PR #398; copy follow-up inside A10 |
-| **#280** first run (branch `claude-hubert/280-first-run`, no own commits yet beyond #277) | (1) Agent connection: A1's `owner_assistant`, one per person per workspace, instead of `owner_runtime` per runtime connection; #280 then needs no CHECK migration of its own. (2) The run's exact tool list comes from the switches; the read-only list stays as #280's first delivery step. (3) Replace "A background rule cannot select a `runtime` connection" with "An O-007 comparison rule cannot select a `runtime` connection" (AST-2.3); jobs move to A8. (4) Result lines use AST-10's copy. (5) Add the PR #396 mock-model check of the `system/init` tool list | Contract amendment before implementation; A1 lands first or #280 includes A1's minimal subset |
-| **#281** Codex in the runtime | Same agent connection and switch-derived `enabled_tools`; the JSONL check accepts exactly that list. New criterion: the AST-5.2 matrix passes with the fake Codex | New acceptance criterion |
-| **#316 / PR #390** S6 switches | No change to S6 or the PR. A1 depends on it and reuses `AGENT_MCP_ENTRIES`, the policy store and its race tests for `owner_assistant` connections. The assistant's policy is created in the enablement transaction, as S6 requires for new connections | No fix; dependency only |
-| **#68** assistant runs (owner @Zamojski5) | Its scope already names "bounded requested actions … with actor/on-behalf-of attribution and undo"; this proposal makes them concrete (C3). "Undo of done actions" would be delivered by A4; AC-7 extended by A5; AC-8's browser check covers AST-10's lines. "Consequential changes become proposal objects" changes only if Hubert agrees to C3 | After the answers: a scope note on #68, and A3–A5 as new linked issues (owner chosen with @Zamojski5) |
-| **#58 / PR #391** background comparison | No change. Its event rule fires on any contributor's result, so it stays on API keys (AST-2 row 6). A comparison on one's own plan can be a scheduled job (A8) | None |
-| **#238 / PR #394** undo of an AI-created task | Reused by A4 for "added a task" Undo | None |
-| **#347 / PR #376** hand-off and Agents | The step-2 sentence and the agent page *Can* line come from the switches (AST-10.6) once A1/A7 exist; until then its static text stays | Follow-up criterion in A7 |
-| **#343 / PR #387** conversation | The result line and the "Wants to" card are new conversation items; they use the folded-notice pattern (S8, P5) | Delivered in A3/A4; no change to PR #387 |
-| **#344 / PR #386** detail panel | Activity lives in the agent detail panel's Recent list | Delivered in A7; no change to PR #386 |
-| **#350** Settings → Agents and AI (merged) | The existing *Ada's assistant · Manage ›* row opens the AST-10 screen | Delivered in A7 |
-| **#228 / PR #389** live Wiki | Exposes "someone else has this page open for typing" to the server for A3's always-wait rule 4 | Delivered in A3 (reads the existing presence) |
-| **#152 / PR #396** real clients with a mock model | Its scripted model is the test harness for A2 and #281 | None |
-| **#153** migration namespace | Reserve 0077–0081 before SQL, one per slice | Done by each slice owner |
-| **F-022** [ai-modes.md](../ai-modes.md) | Unchanged now. If Hubert agrees: AIM-1 (C1, C2), AIM-3 agent connection and read-only slice (C6, C7), the operator switch (C11), accepted risks 3 and 4 | A recorded decision after the answers |
-| **F-020** [model-providers.md](../model-providers.md) | Unchanged now. If Hubert agrees to C9: PROV-2 tools are Flux MCP tools; PROV-3 reservation over turns (AST-8) | A recorded decision after the answers |
-| **O-008** [personal-runs-compute.md](../personal-runs-compute.md) | Unchanged now. If Hubert agrees to C3 and C9: §3 "one request" applies only to a model without tools | A recorded decision after the answers |
-| **CO-1** [mcp-cowork.md](../mcp-cowork.md) | Unchanged now. If Hubert agrees to C3 and C14: the in-product helper list includes direct edits and hand-offs to the owner's own agents | A recorded decision after the answers |
+| Criteria | Slice |
+| --- | --- |
+| AST-1.1, AST-1.2 | #277 (then A10 for copy) |
+| AST-1.3, AST-1.4 | A10 |
+| AST-2.1, AST-2.4 | A8 (sign-in refusal on paid hosting: A10) |
+| AST-2.2 | A9 |
+| AST-2.3, AST-4.4, AST-4.2 (read part) | #280 (A2) |
+| AST-3.1, AST-3.3 | A1 |
+| AST-3.2, AST-4.2 (`server` part), AST-8.1–AST-8.3 | A6 |
+| AST-4.1, AST-5.1 | A1 (API) and A7 (screen) |
+| AST-4.3, AST-5.2–AST-5.5, AST-6.5, AST-9.2 | A3 |
+| AST-6.1–AST-6.4, AST-6.6, AST-9.3 | A4 |
+| AST-7.1–AST-7.6, AST-7.9, AST-7.10, AST-10.10 | A8 |
+| AST-7.7, AST-7.8 | A9 |
+| AST-9.1 | A3 (interactive), A6 (`server`), A8 (scheduled), A9 (reaction) |
+| AST-10.1, AST-10.2, AST-10.4–AST-10.6, AST-10.8, AST-10.9, AST-10.11, AST-10.12 | A7 |
+| AST-10.3 | A8 (scheduled) and A9 (reactions) |
+| AST-10.7 | A4 and A7 |
 
-### What stays unverified
+## What stays unverified
 
 - Every behaviour on a real Claude or ChatGPT subscription: plan limits, plan-limit
   messages, enforcement. Tests use fakes and the PR #396 mock model only.
 - Whether the vendors would treat scheduled jobs on a hosted Flux as ordinary
-  individual use. This proposal records the risk; it does not claim permission.
+  individual use. F-027 records the risk; it does not claim permission.
 - Model quality of edits. Acceptance trials (AST revisit condition) measure undone
   changes; they are product trials, not release gates.
 
-## 7. Questions for Hubert
+## Changes to open work
 
-Short and decision-ready. Each names the suggested change it settles and the
-recommended answer.
+For the supervisor to apply to the issues. Criteria text is quoted as it should be
+added; "replace" names the existing text to remove.
 
-1. Let the assistant change things itself (tasks, Wiki, map, replies), not only propose? (C3; recommend: yes)
-2. Default for new users: "Do it and tell me" or "Ask me first"? (C4; recommend: "Do it and tell me", always asking before removals and other people's things)
-3. In projects shared with others, may it change other people's things without asking? (C5; recommend: no, new and your own things apply, other people's things wait for you)
-4. Always ask before removing anything, even in "Do it and tell me"? (C4; recommend: yes)
-5. Allow scheduled jobs on a Claude or ChatGPT subscription, opt-in per job with a short risk note? (C1; recommend: yes)
-6. Allow reactions on a subscription (task assigned to me, my task blocked, result failed, mentioned, PR ready), even though another person's action starts them? (C2; recommend: yes, opt-in, only events about you, capped)
-7. Minimum time between runs of a scheduled job: one hour, as Anthropic's own Routines? (C1; recommend: yes)
-8. Runs missed while Flux was off: skip, or run once when Flux is back? (C1; recommend: skip)
-9. One assistant per person, with one set of switches whichever account it uses? (C6; recommend: yes)
-10. Default switches for a new assistant: tasks, Wiki, maps, conversations and decisions all on; files later? (C8; recommend: yes)
-11. Should the API-key assistant edit too, so both accounts behave the same? (C9; recommend: yes)
-12. Installer asks once to turn on subscription sign-in, Enter = yes, with a typed "y" for Claude Code's Commercial Terms statement? (C11; recommend: yes)
-13. Connect AI shows "Sign in with Claude / ChatGPT" first and API keys under "Other ways"? (C12; recommend: yes)
-14. For Claude Max and Team owners, suggest the plan's monthly API credits for background work? (C1, C12; recommend: yes, as a hint, never forced)
-15. Keep the existing comparison rule (#58), which any member's result starts, on API keys only? (C13; recommend: yes)
-16. Let the assistant hand tasks to your own agents ("ask my Codex to review")? (C14; recommend: yes, your own agents only)
-17. If Anthropic's 2026-11-12 Usage Policy stays ambiguous about hosted Claude Code, keep Claude subscription sign-in on? (C15; recommend: yes, switch off only if the text clearly covers Flux)
-18. Ship the runtime's first run (#280) read-only first, with edits in the next slice? (C7; recommend: yes)
+### #277 — One Connect AI entry (F-022 T2), branch `claude-hubert/277-connect-ai`
+
+**Kind:** new acceptance criteria and a small change in its open branch before its PR.
+Add:
+
+- "**AST-1.1** With the runtime on, Settings → Agents and AI lists *Sign in with
+  Claude* and *Sign in with ChatGPT* first, and *Use an API key* and the other
+  providers only under *Other ways to connect* (Playwright, both widths)."
+- "**AST-1.2** With the runtime off, the page shows one plain sentence and the API
+  key choices; no sign-in button is shown (Playwright)."
+- "Account rows use plain labels: 'Claude · your subscription', 'ChatGPT · your
+  subscription', 'Anthropic Console · API billing', 'OpenAI · API key'. The F-022
+  payer text stays as the longer line."
+- "A folded *Which account should I use?* shows the two lines of F-027 AST-1 (Max and
+  Team monthly API credits; personal Claude plans are for non-business use in the EU
+  and Switzerland)."
+- "No visible text on the page uses the words listed in F-027 AST-10.2."
+
+### #280 — First owner-invoked run on Claude Code (F-022 T5), branch `claude-hubert/280-first-run`
+
+**Kind:** contract amendment before implementation (the branch has no commits of its
+own). It carries slice A2. Replace and add:
+
+- Replace "An owner-consented agent connection per `runtime` connection
+  (`compute_source = 'owner_runtime'`), created on the mode (b) consent screen.
+  Migrations add the value to the CHECKs of `agent_connections` and
+  `agent_proposals`." with: "The run uses the assistant's one `owner_assistant` agent
+  connection (F-027 AST-3), created by slice A1 when the owner turns the assistant on.
+  #280 adds no CHECK migration of its own."
+- Replace "Read-only Flux MCP tools only, named exactly; no local tool." with: "The
+  run's exact tool list is computed from the owner's switches (F-027 AST-4). In this
+  first delivery step only the read tools of switched-on areas are listed (F-027
+  question 18); effect tools follow in slices A3 and A4. No local tool."
+- Replace "A background rule cannot select a `runtime` connection." with: "An O-007
+  comparison rule cannot select a `runtime` connection (F-027 AST-2.3)."
+- Add: "**AST-4.4** Turning a switch off during a run refuses that area's next read
+  even with the run's existing token."
+- Add: "**AST-4.2 (read part)** With *Read and edit the Wiki* off, the run lists no
+  Wiki tool and a fake CLI calling `flux_get_doc` gets the S6 refusal."
+- Add: "The pinned real `claude` against the scripted model of PR #396 shows a
+  `system/init` tool list equal to the switch-derived list, without an account."
+- Add: "Progress and end states use F-027 AST-10 copy: 'Working…', 'Done: …',
+  'Paused: plan limit until …', 'Sign in to Claude again to keep using your
+  assistant.'"
+- Dependency: slice A1 (or #280 includes A1's minimal subset: the agent connection,
+  its S6 policy and the switch-to-tool mapping).
+
+### #281 — Codex in the agent runtime (F-022 T6)
+
+**Kind:** new acceptance criteria. Add:
+
+- "The Codex run uses the assistant's `owner_assistant` agent connection and the
+  switch-derived exact `enabled_tools`; the JSONL check accepts exactly that list."
+- "After slice A3: the F-027 AST-5.2 matrix (applied, waiting, suggestion, refused)
+  passes with the fake Codex as with the fake Claude Code."
+- "Plan-limit and sign-out states use the F-027 Journey 6 copy for ChatGPT."
+
+### #68 — Owner-only in-product personal assistant runs (owner @Zamojski5)
+
+**Kind:** scope note (no criterion removed). Add to the scope:
+
+- "Direct changes follow F-027 AST-5 and AST-6 (accepted by founder direction
+  2026-10-09, question 1). 'Consequential changes become proposal objects' now applies
+  to changes outside the owner's rights (suggestions) and to the always-wait cases."
+- "'Undo of done actions' is delivered by slice A4; AC-7 is extended to typed changes
+  by slice A5; AC-8's browser check covers the AST-10 result lines."
+
+### #316 / PR #390 — S6 switches
+
+**Kind:** none for the PR. Slice A1 depends on its merge and reuses
+`AGENT_MCP_ENTRIES`, the policy store and its race tests for `owner_assistant`
+connections.
+
+### #279 / PR #398 — Claude Code sign-in console
+
+**Kind:** none for the PR. Every login method stays offered. The entry copy *Sign in
+with Claude* and the surrounding plain copy are slice A10's.
+
+### #58 / PR #391 — Background comparison
+
+**Kind:** none (question 15). Its rule stays on API keys.
+
+### #347 / PR #376 — Hand-off and Agents
+
+**Kind:** follow-up criterion delivered in slice A7: "**AST-10.8** The *Can* sentence on
+the assistant panel, the hand-off step 2 and the phone agent page is identical for the
+same settings and changes when a switch changes." Until A7, the static text stays.
+
+### Others
+
+- **#238 / PR #394:** reused by A4 for undoing a created task. No change.
+- **#343 / PR #387, #344 / PR #386, #350:** the result line, the waiting card, Activity
+  and the assistant screen are delivered in A3, A4 and A7 with their components. No
+  change to those PRs.
+- **#228 / PR #389:** A3 reads its live-session presence for "a page someone else is
+  typing in". No change.
+- **#152 / PR #396:** its scripted model is the harness for A2 and #281. No change.
+- **#358:** the operator guide documents the install question (A10).
+- **#153:** reserve 0077–0081 before SQL, one per slice.
+- **F-022 plan T7** ([two AI modes plan](research/2026-10-04-two-ai-modes-plan.md#t7--write-tools-and-proposals-in-runtime-runs-new-issue)):
+  never opened as an issue; replaced by slices A2–A5.
+
+## Reconsider when
+
+- **2026-11-12**, when Anthropic's new Usage Policy takes effect: re-read it and the
+  Claude Code legal page. Per question 17, Claude subscription sign-in stays on unless
+  the text clearly covers a platform hosting the official binary; then it is switched
+  off by default, owners are told and pointed to API keys (including Max and Team
+  monthly API credits). Codex and API keys are unaffected.
+- Anthropic or OpenAI publish text that forbids a product running the official CLI on
+  a schedule for its subscriber, or that removes the official-binary carve-out: the
+  affected client's background items switch off and the owner is told; runs the owner
+  starts follow AIM-3's own revisit rule.
+- Trials show unwanted changes undone in more than one run in ten under "Do it and
+  tell me" (question 2).
+- Owners ask for per-project approval choices or more reaction events with a concrete
+  need.
+- S6's overlay changes shape, or a file-reading tool is added (Files switch).

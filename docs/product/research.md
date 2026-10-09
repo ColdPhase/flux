@@ -1,5 +1,11 @@
 # Research that changes a decision
 
+Current dated assessment for the assistant: [subscriptions, switches, edits and
+background work, 2026-10-09](research/2026-10-09-assistant-subscriptions-and-edits.md)
+(vendor terms, OpenClaw and Hermes, precedent tools), with the
+[proposal and options](research/2026-10-09-assistant-proposal.md) that the founder
+answered; the decision is [F-027](assistant.md).
+
 Current dated assessment: [owner MCP switches and SSO-only authentication, 2026-10-07](research/2026-10-07-mcp-switches-and-sso-only.md)
 records the superseding founder direction and independent source assessment.
 The [earlier same-day necessity assessment](research/2026-10-07-single-provider-identity-scope.md)
