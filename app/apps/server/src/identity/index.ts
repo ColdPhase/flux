@@ -63,8 +63,9 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
     standing?.start();
   });
   app.addHook('onClose', async () => standing?.stop());
-  const sessions = createSessionResolver(auth, standing, confirmation);
-  const passwordReset: IdentityCapabilities['passwordReset'] = mailer ? 'available' : 'unavailable';
+  // With an active sole provider, ordinary authentication is single sign-on only (F-024 S5a, #313).
+  const sessions = createSessionResolver(auth, standing, confirmation, config.oidc ? { db, providerId: config.oidc.providerId } : null);
+  const passwordReset: IdentityCapabilities['passwordReset'] = mailer && !config.oidc ? 'available' : 'unavailable';
 
   app.addHook('onRequest', async (request, reply) => {
     const violation = originViolation(request.method, request.headers, config.publicOrigin);
@@ -82,7 +83,7 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
   if (config.oidc) app.log.info({ issuer: config.oidc.issuer, redirectUri: `${config.publicOrigin}/api/auth/callback/${config.oidc.providerId}` }, 'Single sign-on is on');
   registerIdentityRoutes(app, { sessions, store: createSessionRepository(db), passwordReset, signup: config.signup, sso });
   registerClaimRoutes(app, { claims, publicOrigin: config.publicOrigin });
-  if (config.signupRequested !== config.signup) app.log.warn({ requested: config.signupRequested }, 'FLUX_SIGNUP=verified needs email (FLUX_SMTP_URL), so password sign-up is closed');
+  if (config.signupRequested !== config.signup) app.log.warn({ requested: config.signupRequested }, 'FLUX_SIGNUP=verified needs email (FLUX_SMTP_URL), and a sign-on provider closes password sign-up, so password sign-up is closed');
   registerAgentOauthContext(app, db, sessions, auth, config.publicOrigin);
 
   return { ...sessions, passwordReset, auth, standing, confirmation };

@@ -343,19 +343,52 @@ test('the same subject keeps the same person, grants and verified address when t
   assert.equal((await mailsTo(state.extra!)).length, before + 1, 'exactly one message reaches the shared mailbox');
 });
 
-test('a new identity with an existing account\'s email cannot take that account', async () => {
-  const local = await fresh();
-  const signUp = await local.request.post(`${origin}/api/auth/sign-up/email`, { data: { name: 'Dave Local', email: 'dave@acme.test', password: localPassword }, headers: { origin } });
-  assert.ok(signUp.ok(), await signUp.text());
-  const localId = (await me(local)).body!.user.id;
-  const attempt = await fresh();
-  const page = await sso(attempt, 'dave');
-  assert.equal(new URL(page.url()).pathname, '/sign-in');
-  assert.equal(new URL(page.url()).searchParams.get('sso'), 'failed');
-  await page.getByText('Single sign-on didn’t complete').waitFor();
-  assert.equal((await me(attempt)).status, 401, 'no session for the provider identity');
-  const accounts = (await pool.query('SELECT provider_id FROM auth_accounts WHERE user_id = $1', [localId])).rows.map((row) => row.provider_id);
-  assert.deepEqual(accounts, ['credential'], 'the local account was not linked to the new identity');
+test('a new identity with a verified account\'s email cannot take that account (#313)', async () => {
+  // A verified local account (no password: sign-up is closed under single sign-on), holding the provider's address.
+  const localId = randomUUID();
+  await pool.query('INSERT INTO auth_users (id, name, email, email_verified) VALUES ($1, $2, $3, true)', [localId, 'Dave Local', 'dave@acme.test']);
+  try {
+    const attempt = await fresh();
+    const page = await sso(attempt, 'dave');
+    assert.equal(new URL(page.url()).pathname, '/sign-in');
+    assert.equal(new URL(page.url()).searchParams.get('sso'), 'failed');
+    assert.equal(new URL(page.url()).searchParams.get('sso_reason'), 'email_held');
+    await page.getByText('Single sign-on didn’t complete').waitFor();
+    assert.equal((await me(attempt)).status, 401, 'no session for the provider identity');
+    const accounts = (await pool.query('SELECT provider_id FROM auth_accounts WHERE user_id = $1', [localId])).rows;
+    assert.deepEqual(accounts, [], 'the verified account was not linked to the new identity');
+    const [row] = (await pool.query('SELECT email, email_verified FROM auth_users WHERE id = $1', [localId])).rows;
+    assert.deepEqual(row, { email: 'dave@acme.test', email_verified: true }, 'the verified address stayed with its account');
+  } finally {
+    // The claimant's new account (same address, from the provider) goes too; the test leaves no dave behind.
+    await pool.query('DELETE FROM auth_users WHERE id = $1 OR email = $2', [localId, 'dave@acme.test']);
+  }
+});
+
+test('an unverified account holding the provider\'s address: link first, and claiming releases only the address (#313)', async () => {
+  const localId = randomUUID();
+  await pool.query('INSERT INTO auth_users (id, name, email, email_verified) VALUES ($1, $2, $3, false)', [localId, 'Dave Unverified', 'dave@acme.test']);
+  try {
+    const attempt = await fresh();
+    const page = await sso(attempt, 'dave');
+    assert.equal(new URL(page.url()).pathname, '/claim', 'the claim page, not a session');
+    await page.getByRole('heading', { name: 'This address already has a Flux account' }).waitFor();
+    assert.ok(await page.getByRole('link', { name: 'Sign in to that account' }).isVisible(), 'linking is offered first');
+    assert.equal((await me(attempt)).status, 401, 'no session before a claim');
+    await page.getByRole('button', { name: 'Claim this address' }).click();
+    await page.waitForURL((url) => url.origin === origin && url.pathname !== '/claim', { timeout: 20_000 });
+    await page.waitForLoadState('networkidle');
+    const signedIn = await me(attempt);
+    assert.equal(signedIn.status, 200);
+    assert.equal(signedIn.body!.user.email, 'dave@acme.test', 'the new provider account holds the address now');
+    const released = (await pool.query('SELECT email FROM auth_users WHERE id = $1', [localId])).rows[0];
+    assert.equal(released.email, `unverified-${localId}@invalid`, 'the old account keeps its row under the .invalid address');
+    assert.deepEqual((await pool.query('SELECT provider_id FROM auth_accounts WHERE user_id = $1', [localId])).rows, [], 'nothing was linked to it');
+    assert.notEqual(signedIn.body!.user.id, localId, 'the claimant is a new Flux account; the released data does not move');
+  } finally {
+    // The claimant's new account (same address, from the provider) goes too; the test leaves no dave behind.
+    await pool.query('DELETE FROM auth_users WHERE id = $1 OR email = $2', [localId, 'dave@acme.test']);
+  }
 });
 
 test('an email the provider has not verified does not sign in', async () => {

@@ -84,6 +84,7 @@ export function describeAuthError(error: unknown, context: 'sign-in' | 'sign-up'
   if (error.code === 'ORIGIN_REJECTED') return 'This page was opened from an address Flux doesn’t accept. Open Flux at its usual address and try again.';
   const code = error.code ?? '';
   if (context === 'sign-in' && (error.status === 401 || code === 'INVALID_EMAIL_OR_PASSWORD')) return 'That email and password don’t match an account.';
+  if (code === 'SSO_ONLY') return 'Password sign-in is closed on this Flux server. Sign in with single sign-on.';
   if (code === 'SIGNUP_CLOSED') return 'Creating an account with a password is closed on this Flux server. Ask the person who runs it.';
   if (context === 'sign-in' && code === 'EMAIL_NOT_VERIFIED') return 'Verify your email address first. We sent a link to it; it works once.';
   if (context === 'sign-up' && code.startsWith('USER_ALREADY_EXISTS')) return 'An account with this email already exists. Sign in instead, or reset its password.';

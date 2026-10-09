@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import { createHmac, randomBytes, randomUUID } from 'node:crypto';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, test } from 'node:test';
 import Fastify from 'fastify';
 import { loadIdentityConfig, registerIdentity, type IdentityConfig } from '../../apps/server/src/identity/index.js';
@@ -35,6 +38,23 @@ describe('identity configuration', () => {
     const expired = new URLSearchParams({ client_id: 'cli_1', exp: String(Math.floor(Date.now() / 1000) - 1) });
     expired.set('sig', createHmac('sha256', secret).update(expired.toString()).digest('base64'));
     assert.equal(await verifiedOauthQuery(expired.toString(), secret), null);
+  });
+
+  test('verified sign-up needs mail, and a sign-on provider closes password sign-up (#313)', () => {
+    const smtp = { FLUX_SMTP_URL: 'smtp://mailpit:1025', FLUX_MAIL_FROM: 'Flux <flux@example.test>' };
+    const secretDir = mkdtempSync(join(tmpdir(), 'flux-signup-'));
+    const secretFile = join(secretDir, 'oidc');
+    writeFileSync(secretFile, 'client-secret-value\n');
+    const oidc = { FLUX_OIDC_ISSUER: 'https://id.example.org/realms/flux', FLUX_OIDC_CLIENT_ID: 'flux', FLUX_OIDC_CLIENT_SECRET_FILE: secretFile };
+    assert.equal(loadIdentityConfig(base).signup, 'open', 'open is the default');
+    const withoutMail = loadIdentityConfig({ ...base, FLUX_SIGNUP: 'verified' });
+    assert.deepEqual([withoutMail.signupRequested, withoutMail.signup], ['verified', 'off'], 'verified without SMTP behaves as off');
+    const withMail = loadIdentityConfig({ ...base, ...smtp, FLUX_SIGNUP: 'verified' });
+    assert.deepEqual([withMail.signupRequested, withMail.signup], ['verified', 'verified']);
+    const provider = loadIdentityConfig({ ...base, ...smtp, ...oidc, FLUX_SIGNUP: 'open' });
+    assert.equal(provider.signup, 'off', 'with an active provider, ordinary password sign-up is refused');
+    assert.throws(() => loadIdentityConfig({ ...base, FLUX_SIGNUP: 'everyone' }), /FLUX_SIGNUP must be open, verified or off/);
+    rmSync(secretDir, { recursive: true, force: true });
   });
 
   test('requires an explicit public origin, a long secret and valid proxy ranges', () => {

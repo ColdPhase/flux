@@ -22,6 +22,8 @@ import { signInAgainMessage, type IdpStanding } from './standing.js';
 export const CLIENT_IP_HEADER = 'x-flux-client-ip';
 export const SESSION_COOKIE_PREFIX = 'flux';
 const AUTH_VERIFY_PATH = '/api/auth/verify-email';
+/** Ordinary password routes. They exist only in password mode: with a sign-on provider configured, they are refused (#313). */
+const PASSWORD_ROUTES = ['/sign-in/email', '/change-password', '/request-password-reset', '/forget-password', '/reset-password'];
 
 export interface AuthDependencies {
   /** Pool handle; Better Auth's Drizzle adapter reads and writes the auth tables through it. */
@@ -110,6 +112,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
     } catch (error) { onMailError?.(error); }
   };
   const verifiedSignUp = config.signup === 'verified';
+  const ssoOnly = config.oidc !== null;
   return betterAuth({
     appName: 'Flux',
     baseURL: config.publicOrigin,
@@ -188,6 +191,10 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
         if (ctx.path === '/sign-up/email' && config.signup === 'off') {
           throw new APIError('FORBIDDEN', { message: 'Creating an account with a password is closed on this Flux server', code: 'SIGNUP_CLOSED' });
         }
+        // With an active sole provider, ordinary authentication is single sign-on only (F-024 S5a, #313).
+        if (ssoOnly && PASSWORD_ROUTES.includes(ctx.path)) {
+          throw new APIError('FORBIDDEN', { message: 'Password sign-in and recovery are closed on this Flux server. Sign in with single sign-on', code: 'SSO_ONLY' });
+        }
         if (ctx.path === '/sign-in/email') {
           const email = typeof ctx.body?.email === 'string' ? ctx.body.email.trim().toLowerCase() : '';
           const password = typeof ctx.body?.password === 'string' ? ctx.body.password : '';
@@ -204,7 +211,8 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
       }),
       after: createAuthMiddleware(async (ctx) => {
         const signedIn = ctx.context.newSession?.user;
-        if (ctx.path === '/sign-in/email' && signedIn && !signedIn.emailVerified && config.oidc) await sendVerification(signedIn.email);
+        // A pre-F-024 account is unverified; once mail is set it gets the link the next time it signs in with its password (#313).
+        if (ctx.path === '/sign-in/email' && signedIn && !signedIn.emailVerified && mailer) await sendVerification(signedIn.email);
       }),
     },
     emailVerification: {
@@ -252,15 +260,10 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
       resetPasswordTokenExpiresIn: config.passwordResetTtlSeconds,
       sendResetPassword: mailer
         ? async ({ user, url }) => {
-          // A reset never creates a password, and never gives a provider-managed person a way around the provider.
+          // A reset never creates a password (password mode only; the route is refused under single sign-on).
           const [credential] = await db.select({ id: schema.authAccounts.id }).from(schema.authAccounts)
             .where(and(eq(schema.authAccounts.userId, user.id), eq(schema.authAccounts.providerId, 'credential'), isNotNull(schema.authAccounts.password)));
           if (!credential) return;
-          if (config.oidc) {
-            const [managed] = await db.select({ id: schema.authAccounts.id }).from(schema.authAccounts)
-              .where(and(eq(schema.authAccounts.userId, user.id), eq(schema.authAccounts.providerId, config.oidc.providerId)));
-            if (managed) return;
-          }
           try {
             await mailer.send({
               to: user.email,
@@ -323,7 +326,7 @@ function oidcPlugin(oidc: OidcConfig, signIns: SignIns, emailClaims: EmailClaims
           // An address is never a key (#313). Held by a verified account: refused. Held by an unverified one: the
           // person may claim it, from this browser, on the page the bridge sends them to.
           const holder = await emailClaims.holder(oidc.providerId, user.sub, user.email);
-          if (holder.kind === 'verified') { sign.refused = 'email_held'; return null; }
+          if (holder.kind === 'held') { sign.refused = 'email_held'; return null; }
           if (holder.kind === 'unverified') {
             sign.claimToken = await emailClaims.open(oidc.providerId, user.sub, user.email, holder.userId);
             sign.refused = 'email_claim';

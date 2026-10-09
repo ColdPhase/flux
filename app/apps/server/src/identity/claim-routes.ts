@@ -32,8 +32,8 @@ export function registerClaimRoutes(app: FastifyInstance, { claims, publicOrigin
     const token = cookieValue(request.headers.cookie, CLAIM_COOKIE);
     const result = token ? await claims.claim(token) : { refused: 'unknown' as const };
     if ('refused' in result) {
-      const code = result.refused === 'held_by_verified' ? 'ADDRESS_VERIFIED' : result.refused === 'expired' ? 'CLAIM_EXPIRED' : 'CLAIM_NOT_FOUND';
-      return reply.code(result.refused === 'held_by_verified' ? 409 : 404).send({ error: 'This address cannot be claimed', code });
+      const code = result.refused === 'held' ? 'ADDRESS_HELD' : result.refused === 'expired' ? 'CLAIM_EXPIRED' : 'CLAIM_NOT_FOUND';
+      return reply.code(result.refused === 'held' ? 409 : 404).send({ error: 'This address cannot be claimed', code });
     }
     // The audit trail: the released account, the provider identity that claimed, when. Also in auth_email_claims.
     request.log.warn({ releasedUserId: result.claimed.releasedUserId, providerId: result.claimed.providerId }, 'An email address was claimed from an unverified account');

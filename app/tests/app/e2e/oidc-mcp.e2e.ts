@@ -275,14 +275,19 @@ test('redirect rules hold on the provider path: another loopback port passes, an
   }
 });
 
-test('/login says the provider is reachable, and offers the password form beside it', async () => {
+test('/login says the provider is reachable, and offers no password form (single sign-on only, #313)', async () => {
   const page = await (await fresh()).newPage();
   const { challenge } = pkce();
   await page.goto(authorizeUrl(clientId, loopback, challenge));
   assert.equal(await page.getByRole('button', { name: 'Sign in with Keycloak', exact: true }).isEnabled(), true);
-  assert.equal(await page.getByLabel('Password').count(), 1);
-  const capabilities = await (await page.context().request.get(`${origin}/api/v1/auth/capabilities`)).json() as { sso: { reachable: boolean } };
+  assert.equal(await page.getByLabel('Password').count(), 0, 'no password field while the provider is the only way in');
+  const capabilities = await (await page.context().request.get(`${origin}/api/v1/auth/capabilities`)).json() as { sso: { reachable: boolean }; signup: string; passwordReset: string };
   assert.equal(capabilities.sso.reachable, true);
+  assert.deepEqual([capabilities.signup, capabilities.passwordReset], ['off', 'unavailable']);
+  // Negative control at the API: the password route is refused even when called directly.
+  const direct = await page.context().request.post(`${origin}/api/auth/sign-in/email`, { data: { email: 'nobody@example.test', password: 'pw-direct-call-1' }, headers: { origin } });
+  assert.equal(direct.status(), 403, 'password sign-in is refused under single sign-on');
+  assert.equal((await direct.json() as { code: string }).code, 'SSO_ONLY');
 });
 
 // --- F-024 S4 (#311): the standing check of the person's account at the identity provider ---
@@ -474,11 +479,13 @@ test('confirmation age (S2): within the age everything works, past it the browse
   assert.equal(new URL(page.url()).pathname, '/login', 'the authorization step returns to sign-in');
   assert.equal((await context.request.get(`${origin}/api/v1/me`)).status(), 401, 'the browser session is gone');
 
-  // Negative control: a person who never used the provider keeps today's lifetimes.
+  // Negative control: with a provider configured, password sign-up is closed, so no password-only person can exist
+  // beside the provider's age rules (#313). The former control (a password-only person outside the age) is superseded.
   const password = await fresh();
   const email = `confirmation-${randomUUID()}@example.test`;
-  await api(password, 'POST', '/api/auth/sign-up/email', { email, password: `pw-${randomUUID()}`, name: 'Pat' });
-  assert.equal((await password.request.get(`${origin}/api/v1/me`)).status(), 200, 'a password-only person is not subject to the age');
+  const closed = await password.request.post(`${origin}/api/auth/sign-up/email`, { data: { email, password: `pw-${randomUUID()}`, name: 'Pat' }, headers: { origin } });
+  assert.equal(closed.status(), 403, 'password sign-up is closed under single sign-on');
+  assert.equal((await closed.json() as { code: string }).code, 'SIGNUP_CLOSED');
 });
 
 test('confirmation age (S2): the client authorizes again through the provider and finds the connection it held chosen', async () => {

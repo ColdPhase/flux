@@ -4,7 +4,7 @@ import type { IdentityCapabilities } from '@flux/contracts';
 import { PASSWORD_MIN_LENGTH, claimAddress, getCapabilities, getPendingClaim, startSso } from '../api/auth';
 import { ApiError, NetworkError } from '../api/client';
 import { Button, ErrorState, FluxLogo, Icon, Input, useToast } from '../ui';
-import { safeNext, signedOauthQuery, type FormResult, type forgotPasswordLoader, type signUpLoader } from './logic';
+import { safeNext, signedOauthQuery, type FormResult, type forgotPasswordLoader } from './logic';
 
 /** The Flux logo tile and wordmark, as in the sidebar (#189, F-026 §3). */
 function Brand() {
@@ -95,7 +95,7 @@ function useSso() {
 function SsoSignIn({ sso, next, oauthQuery }: { sso: NonNullable<IdentityCapabilities['sso']>; next: string | null; oauthQuery?: string }) {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState('');
-  const unreachable = `${sso.label} is not reachable right now. Try again in a moment${oauthQuery ? '' : ', or sign in with your password'}.`;
+  const unreachable = `${sso.label} is not reachable right now. Try again in a moment.`;
   const start = async () => {
     setBusy(true); setFailed('');
     try {
@@ -110,7 +110,6 @@ function SsoSignIn({ sso, next, oauthQuery }: { sso: NonNullable<IdentityCapabil
     <div className="auth__sso">
       <Button variant="secondary" size="lg" block busy={busy} disabled={!sso.reachable} onClick={() => void start()}>{`Sign in with ${sso.label}`}</Button>
       {failed || !sso.reachable ? <p className="auth__sso-error" role="alert">{failed || unreachable}</p> : null}
-      <p className="auth__or" aria-hidden="true"><span>or</span></p>
     </div>
   );
 }
@@ -132,8 +131,8 @@ export function SignInPage() {
   const ssoMessage = reason === 'no_refresh_token'
     ? 'Your identity provider didn’t let Flux keep checking your account, so you aren’t signed in. Ask your administrator to allow offline access for Flux.'
     : reason === 'email_held'
-      ? 'Single sign-on didn’t complete: your email address already belongs to a verified Flux account. Nothing was linked and nothing was changed. Sign in to that account, or ask your administrator to move it to single sign-on.'
-      : 'Single sign-on didn’t complete, so you aren’t signed in. Try again, or sign in with your password.';
+      ? 'Single sign-on didn’t complete: your email address already belongs to another Flux account. Nothing was linked and nothing was changed. Ask your administrator to check that account.'
+      : 'Single sign-on didn’t complete, so you aren’t signed in. Try again.';
   // On the MCP authorization step the page is `/login?<signed request>` (#310): the provider button carries it.
   const oauthQuery = location.pathname === '/login' ? signedOauthQuery(location.search) ?? undefined : undefined;
 
@@ -148,12 +147,21 @@ export function SignInPage() {
   }, [notice, params, navigate, toast]);
 
   const suffix = next ? `?next=${encodeURIComponent(next)}` : '';
+  // With an active sole provider, single sign-on is the only ordinary way in: no password form (F-024 S5a, #313).
+  if (sso) {
+    return (
+      <>
+        <Heading title="Sign in to Flux">Pick up your work where you left it.</Heading>
+        <SsoSignIn sso={sso} next={next} oauthQuery={oauthQuery} />
+        <FormError message={ssoFailed ? ssoMessage : undefined} />
+      </>
+    );
+  }
   return (
     <>
       <Heading title="Sign in to Flux">Pick up your work where you left it.</Heading>
-      {sso && (location.pathname !== '/login' || oauthQuery) ? <SsoSignIn sso={sso} next={next} oauthQuery={oauthQuery} /> : null}
       <Form method="post" className="auth__form" noValidate ref={formRef} aria-label="Sign in">
-        <FormError message={result?.formError ?? (ssoFailed ? ssoMessage : undefined)} />
+        <FormError message={result?.formError} />
         <Input label="Email" name="email" type="email" autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false}
           defaultValue={result?.values?.email} error={result?.fieldErrors?.email} autoFocus />
         <Input label="Password" name="password" type="password" autoComplete="current-password" error={result?.fieldErrors?.password}
@@ -166,7 +174,7 @@ export function SignInPage() {
 }
 
 export function SignUpPage() {
-  const { signup } = useLoaderData() as Awaited<ReturnType<typeof signUpLoader>>;
+  const { signup } = useLoaderData() as { signup: IdentityCapabilities['signup'] };
   const result = useActionData() as FormResult | undefined;
   const submitting = useSubmitting();
   const formRef = useFocusFirstInvalid(result);
@@ -252,7 +260,7 @@ export function ClaimPage() {
       window.location.assign(url);
     } catch (error) {
       setBusy(false);
-      setFailed(error instanceof ApiError && error.status === 409 ? 'That address was verified in the meantime, so it can’t be claimed.'
+      setFailed(error instanceof ApiError && error.status === 409 ? 'That address now belongs to a verified or linked account, so it can’t be claimed.'
         : error instanceof NetworkError ? 'Flux can’t be reached right now. Check your connection and try again.' : 'That didn’t work. Start again from the sign-in page.');
     }
   };

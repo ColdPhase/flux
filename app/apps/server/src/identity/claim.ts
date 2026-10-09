@@ -6,8 +6,9 @@ import type { Database } from '@flux/core';
 /**
  * Provider identity, email held by another account (F-024 S5a, #313; docs/product/mcp-identity.md, "Password
  * sign-up, reset and email collisions"). The provider vouches for the address, but an address is never a key:
- *  - held by a VERIFIED account: refused. Nothing moves and nothing is linked;
- *  - held by an UNVERIFIED account: the unverified account never blocks the person. They may claim the address,
+ *  - held by a VERIFIED account, or by an account already linked to a provider identity: refused. Nothing moves and
+ *    nothing is linked;
+ *  - held by an UNVERIFIED, unlinked account: the account never blocks the person. They may claim the address,
  *    which releases it (`unverified-<id>@invalid`, RFC 2606), ends that account's sessions and MCP authority and
  *    writes an audit row. The released account keeps its data; nothing is transferred to the new account.
  */
@@ -16,10 +17,18 @@ export const CLAIM_COOKIE = 'flux_claim';
 export const CLAIM_PATH = '/api/v1/identity/claim';
 const CLAIM_TTL_MS = 15 * 60_000;
 
-export type EmailHolder = { kind: 'none' } | { kind: 'verified'; userId: string } | { kind: 'unverified'; userId: string };
+export type EmailHolder = { kind: 'none' } | { kind: 'held' } | { kind: 'unverified'; userId: string };
 
 export interface ClaimOutcome { providerId: string; email: string; releasedUserId: string }
-export type ClaimResult = { claimed: ClaimOutcome } | { refused: 'unknown' | 'expired' | 'held_by_verified' | 'changed' };
+export type ClaimResult = { claimed: ClaimOutcome } | { refused: 'unknown' | 'expired' | 'held' | 'changed' };
+
+/** Whether an account is verified or linked to a provider identity; either way its address is not claimable. */
+async function isHeld(db: Pick<Database, 'select'>, userId: string, verified: boolean) {
+  if (verified) return true;
+  const [link] = await db.select({ id: schema.authAccounts.id }).from(schema.authAccounts)
+    .where(and(eq(schema.authAccounts.userId, userId), sql`${schema.authAccounts.providerId} <> 'credential'`));
+  return link !== undefined;
+}
 
 const hash = (token: string) => createHash('sha256').update(token).digest('hex');
 /** The released address. `.invalid` can never be registered or deliver mail. */
@@ -35,7 +44,8 @@ export function createEmailClaims(db: Database, now: () => Date = () => new Date
       const [own] = await db.select({ id: schema.authAccounts.id }).from(schema.authAccounts)
         .where(and(eq(schema.authAccounts.providerId, providerId), eq(schema.authAccounts.accountId, subject), eq(schema.authAccounts.userId, user.id)));
       if (own) return { kind: 'none' };
-      return user.verified ? { kind: 'verified', userId: user.id } : { kind: 'unverified', userId: user.id };
+      if (await isHeld(db, user.id, user.verified)) return { kind: 'held' };
+      return { kind: 'unverified', userId: user.id };
     },
 
     /** Records what the verified ID token proved and returns the secret for the browser that completed it. */
@@ -65,7 +75,7 @@ export function createEmailClaims(db: Database, now: () => Date = () => new Date
         if (row.expiresAt <= now()) return { refused: 'expired' as const };
         const [holder] = await tx.select().from(schema.authUsers).where(eq(schema.authUsers.id, row.heldBy)).for('update');
         if (!holder || holder.email.toLowerCase() !== row.email) return { refused: 'changed' as const };
-        if (holder.emailVerified) return { refused: 'held_by_verified' as const };
+        if (await isHeld(tx, holder.id, holder.emailVerified)) return { refused: 'held' as const };
         const released = releasedEmail(holder.id);
         await tx.update(schema.authUsers).set({ email: released, updatedAt: now() }).where(eq(schema.authUsers.id, holder.id));
         // The released account keeps its data but can no longer act: no session, no MCP connection or token.
