@@ -130,7 +130,9 @@ function applyPlace(el: HTMLElement, place: ReadingPlace) {
 }
 
 /** How long a restored place is kept while the page settles, unless the person scrolls first. */
-const SETTLE_MS = 3000;
+const SETTLE_MS = 10_000;
+/** The place is kept until nothing has been added for this long, so a slow list that loads above it cannot move it. */
+const QUIET_MS = 2500;
 
 /** Restores, then records, where the person was reading in a scroll container, per account and context. */
 export function useReadingPosition(ref: RefObject<HTMLElement | null>, userId: string, context: string) {
@@ -149,13 +151,20 @@ export function useReadingPosition(ref: RefObject<HTMLElement | null>, userId: s
     // Content that arrives after the restore (drafts, offers, more items) keeps the same item in view,
     // until the person scrolls or the page has settled.
     let frame = 0;
-    const again = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(() => applyPlace(el, place)); };
+    let quiet = 0;
+    const again = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => applyPlace(el, place));
+      window.clearTimeout(quiet);
+      quiet = window.setTimeout(() => stop(), QUIET_MS);
+    };
     const observer = new MutationObserver(again);
     observer.observe(el, { childList: true, subtree: true });
     const stop = () => {
       observer.disconnect();
       cancelAnimationFrame(frame);
       window.clearTimeout(timer);
+      window.clearTimeout(quiet);
       for (const name of ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const) el.removeEventListener(name, stop);
       settling.current = null;
     };

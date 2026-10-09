@@ -540,3 +540,9 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 }
 @media (max-width: 640px) and (pointer: coarse) { .views--chips .ui-tabs__tab { min-height: 44px; padding: 0 14px; } .views--chips .ui-tabs__bar { padding-block: 4px; } }
 .state-row .views__recap { flex: none; margin-left: auto; }
+
+/* Home as drawn (#342): no header row on the computer; the name stays for assistive technology. */
+.top.top--bare { height: 0; min-height: 0; padding: 0; margin: 0; border: 0; overflow: visible; }
+.top--bare .top__title { position: static; min-width: 0; }
+.top--bare .top__title h1 { position: absolute; width: 1px; height: 1px; min-width: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.top--bare .top__topic, .top--bare .top__crumb, .top--bare .top__slash, .top--bare .top__right { display: none; }

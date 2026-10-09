@@ -293,6 +293,8 @@ function AppLayoutContent() {
   // In focus the rail shows no counts.
   const sidebarProps = { workspace, projects, directMessages, user: me.user, session: me.session, inboxUnread: focusing ? 0 : inboxUnread };
   const where = placeOf(location.pathname);
+  // Home itself is drawn without a header row; the name stays for assistive technology.
+  const homeRoot = where === 'home' && location.pathname === '/';
   const activeProject = projects.find((project) => project.id === projectId);
   // The Conversation tab returns to the conversation that was open before Tasks, Map, Docs or project
   // settings (GitHub), and the
@@ -361,7 +363,7 @@ function AppLayoutContent() {
     : where === 'inbox'
       ? location.pathname.startsWith('/settings/')
         ? { crumb: null, title: 'Notification settings', topic: 'What reaches you, where and when', views: false, noDetails: true }
-        : { crumb: null, title: 'Inbox', topic: 'What involves you, with a link to each source', views: false, noDetails: true }
+        : { crumb: null, title: 'Inbox', topic: '', views: false, noDetails: true }
     : where === 'dm'
       ? activeDm
         // A DM's header names its exact audience (design principle 5).
@@ -369,8 +371,11 @@ function AppLayoutContent() {
         : dmId === 'new'
           ? { crumb: null, title: 'New message', topic: 'Only the people you choose can read it', views: false, noDetails: true }
           : { crumb: null, title: 'Direct messages', topic: 'Conversations with people, outside any project', views: false, noDetails: true }
-      // Home's Tasks span every workspace, so no single workspace is named above them (#190).
-      : { crumb: location.pathname.startsWith('/tasks') ? null : workspace?.name ?? null, title: 'Home', topic: 'Your private notes and where you left off', views: true };
+      // Home has no views (#342): the page starts with the date and a greeting. Its other pages are places of their own.
+      : location.pathname.startsWith('/map') ? { crumb: null, title: 'Sketchbook', topic: 'Only you can see it', views: false }
+      : location.pathname.startsWith('/tasks') ? { crumb: null, title: 'Your tasks', topic: 'The work you own, in every project', views: false }
+      : location.pathname.startsWith('/docs') ? { crumb: null, title: 'Wiki', topic: 'Docs in your projects', views: false }
+      : { crumb: null, title: 'Home', topic: '', views: false };
   // A place without its own Details (Search, Inbox, the DM list) never keeps the generic panel open.
   if ('noDetails' in place && detailsOpen && detailsView === 'place') setDetailsOpen(false);
 
@@ -404,7 +409,7 @@ function AppLayoutContent() {
       )}
 
       <div className="app__main">
-        <header className={`top${activeProject ? ' top--project' : ''}${phone ? '' : ' top--row'}${focusing ? ' top--focus' : ''}`}>
+        <header className={`top${activeProject ? ' top--project' : ''}${phone ? '' : ' top--row'}${focusing ? ' top--focus' : ''}${homeRoot && !phone ? ' top--bare' : ''}`}>
           {phone && settingsPage ? (
             <IconButton icon="chevron-left" label="Back" size={20} className="top__back" data-tip-align="start"
               onClick={() => { if (location.key !== 'default') navigate(-1); else navigate('/settings'); }} />

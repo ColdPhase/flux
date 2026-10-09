@@ -102,7 +102,7 @@ class SketchJourney(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         type(self).state = page.context.storage_state()
 
-        page.get_by_role("navigation", name="Views").get_by_role("link", name="Map").click()
+        page.get_by_role("navigation", name="Places").get_by_role("link", name="Sketchbook").click()
         expect(page.get_by_role("heading", name="Start a sketch")).to_be_visible()
         page.get_by_role("button", name="New sketch").click()
         expect(page).to_have_url(re.compile(r"/map/[0-9a-f-]{36}$"))
@@ -481,7 +481,7 @@ class SketchJourney(unittest.TestCase):
         page.get_by_label("Password").fill(PASSWORD)
         page.get_by_role("button", name="Sign in").click()
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
-        page.get_by_role("navigation", name="Views").get_by_role("link", name="Map").click()
+        page.get_by_role("navigation", name="Places").get_by_role("link", name="Sketchbook").click()
         page.get_by_role("link", name=re.compile("Lamp ideas")).click()
         expect(page.get_by_role("group", name="Sketch: Lamp ideas")).to_be_visible()
         deadline = time.time() + 8
@@ -498,7 +498,7 @@ class SketchJourney(unittest.TestCase):
         page.get_by_label("Password").fill(PASSWORD)
         page.get_by_role("button", name="Sign in").click()
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
-        page.get_by_role("navigation", name="Views").get_by_role("link", name="Map").click()
+        page.get_by_role("navigation", name="Places").get_by_role("link", name="Sketchbook").click()
         page.get_by_role("link", name=re.compile("Noor’s map")).click()
         expect(page.get_by_role("group", name="Sketch: Noor’s map")).to_be_visible()
 

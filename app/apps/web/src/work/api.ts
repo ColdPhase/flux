@@ -31,8 +31,8 @@ export const updateWork = (item: Pick<WorkItem, 'id' | 'version'>, command: Upda
   request<WorkItem>(workItemPath(item.id), { method: 'PATCH', body: { ...command, clientCommandId }, headers: ifMatch(item.version) });
 export const proposeDecision = (projectId: string, command: ProposeDecisionCommand, idempotencyKey: string) =>
   request<Decision>(projectDecisionsPath(projectId), { method: 'POST', body: command, headers: key(idempotencyKey) });
-export const acceptDecision = (decision: Pick<Decision, 'id' | 'version'>, command: AcceptDecisionCommand, idempotencyKey: string) =>
-  request<Decision>(decisionAcceptPath(decision.id), { method: 'POST', body: command, headers: { ...ifMatch(decision.version), ...key(idempotencyKey) } });
+export const acceptDecision = (decision: Pick<Decision, 'id' | 'version'>, command: AcceptDecisionCommand, idempotencyKey: string, keepalive = false) =>
+  request<Decision>(decisionAcceptPath(decision.id), { method: 'POST', body: command, headers: { ...ifMatch(decision.version), ...key(idempotencyKey) }, keepalive });
 export const createResult = (projectId: string, command: CreateResultCommand, idempotencyKey: string) =>
   request<WorkResult>(projectResultsPath(projectId), { method: 'POST', body: { ...command, clientCommandId: command.clientCommandId ?? idempotencyKey }, headers: key(idempotencyKey) });
 export const listAgents = (workspaceId: string, signal?: AbortSignal) => request<Agent[]>(`/api/v1/workspaces/${workspaceId}/agents`, { signal });

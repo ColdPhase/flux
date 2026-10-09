@@ -109,10 +109,9 @@ test('real project UI presents sourced quiet suggestions, then persists edits, u
   assert.equal(await cards.first().locator('.ws-proposal__toggle').getAttribute('aria-expanded'), 'false');
   assert.match(await page.locator('.ws-proposals__intro').innerText(), /has not changed any work or decision/);
   const workRow = await page.locator('#g-open + .ws-list .ws-item').first().boundingBox();
-  const resultRow = await page.locator('#g-results + .ws-list .ws-item').nth(1).boundingBox();
   assert.ok(workRow && workRow.y + workRow.height < 900, 'ordinary work remains visible at 1440×900');
-  assert.ok(resultRow && resultRow.y + resultRow.height < 900,
-    'both ordinary results remain visible below the suggestions at 1440×900');
+  // Results have no group in Tasks (#342): they show in their task's details, so there is no jump to them.
+  assert.equal(await page.locator('#g-results').count(), 0);
   await page.screenshot({ path: '/state/proactive-ui-1440.png', fullPage: true });
 
   await cards.first().locator('.ws-proposal__toggle').focus();
@@ -172,11 +171,6 @@ test('real project UI presents sourced quiet suggestions, then persists edits, u
       await activate(jumps.getByRole('button', { name: 'Work 1', exact: true }));
       await page.waitForFunction(() => {
         const bounds = document.getElementById('g-open')?.getBoundingClientRect();
-        return !!bounds && bounds.y > 0 && bounds.bottom < innerHeight;
-      });
-      await activate(jumps.getByRole('button', { name: 'Results 2', exact: true }));
-      await page.waitForFunction(() => {
-        const bounds = document.getElementById('g-results')?.getBoundingClientRect();
         return !!bounds && bounds.y > 0 && bounds.bottom < innerHeight;
       });
       await activate(workSource);

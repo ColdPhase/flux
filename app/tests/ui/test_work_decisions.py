@@ -213,11 +213,16 @@ class WorkDecisionsJourney(unittest.TestCase):
 
         page.get_by_role("navigation", name="Project views").get_by_role("link", name="Tasks").click()
         expect(page).to_have_url(re.compile(r"/tasks$"))
-        # Finished work, decisions and results are grouped in the List (#136; the board shows work by status).
+        # Finished work is grouped in the List (#136). Decisions wait in the Inbox and have no view here; a
+        # result shows in its task's details (#342).
         page.get_by_role("radio", name="List", exact=True).click()
-        expect(page.get_by_role("region", name=re.compile("^Finished"))).to_contain_text(IDEA)
-        expect(page.get_by_role("region", name=re.compile("^Decisions"))).to_contain_text("Use a camera for gesture control")
-        expect(page.get_by_role("region", name=re.compile("^Results"))).to_contain_text("The camera cannot track gestures")
+        finished = page.get_by_role("region", name=re.compile("^Finished"))
+        expect(finished).to_contain_text(IDEA)
+        expect(page.get_by_role("region", name=re.compile("^(Decisions|Results)"))).to_have_count(0)
+        expect(page.get_by_role("button", name=re.compile("^Decisions & results"))).to_have_count(0)
+        finished.get_by_role("button", name=re.compile(IDEA)).click()
+        expect(self.details(page)).to_contain_text("The camera cannot track gestures")
+        page.keyboard.press("Escape")
 
     # ---------------------------------------------------------------- pivot parks work
 
@@ -262,7 +267,10 @@ class WorkDecisionsJourney(unittest.TestCase):
 
         page.get_by_role("navigation", name="Project views").get_by_role("link", name="Tasks").click()
         expect(page.get_by_role("region", name=re.compile("^Parked by a pivot"))).to_contain_text("Mount the camera in the lamp head")
-        expect(page.get_by_role("region", name=re.compile("^Decisions"))).to_contain_text("Earlier rule")
+        # The earlier rule and its reason stay in the decision's own details (S1: no archive).
+        page.goto(f"/projects/{self.project_id}/tasks?open=decision:{rules['Use a camera for gesture control']['id']}")
+        expect(self.details(page)).to_contain_text("Earlier rule")
+        expect(self.details(page).get_by_role("heading", name="Replaced by")).to_be_visible()
         page.keyboard.press("Escape")
         shot(page, "tasks-desktop-1440")
 
@@ -303,10 +311,9 @@ class WorkDecisionsJourney(unittest.TestCase):
         base = f"/api/v1/projects/{project['id']}"
         rule = self.api(page, "POST", f"{base}/decisions", {"title": "Oldest rule: battery powered"}, status=201)
         self.api(page, "POST", f"/api/v1/decisions/{rule['id']}/accept", {"expectedVersion": 1}, status=200)
-        expected={("decision",rule["id"])}
+        expected=set()
         for index in range(1, 102):
-            item=self.api(page, "POST", f"{base}/decisions", {"title": f"Idea {index:03d}"}, status=201)
-            expected.add(("decision",item["id"]))
+            self.api(page, "POST", f"{base}/decisions", {"title": f"Idea {index:03d}"}, status=201)
         for index in range(1, 102):
             item=self.api(page, "POST", f"{base}/work", {"title": f"Work item {index:03d}"}, status=201)
             expected.add(("work",item["id"]))
@@ -319,19 +326,26 @@ class WorkDecisionsJourney(unittest.TestCase):
         page.get_by_role("button", name="Close details", exact=True).click()
         views=page.get_by_role("navigation",name="Task views")
         expect(views.get_by_role("button",name=re.compile("^Open"))).to_contain_text("101")
-        expect(views.get_by_role("button",name=re.compile("^Needs you"))).to_contain_text("101")
+        # Decisions are not a view of the Tasks tab any more; they wait in the Inbox.
+        expect(views.get_by_role("button",name=re.compile("^(Needs you|Decisions|Results)"))).to_have_count(0)
+        expect(page.get_by_role("link",name=re.compile("101 decisions need you in the Inbox"))).to_be_visible()
         pager=page.get_by_role("navigation",name="Work pages");seen=set();sizes=[]
-        for index in range(5):
+        for index in range(3):
             before=index*50
-            expect(pager).to_contain_text(f"{before+1}–{min(before+50,203)} of 203 objects")
+            expect(pager).to_contain_text(f"{before+1}–{min(before+50,101)} of 101 tasks")
             rows=page.locator(".ws-tasks [data-work-id]").evaluate_all("els=>els.map(el=>[el.dataset.workKind,el.dataset.workId])")
             self.assertLessEqual(len(rows),50);sizes.append(len(rows));seen.update(tuple(row) for row in rows)
-            if index<4:pager.get_by_role("button",name="Next",exact=True).click()
-        self.assertEqual(sizes,[50,50,50,50,3])
-        self.assertEqual(seen,expected,"every native work and decision remains reachable beyond the first hundred")
+            if index<2:pager.get_by_role("button",name="Next",exact=True).click()
+        self.assertEqual(sizes,[50,50,1])
+        self.assertEqual({kind for kind,_ in seen},{"work"})
+        self.assertEqual(len(seen),101,"every native task remains reachable beyond the first hundred")
         expect(pager.get_by_role("button",name="Next",exact=True)).to_be_disabled()
         pager.get_by_role("button",name="Previous",exact=True).click()
-        expect(pager).to_contain_text("151–200 of 203 objects")
+        expect(pager).to_contain_text("51–100 of 101 tasks")
+        # The 101 proposals remain reachable: they wait in the Inbox, newest first, and each opens in its details.
+        inbox = self.api(page, "GET", "/api/v1/needs-you", status=200)
+        self.assertEqual(sum(1 for item in inbox["items"] if item["kind"] == "decision" and item["project"]["id"] == project["id"]), 101, "every proposal waits in the Inbox")
+        self.assertEqual(self.api(page, "GET", f"{base}/decisions?limit=1", status=200)["total"], 102)
 
     # ---------------------------------------------------------------- phone task views (#136 AC-2)
 

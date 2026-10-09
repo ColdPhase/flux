@@ -23,7 +23,7 @@ export function targetHref(target: SearchTarget): string {
     // A DM's sketch opens inside the DM, so its tabs and audience stay in view (#96).
     case 'sketch': return target.dmId ? `/dm/${target.dmId}/sketches/${target.sketchId}` : `/map/${target.sketchId}`;
     case 'thought': return `${target.dmId ? `/dm/${target.dmId}/sketches/${target.sketchId}` : `/map/${target.sketchId}`}#thought-${target.thoughtId}`;
-    case 'draft': return `/#draft-${target.draftId}`;
+    case 'draft': return `/map#draft-${target.draftId}`;
     case 'person': return `/dm/new?workspace=${encodeURIComponent(target.workspaceId)}&with=${encodeURIComponent(target.userId)}`;
     // Work, decisions and results open in Details on the project's Tasks view (#101, #117).
     default: return `/projects/${target.projectId}/tasks?open=${target.type}:${target.id}`;

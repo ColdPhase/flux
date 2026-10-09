@@ -420,6 +420,16 @@ export const notifications = pgTable('notifications', {
   index('notifications_user_created_idx').on(table.userId, table.createdAt.desc()),
   index('notifications_source_idx').on(table.sourceType, table.sourceId),
 ]);
+// What a person did with an item of their Inbox "Needs you" queue (migration 0063, #342).
+export const needsYouStates = pgTable('needs_you_states', {
+  userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  itemKey: text('item_key').notNull(),
+  state: text('state', { enum: ['done', 'declined', 'snoozed'] }).notNull(),
+  until: timestamp('until', { withTimezone: true }),
+  untilWorkId: uuid('until_work_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [primaryKey({ columns: [table.userId, table.itemKey] })]);
 // Per-recipient stream index (migration 0004), written by recordEvent.
 export const eventAudience = pgTable('event_audience', {
   recipient: text('recipient').notNull(),

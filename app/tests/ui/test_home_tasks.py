@@ -192,8 +192,8 @@ class HomeTasksJourney(unittest.TestCase):
         page.get_by_label("Email").fill(PEOPLE["olek"][1])
         page.get_by_label("Password").fill(PASSWORD)
         page.get_by_role("button", name="Sign in").click()
-        expect(page.get_by_role("heading", name="Welcome, Olek")).to_be_visible()
-        page.get_by_role("navigation", name="Views").get_by_role("link", name="Tasks").click()
+        expect(page.get_by_role("heading", level=2, name=re.compile("^Good (morning|afternoon|evening), Olek$"))).to_be_visible()
+        page.get_by_role("link", name="All my tasks").click()
         expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
         route, response = late[0]
         try:

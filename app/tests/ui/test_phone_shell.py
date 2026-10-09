@@ -258,7 +258,7 @@ class PhoneShellJourney(unittest.TestCase):
         expect(bar).to_be_visible()
         page.get_by_label("Write a message", exact=True).focus()
         expect(bar).to_be_hidden()
-        page.goto("/")
+        page.goto("/map")
         bar = page.get_by_role("navigation", name="Main places")
         note = page.get_by_label("Private note", exact=True)
         expect(bar).to_be_visible()
@@ -372,7 +372,7 @@ class PhoneShellJourney(unittest.TestCase):
         page.locator(".tb-ov", has_text="In progress").click()
         search = page.get_by_label("Search tasks")
         # Every tool names itself; Search is a target as wide as its tile.
-        for tool in ("Search", "Decisions"):
+        for tool in ("Search",):
             expect(toolbar.get_by_text(tool, exact=True)).to_be_visible()
         tile = self.box(page.locator(".tb-search"))
         self.assertGreaterEqual(min(tile["width"], tile["height"]), 44)

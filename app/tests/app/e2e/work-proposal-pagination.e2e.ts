@@ -48,7 +48,7 @@ test('comparison jumps expose headings below sticky controls on a bounded page a
         const views = page.getByRole('navigation', { name: 'Task views' });
         const jumps = page.getByRole('navigation', { name: 'Project work sections' });
         await jumps.waitFor();
-        for (const [label, target, expectedView] of [['Work', 'g-open', 'All'], ['Results', 'g-results', 'Results']] as const) {
+        for (const [label, target, expectedView] of [['Work', 'g-open', 'All']] as const) {
           await views.getByRole('button', { name: /^Open / }).click();
           await views.getByRole('checkbox', { name: 'Only mine', exact: true }).check();
           await page.locator('.ws-none').waitFor();
@@ -68,7 +68,7 @@ test('comparison jumps expose headings below sticky controls on a bounded page a
           const chosen = expectedView === 'All' ? views.getByRole('button', { name: 'All', exact: true }) : views.getByRole('button', { name: /^Results / });
           assert.equal(await chosen.getAttribute('aria-pressed'), 'true');
           assert.equal(await views.getByRole('checkbox', { name: 'Only mine', exact: true }).isChecked(), false);
-          const path = expectedView === 'All' ? 'work-view?limit=50' : 'work-view?group=results&limit=50';
+          const path = 'work-view?kinds=work&limit=50';
           const read = await api(page, 'GET', `/api/v1/projects/${fixture.projectId}/${path}`);
           assert.equal(read.status, 200);
           assert.equal((read.data as { items: unknown[] }).items.length, 50);

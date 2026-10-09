@@ -120,14 +120,14 @@ def jonas_replies(request: APIRequestContext) -> None:
 def journey(page: Page, rec: Recorder) -> None:
     # 1. The return view: what changed since Ada left, and one next step.
     page.goto("/")
-    since = page.get_by_role("region", name=re.compile("^Since you left"))
-    expect(since).to_contain_text("school can lend")
+    since = page.get_by_role("link", name=re.compile("^Continue where you left off"))
+    expect(since).to_be_visible()
     rec.hold(3000)
 
     # 2. The project conversation, opened from that change, where Jonas and Ada chose what to measure.
     messages = page.locator(".project-convo__message")
-    # Jonas asked Ada something, so it is her next step ("Answer Jonas's question") or an item in the list.
-    rec.click(since.get_by_role("link", name=re.compile("Answer Jonas|school can lend")).first)
+    # Jonas asked Ada something, so it is her next step ("Answer Jonas's question"): the whole card opens it.
+    rec.click(since)
     expect(messages.filter(has_text="Moisture first")).to_be_visible()
     rec.hold(2600)
 

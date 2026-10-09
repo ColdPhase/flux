@@ -112,6 +112,12 @@ def open_details(page: Page) -> None:
     """Details: More, then Details, in the computer's one-row header (#340); the phone keeps its
     labelled Details button until its own header (#341)."""
     header = page.locator("header.top")
+    # Home has no header row (#342): its Details are one quiet button under what needs you.
+    home = page.locator("#content .home").get_by_role("button", name="Details", exact=True)
+    page.locator("#content .home button:text-is('Details'), header.top:not(.top--bare) button[aria-label='More'], header.top .top__details").first.wait_for()
+    if home.count():
+        home.click()
+        return
     header.locator("button[aria-label='More'], .top__details").first.wait_for()
     more = header.get_by_role("button", name="More", exact=True)
     if more.count():
@@ -337,7 +343,7 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("heading", name="No docs yet")).to_be_visible()
         page.reload()
         expect(page).to_have_url(f"{ORIGIN}/docs")
-        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        expect(page.get_by_role("heading", level=1, name="Wiki")).to_be_visible()
         # A signed-in person who opens sign-in is taken to their work.
         page.goto("/sign-in")
         expect(page).to_have_url(f"{ORIGIN}/")
@@ -374,18 +380,23 @@ class AppShellJourney(unittest.TestCase):
         self.assertEqual(marker, ["rgb(255, 255, 255)", True], "the current place is a raised white pill (F-026 §4)")
         expect(sidebar.get_by_text("No projects yet")).to_be_visible()
         expect(sidebar.get_by_role("button", name=re.compile("^New"))).to_have_attribute("aria-keyshortcuts", "C")
-        views = page.get_by_role("navigation", name="Views")
-        # The views sit in the header's one row as a segmented control (F-026 §4, #340).
-        expect(page.locator("header.top").get_by_role("navigation", name="Views")).to_be_visible()
-        for label in ("Conversation", "Map", "Tasks", "Wiki"):
-            expect(views.get_by_role("link", name=label, exact=True)).to_be_visible()
-        expect(views.get_by_role("link", name="Conversation")).to_have_attribute("aria-current", "page")
+        # Home as drawn (#342): no header row and no views; the page starts with the greeting.
+        expect(page.get_by_role("navigation", name="Views")).to_have_count(0)
+        self.assertLessEqual(box(page, page.locator("header.top"))["height"], 2, "no header row on Home")
+        expect(page.get_by_role("link", name="All my tasks")).to_be_visible()
+        # Home is the date, a greeting and what needs you (#342); the private notes moved to the Sketchbook.
+        expect(page.get_by_role("heading", level=2, name=re.compile(r"^Good (morning|afternoon|evening), Jo$"))).to_be_visible()
+        expect(page.get_by_text("Nothing needs you right now. Enjoy the quiet.")).to_be_visible()
+        shot(page, "desktop-1440-empty-light")
+        places.get_by_role("link", name="Sketchbook").click()
+        expect(page).to_have_url(f"{ORIGIN}/map")
+        expect(page.get_by_role("heading", level=1, name="Sketchbook")).to_be_visible()
+        expect(page.get_by_role("heading", level=2, name="Your notes")).to_be_visible()
         expect(page.get_by_role("heading", name="Nothing here yet")).to_be_visible()
         composer = page.get_by_label("Private note", exact=True)
-        # The composer sits at the bottom of the work area and always shows its audience.
-        self.assertGreater(box(page, composer)["y"], DESKTOP["height"] - 130)
+        # The composer always shows its audience.
         expect(page.locator(".composer__audience")).to_contain_text("Only you")
-        shot(page, "desktop-1440-empty-light")
+        shot(page, "desktop-1440-notes-empty-light")
 
         # Quick capture: Enter saves a private note, which survives a reload.
         save = page.get_by_role("button", name="Save note")
@@ -408,14 +419,11 @@ class AppShellJourney(unittest.TestCase):
         self.assertEqual(len(page.evaluate("fetch('/api/v1/workspaces').then(r => r.json())")), 1, "still one space")
         shot(page, "desktop-1440-light")
 
-        indicator = page.locator(".top__views .ui-tabs__indicator")
-        before = indicator.evaluate("el => el.style.transform")
-        views.get_by_role("link", name="Tasks").click()
+        page.goto("/")
+        page.get_by_role("link", name="All my tasks").click()
         expect(page).to_have_url(f"{ORIGIN}/tasks")
-        expect(views.get_by_role("link", name="Tasks")).to_have_attribute("aria-current", "page")
         expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
-        self.assertNotEqual(before, indicator.evaluate("el => el.style.transform"), "the pill moves to the chosen view")
-        views.get_by_role("link", name="Map").click()
+        places.get_by_role("link", name="Sketchbook").click()
         expect(page.get_by_role("heading", name="Start a sketch")).to_be_visible()
         shot(page, "desktop-1440-map-light")
 
@@ -464,8 +472,7 @@ class AppShellJourney(unittest.TestCase):
 
     def test_04a_draft_survives_view_switch_and_reload(self) -> None:
         page = self.page()
-        page.goto("/")
-        views = page.get_by_role("navigation", name="Views")
+        page.goto("/map")
         composer = page.get_by_label("Private note", exact=True)
         state = page.locator(".composer__state")
         expect(state).to_have_text("Private until you explicitly publish a selected version")
@@ -476,9 +483,9 @@ class AppShellJourney(unittest.TestCase):
         self.assertEqual(page.evaluate(f"localStorage.getItem('flux:draft:{user_id}:home')"), unfinished, "stored per account and context")
 
         # A view switch remounts the composer; the text comes back.
-        views.get_by_role("link", name="Tasks").click()
-        expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
-        views.get_by_role("link", name="Conversation").click()
+        page.get_by_role("link", name="Home", exact=True).first.click()
+        expect(page.get_by_role("heading", level=2, name=re.compile("^Good ")) ).to_be_visible()
+        page.get_by_role("navigation", name="Places").get_by_role("link", name="Sketchbook").click()
         expect(composer).to_have_value(unfinished)
         expect(state).to_have_text("Draft kept on this device")
 
@@ -503,7 +510,7 @@ class AppShellJourney(unittest.TestCase):
 
     def test_04b_reading_position_is_kept_per_view(self) -> None:
         page = self.page()
-        page.goto("/")
+        page.goto("/map")
         user_id = page.evaluate("fetch('/api/v1/me').then(r => r.json()).then(b => b.user.id)")
         key = f"flux.captures.{user_id}"
         saved = page.evaluate(f"localStorage.getItem('{key}')")
@@ -511,7 +518,7 @@ class AppShellJourney(unittest.TestCase):
         page.evaluate(f"localStorage.setItem('{key}', JSON.stringify({json.dumps(notes)}))")
         try:
             page.reload()
-            scroller = page.locator(".convo .pane-scroll")
+            scroller = page.locator(".sk-page")
             expect(page.get_by_text("note 40:")).to_be_attached()
             # Home loads blocks above these notes after they render (private drafts, the offer to move
             # browser notes, #190 HOME-3); the position is a pixel offset, so it is taken once they have.
@@ -521,20 +528,19 @@ class AppShellJourney(unittest.TestCase):
             page.wait_for_timeout(100)
             # The note at the top of the column: blocks above the notes can load later and change the
             # pixel offset (the browser keeps the same note in view), so the place is checked by content.
-            first_visible = """() => { const s = document.querySelector('.convo .pane-scroll'); const top = s.getBoundingClientRect().top;
+            first_visible = """() => { const s = document.querySelector('.sk-page'); const top = s.getBoundingClientRect().top;
               const note = [...s.querySelectorAll('.note')].find((el) => el.getBoundingClientRect().bottom > top + 1);
               return note ? note.querySelector('.note__text').textContent : null; }"""
             anchor = page.evaluate(first_visible)
             self.assertIsNotNone(anchor)
-            views = page.get_by_role("navigation", name="Views")
-            views.get_by_role("link", name="Wiki").click()
+            page.goto("/docs")
             expect(page.get_by_role("heading", name="No docs yet")).to_be_visible()
-            views.get_by_role("link", name="Conversation").click()
+            page.get_by_role("navigation", name="Places").get_by_role("link", name="Sketchbook").click()
             expect(page.get_by_role("button", name=re.compile(r"^Move 40 notes"))).to_be_visible()
             page.wait_for_load_state("networkidle")
             # Restored by content, not pixels: a block that loads above the notes after the restore (drafts,
             # the move offer) shifts the offset while the browser keeps the same note in view.
-            self.assertGreater(page.locator(".convo .pane-scroll").evaluate("el => el.scrollTop"), 0, "a position was restored")
+            self.assertGreater(page.locator(".sk-page").evaluate("el => el.scrollTop"), 0, "a position was restored")
             self.assertEqual(page.evaluate(first_visible), anchor, "the same note is at the top after a view switch")
             page.reload()
             expect(page.get_by_text("note 40:")).to_be_attached()
@@ -543,12 +549,12 @@ class AppShellJourney(unittest.TestCase):
             page.wait_for_load_state("networkidle")
             self.assertEqual(page.evaluate(first_visible), anchor, "the same note is at the top after a reload")
         finally:
-            page.evaluate(f"localStorage.setItem('{key}', {json.dumps(saved)}); localStorage.removeItem('flux:scroll:{user_id}:/')" if saved else f"localStorage.removeItem('{key}'); localStorage.removeItem('flux:scroll:{user_id}:/')")
+            page.evaluate(f"localStorage.setItem('{key}', {json.dumps(saved)}); localStorage.removeItem('flux:scroll:{user_id}:/map')" if saved else f"localStorage.removeItem('{key}'); localStorage.removeItem('flux:scroll:{user_id}:/map')")
             self.save_state(page)
 
     def test_04c_personal_assistant_needs_a_connection(self) -> None:
         page = self.page()
-        page.goto("/")
+        page.goto("/map")
         composer = page.get_by_label("Private note", exact=True)
         composer.fill("Which sensor works in the dark?")
         # With no assistant of their own, the spark button leads to "Connect your AI" (#189); nothing is
@@ -598,25 +604,21 @@ class AppShellJourney(unittest.TestCase):
         page.goto("/")
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         expect(page.get_by_role("complementary", name="Sidebar")).to_have_count(0)
-        composer = page.get_by_label("Private note", exact=True)
-        composer_box = box(page, page.locator(".composer"))
-        # #266 PF-1: the bar of main places sits at the bottom and the composer right above it; the
-        # views are chips under the header.
+        # #266 PF-1: the bar of main places sits at the bottom; Home has no view chips (#342).
         bar_box = box(page, page.get_by_role("navigation", name="Main places"))
         self.assertAlmostEqual(bar_box["y"] + bar_box["height"], PHONE["height"], delta=2, msg="the places bar is pinned to the bottom")
-        self.assertAlmostEqual(composer_box["y"] + composer_box["height"], bar_box["y"], delta=2, msg="the composer sits right above the places bar")
-        self.assertLess(box(page, page.get_by_role("navigation", name="Views"))["y"], composer_box["y"], "the view chips sit at the top")
+        greeting = page.get_by_role("heading", level=2, name=re.compile(r"^Good (morning|afternoon|evening), Jo$"))
+        expect(greeting).to_be_visible()
+        expect(page.get_by_role("navigation", name="Views")).to_have_count(0)
         shot(page, "phone-390-light")
 
         # Coarse pointer: primary targets are at least 44px.
         menu = page.get_by_role("button", name="Open navigation")
         details_button = page.get_by_role("button", name="Details", exact=True)
-        targets = [menu, details_button, *[page.get_by_role("navigation", name="Views").get_by_role("link", name=n, exact=True) for n in ("Conversation", "Map", "Tasks", "Wiki")]]
+        targets = [menu, details_button, page.get_by_role("link", name="All my tasks")]
         for target in targets:
             size = box(page, target)
             self.assertGreaterEqual(min(size["width"], size["height"]), 44, f"44px target: {target}")
-        self.assertGreaterEqual(box(page, page.get_by_role("button", name="Save note"))["height"], 44)
-        expect(composer).to_be_editable()
 
         menu.click()
         drawer = page.get_by_role("dialog", name="Flux")
@@ -923,7 +925,7 @@ class AppShellJourney(unittest.TestCase):
         ws = spaces[0]
         projects = owner.context.request.get(f"{ORIGIN}/api/v1/workspaces/{ws['id']}/projects?limit=100").json()
         self.assertEqual([p["id"] for p in projects["items"]], [project_id], "a retried project whose first response was lost is not created twice")
-        owner.get_by_role("link", name="Home").click()
+        owner.get_by_role("link", name="Sketchbook").click()
         owner.get_by_label("Private note", exact=True).fill("home address 123; PIR avoids storing images")
         lost_draft = lose_first_committed(f"**/api/v1/workspaces/{ws['id']}/drafts")
         owner.get_by_role("button", name="Save note").click()

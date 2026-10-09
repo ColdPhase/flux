@@ -767,10 +767,10 @@ class ScenarioJourney:
         # Ada has the context now; the next scenario happens while she is away.
         home = self.api("ada", "GET", "/api/v1/return?place=home", status=200)
         page.goto("/")
+        expect(page.get_by_role("heading", level=2, name=re.compile("^Good (morning|afternoon|evening), Ada$"))).to_be_visible()
         if home["items"]:
-            region = page.get_by_role("region", name=re.compile("^Since you left"))
-            self.tap(region.get_by_role("button", name="I have the context"))
-            expect(page.get_by_role("status").filter(has_text="You’re caught up.")).to_be_visible()
+            # Home no longer lists changes: continuing from its card, or taking the context, moves the point.
+            self.api("ada", "PUT", "/api/v1/return-points", {"place": {"type": "home"}, "mark": home["mark"]}, status=200)
         self.wait_for("Home's return point", lambda: not self.api("ada", "GET", "/api/v1/return?place=home", status=200)["items"])
         s["thinking_done"] = True
 
@@ -857,8 +857,10 @@ class ScenarioJourney:
         jonas.goto(f"/projects/{lamp}")
         self.go_to_place(jonas, "Inbox")
         expect(jonas.get_by_role("heading", level=1, name="Inbox")).to_be_visible()
-        self.tap(jonas.locator(".inbox__row", has_text=title).get_by_role("link"))
-        expect(jonas).to_have_url(re.compile(rf"/projects/{lamp}/tasks"))
+        # The proposal waits in the one queue; its title opens it in the detail panel or sheet (#342).
+        self.wait_for("the decision in Jonas's queue", lambda: any(entry["key"] == f"decision:{s['d2']}" for entry in self.api("jonas", "GET", "/api/v1/needs-you", status=200)["items"]))
+        jonas.reload()
+        self.tap(jonas.locator(".nyc", has_text=D2).get_by_role("button", name=D2))
         panel = self.details(jonas)
         expect(panel.get_by_role("heading", name="Accept as a pivot")).to_be_visible()
         expect(panel.locator(".agent-tag").first).to_be_visible()
@@ -897,15 +899,18 @@ class ScenarioJourney:
         s, lamp = self.s, self.s["lamp"]
         page = self.page("ada")
         page.goto("/")
-        region = page.get_by_role("region", name=re.compile("^Since you left"))
-        expect(region).to_be_visible()
-        expect(region.get_by_role("link", name=re.compile(f"Current rule changed: {re.escape(D2)}"))).to_contain_text(f"Previously: {D1}")
-        expect(region.locator(".since__next")).to_contain_text("Answer Jonas's question")
+        # Home continues with the one next step (F5, #342); the changes themselves are in the summary.
+        card = page.get_by_role("link", name=re.compile("^Continue where you left off"))
+        expect(card).to_be_visible()
+        expect(card).to_contain_text("Answer Jonas's question")
+        changed = [item for item in self.api("ada", "GET", "/api/v1/return?place=home", status=200)["items"] if item["text"] == f"Current rule changed: {D2}"]
+        self.assertEqual([item["detail"] for item in changed], [f"Previously: {D1}"])
         expect(page.get_by_role("button", name=re.compile("Mark all", re.I))).to_have_count(0)
-        # Ada has no AI of her own: the note composer's spark offers to connect one.
-        expect(page.locator(".composer__ask")).to_have_accessible_name("Connect your AI")
         self.no_sideways_scroll(page)
         self.shot(page, "4-home-return")
+        # Ada has no AI of her own: the note composer's spark (in the Sketchbook now) offers to connect one.
+        page.goto("/map")
+        expect(page.locator(".composer__ask")).to_have_accessible_name("Connect your AI")
 
         # In the project, "What matters" works without AI.
         page.goto(f"/projects/{lamp}")
@@ -923,12 +928,19 @@ class ScenarioJourney:
         expect(pivot).to_contain_text(ORDER_TASK)
         self.close_details(page)
 
-        # Results, the earlier rule and the still-useful work remain where work is listed.
+        # The still-useful work stays where work is listed; the earlier rule and the result are in their own details (#342).
         page.goto(f"/projects/{lamp}/tasks?view=list")
-        expect(page.get_by_role("region", name=re.compile("^Results"))).to_contain_text(RESULT)
         expect(page.get_by_role("region", name=re.compile("^Parked by a pivot"))).to_contain_text(CAMERA_TASK)
-        expect(page.get_by_role("region", name=re.compile("^Decisions"))).to_contain_text(D1)
         expect(page.get_by_role("region", name=re.compile("^Open"))).to_contain_text(ORDER_TASK)
+        expect(page.get_by_role("region", name=re.compile("^(Decisions|Results)"))).to_have_count(0)
+        page.goto(f"/projects/{lamp}/tasks?open=decision:{s['d1']}")
+        expect(self.details(page)).to_contain_text("Earlier rule")
+        expect(self.details(page)).to_contain_text(D1)
+        self.close_details(page)
+        page.goto(f"/projects/{lamp}/tasks?open=result:{s['result']}")
+        expect(self.details(page)).to_contain_text(RESULT)
+        self.close_details(page)
+        page.goto(f"/projects/{lamp}/tasks?view=list")
         summary = self.api("ada", "GET", f"/api/v1/return?place=project&id={lamp}", status=200)
         self.assertIsNotNone(summary["nextStep"], "a direct next action")
         self.assertTrue(any(item["kind"] == "decision" for item in summary["items"]))
@@ -939,12 +951,16 @@ class ScenarioJourney:
         self.need("pivoted")
         page = self.page("ada")
         page.goto("/")
-        region = page.get_by_role("region", name=re.compile("^Since you left"))
-        expect(region).to_be_visible()
-        expect(region.get_by_role("link", name=re.compile(f"Current rule changed: {re.escape(D2)}"))).to_be_visible()
+        expect(page.get_by_role("heading", level=2, name=re.compile("^Good (morning|afternoon|evening), Ada$"))).to_be_visible()
+        home = [item["text"] for item in self.api("ada", "GET", "/api/v1/return?place=home", status=200)["items"]]
+        self.assertIn(f"Current rule changed: {D2}", home)
+        self.assertIn(f"Parked: {CAMERA_TASK}", home, "Home's return summary names the parked work")
         items = self.api("ada", "GET", f"/api/v1/return?place=project&id={self.s['lamp']}", status=200)["items"]
-        self.assertIn(f"Parked: {CAMERA_TASK}", [item["text"] for item in items], "the return summary names the parked work")
-        expect(region.get_by_role("link", name=re.compile(f"^Parked: {re.escape(CAMERA_TASK)}"))).to_be_visible(timeout=3000)
+        self.assertIn(f"Parked: {CAMERA_TASK}", [item["text"] for item in items], "the project's return summary names the parked work")
+        # In the project, "What matters" shows it.
+        page.goto(f"/projects/{self.s['lamp']}")
+        open_what_matters(page, tap=self.phone)
+        expect(page.locator("#details").get_by_role("link", name=re.compile(f"^Parked: {re.escape(CAMERA_TASK)}"))).to_be_visible(timeout=3000)
 
     # ---------------------------------------------------------------- inbox, search and the wiki
 
@@ -960,10 +976,12 @@ class ScenarioJourney:
         page.goto("/")
         self.go_to_place(page, "Inbox")
         expect(page.get_by_role("heading", level=1, name="Inbox")).to_be_visible()
-        for title in expected["ada"]:
-            expect(page.locator(".inbox__row", has_text=title).first).to_be_visible()
+        # The queue holds what needs Ada (the question); the direct message and the proposal she already
+        # decided are notifications, which stay in the API and open from their links.
+        expect(page.locator(".nyc", has_text=f"Jonas Berg asked you in {LAMP}").first).to_be_visible()
         self.shot(page, "5-inbox")
-        self.tap(page.locator(".inbox__row", has_text="Jonas Berg sent you a message").first.get_by_role("link"))
+        note = next(item for item in self.api("ada", "GET", "/api/v1/inbox?limit=100", status=200)["items"] if item["title"] == "Jonas Berg sent you a message")
+        page.goto(f"/inbox/{note['id']}")
         expect(page).to_have_url(re.compile(rf"/dm/{s['dm']}#message-"))
 
         # Search: Jump to, then the full results, find the run, the result, the page and the map.
@@ -1015,7 +1033,7 @@ class ScenarioJourney:
         s, lamp = self.s, self.s["lamp"]
         # Ada keeps a private note; it stays hers.
         page = self.page("ada")
-        page.goto("/")
+        page.goto("/map")
         note = page.get_by_label("Private note", exact=True)
         note.fill(DRAFT)
         if self.phone:

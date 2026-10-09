@@ -53,19 +53,10 @@
 .since__more { display: block; margin: -4px -10px 8px; font-size: var(--fs-sm); }
 .since__failed { color: var(--t1); }
 /* After "I have the context" on Home (HOME-1): one calm line where the list was. */
-.since-home__done { margin: 0 0 12px; padding: 10px 0; color: var(--t2); font-size: var(--fs-sm); }
-.since-home__done:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; border-radius: var(--r-sm); }
 .since__more:hover { background: var(--hov); color: var(--t1); }
 .since__more:focus-visible { outline: 2px solid var(--t1); outline-offset: 0; }
 
 /* Home: the personal return view across places. */
-.since-home { margin: 20px 0 8px; padding: 16px 0 4px; border-top: 1px solid var(--line); }
-.since-home__h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-size: var(--fs-base); font-weight: 600; margin: 0 0 10px; }
-.since-home__sub { font-size: var(--fs-md); font-weight: 400; color: var(--t3); }
-.since-home__sub b { font-weight: 500; color: var(--t2); }
-.since-home > .since__why { margin-bottom: 8px; }
-.since-home__place { margin-top: 10px; }
-.since-home__name { margin: 0 0 2px; color: var(--t3); font-size: var(--fs-xs); font-weight: 600; }
 
 @media (max-width: 720px) {
   .since__in { padding: 0 16px; }
