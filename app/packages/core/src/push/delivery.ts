@@ -1,7 +1,7 @@
 import { GENERIC_PUSH_TITLE, type PushPayload } from '@flux/contracts';
 import { pushEndpointViolation } from './config.js';
 import { readsSource, summarySourcesReadable } from './notifications.js';
-import type { NotificationRecord, ProviderDeliveryAdmission, PushDeliveryRepository, PushSender, PushSendJob, SourceReadAuthorizer, SourceReadDecision } from './ports.js';
+import type { NotificationRecord, ProviderDeliveryAdmission, PushDeliveryRepository, PushSender, PushSendJob, PushSendResult, SourceReadAuthorizer, SourceReadDecision } from './ports.js';
 
 export type DeliveryOutcome =
   | { outcome: 'sent'; status: number; preview: PushPayload['preview'] }
