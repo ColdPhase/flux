@@ -113,8 +113,8 @@ def open_details(page: Page) -> None:
     labelled Details button until its own header (#341)."""
     header = page.locator("header.top")
     # Home has no header row (#342): its Details are one quiet button under what needs you.
-    page.locator("#content .home button:text-is('Details'), header.top button[aria-label='More'], header.top .top__details").first.wait_for()
     home = page.locator("#content .home").get_by_role("button", name="Details", exact=True)
+    page.locator("#content .home button:text-is('Details'), header.top:not(.top--bare) button[aria-label='More'], header.top .top__details").first.wait_for()
     if home.count():
         home.click()
         return
