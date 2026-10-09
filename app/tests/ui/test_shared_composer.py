@@ -265,12 +265,12 @@ class SharedComposerJourney(unittest.TestCase):
         self.choose(page, [self.file("held-a.bin")])
         expect(page.get_by_text("Uploading…", exact=False)).to_have_count(1)
         page.wait_for_function("() => window.__fluxHeldUploadReady === true", timeout=10000)
-        page.get_by_label("Task", exact=True).select_option(b["id"])
+        self.open_thread(page, project, b)
         page.get_by_label("Write to this task").fill("B's distinct draft")
         held[0][0].fulfill(response=held[0][1])
         expect(page.get_by_label("Write to this task")).to_have_value("B's distinct draft")
         expect(page.get_by_text("held-a.bin", exact=False)).to_have_count(0)
-        page.get_by_label("Task", exact=True).select_option(a["id"])
+        self.open_thread(page, project, a)
         expect(page.get_by_label("Write to this task")).to_have_value("A's held private bytes")
         expect(page.get_by_text("Ready, private", exact=False)).to_have_count(1)
         pending = []
@@ -287,10 +287,10 @@ class SharedComposerJourney(unittest.TestCase):
         # stored it, so the live refresh may show the stored copy in place of the queued one: never both.
         expect(page.get_by_label("Write to this task")).to_have_value("")
         expect(page.get_by_role("region", name=re.compile("^Thread of")).get_by_text("A's held private bytes")).to_have_count(1)
-        page.get_by_label("Task", exact=True).select_option(b["id"])
+        self.open_thread(page, project, b)
         expect(page.get_by_label("Write to this task")).to_have_value("B's distinct draft")
         expect(page.get_by_text("A's held private bytes")).to_have_count(0)
-        page.get_by_label("Task", exact=True).select_option(a["id"])
+        self.open_thread(page, project, a)
         expect(page.get_by_label("Write to this task")).to_have_value("")
         # Held after the server stored it: A's thread shows the message once, never twice.
         expect(page.get_by_role("region", name=re.compile("^Thread of")).get_by_text("A's held private bytes")).to_have_count(1)
@@ -298,8 +298,8 @@ class SharedComposerJourney(unittest.TestCase):
         self.stored(page)
         expect(page.get_by_role("region", name=re.compile("^Thread of")).get_by_text("A's held private bytes")).to_have_count(1)
         expect(page.get_by_label("Write to this task")).to_have_value("")
-        expect(page.get_by_label("Task", exact=True)).to_have_value(a["id"])
-        page.get_by_label("Task", exact=True).select_option(b["id"])
+        expect(page).to_have_url(re.compile(f"task={a['id']}"))
+        self.open_thread(page, project, b)
         expect(page.get_by_label("Write to this task")).to_have_value("B's distinct draft")
         self.assertEqual(len([m for m in self.discussion(page, a)["messages"] if m["body"] == "A's held private bytes"]), 1)
 
@@ -317,9 +317,9 @@ class SharedComposerJourney(unittest.TestCase):
         self.open_thread(page, project, a)
         expect(page.get_by_label("Write to this task")).to_have_value("Newest memory copy")
         page.get_by_label("Write to this task").fill("The newest second edit")
-        page.get_by_label("Task", exact=True).select_option(b["id"])
+        self.open_thread(page, project, b)
         page.get_by_label("Write to this task").fill("B stays separate")
-        page.get_by_label("Task", exact=True).select_option(a["id"])
+        self.open_thread(page, project, a)
         expect(page.get_by_label("Write to this task")).to_have_value("The newest second edit")
         expect(page.get_by_text("Source: Verified measurements · v1")).to_be_visible()
         expect(page.get_by_text("Ready, private", exact=False)).to_have_count(1)
@@ -398,7 +398,8 @@ class SharedComposerJourney(unittest.TestCase):
                 box = page.get_by_label("Write to this task")
                 box.fill("The phone keeps this careful night measurement")
                 if width < 681:
-                    picker, field = page.get_by_label('Task', exact=True).bounding_box(), box.bounding_box()
+                    # The thread's own heading stands where the task picker was (#347 P1-2: no picker; the thread opens from the Now card).
+                    picker, field = page.locator('.thread__head').bounding_box(), box.bounding_box()
                     assert picker and field
                     self.assertLessEqual(field['y'] - picker['y'] - picker['height'], 180,
                                          'the empty human thread starts near its task, without onboarding or a blank spacer')
@@ -633,7 +634,7 @@ class SharedComposerJourney(unittest.TestCase):
         page.route(path, hold_loader)
         writes = []
         page.on("request", lambda request: writes.append(request.url) if request.method == "POST" and ("/files?" in request.url or request.url.endswith("/discussion")) else None)
-        page.get_by_label("Task", exact=True).select_option(b['id'])
+        self.open_thread(page, project, b)
         page.wait_for_function("() => window.__fluxHeldAgentsReady === true", timeout=10000)
         box = page.get_by_label("Write to this task")
         expect(box).to_be_disabled()
@@ -667,16 +668,16 @@ class SharedComposerJourney(unittest.TestCase):
         self.assertNotEqual(edited_b['commandId'], before_b['commandId'])
         self.assertEqual(edited_b['files'], before_b['files'])
         self.assertEqual(edited_b['references'], before_b['references'])
-        page.get_by_label("Task", exact=True).select_option(a['id'])
+        self.open_thread(page, project, a)
         expect(box).to_have_value(before_a['body'])
         self.assertEqual(self.record(page, project, a), before_a)
         # Cancelling a held B navigation back to A leaves the same A record editable.
         held.clear()
         page.evaluate("window.__fluxHeldAgentsReady = false")
-        page.get_by_label("Task", exact=True).select_option(b['id'])
+        self.open_thread(page, project, b)
         page.wait_for_function("() => window.__fluxHeldAgentsReady === true", timeout=10000)
         expect(box).to_be_disabled()
-        page.get_by_label("Task", exact=True).select_option(a['id'])
+        self.open_thread(page, project, a)
         expect(box).to_be_enabled()
         expect(box).to_have_value(before_a['body'])
         self.assertEqual(self.record(page, project, a), before_a)
@@ -692,7 +693,7 @@ class SharedComposerJourney(unittest.TestCase):
         def fail_loader(route):
             route.fulfill(status=503, content_type="application/json", body=json.dumps({"code": "UNAVAILABLE", "message": "Controlled unavailable Agents read"}))
         page.route(path, fail_loader)
-        page.get_by_label("Task", exact=True).select_option(b['id'])
+        self.open_thread(page, project, b)
         expect(page.get_by_role("heading", level=1, name="Something went wrong")).to_be_visible()
         expect(box).to_have_count(0)
         self.assertEqual(self.record(page, project, a), before_a)
