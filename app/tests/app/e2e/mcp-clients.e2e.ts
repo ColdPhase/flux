@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync } from 'node:fs';
 import http from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import { createDatabase } from '@flux/db';
 import { chromium, type Browser as Chromium } from 'playwright';
 import { register, uniqueEmail } from '../support/http.js';
@@ -38,6 +38,9 @@ const proxy = http.createServer((request, response) => {
   });
   forward.on('error', () => response.destroy()); request.pipe(forward);
 });
+
+// The CLIs leave keep-alive sockets and helper processes behind; end the file once its results are reported.
+after(() => { setTimeout(() => process.exit(process.exitCode ?? 0), 3000); });
 
 interface Running { output: () => string; done: Promise<number | null>; kill: () => void }
 function run(command: string, args: string[], env: Record<string, string>, cwd: string, keepStdin = false): Running {
