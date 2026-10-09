@@ -105,13 +105,17 @@ export function idpStandingRepository(db: DbExecutor) {
           ...(result.refreshTokenEnc ? { refreshTokenEnc: result.refreshTokenEnc } : {}),
         }).where(lease).returning({ id: s.userId })).length > 0;
       }
-      const updated = await db.update(s).set({
-        ...common, state: 'sign_in_required', reason: result.reason.slice(0, 100),
-        stateChangedAt: sql`CASE WHEN ${s.state} = 'sign_in_required' THEN ${s.stateChangedAt} ELSE ${now} END`,
-      }).where(lease).returning({ id: s.userId });
-      if (!updated.length) return false;
-      await db.delete(schema.authSessions).where(eq(schema.authSessions.userId, claim.userId));
-      return true;
+      // One statement: the state and the end of the browser sessions are visible together, never one without the other.
+      const outcome = await db.execute(sql`
+        WITH upd AS (
+          UPDATE auth_idp_standing SET state = 'sign_in_required', reason = ${result.reason.slice(0, 100)}, last_check_at = ${now.toISOString()}::timestamptz,
+            last_outcome = 'sign_in_required', next_check_at = ${nextCheckAt.toISOString()}::timestamptz, lease_id = NULL, lease_until = NULL,
+            state_changed_at = CASE WHEN state = 'sign_in_required' THEN state_changed_at ELSE ${now.toISOString()}::timestamptz END
+          WHERE user_id = ${claim.userId} AND provider_id = ${claim.providerId} AND lease_id = ${claim.leaseId}
+          RETURNING user_id),
+        del AS (DELETE FROM auth_sessions WHERE user_id IN (SELECT user_id FROM upd))
+        SELECT count(*)::int AS n FROM upd`);
+      return (outcome.rows[0] as { n: number }).n > 0;
     },
   };
 }
