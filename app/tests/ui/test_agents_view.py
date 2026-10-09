@@ -161,7 +161,9 @@ class AgentsViewJourney(unittest.TestCase):
 
     def test_03_the_composer_writes_to_the_task_thread(self) -> None:
         page = self.open_agents("hubert")
-        expect(page.get_by_label("Task", exact=True)).to_have_value(self.ids["task"])
+        # The task's thread is opened by `?task=` in the right column; there is no task picker (#347 P1-2).
+        expect(page.get_by_role("region", name=f"Thread of {TASK}")).to_be_visible()
+        expect(page.locator("select#agents-task")).to_have_count(0)
         expect(page.get_by_text("No one has written about this task yet")).to_be_visible()
         box = page.get_by_label("Write to this task")
         box.fill("I'll take the reconnect bug with Codex; Claude Code reviews it.")
@@ -397,11 +399,8 @@ class AgentsViewJourney(unittest.TestCase):
         expect(page.get_by_label("Write to this task")).to_be_visible()
         overflow = page.evaluate("() => document.documentElement.scrollWidth - document.documentElement.clientWidth")
         self.assertLessEqual(overflow, 0, "no horizontal page scroll at 390px")
-        # The sections stack: the thread never starts above the task picker or the connections.
-        boxes = page.evaluate("""() => ['.agents-list', '.agents__task', '.agents-thread'].map((s) => {
-          const r = document.querySelector(s).getBoundingClientRect(); return { top: r.top, bottom: r.bottom }; })""")
-        self.assertLessEqual(boxes[0]["bottom"], boxes[1]["top"] + 1, "connections end before the task picker")
-        self.assertLessEqual(boxes[1]["bottom"], boxes[2]["top"] + 1, "the task picker ends before the thread")
+        # On a phone the thread is a sheet over the list (#347 P1-2): it fills the view and the list stays behind it.
+        expect(page.get_by_role("region", name=f"Thread of {TASK}")).to_be_visible()
         # Every message is reachable: the view scrolls, and at its end the newest message sits above
         # the sticky composer instead of under it (independent delta review of 466daf8).
         thread = page.get_by_role("region", name=f"Thread of {TASK}")

@@ -142,7 +142,7 @@ function OwnAgentCard({ item, compact, onChanged }: { item: OwnWorkingAgent; com
           <Kreska size={24} expression="thinking" hue={hue} />
           <Link className="agentlive__text" to={destination}>
             <b>{item.agent.name}</b>
-            <span>{stopping ? 'Stopping…' : `#${item.task.number} · ${item.task.title}`}</span>
+            <span>{stopping ? 'Stopping…' : item.online ? `#${item.task.number} · ${item.task.title}` : `holds #${item.task.number} · offline`}</span>
           </Link>
         </>
       )}
@@ -158,15 +158,17 @@ function OwnAgentCard({ item, compact, onChanged }: { item: OwnWorkingAgent; com
 export function WorkingAgent({ compact = false }: { compact?: boolean }) {
   const { me } = useShellData();
   const agents = useOwnWorkingAgents(me.user.id);
-  // Several agents at once: the card shows the first with how many more work, so the sidebar never grows.
-  const first = agents.items[0];
+  // Several agents at once: online ones first; the card shows the first with how many more are online, so the sidebar never grows.
+  const ordered = [...agents.items.filter((item) => item.online), ...agents.items.filter((item) => !item.online)];
+  const first = ordered[0];
+  const onlineCount = agents.items.filter((item) => item.online).length;
   return (
     <>
       <WorkingAssistant compact={compact} />
       {first ? (
         <>
           <OwnAgentCard item={first} compact={compact} onChanged={agents.reload} />
-          {agents.items.length > 1 && !compact ? <p className="agentlive__more">+{agents.items.length - 1} more working</p> : null}
+          {onlineCount > 1 && !compact ? <p className="agentlive__more">+{onlineCount - 1} more working</p> : null}
         </>
       ) : null}
     </>

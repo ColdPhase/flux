@@ -1,11 +1,20 @@
-import { useId, useRef, useState, type FormEvent } from 'react';
+import { useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import type { AgentQuestion } from '@flux/contracts';
 import { AGENT_QUESTION_LIMITS } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { Button, Icon } from '../ui';
 import { answerAgentQuestion } from './api';
-import { rememberQuestion, useQuestion } from './questions';
 import './question.css';
+import { rememberQuestion, useQuestion } from './questions';
+
+/**
+ * Shows a message's body only when the message carries no question: the question card then carries the question
+ * as its heading, so the same words are never drawn twice (#347 P2-7). A null message id always shows the body.
+ */
+export function WhenNoQuestion({ projectId, messageId, children }: { projectId: string; messageId: string | null; children: ReactNode }) {
+  const question = useQuestion(projectId, messageId ?? '');
+  return messageId === null || !question ? <>{children}</> : null;
+}
 
 function failure(cause: unknown): string {
   if (cause instanceof NetworkError) return 'Flux can’t be reached right now. Nothing was sent; try again in a moment.';

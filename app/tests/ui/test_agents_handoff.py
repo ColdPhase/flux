@@ -120,9 +120,10 @@ class HandOffJourney(unittest.TestCase):
             claude = rows.filter(has_text="Claude Code agent")
             expect(claude).to_contain_text("for Ada Kowalska (you)")
             expect(claude).to_contain_text("Desk laptop")
-            expect(claude).to_contain_text("Working on #1 · Calibrate the probes at two soil depths")
+            # No client session is open here, so the held task is not "working" (#347 P1-1).
+            expect(claude).to_contain_text("Not signed in yet · #1 is waiting for it")
             expect(rows.filter(has_text="Reader agent")).to_contain_text("nothing handed to it")
-            expect(page.get_by_text("2 in this project · 1 working")).to_be_visible()
+            expect(page.get_by_text("2 in this project")).to_be_visible()
             # Requests, Policy and "Connect your own agent": one row each, below the list.
             expect(page.get_by_role("link", name=re.compile("^Requests"))).to_have_attribute("href", "/inbox")
             expect(page.get_by_role("button", name=re.compile("^Project policy"))).to_be_visible()
@@ -187,7 +188,7 @@ class HandOffJourney(unittest.TestCase):
         expect(dialog.get_by_text("Step 2 of 2")).to_be_visible()
         expect(dialog.get_by_role("heading", name="What Claude Code agent may do")).to_be_visible()
         expect(dialog).to_contain_text("Claude Code agent will be able to read this project and write in it")
-        expect(dialog).to_contain_text("It is working on #1")
+        expect(dialog).to_contain_text("It holds #1 · offline")
         shot(page, "handoff-step2-desktop")
         dialog.get_by_role("button", name="Back").click()
         expect(dialog.get_by_text("Step 1 of 2")).to_be_visible()
@@ -200,7 +201,7 @@ class HandOffJourney(unittest.TestCase):
         owner = self.task("label")["owner"]
         self.assertEqual(owner["id"], self.ids["agent_claude"])
         row = page.get_by_role("list", name="Agents in this project").get_by_role("listitem").filter(has_text="Claude Code agent")
-        expect(row).to_contain_text("Working on #1")
+        expect(row).to_contain_text("Not signed in yet · #1 is waiting for it")
 
     def test_06_an_agent_without_write_access_is_explained_and_never_granted(self) -> None:
         page = self.open_agents()
@@ -332,6 +333,47 @@ class HandOffJourney(unittest.TestCase):
         expect(page.get_by_role("dialog")).to_have_count(0)
         self.assertEqual(self.task("keys")["owner"]["id"], self.ids["agent_claude"])
         self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/grants", status=200), grants_before, "permissions are unchanged")
+
+    def test_13_a_teammates_agent_is_asked_not_assigned(self) -> None:
+        # #347 P1-3: a task is not handed to another person's agent; Flux asks its owner in the task's thread.
+        # Negative control (second half): the agent Ada owns still gets the task handed to it, owner changed.
+        ada, jonas = self.page("ada"), self.page("jonas")
+        pid, ws = self.ids["project"], self.ids["workspace"]
+        jonas_agent = self.api(jonas, "POST", f"/api/v1/workspaces/{ws}/agents", {"name": "Claude Code", "owner": "self"}, status=201)["id"]
+        self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "agent", "id": jonas_agent}, "role": "contributor"}, status=201)
+        ask = self.api(ada, "POST", f"/api/v1/projects/{pid}/work", {"title": "Print a label for each of the six beds"}, status=201)
+        page = self.open_agents()
+        page.get_by_role("button", name="Hand off a task").click()
+        dialog = page.get_by_role("dialog", name="Hand off a task")
+        dialog.get_by_label("Task", exact=True).select_option(label=f"#{ask['number']} · Print a label for each of the six beds")
+        dialog.locator("label.handoff__agent", has_text="Claude Code").filter(has_text="Jonas Berg").click()
+        expect(dialog).to_contain_text("for Jonas Berg · Jonas decides")
+        dialog.get_by_role("button", name="Next").click()
+        expect(dialog.get_by_role("heading", name="Ask Jonas first")).to_be_visible()
+        expect(dialog).to_contain_text("Only Jonas Berg can hand work to it")
+        expect(dialog.get_by_role("button", name="Ask Jonas")).to_be_visible()
+        expect(dialog.get_by_role("button", name=re.compile("^Hand off"))).to_have_count(0)
+        dialog.get_by_role("button", name="Ask Jonas").click()
+        expect(page.get_by_text(f"Asked Jonas about #{ask['number']}")).to_be_visible()
+        self.assertIsNone(self.task_by_id(ask["id"])["owner"], "the task's owner does not change")
+        discussion = self.api(ada, "GET", f"/api/v1/work/{ask['id']}/discussion", status=200)
+        newest = sorted([discussion["root"] or {}, *discussion["messages"]], key=lambda m: m.get("sequence", 0))[-1]
+        self.assertTrue(newest["body"].startswith(f"@Jonas Berg can your Claude Code take #{ask['number']}"), newest["body"])
+        # Negative control: Ada's own agent is handed the task, and the owner becomes that agent.
+        fresh = self.api(ada, "POST", f"/api/v1/projects/{pid}/work", {"title": "Measure the greenhouse humidity"}, status=201)
+        page = self.open_agents()
+        page.get_by_role("button", name="Hand off a task").click()
+        dialog = page.get_by_role("dialog", name="Hand off a task")
+        dialog.get_by_label("Task", exact=True).select_option(label=f"#{fresh['number']} · Measure the greenhouse humidity")
+        dialog.locator("label.handoff__agent", has_text="Claude Code agent").click()
+        dialog.get_by_role("button", name="Next").click()
+        expect(dialog.get_by_role("button", name=re.compile("^Hand off"))).to_be_visible()
+        dialog.get_by_role("button", name=re.compile("^Hand off")).click()
+        expect(page.get_by_text(f"Handed #{fresh['number']} to Claude Code agent")).to_be_visible()
+        self.assertEqual(self.task_by_id(fresh["id"])["owner"], {"kind": "agent", "id": self.ids["agent_claude"]})
+
+    def task_by_id(self, task_id: str) -> dict:
+        return self.api(self.page("ada"), "GET", f"/api/v1/work/{task_id}", status=200)
 
     def seed_paged_project(self, page: Page, free_first: bool) -> tuple[str, str]:
         """A project with 55 tasks owned by an agent and one free task, created in the given order."""

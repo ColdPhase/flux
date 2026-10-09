@@ -66,3 +66,16 @@ export function mayDo(access: ProjectAccess | null): { can: string; canTake: boo
   if (access === 'viewer') return { can: 'read this project. It can’t post, change tasks or propose decisions.', canTake: false };
   return { can: 'nothing here yet: it has no access to this project.', canTake: false };
 }
+
+/** The first word of a person's name ("Jonas Berg" -> "Jonas"). */
+export const firstName = (name: string) => name.split(' ')[0] || name;
+
+/** An entry's owner as a phone row shows it: "you" for your own agent, the owner's first name, else the owner's label. */
+export function shortOwner(entry: AgentEntry, meId: string): string | null {
+  if (!entry.owner) return null;
+  if (entry.ownerId === meId) return 'you';
+  return entry.ownerId ? firstName(entry.owner) : entry.owner;
+}
+
+/** A person's agent that another person owns: a task can be handed to it only by asking its owner (#347 P1-3). */
+export const teammateOf = (entry: AgentEntry, meId: string) => entry.ownerId !== null && entry.ownerId !== meId;

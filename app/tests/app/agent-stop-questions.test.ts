@@ -207,3 +207,16 @@ test('a free reply answers a question; invalid questions and people without acce
     'a reader who may not write cannot answer');
   assert.equal(await messages(), 4);
 });
+
+test('the sidebar card says whether a working agent is online: an open session is online, a revoked one is not (#347 P1-1)', async () => {
+  const f = await scene();
+  const item = await f.task();
+  // The agent holds the task with its client session open (agentConnection opened one): online.
+  expectStatus(await f.hubert.browser.request('PATCH', `/api/v1/work/${item.id}`, { body: { owner: { kind: 'agent', id: f.agent.id }, status: 'in_progress' },
+    headers: { 'if-match': `"${item.version}"` } }), 200);
+  const online = async () => (expectStatus(await f.hubert.browser.request('GET', '/api/v1/working-agents'), 200) as OwnWorkingAgents).items.map((entry) => entry.online);
+  assert.deepEqual(await online(), [true], 'an open client session makes the working agent online');
+  // Negative control: once the session is revoked the same working agent reads offline, and the card says so rather than "working".
+  await pool.query('UPDATE agent_runtime_sessions SET revoked_at=now() WHERE connection_id=$1', [f.connected.connectionId]);
+  assert.deepEqual(await online(), [false], 'a revoked session is not an open client session');
+});

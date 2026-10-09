@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import type { AgentQuestion } from '@flux/contracts';
 import { useStreamEvents } from '../api/stream';
 import { getAgentQuestions } from './api';
@@ -35,6 +35,17 @@ export function useQuestion(projectId: string, messageId: string): AgentQuestion
     () => current.version,
   );
   return current.questions.get(messageId) ?? null;
+}
+
+/** Every question of the project as the store holds it now (newest first); the list is current on each change. */
+export function useQuestionList(projectId: string): AgentQuestion[] {
+  const current = store(projectId);
+  const version = useSyncExternalStore(
+    (listener) => { current.listeners.add(listener); return () => { current.listeners.delete(listener); }; },
+    () => current.version,
+  );
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the list is rebuilt per store version
+  return useMemo(() => [...current.questions.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [current, version]);
 }
 
 /** Reads the project's questions now, on a question event, on focus and on a resync; a failed read keeps what is shown. */

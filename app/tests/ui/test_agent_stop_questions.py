@@ -108,7 +108,7 @@ class StopAndQuestions(unittest.TestCase):
             page = self.page("ada", scheme=scheme)
             page.goto(f"/projects/{self.ids['project']}/agents")
             row = page.locator(f'.agents-row[data-agent="{self.ids["agent"]}"]')
-            expect(row).to_contain_text("Working on #1")
+            expect(row).to_contain_text("Not signed in yet · #1 is waiting for it")
             stop = row.get_by_role("button", name="Stop Claude Code agent")
             expect(stop).to_be_visible()
             expect(page.get_by_role("complementary", name="Claude Code agent, details").get_by_role("button", name="Stop Claude Code agent")).to_be_visible()
@@ -116,7 +116,7 @@ class StopAndQuestions(unittest.TestCase):
         # Jonas writes here but is neither a manager nor the agent's owner: no Stop to press.
         jonas = self.page("jonas")
         jonas.goto(f"/projects/{self.ids['project']}/agents")
-        expect(jonas.locator(f'.agents-row[data-agent="{self.ids["agent"]}"]')).to_contain_text("Working on #1")
+        expect(jonas.locator(f'.agents-row[data-agent="{self.ids["agent"]}"]')).to_contain_text("Not signed in yet · #1 is waiting for it")
         expect(jonas.get_by_role("button", name=re.compile("^Stop"))).to_have_count(0)
         # The panel's Message opens the task's thread.
         page = self.page("ada")
@@ -131,7 +131,7 @@ class StopAndQuestions(unittest.TestCase):
         card = page.locator(".agentlive--agent")
         expect(card).to_have_count(1)
         expect(card).to_contain_text("Claude Code agent")
-        expect(card).to_contain_text("#1 · Calibrate the probes at two soil depths")
+        expect(card).to_contain_text("holds #1 · offline")
         shot(page, "stop-sidebar-card")
         card.get_by_role("button", name="Stop Claude Code agent").click()
         expect(page.get_by_text("Stopped Claude Code agent on #1")).to_be_visible()
@@ -162,7 +162,7 @@ class StopAndQuestions(unittest.TestCase):
         page = self.page("ada")
         page.goto(f"/projects/{self.ids['project']}/agents")
         row = page.locator(f'.agents-row[data-agent="{self.ids["agent"]}"]')
-        expect(row).to_contain_text("Working on #2")
+        expect(row).to_contain_text("Not signed in yet · #2 is waiting for it")
         # Someone stops the agent while Ada's view is still open: her press is the stale one, so it is told and nothing is stopped twice.
         other = self.page("ada")
 
@@ -193,7 +193,7 @@ class StopAndQuestions(unittest.TestCase):
             self.assertGreaterEqual(box["width"], 44)
             shot(page, f"stop-agents-phone-{scheme}")
         stop.tap()
-        expect(page.get_by_text("Stopped work on #3")).to_be_visible()
+        expect(page.get_by_text("Stopped Claude Code agent on #3")).to_be_visible()
         self.assertIsNone(self.task("third")["owner"])
 
     def route_question(self, page: Page, *, asked: str, message_id: str, conversation_id: str) -> list[dict]:
@@ -277,6 +277,24 @@ class StopAndQuestions(unittest.TestCase):
         card.get_by_role("button", name="Send").tap()
         expect(card).to_have_attribute("data-state", "answered")
         self.assertEqual(sent, [{"text": "Per bed, but start with the north one"}])
+
+
+    def test_09_stop_offers_hand_back(self) -> None:
+        # Hand back (#347 P2-4): after Stop the toast offers to give the task back to the agent; Jonas is offered neither.
+        self.new_working_task("Water the seedlings at dawn", "fourth")
+        page = self.page("ada")
+        page.goto(f"/projects/{self.ids['project']}/agents")
+        row = page.locator(f'.agents-row[data-agent="{self.ids["agent"]}"]')
+        row.get_by_role("button", name="Stop Claude Code agent").click()
+        expect(page.get_by_text("Stopped Claude Code agent on #4")).to_be_visible()
+        page.get_by_role("button", name="Hand back").click()
+        expect(page.get_by_text("Handed #4 back to Claude Code agent")).to_be_visible()
+        self.assertEqual(self.task("fourth")["owner"], {"kind": "agent", "id": self.ids["agent"]})
+        # Negative control: Jonas, who neither owns the agent nor manages the project, sees neither Stop nor Hand back.
+        jonas = self.page("jonas")
+        jonas.goto(f"/projects/{self.ids['project']}/agents")
+        expect(jonas.locator(f'.agents-row[data-agent="{self.ids["agent"]}"]')).to_be_visible()
+        expect(jonas.get_by_role("button", name=re.compile("^(Stop|Hand back)"))).to_have_count(0)
 
 
 if __name__ == "__main__":

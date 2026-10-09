@@ -4,6 +4,11 @@ import { ApiError, NetworkError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { useToast } from '../ui';
 import { getAgentStops, stopAgent } from './api';
+import { getWork, updateWork } from '../work/api';
+import { handOffFailure } from './HandOff';
+
+/** The task a stop is about: its number and its status now (in progress: Stop; open or blocked: Take back). */
+export interface StopTarget { id: string; number: number; status: string }
 
 /** What a person is told when Stop did not happen; nothing changed in any of these. */
 export function stopFailure(cause: unknown): string {
@@ -24,7 +29,20 @@ export function useStopAgent(projectId: string, onSettled: () => void) {
   const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
   const attempts = useRef(new Map<string, string>());
-  const stop = useCallback(async (agentId: string, task: { id: string; number: number }) => {
+  /** Gives the task back to the agent (its owner's own agent only); the task is read first so its version is current. */
+  const handBack = useCallback(async (agentId: string, task: StopTarget, agentName: string) => {
+    try {
+      const current = await getWork(task.id);
+      await updateWork(current, { owner: { kind: 'agent', id: agentId } }, crypto.randomUUID());
+      toast({ message: `Handed #${task.number} back to ${agentName}`, tone: 'success' });
+    } catch (cause) {
+      toast({ message: handOffFailure(cause), tone: 'danger' });
+    } finally {
+      onSettled();
+    }
+  }, [toast, onSettled]);
+  /** `offerHandBack` puts a Hand back action on the confirmation (not for a teammate's agent: its owner decides, P1-3). */
+  const stop = useCallback(async (agentId: string, task: StopTarget, agentName: string, offerHandBack = false) => {
     const key = `${agentId}:${task.id}`;
     if (busy) return;
     if (!attempts.current.has(key)) attempts.current.set(key, crypto.randomUUID());
@@ -32,7 +50,11 @@ export function useStopAgent(projectId: string, onSettled: () => void) {
     try {
       await stopAgent(projectId, { agentId, taskId: task.id }, attempts.current.get(key)!);
       attempts.current.delete(key);
-      toast({ message: `Stopped work on #${task.number}`, tone: 'success' });
+      const inProgress = task.status === 'in_progress';
+      toast({
+        message: inProgress ? `Stopped ${agentName} on #${task.number}` : `Took #${task.number} back from ${agentName}`, tone: 'success',
+        action: offerHandBack ? { label: 'Hand back', onAction: () => { void handBack(agentId, task, agentName); } } : undefined,
+      });
     } catch (cause) {
       if (cause instanceof ApiError) attempts.current.delete(key);
       toast({ message: stopFailure(cause), tone: 'danger' });
@@ -40,7 +62,7 @@ export function useStopAgent(projectId: string, onSettled: () => void) {
       setBusy(null);
       onSettled();
     }
-  }, [busy, projectId, toast, onSettled]);
+  }, [busy, projectId, toast, onSettled, handBack]);
   return { stop, busy };
 }
 

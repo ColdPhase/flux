@@ -10,7 +10,7 @@ import { useProjectWorkSummary } from '../work/WorkReadContext';
 import { MessageWorkPages } from '../work/MessageWorkPages';
 import { useShellActions } from './shellContext';
 import { listConversationRoots, listTaskNotices } from './conversation-api';
-import { QuestionCard } from '../agents/QuestionCard';
+import { QuestionCard, WhenNoQuestion } from '../agents/QuestionCard';
 import { AgentAuthor, AuthorFace, ContributionMark, OPENING_REVEAL_MS, SourceCitation, clock, day, openOnWholeMessages, pendingMessageRow, when } from './messageParts';
 import { agentAuthorOwner, useAgentOwners, type AgentOwners } from '../agents/owners';
 import { MessageFiles } from '../composer/Files';
@@ -592,7 +592,7 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
         <strong>{mine ? `${name} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</Link>}</strong>
         <time dateTime={message.createdAt} title={when(message.createdAt)}>{clock(message.createdAt)}</time>
       </div>
-      {message.body ? <p>{message.body}</p> : null}
+      {message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><p>{message.body}</p></WhenNoQuestion> : null}
       <QuestionCard projectId={project.id} messageId={message.id} meId={meId} writable={writable} />
       <MessageFiles files={message.files} />
       {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={onOpenResult} /> : null}
