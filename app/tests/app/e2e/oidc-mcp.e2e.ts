@@ -311,6 +311,19 @@ async function keycloakAdmin() {
       const updated = await call('PUT', `/users/${id}`, { ...user, enabled });
       assert.equal(updated.status, 204, await updated.text());
     },
+    async setClientAttribute(name: string, value: string) {
+      const client = await flux();
+      const updated = await call('PUT', `/clients/${client.id}`, { ...client, attributes: { ...client.attributes, [name]: value } });
+      assert.equal(updated.status, 204, await updated.text());
+    },
+    /** Ends one Keycloak session; Keycloak then posts a logout token to the Flux client's back-channel URL. */
+    async endSession(sessionId: string) {
+      const ended = await call('DELETE', `/sessions/${sessionId}?isOffline=false`);
+      assert.equal(ended.status, 204, await ended.text());
+    },
+    async sessionsOf(username: string) {
+      return await (await call('GET', `/users/${await userId(username)}/sessions`)).json() as { id: string; clients: Record<string, string> }[];
+    },
     /** `use.refresh.tokens` false makes Keycloak return no refresh token, even for offline_access. */
     async setRefreshTokens(on: boolean) {
       const client = await flux();
@@ -425,4 +438,91 @@ test('standing: a provider that returns no refresh token is refused with a clear
   assert.equal((await accepted.context.request.get(`${origin}/api/v1/me`)).status(), 200, 'negative control: with the refresh token, sign-in works');
   const frankId = ((await (await accepted.context.request.get(`${origin}/api/v1/me`)).json()) as { user: { id: string } }).user.id;
   assert.equal((await standingRow(frankId))?.state, 'ok');
+});
+
+// --- F-024 S3 (#314): back-channel logout from Keycloak ---
+
+const postLogout = (body: string, path = `/api/v1/identity/oidc/${providerId}/backchannel-logout`) => fetch(new URL(path, upstream), {
+  method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body });
+
+/** A person signed in through the provider in a fresh browser, with MCP tokens from the scripted client. */
+async function signInWithTokens() {
+  const context = await fresh();
+  const page = await context.newPage();
+  const { verifier, challenge } = pkce();
+  await toProvider(page, authorizeUrl(clientId, loopback, challenge));
+  await providerLogin(page, 'erin');
+  const tokens = await redeem(await chooseAndConsent(context, page, loopback), verifier, loopback, clientId);
+  const sid = (await pool.query(`SELECT i.idp_sid FROM auth_session_identities i JOIN auth_sessions s ON s.id = i.session_id
+    WHERE s.user_id = $1 ORDER BY s.created_at DESC LIMIT 1`, [state.userId])).rows[0].idp_sid as string;
+  return { context, tokens, sid };
+}
+
+const mcpRefresh = (refreshToken: string) => fetch(new URL('/api/auth/oauth2/token', upstream), { method: 'POST',
+  headers: { 'content-type': 'application/x-www-form-urlencoded' },
+  body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken, client_id: clientId, resource }) });
+
+test('back-channel logout: refusals answer 400 with no-store, whatever the token', async () => {
+  const forged = (claims: Record<string, unknown>) => {
+    const part = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
+    return `${part({ alg: 'RS256', kid: 'x' })}.${part(claims)}.${Buffer.from('not a signature').toString('base64url')}`;
+  };
+  const now = Math.floor(Date.now() / 1000);
+  const claims = { iss: `${keycloak}/realms/flux`, aud: 'flux', iat: now, exp: now + 120, jti: randomUUID(), sid: 'x',
+    events: { 'http://schemas.openid.net/event/backchannel-logout': {} } };
+  const cases: [string, string][] = [['no token', ''], ['not a jwt', 'logout_token=abc'], ['a forged signature', `logout_token=${forged(claims)}`],
+    ['alg none', `logout_token=${Buffer.from('{"alg":"none"}').toString('base64url')}.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.`]];
+  for (const [name, body] of cases) {
+    const response = await postLogout(body);
+    assert.equal(response.status, 400, name);
+    assert.equal(response.headers.get('cache-control'), 'no-store', name);
+  }
+  const other = await postLogout('logout_token=abc', '/api/v1/identity/oidc/oidc-000000000000/backchannel-logout');
+  assert.equal(other.status, 404, 'another provider id');
+  assert.equal(other.headers.get('cache-control'), 'no-store');
+});
+
+test('back-channel logout: ending one Keycloak session ends its browser sessions only, and MCP continues', async () => {
+  const admin = await keycloakAdmin();
+  const first = await signInWithTokens();
+  const second = await fresh();
+  const page = await second.newPage();
+  await page.goto(`${origin}/sign-in`);
+  await page.getByRole('button', { name: 'Sign in with Keycloak', exact: true }).click();
+  await page.waitForURL((target) => target.origin === keycloak);
+  await providerLogin(page, 'erin');
+  await page.waitForURL((target) => target.origin === origin, { timeout: 20_000 });
+  assert.equal((await second.request.get(`${origin}/api/v1/me`)).status(), 200);
+  assert.equal((await first.context.request.get(`${origin}/api/v1/me`)).status(), 200);
+
+  const keycloakSession = (await admin.sessionsOf('erin')).find((candidate) => candidate.id === first.sid);
+  assert.ok(keycloakSession, 'the IdP session whose sid Flux recorded');
+  await pool.query('UPDATE auth_idp_standing SET last_outcome = NULL WHERE user_id = $1', [state.userId]);
+  await admin.endSession(first.sid);
+  await waitFor(async () => (await first.context.request.get(`${origin}/api/v1/me`)).status() === 401, 'the matching browser session to end');
+  assert.equal((await second.request.get(`${origin}/api/v1/me`)).status(), 200, 'negative control: another IdP session of the same person is untouched');
+  // A plain logout does not stop agents: the immediate check succeeds because Keycloak keeps the offline session.
+  assert.equal((await mcp(first.tokens.access_token, 20, 'tools/list')).status, 200);
+  assert.equal((await mcpRefresh(first.tokens.refresh_token)).status, 200, 'the MCP refresh token still works');
+  await waitFor(async () => { const row = await standingRow(state.userId!); return row?.state === 'ok' && row.last_outcome === 'success'; }, 'the immediate standing check');
+});
+
+test('back-channel logout: with "revoke offline sessions" on, the MCP refresh tokens and the stored provider token go', async () => {
+  const admin = await keycloakAdmin();
+  await admin.setClientAttribute('backchannel.logout.revoke.offline.tokens', 'true');
+  try {
+    const signed = await signInWithTokens();
+    assert.equal((await mcp(signed.tokens.access_token, 21, 'tools/list')).status, 200, 'negative control: working before the logout');
+    await admin.endSession(signed.sid);
+    await waitFor(async () => (await standingRow(state.userId!))?.reason === 'offline_access_revoked', 'the offline revocation');
+    const row = (await standingRow(state.userId!))!;
+    assert.equal(row.state, 'sign_in_required');
+    assert.equal(row.refresh_token_enc, null, 'the stored provider token is deleted');
+    const refreshed = await mcpRefresh(signed.tokens.refresh_token);
+    assert.equal(refreshed.status, 400);
+    assert.equal(((await refreshed.json()) as { error: string }).error, 'invalid_grant');
+    const live = await pool.query('SELECT 1 FROM oauth_refresh_token WHERE user_id = $1 AND revoked IS NULL', [state.userId]);
+    assert.equal(live.rowCount, 0, 'every MCP refresh token of the person is revoked');
+    assert.equal((await mcp(signed.tokens.access_token, 22, 'tools/list')).status, 401, 'and standing refuses the bearer');
+  } finally { await admin.setClientAttribute('backchannel.logout.revoke.offline.tokens', 'false'); }
 });

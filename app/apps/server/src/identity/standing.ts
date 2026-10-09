@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes, randomUUID } from 'node:crypto';
-import { idpStandingRepository, type IdpCheckResult, type IdpStandingClaim } from '@flux/db';
+import { idpLogoutRepository, idpStandingRepository, type IdpCheckResult, type IdpStandingClaim } from '@flux/db';
 import type { Database } from '@flux/core';
 import type { OidcConfig } from './config.js';
 
@@ -58,6 +58,10 @@ export interface StandingLog { info(object: object, message: string): void; warn
 export interface IdpStanding {
   /** Stores a provider sign-in's refresh token and clears sign-in required; revokes the token it replaces. */
   recordSignIn(userId: string, refreshToken: string): Promise<void>;
+  /** Back-channel logout (S3): asks the checker to look at these people now rather than at their next interval. */
+  checkSoon(userIds: string[]): Promise<void>;
+  /** The provider revoked offline access (S3): deletes the stored token, revokes it at the provider, sign-in required. */
+  revokeOffline(userIds: string[]): Promise<void>;
   /** The state every gate reads: false while any of the person's identities is in sign-in required. */
   stands(userId: string): Promise<boolean>;
   /** One pass of the checker: leases due identities and asks the provider about each. Returns how many it checked. */
@@ -88,6 +92,7 @@ export function createIdpStanding(options: IdpStandingOptions): IdpStanding {
   const { oidc, log, fetcher = fetch as unknown as Fetch, now = () => new Date(), timeoutMs = 10_000, batch = 20, concurrency = 4, retryMs = 60_000 } = options;
   const leaseMs = options.leaseMs ?? timeoutMs * 3;
   const rows = idpStandingRepository(options.db);
+  const logout = idpLogoutRepository(options.db);
   const key = sealKey(options.authSecret);
   let endpoints: { at: number; value: Promise<ProviderEndpoints | null> } | null = null;
 
@@ -167,6 +172,18 @@ export function createIdpStanding(options: IdpStandingOptions): IdpStanding {
       const previous = await rows.record(userId, oidc.providerId, sealToken(key, userId, oidc.providerId, refreshToken), at, new Date(at.getTime() + oidc.standingIntervalMs));
       const old = previous ? openToken(key, userId, oidc.providerId, previous) : null;
       if (old && old !== refreshToken) await revoke(old);
+    },
+    async checkSoon(userIds) {
+      await logout.dueNow(oidc.providerId, userIds, now());
+      // Not awaited by the logout response: the provider is waiting for a 200, not for our check.
+      void self.runOnce().catch((error) => log.error({ error }, 'Standing check after back-channel logout failed'));
+    },
+    async revokeOffline(userIds) {
+      for (const userId of userIds) {
+        const sealed = await logout.dropToken(oidc.providerId, userId, now());
+        const token = sealed ? openToken(key, userId, oidc.providerId, sealed) : null;
+        if (token) await revoke(token);
+      }
     },
     stands: async (userId) => !await rows.refuses(userId),
     async reconcile(at = now()) {

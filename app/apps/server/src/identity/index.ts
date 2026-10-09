@@ -13,6 +13,7 @@ import { cachedReachability, waitForDiscovery } from './discovery.js';
 import { registerAgentOauthContext } from './oauth-context.js';
 import { registerIdentityRoutes } from './routes.js';
 import { createSessionResolver, type SessionResolver } from './session.js';
+import { registerBackchannelLogout } from './backchannel.js';
 import { createIdpStanding, type IdpStanding } from './standing.js';
 
 export { loadIdentityConfig, type IdentityConfig } from './config.js';
@@ -75,6 +76,7 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
   // Operators register this exact redirect URI with their identity provider (#113).
   if (config.oidc) app.log.info({ issuer: config.oidc.issuer, redirectUri: `${config.publicOrigin}/api/auth/callback/${config.oidc.providerId}` }, 'Single sign-on is on');
   registerIdentityRoutes(app, { sessions, store: createSessionRepository(db), passwordReset, sso });
+  if (config.oidc) registerBackchannelLogout(app, { db, oidc: config.oidc, standing, log: app.log });
   registerAgentOauthContext(app, db, sessions, auth, config.publicOrigin);
 
   return { ...sessions, passwordReset, auth, standing };

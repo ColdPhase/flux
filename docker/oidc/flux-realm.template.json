@@ -19,7 +19,12 @@
       "serviceAccountsEnabled": false,
       "redirectUris": ["__PUBLIC_ORIGIN__/api/auth/callback/__PROVIDER_ID__"],
       "webOrigins": [],
-      "attributes": { "pkce.code.challenge.method": "S256" }
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "backchannel.logout.url": "http://api:8080/api/v1/identity/oidc/__PROVIDER_ID__/backchannel-logout",
+        "backchannel.logout.session.required": "true",
+        "backchannel.logout.revoke.offline.tokens": "false"
+      }
     },
     {
       "clientId": "probe",

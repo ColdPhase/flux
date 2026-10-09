@@ -100,6 +100,16 @@ automation that acts for them stops. Nothing is revoked. A network error, timeou
 - **Backups and restores.** `./flux backup` keeps the table's rows out of the archive. After a
   restore, every person who signed in through the provider is in sign-in required until they sign in
   again.
+- **Back-channel logout.** In the provider's client settings, set the *Backchannel logout URL* to
+  `<FLUX_PUBLIC_ORIGIN>/api/v1/identity/oidc/<provider id>/backchannel-logout` (the id is in the
+  `Single sign-on is on` log line and in the redirect URI) and require the session id. Flux verifies
+  the signed logout token (signature from the provider's keys, issuer, audience, times, the logout
+  event, no `nonce`, and a `jti` it has not seen), ends the browser sessions created from that
+  provider session (or all of the person's sessions when only `sub` is sent), and asks for an
+  immediate standing check. A plain logout does not stop agents; with Keycloak's *Backchannel logout
+  revoke offline sessions* on, Flux also revokes the person's MCP refresh tokens and its own stored
+  provider token, so agents must be authorized again. Flux answers 200, or 400 for a refused token,
+  with `Cache-Control: no-store`; an unknown session id is answered 200.
 - **Only the stored state is read per request;** an unreachable provider adds no latency to MCP calls.
 
 ## Verified behavior

@@ -1079,6 +1079,13 @@ scope and its observations are preserved in the dated research and GitHub record
 
 ### S3 — OIDC back-channel logout receiver
 
+- **Implemented in #314:** `app/apps/server/src/identity/backchannel.ts`; the replay store is
+  `auth_logout_tokens` (migration 0073, `jti` kept until `exp` plus 60 s). Decisions: a `sid` that
+  Flux does not know ends nothing and answers 200 (§2.8); a refused token does not consume its
+  `jti`; with `revoke_offline_access` the MCP refresh tokens of the resolved person are revoked and
+  the identity goes to sign-in required with reason `offline_access_revoked` (no immediate check,
+  there is no token left); otherwise the immediate check is queued and run in the background.
+  Keycloak fixture: the `flux` client has the back-channel URL and `session.required` set.
 - **AC-1.** A dedicated route at `/api/v1/identity/oidc/<providerId>/backchannel-logout`,
   outside the Better Auth bridge, with §2.6 validation, a `jti` replay store, and
   200 or 400 with `Cache-Control: no-store`.

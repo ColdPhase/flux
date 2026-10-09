@@ -116,6 +116,13 @@ export const authIdpStanding = pgTable('auth_idp_standing', {
   leaseUntil: timestamp('lease_until', { withTimezone: true }),
 }, (table) => [primaryKey({ columns: [table.userId, table.providerId] })]);
 
+/** Seen back-channel logout token ids (migration 0073, #314): a `jti` is accepted once per provider until it expires. */
+export const authLogoutTokens = pgTable('auth_logout_tokens', {
+  providerId: text('provider_id').notNull(),
+  jti: text('jti').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+}, (table) => [primaryKey({ columns: [table.providerId, table.jti] }), index('auth_logout_tokens_expires_idx').on(table.expiresAt)]);
+
 // Better Auth MCP/OAuth provider models (migration 0009).
 export const jwks = pgTable("jwks", {
   id: text("id").primaryKey(),
