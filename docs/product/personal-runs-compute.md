@@ -12,11 +12,13 @@
 > proposal is now used for changes outside the owner's rights and for the cases that
 > always wait. A `server` model with tool calling runs a bounded tool loop instead of
 > §3's single request, with the reservation over its turns (F-020 PROV-3, revised the
-> same day). One exception to the contract's item 5 (data boundary), "A run never reads … other projects":
-> a scheduled job tied to Home (founder "Cron" direction, the same day: "The job is
-> tied to a project or to Home") reads the projects the owner selected for the
-> assistant, reports only to the owner and changes nothing (F-027 AST-7). Owner-only
-> use, consent, caps, payer and fail-closed rules are unchanged.
+> same day). One exception to the contract's item 5 (data boundary), "A run never
+> reads … other projects": the assistant-written **morning summary** (founder answers B
+> and C, later the same day) reads the owner's Inbox items and the projects selected
+> for the assistant, reports only to the owner as one line on Home, and changes
+> nothing. Every other run stays tied to one project, and DM-place runs still need
+> their own decision (answer B: no private chat with the assistant). Owner-only use,
+> consent, caps, payer and fail-closed rules are unchanged.
 
 **Status:** accepted, 2026-09-28, by independent
 [review](https://github.com/ColdPhase/flux/pull/125#pullrequestreview-5334126978)

@@ -20,8 +20,10 @@ workspace (question 9); #280's read-only first run is a delivery step, after whi
 owner's switches decide (questions 10 and 18); changes follow F-027's approval modes
 (questions 1–4); Connect AI leads with subscriptions (questions 13–14); the launcher
 asks once about the operator switch (question 12); the 2026-11-12 Usage Policy
-re-check (question 17); the plan's T7 is replaced by F-027 slices A2–A5. Everything
-else in this decision is unchanged.
+re-check (question 17); the plan's T7 is replaced by F-027 slices A2–A5. Later the
+same day (answer A): the sign-in console is presented as guided cards, with the
+terminal under *Show details* and one narrow exception to "never parses console
+frames". Everything else in this decision is unchanged.
 
 **Evidence:** [agent runtime research](research/2026-10-05-agent-runtime.md),
 retrieved 2026-10-05, and the [two AI modes audit and research](research/2026-10-04-two-ai-modes.md),
@@ -112,7 +114,7 @@ has a **transport**. The transport is a property of the connection, not a mode.
   *Revised 2026-10-09 by founder direction (F-027, questions 5–8 and 15):* the
   assistant's scheduled jobs and its reactions to events about the owner may run on a
   `runtime` connection, as an opt-in per item with a risk note, at most hourly, with
-  no catch-up ([F-027 AST-7](assistant.md#ast-7--background-work-scheduled-jobs-and-reactions)).
+  no catch-up ([F-027 AST-7](assistant.md#ast-7--background-work-on-a-schedule-and-when-something-happens)).
 
 **Not offered, with the reason.** Quotes retrieved 2026-10-05 unless marked.
 
@@ -305,6 +307,15 @@ root on the host or every owner's credentials.
 
 ### Sign-in as in a terminal
 
+*Revised 2026-10-09 by founder direction (F-027, answer A): presentation only; the
+mechanism below is unchanged.* The person sees a guided card, and the terminal is
+folded under *Show details*. Claude: "1. Open claude.ai and approve. 2. Paste the code
+here." with [ Open claude.ai ] and a one-tap [ Paste ] that reads the clipboard and
+types it at the CLI's prompt. ChatGPT: the device code shown large with [ Copy and open
+ChatGPT ], completion read from `codex login status`. Journey 6 of F-027 adds rows for
+"turn on device code sign-in in ChatGPT settings" and "code expired"
+([F-027 AST-1](assistant.md#ast-1--subscriptions-are-the-normal-way-to-connect)).
+
 1. Settings → *Agent in Flux* → *Sign in to Claude Code* or *Sign in to Codex*
    opens a sign-in console for the owner only. The copy uses the product names as
    plain text, with no vendor logos (the legal page's trademark paragraph).
@@ -333,7 +344,10 @@ root on the host or every owner's credentials.
    kills it when the command exits, when the WebSocket closes, or after 15 minutes
    (the lifetime of a Codex device code).
 4. **What passes through Flux.** The console relays what the owner types at the
-   CLI's own prompt, in memory only. Flux never persists, logs or parses console
+   CLI's own prompt, in memory only. *Revised 2026-10-09 (F-027, answer A):* the one
+   exception to "never parses" below is that the supervisor recognises the sign-in URL
+   and the device code in the CLI's output, in memory, to draw the guided card; neither
+   is persisted or logged. Flux never persists, logs or parses console
    frames.
    - The Claude authorization code, pasted at the CLI's `Paste code here if
      prompted` prompt, passes through Flux's WebSocket and the PTY. It is

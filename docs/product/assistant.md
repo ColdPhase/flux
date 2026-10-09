@@ -51,6 +51,21 @@ changes it is recorded here with its date.
 > | 16 | Let the assistant hand tasks to your own agents ("ask my Codex to review")? | Yes, your own agents only |
 > | 17 | If Anthropic's 2026-11-12 Usage Policy stays ambiguous about hosted Claude Code, keep Claude subscription sign-in on? | Yes; switch off only if the text clearly covers Flux |
 > | 18 | Ship the runtime's first run (#280) read-only first, with edits in the next slice? | Yes |
+>
+> **Later the same day**, after an independent UX review of this text
+> ([review](../agents/evidence/f027-assistant/ux-review-2026-10-09.md), findings P1-1 to P3), Hubert answered the
+> points that change decisions:
+>
+> | # | Question | Answer |
+> | --- | --- | --- |
+> | A | Make sign-in guided cards instead of a terminal? | Yes. Claude: "Open claude.ai and approve, then paste the code" with a one-tap [Paste]. ChatGPT: the code shown large with [Copy and open ChatGPT]. The terminal stays under "Show details". Add failure rows for "turn on device code sign-in in ChatGPT settings" and "code expired". A dated revision of AIM-3's console presentation; the mechanism is unchanged |
+> | B | A private "You and your assistant" chat? | No. The assistant is used only in projects; O-008's rule stays. The agent page's "Message" and ⌘K from Home open the project conversation the person picks, or the last one used, with the assistant mentioned. They never lead nowhere |
+> | C | One morning summary, written by the assistant? | Yes. It uses the Notifications time setting (#350, PR #370). It is a line under the Home greeting, never an Inbox item, and there is no second push |
+> | D | A project-level manager choice over assistants' edits? | No. Only the assistant's owner decides. The truthful parts stay: the Agents tab's policy text describes the real rule, and message headers read "for Ada · Claude" so colleagues see which AI company receives their messages (O-008 §6) |
+>
+> He also directed: adopt the review's auto-join (P1-2: *Turn on* joins the projects
+> you manage; elsewhere [Ask Jonas to add me]), its P2 and P3 fixes and its delight
+> ideas that need no decision change.
 
 ## What this decision changes
 
@@ -64,7 +79,10 @@ changes it is recorded here with its date.
 | `FLUX_AGENT_RUNTIME` off unless the operator edits it (AIM-3) | The launcher asks once (AST-1) | 12 |
 | No order on Connect AI (#277) | Subscriptions first, API keys under *Other ways to connect* (AST-1) | 13, 14 |
 | "The first slice allows `flux.context.read` only" (AIM-3) | #280's first delivery step stays read-only; then the switches decide | 18 |
-| O-008 data boundary: "A run never reads … other projects" | A scheduled job tied to Home reads the projects the owner selected, reports only to the owner and changes nothing (AST-7) | Founder "Cron" direction: "tied to a project or to Home" |
+| The sign-in console is a terminal (AIM-3) | Guided cards for Claude and ChatGPT; the terminal under *Show details*; the supervisor recognises only the sign-in URL and device code, in memory (AST-1) | A |
+| Settings → Notifications' morning summary is plain text (#350) | The assistant may write it: one line under the Home greeting, the same one push, never an Inbox item (AST-7) | C |
+| An agent works in a project once a manager adds it | *Turn on* adds the assistant to the projects its owner manages; elsewhere [ Ask Jonas to add me ] (AST-3) | Review P1-2, adopted |
+| O-008 data boundary: "A run never reads … other projects" | The morning summary reads the owner's Inbox items and selected projects, reports only to the owner on Home and changes nothing; every other run is tied to one project (AST-7) | B, C |
 
 Unchanged: F-019 owner-only invocation and payer; O-007's comparison rule on API keys
 (question 15); O-009 (only people accept decisions); no vendor credential in Flux; no
@@ -81,12 +99,17 @@ The full rules and their reasons are in AST-5 to AST-9.
 
 - **It reaches only** the owner's current rights ∩ the assistant's project grant ∩
   the switches ∩ the selected projects ∩ the run's place.
-- **Always waits for the owner, in both modes:** removing anything; changing other
-  people's things; handing work to another person or their agent; a Wiki page someone
-  else is typing in; changes beyond the run's limit (20, or 10 in the background).
+- **Always waits for the owner, in both modes:** removing anything; changing things
+  other people made or are responsible for; handing work to another person or their
+  agent; changes beyond the run's limit (20, or 10 in the background). A change to a
+  Wiki page someone else is typing in waits until they finish.
 - **Never possible (no tool):** access changes of any kind, its own switches, jobs and
   reactions; accepting or superseding decisions; anything outside the run's place.
-- **Outside the owner's rights:** a suggestion to whoever can decide it.
+- **Outside the owner's rights:** a suggestion to whoever can decide it, sent only after
+  the owner's tap.
+- **It joins** the projects its owner manages; elsewhere a manager adds it.
+- **Others always see** whose assistant it is, which AI company it uses, and that it
+  is working; only the owner sees the detail and Stop.
 - **Every change** is attributed ("Ada's assistant · asked by Ada"), versioned, logged
   in the same transaction, listed in one result line, and undoable.
 - **Background runs** never create jobs, never catch up, run at most hourly, stop
@@ -106,12 +129,17 @@ The full rules and their reasons are in AST-5 to AST-9.
   Apply. Internally a pending change.
 - **Suggestion.** A project proposal addressed to whoever has authority over the
   target (the #68 AC-7 proposal, extended to typed changes).
-- **Yours.** A task you created, your assistant created or you are responsible for;
-  a Wiki page, map, thought or link you or your assistant created; a hand-off to
-  your own agent. Everything else in a project is *other people's*.
-- **Scheduled job.** Work the owner wrote down, run on a schedule (AST-7).
-- **Reaction.** "When [event] → [action]" for a small fixed set of events about the
-  owner (AST-7).
+- **Yours.** A task you are responsible for, or one you or your assistant created
+  while nobody else is responsible for it; a Wiki page, map, thought or link you or
+  your assistant created and nobody else has edited; a hand-off to your own agent.
+  Everything else in a project is *other people's*. The person sees this as one
+  sentence: "It asks before changing things other people made or are responsible
+  for." (Revised 2026-10-09 after the UX review, P2-11.)
+- **Scheduled job** (UI: *On a schedule*). Work the owner wrote down, run on a
+  schedule in one project (AST-7).
+- **Reaction** (UI: *When something happens*). "When [event] → [action]" for a small
+  fixed set of events about the owner (AST-7). "Job" and "reaction" never appear in
+  the UI.
 
 ## AST-1 — Subscriptions are the normal way to connect
 
@@ -120,10 +148,45 @@ second.
 
 - **Order on Connect AI** (Settings → Agents and AI, #277). When the instance has
   the runtime on, the first two choices are *Sign in with Claude* and *Sign in with
-  ChatGPT*. They open the F-022 sign-in console, which offers every method of the
-  CLI's own login. *Use an API key* and the other providers sit under *Other ways
-  to connect*. When the runtime is off, the page says so in one sentence and shows
-  the API key choices.
+  ChatGPT*. They open the guided sign-in below. *Use an API key* and the other
+  providers sit under *Other ways to connect*. When the runtime is off, the page says
+  so in one sentence and shows the API key choices; nothing on Home or in the set-up
+  sheet then promises "the plan you already have".
+- **Guided sign-in** (founder answer A, 2026-10-09; a revision of the presentation of
+  [AIM-3 *Sign-in as in a terminal*](ai-modes.md#sign-in-as-in-a-terminal), with the
+  mechanism unchanged). The F-022 console still runs exactly the CLI's own login
+  command in a PTY, and every login method stays available. The person sees a card;
+  the terminal is folded under *Show details*.
+  - **Claude** (`claude auth login`):
+
+    ```text
+    Sign in to Claude
+    1. Open claude.ai and approve.        [ Open claude.ai ]
+    2. Paste the code here.               [ Paste ]
+    Flux never sees your password.        Show details ⌄
+    ```
+
+    *Open claude.ai* opens the sign-in URL the CLI printed. *Paste* reads the
+    clipboard on tap and sends it to the CLI's own prompt, so it is one tap on a phone.
+    A pending sign-in survives a PWA reload while the code is valid.
+  - **ChatGPT** (`codex login --device-auth`):
+
+    ```text
+    Sign in to ChatGPT
+    Enter this code on chatgpt.com:
+          ABCD-1234
+    [ Copy and open ChatGPT ]
+    Flux notices when you're done.        Show details ⌄
+    ```
+
+    There is nothing to paste back; completion is read from `codex login status`.
+  - **The one exception to "Flux never parses console frames"** (AIM-3 N2): the
+    supervisor recognises only the sign-in URL and the device code in the CLI's output,
+    in memory, to draw the card. Neither is persisted or logged. The authorization code
+    the person pastes is relayed exactly as before.
+  - Other methods (*Anthropic Console*, *SSO*, *API key*, *access token*) sit under
+    *Other ways to sign in* on the same card, each as its own short card or, where no
+    card fits, the terminal.
 - **Plain account labels.** "Claude · your subscription", "ChatGPT · your
   subscription", "Anthropic Console · API billing", "OpenAI · API key". The F-022
   payer labels stay as the longer text in the account row (AIM-4 explicit payer).
@@ -162,7 +225,8 @@ second.
 - **"Which account should I use?"** One folded line on Connect AI, in plain words:
   - "Claude Max and Team plans include monthly API credits. Anthropic recommends an
     API key for work that runs on its own, and a key from your Claude Console
-    organization uses those credits." (support 17154008, research §3.1)
+    organization uses those credits (about 5 minutes in the Claude Console)."
+    (support 17154008, research §3.1)
   - "Using Flux for work? In the EU and Switzerland, Claude's personal plans (Pro,
     Max) are for non-business use. A Team plan or an API key covers work." (Consumer
     Terms §11, EEA text)
@@ -181,6 +245,17 @@ second.
   and a fake host check).
 - **AST-1.4** On a host whose check fails, the prompt is not shown and the reason
   is printed (launcher test).
+- **AST-1.5** With the fake `claude`, the Claude card shows *Open claude.ai* with the URL
+  the CLI printed and *Paste*; *Paste* sends the clipboard text to the CLI's prompt;
+  the card shows "Signed in · <plan> · <masked account>" when `claude auth status`
+  reports it; *Show details* shows the same terminal (Playwright, computer and phone).
+- **AST-1.6** With the fake `codex`, the ChatGPT card shows the device code at large
+  size with *Copy and open ChatGPT*, and completes without any paste (Playwright).
+- **AST-1.7** The sign-in URL and the device code never appear in the database, logs,
+  queue payloads or any stream other than the owner's card (seeded-value absence test,
+  as AIM-3's).
+- **AST-1.8** The fake CLIs' "device code sign-in is disabled" and "code expired"
+  outputs show Journey 6's two sign-in rows with their buttons (Playwright).
 
 ## AST-2 — What a subscription may be used for
 
@@ -228,23 +303,24 @@ What remains real:
   relays or reads requests [I]. F-027 does not raise the Claude Code rating for this;
   question 17 and the dated re-check in *Reconsider when* govern.
 
-Each background item therefore carries this note the first time the owner turns one
-on with a subscription:
+The first time the owner turns on any background item with a subscription account,
+this note shows once **per account**, not per item (UX review P2-13):
 
-> This runs on your Claude subscription while you are away. Anthropic and OpenAI
-> recommend API keys for work that runs on its own, and may limit this use of a
-> subscription without notice. Flux can't see your plan's limits. If your plan says
-> no, the job skips that time and tells you.
+> Runs on your Claude plan while you're away. Anthropic may limit this use without
+> notice. If your plan says no, it skips that time and tells you.
 
-For a Claude Max or Team plan the note adds one line with a link: "Your plan includes
-monthly API credits. Use them for background work instead ›", which connects an API
-key from the owner's Console organization (a `server` account, F-020).
+After that, each sheet shows one meta line, "Runs on your Claude plan". For a Claude
+Max or Team plan the note adds one line with a link: "Your plan includes monthly API
+credits. Use them for background work instead (about 5 minutes in the Claude Console)
+›", which connects an API key from the owner's Console organization (a `server`
+account, F-020).
 
 ### Acceptance (AST-2)
 
-- **AST-2.1** A scheduled job or reaction on a subscription account shows the note
-  above once, before its first activation, and records the owner's Turn on with the
-  note's version (app test).
+- **AST-2.1** The first background item on a subscription account shows the note
+  above once for that account, before activation, and records the owner's Turn on with
+  the note's version; later items on the same account show only the meta line (app
+  test).
 - **AST-2.2** No path lets another member's action start the owner's run except an
   enabled reaction of the owner whose event names the owner (AST-7); a test drives
   every other event (another person's task blocked, a mention of someone else, any
@@ -272,7 +348,34 @@ key from the owner's Console organization (a `server` account, F-020).
   project grant ∩ the switches ∩ the selected projects ∩ the run's place, rechecked
   at every read and change (F-019, AIM-4, S6 AC-2). The assistant's project grant is
   given by a project manager, as for any agent; that remains the project's own
-  control over whether the assistant works there (Journey 6, "Not in the project").
+  control over whether the assistant works there.
+- **Joining projects** (UX review P1-2, adopted by founder direction 2026-10-09).
+  *Turn on* adds the assistant, as a contributor, to every project the owner manages,
+  and to projects the owner creates later. The ready card says so ("It joins the
+  projects you manage. In others, a manager adds it."), so no grant is hidden (S6). In
+  a project where the owner is not a manager, the assistant offers [ Ask Jonas to add
+  me ], which creates the existing Agents *Request* row ("Ada's assistant asks to
+  join · Review ›") in that project's managers' Inbox. A manager's Allow is the
+  ordinary project-grant route. Starter chips appear only where the assistant is a
+  member.
+- **Only in projects** (founder answer B). The assistant works in project
+  conversations, threads, tasks, the Wiki and maps. There is no private chat with it
+  and no DM runs; O-008's DM rule is unchanged. The agent page's *Message* and ⌘K
+  "Ask my assistant…" outside a project open the project conversation the person
+  picks, or the last one used, with "Ada's assistant" already mentioned in the
+  composer. The one Home output is the morning summary line (AST-7, founder answer C).
+- **Other people's view** (founder answer D; UX review P1-5). Every assistant message
+  header reads "Ada's assistant · Agent · for Ada · Claude" (the account's company), so
+  colleagues see where their messages go (O-008 §6). The assistant's panel, as others
+  see it, says "Uses Claude through Ada's account. What it reads here goes to
+  Anthropic." The project Agents tab's policy row states the real rule: "Agents read
+  and propose; people accept. Assistants also edit for their owner, with Undo." Only
+  the owner decides what the assistant may do; there is no project-level switch.
+- **Someone else picks Ada's assistant in a hand-off** (UX review P2-10). Jonas's
+  hand-off picker shows "Ada's assistant · for Ada · asks Ada first". Choosing it
+  sends Ada one Needs-you item: "Jonas asks your assistant to do #10 · [ Allow ] [ Not
+  now ]". Allow is Ada's own action, which starts the run (F-019). Jonas's `@` list
+  never offers another person's assistant.
 - **Hand-offs between the owner's agents.** The assistant may hand a task to one of
   the **owner's own** MCP agents with `flux_create_unit` (`cowork.unit.create`:
   execute, review or plan) under the Tasks switch. The receiving agent still needs
@@ -298,6 +401,14 @@ key from the owner's Console organization (a `server` account, F-020).
 - **AST-3.3** Another member, a workspace admin or an agent cannot read or change the
   owner's switches (403/404), and S6 AC-5's held-request race tests pass for the
   assistant's connection.
+- **AST-3.4** *Turn on* creates a contributor project grant for the assistant in each
+  project the owner manages and in none other; a non-manager's [ Ask Jonas to add me ]
+  creates one join request for that project's managers, and a manager's Allow grants
+  it (app test with two people).
+- **AST-3.5** Jonas choosing "Ada's assistant" in a hand-off starts no run; it creates
+  one Needs-you item for Ada, and only Ada's Allow starts the run (app test).
+- **AST-3.6** Assistant messages show the account's company in their header for every
+  viewer, and the Agents tab's policy row reads the sentence above (Playwright).
 
 ## AST-4 — What it can do: the switches
 
@@ -328,8 +439,8 @@ means *read and edit*; Off means *neither*. Finer control sits under *More*.
     operations);
   - **Projects**: all my projects (default) or chosen projects (S6 selected
     projects);
-  - **Limits**: runs per day, changes per run, and for an API key the existing
-    per-run and daily money caps;
+  - **Limits**: requests a day, changes per request, and for an API key the existing
+    per-request and daily money caps;
   - **Today**: runs used and, for an API key, cost.
 
 ### Acceptance (AST-4)
@@ -389,8 +500,12 @@ not needed. It can be added later under *More* if real use asks for it.
    hand-off to their agent): it needs that person's consent (CO-1 "separate explicit
    action"). A hand-off to the owner's own agent is the owner's own thing and
    applies.
-4. **A Wiki page someone else is typing in** (an open live session, F-021): an
-   immediate change would fight their typing.
+4. **A Wiki page someone else is typing in** (an open live session, F-021): the
+   change is **deferred**, not handed to the owner, because the conflict is with the
+   typist, not the owner's consent (UX review P2-5). The line says "I'll edit
+   *Suppliers* when Jonas finishes typing." When the session ends, the change applies
+   if the page's version still matches; otherwise it becomes an ordinary waiting
+   change. In "Ask me first" it waits for the owner as usual.
 5. **Changes beyond the run's limit** (default 20 per run, 10 per background run):
    the remainder wait, so one confused run cannot rewrite a project.
 
@@ -406,20 +521,29 @@ only say it in words):
 8. **Anything outside the run's place** (another project, a DM, private memory).
 
 **Outside the owner's rights** (for example finishing a task whose owner is someone
-else when the owner is not a manager) becomes a **suggestion** for the person who
-can decide it, through Inbox "Needs you" (#68 AC-7). When that person accepts, the
-change is made by them and records "drafted by Ada's assistant".
+else when the owner is not a manager) becomes a **suggestion** for the person who can
+decide it (#68 AC-7). It is prepared first and reaches that person only after the
+owner's one tap (UX review P2-6): "Jonas owns #8. Suggest this change to him? [ Send to
+Jonas ]". Then it is a Needs-you item for Jonas; when he accepts, the change is made by
+him and records "drafted by Ada's assistant".
 
 **Waiting changes**:
 
-- Interactive runs show them in the run's result line in the conversation where the
-  owner asked; the "Waiting for you" part is shown only to the owner, and others see
-  only what was done. Background runs put them in the owner's Inbox as one "Needs
-  you" item per run.
-- Apply executes exactly the prepared change through the same executor, with every
+- Interactive runs show them in the run's message in the conversation where the owner
+  asked; the "Waiting for you" part is shown only to the owner, and others see only
+  what was done. Background runs put them in the owner's Inbox as one "Needs you" item
+  per run.
+- **Unanswered ones move to Inbox** (UX review P2-4): still undecided when the owner
+  leaves that conversation, or 10 minutes after the run ends, they become one Needs-you
+  item under Inbox *Questions*: "Your assistant wants to close 2 duplicates · [ Close ]
+  [ Review ]".
+- **The button is the object's own verb** (UX review P2-5): *Close*, *Remove*, *Send*,
+  *Hand off*, *Rename*. *Apply* is used only for a mixed batch.
+- Applying executes exactly the prepared change through the same executor, with every
   check repeated and the target's version compared. If the target changed since,
   that item says "Changed since you asked. Ask again" and nothing is applied.
-- They are visible only to the owner, and expire after 7 days ("Expired").
+- They are visible only to the owner, and expire after 7 days. An expired item leaves
+  one line in Recent: "Expired: close 2 duplicates · Ask again".
 - An applied waiting change records "Ada's assistant · approved by Ada".
 
 ### Acceptance (AST-5)
@@ -436,7 +560,16 @@ change is made by them and records "drafted by Ada's assistant".
   shows "Changed since you asked"; Apply on one whose owner lost write access is
   refused (app test).
 - **AST-5.5** A waiting change is invisible to other members (403/404 on read and
-  Apply), and expires after 7 days (clock-controlled test).
+  Apply), and expires after 7 days with the Recent line (clock-controlled test).
+- **AST-5.6** An undecided waiting change becomes one Inbox *Questions* item when the
+  owner leaves the conversation or 10 minutes after the run ends, with the object's
+  verb on its button (Playwright with a fixed clock).
+- **AST-5.7** A change to a page with another person's open live session is deferred
+  with the "when Jonas finishes typing" line; it applies when the session ends if the
+  version matches, and otherwise becomes a waiting change (app test with a faked
+  session signal).
+- **AST-5.8** A change outside the owner's rights reaches the other person only after
+  the owner's *Send to Jonas* (app test: no Needs-you item for Jonas before the tap).
 
 ## AST-6 — How a change is made
 
@@ -462,27 +595,42 @@ change is made by them and records "drafted by Ada's assistant".
   version whose reason starts "Asked by Ada:", a thought version. A change-log row
   (`assistant_changes`: run, object, operation, version before and after, undo
   state) commits in the same transaction as the change.
-- **No silent edits.** When a run ends, stops or fails, one result line lists every
-  committed change. Crash recovery (#161) posts it for a run that died. A change
-  without its log row cannot commit.
-- **Undo.** Each item has Undo, and the line has Undo all.
-  - Undo writes a new version that restores the earlier state: task fields, the
-    earlier Wiki text as a new version, a thought's text, position or link. A
-    created task follows #238 (undo of an unused AI-created task, PR #394). A created
-    thought or link is removed by the owner's Undo. A created Wiki page, for which
-    the domain has no removal today, returns to a draft visible only to the owner
-    (A4 decides the exact shape with the Wiki owner of #354).
-  - If the object changed after the assistant's change, Undo for that item says
-    "Changed since. Open it" and does nothing.
+- **No silent edits.** When a run ends, stops or fails, one message lists every
+  committed change (AST-10, *The run's message*). Crash recovery (#161) posts it for a
+  run that died. A change without its log row cannot commit.
+- **Conflicts while it works** (UX review P2-3). A write whose version check fails
+  because a person or another agent changed the object is not retried; it becomes an
+  item in the run's message: "Skipped #4: Jonas changed it while I worked · Open" (or
+  "… Jonas's assistant changed it …").
+- **Visible to everyone, controlled by the owner.** Everyone in the place sees "Ada's
+  assistant is working…". Only the owner sees the detail ("reading 14 tasks") and Stop.
+- **Queue** (one serial lane per owner). The owner's requests go before queued
+  background runs. A request behind a running background run shows "Finishing your
+  *Morning summary* first. Yours starts next. [ Stop the summary ]". A request behind
+  another request shows "Next: 'turn this into tasks'. It starts when this one ends ·
+  Cancel".
+- **Undo** (field-level; UX review P2-7).
+  - The message's **Undo** always means all of its changes; each item in the expanded
+    list has its own Undo.
+  - Undo restores only the fields the assistant changed, if those fields are untouched
+    since: a rename can be undone after someone moved the task to In progress. It
+    writes a new version: task fields, the earlier Wiki text as a new version, a
+    thought's text, position or link. A created task follows #238 (PR #394). A created
+    thought or link is removed by the owner's Undo. A created Wiki page, which the
+    domain cannot remove today, moves to the owner's drafts: "Moved to your drafts".
+  - If a changed field was edited again since, that item says "Changed since. Open it"
+    and does nothing. A partial Undo says "Undid 5 changes. 2 changed since: #4, #7 ·
+    Open".
   - The owner, or anyone who may edit the object, may Undo. The Undo is recorded
     ("Ada undid her assistant's change").
-- **Limits.** Changes per run (20; 10 for background runs), runs per day (20, the
-  F-022 default), background runs per day (24), turns (10), MCP result size (16 KiB
+- **Limits.** Changes per request (20; 10 for background runs), requests a day (20,
+  the F-022 default), background runs a day (24), turns (10), MCP result size (16 KiB
   per call, 64 KiB per run), answer size (16 KiB), wall clock (5 minutes; 10 for
-  background runs). The owner may lower each.
+  background runs). The owner may lower each. Each limit, when reached, is named in
+  plain words (Journey 6).
 - **Stop.** Stop (S13) marks the run stopping. `/mcp` refuses its next call at once.
   The engine is stopped as AIM-3 says. Changes already made stay and are listed:
-  "Stopped after 3 changes · Undo all".
+  "Stopped after 3 changes · Undo".
 
 ### Acceptance (AST-6)
 
@@ -490,128 +638,175 @@ change is made by them and records "drafted by Ada's assistant".
   two tasks and one Wiki version authored by the assistant agent, three change-log
   rows, and one result line "Done: added 2 tasks, edited 1 page" with Undo (app
   test plus Playwright).
-- **AST-6.2** Undo all restores the Wiki text as a new version and undoes both tasks;
-  after a person edits one task, that item's Undo says "Changed since" and changes
-  nothing (app test).
+- **AST-6.2** Undo restores the Wiki text as a new version and undoes both tasks. After
+  a person changes a task's state, Undo of the assistant's rename of that task still
+  works; after a person edits the same title, that item says "Changed since" and the
+  message says "Undid N changes. 1 changed since: #…" (app test).
 - **AST-6.3** Killing the worker after two committed changes and restarting it
   posts the result line with exactly those two changes (crash test, as #161).
 - **AST-6.4** Stop during a run makes the next tool call fail with 403, keeps the
   committed changes and shows "Stopped after N changes" (app test).
 - **AST-6.5** The 21st change in one run waits instead of applying (app test).
+- **AST-6.7** A person's edit to #4 between the run's read and its write makes that
+  write an item "Skipped #4: Jonas changed it while I worked"; nothing is retried (app
+  test).
+- **AST-6.8** A request made while a background run holds the lane shows the
+  "Finishing your … first" line and runs before any other queued background run;
+  others in the place see only "Ada's assistant is working…" (app test plus
+  Playwright with two people).
 - **AST-6.6** Receipts record the owner, the agent, the engine, the payer label and
   the run id; no receipt or log holds a vendor credential (seeded-secret absence
   test, AIM-3).
 
-## AST-7 — Background work: scheduled jobs and reactions
+## AST-7 — Background work: on a schedule, and when something happens
 
-Background work is the owner's own, configured only by the owner on the assistant
-screen. A run never creates, changes or deletes a job or reaction, and never changes
-a switch: no tool exists for it (as Hermes: "Cron-run sessions cannot recursively
-create more cron jobs").
+Background work is the owner's own, configured only by the owner. The assistant
+screen calls the two kinds **On a schedule** and **When something happens**; "job"
+and "reaction" are internal words only (UX review P2-9). No background run creates,
+changes or deletes a schedule, a reaction or a switch: no tool exists for it (as
+Hermes: "Cron-run sessions cannot recursively create more cron jobs").
 
-### Scheduled jobs
+**Set up by asking** (delight, UX review). In an owner's own request, "@Ada's assistant
+every weekday at 9 tell me what's blocked here" makes the assistant prepare a
+schedule that is **off**: "Ready: *Blocked tasks*, weekdays 9:00 · [ Turn on ]". Only
+the owner's tap turns it on. Background runs cannot prepare one.
 
-- **What.** A plain sentence the owner writes, for example "Every morning summarise
-  what changed and list what needs me". The saved sentence is the instruction; what
-  the run reads in the project is data (as Anthropic Routines treat fired text).
+### The morning summary
+
+Founder answer C, 2026-10-09: **one** morning summary, written by the assistant.
+
+- It is Settings → Notifications → *Morning summary* (#350, PR #370), with its time,
+  quiet hours and its one push. Turning on "Let your assistant write your morning
+  summary" (a starter on the assistant screen, or the same row in Notifications) makes
+  the assistant write its text. Notifications then shows "Written by Ada's assistant ·
+  Change ›".
+- It appears as **one line under the Home greeting**, for example "Good morning, Ada.
+  Jonas is waiting on you for #8, and 2 tasks are due today. ›". It is **never an
+  Inbox item** and there is **no second push**.
+- It reads the owner's Inbox items and the projects selected for the assistant,
+  reports only to the owner, and changes nothing. It is the one assistant output on
+  Home (founder answer B), and the one exception to O-008's "never reads … other
+  projects" (revised O-008, 2026-10-09).
+- If the run fails or the plan says no, the plain #350 summary goes out as before
+  ("3 things wait in your inbox"): human work continues without AI, and nothing falls
+  back to another account.
+- It runs on the existing morning-summary tick (`MORNING_SUMMARY_JOB`), not on a second
+  schedule.
+
+### On a schedule
+
+- **What.** A plain sentence the owner writes, for example "Every Friday at 16:00 list
+  what we finished this week". The saved sentence is the instruction; what the run
+  reads in the project is data (as Anthropic Routines treat fired text).
 - **When.** A simple picker with plain words: *Every day*, *Weekdays*, *Every Monday*,
   *Every hour while I work*, each with a time (default 9:00). "While I work" is
   9:00–17:00 on weekdays and is editable. Under *More*, a five-field cron expression,
   shown back as plain words and the next three times ("Next: Tue 9:00, Wed 9:00, Thu
   9:00"). The owner's time zone applies.
-- **Where.**
-  - **Home**: reads the projects chosen for the assistant and reports only to the
-    owner. It changes nothing, which is the safe shape for a cross-project summary.
-  - **A project**: reads and may change that project within the switches and the
-    mode.
-- **Output.** When something needs the owner, one Inbox item ("Morning summary · 3
-  things need you"). Otherwise the result stays on Home and in Activity, with no
-  notification (S1, S22). Changes appear as ordinary notices in their project. Under
-  *More*, a project job may post its result in a chosen conversation instead.
+- **Where.** One project (founder answer B: the assistant works only in projects). It
+  reads and may change that project within the switches and the mode.
+- **Output.** When something needs the owner, one Inbox item. Otherwise its result
+  shows in the assistant's Recent. A project schedule may post its result in a chosen
+  conversation (*More*); there, "Done: nothing to change" is never posted, and its
+  messages fold into its previous one while no person has posted since (S8): "Ada's
+  assistant · Hourly tidy · 6 changes today ⌄" (UX review P2-8).
 - **Controls.** On/off, Run now, Edit, Delete (with Undo, F-026 principle 6). The row
   shows the schedule, the next run, and the last run with its result line.
-- **Spacing and caps.** At most one run per hour per job: the minimum interval of
-  Anthropic's own Routines, which keeps a plan's background use close to the
-  vendor's own product. One run at a time per job. Per-job runs per day (default 12)
-  within the assistant's background runs per day (default 24).
+- **Spacing and caps.** At most one run per hour per schedule: the minimum interval of
+  Anthropic's own Routines (question 7). One run at a time per schedule. Runs a day per
+  schedule (default 12) within the assistant's background runs a day (default 24).
 - **Missed runs.** A run that could not start within 10 minutes of its time (Flux was
-  off, or the owner's slot was busy) is skipped and recorded as "Missed". Flux never
-  runs a backlog. A paused job never catches up.
-- **Failures.** A plan limit skips that time ("Skipped: plan limit until 14:00", as
-  the CLI reports it, or without a time when it is unknown). A sign-out or a vendor
-  refusal fails the run. Three failures in a row pause the job and add one Inbox
-  item: "Paused *Morning summary*: sign in to Claude again". Nothing falls back to
-  another account.
-- **Text guard.** A job whose text contains a token-shaped string (the AIM-3
-  redaction patterns) is refused at save, so no secret is stored in a job.
+  off, or the owner's lane was busy) is skipped and recorded as "Skipped: Flux was off
+  at 9:00" (question 8). Flux never runs a backlog. A paused schedule never catches up.
+- **Failures.** A plan limit skips that time ("Skipped: plan limit until 14:00", or
+  without a time when it is unknown). A sign-out or a vendor refusal fails the run.
+  Three failures in a row pause the schedule and add one Inbox item: "Paused *Weekly
+  review*: sign in to Claude again". Nothing falls back to another account.
+- **Do it later.** When the plan limit stops an owner's request, the line offers [ Do
+  it at 14:00 ] next to [ Remind me at 14:00 ]: a one-off schedule of the same request,
+  made by the owner's tap.
+- **Text guard.** A schedule whose text contains a token-shaped string (the AIM-3
+  redaction patterns) is refused at save, so no secret is stored.
 
-### Reactions
+### When something happens
 
-A reaction is one plain sentence built from two pickers: **When** [event ▾] **→**
-[action ▾]. The set is small and fixed. There is no generic rule builder.
+One plain sentence built from two pickers: **When** [event ▾] **→** [action ▾]. The
+set is small and fixed. There is no generic rule builder.
 
 | When (exact copy) | Then (exact copy) | What the run may do |
 | --- | --- | --- |
 | a new task is assigned to me | tell me · suggest a plan · plan it | "plan it" adds steps and a done-when list to that task (yours, so it applies in "Do it and tell me") |
-| one of my tasks is blocked | tell me · suggest a fix · try to unblock it | "try to unblock it" may change that task and add what helps in its project, within the switches and the mode |
+| one of my tasks is blocked | tell me · suggest a fix · add next steps | "add next steps" adds steps to that task and what helps in its project, within the switches and the mode. (Not "unblock": the Inbox's *Unblock* button clears a blocker; UX review P3) |
 | a result fails on my task | tell me · suggest a fix | — |
-| someone mentions me | tell me · draft a reply | "draft a reply" always waits for Apply: it never posts on its own |
-| a PR is ready on my task | tell me · check it against the task | compares the PR facts Flux has (G-1: state, checks) with the task's done-when list and tells the owner |
+| someone mentions me | tell me · draft a reply | "draft a reply" opens the Inbox mention's existing *Reply*, prefilled and marked "Drafted by your assistant", with *Send*; it never posts on its own |
+| a pull request is ready on my task | tell me · check it against the task | offered only in projects linked to GitHub; compares the PR facts Flux has (G-1: state, checks) with the task's done-when list and tells the owner |
 
 - **Tell me** adds the assistant's short note to the owner's Inbox item for that
   object, or makes one item. It never sends a second notification (S22).
-- **Suggest a fix / suggest a plan** posts a suggestion; nothing changes until a
-  person applies it.
+- **Suggest a fix / suggest a plan** prepares a suggestion for the owner; nothing
+  changes until a person applies it.
 - **Only events about the owner** (my task, assigned to me, mentions me), in projects
   selected for the assistant. Another person's event never starts the owner's run
   (AST-2.2).
 - **Event content is data.** The blocker text, the mention or the PR facts reach the
-  run marked as data. The reaction's own action is the instruction.
-- **Debounce and caps.** One run per object per 30 minutes. Per-reaction runs per
-  day (default 10) within background runs per day. Events beyond that are recorded as
-  "Skipped: daily limit" in Activity.
+  run marked as data. The owner's chosen action is the instruction.
+- **Debounce and caps.** One run per object per 30 minutes. Runs a day per reaction
+  (default 10) within background runs a day. Events beyond that are recorded as
+  "Skipped: daily limit" in Recent.
 
 ### Engine
 
 Reuse the worker and pg-boss, as O-007's comparisons and the morning summary do:
 
 - A singleton `assistant.background.tick.v1`, scheduled every minute with a heartbeat
-  (as PR #391 added for comparison ticks), selects due jobs (`next_run_at <= now`, on,
-  not running) and queued reaction events. It computes the next time in the owner's
-  time zone with the cron parser pg-boss already uses.
-- It enqueues one personal run per firing with `singletonKey` = the job or reaction
-  id, so a job never overlaps itself. The run is an O-008 personal run of kind
-  `scheduled` or `reaction`, with every consent, standing (F-024 S4), access and cap
-  recheck. A `runtime` run waits for the owner's slot lane (one serial lane, AIM-3)
-  until the missed-run window ends.
+  (as PR #391 added for comparison ticks), selects due schedules (`next_run_at <=
+  now`, on, not running) and queued reaction events. It computes the next time in the
+  owner's time zone with the cron parser pg-boss already uses. The morning summary
+  stays on #350's tick.
+- It enqueues one personal run per firing with `singletonKey` = the schedule or
+  reaction id, so one never overlaps itself. The run is an O-008 personal run of kind
+  `scheduled`, `reaction` or `morning_summary`, with every consent, standing (F-024
+  S4), access and cap recheck. A `runtime` run waits for the owner's lane (AIM-3) until
+  the missed-run window ends, behind the owner's own requests (AST-6 *Queue*).
 - Recovery reuses #161's sweep.
 
 ### Acceptance (AST-7)
 
-- **AST-7.1** From the empty *Scheduled* part, tapping "Morning summary at 9:00"
-  and then *Turn on* (2 taps) creates an enabled job whose row shows "Every day at
-  9:00 · Next: tomorrow 9:00" in the owner's time zone (Playwright, clock fixed).
-- **AST-7.2** With the clock moved past 9:00, exactly one run starts, posts its
+- **AST-7.1** From the empty *On a schedule* part, tapping "Weekly review on Monday"
+  and then *Turn on* (2 taps) creates an enabled schedule whose row shows "Every Monday
+  at 9:00 · Next: Mon 9:00" in the owner's time zone (Playwright, clock fixed).
+- **AST-7.2** With the clock moved past the time, exactly one run starts, posts its
   result, and the row shows "Last: Done …"; a second worker does not start a second
   run (app test, two workers).
 - **AST-7.3** With the worker stopped from 8:55 to 9:20, no run happens for 9:00, the
-  history shows "Missed", and the next run is the next day (clock test).
-- **AST-7.4** Three failing runs (fake CLI: signed out) pause the job and create
+  history shows "Skipped: Flux was off at 9:00", and the next run is the next one due
+  (clock test).
+- **AST-7.4** Three failing runs (fake CLI: signed out) pause the schedule and create
   exactly one Inbox item (app test).
-- **AST-7.5** A run of a job calling any job or reaction management path, or a
-  switch path, is refused; no such tool is listed (app test).
-- **AST-7.6** A Home job lists no effect tool and changes nothing (app test).
-- **AST-7.7** "When one of my tasks is blocked → try to unblock it" fires for the
-  owner's task and not for anyone else's; a second block of the same task within
-  30 minutes does not start a run; the blocker text reaches the run marked as data
-  (app test).
-- **AST-7.8** "Draft a reply" never posts: the reply waits for Apply even in "Do it
-  and tell me" (app test).
-- **AST-7.9** A job text containing `sk-ant-` or a JWT-shaped string is refused at
+- **AST-7.5** A background run calling any schedule, reaction or switch path is
+  refused, and no such tool is listed; an owner's request may prepare a schedule that
+  stays off until the owner taps *Turn on* (app test).
+- **AST-7.6** The morning summary: with "Let your assistant write your morning
+  summary" on, at the Notifications time exactly one run happens, Home shows its line
+  under the greeting, no Inbox item is created, and exactly one push is sent; with the
+  fake CLI failing, the plain #350 summary is sent instead (app test plus Playwright,
+  fixed clock).
+- **AST-7.7** "When one of my tasks is blocked → add next steps" fires for the owner's
+  task and not for anyone else's; a second block of the same task within 30 minutes
+  does not start a run; the blocker text reaches the run marked as data (app test).
+- **AST-7.8** "Draft a reply" never posts: it opens the Inbox mention's *Reply*
+  prefilled with "Drafted by your assistant", and only *Send* posts it (app test plus
+  Playwright).
+- **AST-7.9** A schedule text containing `sk-ant-` or a JWT-shaped string is refused at
   save with a plain message (app test).
 - **AST-7.10** A cron expression firing more than once an hour is refused with "At most
   once an hour"; a valid one shows its next three times in words (app test and
   Playwright).
+- **AST-7.11** A schedule posting into a conversation never posts "Done: nothing to
+  change", and folds into its previous message while no person has posted since
+  (Playwright).
+- **AST-7.12** "a pull request is ready on my task" is offered only in projects linked
+  to GitHub (Playwright).
 
 ## AST-8 — Engines: the `server` tool loop and the `runtime`
 
@@ -648,12 +843,12 @@ Reuse the worker and pg-boss, as O-007's comparisons and the morning summary do:
 
 - **What leaves Flux.** Only what the switched-on areas return, from the run's place,
   within the owner's rights; the owner's request; and Flux's brief. Never DMs,
-  private sketches, other projects (except a Home job's chosen projects, reported
-  only to the owner) or file contents. Everything sent goes to the vendor under the
+  private sketches, other projects (except the morning summary, which reads the
+  owner's selected projects and reports only to the owner) or file contents. Everything sent goes to the vendor under the
   owner's account settings (AIM-3 *Payer and data*).
 - **Injected text.** Project content is untrusted input, including the content of the
   event that starts a reaction. The limits on reach, the always-wait list, the never
-  list and Undo all are the defence; Flux's brief tells the assistant to treat content
+  list and Undo are the defence; Flux's brief tells the assistant to treat content
   as data, but the design does not rely on it.
 - **Redaction.** AIM-3's redaction of token-shaped strings applies to answers and to
   every text the assistant writes into a task, page, thought or message.
@@ -678,204 +873,256 @@ Reuse the worker and pg-boss, as O-007's comparisons and the morning summary do:
 Founder direction, 2026-10-09: AI, agents and the Flux assistant are a pillar of
 Flux, "AI and people connected together in a messenger", and the experience should
 surprise. The visual style is settled by F-026; this section sets the flows,
-interaction and wording. Everything here uses only components the frozen canvas
-already has: the conversation stream, the composer with `@` and `/`, result and
-notice lines (S8, P5), the working-agent card with Stop (S13), question cards with
-ready answers (S14), the detail panel and sheets (S4), Inbox "Needs you" (S1),
-segmented controls and switches (Settings · Appearance), toasts with Undo, and
-Kreska. The assistant screen and the result line are an **addition to the frozen
+interaction and wording. It uses only components the frozen canvas already has: the
+conversation stream, the composer with `@` and `/`, P5 notices with object rows, S8
+folding, the working-agent card with Stop (S13), question cards with ready answers
+(S14), the detail panel and sheets (S4), Inbox "Needs you" (S1), segmented controls
+and switches (Settings · Appearance), toasts with Undo, the Home greeting, and
+Kreska. The assistant screen and the run's message are an **addition to the frozen
 canvas**, accepted with F-027; they must look native to it, and the independent UX
 review of AST-10.12 examines them before the first A7 merge.
 
+*Revised 2026-10-09 after the independent [UX review](../agents/evidence/f027-assistant/ux-review-2026-10-09.md)
+and the founder's answers A–D: guided sign-in, joining projects, one morning summary on
+Home, no private chat, truthful headers, one message per run, field-level Undo, and the
+P2/P3 fixes.*
+
 **Five promises the journeys keep.**
 
-1. **One stream.** The assistant talks in the same conversation as people and other
-   agents, always marked Agent and "for Ada".
-2. **It shows its work.** A working line with Kreska thinking and Stop while it
-   works; one plain result line when it is done.
-3. **No surprises.** It does what was asked, asks when unsure, never removes or
-   touches other people's things without asking, and says exactly what it changed.
-4. **Everything is undoable.** Every change has Undo, in the line, in Activity and
-   on the object.
+1. **One stream.** The assistant talks in the project's conversation with people and
+   other agents, always marked Agent, "for Ada" and the AI company it uses.
+2. **It shows its work.** Everyone sees that it is working; its owner sees what it is
+   doing and can stop it. When it is done, one message says what changed.
+3. **No surprises.** It does what was asked, asks when unsure, and never removes
+   anything or changes things other people made or are responsible for without asking.
+4. **Everything is undoable.** Every change has Undo, in the message, in Recent and on
+   the object, and Undo touches only what the assistant changed.
 5. **What it can do is one tap away.** Tap the assistant anywhere to see *Can*.
 
 ### Journey 1 — First meeting: connected and useful within a minute
 
-Ada has just installed Flux. She pays for Claude Max.
+Ada has just installed Flux and manages her project. She pays for Claude Max.
 
 1. **Sees.** Home, with one card under "Continue where you left off", drawn with
    Kreska (a small moment, hidden when Kreska is off):
    > **Meet your assistant**
    > It works inside Flux with the Claude or ChatGPT plan you already have.
-   > [ Set up ]
+   > [ Set up ]   Not now
 
-   The same entry exists in Settings → Agents and AI, and as "My assistant · Set up"
-   at the top of the composer's `@` list.
+   When subscription sign-in is off on this Flux, the card says "It works inside Flux
+   with your AI account" and promises no plan. The same entry exists in Settings →
+   Agents and AI, and as "My assistant · Set up" in the composer's `@` list (first,
+   then last once the card has been dismissed).
 2. **Taps** *Set up*. A sheet (phone: half height; computer: the hand-off dialog's
-   size) asks one question:
+   size) asks one question and lists only choices that work on this Flux:
    > **Which do you use?**
    > Claude — Pro, Max or Team
    > ChatGPT — Plus or Pro
    > Something else — an API key or your own model
-3. **Taps** *Claude*. The sign-in step (F-022 console) shows one sentence and the
-   official sign-in:
-   > Sign in on claude.ai, then paste the code here. Flux never sees your password.
-   > [ Open claude.ai ]
+3. **Taps** *Claude*. The guided card (AST-1):
+   > **Sign in to Claude**
+   > 1. Open claude.ai and approve.   [ Open claude.ai ]
+   > 2. Paste the code here.          [ Paste ]
+   > Flux never sees your password.   Show details ⌄
 
-   Ada approves on claude.ai, copies the code, pastes it, presses Enter. The step
-   ends with "Signed in · Max plan · h…@gmail.com". About 30 seconds.
+   On a Flux with more than one account, one line above it: "Whoever runs this Flux
+   could technically reach your sign-in. Sign in only if you trust them." Ada approves
+   on claude.ai, comes back, taps *Paste*. The card ends with "Signed in · Max plan ·
+   h…@gmail.com". About 30 seconds.
 4. **Sees** "Your assistant is ready", with Kreska in its agent colour:
    > It can read and edit tasks, the Wiki and maps, reply in conversations and
    > suggest decisions.
-   > It does things and tells you what it did, with Undo.
-   > It always asks before removing anything or changing other people's things.
+   > It does things and tells you what it did, with Undo. It asks before removing
+   > anything or changing things other people made or are responsible for.
+   > It joins the projects you manage. In others, a manager adds it.
+   > Others in the conversation see what you ask it and what it does.
    >
    > Uses your Claude plan. Flux can't see its limits. What it reads goes to
    > Anthropic under your account's settings.
    > [ Turn on ]   Change what it can do
 
-   **Taps** *Turn on*. The button is the consent; there is no extra check box.
-5. **Sees** the place she came from. Above the composer, three suggestions chosen
-   for this place:
-   > ( Tidy this project's tasks )  ( Summarise this conversation )  ( Turn this thread into tasks )
-6. **Taps** *Tidy this project's tasks*. Her message appears in the stream as she
-   sent it: "@My assistant tidy this project's tasks". Everyone in the project sees
-   what she asked.
-7. **Sees**, within a second, the working line at the assistant's place in the
-   stream, the same in the sidebar card and on the phone header:
-   > [Kreska thinking] **Ada's assistant** Agent · for Ada — Working… reading 14 tasks   [■ Stop]
-8. **Sees**, about 20 seconds later, one answer and one result line:
-   > **Ada's assistant** Agent · for Ada
-   > I gave three tasks clearer titles and added a done-when list to four.
-   > #4 and #11 look like duplicates of #7; they're Jonas's, so I'm asking first.
-   > Done: renamed 3 tasks, added done-when to 4 · Undo
-   > Waiting for you: close 2 duplicates · Review
-9. **Taps** *Review*. The detail panel lists "Close #4 *Order probes* (same as #7)"
-   and "Close #11 …" with check boxes, and the reason "Jonas made these". **Taps**
-   *Apply*. The line becomes "Done: renamed 3 tasks, added done-when to 4, closed 2
-   duplicates · Undo".
+   **Taps** *Turn on*. The button is the consent; there is no extra check box. The
+   assistant joins the projects Ada manages.
+5. **Sees** the place she came from. Above the composer, three suggestions for this
+   place, shown only where the assistant is a member:
+   > ( Catch me up )  ( Turn this thread into tasks )  ( Tidy this project's tasks )
+6. **Taps** *Tidy this project's tasks*. Her message appears in the stream as sent:
+   "@Ada's assistant tidy this project's tasks". Everyone sees what she asked and whose
+   assistant it is.
+7. **Sees**, within a second, the working line at the assistant's place in the stream,
+   in the sidebar card and in the phone header:
+   > [Kreska thinking] **Ada's assistant** Agent · for Ada · Claude — Working… reading 14 tasks   [■ Stop]
 
-**Measure:** from *Set up* to the first result line in at most 6 taps plus the
-vendor's own sign-in, with no technical word on any Flux screen (AST-10.1, AST-10.2).
+   Jonas sees "Ada's assistant is working…", with no detail and no Stop.
+8. **Sees**, about 20 seconds later, one message (not an answer plus a result line):
+   > **Ada's assistant** Agent · for Ada · Claude
+   > Renamed 3 tasks and added done-when to 4 · Undo
+   > ◐ #3 ~~Probes~~ → Calibrate the probes at two depths
+   > ○ #5 ~~Labels~~ → Print a label for each of the six beds
+   > ○ #9 done-when added: "drawing received, depths agreed"
+   > +4 more ⌄
+   > #4 and #11 look like duplicates of #7. Jonas made them, so I'm asking first.
+   > Waiting for you: close 2 duplicates · [ Close ] [ Review ]
+
+   The prose line appears because it gives a reason. Only Ada sees the waiting row.
+   Kreska shows its "waiting for you" expression on the message while it waits.
+9. **Taps** *Close*. The header becomes "Renamed 3 tasks, added done-when to 4, closed
+   2 duplicates · Undo".
+
+**Measure:** from *Set up* to the run's message in at most 6 taps plus the vendor's
+own sign-in, with no technical word on any Flux screen (AST-10.1, AST-10.2).
 
 ### Journey 2 — Everyday use in the messenger
 
 A project conversation: Ada, Jonas, and Ada's Codex (her MCP agent on her laptop).
 
 1. Jonas: "The probes arrive Thursday. Someone should calibrate them at two depths."
-2. **Ada types** `@`. The list shows **My assistant** first, then people, then
-   agents. Other people's assistants are not in her list: only their owners can ask
-   them. She writes "@My assistant make a task for the calibration and put it on the
-   sensors map".
-3. **Sees** the working line with Stop, then:
-   > **Ada's assistant** Agent · for Ada
-   > Done: made task #12 from Jonas's message, added 1 thought on the Map · Undo
+2. **Ada types** `@`. Her list shows **My assistant** first, then people, then agents;
+   typing `@my` finds it too. Once chosen, the chip reads "Ada's assistant" for
+   everyone. Other people's assistants are not in her list. She writes "@Ada's
+   assistant make a task for the calibration and put it on the sensors map".
+3. Everyone sees "Ada's assistant is working…"; Ada sees the detail and Stop.
+4. **The message:**
+   > **Ada's assistant** Agent · for Ada · Claude
+   > Made a task from Jonas's message and added 1 thought on the Map · Undo
+   > ○ #12 Calibrate the probes at two depths · Ada
+   > ◇ Map · Calibration at two depths
 
-   The line replaces separate task notices for this run's changes: one run, one line
-   (S8 folding, P5 wording). Tapping "task #12" opens it in the detail panel; tapping
-   "1 thought" opens the Map with the thought highlighted.
-4. **In a thread.** The same mention in a thread answers in the thread.
-5. **Jonas sees** the same line. He has Undo too, because he may edit those objects:
+   Tapping #12 opens it in the detail panel; tapping the thought opens the Map with it
+   highlighted.
+5. **In a thread.** Ada's reply in the thread of her assistant's message addresses it
+   without `@`. A mention in any thread answers in that thread.
+6. **Jonas sees** the same message, and Undo too, because he may edit those objects:
    an assistant's change is an ordinary edit.
-6. **Keyboard and phone.** `⌘K` → "Ask my assistant…" starts a message to it in the
-   current place. On the phone, the composer stays at the bottom and the working line
-   sits in the conversation header with Stop (no tab bar in a conversation).
+7. **Collisions are explained.** If Jonas edits #12 while the assistant works on it,
+   that item reads "Skipped #12: Jonas changed it while I worked · Open".
+8. **One thing at a time.** A second request during a run shows "Next: 'turn this
+   into tasks'. It starts when this one ends · Cancel".
+9. **From anywhere.** ⌘K → "Ask my assistant…", and the agent page's **Message**, open
+   the current project conversation with "Ada's assistant" already mentioned. Outside
+   a project (Home, Inbox) they ask "In which conversation?" with the last one used
+   first, then open it the same way. They never lead nowhere (founder answer B).
+10. **Phone.** The composer stays at the bottom; the working line sits in the
+    conversation header with Stop (no tab bar in a conversation). Sent offline, the
+    message shows "Sends when you're back", as photos do.
 
 ### Journey 3 — Trust: always clear, never a surprise
 
 - **What it can do is one tap away.** Tapping the assistant's name or Kreska on any
   message opens its panel (phone: sheet) with **Now**, **Recent** (each with Undo) and
-  **Can**, the sentence generated from the switches:
+  **Can**, generated from the switches:
   > Can: read and edit tasks, the Wiki and maps, reply in conversations, suggest
-  > decisions. Asks before removing anything or changing other people's things.
-  > Can't accept decisions or invite people.
+  > decisions. Asks before removing anything or changing things other people made or
+  > are responsible for. Can't accept decisions or invite people.
 
-  The same sentence appears in the hand-off picker's step 2 (S12).
-- **Why did it do that?** Every changed object's Activity says "Ada's assistant
-  renamed this · asked by Ada: 'tidy this project's tasks' · Undo".
+  The same sentence appears in the hand-off picker's step 2 (S12). Others see one more
+  line: "Uses Claude through Ada's account. What it reads here goes to Anthropic." The
+  panel's ⋯ menu has *Pause my assistant* and *Manage ›*.
+- **The project tells the truth.** The Agents tab's policy row reads "Agents read and
+  propose; people accept. Assistants also edit for their owner, with Undo."
+- **Why did it do that?** Every changed object's Activity says "Ada's assistant renamed
+  this · asked by Ada: 'tidy this project's tasks' · Undo".
 - **It asks when unsure.** Instead of guessing, it posts a question card with ready
   answers (S14):
   > Merge #4 into #7, or keep both?   [ Merge ] [ Keep both ] [ I'll look ]
 
-  An answer starts a short follow-up run with the original request and the answer;
-  no transcript is kept (AIM-3).
-- **Switches take effect at once.** Turning *Read and edit the Wiki* off stops the
-  next Wiki read even inside a running request (AST-4.4).
-- **Undo works for any assistant change**, from the line, from Activity, or from the
-  object, until someone changes the object again; then it says "Changed since. Open
-  it".
+  An answer starts a short follow-up run with the original request and the answer; no
+  transcript is kept (AIM-3).
+- **It waits for people who are typing.** "I'll edit *Suppliers* when Jonas finishes
+  typing."
+- **Switches take effect at once**, even inside a running request (AST-4.4).
+- **Undo touches only what it changed.** Undoing a rename works after someone moved the
+  task to In progress; only an edit to the same field stops it ("Changed since. Open
+  it").
+- **Screen readers** hear the working line and the message politely: "Ada's assistant
+  finished: renamed 3 tasks".
 
-### Journey 4 — Background: the morning summary and a reaction that helps
+### Journey 4 — Background: the morning summary and a helpful reaction
 
-**Setting up the morning summary.** On the assistant screen the *Scheduled* part is
-empty and offers ( Morning summary at 9:00 ). Ada **taps** it: a sheet shows the plain
-sentence, *Every day · 9:00 · Home*, and the subscription note (AST-2). She **taps**
-*Turn on*. Two taps.
+**The morning summary** (founder answer C). On the assistant screen, the empty *On a
+schedule* part offers ( Let your assistant write your morning summary ). Ada **taps**
+it: a sheet shows "Morning summary · 8:30, from Notifications · written by your
+assistant", and the account note once (AST-2). She **taps** *Turn on*. Two taps.
 
-**At 9:00.** Ada's Inbox gets one item, and Home shows it among the top three:
-> [Kreska] **Morning summary** · 3 things need you
-> #8 is blocked: waiting for the probe drawing (Jonas)
-> The sensor-brand decision waits for you
-> 2 tasks are due today
+Next morning at 8:30, Home shows one line under the greeting, and the one push of
+#350 carries the same text:
+> Good morning, Ada. Jonas is waiting on you for #8, and 2 tasks are due today. ›
 
-Each line opens its object. A push notification follows the Needs-you rule and quiet
-hours (S22). On a morning when nothing needs her, the summary stays on Home and in
-Activity, and nothing is sent.
+Nothing is added to the Inbox. Each name in the line opens its object.
 
-**A reaction.** Ada turned on "When one of my tasks is blocked → try to unblock it".
-Jonas marks #8 Blocked: "waiting for the probe drawing from the supplier". Within a
-minute the Inbox item for #8 shows the assistant's note under the blocker:
-> **Ada's assistant** tried to help: added a step "Email Anna at SensorCo for the
-> drawing (contact on the Wiki page *Suppliers*)" · Undo
+**When something happens.** Ada turned on "When one of my tasks is blocked → add next
+steps". Jonas marks #8 Blocked: "waiting for the probe drawing from the supplier".
+Within a minute the Inbox item for #8 shows the assistant's note under the blocker:
+> **Ada's assistant** added a step: "Email Anna at SensorCo for the drawing (contact on
+> the Wiki page *Suppliers*)" · Undo
 
 The task's Activity says "Ada's assistant added a step · when #8 was blocked · Undo".
 Jonas's blocker text was read as data, never as an instruction.
 
+**Set up by asking.** "@Ada's assistant every Friday at 16:00 list what we finished
+this week" gets "Ready: *Weekly wins*, Fridays 16:00 · [ Turn on ]". It stays off until
+Ada taps.
+
 ### Journey 5 — Handing off between your assistant and your agents
 
-1. Ada: "@My assistant ask my Codex to review the plan in #8".
+1. Ada: "@Ada's assistant ask my Codex to review the plan in #8".
 2. The assistant hands #8 to **Ada's own** Codex as a review (allowed: her agent):
-   > Done: asked your Codex to review #8 · Undo
-   > Codex is offline. It starts when your laptop is on.
+   > Asked your Codex to review #8 · Undo
+   > Codex is offline. It starts when *Desk laptop* is on.
 3. When Codex (on Ada's laptop, over MCP) picks it up at its next checkpoint, #8's
    Activity shows "Codex started the review"; Codex posts its review in #8 like any
    agent.
-4. If Ada's Codex may not take reviews in this project, the line says "Your Codex
-   can't take reviews here yet · Allow" and *Allow* opens the hand-off's step 2 for
-   Codex (the owner's normal grant flow).
-5. Asking for **Jonas's** Codex waits: "Waiting for you: hand #8 to Jonas's Codex.
-   Jonas needs to agree." Agents never start each other: Codex cannot start Ada's
-   assistant (F-019).
+4. If Ada's Codex may not take reviews in this project: "Your Codex can't take reviews
+   here yet · [ Allow ]", and *Allow* opens the hand-off's step 2 for Codex.
+5. Asking for **Jonas's** Codex: "Jonas has to agree to hand #8 to his Codex. [ Ask
+   Jonas ]".
+6. **Jonas picks Ada's assistant** in his own hand-off: his picker shows "Ada's
+   assistant · for Ada · asks Ada first". Ada gets one Needs-you item: "Jonas asks your
+   assistant to do #10 · [ Allow ] [ Not now ]". Only her Allow starts it (F-019).
+   Agents never start each other.
 
 ### Journey 6 — Failure and limits, in plain words
 
-Each failure says what happened, that nothing was changed when that is true, and one
-next step. Nothing ever falls back to another account on its own.
+Each failure says what happened, whether anything changed, and offers one next step
+in the same line. Nothing ever falls back to another account on its own.
 
 | Situation | What Ada sees (exact copy) | Next step |
 | --- | --- | --- |
-| Plan limit, reset time known | "Paused: your Claude plan's limit is reached until 14:00." | [ Remind me at 14:00 ]; and, if she has another account, [ Use OpenAI key this time ] |
+| Plan limit, reset time known | "Paused: your Claude plan's limit is reached until 14:00." | [ Do it at 14:00 ] [ Remind me at 14:00 ]; and, if she has another account, [ Use OpenAI key this time ] |
 | Plan limit, reset unknown | "Paused: your Claude plan's limit is reached. Claude didn't say until when." | [ Try again later ] |
-| Vendor not answering | "Claude isn't answering right now. Nothing was changed." | [ Try again ] |
+| Vendor not answering, nothing done | "Claude isn't answering right now. Nothing was changed." | [ Try again ] |
+| Vendor stopped after some changes | "Claude stopped answering after 2 changes · Undo" | [ Finish it ] (continues with the list of changes already made, so nothing is redone) |
+| Time limit | "I stopped after 5 minutes, the limit for one request. I made 4 changes · Undo" | [ Continue ] |
+| Change limit | "I made 20 changes, the most for one request. 6 more wait for you." | [ Review ] |
+| Daily limit | "That's 20 requests today, your daily limit." | [ Change the limit ] |
 | Signed out or expired | "Sign in to Claude again to keep using your assistant." | [ Sign in ] |
 | Vendor refused | "Claude refused this request. Nothing was changed." | [ Edit request ] |
-| A switch is off | "I can't edit the Wiki: that's switched off for me." | [ Allow Wiki edits ], then [ Try again ] |
-| Not in the project | "I'm not in this project yet." | For a manager: [ Add my assistant here ]; otherwise "A project manager can add me in Agents." |
-| Outside her rights | "Jonas owns #8, so I suggested the change to him." | [ Open suggestion ] |
-| Daily limit | "That's 20 requests today, your daily limit." | [ Change the limit ] |
-| Subscription sign-in off on this Flux | "This Flux doesn't allow signing in with a subscription yet. Whoever runs it can turn it on." | [ Use an API key instead ] |
-| No free place on this Flux | "All assistant places on this Flux are in use. Whoever runs it can free one." | [ Use an API key instead ] |
-| A job failed three times | Inbox: "Paused *Morning summary*: sign in to Claude again." | [ Sign in ] |
-| Changed meanwhile | "Changed since you asked. Ask again" (Apply) · "Changed since. Open it" (Undo) | [ Open ] |
-| Stopped | "Stopped after 3 changes · Undo all" | — |
+| A switch is off | "I can't edit the Wiki: that's switched off for me." | [ Allow Wiki edits and try again ] |
+| Not in the project, Ada manages it | "I'm not in this project yet." | [ Add my assistant here ] |
+| Not in the project, Ada doesn't manage it | "I'm not in this project yet. A manager can add me." | [ Ask Jonas to add me ] → "Asked Jonas to add me. I'll do this when he does." |
+| Outside her rights | "Jonas owns #8. Suggest this change to him?" | [ Send to Jonas ] |
+| Someone changed it meanwhile | "Skipped #4: Jonas changed it while I worked." | [ Open ] |
+| Subscription sign-in off on this Flux | "This Flux doesn't allow signing in with a subscription yet." | [ Tell whoever runs Flux ] [ Use an API key instead ] |
+| No free place on this Flux | "All assistant places on this Flux are in use." | [ Tell whoever runs Flux ] [ Use an API key instead ] |
+| ChatGPT device code is off | "ChatGPT needs one setting first: turn on *device code sign-in* in ChatGPT → Settings → Security." | [ Open ChatGPT settings ] |
+| Sign-in code expired | "That code has expired. Codes work once, for a few minutes." | [ Get a new code ] |
+| A schedule failed three times | Inbox: "Paused *Weekly review*: sign in to Claude again." | [ Sign in ] |
+| Changed before Ada decided | "Changed since you asked. Ask again" (waiting) · "Changed since. Open it" (Undo) | [ Open ] |
+| A waiting change expired | Recent: "Expired: close 2 duplicates." | [ Ask again ] |
+| Stopped | "Stopped after 3 changes · Undo" | — |
+| Offline | "Sends when you're back" (a request) · "Offline" (on Stop, Undo, Close) | — |
+
+*Tell whoever runs Flux* sends one Needs-you item to the workspace's owners: "Ada would
+like to use her Claude plan here. Whoever runs this Flux turns it on with `./flux ai
+on`."
 
 ### The assistant screen
 
-Settings → Agents and AI → *Ada's assistant ›* (the existing row) opens one screen: a
-header and three parts, then Activity and More. The phone shows the same screen as a
-full page with Back; job, reaction and review details open as sheets with a grabber
-(half height, full when dragged). Kreska appears in its agent colour, which Settings →
-Agents and AI may use.
+Settings → Agents and AI → *Ada's assistant ›* (the existing row), the panel's *Manage
+›*, opens one screen: a header and three parts, then Recent and More. The phone shows
+the same screen as a full page with Back; sheets open with a grabber (half height,
+full when dragged). Kreska appears in its agent colour, which Settings → Agents and AI
+may use.
 
 **Why each visible control exists.**
 
@@ -883,11 +1130,11 @@ Agents and AI may use.
 | --- | --- |
 | On/off for the assistant | O-008 consent and pause: one place to stop everything |
 | Account row | AIM-4 explicit payer: who pays is always visible |
-| Approval choice | Founder direction 2 |
-| Five switches | Founder direction 1: what it may read and edit |
-| *Scheduled* | Founder direction 4 |
-| *When something happens* | Founder direction 5 |
-| Activity | No silent edits: every change and its Undo must be findable |
+| Approval choice | Founder question 2 |
+| Five switches | Founder question 10: what it may read and edit |
+| *On a schedule* | Founder questions 5, 7, 8 and answer C (the morning summary) |
+| *When something happens* | Founder question 6 |
+| Recent | No silent edits: every change and its Undo must be findable |
 | More | Projects, *Only read*, limits and the cron expression are for few people, so they stay folded |
 
 **Computer (1440 × 900, the Settings pane):**
@@ -902,8 +1149,8 @@ Agents and AI may use.
 │                    │ ┌───────────────────────────────────────────────────────┐ │
 │                    │ │ When it changes something                             │ │
 │                    │ │ [ Do it and tell me | Ask me first ]                  │ │
-│                    │ │ It always asks before removing anything or changing   │ │
-│                    │ │ other people's things.                                │ │
+│                    │ │ It asks before removing anything or changing things   │ │
+│                    │ │ other people made or are responsible for.             │ │
 │                    │ ├───────────────────────────────────────────────────────┤ │
 │                    │ │ Read and edit tasks                               [●] │ │
 │                    │ │ Read and edit the Wiki                            [●] │ │
@@ -911,22 +1158,25 @@ Agents and AI may use.
 │                    │ │ Read conversations and reply                      [●] │ │
 │                    │ │ Read decisions and suggest new ones               [●] │ │
 │                    │ └───────────────────────────────────────────────────────┘ │
-│                    │ Scheduled                                                 │
+│                    │ On a schedule                                             │
 │                    │ ┌───────────────────────────────────────────────────────┐ │
-│                    │ │ Morning summary                                   [●] │ │
-│                    │ │ Every day at 9:00 · Home · Next: tomorrow 9:00        │ │
-│                    │ │ Last: today 9:00 · 3 things need you                › │ │
+│                    │ │ Morning summary · written by your assistant       [●] │ │
+│                    │ │ Every day at 8:30 (Notifications) · Home              │ │
 │                    │ ├───────────────────────────────────────────────────────┤ │
-│                    │ │ + New scheduled job                                   │ │
+│                    │ │ Weekly review                                     [●] │ │
+│                    │ │ Every Monday at 9:00 · Community garden sensors       │ │
+│                    │ │ Next: Mon 9:00 · Last: Done, 2 things need you      › │ │
+│                    │ ├───────────────────────────────────────────────────────┤ │
+│                    │ │ + Add                                                 │ │
 │                    │ └───────────────────────────────────────────────────────┘ │
 │                    │ When something happens                                    │
 │                    │ ┌───────────────────────────────────────────────────────┐ │
-│                    │ │ When one of my tasks is blocked → try to unblock it [●]│ │
+│                    │ │ When one of my tasks is blocked → add next steps  [●] │ │
 │                    │ │ Last: Tue 14:02 · added a step to #8                › │ │
 │                    │ ├───────────────────────────────────────────────────────┤ │
-│                    │ │ + New reaction                                        │ │
+│                    │ │ + Add                                                 │ │
 │                    │ └───────────────────────────────────────────────────────┘ │
-│                    │ Activity · today: 4 changes                             › │
+│                    │ Recent · today: 4 changes                               › │
 │                    │ More                                                    › │
 └────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -941,24 +1191,25 @@ Agents and AI may use.
 What it can do
   When it changes something
   [ Do it and tell me | Ask me first ]
-  It always asks before removing anything
-  or changing other people's things.
+  It asks before removing anything or
+  changing things other people made or
+  are responsible for.
   Read and edit tasks                    [●]
   Read and edit the Wiki                 [●]
   Read and edit maps                     [●]
   Read conversations and reply           [●]
   Read decisions and suggest new ones    [●]
 
-Scheduled
-  Morning summary                        [●]
-  Every day at 9:00 · Next: tomorrow       ›
-  + New scheduled job
+On a schedule
+  Morning summary · by your assistant    [●]
+  Weekly review · Mondays 9:00           [●]
+  + Add
 
 When something happens
-  My task is blocked → try to unblock it [●]
-  + New reaction
+  My task is blocked → add next steps    [●]
+  + Add
 
-Activity · today: 4 changes               ›
+Recent · today: 4 changes                 ›
 More                                      ›
 ```
 
@@ -966,100 +1217,128 @@ More                                      ›
 the second tap):
 
 ```text
-Scheduled
-  Nothing scheduled yet. Try one:
-  ( Morning summary at 9:00 )  ( Weekly review on Monday )
-  + New scheduled job
+On a schedule
+  Nothing yet. Try one:
+  ( Let your assistant write your morning summary )  ( Weekly review on Monday )
+  + Add
 
 When something happens
   Nothing yet. Try one:
   ( Tell me when a task is blocked )  ( Plan tasks assigned to me )
-  + New reaction
+  + Add
 ```
 
-**New scheduled job** (panel on the computer, full sheet on the phone):
+**On a schedule** sheet (panel on the computer, full sheet on the phone):
 
 ```text
-New scheduled job                                                   ✕
+On a schedule                                                       ✕
 What should it do?
 ┌───────────────────────────────────────────────────────────────────┐
-│ Every morning summarise what changed and list what needs me        │
+│ List what we finished this week                                    │
 └───────────────────────────────────────────────────────────────────┘
 When   [ Every day | Weekdays | Every Monday | Every hour while I work ]
-At     [ 9:00 ▾ ]
-Where  [ Home ▾ ]        Home jobs report only to you and change nothing.
-Next: tomorrow 9:00, Sat 9:00, Sun 9:00
+At     [ 16:00 ▾ ]   on [ Friday ▾ ]
+Where  [ Community garden sensors ▾ ]
+Next: Fri 16:00, next Fri 16:00, …
 More ›                   (cron expression, post the result in a conversation)
-This runs on your Claude subscription while you are away. …  (the AST-2 note)
+Runs on your Claude plan
                                                   [ Cancel ] [ Turn on ]
 ```
 
-**New reaction:**
+**When something happens** sheet:
 
 ```text
-New reaction                                                        ✕
+When something happens                                              ✕
 When  [ one of my tasks is blocked ▾ ]
-Then  [ try to unblock it ▾ ]
+Then  [ add next steps ▾ ]
 In    [ all my projects ▾ ]
 It reads the task and its project, and tells you what it did.
+Runs on your Claude plan
                                                   [ Cancel ] [ Turn on ]
 ```
 
-**Activity** (the assistant's detail panel; the phone agent page, which already has
-Now, Recent and Can):
+**The assistant's panel** (the agent page on the phone, which already has Now, Recent,
+Can and *Message*):
 
 ```text
-Ada's assistant  Agent  for you · in Flux                          ✕
+Ada's assistant  Agent  for you · in Flux · Claude                ⋯  ✕
 Now
   Working… adding tasks in Community garden sensors        [■ Stop]
+  (when idle: Next: morning summary tomorrow 8:30)
 Recent
   Done: renamed 3 tasks, added done-when to 4 · asked by you  11:04  Undo
-  Morning summary: 3 things need you · scheduled              09:00  Open
+  Morning summary written                                     08:30  Open
   Added a step to #8 · when #8 was blocked                    Tue    Undo
-  Waiting for you: close 2 duplicates                         Mon    Review
+  Waiting for you: close 2 duplicates                         Mon    Close
 Can
   Read and edit tasks, the Wiki and maps, reply in conversations,
-  suggest decisions. Asks before removing anything or changing other
-  people's things. Can't accept decisions or invite people.
+  suggest decisions. Asks before removing anything or changing things
+  other people made or are responsible for. Can't accept decisions or
+  invite people.
+[ Message ]
+⋯  Pause my assistant · Manage ›
 ```
 
-### Result lines: one format everywhere
+### The run's message, and the one line everywhere else
 
-The same line appears in the conversation, Inbox, the sidebar's working-agent card,
-the agent panel and Home.
+**In the conversation, one message per run** (UX review P2-1; principle 3, "Everything
+belongs to its message"):
+
+- It opens with a P5-style header naming what changed, with **Undo** (all of it):
+  "Renamed 3 tasks and added done-when to 4 · Undo".
+- Up to three object rows follow (state glyph, number, title, owner; a map thought or
+  Wiki page row), then "+4 more ⌄".
+- Expanded rows show before and after: "~~Probes~~ → Calibrate the probes at two
+  depths". A Wiki edit shows "2 paragraphs changed · See changes". *Review* shows the
+  same diff.
+- Prose appears only when it adds a reason or a question. There is no second result
+  line repeating it.
+- The waiting row is shown only to the owner.
+
+**Elsewhere** (Inbox, the sidebar's working-agent card, the panel's Recent, the
+project's Agents row, Home) the run is one line:
 
 | State | Line (exact copy pattern) |
 | --- | --- |
-| Working | "Working…" or "Working… reading 14 tasks" (with Stop) |
+| Working | Owner: "Working…" or "Working… reading 14 tasks" (with Stop). Others: "Ada's assistant is working…" |
+| Queued | "Next: 'turn this into tasks'. It starts when this one ends · Cancel" |
+| Behind a background run | "Finishing your *Morning summary* first. Yours starts next. [ Stop the summary ]" |
 | Done | "Done: added 2 tasks, edited 1 page · Undo" |
-| Done, nothing to change | "Done: nothing to change" |
-| Waiting | "Waiting for you: 3 changes · Review" |
-| Suggested | "Suggested a fix for #8 · Open" |
-| Stopped | "Stopped after 3 changes · Undo all" |
+| Done, nothing to change | "Done: nothing to change" (never posted into a shared conversation) |
+| Waiting | "Waiting for you: close 2 duplicates · Close" (the object's verb; *Apply* only for a mix) |
+| Deferred | "I'll edit *Suppliers* when Jonas finishes typing." |
+| Suggested | "Jonas owns #8. Suggest this change to him? · Send to Jonas" |
+| Skipped | "Skipped #4: Jonas changed it while I worked" / "Skipped: Flux was off at 9:00" / "Skipped: daily limit" |
+| Stopped | "Stopped after 3 changes · Undo" |
 | Paused | "Paused: plan limit until 14:00" / "Paused: sign in to Claude again" |
-| Skipped | "Skipped: Flux was off at 9:00" / "Skipped: daily limit" |
-| Undone | "Undone by Ada" |
+| Undone | "Undone by Ada" / "Undid 5 changes. 2 changed since: #4, #7 · Open" |
 
 Counts use the final design's object words: task, page, thought, link, map, message,
 decision, result.
 
 ### Delight details
 
-- **Suggestions that fit the place.** In a conversation: "Summarise this
-  conversation", "Turn this thread into tasks". On the Map: "Group these thoughts".
-  In the Wiki: "Draft a page from this thread". In Tasks: "Tidy these tasks". Shown
-  until the person has used the assistant three times there, then only on `@`.
+- **Suggestions that fit the place**, only where the assistant is a member. In a
+  conversation: "Catch me up", "Turn this thread into tasks", "Tidy this project's
+  tasks". On the Map: "Group these thoughts". In the Wiki: "Draft a page from this
+  thread". Shown until the person has used the assistant three times there, then only
+  on `@`.
+- **The Home greeting is the assistant's** (founder answer C): the single most visible
+  daily proof that it works.
 - **The working line tells the truth** from progress events: "reading 14 tasks",
   "editing *Suppliers*". It never shows invented progress.
-- **One run, one line.** Changes fold into one line that expands into a list (S8).
-- **Undo is calm.** Undo in the line, `Z` on the computer, and the toast pattern; Undo
-  all is one tap.
-- **It meets you where you are.** Results land where you asked; background results
-  land in Inbox only when they need you.
-- **Kreska** thinks while it works and has a small done moment after a first success;
-  both disappear when the Kreska setting is off.
-- **Fix it in place.** A failure's next step is a button in the same line: *Allow Wiki
-  edits*, *Sign in*, *Remind me at 14:00*.
+- **One run, one message**, with object rows and before/after.
+- **Undo is calm.** Undo in the message, `Z` on the computer, the toast pattern, and
+  field-level, so it rarely refuses.
+- **Results land where you asked**; background results reach the Inbox only when they
+  need you.
+- **Kreska** thinks while it works, wears its "waiting for you" expression while a
+  change waits, and has a small done moment after a first success; all of it
+  disappears when the Kreska setting is off.
+- **Fix it in place**, in one tap: *Allow Wiki edits and try again*, *Sign in*, *Do it at
+  14:00*, *Ask Jonas to add me*.
+- **Set up by asking**: a schedule prepared from a request, turned on by one tap.
+- **"Next:"** in the panel's Now when idle: "Next: morning summary tomorrow 8:30".
 - **Its voice.** Short, first person, concrete ("I added…", "I'm asking first because
   …"). No apologies, no filler, no exclamation marks, no emoji.
 
@@ -1068,53 +1347,70 @@ decision, result.
 - A separate "Ask AI" button or sparkle icon (F-026 §8 removes separate ask buttons;
   `@` and `/` are the way in).
 - Confirmation dialogs for ordinary changes ("Are you sure?"); Undo replaces them.
-- Permission matrices, scope names or grant words in the default view.
-- Chat-only answers that describe changes in prose without linking the objects.
-- Silent background edits, or a notification for every background run.
+- Permission matrices, scope names, grant words, "job" or "reaction" in the UI.
+- An answer that repeats its own result line, or describes changes in prose without
+  showing the objects.
+- Silent background edits; a notification for every background run; a second morning
+  summary or a second push.
 - Catch-up storms after downtime.
-- Posting as the owner. The assistant always speaks as itself, "for Ada".
+- Posting as the owner. The assistant always speaks as itself, "for Ada", naming its AI
+  company.
+- Buttons that lead nowhere (*Message* and ⌘K always open a conversation).
 - Agents that start each other in loops.
 - Fake progress bars, gradient orbs or robot glyphs (F-026 §8).
-- Interrupting people the owner did not ask it to contact.
-- Hiding who pays.
+- Interrupting people the owner did not choose to contact (suggestions to others need
+  the owner's tap).
+- Hiding who pays, or where colleagues' messages go.
 
 ### Acceptance (AST-10)
 
-- **AST-10.1** On a fresh account, from *Set up* on Home to the first result line of a
+- **AST-10.1** On a fresh account, from *Set up* on Home to the run's message for a
   suggestion takes at most 6 taps plus the vendor's own sign-in steps (Playwright with
   the fake CLI, computer and phone).
 - **AST-10.2** No Flux screen in Journeys 1–6, the assistant screen, its sheets or any
-  result line shows: scope, grant, MCP, token, capability, execute, runtime,
-  transport, OAuth, policy, proposal, payload, slot, cron (except inside a job's
-  *More*), or API (except in "API key", "API credits" and an account name the owner
-  chose)
-  (Playwright scans visible text, light and dark, both widths).
-- **AST-10.3** From an empty *Scheduled* part, "Morning summary at 9:00" is on in 2
-  taps; from an empty *When something happens* part, "Tell me when a task is blocked"
-  is on in 2 taps (Playwright).
+  run message or line shows: scope, grant, MCP, token, capability, execute, runtime,
+  transport, OAuth, policy, proposal, payload, slot, job, reaction, cron (except inside
+  a schedule's *More*), or API (except in "API key", "API credits" and an account name
+  the owner chose) (Playwright scans visible text, light and dark, both widths).
+- **AST-10.3** From an empty *On a schedule* part, "Let your assistant write your
+  morning summary" is on in 2 taps; from an empty *When something happens* part, "Tell
+  me when a task is blocked" is on in 2 taps (Playwright).
 - **AST-10.4** Turning the assistant on and allowing Wiki edits takes at most 3 taps
   from Settings → Agents and AI on an account already signed in (Playwright).
-- **AST-10.5** The `@` list shows "My assistant" first and never shows another
-  person's assistant as something to ask (Playwright with two people).
-- **AST-10.6** The working line appears within 1 second of sending (fake engine) and
-  Stop is reachable by keyboard and by a 44 px target (Playwright).
-- **AST-10.7** Every change in every journey appears in Activity with Undo, and Undo
+- **AST-10.5** The owner's `@` list shows "My assistant" first; the chosen chip reads
+  "Ada's assistant" for every viewer; nobody's list offers another person's assistant
+  (Playwright with two people).
+- **AST-10.6** The working line appears within 1 second of sending (fake engine);
+  others see only "Ada's assistant is working…"; Stop is reachable by keyboard and by
+  a 44 px target (Playwright with two people).
+- **AST-10.7** Every change in every journey appears in Recent with Undo, and Undo
   there behaves as AST-6 (Playwright plus app test).
 - **AST-10.8** The *Can* sentence on the assistant panel, the hand-off step 2 and the
   phone agent page is identical for the same settings and changes when a switch
   changes (Playwright).
 - **AST-10.9** Each Journey 6 row shows its exact copy and its next-step button
   (component test per state, plus one Playwright path each for plan limit, signed
-  out and switch off).
-- **AST-10.10** The morning summary creates one Inbox item when something needs the
-  owner and none otherwise (app test with a fixed clock).
+  out, switch off and not in the project).
+- **AST-10.10** *Message* on the agent page and ⌘K "Ask my assistant…" open the current
+  project conversation, or, outside a project, the picked or last-used one, with "Ada's
+  assistant" mentioned in the composer; neither ever opens an empty or private place
+  (Playwright).
 - **AST-10.11** The screens render at 1440 × 900 and 390 × 844 in light and dark with
   final-design tokens only; switches have `role="switch"` and `aria-checked`; the
   approval choice is a radio group with arrow keys; targets are at least 44 px; focus
-  order follows the visual order (axe plus keyboard test).
+  order follows the visual order; the working line and the run's message are announced
+  through a polite live region (axe plus keyboard and screen-reader text test).
 - **AST-10.12** An independent UX review of Journeys 1–6 on the running application
   with demo data, and a neutral visual review (F-026 §9), pass before the first A7
   merge.
+- **AST-10.13** A run produces one message: a header with Undo, at most three object
+  rows and "+N more", before and after in the expanded rows, prose only with a reason
+  or a question, and no separate result line (Playwright).
+- **AST-10.14** *Pause my assistant* in the panel's ⋯ menu pauses everything in 2 taps
+  from any place where the assistant appears (Playwright).
+- **AST-10.15** Offline, a request shows "Sends when you're back" and sends on
+  reconnect once; Stop, Undo and Close show "Offline" instead of failing (Playwright
+  offline emulation).
 
 ## Delivery: slices A1–A11
 
@@ -1142,6 +1438,7 @@ A0  F-027 (founder answers 2026-10-09; peer review of the text)
             │                 └─ A8 scheduled jobs ── A9 reactions
             └─ A7 the assistant screen (grows with A3, A4, A8, A9)
 A11 reading attached files: later
+A12 guided sign-in cards (after PR #398; ChatGPT after #281)            independent
 ```
 
 PR #394 (#238 undo of an unused AI-created task) is reused by A4. PR #389 (#228
@@ -1166,7 +1463,11 @@ typing in". #74's G-1 facts provide the "PR is ready" event for A9.
   `compute_source` CHECKs of `agent_connections` and `agent_proposals`; table
   `assistant_settings` (workspace, owner, agent connection, approval mode CHECK,
   limits CHECK, version, timestamps); reverse file; semantic-footprint entry.
-- **Tests.** App tests for AST-3.1, AST-3.3 (reuse S6 race helpers), AST-4.1
+- **Joining.** *Turn on* creates contributor project grants for the assistant in the
+  projects the owner manages (and later in projects the owner creates), through the
+  existing project-grant route; the join request for other projects reuses the Agents
+  *Request* row (AST-3.4).
+- **Tests.** App tests for AST-3.1, AST-3.3 (reuse S6 race helpers), AST-3.4, AST-4.1
   (API part), AST-5.1 (API part); migration fresh/upgrade/reverse.
 - **Depends on.** PR #390 merged (S6 overlay, migration 0061).
 
@@ -1202,19 +1503,25 @@ typing in". #74's G-1 facts provide the "PR is ready" event for A9.
   id, operation, state CHECK `applied|waiting|applied_after_wait|not_now|expired|
   undone|refused`, prepared command JSON for waiting rows with a size CHECK, before
   and after versions, receipt, decided by and at).
-- **Tests.** AST-5.2 to AST-5.5, AST-6.5; the live-Wiki case with PR #389's
-  session signal faked.
+- **Tests.** AST-4.3, AST-5.2 to AST-5.8, AST-6.5, AST-6.7, AST-9.2; the live-Wiki
+  deferral with PR #389's session signal faked; waiting changes moving to Inbox with a
+  fixed clock.
 - **Depends on.** A1, A2.
 
-#### A4 — "Do it and tell me", result lines, Undo
+#### A4 — "Do it and tell me", the run's message, Undo, queue
 
-- **Scope.** Result line on run end, Stop and failure; recovery posts it for a dead
-  run; Undo per item and Undo all as compensating versioned writes per operation;
-  "Changed since" refusal; Undo recorded. Stop refuses the next `/mcp` call.
+- **Scope.** One message per run (header with Undo, object rows, before and after) on
+  run end, Stop and failure; recovery posts it for a dead run; field-level Undo per item
+  and for the whole message as compensating versioned writes per operation; "Changed
+  since" and partial-Undo copy; Undo recorded; "Skipped #4: … changed it while I
+  worked" items; Stop refuses the next `/mcp` call; the owner's lane queue (owner
+  requests before background runs) with its lines.
 - **Files.** `app/packages/core/src/assistant/undo.ts`; per-domain restore use cases
-  in `work`, `docs`, `sketches`; `personal-runs/recovery.ts`; web result line.
+  in `work`, `docs`, `sketches`; `personal-runs/recovery.ts`; the run message
+  component (with #343's P5 notice rows).
 - **Migration.** None (A3's table holds undo state).
-- **Tests.** AST-6.1 to AST-6.4, AST-6.6; Playwright for the line and Undo.
+- **Tests.** AST-6.1 to AST-6.4, AST-6.6, AST-6.8, AST-9.3, AST-10.13; Playwright for
+  the message and Undo.
 - **Depends on.** A3; PR #394 for undoing a created task.
 
 #### A5 — Typed suggestions
@@ -1241,44 +1548,60 @@ typing in". #74's G-1 facts provide the "PR is ready" event for A9.
   AST-3.2 parity with A2.
 - **Depends on.** A2.
 
-#### A7 — The assistant screen
+#### A7 — The assistant screen and the journeys
 
-- **Scope.** AST-10's one screen on computer and phone; the *Can* sentence shared
-  with the hand-off picker (#347) and the agent page; Activity in the agent detail
-  panel (#344); the New-tool line (AST-3). Grows with A3/A4 (waiting and result
-  lines), A8 and A9 (their parts).
+- **Scope.** AST-10's one screen on computer and phone; the panel (Now, Recent, Can,
+  *Message*, ⋯ *Pause my assistant*); the *Can* sentence shared with the hand-off
+  picker (#347) and the agent page; Jonas's hand-off to Ada's assistant as a Needs-you
+  item for Ada (AST-3.5); message headers with the AI company and the Agents tab policy
+  row (AST-3.6); *Message* and ⌘K opening a conversation with the assistant mentioned;
+  the Home set-up card and the `@` entry; suggestions only where the assistant is a
+  member; offline states; the New-tool line (AST-3). Grows with A3/A4 (waiting and
+  run messages), A8 and A9 (their parts).
 - **Files.** `app/apps/web/src/assistant/AssistantSettings.tsx` (replaced by the
   screen), `app/apps/web/src/assistant/assistant.css` (final tokens only), the
-  hand-off and agent detail components.
-- **Tests.** AST-10.1 to AST-10.6 in Playwright (Chromium and WebKit, both widths,
-  light and dark); axe; AST-10.7 neutral visual review.
-- **Depends on.** A1; #350's Settings layout (merged) and #347/#344 components.
+  hand-off, agent panel, composer and Home greeting components.
+- **Tests.** AST-3.5, AST-3.6, AST-4.1 and AST-5.1 (screen), AST-10.1, AST-10.2,
+  AST-10.4 to AST-10.6, AST-10.8 to AST-10.11, AST-10.14, AST-10.15 in Playwright
+  (Chromium and WebKit, both widths, light and dark); axe; AST-10.12 independent UX and
+  neutral visual review.
+- **Depends on.** A1; #350's Settings layout (merged) and #347/#344/#343 components.
 
-#### A8 — Scheduled jobs
+#### A8 — On a schedule, and the morning summary
 
-- **Scope.** AST-7 jobs: model, picker, plain-words schedule, cron under *More*,
-  Home and project jobs, Run now, pause, edit, delete with Undo, history (last 20),
-  missed and failure policy, the subscription note (AST-2.1), the text guard, the
-  per-minute singleton tick and `singletonKey` per job.
+- **Scope.** AST-7 *On a schedule*: model, picker, plain-words schedule, cron under
+  *More*, one project per schedule, Run now, pause, edit, delete with Undo, history
+  (last 20), missed and failure policy, *Do it at 14:00*, schedules prepared from a
+  request (off until the owner's tap), the account note once per account (AST-2.1), the
+  text guard, folding in a shared conversation, the per-minute singleton tick and
+  `singletonKey` per schedule. **The morning summary**: "Let your assistant write your
+  morning summary" on #350's Notifications row and tick, the Home greeting line, the
+  one push, the plain fallback.
 - **Files.** `app/packages/core/src/assistant/jobs.ts`, `app/apps/worker/src/assistant/`
-  (tick, as `proactive-comparison/index.ts`), routes, web part.
-- **Migration 0080** `assistant_jobs` (owner, workspace, place, text, schedule kind and
-  fields or cron, time zone, on, next and last run, failure streak, version) and
-  `assistant_job_runs` (job, run, state, result line, times).
-- **Tests.** AST-7.1 to AST-7.6, AST-7.9, AST-2.1 with a controlled clock and two
-  workers.
-- **Depends on.** A1, A4; #280 for `runtime` runs (the `server` engine works first).
+  (tick, as `proactive-comparison/index.ts`), `app/apps/worker/src/jobs/morning-summary.ts`,
+  routes, Settings → Notifications row, Home greeting, web part.
+- **Migration 0080** `assistant_jobs` (owner, workspace, project, text, schedule kind and
+  fields or cron, time zone, on, prepared-off flag, next and last run, failure streak,
+  version), `assistant_job_runs` (job, run, state, result line, times), and the
+  morning summary's "written by the assistant" flag on the owner's notification
+  settings.
+- **Tests.** AST-2.1, AST-2.4, AST-7.1 to AST-7.6, AST-7.9 to AST-7.11, AST-10.3 (first
+  half), AST-9.1 (scheduled) with a controlled clock and two workers.
+- **Depends on.** A1, A4; #280 for `runtime` runs (the `server` engine works first);
+  #350's morning summary (merged in PR #370).
 
-#### A9 — Reactions
+#### A9 — When something happens
 
-- **Scope.** The five curated events and their actions, events that name the owner
-  only, debounce and caps, "draft a reply" always waiting, "tell me" folded into the
-  Inbox item.
+- **Scope.** The five curated events and their actions ("add next steps", not
+  "unblock"), events about the owner only, debounce and caps, "draft a reply" opening
+  the Inbox mention's *Reply* prefilled, "tell me" folded into the Inbox item, the PR
+  event only in GitHub-linked projects.
 - **Files.** `app/packages/core/src/assistant/reactions.ts`; event taps in the work,
-  conversation (mentions) and GitHub (G-1) modules; web part.
+  conversation (mentions) and GitHub (G-1) modules; the Inbox mention reply; web part.
 - **Migration 0081** `assistant_reactions` and `assistant_reaction_events` (dedupe key
   per object and window).
-- **Tests.** AST-7.7, AST-7.8, AST-2.2 (every non-owner event starts nothing).
+- **Tests.** AST-2.2 (every non-owner event starts nothing), AST-7.7, AST-7.8,
+  AST-7.12, AST-10.3 (second half), AST-9.1 (reaction).
 - **Depends on.** A8; #74 for the PR event (the other four events do not wait for it).
 
 #### A10 — Subscriptions first
@@ -1297,25 +1620,42 @@ typing in". #74's G-1 facts provide the "PR is ready" event for A9.
   "Read attached files" (off by default). Needs its own short decision on formats and
   limits. Not required for the first delivery of edits.
 
+#### A12 — Guided sign-in cards
+
+- **Scope.** Founder answer A: the Claude card ([ Open claude.ai ], [ Paste ] reading
+  the clipboard, survives a PWA reload while the code is valid) and the ChatGPT card
+  (the device code large, [ Copy and open ChatGPT ], completion from `codex login
+  status`); the terminal under *Show details*; other methods under *Other ways to sign
+  in*; the supervisor recognising only the sign-in URL and device code, in memory; the
+  two sign-in failure rows of Journey 6.
+- **Files.** The sign-in console component of PR #398, the supervisor's login output
+  reader (`app/apps/runtime/src/supervisor/`), the fake CLIs.
+- **Migration.** None.
+- **Tests.** AST-1.5 to AST-1.8 with the fake CLIs; the pinned real CLIs' login output
+  shapes checked by the account-free contract table of PR #398.
+- **Depends on.** PR #398 (#279) for Claude; #281 for ChatGPT.
+
 ### Acceptance criteria by slice
 
 | Criteria | Slice |
 | --- | --- |
 | AST-1.1, AST-1.2 | #277 (then A10 for copy) |
 | AST-1.3, AST-1.4 | A10 |
+| AST-1.5–AST-1.8 | A12 |
 | AST-2.1, AST-2.4 | A8 (sign-in refusal on paid hosting: A10) |
 | AST-2.2 | A9 |
 | AST-2.3, AST-4.4, AST-4.2 (read part) | #280 (A2) |
-| AST-3.1, AST-3.3 | A1 |
+| AST-3.1, AST-3.3, AST-3.4 | A1 |
+| AST-3.5, AST-3.6 | A7 (with #347 and #343) |
 | AST-3.2, AST-4.2 (`server` part), AST-8.1–AST-8.3 | A6 |
 | AST-4.1, AST-5.1 | A1 (API) and A7 (screen) |
-| AST-4.3, AST-5.2–AST-5.5, AST-6.5, AST-9.2 | A3 |
-| AST-6.1–AST-6.4, AST-6.6, AST-9.3 | A4 |
-| AST-7.1–AST-7.6, AST-7.9, AST-7.10, AST-10.10 | A8 |
-| AST-7.7, AST-7.8 | A9 |
+| AST-4.3, AST-5.2–AST-5.8, AST-6.5, AST-6.7, AST-9.2 | A3 |
+| AST-6.1–AST-6.4, AST-6.6, AST-6.8, AST-9.3, AST-10.13 | A4 |
+| AST-7.1–AST-7.6, AST-7.9–AST-7.11 | A8 |
+| AST-7.7, AST-7.8, AST-7.12 | A9 |
 | AST-9.1 | A3 (interactive), A6 (`server`), A8 (scheduled), A9 (reaction) |
-| AST-10.1, AST-10.2, AST-10.4–AST-10.6, AST-10.8, AST-10.9, AST-10.11, AST-10.12 | A7 |
-| AST-10.3 | A8 (scheduled) and A9 (reactions) |
+| AST-10.1, AST-10.2, AST-10.4–AST-10.6, AST-10.8–AST-10.12, AST-10.14, AST-10.15 | A7 |
+| AST-10.3 | A8 (schedule) and A9 (when something happens) |
 | AST-10.7 | A4 and A7 |
 
 ## What stays unverified
@@ -1388,6 +1728,9 @@ own). It carries slice A2. Replace and add:
 - "After slice A3: the F-027 AST-5.2 matrix (applied, waiting, suggestion, refused)
   passes with the fake Codex as with the fake Claude Code."
 - "Plan-limit and sign-out states use the F-027 Journey 6 copy for ChatGPT."
+- "`codex login --device-auth`'s user code and verification URL are available to the
+  sign-in card (slice A12) in memory only; 'device code sign-in is disabled' and 'code
+  expired' outputs map to Journey 6's two sign-in rows."
 
 ### #68 — Owner-only in-product personal assistant runs (owner @Zamojski5)
 
@@ -1407,8 +1750,12 @@ connections.
 
 ### #279 / PR #398 — Claude Code sign-in console
 
-**Kind:** none for the PR. Every login method stays offered. The entry copy *Sign in
-with Claude* and the surrounding plain copy are slice A10's.
+**Kind:** no fix needed for PR #398 to merge; a follow-up slice, **A12**, builds the
+guided cards on its console (founder answer A, 2026-10-09). Every login method stays
+offered. Criteria A12 adds: AST-1.5 to AST-1.8 ("Sign in to Claude: 1. Open claude.ai
+and approve. 2. Paste the code here." with [ Open claude.ai ] and [ Paste ]; the
+terminal under *Show details*; the sign-in URL and device code never stored or
+logged). The entry copy *Sign in with Claude* is slice A10's.
 
 ### #58 / PR #391 — Background comparison
 
@@ -1416,18 +1763,45 @@ with Claude* and the surrounding plain copy are slice A10's.
 
 ### #347 / PR #376 — Hand-off and Agents
 
-**Kind:** follow-up criterion delivered in slice A7: "**AST-10.8** The *Can* sentence on
-the assistant panel, the hand-off step 2 and the phone agent page is identical for the
-same settings and changes when a switch changes." Until A7, the static text stays.
+**Kind:** follow-up criteria delivered in slice A7; the policy-row text can be fixed in
+PR #376 now, because the current text is untrue once the assistant edits (founder
+answer D):
+
+- "The project Agents tab's policy row reads: 'Agents read and propose; people accept.
+  Assistants also edit for their owner, with Undo.'"
+- "**AST-3.5** In a hand-off, another person's assistant shows as 'Ada's assistant ·
+  for Ada · asks Ada first'; choosing it creates one Needs-you item for Ada ('Jonas asks
+  your assistant to do #10 · Allow · Not now') and starts nothing until Ada allows."
+- "**AST-10.8** The *Can* sentence on the assistant panel, the hand-off step 2 and the
+  phone agent page is identical for the same settings and changes when a switch
+  changes." Until A7, the static text stays.
+
+### #343 / PR #387 — Conversation
+
+**Kind:** follow-up criteria delivered in slices A4 and A7; no change needed in PR
+#387:
+
+- "**AST-3.6** An assistant's message header reads 'Ada's assistant · Agent · for Ada ·
+  Claude' (the account's AI company) for every viewer."
+- "**AST-10.13** A run produces one message built from P5 notice rows: a header with
+  Undo, at most three object rows and '+N more', before and after when expanded."
+- "**AST-10.5** The owner's `@` list shows 'My assistant' first; the chosen chip reads
+  'Ada's assistant' for every viewer."
+
+### #350 — Settings (owner @Zamojski5; PR #370 merged)
+
+**Kind:** no change to the merged work. Slice A8 adds to Settings → Notifications →
+*Morning summary* the line "Written by Ada's assistant · Change ›" when the owner lets
+the assistant write it (founder answer C), and reuses its time, quiet hours, tick and
+single push.
 
 ### Others
 
 - **#238 / PR #394:** reused by A4 for undoing a created task. No change.
-- **#343 / PR #387, #344 / PR #386, #350:** the result line, the waiting card, Activity
-  and the assistant screen are delivered in A3, A4 and A7 with their components. No
-  change to those PRs.
-- **#228 / PR #389:** A3 reads its live-session presence for "a page someone else is
-  typing in". No change.
+- **#344 / PR #386:** the assistant's panel (Now, Recent, Can) uses the one detail
+  panel and sheet; delivered in A7. No change to the PR.
+- **#228 / PR #389:** A3 reads its live-session presence to defer a change while
+  someone else is typing in a page. No change.
 - **#152 / PR #396:** its scripted model is the harness for A2 and #281. No change.
 - **#358:** the operator guide documents the install question (A10).
 - **#153:** reserve 0077–0081 before SQL, one per slice.
