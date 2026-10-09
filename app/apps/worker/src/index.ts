@@ -4,6 +4,7 @@ import { backgroundComparisonsEnabled, loadAgentRuntimeConfig } from '@flux/core
 import { startAgentRuntimeReconciler } from './agent-runtime/index.js';
 import { registerDraftSummaryWorker } from './jobs/draft-summary.js';
 import { registerIdempotencyCleanup } from './jobs/idempotency-cleanup.js';
+import { registerMorningSummary } from './jobs/morning-summary.js';
 import { registerSampleWorker } from './jobs/sample.js';
 import { createVapidAuthorizer, registerPushWorker } from './push/index.js';
 import { registerNotificationEmailWorker, startNotificationGenerator } from './notifications/index.js';
@@ -30,6 +31,8 @@ await registerPushWorker(boss, db, createVapidAuthorizer());
 const email = await registerNotificationEmailWorker(boss, db);
 const generator = startNotificationGenerator({ db, boss, connectionString, emailAvailable: email.available });
 await registerDraftSummaryWorker(boss, db);
+// The morning summary (#350, S22): one push a day per person who turned it on.
+await registerMorningSummary(boss, db);
 // Personal assistant runs (#68): the payload is a run id; every step rechecks the owner.
 const personalRuns = personalRunWorkerComposition(process.env, db);
 if (personalRuns.mode !== 'production') console.warn(JSON.stringify({ warning: 'TEST ONLY: personal runs use fixture connections and a mock provider', mode: personalRuns.mode }));

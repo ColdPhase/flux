@@ -11,7 +11,7 @@ import '../notifications/notifications.css';
 import '../assistant/assistant.css';
 import './runtime.css';
 
-// Settings → Agent in Flux → Sign in to Claude Code (F-022 "Sign-in as in a terminal", T4 #279). The
+// Settings → Agents and AI → Sign in to Claude Code (F-022 "Sign-in as in a terminal", T4 #279). The
 // owner picks one of the methods of Claude Code's own `claude auth login`; Flux then starts exactly that
 // command in the owner's runtime and shows its terminal here. The terminal (xterm.js) loads only on
 // this page.
@@ -43,7 +43,7 @@ export function ClaudeCodeSignIn() {
     } finally { setBusy(false); }
   }
 
-  const back = <Link className="ui-link" to="/settings/assistant">Back to Agent in Flux</Link>;
+  const back = <Link className="ui-link" to="/settings/agents">Back to Agents and AI</Link>;
   if (failed) return <div className="pane-scroll"><div className="pane-in"><ErrorState title="This page couldn’t load" actions={<Button variant="secondary" onClick={() => window.location.reload()}>Try again</Button>}><p>Nothing changed.</p></ErrorState></div></div>;
   if (!status) return <div className="pane-scroll"><div className="pane-in"><p className="inbox__loading"><Spinner label="Loading" /></p></div></div>;
   if (!status.enabled || status.clients.claude_code !== 'available') {

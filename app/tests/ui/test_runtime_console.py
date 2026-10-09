@@ -1,4 +1,4 @@
-"""Browser tests for Claude Code in Flux: Settings → Agent in Flux → Sign in to Claude Code (F-022 T4, #279).
+"""Browser tests for Claude Code in Flux: Settings → Agents and AI → Sign in to Claude Code (F-022 T4, #279).
 
 Two stacks run this module:
 
@@ -140,7 +140,7 @@ class RuntimeConsole(unittest.TestCase):
     @unittest.skipIf(RUNTIME, "the runtime is on in this stack")
     def test_02_off_the_server_says_so(self) -> None:
         page = self.page()
-        page.goto("/settings/assistant")
+        page.goto("/settings/agents")
         section = page.locator("section.rt")
         expect(section.get_by_role("heading", name="Claude Code in Flux")).to_be_visible()
         expect(section).to_contain_text("Not turned on for this Flux server.")
@@ -150,13 +150,15 @@ class RuntimeConsole(unittest.TestCase):
         self.phone_layout(page, "section.rt")
         self.no_credential_fields(page)
         shot(page, "runtime-off-phone-390")
-        page.goto("/settings/assistant/claude-code")
+        page.goto("/settings/agents/claude-code")
         expect(page.get_by_role("note")).to_contain_text("Claude Code in Flux isn’t offered on this Flux server.")
+        page.goto("/settings/assistant/claude-code")  # the earlier address still opens the console
+        expect(page).to_have_url(re.compile(r"/settings/agents/claude-code$"))
 
     @unittest.skipUnless(RUNTIME, "needs the runtime profile (scripts/check_agent_runtime.sh)")
     def test_03_before_sign_in_the_notices_are_plain(self) -> None:
         page = self.page()
-        page.goto("/settings/assistant")
+        page.goto("/settings/agents")
         section = page.locator("section.rt")
         expect(section.get_by_role("heading", name=re.compile("Claude Code in Flux · not signed in"))).to_be_visible()
         facts = section.get_by_role("list", name="Before you sign in")
@@ -173,9 +175,9 @@ class RuntimeConsole(unittest.TestCase):
     @unittest.skipUnless(RUNTIME, "needs the runtime profile (scripts/check_agent_runtime.sh)")
     def test_04_sign_in_in_the_console_at_phone_width(self) -> None:
         page = self.page()
-        page.goto("/settings/assistant")
+        page.goto("/settings/agents")
         page.get_by_role("link", name="Sign in to Claude Code").tap()
-        expect(page).to_have_url(re.compile(r"/settings/assistant/claude-code$"))
+        expect(page).to_have_url(re.compile(r"/settings/agents/claude-code$"))
         expect(page.get_by_role("group", name="How do you want to sign in?")).to_be_visible()
         for title in ("Claude account", "Anthropic Console", "Single sign-on (SSO)"):
             expect(page.get_by_role("radio", name=re.compile(re.escape(title)))).to_be_visible()
@@ -206,7 +208,7 @@ class RuntimeConsole(unittest.TestCase):
         expect(outcome).to_contain_text("Who pays: Your Anthropic Console organization (API billing, cost not reported to Flux).")
         self.phone_layout(page, ".rt-page")
         shot(page, "runtime-signed-in-phone-390")
-        page.get_by_role("link", name="Back to Agent in Flux").tap()
+        page.get_by_role("link", name="Back to Agents and AI").tap()
         section = page.locator("section.rt")
         expect(section.get_by_role("heading", name=re.compile("Claude Code in Flux · signed in"))).to_be_visible()
         expect(section.get_by_role("list", name="Your sign-in")).to_contain_text("Anthropic Console · o***@example.org")
@@ -227,7 +229,7 @@ class RuntimeConsole(unittest.TestCase):
             route.fulfill(status=200, content_type="application/json", body=json.dumps(stubbed))
 
         page.route("**/api/v1/agent-runtime", status)
-        page.goto("/settings/assistant")
+        page.goto("/settings/agents")
         notice = page.get_by_role("alert").filter(has_text="Signed in to a different account than before.")
         expect(notice).to_contain_text("It was r***@example.test; now it is o***@example.org.")
         expect(notice).to_contain_text("If you didn’t do this, sign out here now and change your Flux password.")
@@ -247,7 +249,7 @@ class RuntimeConsole(unittest.TestCase):
     @unittest.skipUnless(RUNTIME, "needs the runtime profile (scripts/check_agent_runtime.sh)")
     def test_06_sign_out_at_phone_width(self) -> None:
         page = self.page()
-        page.goto("/settings/assistant")
+        page.goto("/settings/agents")
         section = page.locator("section.rt")
         section.get_by_role("button", name="Sign out").tap()
         expect(section.get_by_role("heading", name=re.compile("Claude Code in Flux · not signed in"))).to_be_visible()
@@ -257,7 +259,7 @@ class RuntimeConsole(unittest.TestCase):
     @unittest.skipUnless(RUNTIME, "needs the runtime profile (scripts/check_agent_runtime.sh)")
     def test_07_desktop_console_a_wrong_code_and_cancel(self) -> None:
         page = self.page(phone=False)
-        page.goto("/settings/assistant/claude-code")
+        page.goto("/settings/agents/claude-code")
         page.get_by_role("radio", name=re.compile("Claude account")).check()
         page.get_by_role("button", name="Start sign-in").click()
         expect(page.locator(".xterm-rows")).to_contain_text("Paste code here if prompted", use_inner_text=True)
@@ -293,7 +295,7 @@ class RuntimeConsole(unittest.TestCase):
             time.sleep(0.2)
         self.assertIsNone(self.api(page, "GET", "/api/v1/agent-runtime")["binding"])
         self.api(page, "POST", "/api/v1/agent-runtime/binding")
-        page.goto("/settings/assistant")
+        page.goto("/settings/agents")
         section = page.locator("section.rt")
         section.get_by_role("button", name="Remove runtime…").tap()
         confirm = page.get_by_role("group", name="Remove your runtime")
@@ -359,7 +361,7 @@ class RuntimeConsole(unittest.TestCase):
 
         page.route("**/api/v1/agent-runtime", read)
         page.route("**/api/v1/agent-runtime/binding" if remove else "**/api/v1/agent-runtime/sign-out", action)
-        page.goto("/settings/assistant")
+        page.goto("/settings/agents")
         section = page.locator("section.rt")
         expect(section.get_by_role("heading", name="Claude Code in Flux · signed in")).to_be_visible()
         deadline = time.time() + 10
@@ -399,7 +401,7 @@ class RuntimeConsole(unittest.TestCase):
         released.update(binding=None, connections={"claude_code": None, "codex": None},
             lastRelease={"reason": "operator", "at": "2026-10-07T10:01:00.000Z", "signOutFailed": True})
         page.route("**/api/v1/agent-runtime", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(released)))
-        page.goto("/settings/assistant")
+        page.goto("/settings/agents")
         section = page.locator("section.rt")
         expect(section).to_contain_text("Vendor sign-out was not confirmed")
         expect(section).not_to_contain_text("It signed out first")

@@ -148,7 +148,7 @@ export function RuntimeSection() {
       {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
       {removing ? null : (
         <div className="aset__actions rt-actions">
-          {!signedIn && !authPending && !(status.pool === 'full' && !binding) ? <Link className="ui-btn ui-btn--primary" to="/settings/assistant/claude-code">{again ? 'Sign in again' : 'Sign in to Claude Code'}</Link> : null}
+          {!signedIn && !authPending && !(status.pool === 'full' && !binding) ? <Link className="ui-btn ui-btn--primary" to="/settings/agents/claude-code">{again ? 'Sign in again' : 'Sign in to Claude Code'}</Link> : null}
           {signedIn && !authPending ? <Button variant="secondary" busy={busy === 'check'} onClick={() => void act('check', () => checkRuntime('claude_code'), 'Couldn’t check. Try again.')}>Check sign-in</Button> : null}
           {signedIn ? <Button variant="secondary" busy={busy === 'signout'} onClick={() => void act('signout', () => signOutRuntime('claude_code'), 'Sign-out could not be confirmed. Access remains disabled while the runtime recovers; both clients may need to sign in again.')}>Sign out</Button> : null}
           {binding && !confirmRemove ? <Button variant="quiet" onClick={() => setConfirmRemove(true)}>Remove runtime…</Button> : null}

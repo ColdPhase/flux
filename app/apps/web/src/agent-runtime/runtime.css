@@ -1,4 +1,4 @@
-/* Claude Code in Flux (F-022 T4 #279): the runtime section of Agent in Flux and its sign-in console.
+/* Claude Code in Flux (F-022 T4 #279): the runtime section of Settings → Agents and AI and its sign-in console.
    Phone first: one column, 44px targets and 16px fields on coarse pointers (docs/design/apple-hig-mobile.md). */
 .rt .aset__state { flex-wrap: wrap; }
 .rt-sub { margin: 14px 0 8px; font-size: var(--fs-sm); font-weight: 600; color: var(--text-2); }

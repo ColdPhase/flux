@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { assertExactMigrationLedger, assertKnownMigrationVersions, assertMigrationFootprint, assertMigrationSqlLedgerChange, assertMigrationStepLedger, createDatabase, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
+import { assertExactMigrationLedger, assertKnownMigrationVersions, assertMigrationFootprint, assertMigrationSqlLedgerChange, assertMigrationStepLedger, assertMorningSummaryMigrationCompatibility, createDatabase, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
 import { PgBoss } from 'pg-boss';
 import { COMPARISON_JOB_QUEUE, COMPARISON_JOB_RETRY, COMPARISON_RECOVERY_JOB, COMPARISON_TICK_JOB, NOTIFICATION_EMAIL_JOB, NOTIFICATION_EMAIL_QUEUE, PERSONAL_RUN_JOB, PERSONAL_RUN_QUEUE, PUSH_SEND_JOB, PUSH_SEND_QUEUE } from '@flux/core';
 
@@ -15,6 +15,7 @@ try {
   try {
     await client.query('SELECT pg_advisory_lock(hashtext($1))', ['flux-migrate']);
     let applied = await readAppliedMigrationVersions(client);
+    await assertMorningSummaryMigrationCompatibility(client, applied);
     assertKnownMigrationVersions(files, applied);
     await assertMigrationFootprint(client, files, applied);
     for (const file of files) {
@@ -46,7 +47,7 @@ try {
   const boss = new PgBoss({ connectionString });
   boss.on('error', (error) => console.error(error));
   await boss.start();
-  for (const queue of ['sample.process', 'draft.summarize.v1', 'idempotency.cleanup.v1']) {
+  for (const queue of ['sample.process', 'draft.summarize.v1', 'idempotency.cleanup.v1', 'notification.morning-summary.v1']) {
     await boss.createQueue(queue);
   }
   // Existing queues keep their stored policy; updateQueue applies the reviewed retry bounds.
