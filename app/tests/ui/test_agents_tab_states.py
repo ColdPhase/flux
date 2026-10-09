@@ -389,10 +389,12 @@ class AgentsTabStates(unittest.TestCase):
         expect(page.get_by_role("region", name="#1 · Fix the reconnect loop in the lamp firmware")).to_be_visible()
         title = page.locator(".thread__title").bounding_box()
         close = page.get_by_role("button", name="Close thread").bounding_box()
-        assert title and close
+        pane = page.locator(".agents-scroll").bounding_box()
+        assert title and close and pane
         for name, box in (("title", title), ("close", close)):
-            self.assertTrue(0 <= box["y"] and box["y"] + box["height"] <= 900, f"the thread {name} is in view: {box}")
-        # Negative control: the old shared scroll left the head under the project header (y < 0 at 900 px).
+            self.assertTrue(0 <= box["y"] and box["y"] + box["height"] <= 900, f"the thread {name} is in the window: {box}")
+            self.assertGreaterEqual(box["y"], pane["y"] - 1, f"the thread {name} is in the pane's visible area, not under its header: {box} pane {pane}")
+        # Negative control: the old shared scroll moved the pane to the thread's end, so the title sat above the pane's top.
 
     def test_11_stop_keeps_the_panel_and_focus_on_the_stopped_agent(self) -> None:
         # #347 review N4: Stop does not move the panel to another agent or the focus to its heading.
@@ -457,10 +459,14 @@ class AgentsTabStates(unittest.TestCase):
         phone = self.page("ada", phone=True)
         phone.goto(f"/projects/{self.ids['project']}/agents")
         row = self.row(phone, "notes")
-        expect(row.get_by_role("button", name=f"Take back #{notes['number']}")).to_have_count(0)
+        # Wait for the row to hold the new task first: a count of 0 before the read would pass trivially.
+        expect(row).to_contain_text(f"#{notes['number']}")
+        take = row.get_by_role("button", name=f"Take back #{notes['number']}")
+        expect(take).to_have_count(1)
+        expect(take).to_be_hidden()
         row.locator(".agents-row__btn").tap()
         expect(phone.get_by_role("complementary", name="Notes, details").get_by_role("button", name=f"Take back #{notes['number']}")).to_be_visible()
-        # Negative control: the old row carried a wide Take back pill (visible on the phone).
+        # Negative control: the old row showed the Take back pill, visible on the phone, so the hidden check fails.
 
     def test_16_the_row_and_panel_say_stopped_by_you(self) -> None:
         # #347 review N9: after your own Stop the panel reads "Stopped by you", not your name.
