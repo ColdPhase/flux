@@ -103,7 +103,7 @@ export function RuntimeSection() {
       <section className="nset__sec rt" aria-labelledby="rt-h">
         <h3 id="rt-h">Claude Code in Flux</h3>
         {intro}
-        <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>{status.enabled ? 'Claude Code isn’t offered on this Flux server.' : 'Not turned on for this Flux server.'}</b> The person who runs this server decides whether it is offered. You can still use Claude Code on your own computer through an <Link className="ui-link" to="/connect-agent">agent connection (MCP)</Link>.</span></p>
+        <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>{status.enabled ? 'Claude Code isn’t offered on this Flux server.' : 'Not turned on for this Flux server.'}</b> {status.enabled ? null : 'This Flux server has not enabled Claude Code or Codex sign-in. '}The person who runs this server decides whether it is offered. You can still use Claude Code on your own computer through an <Link className="ui-link" to="/connect-agent">agent connection (MCP)</Link>.</span></p>
       </section>
     );
   }

@@ -23,7 +23,7 @@
 .agents-conn { display: flex; flex: 1 1 0; gap: var(--s-2); align-items: flex-start; min-width: 0; max-width: 100%; }
 .agents-conn__body { display: flex; flex-direction: column; min-width: 0; gap: 1px; font-size: var(--fs-xs); line-height: var(--lh-tight); }
 .agents-conn__name { color: var(--t2); overflow-wrap: anywhere; }
-.agents-conn__state, .agents-conn__activity { color: var(--t3); display: inline-flex; align-items: center; gap: 6px; }
+.agents-conn__state, .agents-conn__activity, .agents-conn__mode { color: var(--t3); display: inline-flex; align-items: center; gap: 6px; }
 .agents-conn[data-state="unavailable"] .agents-conn__state { color: var(--t2); }
 
 .agents__task {
