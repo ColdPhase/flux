@@ -2,10 +2,12 @@
 
 Runs with the other tests/ui journeys through scripts/check_ui.sh against the running Compose application
 (composed with the TEST-ONLY anthropic-mock fixture key connection that test_personal_assistant uses; no
-model is called). Settings -> Agents and AI shows two sections, Agent in Flux and Your agent app (MCP);
-with FLUX_AGENT_RUNTIME off the first says the server has not enabled Claude Code or Codex sign-in; Details
-and the assistant's empty state link there; the project Agents view shows each entry's mode; and a second
-member never sees, or can change, the first member's connections, keys or runtime.
+model is called). Settings -> Agents and AI shows two sections, Agent in Flux and Your agent app. With the
+runtime on (a stubbed status, F-027 AST-1.1) the sign-in choices come first, Sign in with Claude and Sign in
+with ChatGPT, and the API key choices sit under a folded "Other ways to connect". With the runtime off
+(AST-1.2) one plain sentence says so and the API key choices show. The page uses no jargon (AST-10.2).
+Details and the assistant's empty state link there; the project Agents view shows each entry's mode; and a
+second member never sees, or can change, the first member's connections, keys or the runtime.
 
 Two members share one workspace: Ines (owner of an MCP connection and of the assistant) and Tom (nothing
 connected, the no-AI journey).
@@ -28,8 +30,17 @@ INES = {"name": "Ines Moreau", "email": f"ines.connect+{STAMP}@example.test"}
 TOM = {"name": "Tom Reyes", "email": f"tom.connect+{STAMP}@example.test"}
 CONNECTION = "Ines desk laptop"
 CONSENT = "o-008-2026-10-02"
-MODE_B = "Your agent app (MCP)"
+MODE_B = "Your agent app (MCP)"  # the project Agents view keeps its label
+MODE_B_PAGE = "Your agent app"  # Settings -> Agents and AI, plain words (F-027 AST-10.2)
 MODE_A = "Agent in Flux"
+OFF_SENTENCE = "Signing in with your Claude or ChatGPT subscription isn’t turned on for this Flux server."
+# F-027 AST-10.2: words no Flux screen shows. "API" is allowed in "API key", "API keys", "API credits", and the
+# payer labels "API billing" that the #277 change list names.
+JARGON = re.compile(r"\b(scopes?|grants?|MCP|tokens?|capabilit(?:y|ies)|execut(?:e|ion)|runtimes?|transports?|OAuth|"
+                    r"policy|policies|proposals?|payloads?|slots?|jobs?|reactions?|cron)\b|\bAPI\b(?!\s+(?:keys?|credits|billing)\b)", re.I)
+RUNTIME_ON = {"enabled": True, "clients": {"claude_code": "available", "codex": "pending"}, "commercialTerms": None,
+              "idleReleaseDays": None, "pool": "available", "binding": None, "lastRelease": None,
+              "connections": {"claude_code": None, "codex": None}}
 
 
 class ConnectAiJourney(unittest.TestCase):
@@ -108,18 +119,21 @@ class ConnectAiJourney(unittest.TestCase):
         page.goto("/settings/agents")
         expect(page.get_by_role("heading", level=2, name="Agents and AI")).to_be_visible()
         flux = page.get_by_role("region", name=MODE_A, exact=True)
-        app = page.get_by_role("region", name=MODE_B, exact=True)
+        app = page.get_by_role("region", name=MODE_B_PAGE, exact=True)
         expect(flux).to_be_visible()
         expect(app).to_be_visible()
-        # Agent in Flux: the assistant, and the instance's runtime switch said plainly.
+        # Agent in Flux: the assistant, and the instance's switch said in one plain sentence (AST-1.2).
         expect(flux.get_by_role("link", name=re.compile("^Your assistant Agent"))).to_have_attribute("href", "/settings/assistant")
-        expect(flux).to_contain_text("This Flux server has not enabled Claude Code or Codex sign-in.")
-        expect(flux).to_contain_text("The person who runs this server decides whether it is offered.")
-        expect(flux.get_by_role("link", name="Sign in to Claude Code")).to_have_count(0)
-        # Your agent app (MCP): mode (b) connections and the client guide.
+        expect(flux).to_contain_text(OFF_SENTENCE)
+        expect(flux.get_by_role("link", name=re.compile("^Sign in with"))).to_have_count(0)
+        expect(flux.get_by_text("Sign in with Claude", exact=True)).to_have_count(0)
+        expect(flux.get_by_text("Sign in with ChatGPT", exact=True)).to_have_count(0)
+        # The API key choices are shown plainly when sign-in is off.
+        expect(flux.get_by_role("link", name=re.compile("^Use an API key"))).to_be_visible()
+        # Your agent app: mode (b) connections; no client guide with command-line words on this page.
         expect(app.get_by_role("link", name=re.compile(f"^{CONNECTION}"))).to_have_attribute("href", "/connect-agent")
-        expect(app.get_by_role("heading", name="Connect your MCP client")).to_be_visible()
-        expect(app).to_contain_text("claude mcp add --transport http flux")
+        expect(app.get_by_role("link", name="Local co-work on this computer")).to_have_attribute("href", "/connect-agent")
+        expect(app).not_to_contain_text("claude mcp add")
         for text in (page.locator("main, .pane-in").first.inner_text(),):
             self.assertNotRegex(text, r"(?i)three ways", "no copy counts the ways wrongly")
         shot(page, "connect-ai-desktop-1440")
@@ -128,7 +142,7 @@ class ConnectAiJourney(unittest.TestCase):
         page = self.page("ines", phone=True)
         page.goto("/settings/agents")
         expect(page.get_by_role("region", name=MODE_A, exact=True)).to_be_visible()
-        expect(page.get_by_role("region", name=MODE_B, exact=True)).to_be_visible()
+        expect(page.get_by_role("region", name=MODE_B_PAGE, exact=True)).to_be_visible()
         self.no_horizontal_scroll(page)
         shot(page, "connect-ai-phone-390")
         page.goto("/settings")
@@ -156,9 +170,9 @@ class ConnectAiJourney(unittest.TestCase):
         page = self.page("tom")
         page.goto("/settings/agents")
         flux = page.get_by_role("region", name=MODE_A, exact=True)
-        app = page.get_by_role("region", name=MODE_B, exact=True)
+        app = page.get_by_role("region", name=MODE_B_PAGE, exact=True)
         expect(flux).to_contain_text("not set up")
-        expect(flux).to_contain_text("This Flux server has not enabled Claude Code or Codex sign-in.")
+        expect(flux).to_contain_text(OFF_SENTENCE)
         expect(app.get_by_role("link", name="Local co-work on this computer")).to_be_visible()
         expect(app.locator(".sset-row__identity")).to_have_count(0)
         expect(page.get_by_text("Your connected agents could not be listed")).to_have_count(0)
@@ -192,7 +206,7 @@ class ConnectAiJourney(unittest.TestCase):
         # What Tom sees: his own page and the shared project's Agents view, not Ines's assistant or keys.
         tom.goto("/settings/agents")
         flux = tom.get_by_role("region", name=MODE_A, exact=True)
-        app = tom.get_by_role("region", name=MODE_B, exact=True)
+        app = tom.get_by_role("region", name=MODE_B_PAGE, exact=True)
         expect(app).not_to_contain_text(CONNECTION)
         expect(app).not_to_contain_text("Ines")
         expect(flux).not_to_contain_text("Ines")
@@ -216,6 +230,76 @@ class ConnectAiJourney(unittest.TestCase):
         live = [item for item in self.api(ines, "GET", "/api/v1/agent-connections", status=200) if item["id"] == self.ids["connection"]]
         self.assertEqual(len(live), 1)
         self.assertIsNone(live[0].get("revokedAt"))
+
+    def stub_runtime_on(self, page: Page) -> None:
+        """A stubbed status with the runtime on (the check suite runs with it off); the sign-in pages are not read here."""
+        page.route(re.compile(r".*/api/v1/agent-runtime$"), lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(RUNTIME_ON)))
+
+    def test_08_runtime_on_puts_the_sign_in_choices_first_at_both_widths(self) -> None:
+        """AST-1.1: Sign in with Claude and Sign in with ChatGPT come first; API keys only under a folded "Other ways to connect"."""
+        for phone in (False, True):
+            page = self.page("ines", phone=phone)
+            self.stub_runtime_on(page)
+            page.goto("/settings/agents")
+            flux = page.get_by_role("region", name=MODE_A, exact=True)
+            claude = flux.get_by_role("link", name=re.compile("^Sign in with Claude"))
+            chatgpt = flux.get_by_text("Sign in with ChatGPT", exact=True)
+            assistant = flux.get_by_role("link", name=re.compile("^Your assistant Agent"))
+            expect(claude).to_be_visible()
+            expect(chatgpt).to_be_visible()
+            expect(flux).not_to_contain_text(OFF_SENTENCE)
+            self.assertTrue(self.above(claude, chatgpt), "Sign in with Claude is above Sign in with ChatGPT")
+            self.assertTrue(self.above(chatgpt, assistant), "the sign-in choices are above the assistant row")
+            # Negative control: the same check must reject the reverse order of two elements that are really in that order.
+            self.assertFalse(self.above(chatgpt, claude), "negative control: reversed order is rejected")
+            # The API key choices are folded under "Other ways to connect" and not visible until opened.
+            other = flux.locator("details.rt-more").filter(has_text="Other ways to connect")
+            expect(other.locator("summary")).to_have_text("Other ways to connect")
+            self.assertFalse(other.evaluate("d => d.open"), "Other ways to connect starts folded")
+            api = flux.get_by_role("link", name=re.compile("^Use an API key"))
+            expect(api).to_be_hidden()
+            other.locator("summary").click()
+            expect(api).to_be_visible()
+            self.assertTrue(self.above(claude, api), "API key choices come after the sign-in choices")
+            # Which account should I use? is one folded line in plain words (AST-1 "Which account").
+            which = flux.locator("details").filter(has_text="Which account should I use?")
+            self.assertFalse(which.evaluate("d => d.open"))
+            which.locator("summary").click()
+            expect(flux).to_contain_text("Max and Team plans include monthly API credits")
+            expect(flux).to_contain_text("non-business use")
+            self.no_horizontal_scroll(page)
+            if phone:
+                shot(page, "connect-ai-runtime-on-phone-390")
+            else:
+                shot(page, "connect-ai-runtime-on-desktop-1440")
+            page.context.close()
+
+    def test_09_the_page_uses_no_jargon_words_with_runtime_on_or_off(self) -> None:
+        """AST-10.2 (#277): no visible text on the page uses the listed words; scanner negative control first."""
+        self.assertIsNotNone(JARGON.search("Ask the MCP server"), "negative control: the scanner flags a jargon word")
+        self.assertIsNotNone(JARGON.search("Your runtime"), "negative control: the scanner flags runtime")
+        self.assertIsNone(JARGON.search("Use an API key. API keys and API credits, API billing, Claude · your subscription"), "allowed API phrases pass")
+        for runtime_on in (False, True):
+            for phone in (False, True):
+                page = self.page("ines", phone=phone)
+                if runtime_on:
+                    self.stub_runtime_on(page)
+                page.goto("/settings/agents")
+                expect(page.get_by_role("region", name=MODE_A, exact=True)).to_be_visible()
+                page.get_by_role("region", name=MODE_B_PAGE, exact=True).get_by_text("Local co-work on this computer").wait_for()
+                for details in page.locator("details").all():
+                    details.locator("summary").click()
+                text = page.locator(".pane-in").first.inner_text()
+                match = JARGON.search(text)
+                self.assertIsNone(match, f"jargon on the page (runtime {'on' if runtime_on else 'off'}): {match and match.group(0)}")
+                page.context.close()
+
+    def above(self, first, second) -> bool:
+        a = first.bounding_box()
+        b = second.bounding_box()
+        self.assertIsNotNone(a, "first element is visible")
+        self.assertIsNotNone(b, "second element is visible")
+        return a["y"] < b["y"]
 
 
 if __name__ == "__main__":

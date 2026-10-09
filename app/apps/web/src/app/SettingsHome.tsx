@@ -2,12 +2,11 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode 
 import { Form, Link, Outlet, useLocation, useNavigation } from 'react-router';
 import { aiConnectionLabel, type AgentConnection, type BackgroundComputeConnection, type PersonalAssistantStatus } from '@flux/contracts';
 import { listAgentConnections } from '../agent-connection/api';
-import { ClientGuide } from '../agent-connection/ClientGuide';
 import { getAssistantStatus } from '../assistant/api';
 import { listBackgroundConnections } from '../proactive-comparison/api';
 import { NotificationsButton } from '../pwa';
 import { AgentTag, Avatar, Icon, Kreska, MEDIA, Spinner, agentHue, useMediaQuery } from '../ui';
-import { RuntimeSection } from '../agent-runtime/RuntimeSection';
+import { RuntimeSection, WhichAccount } from '../agent-runtime/RuntimeSection';
 import '../agent-connection/connection.css';
 import { useShellData } from './data';
 import { setSmallMoments, useSmallMoments } from './smallMoments';
@@ -130,7 +129,7 @@ function KreskaSwitch() {
   );
 }
 
-const DESIGNATION: Record<AgentConnection['clientDesignation'], string> = { claude_code: 'Claude Code', codex: 'Codex', other: 'MCP client' };
+const DESIGNATION: Record<AgentConnection['clientDesignation'], string> = { claude_code: 'Claude Code', codex: 'Codex', other: 'another app' };
 const ASSISTANT_STATE: Record<PersonalAssistantStatus['state'], string> = {
   not_enabled: 'not set up', ready: 'in Flux', paused: 'paused', capped: 'daily limit reached', unavailable: 'unavailable',
 };
@@ -154,35 +153,44 @@ function AgentsAndAi({ full, page = false }: { full: boolean; page?: boolean }) 
     return () => controller.abort();
   }, [page]);
   const mine = (connections ?? []).filter((connection) => !connection.revokedAt && connection.ownerUserId === me.user.id);
+  // Other ways to connect: the API key choices (F-027 AST-1.2: shown plainly when sign-in is off).
+  const otherWays = (
+    <>
+      <ul className="sset-card">
+        <LinkRow to="/settings/background-compute" icon={<Icon name="key" size={16} />} title="Use an API key"
+          detail="Your own key from a provider, with your own limits and payer" action="Manage" />
+        {page ? (keys ?? []).map((key) => (
+          <LinkRow key={key.id} to="/settings/background-compute" icon={<Icon name="key" size={16} />}
+            title={<>{key.name}<span className="sset-row__meta"> · {aiConnectionLabel(key.provider, key.model)}</span></>}
+            detail={`Paid by ${key.payerOrganization} · Assistant ${assistant?.enablement?.connectionId === key.id ? 'on' : 'off'} · Background suggestions ${key.usedForBackground ? 'on' : 'off'}`} action="Manage" />
+        )) : null}
+      </ul>
+      {page && keys !== null && !keys.length ? <p className="sset-note">No AI connection of your own yet. Add one under Background suggestions to use your assistant.</p> : null}
+    </>
+  );
   return (
     <>
-      {/* F-022 T2 (#277): one place for both ways to use AI, each named for what it is. */}
+      {/* F-022 T2 (#277), F-027 AST-1: the sign-in choices first, then the API key choices under "Other ways to connect". */}
       <section aria-labelledby="ai-in-flux">
         <h3 className="sset-sub" id="ai-in-flux">Agent in Flux</h3>
         <p className="sset-note sset-note--sub">Works inside Flux when you ask. You choose the AI and who pays for it.</p>
+        {page ? <RuntimeSection otherWays={otherWays} /> : null}
         <ul className="sset-card">
           <LinkRow to="/settings/assistant" icon={<Kreska size={22} hue={agentHue(`assistant:${me.user.id}`)} />}
             title={<><span className="sset-row__identity">Your assistant{' '}<AgentTag /></span><span className="sset-row__meta"> · for you · {assistant ? ASSISTANT_STATE[assistant.state] : 'in Flux'}</span></>}
             detail={page && assistant?.enablement ? `Paid by ${assistant.enablement.consent.payer.organization} · ${aiConnectionLabel(assistant.enablement.consent.provider, assistant.enablement.consent.model)} · Assistant ${assistant.enablement.status === 'active' ? 'on' : 'paused'}` : undefined}
             action="Manage" />
-          {page ? (keys ?? []).map((key) => (
-            <LinkRow key={key.id} to="/settings/background-compute" icon={<Icon name="key" size={16} />}
-              title={<>{key.name}<span className="sset-row__meta"> · {aiConnectionLabel(key.provider, key.model)}</span></>}
-              detail={`Paid by ${key.payerOrganization} · Assistant ${assistant?.enablement?.connectionId === key.id ? 'on' : 'off'} · Background suggestions ${key.usedForBackground ? 'on' : 'off'}`} action="Manage" />
-          )) : null}
           {full ? <LinkRow to="/settings/background-compute" icon={<Icon name="leaf" size={16} />} title="Background suggestions"
             detail="Optional comparisons from your own connection and allowance" action="Manage" /> : null}
         </ul>
-        {page && keys !== null && !keys.length ? <p className="sset-note">No AI connection of your own yet. Add one under Background suggestions to use your assistant.</p> : null}
-        {/* F-022 T4 (#279): the owner's own Claude Code in their runtime, and its sign-in console. */}
-        {page ? <RuntimeSection /> : null}
+        {page ? null : <>{otherWays}<WhichAccount /></>}
       </section>
       <section aria-labelledby="ai-agent-app">
-        <h3 className="sset-sub" id="ai-agent-app">Your agent app (MCP)</h3>
-        <p className="sset-note sset-note--sub">Claude Code, Codex or another MCP client on your own computer, with its own account. Flux never receives its credentials.</p>
+        <h3 className="sset-sub" id="ai-agent-app">Your agent app</h3>
+        <p className="sset-note sset-note--sub">Claude Code, Codex or another app on your own computer, with its own account. Flux never receives its credentials.</p>
         <ul className="sset-card" aria-busy={connections === null || undefined}>
           <LinkRow to="/connect-agent" icon={<Icon name="monitor" size={16} />} title="Local co-work on this computer"
-            detail="Claude Code, Codex or any MCP client · connect it to Flux" action="Manage" />
+            detail="Claude Code, Codex or another app · connect it to Flux" action="Manage" />
           {mine.map((connection) => (
             <LinkRow key={connection.id} to="/connect-agent" icon={<Kreska size={22} hue={agentHue(connection.agentId)} />}
               title={<><span className="sset-row__identity">{connection.name}{' '}<AgentTag /></span><span className="sset-row__meta"> · for you · {DESIGNATION[connection.clientDesignation]} · connected</span></>} action="Manage" />
@@ -190,7 +198,6 @@ function AgentsAndAi({ full, page = false }: { full: boolean; page?: boolean }) 
         </ul>
         {connections === null ? <p className="sset-note"><Spinner label="Loading your agents" /></p> : null}
         {failed ? <p className="sset-note" role="note">Your connected agents could not be listed. Manage them under Local co-work.</p> : null}
-        {page ? <ClientGuide origin={window.location.origin} /> : null}
       </section>
     </>
   );
