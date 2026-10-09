@@ -2,7 +2,7 @@ import { Outlet, createBrowserRouter } from 'react-router';
 import { ToastProvider } from './ui';
 import { UpdatePrompt } from './pwa';
 import { AppLayout } from './app/AppLayout';
-import { SettingsHome } from './app/SettingsHome';
+import { KeyboardShortcuts, SettingsAccount, SettingsAgents, SettingsHome, SettingsLayout } from './app/SettingsHome';
 import { ProjectsIndex } from './app/ProjectsIndex';
 import { appLoader } from './app/data';
 import { ProjectConversation, projectConversationLoader, shouldRevalidateProjectConversation } from './app/ProjectConversation';
@@ -128,11 +128,22 @@ export const router = createBrowserRouter([
           { path: 'dm/:dmId/sketches/:sketchId', Component: SketchRoute },
           { path: 'inbox', Component: InboxView },
           { path: 'inbox/:id', Component: InboxOpen },
-          { path: 'settings', Component: SettingsHome },
-          { path: 'settings/notifications', Component: NotificationSettings },
-          { path: 'settings/background-compute', loader: backgroundComputeLoader, Component: BackgroundComputeSettings },
-          { path: 'settings/notifications/verify', Component: VerifyAddress },
-          { path: 'settings/assistant', Component: AssistantSettings },
+          // Settings (#350, F-026): every earlier address still opens its section.
+          {
+            path: 'settings',
+            Component: SettingsLayout,
+            children: [
+              { index: true, Component: SettingsHome },
+              { path: 'appearance', Component: SettingsHome },
+              { path: 'account', Component: SettingsAccount },
+              { path: 'notifications', Component: NotificationSettings },
+              { path: 'notifications/verify', Component: VerifyAddress },
+              { path: 'agents', Component: SettingsAgents },
+              { path: 'shortcuts', Component: KeyboardShortcuts },
+              { path: 'assistant', Component: AssistantSettings },
+              { path: 'background-compute', loader: backgroundComputeLoader, Component: BackgroundComputeSettings },
+            ],
+          },
           { path: '*', Component: NotFoundView },
         ],
       },
