@@ -81,7 +81,25 @@ until the next restart; password sign-in is unaffected.
 ## Standing check
 
 Flux asks the provider for `offline_access` at sign-in and keeps the refresh token it returns,
-sealed with a key derived from `FLUX_AUTH_SECRET`, in `auth_idp_standing`. Every
+sealed with a key derived from `FLUX_AUTH_SECRET`, in `auth_idp_standing`.
+
+*Revised 2026-10-09 by founder direction (Hubert).* The sign-in now takes two steps. The person signs
+in with `openid email profile`. Flux then sends the browser back to the provider once more, silently,
+with `prompt=none` and `scope=openid offline_access`, to the same redirect URI. You register nothing
+new. The person sees only a second redirect.
+
+The reason is Keycloak 26.1 and later: when `offline_access` is the first request of a new Keycloak
+session, Keycloak deletes the browser session at the code exchange (keycloak PR #34346). The provider
+then never sends a back-channel logout to Flux, and other applications lose single sign-on.
+
+- **A refused silent step.** If the step answers `login_required` or another error, the sign-in is
+  refused like a missing refresh token, and the API logs the provider's answer. A provider session that
+  `prompt=none` cannot reuse causes this, for example when the provider's own cookies are blocked.
+- **When Flux revokes a stored token.** Flux revokes the token it replaces only when no live Flux
+  browser session came from that token's provider session (`sid`). Revoking a Keycloak offline token
+  also takes Flux out of that browser session's logout.
+- **Tokens Flux does not revoke** end at the provider's offline idle limit (Keycloak: 30 days). Until then,
+  Keycloak lists them as offline sessions of the Flux client. Every
 `FLUX_OIDC_STANDING_INTERVAL_SECONDS` (default 900) the API uses that token for each person with a
 live session or agent connection. If the provider answers `invalid_grant` (a disabled user, a removed
 offline session), the person is in *sign-in required*: their browser sessions end, MCP requests answer
