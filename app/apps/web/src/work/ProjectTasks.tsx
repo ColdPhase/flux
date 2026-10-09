@@ -208,9 +208,9 @@ export function ProjectTasks() {
   // the person's own choice unless the URL names one (`view`).
   const fromUrl = () => {
     const status = isGroup(search.get('status')) ? search.get('status') as GroupId : null;
-    // The phone always lists All; a continuation that names another group belongs to a desktop view and is dropped.
+    // The phone lists whatever the address names (a section jump or a shared link) and keeps its own continuation.
     const onPhone = window.matchMedia(MEDIA.phone).matches;
-    const cursor = onPhone && status ? null : search.get('cursor') || null;
+    const cursor = search.get('cursor') || null;
     const asked = search.get('view');
     const mode: Mode = asked === 'board' || asked === 'list' ? asked : status || cursor ? 'list' : preferredMode(me.user.id);
     return { routeKey, status, mine: search.get('show') === 'mine', cursor: mode === 'list' || onPhone ? cursor : null, mode };
@@ -229,9 +229,8 @@ export function ProjectTasks() {
   const { status: viewStatus, mine, cursor: viewCursor, mode: viewMode } = view;
   // The phone shows the list as drawn (S-P-Tasks): Mine | All over the rows, no board and no group views.
   const phone = useMediaQuery(MEDIA.phone);
-  const status = phone ? null : viewStatus;
-  // A continuation belongs to the selector it was issued for: the phone's All never takes a desktop group's.
-  const cursor = phone && viewStatus ? null : viewCursor;
+  const status = viewStatus;
+  const cursor = viewCursor;
   const listing = phone || viewMode === 'list';
   const mode = viewMode;
   const boardSearch = searched.routeKey === `${me.user.id}:${project.id}` ? searched.text : '';
@@ -239,7 +238,7 @@ export function ProjectTasks() {
   // The List reads its chosen view page by page. The board's Open column is the same bounded read
   // of the open group; its other columns are read by the board (see TaskBoard).
   const query = useMemo<ProjectWorkViewQuery>(() => phone || viewMode === 'list'
-    ? { purpose: 'tasks', group: (phone ? null : viewStatus) ?? 'all', mine, ...(cursor ? { cursor } : {}) }
+    ? { purpose: 'tasks', group: viewStatus ?? 'all', mine, ...(cursor ? { cursor } : {}) }
     : { purpose: 'tasks', group: 'open', mine }, [phone, viewMode, viewStatus, mine, cursor]);
   const selector = workViewReadUrl(project.id, query);
   const load = useCallback((signal: AbortSignal) => getProjectWorkView(project.id, query, signal), [project.id, query]);
@@ -301,7 +300,7 @@ export function ProjectTasks() {
   // instant, and back/forward or a shared link restore it. Kanban or List is a personal choice:
   // the URL names it only when it differs from that choice.
   const params = new URLSearchParams();
-  if (mode === 'list' && status) params.set('status', status);
+  if (listing && status) params.set('status', status);
   if (mine) params.set('show', 'mine');
   if (listing && cursor) params.set('cursor', cursor);
   if (!phone && mode !== (mode === 'list' && (status || cursor) ? 'list' : preference)) params.set('view', mode);
@@ -330,7 +329,7 @@ export function ProjectTasks() {
     jump.current = null;
     saveReading();
     keepCursor(viewKey, nextCursor);
-    setViewState({ ...view, status: phone ? null : view.status, cursor: nextCursor });
+    setViewState({ ...view, cursor: nextCursor });
   };
   const refresh = () => {
     jump.current = null;
@@ -450,7 +449,7 @@ export function ProjectTasks() {
           {phone ? (
             <div className="ws-mineall" role="group" aria-label="Whose tasks">
               <button type="button" aria-pressed={mine} onClick={() => setView({ mine: true })}>Mine</button>
-              <button type="button" aria-pressed={!mine} onClick={() => setView({ mine: false })}>All</button>
+              <button type="button" aria-pressed={!mine} onClick={() => setView({ mine: false, status: null })}>All</button>
             </div>
           ) : <TaskViews counts={counts} status={status} mine={mine} writable={writable} onStatus={(next) => setView({ status: next })} onMine={(next) => setView({ mine: next })} />}
           <WorkPagination page={data} busy={read.phase !== 'ready' && read.phase !== 'unavailable'} onCursor={movePage} onRefresh={refresh} />
