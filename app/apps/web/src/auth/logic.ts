@@ -31,9 +31,11 @@ export interface FormResult {
   accountExists?: boolean;
   /** Password reset is not configured on this server. */
   resetUnavailable?: boolean;
+  /** Sign-up: the account exists but must verify this address before it can sign in. */
+  verifyEmailAt?: string;
 }
 
-const AUTH_PATHS = ['/sign-in', '/sign-up', '/sign-out', '/forgot-password', '/reset-password'];
+const AUTH_PATHS = ['/sign-in', '/sign-up', '/sign-out', '/forgot-password', '/reset-password', '/claim'];
 
 /**
  * The part of an MCP authorization request's address that the server signed (#310): `sig` plus the
@@ -82,6 +84,8 @@ export function describeAuthError(error: unknown, context: 'sign-in' | 'sign-up'
   if (error.code === 'ORIGIN_REJECTED') return 'This page was opened from an address Flux doesn’t accept. Open Flux at its usual address and try again.';
   const code = error.code ?? '';
   if (context === 'sign-in' && (error.status === 401 || code === 'INVALID_EMAIL_OR_PASSWORD')) return 'That email and password don’t match an account.';
+  if (code === 'SIGNUP_CLOSED') return 'Creating an account with a password is closed on this Flux server. Ask the person who runs it.';
+  if (context === 'sign-in' && code === 'EMAIL_NOT_VERIFIED') return 'Verify your email address first. We sent a link to it; it works once.';
   if (context === 'sign-up' && code.startsWith('USER_ALREADY_EXISTS')) return 'An account with this email already exists. Sign in instead, or reset its password.';
   if (code === 'PASSWORD_TOO_SHORT') return `Use at least ${PASSWORD_MIN_LENGTH} characters.`;
   if (code === 'PASSWORD_TOO_LONG') return `Use at most ${PASSWORD_MAX_LENGTH} characters.`;
@@ -112,6 +116,17 @@ export async function redirectIfSignedIn({ request }: LoaderFunctionArgs) {
     // Offline or server trouble: show the form; submitting reports the problem.
   }
   return null;
+}
+
+/** The sign-up page needs to know whether sign-up is open, verified by mail, or closed (#313). */
+export async function signUpLoader(args: LoaderFunctionArgs) {
+  const redirectTo = await redirectIfSignedIn(args);
+  if (redirectTo) return redirectTo;
+  try {
+    return { signup: (await getCapabilities(args.request.signal)).signup };
+  } catch {
+    return { signup: 'open' as const };
+  }
 }
 
 export async function signInAction({ request }: ActionFunctionArgs): Promise<FormResult | Response> {
@@ -152,7 +167,9 @@ export async function signUpAction({ request }: ActionFunctionArgs): Promise<For
   };
   if (hasErrors(fieldErrors)) return { fieldErrors, values: { name, email } };
   try {
-    await signUp({ name, email, password });
+    const created = await signUp({ name, email, password });
+    // Verified sign-up creates the account but no session: the person opens the mailed link first.
+    if (created && created.token === null) return { verifyEmailAt: email, values: { name, email } };
   } catch (error) {
     const accountExists = error instanceof ApiError && (error.code ?? '').startsWith('USER_ALREADY_EXISTS');
     return { formError: describeAuthError(error, 'sign-up'), accountExists, values: { name, email } };

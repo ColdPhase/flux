@@ -45,6 +45,8 @@ export const authUsers = pgTable('auth_users', {
   name: text('name').notNull(),
   email: text('email').notNull().unique(),
   emailVerified: boolean('email_verified').notNull().default(false),
+  /** Set on a password sign-up while sign-up is `verified` (migration 0074, #313): no password sign-in until the address is verified. */
+  verificationRequired: boolean('verification_required').notNull().default(false),
   image: text('image'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -90,6 +92,25 @@ export const authVerifications = pgTable('auth_verifications', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [index('auth_verifications_identifier_idx').on(table.identifier)]);
+
+/**
+ * A provider sign-in whose email is held by another account (migration 0074, #313). A pending row is the proof,
+ * from the verified ID token, that this browser may ask to claim the address of an UNVERIFIED account; claiming
+ * writes the audit trail. The token is a secret in a cookie; only its hash is stored.
+ */
+export const authEmailClaims = pgTable('auth_email_claims', {
+  id: text('id').primaryKey(),
+  tokenHash: text('token_hash').notNull().unique(),
+  providerId: text('provider_id').notNull(),
+  subject: text('subject').notNull(),
+  email: text('email').notNull(),
+  heldBy: text('held_by').notNull(),
+  state: text('state').notNull().default('pending'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  claimedAt: timestamp('claimed_at', { withTimezone: true }),
+  releasedEmail: text('released_email'),
+});
 
 /** How a session signed in (migration 0066, #310): password or provider id, the IdP's `sid`, and when it vouched. */
 export const authSessionIdentities = pgTable('auth_session_identities', {

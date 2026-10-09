@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Form, Link, Outlet, useActionData, useLoaderData, useLocation, useNavigate, useNavigation, useSearchParams } from 'react-router';
 import type { IdentityCapabilities } from '@flux/contracts';
-import { PASSWORD_MIN_LENGTH, getCapabilities, startSso } from '../api/auth';
-import { NetworkError } from '../api/client';
+import { PASSWORD_MIN_LENGTH, claimAddress, getCapabilities, getPendingClaim, startSso } from '../api/auth';
+import { ApiError, NetworkError } from '../api/client';
 import { Button, ErrorState, FluxLogo, Icon, Input, useToast } from '../ui';
-import { safeNext, signedOauthQuery, type FormResult, type forgotPasswordLoader } from './logic';
+import { safeNext, signedOauthQuery, type FormResult, type forgotPasswordLoader, type signUpLoader } from './logic';
 
 /** The Flux logo tile and wordmark, as in the sidebar (#189, F-026 §3). */
 function Brand() {
@@ -78,6 +78,7 @@ function useFocusFirstInvalid(result: FormResult | undefined) {
 const NOTICES: Record<string, string> = {
   'signed-out': 'You’re signed out.',
   'password-changed': 'Your password was changed. Sign in with the new one.',
+  'email-verified': 'Your email address is verified. Sign in to continue.',
 };
 
 /** The operator's single sign-on, when configured (#113). Hidden while unknown or unavailable. */
@@ -127,9 +128,12 @@ export function SignInPage() {
   const shownRef = useRef<string | null>(null);
   const sso = useSso();
   const ssoFailed = params.get('sso') === 'failed';
-  const ssoMessage = params.get('sso_reason') === 'no_refresh_token'
+  const reason = params.get('sso_reason');
+  const ssoMessage = reason === 'no_refresh_token'
     ? 'Your identity provider didn’t let Flux keep checking your account, so you aren’t signed in. Ask your administrator to allow offline access for Flux.'
-    : 'Single sign-on didn’t complete, so you aren’t signed in. Try again, or sign in with your password.';
+    : reason === 'email_held'
+      ? 'Single sign-on didn’t complete: your email address already belongs to a verified Flux account. Nothing was linked and nothing was changed. Sign in to that account, or ask your administrator to move it to single sign-on.'
+      : 'Single sign-on didn’t complete, so you aren’t signed in. Try again, or sign in with your password.';
   // On the MCP authorization step the page is `/login?<signed request>` (#310): the provider button carries it.
   const oauthQuery = location.pathname === '/login' ? signedOauthQuery(location.search) ?? undefined : undefined;
 
@@ -162,6 +166,7 @@ export function SignInPage() {
 }
 
 export function SignUpPage() {
+  const { signup } = useLoaderData() as Awaited<ReturnType<typeof signUpLoader>>;
   const result = useActionData() as FormResult | undefined;
   const submitting = useSubmitting();
   const formRef = useFocusFirstInvalid(result);
@@ -173,9 +178,36 @@ export function SignUpPage() {
   const [passwordLength, setPasswordLength] = useState(0);
   const [editedAfter, setEditedAfter] = useState<typeof result>(undefined);
   const passwordError = editedAfter === result && passwordLength >= PASSWORD_MIN_LENGTH ? undefined : result?.fieldErrors?.password;
+  if (result?.verifyEmailAt) {
+    return (
+      <>
+        <Heading title="Check your email" />
+        <div className="auth__sent" role="status">
+          <p>We sent a link to <strong>{result.verifyEmailAt}</strong>. Open it to verify the address, then sign in. The link works once.</p>
+          <p>Nothing arrived? Check spam. Signing in with the password sends a new link.</p>
+        </div>
+        <p className="auth__alt"><Link className="ui-link" to={`/sign-in${suffix}`}>Go to sign in</Link></p>
+      </>
+    );
+  }
+  if (signup === 'off') {
+    return (
+      <>
+        <Heading title="Sign-up is closed" />
+        <div className="auth__notice" role="status">
+          <Icon name="alert" />
+          <div>
+            <p><strong>Creating an account with a password is closed on this Flux server.</strong></p>
+            <p>Ask the person who runs it to add you, or sign in if you already have an account.</p>
+          </div>
+        </div>
+        <p className="auth__alt"><Link className="ui-link" to={`/sign-in${suffix}`}>Sign in</Link></p>
+      </>
+    );
+  }
   return (
     <>
-      <Heading title="Create your Flux account">One account for your conversations, work and handoffs.</Heading>
+      <Heading title="Create your Flux account">{signup === 'verified' ? 'We’ll email a link to confirm your address.' : 'One account for your conversations, work and handoffs.'}</Heading>
       <Form method="post" className="auth__form" noValidate ref={formRef} aria-label="Create account">
         <FormError message={result?.formError}>
           {result?.accountExists ? <p><Link className="ui-link" to="/sign-in">Sign in</Link> · <Link className="ui-link" to="/forgot-password">Reset password</Link></p> : null}
@@ -190,6 +222,67 @@ export function SignUpPage() {
         <Button type="submit" variant="primary" size="lg" block busy={submitting}>{submitting ? 'Creating account…' : 'Create account'}</Button>
       </Form>
       <p className="auth__alt">Already have an account? <Link className="ui-link" to={`/sign-in${suffix}`}>Sign in</Link></p>
+    </>
+  );
+}
+
+/**
+ * A provider sign-in found its verified email on a Flux account nobody has verified (#313). Linking comes first:
+ * the person can sign in to that account. Claiming releases the address from it; its data stays with it.
+ */
+export function ClaimPage() {
+  const [params] = useSearchParams();
+  const [claim, setClaim] = useState<{ email: string } | null | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState('');
+  const back = params.get('return') ?? '/sign-in';
+  const oauthQuery = signedOauthQuery(back.includes('?') ? back.slice(back.indexOf('?')) : '') ?? undefined;
+  useEffect(() => {
+    const controller = new AbortController();
+    getPendingClaim(controller.signal).then(setClaim).catch(() => setClaim(null));
+    return () => controller.abort();
+  }, []);
+  const sso = useSso();
+  const confirm = async () => {
+    if (!sso) return;
+    setBusy(true); setFailed('');
+    try {
+      await claimAddress();
+      const { url } = await startSso(sso.providerId, '/', oauthQuery);
+      window.location.assign(url);
+    } catch (error) {
+      setBusy(false);
+      setFailed(error instanceof ApiError && error.status === 409 ? 'That address was verified in the meantime, so it can’t be claimed.'
+        : error instanceof NetworkError ? 'Flux can’t be reached right now. Check your connection and try again.' : 'That didn’t work. Start again from the sign-in page.');
+    }
+  };
+  if (claim === undefined) return <Heading title="One moment" />;
+  if (claim === null) {
+    return (
+      <ErrorState level={1} title="There is nothing to claim here"
+        actions={<Link className="ui-btn ui-btn--primary ui-btn--lg" to={back}>Back to sign in</Link>}>
+        <p>This page works only right after single sign-on finds your address on an unverified account, and only for 15 minutes.</p>
+      </ErrorState>
+    );
+  }
+  return (
+    <>
+      <Heading title="This address already has a Flux account">
+        <strong>{claim.email}</strong> belongs to a Flux account whose address nobody has verified.
+      </Heading>
+      <div className="auth__notice" role="status">
+        <Icon name="alert" />
+        <div>
+          <p><strong>Link first.</strong> If that account is yours, sign in to it instead; it keeps everything it has.</p>
+          <p><strong>Or claim the address.</strong> Flux then gives it up: the old account is signed out everywhere and its agent connections stop, but its data stays with it and does not move to your new account.</p>
+        </div>
+      </div>
+      {failed ? <FormError message={failed} /> : null}
+      <div className="auth__form">
+        <Link className="ui-btn ui-btn--primary ui-btn--lg ui-btn--block" to="/sign-in">Sign in to that account</Link>
+        <Button variant="secondary" size="lg" block busy={busy} disabled={!sso} onClick={() => void confirm()}>Claim this address</Button>
+      </div>
+      <p className="auth__alt"><Link className="ui-link" to={back}>Cancel</Link></p>
     </>
   );
 }

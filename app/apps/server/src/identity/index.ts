@@ -10,6 +10,8 @@ import { originViolation } from './origin.js';
 import { createOauthRequests } from './oauth-flow.js';
 import { createSignIns } from './sign-in.js';
 import { createConfirmation, type Confirmation } from './confirmation.js';
+import { createEmailClaims } from './claim.js';
+import { registerClaimRoutes } from './claim-routes.js';
 import { cachedReachability, waitForDiscovery } from './discovery.js';
 import { registerAgentOauthContext } from './oauth-context.js';
 import { registerIdentityRoutes } from './routes.js';
@@ -47,7 +49,8 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
   const idpStanding = config.oidc ? createIdpStanding({ db, oidc: config.oidc, authSecret: config.secret, log: app.log }) : null;
   const standing = config.oidc?.standing === 'refresh' ? idpStanding : null;
   const confirmation = createConfirmation(db, config.oidc);
-  const auth = createAuth({ db, config, mailer, oauthRequests, signIns, standing, confirmation, log: app.log, onMailError: (error) => app.log.error({ error }, 'Password reset mail failed') });
+  const claims = createEmailClaims(db);
+  const auth = createAuth({ db, config, mailer, oauthRequests, signIns, standing, confirmation, claims, log: app.log, onMailError: (error) => app.log.error({ error }, 'Password reset mail failed') });
   // OAuth resource seeding runs during Better Auth initialization. Complete it before
   // accepting requests or allowing an in-process server to close its database pool.
   // The provider reads its discovery document while Better Auth initializes, so an identity provider that
@@ -77,7 +80,9 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
     config.oidc && reachable ? { providerId: config.oidc.providerId, label: config.oidc.label, reachable: await reachable() } : null;
   // Operators register this exact redirect URI with their identity provider (#113).
   if (config.oidc) app.log.info({ issuer: config.oidc.issuer, redirectUri: `${config.publicOrigin}/api/auth/callback/${config.oidc.providerId}` }, 'Single sign-on is on');
-  registerIdentityRoutes(app, { sessions, store: createSessionRepository(db), passwordReset, sso });
+  registerIdentityRoutes(app, { sessions, store: createSessionRepository(db), passwordReset, signup: config.signup, sso });
+  registerClaimRoutes(app, { claims, publicOrigin: config.publicOrigin });
+  if (config.signupRequested !== config.signup) app.log.warn({ requested: config.signupRequested }, 'FLUX_SIGNUP=verified needs email (FLUX_SMTP_URL), so password sign-up is closed');
   registerAgentOauthContext(app, db, sessions, auth, config.publicOrigin);
 
   return { ...sessions, passwordReset, auth, standing, confirmation };
