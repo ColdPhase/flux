@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import http from 'node:http';
 import { randomUUID } from 'node:crypto';
-import { after, before, test } from 'node:test';
+import { after, test } from 'node:test';
 import { createDatabase } from '@flux/db';
 import { chromium, type BrowserContext } from 'playwright';
 
