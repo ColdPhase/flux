@@ -19,6 +19,10 @@ import {
 } from './auth/logic';
 import { AuthLayout, ForgotPasswordPage, ResetPasswordPage, SignInPage, SignOutPage, SignUpPage } from './auth/pages';
 
+// The settings layout and its sections share one download.
+let settings: Promise<typeof import('./app/SettingsHome')> | undefined;
+const settingsPage = () => settings ??= import('./app/SettingsHome');
+
 // Paths and nesting stay eager so matching needs no download. A secondary route loads its
 // existing component/data functions together, without changing their authority or revalidation.
 // Its failure is contained inside the mounted shell instead of replacing it.
@@ -138,15 +142,15 @@ export const router = createBrowserRouter([
           // Settings (#350, F-026): every earlier address still opens its section.
           {
             path: 'settings',
-            ...secondary(async () => ({ Component: (await import('./app/SettingsHome')).SettingsLayout })),
+            ...secondary(async () => ({ Component: (await settingsPage()).SettingsLayout })),
             children: [
-              { index: true, ...secondary(async () => ({ Component: (await import('./app/SettingsHome')).SettingsHome })) },
-              { path: 'appearance', ...secondary(async () => ({ Component: (await import('./app/SettingsHome')).SettingsHome })) },
-              { path: 'account', ...secondary(async () => ({ Component: (await import('./app/SettingsHome')).SettingsAccount })) },
+              { index: true, ...secondary(async () => ({ Component: (await settingsPage()).SettingsHome })) },
+              { path: 'appearance', ...secondary(async () => ({ Component: (await settingsPage()).SettingsHome })) },
+              { path: 'account', ...secondary(async () => ({ Component: (await settingsPage()).SettingsAccount })) },
               { path: 'notifications', ...secondary(async () => ({ Component: (await import('./notifications/NotificationSettings')).NotificationSettings })) },
               { path: 'notifications/verify', ...secondary(async () => ({ Component: (await import('./notifications/NotificationSettings')).VerifyAddress })) },
-              { path: 'agents', ...secondary(async () => ({ Component: (await import('./app/SettingsHome')).SettingsAgents })) },
-              { path: 'shortcuts', ...secondary(async () => ({ Component: (await import('./app/SettingsHome')).KeyboardShortcuts })) },
+              { path: 'agents', ...secondary(async () => ({ Component: (await settingsPage()).SettingsAgents })) },
+              { path: 'shortcuts', ...secondary(async () => ({ Component: (await settingsPage()).KeyboardShortcuts })) },
               { path: 'assistant', ...secondary(async () => ({ Component: (await import('./assistant/AssistantSettings')).AssistantSettings })) },
               { path: 'background-compute', ...secondary(async () => { const page = await import('./proactive-comparison/BackgroundComputeSettings'); return { Component: page.BackgroundComputeSettings, loader: page.backgroundComputeLoader }; }) },
             ],
