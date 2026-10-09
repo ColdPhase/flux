@@ -148,8 +148,9 @@ owner's OpenAI-compatible endpoint (never a real provider):
 
 These prove Flux's cancellation and reconciliation against a fake that hangs. They do not prove a
 real provider's behavior, an observed invoice or the quality of a real model's comparison; the
-real-provider call with an observed bill stays outside the required checks (founder direction
-2026-10-08), as does the independent quality evaluation. Acceptance of the operator switch as an
+real-provider call with an observed bill is not a required check (founder direction
+2026-10-08); the mock cost gate is the fake provider's reported usage and price with the observed
+cost and caps recorded from it, which the e2e and live phases assert. Acceptance of the operator switch as an
 O-007 amendment (`docs/product/background-compute.md`) remains a pending peer decision.
 
 ## Deterministic human context snapshot
@@ -269,8 +270,8 @@ cursor; they do not prove scheduling.
 
 The scheduler selects candidate ids without a provider/key port. It, the dispatch and the
 provider registry run in the worker only when the operator switches background comparisons on
-(see "Runtime switch" below); otherwise rule activation still fails closed. The real-provider
-acceptance gates remain verification work.
+(see "Runtime switch" below); otherwise rule activation still fails closed. The provider gates
+are mock gates (see "Running-app gates with a fake provider").
 
 ## Controlled interrupted-reservation recovery
 
@@ -335,11 +336,14 @@ acceptance remains a separate check.
 
 The switch is a proposed O-007 amendment, pending acceptance on #58 (see
 [background compute](../product/background-compute.md)). Still required before an instance should
-switch it on (the remaining #58 gates below):
-- an authorized real-provider test call with an observed bill;
-- live cancellation;
-- an independent full-context quality evaluation;
-- real crash reconciliation.
+switch it on (the #58 gates, all against a fake provider by founder direction 2026-10-08):
+- a **mock cost gate**: a fake provider reports token usage and a price, and the observed cost
+  (`usage_estimated_cents`) and the caps (reservation, daily runs, period budget) are recorded
+  from it (`e2e/background-comparisons.e2e.ts`, `background-comparisons-live.ts`);
+- live cancellation (`background-comparisons-live.ts cancel`), done;
+- crash reconciliation (`background-comparisons-live.ts crash-start` / `crash-verify`), done;
+- an independent full-context review of a comparison's usefulness, which uses fixture output.
+An observed bill from a real provider account is not a required check.
 
 What runs today:
 - `proactive-comparison-runtime.test.ts` enables a rule through the switch, records one negative
@@ -489,8 +493,7 @@ project and save a **paused** comparison rule. An earlier revoked rule remains
 unchanged: renewal creates a new paused identity/version with fresh scope and
 allowance confirmation. Concurrent renewal allows one creation; unknown possible
 charges remain counted across connections and renewed rules. Enable truthfully
-stays unavailable unless the operator switched the runtime on, which must wait for the
-real-provider gates (see "Runtime switch").
+stays unavailable unless the operator switched the runtime on (see "Runtime switch").
 
 The [owner-setup evidence](../design/proactive-comparison/owner-setup-2026-09-30/)
 separately records rendered states, independent visual findings and their
@@ -504,10 +507,10 @@ tokens and $10/M output tokens, and notes that its tokenizer differs from Sonnet
 worker records `usage_estimated_cents` using these dated standard rates and
 continues to hold at least the original reservation in the local budget.
 
-Remaining #58 work: an authorized real-provider test call and actual billing
-observation including live-provider cancellation, independent full-context quality
-evaluation, real crash/provider reconciliation, plus independent/current integrated migration and
-release acceptance. Production scheduling and activation are registered behind the runtime switch
+Remaining #58 work: peer acceptance of the O-007 switch amendment, independent
+full-context review of fixture output, and independent/current integrated migration and
+release acceptance. Live cancellation, crash reconciliation and the cost/caps record are covered
+against a fake provider (founder direction 2026-10-08, no real account, key or spend). Production scheduling and activation are registered behind the runtime switch
 (off by default). Controlled
 changed-evidence reopening, insufficient-evidence outcomes and private usage
 accounting now have the separate fixture evidence above. This file describes a
