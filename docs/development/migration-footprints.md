@@ -38,6 +38,15 @@ normalization, ledger repair, data rewrite or paired conversion is allowed.
   fresh target, and a canonical restart. Backup/restore and integrated operator
   upgrade acceptance remain required at the reviewed composed candidate.
 
+## Composition with 0072 (2026-10-09)
+
+Main's `0072_morning_summary.sql` sits beside 57/58. The migrator runs main's
+morning-summary legacy check (the unmerged `0057_morning_summary` build) and then
+this footprint gate, both read-only, before any SQL. A database whose numeric
+ledger is complete (including 72) but whose 58 catalog is partial still reaches the
+footprint refusal; the isolated control records 72 in the ledger for that reason.
+`FLUX_SCHEMA_VERSION` is the highest migration file present (72).
+
 ## Scope and future composition
 
 The descriptor registry is the composition point: each supported migration name

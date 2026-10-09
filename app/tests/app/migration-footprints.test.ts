@@ -189,6 +189,10 @@ test('fresh ledger with untracked runtime objects refuses before bootstrap creat
 for (const entry of ['apps/server/dist/index.js', 'apps/worker/dist/index.js']) {
   test(`${entry} refuses a complete numeric ledger with partial 58 before queue startup`, async () => fixture(58, async (db, url) => {
     await db.query('DROP TABLE agent_runtime_console_nonces');
+    // The numeric ledger is complete: later files of the image (0072) are recorded too, so the exact-ledger
+    // check passes and only the semantic footprint can refuse.
+    const later = (await readMigrationManifest(directory, FLUX_SCHEMA_VERSION)).filter((file) => file.version > 58);
+    for (const file of later) await db.query('INSERT INTO flux_schema_version(version) VALUES ($1) ON CONFLICT DO NOTHING', [file.version]);
     await refuseWithoutWrites(db, url, entry);
   }));
 }
