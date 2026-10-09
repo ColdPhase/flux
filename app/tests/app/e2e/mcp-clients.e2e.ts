@@ -150,7 +150,7 @@ test('real pinned Codex and Claude Code clients: three personal connections, one
       mkdirSync(join(home, 'codex'), { recursive: true }); mkdirSync(join(home, 'claude'), { recursive: true });
       const base = { HOME: home, DISABLE_AUTOUPDATER: '1', DISABLE_TELEMETRY: '1', CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1' };
       homes[spec.key] = spec.client === 'codex'
-        ? { env: { ...base, CODEX_HOME: join(home, 'codex'), MOCK_MODEL_KEY: 'not-a-vendor-key' }, cwd }
+        ? { env: { ...base, CODEX_HOME: join(home, 'codex'), MOCK_MODEL_KEY: 'not-a-vendor-key', RUST_LOG: 'warn,codex_mcp=debug,codex_rmcp_client=debug,rmcp=debug' }, cwd }
         : { env: { ...base, CLAUDE_CONFIG_DIR: join(home, 'claude'), ANTHROPIC_API_KEY: 'sk-ant-not-a-vendor-key' }, cwd };
       await t.test(`${spec.label}: ${spec.client} adds Flux and completes OAuth as the person`, async () => {
         const { env } = homes[spec.key]!;
