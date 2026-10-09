@@ -26,7 +26,7 @@ import type { Principal } from '../principal.js';
 /** Rows of one project, already in their wire shape. No access decisions are made here. */
 export interface ProjectExportRows {
   files?(projectId: string): Promise<ProjectExportFile[]>;
-  /** Dormant GitHub bindings and rules (#74); null when the project has none. */
+  /** Dormant GitHub task rules (#74); null when the project has none. Never repository bindings. */
   githubSources?(projectId: string): Promise<ProjectExportGithubSources | null>;
   project(projectId: string): Promise<ProjectExport['project'] | null>;
   grants(projectId: string): Promise<ProjectExportGrant[]>;
