@@ -110,7 +110,7 @@ function CollaborativeText({ client, handleRef }: { client: SharedWiki; handleRe
         }),
         EditorView.updateListener.of((update) => { if (update.selectionSet || update.docChanged) { const selection = update.state.selection.main; client.setCursor(selection.anchor, selection.head); } }),
         EditorView.domEventHandlers({ blur: () => { client.blur(); return false; } }),
-        EditorView.theme({ '&': { minHeight: '260px', height: '100%', fontSize: '13px' }, '.cm-scroller': { fontFamily: 'var(--font-mono, monospace)', lineHeight: '1.65', overflow: 'auto' }, '.cm-content': { padding: '12px' }, '&.cm-focused': { outline: '2px solid var(--accent)', outlineOffset: '-2px' } }),
+        EditorView.theme({ '&': { minHeight: '260px', height: '100%', fontSize: '13px' }, '.cm-scroller': { fontFamily: 'var(--font-mono, monospace)', lineHeight: '1.65', overflow: 'auto' }, '.cm-content': { padding: '12px' }, '&.cm-focused': { outline: '2px solid var(--t1)', outlineOffset: '-2px' } }),
       ],
     }) });
     handleRef.current = { insert: (text) => { if (!client.editable || view.state.doc.length + text.length > DOC_LIMITS.body) return; const selection = view.state.selection.main; view.dispatch({ changes: { from: selection.from, to: selection.to, insert: text }, selection: { anchor: selection.from + text.length }, userEvent: 'input' }); view.focus(); }, focus: () => view.focus() };
