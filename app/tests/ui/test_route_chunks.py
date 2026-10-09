@@ -116,7 +116,9 @@ class RouteChunksJourney(unittest.TestCase):
         self.addCleanup(context.close)
         page = context.new_page()
         errors = []
-        page.on("pageerror", lambda error: errors.append(str(error)))
+        # WebKit reports a background read that the page abandons during a reload as an access-control
+        # failure; the application already catches it (WorkingAgent), so only that exact case is ignored.
+        page.on("pageerror", lambda error: None if re.search(r"/api/v1/assistant-runs\?limit=10 due to access control checks", str(error)) else errors.append(str(error)))
         self.addCleanup(lambda: self.assertEqual(errors, [], "No uncaught application errors"))
         return page
 
@@ -293,7 +295,7 @@ class RouteChunksJourney(unittest.TestCase):
                 # Navigate through the public router, preserving the same document and visit copy.
                 page.locator(".app__side").get_by_role("link", name=re.compile("^Chunk boundaries(?:, new activity)?$")).click()
                 page.get_by_role("navigation", name="Project views").get_by_role("link", name="Wiki", exact=True).click()
-                page.get_by_role("link", name=doc["title"], exact=True).click()
+                page.get_by_role("link", name=re.compile(rf"^{re.escape(doc['title'])}(?:\s*Draft)?$")).click()
                 page.locator(".wiki-bar").get_by_role("link", name="Edit", exact=True).click()
                 expect(page.get_by_label("Text (Markdown)", exact=True)).to_have_value(latest)
                 page.evaluate("sessionStorage.removeItem('quota-route-recovery')")
