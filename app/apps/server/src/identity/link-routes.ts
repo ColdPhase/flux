@@ -4,8 +4,10 @@ import { schema } from '@flux/db';
 import type { Database } from '@flux/core';
 import type { SessionResolver } from './session.js';
 import { linkCookie, type LinkIntents } from './link.js';
+import { IdentityAdminError, unlinkIdentity } from './admin.js';
 
 export const LINK_START_PATH = '/api/v1/identity/link';
+export const UNLINK_PATH = '/api/v1/identity/links/:providerId';
 
 export interface LinkRouteOptions {
   db: Database;
@@ -34,5 +36,24 @@ export function registerLinkRoutes(app: FastifyInstance, { db, sessions, links, 
     const token = await links.open(context.principal.id, context.sessionId, provider.providerId);
     reply.header('set-cookie', linkCookie(token, secure));
     return { providerId: provider.providerId, label: provider.label };
+  });
+  /**
+   * Removes the person's provider identity (#315). Refused when it is their last way to sign in: in SSO-only mode the
+   * provider is the only way; in prepare mode a password on the account is. Sessions through it and MCP authority end.
+   */
+  app.delete<{ Params: { providerId: string } }>(UNLINK_PATH, async (request, reply) => {
+    const context = await sessions.requirePrincipal(request);
+    if (!provider || request.params.providerId !== provider.providerId) {
+      return reply.code(404).send({ error: 'No such sign-in is linked', code: 'NOT_LINKED' });
+    }
+    try {
+      await unlinkIdentity(db, { userId: context.principal.id, providerId: provider.providerId, mode: ssoMode,
+        actor: 'the account owner', reason: 'removed a sign-in from settings' });
+    } catch (error) {
+      if (error instanceof IdentityAdminError && error.code === 'NOT_LINKED') return reply.code(404).send({ error: error.message, code: 'NOT_LINKED' });
+      if (error instanceof IdentityAdminError && error.code === 'LAST_IDENTITY') return reply.code(409).send({ error: error.message, code: 'LAST_IDENTITY' });
+      throw error;
+    }
+    return reply.code(204).send();
   });
 }

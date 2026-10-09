@@ -16,6 +16,7 @@ import type { OauthRequests } from './oauth-flow.js';
 import { createSignIns, type SignIns } from './sign-in.js';
 import { createEmailClaims, type EmailClaims } from './claim.js';
 import { createLinkIntents, type LinkIntents } from './link.js';
+import { profileFromClaims } from './claim-profile.js';
 import { createConfirmation, type Confirmation } from './confirmation.js';
 import { signInAgainMessage, type IdpStanding } from './standing.js';
 
@@ -54,13 +55,10 @@ export interface AuthDependencies {
  */
 export function oidcUser(oidc: Pick<OidcConfig, 'issuer'>, claims: Record<string, unknown> | null) {
   if (!claims) return null;
-  const issuer = typeof claims.iss === 'string' ? claims.iss.replace(/\/$/, '') : '';
-  const subject = typeof claims.sub === 'string' ? claims.sub : '';
-  const email = typeof claims.email === 'string' ? claims.email.trim().toLowerCase() : '';
-  if (issuer !== oidc.issuer || !subject || !email || claims.email_verified !== true) return null;
-  const name = [claims.name, claims.preferred_username].find((value): value is string => typeof value === 'string' && !!value.trim());
-  // The plugin keys the Flux account by `sub` (the stable OIDC subject), never by email.
-  return { id: subject, sub: subject, email, emailVerified: true, name: (name ?? email).trim().slice(0, 200) };
+  // The plugin keys the Flux account by `sub` (the stable OIDC subject), never by email (#313, #315 AC-3).
+  const profile = profileFromClaims(oidc.issuer, claims);
+  if (!profile.ok) return null;
+  return { id: profile.subject, sub: profile.subject, email: profile.email, emailVerified: true, name: (profile.name ?? profile.email).slice(0, 200) };
 }
 
 const IDP_TOKEN_FIELDS = ['accessToken', 'refreshToken', 'idToken', 'accessTokenExpiresAt', 'refreshTokenExpiresAt'] as const;

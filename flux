@@ -1015,6 +1015,17 @@ cmd_upgrade() {
 }
 
 # ./flux runtime status | release runtime-<n> | purge [-y]  (F-022 T3; docs/operations/agent-runtime.md)
+cmd_identity() {
+  sub=${1:-}
+  [ $# -gt 0 ] && shift
+  [ "$sub" = link ] || die "usage: ./flux identity link <userId> --subject <sub> --reason \"<why>\" [--allow-sso]"
+  need_docker
+  [ -f "$ENV_FILE" ] || die "No ${ENV_FILE#"$FLUX_ROOT"/}; start Flux with ./flux up first."
+  check_owner "$PROJECT"
+  # Operator re-key (#315): refused in SSO-only mode unless --allow-sso is given; every run is audited.
+  compose_main exec -T api node apps/server/dist/identity/cli.js link "$@"
+}
+
 cmd_runtime() {
   sub=${1:-status}
   [ $# -gt 0 ] && shift
@@ -1122,6 +1133,7 @@ case "$command" in
   export) cmd_export "$@" ;;
   upgrade) cmd_upgrade "$@" ;;
   runtime) cmd_runtime "$@" ;;
+  identity) cmd_identity "$@" ;;
   _upgrade-apply) upgrade_apply "$@" ;;  # continues ./flux upgrade --pull in the pulled launcher
   help|-h|--help) cmd_help ;;
   *) warn "unknown command: $command"; cmd_help >&2; exit 2 ;;

@@ -85,6 +85,10 @@ if (phase === 'prepare') {
       const cookies = await context.cookies(`${origin}/api/auth/callback/${process.env.FLUX_OIDC_PROVIDER_ID}`);
       assert.ok(cookies.some((c) => c.name === 'flux_link'), 'the link intent cookie is set for the provider callback');
       assert.ok(patId);
+      // Settings offers the link in prepare mode (#315): a button named for the provider, shown to the signed-in owner.
+      const page = await context.newPage();
+      await page.goto(`${origin}/settings`);
+      await page.getByRole('button', { name: 'Link Keycloak', exact: true }).waitFor({ timeout: 20_000 });
       await context.storageState({ path: saved });
     });
   });
@@ -171,6 +175,17 @@ if (phase === 'cutover') {
       const patId = (await pool.query('SELECT id FROM auth_users WHERE email = $1', [pat.email])).rows[0].id as string;
       const url = await providerUrl(context);
       await loginAtProvider(page, 'frank', url);
+      // Negative control: in SSO-only mode settings offers no link, because the provider is the only way in (#315).
+      // Wait for the settings page itself, so the absence below is not just an unloaded page.
+      await page.getByRole('region', { name: 'Account' }).waitFor({ timeout: 20_000 });
+      assert.equal(await page.getByRole('button', { name: 'Link Keycloak', exact: true }).count(), 0, 'no link row in SSO-only mode');
+      assert.equal(await page.getByRole('heading', { name: 'Single sign-on' }).count(), 0, 'no single sign-on section in SSO-only mode');
+      // The last-identity guard (#315): the provider is Pat's only way to sign in, so the link cannot be removed.
+      const removed = await api<{ code: string }>(context, 'DELETE', `/api/v1/identity/links/${process.env.FLUX_OIDC_PROVIDER_ID}`);
+      assert.equal(removed.status, 409, JSON.stringify(removed.body));
+      assert.equal(removed.body!.code, 'LAST_IDENTITY');
+      assert.equal((await pool.query('SELECT count(*)::int AS n FROM auth_accounts WHERE user_id = $1 AND provider_id = $2', [patId, process.env.FLUX_OIDC_PROVIDER_ID])).rows[0].n, 1,
+        'the refused unlink left the link in place');
       const me = await api<{ user: { id: string; email: string } }>(context, 'GET', '/api/v1/me');
       assert.equal(me.status, 200, JSON.stringify(me.body));
       assert.equal(me.body!.user.id, patId, 'the same Flux account, with its data and memberships');
