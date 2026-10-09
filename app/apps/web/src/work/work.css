@@ -105,7 +105,6 @@ button.ws-task__glyph:active { background: var(--hov); }
   .ws-task .ws-item { padding: 8px 16px 8px 4px; border-radius: 0; }
   .ws-task .ws-item__t { font-size: 15px; font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ws-task .ws-item__s { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 12.5px; }
-  .ws-task__word { display: none; }
   .ws-task__acts { width: 76px; }
 }
 @media (pointer: coarse) { .ws-mineall button { min-height: 44px; } .ws-task__glyph { width: 44px; height: 44px; margin: 0; } }

@@ -461,7 +461,7 @@ test('native agent owners retry failed reads, fence stale permission answers and
     assert.equal(await decision.locator('.agent-tag').innerText(), 'Agent');
     assert.equal((await decision.innerText()).includes('(agent)'), false);
     await capture('scoped-owner-list', '.ws-item .agent-for');
-    await row.getByRole('button').click();
+    await row.locator('.ws-item').click();
     await page.locator('.wd-discussion .agent-for').waitFor();
     assert.equal(await page.locator('.wd-discussion .agent-tag').innerText(), 'Agent');
     assert.equal(await page.locator('.wd-discussion .agent-for').innerText(), 'for Scoped Casey');

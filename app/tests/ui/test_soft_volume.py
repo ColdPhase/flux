@@ -192,8 +192,9 @@ class SoftVolume(unittest.TestCase):
                     page.evaluate("document.fonts.ready")
                     shot(page, f"338-{self.engine}-files-{'390' if phone else '1440'}-{scheme}")
                     page.goto(f"/projects/{self.ids['project']}/tasks")
-                    page.get_by_role("radio", name="List", exact=True).click()
-                    counter = page.locator(".ws-view__n").first
+                    if not phone:  # the phone is always the list
+                        page.get_by_role("radio", name="List", exact=True).click()
+                    counter = (page.locator(".ws-task .ui-task-number") if phone else page.locator(".ws-view__n")).first
                     expect(counter).to_be_visible()
                     self.assert_mono(counter)
                     page.wait_for_function("() => ['Geist', 'Geist Mono'].every(name => [...document.fonts].some(f => f.family.replace(/\"/g, '') === name && f.status === 'loaded'))")
@@ -226,7 +227,8 @@ class SoftVolume(unittest.TestCase):
                 with self.subTest(scheme=scheme, phone=phone):
                     page = self.page(scheme=scheme, phone=phone)
                     page.goto(f"/projects/{self.ids['project']}/tasks")
-                    page.get_by_role("radio", name="List", exact=True).click()
+                    if not phone:  # the phone is always the list
+                        page.get_by_role("radio", name="List", exact=True).click()
                     for status, word in STATES.items():
                         task = page.locator(f"li[data-work-id='{self.ids[status]}']")
                         row = task.locator(".ui-glyph--" + status)

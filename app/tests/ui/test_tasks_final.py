@@ -326,7 +326,7 @@ class TasksFinalJourney(unittest.TestCase):
                 expect(mine.get_by_role("button", name="All", exact=True)).to_have_attribute("aria-pressed", "true")
                 enclosure = self.row(page, ENCLOSURE)
                 expect(enclosure.locator(".ui-pill--inv")).to_have_text("Blocked")
-                expect(enclosure.locator(".ws-item__s")).to_have_text(f"#{self.numbers['enclosure']} · you · waiting for {BLOCKER}", use_inner_text=True)  # the word "Blocked" is the pill; the owner stays named
+                expect(enclosure.locator(".ws-item__s")).to_have_text(f"#{self.numbers['enclosure']} · you · Blocked · waiting for {BLOCKER}", use_inner_text=True)  # the owner stays named and the word accompanies the glyph
                 expect(enclosure.locator(".ws-task__glyph .ui-glyph--blocked")).to_have_count(1)
                 expect(self.row(page, CALIBRATE).locator(".ws-item__s")).to_contain_text("Claude Code")
                 expect(self.row(page, CALIBRATE).locator(".ws-item__s .agent-tag")).to_have_count(1)

@@ -29,7 +29,7 @@ function meta(item: WorkRowProjection, meId: string, owners: AgentOwners) {
     item.relations.sourceMessages > 0 ? 'from a message' : null,
     results ? `${results} ${results === 1 ? 'result' : 'results'}` : null,
   ].filter(Boolean);
-  // The word for the state is part of the line; the phone's glyph and Blocked pill carry it, so there it is read, not shown.
+  // The word for the state is part of the line, so the glyph is never alone (guide: a word always accompanies it).
   return (
     <>
       <span className="ui-task-number">{taskNumber(item)}</span>

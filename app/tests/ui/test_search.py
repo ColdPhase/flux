@@ -403,7 +403,7 @@ class SearchJourney(unittest.TestCase):
             with self.subTest(phone=phone):
                 page = self.page("ari", phone=phone)
                 page.goto(f"/projects/{place['id']}/tasks")
-                expect(page.locator(".tb-card").first).to_be_visible()
+                expect(page.locator(".tb-card, .ws-task").first).to_be_visible()  # the phone lists rows, the computer shows the board
                 page.keyboard.press("Control+k")
                 dialog = page.get_by_role("dialog", name="Jump to")
                 field = dialog.get_by_role("combobox", name="Jump to")

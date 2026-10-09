@@ -128,18 +128,20 @@ class KreskaJourney(unittest.TestCase):
         self.addCleanup(webkit.close)
         for engine in (self.browser, webkit):
             for scheme in ("light", "dark"):
-                context = engine.new_context(base_url=ORIGIN, storage_state=self.state, viewport=PHONE, is_mobile=True, has_touch=True, color_scheme=scheme, service_workers="block")
-                self.addCleanup(context.close)
-                page = context.new_page()
                 for mode in ("list", "board"):
+                    # The phone is always the list; the board's narrow layout is the widest touch width below 700 px.
+                    viewport = PHONE if mode == "list" else {"width": 660, "height": 900}
+                    context = engine.new_context(base_url=ORIGIN, storage_state=self.state, viewport=viewport, is_mobile=True, has_touch=True, color_scheme=scheme, service_workers="block")
+                    self.addCleanup(context.close)
+                    page = context.new_page()
                     page.goto(f"/projects/{self.ids['project']}/tasks?view={mode}")
-                    agent_row = page.locator(".ws-item" if mode == "list" else ".tb-card", has_text="Calibrate the probes")
+                    agent_row = page.locator(".ws-task" if mode == "list" else ".tb-card", has_text="Calibrate the probes")
                     relation = agent_row.locator(".agent-for")
                     expect(relation).to_have_text("for Ada Zamojska-Kreska Research Lead")
                     expect(agent_row.locator(".agent-tag")).to_have_text("Agent")
                     expect(agent_row.locator(".ws-av, .tb-av")).to_have_count(0)
-                    human_row = page.locator(".ws-item" if mode == "list" else ".tb-card", has_text="Order the enclosures")
-                    expect(human_row.locator(".ws-av, .tb-av")).to_have_text("A" if mode == "list" else "AL")
+                    human_row = page.locator(".ws-task" if mode == "list" else ".tb-card", has_text="Order the enclosures")
+                    expect(human_row.locator(".ws-av, .tb-av")).to_have_text("AL")
                     expect(human_row.locator(".kreska")).to_have_count(0)
                     tag = agent_row.locator(".agent-tag")
                     for enlarged in (False, True):
