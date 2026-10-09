@@ -286,7 +286,7 @@ class PeopleJourney(unittest.TestCase):
         page.goto("/")
         page.get_by_role("complementary", name="Sidebar").get_by_role("button", name="New", exact=True).click()
         page.get_by_role("menu", name="New").get_by_role("menuitem", name="Project", exact=True).click()
-        expect(page.get_by_text("Only you can see it until you invite someone")).to_be_visible()
+        expect(page.get_by_text("You and the workspace’s owners and admins can see it until you invite someone")).to_be_visible()
         page.get_by_label("What is it about?").fill(RESTRICTED)
         page.get_by_role("button", name="Create project").click()
         expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}\?new=1$"))

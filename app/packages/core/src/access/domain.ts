@@ -316,6 +316,9 @@ export async function createProject(principal: Principal, workspaceId: string, c
 export async function addProjectView(principal: Principal, projectId: string, command: AddProjectViewCommand, db: Database): Promise<Project> {
   const view = oneOf(command?.view, PROJECT_VIEWS, 'view');
   return db.transaction(async (tx) => {
+    // The same exclusive project lock a grant change takes, before the read: two additions then queue and
+    // the second reads the first's array, instead of both holding FOR SHARE and deadlocking on the update.
+    await lockProjectForGrantChange(tx, projectId);
     const { project, level } = enforce(await evaluateProject(principal, 'project.write', projectId, tx, { lock: true }), 'project');
     if (project!.views.includes(view)) return toProject(project!, level);
     const [row] = await tx.update(schema.projects).set({ views: [...project!.views, view], version: sql`${schema.projects.version} + 1`, updatedAt: new Date() })

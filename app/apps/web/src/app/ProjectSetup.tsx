@@ -70,7 +70,7 @@ export function ProjectSetup() {
           </p>
           {error ? <p role="alert" className="project-convo__error">{error}</p> : null}
           <div className="project-new__foot">
-            <span>Only you can see it until you invite someone</span>
+            <span>You and the workspace’s owners and admins can see it until you invite someone</span>
             <Button variant="secondary" onClick={cancel}>Cancel</Button>
             <Button type="submit" variant="primary" busy={busy}>Create project</Button>
           </div>

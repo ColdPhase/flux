@@ -136,13 +136,16 @@ function AppLayoutContent() {
   const revalidator = useRevalidator();
   const toast = useToast();
   // Map, Wiki and Agents appear when needed; More adds one on purpose (#351, S21) and opens it.
+  // The answer may come after the person has moved on: the change stays, but only someone still in that
+  // project is taken to its new view (or told it failed).
   const addView = async (projectId: string, view: ProjectViewId) => {
+    const stillHere = () => window.location.pathname.startsWith(`/projects/${projectId}`);
     try {
       await addProjectView(projectId, view);
       revalidator.revalidate();
-      navigate(`/projects/${projectId}/${VIEW_PATH[view]}`);
+      if (stillHere()) navigate(`/projects/${projectId}/${VIEW_PATH[view]}`);
     } catch {
-      toast({ message: `${VIEW_LABEL[view]} couldn’t be added. Try again in a moment.`, tone: 'danger' });
+      if (stillHere()) toast({ message: `${VIEW_LABEL[view]} couldn’t be added. Try again in a moment.`, tone: 'danger' });
     }
   };
   useStreamEvents(me.user.id, (event) => {

@@ -49,6 +49,18 @@ describe('project templates and views over HTTP', () => {
     assert.deepEqual(read.views, ['map']);
   });
 
+  test('concurrent additions of different views on one project both succeed and are kept once (no lock-upgrade deadlock)', async () => {
+    for (let round = 0; round < 12; round += 1) {
+      const created = expectStatus(await create({ name: `Race ${round}`, visibility: 'restricted', template: 'blank' }), 201) as Project;
+      await grant(owner, created.id, writer, 'contributor');
+      const results = await Promise.all([add(owner, created.id, 'map'), add(writer, created.id, 'docs'), add(owner, created.id, 'agents'), add(writer, created.id, 'map')]);
+      for (const result of results) expectStatus(result, 200);
+      const read = expectStatus(await owner.browser.request('GET', `/api/v1/projects/${created.id}`), 200) as Project;
+      assert.deepEqual([...read.views].sort(), ['agents', 'docs', 'map']);
+      assert.equal(read.version, created.version + 3, 'one version per view actually added');
+    }
+  });
+
   test('the views column is required and starts empty for new rows (migration 0064 backfilled existing projects)', async () => {
     const columns = await pool.query("SELECT column_default, is_nullable FROM information_schema.columns WHERE table_name = 'projects' AND column_name = 'views'");
     assert.equal(columns.rows[0]?.is_nullable, 'NO');
