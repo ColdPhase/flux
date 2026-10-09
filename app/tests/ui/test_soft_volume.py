@@ -14,7 +14,7 @@ import uuid
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
 from contrast import MEASURE
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, shot, start_forwarder
 
 PASSWORD = "soft volume everywhere"
 # The final design's tokens (docs/design/final/README.md §2).
@@ -252,7 +252,8 @@ class SoftVolume(unittest.TestCase):
                     page.goto(f"/dm/{self.ids['dm']}")
                     expect(page.locator(".dm-msg__meta time").first).to_be_visible()
                     self.assert_mono(page.locator(".dm-msg__meta time").first)
-                    page.get_by_role("button", name="Details", exact=True).click()
+                    open_details(page)
+                    page.wait_for_timeout(400)  # the panel finishes fading in before contrast is measured
                     avatar = page.locator(".details__person .ui-avatar--me")
                     expect(avatar).to_have_text("AS")
                     page.wait_for_function("""() => { const el = document.querySelector('.details__person .ui-avatar--me');
