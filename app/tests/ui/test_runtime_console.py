@@ -8,7 +8,7 @@ Two stacks run this module:
   TEST ONLY fake `claude` (its `auth login` prints the URL and prompt as the pinned Claude Code
   2.1.285 does). There the whole sign-in runs at phone width (390×844, touch) and at 1440×900:
   the notices before sign-in, the method choice, the terminal with the CLI's URL, the pasted code,
-  the signed-in facts, sign-out and Remove runtime. The account-change and failed-logout notices
+  the signed-in facts, sign-out and Remove Claude Code from Flux. The account-change and failed-logout notices
   are rendered from a stubbed status, which proves wording and layout, not behaviour (the API suite
   tests/app/agent-runtime-console.test.ts proves those).
 """
@@ -143,10 +143,9 @@ class RuntimeConsole(unittest.TestCase):
         page.goto("/settings/agents")
         section = page.locator("section.rt")
         expect(section.get_by_role("heading", name="Claude Code in Flux")).to_be_visible()
-        expect(section).to_contain_text("Not turned on for this Flux server.")
-        expect(section).to_contain_text("The person who runs this server decides whether it is offered.")
-        expect(section.get_by_role("link", name="agent connection (MCP)")).to_have_attribute("href", "/connect-agent")
-        expect(section.get_by_role("link", name="Sign in to Claude Code")).to_have_count(0)
+        expect(section).to_contain_text("Signing in with your Claude or ChatGPT subscription isn’t turned on for this Flux server.")
+        expect(section.get_by_role("link", name=re.compile("^Use an API key"))).to_be_visible()
+        expect(section.get_by_role("link", name="Sign in with Claude")).to_have_count(0)
         self.phone_layout(page, "section.rt")
         self.no_credential_fields(page)
         shot(page, "runtime-off-phone-390")
@@ -176,7 +175,7 @@ class RuntimeConsole(unittest.TestCase):
     def test_04_sign_in_in_the_console_at_phone_width(self) -> None:
         page = self.page()
         page.goto("/settings/agents")
-        page.get_by_role("link", name="Sign in to Claude Code").tap()
+        page.get_by_role("link", name="Sign in with Claude").tap()
         expect(page).to_have_url(re.compile(r"/settings/agents/claude-code$"))
         expect(page.get_by_role("group", name="How do you want to sign in?")).to_be_visible()
         for title in ("Claude account", "Anthropic Console", "Single sign-on (SSO)"):
@@ -211,8 +210,9 @@ class RuntimeConsole(unittest.TestCase):
         page.get_by_role("link", name="Back to Agents and AI").tap()
         section = page.locator("section.rt")
         expect(section.get_by_role("heading", name=re.compile("Claude Code in Flux · signed in"))).to_be_visible()
-        expect(section.get_by_role("list", name="Your sign-in")).to_contain_text("Anthropic Console · o***@example.org")
-        for name in ("Check sign-in", "Sign out", "Remove runtime…"):
+        expect(section.get_by_role("list", name="Your sign-in")).to_contain_text("Anthropic Console · API billing")
+        expect(section.get_by_role("list", name="Your sign-in")).to_contain_text("o***@example.org")
+        for name in ("Check sign-in", "Sign out", "Remove Claude Code from Flux…"):
             expect(section.get_by_role("button", name=name)).to_be_visible()
         self.phone_layout(page, "section.rt")
         shot(page, "runtime-settings-signed-in-phone-390")
@@ -253,7 +253,7 @@ class RuntimeConsole(unittest.TestCase):
         section = page.locator("section.rt")
         section.get_by_role("button", name="Sign out").tap()
         expect(section.get_by_role("heading", name=re.compile("Claude Code in Flux · not signed in"))).to_be_visible()
-        expect(section.get_by_role("link", name="Sign in to Claude Code")).to_be_visible()
+        expect(section.get_by_role("link", name="Sign in with Claude")).to_be_visible()
         self.assertEqual(self.api(page, "GET", "/api/v1/agent-runtime")["connections"]["claude_code"]["state"], "signed_out")
 
     @unittest.skipUnless(RUNTIME, "needs the runtime profile (scripts/check_agent_runtime.sh)")
@@ -297,8 +297,8 @@ class RuntimeConsole(unittest.TestCase):
         self.api(page, "POST", "/api/v1/agent-runtime/binding")
         page.goto("/settings/agents")
         section = page.locator("section.rt")
-        section.get_by_role("button", name="Remove runtime…").tap()
-        confirm = page.get_by_role("group", name="Remove your runtime")
+        section.get_by_role("button", name="Remove Claude Code from Flux…").tap()
+        confirm = page.get_by_role("group", name="Remove Claude Code from Flux")
         expect(confirm).to_contain_text("Flux signs Claude Code out first, then deletes your runtime’s files")
         self.phone_layout(page, "section.rt")
         shot(page, "runtime-remove-phone-390")
@@ -369,8 +369,8 @@ class RuntimeConsole(unittest.TestCase):
             page.wait_for_timeout(20)
         self.assertEqual(len(held), 1, "actual background GET reached the delivery barrier")
         if remove:
-            section.get_by_role("button", name="Remove runtime…").tap()
-            page.get_by_role("group", name="Remove your runtime").get_by_role("button", name="Sign out and remove").tap()
+            section.get_by_role("button", name="Remove Claude Code from Flux…").tap()
+            page.get_by_role("group", name="Remove Claude Code from Flux").get_by_role("button", name="Sign out and remove").tap()
         else:
             section.get_by_role("button", name="Sign out", exact=True).tap()
         expected = "Claude Code in Flux · removing" if remove else "Claude Code in Flux · not signed in"
@@ -410,8 +410,8 @@ class RuntimeConsole(unittest.TestCase):
         page.route("**/api/v1/agent-runtime", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(current)))
         page.reload()
         page.route("**/api/v1/agent-runtime/binding", lambda route: route.fulfill(status=503, content_type="application/json", body='{"error":"unavailable"}'))
-        section.get_by_role("button", name="Remove runtime…").tap()
-        page.get_by_role("group", name="Remove your runtime").get_by_role("button", name="Sign out and remove").tap()
+        section.get_by_role("button", name="Remove Claude Code from Flux…").tap()
+        page.get_by_role("group", name="Remove Claude Code from Flux").get_by_role("button", name="Sign out and remove").tap()
         expect(section.get_by_role("alert")).to_contain_text("Removal could not be confirmed")
         expect(section).not_to_contain_text("Nothing changed")
         self.phone_layout(page, "section.rt")

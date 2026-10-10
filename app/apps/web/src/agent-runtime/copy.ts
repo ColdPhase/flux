@@ -14,6 +14,11 @@ export const METHOD_NAME: Record<AgentRuntimeSignInMethod, string> = {
   device_code: 'ChatGPT device code', api_key: 'OpenAI API key', access_token: 'access token',
 };
 
+/** F-027 AST-1: plain account labels for a signed-in Claude Code account. */
+export const accountLabel = (method: AgentRuntimeSignInMethod | null) => (
+  method === 'console' ? 'Anthropic Console · API billing' : method === 'sso' ? 'Claude · your organization' : 'Claude · your subscription'
+);
+
 /** F-022 "Payer and data": who pays, never shown as zero. */
 export const PAYER: Record<AgentRuntimePayer | 'organization_plan', string> = {
   claude_plan: 'Your Claude plan (plan limits or paid extra usage, not visible to Flux).',

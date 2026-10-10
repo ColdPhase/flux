@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { flushSync } from 'react-dom';
 import { Link, useLoaderData, useLocation, useNavigation, useSearchParams, type LoaderFunctionArgs } from 'react-router';
-import type { AgentOperation, ConversationMessage, ProjectAgentConnection, ProjectAgents as ProjectAgentsData, TaskDiscussion, WorkStatus } from '@flux/contracts';
+import type { AgentOperation, ConversationMessage, PersonalAssistantStatus, ProjectAgentConnection, ProjectAgents as ProjectAgentsData, TaskDiscussion, WorkStatus } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
@@ -15,6 +15,7 @@ import { STATUS_LABEL } from '../work/format';
 import { useNativeOwn, useWorkChoices } from '../work/useDetailReads';
 import { WorkPagination } from '../work/WorkPagination';
 import { agentDisplayName } from '../docs/format';
+import { getAssistantStatus } from '../assistant/api';
 import { getProjectAgents } from './api';
 import { agentAuthorOwner, useAgentOwners } from './owners';
 import { ProjectPolicy } from './ProjectPolicy';
@@ -95,8 +96,28 @@ function Connection({ connection, now }: { connection: ProjectAgentConnection; n
           <AgentIdentity name={CLIENT_LABEL[connection.clientDesignation]} owner={`${connection.owner.name}${connection.own ? ' (you)' : ''}`} icon={false} />
         </span>
         <span className="agents-conn__name">{connection.agent.name} · {connection.name}</span>
+        <span className="agents-conn__mode">Your agent app (MCP)</span>
         <span className="agents-conn__state">{stateLine(connection, now)}</span>
         {activity ? <span className="agents-conn__activity">{activity}</span> : null}
+      </span>
+    </li>
+  );
+}
+
+const ASSISTANT_LINE: Record<PersonalAssistantStatus['state'], string> = {
+  not_enabled: 'Not set up', ready: 'Answers when you ask', paused: 'Paused', capped: 'Daily limit reached', unavailable: 'Unavailable',
+};
+
+/** The caller's own agent in Flux, next to their MCP connections (F-022 T2). Read from their own status; nobody else's. */
+function MyAssistant({ status, meId, name }: { status: PersonalAssistantStatus; meId: string; name: string }) {
+  return (
+    <li className="agents-conn" data-state="assistant" data-mode="in_flux">
+      <Kreska size={32} expression={status.state === 'ready' ? 'idle' : 'asleep'} hue={agentHue(`assistant:${meId}`)} className="agents-conn__icon" />
+      <span className="agents-conn__body">
+        <span className="agents-conn__who"><AgentIdentity name="Your assistant" owner={`${name} (you)`} icon={false} /></span>
+        <span className="agents-conn__name"><Link className="ui-link" to="/settings/assistant">Settings</Link></span>
+        <span className="agents-conn__mode">Agent in Flux</span>
+        <span className="agents-conn__state">{ASSISTANT_LINE[status.state]}</span>
       </span>
     </li>
   );
@@ -408,6 +429,13 @@ export function ProjectAgents() {
   // Flush the pending navigation guard before a fast next input can reach the old keyed thread.
   const select = (id: string) => setSearch((current) => { const next = new URLSearchParams(current); next.set('task', id); return next; }, { replace: true, flushSync: true });
   const connections = useConnections(projectId, me.user.id, data.connections);
+  const [assistant, setAssistant] = useState<PersonalAssistantStatus | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    getAssistantStatus(controller.signal).then(setAssistant, () => undefined);
+    return () => controller.abort();
+  }, []);
+  const myAssistant = assistant?.enablement ? assistant : null;
 
   // The view scrolls in its own pane like every other view, so a long thread stays reachable
   // above the sticky composer on any screen.
@@ -418,8 +446,9 @@ export function ProjectAgents() {
         <h1 className="agents__title">Working together</h1>
         <Link className="ui-link agents__connect" to="/connect-agent"><Icon name="plus" size={14} />Connect my agent</Link>
       </header>
-      {connections.list.length ? (
+      {connections.list.length || myAssistant ? (
         <ul className="agents__connections" aria-label="Agent connections in this project">
+          {myAssistant ? <MyAssistant status={myAssistant} meId={me.user.id} name={me.user.name} /> : null}
           {connections.list.map((connection) => <Connection key={connection.id} connection={connection} now={connections.now} />)}
         </ul>
       ) : (

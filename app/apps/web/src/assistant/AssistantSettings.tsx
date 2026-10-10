@@ -174,6 +174,7 @@ function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: {
       <section className="nset__sec" aria-labelledby="aset-state">
         <h3 id="aset-state">Not set up</h3>
         <p className="nset__lead">Nothing runs and nothing is sent until you turn it on here.</p>
+        <p className="nset__note"><Link className="ui-link" to="/settings/agents">Ways to connect</Link>: your assistant here, or your own agent app (MCP).</p>
         <SetupProblem status={status} />
       </section>
       <form className="nset__sec" aria-labelledby="aset-consent" onSubmit={(event) => void submit(event)}>
