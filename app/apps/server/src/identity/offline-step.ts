@@ -58,9 +58,9 @@ export function createOfflineStep(options: { oidc: OidcConfig; publicOrigin: str
 
   const read = (header: string | undefined): PendingStep | null => {
     const raw = header?.split(';').map((part) => part.trim()).find((part) => part.startsWith(`${cookieName}=`))?.slice(cookieName.length + 1);
-    const opened = raw ? openToken(key, STEP_AAD, oidc.providerId, decodeURIComponent(raw)) : null;
-    if (!opened) return null;
     try {
+      const opened = raw ? openToken(key, STEP_AAD, oidc.providerId, decodeURIComponent(raw)) : null;
+      if (!opened) return null;
       const step = JSON.parse(opened) as PendingStep;
       return step.expires > now() ? step : null;
     } catch { return null; }

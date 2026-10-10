@@ -238,6 +238,7 @@ export function createIdpStanding(options: IdpStandingOptions): IdpStanding {
     },
     stands: async (userId) => !await rows.refuses(userId),
     async reconcile(at = now()) {
+      await rows.forgetOtherProviders(oidc.providerId);
       if (oidc.standing === 'off') await rows.clear(oidc.providerId);
       else await rows.reconcile(oidc.providerId, at);
     },

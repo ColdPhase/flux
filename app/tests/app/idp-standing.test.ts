@@ -10,7 +10,7 @@ import { db, insertedHuman, pool } from './support/db.js';
 // database and a scripted provider. The Keycloak-backed run is tests/app/e2e/oidc-mcp.e2e.ts (scripts/check_oidc.sh).
 const provider = () => `oidc-${randomUUID().slice(0, 12)}`;
 const config = (providerId: string, standing: 'refresh' | 'off' = 'refresh'): OidcConfig => ({
-  providerId, issuer: 'http://idp.test/realms/flux', clientId: 'flux', clientSecret: 'client-secret-xyz', label: 'Acme "login"', standing, standingIntervalMs: 900_000,
+  providerId, issuer: 'http://idp.test/realms/flux', clientId: 'flux', clientSecret: 'client-secret-xyz', label: 'Acme "login"', standing, standingIntervalMs: 900_000, confirmationMaxAgeMs: 7 * 24 * 3_600_000,
 });
 const authSecret = 'a'.repeat(40);
 
@@ -274,6 +274,20 @@ describe('the check', () => {
 });
 
 describe('startup', () => {
+  test('switching the sole provider forgets old standing and never sends its token to the new endpoint', async () => {
+    const oldProvider = provider(); const newProvider = provider();
+    const userId = await person(oldProvider);
+    const old = standingFor(oldProvider, []);
+    await old.service.recordSignIn(userId, 'old-issuer-token');
+    await due(userId);
+    const current = standingFor(newProvider, []);
+    await current.service.reconcile();
+    assert.equal(await row(userId), undefined);
+    assert.equal(await current.service.stands(userId), true, 'an old refusal cannot gate the new provider');
+    assert.equal(await current.service.runOnce(), 0);
+    assert.equal(current.script.tokenCalls().length, 0, 'no previous-issuer token is sent to the new issuer');
+  });
+
   test('an account without a stored token is in sign-in required; with the check off no row refuses anyone', async () => {
     const id = provider();
     const { service } = standingFor(id, []);
@@ -292,7 +306,7 @@ describe('startup', () => {
     assert.equal(await idpStandingRepository(db).refuses(otherPerson), true);
     await standingFor(other, [], 'off').service.reconcile();
     assert.equal(await idpStandingRepository(db).refuses(otherPerson), false, 'off clears this provider\'s rows');
-    assert.equal(await idpStandingRepository(db).refuses(restored), true, 'and no other provider\'s');
+    assert.equal(await idpStandingRepository(db).refuses(restored), false, 'previous-provider rows cannot strand the account after an issuer change');
     assert.equal(await standingFor(other, [], 'off').service.runOnce(), 0, 'off never checks');
   });
 });

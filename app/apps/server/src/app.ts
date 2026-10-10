@@ -7,7 +7,7 @@ import websocket from '@fastify/websocket';
 import { PgBoss } from 'pg-boss';
 import { assertExactMigrationLedger, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
 import { registerDatabase } from './plugins/database.js';
-import { registerIdentity } from './identity/index.js';
+import { startIdentity } from './identity/index.js';
 import { accessRoutes } from './access/routes.js';
 import { sketchRoutes } from './sketches/routes.js';
 import { dmRoutes } from './direct-messages/routes.js';
@@ -33,6 +33,7 @@ import { joinRateLimiter } from './live/rate-limit.js';
 import { agentProposalRoutes } from './agent-connection/routes.js';
 import { projectAgentRoutes } from './agent-connection/project-agents.js';
 import { agentPolicyRoutes } from './agent-connection/project-policy.js';
+import { agentMcpPolicyRoutes } from './agent-connection/mcp-policy-routes.js';
 import { proactiveComparisonRoutes } from './proactive-comparison/routes.js';
 import { registerMcpRoute } from './agent-connection/mcp-route.js';
 import { returnRoutes } from './returns/routes.js';
@@ -75,7 +76,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   boss.on('error', (error) => app.log.error(error));
   await boss.start();
   app.addHook('onClose', async () => boss.stop());
-  const identity = registerIdentity(app, { db, config: identityConfig });
+  const identity = await startIdentity(app, { db, config: identityConfig });
   const liveMedia = createLiveMediaFromEnv(env, identityConfig.publicOrigin);
   const lifecycle = liveMedia ? liveLifecycle(db, pool, liveMedia.media) : null;
   const liveRevocation = liveMedia ? liveRevocationCoordinator(db, pool, liveMedia.media, lifecycle!) : null;
@@ -164,10 +165,12 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await app.register(agentProposalRoutes, { db, sessions: identity, oauthSecret: identityConfig.secret, publicOrigin: identityConfig.publicOrigin });
   await app.register(projectAgentRoutes, { db, sessions: identity });
   await app.register(agentPolicyRoutes, { db, sessions: identity });
+  await app.register(agentMcpPolicyRoutes, { db, sessions: identity });
   await app.register(proactiveComparisonRoutes, { db, sessions: identity, backgroundMasterKey: config.backgroundMasterKey,
     comparisonsEnabled: config.backgroundComparisons });
-  registerMcpRoute(app, db, identity.auth, identityConfig.publicOrigin,
-    identity.standing && identityConfig.oidc ? { checker: identity.standing, label: identityConfig.oidc.label } : null);
+  registerMcpRoute(app, db, identity.auth, identityConfig.publicOrigin, config.fixture.failureInjection && !!config.fixture.token,
+    identity.standing && identityConfig.oidc ? { checker: identity.standing, label: identityConfig.oidc.label } : null,
+    identity.confirmation, identityConfig.oidc?.label);
   await app.register(returnRoutes, { db, sessions: identity });
   await app.register(docRoutes, { db, sessions: identity });
   await app.register(notificationRoutes, { db, sessions: identity, smtp: identityConfig.smtp, publicOrigin: identityConfig.publicOrigin });
