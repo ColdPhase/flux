@@ -6,7 +6,7 @@ import { getAssistantStatus } from '../assistant/api';
 import { NotificationsButton } from '../pwa';
 import { AgentTag, Avatar, Icon, Kreska, MEDIA, Spinner, agentHue, useMediaQuery } from '../ui';
 import { useShellData } from './data';
-import { setSmallMoments, useSmallMoments } from './smallMoments';
+import { setMoments as setSmallMoments, useMoments as useSmallMoments } from '../ui';
 import { setTheme, useTheme, type ThemeChoice } from './theme';
 import './settings.css';
 

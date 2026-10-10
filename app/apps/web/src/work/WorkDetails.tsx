@@ -3,7 +3,7 @@ import { Link, useRevalidator } from 'react-router';
 import type { Agent, ObjectLink, Project, WorkspaceMember, WorkStatus, WorkDetailObject, WorkDetailProjection } from '@flux/contracts';
 import { WORK_STATUSES } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { AgentIdentity, Button, Icon, Input, StatusGlyph } from '../ui';
+import { AgentIdentity, Button, Icon, Input, StatusGlyph, useToast } from '../ui';
 import { getProject, listWorkspaceMembers } from '../app/conversation-api';
 import { useShellData } from '../app/data';
 import { useRegisterLiveHere } from '../live/LiveProvider';
@@ -227,11 +227,17 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   // The same change of the same version retried after a lost response reuses its command UUID: it never
   // contributes the saved blocker to the task conversation twice. A different change gets a new one.
   const attempt = useRef<{ key: string; id: string } | null>(null);
+  const toast = useToast();
   async function change(command: Parameters<typeof updateWork>[1]) {
     const key = JSON.stringify([item.id, item.version, command]);
     if (attempt.current?.key !== key) attempt.current = { key, id: crypto.randomUUID() };
     setBusy(true); setError('');
-    try { await updateWork(item, command, attempt.current.id); attempt.current = null; if (isCurrent()) reload(); }
+    try {
+      await updateWork(item, command, attempt.current.id); attempt.current = null;
+      // The one wink (F-026 §3): a task was closed; the words carry it without the face.
+      if ('status' in command && command.status === 'done' && item.status !== 'done') toast({ message: `${taskNumber(item)} done`, tone: 'success', mascot: 'wink' });
+      if (isCurrent()) reload();
+    }
     catch (cause) { if (!isCurrent()) return; setError(readable(cause)); if (cause instanceof ApiError && cause.status === 409) { attempt.current = null; reload(); } }
     finally { setBusy(false); }
   }

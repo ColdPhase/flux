@@ -123,6 +123,7 @@ repository was created on 2026-09-26.
 - Owner background setup with paused rules and sourced comparisons. These are
   prepared, but production activation stays off ([#124](https://github.com/ColdPhase/flux/pull/124)).
 - In a project's Agents view, workspace owners and admins edit and publish the agent policy (scope, priorities, review criteria, allowed work) ([#214](https://github.com/ColdPhase/flux/pull/214)). A conflicting publish keeps your text and shows what the other manager changed; everyone else reads the policy with its managers named ([#292](https://github.com/ColdPhase/flux/pull/292)).
+- Kreska's small moments: the startup splash, loading, empty Inbox, offline, no-results and agent-thinking faces, pull to refresh, and the "#N done" toast wink. Settings → Appearance → "Kreska in loading and empty screens" turns them all off for this device, leaving plain text, including the startup line and the sidebar and working-line status ([#382](https://github.com/ColdPhase/flux/pull/382)).
 
 ### Changed
 

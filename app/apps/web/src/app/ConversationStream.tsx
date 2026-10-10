@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import type { Conversation, ConversationMessage, ConversationRoot, ConversationRootWindow, NativeWorkRow, Page, Project, TaskCreationNotice } from '@flux/contracts';
-import { AgentIdentity, Button, EmptyState, Icon, useArrivals } from '../ui';
+import { AgentIdentity, Button, EmptyState, Icon, Opening, useArrivals } from '../ui';
 import { newBelowText } from '../ui/motion-rules';
 import { MessageActions, MessageObjects, useCreateWorkFromMessage } from '../work/inline';
 import { useMessageWorkRead, type MessageWorkRead } from '../work/useMessageWork';
@@ -492,6 +492,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
   const below = newBelowText(newBelow.messages, newBelow.tasks);
   return (<>
     <div className="convo-stream">
+    {revealed ? null : <Opening name={project.name} />}
     <div className={`project-convo__feed is-stream${revealed ? '' : ' is-opening'}`} ref={attachFeed} aria-busy={revealed ? undefined : true}
       data-associations-observed-at={messageWork.page?.observedAt} data-associations-phase={messageWork.state.phase}
       data-references-observed-at={referenceWork.observation?.observedAt} data-references-phase={referenceWork.state.phase}>

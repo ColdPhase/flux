@@ -3,7 +3,7 @@ import { Link, isRouteErrorResponse, useLocation, useRevalidator, useRouteError 
 import { ApiError, NetworkError } from '../api/client';
 import { getMe } from '../api/auth';
 import { useThoughtDraft } from '../sketch/createdDraft';
-import { Button, ErrorState, Spinner } from '../ui';
+import { Button, ErrorState, useMoments } from '../ui';
 import { routeLabel } from './routeLabel';
 import { ReloadRecovery } from './ReloadRecovery';
 
@@ -80,7 +80,29 @@ function PrivateThoughtRecovery({ sketchId }: { sketchId: string }) {
   </div>;
 }
 
-/** Initial navigation waits for the actual session and matched route; no authenticated shell is invented. */
+/**
+ * Shown while the session is restored on a full load. The splash is the markup index.html already shows, so the
+ * hand-over from the static page to React is invisible. With small moments off it is the plain line, at once.
+ */
 export function Booting() {
-  return <main className="page-center booting" aria-busy="true"><p className="booting__msg" role="status"><Spinner /> Opening {routeLabel(window.location.pathname)}…</p></main>;
+  const moments = useMoments();
+  if (!moments) {
+    return (
+      <main className="page-center booting" aria-busy="true">
+        <div className="boot boot--plain" role="status"><p className="boot__text">Opening Flux…</p></div>
+      </main>
+    );
+  }
+  return (
+    <main className="page-center booting" aria-busy="true">
+      <p className="ui-vh">Opening {routeLabel(window.location.pathname)}…</p>
+      <div className="boot boot--moment" role="status" aria-label="Opening Flux">
+        <div className="boot__lockup">
+          <svg className="boot__logo" viewBox="0 0 24 24" width="56" height="56" aria-hidden="true"><path d="M7 0H17C21.2 0 24 2.8 24 7V17C24 21.2 21.2 24 17 24H7C2.8 24 0 21.2 0 17V7C0 2.8 2.8 0 7 0Z" className="boot__tile"/><g className="boot__face" transform="translate(12 12) scale(1.14) translate(-12 -12.4)" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.3 11.2V13.8M14.7 11.2V13.8"/><path d="M7.3 8.1 10.5 7.2" strokeWidth="1.55"/></g></svg>
+          <b>flux</b>
+        </div>
+        <i className="boot__bar" aria-hidden="true"><u /></i>
+      </div>
+    </main>
+  );
 }

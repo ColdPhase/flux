@@ -1,7 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from './Icon';
+import { Kreska, type KreskaExpression } from './Kreska';
 import { duration, play } from './motion';
+import { useMoments } from './moments';
+import './moments.css';
 
 export type ToastTone = 'neutral' | 'success' | 'danger';
 
@@ -10,9 +13,12 @@ export interface ToastOptions {
   tone?: ToastTone;
   /** Milliseconds before it leaves on its own; errors stay until dismissed. */
   timeout?: number;
+  /** A small moment: the wink after a task is closed. Shown only while Appearance keeps moments on; the message says it all. */
+  mascot?: KreskaExpression;
 }
 
-interface ToastEntry extends Required<Omit<ToastOptions, 'timeout'>> {
+interface ToastEntry extends Required<Omit<ToastOptions, 'timeout' | 'mascot'>> {
+  mascot: KreskaExpression | null;
   id: number;
   timeout: number | null;
   leaving: boolean;
@@ -28,6 +34,7 @@ function ToastItem({ toast, onDone }: { toast: ToastEntry; onDone: (id: number) 
   const ref = useRef<HTMLDivElement>(null);
   const timer = useRef<number | null>(null);
   const [leaving, setLeaving] = useState(false);
+  const moments = useMoments();
 
   const dismiss = useCallback(() => setLeaving(true), []);
   const arm = useCallback(() => {
@@ -49,7 +56,7 @@ function ToastItem({ toast, onDone }: { toast: ToastEntry; onDone: (id: number) 
 
   return (
     <div ref={ref} className={`ui-toast ui-toast--${toast.tone}`} onMouseEnter={disarm} onMouseLeave={arm} onFocus={disarm} onBlur={arm}>
-      {toast.tone === 'success' ? <Icon name="check" /> : toast.tone === 'danger' ? <Icon name="alert" /> : null}
+      {toast.mascot && moments ? <Kreska expression={toast.mascot} size={24} /> : toast.tone === 'success' ? <Icon name="check" /> : toast.tone === 'danger' ? <Icon name="alert" /> : null}
       <span className="ui-toast__msg">{toast.message}</span>
       <button type="button" className="ui-toast__close" onClick={dismiss} aria-label="Dismiss notification"><Icon name="x" size={14} /></button>
     </div>
@@ -62,7 +69,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const nextId = useRef(1);
   const show = useCallback((options: ToastOptions) => {
     const tone = options.tone ?? 'neutral';
-    const entry: ToastEntry = { id: nextId.current++, message: options.message, tone, timeout: options.timeout ?? (tone === 'danger' ? null : 5000), leaving: false };
+    const entry: ToastEntry = { id: nextId.current++, message: options.message, tone, mascot: options.mascot ?? null, timeout: options.timeout ?? (tone === 'danger' ? null : 5000), leaving: false };
     // Keep at most three; older ones leave.
     setToasts((current) => [...current.slice(-2), entry]);
   }, []);
