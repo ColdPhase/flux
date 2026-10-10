@@ -60,7 +60,11 @@ unchanged; F-024 implementation and independent acceptance remain pending.
 ## Connections and owner-authorized autonomy — CO-1
 
 The in-product helper (#57/#68, O-007/O-008) remains: chat, research, finding
-connections, map/wiki/task assistance and scoped proposals. External MCP agents
+connections, map/wiki/task assistance and scoped proposals. *Revised 2026-10-09 by
+founder direction ([F-027](assistant.md), questions 1 and 16):* the helper also
+changes tasks, Wiki pages, maps and conversations directly under its owner's switches
+and approval mode, and may hand a task to its owner's own agents; a hand-off to
+another person's agent waits for the owner. Agents never start the helper. External MCP agents
 are separate connections using the owner's client and compute. Never substitute
 another person's connection or payer when one is unavailable.
 
