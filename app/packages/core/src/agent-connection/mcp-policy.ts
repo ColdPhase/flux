@@ -1,4 +1,4 @@
-import { AGENT_MCP_ENTRIES, type AgentConnection, type AgentMcpCapabilityId, type AgentMcpEntry, type AgentMcpPolicy,
+import { compileAssistantAreas, DEFAULT_ASSISTANT_AREAS, AGENT_MCP_ENTRIES, type AgentConnection, type AgentMcpCapabilityId, type AgentMcpEntry, type AgentMcpPolicy,
   type SaveAgentMcpPolicy } from '@flux/contracts';
 import { DomainError, InvalidInputError, NotFoundError } from '../access/errors.js';
 import { isUuid } from '../access/policy.js';
@@ -21,7 +21,9 @@ export function requireAgentMcpEntry(policy: AgentMcpPolicy, capturedVersion: nu
 
 /** Exact registered membership and the original scopes define the ceiling, including for aliases. */
 export function initialAgentMcpPolicy(connection: AgentConnection): AgentMcpPolicy {
-  const entries = AGENT_MCP_ENTRIES.filter((entry) => connection.scopes.includes(entry.requiredScope));
+  const assistant = connection.computeSource === 'owner_assistant' ? compileAssistantAreas(DEFAULT_ASSISTANT_AREAS) : null;
+  const entries = AGENT_MCP_ENTRIES.filter((entry) => connection.scopes.includes(entry.requiredScope)
+    && (!assistant || assistant.enabledEntryIds.includes(entry.id)));
   return { connectionId: connection.id, version: 1, selectedProjectIds: [...connection.selectedProjectIds].sort(),
     enabledEntryIds: entries.map((entry) => entry.id).sort(),
     enabledCapabilityIds: [...new Set(entries.flatMap((entry) => entry.requiredCapabilities))].sort() };

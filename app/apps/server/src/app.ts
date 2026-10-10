@@ -1,3 +1,4 @@
+import { assistantRoutes } from './assistant/routes.js';
 import { EventEmitter } from 'node:events';
 import type { Server } from 'node:http';
 import { join } from 'node:path';
@@ -175,6 +176,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   // Personal assistant runs (#68): the server queues; the worker dispatches.
   const personalRuns = personalRunServerComposition(env, db);
   if (personalRuns.mode !== 'production') app.log.warn({ mode: personalRuns.mode }, 'TEST ONLY: personal runs use fixture connections and a mock provider');
+  await app.register(assistantRoutes, { db, sessions: identity, boss });
   await app.register(personalRunRoutes, { db, sessions: identity, boss, connections: personalRuns.connections, providerEnabled: personalRuns.providerEnabled });
   await app.register(searchRoutes, { db, sessions: identity, cursorSecret: identityConfig.secret, exposeWork });
   await app.register(exportRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, storage: fileStorage });

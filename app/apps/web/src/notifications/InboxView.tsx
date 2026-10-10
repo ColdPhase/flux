@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import type { InboxItem, NotificationReason } from '@flux/contracts';
-import { Button, EmptyState, ErrorState, Icon, IconButton, Spinner, useToast, type IconName } from '../ui';
+import { assistantJoinInboxPath, type InboxItem, type NotificationReason } from '@flux/contracts';
+import { Button, EmptyState, ErrorState, Icon, IconButton, Kreska, Spinner, useToast, type IconName } from '../ui';
 import { announceInboxChange, getInbox, getInboxItem, markAllInboxRead, markInboxRead } from './api';
 import './notifications.css';
 
@@ -30,6 +30,8 @@ export function when(iso: string, now = new Date()) {
 
 function Row({ item, onRead }: { item: InboxItem; onRead: (id: string) => void }) {
   const reason = item.reason ? REASONS[item.reason] : { label: 'Update', icon: 'bell' as IconName };
+  const assistantRequest = item.reason === 'question' && item.source.type === 'project'
+    && item.url === assistantJoinInboxPath(item.source.id);
   const unread = !item.readAt;
   const open = (event: MouseEvent<HTMLAnchorElement>) => {
     if (event.button !== 0) return;
@@ -37,12 +39,12 @@ function Row({ item, onRead }: { item: InboxItem; onRead: (id: string) => void }
   };
   return (
     <li className={`inbox__row${unread ? ' is-unread' : ''}`}>
-      <Link to={item.url ?? `/inbox/${item.id}`} className="inbox__item" onClick={open}>
-        <span className={`inbox__ic inbox__ic--${item.reason ?? 'other'}`} aria-hidden="true"><Icon name={reason.icon} size={14} /></span>
+      <Link to={item.url ?? `/inbox/${item.id}`} className={`inbox__item${assistantRequest ? ' inbox__item--assistant-request' : ''}`} onClick={open}>
+        <span className={`inbox__ic inbox__ic--${item.reason ?? 'other'}`} aria-hidden="true">{assistantRequest ? <Kreska size={14} /> : <Icon name={reason.icon} size={14} />}</span>
         <span className="inbox__text">
           <span className="inbox__title">{item.title}</span>
           {item.body ? <span className="inbox__body">{item.body}</span> : null}
-          <span className="inbox__meta">{reason.label}<span aria-hidden="true"> · </span><time dateTime={item.createdAt}>{when(item.createdAt)}</time></span>
+          <span className="inbox__meta">{assistantRequest ? <><span className="agent-tag">Agent</span><span aria-hidden="true"> · </span></> : null}{reason.label}<span aria-hidden="true"> · </span><time dateTime={item.createdAt}>{when(item.createdAt)}</time>{assistantRequest ? <><span aria-hidden="true"> · </span><span className="inbox__review">Review <Icon name="chevron-right" size={14} /></span></> : null}</span>
         </span>
         {unread ? <span className="inbox__dot"><span className="ui-vh">, unread</span></span> : null}
       </Link>

@@ -1,10 +1,9 @@
+import { createProjectWithAssistant, grantProjectWithAssistant } from '../assistant/project-membership.js';
 import type { FastifyInstance } from 'fastify';
 import { PROJECTS_PATH, WORKSPACES_PATH, type CreateProjectCommand, type GrantProjectCommand, type PageQuery } from '@flux/contracts';
 import {
   assertAuthorized,
-  createProject,
   getProject,
-  grantProject,
   listProjectGrants,
   listProjectPeople,
   listProjects,
@@ -22,7 +21,7 @@ export function projectRoutes(app: FastifyInstance, { db, principal, command, ru
     schema: { body: { type: 'object', required: ['name'], additionalProperties: false, properties: { name: nameSchema, visibility: { type: 'string', enum: ['workspace', 'restricted'] } } } },
   }, async (request, reply) => command(request, reply, {
     operation: `POST ${WORKSPACES_PATH}/:workspaceId/projects`, scope: workspaceScope(request.params.workspaceId), status: 201,
-    run: (actor, conn) => createProject(actor, request.params.workspaceId, request.body, conn),
+    run: (actor, conn) => createProjectWithAssistant(actor, request.params.workspaceId, request.body, conn),
     replay: requires('project', 'project.read', bodyId),
   }));
   app.get<{ Params: { projectId: string } }>(`${PROJECTS_PATH}/:projectId`, async (request) =>
@@ -45,7 +44,7 @@ export function projectRoutes(app: FastifyInstance, { db, principal, command, ru
     await assertAuthorized(await principal(request), 'project.manage', projectScope(request.params.projectId), db);
     const result = await projectChange(request.params.projectId, (conn) => runCommand(request, {
       operation: `POST ${PROJECTS_PATH}/:projectId/grants`, scope: projectScope(request.params.projectId), status: 201,
-      run: (actor, conn) => grantProject(actor, request.params.projectId, request.body, conn),
+      run: (actor, conn) => grantProjectWithAssistant(actor, request.params.projectId, request.body, conn),
       replay: requires('project', 'project.manage', () => request.params.projectId),
     }, conn));
     return sendCommand(reply, result);

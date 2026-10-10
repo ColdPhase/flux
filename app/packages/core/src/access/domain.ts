@@ -45,6 +45,11 @@ import {
   type Actor,
 } from './policy.js';
 
+/** Optional transaction composition: prepare grant/project events, then flush after all related writes. */
+export interface DomainEventSink {
+  record(principal: Principal, workspaceId: string, kind: string, objectId: string, data: Record<string, unknown>): Promise<void>;
+}
+
 // Events of these use cases: the access policy decides the audience; `@flux/db` stores (#89).
 const events = (tx: Executor) => policyEventPorts(tx, eventRepository(tx));
 
@@ -295,14 +300,15 @@ export async function removeMember(principal: Principal, workspaceId: string, us
 // ---------------------------------------------------------------------------------------
 // Projects and grants
 
-export async function createProject(principal: Principal, workspaceId: string, command: CreateProjectCommand, db: Database): Promise<Project> {
+export async function createProject(principal: Principal, workspaceId: string, command: CreateProjectCommand, db: Database, eventSink?: DomainEventSink): Promise<Project> {
   const projectName = name(command?.name);
   const visibility = command.visibility === undefined ? 'workspace' : oneOf(command.visibility, PROJECT_VISIBILITIES, 'visibility');
   return db.transaction(async (tx) => {
     enforce(await evaluateWorkspace(principal, 'project.create', workspaceId, tx, { lock: true }), 'workspace');
     const id = randomUUID();
     const [row] = await tx.insert(schema.projects).values({ id, workspaceId, name: projectName, visibility, createdBy: principal.id }).returning();
-    await recordEvent(events(tx), principal, workspaceId, 'project.created.v1', id, { visibility });
+    if (eventSink) await eventSink.record(principal, workspaceId, 'project.created.v1', id, { visibility });
+    else await recordEvent(events(tx), principal, workspaceId, 'project.created.v1', id, { visibility });
     return toProject(row!, LEVEL.manager);
   });
 }
@@ -377,7 +383,7 @@ export async function listProjectPeople(principal: Principal, projectId: string,
  * a member of the project's workspace; an agent must belong to it and not be revoked.
  * Grants that affect an owner need an owner.
  */
-export async function grantProject(principal: Principal, projectId: string, command: GrantProjectCommand, db: Database): Promise<ProjectGrant> {
+export async function grantProject(principal: Principal, projectId: string, command: GrantProjectCommand, db: Database, eventSink?: DomainEventSink): Promise<ProjectGrant> {
   const role = oneOf(command?.role, GRANT_ROLES, 'role');
   const target = command.principal;
   if (!target || (target.kind !== 'human' && target.kind !== 'agent') || typeof target.id !== 'string' || !target.id) throw new InvalidInputError('principal must be { kind: "human" | "agent", id }');
@@ -416,7 +422,9 @@ export async function grantProject(principal: Principal, projectId: string, comm
       if (pgCode(error) === '23503') throw new ConflictError('The grantee is no longer part of the workspace', 'GRANTEE_REMOVED');
       throw error;
     }
-    await recordEvent(events(tx), principal, workspaceId, 'project.grant_set.v1', projectId, { grantId: row!.id, principal: target, role });
+    const event = { grantId: row!.id, principal: target, role };
+    if (eventSink) await eventSink.record(principal, workspaceId, 'project.grant_set.v1', projectId, event);
+    else await recordEvent(events(tx), principal, workspaceId, 'project.grant_set.v1', projectId, event);
     return toGrant(row!);
   });
 }
