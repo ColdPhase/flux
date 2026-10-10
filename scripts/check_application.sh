@@ -116,6 +116,9 @@ $compose run --rm e2e node_modules/.bin/tsx --test tests/app/e2e/agent-connectio
 # The owner's standing-grant controls on the Connect page decide the agent's next real MCP call (#152).
 run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/agent-grant-controls.e2e.ts
 
+# The owner's capability and project switches on the Connect page decide the agent's next real MCP call (#316).
+run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/mcp-permission-controls.e2e.ts
+
 # A session created before an API container restart must still be valid afterwards.
 $compose run --rm test node_modules/.bin/tsx tests/app/session-restart.ts prepare
 $compose restart api
