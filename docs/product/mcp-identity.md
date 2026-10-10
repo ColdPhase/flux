@@ -1120,13 +1120,14 @@ scope and its observations are preserved in the dated research and GitHub record
 
 **Implemented in #313:** an active provider closes ordinary password sign-in, sign-up
 and reset at the API and in the browser (`SSO_ONLY`, `SIGNUP_CLOSED`); the session
-resolver ends sessions that did not sign in through the provider. `FLUX_SIGNUP=verified`
+resolver ends sessions that did not sign in through the provider. The bearer and refresh
+gates also refuse owners without a link to the configured provider. `FLUX_SIGNUP=verified`
 sends a verification mail, and is `off` without email or with a provider. Pre-F-024
-accounts get a verification mail at their next password sign-in once email is set
+accounts get a verification mail at their next password sign-in in password mode once email is set
 (migration 0074 adds `auth_users.verification_required` and `auth_email_claims`). A
 provider identity whose verified email is held by a verified or already linked
-account is refused; an unverified, unlinked holder is offered the claim page with link
-first, and the claim releases the address only (see the operator guide,
+account is refused; an unverified, unlinked holder is offered the claim page with audited
+operator recovery guidance under SSO-only, and the claim releases the address only (see the operator guide,
 `docs/operations/single-sign-on.md`). Email lookup for adding a member uses verified
 addresses while a provider is set. Tests: `tests/app/identity-email-claims.test.ts`,
 `tests/app/identity-config.test.ts`, `tests/app/e2e/oidc.e2e.ts` and
