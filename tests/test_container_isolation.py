@@ -6,6 +6,10 @@ pool of Compose-declared slots instead. This test reads every Compose file in th
 if any of them mounts an engine socket or points DOCKER_HOST anywhere, and fails if a deployable one
 shares the host's PID, IPC or network namespace, runs privileged or maps host devices. Standard library
 only.
+
+Mount declarations use block lists and plain/quoted scalars. Flow collections and block scalars inside
+volumes are refused rather than interpreted incompletely. scripts/agent-runtime/inspect.py is the
+authoritative check of Docker's resolved mount sources in the supported-host runtime check.
 """
 
 from __future__ import annotations
@@ -30,6 +34,8 @@ LONG_BIND_TYPE = re.compile(r"^\s*(?:-\s*)?type:\s*[\"']?bind\b")
 LONG_SOURCE = re.compile(r"^\s*(?:-\s*)?source:\s*(?P<src>[^\s]+)")
 DEVICE = re.compile(r"^\s*device:\s*(?P<src>[^\s]+)")
 TRAILING_COMMENT = re.compile(r"\s+#.*$")
+VOLUMES = re.compile(r"^(?P<indent>\s*)volumes:\s*(?P<value>.*)$")
+UNSUPPORTED_VOLUME_STYLE = re.compile(r"(?:^\s*(?:-\s*)?|:\s*)[\[{>|]")
 FORBIDDEN = [
     (re.compile(r"^\s*DOCKER_HOST\s*[:=]", re.M), "DOCKER_HOST"),
     (re.compile(r"^\s*CONTAINER_HOST\s*[:=]", re.M), "CONTAINER_HOST"),
@@ -60,10 +66,20 @@ def source_problem(compose: Path, source: str) -> str | None:
 def bind_problems(compose: Path, text: str) -> list[str]:
     """Every mount or host-backed volume in one Compose file that is not from the checkout, as `line: problem`."""
     problems = []
+    volumes_indent = None
     for number, raw in enumerate(text.splitlines(), 1):
         line = TRAILING_COMMENT.sub("", raw) if not raw.lstrip().startswith("#") else ""
         if not line.strip():
             continue
+        indent = len(line) - len(line.lstrip())
+        declaration = VOLUMES.match(line)
+        if declaration:
+            volumes_indent = len(declaration.group("indent"))
+        elif volumes_indent is not None and indent <= volumes_indent:
+            volumes_indent = None
+        style = declaration.group("value") if declaration else line
+        if volumes_indent is not None and UNSUPPORTED_VOLUME_STYLE.search(style):
+            problems.append(f"{number}: unsupported volume spelling: {raw.strip()}")
         if LONG_BIND_TYPE.match(line):
             problems.append(f"{number}: long-form bind mount: {raw.strip()}")
         for pattern in (LONG_SOURCE, DEVICE):
@@ -122,6 +138,9 @@ class ContainerIsolationTest(unittest.TestCase):
             "relative path escaping the checkout": "services:\n  x:\n    volumes:\n      - ../../../../var/run:/host-run\n",
             "default that escapes the checkout": "services:\n  x:\n    volumes:\n      - ${FLUX_X:-../../../../var/run}:/host-run\n",
             "named volume backed by a host path": "volumes:\n  host:\n    driver_opts:\n      type: none\n      o: bind\n      device: /var/run\n",
+            "flow mapping mount": "services:\n  x:\n    volumes:\n      - { type: bind, source: /var/run, target: /host-run }\n",
+            "flow sequence mounts": 'services:\n  x:\n    volumes: ["/var/run:/host-run"]\n',
+            "folded scalar mount": "services:\n  x:\n    volumes:\n      - >-\n        /var/run:/host-run\n",
         }
         for label, text in cases.items():
             with self.subTest(label):
@@ -132,6 +151,12 @@ class ContainerIsolationTest(unittest.TestCase):
         text = "services:\n  x:\n    volumes:\n      - files:/data/files:z\n      - ../app/tooling/migrate.ts:/app/tooling/migrate.ts:ro,z\n" \
                "      - ${FLUX_BACKGROUND_KEY_HOST_FILE:-./background-key-unavailable}:/run/secrets/flux_background_key:ro,z\n" \
                "      - ${MOBILE_STATE:?}:/state:ro,z\n      - ../scripts/mobile-push:/fixture:ro,z  # fixture\n"
+        self.assertEqual(bind_problems(compose, text), [])
+
+    def test_volume_style_restrictions_do_not_apply_to_commands(self) -> None:
+        compose = ROOT / "docker" / "compose.yaml"
+        text = 'services:\n  x:\n    volumes:\n      - files:/data/files:z\n    command: ["sh", "-c"]\n' \
+               '  y:\n    command: >-\n      echo test\n'
         self.assertEqual(bind_problems(compose, text), [])
 
     def test_the_bind_check_notices_directory_mounts(self) -> None:
