@@ -109,6 +109,8 @@ export const authIdpStanding = pgTable('auth_idp_standing', {
   state: text('state').notNull().default('ok'),
   reason: text('reason'),
   refreshTokenEnc: text('refresh_token_enc'),
+  /** The provider session (`sid`) the stored token was issued for (migration 0085, #314). */
+  refreshTokenSid: text('refresh_token_sid'),
   confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
   stateChangedAt: timestamp('state_changed_at', { withTimezone: true }).notNull().defaultNow(),
   lastCheckAt: timestamp('last_check_at', { withTimezone: true }),
@@ -117,6 +119,13 @@ export const authIdpStanding = pgTable('auth_idp_standing', {
   leaseId: text('lease_id'),
   leaseUntil: timestamp('lease_until', { withTimezone: true }),
 }, (table) => [primaryKey({ columns: [table.userId, table.providerId] })]);
+
+/** Seen back-channel logout token ids (migration 0073, #314): a `jti` is accepted once per provider until it expires. */
+export const authLogoutTokens = pgTable('auth_logout_tokens', {
+  providerId: text('provider_id').notNull(),
+  jti: text('jti').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+}, (table) => [primaryKey({ columns: [table.providerId, table.jti] }), index('auth_logout_tokens_expires_idx').on(table.expiresAt)]);
 
 // Better Auth MCP/OAuth provider models (migration 0009).
 export const jwks = pgTable("jwks", {

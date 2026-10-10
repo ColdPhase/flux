@@ -24,17 +24,27 @@ export type IdpCheckResult =
 export function idpStandingRepository(db: DbExecutor) {
   return {
     /**
-     * A successful provider sign-in: stores the sealed offline token, clears sign-in required and marks the
-     * identity confirmed now. Returns the token it replaced, so the caller can revoke it at the provider.
+     * A successful provider sign-in: stores the sealed offline token with the provider session (`sid`) it was
+     * issued for, clears sign-in required and marks the identity confirmed now. Returns the token it replaced
+     * and that token's sid, so the caller can decide whether to revoke it at the provider.
      */
-    async record(userId: string, providerId: string, refreshTokenEnc: string, now: Date, nextCheckAt: Date): Promise<string | null> {
-      const [previous] = await db.select({ token: s.refreshTokenEnc }).from(s).where(and(eq(s.userId, userId), eq(s.providerId, providerId)));
-      await db.insert(s).values({ userId, providerId, state: 'ok', refreshTokenEnc, confirmedAt: now, stateChangedAt: now, nextCheckAt })
+    async record(userId: string, providerId: string, refreshTokenEnc: string, sid: string | null, now: Date, nextCheckAt: Date): Promise<{ token: string; sid: string | null } | null> {
+      const [previous] = await db.select({ token: s.refreshTokenEnc, sid: s.refreshTokenSid }).from(s).where(and(eq(s.userId, userId), eq(s.providerId, providerId)));
+      await db.insert(s).values({ userId, providerId, state: 'ok', refreshTokenEnc, refreshTokenSid: sid, confirmedAt: now, stateChangedAt: now, nextCheckAt })
         .onConflictDoUpdate({ target: [s.userId, s.providerId], set: {
-          state: 'ok', reason: null, refreshTokenEnc, confirmedAt: now, nextCheckAt, leaseId: null, leaseUntil: null,
+          state: 'ok', reason: null, refreshTokenEnc, refreshTokenSid: sid, confirmedAt: now, nextCheckAt, leaseId: null, leaseUntil: null,
           stateChangedAt: sql`CASE WHEN ${s.state} = 'ok' THEN ${s.stateChangedAt} ELSE ${now} END`,
         } });
-      return previous?.token ?? null;
+      return previous?.token ? { token: previous.token, sid: previous.sid } : null;
+    },
+
+    /** Whether a live browser session of this person was created from this provider session (`sid`). */
+    async sessionCarries(userId: string, providerId: string, sid: string, now: Date): Promise<boolean> {
+      const result = await db.execute(sql`
+        SELECT 1 FROM auth_session_identities i JOIN auth_sessions x ON x.id = i.session_id
+        WHERE x.user_id = ${userId} AND i.method = ${providerId} AND i.idp_sid = ${sid} AND x.expires_at > ${now.toISOString()}::timestamptz
+        LIMIT 1`);
+      return (result.rowCount ?? 0) > 0;
     },
 
     /** True when any of the person's provider identities is in sign-in required. Cheap enough for every request. */

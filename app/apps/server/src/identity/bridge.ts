@@ -3,6 +3,7 @@ import { fromNodeHeaders } from 'better-auth/node';
 import { AUTH_BASE_PATH, type ApiError, type IdentityCapabilities } from '@flux/contracts';
 import { CLIENT_IP_HEADER, type FluxAuth } from './auth.js';
 import { oauthRequestContext, type OauthRequests } from './oauth-flow.js';
+import type { OfflineStep } from './offline-step.js';
 import type { SignInFacts, SignIns } from './sign-in.js';
 import type { SessionResolver } from './session.js';
 
@@ -41,19 +42,21 @@ export interface AuthBridgeOptions {
   passwordReset: IdentityCapabilities['passwordReset'];
   oauthRequests: OauthRequests;
   signIns: SignIns;
+  /** With the standing check on: the silent offline-access step of provider sign-in (S1, revised 2026-10-09). */
+  offlineStep?: OfflineStep | null;
   /** Reads the cookie's session, which ends it when the provider's confirmation lapsed (F-024 S2, #312). */
   sessions: Pick<SessionResolver, 'resolveSession'>;
 }
 
 /** Forwards auth endpoints and the exact OAuth discovery paths to Better Auth. */
-export function registerAuthBridge(app: FastifyInstance, { auth, publicOrigin, passwordReset, oauthRequests, signIns, sessions }: AuthBridgeOptions) {
+export function registerAuthBridge(app: FastifyInstance, { auth, publicOrigin, passwordReset, oauthRequests, signIns, sessions, offlineStep = null }: AuthBridgeOptions) {
   // OAuth token and revocation endpoints use HTML form encoding. Preserve the
   // bounded raw payload so Better Auth validates it, rather than Fastify's 415.
   app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_request, body, done) => done(null, body));
   const forward = async (request: FastifyRequest, reply: FastifyReply) => {
       // Build the URL from the configured origin, never from Host or an absolute-form target.
       const target = new URL(request.url, publicOrigin);
-      const url = new URL(`${target.pathname}${target.search}`, publicOrigin);
+      let url = new URL(`${target.pathname}${target.search}`, publicOrigin);
       // Single sign-on uses only the browser authorization-code flow (#113): a client may not
       // present a raw ID token it obtained elsewhere.
       if (url.pathname === SOCIAL_SIGN_IN_PATH && carriesIdToken(request.body)) {
@@ -61,6 +64,19 @@ export function registerAuthBridge(app: FastifyInstance, { auth, publicOrigin, p
       }
       if (passwordReset === 'unavailable' && PASSWORD_RESET_REQUEST_PATHS.has(url.pathname)) {
         return reply.code(503).send({ error: 'Password reset is unavailable', code: 'PASSWORD_RESET_UNAVAILABLE' } satisfies ApiError);
+      }
+      const facts: SignInFacts = {};
+      const stepCookies: string[] = [];
+      if (offlineStep && request.method === 'GET' && url.pathname === offlineStep.callbackPath) {
+        const step = await offlineStep.intercept(url, request.headers.cookie);
+        if (step.kind === 'redirect') {
+          return reply.code(302).header('cache-control', 'no-store').header('location', step.location).header('set-cookie', step.cookie).send();
+        }
+        if (step.kind === 'resume') {
+          url = step.url;
+          facts.offline = step.outcome;
+          if (step.cookie) stepCookies.push(step.cookie);
+        }
       }
       // Better Auth reads the session itself on the authorization steps. Resolving it first ends a session whose
       // provider confirmation lapsed, so the person is sent through the provider again.
@@ -74,7 +90,6 @@ export function registerAuthBridge(app: FastifyInstance, { auth, publicOrigin, p
       try { context = await oauthRequestContext(url, request.body, (await auth.$context).secret, `${publicOrigin}/mcp`); }
       catch { return reply.code(400).send({ error: 'Invalid OAuth request', code: 'INVALID_OAUTH_QUERY' }); }
       const incoming = new Request(url, { method: request.method, headers, body });
-      const facts: SignInFacts = {};
       const handle = () => signIns.run(facts, () => auth.handler(incoming));
       const response = context ? await oauthRequests.run(Object.freeze(context), handle) : await handle();
       reply.status(response.status);
@@ -83,7 +98,7 @@ export function registerAuthBridge(app: FastifyInstance, { auth, publicOrigin, p
         // A refused sign-in (the provider returned no refresh token, #311) comes back to the page with the reason.
         reply.header(key, key === 'location' && facts.refused ? `${value}${value.includes('?') ? '&' : '?'}sso_reason=${facts.refused}` : value);
       });
-      const cookies = response.headers.getSetCookie();
+      const cookies = [...response.headers.getSetCookie(), ...stepCookies];
       if (cookies.length) reply.header('set-cookie', cookies);
       const text = response.body ? await response.text() : null;
       return reply.send(text && response.headers.get('content-type')?.includes('application/json') ? redactSessionTokens(text) : text);
