@@ -287,13 +287,14 @@ class StopAndQuestions(unittest.TestCase):
     def test_11_stop_offers_hand_back(self) -> None:
         # Hand back (#347 P2-4): after Stop the toast offers to give the task back to the agent; Jonas is offered neither.
         self.new_working_task("Water the seedlings at dawn", "fourth")
+        number = self.task("fourth")["number"]
         page = self.page("ada")
         page.goto(f"/projects/{self.ids['project']}/agents")
         row = page.locator(f'.agents-row[data-agent="{self.ids["agent"]}"]')
         row.get_by_role("button", name="Stop Claude Code agent").click()
-        expect(page.get_by_text("Stopped Claude Code agent on #4")).to_be_visible()
+        expect(page.get_by_text(f"Stopped Claude Code agent on #{number}")).to_be_visible()
         page.get_by_role("button", name="Hand back").click()
-        expect(page.get_by_text("Handed #4 back to Claude Code agent")).to_be_visible()
+        expect(page.get_by_text(f"Handed #{number} back to Claude Code agent")).to_be_visible()
         self.assertEqual(self.task("fourth")["owner"]["id"], self.ids["agent"])
         # Negative control: Jonas, who neither owns the agent nor manages the project, sees neither Stop nor Hand back.
         jonas = self.page("jonas")
