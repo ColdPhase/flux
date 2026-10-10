@@ -581,6 +581,28 @@ anything; only this publish writes it, never message, PR, wiki or tool text.
     reaches the same session's next bootstrap; refusals and invalid policies change nothing; a
     conflict carries the newer policy) and `tests/ui/test_project_policy.py` (1440, 390 and 320 px).
 
+## Real-client onboarding (#160 AC-2, 2026-10-09)
+
+`app/tests/app/e2e/mcp-onboarding.e2e.ts`, run by `./scripts/check_mcp_clients.sh` (Docker, no vendor account;
+the models are scripted). Each clean client connects, the owner authorizes in Chromium, then the person's Start
+work input runs.
+
+- **Claude Code 2.1.285 (supported):** `/mcp__flux__start_work <projectId>` is expanded by the client, so the
+  model request carries the bound context and the rendered playbook with its version and digest. The scripted
+  model then calls `flux_bootstrap`, `flux_acknowledge_playbook`, `flux_project_orientation` (the current plan
+  appears with its material id) and `flux_create_task` under the standing grant. The server-side acknowledgment
+  is current and the task is attributed to the connection's agent.
+- **Codex rust-v0.160.1 (pending, no integrated path):** the pinned Codex does not put an MCP server's
+  `instructions` into its model request (probed 2026-10-09 with the same CLI line: the request carries only its
+  exec tool, which lists MCP tools at run time). Flux's instructions therefore never reach the model. The check
+  holds this state: no Flux text reaches the model, nothing is acknowledged and no task is created. It fails
+  once Codex delivers them, and the row then becomes supported. Manual prompt files or skill installs are not an
+  accepted fallback.
+- **Not built:** Pause and Stop of a running agent. The Agents view shows state but has no controls for them;
+  revocation remains the only stop.
+- **Not verified:** the resume path and changed-plan reanalysis of AC-1 (later work consuming changes), and the
+  #153 inbox behaviour of AC-3 and AC-4.
+
 ## Pinned real-client contract (#152 AC-4, 2026-10-09)
 
 `./scripts/check_mcp_clients.sh` is an opt-in Docker check (not in `check_application.sh` or CI: it downloads

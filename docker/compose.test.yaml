@@ -144,7 +144,7 @@ services:
     command:
       - sh
       - -c
-      - node apps/runtime/dist/install/main.js && exec node_modules/.bin/tsx --test tests/app/e2e/mcp-clients.e2e.ts
+      - node apps/runtime/dist/install/main.js && exec node_modules/.bin/tsx --test --test-concurrency=1 tests/app/e2e/mcp-clients.e2e.ts tests/app/e2e/mcp-onboarding.e2e.ts
     environment:
       FLUX_AGENT_RUNTIME: claude_code
       DATABASE_URL: postgres://${POSTGRES_USER:-flux}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-flux}
