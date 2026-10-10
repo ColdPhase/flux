@@ -35,6 +35,7 @@ repository was created on 2026-09-26.
   contract 1 and project export format 1. A versioned snapshot test catches a
   breaking change. The [integration guide](docs/integrations/README.md) is for
   integrators and operators ([#260](https://github.com/ColdPhase/flux/pull/260)).
+- A tested HTTPS reverse-proxy guide (Caddy) that keeps one public origin for the UI, sign-in, MCP and live updates, and trusts only the measured proxy address ([#366](https://github.com/ColdPhase/flux/pull/366)).
 
 #### People and access
 
@@ -43,6 +44,7 @@ repository was created on 2026-09-26.
   ([#42](https://github.com/ColdPhase/flux/pull/42)).
 - An authorized live event stream; the worker rechecks access before it acts, and
   idempotent writes are safe to retry ([#47](https://github.com/ColdPhase/flux/pull/47)).
+- Optional single sign-on through one operator-configured OpenID Connect provider, next to email and password. Accounts are keyed by the provider's subject, never by email, so an SSO identity cannot take over an existing account, and the provider's groups or roles grant nothing in Flux ([#240](https://github.com/ColdPhase/flux/pull/240)).
 
 #### Working together
 
@@ -88,6 +90,7 @@ repository was created on 2026-09-26.
 - "Let linked PRs move this task": a person who can edit a task lets its required pull requests
   start, block and finish it, or mark it Ready to close. A manual status change pauses it until resumed
   ([#270](https://github.com/ColdPhase/flux/pull/270)).
+- Messages send instantly: the field empties at once, the message shows "Sending…" in place, and a failed send offers Retry or Remove. Offline, a line says so and queued messages resend automatically ([#299](https://github.com/ColdPhase/flux/pull/299)).
 
 #### AI that stays yours
 
@@ -100,14 +103,17 @@ repository was created on 2026-09-26.
     agent named as the author ([#193](https://github.com/ColdPhase/flux/pull/193)).
   - A versioned co-work playbook delivered through Start/Resume prompts
     ([#175](https://github.com/ColdPhase/flux/pull/175)).
+  - Co-work tools for connected agents: create a work unit, and claim or decline a request addressed to it ([#261](https://github.com/ColdPhase/flux/pull/261)).
 - Owner-only personal assistant runs. Only the owner can ask, stop or pay
   ([#141](https://github.com/ColdPhase/flux/pull/141), [#142](https://github.com/ColdPhase/flux/pull/142)).
   Crashed runs recover without a second invocation ([#161](https://github.com/ColdPhase/flux/pull/161)).
 - Owner background setup with paused rules and sourced comparisons. These are
   prepared, but production activation stays off ([#124](https://github.com/ColdPhase/flux/pull/124)).
+- In a project's Agents view, workspace owners and admins edit and publish the agent policy (scope, priorities, review criteria, allowed work). A conflicting publish keeps your text and shows what the other manager changed; everyone else reads the policy with its managers named ([#292](https://github.com/ColdPhase/flux/pull/292)).
 
 ### Changed
 
+- Faster reads: the Inbox count, conversation and material lists, and conversation roots answer in fewer database statements and without locks ([#300](https://github.com/ColdPhase/flux/pull/300)).
 - Settings is one calm place with Account, Appearance (Light, Dark or Match system, and a switch for Kreska's small moments), Notifications, Agents and AI and Keyboard shortcuts. Notifications now default to Only "Needs you" (replies no longer push), with Everything or Nothing, quiet hours and an optional morning summary push ([#370](https://github.com/ColdPhase/flux/pull/370)).
 - One neutral look from the final design: Soft volume surfaces in light, dark or Match system, Geist type served with Flux, pill buttons, and task states shown as shapes with words. The accent colours and their picker are gone ([#353](https://github.com/ColdPhase/flux/pull/353)).
 - Kreska, a face drawn in a few lines, is the Flux logo, the app icon and every agent's icon. Agents carry an "Agent" tag and, where you may know them, the person they work for; the personal assistant's face shows what its run is doing ([#356](https://github.com/ColdPhase/flux/pull/356)).
@@ -133,6 +139,8 @@ repository was created on 2026-09-26.
 - Project status and conversation navigation are correct for readers
   ([#169](https://github.com/ColdPhase/flux/pull/169)).
 - Blocked project work stays visible on narrow phones ([#172](https://github.com/ColdPhase/flux/pull/172)).
+- On touch screens, message fields, Reply, map Fit and wiki Edit have 44 px tap areas; the map keeps its place when a phone rotates or changes layout; wiki prose keeps a readable line length; and closing a sheet on a tablet no longer leaves the page untappable ([#265](https://github.com/ColdPhase/flux/pull/265)).
+- The return view tells you when a pivot parked a task, even if the task itself did not change since you left ([#293](https://github.com/ColdPhase/flux/pull/293)).
 - Retrying a first space, project or private draft after a lost response no longer
   creates a second one ([#178](https://github.com/ColdPhase/flux/pull/178)).
 - Security: a signed-in account can no longer register or change OAuth clients, so a
