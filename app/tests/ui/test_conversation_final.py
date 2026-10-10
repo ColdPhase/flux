@@ -115,9 +115,9 @@ class ConversationFinal(unittest.TestCase):
         cls.browser.close()
         cls.pw.stop()
 
-    def page(self, who: str, *, phone: bool = False, dark: bool = False) -> Page:
+    def page(self, who: str, *, phone: bool = False, dark: bool = False, block_service_workers: bool = False) -> Page:
         options: dict = {"base_url": ORIGIN, "color_scheme": "dark" if dark else "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw",
-                         "storage_state": self.states[who]}
+                         "storage_state": self.states[who], "service_workers": "block" if block_service_workers else "allow"}
         if phone:
             options.update(viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
         else:
@@ -465,7 +465,8 @@ class ConversationFinal(unittest.TestCase):
 
     def test_11_a_slash_command_consumes_only_the_draft_it_was_given(self) -> None:
         for command in ("task", "handoff"):
-            page = self.open("ada")
+            # page.route cannot hold requests handled by a service worker; normal contexts above keep it.
+            page = self.open("ada", block_service_workers=True)
             composer = self.composer(page)
             held = self.hold_work(page)
             title = f"Held {command} original"
@@ -553,7 +554,7 @@ class ConversationFinal(unittest.TestCase):
 
     def test_15_a_completed_command_consumes_its_original_thread_draft_after_leaving(self) -> None:
         for command in ("task", "handoff"):
-            page = self.open("ada")
+            page = self.open("ada", block_service_workers=True)
             message = self.message(page, self.ids["probes"])
 
             def open_thread() -> None:
