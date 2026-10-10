@@ -397,6 +397,107 @@ Out of scope here:
 Completion and transfer are specified in the next section, MCP exposure in the
 one after it.
 
+### Owner-assistant handoff creation — F-027 amendment (2026-10-10)
+
+**Proposed contract correction for #401 C4; independent peer acceptance required
+before implementation relying on it merges.** This bounded server-owned adapter
+delivers [F-027 AST-3/Journey 5](../product/assistant.md#ast-3--one-assistant-one-permission-surface)
+without giving the assistant a parent claim. The ordinary external
+`coWorkUnitCreationInTransaction` contract above, including root assignee=caller
+and child live-parent generation/lease/runtime fences, remains unchanged.
+
+`ownerAssistantUnitCreationInTransaction` is an internal composition selected by
+the existing `flux_create_unit`/`cowork.unit.create` dispatch **only for a verified
+owner-assistant run**. It is not a new public endpoint, actor parameter or tool.
+
+- **Caller authority.** The API resolves the actual live connection, its durable
+  owner-assistant identity binding (`personal_run_agents`/A1), current owner,
+  signed run token and matching current run record. The token must be intended
+  for this MCP resource/run/place; the run must still be running for that exact
+  owner and binding. `compute_source = 'owner_assistant'` alone, a connection
+  label, a normal OAuth/local/native bearer, or client-supplied run/actor fields
+  never selects or authorizes this adapter. No external caller can downgrade
+  into it or bypass its own root/child rules. Both engines use this same check.
+- **Current limits.** Hold/recheck owner rights, live assistant project grant,
+  original consent envelope, S6 Tasks read/operation and selected project, exact
+  run place, approval mode, run limits and Stop/revocation at execution and
+  receipt replay. An expired/stopped run or Off/narrowed/revoked authority cannot
+  create or replay a handoff. Background runs additionally require their still
+  valid owner schedule/reaction authorization and its existing bounds. This is
+  run authority, not a fabricated assistant standing grant or bootstrap.
+- **Input and attribution.** Reuse the existing bounded unit-create intent:
+  task/object, exact expected task version, role (`execute`, `review`, `plan`),
+  intent key and recipient connection target. For this adapter `parent` is null;
+  a supplied claimed parent is refused, never ignored or fabricated. The server
+  derives creator, owner, run/lineage identities and receipt attribution from the
+  verified records; it never impersonates the human or recipient as creator.
+  The assistant is the author, acting for the recorded owner/run/payer.
+  No new public schema or caller-supplied budget, authority, owner or actor exists.
+- **Recipient.** Resolve a different, external MCP connection of the **same
+  current human owner**, in this workspace and project, live/unrevoked, with the
+  existing selected-project/execute-scope/project-access prerequisites. Neither
+  another assistant nor a foreign owner's agent is eligible. An owner approval
+  cannot authorize a foreign-agent handoff: a request to that person follows the
+  existing person-consent flow; their own ordinary handoff remains separate.
+  Creation grants no authority, runtime, capacity or claim. The recipient still
+  needs its own current `cowork.claim` role grant and independently calls claim
+  with its own binding/session/fence. Missing claim eligibility is shown truthfully
+  and its Allow action opens the existing owner grant flow; the assistant cannot
+  issue that grant, claim, invoke or bootstrap the external client.
+- **Root and budgets.** Only this verified owner-run composition may create a
+  pending root assigned to that eligible recipient without a creator parent.
+  The server derives its task/lineage/run identity in a distinct assistant-handoff
+  namespace from the verified assistant connection/run, task and immutable intent
+  key. It cannot borrow a client-named or unrelated lineage. Preserve the closed-
+  task and exact-version fences, task-wide open-role/plan-writer exclusion and
+  native maximum-run-units bound. Charge creation/re-issued intent to the current
+  assistant operation/change limit; receipt replay adds no second charge. Native
+  counts are never refunded by Undo. Repeated separate roots cannot escape the
+  assistant run limit or task exclusion. External creators still use/debit their
+  own standing grants under the unchanged ordinary composition.
+- **Review separation.** Keep server-owned `distinct_connection`/`distinct_owner`
+  policy and current native reviewer eligibility against the task's canonical
+  author/unit/source evidence. A fresh root cannot erase known authorship or
+  let its recipient review its own execution. Under `distinct_owner`, a same-owner
+  reviewer may be ineligible; say so, without relaxing policy to satisfy Journey 5.
+  No author, recipient or model selects a weaker separation policy. Missing/stale
+  provenance fails closed; creation is no review acceptance or publication.
+- **Atomic composition.** Acquire verified run/authority locks before the
+  complete sorted connection/binding slot set, project graph/native task set and
+  unit rows, preserving the existing global ordering and fresh database-time
+  rechecks. Recipient revoke, run Stop and S6 edits serialize with insertion and
+  replay. A committed creation has the canonical unit, attributed receipt,
+  assistant change row and its effect-accounting result in one transaction;
+  event intents flush once after commit. A refusal leaves none of these or any
+  grant/claim/capacity change. Integration must prove the actual lock order rather
+  than assume these words establish it.
+- **Duplicates and Undo.** Preserve exact task/version/role/recipient/intent
+  fingerprint and canonical post-state checks. Same-command receipt replay is
+  an observation only under current authority; changed post-state is stale.
+  Re-issued same intent returns the existing unit, never a second root; changed
+  role/recipient/lineage is a conflict. The owner's ordinary version-checked Undo
+  can cancel only the untouched, never-claimed pending unit, retaining its audit
+  and budget history; concurrent claim and Undo serialize on the unit. Once the
+  recipient has started or the unit otherwise changed, Undo does nothing and says
+  "Your Codex already started. Open the task" (or the ordinary changed-since row).
+  It never releases/transfers/resets the recipient's claim, stops their CLI,
+  changes their grants or silently reopens work. Stop of the assistant similarly
+  prevents its next handoff, without stopping already independent recipient work.
+
+**Delivery gates, A3/A4 (not runtime evidence).** Both fake engines must create an
+own eligible agent's pending handoff with no assistant claim/bootstrap, then prove
+the recipient cannot start without its own grant/claim. Preserve positive ordinary
+external self-root and live-child controls and negative external foreign-root,
+missing/stale parent, wrong generation/lease/runtime and unclaimed-child controls.
+Add normal-local/native bearer, forged run/actor, compute-source-only, foreign-owner,
+same-assistant recipient, consent/permission narrowing, stale task, stopped/expired
+run, recipient revoke and held insertion/replay revocation races. Verify strict
+review separation, immutable-intent conflicts, exact duplicate/replay debit/counts,
+run/native budgets, task/plan exclusions, attributable atomic rollback and persisted
+receipts. Undo before start, after start and a held claim-vs-Undo race must preserve
+the recipient's authority/fence and produce truthful UI. These are requirements of
+AST-3.2, AST-5.2/5.3, AST-6 and Journey 5; all existing gates remain.
+
 ### Unit completion and transfer (2026-10-05, proposed amendment, peer review required)
 
 `coWorkUnitTransitionInTransaction(tx, claims, command, policy)` is the internal

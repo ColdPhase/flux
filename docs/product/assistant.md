@@ -93,6 +93,17 @@ carry a dated note "Revised 2026-10-09 by founder direction (F-027)":
 [CO-1](mcp-cowork.md#connections-and-owner-authorized-autonomy--co-1) and the
 [decision register](decisions.md).
 
+**Contract corrections, 2026-10-10 (independent #401 review C1–C4; peer acceptance
+pending).** Pending sign-in has AIM-3's bounded, authenticated in-memory reconnect
+lifecycle; closing a browser socket alone no longer cancels it. Conversations Off
+permits the owner's explicitly submitted request data, not ambient thread history.
+The operator-storage disclosure precedes every subscription sign-in. Own-agent
+handoff uses the narrow server-owned adapter below and the
+[co-work amendment](../development/cowork-coordination.md#owner-assistant-handoff-creation--f-027-amendment-2026-10-10);
+ordinary external root/child authority is unchanged. These corrections preserve
+all 71 AST criteria and required journeys; documentation review accepts no runtime
+behavior or implementation slice.
+
 ## Safety rules at a glance
 
 The full rules and their reasons are in AST-5 to AST-9.
@@ -154,7 +165,8 @@ second.
   sheet then promises "the plan you already have".
 - **Guided sign-in** (founder answer A, 2026-10-09; a revision of the presentation of
   [AIM-3 *Sign-in as in a terminal*](ai-modes.md#sign-in-as-in-a-terminal), with the
-  mechanism unchanged). The F-022 console still runs exactly the CLI's own login
+  CLI authentication methods unchanged; the bounded reconnect lifecycle is amended
+  2026-10-10 for C1). The F-022 console still runs exactly the CLI's own login
   command in a PTY, and every login method stays available. The person sees a card;
   the terminal is folded under *Show details*.
   - **Claude** (`claude auth login`):
@@ -168,7 +180,9 @@ second.
 
     *Open claude.ai* opens the sign-in URL the CLI printed. *Paste* reads the
     clipboard on tap and sends it to the CLI's own prompt, so it is one tap on a phone.
-    A pending sign-in survives a PWA reload while the code is valid.
+    A pending sign-in survives a PWA reload while the code is valid, within AIM-3's
+    unchanged original 15-minute hard maximum. Reattachment requires the same
+    current owner session/binding and never starts a new CLI or extends the deadline.
   - **ChatGPT** (`codex login --device-auth`):
 
     ```text
@@ -187,6 +201,12 @@ second.
   - Other methods (*Anthropic Console*, *SSO*, *API key*, *access token*) sit under
     *Other ways to sign in* on the same card, each as its own short card or, where no
     card fits, the terminal.
+  - AIM-3's operator-storage disclosure appears before every subscription sign-in,
+    including one-account instances and the first invitee; both vendor cards retain
+    the vendor-use/API-billing and payer/data facts. Leaving/reloading detaches the
+    view; Cancel, Flux logout/revocation and binding/client cleanup terminate the
+    pending flow. Codes, URLs, input and terminal frames remain memory-only;
+    process loss is an interrupted login, never a recoverable stored credential.
 - **Plain account labels.** "Claude · your subscription", "ChatGPT · your
   subscription", "Anthropic Console · API billing", "OpenAI · API key". The F-022
   payer labels stay as the longer text in the account row (AIM-4 explicit payer).
@@ -249,8 +269,19 @@ second.
   the CLI printed and *Paste*; *Paste* sends the clipboard text to the CLI's prompt;
   the card shows "Signed in · <plan> · <masked account>" when `claude auth status`
   reports it; *Show details* shows the same terminal (Playwright, computer and phone).
+  Reload while login is pending, reattach with the same current Flux session and
+  complete that original CLI process without deadline extension. A different owner
+  or a new session of the same owner sees no URL/code/frames and cannot type; stale
+  superseded-socket input is refused. Controlled expiry, Cancel, logout, session/
+  binding revocation, client disablement and process loss clear the flow, refuse
+  reattachment/late success and show an honest interrupted/expired state. Hold
+  completion across revocation/cleanup and verify no credential or stale flow is
+  retained. The operator-access note precedes starting login on single-account,
+  multi-account and first-invitee fixtures; other AIM-3 disclosures remain present.
 - **AST-1.6** With the fake `codex`, the ChatGPT card shows the device code at large
   size with *Copy and open ChatGPT*, and completes without any paste (Playwright).
+  The same pending-reload, owner/session/binding, original-deadline, cancellation/
+  revocation/cleanup and universal-disclosure controls as AST-1.5 pass for this card.
 - **AST-1.7** The sign-in URL and the device code never appear in the database, logs,
   queue payloads or any stream other than the owner's card (seeded-value absence test,
   as AIM-3's).
@@ -378,10 +409,20 @@ account, F-020).
   never offers another person's assistant.
 - **Hand-offs between the owner's agents.** The assistant may hand a task to one of
   the **owner's own** MCP agents with `flux_create_unit` (`cowork.unit.create`:
-  execute, review or plan) under the Tasks switch. The receiving agent still needs
-  its own claim grant (CO-1); the assistant gains no claim. A hand-off to another
-  person's agent always waits (AST-5 rule 3). A hand-off **to** the assistant (S12)
-  is the owner's action and starts an owner-triggered run on that task.
+  execute, review or plan) under the Tasks switch. **Amended 2026-10-10 for #401 C4:**
+  the server selects the internal `ownerAssistantUnitCreationInTransaction` adapter
+  only from a verified durable assistant/owner binding and that current authorized
+  run/token/place; a `compute_source` value or ordinary native/local bearer alone
+  is insufficient. It creates a pending root to the eligible same-owner external
+  connection without an assistant parent claim. Its exact authority, input,
+  attribution, task/version/role, dedupe, budget, separation, lock and Undo fences
+  are the [bounded co-work amendment](../development/cowork-coordination.md#owner-assistant-handoff-creation--f-027-amendment-2026-10-10).
+  External callers keep their own self-root/live-child contract without exception.
+  The receiving agent still needs its own grant and claim (CO-1); the assistant
+  neither invokes it nor gains a claim/bootstrap. Another person's agent is refused
+  by this adapter even after owner Apply: AST-5 rule 3 permits asking that person,
+  whose own consent and ordinary handoff are separate. A hand-off **to** the
+  assistant (S12) is the owner's action and starts an owner-triggered run on that task.
 - **Not offered to the assistant:** the other co-work tools (claim, renew, release,
   complete, transfer, request handling), `flux_bootstrap` and the playbook. Other
   agents cannot start the assistant: only its owner, the owner's jobs and the owner's
@@ -397,7 +438,14 @@ account, F-020).
   keeps the connection and the switches (app test).
 - **AST-3.2** A run on `server` and a run on `runtime` with the same switches list
   the same tools and get the same refusals (app test with a fake provider and a fake
-  CLI, both calling `/mcp`).
+  CLI, both calling `/mcp`). Conversation-Off cases submit an explicit owner request
+  and bounded selected text, with distinct canaries in unselected initiating-thread
+  history, another conversation and another area/project. Assert the supplied data
+  is present but all canaries are absent from provider input and CLI results;
+  native/direct projections, tool calls and aggregate search cannot bypass S6.
+  Own-agent unit creation uses the same verified run adapter and refusals in both
+  engines; ordinary external/native/local callers retain the root/child fence,
+  cannot select this adapter by input/label and cannot acquire run authority.
 - **AST-3.3** Another member, a workspace admin or an agent cannot read or change the
   owner's switches (403/404), and S6 AC-5's held-request race tests pass for the
   assistant's connection.
@@ -428,12 +476,27 @@ means *read and edit*; Off means *neither*. Finer control sits under *More*.
 
 - `project.identity.read` and `project.policy.read` are always on while the
   assistant is on; they carry no content beyond the project's name and rules.
-- **Off means off.** An Off area's tools are not listed to the run, its content is
-  never assembled into a `server` request, and an untyped search that could return
-  it is refused before any query (S6 aggregate-read rule).
-- **The conversation where the owner asks** is always readable for that run: it is
-  the request's own context. With *Read conversations and reply* off, the run sees
-  only that conversation, never others.
+- **Off means off.** An Off area's tools are not listed to the run; its protected
+  content is never fetched/projected or assembled as ambient context into a
+  `server` request. An untyped search that could return it is refused before any
+  query (S6 aggregate-read rule). Explicit submitted request data below does not
+  confer permission to fetch that area.
+- **The owner's request is input, not permission to read its conversation**
+  (clarified 2026-10-10, #401 C2; S6 unchanged). The run may receive the current
+  request the owner explicitly sends and text the owner explicitly selects and
+  supplies with it. That bounded selected payload is submitted data, not an item ID,
+  URL, mention, starter chip or instruction to fetch the surrounding thread. With
+  *Read conversations and reply* Off, neither engine may fetch or assemble any
+  initiating-conversation history, unselected other participants' messages,
+  parent/thread projections or conversation search results. A quoted selection must come from
+  the owner's ordinary current authorized view; references still need the area's
+  live read permission to be resolved. Selecting an item never fetches unselected
+  context or widens projects/rights. The same rule applies to server assembly,
+  native/direct reads and local MCP calls. A starter such as *Turn this thread into
+  tasks* cannot silently read the thread while Off; it asks the owner to allow
+  conversation reads or explicitly supply the required text. AST-9's private/DM
+  exclusions still hold for selected input; this is no cross-area or private-data
+  exception.
 - **Files.** No switch is shown until a file-reading tool exists (plan slice A11).
   Until then the assistant sees only names and sizes inside messages it may read,
   never file contents (as today).
@@ -456,7 +519,12 @@ means *read and edit*; Off means *neither*. Finer control sits under *More*.
 - **AST-4.3** With *Only read* for maps, map read tools are listed and every map
   effect tool is absent (app test).
 - **AST-4.4** Turning a switch off during a run refuses that area's next read or
-  change, even with the run's existing token (S6 AC-3).
+  change, even with the run's existing token (S6 AC-3). Hold initiating-conversation
+  history/tool/direct-projection and queued-output requests across the committed
+  Off/narrowing change in both engines; no fresh history is delivered or assembled.
+  Account separately for bytes already handed to transport, as S6 requires. Keep
+  the Wiki, selected-project, aggregate-search and AST-9 privacy negative controls;
+  explicit submitted input never authorizes a later ambient-history read.
 
 ## AST-5 — Changes: "Do it and tell me" or "Ask me first"
 
@@ -502,7 +570,11 @@ not needed. It can be added later under *More* if real use asks for it.
 3. **Handing work to another person** (setting another person responsible, or a
    hand-off to their agent): it needs that person's consent (CO-1 "separate explicit
    action"). A hand-off to the owner's own agent is the owner's own thing and
-   applies.
+   applies if that recipient is eligible under AST-3's adapter. A foreign-agent
+   target cannot become an executable assistant unit-create merely by waiting for
+   the owner's Apply; prepare an owner-sent request to the other person instead.
+   That person's consent and their own ordinary handoff remain separate. The
+   assistant never authorizes, grants or starts a foreign agent.
 4. **A Wiki page someone else is typing in** (an open live session, F-021): the
    change is **deferred**, not handed to the owner, because the conflict is with the
    typist, not the owner's consent (UX review P2-5). The line says "I'll edit
@@ -555,7 +627,13 @@ him and records "drafted by Ada's assistant".
   first" takes one tap and persists (Playwright).
 - **AST-5.2** For each row of the combination table, a fake CLI (and a fake
   `server` provider) calling the same effect tool produces exactly the stated
-  outcome: applied, waiting, suggestion or refused (app test matrix).
+  outcome: applied, waiting, suggestion or refused (app test matrix). Include the
+  complete co-work amendment's own/foreign, ordinary external root/live-child,
+  forged/downgraded caller, exact version/role, revoke/held-race, dedupe/budget and
+  review-separation controls. An eligible own-agent handoff needs no assistant
+  claim/bootstrap; its recipient cannot claim without its own current grant.
+  "Ask me first" stores the exact intent and rechecks all fences on Apply;
+  owner approval never authorizes a foreign-agent creation.
 - **AST-5.3** Each always-wait case (1–5) waits in "Do it and tell me", with the
   reason shown in plain words; each never case (6–8) has no listed tool and a forced
   call is refused (app test).
@@ -579,7 +657,10 @@ him and records "drafted by Ada's assistant".
 - **Same tools, same executor.** A run lists exactly the MCP tools its switches
   allow (AIM-3 "lists exactly the run's tools"). Every effect goes through the same
   executor and receipts as an MCP client (`action-execution.ts`), with the same
-  version, source and idempotency checks.
+  version, source and idempotency checks. Unit creation keeps its existing native
+  composition; the verified owner-run-only adapter in AST-3 is its narrow authority
+  amendment, not reuse of the incompatible external root rule or a second public
+  actor/permission surface. Its unit/receipt/change log commit atomically as below.
 - **Run authority instead of a standing grant.** An owner-triggered run is the
   owner's explicit instruction. Its authority is the run itself: the run token
   (AIM-3) names the run and its place; at each change `/mcp` checks that the run is
@@ -621,6 +702,11 @@ him and records "drafted by Ada's assistant".
     thought's text, position or link. A created task follows #238 (PR #394). A created
     thought or link is removed by the owner's Undo. A created Wiki page, which the
     domain cannot remove today, moves to the owner's drafts: "Moved to your drafts".
+    A created handoff unit can be cancelled only while its original pending state
+    is untouched and it has never been claimed, under the unit version/claim fence.
+    After recipient start, Undo changes nothing: "Your Codex already started. Open
+    the task". It never resets a recipient claim, stops their CLI or changes grants;
+    the cancelled intent/audit/budget history remains and replay cannot recreate it.
   - If a changed field was edited again since, that item says "Changed since. Open it"
     and does nothing. A partial Undo says "Undid 5 changes. 2 changed since: #4, #7 ·
     Open".
@@ -644,7 +730,11 @@ him and records "drafted by Ada's assistant".
 - **AST-6.2** Undo restores the Wiki text as a new version and undoes both tasks. After
   a person changes a task's state, Undo of the assistant's rename of that task still
   works; after a person edits the same title, that item says "Changed since" and the
-  message says "Undid N changes. 1 changed since: #…" (app test).
+  message says "Undid N changes. 1 changed since: #…" (app test). A handoff's Undo
+  cancels only an untouched never-claimed pending unit; after recipient start or a
+  concurrent successful claim it refuses truthfully, retaining claim/generation/
+  lease, external CLI work, grants, audit and budget counts. Race claim against Undo
+  and replay the cancelled intent: no duplicate or resurrected handoff is created.
 - **AST-6.3** Killing the worker after two committed changes and restarting it
   posts the result line with exactly those two changes (crash test, as #161).
 - **AST-6.4** Stop during a run makes the next tool call fail with 403, keeps the
@@ -928,8 +1018,10 @@ Ada has just installed Flux and manages her project. She pays for Claude Max.
    > 2. Paste the code here.          [ Paste ]
    > Flux never sees your password.   Show details ⌄
 
-   On a Flux with more than one account, one line above it: "Whoever runs this Flux
-   could technically reach your sign-in. Sign in only if you trust them." Ada approves
+   On every Flux, including one-account instances and a first invitee, one line
+   before starting either vendor's sign-in: "Whoever runs this Flux could technically
+   reach your sign-in. Sign in only if you trust them." Account count does not prove
+   who controls host root (AIM-3; clarified 2026-10-10, #401 C3). Ada approves
    on claude.ai, comes back, taps *Paste*. The card ends with "Signed in · Max plan ·
    h…@gmail.com". About 30 seconds.
 4. **Sees** "Your assistant is ready", with Kreska in its agent colour:
@@ -1072,6 +1164,10 @@ Ada taps.
 2. The assistant hands #8 to **Ada's own** Codex as a review (allowed: her agent):
    > Asked your Codex to review #8 · Undo
    > Codex is offline. It starts when *Desk laptop* is on.
+
+   Creation queues intent through AST-3's verified owner-run adapter. It grants no
+   authority or claim and does not start Codex. Existing reviewer-separation policy
+   still applies; an ineligible reviewer is refused, even if it is Ada's own agent.
 3. When Codex (on Ada's laptop, over MCP) picks it up at its next checkpoint, #8's
    Activity shows "Codex started the review"; Codex posts its review in #8 like any
    agent.
@@ -1079,6 +1175,9 @@ Ada taps.
    here yet · [ Allow ]", and *Allow* opens the hand-off's step 2 for Codex.
 5. Asking for **Jonas's** Codex: "Jonas has to agree to hand #8 to his Codex. [ Ask
    Jonas ]".
+
+   Ada's tap sends a request to Jonas, not a unit/claim for his connection. Only his
+   separate consent and ordinary handoff can authorize it; Ada's approval never does.
 6. **Jonas picks Ada's assistant** in his own hand-off: his picker shows "Ada's
    assistant · for Ada · asks Ada first". Ada gets one Needs-you item: "Jonas asks your
    assistant to do #10 · [ Allow ] [ Not now ]". Only her Allow starts it (F-019).
@@ -1415,7 +1514,8 @@ decision, result.
   reconnect once; Stop, Undo and Close show "Offline" instead of failing (Playwright
   offline emulation).
 
-## Delivery: slices A1–A11
+<a id="delivery-slices-a1a11"></a>
+## Delivery: slices A1–A12
 
 Every slice is issue-sized, has one owner, runs its tests in Docker, and uses fakes,
 mocks and recorded fixtures only. No slice uses a real vendor account, key or spend
@@ -1500,6 +1600,9 @@ read-and-edit defaults; older owners allow new effects explicitly.
   list; turning a switch off mid-run refuses the next call (AST-4.4). The pinned
   real CLIs against the scripted model of PR #396 (`client-model-mock.ts`) show the
   `system/init` tool list matching, without an account.
+  Conversation-Off also covers explicit selected request input versus initiating-
+  thread canaries, native/direct/MCP parity and held Off/narrowing delivery races;
+  preserve existing Wiki/search/project/private controls (AST-3.2, AST-4.4, AST-9).
 
 #### A3 — Change log, run authority and "Ask me first"
 
@@ -1508,18 +1611,25 @@ read-and-edit defaults; older owners allow new effects explicitly.
   log in the same transaction, and returns a plain tool result ("Waiting for Ada's
   OK" or the applied object). Receipts record `owner_request`. Waiting changes:
   owner-only API to Apply, Apply all, Not now; re-execution with every check and
-  version comparison; 7-day expiry. The conversation card "Wants to: …".
+  version comparison; 7-day expiry. The conversation card "Wants to: …". Include
+  the bounded owner-assistant unit-creation adapter and its run/binding authority,
+  own external recipient checks, exact intent, native fences/lock order and atomic
+  receipt/change-log composition; no assistant claim/bootstrap or new public schema.
 - **Files.** `app/apps/server/src/agent-connection/action-execution.ts`,
   `work-actions.ts`, `doc-actions.ts`, `map-actions.ts`, `conversation-actions.ts`;
+  the existing unit-create dispatch/native co-work composition;
   `app/packages/core/src/assistant/changes.ts`; `app/apps/web/src/assistant/`
   (card).
 - **Migration 0078** `assistant_changes` (run, workspace, project, object type and
   id, operation, state CHECK `applied|waiting|applied_after_wait|not_now|expired|
   undone|refused`, prepared command JSON for waiting rows with a size CHECK, before
-  and after versions, receipt, decided by and at).
+  and after versions, receipt, decided by and at). Unit creation records its native
+  unit reference and canonical creation post-state for A4's conditional Undo; it
+  stores no claim/grant or client-asserted actor authority.
 - **Tests.** AST-4.3, AST-5.2 to AST-5.8, AST-6.5, AST-6.7, AST-9.2; the live-Wiki
   deferral with PR #389's session signal faked; waiting changes moving to Inbox with a
-  fixed clock.
+  fixed clock. Run every creation/parity/ordinary-external/foreign/downgrade/revoke/
+  held-race/separation/dedupe/budget gate in the co-work amendment with both engines.
 - **Depends on.** A1, A2.
 
 #### A4 — "Do it and tell me", the run's message, Undo, queue
@@ -1530,12 +1640,15 @@ read-and-edit defaults; older owners allow new effects explicitly.
   since" and partial-Undo copy; Undo recorded; "Skipped #4: … changed it while I
   worked" items; Stop refuses the next `/mcp` call; the owner's lane queue (owner
   requests before background runs) with its lines.
+  Handoff Undo cancels only an untouched never-claimed pending unit and retains its
+  audit/counts; claimed/changed units refuse without touching recipient authority.
 - **Files.** `app/packages/core/src/assistant/undo.ts`; per-domain restore use cases
   in `work`, `docs`, `sketches`; `personal-runs/recovery.ts`; the run message
   component (with #343's P5 notice rows).
 - **Migration.** None (A3's table holds undo state).
 - **Tests.** AST-6.1 to AST-6.4, AST-6.6, AST-6.8, AST-9.3, AST-10.13; Playwright for
-  the message and Undo.
+  the message and Undo, including own-agent pre/post-start and claim-vs-Undo/replay
+  controls from the co-work amendment and truthful Journey 5 states.
 - **Depends on.** A3; PR #394 for undoing a created task.
 
 #### A5 — Typed suggestions
@@ -1559,7 +1672,8 @@ read-and-edit defaults; older owners allow new effects explicitly.
   (`PersonalComputeRequest` gains tools and turns).
 - **Migration.** None expected; reserve on #153 if run accounting needs a column.
 - **Tests.** AST-8.1 to AST-8.3 with recorded fixtures per provider wire format;
-  AST-3.2 parity with A2.
+  AST-3.2 parity with A2, including Conversation-Off input/history/native projection
+  and held-delivery canaries, plus A3/A4's identical handoff authority/refusals.
 - **Depends on.** A2.
 
 #### A7 — The assistant screen and the journeys
@@ -1637,16 +1751,23 @@ read-and-edit defaults; older owners allow new effects explicitly.
 #### A12 — Guided sign-in cards
 
 - **Scope.** Founder answer A: the Claude card ([ Open claude.ai ], [ Paste ] reading
-  the clipboard, survives a PWA reload while the code is valid) and the ChatGPT card
+  the clipboard, survives a PWA reload while the code is valid within the original
+  hard deadline) and the ChatGPT card
   (the device code large, [ Copy and open ChatGPT ], completion from `codex login
   status`); the terminal under *Show details*; other methods under *Other ways to sign
   in*; the supervisor recognising only the sign-in URL and device code, in memory; the
-  two sign-in failure rows of Journey 6.
+  two sign-in failure rows of Journey 6. Implement AIM-3's 2026-10-10 owner/session/
+  binding-checked detach/reattach, fixed original lifetime and explicit cleanup
+  before UI reload survival is claimed. Keep CLI methods, secret isolation and
+  memory-only card/terminal state unchanged; show the operator note on all instances.
 - **Files.** The sign-in console component of PR #398, the supervisor's login output
   reader (`app/apps/runtime/src/supervisor/`), the fake CLIs.
 - **Migration.** None.
 - **Tests.** AST-1.5 to AST-1.8 with the fake CLIs; the pinned real CLIs' login output
-  shapes checked by the account-free contract table of PR #398.
+  shapes checked by the account-free contract table of PR #398. Exercise both cards'
+  pending reload, same-session original-process continuation, foreign/new-session
+  refusal, original hard/native expiry, Cancel/logout/revoke/disable/process loss,
+  held completion/cleanup and seeded absence across all durable stores/other streams.
 - **Depends on.** PR #398 (#279) for Claude; #281 for ChatGPT.
 
 ### Acceptance criteria by slice
@@ -1662,6 +1783,7 @@ read-and-edit defaults; older owners allow new effects explicitly.
 | AST-3.1, AST-3.3, AST-3.4 | A1 |
 | AST-3.5, AST-3.6 | A7 (with #347 and #343) |
 | AST-3.2, AST-4.2 (`server` part), AST-8.1–AST-8.3 | A6 |
+| AST-3.2 (handoff/parity seam), AST-5.2 (unit-creation matrix) | A3 with A2/A6; Undo/recipient-start controls in A4 |
 | AST-4.1, AST-5.1 | A1 (API) and A7 (screen) |
 | AST-4.3, AST-5.2–AST-5.8, AST-6.5, AST-6.7, AST-9.2 | A3 |
 | AST-6.1–AST-6.4, AST-6.6, AST-6.8, AST-9.3, AST-10.13 | A4 |
