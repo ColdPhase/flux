@@ -16,7 +16,13 @@ import { FakeConnections, FakeQueue } from '../support/personal-runs.js';
 const origin = process.env.FLUX_PUBLIC_ORIGIN!;
 const upstream = new URL(process.env.FLUX_API_URL ?? 'http://api:8080');
 const evidence = process.env.FLUX_E2E_EVIDENCE_DIR;
+// A transport fault at the test proxy also covers fetches owned by a real service worker.
+const rejectedCommands = new Set<string>();
 const proxy = http.createServer((request, response) => {
+  if (request.method === 'POST' && rejectedCommands.delete(request.url ?? '')) {
+    response.writeHead(403, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ code: 'FORBIDDEN', message: 'Not allowed' })); return;
+  }
   const forward = http.request({ host: upstream.hostname, port: upstream.port || 80,
     method: request.method, path: request.url, headers: request.headers }, (answer) => {
     response.writeHead(answer.statusCode ?? 502, answer.headers); answer.pipe(response);
@@ -97,10 +103,10 @@ for (const [engine, mobile] of [['chromium', false], ['webkit', true]] as const)
       await theme(managerPage, 'dark'); await capture(managerPage, `join-${engine}-manager-review-dark`);
       // A refused answer keeps the real pending record; the successful retry uses the actual API.
       const allowUrl = `${origin}/api/v1/projects/${place.id}/assistant-join-requests/${pending[0]!.id}/allow`;
-      await managerPage.route(allowUrl, (route) => route.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ code: 'FORBIDDEN', message: 'Not allowed' }) }));
+      rejectedCommands.add(new URL(allowUrl).pathname);
       await allow.click(); await expect(requests.getByRole('alert')).toContainText('Only a current project manager');
       assert.equal((await pool.query('SELECT id FROM project_grants WHERE project_id=$1 AND agent_id=$2', [place.id,agent.id])).rowCount, 0);
-      await managerPage.unroute(allowUrl); await allow.click();
+      await allow.click();
       await expect(requests.getByRole('status')).toHaveText('Request allowed.');
       assert.equal((await pool.query('SELECT role FROM project_grants WHERE project_id=$1 AND agent_id=$2', [place.id,agent.id])).rows[0].role, 'contributor');
       assert.equal((await pool.query('SELECT state FROM assistant_join_requests WHERE id=$1', [pending[0]!.id])).rows[0].state, 'accepted');
