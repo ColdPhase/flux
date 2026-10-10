@@ -35,14 +35,29 @@ NUMBERS = "Camera numbers are in: 38% of gestures at 5 lux."
 NUMBERS_REPLY = "Thanks. Let's keep the negative result next to the ToF test."
 ORDER = "Order two ToF boards today?"
 TARGET_ROOT = "The lux table decides the threshold. Which reading do we trust?"
-# A touch control's tap area (#436): its size, and whether a tap 21 px above and below the centre of the
-# element still lands on it, so nothing else covers the 44 px area.
+# A touch control's tap area (#436, #443): its size, and whether a tap on the eight points 21 px from the centre
+# (the middles of a 44 px square's sides and its corners) lands on the control, so nothing else covers the area.
 TOUCH_AREA = """el => {
   const area = getComputedStyle(el, '::after');
   const box = el.getBoundingClientRect();
   const x = box.left + box.width / 2, y = box.top + box.height / 2;
-  const lands = (py) => { const hit = document.elementFromPoint(x, py); return !!hit && el.contains(hit); };
-  return { width: parseFloat(area.width), height: parseFloat(area.height), reach: [lands(y - 21), lands(y + 21)] };
+  const lands = (px, py) => { const hit = document.elementFromPoint(px, py); return !!hit && el.contains(hit); };
+  const offsets = [[0, -21], [0, 21], [-21, 0], [21, 0], [-21, -21], [21, -21], [-21, 21], [21, 21]];
+  return { width: parseFloat(area.width), height: parseFloat(area.height), reach: offsets.map(([dx, dy]) => lands(x + dx, y + dy)) };
+}"""
+# The other controls in the same thread whose box meets this control's tap area, which is centred on it (#443).
+OVERLAPS = """el => {
+  const area = getComputedStyle(el, '::after');
+  const box = el.getBoundingClientRect();
+  const cx = box.left + box.width / 2, cy = box.top + box.height / 2, w = parseFloat(area.width), h = parseFloat(area.height);
+  const thread = el.closest('[role="complementary"]') || document.body;
+  const others = [...thread.querySelectorAll('a, button, input, textarea, select, [role="button"], [role="link"]')];
+  return others.filter((other) => {
+    if (other === el || other.contains(el) || el.contains(other)) return false;
+    const r = other.getBoundingClientRect();
+    if (!r.width || !r.height) return false;
+    return r.left < cx + w / 2 && r.right > cx - w / 2 && r.top < cy + h / 2 && r.bottom > cy - h / 2;
+  }).map((other) => (other.textContent || other.getAttribute('aria-label') || other.tagName).trim().slice(0, 60));
 }"""
 
 
@@ -165,16 +180,29 @@ class OneConversationJourney(unittest.TestCase):
     def targets(self) -> str:
         """A restricted project for #436 (created once): Ada's root cites a material, and seven replies alternate
         with Jonas's, so the thread is taller than the desktop panel and the phone sheet shows a source chip and an
-        author's name. It is a project of its own, so the stream's roots and counts above stay as they are."""
+        author's name. An eighth reply comes from J, a contributor with a one-letter name (#443). It is a project of
+        its own, so the stream's roots and counts above stay as they are."""
         if "targets" not in self.ids:
             ada, jonas = self.page("ada"), self.page("jonas")
             pid = self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Thread targets", "visibility": "restricted"}, status=201)["id"]
             self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": self.ids["jonas"]}, "role": "contributor"})
+            email = f"j.one+{STAMP}@example.test"
+            context = self.browser.new_context(base_url=ORIGIN)
+            try:
+                response = context.request.post("/api/auth/sign-up/email", data={"email": email, "password": PASSWORD, "name": "J"}, headers={"origin": ORIGIN})
+                assert response.status == 200, response.text()
+                self.ids["short"] = context.request.get("/api/v1/me").json()["user"]["id"]
+                self.states["short"] = context.storage_state()
+            finally:
+                context.close()
+            self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/members", {"email": email, "role": "member"})
+            self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": self.ids["short"]}, "role": "contributor"})
+            short = self.page("short")
             material = self.api(ada, "POST", f"/api/v1/projects/{pid}/materials", {"title": "Lux table", "body": "38% of gestures at 5 lux, 97% at 200 lux.", "clientMutationId": str(uuid.uuid4())}, status=201)
             root = self.api(ada, "POST", f"/api/v1/projects/{pid}/conversations", {"body": TARGET_ROOT, "clientMessageId": str(uuid.uuid4()),
                                                                                   "source": {"materialId": material["materialId"], "version": material["version"]}}, status=201)
-            for index in range(1, 8):
-                writer = jonas if index % 2 else ada
+            for index in range(1, 9):
+                writer = short if index == 8 else jonas if index % 2 else ada
                 self.api(writer, "POST", f"/api/v1/conversations/{root['id']}/messages", {"body": f"Reply {index}: the reading corner stays quiet at this light level.", "clientMessageId": str(uuid.uuid4())}, status=201)
             self.ids.update(targets=pid, targets_conversation=root["id"])
         return self.ids["targets"]
@@ -323,7 +351,7 @@ class OneConversationJourney(unittest.TestCase):
         expect(thread).to_be_visible()
         feed = thread.locator(".thread__feed")
         expect(feed).not_to_have_class(re.compile("is-opening"))
-        expect(thread.locator(".thread__hint")).to_have_text("7 replies")
+        expect(thread.locator(".thread__hint")).to_have_text("8 replies")
         page.wait_for_timeout(500)
         overflow = feed.evaluate("el => el.scrollHeight - el.clientHeight")
         self.assertGreater(overflow, 1, "the fixture thread overflows the desktop panel, so opening it could hide the root")
@@ -647,12 +675,34 @@ class OneConversationJourney(unittest.TestCase):
             page.wait_for_timeout(150)
             area = target.evaluate(TOUCH_AREA)
             self.assertGreaterEqual(min(area["width"], area["height"]), 44, (label, area))
-            self.assertEqual(area["reach"], [True, True], (label, "a tap 21 px above and below the centre lands on it", area))
+            self.assertEqual(area["reach"], [True] * 8, (label, "a tap on any point 21 px from the centre lands on it", area))
         chip_box = chip.bounding_box()
         assert chip_box
         self.assertLessEqual(chip_box["height"], 25, "the chip keeps its 24 px look")
         self.no_sideways_scroll(page)
         shot(page, "one-conversation-phone-390-thread-targets-light")
+
+    def test_07c_a_one_letter_author_name_has_a_44_px_tap_area_too(self) -> None:
+        # #443: the tap area of a short name is centred on it and at least 44 px wide, though the name's own box stays
+        # narrow. No other control in the thread sits under that area, so the extra width takes no tap from anything.
+        page = self.page("ada", phone=True)
+        page.goto(f"/projects/{self.targets()}/conversations/{self.ids['targets_conversation']}")
+        thread = self.thread(page)
+        expect(thread).to_be_visible()
+        name = thread.get_by_role("link", name="J", exact=True)
+        expect(name).to_be_visible()
+        page.wait_for_timeout(400)
+        name.evaluate("el => el.scrollIntoView({ block: 'center' })")
+        page.wait_for_timeout(150)
+        text_box = name.bounding_box()
+        assert text_box
+        self.assertLess(text_box["width"], 44, ("the visual text box stays narrow", text_box))
+        area = name.evaluate(TOUCH_AREA)
+        self.assertGreaterEqual(min(area["width"], area["height"]), 44, area)
+        self.assertEqual(area["reach"], [True] * 8, ("a tap on any point of the 44 px square lands on the name", area))
+        self.assertEqual(name.evaluate(OVERLAPS), [], "the tap area covers no other control in the thread")
+        self.no_sideways_scroll(page)
+        shot(page, "one-conversation-phone-390-thread-short-name-light")
 
     def test_08_tablet_and_desktop_renders(self) -> None:
         tablet = self.page("ada", phone=True, viewport={"width": 820, "height": 1180})
