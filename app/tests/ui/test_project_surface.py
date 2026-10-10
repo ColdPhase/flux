@@ -207,6 +207,14 @@ class ProjectSurfaceJourney(unittest.TestCase):
             self.assertEqual(clipped, 0, f"{selector}: no message is cut off at the top of the opening screen")
             if not latest and selector == ".project-convo__feed":
                 continue  # a link opened this root at the top of the stream (F-026: notices are two rows now)
+            if selector == ".thread__feed":
+                # An unanchored thread starts at its root, whole (#436), rather than its latest reply.
+                root = page.locator(f"{selector} .thread__root").bounding_box()
+                feed = page.locator(selector).bounding_box()
+                assert root and feed
+                self.assertGreaterEqual(root["y"], feed["y"] - 1, "the root starts inside the feed")
+                self.assertLessEqual(root["y"] + root["height"], feed["y"] + feed["height"] + 1, "the root is whole")
+                continue
             last = page.locator(f"{selector} .project-convo__message").last.bounding_box()
             feed = page.locator(selector).bounding_box()
             assert last and feed

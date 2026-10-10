@@ -36,10 +36,13 @@ def swipe(target: Locator, dx: float, steps: int = 6) -> None:
 
 def open_message_menu(message: Locator, *, phone: bool) -> Locator:
     """Opens a message's actions menu: More actions on a computer, a long press on a phone (F-026 S6)."""
+    message.scroll_into_view_if_needed()
     page = message.page
     if phone:
         bubble = message.locator(":scope > p")
-        long_press(bubble if bubble.count() else message)
+        target = bubble if bubble.count() else message
+        target.scroll_into_view_if_needed()
+        long_press(target)
     else:
         message.hover()
         message.get_by_role("button", name="More actions").click()
