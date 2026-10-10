@@ -78,6 +78,8 @@ These are drafted in the repository and reviewed like code. Publication follows
     so an unresolved #228/#231/#238 gate blocks release rather than becoming a release-note exclusion;
   - upgrade and backup notes;
   - checksums.
+
+  The draft is in [release-notes-v0.1.0-draft.md](release-notes-v0.1.0-draft.md).
 - **README:**
   - refresh the demo GIF once the final design (#336) is on `main`;
   - add one phone screenshot;
