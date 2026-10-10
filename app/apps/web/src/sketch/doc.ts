@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { DEFAULT_THOUGHT_SIZE, type SketchDetail, type Thought, type ThoughtFile, type ThoughtLink, type ThoughtShape } from '@flux/contracts';
+import type { SketchDetail, Thought, ThoughtLink } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import * as api from '../api/sketches';
 import { useStreamEvents } from '../api/stream';
+import type { SharedMap } from '../editing/map';
+import { applyLocal, type Me, type NewThought, type Op } from './projection.js';
+
+export { applyLocal, applyLivePreviews, type Me, type NewThought, type Op } from './projection.js';
 
 /**
  * One sketch as the person edits it (issue #69). Changes apply locally at once and are sent in
@@ -13,71 +17,14 @@ import { useStreamEvents } from '../api/stream';
  * Conflicts: a move, resize, shape change or removal made against a stale version is retried
  * once on the current version (the person's intent for that field wins, other fields stay as
  * the server has them). A stale text edit is not forced: the latest text is shown instead.
+ *
+ * This is the ordinary map, unchanged from before live editing (#228). It is used whenever the
+ * live capability is not `configured` (#239 review); `useLiveSketchDoc` (live-doc.ts) is the live one.
  */
 
-export interface NewThought {
-  id: string;
-  text: string;
-  x: number;
-  y: number;
-  width?: number;
-  height?: number;
-  shape?: ThoughtShape;
-  placement?: { type: 'draft'; id: string; title: string | null } | null;
-  /** The message it came from (#96); only a message of the sketch's own DM is restored on the server. */
-  source?: Thought['source'];
-  /** Its image (#252): a staged file on first save, or the same published file when Undo restores the thought. */
-  file?: ThoughtFile;
-}
-
-export type Op =
-  | { kind: 'add'; thought: NewThought; link?: { id: string; fromId: string; label: string | null } }
-  | { kind: 'update'; id: string; changes: Partial<Pick<Thought, 'text' | 'width' | 'height' | 'shape'>> }
-  | { kind: 'move'; moves: { id: string; x: number; y: number }[] }
-  | { kind: 'remove'; id: string }
-  | { kind: 'link'; link: { id: string; fromId: string; toId: string; label: string | null } }
-  | { kind: 'unlink'; id: string }
-  | { kind: 'rename'; title: string };
-
 export type LoadState = 'loading' | 'ready' | 'not-found' | 'failed';
-export interface Me { id: string; name: string }
 
 const uuid = () => crypto.randomUUID();
-
-function localThought(me: Me, sketchId: string, input: NewThought): Thought {
-  const now = new Date().toISOString();
-  return {
-    id: input.id, sketchId, text: input.text, x: input.x, y: input.y, width: input.width ?? DEFAULT_THOUGHT_SIZE.width,
-    height: input.height ?? DEFAULT_THOUGHT_SIZE.height, shape: input.shape ?? 'card', placement: input.placement ?? null,
-    source: input.source ?? null, ...(input.file ? { file: input.file } : {}),
-    createdBy: { kind: 'human', id: me.id, name: me.name }, version: 0, createdAt: now, updatedAt: now,
-  };
-}
-
-/** The sketch after `op`, as the person expects to see it before the server answers. */
-export function applyLocal(sketch: SketchDetail, op: Op, me: Me): SketchDetail {
-  switch (op.kind) {
-    case 'add': {
-      const thoughts = [...sketch.thoughts, localThought(me, sketch.id, op.thought)];
-      const links = op.link ? [...sketch.links, { id: op.link.id, sketchId: sketch.id, fromId: op.link.fromId, toId: op.thought.id, label: op.link.label, createdAt: new Date().toISOString() }] : sketch.links;
-      return { ...sketch, thoughts, links };
-    }
-    case 'update':
-      return { ...sketch, thoughts: sketch.thoughts.map((t) => (t.id === op.id ? { ...t, ...op.changes } : t)) };
-    case 'move': {
-      const to = new Map(op.moves.map((m) => [m.id, m]));
-      return { ...sketch, thoughts: sketch.thoughts.map((t) => (to.has(t.id) ? { ...t, x: to.get(t.id)!.x, y: to.get(t.id)!.y } : t)) };
-    }
-    case 'remove':
-      return { ...sketch, thoughts: sketch.thoughts.filter((t) => t.id !== op.id), links: sketch.links.filter((l) => l.fromId !== op.id && l.toId !== op.id) };
-    case 'link':
-      return { ...sketch, links: [...sketch.links, { ...op.link, sketchId: sketch.id, createdAt: new Date().toISOString() }] };
-    case 'unlink':
-      return { ...sketch, links: sketch.links.filter((l) => l.id !== op.id) };
-    case 'rename':
-      return { ...sketch, title: op.title };
-  }
-}
 
 /** Operations that undo `op` when applied to the sketch after it. */
 export function inverse(before: SketchDetail, op: Op): Op[] {
@@ -325,7 +272,7 @@ export function useSketchDoc(sketchId: string, me: Me) {
    * Applies operations as one undoable step. `coalesce` (keyboard nudges) merges repeated moves
    * into the previous step and sends the final positions once the keys rest.
    */
-  const perform = useCallback((ops: Op[], label: string, options: { coalesce?: boolean; undoable?: boolean } = {}) => {
+  const perform = useCallback((ops: Op[], label: string, options: { coalesce?: boolean; undoable?: boolean; lease?: Promise<unknown> } = {}) => {
     let current = ref.current;
     if (!current || !ops.length) return;
     const inverses: Op[][] = [];
@@ -437,9 +384,6 @@ export function useSketchDoc(sketchId: string, me: Me) {
     return saved;
   }, [commit, flushMoves, reload, sketchId]);
 
-  const saveThought = useCallback(async (thought: NewThought, parent: { id: string; linkId: string } | null, key: string): Promise<boolean> =>
-    (await saveThoughts([{ thought, parent, key }])).length === 1, [saveThoughts]);
-
   /**
    * Text belongs to the version opened by the editor, even if the stream learns a newer one.
    * A newer version that still has the opened text (a move, resize or shape change, such as this
@@ -494,8 +438,24 @@ export function useSketchDoc(sketchId: string, me: Me) {
 
   useEffect(() => () => flushMoves(), [flushMoves]);
 
-  return { sketch, load, saving, problem, clearProblem: () => setProblem(null), canUndo: undoLabel !== null, perform, saveThought, saveThoughts, saveText, undo, reload, newId: uuid };
+  return { sketch, load, saving, problem, clearProblem: () => setProblem(null), canUndo: undoLabel !== null, perform, saveThoughts, saveText, undo, reload, newId: uuid, ...ORDINARY };
 }
+
+/** No live room, movement, presence or server undo: the ordinary map's inert live fields. */
+const ORDINARY = {
+  liveStatus: 'unavailable' as SharedMap['status'],
+  liveCanWrite: true,
+  ownGesture: null as SharedMap['ownGesture'],
+  previews: new Map() as SharedMap['previews'],
+  peers: new Map() as SharedMap['peers'],
+  privateMovement: null as SharedMap['privateMovement'],
+  discardPrivateMovement: (): void => {},
+  beginGesture: (): boolean => true,
+  previewGesture: (): void => {},
+  cancelGesture: (): void => {},
+  finishGesture: (): Promise<{ leaseId: string; versions: Map<string, number> }> | undefined => undefined,
+  presence: (): void => {},
+};
 
 export type SketchDoc = ReturnType<typeof useSketchDoc>;
 export type { ThoughtLink };

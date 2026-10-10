@@ -1,0 +1,7 @@
+Installing pnpm@12.6.0...
+Downloading the pnpm 12.6.0 binary for linux-x64...
+Update available! 12.6.0 → 12.9.1.
+Changelog: https://pnpm.io/v/12.9.1
+To update, run: curl -fsSL https://get.pnpm.io/install.sh | sh -
+Done in 469ms using pnpm v12.6.0
+Standalone lock prepared; next build and inspect the inventory before executing codec tests.

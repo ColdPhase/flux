@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import { Link, redirect, useLoaderData, useNavigate, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { Doc, DocSummary, DocVersion, DocVersionSummary, ObjectLink, Project } from '@flux/contracts';
@@ -12,6 +12,14 @@ import { STATE_LABEL, authorLabel, docLinks, kindLabel, longDate, pathOfLink, sh
 import { DownloadButton, ShareButton, WikiBar, WikiIcon } from './WikiParts';
 import { useWiki } from './wiki-context';
 import './docs.css';
+import { editingCapability, useEditingCapability } from '../editing/capability';
+import type { LiveReadingProps, LiveReadingState } from '../editing/LiveReading';
+
+// The current page's shared working copy (#228) loads only with a configured live capability (#239
+// review), so an ordinary wiki never evaluates its CRDT bundle. If that bundle cannot load, the page
+// is read as saved.
+const LiveReading = lazy(() => import('../editing/LiveReading').then((module) => ({ default: module.LiveReading }), () => ({ default: SavedReading })));
+function SavedReading({ render }: LiveReadingProps) { return <>{render(null)}</>; }
 
 // The project wiki (#112, two panes since #136): the reader with links and backlinks, and the
 // version history with a diff, beside the page index (Wiki.tsx). Everything here is visible to the
@@ -25,6 +33,7 @@ function useRefresh() {
     const interval = window.setInterval(refresh, 20000);
     return () => { window.removeEventListener('focus', refresh); window.clearInterval(interval); };
   }, [revalidator]);
+  return revalidator;
 }
 
 function Audience({ project }: { project: Project }) {
@@ -109,14 +118,15 @@ export function WorkspaceDocs() {
   );
 }
 
-interface ReaderData { doc: Doc; shown: DocVersion }
+interface ReaderData { doc: Doc; shown: DocVersion; historical: boolean }
 
 export async function docLoader({ params, request }: LoaderFunctionArgs): Promise<ReaderData> {
-  const doc = await getDoc(params.docId!, request.signal);
+  // The capability is known before the first render, so the reader never switches kinds after it.
+  const [doc] = await Promise.all([getDoc(params.docId!, request.signal), editingCapability()]);
   inProject(doc, params.projectId);
   const version = params.version ? Number(params.version) : null;
   const shown = version && version !== doc.version ? await getVersion(doc.id, version, request.signal) : doc;
-  return { doc, shown };
+  return { doc, shown, historical: params.version !== undefined };
 }
 
 /** A message citing a doc version (#36 citation) opens it in the doc reader. */
@@ -177,13 +187,31 @@ function LinkList({ title, links, end, projectId, empty }: { title: string; link
 
 /** Reads a doc, its current or an earlier version, with what it links to and what links here. */
 export function DocReader() {
-  const { doc, shown } = useLoaderData() as ReaderData;
+  const { doc, historical } = useLoaderData() as ReaderData;
+  const { me } = useShellData();
+  // A versions URL is always a saved snapshot; only the current page shows the shared working copy
+  // (#228), and only when this API's live capability is configured (#239 review).
+  const capability = useEditingCapability();
+  if (capability !== 'configured' || historical) return <DocReading live={null} />;
+  return <Suspense fallback={<DocReading live={null} />}>
+    <LiveReading docId={doc.id} userId={me.user.id} render={(live) => <DocReading live={live} />} />
+  </Suspense>;
+}
+
+function DocReading({ live }: { live: LiveReadingState | null }) {
+  const { doc, shown, historical } = useLoaderData() as ReaderData;
   const { project, writable } = useWiki();
   const { me } = useShellData();
   const navigate = useNavigate();
-  useRefresh();
+  const revalidator = useRefresh();
   const onClick = useReferenceClicks();
-  const current = shown.version === doc.version;
+  // With live editing a versions URL is a saved snapshot even for the newest version; otherwise, as
+  // before #228, the newest version reads as the current page.
+  const capability = useEditingCapability();
+  const current = capability === 'configured' ? !historical : shown.version === doc.version;
+  const working = live?.working ?? null;
+  const savedVersion = working?.savedVersion ?? doc.version;
+  useEffect(() => { if (!historical && savedVersion > doc.version && revalidator.state === 'idle') revalidator.revalidate(); }, [historical, savedVersion, doc.version, revalidator]);
   const { sources, mentions, backlinks } = docLinks(doc);
   const missing = shown.mentions.filter((item) => !item.path).length;
   const base = docUrl(project.id, doc.id);
@@ -225,15 +253,17 @@ export function DocReader() {
       <article className="wiki-doc doc" data-shift aria-labelledby="doc-title">
         <p className="wiki-doc__crumb"><Icon name="doc" size={13} /><span>{project.name}</span></p>
         {!current ? (
-          <p className="doc-notice"><Icon name="undo" size={14} />You are reading an earlier version. It stays as it was written.
+          <p className="doc-notice"><Icon name="undo" size={14} />{shown.version < doc.version ? 'You are reading an earlier version.' : 'You are reading a saved version.'} It stays as it was written.
             <Link to={base}>Open the current version</Link><Link to={`${base}/history?from=${shown.version}&to=${doc.version}`}>What changed since</Link></p>
         ) : null}
         <header className="doc-head">
           <h2 id="doc-title" className="doc-head__t">{shown.title}</h2>
           <p className="doc-head__change"><span>{authorLabel(shown.author)}</span> · <time dateTime={shown.createdAt}>{longDate(shown.createdAt)}</time> · <span className="doc-head__why">{shown.reason}</span></p>
         </header>
-        {shown.body.trim()
-          ? <div className="doc-prose" onClick={onClick} dangerouslySetInnerHTML={{ __html: shown.html }} />
+        {working ? <p className="doc-notice" data-live-reader data-live-generation={working.generation} data-live-sequence={working.sequence}>Shared working copy · last saved version {working.savedVersion}. Sources and citations keep their saved version.{working.presence}</p> : null}
+        {live?.problem ? <p className="doc-notice" role="alert">{live.problem}</p> : null}
+        {(working?.text ?? shown.body).trim()
+          ? <div className="doc-prose" onClick={onClick} dangerouslySetInnerHTML={{ __html: working?.html ?? shown.html }} />
           : <p className="doc-muted doc-empty">This page has no text yet.{writable && current ? <> <Link to={edit}>Start writing</Link></> : null}</p>}
         {missing ? <p className="doc-notice"><Icon name="alert" size={14} />{missing === 1 ? 'One link points' : `${missing} links point`} to something that is not in this project or no longer exists. It shows as plain text.</p> : null}
         <div className="doc-foot">

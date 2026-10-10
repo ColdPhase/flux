@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "baselineSourceSha": "39ca642d03e24fd8f4c721e2d926fc843f43f9ab",
+  "canonicalModules": {
+    "caps.mjs": "0bf4059e81bbbef7fc5e453a450444a646e678bb425d6746870c19378a37b014",
+    "codec.mjs": "42c8a14780efe6890e159077c6d9afe03a50dc58bea8e094602441629afe5d94",
+    "envelope.mjs": "b6ab8236e53619785845ae9770bcf31f58a15201c2ba8a2f29c7b41400ac276f",
+    "assembly.mjs": "d6bf996556227eade5dad239af0d4897048dead1873f3870d2c5d3a8d79079fe",
+    "admission-budget.mjs": "2ee7dafe07716d1a4e6edc29c097a0204936abaa58a06af0312e294b99685ad8",
+    "worker-pool.mjs": "5eadd75bbd7bf5f6bd36a0325cb2f60190f7a8d78b3f289ffb9b44cc251ccc38",
+    "codec-worker.mjs": "f923ca41399e67eb11ed4b08dd81329405702f2a245d81529e58c23f8b9ac47e",
+    "room-cache.mjs": "16a8ef1b1edecde982b1ba04d53d49dd41f3589d5268ecd093e826b23fa0e6c3"
+  },
+  "candidateFiles": {
+    "codec.test.mjs": "1dfccdc0b954c4756c757bbf1a009eaf46171d44b475d07c319e90820c079075",
+    "exit-worker.mjs": "39324c6b118bbb3fbb81986ca0f95e53e104403fd396379e2a230f9731c813a1",
+    "independent-probe.proposed.test.mjs": "896f1d99659d06bbe848897b308665346f4d4067a33d0a8e8ef1abed6bdd0893",
+    "intent-registry.mjs": "f5f2217521a5b4667e74955d37e677e6760e9a40cd5d07e83e3d12344318956a",
+    "inventory.mjs": "170f0c5b58798857b7b7c9e8ce9d514ef24a953218fcd11412a219c5ffbe9d76",
+    "retained-backing.test.mjs": "8d27f2dd31f3ab36cf7bdcb5763d1a214066a0636bc44b27a36f2b7260bc89e5",
+    "silent-worker.mjs": "5ed3135987ba629b76b6e236a6d3e72816fccbc2e3935fd002f9430047cbdc75",
+    "stall-worker.mjs": "654b914333c1768c23a4f8d9f03a445a27f74a19d8882bfcbd2534d4817fc5a5",
+    "wire-fixtures.mjs": "5f1d859e1c40298d08e4933ce6455fcc8b59be85a30dbfcb08accd14e147dcc5"
+  },
+  "historicalInputs": {
+    "codec.test.mjs": "b1ec47363e1b61c6ea9cd91a49bccd17a9b184872544c2e5b4dcfe64070a99e5",
+    "wire-fixtures.mjs": "5f1d859e1c40298d08e4933ce6455fcc8b59be85a30dbfcb08accd14e147dcc5",
+    "intent-registry.mjs": "f5f2217521a5b4667e74955d37e677e6760e9a40cd5d07e83e3d12344318956a",
+    "stall-worker.mjs": "654b914333c1768c23a4f8d9f03a445a27f74a19d8882bfcbd2534d4817fc5a5",
+    "silent-worker.mjs": "5ed3135987ba629b76b6e236a6d3e72816fccbc2e3935fd002f9430047cbdc75",
+    "exit-worker.mjs": "39324c6b118bbb3fbb81986ca0f95e53e104403fd396379e2a230f9731c813a1"
+  },
+  "independentOriginals": {
+    "independent-probe.mjs": "92bd2ac7da3ffe794b62415a411c6a95ebb24357b0cd841f0b5245e9087b8fc7",
+    "retained-backing.mjs": "038cf43a21403bdc352b7401599cbf0c5403338c08244cd398dfd19dd8ec2fb8"
+  },
+  "dependencies": {
+    "yjs": "13.6.33",
+    "y-codemirror.next": "0.3.6",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.13",
+    "y-protocols": "1.0.7",
+    "lib0": "0.2.119",
+    "ws": "8.22.0"
+  },
+  "changes": [
+    "author100k retained-input handoff",
+    "authorcopy-pressure retained-input handoff",
+    "inheritedindependentC3 retained-input handoff",
+    "priorreviewedmandatoryC3framingfields",
+    "publicNodeimportsforlint",
+    "keptcodecworkerswithinthetwoworkercap;terminateontimeout/failure"
+  ],
+  "meaning": "Current canonical corpus candidate, not historicalPASS or durableSQL proof"
+}

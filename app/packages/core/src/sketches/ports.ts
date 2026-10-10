@@ -1,5 +1,6 @@
 import type { PageQuery, PersonRef, PromotionPerson, SketchCopy, SketchScope, ThoughtFile, ThoughtShape } from '@flux/contracts';
 import type { Principal } from '../principal.js';
+import type { SketchLiveJournal } from '../editing/map-journal.js';
 
 /**
  * Ports of the sketch use cases (issues #69, #46). Core states what it needs; the server
@@ -188,6 +189,8 @@ export interface SketchRepository {
   /** Deletes the thought and its links; never the placed object. */
   deleteThought(sketchId: string, id: string): Promise<void>;
   links(sketchId: string, page?: Required<PageQuery>): Promise<LinkRecord[]>;
+  /** Bounded affected links, counted before row allocation; never load the whole graph for one removal. */
+  relatedLinks(sketchId:string,filter:{thoughtId?:string;linkId?:string}):Promise<LinkRecord[]>;
   linkExists(id: string): Promise<boolean>;
   /** The link between two thoughts of the sketch, in either direction. */
   linkBetween(sketchId: string, a: string, b: string): Promise<LinkRecord | null>;
@@ -239,6 +242,7 @@ export interface SketchPorts {
   sketches: SketchRepository;
   events: SketchEventLog;
   promotion: SketchPromotion;
+  live: SketchLiveJournal;
 }
 
 /**

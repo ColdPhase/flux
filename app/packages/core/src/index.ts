@@ -81,6 +81,14 @@ export * from './agent-connection/execution.js';
 export * from './agent-connection/grants.js';
 export * from './agent-connection/orientation.js';
 export * from './agent-connection/playbook.js';
+export type { DocLiveVersions, LiveDocHead } from './editing/doc-ports.js';
+
+export * from './editing/wiki-ports.js';
+export * from './editing/wiki.js';
+
+export * from './editing/map-ports.js';
+
+export * from './editing/map-journal.js';
 export * from './agent-connection/project-policy.js';
 export * from './agent-connection/project-agents.js';
 

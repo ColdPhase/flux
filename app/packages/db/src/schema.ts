@@ -1707,3 +1707,140 @@ export const githubRuleDefaults = pgTable('github_rule_defaults', {
   setByUserId: text('set_by_user_id').references(() => authUsers.id, { onDelete: 'set null' }),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [foreignKey({ columns: [t.workspaceId, t.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade')]);
+
+// #228: committed shared wiki heads, retired generations and immutable author/update history.
+// Authorization remains in core; each writer locks the native material before this head.
+export const docLiveHeads = pgTable('doc_live_heads', {
+  docId: uuid('doc_id').primaryKey(), workspaceId: uuid('workspace_id').notNull(), projectId: uuid('project_id').notNull(),
+  generation: uuid('generation').notNull(), sequence: bigint('sequence', { mode: 'number' }).notNull().default(0),
+  body: text('body').notNull(), hash: text('hash').notNull(), savedVersion: integer('saved_version').notNull(),
+  savedSequence: bigint('saved_sequence', { mode: 'number' }).notNull().default(0),
+  /** The codec state snapshot at snapshotSequence; the logged updates after it complete the state (0084). */
+  codecState: jsonb('codec_state').$type<Record<string, unknown>>(),
+  snapshotSequence: bigint('snapshot_sequence', { mode: 'number' }).notNull().default(0),
+  /** Changes with every codec state change (commit, enrollment, initialization, retirement). */
+  revision: bigint('revision', { mode: 'number' }).notNull().default(0),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  foreignKey({ columns: [t.workspaceId, t.projectId, t.docId], foreignColumns: [projectMaterials.workspaceId, projectMaterials.projectId, projectMaterials.id] }).onDelete('cascade'),
+  foreignKey({ columns: [t.workspaceId, t.projectId, t.docId, t.savedVersion], foreignColumns: [projectMaterialVersions.workspaceId, projectMaterialVersions.projectId, projectMaterialVersions.materialId, projectMaterialVersions.version] }),
+  check('doc_live_head_sequence', sql`${t.sequence} BETWEEN 0 AND 9007199254740991 AND ${t.savedSequence} BETWEEN 0 AND ${t.sequence}`),
+  check('doc_live_head_hash', sql`${t.hash} ~ '^[a-f0-9]{64}$'`),
+  check('doc_live_head_body', sql`char_length(${t.body}) <= 100000`),
+  check('doc_live_head_codec_bytes', sql`${t.codecState} IS NULL OR octet_length(${t.codecState}::text) <= 8388608`),
+  check('doc_live_head_snapshot', sql`${t.snapshotSequence} BETWEEN 0 AND ${t.sequence} AND ${t.revision} BETWEEN 0 AND 9007199254740991`),
+]);
+
+/** A native clean write changes generation, preserving the old ledger/receipts rather than rewriting them. */
+export const docLiveArchives = pgTable('doc_live_archives', {
+  docId: uuid('doc_id').notNull().references(() => projectMaterials.id, { onDelete: 'cascade' }),
+  generation: uuid('generation').notNull(), sequence: bigint('sequence', { mode: 'number' }).notNull(),
+  body: text('body').notNull(), hash: text('hash').notNull(), savedVersion: integer('saved_version').notNull(),
+  savedSequence: bigint('saved_sequence', { mode: 'number' }).notNull(), codecState: jsonb('codec_state').$type<Record<string, unknown>>(),
+  /** Snapshot position of codecState; NULL on archives from before 0084, whose state is complete. */
+  snapshotSequence: bigint('snapshot_sequence', { mode: 'number' }),
+  retiredAt: timestamp('retired_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.docId, t.generation] }),
+  check('doc_live_archive_sequence', sql`${t.sequence} BETWEEN 0 AND 9007199254740991 AND ${t.savedSequence} BETWEEN 0 AND ${t.sequence}`),
+  check('doc_live_archive_hash', sql`${t.hash} ~ '^[a-f0-9]{64}$'`),
+  check('doc_live_archive_body', sql`char_length(${t.body}) <= 100000`),
+  check('doc_live_archive_codec_bytes', sql`${t.codecState} IS NULL OR octet_length(${t.codecState}::text) <= 8388608`),
+  check('doc_live_archive_snapshot', sql`${t.snapshotSequence} IS NULL OR ${t.snapshotSequence} BETWEEN 0 AND ${t.sequence}`)]);
+
+/** A semantic no-op has an immutable receipt but no contributing journal sequence. */
+export const docLiveUpdates = pgTable('doc_live_updates', {
+  docId: uuid('doc_id').notNull().references(() => projectMaterials.id, { onDelete: 'cascade' }), generation: uuid('generation').notNull(),
+  sequence: bigint('sequence', { mode: 'number' }).notNull(), actorId: text('actor_id').notNull().references(() => authUsers.id),
+  commandId: uuid('command_id').notNull(), fingerprint: text('fingerprint').notNull(), bytes: text('bytes').notNull(),
+  /** The ledger entries this update appended (0084); NULL before 0084, when heads held the whole state. */
+  ledger: jsonb('ledger').$type<Record<string, unknown>>(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.docId, t.generation, t.sequence] }), unique().on(t.actorId, t.commandId),
+  check('doc_live_update_sequence', sql`${t.sequence} BETWEEN 1 AND 9007199254740991`),
+  check('doc_live_update_fingerprint', sql`${t.fingerprint} ~ '^[a-f0-9]{64}$'`),
+  check('doc_live_update_bytes', sql`octet_length(${t.bytes}) <= 11184812`),
+  check('doc_live_update_ledger', sql`${t.ledger} IS NULL OR (jsonb_typeof(${t.ledger}) = 'object' AND octet_length(${t.ledger}::text) <= 8388608)`)]);
+
+/** Ownership never expires or changes; only the active instance lease is renewable. */
+export const docLiveReplicas = pgTable('doc_live_replicas', {
+  docId: uuid('doc_id').notNull().references(() => projectMaterials.id, { onDelete: 'cascade' }), generation: uuid('generation').notNull(),
+  replicaId: bigint('replica_id', { mode: 'number' }).notNull(),
+  ownerKind: text('owner_kind', { enum: ['human', 'server'] }).notNull().default('human'),
+  actorId: text('actor_id').references(() => authUsers.id),
+  instanceId: uuid('instance_id').notNull(), connectionId: uuid('connection_id'),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+}, (t) => [primaryKey({ columns: [t.docId, t.generation, t.replicaId] }),
+  check('doc_live_replica_owner', sql`(${t.ownerKind} = 'human' AND ${t.actorId} IS NOT NULL) OR (${t.ownerKind} = 'server' AND ${t.actorId} IS NULL)`),
+  check('doc_live_replica_id', sql`${t.replicaId} BETWEEN 0 AND 9007199254740991`)]);
+
+export const docLiveSnapshots = pgTable('doc_live_snapshots', {
+  docId: uuid('doc_id').notNull(), version: integer('version').notNull(), workspaceId: uuid('workspace_id').notNull(), projectId: uuid('project_id').notNull(),
+  generation: uuid('generation').notNull(), fromSequence: bigint('from_sequence', { mode: 'number' }).notNull(),
+  toSequence: bigint('to_sequence', { mode: 'number' }).notNull(), hash: text('hash').notNull(),
+  contributors: jsonb('contributors').$type<{ kind: 'human'; id: string }[]>().notNull(),
+}, (t) => [primaryKey({ columns: [t.docId, t.version] }),
+  foreignKey({ columns: [t.workspaceId, t.projectId, t.docId, t.version], foreignColumns: [projectMaterialVersions.workspaceId, projectMaterialVersions.projectId, projectMaterialVersions.materialId, projectMaterialVersions.version] }).onDelete('cascade'),
+  check('doc_live_snapshot_interval', sql`${t.fromSequence} BETWEEN 0 AND ${t.toSequence} AND ${t.toSequence} <= 9007199254740991`),
+  check('doc_live_snapshot_hash', sql`${t.hash} ~ '^[a-f0-9]{64}$'`),
+  check('doc_live_snapshot_contributors', sql`jsonb_typeof(${t.contributors}) = 'array' AND octet_length(${t.contributors}::text) <= 8388608`)]);
+
+/** Shared across all rooms/operations: an actor's UUID cannot change namespace or payload. */
+export const liveEditingIntents = pgTable('live_editing_intents', {
+  actorId: text('actor_id').notNull().references(() => authUsers.id), commandId: uuid('command_id').notNull(),
+  workspaceId: uuid('workspace_id').notNull(), kind: text('kind', { enum: ['wiki', 'map'] }).notNull(),
+  resourceId: uuid('resource_id').notNull(), generation: uuid('generation').notNull(), operation: text('operation').notNull(),
+  fingerprint: text('fingerprint').notNull(), byteLength: integer('byte_length').notNull(),
+  receipt: jsonb('receipt').$type<Record<string, unknown>>().notNull(), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.actorId, t.commandId] }),
+  check('live_editing_intent_kind', sql`${t.kind} IN ('wiki','map')`),
+  check('live_editing_intent_fingerprint', sql`${t.fingerprint} ~ '^[a-f0-9]{64}$'`),
+  check('live_editing_intent_bytes', sql`${t.byteLength} BETWEEN 0 AND 8388608`),
+  check('live_editing_intent_receipt', sql`jsonb_typeof(${t.receipt}) = 'object' AND octet_length(${t.receipt}::text) <= 8388608`)]);
+
+/** Current server-identified cursor leases; no saved/source/history projection reads this table. */
+export const docLivePresence = pgTable('doc_live_presence', {
+  connectionId: uuid('connection_id').primaryKey(), docId: uuid('doc_id').notNull().references(() => projectMaterials.id, { onDelete: 'cascade' }),
+  generation: uuid('generation').notNull(), actorId: text('actor_id').notNull().references(() => authUsers.id),
+  sessionId: text('session_id').notNull().references(() => authSessions.id, { onDelete: 'cascade' }),
+  cursor: jsonb('cursor').$type<{ anchor: string; head: string }>().notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+}, (t) => [check('doc_live_presence_cursor', sql`jsonb_typeof(${t.cursor}) = 'object' AND octet_length(${t.cursor}::text) <= 4096`)]);
+
+
+export const mapLiveHeads = pgTable('map_live_heads', {
+  sketchId: uuid('sketch_id').primaryKey().references(() => sketches.id,{onDelete:'cascade'}),
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id), generation: uuid('generation').notNull(),
+  sequence: bigint('sequence',{mode:'number'}).notNull().default(0), updatedAt: timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[unique().on(t.sketchId,t.generation),foreignKey({columns:[t.workspaceId,t.sketchId],foreignColumns:[sketches.workspaceId,sketches.id]}).onDelete('cascade'),check('map_live_head_sequence',sql`${t.sequence} BETWEEN 0 AND 9007199254740991`)]);
+export const mapLiveJournal = pgTable('map_live_journal', {
+  sketchId: uuid('sketch_id').notNull().references(() => sketches.id,{onDelete:'cascade'}), generation: uuid('generation').notNull(),
+  sequence: bigint('sequence',{mode:'number'}).notNull(), actorKind: text('actor_kind',{enum:['human','agent']}).notNull(),
+  actorId: text('actor_id').notNull(), commandId: uuid('command_id').notNull(), fingerprint:text('fingerprint').notNull(),
+  change: jsonb('change').$type<Record<string,unknown>>().notNull(), createdAt: timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
+},(t)=>[primaryKey({columns:[t.sketchId,t.generation,t.sequence]}),unique().on(t.actorKind,t.actorId,t.commandId),check('map_live_journal_sequence',sql`${t.sequence} BETWEEN 1 AND 9007199254740991`),check('map_live_journal_actor',sql`${t.actorKind} IN ('human','agent')`),check('map_live_journal_fingerprint',sql`${t.fingerprint} ~ '^[a-f0-9]{64}$'`),check('map_live_journal_bytes',sql`jsonb_typeof(${t.change})='object' AND octet_length(${t.change}::text)<=8388608`)]);
+export const mapLiveObjectVersions = pgTable('map_live_object_versions', {
+  kind:text('kind',{enum:['thought','link']}).notNull(), objectId:uuid('object_id').notNull(),
+  sketchId:uuid('sketch_id').notNull().references(() => sketches.id,{onDelete:'cascade'}), version:bigint('version',{mode:'number'}).notNull(),
+},(t)=>[primaryKey({columns:[t.kind,t.objectId]}),check('map_live_object_kind',sql`${t.kind} IN ('thought','link')`),check('map_live_object_version',sql`${t.version} BETWEEN 1 AND 9007199254740991`)]);
+export const mapLiveUndone = pgTable('map_live_undone', {
+  sketchId:uuid('sketch_id').notNull(),generation:uuid('generation').notNull(),
+  originalSequence:bigint('original_sequence',{mode:'number'}).notNull(),inverseSequence:bigint('inverse_sequence',{mode:'number'}).notNull(),
+},(t)=>[primaryKey({columns:[t.sketchId,t.generation,t.originalSequence]}),
+  foreignKey({columns:[t.sketchId,t.generation,t.originalSequence],foreignColumns:[mapLiveJournal.sketchId,mapLiveJournal.generation,mapLiveJournal.sequence]}).onDelete('cascade'),
+  foreignKey({columns:[t.sketchId,t.generation,t.inverseSequence],foreignColumns:[mapLiveJournal.sketchId,mapLiveJournal.generation,mapLiveJournal.sequence]}).onDelete('cascade')]);
+export const mapLiveGestures = pgTable('map_live_gestures', {
+  leaseId:uuid('lease_id').primaryKey(),sketchId:uuid('sketch_id').notNull().references(()=>sketches.id,{onDelete:'cascade'}),
+  generation:uuid('generation').notNull(),gestureId:uuid('gesture_id').notNull(),actorId:text('actor_id').notNull().references(()=>authUsers.id),
+  sessionId:text('session_id').notNull().references(()=>authSessions.id,{onDelete:'cascade'}),connectionId:uuid('connection_id'),
+  sequence:bigint('sequence',{mode:'number'}).notNull().default(0),
+  thoughts:jsonb('thoughts').$type<{id:string;expectedVersion:number}[]>().notNull(),
+  positions:jsonb('positions').$type<{id:string;x:number;y:number;width?:number;height?:number}[]>().notNull().default([]),
+  expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),
+},(t)=>[unique().on(t.actorId,t.sessionId,t.sketchId,t.generation,t.gestureId),foreignKey({columns:[t.sketchId,t.generation],foreignColumns:[mapLiveHeads.sketchId,mapLiveHeads.generation]}).onDelete('cascade'),check('map_live_gesture_sequence',sql`${t.sequence} BETWEEN 0 AND 9007199254740991`),check('map_live_gesture_thoughts',sql`jsonb_typeof(${t.thoughts})='array' AND jsonb_array_length(${t.thoughts}) BETWEEN 1 AND 200 AND octet_length(${t.thoughts}::text)<=65536`),check('map_live_gesture_positions',sql`jsonb_typeof(${t.positions})='array' AND jsonb_array_length(${t.positions})<=200 AND octet_length(${t.positions}::text)<=65536`)]);
+export const mapLivePresence = pgTable('map_live_presence', {
+  connectionId:uuid('connection_id').primaryKey(),sketchId:uuid('sketch_id').notNull().references(()=>sketches.id,{onDelete:'cascade'}),
+  generation:uuid('generation').notNull(),actorId:text('actor_id').notNull().references(()=>authUsers.id),
+  sessionId:text('session_id').notNull().references(()=>authSessions.id,{onDelete:'cascade'}),
+  selected:jsonb('selected').$type<string[]>().notNull(),cursor:jsonb('cursor').$type<{x:number;y:number}>(),
+  expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),
+},t=>[foreignKey({columns:[t.sketchId,t.generation],foreignColumns:[mapLiveHeads.sketchId,mapLiveHeads.generation]}).onDelete('cascade'),check('map_live_presence_selected',sql`jsonb_typeof(${t.selected})='array' AND jsonb_array_length(${t.selected})<=16`),check('map_live_presence_cursor',sql`${t.cursor} IS NULL OR jsonb_typeof(${t.cursor})='object' AND octet_length(${t.cursor}::text)<=256`)]);

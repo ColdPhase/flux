@@ -14,7 +14,7 @@ import {
   type ResourceType,
 } from '@flux/core';
 import { idempotencyRepository } from '@flux/db';
-import type { SessionResolver } from '../identity/index.js';
+import type { SessionContext, SessionResolver } from '../identity/index.js';
 import { single, versionEtag } from './headers.js';
 
 // Shared HTTP plumbing for `/api/v1` command routes (issue #29 AC-4, reused by #69 and #107): the
@@ -45,7 +45,7 @@ export interface CommandSpec {
   status?: number | ((body: unknown) => number);
   /** Where the response ETag comes from; `true` means the body's own version. */
   etag?: boolean | ((body: unknown) => string | null);
-  run: (principal: Principal, db: Database) => Promise<unknown>;
+  run: (principal: Principal, db: Database, session: SessionContext) => Promise<unknown>;
   /** Current authorization a stored response must pass before it is replayed. */
   replay: ReplayCheck;
 }
@@ -55,11 +55,11 @@ export function commandRunner(db: Database, sessions: SessionResolver) {
 
   /** Runs a state-changing command, at most once per Idempotency-Key when one is sent. */
   async function runCommand(request: FastifyRequest, spec: CommandSpec, connection: Database = db) {
-    const actor = await principal(request);
+    const session = await sessions.requirePrincipal(request); const actor=session.principal;
     const key = parseIdempotencyKey(single(request.headers[IDEMPOTENCY_KEY_HEADER]));
     const etagOf = spec.etag === true ? versionEtag : spec.etag || (() => null);
     const execute = async (conn: Database): Promise<CommandResponse> => {
-      const result = await spec.run(actor, conn);
+      const result = await spec.run(actor, conn, session);
       const status = typeof spec.status === 'function' ? spec.status(result) : spec.status ?? 200;
       return { status, body: result ?? null, etag: etagOf(result) };
     };
