@@ -8,7 +8,7 @@ import type { AccessContext } from './context.js';
 const roleSchema = { type: 'string', enum: ['owner', 'admin', 'member', 'guest'] } as const;
 
 /** Workspaces and their membership (#85): list, create, read, members, roles and leaving. */
-export function workspaceRoutes(app: FastifyInstance, { db, principal, command, runCommand, sendCommand, workspaceScope, workspaceChange }: AccessContext) {
+export function workspaceRoutes(app: FastifyInstance, { db, principal, command, runCommand, sendCommand, workspaceScope, workspaceChange, verifiedEmailMembers }: AccessContext) {
   app.get(WORKSPACES_PATH, async (request) => listWorkspaces(await principal(request), db));
   app.post<{ Body: CreateWorkspaceCommand }>(WORKSPACES_PATH, {
     schema: { body: { type: 'object', required: ['name'], additionalProperties: false, properties: { name: nameSchema } } },
@@ -26,7 +26,7 @@ export function workspaceRoutes(app: FastifyInstance, { db, principal, command, 
     schema: { body: { type: 'object', required: ['role'], additionalProperties: false, properties: { userId: { type: 'string' }, email: { type: 'string' }, role: roleSchema } } },
   }, async (request, reply) => command(request, reply, {
     operation: `POST ${WORKSPACES_PATH}/:workspaceId/members`, scope: workspaceScope(request.params.workspaceId), status: 201,
-    run: (actor, conn) => addMember(actor, request.params.workspaceId, request.body, conn),
+    run: (actor, conn) => addMember(actor, request.params.workspaceId, request.body, conn, { verifiedEmailOnly: verifiedEmailMembers }),
     replay: requires('workspace', 'workspace.read_members', () => request.params.workspaceId),
   }));
   app.patch<{ Params: { workspaceId: string; userId: string }; Body: ChangeRoleCommand }>(`${WORKSPACES_PATH}/:workspaceId/members/:userId`, {

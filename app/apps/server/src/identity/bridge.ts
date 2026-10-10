@@ -5,6 +5,7 @@ import { CLIENT_IP_HEADER, type FluxAuth } from './auth.js';
 import { oauthRequestContext, type OauthRequests } from './oauth-flow.js';
 import type { SignInFacts, SignIns } from './sign-in.js';
 import type { SessionResolver } from './session.js';
+import { claimCookie } from './claim-routes.js';
 
 // Forwarding headers are dropped before Better Auth sees a request. Client addresses come
 // from Fastify's request.ip, which honours only the configured trusted proxies.
@@ -78,12 +79,22 @@ export function registerAuthBridge(app: FastifyInstance, { auth, publicOrigin, p
       const handle = () => signIns.run(facts, () => auth.handler(incoming));
       const response = context ? await oauthRequests.run(Object.freeze(context), handle) : await handle();
       reply.status(response.status);
+      // A refused sign-in (no refresh token, #311; an address another account holds, #313) comes back to the page
+      // with the reason. An address an unverified account holds goes to the claim page instead.
+      const destination = (value: string) => {
+        if (facts.refused === 'email_claim') {
+          const back = new URL(value, publicOrigin);
+          back.searchParams.delete('sso');
+          return `/claim?return=${encodeURIComponent(`${back.pathname}${back.search}`)}`;
+        }
+        return facts.refused ? `${value}${value.includes('?') ? '&' : '?'}sso_reason=${facts.refused}` : value;
+      };
       response.headers.forEach((value, key) => {
         if (key === 'set-cookie' || key === 'content-length' || key === 'transfer-encoding') return;
-        // A refused sign-in (the provider returned no refresh token, #311) comes back to the page with the reason.
-        reply.header(key, key === 'location' && facts.refused ? `${value}${value.includes('?') ? '&' : '?'}sso_reason=${facts.refused}` : value);
+        reply.header(key, key === 'location' ? destination(value) : value);
       });
       const cookies = response.headers.getSetCookie();
+      if (facts.claimToken) cookies.push(claimCookie(facts.claimToken, publicOrigin.startsWith('https:')));
       if (cookies.length) reply.header('set-cookie', cookies);
       const text = response.body ? await response.text() : null;
       return reply.send(text && response.headers.get('content-type')?.includes('application/json') ? redactSessionTokens(text) : text);

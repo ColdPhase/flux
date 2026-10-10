@@ -80,7 +80,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   const liveMedia = createLiveMediaFromEnv(env, identityConfig.publicOrigin);
   const lifecycle = liveMedia ? liveLifecycle(db, pool, liveMedia.media) : null;
   const liveRevocation = liveMedia ? liveRevocationCoordinator(db, pool, liveMedia.media, lifecycle!) : null;
-  await app.register(accessRoutes, { db, sessions: identity, boss, liveRevocation });
+  await app.register(accessRoutes, { db, sessions: identity, boss, liveRevocation, verifiedEmailMembers: identityConfig.oidc !== null });
   const fileStorage = await diskFileStorage(filesDir);
   await app.register(sketchRoutes, { db, sessions: identity, storage: fileStorage });
   await app.register(dmRoutes, { db, sessions: identity });

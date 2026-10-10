@@ -9,8 +9,10 @@ remain unimplemented.
 Flux can let people sign in with your organisation's OpenID Connect identity provider (Keycloak,
 Google Workspace, Okta, Authentik and others), next to email and password
 ([#113](https://github.com/ColdPhase/flux/issues/113)). Flux supports **one** provider per
-instance. Email/password sign-in keeps working, so the first owner and anyone outside the
-provider can still sign in.
+instance. While it is set, single sign-on is the only ordinary way in: email/password sign-in,
+sign-up and password reset are closed (refused by the API, and hidden in the browser). To return to
+password mode, unset the `FLUX_OIDC_*` variables and restart. Moving existing password accounts to the
+provider is a separate migration ([#315](https://github.com/ColdPhase/flux/issues/315)).
 
 ## What it does and does not do
 
@@ -20,8 +22,19 @@ provider can still sign in.
 - **The account email** is taken only when the provider says it is verified (`email_verified`).
   A sign-in without a verified email is refused.
 - **No account takeover by email.** A provider identity is never linked to an existing Flux account
-  just because the emails match. If someone already has a Flux account with that email, the
-  single sign-on attempt is refused and their account is unchanged.
+  just because the emails match. If the provider's verified email belongs to a verified Flux account,
+  or to an account already linked to a provider identity, the sign-in is refused and nothing changes.
+  If it belongs to an unverified account with no provider link, the sign-in page offers audited
+  operator recovery to keep the existing account, or **claim the address**. Ordinary password
+  sign-in is unavailable under SSO; explicit pre-cutover linking is supplied by #315. Claiming releases
+  the address from that account (it becomes `unverified-<id>@invalid`, its sessions and agent connections
+  end, and an audit row names both accounts). The account's data stays with it and does not move to the
+  new account. The claim page is open for 15 minutes after the provider sign-in.
+- **Email verification of password accounts.** Accounts made before single sign-on are unverified. Once
+  email is set (`FLUX_SMTP_URL`), they receive a verification mail the next time they sign in with their
+  password in password mode, and admins can find an account by email only when its address is verified. Setting
+  `FLUX_SIGNUP=verified` makes new password accounts verify by mail before they can sign in; without
+  email it behaves as `off`.
 - **No access from the provider.** Groups, roles and domains in the token are ignored. People join
   workspaces and projects in Flux, through invitations and project access, exactly as with
   password accounts.
@@ -79,13 +92,13 @@ provider can still sign in.
    refresh grant gets `invalid_grant` until they sign in through the provider again; the client then
    authorizes again and `/connect-agent` offers the connection it held. Without the standing check
    (S4), this age is the offboarding bound: a person disabled at the provider keeps access at most
-   this long. People with only a Flux password are not affected.
+   this long. People with only a Flux password cannot sign in while the provider is set (see above).
 
 5. **Restart:** `./flux up` (or `docker compose … up -d`). The sign-in page shows
    "Sign in with Acme login" once the API reads the provider's discovery document.
 
 The API reads discovery when it starts. If the provider is unreachable then, single sign-on fails
-until the next restart; password sign-in is unaffected.
+until the next restart; password sign-in stays closed in the meantime.
 
 ## Standing check
 
@@ -165,7 +178,7 @@ own policies (MFA, conditional access), which stay the provider's responsibility
   inference from Microsoft's documentation; it was not tested against a real Entra tenant.
 - **Agent (MCP) authorization ([#310](https://github.com/ColdPhase/flux/issues/310), F-024 S1).** The
   page an agent client opens for authorization (`/login`, for example from `claude mcp login`) shows
-  **Sign in with <label>** above the password form. Flux keeps the signed authorization request through
+  **Sign in with <label>**, the only sign-in offered while the provider is set. Flux keeps the signed authorization request through
   the provider round trip and continues to the connection choice and consent afterwards; the client only
   ever receives Flux's own code and tokens, and an access or ID token issued by the provider is refused at
   `/mcp`. If the provider step is cancelled or fails, the page returns to `/login` with the same request

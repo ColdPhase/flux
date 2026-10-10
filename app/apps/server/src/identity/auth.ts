@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
 import { betterAuth } from 'better-auth';
-import { APIError } from 'better-auth/api';
+import { APIError, createAuthMiddleware, createEmailVerificationToken } from 'better-auth/api';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { genericOAuth, jwt } from 'better-auth/plugins';
 import { cimd } from '@better-auth/cimd';
@@ -9,17 +8,22 @@ import { fetchClientMetadataResource } from '@better-auth/cimd/node';
 import { mcp } from '@better-auth/mcp';
 import { schema } from '@flux/db';
 import { agentOauthUseCases, type Database } from '@flux/core';
+import { and, eq, isNotNull, sql } from 'drizzle-orm';
 import { createAgentConnectionStore } from '../agent-connection/store.js';
 import type { IdentityConfig, OidcConfig } from './config.js';
 import type { Mailer } from './mailer.js';
 import type { OauthRequests } from './oauth-flow.js';
 import { createSignIns, type SignIns } from './sign-in.js';
+import { createEmailClaims, type EmailClaims } from './claim.js';
 import { createConfirmation, type Confirmation } from './confirmation.js';
 import { signInAgainMessage, type IdpStanding } from './standing.js';
 
 /** Set by the Fastify bridge from the socket or trusted-proxy address; client copies are dropped. */
 export const CLIENT_IP_HEADER = 'x-flux-client-ip';
 export const SESSION_COOKIE_PREFIX = 'flux';
+const AUTH_VERIFY_PATH = '/api/auth/verify-email';
+/** Ordinary password routes. They exist only in password mode: with a sign-on provider configured, they are refused (#313). */
+const PASSWORD_ROUTES = ['/sign-in/email', '/change-password', '/request-password-reset', '/forget-password', '/reset-password'];
 
 export interface AuthDependencies {
   /** Pool handle; Better Auth's Drizzle adapter reads and writes the auth tables through it. */
@@ -35,6 +39,8 @@ export interface AuthDependencies {
   /** Present with a provider and the standing check on (#311): sign-in stores the offline token. */
   standing?: IdpStanding | null;
   log?: { error(object: object, message: string): void };
+  /** Defaults to one over `db` (#313): provider sign-ins whose email another account holds. */
+  claims?: EmailClaims;
   /** Discovery recovery may temporarily omit the plugin, while retaining the configured authentication mode. */
   installProvider?: boolean;
 }
@@ -123,7 +129,7 @@ export async function ensureOauthResource(db: Database, publicOrigin: string): P
   }).onConflictDoNothing({ target: schema.oauthResource.identifier });
 }
 
-export function createAuth({ db, config, mailer, onMailError, oauthRequests, signIns = createSignIns(), installProvider = true, standing = null, log, confirmation = createConfirmation(db, config.oidc) }: AuthDependencies) {
+export function createAuth({ db, config, mailer, onMailError, oauthRequests, signIns = createSignIns(), installProvider = true, standing = null, log, confirmation = createConfirmation(db, config.oidc), claims = createEmailClaims(db) }: AuthDependencies) {
   const connections = agentOauthUseCases(createAgentConnectionStore(db));
   const resource = mcpResourceIdentifier(config.publicOrigin);
   const connectionForGrant = async (userId: string, sessionId: string, scopes: readonly string[]) => {
@@ -136,6 +142,25 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
     }
     return grant!;
   };
+  // The verification mail (#313): new password accounts while sign-up is `verified`, and a pre-F-024 account the
+  // next time it signs in with a password once a provider is configured, so an administrator can find it by address.
+  // One per address per minute; the link works once for a day and lands on the sign-in page.
+  const lastVerificationMail = new Map<string, number>();
+  const sendVerification = async (email: string, url?: string) => {
+    if (!mailer) return;
+    const key = email.toLowerCase();
+    const last = lastVerificationMail.get(key);
+    if (last && Date.now() - last < 60_000) return;
+    if (lastVerificationMail.size > 5000) lastVerificationMail.clear();
+    lastVerificationMail.set(key, Date.now());
+    const link = url ?? `${config.publicOrigin}${AUTH_VERIFY_PATH}?token=${await createEmailVerificationToken(config.secret, key, undefined, 86_400)}&callbackURL=${encodeURIComponent('/sign-in?notice=email-verified')}`;
+    try {
+      await mailer.send({ to: email, subject: 'Verify your email for Flux',
+        text: `Confirm that this is your email address for Flux.\n\nOpen this link. It works once and expires in 24 hours:\n\n${link}\n\nIf you did not ask for this, ignore this message.\n` });
+    } catch (error) { onMailError?.(error); }
+  };
+  const verifiedSignUp = config.signup === 'verified';
+  const ssoOnly = config.oidc !== null;
   return betterAuth({
     appName: 'Flux',
     baseURL: config.publicOrigin,
@@ -211,9 +236,53 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
         },
       }),
       cimd({ fetchClientMetadataResource, metadataProfile: 'mcp-2026-07-28' }),
-      ...(config.oidc && installProvider ? [oidcPlugin(config.oidc, signIns, log)] : []),
+      ...(config.oidc && installProvider ? [oidcPlugin(config.oidc, signIns, claims, log)] : []),
     ],
+    // Sign-up is a Flux decision (#313): closed, or the new account must verify its address before it can sign in.
+    hooks: {
+      before: createAuthMiddleware(async (ctx) => {
+        if (ctx.path === '/sign-up/email' && config.signup === 'off') {
+          throw new APIError('FORBIDDEN', { message: 'Creating an account with a password is closed on this Flux server', code: 'SIGNUP_CLOSED' });
+        }
+        // With an active sole provider, ordinary authentication is single sign-on only (F-024 S5a, #313).
+        if (ssoOnly && PASSWORD_ROUTES.includes(ctx.path)) {
+          throw new APIError('FORBIDDEN', { message: 'Password sign-in and recovery are closed on this Flux server. Sign in with single sign-on', code: 'SSO_ONLY' });
+        }
+        if (ctx.path === '/sign-in/email') {
+          const email = typeof ctx.body?.email === 'string' ? ctx.body.email.trim().toLowerCase() : '';
+          const password = typeof ctx.body?.password === 'string' ? ctx.body.password : '';
+          if (!email || !password) return;
+          const [pending] = await db.select({ id: schema.authUsers.id, hash: schema.authAccounts.password }).from(schema.authUsers)
+            .innerJoin(schema.authAccounts, and(eq(schema.authAccounts.userId, schema.authUsers.id), eq(schema.authAccounts.providerId, 'credential'), isNotNull(schema.authAccounts.password)))
+            .where(and(eq(sql`lower(${schema.authUsers.email})`, email), eq(schema.authUsers.verificationRequired, true), eq(schema.authUsers.emailVerified, false)));
+          // Only someone who knows the password learns the account waits for its address to be verified.
+          if (pending?.hash && await ctx.context.password.verify({ hash: pending.hash, password })) {
+            await sendVerification(email);
+            throw new APIError('FORBIDDEN', { message: 'Verify your email address first. A link has been sent to it', code: 'EMAIL_NOT_VERIFIED' });
+          }
+        }
+      }),
+      after: createAuthMiddleware(async (ctx) => {
+        const signedIn = ctx.context.newSession?.user;
+        // A pre-F-024 account is unverified; once mail is set it gets the link the next time it signs in with its password (#313).
+        if (ctx.path === '/sign-in/email' && signedIn && !signedIn.emailVerified && mailer) await sendVerification(signedIn.email);
+      }),
+    },
+    emailVerification: {
+      sendOnSignUp: verifiedSignUp,
+      autoSignInAfterVerification: false,
+      expiresIn: 86_400,
+      sendVerificationEmail: async ({ user, url }) => { await sendVerification(user.email, url); },
+    },
     databaseHooks: {
+      user: {
+        create: {
+          after: async (user) => {
+            // A password sign-up while sign-up is `verified` cannot sign in until the address is verified.
+            if (verifiedSignUp && !signIns.getStore()?.providerId) await db.update(schema.authUsers).set({ verificationRequired: true }).where(eq(schema.authUsers.id, user.id));
+          },
+        },
+      },
       session: {
         create: {
           // Every session records how it signed in: password, or the provider id with its IdP `sid` (#310).
@@ -239,11 +308,15 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
     },
     emailAndPassword: {
       enabled: true,
-      autoSignIn: true,
+      autoSignIn: !verifiedSignUp,
       revokeSessionsOnPasswordReset: true,
       resetPasswordTokenExpiresIn: config.passwordResetTtlSeconds,
       sendResetPassword: mailer
         ? async ({ user, url }) => {
+          // A reset never creates a password (password mode only; the route is refused under single sign-on).
+          const [credential] = await db.select({ id: schema.authAccounts.id }).from(schema.authAccounts)
+            .where(and(eq(schema.authAccounts.userId, user.id), eq(schema.authAccounts.providerId, 'credential'), isNotNull(schema.authAccounts.password)));
+          if (!credential) return;
           try {
             await mailer.send({
               to: user.email,
@@ -258,7 +331,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
         : undefined,
     },
     // Better Auth's list endpoint returns raw session tokens; Flux lists sessions by id instead.
-    disabledPaths: ['/list-sessions'],
+    disabledPaths: ['/list-sessions', '/send-verification-email'],
     rateLimit: { enabled: config.rateLimit, storage: 'memory' },
     telemetry: { enabled: false },
     advanced: {
@@ -277,7 +350,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
 export type FluxAuth = ReturnType<typeof createAuth>;
 
 /** One operator-configured OpenID Connect provider for human sign-in (#113). */
-function oidcPlugin(oidc: OidcConfig, signIns: SignIns, log?: { error(object: object, message: string): void }) {
+function oidcPlugin(oidc: OidcConfig, signIns: SignIns, emailClaims: EmailClaims, log?: { error(object: object, message: string): void }) {
   return genericOAuth({
     config: [{
       providerId: oidc.providerId,
@@ -303,6 +376,15 @@ function oidcPlugin(oidc: OidcConfig, signIns: SignIns, log?: { error(object: ob
           return null;
         }
         if (user && sign) {
+          // An address is never a key (#313). Held by a verified account: refused. Held by an unverified one: the
+          // person may claim it, from this browser, on the page the bridge sends them to.
+          const holder = await emailClaims.holder(oidc.providerId, user.sub, user.email);
+          if (holder.kind === 'held') { sign.refused = 'email_held'; return null; }
+          if (holder.kind === 'unverified') {
+            sign.claimToken = await emailClaims.open(oidc.providerId, user.sub, user.email, holder.userId);
+            sign.refused = 'email_claim';
+            return null;
+          }
           sign.providerId = oidc.providerId;
           if (tokens.refreshToken) sign.refreshToken = tokens.refreshToken;
           if (typeof claims?.sid === 'string' && claims.sid && claims.sid.length <= 512) sign.idpSid = claims.sid;

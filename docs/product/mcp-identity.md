@@ -1128,6 +1128,21 @@ only to the server's claims hook and the signed access token carries the family 
 
 ### S5a — Account safety with a provider
 
+**Implemented in #313:** an active provider closes ordinary password sign-in, sign-up
+and reset at the API and in the browser (`SSO_ONLY`, `SIGNUP_CLOSED`); the session
+resolver ends sessions that did not sign in through the provider. The bearer and refresh
+gates also refuse owners without a link to the configured provider. `FLUX_SIGNUP=verified`
+sends a verification mail, and is `off` without email or with a provider. Pre-F-024
+accounts get a verification mail at their next password sign-in in password mode once email is set
+(migration 0074 adds `auth_users.verification_required` and `auth_email_claims`). A
+provider identity whose verified email is held by a verified or already linked
+account is refused; an unverified, unlinked holder is offered the claim page with audited
+operator recovery guidance under SSO-only, and the claim releases the address only (see the operator guide,
+`docs/operations/single-sign-on.md`). Email lookup for adding a member uses verified
+addresses while a provider is set. Tests: `tests/app/identity-email-claims.test.ts`,
+`tests/app/identity-config.test.ts`, `tests/app/e2e/oidc.e2e.ts` and
+`tests/app/e2e/oidc-mcp.e2e.ts` (scripts/check_oidc.sh), `tests/ui/test_sign_in.py`.
+
 - **AC-1.** Ordinary password signup/verification/reset apply only in password
   mode. Active sole-provider SSO refuses ordinary password sign-in/signup/reset
   and password-only authority continuation at UI/API/session boundaries. The old
