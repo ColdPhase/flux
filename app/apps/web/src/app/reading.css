@@ -1,0 +1,3 @@
+/* Settings → Appearance (F-026): the computer's text-size row. The segmented choice sits at the row's end. */
+.sset-row--size { justify-content: space-between; }
+.sset-row--size .sset-size { flex: none; }
