@@ -74,7 +74,10 @@ export function SourceCitation({ materialId, version, onDenied }: { materialId: 
   const onDeniedRef = useRef(onDenied);
   useEffect(() => { onDeniedRef.current = onDenied; }, [onDenied]);
   useEffect(() => { const controller = new AbortController(); getMaterialVersion(materialId, version, controller.signal).then((item) => setTitle(item.title)).catch((cause: unknown) => { if (!controller.signal.aborted) { onDeniedRef.current(cause); setTitle('Material unavailable'); } }); return () => controller.abort(); }, [materialId, version]);
-  return <Link to={`/materials/${materialId}/versions/${version}`} className="project-convo__source">Source: {title} · v{version}</Link>;
+  return <Link to={`/materials/${materialId}/versions/${version}`} className="wiki-card" data-ref="wiki">
+    <span className="wiki-card__glyph" aria-hidden="true"><Icon name="doc" size={14} /></span>
+    <span className="wiki-card__text"><strong>{title}</strong><small>Wiki page · v{version}</small></span>
+  </Link>;
 }
 
 export { AuthorFace } from '../ui';

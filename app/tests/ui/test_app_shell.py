@@ -974,8 +974,9 @@ class AppShellJourney(unittest.TestCase):
         owner.get_by_label("Reply", exact=True).fill("This is the version we should prototype")
         owner.get_by_role("button", name="Send reply").click()
         expect(owner.get_by_text("This is the version we should prototype", exact=True)).to_be_visible()
-        source = owner.get_by_role("link", name="Source: Privacy options · v1")
+        source = owner.get_by_role("link", name=re.compile("Privacy options.*Wiki page · v1"))
         expect(source).to_be_visible()
+        expect(source.locator(".wiki-card__glyph svg")).to_have_count(1)
         source.click()
         expect(owner.get_by_text("PIR avoids storing images")).to_be_visible()
         owner.go_back()
@@ -1047,7 +1048,7 @@ class AppShellJourney(unittest.TestCase):
         threads = owner.context.request.get(f"{ORIGIN}/api/v1/projects/{project_id}/conversations").json()["items"]
         self.assertEqual(sum(thread["firstMessageBody"] == "Revisit after lost opening" for thread in threads), 1)
         owner.goto(f"/projects/{project_id}/conversations/{conversation_id}")
-        expect(owner.get_by_role("link", name="Source: Privacy options · v1")).to_be_visible()
+        expect(owner.get_by_role("link", name=re.compile("Privacy options.*Wiki page · v1"))).to_be_visible()
 
         read_failures = {"count": 0}
         def fail_first_citation(route) -> None:

@@ -710,6 +710,30 @@ class FilesReferencesPhotos(unittest.TestCase):
         sent = page.locator(".project-convo__message").filter(has_text="Bed log, sent while it uploads").last
         expect(sent.locator(".file-row").filter(has_text="beds.csv").locator("small")).to_have_text(re.compile(r"^Table · \d"))
 
+    def test_link_description_wraps_to_three_lines(self) -> None:
+        """#348 AC-2: a link's description is not cut to one line; it runs to three lines and clamps the rest."""
+        # The message is posted before the page opens, so the page reads it on its first load (no reload to interrupt requests).
+        context = self.browser.new_context(base_url=ORIGIN, storage_state=self.states["ada"], service_workers="block")
+        self.addCleanup(context.close)
+        long_path = "/".join(["range-test-beds-north-of-the-hedge"] * 6)
+        body = f"Gateway layout for the beds: https://www.thethingsnetwork.org/docs/gateways/{long_path}"
+        response = context.request.post(f"/api/v1/projects/{self.ids['project']}/conversations", data={"body": body, "clientMessageId": str(uuid.uuid4())}, headers={"origin": ORIGIN})
+        self.assertIn(response.status, (200, 201), response.text())
+        page = self.page(phone=True)
+        preview = page.locator(".link-preview small").filter(has_text="range-test-beds-north-of-the-hedge").last
+        expect(preview).to_be_visible()
+        metrics = preview.evaluate("""node => {
+          const style = getComputedStyle(node);
+          return { lineHeight: parseFloat(style.lineHeight), height: node.getBoundingClientRect().height,
+            clamp: style.getPropertyValue('-webkit-line-clamp'), scroll: node.scrollHeight, client: node.clientHeight };
+        }""")
+        lines = metrics["height"] / metrics["lineHeight"]
+        self.assertEqual(metrics["clamp"], "3", f"the description is clamped to three lines: {metrics}")
+        self.assertGreater(lines, 1.5, f"the description is not cut to one line: {metrics}")
+        self.assertLessEqual(lines, 3.05, f"the description takes at most three lines: {metrics}")
+        self.assertGreater(metrics["scroll"], metrics["client"], f"text beyond the third line is clamped, not shown: {metrics}")
+        self.shot(page, "link-description-390")
+
     def test_phone_picker_numbers_photos_in_tap_order(self) -> None:
         """#348 AC-4: on a phone, several photos open a picker. Each selected one shows its send number; a second tap takes it out and renumbers."""
         for dark in (False, True):
