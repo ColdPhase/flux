@@ -5,12 +5,14 @@ import {
   type ChannelChoice,
   type EmailDestination,
   type NotificationChannel,
+  type NotificationLevel,
   type NotificationPreferences,
   type NotificationReason,
   type UpdateNotificationPreferencesCommand,
 } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useShellData } from '../app/data';
+import { SwitchRow } from '../app/SettingsHome';
 import { NotificationsButton } from '../pwa';
 import { getPushState } from '../pwa/push';
 import { Button, ErrorState, Icon, Spinner, useToast } from '../ui';
@@ -26,6 +28,11 @@ const ROWS: Record<NotificationReason, { label: string; hint: string }> = {
   review: { label: 'Reviews for you', hint: 'Decisions and results about your work or agent' },
   invitation: { label: 'Invitations to work together', hint: 'Someone asks you to join them at a task, map, doc or conversation' },
 };
+const LEVELS: { id: NotificationLevel; label: string; detail?: string }[] = [
+  { id: 'needsYou', label: 'Only “Needs you”', detail: 'Decisions, agent questions, blockers on your tasks, mentions' },
+  { id: 'everything', label: 'Everything', detail: 'Also every reply in conversations you are part of' },
+  { id: 'nothing', label: 'Nothing' },
+];
 const COLUMNS: { id: NotificationChannel; label: string }[] = [
   { id: 'inApp', label: 'Inbox' },
   { id: 'push', label: 'Push' },
@@ -45,9 +52,10 @@ function timeZones(current: string) {
 const message = (error: unknown, fallback: string) => (error instanceof ApiError && error.status < 500 ? error.message : fallback);
 
 /**
- * Notification settings (#116): per reason where it reaches you, where email goes (your sign-in
- * address, a verified extra address, both or nowhere), quiet hours and muted places. Every change
- * saves at once; nothing here changes how you sign in.
+ * Notification settings (#116, #350 S22): Only "Needs you", Everything or Nothing, quiet hours and
+ * the morning summary first; then per reason where it reaches you, where email goes (your sign-in
+ * address, a verified extra address, both or nowhere) and muted places. Every change saves at once;
+ * nothing here changes how you sign in.
  */
 export function NotificationSettings() {
   const { projects, directMessages } = useShellData();
@@ -55,7 +63,7 @@ export function NotificationSettings() {
   const [failed, setFailed] = useState(false);
   const [saved, setSaved] = useState('');
   const toast = useToast();
-  const ids = { email: useId(), quiet: useId(), mute: useId() };
+  const ids = { email: useId(), level: useId(), what: useId(), mute: useId() };
 
   const load = () => {
     setFailed(false);
@@ -112,77 +120,101 @@ export function NotificationSettings() {
     ...directMessages.map((dm) => ({ type: 'dm' as const, id: dm.id, name: dm.title })),
   ].filter((place) => !muted.has(`${place.type}:${place.id}`));
 
+  const level = prefs.level;
+  const setLevel = (next: NotificationLevel) => change({ level: next }, (current) => ({ ...current, level: next }));
+
   return (
-    <div className="pane-scroll"><div className="pane-in nset">
-      <div className="inbox__head">
+    <div className="pane-scroll"><div className="pane-in sset-in nset" data-shift>
+      <div className="sset-head nset__head">
         <div>
           <h2>Notifications</h2>
-          <p>Choose what reaches you and where. Your inbox keeps everything you can still open.</p>
+          <p>Flux only interrupts you for things that need you. Everything else waits in Inbox.</p>
         </div>
         <span className="nset__saved" role="status" aria-live="polite">{saved ? <><Icon name="check" size={14} />{saved}</> : null}</span>
       </div>
 
-      <section className="nset__sec" aria-labelledby="nset-what">
-        <h3 id="nset-what">What reaches you</h3>
+      <h3 className="sset-sec" id={ids.level}>Notify me about</h3>
+      <div className="sset-card" role="radiogroup" aria-labelledby={ids.level}>
+        {LEVELS.map((option) => (
+          <label key={option.id} className={`sset-row sset-choice${level === option.id ? ' is-on' : ''}`}>
+            <span className="sset-row__b">
+              <span className="sset-row__t">{option.label}</span>
+              {option.detail ? <span className="sset-row__s">{option.detail}</span> : null}
+            </span>
+            <input type="radio" name="notification-level" value={option.id} checked={level === option.id} onChange={() => setLevel(option.id)} />
+            <span className="sset-check" aria-hidden="true"><Icon name="check" size={12} /></span>
+          </label>
+        ))}
+      </div>
+      {level === 'custom' ? <p className="sset-note" role="note">You chose channels for each kind below, so none of the three matches. Pick one to reset them.</p> : null}
+
+      <div className="sset-card sset-gap">
+        <QuietHoursRow prefs={prefs} onChange={change} />
+        <MorningSummaryRow prefs={prefs} onChange={change} />
+      </div>
+
+      <section className="nset__sec" aria-labelledby={ids.what}>
+        <h3 className="sset-sec" id={ids.what}>Push and email for each kind</h3>
         {pushOff ? <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span>{pushOff} Your inbox always works.</span></p> : null}
-        <table className="nset__table">
-          <thead><tr><th scope="col"><span className="ui-vh">Reason</span></th>{COLUMNS.map((column) => <th key={column.id} scope="col">{column.label}</th>)}</tr></thead>
-          <tbody>
-            {NOTIFICATION_REASONS.map((reason) => (
-              <tr key={reason}>
-                <th scope="row"><b>{ROWS[reason].label}</b><span>{ROWS[reason].hint}</span></th>
-                {COLUMNS.map((column) => {
-                  const disabled = (column.id === 'email' && emailOff) || (column.id === 'push' && !!pushOff?.startsWith('Push is not'));
-                  return (
-                    <td key={column.id}>
-                      <label className={`nset__check${disabled ? ' is-off' : ''}`}>
-                        <input type="checkbox" checked={prefs.channels[reason][column.id]} disabled={disabled}
-                          aria-label={`${ROWS[reason].label}: ${column.label}`} onChange={(event) => toggle(reason, column.id, event.target.checked)} />
-                        <span aria-hidden="true"><Icon name="check" size={12} /></span>
-                      </label>
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <p className="nset__note">{emailOff
+        <div className="sset-card nset__matrix">
+          <table className="nset__table">
+            <thead><tr><th scope="col"><span className="ui-vh">Reason</span></th>{COLUMNS.map((column) => <th key={column.id} scope="col">{column.label}</th>)}</tr></thead>
+            <tbody>
+              {NOTIFICATION_REASONS.map((reason) => (
+                <tr key={reason}>
+                  <th scope="row"><b>{ROWS[reason].label}</b><span>{ROWS[reason].hint}</span></th>
+                  {COLUMNS.map((column) => {
+                    const disabled = (column.id === 'email' && emailOff) || (column.id === 'push' && !!pushOff?.startsWith('Push is not'));
+                    return (
+                      <td key={column.id}>
+                        <label className={`nset__check${disabled ? ' is-off' : ''}`}>
+                          <input type="checkbox" checked={prefs.channels[reason][column.id]} disabled={disabled}
+                            aria-label={`${ROWS[reason].label}: ${column.label}`} onChange={(event) => toggle(reason, column.id, event.target.checked)} />
+                          <span aria-hidden="true"><Icon name="check" size={12} /></span>
+                        </label>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="sset-note">{emailOff
           ? prefs.email.available ? 'Email is off: you chose in-app only below.' : 'Email delivery unavailable on this server, so only the inbox and push are used.'
           : 'Emails never contain messages or project details, only a link to open in Flux.'}</p>
-        <div className="nset__device"><span className="nset__label"><Icon name="bell" size={12} />Push on this device</span><NotificationsButton /></div>
+        <div className="sset-card sset-gap nset__device"><span className="sset-row__t"><Icon name="bell" size={14} />Push on this device</span><NotificationsButton /></div>
       </section>
 
       <section className="nset__sec" aria-labelledby={ids.email}>
-        <h3 id={ids.email}>Where email goes</h3>
+        <h3 className="sset-sec" id={ids.email}>Where email goes</h3>
         {!prefs.email.available ? (
           <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Email delivery unavailable.</b> This Flux server has no outgoing mail set up, so nothing is emailed. Your inbox and push still work; an administrator can configure SMTP.</span></p>
         ) : prefs.email.lastFailureAt ? (
           <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>A recent notification email could not be delivered.</b> Flux will retry for a while. Everything is in your inbox.</span></p>
         ) : null}
-        <EmailDestinationChoice prefs={prefs} onChange={(destination) => change({ emailDestination: destination }, (current) => ({ ...current, email: { ...current.email, destination } }))} />
-        <ExtraAddress prefs={prefs} save={save} />
-      </section>
-
-      <section className="nset__sec" aria-labelledby={ids.quiet}>
-        <h3 id={ids.quiet}>Quiet hours</h3>
-        <QuietHoursForm prefs={prefs} onChange={change} />
+        <div className="sset-card nset__box">
+          <EmailDestinationChoice prefs={prefs} onChange={(destination) => change({ emailDestination: destination }, (current) => ({ ...current, email: { ...current.email, destination } }))} />
+          <ExtraAddress prefs={prefs} save={save} />
+        </div>
       </section>
 
       <section className="nset__sec" aria-labelledby={ids.mute}>
-        <h3 id={ids.mute}>Muted places</h3>
-        <p className="nset__lead">Nothing from a muted place notifies you, on any channel. You can still open it.</p>
-        {prefs.muted.length ? (
-          <ul className="nset__muted">
-            {prefs.muted.map((place) => (
-              <li key={`${place.type}:${place.id}`}>
-                <span className="nset__place">{place.type === 'dm' ? <Icon name="chat" size={14} /> : <span className="nset__hash" aria-hidden="true">#</span>}{place.name}<span className="ui-vh">{place.type === 'dm' ? ', direct message' : ', project'}</span></span>
-                <Button variant="quiet" onClick={() => void save(() => setMute({ type: place.type, id: place.id, muted: false }), `Unmuted ${place.name}`)}>Unmute</Button>
-              </li>
-            ))}
-          </ul>
-        ) : <p className="nset__none">No muted places.</p>}
-        {mutable.length ? <MutePicker places={mutable} onMute={(place) => void save(() => setMute({ type: place.type, id: place.id, muted: true }), `Muted ${place.name}`)} /> : null}
+        <h3 className="sset-sec" id={ids.mute}>Muted places</h3>
+        <div className="sset-card nset__box">
+          <p className="nset__lead">Nothing from a muted place notifies you, on any channel. You can still open it.</p>
+          {prefs.muted.length ? (
+            <ul className="nset__muted">
+              {prefs.muted.map((place) => (
+                <li key={`${place.type}:${place.id}`}>
+                  <span className="nset__place">{place.type === 'dm' ? <Icon name="chat" size={14} /> : <span className="nset__hash" aria-hidden="true">#</span>}{place.name}<span className="ui-vh">{place.type === 'dm' ? ', direct message' : ', project'}</span></span>
+                  <Button variant="quiet" onClick={() => void save(() => setMute({ type: place.type, id: place.id, muted: false }), `Unmuted ${place.name}`)}>Unmute</Button>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="nset__none">No muted places.</p>}
+          {mutable.length ? <MutePicker places={mutable} onMute={(place) => void save(() => setMute({ type: place.type, id: place.id, muted: true }), `Muted ${place.name}`)} /> : null}
+        </div>
       </section>
     </div></div>
   );
@@ -263,27 +295,58 @@ function ExtraAddress({ prefs, save }: { prefs: NotificationPreferences; save: (
   );
 }
 
-function QuietHoursForm({ prefs, onChange }: { prefs: NotificationPreferences; onChange: (command: UpdateNotificationPreferencesCommand, optimistic?: (current: NotificationPreferences) => NotificationPreferences) => void }) {
+type Change = (command: UpdateNotificationPreferencesCommand, optimistic?: (current: NotificationPreferences) => NotificationPreferences) => void;
+
+const shortClock = (value: string) => value.replace(/^0(\d)/, '$1');
+const zoneLabel = (zone: string) => zone.replace(/_/g, ' ');
+
+/** Quiet hours: a switch, then the window and its time zone while it is on. */
+function QuietHoursRow({ prefs, onChange }: { prefs: NotificationPreferences; onChange: Change }) {
   const quiet = prefs.quietHours;
   const zones = useMemo(() => timeZones(quiet.timeZone), [quiet.timeZone]);
   const set = (next: Partial<typeof quiet>) => onChange({ quietHours: next }, (current) => ({ ...current, quietHours: { ...current.quietHours, ...next } }));
   const suggested = browserTimeZone();
   return (
-    <div className="nset__quiet">
-      <label className="nset__switch">
-        <input type="checkbox" checked={quiet.enabled} onChange={(event) => set(event.target.checked && quiet.timeZone === 'UTC' && suggested !== 'UTC'
-          ? { enabled: true, timeZone: suggested } : { enabled: event.target.checked })} />
-        <span><b>Hold push and email during quiet hours</b><span>Your inbox still fills; the rest waits until quiet hours end.</span></span>
-      </label>
-      <div className={`nset__times${quiet.enabled ? '' : ' is-off'}`}>
-        <label>From<input type="time" value={quiet.start} disabled={!quiet.enabled} onChange={(event) => event.target.value && set({ start: event.target.value })} /></label>
-        <label>Until<input type="time" value={quiet.end} disabled={!quiet.enabled} onChange={(event) => event.target.value && set({ end: event.target.value })} /></label>
-        <label className="nset__zone">Time zone
-          <select value={quiet.timeZone} disabled={!quiet.enabled} onChange={(event) => set({ timeZone: event.target.value })}>
-            {zones.map((zone) => <option key={zone} value={zone}>{zone.replace(/_/g, ' ')}</option>)}
-          </select>
-        </label>
-      </div>
+    <div className="nset__group">
+      <SwitchRow label="Quiet hours" checked={quiet.enabled}
+        detail={`${shortClock(quiet.start)} – ${shortClock(quiet.end)} · ${zoneLabel(quiet.timeZone)}`}
+        onChange={(on) => set(on && quiet.timeZone === 'UTC' && suggested !== 'UTC' ? { enabled: true, timeZone: suggested } : { enabled: on })} />
+      {quiet.enabled ? (
+        <div className="nset__times">
+          <label>From<input type="time" value={quiet.start} onChange={(event) => event.target.value && set({ start: event.target.value })} /></label>
+          <label>Until<input type="time" value={quiet.end} onChange={(event) => event.target.value && set({ end: event.target.value })} /></label>
+          <label className="nset__zone">Time zone
+            <select value={quiet.timeZone} onChange={(event) => set({ timeZone: event.target.value })}>
+              {zones.map((zone) => <option key={zone} value={zone}>{zoneLabel(zone)}</option>)}
+            </select>
+          </label>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** The morning summary (S22): one push a day at a local time, counting what waits in Inbox. */
+function MorningSummaryRow({ prefs, onChange }: { prefs: NotificationPreferences; onChange: Change }) {
+  const summary = prefs.morningSummary;
+  const zone = prefs.quietHours.timeZone;
+  const suggested = browserTimeZone();
+  const set = (next: Partial<typeof summary>) => onChange(
+    // Turning it on in UTC takes this browser's time zone (shared with quiet hours), as quiet hours do.
+    next.enabled && zone === 'UTC' && suggested !== 'UTC' ? { morningSummary: next, quietHours: { timeZone: suggested } } : { morningSummary: next },
+    (current) => ({ ...current, morningSummary: { ...current.morningSummary, ...next } }),
+  );
+  return (
+    <div className="nset__group">
+      <SwitchRow label="Morning summary" checked={summary.enabled}
+        detail={`One digest at ${shortClock(summary.at)} instead of single pings`}
+        onChange={(on) => set({ enabled: on })} />
+      {summary.enabled ? (
+        <div className="nset__times">
+          <label>At<input type="time" value={summary.at} onChange={(event) => event.target.value && set({ at: event.target.value })} /></label>
+          <span className="nset__zone-note">{zoneLabel(zone)}, the time zone of quiet hours. Nothing is sent when Inbox is empty.</span>
+        </div>
+      ) : null}
     </div>
   );
 }

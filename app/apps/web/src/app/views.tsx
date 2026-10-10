@@ -10,7 +10,6 @@ import { useShellData } from './data';
 import { useDraft, useReadingPosition } from './drafts';
 import { useShellActions } from './shellContext';
 import { SinceYouLeftHome } from '../returns/SinceYouLeft';
-import { HomeTasks } from './HomeTasks';
 import { getAssistantStatus } from '../assistant/api';
 
 /** Home's views in the same order and words as a project's. */
@@ -365,11 +364,6 @@ function HomeNotes() {
       </div>
     </div>
   );
-}
-
-/** Home's Tasks: the work you own across your projects (#190 HOME-2). */
-export function TasksView() {
-  return <Pane><HomeTasks /></Pane>;
 }
 
 export function NotFoundView() {

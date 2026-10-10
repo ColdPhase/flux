@@ -5,7 +5,8 @@ import { useStreamEvents } from '../api/stream';
 import { BottomNav, Button, Drawer, Icon, IconButton, MEDIA, SidePanel, Tabs, duration, flip, play, useMediaQuery, useSidePanelMode, type BottomNavItem, type TabItem } from '../ui';
 import { useShellData } from './data';
 import { registerServiceWorker, syncPushSubscription } from '../pwa';
-import { Details } from './Details';
+import { DeferredDetails, DeferredJumpTo, DeferredLiveStage } from './DeferredSurfaces';
+import { RouteProgress } from './RouteProgress';
 import { useInboxDot } from '../notifications/dot';
 import { placeOf } from './place';
 import { ShellContext, type DetailsView } from './shellContext';
@@ -13,16 +14,15 @@ import { Sidebar } from './Sidebar';
 import { VIEWS, viewIndex } from './views';
 import { ProjectStateLine, ProjectStateRow } from '../work/inline';
 import { audienceLine, useProjectShell } from '../project/data';
-import { useDmSketchCount } from '../dm/DmSketches';
+import { useDmSketchCount } from '../dm/useDmSketchCount';
 import { LiveProvider } from '../live/LiveProvider';
 import { LiveEntry } from '../live/LiveEntry';
 import { LiveBar } from '../live/LiveBar';
-import { LiveStage } from '../live/LiveStage';
 import '../live/live.css';
-import { JumpTo } from '../search/JumpTo';
+import './project-header.css';
 import { useNeedsYou } from '../returns/useNeedsYou';
 import { WorkReadProvider, useProjectWorkSummary } from '../work/WorkReadContext';
-import { OverviewContext } from '../project/ProjectOverview';
+import { OverviewContext } from '../project/OverviewContext';
 import { remember, remembered } from './remembered';
 
 const lastConversationPath = (userId: string, projectId: string) => remembered('conversation', userId, projectId) ?? `/projects/${projectId}`;
@@ -349,8 +349,8 @@ function AppLayoutContent() {
   ] : null;
   const place = location.pathname === '/projects'
     ? { crumb: null, title: 'Projects', topic: 'Every project you can open', views: false, noDetails: true }
-    : location.pathname === '/settings'
-    ? { crumb: null, title: 'Settings', topic: 'Your account, this device and your AI', views: false, noDetails: true }
+    : /^\/settings(\/(appearance|account|notifications|agents|shortcuts)(\/.*)?)?$/.test(location.pathname)
+    ? { crumb: null, title: 'Settings', topic: 'Appearance, notifications, agents and AI', views: false, noDetails: true }
     : backgroundSettings
     ? { crumb: null, title: 'Background suggestions', topic: 'Your connection and allowance', views: false, noDetails: true }
     : location.pathname === '/search'
@@ -444,18 +444,19 @@ function AppLayoutContent() {
             : dmViews
               ? <Tabs className={`views${phone ? ' views--chips' : ''}`} label="Direct message views" items={dmViews} />
               : <div className="views views--none" aria-hidden="true" />}
+        <RouteProgress />
         <LiveBar />
         <div className="app__pane" id="content" ref={paneRef} tabIndex={-1}>
           <Outlet />
-          <LiveStage />
+          <DeferredLiveStage />
         </div>
         {phone ? <BottomNav className="app__viewbar" label="Main places" items={places} /> : null}
       </div>
 
-      <JumpTo open={jumpOpen} onClose={() => setJumpOpen(false)} userId={me.user.id} />
+      <DeferredJumpTo open={jumpOpen} onClose={() => setJumpOpen(false)} userId={me.user.id} />
       <SidePanel open={detailsOpen} onClose={() => toggleDetails(false)} title={recapOpen ? 'What matters' : 'Details'} id="details"
         context={phone && (detailsView === 'place' || typeof detailsView === 'object' && detailsView.kind === 'overview') ? <OverviewContext /> : undefined}>
-        <Details view={detailsView} workspace={workspace} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} onClose={() => toggleDetails(false)} />
+        <DeferredDetails view={detailsView} workspace={workspace} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} onClose={() => toggleDetails(false)} />
       </SidePanel>
     </div>
     </LiveProvider>

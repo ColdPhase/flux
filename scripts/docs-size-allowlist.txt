@@ -1,0 +1,58 @@
+# Existing large files under docs/ that predate the evidence size guard (#319).
+# Format: `<bytes> <path>`. A listed file passes only up to the listed size.
+# Compress, crop or link a CI artifact instead of adding entries (docs/agents/evaluation.md,
+# "Evidence size"); a new entry needs the evaluator's explicit agreement in the PR.
+# Remove entries whose files are deleted.
+378954 docs/agents/evidence/151-adaptive-matrix/1920x1080-thread-and-details-scaled.png
+500554 docs/agents/evidence/155-reference-client-wip/motion/motion-07-arrivals-and-new-below.webm
+346389 docs/agents/evidence/155-typing-browser/rendered/typing-project-live.webm
+524430 docs/assets/demo/flux-demo.gif
+333143 docs/design/return-view/what-matters/matched-project-tablet-768-closed.png
+441029 docs/design/return-view/what-matters/matched-project-tablet-768-panel.png
+370281 docs/development/evidence/live-turn/2026-09-30-code/code-product-one-to-one.png
+368412 docs/development/evidence/live-turn/2026-09-30-code/code-product-zoom-two.png
+655427 docs/development/evidence/live-turn/2026-09-30-code/code-source-display.png
+2667788 docs/development/evidence/live-turn/2026-09-30-code/code_2-viewer-2-code-1-decoded-natural.png
+866093 docs/development/evidence/live-turn/2026-09-30-code/code_2-viewer-2-code-1-source-natural.png
+654468 docs/development/evidence/live-turn/2026-09-30-code/code_2-viewer-2-fit.png
+2139661 docs/development/evidence/live-turn/2026-09-30-code/code_2-viewer-2-one-to-one.png
+753331 docs/development/evidence/live-turn/2026-09-30-code/code_2-viewer-2-zoom-two.png
+2593663 docs/development/evidence/live-turn/2026-09-30-code/code_4-viewer-2-code-1-decoded-natural.png
+867399 docs/development/evidence/live-turn/2026-09-30-code/code_4-viewer-2-code-1-source-natural.png
+2661102 docs/development/evidence/live-turn/2026-09-30-code/code_4-viewer-2-code-2-decoded-natural.png
+885259 docs/development/evidence/live-turn/2026-09-30-code/code_4-viewer-2-code-2-source-natural.png
+1278603 docs/development/evidence/live-turn/2026-09-30-code/code_4-viewer-2-fit.png
+4157221 docs/development/evidence/live-turn/2026-09-30-code/code_4-viewer-2-one-to-one.png
+726346 docs/development/evidence/live-turn/2026-09-30-code/code_4-viewer-2-zoom-two.png
+2578401 docs/development/evidence/live-turn/2026-09-30-code/code_4-viewer-4-code-1-decoded-natural.png
+869668 docs/development/evidence/live-turn/2026-09-30-code/code_4-viewer-4-code-1-source-natural.png
+2617546 docs/development/evidence/live-turn/2026-09-30-code/code_4-viewer-4-code-2-decoded-natural.png
+875000 docs/development/evidence/live-turn/2026-09-30-code/code_4-viewer-4-code-2-source-natural.png
+1282871 docs/development/evidence/live-turn/2026-09-30-code/code_4-viewer-4-fit.png
+4111590 docs/development/evidence/live-turn/2026-09-30-code/code_4-viewer-4-one-to-one.png
+729219 docs/development/evidence/live-turn/2026-09-30-code/code_4-viewer-4-zoom-two.png
+341181 docs/development/evidence/live-turn/2026-09-30-code/diagnostic-failures/generic-font-dbec/code-product-one-to-one.png
+378975 docs/development/evidence/live-turn/2026-09-30-code/diagnostic-failures/generic-font-dbec/code-product-zoom-two.png
+411025 docs/development/evidence/live-turn/2026-09-30-code/diagnostic-failures/generic-font-dbec/code-source-display.png
+2305667 docs/development/evidence/live-turn/2026-09-30-code/diagnostic-failures/generic-font-dbec/code_2-viewer-2-code-1-decoded-natural.png
+582971 docs/development/evidence/live-turn/2026-09-30-code/diagnostic-failures/generic-font-dbec/code_2-viewer-2-code-1-source-natural.png
+556704 docs/development/evidence/live-turn/2026-09-30-code/diagnostic-failures/generic-font-dbec/code_2-viewer-2-fit.png
+1815219 docs/development/evidence/live-turn/2026-09-30-code/diagnostic-failures/generic-font-dbec/code_2-viewer-2-one-to-one.png
+678966 docs/development/evidence/live-turn/2026-09-30-code/diagnostic-failures/generic-font-dbec/code_2-viewer-2-zoom-two.png
+2166911 docs/development/evidence/live-turn/2026-09-30-code/diagnostic-failures/generic-font-dbec/code_4-viewer-2-code-1-decoded-natural.png
+870074 docs/development/evidence/live-turn/2026-09-30-code/diagnostic-failures/generic-font-dbec/code_4-viewer-2-code-1-source-natural.png
+2264860 docs/development/evidence/live-turn/2026-09-30-code/diagnostic-failures/generic-font-dbec/code_4-viewer-2-code-2-decoded-natural.png
+875938 docs/development/evidence/live-turn/2026-09-30-code/diagnostic-failures/generic-font-dbec/code_4-viewer-2-code-2-source-natural.png
+1079549 docs/development/evidence/live-turn/2026-09-30-code/diagnostic-failures/generic-font-dbec/code_4-viewer-2-fit.png
+3458751 docs/development/evidence/live-turn/2026-09-30-code/diagnostic-failures/generic-font-dbec/code_4-viewer-2-one-to-one.png
+602226 docs/development/evidence/live-turn/2026-09-30-code/diagnostic-failures/generic-font-dbec/code_4-viewer-2-zoom-two.png
+2146141 docs/development/evidence/live-turn/2026-09-30-code/diagnostic-failures/generic-font-dbec/code_4-viewer-4-code-1-decoded-natural.png
+575607 docs/development/evidence/live-turn/2026-09-30-code/diagnostic-failures/generic-font-dbec/code_4-viewer-4-code-1-source-natural.png
+2250953 docs/development/evidence/live-turn/2026-09-30-code/diagnostic-failures/generic-font-dbec/code_4-viewer-4-code-2-decoded-natural.png
+586329 docs/development/evidence/live-turn/2026-09-30-code/diagnostic-failures/generic-font-dbec/code_4-viewer-4-code-2-source-natural.png
+1069567 docs/development/evidence/live-turn/2026-09-30-code/diagnostic-failures/generic-font-dbec/code_4-viewer-4-fit.png
+3443158 docs/development/evidence/live-turn/2026-09-30-code/diagnostic-failures/generic-font-dbec/code_4-viewer-4-one-to-one.png
+608597 docs/development/evidence/live-turn/2026-09-30-code/diagnostic-failures/generic-font-dbec/code_4-viewer-4-zoom-two.png
+2293254 docs/development/evidence/live-turn/2026-09-30-code/diagnostic-failures/prflx-7580d43/failure-client-1-decoded-0.png
+654110 docs/development/evidence/live-turn/2026-09-30-code/diagnostic-failures/stage-panel-overlap/code-1440p-report.json
+407851 docs/development/evidence/live-turn/2026-09-30-code/diagnostic-failures/stage-panel-overlap/failure-client-1.png
