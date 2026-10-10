@@ -1,4 +1,5 @@
 """Project-map work creation opens the native object from both supported map routes."""
+import os
 import re
 import unittest
 import uuid
@@ -15,7 +16,7 @@ class SketchWorkDetailsJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, os.environ.get("FLUX_UI_BROWSER", "chromium")).launch()
         expect.set_options(timeout=10000)
         cls.ctx = cls.browser.new_context(base_url=ORIGIN)
         api(cls.ctx, "POST", "/api/auth/sign-up/email", {

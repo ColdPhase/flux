@@ -12,6 +12,7 @@ step is checked against the API. Screenshots (dm-sketch-*.png) go to FLUX_UI_SCR
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 import unittest
@@ -55,7 +56,7 @@ class DmSketchJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, os.environ.get("FLUX_UI_BROWSER", "chromium")).launch()
         expect.set_options(timeout=10000)
         contexts: dict[str, BrowserContext] = {}
         for key, (name, email, _) in PEOPLE.items():

@@ -1,6 +1,7 @@
 """#349 (F-026, P12 and S15): drag a thought's dot to connect; the phone only views and adds."""
 from __future__ import annotations
 
+import os
 import re
 import unittest
 import uuid
@@ -19,7 +20,7 @@ class MapConnectJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, os.environ.get("FLUX_UI_BROWSER", "chromium")).launch()
         expect.set_options(timeout=10000)
         context = cls.browser.new_context(base_url=ORIGIN)
         response = context.request.post('/api/auth/sign-up/email', data={
