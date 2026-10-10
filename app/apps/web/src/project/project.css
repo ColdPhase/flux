@@ -71,7 +71,8 @@
   .ov-row { min-height: 44px; }
   .top__audience { position: relative; min-height: 32px; }
   /* A 44 px touch target without growing the 52 px header (#266 review item 13): the hit area extends past the line. */
-  .top__audience::after { content: ""; position: absolute; inset: -6px -2px; }
+  /* The phone header draws the line 22 px tall, so center a hit area of at least one control height (#438). */
+  .top__audience::after { content: ""; position: absolute; left: -2px; right: -2px; top: 50%; height: max(100%, var(--ctl)); transform: translateY(-50%); }
 }
 
 /* ---------- Map and Docs tabs ---------- */

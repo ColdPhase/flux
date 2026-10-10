@@ -429,5 +429,28 @@ class PhoneShellJourney(unittest.TestCase):
                 self.assertEqual(page.evaluate(check), [], "fields below 16px make iOS zoom on focus")
 
 
+    def test_13_projects_list_rows_audience_and_search_are_full_touch_targets(self):
+        # #438: #370 dropped the list rules the Projects list used, leaving a bulleted, underlined 19 px link.
+        page = self.page({"width": 390, "height": 844})
+        page.goto("/projects")
+        row = page.get_by_role("list", name="Projects").get_by_role("link", name="Community garden sensors")
+        expect(row).to_be_visible()
+        look = row.evaluate("""(el) => ({ height: el.getBoundingClientRect().height,
+          underline: getComputedStyle(el).textDecorationLine, bullet: getComputedStyle(el.closest('ul')).listStyleType })""")
+        self.assertGreaterEqual(look["height"], 44, "a project row is a full touch target")
+        self.assertEqual(look["underline"], "none")
+        self.assertEqual(look["bullet"], "none")
+        # The audience line is drawn 22 px tall in the phone header; its hit area must still be 44 px.
+        page.goto(f"/projects/{self.project['id']}")
+        audience = page.locator("header.top .top__audience")
+        expect(audience).to_be_visible()
+        hit = audience.evaluate("(el) => parseFloat(getComputedStyle(el, '::after').height)")
+        self.assertGreaterEqual(hit, 44, "the audience button's hit area is at least 44 px tall")
+        page.goto("/search?q=garden")
+        field = page.locator("input.search__input")
+        expect(field).to_be_visible()
+        self.assertGreaterEqual(self.box(field)["height"], 44)
+
+
 if __name__ == "__main__":
     unittest.main()
