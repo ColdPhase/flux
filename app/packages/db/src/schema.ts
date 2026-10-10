@@ -690,6 +690,17 @@ export const agentOauthBindings = pgTable('agent_oauth_bindings', {
   authConfirmedAt: timestamp('auth_confirmed_at', { withTimezone: true }),
 }, (table) => [unique().on(table.ownerUserId, table.connectionId, table.clientId)]);
 
+/** Immutable authentication provenance for one minted OAuth authorization-code family (#310, 0086). */
+export const oauthGrantAuthentication = pgTable('oauth_grant_authentication', {
+  authorizationCodeId: text('authorization_code_id').primaryKey(),
+  userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  referenceId: text('reference_id').notNull(),
+  authMethod: text('auth_method').notNull(),
+  authIdpSid: text('auth_idp_sid'),
+  authConfirmedAt: timestamp('auth_confirmed_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const agentOauthFlows = pgTable('agent_oauth_flows', {
   ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id),
   sessionId: text('session_id').notNull().references(() => authSessions.id, { onDelete: 'cascade' }),

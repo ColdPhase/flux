@@ -13,9 +13,12 @@ import { db } from './support/db.js';
 // the provider here; the Keycloak-backed run is tests/app/e2e/oidc-mcp.e2e.ts.
 const publicOrigin = 'http://127.0.0.1:18990';
 let answering = false;
+let discoveryReads = 0;
+let failDiscoveryRead = 0;
 const stub = http.createServer((request, response) => {
   if (request.url === '/realms/flux/.well-known/openid-configuration') {
-    if (!answering) { response.writeHead(503).end(); return; }
+    discoveryReads += 1;
+    if (!answering || discoveryReads === failDiscoveryRead) { response.writeHead(503).end(); return; }
     const issuer = `http://127.0.0.1:${(stub.address() as AddressInfo).port}/realms/flux`;
     response.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({
       issuer, authorization_endpoint: `${issuer}/protocol/openid-connect/auth`, token_endpoint: `${issuer}/protocol/openid-connect/token`,
@@ -59,4 +62,28 @@ test('a provider that answers only after Flux started is offered and can start a
   assert.equal(started.statusCode, 200, started.body);
   assert.ok(String((started.json() as { url?: string }).url).startsWith(`${issuer}/protocol/openid-connect/auth`), 'the sign-in goes to the provider');
   await app.close();
+});
+
+
+test('a successful probe followed by skipped plugin discovery keeps retrying until the provider is registered', async () => {
+  answering = true; discoveryReads = 0; failDiscoveryRead = 2;
+  const issuer = `http://127.0.0.1:${(stub.address() as AddressInfo).port}/realms/flux`;
+  const config: IdentityConfig = {
+    publicOrigin, secret: randomBytes(32).toString('base64url'), trustedProxies: [], smtp: null, rateLimit: false, passwordResetTtlSeconds: 3600,
+    oidc: { providerId: oidcProviderId(issuer), issuer, clientId: 'flux-race-test', clientSecret: 'race-test-secret', label: 'Race provider' },
+  };
+  const app = Fastify(); const identity = registerIdentity(app, { db, config, mailer: null });
+  try {
+    await app.ready();
+    assert.equal((await identity.auth.$context).socialProviders.some((p) => p.id === config.oidc!.providerId), false, 'the second discovery read skipped the plugin');
+    const deadline = Date.now() + 20_000;
+    while (!(await identity.auth.$context).socialProviders.some((p) => p.id === config.oidc!.providerId)) {
+      assert.ok(Date.now() < deadline, 'the provider was not reinstalled after the skipped read');
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    const started = await app.inject({ method: 'POST', url: '/api/auth/sign-in/social', headers: { origin: publicOrigin },
+      payload: { provider: config.oidc!.providerId, callbackURL: '/', disableRedirect: true } });
+    assert.equal(started.statusCode, 200, started.body);
+    assert.ok(discoveryReads >= 4, 'both the recovery probe and plugin discovery ran again');
+  } finally { await app.close(); failDiscoveryRead = 0; }
 });

@@ -49,7 +49,7 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
   const oauthRequests = createOauthRequests();
   const signIns = createSignIns();
   const onMailError = (error: unknown) => app.log.error({ error }, 'Password reset mail failed');
-  const build = (oidc: OidcConfig | null) => createAuth({ db, config: { ...config, oidc }, mailer, oauthRequests, signIns, onMailError });
+  const build = (oidc: OidcConfig | null) => createAuth({ db, config, installProvider: oidc !== null, mailer, oauthRequests, signIns, onMailError });
   // The OIDC plugin reads the provider's discovery document once, when its Better Auth instance starts, and
   // drops the provider if that read fails. The instance is therefore created at startup, and again once the
   // provider answers if it was down then (#310 AC-4), so no restart is needed. Routes hold this stable reference.
@@ -65,9 +65,16 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
   });
   const start = async (withProvider: boolean) => {
     const next = build(withProvider ? config.oidc : null);
-    await next.$context;
-    current = next;
-    providerInstalled = withProvider;
+    let timeout: NodeJS.Timeout | undefined;
+    try {
+      const context = await Promise.race([next.$context, new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(() => reject(new Error('Identity provider initialization timed out')), 4000);
+      })]);
+      // generic-oauth logs a failed discovery and skips the provider without rejecting $context.
+      if (withProvider && !context.socialProviders.some((provider) => provider.id === config.oidc?.providerId))
+        throw new Error('Identity provider was not registered');
+      if (!stopped) { current = next; providerInstalled = withProvider; }
+    } finally { clearTimeout(timeout); }
   };
   // Retries with backoff (2 s doubling to 30 s) until the provider answers, then installs it once.
   const awaitProvider = (oidc: OidcConfig, delayMs = 2000) => {
@@ -90,8 +97,10 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
   // Startup waits briefly for the provider: two probes stay inside Fastify's 10 s onReady limit. A provider that
   // is still down is then awaited in the background, so an outage at boot never stops Flux from starting.
   app.addHook('onReady', async () => {
-    if (config.oidc && await waitForDiscovery(config.oidc, { attempts: 2 })) await start(true);
-    else await start(false);
+    if (config.oidc && await waitForDiscovery(config.oidc, { attempts: 2 })) {
+      try { await start(true); } catch (error) { app.log.warn({ error }, 'Identity provider initialization failed; retrying'); }
+    }
+    if (!current) await start(false);
     if (config.oidc && !providerInstalled) {
       app.log.warn({ issuer: config.oidc.issuer }, 'The identity provider did not answer; single sign-on is reported as not reachable until it does');
       awaitProvider(config.oidc);

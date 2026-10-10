@@ -217,10 +217,11 @@ test('a client authorizes through the provider on /login from a fresh browser, w
   assert.equal(afterSession.status, 200, await afterSession.clone().text());
 });
 
-/** The facts the binding of one grant holds (#310 AC-3). */
+/** The immutable facts of the first minted family for this client (#310 AC-3). */
 async function grantAuthentication(userId: string, client: string) {
   const row = (await pool.query(`SELECT b.auth_method, b.auth_idp_sid, b.auth_confirmed_at > now() - interval '10 minutes' AS recent
-    FROM agent_oauth_bindings b WHERE b.owner_user_id = $1 AND b.client_id = $2`, [userId, client])).rows[0];
+    FROM oauth_grant_authentication b JOIN oauth_refresh_token r ON r.authorization_code_id = b.authorization_code_id
+    WHERE b.user_id = $1 AND r.client_id = $2 ORDER BY b.created_at LIMIT 1`, [userId, client])).rows[0];
   return { method: row?.auth_method as string | null, idpSid: row?.auth_idp_sid as string | null, recent: row?.recent as boolean | null };
 }
 
