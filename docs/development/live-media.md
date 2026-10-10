@@ -256,6 +256,112 @@ pixels and resource windows, with production/harness pins and retained failures.
 Raw receiver reports now supply the existing audio/video diagnostic rows;
 the locked SDK audio projection's missing packet fields are not synthesized.
 
+## Platform rows and direct-path DTLS (#63 AC-3, AC-4; 2026-10-10)
+
+Scope: emulated browser rows and a direct-path DTLS assertion in Docker. No
+physical device, public host, real network, k3s deployment or receiver-quality
+calibration is covered here; those remain open in #63.
+
+### Direct-path DTLS
+
+`app/tests/app/e2e/live-sfu-direct-dtls.e2e.ts` runs in `check_live_sfu.sh`
+(listed in the `live-sfu-test` command of `docker/compose.live.test.yaml`). Two
+authorized Chromium clients reach the pinned SFU on its own ICE candidates with
+no UDP restriction. The positive case waits for real RTP (owner outbound RTP
+bytes and member inbound RTP packets), then requires every selected pair to be
+a non-relay candidate with no `relayProtocol`, and every transport that carried
+RTP to complete DTLS with the signalled fingerprint (`dtlsSrtpViolations`). The
+negative control tampers with the signalled fingerprint on the same path; DTLS
+fails and no RTP is received. Candidate-pair byte counts are not used as media
+evidence: they include DTLS and STUN traffic (a first attempt failed on exactly
+that and was corrected).
+
+Observed 2026-10-10, `./scripts/check_live_sfu.sh` with
+`FLUX_LIVE_TEST_PORT=19235` and the ICE ports `19236`–`19238`:
+
+```
+✔ direct path: both clients complete DTLS-SRTP with the signalled certificate on a non-relay pair (3336.701293ms)
+✔ negative control, direct path: a tampered SFU fingerprint fails DTLS and carries no media (16112.746674ms)
+✔ Flux revocation retires the real SFU room, rejects original and refreshed grants, and rejoins a remaining member (2586.189335ms)
+✔ sign-out ends the signed-out session media, refuses its grants at the gate and leaves others connected (13203.638423ms)
+✔ reconciliation retires a participant connected with a pre-#128 grant and keeps an admitted one (24019.098677ms)
+✔ real SFU restart rotates a lost room; old original and refreshed tokens remain unusable (8111.323545ms)
+```
+
+Not covered: Firefox or WebKit DTLS, TURN-credential residual risk, and any
+run on the real host.
+
+### Emulated platform rows
+
+`app/tests/ui/test_live_platforms.py` is LIVE-only. Run it with
+`FLUX_LIVE_UI_PATTERN=test_live_platforms.py ./scripts/check_live_ui.sh` and
+the `FLUX_LIVE_UI_*` ports `19230`–`19234`. Each row joins a session that a
+desktop Chromium participant starts. Engines come from the pinned Playwright
+image `mcr.microsoft.com/playwright/python:v1.62.0-noble`, which ships Chromium,
+Firefox and WebKit.
+
+Capability sources, checked 2026-10-10:
+
+- [MDN browser-compat-data, `api/MediaDevices.json`](https://github.com/mdn/browser-compat-data/blob/main/api/MediaDevices.json)
+  (the file carries no date): `getDisplayMedia` is unsupported in `chrome_android`,
+  `firefox_android` and `safari_ios`, and supported in `chrome`, `firefox` and `safari`.
+- Observed in the engines (probe in the same image, before any emulation):
+  `navigator.mediaDevices.getDisplayMedia` is a function in Chromium 151.0.7922.34,
+  Firefox 153.0 and WebKit 26.5 even under device emulation. Playwright's Linux builds
+  do not reproduce the mobile limit, so each mobile row removes the function explicitly.
+  The result is a documented capability state, not a device.
+
+Result of the final run at this commit (`Ran 4 tests in 107.558s`, `OK`):
+
+| Row | Engine (version) | Device profile | Before → after emulation | Received host screen (decoded width) | Camera denial | Microphone track level |
+| --- | --- | --- | --- | --- | --- | --- |
+| Android Chrome | Chromium 151.0.7922.34 | Pixel 7 | function → undefined | 2560 | verified: blocked | instrumented, live |
+| Android Firefox | Firefox 153.0 | Pixel 7 viewport and touch only | function → undefined | 2560 | verified: blocked | instrumented, live |
+| iPhone Safari | WebKit 26.5 | iPhone 13 | function → undefined | 2560 | unverified (see below) | product state only |
+| iPad Safari | WebKit 26.5 | iPad (gen 7), tablet layout | function → undefined | 2560 | unverified (see below) | product state only |
+
+Every row also checks: no screen-share control in the strip; the session panel
+says "This browser cannot share its screen"; microphone publishes; the desktop
+host's shared screen decodes; a viewport rotation keeps the session with no
+horizontal overflow and no new capture; a dispatched `visibilitychange` keeps the
+session and requests no new capture; the row leaves. The rotation and visibility
+steps are a viewport change and a dispatched event, not an operating-system
+rotation or suspension.
+
+Negative control, same commit: `canPublishScreen()` forced to return `true`
+(temporary edit to `app/apps/web/src/live/capture.ts`, reverted with git).
+`Ran 4 tests in 130.891s`, `FAILED (failures=4)`. The phone rows fail at the
+"cannot share its screen" note and the iPad row at the absent share control.
+
+Recorded as open findings, not passed:
+
+1. **Stage "Back to work" is not pointer-reachable in any row.** A conversation
+   element paints above the stage (observed: `p`, `ol.thread__list`,
+   `li.project-convo__message`, `div.thread__root-meta`). Escape from the focused
+   stage closes it, and the test uses Escape when the pointer cannot reach the
+   button. This is a product stacking defect on phone and tablet widths (412, 390
+   and 810 px), for the #62 owner to fix.
+2. **Tablet session sheet.** On the iPad row the camera control in the sheet is
+   covered by `div.thread__in`. The test records the pointer failure and activates
+   the control by a DOM click. Same product defect class as item 1.
+3. **WebKit camera denial is unverified.** After the camera click the strip read
+   "Camera on" while the instrumented `getUserMedia` was called zero times, so the
+   denial hook never reached WebKit's camera path (the hook itself rejects in a
+   WebKit probe). The cause is not established; WebKit camera capture may not use
+   the page's `navigator.mediaDevices` here.
+4. **WebKit microphone track level is unverified.** The instrumented count of live
+   audio tracks is zero while the product shows "Microphone on". The product state
+   is the only evidence for WebKit.
+
+Not covered by these rows: physical devices (optional under
+[#266](https://github.com/ColdPhase/flux/issues/266) item 10); real lock, background
+or suspension; headphone and Bluetooth changes (`devicechange` is not dispatched);
+offline and rejoin (Playwright's `set_offline` does not cut WebRTC UDP, so no media
+cut is claimed); service-worker update; the desktop Fedora/Wayland, Windows and
+macOS rows; real screen publication in Firefox or WebKit; system audio. Playwright's
+Firefox does not emulate `is_mobile` or touch, so the Firefox row is viewport and
+user agent only.
+
 ## Sources and inference
 
 Checked 2026-09-28: [LiveKit deployment](https://docs.livekit.io/transport/self-hosting/deployment/)
