@@ -218,6 +218,11 @@ class HomeFinal(unittest.TestCase):
         self.assertLess(box(page, card)["y"], box(page, need)["y"], "Continue comes first on the phone")
         self.assertGreaterEqual(box(page, card.locator(".home__go"))["width"], 44)
         expect(need.get_by_role("link", name=re.compile("^See all"))).to_be_visible()
+        # "See all" and the project rows are touch targets on the phone too (#393 review).
+        self.assertGreaterEqual(box(page, need.get_by_role("link", name=re.compile("^See all")))["height"], 44)
+        expect(page.locator(".home__project").first).to_be_visible()
+        for project_row in page.locator(".home__project").all():
+            self.assertGreaterEqual(box(page, project_row)["height"], 44)
         row = need.locator(".nyc").first
         for name in (re.compile("^Accept"), "Not now"):
             self.assertGreaterEqual(box(page, row.get_by_role("button", name=name))["height"], 44)

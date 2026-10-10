@@ -354,7 +354,7 @@ class NotificationJourney(unittest.TestCase):
         expect(cards).to_have_count(3)
         self.assertLessEqual(page.evaluate("document.scrollingElement.scrollWidth"), PHONE["width"], "no sideways scroll")
         first = cards.first.get_by_role("button", name=re.compile("^Accept"))
-        self.assertGreaterEqual(box(page, first)["height"], 44)
+        assert_touch_target(self, page, first)
         shot(page, "notifications-phone-390-inbox")
         page.get_by_role("button", name="Open navigation").tap()
         drawer_rail = page.get_by_role("dialog").get_by_role("navigation", name="Places")

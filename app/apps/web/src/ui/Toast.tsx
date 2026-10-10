@@ -41,7 +41,14 @@ function ToastItem({ toast, onDone, registerAction }: { toast: ToastEntry; onDon
   const [leaving, setLeaving] = useState(false);
 
   const dismiss = useCallback(() => setLeaving(true), []);
-  const act = useCallback(() => { if (!toast.action) return; toast.action.onAction(); setLeaving(true); }, [toast.action]);
+  // An action runs once: after it (or once the toast leaves) no second press can run it again (#393 review).
+  const ran = useRef(false);
+  const act = useCallback(() => {
+    if (!toast.action || ran.current || leaving || toast.leaving) return;
+    ran.current = true;
+    toast.action.onAction();
+    setLeaving(true);
+  }, [toast.action, leaving, toast.leaving]);
   // `Z` runs the newest toast's action once; a toast that is leaving no longer answers to it.
   useEffect(() => {
     if (!toast.action || leaving) return undefined;
@@ -69,7 +76,7 @@ function ToastItem({ toast, onDone, registerAction }: { toast: ToastEntry; onDon
     <div ref={ref} className={`ui-toast ui-toast--${toast.tone}`} onMouseEnter={disarm} onMouseLeave={arm} onFocus={disarm} onBlur={arm}>
       {toast.tone === 'success' ? <Icon name="check" /> : toast.tone === 'danger' ? <Icon name="alert" /> : toast.action ? <Kreska size={24} expression="done" /> : null}
       <span className="ui-toast__msg">{toast.message}</span>
-      {toast.action ? (
+      {toast.action && !leaving && !toast.leaving ? (
         <>
           <span className="ui-toast__sep" aria-hidden="true" />
           <button type="button" className="ui-toast__action" onClick={act} aria-keyshortcuts={toast.action.key}>

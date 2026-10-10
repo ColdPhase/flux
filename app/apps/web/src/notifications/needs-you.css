@@ -88,7 +88,7 @@
   .nyc--row .nyc__rowactions { grid-column: 2; margin-top: 8px; }
   .nyc--row .nyc__rowactions .ui-btn { flex: 1; }
 }
-@media (pointer: coarse) { .nyc__open { min-height: 28px; } }
+@media (pointer: coarse) { .nyc__open { min-height: 44px; } .nym__item { min-height: 44px; } }
 
 /* Filters as chips on a phone */
 @media (max-width: 640px) {
