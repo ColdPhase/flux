@@ -50,16 +50,17 @@
 .wiki-index__count:empty { margin: 0; }
 .wiki-pages { list-style: none; margin: 0; padding: 0; }
 .wiki-page {
-  position: relative; display: flex; align-items: flex-start; gap: 8px; min-height: 38px; margin-bottom: 4px; padding: 9px 6px 9px 12px;
-  border-radius: var(--r-sm); color: var(--t2); font-size: var(--fs-md); font-weight: 450; line-height: 1.4; text-decoration: none; transition: var(--tr);
+  position: relative; display: flex; align-items: center; gap: 8px; min-height: 38px; margin-bottom: 4px; padding: 9px 6px 9px 12px;
+  border-radius: var(--r-sm); color: var(--t2); font-size: var(--fs-md); font-weight: 450; line-height: 1.4; text-decoration: none; white-space: nowrap; transition: var(--tr);
 }
-.wiki-page svg { margin-top: 2px; color: var(--t2); }
+/* One line per page (#431): the icon stays centred and a long title ends in an ellipsis; the link's title holds it in full. */
+.wiki-page svg { flex: none; color: var(--t2); }
 .wiki-page:hover { background: var(--hov); color: var(--t1); }
 /* The open page: a quiet 4% tint, a stronger label and a 3px dot, never colour alone. */
 .wiki-page[aria-current="page"] { background: color-mix(in srgb, var(--t1) 4%, var(--bg)); color: var(--t1); font-weight: 600; }
-.wiki-page[aria-current="page"]::before { content: ""; position: absolute; left: 5px; top: 17px; width: 3px; height: 3px; border-radius: 50%; background: var(--t2); }
-.wiki-page__t { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.wiki-page__state { flex: none; margin-top: 1px; font-size: var(--fs-xs); font-weight: 500; color: var(--t3); }
+.wiki-page[aria-current="page"]::before { content: ""; position: absolute; left: 5px; top: 50%; margin-top: -1.5px; width: 3px; height: 3px; border-radius: 50%; background: var(--t2); }
+.wiki-page__t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.wiki-page__state { flex: none; font-size: var(--fs-xs); font-weight: 500; color: var(--t3); }
 .wiki-index__acts { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; margin-top: 18px; }
 .wiki-index__act { min-height: var(--ctl); padding: 0 8px; gap: 8px; font-size: var(--fs-sm); color: var(--t2); }
 .wiki-index__act[aria-current="page"] { background: color-mix(in srgb, var(--t1) 4%, var(--bg)); color: var(--t1); }
