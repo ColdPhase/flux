@@ -68,7 +68,7 @@ export function projectAgentRepository(db: Database, policy: ProjectAgentPolicy)
         const [ownAssistant] = await tx.select({ agentId: schema.assistantSettings.agentId }).from(schema.assistantSettings)
           .innerJoin(schema.projects, and(eq(schema.projects.id, projectId), eq(schema.projects.workspaceId, schema.assistantSettings.workspaceId)))
           .innerJoin(schema.agentConnections, and(eq(schema.agentConnections.id, schema.assistantSettings.connectionId),
-            eq(schema.agentConnections.computeSource, 'owner_assistant'), isNull(schema.agentConnections.revokedAt)))
+            eq(schema.agentConnections.computeSource, 'owner_assistant'), eq(schema.agentConnections.ownerUserId, reader.id), isNull(schema.agentConnections.revokedAt)))
           .innerJoin(schema.agents, and(eq(schema.agents.id, schema.assistantSettings.agentId),
             eq(schema.agents.ownerUserId, reader.id), isNull(schema.agents.revokedAt)))
           .where(eq(schema.assistantSettings.ownerUserId, reader.id));
