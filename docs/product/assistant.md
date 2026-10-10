@@ -87,7 +87,7 @@ changes it is recorded here with its date.
 Unchanged: F-019 owner-only invocation and payer; O-007's comparison rule on API keys
 (question 15); O-009 (only people accept decisions); no vendor credential in Flux; no
 fallback between accounts; AIM-3's isolation, hardening and redaction; S6's
-restrictive overlay and live Off; F-016, F-018, F-024, F-026. The records this changes
+restrictive overlay and live Off; F-016 except CO-1, F-018, F-024, F-026. The records this changes
 carry a dated note "Revised 2026-10-09 by founder direction (F-027)":
 [F-022](ai-modes.md), [F-020](model-providers.md), [O-008](personal-runs-compute.md),
 [CO-1](mcp-cowork.md#connections-and-owner-authorized-autonomy--co-1) and the
