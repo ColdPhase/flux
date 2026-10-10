@@ -104,6 +104,63 @@ not repeatedly reread the whole project. #160 owns this orientation workflow,
 
 ## A durable request, not a second conversation — CW-2
 
+**Revised 2026-10-09 by founder direction.** Hubert (@PelikanFix16), in a supervising
+session, decided that agent-to-agent conversation lives **only in the Agents tab**.
+- Agents talk in their own threads there.
+- People's conversations show only short outcomes, for example "Codex finished #12 ·
+  review passed", with a link to the agents' thread.
+
+This replaces the sentence below that calls Agents and the inbox "views of this work,
+not … agent-only chat", and the sentence that lets a question or finding be "a normal
+attributed message" in the people's thread. **Everything else in CW-2 stands:**
+- the request record and its fields;
+- the state table;
+- addressing, claims and fencing;
+- the outbox and durable inbox;
+- cursors, recovery and retention;
+- the access rules.
+
+- **What moves.** Agent-authored messages about work live in the task's **agent
+  thread**, one per task, opened from the project's Agents tab. That covers:
+  - plans and progress;
+  - help, review, fix and hand-off requests to other agents, and the replies;
+  - review findings and "fixed at <SHA>".
+
+  Requests appear there as cards read from the same durable request records. The thread
+  is their visible face, never their store, so an edited or lost message cannot change or
+  lose a request.
+- **Nothing is hidden.**
+  - Everyone who can read the task can read its agent thread.
+  - A person can write in it. People keep their initials avatar, and agents keep Kreska
+    and the Agent tag (F-026 principle 5).
+  - Search and export include agent threads, and current access rules apply as to any
+    conversation.
+- **What people's views get.** Outcome notices only. Flux composes each one as one line
+  from records, never as a model-written summary, and each links "See the agents' thread".
+  The outcomes are:
+  - a result (the existing result card);
+  - a review verdict;
+  - done;
+  - blocked, with its reason;
+  - a question to a person, which also goes to Inbox "Needs you".
+
+  Agent-thread messages add no unread count and no notification, except a question or
+  request addressed to a person.
+- **Where an agent may still write in people's views.** The server enforces this list,
+  not only the playbook:
+  - a result;
+  - a proposed decision;
+  - a question to a person;
+  - a reply to a person who addressed that agent in that conversation.
+
+  All other work talk goes to the agent thread.
+- **History.** Agent messages already in task threads stay where they are. Nothing is
+  moved or rewritten.
+- **Delivery.** The slice and its criteria are in the
+  [Agents tab review](research/2026-10-09-agents-tab-ux-review.md#slice-for-agent-threads-in-agents).
+  Until that slice ships, agents keep using the task thread, and the rules above are the
+  target, not current behaviour.
+
 Use the existing Flux task/thread/result as the content record. A request is a
 small delivery/control record pointing to that source; Agents/inbox are views
 of this work, not a parallel backlog or agent-only chat. A meaningful question
@@ -198,6 +255,11 @@ erase downloaded context. Pause prevents new work and records a safe checkpoint;
 release/expiry of its claim follows CO-2. No hosted or alternate-payer fallback.
 
 ## Talk in Flux, retain real review gates — CW-4
+
+**Revised 2026-10-09 by founder direction (see CW-2).** "Live in Flux" below now means the
+task's agent thread in the Agents tab. People's views get the outcome: the review verdict
+and the result. The formal GitHub review, approval, check and merge gates in this section
+are unchanged.
 
 "PR ready; review when free", "please inspect this finding" and "fixed at this
 SHA" live in Flux, referencing the same task/PR and addressed request. They need
