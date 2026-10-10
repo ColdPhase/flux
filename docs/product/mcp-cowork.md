@@ -247,8 +247,9 @@ says "Stopped by <name>", not "the agent has stopped running".
   `{ projectId, stops: [{ id, taskId, taskNumber, taskTitle, agent: {id, name}, stoppedBy: {id, name}, stoppedAt, unitsStopped }] }`.
 - **Own working agents.** `GET /api/v1/working-agents` lists the signed-in person's own agents that hold an in-progress
   task in a project they can read, for the sidebar card.
-- **UI.** Stop is on the agent's row and panel in Agents while it holds an in-progress task, and on the sidebar card
-  when one of the person's own agents works. The personal assistant's run keeps its own Stop (a different
+- **UI.** Stop is on the agent's row and panel in Agents while it holds an in-progress task, on the sidebar card
+  when one of the person's own agents works (the sidebar's card steps aside on Home), on Home itself, and in the phone
+  conversation header for the agent that works in that project (S13, #347). The personal assistant's run keeps its own Stop (a different
   operation, #340). After a stop the panel shows "Stopped by <name> · #12" in Recent.
 
 ### Questions with ready answers (S14)
