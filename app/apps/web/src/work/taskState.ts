@@ -2,7 +2,8 @@ import { useCallback, useRef } from 'react';
 import type { WorkItem, WorkRowProjection, WorkStatus } from '@flux/contracts';
 import { ApiError, NetworkError, request } from '../api/client';
 import { useShellData } from '../app/data';
-import { useToast } from '../ui';
+import { useToast, useToastScope } from '../ui';
+import type { MeResponse } from '../api/auth';
 import { updateWork } from './api';
 import { STATUS_LABEL, taskNumber } from './format';
 
@@ -37,12 +38,23 @@ export function changeError(error: unknown, item: Pick<StateTarget, 'number' | '
  */
 export function useStateChange(saved: (item: WorkItem) => void, done: () => void) {
   const toast = useToast();
-  const userId = useShellData().me.user.id;
+  const { me } = useShellData();
+  const userId = me.user.id;
+  const sessionId = me.session.id;
+  const currentScope = useToastScope();
   // A toast and its Undo outlive the page, not the session: whatever completes or is pressed after the
   // account changed (or ended) does nothing and shows nothing of the earlier person's.
   const sameSession = useCallback(async () => {
-    try { return (await request<{ user: { id: string } }>('/api/v1/me')).user.id === userId; } catch { return false; }
-  }, [userId]);
+    if (!currentScope()) return false;
+    try {
+      const active = await request<MeResponse>('/api/v1/me');
+      return currentScope() && active.user.id === userId && active.session.id === sessionId;
+    } catch (cause) {
+      // Only a definite ended session retires this last known identity. A network
+      // or server failure must keep the actual state-change error/success visible.
+      return currentScope() && !(cause instanceof ApiError && cause.status === 401);
+    }
+  }, [currentScope, sessionId, userId]);
   const busy = useRef(new Set<string>());
   return useCallback(async (item: StateTarget, status: WorkStatus): Promise<WorkItem | null> => {
     if (status === item.status || busy.current.has(item.id)) return null;

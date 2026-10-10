@@ -13,6 +13,7 @@ checked against the API.
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 import unittest
@@ -52,7 +53,7 @@ class TasksFinalJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, os.environ.get("FLUX_UI_BROWSER", "chromium")).launch()
         expect.set_options(timeout=8000)
 
     @classmethod

@@ -9,6 +9,7 @@ Three findings, each with a control that fails on the code it was written agains
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 import unittest
@@ -44,7 +45,7 @@ class TasksReviewJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, os.environ.get("FLUX_UI_BROWSER", "chromium")).launch()
         expect.set_options(timeout=8000)
 
     @classmethod
@@ -252,6 +253,152 @@ class TasksReviewJourney(unittest.TestCase):
         desktop.get_by_role("radio", name="List", exact=True).click()
         expect(self.row(desktop, "Agent stuck job").locator(".agent-tag")).to_have_count(0)
         expect(self.row(desktop, "Agent stuck job").locator(".ws-item__s")).to_contain_text("Alex")
+
+    def open_private_task(self, page: Page) -> dict:
+        before = self.task(page, "private")
+        self.api(page, "PATCH", f"/api/v1/work/{self.ids['private']}", {"status": "open", "clientCommandId": str(uuid.uuid4())},
+                 status=200, headers={"if-match": f'"{before["version"]}"'})
+        page.goto(f"/projects/{self.ids['project']}/tasks")
+        page.get_by_role("radio", name="List", exact=True).click()
+        expect(self.row(page, PRIVATE)).to_be_visible()
+        return self.task(page, "private")
+
+    def test_07_offline_state_change_reports_its_real_error_without_a_stored_effect(self) -> None:
+        page = self.page("ada")
+        before = self.open_private_task(page)
+        page.context.set_offline(True)
+        self.row(page, PRIVATE).get_by_role("button", name="Open. Set to In progress").click()
+        expect(page.locator(".ui-toast--danger")).to_contain_text("Flux could not be reached")
+        expect(page.locator(".ui-toast--danger")).to_contain_text(PRIVATE)
+        page.context.set_offline(False)
+        self.assertEqual(self.task(page, "private")["version"], before["version"])
+        self.assertEqual(self.task(page, "private")["status"], "open")
+
+    def test_08_confirmed_change_and_undo_survive_one_failed_identity_read(self) -> None:
+        for failure in ("network", "server"):
+            with self.subTest(identity_read=failure):
+                page = self.page("ada")
+                before = self.open_private_task(page)
+                probes: list[str] = []
+                def blip(route):
+                    if not probes:
+                        probes.append(route.request.url)
+                        if failure == "network":
+                            route.abort("failed")
+                        else:
+                            route.fulfill(status=503, json={"code": "TEST_UNAVAILABLE"})
+                    else:
+                        route.continue_()
+                page.route("**/api/v1/me", blip)
+                self.row(page, PRIVATE).get_by_role("button", name="Open. Set to In progress").click()
+                expect(page.locator(".ui-toast")).to_contain_text("in progress")
+                self.assertEqual(len(probes), 1, "the identity read really failed")
+                expect(self.row(page, PRIVATE).locator(".ui-glyph--in_progress")).to_have_count(1)
+                self.assertEqual(self.task(page, "private")["version"], before["version"] + 1)
+                page.unroute("**/api/v1/me", blip)
+                page.locator(".ui-toast").get_by_role("button", name="Undo", exact=True).click()
+                expect(page.locator(".ui-toast").filter(has_text="back to open")).to_be_visible()
+                expect(self.row(page, PRIVATE).locator(".ui-glyph--open")).to_have_count(1)
+                self.assertEqual(self.task(page, "private")["version"], before["version"] + 2)
+
+    def test_09_offline_undo_reports_its_real_error_and_keeps_the_confirmed_state(self) -> None:
+        page = self.page("ada")
+        self.open_private_task(page)
+        self.row(page, PRIVATE).get_by_role("button", name="Open. Set to In progress").click()
+        toast = page.locator(".ui-toast")
+        expect(toast).to_contain_text("in progress")
+        changed = self.task(page, "private")
+        page.context.set_offline(True)
+        toast.get_by_role("button", name="Undo", exact=True).click()
+        expect(page.locator(".ui-toast--danger")).to_contain_text("Flux could not be reached")
+        page.context.set_offline(False)
+        self.assertEqual(self.task(page, "private")["version"], changed["version"])
+        self.assertEqual(self.task(page, "private")["status"], "in_progress")
+
+    def fresh_sign_in(self, who: str) -> Page:
+        context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP, locale="en-GB")
+        self.addCleanup(context.close)
+        page = context.new_page()
+        page.goto("/sign-in")
+        self.sign_in_form(page, who)
+        return page
+
+    def sign_in_form(self, page: Page, who: str) -> None:
+        expect(page.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
+        page.get_by_label("Email").fill(PEOPLE[who]["email"])
+        page.get_by_label("Password").fill(PASSWORD)
+        page.get_by_role("button", name="Sign in", exact=True).click()
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+
+    def sign_out_in_app(self, page: Page, who: str = "ada") -> None:
+        page.get_by_role("button", name=re.compile(f"{PEOPLE[who]['name']}.*account and sign out")).click()
+        page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out", exact=True).click()
+        expect(page.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
+
+    def test_10_real_sign_out_retires_undo_for_shared_and_unrelated_next_accounts(self) -> None:
+        for who in ("jonas", "outsider"):
+            with self.subTest(next_account=who):
+                page = self.fresh_sign_in("ada")
+                self.open_private_task(page)
+                self.row(page, PRIVATE).locator(".ws-item").focus()
+                page.keyboard.press("4")
+                expect(page.locator(".ui-toast")).to_contain_text("done")
+                changed = self.task(page, "private")
+                patches: list[str] = []
+                page.on("request", lambda request: patches.append(request.url) if request.method == "PATCH" else None)
+                self.sign_out_in_app(page)
+                expect(page.locator(".ui-toast__action")).to_have_count(0)
+                self.sign_in_form(page, who)
+                page.route("**/api/v1/me", lambda route: route.abort("failed"))
+                page.keyboard.press("z")
+                page.wait_for_timeout(300)
+                self.assertEqual(patches, [], "a retired action sends no PATCH even when the identity endpoint is unavailable")
+                self.assertNotIn(PRIVATE, page.locator(".ui-toasts").inner_text())
+                page.unroute("**/api/v1/me")
+                self.sign_out_in_app(page, who)
+                self.sign_in_form(page, "ada")
+                page.route("**/api/v1/me", lambda route: route.abort("failed"))
+                page.keyboard.press("z")
+                page.wait_for_timeout(300)
+                self.assertEqual(patches, [], "returning to A does not revive the previous session's action")
+                expect(page.locator(".ui-toast__action")).to_have_count(0)
+                owner = self.page("ada")
+                self.assertEqual(self.task(owner, "private")["version"], changed["version"])
+
+    def test_11_late_success_or_failure_from_a_signed_out_session_cannot_publish_in_the_next_one(self) -> None:
+        for outcome in ("success", "failure"):
+            with self.subTest(late_outcome=outcome):
+                page = self.fresh_sign_in("ada")
+                before = self.open_private_task(page)
+                held: list = []
+                def hold(route):
+                    if route.request.method == "PATCH":
+                        held.append((route, route.fetch() if outcome == "success" else None))
+                    else:
+                        route.continue_()
+                page.route("**/api/v1/work/*", hold)
+                self.row(page, PRIVATE).locator(".ws-item").focus()
+                page.keyboard.press("4")
+                deadline = time.time() + 8
+                while not held and time.time() < deadline:
+                    page.wait_for_timeout(50)
+                self.assertTrue(held, "a real outgoing state command is held")
+                self.sign_out_in_app(page)
+                self.sign_in_form(page, "outsider")
+                page.route("**/api/v1/me", lambda route: route.abort("failed"))
+                route, response = held[0]
+                if response is not None:
+                    route.fulfill(response=response)
+                else:
+                    route.abort("failed")
+                page.wait_for_timeout(300)
+                expect(page.locator(".ui-toast")).to_have_count(0)
+                self.assertNotIn(PRIVATE, page.locator(".ui-toasts").inner_text())
+                owner = self.page("ada")
+                after = self.task(owner, "private")
+                self.assertEqual(after["version"], before["version"] + (1 if outcome == "success" else 0))
+                self.assertEqual(after["status"], "done" if outcome == "success" else "open")
+                page.unroute_all(behavior="ignoreErrors")
 
 
 if __name__ == "__main__":

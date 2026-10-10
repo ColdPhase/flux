@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from './Icon';
 import { duration, play } from './motion';
@@ -19,12 +19,19 @@ interface ToastEntry extends Required<Omit<ToastOptions, 'timeout' | 'action'>> 
   action: ToastOptions['action'] | null;
   timeout: number | null;
   leaving: boolean;
+  scope: number;
 }
 
 const ToastContext = createContext<(options: ToastOptions) => void>(() => {});
+const ToastScopeContext = createContext<() => boolean>(() => true);
 
 export function useToast() {
   return useContext(ToastContext);
+}
+
+/** A captured action/result remains current only within this provider's original session epoch. */
+export function useToastScope() {
+  return useContext(ToastScopeContext);
 }
 
 function ToastItem({ toast, onDone }: { toast: ToastEntry; onDone: (id: number) => void }) {
@@ -65,20 +72,31 @@ function ToastItem({ toast, onDone }: { toast: ToastEntry; onDone: (id: number) 
 }
 
 /** Short confirmations and recoverable errors, announced politely, bottom centre, one at a time on top. */
-export function ToastProvider({ children }: { children: ReactNode }) {
+export function ToastProvider({ children, scopeKey }: { children: ReactNode; scopeKey?: string | null }) {
   const [toasts, setToasts] = useState<ToastEntry[]>([]);
   const nextId = useRef(1);
+  const [scope, setScope] = useState({ key: scopeKey, epoch: 0 });
+  if (scope.key !== scopeKey) setScope({ key: scopeKey, epoch: scope.epoch + 1 });
+  const epoch = scope.epoch;
+  const currentEpoch = useRef(epoch);
+  useLayoutEffect(() => {
+    currentEpoch.current = epoch;
+    return () => { currentEpoch.current = -1; };
+  }, [epoch]);
+  const isCurrent = useCallback(() => currentEpoch.current === epoch, [epoch]);
   const show = useCallback((options: ToastOptions) => {
+    if (!isCurrent()) return;
     const tone = options.tone ?? 'neutral';
-    const entry: ToastEntry = { id: nextId.current++, message: options.message, tone, action: options.action ?? null, timeout: options.timeout ?? (tone === 'danger' ? null : options.action ? 8000 : 5000), leaving: false };
+    const entry: ToastEntry = { id: nextId.current++, message: options.message, tone, action: options.action ?? null, timeout: options.timeout ?? (tone === 'danger' ? null : options.action ? 8000 : 5000), leaving: false, scope: epoch };
     // Keep at most three; older ones leave.
     setToasts((current) => [...current.slice(-2), entry]);
-  }, []);
+  }, [epoch, isCurrent]);
   const remove = useCallback((id: number) => setToasts((current) => current.filter((toast) => toast.id !== id)), []);
   const value = useMemo(() => show, [show]);
   // Z undoes the newest toast that offers it, unless the person is typing.
-  const latest = useRef(toasts);
-  useEffect(() => { latest.current = toasts; });
+  const visible = toasts.filter((entry) => entry.scope === epoch);
+  const latest = useRef(visible);
+  useLayoutEffect(() => { latest.current = visible; });
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key.toLowerCase() !== 'z' || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || event.defaultPrevented) return;
@@ -94,14 +112,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
   return (
-    <ToastContext.Provider value={value}>
+    <ToastScopeContext.Provider value={isCurrent}><ToastContext.Provider value={value}>
       {children}
       {createPortal(
         <div className="ui-toasts" role="status" aria-live="polite" aria-relevant="additions text">
-          {toasts.map((toast) => <ToastItem key={toast.id} toast={toast} onDone={remove} />)}
+          {visible.map((toast) => <ToastItem key={toast.id} toast={toast} onDone={remove} />)}
         </div>,
         document.body,
       )}
-    </ToastContext.Provider>
+    </ToastContext.Provider></ToastScopeContext.Provider>
   );
 }
