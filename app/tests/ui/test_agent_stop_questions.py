@@ -310,7 +310,8 @@ class StopAndQuestions(unittest.TestCase):
             page.goto("/")
             expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
             home = page.get_by_role("region", name="Your agents working now")
-            expect(home.locator(".agentlive--agent")).to_contain_text(f"#{number} · {title}")
+            # The fixture's agent is not signed in, so Home says it holds the task (#347 N12), not the task's title.
+            expect(home.locator(".agentlive--agent")).to_contain_text(f"holds #{number} · not signed in yet")
             expect(page.locator(".agentlive--agent")).to_have_count(1)
             stop = home.get_by_role("button", name="Stop Claude Code agent")
             expect(stop).to_be_visible()
