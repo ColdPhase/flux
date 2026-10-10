@@ -169,3 +169,4 @@ export { assistantSettingsRows, type AssistantAuthority } from './repositories/a
 export { assertAssistantMigrationCompatibility } from './migrations/assistant-compatibility.js';
 
 export { lockAssistantOwner } from './repositories/assistant-lock.js';
+export { assistantJoinRows, assistantJoinView } from './repositories/assistant-joins.js';

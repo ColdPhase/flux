@@ -1,12 +1,14 @@
+import type { PgBoss } from 'pg-boss';
+import { assistantJoinUseCases } from './joins.js';
 import type { FastifyInstance } from 'fastify';
-import { ASSISTANT_AREAS, ASSISTANT_LIMITS, assistantSettingsPath, type UpdateAssistantSettings } from '@flux/contracts';
+import { ASSISTANT_AREAS, ASSISTANT_LIMITS, assistantSettingsPath, assistantJoinRequestPath, type UpdateAssistantSettings } from '@flux/contracts';
 import { assistantSettingsUseCases, type Database } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { expectedVersion, useDomainErrors, versionEtag } from '../http/commands.js';
 import { transactionEventSession } from '../work/transaction-events.js';
 import { assistantRows } from './adapters.js';
 
-interface Options { db: Database; sessions: SessionResolver }
+interface Options { db: Database; sessions: SessionResolver; boss: Pick<PgBoss, 'send'> }
 const modes = { type: 'string', enum: ['off', 'read', 'edit'] } as const;
 const areas = { type: 'object', additionalProperties: false,
   properties: Object.fromEntries(ASSISTANT_AREAS.map((area) => [area.id, modes])) } as const;
@@ -20,7 +22,7 @@ const body = { type: 'object', additionalProperties: false, properties: {
 } } as const;
 
 /** Owner-only configuration; there is one S6 store, not a second assistant permission implementation. */
-export async function assistantRoutes(app: FastifyInstance, { db, sessions }: Options) {
+export async function assistantRoutes(app: FastifyInstance, { db, sessions, boss }: Options) {
   useDomainErrors(app);
   const settings = assistantSettingsUseCases({
     get: (ownerUserId, workspaceId) => db.transaction((tx) => assistantRows(tx, transactionEventSession(tx)).get(ownerUserId, workspaceId)),
@@ -43,4 +45,14 @@ export async function assistantRoutes(app: FastifyInstance, { db, sessions }: Op
     reply.header('cache-control', 'no-store').header('etag', versionEtag(result));
     return result;
   });
+  const joins = assistantJoinUseCases(db, boss);
+  app.post<{ Params: { projectId: string } }>(assistantJoinRequestPath(':projectId'), async (request, reply) => {
+    const result = await joins.request((await sessions.requirePrincipal(request)).principal, request.params.projectId);
+    return reply.code(201).send(result);
+  });
+  for (const action of ['allow', 'decline'] as const) {
+    app.post<{ Params: { projectId: string; requestId: string } }>(`${assistantJoinRequestPath(':projectId')}/:requestId/${action}`, async (request) =>
+      joins.respond((await sessions.requirePrincipal(request)).principal, request.params.projectId, request.params.requestId, action === 'allow'));
+  }
+
 }

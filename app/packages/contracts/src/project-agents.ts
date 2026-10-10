@@ -1,3 +1,4 @@
+import type { AssistantJoinRequest } from './assistant.js';
 import type { ExternalClientDesignation } from './agent-proposals.js';
 import type { AgentOperation } from './agent-execution.js';
 
@@ -40,4 +41,6 @@ export interface ProjectAgentConnection {
 export interface ProjectAgents {
   projectId: string;
   connections: ProjectAgentConnection[];
+  /** Pending joins visible only to current managers or the requesting owner. */
+  joinRequests?: AssistantJoinRequest[];
 }

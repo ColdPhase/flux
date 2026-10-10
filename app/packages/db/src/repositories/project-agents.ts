@@ -1,12 +1,13 @@
 import { and, asc, desc, eq, gt, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import type { AgentOperation, ProjectAgentConnection, ProjectAgents } from '@flux/contracts';
 import * as schema from '../schema.js';
+import { assistantJoinView } from './assistant-joins.js';
 import type { createDatabase } from '../index.js';
 
 type Database = Pick<ReturnType<typeof createDatabase>['db'], 'transaction'>;
 type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
 type Reader = { id: string; kind: 'human' };
-type Action = 'project.read' | 'project.write';
+type Action = 'project.read' | 'project.write' | 'project.manage';
 
 /** The composition root supplies the existing #29 policy; this adapter never decides access itself. */
 export interface ProjectAgentPolicy {
@@ -51,7 +52,21 @@ export function projectAgentRepository(db: Database, policy: ProjectAgentPolicy)
           if (await allows({ kind: 'agent', id: row.connection.agentId }, 'project.read', projectId)
             && await allows({ kind: 'human', id: row.connection.ownerUserId }, 'project.read', projectId)) current.push(row);
         }
-        if (!current.length) return { projectId, connections: [] };
+        const manages = await allows(reader, 'project.manage', projectId);
+        const asked = await tx.select({ request: schema.assistantJoinRequests, agentId: schema.assistantSettings.agentId })
+          .from(schema.assistantJoinRequests)
+          .innerJoin(schema.assistantSettings, and(eq(schema.assistantSettings.connectionId, schema.assistantJoinRequests.connectionId),
+            eq(schema.assistantSettings.ownerUserId, schema.assistantJoinRequests.ownerUserId), eq(schema.assistantSettings.workspaceId, schema.assistantJoinRequests.workspaceId)))
+          .innerJoin(schema.agentConnections, and(eq(schema.agentConnections.id, schema.assistantSettings.connectionId),
+            isNull(schema.agentConnections.revokedAt), eq(schema.agentConnections.computeSource, 'owner_assistant')))
+          .where(and(eq(schema.assistantJoinRequests.projectId, projectId), eq(schema.assistantJoinRequests.state, 'pending'),
+            ...(manages ? [] : [eq(schema.assistantJoinRequests.ownerUserId, reader.id)])))
+          .orderBy(schema.assistantJoinRequests.createdAt, schema.assistantJoinRequests.id);
+        const joinRequests = [];
+        for (const row of asked) if (await allows({ kind: 'human', id: row.request.ownerUserId }, 'project.read', projectId))
+          joinRequests.push(assistantJoinView(row.request, row.agentId));
+        const joins = joinRequests.length ? { joinRequests } : {};
+        if (!current.length) return { projectId, connections: [], ...joins };
         const ids = current.map((row) => row.connection.id);
 
         // Usable now = what MCP requires of the whole connection: the level its scopes need on every
@@ -120,7 +135,7 @@ export function projectAgentRepository(db: Database, policy: ProjectAgentPolicy)
             lastActivity: last ? { operation: last.operation, at: last.at.toISOString() } : null,
           };
         });
-        return { projectId, connections };
+        return { projectId, connections, ...joins };
       });
     },
   };
