@@ -1,0 +1,6 @@
+{
+  "baseline-run.sh": "22b6b6d0533e1416b9fcfa48121f063c8653bbf09874da416ad377a145ee39b8",
+  "prototype-run.sh": "3d0139b4adc03dbf16de77ed1c3a095c34054eef4ab07155241280dc857da87c",
+  "baseline-compose.yaml": "ea7cd822b70a6a553552773a18fb4b4fd5b2243b650942fe24b766738061ea83",
+  "prototype-compose.yaml": "aed97c9b63a986df82a5fb71eaf7e2c25f123b1aff0c1bc17d750cffa15d1edd"
+}

@@ -1,17 +1,17 @@
 services:
   migrate:
     build:
-      dockerfile: /tmp/flux-460-prototype/Dockerfile
+      dockerfile: ${FLUX_RESEARCH_DOCKERFILE:?research Dockerfile path required}
       additional_contexts:
-        research-patch: /tmp/flux-460-prototype
+        research-patch: ${FLUX_RESEARCH_PATCH_CONTEXT:?research patch context required}
   mcp-clients:
     build:
-      dockerfile: /tmp/flux-460-prototype/Dockerfile
+      dockerfile: ${FLUX_RESEARCH_DOCKERFILE:?research Dockerfile path required}
       additional_contexts:
-        research-patch: /tmp/flux-460-prototype
+        research-patch: ${FLUX_RESEARCH_PATCH_CONTEXT:?research patch context required}
     volumes:
-      - /tmp/flux-460-prototype/probe.ts:/app/tests/app/e2e/flux-460-probe.ts:ro,z
-      - /tmp/flux-460-prototype/evidence:/evidence:z
+      - ${FLUX_RESEARCH_PROBE_FILE:?research probe path required}:/app/tests/app/e2e/flux-460-probe.ts:ro,z
+      - ${FLUX_RESEARCH_EVIDENCE_DIR:?research output path required}:/evidence:z
     environment:
       FLUX_RESEARCH_PATCH_SHA256: 000557a3697ca87d54d0f5b3302935495f5b8d7ccc121c64edce186c402e7595
       FLUX_GIT_COMMIT: 975747426a778cc4471bd4c9eabb8910eb187671
@@ -20,12 +20,12 @@ networks:
   default:
     ipam:
       config:
-        - subnet: 10.198.100.0/24
+        - subnet: ${FLUX_RESEARCH_SUBNET_DEFAULT:-10.198.100.0/24}
   runtime-control:
     ipam:
       config:
-        - subnet: 10.198.101.0/24
+        - subnet: ${FLUX_RESEARCH_SUBNET_CONTROL:-10.198.101.0/24}
   runtime-api:
     ipam:
       config:
-        - subnet: 10.198.102.0/24
+        - subnet: ${FLUX_RESEARCH_SUBNET_API:-10.198.102.0/24}

@@ -2,8 +2,8 @@
 
 Bounded research choice: [pinned Codex MCP protocol compatibility, 2026-10-10](research/2026-10-10-codex-mcp-protocol-compatibility.md)
 records actual default/flagged client experiments and a bounded stateless
-compatibility choice for #460, independently accepted at `c39eea30`. Its exact public
-contract amendment was independently accepted at `93889087`; implementation
+compatibility choice for #460, with delegated pre-review at `c39eea30`. Its public
+contract is Proposed, with delegated pre-review at `93889087` / record `880340ab`; eligible independent acceptance, implementation
 and runtime acceptance remain pending; #160 Start/Resume gates
 remain unchanged.
 

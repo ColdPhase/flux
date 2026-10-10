@@ -1,6 +1,6 @@
-# Pinned Codex MCP compatibility — accepted bounded research choice
+# Pinned Codex MCP compatibility — proposed bounded admission choice
 
-**2026-10-10; bounded research choice and public contract independently accepted; delivery pending.** Owner:
+**2026-10-11 status: Proposed; delegated pre-review at `93889087` / record `880340ab`; eligible independent acceptance pending.** Owner:
 @PelikanFix16, [#460](https://github.com/ColdPhase/flux/issues/460), milestone 2.
 This research checkpoint does not amend an accepted protocol contract or declare
 Codex Start/Resume delivered. [#152](https://github.com/ColdPhase/flux/issues/152),
@@ -8,11 +8,11 @@ Codex Start/Resume delivered. [#152](https://github.com/ColdPhase/flux/issues/15
 [F-016](../mcp-cowork.md), [CW-1](../cowork-workflow.md)
 and [F-024](../mcp-identity.md) remain binding.
 
-## Accepted research choice and bounded outcome
+## Proposed bounded outcome after delegated pre-review
 
-**[Accepted research choice] Support explicit MCP `2025-06-18` and `2026-07-28` on the existing
+**[Proposed path, delegated pre-review] Support explicit MCP `2025-06-18` and `2026-07-28` on the existing
 authenticated `/mcp` endpoint through the pinned SDK's stateless legacy adapter,
-under the separately accepted public admission contract and the runtime gates below.** Keep
+under the separately proposed public admission contract and the runtime gates below.** Keep
 the same verified bearer factory, domain dispatch, live policy and delivery
 fences. Reject other revisions and malformed modern claims; do not silently
 rewrite a protocol or relax authorization. The default pinned Codex can then use
@@ -28,18 +28,18 @@ activation, Start/Resume and recovery across owners/connections remain #160 work
 No account credentials or subscription access are embedded in Flux. This is the
 external-agent mode of [F-022](../ai-modes.md), not the embedded agent runtime.
 
-## Scoped independent acceptance record
+## Scoped delegated pre-review record
 
 [Review 5480322828](https://github.com/ColdPhase/flux/pull/466#pullrequestreview-5480322828),
 submitted 2026-10-10, accepted the architectural choice at exact research head
 `c39eea3019de2cbc28aa798d2ae5e005e33fd3eb`. Evaluator:
 `review_protocol_decision`, a separate agent independent of author `visual_next`.
 The GitHub state is COMMENTED under the shared @PelikanFix16 account. This is
-**delegated decision acceptance, not an eligible GitHub/Code Owner approval,
-founder direction or production acceptance**. Normal protected merge gates and
+**delegated pre-review acceptance only: no eligible GitHub/Code Owner approval,
+founder direction, normative public-contract acceptance or production acceptance**. Normal protected merge gates and
 @Zamojski5's eligible current-head evaluation remain separate.
 
-The accepted scope is exactly the two explicit wire revisions through the
+The scope accepted in that delegated pre-review is exactly the two explicit wire revisions through the
 existing stateless SDK adapter, verified bearer factory, shared domain dispatch
 and protected delivery fences. The evaluator checked source/artifact/patch/probe
 hashes, retained logs and the author-run results, rather than rerunning Docker.
@@ -50,12 +50,15 @@ The independent review requires exact admission/header/batch/notification
 rules, complete two-era authorization and held-race equivalence, required
 feature/payload equivalence, and truthful built-in Connect with supplied
 activation. Every original #460/#152/#160 criterion remains binding; the
-implementation gates below retain these obligations. Independent agent `review_protocol_decision` then accepted the concrete public
-PC-1–PC-5 amendment at `93889087957b73fe2368d43b6ee3e8926fcbd787` in
+implementation gates below retain these obligations. Independent agent
+`review_protocol_decision` then accepted the proposed public PC-1–PC-5 text in delegated pre-review at `93889087957b73fe2368d43b6ee3e8926fcbd787` in
 [COMMENT 5480429341](https://github.com/ColdPhase/flux/pull/466#pullrequestreview-5480429341).
-That separate same-account delegated contract acceptance also provides no
-eligible approval, founder direction or runtime acceptance. Exact acceptance
-and remaining gates are recorded in the public contract.
+That separate same-account COMMENT provides no eligible approval, founder
+direction, normative public-contract acceptance or runtime acceptance. The
+proposed public contract preserves these exact pins and remaining gates.
+Eligible review subsequently requested corrections at `880340ab` in
+[RC 5480898344](https://github.com/ColdPhase/flux/pull/466#pullrequestreview-5480898344);
+independent delta evaluation and protected acceptance are pending.
 No legacy production support or completed onboarding is recorded here.
 
 Current-main reconciliation on 2026-10-10: `2175d2490a023905143569a13ca68f43e93bb403`
@@ -196,19 +199,22 @@ all required-client features or security equivalence. Held races, replay,
 provenance, policy Off, other-owner/role-loss and full grant cases remain gates.
 GET/DELETE, stateful sessions and subscription behavior were not runtime-tested.
 The prototype was deliberately discarded after evidence capture; its runner,
-Compose override and Dockerfile are archived beside the results. Detailed log:
-`/tmp/flux-460-prototype/prototype.log`, with hash in the results. Owned resources
+Compose override and Dockerfile are archived beside the results. The detailed
+original author-local log (its historical path is in the retained evidence),
+with hash in the results. That local file is not a portable prerequisite. Owned resources
 and image tags were cleaned. No unsupported client is now declared supported.
 
 ## Proposed contract and implementation gates
 
-The bounded architecture choice and public admission/authentication/feature
-amendment are independently accepted as recorded above. Neither acceptance
-certifies implementation or completes #460; fresh independent runtime evaluation
-and normal protected merge gates remain required.
+The bounded architecture/public contract has recorded delegated pre-review, not
+eligible independent acceptance. Zamojski5's current
+[REQUEST_CHANGES 5480898344](https://github.com/ColdPhase/flux/pull/466#pullrequestreview-5480898344)
+at exact `880340ab0052774af4431858975ac544bf30b877` requires this correction round.
+Fresh eligible delta acceptance/protected merge and exact runtime evaluation
+remain pending; #460/#152/#160 are not complete.
 
-The concrete [PC-1–PC-5 amendment](../mcp-protocol-compatibility.md) has that separate
-contract acceptance. It specifies exact initialize/header,
+The concrete [PC-1–PC-5 amendment](../mcp-protocol-compatibility.md) remains proposed after that separate
+delegated pre-review. It specifies exact initialize/header,
 notification and batch admission, unchanged authority/delivery, required domain
 features and truthful client states. Its detailed admission policy is new to this
 proposal and is not retroactively certified by the research prototype.
@@ -260,24 +266,37 @@ pins and public documentation before publication. #160 stays open independently.
 
 ## Reproduction and checkpoint
 
-The [baseline runner](evidence/460/baseline-run.sh) and
-[Compose override](evidence/460/baseline-compose.yaml) are archived as actually
-used, including this worktree and `/tmp` paths; they are research evidence,
-not a new production check. They reuse the checked-in client harness, scripted
-models and isolated image/project cleanup. Stage their referenced probe/override
-paths, set test ports 19820/19821, and run from the pinned worktree after vetting
-the three documented subnets. No host application dependencies are installed.
-For the prototype, stage its archived Dockerfile/override/probe in
-`/tmp/flux-460-prototype`, reconstruct the two named-context source files by
-decoding the archived JSON patch field to UTF-8 and applying it to an
-expendable copy of the pinned source, and
-check the patch hash before building. Do not apply it to a production checkout.
-Local detailed logs are retained; their final hash is in the sanitized results.
-Owned containers, volumes, networks, image tags and temporary keys are cleaned
-after each attempt. Other Compose projects and build cache are preserved.
+The [portable reproduction instructions](evidence/460/README.md) use repository-relative
+[baseline](evidence/460/baseline-run.sh) and [prototype](evidence/460/prototype-run.sh)
+entrypoints. They materialize the exact historical server object into an owned
+throwaway directory, verify/reconstruct the unchanged archived patch for the
+prototype, and resolve the checked-in probes/Compose files relative to the
+entrypoints. Callers choose a new output directory, vetted ports and three
+non-overlapping IPAM ranges. No host application dependencies are installed.
+The [as-executed historical wrappers/configs](evidence/460/historical-file-hashes.json)
+are preserved separately; their personal worktree and temporary staging paths
+are historical provenance, not requirements for reproduction. Original source
+manifest, sanitized results, probe content, Dockerfile and patch remain unchanged.
+The original local logs are supplementary evidence; their final hashes are in
+sanitized results, and availability on another machine is not claimed.
 
-Branch: `codex/460-protocol-compatibility`. Source base stays pinned above. This
-checkpoint contains the accepted bounded research and public-contract records,
-with no application, Dockerfile or runner edit. Next action: implement the exact
-accepted contract in a separate owner artifact and obtain
-fresh independent runtime evaluation of its exact head. No implementation PR is open.
+These opt-in manual probes are not wired into CI or `check_application.sh`.
+This docs-review round checked preparation, shell syntax, exact patch hash,
+relative paths and Compose configuration only. **No new Docker build or native
+probe/runtime replay was performed**, and the historical author-run results
+remain historical. Both reproduction entrypoints have a `--prepare-only` mode
+that performs these checks without launching the application or clients. A real
+run needs network access for the pinned checksummed Codex release and the signed
+Claude release, but no vendor account/model endpoint or credentials. Cleanup is
+restricted to that run's named resources and tagged images; output evidence is
+retained, and other projects/cache are preserved.
+
+Branch: `codex/460-protocol-compatibility`. This documentation-only correction
+records a proposed public profile and its delegated pre-review; eligible
+independent delta evaluation and normal protected acceptance remain pending.
+Separate incomplete draft [PR #467](https://github.com/ColdPhase/flux/pull/467)
+is open and must not be merged before this dependency's acceptance/main
+composition. Its evidence does not certify this public proposal or the full
+client outcomes. Full PC-1–PC-5/#460/#152/#160 criteria remain unchanged. The
+separate managed-binding proposal and adapter/EXT1 implementation require their
+own independent acceptance; this delta grants none.
