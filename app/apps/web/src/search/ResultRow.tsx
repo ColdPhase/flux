@@ -4,7 +4,8 @@ import { Icon, type IconName } from '../ui';
 // One search result in direction C: what it is in human language, the matching text with the
 // matched words marked, and where it lives, who wrote it and when. Shared by Jump to… and the page.
 
-const ICONS: Record<SearchKind, IconName> = {
+// A project is drawn as its letter tile, as in the sidebar, so it is recognised across the app.
+const ICONS: Record<Exclude<SearchKind, 'project'>, IconName> = {
   message: 'chat', dm_message: 'chat', material: 'link', doc: 'doc', work: 'tasks', decision: 'rule', result: 'result',
   sketch: 'map', thought: 'map', draft: 'edit', person: 'people',
 };
@@ -40,7 +41,9 @@ export function ResultBody({ result }: { result: SearchResult }) {
   const meta = [result.label, placeText(result.place), author].filter(Boolean);
   return (
     <>
-      <span className={`sr__ic sr__ic--${result.kind}`} aria-hidden="true"><Icon name={ICONS[result.kind]} size={15} /></span>
+      {result.kind === 'project'
+        ? <span className="sr__ic sr__ic--project" aria-hidden="true">{(result.title.map((part) => part.text).join('').trim()[0] ?? '?').toUpperCase()}</span>
+        : <span className={`sr__ic sr__ic--${result.kind}`} aria-hidden="true"><Icon name={ICONS[result.kind]} size={15} /></span>}
       <span className="sr__main">
         <span className="sr__title"><Highlighted parts={result.title} /></span>
         {result.snippet ? <span className="sr__snip"><Highlighted parts={result.snippet} /></span> : null}

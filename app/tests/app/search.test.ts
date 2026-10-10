@@ -173,6 +173,42 @@ describe('search: one query across Flux, only what you may read', () => {
     assert.ok(byNia.items.every((item) => item.author === 'Nia Berg'), 'only Nia’s writing');
   });
 
+  test('a project is found by its name for whoever may open it, and opens its home', async () => {
+    const found = await search(nia, 'gesture lamp');
+    const hit = found.items.find((item) => item.kind === 'project');
+    assert.ok(hit, 'the restricted project is found by its name');
+    assert.equal(text(hit.title), 'Gesture lamp');
+    assert.equal(hit.label, 'Project · restricted');
+    assert.deepEqual(hit.target, { type: 'project', projectId: lamp.id });
+    assert.deepEqual(hit.place, { type: 'workspace', id: ws.id, name: 'Studio' });
+    assert.equal(found.counts.project, 1);
+    assert.deepEqual(kinds(await search(nia, { q: 'lam', type: 'project' })), ['project'], 'a prefix finds it while typing');
+    // Every member may open the workspace-visible project, so every member finds it by name.
+    assert.deepEqual(titles(await search(olek, 'open notes')), ['Open notes']);
+  });
+
+  test('a project the reader may not open is not found, by name, by id or in the counts', async () => {
+    const empty = { items: [], next: null, counts: {}, countsCapped: false };
+    // Olek is a member without a grant on the restricted project; Gus is a guest with a grant on the open one only.
+    assert.deepEqual(await search(olek, 'gesture lamp'), empty);
+    assert.deepEqual(await search(gus, 'gesture lamp'), empty);
+    assert.deepEqual(await search(olek, { q: 'lam', type: 'project' }), empty);
+    const body = JSON.stringify(await search(olek, 'lamp'));
+    assert.equal(body.includes('Gesture lamp'), false);
+    assert.equal(body.includes(lamp.id), false);
+  });
+
+  test('a renamed project is found under its new name only, and a deleted project leaves no result', async () => {
+    const harbour = await createProject(ari, ws.id, 'Harbour kiosk', 'workspace');
+    assert.deepEqual(kinds(await search(ari, 'harbour')), ['project']);
+    // The index follows the row: a rename in the same transaction replaces the old name.
+    await pool.query('UPDATE projects SET name = $2 WHERE id = $1', [harbour.id, 'Quay signals']);
+    assert.equal((await search(ari, 'harbour')).items.length, 0);
+    assert.deepEqual((await search(ari, 'quay signals')).items.map((item) => item.target), [{ type: 'project', projectId: harbour.id }]);
+    await pool.query('DELETE FROM projects WHERE id = $1', [harbour.id]);
+    assert.equal((await search(ari, 'quay signals')).items.length, 0);
+  });
+
   test('type filters narrow results while counts cover every type', async () => {
     const answer = await search(nia, { q: 'sensor', type: 'material' });
     assert.deepEqual(kinds(answer), ['material']);
