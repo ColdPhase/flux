@@ -440,12 +440,30 @@ class PhoneShellJourney(unittest.TestCase):
         self.assertGreaterEqual(look["height"], 44, "a project row is a full touch target")
         self.assertEqual(look["underline"], "none")
         self.assertEqual(look["bullet"], "none")
-        # The audience line is drawn 22 px tall in the phone header; its hit area must still be 44 px.
+        # The audience line is a 44 px control on touch (HIG-14): its 44 px hit square is centred on the line.
+        # Every point of that square (edges, corners, centre) reaches the button, the points just above and
+        # below it do not (HIG-15), and real taps on its top and bottom edges open the audience.
         page.goto(f"/projects/{self.project['id']}")
         audience = page.locator("header.top .top__audience")
         expect(audience).to_be_visible()
-        hit = audience.evaluate("(el) => parseFloat(getComputedStyle(el, '::after').height)")
-        self.assertGreaterEqual(hit, 44, "the audience button's hit area is at least 44 px tall")
+        box = self.box(audience)
+        square = audience.evaluate("(el) => ({ height: parseFloat(getComputedStyle(el, '::after').height), width: parseFloat(getComputedStyle(el, '::after').width) })")
+        self.assertGreaterEqual(square["height"], 44, "the audience hit square is at least 44 px tall")
+        self.assertGreaterEqual(square["width"], 44, "the audience hit square is at least 44 px wide")
+        x0, x1 = box["x"], box["x"] + box["width"]
+        cx, cy = (x0 + x1) / 2, box["y"] + box["height"] / 2
+        reaches = "([x, y]) => { const el = document.elementFromPoint(x, y); return !!(el && el.closest('.top__audience')); }"
+        for x in (x0 - 1, x0 + 1, cx, x1 - 1, x1 + 1):
+            for y in (cy - 21, cy, cy + 21):
+                self.assertTrue(page.evaluate(reaches, [x, y]), f"the audience button receives the point ({x:.1f}, {y:.1f})")
+        for y in (cy - 23, cy + 23):
+            self.assertFalse(page.evaluate(reaches, [cx, y]), f"the point ({cx:.1f}, {y:.1f}) outside the button is another target")
+        for y in (cy - 21, cy + 21):
+            page.goto(f"/projects/{self.project['id']}")
+            expect(audience).to_be_visible()
+            page.evaluate("() => { window.__audienceTaps = []; document.addEventListener('click', (e) => window.__audienceTaps.push(!!(e.target.closest && e.target.closest('.top__audience'))), true); }")
+            page.mouse.click(cx, y)
+            self.assertEqual(page.evaluate("() => window.__audienceTaps"), [True], f"a real tap at y={y:.1f} reaches the audience button")
         page.goto("/search?q=garden")
         field = page.locator("input.search__input")
         expect(field).to_be_visible()

@@ -238,7 +238,7 @@ class AppShellJourney(unittest.TestCase):
         if signed_in and self.state:
             options["storage_state"] = self.state
         options.update(extra)
-        context = self.browser.new_context(**options)
+        context = self.browser.new_context(**options)  # sw-allowed: as on main; routing tests pass service_workers="block" (#271)
         self.addCleanup(context.close)
         return context
 
@@ -578,20 +578,23 @@ class AppShellJourney(unittest.TestCase):
         targets = [menu, details_button, *[page.get_by_role("navigation", name="Views").get_by_role("link", name=n, exact=True) for n in ("Conversation", "Map", "Tasks", "Wiki")]]
         for target in targets:
             size = box(page, target)
-            self.assertGreaterEqual(min(size["width"], size["height"]), 44, f"44px target: {target}")
-        self.assertGreaterEqual(box(page, page.get_by_role("button", name="Save note"))["height"], 44)
+            self.assertGreaterEqual(round(min(size["width"], size["height"]), 2), 44, f"44px target: {target}")
+        self.assertGreaterEqual(round(box(page, page.get_by_role("button", name="Save note"))["height"], 2), 44)
         expect(composer).to_be_editable()
 
         menu.click()
         drawer = page.get_by_role("dialog", name="Flux")
         expect(drawer).to_be_visible()
         expect(menu).to_have_attribute("aria-expanded", "true")
+        # The drawer slides in with a running transform (#271): places are measured once the slide has ended.
+        drawer.evaluate("el => Promise.all(el.getAnimations({ subtree: true }).map((animation) => animation.finished.then(() => true, () => false)))")
         # The sidebar is a 260px drawer with the places as 44px+ rows.
         drawer_places = drawer.get_by_role("navigation", name="Places")
         expect(drawer_places).to_be_visible()
         self.assertLessEqual(round(box(page, drawer)["width"]), 260)
         for name in ("Home", "Inbox", "Sketchbook"):
-            self.assertGreaterEqual(box(page, drawer_places.get_by_role("link", name=name))["height"], 44, f"44px place target: {name}")
+            # Layout reports fractional pixels: a 44 px row was measured as 43.99997 px (#271), so two decimals decide.
+            self.assertGreaterEqual(round(box(page, drawer_places.get_by_role("link", name=name))["height"], 2), 44, f"44px place target: {name}")
         self.assertTrue(drawer.evaluate("el => el.contains(document.activeElement)"), "focus moves into the drawer")
         self.assertTrue(page.evaluate("document.getElementById('root').inert"), "the page behind the drawer is inert")
         # Tab stays inside the drawer.
@@ -722,7 +725,7 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("link", name="Request a new link")).to_be_visible()
 
     def test_10_password_reset_unavailable(self) -> None:
-        page = self.page(signed_in=False)
+        page = self.page(signed_in=False, service_workers="block")
         # Simulate a server without SMTP: capabilities say so and the request answers 503.
         page.route("**/api/v1/auth/capabilities", lambda route: route.fulfill(json={"passwordReset": "unavailable"}))
         page.goto("/forgot-password")
@@ -730,7 +733,7 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("button", name="Send reset link")).to_be_disabled()
         shot(page, "reset-unavailable-desktop-light")
 
-        late = self.page(signed_in=False)
+        late = self.page(signed_in=False, service_workers="block")
         late.route("**/api/auth/request-password-reset", lambda route: route.fulfill(status=503, json={"error": "Password reset is unavailable", "code": "PASSWORD_RESET_UNAVAILABLE"}))
         late.goto("/forgot-password")
         late.get_by_label("Email").fill(EMAIL)
@@ -758,9 +761,9 @@ class AppShellJourney(unittest.TestCase):
         page.reload()
         expect(page.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
 
-    def person_with_a_task(self, name: str, *, slow: bool = True) -> tuple[Page, str, str]:
+    def person_with_a_task(self, name: str, *, slow: bool = True, service_workers: str = "allow") -> tuple[Page, str, str]:
         """A new account in its own tab with one restricted project and one task in it."""
-        page = self.page(signed_in=False)
+        page = self.page(signed_in=False, service_workers=service_workers)
         if slow:
             page.add_init_script(SLOW_ANSWERS)
         page.goto("/sign-up")
@@ -824,7 +827,7 @@ class AppShellJourney(unittest.TestCase):
         self.sign_out_while_loading(page, "Tove Berg")
 
     def test_11c_a_failed_sign_out_says_so_and_can_be_retried(self) -> None:
-        page, _, _ = self.person_with_a_task("Ida Holm", slow=False)
+        page, _, _ = self.person_with_a_task("Ida Holm", slow=False, service_workers="block")
         page.route("**/api/auth/sign-out", lambda route: route.fulfill(status=503, json={"code": "TEST_UNAVAILABLE", "message": "test: sign-out unavailable"}))
         page.get_by_role("button", name=re.compile("Ida Holm.*account and sign out")).click()
         page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
@@ -844,7 +847,7 @@ class AppShellJourney(unittest.TestCase):
         """Real UI: create project, send, cite a saved version, reply, revisit on phone, revoke."""
         # A fresh account without any space: its first project names the space (Jo's first note
         # already created Jo's personal space, #190 HOME-3).
-        owner = self.page(signed_in=False)
+        owner = self.page(signed_in=False, service_workers="block")
         owner.goto("/sign-up")
         owner.get_by_label("Name").fill("Mira Lamp")
         owner.get_by_label("Email").fill(f"mira.lamp+{int(time.time() * 1000)}@example.test")

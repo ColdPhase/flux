@@ -1,0 +1,58 @@
+/* Shared shell styles stay eager; opening a project never depends on first visiting Map. */
+/* The project surface (#117): a header block inside the sheet with the 21px
+   title, then who can read it and the one-line current state; the tabs continue the same block. */
+
+/* ---------- Header ---------- */
+.top--project { height: auto; min-height: 0; align-items: flex-start; padding: 23px var(--space-page) 0; }
+.top__head { display: flex; flex: 1; flex-direction: column; justify-content: flex-start; min-width: 0; gap: 7px; }
+.top__title--project { align-items: baseline; gap: 8px; flex: none; }
+.top__title--project h1 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-title); font-weight: 600; letter-spacing: -0.65px; line-height: 1.2; }
+/* The divider before the state line sits in the gap. When the state line wraps to its own row,
+   the divider falls outside this box and is clipped; the 4px padding keeps focus rings visible. */
+.top__meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 25px; min-width: 0; overflow: hidden; margin: -4px; padding: 4px; }
+.top__audience { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; max-width: 55%; min-width: 0; min-height: 22px; margin-left: -4px; padding: 0 4px; border-radius: var(--r-sm); font-size: 10.5px; color: var(--t2); white-space: normal; transition: var(--tr); }
+.top__audience > span:not(.ui-vh) { min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.top__audience svg { flex: none; width: 10px; height: 10px; }
+.top__audience:hover { background: var(--hov); color: var(--t1); }
+.top--project .ws-state { position: relative; flex-wrap: wrap; margin: 0; font-size: var(--fs-sm); line-height: 1.4; }
+.top--project .ws-state::before { content: ""; position: absolute; left: -13px; top: 2px; bottom: 2px; border-left: 1px solid var(--line); }
+.top--project .ws-part { display: contents; }
+
+.top--project .ws-seg { min-height: 22px; min-width: 0; flex: 0 1 auto; max-width: 100%; color: var(--t2); }
+.top--project .ws-seg:hover { color: var(--t1); }
+.top--project .ws-seg--need { color: var(--t1); }
+.top--project .ws-seg span:last-child { white-space: normal; overflow-wrap: anywhere; }
+.top--project .ws-state--empty { overflow: hidden; text-overflow: ellipsis; }
+.top--project .top__right { padding-top: 2px; }
+
+/* ---------- Phone: the state line is one 44px row that opens Details ---------- */
+.ws-state-row { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 0 10px 0 16px; border-top: 1px solid var(--line); font-size: var(--fs-sm); color: var(--t3); text-align: left; white-space: nowrap; transition: var(--tr); }
+.ws-state-row__t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ws-state-row__blocked { flex: none; color: var(--t2); }
+.ws-state-row svg { flex: none; }
+.ws-state-row:active { background: var(--hov); }
+@media (max-width: 680px) {
+  .top--project { min-height: calc(56px + env(safe-area-inset-top)); padding: max(18px, env(safe-area-inset-top)) 12px 0 8px; align-items: center; }
+  .top--project .top__title--project { flex-direction: column; align-items: flex-start; gap: 0; text-align: left; line-height: 1.25; }
+  .top--project .top__title--project h1 { max-width: 100%; font-size: 18px; }
+  .top--project .top__crumb { display: none; }
+  .top--project .top__audience { max-width: 100%; min-height: 22px; font-size: var(--fs-xs); }
+  .top--project .top__head { padding-left: 2px; gap: 2px; }
+}
+
+@media (pointer: coarse) {
+  .top__audience { position: relative; min-height: 32px; }
+  /* A 44 px touch target without growing the 52 px header (#266 review item 13): the hit area extends past the line. */
+  .top__audience::after { content: ""; position: absolute; inset: -6px -2px; }
+}
+
+/* Phone, touch (#438, HIG-14 and HIG-15): the audience keeps its 22 px line, and its 44 px hit area is a
+   square centred on the line. The title block starts at the top of the 52 px header, so the square ends at
+   the header's bottom edge and the state row below stays a separate target; the square may cover the
+   title's lower band, which holds no control. The meta row must not clip the square. The 52 px header of
+   #266 item 13 is kept, and the phone header test (a single compact header, 60 px) still holds. */
+@media (pointer: coarse) and (max-width: 640px) {
+  header.top.top--project .top__head { align-self: flex-start; gap: 0; }
+  header.top.top--project .top__meta { overflow: visible; }
+  header.top.top--project .top__audience::after { top: -11px; bottom: auto; height: 44px; }
+}
