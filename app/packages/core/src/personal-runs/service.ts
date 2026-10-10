@@ -346,6 +346,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled }:
     async remove(principal: Principal): Promise<void> {
       const owner = ownerOf(principal);
       await uow.run(async (ports) => {
+        await ports.assistants?.lockOwner(owner);
         await lockedEnablement(ports, owner);
         for (const ended of await ports.runs.endUndispatched(owner, 'revoked')) await announce(ports, ended);
         await ports.assistants?.remove(owner);

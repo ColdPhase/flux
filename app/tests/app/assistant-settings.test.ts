@@ -10,7 +10,7 @@ import { person, workspace, project, addMember, expectStatus, type Person } from
 import { beginOauth, mcp, oauthToken, toolValue } from './support/mcp.js';
 import { Browser, publicOrigin } from './support/http.js';
 import { FakeConnections, FakeQueue } from './support/personal-runs.js';
-import { waitUntilBlockedBy } from './support/locks.js';
+import { barrier, waitUntilBlockedBy } from './support/locks.js';
 
 const principal = (owner: Person): Principal => ({ kind: 'human', id: owner.id });
 const settings = async (owner: Person, workspaceId: string, status = 200) => {
@@ -239,6 +239,46 @@ test('settings reads cannot deadlock with a generic S6 writer between its policy
     assert.ok(Object.values(observed.areas).every((value) => value === 'off'));
   } finally {
     await holder.query('ROLLBACK'); holder.release();
+    await Promise.allSettled(pending);
+  }
+});
+
+test('removal and concurrent enablement take the owner lock before the enablement row', { timeout: 30_000 }, async () => {
+  const f = await setup('remove-order'); const queue = new FakeQueue();
+  const real = personalRunUnitOfWork(db, queue.factory);
+  const held = barrier<number>(); const resume = barrier();
+  const pending: Promise<unknown>[] = [];
+  const enablingRuns = createPersonalRunUseCases({ connections: f.connections, providerEnabled: true, uow: {
+    run: (work) => real.run((ports) => work({ ...ports, assistants: { ...ports.assistants!,
+      lockOwner: async (owner) => {
+        await ports.assistants!.lockOwner(owner);
+        // Identify the actual transaction holding this owner's 64-bit advisory lock.
+        const holders = await pool.query(`SELECT pid FROM pg_locks WHERE locktype='advisory' AND granted AND objsubid=1
+          AND classid::bigint=((hashtextextended($1,0)>>32)&4294967295)
+          AND objid::bigint=(hashtextextended($1,0)&4294967295)`, [`assistant-owner:${owner}`]);
+        assert.equal(holders.rowCount, 1);
+        held.resolve(holders.rows[0].pid as number);
+        await resume.promise;
+      },
+    } })),
+  } });
+  const enabling = enablingRuns.enable(principal(f.owner), { consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId: f.agent.id })
+    .then(() => null, (error: unknown) => error);
+  pending.push(enabling);
+  try {
+    const holderId = await Promise.race([held.promise, enabling.then(() => { throw new Error('Enablement ended before the lock barrier'); })]);
+    const removing = f.runs.remove(principal(f.owner)).then(() => null, (error: unknown) => error);
+    pending.push(removing);
+    await waitUntilBlockedBy(pool, holderId);
+    resume.resolve();
+    const [enableError, removeError] = await Promise.all([enabling, removing]);
+    assert.equal((enableError as { code?: string } | null)?.code, 'PERSONAL_RUN_ALREADY_ENABLED',
+      'enablement keeps its ordinary conflict instead of becoming a PostgreSQL deadlock victim');
+    assert.equal(removeError, null, 'removal completes after enablement releases the owner lock');
+    assert.equal((await pool.query('SELECT 1 FROM personal_run_enablements WHERE owner_user_id=$1', [f.owner.id])).rowCount, 0);
+    assert.equal((await pool.query('SELECT 1 FROM assistant_settings WHERE owner_user_id=$1', [f.owner.id])).rowCount, 0);
+  } finally {
+    resume.resolve();
     await Promise.allSettled(pending);
   }
 });
