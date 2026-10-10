@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { and, eq } from 'drizzle-orm';
 import { betterAuth } from 'better-auth';
 import { APIError } from 'better-auth/api';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
@@ -34,6 +35,8 @@ export interface AuthDependencies {
   /** Present with a provider and the standing check on (#311): sign-in stores the offline token. */
   standing?: IdpStanding | null;
   log?: { error(object: object, message: string): void };
+  /** Discovery recovery may temporarily omit the plugin, while retaining the configured authentication mode. */
+  installProvider?: boolean;
 }
 
 /**
@@ -51,6 +54,26 @@ export function oidcUser(oidc: Pick<OidcConfig, 'issuer'>, claims: Record<string
   const name = [claims.name, claims.preferred_username].find((value): value is string => typeof value === 'string' && !!value.trim());
   // The plugin keys the Flux account by `sub` (the stable OIDC subject), never by email.
   return { id: subject, sub: subject, email, emailVerified: true, name: (name ?? email).trim().slice(0, 200) };
+}
+
+/** Snapshot the authorizing session at code redemption, keyed to the immutable refresh lineage (#310 AC-3). */
+export async function recordGrantAuthentication(db: Database, userId: string, sessionId: string | undefined,
+  referenceId: string, authorizationCodeId: string) {
+  const [previous] = await db.select().from(schema.oauthGrantAuthentication)
+    .where(eq(schema.oauthGrantAuthentication.authorizationCodeId, authorizationCodeId));
+  if (previous) {
+    if (previous.userId !== userId || previous.referenceId !== referenceId)
+      throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'Grant authentication is unavailable' });
+    return; // Refresh and unrelated sessions cannot replace the original facts.
+  }
+  if (!sessionId) throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'Sign-in is unavailable' });
+  const [facts] = await db.select({ method: schema.authSessionIdentities.method, idpSid: schema.authSessionIdentities.idpSid,
+    confirmedAt: schema.authSessionIdentities.confirmedAt }).from(schema.authSessionIdentities)
+    .innerJoin(schema.authSessions, eq(schema.authSessions.id, schema.authSessionIdentities.sessionId))
+    .where(and(eq(schema.authSessionIdentities.sessionId, sessionId), eq(schema.authSessions.userId, userId)));
+  if (!facts) throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'Sign-in is unavailable' });
+  await db.insert(schema.oauthGrantAuthentication).values({ authorizationCodeId, userId, referenceId,
+    authMethod: facts.method, authIdpSid: facts.idpSid, authConfirmedAt: facts.confirmedAt }).onConflictDoNothing();
 }
 
 const IDP_TOKEN_FIELDS = ['accessToken', 'refreshToken', 'idToken', 'accessTokenExpiresAt', 'refreshTokenExpiresAt'] as const;
@@ -74,9 +97,35 @@ function idTokenClaims(idToken: string | undefined): Record<string, unknown> | n
   }
 }
 
-export function createAuth({ db, config, mailer, onMailError, oauthRequests, signIns = createSignIns(), standing = null, log, confirmation = createConfirmation(db, config.oidc) }: AuthDependencies) {
+/** The MCP resource identifier Better Auth seeds into `oauth_resource` at initialization. */
+export function mcpResourceIdentifier(publicOrigin: string): string {
+  return `${publicOrigin}/mcp`;
+}
+
+/**
+ * Inserts the MCP resource row if it is missing (#316). Better Auth's plugin seeds the same row
+ * during initialization, but its duplicate check reads only the driver's wrapper message, so two
+ * processes starting together can fail on `oauth_resource_identifier_unique`. Inserting first with
+ * ON CONFLICT DO NOTHING makes the plugin's lookup find the row and skip its own insert.
+ */
+export async function ensureOauthResource(db: Database, publicOrigin: string): Promise<void> {
+  const identifier = mcpResourceIdentifier(publicOrigin);
+  const now = new Date();
+  await db.insert(schema.oauthResource).values({
+    id: randomUUID(),
+    identifier,
+    name: identifier,
+    dpopBoundAccessTokensRequired: false,
+    disabled: false,
+    policyVersion: 1,
+    createdAt: now,
+    updatedAt: now,
+  }).onConflictDoNothing({ target: schema.oauthResource.identifier });
+}
+
+export function createAuth({ db, config, mailer, onMailError, oauthRequests, signIns = createSignIns(), installProvider = true, standing = null, log, confirmation = createConfirmation(db, config.oidc) }: AuthDependencies) {
   const connections = agentOauthUseCases(createAgentConnectionStore(db));
-  const resource = `${config.publicOrigin}/mcp`;
+  const resource = mcpResourceIdentifier(config.publicOrigin);
   const connectionForGrant = async (userId: string, sessionId: string, scopes: readonly string[]) => {
     const request = oauthRequests.getStore();
     if (!request || request.clearedSessionId && request.clearedSessionId !== sessionId) throw new Error('OAuth flow is unavailable');
@@ -137,7 +186,10 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
           consentReferenceId: async ({ user, session, scopes }) =>
             (await connectionForGrant(user.id, session.id, scopes)).referenceId,
         },
-        customAccessTokenClaims: async ({ user, referenceId, scopes, resources }) => {
+        customAccessTokenClaims: async (args) => {
+          const { user, referenceId, scopes, resources } = args;
+          // The pinned provider patch exposes its validated session and code-family key at issuance.
+          const { sessionId, authorizationCodeId } = args as typeof args & { sessionId?: string; authorizationCodeId?: string };
           // The refresh grant and the code exchange both come through here: once the provider's confirmation is
           // older than the confirmation age the client must authorize again, through the provider (F-024 S2, #312).
           if (user && await confirmation.lapsed(user.id)) throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: signInAgainMessage(config.oidc?.label ?? '') });
@@ -153,11 +205,13 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
           if (!connection || scopes.some((scope) => scope !== 'offline_access' && !connection.scopes.includes(scope as 'flux.context.read' | 'flux.proposal.write' | 'flux.action.execute'))) {
             throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'Agent connection is unavailable' });
           }
-          return { flux_connection_id: connection.id, flux_owner_user_id: user.id, flux_grant_reference: grant!.referenceId };
+          if (authorizationCodeId) await recordGrantAuthentication(db, user.id, sessionId, referenceId, authorizationCodeId);
+          return { flux_connection_id: connection.id, flux_owner_user_id: user.id, flux_grant_reference: grant!.referenceId,
+            ...(authorizationCodeId ? { flux_authentication_reference: authorizationCodeId } : {}) };
         },
       }),
       cimd({ fetchClientMetadataResource, metadataProfile: 'mcp-2026-07-28' }),
-      ...(config.oidc ? [oidcPlugin(config.oidc, signIns, log)] : []),
+      ...(config.oidc && installProvider ? [oidcPlugin(config.oidc, signIns, log)] : []),
     ],
     databaseHooks: {
       session: {

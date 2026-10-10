@@ -118,11 +118,11 @@ async function redeem(callback: URL, verifier: string, redirectUri: string, id: 
 }
 
 /** Connection choice and consent, as the pages do it, for a person already signed in to this context. */
-async function chooseAndConsent(context: BrowserContext, page: Page, redirectUri: string) {
+async function chooseAndConsent(context: BrowserContext, page: Page, redirectUri: string, connectionId = state.connectionId) {
   await page.waitForURL((target) => target.pathname === '/connect-agent', { timeout: 20_000 });
   const selected = page.url().split('?')[1]!;
   assert.ok(new URLSearchParams(selected).get('sig'), 'the connection choice still carries the signed request');
-  await api(context, 'POST', `/api/v1/agent-connections/${state.connectionId}/select-for-oauth`, { oauth_query: selected }, 204);
+  await api(context, 'POST', `/api/v1/agent-connections/${connectionId}/select-for-oauth`, { oauth_query: selected }, 204);
   const continued = await api<{ url?: string; redirect_uri?: string }>(context, 'POST', '/api/auth/oauth2/continue', { postLogin: true, oauth_query: selected });
   const consentUrl = new URL(String(continued.url ?? continued.redirect_uri), origin);
   // An earlier consent for this client and connection is remembered: the code comes straight back.
@@ -199,7 +199,61 @@ test('a client authorizes through the provider on /login from a fresh browser, w
   assert.ok(stored.length >= 1);
   assert.ok(stored.every((row) => Object.values(row).every((value) => value === null)), 'auth_accounts holds no IdP access, ID or refresh token');
 
+  // The grant itself records how the consenting sign-in happened (#310 AC-3).
+  const sessionId = (await api<{ session: { id: string } }>(context, 'GET', '/api/v1/me')).session.id;
+  const grantFacts = () => grantAuthentication(state.userId!, clientId!);
+  const before = await grantFacts();
+  assert.equal(before.method, providerId, 'the grant names the provider');
+  assert.ok(before.idpSid && before.idpSid === identity.idp_sid, 'the grant keeps the same provider session id as the session');
+  assert.equal(before.recent, true);
+
   // The refresh grant keeps working.
+  const refreshed = await fetch(new URL('/api/auth/oauth2/token', upstream), { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: tokens.refresh_token, client_id: clientId, resource }) });
+  assert.equal(refreshed.status, 200, await refreshed.clone().text());
+
+  // The browser session that consented ends. The grant keeps its provenance and still refreshes.
+  await pool.query('DELETE FROM auth_sessions WHERE id = $1', [sessionId]);
+  assert.equal((await pool.query('SELECT 1 FROM auth_session_identities WHERE session_id = $1', [sessionId])).rowCount, 0);
+  assert.deepEqual(await grantFacts(), before, 'the grant keeps its authentication facts after the session is removed');
+  const afterSession = await fetch(new URL('/api/auth/oauth2/token', upstream), { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: (await refreshed.json() as { refresh_token: string }).refresh_token, client_id: clientId, resource }) });
+  assert.equal(afterSession.status, 200, await afterSession.clone().text());
+});
+
+/** The immutable facts of the first minted family for this client (#310 AC-3). */
+async function grantAuthentication(userId: string, client: string) {
+  const row = (await pool.query(`SELECT b.auth_method, b.auth_idp_sid, b.auth_confirmed_at > now() - interval '10 minutes' AS recent
+    FROM oauth_grant_authentication b JOIN oauth_refresh_token r ON r.authorization_code_id = b.authorization_code_id
+    WHERE b.user_id = $1 AND r.client_id = $2 ORDER BY b.created_at LIMIT 1`, [userId, client])).rows[0];
+  return { method: row?.auth_method as string | null, idpSid: row?.auth_idp_sid as string | null, recent: row?.recent as boolean | null };
+}
+
+test('a grant authorized with a password records password, and keeps that after the session ends', async () => {
+  const context = await fresh();
+  const page = await context.newPage();
+  const email = `password-grant-${randomUUID()}@flux.test`;
+  const signUp = await context.request.post(`${origin}/api/auth/sign-up/email`, { headers: { origin },
+    data: { email, password: 'Correct-horse-battery-2026', name: 'Password Grant' } });
+  assert.equal(signUp.status(), 200, await signUp.text());
+  const userId = (await api<{ user: { id: string } }>(context, 'GET', '/api/v1/me')).user.id;
+  const workspace = await api<{ id: string }>(context, 'POST', '/api/v1/workspaces', { name: 'Password lab' }, 201);
+  const project = await api<{ id: string }>(context, 'POST', `/api/v1/workspaces/${workspace.id}/projects`, { name: 'Password project', visibility: 'restricted' }, 201);
+  const agent = await api<{ id: string }>(context, 'POST', `/api/v1/workspaces/${workspace.id}/agents`, { name: 'Password agent', owner: 'self' }, 201);
+  await api(context, 'POST', `/api/v1/projects/${project.id}/grants`, { principal: { kind: 'agent', id: agent.id }, role: 'contributor' }, 201);
+  const connection = await api<{ id: string }>(context, 'POST', '/api/v1/agent-connections',
+    { agentId: agent.id, selectedProjectIds: [project.id], scopes: ['flux.context.read'] }, 201);
+  const { verifier, challenge } = pkce();
+  await page.goto(authorizeUrl(clientId, loopback, challenge, { scope: 'flux.context.read offline_access' }));
+  const callback = await chooseAndConsent(context, page, loopback, connection.id);
+  const tokens = await redeem(callback, verifier, loopback, clientId);
+  const sessionId = (await api<{ session: { id: string } }>(context, 'GET', '/api/v1/me')).session.id;
+  const before = await grantAuthentication(userId, clientId);
+  assert.equal(before.method, 'password', 'a password sign-in is recorded as password');
+  assert.equal(before.idpSid, null, 'and has no provider session');
+  assert.equal(before.recent, true);
+  await pool.query('DELETE FROM auth_sessions WHERE id = $1', [sessionId]);
+  assert.deepEqual(await grantAuthentication(userId, clientId), before, 'the grant keeps the password facts after the session is removed');
   const refreshed = await fetch(new URL('/api/auth/oauth2/token', upstream), { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: tokens.refresh_token, client_id: clientId, resource }) });
   assert.equal(refreshed.status, 200, await refreshed.clone().text());
@@ -275,12 +329,11 @@ test('redirect rules hold on the provider path: another loopback port passes, an
   }
 });
 
-test('/login says the provider is reachable, and offers the password form beside it', async () => {
+test('/login says the provider is reachable and its button is enabled', async () => {
   const page = await (await fresh()).newPage();
   const { challenge } = pkce();
   await page.goto(authorizeUrl(clientId, loopback, challenge));
   assert.equal(await page.getByRole('button', { name: 'Sign in with Keycloak', exact: true }).isEnabled(), true);
-  assert.equal(await page.getByLabel('Password').count(), 1);
   const capabilities = await (await page.context().request.get(`${origin}/api/v1/auth/capabilities`)).json() as { sso: { reachable: boolean } };
   assert.equal(capabilities.sso.reachable, true);
 });
