@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
-import type { Agent, AgentConnection, AgentExecutionCommand, AgentStandingGrant, CoWorkRequestLimits, WorkItem } from '@flux/contracts';
+import type { Agent, AgentConnection, AgentExecutionCommand, AgentStandingGrant, CoWorkRequestLimits, ProjectAgents, WorkItem } from '@flux/contracts';
 import { coworkRecoveryRows, coworkRequestRows, createDatabase, schema, sql } from '@flux/db';
 import { coWorkRequestFingerprint, DomainError, normalizeCoWorkRequest } from '@flux/core';
 import { agentRuntimeInTransaction } from '../../apps/server/src/agent-connection/runtime.js';
@@ -495,4 +495,22 @@ test('the grant registry reserves exactly the recipient operations; a request or
   (error: unknown) => (error as { constraint?: string }).constraint === 'agent_standing_grants_operation_check');
   const definition = (await pool.query("SELECT pg_get_constraintdef(oid) AS d FROM pg_constraint WHERE conname='agent_standing_grants_operation_check'")).rows[0].d as string;
   assert.ok(definition.includes("'cowork.request.claim'::text") && definition.includes("'cowork.request.respond'::text"));
+});
+
+test('the Agents view shows each connection its held unit and its open request with the request state (#160 AC-5)', async () => {
+  const f = await setup();
+  const asked = await f.s.send(f.ask());
+  const view = async () => expectStatus(await f.w.hubert.browser.request('GET', `/api/v1/projects/${f.w.p.id}/agents`), 200) as ProjectAgents;
+  const reviewer = (listed: ProjectAgents) => listed.connections.find((item) => item.id === f.marekClaude.connection.id)!;
+  const before = reviewer(await view());
+  assert.deepEqual(before.currentWork, { taskId: f.a.id, taskTitle: f.a.title, role: 'review', state: 'pending' }, 'assigned, not yet claimed');
+  assert.deepEqual(before.requests, [{ id: asked.requestId, kind: 'review', state: 'queued', reason: null, taskId: f.a.id, taskTitle: f.a.title,
+    sender: { connectionId: f.codex.connection.id, name: f.codex.connection.name, ownerName: before.requests[0]!.sender.ownerName } }]);
+  assert.equal(typeof before.requests[0]!.sender.ownerName, 'string');
+  assert.deepEqual((await view()).connections.find((item) => item.id === f.codex.connection.id)!.requests, [], 'the sender has no request to answer');
+  const r = await recipient(f.w, f.marekClaude, f.reviewUnit);
+  await r.run(r.take(asked.requestId, 1));
+  const claimed = reviewer(await view());
+  assert.equal(claimed.requests[0]!.state, 'claimed');
+  assert.equal(claimed.currentWork!.state, 'claimed');
 });

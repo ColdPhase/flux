@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { agentProposalRepository } from '@flux/db';
-import { agentProposalUseCases, enforce, evaluateProject, recordEvent, type Database } from '@flux/core';
+import { agentProposalUseCases, coworkServerInstructions, enforce, evaluateProject, recordEvent, type Database } from '@flux/core';
 import { registerAgentPlaybook } from './playbook.js';
 import { registerAgentPolicyResource } from './project-policy.js';
 import { agentToolRegistry } from './tool-registry.js';
@@ -21,7 +21,7 @@ export type { FluxMcpClaims } from './context.js';
 
 /** A fresh server is bound to one verified bearer; each tool rechecks inside its transaction. */
 export function createFluxMcpServer(db: Database, claims: FluxMcpClaims & { dispatch: McpDispatch }, cursorSecret: string): McpServer {
-  const server = new McpServer({ name: 'flux', version: '0.1.0' });
+  const server = new McpServer({ name: 'flux', version: '0.1.0' }, { instructions: coworkServerInstructions() });
   const tools = agentToolRegistry(server, claims.dispatch);
   registerAgentPlaybook(server, tools, db, claims);
   registerAgentPolicyResource(server, db, claims);
