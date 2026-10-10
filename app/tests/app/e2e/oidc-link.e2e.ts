@@ -140,7 +140,7 @@ if (phase === 'prepare') {
       const tokens = await oauthToken(client, connection.id, clientId, redirectUri);
       assert.equal((await mcp(tokens.access_token, 81, 'tools/list')).status, 200, 'prepare permits password-authorized bearer');
       const renewed = await context.request.post(`${origin}/api/auth/oauth2/token`, {
-        form: { grant_type: 'refresh_token', client_id: clientId, refresh_token: tokens.refresh_token, resource: `${origin}/mcp` } });
+        headers: { origin }, form: { grant_type: 'refresh_token', client_id: clientId, refresh_token: tokens.refresh_token, resource: `${origin}/mcp` } });
       assert.equal(renewed.status(), 200, 'prepare permits refresh before cutover');
       writeFileSync(savedAuthority, JSON.stringify({ clientId, ...await renewed.json() as { access_token: string; refresh_token: string } }));
       const started = await api(context, 'POST', '/api/v1/identity/link');
@@ -183,7 +183,7 @@ if (phase === 'cutover') {
     await withBrowser(async (browser) => {
       const context = await browser.newContext();
       const response = await context.request.post(`${origin}/api/auth/oauth2/token`, {
-        form: { grant_type: 'refresh_token', client_id: tokens.clientId, refresh_token: tokens.refresh_token, resource: `${origin}/mcp` } });
+        headers: { origin }, form: { grant_type: 'refresh_token', client_id: tokens.clientId, refresh_token: tokens.refresh_token, resource: `${origin}/mcp` } });
       assert.equal(response.status(), 400, 'the refresh grant is refused after cutover');
       assert.equal((await response.json() as { error: string }).error, 'invalid_grant');
     });
