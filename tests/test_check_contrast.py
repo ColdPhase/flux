@@ -1,11 +1,13 @@
 """`scripts/check_contrast.py` on the final design's tokens (#338): `--failures-only` (#201) prints only
-failing pairs and a summary with the same exit code, and an accent colour fails.
+failing pairs and a summary with the same exit code, an accent colour fails, and dark text below the
+APCA bounds (#432) fails even when its WCAG 2 ratio passes.
 
 Runs the script on the real tokens and on a copy with one deliberately weakened token.
 """
 
 from __future__ import annotations
 
+import importlib.util
 import subprocess
 import sys
 import tempfile
@@ -52,6 +54,27 @@ class FailuresOnlyTest(unittest.TestCase):
             result = run("--failures-only", "--tokens", str(broken))
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn("accent", result.stdout)
+
+    def test_the_previous_dark_muted_text_fails_apca_only(self) -> None:
+        css = TOKENS.read_text()
+        current = "--t3: #a1a1a1;"
+        self.assertEqual(css.count(current), 2, "fixture expects the dark muted text token in both dark blocks")
+        with tempfile.TemporaryDirectory() as tmp:
+            broken = Path(tmp) / "tokens.css"
+            broken.write_text(css.replace(current, "--t3: #8c8c8c;"))
+            result = run("--failures-only", "--tokens", str(broken))
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        failing = result.stdout.strip().splitlines()[:-1]
+        self.assertTrue(failing, result.stdout)
+        self.assertTrue(all(line.startswith("FAIL dark  APCA") and "--t3 on" in line for line in failing), result.stdout)
+
+    def test_apca_matches_the_reference_extremes(self) -> None:
+        spec = importlib.util.spec_from_file_location("check_contrast", SCRIPT)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        self.assertAlmostEqual(module.apca("#000000", "#ffffff"), 106.04, places=1)
+        self.assertAlmostEqual(module.apca("#ffffff", "#000000"), -107.88, places=1)
+        self.assertEqual(module.apca("#777777", "#777777"), 0.0)
 
     def test_default_output_is_unchanged(self) -> None:
         result = run()

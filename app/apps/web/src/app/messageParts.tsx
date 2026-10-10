@@ -10,7 +10,8 @@ import { readerActive, watchReaderInput } from '../work/readerIntent';
 // Pieces of a project message shared by the stream of roots and the thread beside it (UI116-1).
 
 export function when(iso: string) { return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); }
-const clockFormat = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
+// A natural clock as drawn ("11:02", or "4:55 PM" in a 12-hour locale), never a zero-padded "04:55 PM" (#436).
+const clockFormat = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
 const dayFormat = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
 export function clock(iso: string) { return clockFormat.format(new Date(iso)); }
 export function day(iso: string) {
