@@ -316,6 +316,10 @@ tar -xOf "$upgrade_archive" manifest.json | grep -q "\"schemaVersion\": $from_sc
 fixture "$U" demo
 
 if printf '%s\n' $new_migrations | grep -qx '0048_unused_ai_task_creation_undo.sql'; then
+  # The reversal replaces U's checkout twice. Keep its pre-upgrade backup outside
+  # that directory so the later restore --migrate checks use the original pair.
+  cp "$upgrade_archive" "$work/pre-undo-upgrade.tar"
+  upgrade_archive="$work/pre-undo-upgrade.tar"
   step "Guarded pre-use reversal of #238 (0060, then 0048) back to the previous image, which starts on its exact ledger"
   # The upgraded data has no #238 fact yet (no task was created after the upgrade). The writers stop first.
   compose_in "$U" stop api worker >/dev/null

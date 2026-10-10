@@ -101,7 +101,7 @@ test('the exact Undo MCP switch controls execution and receipt replay independen
   assert.equal(toolFailure(await f.tool('flux_undo_task_creation', command)).code, 'MCP_ENTRY_UNAVAILABLE');
   assert.equal(await f.used(authority.id), 1, 'refused replay does not debit the grant');
   await save(initial.enabledCapabilityIds);
-  assert.deepEqual(toolValue(await f.tool('flux_undo_task_creation', command)), reverted);
+  assert.deepEqual(toolValue(await f.tool('flux_undo_task_creation', command)), { ...reverted, replayed: true });
   assert.equal(await f.used(authority.id), 1, 'authorized exact replay keeps the original effect and debit');
 });
 
