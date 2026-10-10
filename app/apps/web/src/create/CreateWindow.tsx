@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useRevalidator } from 'react-router';
 import { WORK_LIMITS, WORK_STATUSES, type Agent, type CreateWorkCommand, type ObjectRef, type Project, type WorkItem, type WorkspaceMember, type WorkStatus } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { getProject } from '../api/sketches';
-import { useDraft } from '../app/drafts';
+import { readDraft, useDraft } from '../app/drafts';
 import { listWorkspaceMembers } from '../app/conversation-api';
 import { useShellData } from '../app/data';
 import { useShellActions, type CreateRequest } from '../app/shellContext';
@@ -113,15 +113,33 @@ function PickChip({ label, icon, shown, value, onChange, children }: { label: st
 interface SavedForm { title: string; outcome: string; status: WorkStatus; blocker: string; owner: string; sources: { ref: ObjectRef; label: string }[] }
 const sameRefs = (a: ObjectRef[], b: ObjectRef[]) => a.length === b.length && a.every((ref, i) => ref.type === b[i]!.type && ref.id === b[i]!.id);
 
-/** The form of the pending command, when it is the one this opening would send (same title; for a message, the same source). */
-function savedForm(pending: string, title: string, sources: ObjectRef[] | null): SavedForm | null {
+/**
+ * An unresolved command: sent, its response lost, not yet known to have succeeded. Its key is reused by a retry of the same
+ * payload, whichever entry point it comes from. A project keeps one list of them, so a create that completes never removes
+ * another command's record.
+ */
+interface Unresolved { payload: string; key: string; form: SavedForm }
+const UNRESOLVED_LIMIT = 20;
+
+function isUnresolved(value: unknown): value is Unresolved {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as Partial<Unresolved>;
+  return typeof record.payload === 'string' && typeof record.key === 'string' && UUID.test(record.key)
+    && !!record.form && typeof record.form.title === 'string' && Array.isArray(record.form.sources);
+}
+
+/** The project's unresolved commands, oldest first. */
+function unresolvedOf(text: string): Unresolved[] {
   try {
-    const record: unknown = JSON.parse(pending);
-    const form = record && typeof record === 'object' && 'form' in record ? (record as { form: SavedForm }).form : null;
-    if (!form || typeof form.title !== 'string' || form.title !== title || !Array.isArray(form.sources)) return null;
-    if (sources && !sameRefs(form.sources.map((s) => s.ref), sources)) return null;
-    return form;
-  } catch { return null; }
+    const list: unknown = JSON.parse(text);
+    return Array.isArray(list) ? list.filter(isUnresolved) : [];
+  } catch { return []; }
+}
+
+/** The form of the most recent unresolved command this opening would send (same title; for a message, the same source). */
+function savedForm(records: Unresolved[], title: string, sources: ObjectRef[] | null): SavedForm | null {
+  const match = [...records].reverse().find(({ form }) => form.title === title && (!sources || sameRefs(form.sources.map((s) => s.ref), sources)));
+  return match?.form ?? null;
 }
 
 interface Context { project: Project; members: WorkspaceMember[]; agents: Agent[] }
@@ -140,12 +158,14 @@ function TaskForm({ request, typed, phone, projectId, onProject, onClose }: { re
   const prefilled = request.title !== undefined || !!request.sources?.length || !!typed;
   const draft = useDraft(me.user.id, `project-work:${projectId || 'none'}`);
   // An uncertain response can be retried after a reload with the same key.
-  const pending = useDraft(me.user.id, `project-work:${projectId || 'none'}:pending`);
+  const pendingContext = `project-work:${projectId || 'none'}:pending`;
+  const pending = useDraft(me.user.id, pendingContext);
   const [own, setOwn] = useState(typed || request.title || '');
   const title = prefilled ? own : draft.text;
-  const setTitle = (text: string) => { if (prefilled) setOwn(text); else { draft.setText(text); pending.clear(); } setError(''); };
+  // Editing the text never drops an unresolved command: only its own successful create resolves it.
+  const setTitle = (text: string) => { if (prefilled) setOwn(text); else draft.setText(text); setError(''); };
   // An unresolved command (its response was lost) comes back whole: every field it sent, not just the title.
-  const [saved] = useState(() => savedForm(pending.text, prefilled ? (typed || request.title || '') : draft.text.trim(), prefilled ? (request.sources ?? []).map((s) => s.ref) : null));
+  const [saved] = useState(() => savedForm(unresolvedOf(readDraft(me.user.id, pendingContext)), prefilled ? (typed || request.title || '') : draft.text.trim(), prefilled ? (request.sources ?? []).map((s) => s.ref) : null));
   const [outcome, setOutcome] = useState(saved?.outcome ?? '');
   const [status, setStatus] = useState<WorkStatus>(saved?.status ?? request.status ?? 'open');
   const [blocker, setBlocker] = useState(saved?.blocker ?? '');
@@ -202,24 +222,24 @@ function TaskForm({ request, typed, phone, projectId, onProject, onClose }: { re
     };
     const payload = JSON.stringify([projectId, command]);
     const original = draft.text; const revision = draft.revision;
-    let key = crypto.randomUUID() as string;
+    // Every way in keeps its unresolved command: a lost response is retried with the same identity, whatever the entry point.
+    const records = unresolvedOf(readDraft(me.user.id, pendingContext));
+    let key = records.find((record) => record.payload === payload)?.key ?? crypto.randomUUID() as string;
     if (attempt.current?.payload === payload) key = attempt.current.key;
-    else {
-      // Every way in keeps its unresolved command: a lost response is retried with the same identity, whatever the entry point.
-      try {
-        const previous: unknown = JSON.parse(pending.text);
-        if (previous && typeof previous === 'object' && 'payload' in previous && previous.payload === payload && 'key' in previous && typeof previous.key === 'string' && UUID.test(previous.key)) key = previous.key;
-      } catch { /* no valid pending command */ }
-    }
     attempt.current = { payload, key };
-    const pendingText = JSON.stringify({ payload, key, form: { title: text, outcome, status, blocker, owner, sources } });
-    const pendingRevision = pending.setText(pendingText);
+    const form: SavedForm = { title: text, outcome, status, blocker, owner, sources };
+    const next = [...records.filter((record) => record.payload !== payload), { payload, key, form }].slice(-UNRESOLVED_LIMIT);
+    pending.setText(JSON.stringify(next));
     setBusy(true); setError('');
     try {
       const item = await createWork(projectId, command, key);
       attempt.current = null;
-      if (prefilled) pending.clearIfMatches(pendingText, pendingRevision);
-      else if (draft.clearIfMatches(original, revision) === 'device') pending.clearIfMatches(pendingText, pendingRevision);
+      // This command is resolved once its draft is gone from this device; a refused removal keeps its record for a retry.
+      // Other unresolved commands of the project stay.
+      if (prefilled || draft.clearIfMatches(original, revision) === 'device') {
+        const rest = unresolvedOf(readDraft(me.user.id, pendingContext)).filter((record) => record.payload !== payload);
+        pending.setText(rest.length ? JSON.stringify(rest) : '');
+      }
       revalidator.revalidate();
       if (!mounted.current) return;
       if (another) { done(item); return; }

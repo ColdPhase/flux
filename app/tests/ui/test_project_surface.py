@@ -672,7 +672,9 @@ class ProjectSurfaceJourney(unittest.TestCase):
         field = open_from_tasks(page)
         expect(field).to_have_value("")
         expect(self.create_note(page)).to_contain_text("Reloading may restore older text")
-        pending = page.evaluate("key => JSON.parse(localStorage.getItem(key + ':pending'))", key)
+        # The project keeps a list of unresolved commands; this one is the record of the refused command.
+        records = page.evaluate("key => JSON.parse(localStorage.getItem(key + ':pending'))", key)
+        pending = [record for record in records if title in record["payload"]][-1]
         self.assertEqual(pending["key"], keys[0])
         self.assertIn(title, pending["payload"])
         self.close_create(page)

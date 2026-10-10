@@ -552,5 +552,40 @@ class CreateWindow(unittest.TestCase):
         self.assertEqual(page.locator(".create__title").count(), 0)
 
 
+    def test_16_an_unresolved_command_survives_another_create_in_the_same_project(self) -> None:
+        """A blank-form command loses its response; a prefilled create in the same project then completes. The retry of the
+        first command still carries its own identity and makes no second task."""
+        self.ensure_account()
+        made = self.thread(self.page(), "Cross-command message: order the seed trays")
+        page = self.page()
+        page.goto(f"/projects/{self.ids['project']}/tasks")
+        keys: list[str] = []
+        self.lose_first_response(page, keys)
+        field = open_from_tasks(page)
+        field.fill("Cross command first")
+        dialog(page).get_by_label("Details").fill("First command details")
+        submit_button(page).click()
+        expect(dialog(page).get_by_role("alert")).to_have_text("The response was lost")
+        page.keyboard.press("Escape")
+        expect(dialog(page)).to_have_count(0)
+        page.goto(f"/projects/{self.ids['project']}/conversations/{made['conversation']}")
+        message = page.locator(f"#message-{made['message']}")
+        message.hover()
+        message.get_by_role("button", name="Task", exact=True).click()
+        submit_button(page).click()
+        expect(dialog(page)).to_have_count(0)
+        page.goto(f"/projects/{self.ids['project']}/tasks")
+        field = open_from_tasks(page)
+        expect(field).to_have_value("Cross command first")
+        expect(dialog(page).get_by_label("Details")).to_have_value("First command details")
+        submit_button(page).click()
+        expect(dialog(page)).to_have_count(0)
+        self.assertEqual(len(keys), 3)
+        self.assertNotEqual(keys[1], keys[0], "the other create has its own identity")
+        self.assertEqual(keys[2], keys[0], "the first command's identity survives the other create")
+        stored = [item for item in self.work(page) if item["title"] == "Cross command first"]
+        self.assertEqual(len(stored), 1, "one persisted task")
+        self.assertEqual(stored[0]["outcome"], "First command details")
+
 if __name__ == "__main__":
     unittest.main()
