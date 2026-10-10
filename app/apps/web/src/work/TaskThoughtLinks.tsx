@@ -33,6 +33,8 @@ export function TaskThoughtLinks({ item, project, links, empty, writable, reload
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
+  // Bumped when a refused choice may have changed the map, so its thoughts are read again.
+  const [reloads, setReloads] = useState(0);
   const toggle = useRef<HTMLButtonElement>(null);
   const attempt = useRef<{ key: string; id: string } | null>(null);
   const sectionId = useId();
@@ -63,7 +65,7 @@ export function TaskThoughtLinks({ item, project, links, empty, writable, reload
       .then((sketch) => setLoaded({ mapId, thoughts: sketch.thoughts }))
       .catch(() => { if (!controller.signal.aborted) setLoaded({ mapId, failed: true }); });
     return () => controller.abort();
-  }, [open, mapId]);
+  }, [open, mapId, reloads]);
 
   const close = () => { setOpen(false); toggle.current?.focus(); };
   // Escape closes the open picker from its button as well as from inside it; the Details panel keeps its own Escape otherwise.
@@ -88,7 +90,8 @@ export function TaskThoughtLinks({ item, project, links, empty, writable, reload
       else if (cause instanceof ApiError && cause.status === 404) setError('That thought is no longer on a map you can read. Choose another.');
       else if (cause instanceof ApiError && cause.status === 422) setError('That thought was deleted while you were choosing. Choose another thought.');
       else setError(LINK_FAILURE);
-      if (cause instanceof ApiError && cause.status === 404) setLoaded(null);
+      // The list stays on screen until the map's thoughts arrive again, so a refused choice never leaves the picker on "Loading thoughts…".
+      if (cause instanceof ApiError && (cause.status === 404 || cause.status === 422)) setReloads((count) => count + 1);
     } finally {
       setBusy(false);
     }

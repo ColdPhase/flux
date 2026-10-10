@@ -849,6 +849,9 @@ class ScenarioJourney:
             jonas.keyboard.press("Enter")
         expect(section.get_by_role("alert")).to_contain_text("Choose another thought.")
         expect(picker).to_be_visible()
+        # The refused choice reads the map again: the deleted thought leaves the chooser and the rest stay usable.
+        expect(dropped).to_have_count(0)
+        expect(choice).to_be_visible()
         if self.phone:
             self.tap(choice)
         else:
