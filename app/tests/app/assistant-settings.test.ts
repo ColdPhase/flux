@@ -19,15 +19,18 @@ const settings = async (owner: Person, workspaceId: string, status = 200) => {
 async function setup(label: string) {
   const manager = await person(`assistant-manager-${label}`);
   const owner = await person(`assistant-${label}`); const ws = await workspace(manager, 'Assistant workspace');
-  await addMember(manager, ws.id, owner, 'member');
+  await addMember(manager, ws.id, owner, 'admin');
   const managed = await project(owner, ws.id, 'Managed project', 'workspace');
+  const blocked = await project(manager, ws.id, 'Outside owner scope', 'restricted');
+  expectStatus(await manager.browser.request('POST', `/api/v1/projects/${blocked.id}/grants`,
+    { body: { principal: { kind: 'human', id: owner.id }, role: 'denied' } }), 201);
   const agent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
     { body: { name: 'Owner assistant', owner: 'self' } }), 201) as { id: string };
   const connections = new FakeConnections(); const queue = new FakeQueue();
   connections.connect(owner.id, randomUUID());
   const runs = personalRunUseCases(db, { connections, queue: queue.factory, providerEnabled: true });
   await runs.enable(principal(owner), { consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId: agent.id });
-  return { owner, manager, ws, managed, agent, connections, runs };
+  return { owner, manager, ws, managed, blocked, agent, connections, runs };
 }
 
 test('five areas map through S6; only read removes effects and reserved co-work tools are absent', () => {
@@ -50,10 +53,7 @@ test('enablement atomically creates one identity/policy/settings, auto-joins onl
   assert.equal(row.compute_source, 'owner_assistant');
   assert.equal((await pool.query("SELECT count(*)::int n FROM agent_connections WHERE owner_user_id=$1 AND workspace_id=$2 AND compute_source='owner_assistant'", [f.owner.id, f.ws.id])).rows[0].n, 1);
   assert.equal((await pool.query('SELECT role FROM project_grants WHERE agent_id=$1 AND project_id=$2', [f.agent.id, f.managed.id])).rows[0].role, 'contributor');
-  const another = await person('assistant-project-manager');
-  await addMember(f.manager, f.ws.id, another, 'member');
-  const unmanaged = await project(another, f.ws.id, 'Other managed project', 'workspace');
-  assert.equal((await pool.query('SELECT id FROM project_grants WHERE agent_id=$1 AND project_id=$2', [f.agent.id, unmanaged.id])).rowCount, 0, 'no automatic grant in someone else\'s project');
+  assert.equal((await pool.query('SELECT id FROM project_grants WHERE agent_id=$1 AND project_id=$2', [f.agent.id, f.blocked.id])).rowCount, 0, 'no automatic grant outside the owner’s current manage rights');
   const later = await project(f.owner, f.ws.id, 'Later owned project', 'workspace');
   assert.equal((await pool.query('SELECT role FROM project_grants WHERE agent_id=$1 AND project_id=$2', [f.agent.id, later.id])).rows[0].role, 'contributor');
   assert.ok((await settings(f.owner, f.ws.id)).body.policy.selectedProjectIds.includes(later.id));

@@ -22,7 +22,7 @@ test('0077 fresh/upgrade/reverse preserves legacy identity, grants and consent w
     const owner = randomUUID(); const ws = randomUUID(); const agent = randomUUID(); const allowed = randomUUID(); const notJoined = randomUUID();
     await client.query("INSERT INTO auth_users(id,name,email) VALUES($1,'Legacy assistant owner',$2)", [owner, `${owner}@example.test`]);
     await client.query("INSERT INTO workspaces(id,name,created_by) VALUES($1,'Legacy workspace',$2)", [ws, owner]);
-    await client.query("INSERT INTO workspace_members(workspace_id,user_id,role) VALUES($1,$2,'owner')", [ws, owner]);
+    await client.query("INSERT INTO workspace_members(workspace_id,user_id,role,created_by) VALUES($1,$2,'owner',$2)", [ws, owner]);
     await client.query("INSERT INTO agents(id,workspace_id,name,owner_user_id) VALUES($1,$2,'Legacy agent',$3)", [agent, ws, owner]);
     for (const id of [allowed, notJoined]) await client.query("INSERT INTO projects(id,workspace_id,name,visibility,created_by) VALUES($1,$2,'Legacy project','workspace',$3)", [id, ws, owner]);
     await client.query("INSERT INTO project_grants(id,workspace_id,project_id,agent_id,role,created_by) VALUES($1,$2,$3,$4,'contributor',$5)", [randomUUID(),ws,allowed,agent,owner]);
@@ -30,6 +30,9 @@ test('0077 fresh/upgrade/reverse preserves legacy identity, grants and consent w
       consent_payer_organization,consent_payer_workspace,per_run_cents,daily_cap_cents,time_zone)
       VALUES($1,$2,$3,'anthropic','fixture-model','Legacy payer','Legacy payer workspace',20,100,'UTC')`, [owner,randomUUID(),PERSONAL_RUN_CONSENT_VERSION]);
     await client.query('INSERT INTO personal_run_agents(owner_user_id,workspace_id,agent_id) VALUES($1,$2,$3)', [owner,ws,agent]);
+    const external = randomUUID();
+    await client.query("INSERT INTO agent_connections(id,workspace_id,owner_user_id,agent_id,name,compute_source,scopes) VALUES($1,$2,$3,$4,'Retained external','user_operated_external_client',ARRAY['flux.context.read']::text[])", [external,ws,owner,agent]);
+    const ordinary = (await client.query('SELECT * FROM agent_connections WHERE id=$1', [external])).rows[0];
     const before = {
       enablement: (await client.query('SELECT * FROM personal_run_enablements')).rows,
       agents: (await client.query('SELECT * FROM personal_run_agents')).rows,
@@ -48,6 +51,7 @@ test('0077 fresh/upgrade/reverse preserves legacy identity, grants and consent w
     assert.ok(policy.enabled_capability_ids.every((id: string) => id.endsWith('.read')), 'legacy upgrade never adds an effect capability');
     assert.ok(!policy.enabled_entry_ids.includes('tool:flux_bootstrap'));
     assert.deepEqual((await client.query('SELECT project_id FROM agent_connection_projects WHERE connection_id=$1', [identity.connection_id])).rows, [{ project_id: allowed }]);
+    assert.deepEqual((await client.query('SELECT * FROM agent_connections WHERE id=$1', [external])).rows[0], ordinary);
     assert.deepEqual((await client.query('SELECT * FROM personal_run_enablements')).rows, before.enablement);
     assert.deepEqual((await client.query('SELECT * FROM personal_run_agents')).rows, before.agents);
     assert.deepEqual((await client.query('SELECT * FROM project_grants')).rows, before.grants, 'upgrade creates no manager-owned project grant');
@@ -56,7 +60,8 @@ test('0077 fresh/upgrade/reverse preserves legacy identity, grants and consent w
     await client.query('ROLLBACK TO SAVEPOINT invalid_settings');
     await client.query(await readFile(join(directory, 'reverse/0077_assistant_settings.down.sql'), 'utf8'));
     await client.query('DELETE FROM flux_schema_version WHERE version=77');
-    assert.equal((await client.query("SELECT 1 FROM agent_connections WHERE compute_source='user_operated_external_client'")).rowCount, 0);
+    assert.equal((await client.query("SELECT 1 FROM agent_connections WHERE compute_source='user_operated_external_client'")).rowCount, 1);
+    assert.deepEqual((await client.query('SELECT * FROM agent_connections WHERE id=$1', [external])).rows[0], ordinary);
     assert.deepEqual((await client.query('SELECT * FROM personal_run_enablements')).rows, before.enablement);
     assert.deepEqual((await client.query('SELECT * FROM project_grants')).rows, before.grants);
     await assertAssistantMigrationCompatibility(client, applied);
