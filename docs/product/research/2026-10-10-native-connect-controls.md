@@ -243,7 +243,7 @@ Pinned Codex source additionally inspected from the independent source set:
 [common request definitions](https://github.com/openai/codex/blob/d27764b82f7118f674371e6d6e76271d9d606edb/codex-rs/app-server-protocol/src/protocol/common.rs)
 and [MCP definitions](https://github.com/openai/codex/blob/d27764b82f7118f674371e6d6e76271d9d606edb/codex-rs/app-server-protocol/src/protocol/v2/mcp.rs).
 The closed host allowlist is initialize/initialized; exact enrolled server's
-OAuth/status/resource/bootstrap reads; thread start/resume/read on the companion's
+OAuth/status/resource/bootstrap reads and deterministic task/unit setup under the exact preapproved native standing grants; thread start/resume/read on the companion's
 own mapping; turn start/interrupt on its own current IDs; and responses to the
 native pending approval/elicitation request. Thread start/resume supplies current
 `developerInstructions` from the authenticated read, preserving native base

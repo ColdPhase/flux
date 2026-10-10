@@ -4,6 +4,10 @@
 coordination owner @Zamojski5. For #460/#152/#160, using #153/#154 and #74.
 This document does not amend EXT-1, enable a public tool or accept runtime delivery.
 The original complete busy-review → fix → fresh-review/restart outcome remains required.
+The independent exact `4b7e17e0b54f629e0841f3b6418c766ae7c66f0d`
+[COMMENT5480787620](https://github.com/ColdPhase/flux/pull/467#pullrequestreview-5480787620)
+requires CS-1 audience protection and CS-2 enum corrections; it did not accept
+this seam for implementation. This revision retains both gates below.
 
 ## Current evidence and gap
 
@@ -44,7 +48,7 @@ silently to a read-only/proposal-only connection.
 | --- | --- | --- |
 | `flux_list_requests` | `flux.context.read`; new `connection.inbox.read` plus actual reference-kind read dependencies; no standing write operation | `{projectId, limit?, cursor?, order?}`; limit 1–50 default20, cursor opaque max804, order `arrival` or `ready` default `arrival`. Lists only the verified connection's currently authorized pending references. It never ACKs, defers, claims or resolves. |
 | `flux_request_work` | `flux.action.execute`; existing `cowork.request` capability/standing operation; class is the sender unit's actual `execute`, `review` or `plan` | Base write fields + sender unit fence + `request` below. Calls existing `coWorkRequestInTransaction` with server policy/providers; atomically creates addressed intent/lineage/debit/receipt or returns the retained identical intent. Recipient selection grants no authority. |
-| `flux_defer_request` | `flux.action.execute`; new `cowork.request.defer` capability/standing operation, classes `execute`, `review`, `plan`, exact recipient unit/class | Base write fields + `{unitId, requestId, expectedRequestVersion, reason, nextBoundary, dependencyRef}`. reason `busy`, `dependency`, `policy` or `capability`; nextBoundary bounded machine key 1–80; dependencyRef nullable exact source. Updates only addressed queued/deferred metadata under locks. It neither claims another unit nor interrupts current work. |
+| `flux_defer_request` | `flux.action.execute`; new `cowork.request.defer` capability/standing operation, classes `execute`, `review`, `plan`, exact recipient unit/class | Base write fields + `{unitId, requestId, expectedRequestVersion, reason, nextBoundary, dependencyRef}`. reason `busy`, `dependency`, `policy` or `capability`; nextBoundary exactly `after_step`, `after_tests`, `after_release`, `on_dependency`, `on_resume` or `on_capability`; dependencyRef nullable exact source. Updates only addressed queued/deferred metadata under locks. It neither claims another unit nor interrupts current work. |
 | `flux_resolve_request` | `flux.action.execute`; existing `cowork.request.respond` capability/standing operation, recipient unit's actual class | Base write fields + recipient unit fence + `{requestId, expectedRequestVersion, response}` below. Publishes the bounded actor-authored response in the original native task thread and resolves atomically. Existing `flux_decline_request` remains unchanged. |
 
 All new schemas use `additionalProperties:false`, canonical UUIDs, bounded
@@ -104,8 +108,9 @@ prove new coordination.
 - Deferral needs the addressed recipient's current owned runtime and exact
   defer grant/class/unit. `busy` must correspond to a different server-held live
   unit; store a reason and next safe boundary without altering that unit's lease,
-  checkpoint, result or progress. Dependency deferral needs the actual authorized
-  reference. No deferral of claimed/terminal/stale/expired requests. CAS/version,
+  checkpoint, result or progress. Dependency deferral or `on_dependency` needs the actual authorized
+  dependency reference. Reuse the existing storage's six boundary values exactly;
+  this proposal introduces no open-ended machine string or storage expansion. No deferral of claimed/terminal/stale/expired requests. CAS/version,
   command idempotency and prepare/effect/replay/delivery fences apply. Offline
   recipients cannot manufacture a deferral and remain visibly queued.
 - At a safe actual checkpoint the local adapter reads only its addressed queue,
@@ -121,7 +126,18 @@ prove new coordination.
   conversation write or reserved human action. Use #154's actor-aware primitive
   with transaction-bound event intents, then persist responseRef and resolve
   before event flush. Publish failure rolls back response, request, debit and
-  receipt. Claim/resolve checks current unit lease/generation, request version,
+  receipt. **CO-3 audience gate:** the responding actor's ability to read a
+  private GitHub source and the shared original task thread do not authorize
+  publishing its contents. Before detailed publication, the #154/#74 production
+  provider must verify that every eligible viewer of the actual canonical thread
+  may read the private sources backing the response, with the current source and
+  audience dependencies held by the publication/delivery fence. A model-supplied
+  source list or omitted reference is not proof of public provenance. Until a
+  trusted source/publication provider can enforce this closure, refuse detailed
+  private-backed body/resolution, keep the request visibly pending/blocked, and
+  retain only permitted content-free status references. Do not use responding-
+  actor readability as a fallback or copy private findings into a shared message.
+  Claim/resolve checks current unit lease/generation, request version,
   addressing, current target/source versions and separation. Replays recheck
   current authority and referenced response; no duplicate message or resolution.
 - GitHub references need the receiving owner's existing #74 verified access and
