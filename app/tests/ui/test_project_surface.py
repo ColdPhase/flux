@@ -69,7 +69,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
             options.update(viewport=viewport or DESKTOP, device_scale_factor=1)
         if who and who in self.states:
             options["storage_state"] = self.states[who]
-        context = self.browser.new_context(**options)
+        context = self.browser.new_context(service_workers="block", **options)
         self.addCleanup(context.close)
         return context
 
@@ -388,7 +388,9 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(row).to_have_count(1)
         pill = row.evaluate("""el => {
           const r = el.getBoundingClientRect(), box = el.closest('.side__scroll').getBoundingClientRect();
-          return { inside: r.left >= box.left - 1 && r.right <= box.right + 1, raised: getComputedStyle(el).boxShadow !== 'none' };
+          // The open row takes no shadow while the traveling highlight stands in for it (.side__list.has-glide): the pill is the highlight.
+          const pill = el.closest('.side__list').querySelector('.side__glide');
+          return { inside: r.left >= box.left - 1 && r.right <= box.right + 1, raised: getComputedStyle(pill).boxShadow !== 'none' };
         }""")
         self.assertTrue(pill["raised"], "the current project is a raised pill (F-026 §4)")
         self.assertTrue(pill["inside"], f"the pill lies inside the sidebar's scroll box: {pill}")
