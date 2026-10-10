@@ -1,6 +1,7 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import type { ConversationMessage, NativeWorkRow } from '@flux/contracts';
 import { Icon, IconButton, useMediaQuery } from '../ui';
+import { DetentSheet } from '../ui/DetentSheet';
 import { DiscussedTask, MessageObjects } from '../work/inline';
 import type { MessageWorkPreview } from '../work/message-associations';
 import { AgentAuthor, AuthorFace, SourceCitation, clock, day, when } from './messageParts';
@@ -14,28 +15,21 @@ export type ThreadMode = 'docked' | 'sheet';
  * when docked, the stream stay usable. Esc inside it closes it; the opener takes focus back.
  */
 export function ThreadDrawer({ mode, count, focusOnOpen, onClose, children }: { mode: ThreadMode; count: number; focusOnOpen: boolean; onClose: () => void; children: ReactNode }) {
-  const ref = useRef<HTMLElement>(null);
   const titleId = useId();
-  useEffect(() => {
-    if (focusOnOpen && !ref.current?.contains(document.activeElement)) ref.current?.focus({ preventScroll: true });
-    // When it opens; the composer may take focus first when the person chose Reply.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    // Escape that ends an input method's composition is not a request to close.
-    if (event.key !== 'Escape' || event.defaultPrevented || event.nativeEvent.isComposing) return;
-    event.stopPropagation();
-    onClose();
-  };
+  const head = (
+    <div className="thread__head">
+      <h2 className="thread__title" id={titleId}><span className="ui-vh">Replies: </span><span className="ui-panel__kind">Thread</span></h2>
+      <span className="thread__n">{count} {count === 1 ? 'reply' : 'replies'}</span>
+      <IconButton icon={mode === 'sheet' ? 'chevron-left' : 'x'} label="Close replies" className="thread__close" onClick={onClose} />
+    </div>
+  );
+  // Over the stream on a phone or a narrow tablet it is the one two-height sheet, opening at full height;
+  // docked beside the stream it is the same element without the sheet, so a reply draft survives the change.
   return (
-    <aside ref={ref} id="thread" className={`thread thread--${mode}`} aria-labelledby={titleId} tabIndex={-1} onKeyDown={onKeyDown}>
-      <div className="thread__head">
-        <h2 className="thread__title" id={titleId}>Replies</h2>
-        <span className="thread__n"><span className="ui-vh">, </span>{count}</span>
-        <IconButton icon={mode === 'sheet' ? 'chevron-left' : 'x'} label="Close replies" className="thread__close" onClick={onClose} />
-      </div>
+    <DetentSheet as="aside" id="thread" className={`thread thread--${mode}`} aria-labelledby={titleId} detent={mode === 'sheet'} startFull focusOnOpen={focusOnOpen} onClose={onClose}>
+      {head}
       {children}
-    </aside>
+    </DetentSheet>
   );
 }
 

@@ -326,6 +326,8 @@ function AppLayoutContent() {
   // The audience line leads to "Who can see this", where managers change it (#188).
   const openAudience = () => { setDetailsView({ kind: 'overview', focus: 'people' }); toggleDetails(true); };
   const recapOpen = detailsOpen && typeof detailsView === 'object' && detailsView.kind === 'recap';
+  // A task, decision or result opens in the one detail panel with its kind as a chip (F-026 S4).
+  const objectChip = typeof detailsView === 'object' ? ({ work: 'Task', decision: 'Decision', result: 'Result' } as Record<string, string | undefined>)[detailsView.kind] : undefined;
   // "What matters" (#133): a quiet count of what needs you; refreshed when the panel closes.
   const needsYou = useNeedsYou(activeProject ? projectId ?? null : null, recapOpen);
   // One stable entry at the end of the project's view tabs, so the header keeps
@@ -454,7 +456,7 @@ function AppLayoutContent() {
       </div>
 
       <DeferredJumpTo open={jumpOpen} onClose={() => setJumpOpen(false)} userId={me.user.id} />
-      <SidePanel open={detailsOpen} onClose={() => toggleDetails(false)} title={recapOpen ? 'What matters' : 'Details'} id="details"
+      <SidePanel open={detailsOpen} onClose={() => toggleDetails(false)} title={recapOpen ? 'What matters' : 'Details'} chip={objectChip} id="details"
         context={phone && (detailsView === 'place' || typeof detailsView === 'object' && detailsView.kind === 'overview') ? <OverviewContext /> : undefined}>
         <DeferredDetails view={detailsView} workspace={workspace} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} onClose={() => toggleDetails(false)} />
       </SidePanel>

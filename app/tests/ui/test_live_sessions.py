@@ -279,7 +279,7 @@ class LiveJourney(LiveBase):
         nia.goto(self.task_url())
         panel = nia.locator("#details")
         expect(panel.get_by_role("heading", name=TASK)).to_be_visible()
-        expect(panel).to_contain_text(f"Blocked: {BLOCKER}")
+        expect(panel.get_by_label("What is it waiting for?")).to_have_value(BLOCKER)
         start = panel.get_by_role("button", name="Work on this together")
         expect(start).to_be_visible()
         expect(panel).to_contain_text("Ada, Jonas and Kai can join")

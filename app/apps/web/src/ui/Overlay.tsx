@@ -55,6 +55,11 @@ export interface OverlayProps {
   initialFocus?: RefObject<HTMLElement | null>;
   className?: string;
   id?: string;
+  /**
+   * The surface is a transparent full-screen frame (still animated, inert-aware and focus-trapping) around a
+   * sheet that brings its own look, dialog role and name: the content is a `DetentSheet`.
+   */
+  bare?: boolean;
   children: ReactNode;
 }
 
@@ -95,7 +100,7 @@ function useDismissDrag(placement: OverlayPlacement, surfaceRef: RefObject<HTMLD
     onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
       if (event.pointerType === 'mouse' || !event.isPrimary) return;
       // The sheet drags only from its header, so its body keeps scrolling normally.
-      if (placement === 'bottom' && !(event.target as HTMLElement).closest('.ui-panel__head')) return;
+      if (placement === 'bottom' && !(event.target as HTMLElement).closest('.ui-panel__head, .ui-grabber')) return;
       if ((event.target as HTMLElement).closest('input, textarea, select, [contenteditable="true"]')) return;
       state.current = { id: event.pointerId, x: event.clientX, y: event.clientY, t: event.timeStamp, moving: false, prev: 0, prevT: event.timeStamp, last: 0, lastT: event.timeStamp };
     },
@@ -138,7 +143,7 @@ function useDismissDrag(placement: OverlayPlacement, surfaceRef: RefObject<HTMLD
  * Modal surface in a portal: scrim, focus moved in and trapped, Esc and scrim close,
  * the rest of the app inert, focus returned to the opener. Slides from its edge.
  */
-export function Overlay({ open, onClose, placement, label, labelledBy, initialFocus, className, id, children }: OverlayProps) {
+export function Overlay({ open, onClose, placement, label, labelledBy, initialFocus, className, id, bare, children }: OverlayProps) {
   const { mounted, unmount } = usePresence(open);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const scrimRef = useRef<HTMLDivElement>(null);
@@ -182,7 +187,7 @@ export function Overlay({ open, onClose, placement, label, labelledBy, initialFo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, mounted, placement]);
 
-  const drag = useDismissDrag(placement, surfaceRef, scrimRef, () => onCloseRef.current());
+  const drag = useDismissDrag(bare ? 'center' : placement, surfaceRef, scrimRef, () => onCloseRef.current());
 
   if (!mounted) return null;
 
@@ -196,12 +201,12 @@ export function Overlay({ open, onClose, placement, label, labelledBy, initialFo
       <div ref={scrimRef} className="ui-scrim" onClick={() => onCloseRef.current()} aria-hidden="true" />
       <div
         ref={surfaceRef}
-        id={id}
-        className={['ui-overlay__surface', className].filter(Boolean).join(' ')}
-        role="dialog"
-        aria-modal="true"
-        aria-label={label}
-        aria-labelledby={labelledBy}
+        id={bare ? undefined : id}
+        className={['ui-overlay__surface', bare ? 'ui-overlay__surface--bare' : '', className].filter(Boolean).join(' ')}
+        role={bare ? 'presentation' : 'dialog'}
+        aria-modal={bare ? undefined : true}
+        aria-label={bare ? undefined : label}
+        aria-labelledby={bare ? undefined : labelledBy}
         tabIndex={-1}
         onKeyDown={onKeyDown}
         inert={!open}

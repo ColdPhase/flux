@@ -126,6 +126,7 @@ repository was created on 2026-09-26.
 
 ### Changed
 
+- A task, decision or thread opens in one detail panel on the computer and one sheet with a grabber and two heights on the phone; task details are rows of label and value, a blocker card, Results, Activity and a composer, with the title and state edited in place (keys `1`–`5`, Undo) ([#344](https://github.com/ColdPhase/flux/issues/344))
 - Faster reads: the Inbox count no longer compiles query code on each visit, conversation and material lists use one statement instead of one or two per row, and conversation roots and comparison outcomes are read without locks ([#300](https://github.com/ColdPhase/flux/pull/300)).
 - The app's files are sent as Brotli or gzip, and large JSON answers are compressed ([#269](https://github.com/ColdPhase/flux/pull/269)).
 - Settings is one calm place with Account, Appearance (Light, Dark or Match system, and a switch for Kreska's small moments), Notifications, Agents and AI and Keyboard shortcuts. Notifications now default to Only "Needs you" (replies no longer push), with Everything or Nothing, quiet hours and an optional morning summary push ([#370](https://github.com/ColdPhase/flux/pull/370)).

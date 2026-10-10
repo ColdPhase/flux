@@ -1,9 +1,8 @@
-import { useCallback, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useRevalidator } from 'react-router';
 import type { Agent, ObjectLink, Project, WorkspaceMember, WorkStatus, WorkDetailObject, WorkDetailProjection } from '@flux/contracts';
-import { WORK_STATUSES } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { AgentIdentity, Button, Icon, Input, StatusGlyph } from '../ui';
+import { AgentIdentity, Avatar, Button, Icon, Input, StatusGlyph, useToast } from '../ui';
 import { getProject, listWorkspaceMembers } from '../app/conversation-api';
 import { useShellData } from '../app/data';
 import { useRegisterLiveHere } from '../live/LiveProvider';
@@ -19,6 +18,7 @@ import { useNativeOwn, useWorkChoices, useDetailRelations, type DetailRelations,
 import { WorkPagination } from './WorkPagination';
 import { TaskDiscussionSection } from './TaskDiscussion';
 import { ReadyToClose, TaskPullRequests } from '../github/TaskPullRequests';
+import { PanelMeta, StatusControl, TitleField, useStateKeys } from './TaskParts';
 
 // The Details panel for work items, decisions and results, and the two forms that start from a
 // message (#101). Everything shown here is visible to the people with access to the project;
@@ -215,8 +215,8 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   const { busy, error } = commands.state;
   const { setBusy, setError, setBlocker, isCurrent } = commands;
   const blocker = commands.state.blocker ?? item.blocker ?? '';
-  const statusId = useId();
   const ownerId = useId();
+  const owners = useAgentOwners(context.project);
   const decisions = linked(relations.links, item.id, 'decision');
   const results = linked(relations.links, item.id, 'result');
   const parkedBy = item.parked ? detail.context.find((decision) => decision.id === item.parked!.decisionId) : null;
@@ -227,14 +227,33 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   // The same change of the same version retried after a lost response reuses its command UUID: it never
   // contributes the saved blocker to the task conversation twice. A different change gets a new one.
   const attempt = useRef<{ key: string; id: string } | null>(null);
-  async function change(command: Parameters<typeof updateWork>[1]) {
-    const key = JSON.stringify([item.id, item.version, command]);
+  const latest = useRef(item);
+  useEffect(() => { latest.current = item; });
+  const toast = useToast();
+  async function change(command: Parameters<typeof updateWork>[1], base: Pick<OwnWork, 'id' | 'version'> = item): Promise<boolean> {
+    const key = JSON.stringify([base.id, base.version, command]);
     if (attempt.current?.key !== key) attempt.current = { key, id: crypto.randomUUID() };
     setBusy(true); setError('');
-    try { await updateWork(item, command, attempt.current.id); attempt.current = null; if (isCurrent()) reload(); }
-    catch (cause) { if (!isCurrent()) return; setError(readable(cause)); if (cause instanceof ApiError && cause.status === 409) { attempt.current = null; reload(); } }
+    try { await updateWork(base, command, attempt.current.id); attempt.current = null; if (isCurrent()) reload(); return true; }
+    catch (cause) { if (!isCurrent()) return false; setError(readable(cause)); if (cause instanceof ApiError && cause.status === 409) { attempt.current = null; reload(); } return false; }
     finally { setBusy(false); }
   }
+  // One tap or a key changes the state at once, and the toast takes it back (S9).
+  async function setState(next: WorkStatus) {
+    if (!writable || busy || next === item.status) return;
+    // Undo restores what this change replaced: leaving "blocked" clears its reason, so the reason goes back too.
+    const before = { status: item.status, blocker: item.status === 'blocked' ? item.blocker : null };
+    if (await change({ status: next })) {
+      // Finishing parked work also unparks it, and the contract cannot park it again, so Undo would leave it unparked: no Undo for that change.
+      if (item.parked && (next === 'done' || next === 'not_pursued')) {
+        toast({ message: `${taskNumber(item)} is now ${STATUS_LABEL[next].toLowerCase()} and no longer parked`, timeout: 8000 });
+        return;
+      }
+      const restore = before.status === 'blocked' && before.blocker ? { status: before.status, blocker: before.blocker } : { status: before.status };
+      toast({ message: `${taskNumber(item)} is now ${STATUS_LABEL[next].toLowerCase()}`, timeout: 8000, action: { label: 'Undo', onClick: () => { void change(restore, latest.current); } } });
+    }
+  }
+  useStateKeys(writable, (status) => void setState(status));
   const ownerValue = item.owner ? `${item.owner.kind}:${item.owner.id}` : '';
   const people = context.members.length ? context.members.map((member) => ({ value: `human:${member.userId}`, label: member.userId === me.user.id ? `${member.name} (you)` : member.name }))
     : [{ value: `human:${me.user.id}`, label: `${me.user.name} (you)` }];
@@ -244,37 +263,52 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
 
   return (
     <div className="details wd" data-detail-kind="work" data-detail-id={item.id}>
-      <p className="details__eyebrow wd-eyebrow"><StatusGlyph status={item.status} size={14} /><span>Task <span className="ui-task-number">{taskNumber(item)}</span> · <span className="wd-project-name">{context.project.name}</span> · {STATUS_LABEL[item.status]}{item.parked ? ' · parked, not done' : ''}</span></p>
-      <h3 className="details__title">{item.title}</h3>
+      <PanelMeta>{taskNumber(item)}</PanelMeta>
+      <p className="wd-where"><span className="ui-task-number">{taskNumber(item)}</span> · <span className="wd-project-name">{context.project.name}</span>{item.parked ? ' · parked, not done' : ''}</p>
+      <TitleField title={item.title} editable={writable} onSave={(title) => change({ title })} />
       {item.outcome ? <p className="details__lead">{item.outcome}</p> : null}
-      {item.status === 'blocked' && item.blocker ? <p className="wd-blocker"><Icon name="alert" size={14} />Blocked: {item.blocker}</p> : null}
-      <ReadyToClose item={item} writable={writable} busy={busy} done={() => void change({ status: 'done' })} />
-      {!isFinished(item) ? <LiveEntry variant="inline" anchor={liveAnchor} /> : null}
 
-      {writable ? (
-        <fieldset className="wd-controls" disabled={busy}>
-          <legend className="ui-vh">Change this work</legend>
-          <label htmlFor={statusId}>Status</label>
-          <select id={statusId} value={item.status} onChange={(event) => void change({ status: event.target.value as WorkStatus })}>
-            {WORK_STATUSES.map((status) => <option key={status} value={status}>{STATUS_LABEL[status]}</option>)}
-          </select>
-          <label htmlFor={ownerId}>Owner</label>
-          <select id={ownerId} value={ownerValue} onChange={(event) => {
-            const [kind, ...rest] = event.target.value.split(':');
-            void change({ owner: event.target.value ? { kind: kind as 'human' | 'agent', id: rest.join(':') } : null });
-          }}>
-            <option value="">Nobody yet</option>
-            <optgroup label="People">{people.map((person) => <option key={person.value} value={person.value}>{person.label}</option>)}</optgroup>
-            {agents.length ? <optgroup label="Agents">{agents.map((agent) => <option key={agent.value} value={agent.value}>{agent.label}</option>)}</optgroup> : null}
-          </select>
-          {item.status === 'blocked' ? (
+      <dl className="wd-rows">
+        <div className="wd-row">
+          <dt id={`${ownerId}-status`}>Status</dt>
+          <dd>{writable ? <StatusControl status={item.status} disabled={busy} onChoose={(status) => void setState(status)} /> : <span className="wd-value"><StatusGlyph status={item.status} size={16} />{STATUS_LABEL[item.status]}</span>}</dd>
+        </div>
+        <div className="wd-row">
+          <dt><label htmlFor={ownerId}>Owner</label></dt>
+          <dd>
+            {item.owner ? (item.owner.kind === 'agent' ? <AgentIdentity name={item.owner.name} owner={owners.get(item.owner.id)} /> : <Avatar name={item.owner.name} size="sm" tone={item.owner.id === me.user.id ? 'me' : 'neutral'} />) : null}
+            {writable ? (
+              <select id={ownerId} className="wd-owner" disabled={busy} value={ownerValue} onChange={(event) => {
+                const [kind, ...rest] = event.target.value.split(':');
+                void change({ owner: event.target.value ? { kind: kind as 'human' | 'agent', id: rest.join(':') } : null });
+              }}>
+                <option value="">Nobody yet</option>
+                <optgroup label="People">{people.map((person) => <option key={person.value} value={person.value}>{person.label}</option>)}</optgroup>
+                {agents.length ? <optgroup label="Agents">{agents.map((agent) => <option key={agent.value} value={agent.value}>{agent.label}</option>)}</optgroup> : null}
+              </select>
+            ) : <span className="wd-value" id={ownerId}>{item.owner?.name ?? 'Nobody yet'}</span>}
+          </dd>
+        </div>
+        <div className="wd-row">
+          <dt>Came from</dt>
+          <dd className="wd-from"><CameFrom item={item} links={relations.links} project={context.project} empty={emptyLinks(relations, 'Added directly on the Tasks tab.')} /></dd>
+        </div>
+      </dl>
+
+      {item.status === 'blocked' ? (
+        <section className="wd-blocker" aria-label="Blocker">
+          <div className="wd-blocker__head"><span className="ui-pill ui-pill--inv">Blocked</span>
+            {writable ? <Button variant="quiet" className="wd-blocker__resolve" disabled={busy} onClick={() => void setState('in_progress')}>Resolve</Button> : null}</div>
+          {writable ? (
             <form className="wd-blocker-form" onSubmit={(event) => { event.preventDefault(); void change({ blocker: blocker.trim() || null }); }}>
               <Input label="What is it waiting for?" value={blocker} onChange={(event) => setBlocker(event.target.value)} maxLength={2000} />
-              <Button type="submit" variant="secondary" busy={busy}>Save</Button>
+              <Button type="submit" variant="secondary" busy={busy} disabled={blocker.trim() === (item.blocker ?? '')}>Save</Button>
             </form>
-          ) : null}
-        </fieldset>
+          ) : <p>{item.blocker || 'Waiting for something; no reason written.'}</p>}
+        </section>
       ) : null}
+      <ReadyToClose item={item} writable={writable} busy={busy} done={() => void change({ status: 'done' })} />
+      {!isFinished(item) ? <LiveEntry variant="inline" anchor={liveAnchor} /> : null}
       {error ? <p className="wd-error" role="alert">{error}</p> : null}
 
       {item.parked ? (
@@ -298,27 +332,18 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
       <TaskPullRequests item={item} project={context.project} writable={writable} reload={reload} />
 
       <RelationPages relations={relations} />
-      <section className="details__sec" aria-labelledby="wd-from">
-        <h4 id="wd-from">Came from</h4>
-        <Sources links={relations.links} id={item.id} project={context.project} />
-        {!relations.links.some((link) => link.from.id === item.id && link.role === 'source') && !item.planIntent ? <p className="wd-muted">{emptyLinks(relations, 'Added directly on the Tasks tab.')}</p> : null}
-        {item.planIntent ? (
-          <p className="wd-plan">Planned from <Link className="wd-inline" to={`/materials/${item.planIntent.materialId}/versions/${item.planIntent.version}`}>plan revision {item.planIntent.version}</Link>
-            {' '}as <code>{item.planIntent.intentKey}</code>. This task stays tied to that revision.</p>
-        ) : null}
+
+      <section className="details__sec" aria-labelledby="wd-results">
+        <div className="wd-sechead"><h4 id="wd-results">Results</h4>
+          {writable ? <Button variant="secondary" icon="plus" onClick={() => openDetails({ kind: 'attach-result', projectId: item.projectId, workId: item.id })}>Attach a result</Button> : null}</div>
+        <Linked empty={emptyLinks(relations, isFinished(item) ? 'Finished without a written result.' : 'No result yet. Small tasks do not need one.')} items={results.map((entry) => ({ key: entry.link.id, label: entry.title, open: () => openDetails({ kind: 'result', id: entry.id, projectId: context.project.id }) }))} />
       </section>
 
-      <TaskDiscussionSection key={`${me.user.id}:${context.project.id}:${item.id}`} workId={item.id} project={context.project} members={context.members} me={{ id: me.user.id, name: me.user.name }} />
+      <TaskDiscussionSection key={`${me.user.id}:${context.project.id}:${item.id}`} workId={item.id} project={context.project} number={item.number} members={context.members} me={{ id: me.user.id, name: me.user.name }} />
 
       <section className="details__sec" aria-labelledby="wd-decisions">
         <h4 id="wd-decisions">Decisions</h4>
         <Linked empty={emptyLinks(relations, 'No decision refers to this work yet.')} items={decisions.map((entry) => ({ key: entry.link.id, label: entry.title, hint: entry.link.role === 'still_applies' ? 'still applies' : undefined, open: () => openDetails({ kind: 'decision', id: entry.id, projectId: context.project.id }) }))} />
-      </section>
-
-      <section className="details__sec" aria-labelledby="wd-results">
-        <h4 id="wd-results">Results</h4>
-        <Linked empty={emptyLinks(relations, isFinished(item) ? 'Finished without a written result.' : 'No result yet. Small tasks do not need one.')} items={results.map((entry) => ({ key: entry.link.id, label: entry.title, open: () => openDetails({ kind: 'result', id: entry.id, projectId: context.project.id }) }))} />
-        {writable ? <div className="wd-actions"><Button variant="secondary" icon="plus" onClick={() => openDetails({ kind: 'attach-result', projectId: item.projectId, workId: item.id })}>Attach a result</Button></div> : null}
       </section>
 
       <OtherRelationships object={item} relations={relations} project={context.project} />
@@ -326,6 +351,21 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
       <Audience project={context.project} />
       <IdsLine>Added by {item.createdBy.name} · {shortDate(item.createdAt)} · version {item.version}</IdsLine>
     </div>
+  );
+}
+
+/** Where the task came from, as one value: its sources, or the plan revision that made it. */
+function CameFrom({ item, links, project, empty }: { item: OwnWork; links: ObjectLink[]; project: Project; empty: string }) {
+  const has = links.some((link) => link.from.id === item.id && link.role === 'source');
+  return (
+    <>
+      <Sources links={links} id={item.id} project={project} />
+      {item.planIntent ? (
+        <p className="wd-plan">Planned from <Link className="wd-inline" to={`/materials/${item.planIntent.materialId}/versions/${item.planIntent.version}`}>plan revision {item.planIntent.version}</Link>
+          {' '}as <code>{item.planIntent.intentKey}</code>. This task stays tied to that revision.</p>
+      ) : null}
+      {!has && !item.planIntent ? <span className="wd-muted">{empty}</span> : null}
+    </>
   );
 }
 
