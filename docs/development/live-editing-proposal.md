@@ -923,3 +923,28 @@ reached the 40 ms cursor tick (one cursor with a selection among about 1000; non
 earlier quiet runs), and the peer drew Ada's caret one character before the end between the two paint
 checks. In drawn text the browser moves the caret again, as before. The control and the driver
 are unchanged.
+
+**map-500-drag-200 (2026-10-10).** At `256a5ad5` this case sat at the edge (p95 199, 186
+and 202.8 ms in three quiet runs). Timing each sample from its exact sampled publication,
+not the covering one, puts the extra time against drag-1 on the peer's observation:
+publication to receipt p50/p95 35/48 ms (drag-1: 37/45), receipt to the render condition
+54/92 (14/23), two paint opportunities 57/93 (37/41); the owner published p95 21 ms after
+its input. The application itself is fast there: on the peer a preview's DOM commit
+followed its WebSocket message by p50 3.1 / p95 4 ms, animation frames stayed at 16.7 ms on
+both pages, and there were no long tasks. The extra time is the measurement's own work for
+200 changed thoughts: each trace snapshot re-serializes every changed thought (p95 125 KB per
+peer snapshot against 9 KB at drag-1) and the driver's checks query and return all 200
+positions. The same case with trace snapshots off measured p95 161 against 209 ms in one
+run on the same code.
+
+One server cost was the application's. Every map operation locks the room's head row, so
+reads take turns, and a movement woke the room twice: locally after its operation and again
+through its own NOTIFY. Each connection read the same change twice (4.3 reads per movement),
+in connection order, so the peer's read often waited behind the mover's echo. The room now
+wakes once, through the operation's NOTIFY (missing wakeups are still recovered by the
+250 ms catch-up), and the people who do not have the change read first. Reads fell by about
+a third, the peer's preview left p50 12 ms after the movement committed (was 32), and
+publication to receipt fell from p50 34 to 21 ms. Two runs of the case on each version on a
+shared host gave p95 206 and 209 ms before, 193 and 188 ms after. A p95 of 170 ms at 200
+moved thoughts needs less measurement work per changed thought, which is the driver's
+decision, not the application's.

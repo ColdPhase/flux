@@ -51,13 +51,15 @@ const transientKey = (value: MapTransient) => value.type === 'map-presence' ? `p
 /** Every protected frame uses the current SQL fence; only replaceable transient intents coalesce. */
 export function mapController(authority: MapAuthority, outputBudget: EditingOutputBudget,telemetry?:()=>EditingQueueTelemetry|null) {
   const connections = new Map<string, Connection>();
+  /** Per room, the connection whose movement, cancel or presence committed last here. */
+  const lastProducer = new Map<string, Connection>();
   const operations=new Set<Promise<void>>();let pendingMovement=0,pendingPresence=0;
   function operation(){let finish=()=>{};const done=new Promise<void>(resolve=>{finish=resolve;});operations.add(done);editingResourcesChanged();return()=>{operations.delete(done);editingResourcesChanged();finish();};}
   let closing = false;
   function close(c: Connection) {
     if (c.closed) return;
     c.closed = true; c.releaseBase(); c.movement?.release(); c.presence?.release();if(c.movement)pendingMovement--;if(c.presence)pendingPresence--; c.movement = null; c.presence = null;
-    for (const entry of c.transient.values()) entry.release(); c.transient.clear(); c.output.close(); connections.delete(c.context.connectionId);editingResourcesChanged();
+    for (const entry of c.transient.values()) entry.release(); c.transient.clear(); c.output.close(); connections.delete(c.context.connectionId);if(lastProducer.get(c.context.target.id)===c)lastProducer.delete(c.context.target.id);editingResourcesChanged();
     const completed=operation();void authority.disconnect(c.context.session, c.context.target.id, c.context.connectionId).catch(() => { /* SQL expiry independently removes abandoned previews. */ }).finally(completed);
   }
   function fail(c: Connection, error: unknown) {
@@ -70,7 +72,18 @@ export function mapController(authority: MapAuthority, outputBudget: EditingOutp
     try { c.output.sendJSON({ type: 'error', code: code(error), outcome: unknown ? 'unknown' : 'refused', retryable: unknown || capacity(error) }); }
     catch { c.socket.terminate(); close(c); }
   }
-  function notify(sketchId: string) { for (const c of connections.values()) if (c.context.target.id === sketchId) void catchup(c); }
+  /**
+   * A room's reads after its NOTIFY. Every map operation locks the room's head row, so reads take
+   * turns: the people who do not have the change yet go first, and the connection whose movement
+   * or presence it is goes last, since its read only carries back its own echo (#228 Gate 4).
+   * Its operation is still running, or it is the room's latest local producer.
+   */
+  function notify(sketchId: string) {
+    const room = [...connections.values()].filter((c) => c.context.target.id === sketchId);
+    const producer = (c: Connection) => c.working || lastProducer.get(sketchId) === c;
+    for (const c of room) if (!producer(c)) void catchup(c);
+    for (const c of room) if (producer(c)) void catchup(c);
+  }
   async function catchup(c: Connection) {
     if (c.closed || !c.subscribed || !c.generation) return;
     if (c.reading) { c.pendingRead = true; return; }
@@ -145,7 +158,9 @@ export function mapController(authority: MapAuthority, outputBudget: EditingOutp
     retained.release();
     void action.then(() => {
       if(command.type==='map-move')telemetry?.()?.schedule('map',{resourceId:c.context.target.id,generation:command.command.generation,interactionId:command.command.gestureId,inputSequence:command.command.sequence});
-      notify(c.context.target.id);
+      // Its transaction's own NOTIFY starts the room's reads, once: a second, local wakeup made every
+      // connection read the same change twice, and reads queue on the room's head row (#228 Gate 4).
+      lastProducer.set(c.context.target.id, c);
     }, (error: unknown) => fail(c, error)).finally(() => { c.working = false;completed(); work(c); });
   }
   function enqueue(c: Connection, value: Command, rawBytes: number) {
