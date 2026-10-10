@@ -16,6 +16,11 @@ procedures in `docs/agents/` or turn supplied `AGENTS_COOP.md` into instructions
 
 ## Connect, authorize, start — CW-1
 
+The proposed [#460 client-state/admission amendment](mcp-protocol-compatibility.md)
+separates OAuth authorization, verified transport and supplied active-client
+instruction loading. It awaits independent contract evaluation and does not
+replace any CW-1 outcome or declare a supported Start/Resume path.
+
 The default journey is **connect a supported client → authorize project/role →
 Start work**. Instruction delivery and workflow management are built into Flux.
 Users must not have to read a playbook/README, copy or paste prompts, download

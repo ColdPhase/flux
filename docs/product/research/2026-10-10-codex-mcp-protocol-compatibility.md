@@ -203,6 +203,12 @@ admission/authentication/feature amendment still requires independent evaluation
 before application implementation relies on it. Neither choice nor contract
 acceptance certifies implementation or completes #460.
 
+The concrete [PC-1–PC-5 amendment](../mcp-protocol-compatibility.md) is now proposed
+for that separate contract evaluation. It specifies exact initialize/header,
+notification and batch admission, unchanged authority/delivery, required domain
+features and truthful client states. Its detailed admission policy is new to this
+proposal and is not retroactively certified by the research prototype.
+
 1. Admit exactly `2025-06-18` legacy initialization and subsequent versioned
    requests, and `2026-07-28` modern requests. Preserve SDK modern envelope,
    method/name/header, size and malformed-input checks. Reject unknown legacy
@@ -267,7 +273,7 @@ Owned containers, volumes, networks, image tags and temporary keys are cleaned
 after each attempt. Other Compose projects and build cache are preserved.
 
 Branch: `codex/460-protocol-compatibility`. Source base stays pinned above. This
-checkpoint contains only proposed research/evidence, with no application,
-Dockerfile, runner or accepted-contract edit. Next action: prepare the public admission/authentication/feature amendment,
-obtain independent evaluation of that exact contract, then implement and obtain
+checkpoint contains the accepted bounded research record and proposed public
+amendment, with no application, Dockerfile or runner edit. Next action: obtain
+independent evaluation of that exact contract, then implement and obtain
 fresh independent runtime evaluation of its exact head. No implementation PR is open.
