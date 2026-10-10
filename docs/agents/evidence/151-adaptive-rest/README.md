@@ -1,6 +1,6 @@
 # Adaptive matrix at every contract fixture, 4K scaling and wide caps: #151 (slice adaptive-rest)
 
-2026-10-10, owner claude-maurycy (Zamojski5). Tested head: `d29612fc`, from `origin/main` `e06248c5`.
+2026-10-10, owner claude-maurycy (Zamojski5). Tested head: `68152c5a` (the narrowed known-gap rule and its negative controls), merged with `origin/main` `4697fadc` in `434c6049`.
 Refs #151. This slice does not complete #151: see "Not delivered" below.
 
 **Emulation only.** CSS viewports in headless Chromium in Docker, on the synthetic fixture
@@ -10,7 +10,7 @@ physical 4K or ultrawide display, OS scaling, a real phone keyboard, or Android,
 
 ## What the matrix now checks
 
-[`test_adaptive_matrix.py`](../../../../app/tests/ui/test_adaptive_matrix.py), 14 tests:
+[`test_adaptive_matrix.py`](../../../../app/tests/ui/test_adaptive_matrix.py), 20 tests: the 14 journey and transition tests, and `KnownGapRules`, six browser-free negative controls for the known-gap rule (see below).
 
 - **test_01:** the same journey at all 23 starting fixtures of
   [adaptive workspaces](../../../design/adaptive-workspaces.md#viewport-and-input-verification-matrix):
@@ -24,14 +24,21 @@ physical 4K or ultrawide display, OS scaling, a real phone keyboard, or Android,
 - **test_06:** the same journey in the dark theme at 390×844 and 3440×1440.
 - **test_07:** wide caps. The map plane and the Agents column, measured at 1920, 2560 and 3840 px.
 - **test_13:** the reading-place check now hovers the stream before its scroll (see below).
+- **KnownGapRules (negative controls):** the recorded overlap is seen and not failed; an undersized control, an unrelated stop, an unrelated cover, a viewport failure, another fixture, another label and another overlay are problems. They call `judge_reach` and `judge_target` directly, with results shaped like the probes report them.
 
 Known gaps (`KNOWN_GAPS`) are measured and reported as open, never as passing. The matrix fails when a
 gap stops showing, so a closed gap has to be removed from the list.
 
+A gap excuses a failure only for the predicate it names, and only when the cause is one of its own overlays (`covered_by`).
+- `covered`: every point the control fails on is covered by one of those overlays.
+- `target`: the control's own box is at least 44 px on both axes, and on each axis that falls short both sides are stopped by those overlays.
+An inside-viewport failure is never excused, and an undersized control is a problem even under the same overlay. The probes report the
+overlay for each covered point and stop (`overlay`), not the leaf element, because the element under a point is often a link or button inside the bar.
+
 | Fixture | Gap | Closed by |
 | --- | --- | --- |
-| 640×360, 844×390 | The sticky tab bar and the composer leave less than 44 px of stream between them, so a Reply target is covered | Phone shell PR #414 (#341) |
-| 844×390 | The sticky status overview covers a task card, so a pointer cannot open it. The journey opens it through the element's own click and still measures the rest | Tasks layout PR #375 (#346) |
+| 640×360, 844×390 | "a message's Reply": its 44 px box is covered at the top by the tab bar (`.ui-tabs__bar`) and at the bottom by the composer (`.project-convo__composer`), so the hit area is 15 to 23 px | Phone shell PR #414 (#341) |
+| 844×390 | "a task card": its box is covered on every side by the status overview (`.tb-overview`), so the hit area is 0.5 px and a pointer cannot open it. The journey opens it through the element's own click and still measures the rest | Tasks layout PR #375 (#346) |
 
 Wide caps (`WIDE_CAPS`), measured in CSS px at 1920 / 2560 / 3840:
 
@@ -43,14 +50,25 @@ change, so the gains wait for those PRs.
 
 ## Result of the tested head
 
-Command (through the 4-slot Docker wrapper, ports 19080/19081):
-`FLUX_UI_PORT=19080 FLUX_UI_MAILPIT_PORT=19081 ./scripts/check_ui.sh test_adaptive_matrix`
+Command (through the Docker slot wrapper, ports 19320/19321):
+`FLUX_UI_PORT=19320 FLUX_UI_MAILPIT_PORT=19321 ./scripts/check_ui.sh test_adaptive_matrix`
 
 ```
-Ran 14 tests in 217.418s
+Ran 20 tests in 289.254s
 OK
 scaling: 3840×2160 @1, 2560×1440 @1.5 and 1920×1080 @2 compared with ratio 1; differences: 0
 wide caps, CSS px at 1920 / 2560 / 3840: the map plane 1032 / 1032 / 1032; the Agents column 854 / 854 / 854
+```
+
+The verbose lines of the new negative controls in that run:
+
+```
+test_01_the_recorded_overlap_is_seen_not_failed ... ok
+test_02_an_undersized_control_is_a_problem_under_the_same_overlap ... ok
+test_03_an_unrelated_stop_is_a_problem ... ok
+test_04_an_unrelated_cover_is_a_problem ... ok
+test_05_a_viewport_failure_is_a_problem_under_the_overlap ... ok
+test_06_the_overlap_is_not_excused_elsewhere ... ok
 ```
 
 The longest rendered line per prose surface, in characters, for each fixture printed by the run:
@@ -62,8 +80,7 @@ longest line, The map hint: 320×568 53, 360×640 57, 360×800 57, 390×844 65, 
 longest line, Wiki prose: 320×568 40, 360×640 45, 360×800 45, 390×844 49, 412×915 53, 430×932 55, 640×360 57, 844×390 53, 600×960 52, 768×1024 44, 820×1180 52, 1024×768 82, 1280×720 82, 1280×800 82, 1366×768 82, 1440×900 82, 1920×1080 82, 2560×1440 82, 2560×1080 82, 3440×1440 82, 5120×1440 82, 3840×2160 82, 900×1600 63
 ```
 
-Other checks on this head: `python3 scripts/check_agent_setup.py` and `git diff --check`, run before
-this record was added (see the commit message for the result).
+Other checks on this head: `python3 scripts/check_agent_setup.py` passed (exit 0); `git diff --check` clean; `python3 -m unittest discover -s tests -p 'test_*.py'` ran 99 tests, `OK`. The last one passes on the merged head; the earlier 6 failures in `tests/test_runtime_purge.py` recorded in the PR body no longer reproduce here.
 
 ## Negative controls and the runs that led here
 
@@ -79,7 +96,10 @@ Each row is a run of the matrix module, from the first one on `main` to the test
 | 5 | same as 4 | No tests ran: compose service pull race on the untagged UI test image (infrastructure) | Rerun below |
 | 6 | + test_07 wide caps | OK, 14 tests | Evidence in this record |
 | 7 | `e99d8636` | FAIL: test_05 2560×1440 @1.5, Tasks and Agents pane top 124 vs 121 px | Still timing: the same 3 px flips between the two contexts |
-| 8 | `d29612fc` (tested head) | OK, 14 tests, scaling differences 0 | `document.fonts.ready` added to the at-rest wait |
+| 8 | `d29612fc` | OK, 14 tests, scaling differences 0 | `document.fonts.ready` added to the at-rest wait |
+| 9 | `434c6049` (`d29612fc` merged with main `4697fadc`), prefix matcher, diagnostic print (removed) | FAIL: test_05 2560×1440 @1.5, Tasks pane top 121 vs 124 px and board 190 vs 193 px (14 tests) | The journey records the real overlap: the Reply at 640×360 and 844×390 is covered above by `.ui-tabs__bar` and below by `.project-convo__composer`; the 844×390 task card is covered on all sides by `.tb-overview`. The same 3 px flip as runs 1 and 7 |
+| 10 | `68152c5a` (narrowed matcher and negative controls), merged head | OK, 20 tests (14 + 6), scaling differences 0 | Test_05 passed here; see the flake note below. The recorded overlaps are seen; no other failure is excused |
+| 11 | `68152c5a` with the old prefix-and-viewport body restored in `check()` | FAILED (5 of 6): `KnownGapRules` test_02 to test_06 fail; test_01 passes under both rules | The old rule excuses an undersized control (`0 != 2`), unrelated stops (`0 != 2`), an unrelated cover (`0 != 2`), a viewport failure (`0 != 1`), and another overlay at 640×360 (`3 != 4`). The restored file was then put back and matches the committed one |
 
 **Reading-place fix (test_13).** The stream's 2-second settle is deliberate product behaviour: it
 keeps the latest message in view while content arrives, and only real reader input (wheel, touch,
@@ -90,7 +110,7 @@ the debug print). With it, it passes in runs 1 and 3 to 8. No product code was c
 **3 px shift (test_05).** Geist is loaded with `font-display: swap` (`app/apps/web/src/ui/tokens.css`),
 so the first layout can use fallback metrics. The flip direction differs between the two contexts,
 which fits a timing effect rather than a DPR effect. This is an inference from the font rule and the
-flip pattern. Run 8 is the only run after the fix, so it is consistent with the cause but does not prove it.
+flip pattern. Runs 8 and 10 pass after the fix, and run 9 failed on the same flip, so the test is still intermittent. The cause is an inference from the font rule and the flip pattern, not proven. This change does not touch it.
 
 ## Screenshots
 
