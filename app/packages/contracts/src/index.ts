@@ -92,3 +92,4 @@ export * from './agent-execution.js';
 export * from './agent-bootstrap.js';
 export * from './project-agents.js';
 export * from './agent-runtime.js';
+export * from './agent-mcp-policy.js';

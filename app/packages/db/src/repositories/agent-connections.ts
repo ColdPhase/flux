@@ -1,18 +1,20 @@
 import { randomUUID } from 'node:crypto';
 import { and, desc, eq, gt, inArray, isNull, or } from 'drizzle-orm';
-import type { AgentConnection, CreateAgentConnectionCommand } from '@flux/contracts';
+import type { AgentConnection, AgentMcpPolicy, CreateAgentConnectionCommand } from '@flux/contracts';
 // Structural adapter inputs avoid the current core/db build cycle; core owns the port.
 type AgentOauthFlow = { fingerprint: string; clientId: string; scopes: readonly string[]; expiresAt: Date };
 type AgentOauthGrant = { referenceId: string; clientId: string | null; connection: AgentConnection };
 import * as schema from '../schema.js';
 import { idpStandingRepository } from './idp-standing.js';
 import type { createDatabase } from '../index.js';
+import { initializeAgentMcpPolicy, lockAgentMcpPolicy } from './agent-mcp-policy.js';
 
 type Database = Pick<ReturnType<typeof createDatabase>['db'], 'transaction'>;
 type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
 type Row = typeof schema.agentConnections.$inferSelect;
 
 export interface AgentConnectionPolicy {
+  initialMcpPolicy(connection: AgentConnection): AgentMcpPolicy;
   authorizeProject(agentId: string, projectId: string, action: 'project.read' | 'project.write', tx: Transaction): Promise<string>;
 }
 
@@ -31,24 +33,39 @@ export function agentConnectionRepository(db: Database, policy: AgentConnectionP
     .from(schema.agentConnectionProjects).where(eq(schema.agentConnectionProjects.connectionId, id)))
     .map((row) => row.id);
 
-  const resolveCurrent = async (tx: Transaction, ownerUserId: string, connectionId: string) => {
+  const resolveCurrent = async (tx: Transaction, ownerUserId: string, connectionId: string, mcp = false) => {
     const [row] = await tx.select().from(schema.agentConnections).where(and(
       eq(schema.agentConnections.id, connectionId), eq(schema.agentConnections.ownerUserId, ownerUserId),
       isNull(schema.agentConnections.revokedAt))).for('share');
     if (!row) return null;
     // The owner's account must still stand at the identity provider (F-024 S4, #311). Nothing is revoked.
     if (await idpStandingRepository(tx).refuses(ownerUserId)) return null;
+    const selectedProjectIds = await projects(tx, row.id);
+    const connection = serialize(row, selectedProjectIds);
+    if (mcp) {
+      await initializeAgentMcpPolicy(tx, connection, policy.initialMcpPolicy);
+      if (!await lockAgentMcpPolicy(tx, row.id)) return null;
+    }
     const [agent] = await tx.select({ id: schema.agents.id }).from(schema.agents).where(and(
       eq(schema.agents.id, row.agentId), eq(schema.agents.ownerUserId, ownerUserId),
       isNull(schema.agents.revokedAt))).for('share');
     if (!agent) return null;
-    const selectedProjectIds = await projects(tx, row.id);
     if (!selectedProjectIds.length) return null;
     const action = row.scopes.some((scope) => scope === 'flux.proposal.write' || scope === 'flux.action.execute') ? 'project.write' : 'project.read';
-    for (const projectId of selectedProjectIds.sort()) {
-      if (await policy.authorizeProject(row.agentId, projectId, action, tx) !== row.workspaceId) return null;
+    if (!mcp) {
+      for (const projectId of selectedProjectIds.sort()) {
+        if (await policy.authorizeProject(row.agentId, projectId, action, tx) !== row.workspaceId) return null;
+      }
+    } else {
+      // An inaccessible original project must not poison an authorized subset, but a bearer
+      // whose agent reaches none of its selected projects is unavailable (HTTP 403) before dispatch.
+      let reachable = false;
+      for (const projectId of selectedProjectIds.sort()) {
+        try { if (await policy.authorizeProject(row.agentId, projectId, action, tx) === row.workspaceId) { reachable = true; break; } } catch { /* excluded */ }
+      }
+      if (!reachable) return null;
     }
-    return serialize(row, selectedProjectIds);
+    return connection;
   };
 
   const resolveFlow = async (tx: Transaction, ownerUserId: string, sessionId: string, fingerprint: string): Promise<AgentOauthGrant | null> => {
@@ -63,7 +80,7 @@ export function agentConnectionRepository(db: Database, policy: AgentConnectionP
     return connection ? { referenceId: `flux-grant:${row.binding.id}`, clientId: row.binding.clientId, connection } : null;
   };
 
-  return {
+  const repository = {
     async create(ownerUserId: string, command: CreateAgentConnectionCommand): Promise<AgentConnection | 'AGENT_NOT_FOUND'> {
       return db.transaction(async (tx) => {
         const [agent] = await tx.select({ workspaceId: schema.agents.workspaceId }).from(schema.agents).where(and(
@@ -83,7 +100,9 @@ export function agentConnectionRepository(db: Database, policy: AgentConnectionP
         await tx.insert(schema.agentConnectionProjects).values(command.selectedProjectIds.map((projectId) => ({
           workspaceId: agent.workspaceId, connectionId: created!.id, projectId,
         })));
-        return serialize(created!, command.selectedProjectIds);
+        const connection = serialize(created!, command.selectedProjectIds);
+        await initializeAgentMcpPolicy(tx, connection, policy.initialMcpPolicy);
+        return connection;
       });
     },
 
@@ -151,12 +170,12 @@ export function agentConnectionRepository(db: Database, policy: AgentConnectionP
       });
     },
 
-    async grantForOauth(ownerUserId: string, referenceId: string): Promise<AgentOauthGrant | null> {
+    async grantForOauth(ownerUserId: string, referenceId: string, mcp = false): Promise<AgentOauthGrant | null> {
       return db.transaction(async (tx) => {
         if (!referenceId.startsWith('flux-grant:')) {
           // Explicit old token format: never consulted by a new browser request.
           if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(referenceId)) return null;
-          const connection = await resolveCurrent(tx, ownerUserId, referenceId);
+          const connection = await resolveCurrent(tx, ownerUserId, referenceId, mcp);
           return connection ? { referenceId, clientId: null, connection } : null;
         }
         const bindingId = referenceId.slice('flux-grant:'.length);
@@ -166,7 +185,7 @@ export function agentConnectionRepository(db: Database, policy: AgentConnectionP
           .where(and(eq(schema.agentOauthBindings.id, bindingId), eq(schema.agentOauthBindings.ownerUserId, ownerUserId),
             or(eq(schema.oauthClient.disabled, false), isNull(schema.oauthClient.disabled)))).for('share');
         const binding = row?.binding;
-        const connection = binding ? await resolveCurrent(tx, ownerUserId, binding.connectionId) : null;
+        const connection = binding ? await resolveCurrent(tx, ownerUserId, binding.connectionId, mcp) : null;
         return binding && connection ? { referenceId, clientId: binding.clientId, connection } : null;
       });
     },
@@ -181,5 +200,9 @@ export function agentConnectionRepository(db: Database, policy: AgentConnectionP
       });
     },
 
+  };
+  return { ...repository,
+    /** Original identity/ceiling only; the caller must apply the live policy and actual project action. */
+    grantForMcp: (ownerUserId: string, referenceId: string) => repository.grantForOauth(ownerUserId, referenceId, true),
   };
 }

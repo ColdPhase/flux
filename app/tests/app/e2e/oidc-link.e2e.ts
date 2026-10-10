@@ -64,7 +64,7 @@ async function signUpAndIn(context: BrowserContext, person: typeof pat) {
 
 /** Starts the provider sign-in from this browser's session and returns the provider page's URL. */
 async function providerUrl(context: BrowserContext) {
-  const started = await api<{ url: string }>(context, 'POST', '/api/auth/sign-in/social', { provider: process.env.FLUX_OIDC_PROVIDER_ID, callbackURL: '/settings' });
+  const started = await api<{ url: string }>(context, 'POST', '/api/auth/sign-in/social', { provider: process.env.FLUX_OIDC_PROVIDER_ID, callbackURL: '/settings/account' });
   assert.equal(started.status, 200, JSON.stringify(started.body));
   return started.body!.url;
 }
@@ -91,7 +91,7 @@ if (phase === 'prepare') {
       assert.ok(patId);
       // Settings offers the link in prepare mode (#315): a button named for the provider, shown to the signed-in owner.
       const page = await context.newPage();
-      await page.goto(`${origin}/settings`);
+      await page.goto(`${origin}/settings/account`);
       await page.getByRole('button', { name: 'Link Keycloak', exact: true }).waitFor({ timeout: 20_000 });
       await context.storageState({ path: saved });
     });
@@ -105,7 +105,7 @@ if (phase === 'prepare') {
       const page = await context.newPage();
       const url = await providerUrl(context);
       await loginAtProvider(page, 'frank', url);
-      assert.match(page.url(), /\/settings\?link=linked$/, 'the link completed and returned to settings');
+      assert.match(page.url(), /\/settings\/account\?link=linked$/, 'the link completed and returned to settings');
       const linked = (await pool.query('SELECT account_id FROM auth_accounts WHERE user_id = $1 AND provider_id = $2', [patId, process.env.FLUX_OIDC_PROVIDER_ID])).rows;
       assert.equal(linked.length, 1, 'the provider subject is linked to Pat');
       assert.equal((await pool.query('SELECT count(*)::int AS n FROM auth_users WHERE email = $1', ['frank@acme.test'])).rows[0].n, 0,
@@ -149,7 +149,7 @@ if (phase === 'prepare') {
       const page = await context.newPage();
       const url = await providerUrl(context);
       await loginAtProvider(page, 'frank', url);
-      assert.match(page.url(), /\/settings\?link=identity_held$/, 'refused with a reason, not linked');
+      assert.match(page.url(), /\/settings\/account\?link=identity_held$/, 'refused with a reason, not linked');
       assert.deepEqual((await pool.query('SELECT account_id FROM auth_accounts WHERE user_id = $1 AND provider_id = $2', [quinnId, process.env.FLUX_OIDC_PROVIDER_ID])).rows, [],
         'Quinn gained nothing');
       const patId = (await pool.query('SELECT id FROM auth_users WHERE email = $1', [pat.email])).rows[0].id as string;
@@ -170,7 +170,7 @@ if (phase === 'prepare') {
       const page = await other.newPage();
       const url = await providerUrl(other);
       await loginAtProvider(page, 'erin', url);
-      assert.match(page.url(), /\/settings\?link=/, 'the callback is answered, not signed in');
+      assert.match(page.url(), /\/settings\/account\?link=/, 'the callback is answered, not signed in');
       assert.equal((await other.request.get(`${origin}/api/v1/me`)).status(), 401, 'no session was created by the link callback');
     });
   });
@@ -219,7 +219,7 @@ if (phase === 'cutover') {
       await loginAtProvider(page, 'frank', url);
       // Negative control: in SSO-only mode settings offers no link, because the provider is the only way in (#315).
       // Wait for the settings page itself, so the absence below is not just an unloaded page.
-      await page.getByRole('heading', { name: 'This device' }).waitFor({ timeout: 20_000 });
+      await page.getByRole('heading', { name: 'Account', exact: true }).waitFor({ timeout: 20_000 });
       assert.equal(await page.getByRole('button', { name: 'Link Keycloak', exact: true }).count(), 0, 'no link row in SSO-only mode');
       assert.equal(await page.getByRole('heading', { name: 'Single sign-on' }).count(), 0, 'no single sign-on section in SSO-only mode');
       // The last-identity guard (#315): the provider is Pat's only way to sign in, so the link cannot be removed.

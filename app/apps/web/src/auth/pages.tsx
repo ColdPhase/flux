@@ -82,13 +82,18 @@ const NOTICES: Record<string, string> = {
 };
 
 /** The operator's single sign-on, when configured (#113). Hidden while unknown or unavailable. */
+const SSO_RECHECK_MS = 5000;
+
 function useCapabilities() {
   const [capabilities, setCapabilities] = useState<IdentityCapabilities | null>(null);
+  const unreachable = capabilities?.sso !== null && capabilities?.sso?.reachable === false;
   useEffect(() => {
     const controller = new AbortController();
-    getCapabilities(controller.signal).then(setCapabilities).catch(() => undefined);
-    return () => controller.abort();
-  }, []);
+    const load = () => { getCapabilities(controller.signal).then(setCapabilities).catch(() => undefined); };
+    load();
+    const timer = unreachable ? window.setInterval(load, SSO_RECHECK_MS) : undefined;
+    return () => { controller.abort(); if (timer !== undefined) window.clearInterval(timer); };
+  }, [unreachable]);
   return capabilities;
 }
 
