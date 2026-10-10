@@ -27,8 +27,10 @@ instance. Flux works with one provider. Its mode is set by `FLUX_SSO_MODE`:
 - **No account takeover by email.** A provider identity is never linked to an existing Flux account
   just because the emails match. If the provider's verified email belongs to a verified Flux account,
   or to an account already linked to a provider identity, the sign-in is refused and nothing changes.
-  If it belongs to an unverified account with no provider link, in `prepare` the sign-in page offers **link first**; after SSO cutover it points to audited operator recovery
-  (sign in to that account, which keeps everything it has), or **claim the address**. Claiming releases
+  If it belongs to an unverified account with no provider link, `prepare` offers **link first**:
+  sign in to that account and link the provider in Settings → Account, keeping its existing data.
+  After SSO cutover the page points to audited operator recovery instead of password sign-in.
+  Both phases offer **claim the address**. Claiming releases
   the address from that account (it becomes `unverified-<id>@invalid`, its sessions and agent connections
   end, and an audit row names both accounts). The account's data stays with it and does not move to the
   new account. The claim page is open for 15 minutes after the provider sign-in.
