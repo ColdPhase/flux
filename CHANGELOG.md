@@ -126,7 +126,7 @@ repository was created on 2026-09-26.
 
 ### Changed
 
-- Faster reads: the Inbox count, conversation and material lists, and conversation roots answer in fewer database statements and without locks ([#300](https://github.com/ColdPhase/flux/pull/300)).
+- Faster reads: the Inbox count no longer compiles query code on each visit, conversation and material lists use one statement instead of one or two per row, and conversation roots and comparison outcomes are read without locks ([#300](https://github.com/ColdPhase/flux/pull/300)).
 - The app's files are sent as Brotli or gzip, and large JSON answers are compressed ([#269](https://github.com/ColdPhase/flux/pull/269)).
 - Settings is one calm place with Account, Appearance (Light, Dark or Match system, and a switch for Kreska's small moments), Notifications, Agents and AI and Keyboard shortcuts. Notifications now default to Only "Needs you" (replies no longer push), with Everything or Nothing, quiet hours and an optional morning summary push ([#370](https://github.com/ColdPhase/flux/pull/370)).
 - One neutral look from the final design: Soft volume surfaces in light, dark or Match system, Geist type served with Flux, pill buttons, and task states shown as shapes with words. The accent colours and their picker are gone ([#353](https://github.com/ColdPhase/flux/pull/353)).
@@ -168,7 +168,7 @@ repository was created on 2026-09-26.
 - Security: a signed-in account can no longer register or change OAuth clients, so a
   member cannot pass off a look-alike client with their own redirect. The agent consent
   page shows where access goes and warns when that is not this computer, and no Flux
-  page can be framed by another site ([#287](https://github.com/ColdPhase/flux/issues/287)).
+  page can be framed by another site ([#287](https://github.com/ColdPhase/flux/issues/287), [#294](https://github.com/ColdPhase/flux/pull/294)).
 - The agent connection page no longer asks for an HTTPS address on the quick start's
   local `http://` address, and the README shows how to connect your own agent
   ([#328](https://github.com/ColdPhase/flux/pull/328)).
