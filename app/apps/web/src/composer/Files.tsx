@@ -1,6 +1,6 @@
 import { useRef, useState, type DragEvent } from 'react';
 import { Icon, useMediaQuery } from '../ui';
-import { FileIcon, fileSize, useObjectUrl } from './Attachments';
+import { FileIcon, typeLine, useObjectUrl } from './Attachments';
 import { selectedFile, uploadLabel, type ComposerState, type DraftFile } from './draft';
 import { looksLikePhoto } from './fileKind';
 import { PhotoPicker } from './PhotoPicker';
@@ -89,7 +89,7 @@ function DraftThumb({ file, order, status, blocked, onRetry, onRemove }: { file:
   return <li className={`composer-thumb${photo ? ' is-photo' : ''}`} data-file-state={file.state}>
     <span className="composer-thumb__face">{photo ? <img src={url} alt="" onError={() => setBroken(true)} /> : <FileIcon name={file.name} size={30} />}
       {order ? <span className="composer-thumb__order"><span className="ui-vh">Sends </span>{order}<span className="ui-vh">.</span></span> : null}</span>
-    <span className="composer-files__name">{file.name}<small>{fileSize(file.size)} · {status}</small></span>
+    <span className="composer-files__name">{file.name}<small>{typeLine(file)} · {status}</small></span>
     {file.state === 'failed' ? <button type="button" className="composer-thumb__retry" disabled={blocked} onClick={onRetry}>Retry upload</button> : null}
     <button type="button" className="composer-thumb__x" disabled={blocked} onClick={onRemove} aria-label={`Remove ${file.name}`}><span className="composer-thumb__xface"><Icon name="x" size={12} /></span></button>
     {file.error ? <p className="composer-files__error" role="alert">{file.error}</p> : null}

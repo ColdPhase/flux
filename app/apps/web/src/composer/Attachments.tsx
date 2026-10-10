@@ -40,7 +40,7 @@ const PICTOGRAM: Record<FileKind, React.ReactNode> = {
   other: null,
 };
 
-const typeLine = (file: { name: string; size: number }, detail?: string) => [fileWord(fileKind(file.name)), detail, fileSize(file.size)].filter(Boolean).join(' · ');
+export const typeLine = (file: { name: string; size: number }, detail?: string) => [fileWord(fileKind(file.name)), detail, fileSize(file.size)].filter(Boolean).join(' · ');
 
 /** One stored file: icon, name, "type · size" and Download. The whole row downloads under its name. */
 export function FileRow({ file }: { file: MessageFile }) {

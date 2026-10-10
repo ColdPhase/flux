@@ -682,6 +682,34 @@ class FilesReferencesPhotos(unittest.TestCase):
         sent = page.locator(".project-convo__message").filter(has_text="Photo and log from bed four").last
         expect(sent.get_by_role("list", name="1 attached file")).to_contain_text("bed-log.pdf")
 
+    def test_file_rows_show_their_type_and_size(self) -> None:
+        """#348 AC-1: a file row reads "type · size" when stored, in the draft and while it uploads."""
+        page = self.page()
+        stored = self.message(page, "files").get_by_role("list", name="3 attached files")
+        expect(stored.locator("a.file-row").filter(has_text="probe-v2-drawing.pdf").locator("small")).to_have_text(re.compile(r"^PDF · \d"))
+        expect(stored.locator("a.file-row").filter(has_text="lora-range-far-beds.csv").locator("small")).to_have_text(re.compile(r"^Table · \d"))
+        held: list = []
+        page.route(re.compile(r"/api/v1/projects/[^/]+/files\?"), lambda route: held.append(route) if route.request.method == "POST" else route.continue_())
+        with page.expect_file_chooser() as chooser:
+            page.get_by_role("button", name="Attach files").click()
+        chooser.value.set_files({"name": "beds.csv", "mimeType": "text/csv", "buffer": CSV})
+        draft = page.get_by_role("list", name="Files in your draft")
+        expect(draft.locator(".composer-files__name small")).to_have_text(re.compile(r"^Table · \d.* · Uploading 0%$"))
+        field = page.get_by_label("Write a message", exact=True)
+        field.fill("Bed log, sent while it uploads")
+        field.press("Enter")
+        pending = page.locator("[data-client-message-id]").last
+        expect(pending.locator(".file-row small")).to_have_text(re.compile(r"^Table · \d.* · Uploading 0%$"))
+        for _ in range(400):
+            if held:
+                break
+            page.wait_for_timeout(25)
+        self.assertTrue(held, "the upload request reached the browser")
+        held[0].continue_()
+        expect(page.locator("[data-client-message-id]")).to_have_count(0, timeout=30000)
+        sent = page.locator(".project-convo__message").filter(has_text="Bed log, sent while it uploads").last
+        expect(sent.locator(".file-row").filter(has_text="beds.csv").locator("small")).to_have_text(re.compile(r"^Table · \d"))
+
     def test_phone_picker_numbers_photos_in_tap_order(self) -> None:
         """#348 AC-4: on a phone, several photos open a picker. Each selected one shows its send number; a second tap takes it out and renumbers."""
         for dark in (False, True):
