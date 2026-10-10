@@ -30,7 +30,7 @@ export function assistantJoinUseCases(db: Database, boss: Pick<PgBoss, 'send'>) 
             if (!(await evaluateProject({ kind: 'human', id: candidate.userId }, 'project.manage', projectId, tx, { lock: true })).allowed) continue;
             const notification = await createNotification(notificationUnitOfWork(tx, pgBossQueue(boss)), {
               userId: candidate.userId, source: { type: 'project', id: projectId }, title,
-              body: 'Review this request in Agents. Allow adds the assistant as a contributor.', url: `/projects/${projectId}/agents`,
+              body: 'The assistant requested contributor access to this project.', url: `/projects/${projectId}/agents`,
             });
             await rows.markQuestion(notification.id);
           }
