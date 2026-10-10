@@ -124,26 +124,43 @@ remain reachable. Own messages stay on the right and other people's on the left.
 ## Verification
 
 [`app/tests/ui/test_adaptive_matrix.py`](../../app/tests/ui/test_adaptive_matrix.py) runs in
-`./scripts/check_ui.sh`. It covers:
+`./scripts/check_ui.sh` on the shared fixture. Its record for the current head is
+[`docs/agents/evidence/151-adaptive-rest`](../agents/evidence/151-adaptive-rest/README.md). It covers:
 
-- the same journey at 320×568, 390×844, 768×1024, 1024×768, 1440×900, 1920×1080, 2560×1440,
-  3840×2160 and 5120×1440:
-  - no sideways page or sheet overflow at rest;
-  - primary actions unclipped and uncovered;
-  - 44 px coarse targets;
-  - the 90-character measure;
-- wide-screen gains;
-- camera and draft transitions.
+- the same journey (Conversation, its thread, Map, List, Tasks, a task in Details, Wiki, Agents,
+  back) at all 23 starting fixtures of
+  [adaptive workspaces](adaptive-workspaces.md#viewport-and-input-verification-matrix), from 320×568
+  to 5120×1440 and 3840×2160, including the tall 900×1600. At each: no sideways scroll, reachable
+  and unclipped primary actions, 44 px coarse targets, and the 90-character measure;
+- system scaling: 3840×2160 at ratio 1, 2560×1440 at ratio 1.5 and 1920×1080 at ratio 2 give the same
+  CSS boxes as ratio 1 for the pane, feed, map canvas, task board and Details, in four views;
+- the dark theme for the same journey at 390×844 and 3440×1440;
+- wide caps, measured at 1920, 2560 and 3840 px (below);
+- transitions: the map camera, drafts, reading place, wiki text and Details survive resize, rotation
+  and a shorter viewport, with nothing saved or sent.
 
-Evidence and negative controls are in
-[`docs/agents/evidence/151-adaptive-matrix`](../agents/evidence/151-adaptive-matrix/README.md).
+**Known gaps.** `KNOWN_GAPS` in the test names what the current head does not meet. Each gap is still
+measured and reported as open, never as passing, and the matrix fails when one stops showing, so a
+closed gap must be removed from the list.
 
-**Remaining for #151:**
+| Fixture | Gap | Owner that closes it |
+| --- | --- | --- |
+| 640×360, 844×390 | The sticky tab bar and the composer leave less than 44 px of stream between them, so a Reply target is covered | Phone shell PR [#414](https://github.com/ColdPhase/flux/pull/414) |
+| 844×390 | The sticky status overview covers a task card, so a pointer cannot open it at this height. The journey opens it through the element's own click and measures the rest | Tasks layout PR [#375](https://github.com/ColdPhase/flux/pull/375) |
 
-- the map's 1080 px sketch-page cap and the Agents 854 px column on wide screens
-  (ADAPT-2 above 1920, T151-D/F);
-- the map projection following the canvas instead of the viewport;
-- performance budgets agreed before any optimisation (T151-A/G);
-- browser zoom at 200% / 400% and real 200% text enlargement;
-- light/dark matched captures with an independent visual review;
-- real 4K, ultrawide, Android, iPhone and iPad sessions.
+**Wide caps.** `WIDE_CAPS` in the test names two ADAPT-2 caps. Both are measured by `test_07`, which
+fails once a cap disappears. Measured in CSS px at 1920, 2560 and 3840: the map plane is 1032, 1032
+and 1032; the Agents column is 854, 854 and 854. The plane's cap is in `sketch/sketch.css`, owned by
+the map work in PR [#380](https://github.com/ColdPhase/flux/pull/380). The column's cap is in
+`agents/agents.css`, owned by the Agents work in PR [#376](https://github.com/ColdPhase/flux/pull/376)
+and PR [#417](https://github.com/ColdPhase/flux/pull/417).
+
+**Remaining for #151** (open; this record does not deliver them):
+
+- the two wide caps (ADAPT-2), waiting for PRs #380, #376 and #417;
+- the short-landscape gaps, waiting for PRs #414 and #375;
+- the map projection still follows the viewport, not the canvas;
+- performance budgets, agreed at kickoff before any optimisation (T151-A/G);
+- browser zoom at 200% and 400%, and a measured 200% text enlargement (not run here);
+- the independent visual review and running functional review of the combined head (AC-5);
+- real 4K, ultrawide, Android, iPhone and iPad sessions (optional under #266 item 10).

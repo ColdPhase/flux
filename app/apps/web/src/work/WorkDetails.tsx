@@ -19,6 +19,7 @@ import { useWorkRead } from './useWorkRead';
 import { useNativeOwn, useWorkChoices, useDetailRelations, type DetailRelations, type DetailChoices } from './useDetailReads';
 import { WorkPagination } from './WorkPagination';
 import { TaskDiscussionSection } from './TaskDiscussion';
+import { TaskThoughtLinks } from './TaskThoughtLinks';
 import { ReadyToClose, TaskPullRequests } from '../github/TaskPullRequests';
 
 // The Details panel for work items, decisions and results, and the two forms that start from a
@@ -179,6 +180,8 @@ function OtherRelationships({ object, relations, project }: { object: WorkDetail
     if (!outgoing && other.type === 'doc') return [];
     if (outgoing && link.role === 'source' && ['message', 'material', 'thought'].includes(other.type)) return [];
     if (object.kind === 'work' && ['decision', 'result'].includes(other.type)) return [];
+    // Thoughts a task is linked to are listed in its own "Linked thoughts" section.
+    if (object.kind === 'work' && other.type === 'thought') return [];
     if (object.kind === 'decision' && other.type === 'work' && ['affects', 'still_applies'].includes(link.role)) return [];
     if (object.kind === 'result' && ['work', 'decision'].includes(other.type) && link.role === 'about') return [];
     const body = <><span>{other.type}: {title}</span><small>{link.role.replaceAll('_', ' ')}</small><Icon name="chevron-right" size={14} /></>;
@@ -328,6 +331,8 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
             {' '}as <code>{item.planIntent.intentKey}</code>. This task stays tied to that revision.</p>
         ) : null}
       </section>
+      <TaskThoughtLinks item={item} project={context.project} links={relations.links} writable={writable} reload={reload}
+        empty={emptyLinks(relations, 'Not linked to a thought yet.')} />
 
       <TaskDiscussionSection key={`${me.user.id}:${context.project.id}:${item.id}`} readOnly={!!reverted} revision={detail.observedAt} workId={item.id} project={context.project} members={context.members} me={{ id: me.user.id, name: me.user.name }} />
 

@@ -1,5 +1,5 @@
 import type { PrincipalRef, VersionPrecondition } from './access.js';
-import type { SendMessageCommand } from './conversation.js';
+import type { AgentProjectOwner, SendMessageCommand } from './conversation.js';
 import type { GithubTaskRule } from './github.js';
 
 /**
@@ -105,6 +105,12 @@ export interface NamedPrincipal {
   kind: 'human' | 'agent';
   id: string;
   name: string;
+  /**
+   * Agents only, on native work rows and task details (#339 AC-2): the owner from the current
+   * authorized project audience, the same boundary as `ConversationMessage` authors. Absent when
+   * the owner is hidden or the agent is not in the audience; the browser never infers it otherwise.
+   */
+  projectOwner?: AgentProjectOwner;
 }
 
 interface ProjectObject {

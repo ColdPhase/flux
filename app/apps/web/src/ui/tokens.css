@@ -45,6 +45,9 @@
   --sh-raise: 0 1px 2px rgba(0, 0, 0, .06), 0 4px 10px -6px rgba(0, 0, 0, .16);
   --grad-btn: linear-gradient(#ffffff, #f1f1f2);
   --grad-inv: linear-gradient(#3b3b3f, #18181b);
+  /* Agent colours (Agents section only): muted OKLCH at equal lightness, README §2 */
+  --agent-clay: #9b6147; --agent-ochre: #886d32; --agent-sage: #4b8057; --agent-teal: #208181;
+  --agent-indigo: #5e6fa4; --agent-plum: #886191; --agent-rose: #9c5c66;
 
   /* Type: Geist and Geist Mono. Sizes are in rem, so the person's text size applies (1rem = 16px).
      Body 14 on the computer and 15 on the phone; meta 12, 12.5 on the phone. */
@@ -107,7 +110,7 @@
     color-scheme: dark;
     --side: #0b0b0b; --bg: #111111; --el: #1c1c1c; --sub: #242424; --hov: #2c2c2c;
     --line: rgba(255, 255, 255, .08); --line2: rgba(255, 255, 255, .16);
-    --t1: #f0f0f0; --t2: #acacac; --t3: #8c8c8c; --inv: #f0f0f0; --oninv: #111111;
+    --t1: #f0f0f0; --t2: #bdbdbd; --t3: #a1a1a1; --inv: #f0f0f0; --oninv: #111111;
     --scrim: rgba(0, 0, 0, .6); --dot: #2e2e2e;
     --sh-1: 0 1px 2px rgba(0, 0, 0, .4);
     --sh-card: inset 0 0 0 1px rgba(255, 255, 255, .06), 0 1px 2px rgba(0, 0, 0, .5), 0 8px 20px -8px rgba(0, 0, 0, .6);
@@ -119,13 +122,15 @@
     --sh-raise: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 10px -6px rgba(0, 0, 0, .5);
     --grad-btn: linear-gradient(#2a2a2a, #1e1e1e);
     --grad-inv: linear-gradient(#ffffff, #d9d9d9);
+    --agent-clay: #e8af96; --agent-ochre: #d4bb86; --agent-sage: #9ccca4; --agent-teal: #82cdcd;
+    --agent-indigo: #abbcef; --agent-plum: #d4afdc; --agent-rose: #e9aab3;
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
   --side: #0b0b0b; --bg: #111111; --el: #1c1c1c; --sub: #242424; --hov: #2c2c2c;
   --line: rgba(255, 255, 255, .08); --line2: rgba(255, 255, 255, .16);
-  --t1: #f0f0f0; --t2: #acacac; --t3: #8c8c8c; --inv: #f0f0f0; --oninv: #111111;
+  --t1: #f0f0f0; --t2: #bdbdbd; --t3: #a1a1a1; --inv: #f0f0f0; --oninv: #111111;
   --scrim: rgba(0, 0, 0, .6); --dot: #2e2e2e;
   --sh-1: 0 1px 2px rgba(0, 0, 0, .4);
   --sh-card: inset 0 0 0 1px rgba(255, 255, 255, .06), 0 1px 2px rgba(0, 0, 0, .5), 0 8px 20px -8px rgba(0, 0, 0, .6);
@@ -137,6 +142,8 @@
   --sh-raise: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 10px -6px rgba(0, 0, 0, .5);
   --grad-btn: linear-gradient(#2a2a2a, #1e1e1e);
   --grad-inv: linear-gradient(#ffffff, #d9d9d9);
+  --agent-clay: #e8af96; --agent-ochre: #d4bb86; --agent-sage: #9ccca4; --agent-teal: #82cdcd;
+  --agent-indigo: #abbcef; --agent-plum: #d4afdc; --agent-rose: #e9aab3;
 }
 
 @media (max-width: 1200px) { :root { --space-page: 26px; --panel-w: 375px; } }
@@ -149,6 +156,12 @@
     --fs-xs: .78125rem; --fs-sm: .78125rem; --fs-md: .875rem; --fs-base: .9375rem; --fs-title: 1.0625rem; --fs-page: 1.75rem;
   }
 }
+/* The person's text size on the computer (Settings → Appearance; app/textSize.ts). The rem tokens scale
+   with the root size. The phone keeps the system size, so this starts where the phone breakpoint ends. */
+@media (min-width: 641px) {
+  :root[data-text-size="small"] { font-size: 93.75%; }
+  :root[data-text-size="large"] { font-size: 112.5%; }
+}
 @media (min-width: 1600px) { :root { --space-page: 44px; --panel-w: 430px; } }
 
 @media (pointer: coarse) {
@@ -158,3 +171,5 @@
 @media (prefers-reduced-motion: reduce) {
   :root { --dur-1: 0ms; --dur-2: 0ms; --dur-3: 0ms; --dur-4: 0ms; --dur-press: 0ms; --press: 1; }
 }
+/* The person's own reduce-motion choice (Settings → Appearance) gives the same durations. */
+:root[data-motion="reduce"] { --dur-1: 0ms; --dur-2: 0ms; --dur-3: 0ms; --dur-4: 0ms; --dur-press: 0ms; --press: 1; }
