@@ -7,12 +7,15 @@ source navigation and map camera remain authoritative.
 New root/child capture opens one private draft per account/workspace/place/map.
 F-026 S15 and #349 AC-3 limit screens at or below 640 CSS px to plain additions:
 selection, keyboard Add and clipboard text/lines/images never infer a parent there.
-A draft opened on a wider screen retains its private content when narrowed, but
-shows a plain addition and saves without creating a connection on the phone.
+A draft opened on a wider screen retains its content when narrowed. Before its
+first Save it shows a plain addition and saves without creating a connection on the phone.
 Existing graph links and saved thought positions remain unchanged. Wider screens
 keep confirmed connected capture and the intended-parent checks described below.
 The actual creation payload is recorded per thought immediately before dispatch.
 Changing screen width never rewrites an attempted payload or renews its key.
+Refining text after an uncertain Save also retains the original creation body/key;
+the desired text and its edit key are separate. Only after confirming current server
+state may explicit Save refine that text through the ordinary version-checked edit.
 An unsent draft first saved on a phone keeps that plain-addition intent on later
 retries. For an earlier connected attempt, the phone only confirms an existing
 server thought (and, if edited, uses the ordinary version-checked text update);
@@ -29,7 +32,9 @@ against the version just read and the known earlier text; a different peer text
 is shown without overwriting it and the person's retained text stays recoverable.
 It retains text, intended parent ID, client thought/link IDs, position and an
 idempotency key in this tab's session storage, with memory fallback. No shared
-thought, relation, event, outline grouping or API write exists before Save/Enter.
+thought, relation, event, outline grouping or API write exists before the first Save/Enter.
+An uncertain response may already have published the earlier write; the draft says
+that its save is unconfirmed rather than claiming it is still certainly private.
 List/Map and map navigation retain it; blur never saves. So do the task
 count chooser (opening it, Escape, Close and opening a task beside the map) and switching
 project views (Conversation, Agents, Tasks, Wiki) within the same visit. Empty Save leaves the

@@ -437,18 +437,20 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
       return parentId ? { id: parentId, linkId: row.attempt?.linkId ?? row.linkId } : null;
     };
     const items = draft.lines
-      ? draft.lines.map((line) => ({ thought: line.attempt?.key === line.key ? line.attempt.thought : { id: line.id, text: line.text.trim(), x: line.x, y: line.y }, parent: parent(line), key: line.key }))
-      : [{ thought: draft.attempt?.key === draft.key ? draft.attempt.thought : { id: draft.id, text: draft.text.trim(), x: draft.x, y: draft.y,
-        ...(draft.file ? { file: draft.file, width: draft.width, height: draft.height } : {}) }, parent: parent(draft), key: draft.key }];
+      ? draft.lines.map((line) => ({ thought: line.attempt?.thought ?? { id: line.id, text: line.text.trim(), x: line.x, y: line.y }, parent: parent(line), key: line.attempt?.key ?? line.key }))
+      : [{ thought: draft.attempt?.thought ?? { id: draft.id, text: draft.text.trim(), x: draft.x, y: draft.y,
+        ...(draft.file ? { file: draft.file, width: draft.width, height: draft.height } : {}) }, parent: parent(draft), key: draft.attempt?.key ?? draft.key }];
     const existingOnly = new Set(phone ? (draft.lines ?? [draft]).filter((row) => row.attempt?.parentId || (!draft!.tracked && draft!.parentId)).map((row) => row.id) : []);
     const expectedText = new Map((draft.lines ?? [draft]).flatMap((row) => row.attempt ? [[row.id, row.attempt.thought.text] as const] : []));
+    const desiredText = new Map((draft.lines ?? [draft]).map((row) => [row.id, row.text.trim()]));
+    const editKeys = new Map((draft.lines ?? [draft]).map((row) => [row.id, row.key]));
     const retry = new Set((draft.lines ?? [draft]).filter((row) => !!row.attempt).map((row) => row.id));
-    const saved = await doc.saveThoughts(items, { existingOnly, expectedText, retry, onAttempt: (item) => {
+    const saved = await doc.saveThoughts(items, { existingOnly, expectedText, desiredText, editKeys, retry, onAttempt: (item) => {
       const current = capture.peek();
       if (!current) return;
       const row = current.lines?.find((line) => line.id === item.thought.id) ?? current;
       const attempt = { key: item.key, parentId: item.parent?.id ?? null, linkId: item.parent?.linkId ?? row.linkId, thought: item.thought };
-      capture.set(current.lines ? { ...current, lines: current.lines.map((line) => line.id === item.thought.id ? { ...line, attempt } : line) } : { ...current, attempt });
+      capture.set(current.lines ? { ...current, lines: current.lines.map((line) => line.id === item.thought.id ? { ...line, attempt: line.attempt ?? attempt } : line) } : { ...current, attempt: current.attempt ?? attempt });
     } });
     setSavingDraft(false);
     draftSaveInFlight.current = false;
@@ -462,7 +464,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     }
     capture.set(null);
     setSelection(saved);
-    say(saved.length === 1 ? `Added ${quote(items[0]!.thought.text)}` : `Added ${saved.length} thoughts`, true);
+    say(saved.length === 1 ? `Added ${quote(desiredText.get(saved[0]!) ?? items[0]!.thought.text)}` : `Added ${saved.length} thoughts`, true);
     focusThought(`.sk-node[data-id="${saved[0]}"], .sk-li-t[data-id="${saved[0]}"]`);
   };
 

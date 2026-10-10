@@ -616,15 +616,17 @@ class MapConnectJourney(unittest.TestCase):
                 self.assertEqual(self.stored(page, sketch), before, 'legacy confirmation neither recreates/deletes a link nor changes coordinates/text')
 
     def test_16_refinements_confirm_existing_state_and_do_not_overwrite_peer_text(self):
-        for peer_change in (False, True):
-            with self.subTest(peer_change=peer_change):
+        for viewport, peer_change in ((PHONE, False), (PHONE, True), (COMPUTER, False), (COMPUTER, True)):
+            with self.subTest(width=viewport['width'], peer_change=peer_change):
                 page = self.page(COMPUTER)
                 sketch = self.scene(page, link=True)
                 page.locator('.sk-node', has_text=B).click()
                 page.get_by_role('button', name=re.compile('Add a thought connected to')).click()
                 page.get_by_label('Thought text').fill('First retained text')
                 path = f'**/api/v1/sketches/{sketch}/thoughts'
+                creation = []
                 def hide(route):
+                    creation.append({'body': route.request.post_data_json, 'key': route.request.headers['idempotency-key']})
                     actual = route.fetch(); self.assertEqual(actual.status, 201, actual.text())
                     route.fulfill(status=503, json={'message':'test: committed response not delivered'})
                 page.route(path, hide)
@@ -645,16 +647,18 @@ class MapConnectJourney(unittest.TestCase):
                     r=ctx.request.patch(f'/api/v1/sketches/{sketch}/thoughts/{created["id"]}',data={'text':'Jonas kept the newer requirement'},headers={'origin':ORIGIN,'if-match':f'"{created["version"]}"','idempotency-key':str(uuid.uuid4())})
                     self.assertEqual(r.status,200,r.text())
                     before=self.stored(page,sketch)
-                page.set_viewport_size(PHONE)
+                page.set_viewport_size(viewport)
                 draft=page.get_by_role('form',name='New thought draft')
                 draft.get_by_label('Thought text').fill('First retained text, then refined')
                 writes=[]
+                posted=[]
                 page.on('request',lambda r:writes.append(r.method) if r.method in ('POST','PATCH') and f'/sketches/{sketch}/thoughts' in r.url else None)
+                page.on('request',lambda r:posted.append({'body':r.post_data_json,'key':r.headers['idempotency-key']}) if r.method == 'POST' and r.url.endswith(f'/{sketch}/thoughts') else None)
                 draft.locator('button[type="submit"]').click()
                 if peer_change:
                     expect(page.locator('.sk-status')).to_contain_text('Someone changed the earlier saved thought')
                     expect(draft.get_by_label('Thought text')).to_have_value('First retained text, then refined')
-                    self.assertEqual(writes,[], 'confirmation does not overwrite a peer change')
+                    self.assertEqual(writes,[] if viewport == PHONE else ['POST'], 'confirmation does not overwrite a peer change')
                     self.assertEqual(self.stored(page,sketch),before)
                 else:
                     expect(draft).to_have_count(0)
@@ -662,8 +666,9 @@ class MapConnectJourney(unittest.TestCase):
                     updated=next(t for t in after['thoughts'] if t['id']==created['id'])
                     self.assertEqual(updated['text'],'First retained text, then refined')
                     self.assertEqual(updated['version'],created['version']+1)
-                    self.assertEqual(writes,['PATCH'],'refinement is an explicit ordinary text edit, never a creation/link replay')
+                    self.assertEqual(writes,['PATCH'] if viewport == PHONE else ['POST','PATCH'],'refinement uses an explicit ordinary text edit; a wider retry first confirms the original creation')
                     self.assertEqual(after['links'],before['links'])
+                self.assertEqual(posted, [] if viewport == PHONE else creation, 'even a refinement replays the exact original creation body/key, then confirms current state')
 
 
 if __name__ == '__main__':

@@ -63,7 +63,7 @@ export function DraftCapture({ draft, parent, saving, canWrite, confirmPrevious 
   return <form ref={form} className="sk-draft" aria-label="New thought draft" onSubmit={(event) => { event.preventDefault(); if (ready) onSave(); }}>
     <p className="sk-draft__context">{draft.file ? 'New image' : linkOf(draft.text) ? 'New link' : 'New thought'} · {where} · {privacy}</p>
     {draft.file ? <div className="sk-draft__image"><ThoughtImage className="sk-draft__img" fileId={draft.file.id} name={draft.file.name} />
-      <span>{draft.file.name} · only you can see it until you save</span></div> : null}
+      <span>{draft.file.name} · {attempted ? 'earlier save not confirmed' : !draft.tracked ? 'earlier saved state unknown' : 'only you can see it until you save'}</span></div> : null}
     <textarea className="ui-input" rows={2} aria-label={draft.file ? 'Image caption' : 'Thought text'} value={draft.text} maxLength={SKETCH_LIMITS.text} disabled={saving}
       onChange={(event) => onText(event.target.value)} onKeyDown={keys} />
     <div className="sk-draft__actions"><button type="submit" className="ui-btn ui-btn--primary" disabled={!ready}>{saving ? 'Saving…' : `${confirmPrevious ? 'Confirm and save' : 'Save'} ${draft.file ? 'image' : 'thought'}`}</button>

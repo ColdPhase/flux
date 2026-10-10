@@ -379,6 +379,8 @@ export function useSketchDoc(sketchId: string, me: Me) {
     /** Phone confirmation of an earlier connected attempt may read/edit an existing thought, never create its link. */
     existingOnly?: ReadonlySet<string>;
     expectedText?: ReadonlyMap<string, string>;
+    desiredText?: ReadonlyMap<string, string>;
+    editKeys?: ReadonlyMap<string, string>;
     retry?: ReadonlySet<string>;
     onAttempt?(item: { thought: NewThought; parent: { id: string; linkId: string } | null; key: string }): void;
   }): Promise<string[]> => {
@@ -397,14 +399,15 @@ export function useSketchDoc(sketchId: string, me: Me) {
           const existing = current.thoughts.find((item) => item.id === thought.id);
           if (!existing) { if (options?.existingOnly?.has(thought.id)) unconfirmed = true; throw failure; }
           const expected = options?.expectedText?.get(thought.id);
+          const wanted = options?.desiredText?.get(thought.id) ?? thought.text;
           const untouchedOwnCreation = expected === undefined && existing.version === 1 && existing.createdBy.id === meRef.current.id;
-          if (existing.text !== thought.text && existing.text !== expected && !untouchedOwnCreation) {
+          if (existing.text !== wanted && existing.text !== expected && !untouchedOwnCreation) {
             changedEarlier = true;
             patchThought(existing, true);
             throw new Error('Earlier saved thought was changed');
           }
-          const text = existing.text === thought.text ? existing
-            : await withRetry(() => api.updateThought(sketchId, existing.id, { text: thought.text }, existing.version, `${key}-text`));
+          const text = existing.text === wanted ? existing
+            : await withRetry(() => api.updateThought(sketchId, existing.id, { text: wanted }, existing.version, `${options?.editKeys?.get(thought.id) ?? key}-text`));
           return { thought: text, link: parent ? current.links.find((item) => item.id === parent.linkId) ?? null : null, reconciled: true };
         };
         if (options?.existingOnly?.has(thought.id)) {

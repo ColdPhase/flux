@@ -588,7 +588,7 @@ class ThoughtDraftJourney(unittest.TestCase):
         committed = self.stored(page)
         created = [t for t in committed["thoughts"] if t["text"] == "First text"]
         self.assertEqual(len(created), 1, "the first save committed although its response was lost")
-        # Editing gives the draft a fresh request key; its stable thought ID already exists on the server.
+        # The refinement has its own edit key; the earlier creation keeps its original body/key.
         field.fill("First text, then refined")
         field.press("Enter")
         expect(page.get_by_role("form", name="New thought draft")).to_have_count(0)
