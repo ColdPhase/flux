@@ -1,16 +1,30 @@
 # MCP admission and client compatibility — #460 amendment
 
-**Status: proposed contract, 2026-10-10; independent contract evaluation pending.**
+**Status: bounded contract independently accepted, 2026-10-10; implementation and production support unverified.**
 Owner: @PelikanFix16. Evaluator: an independent peer; eligible GitHub review by
 @Zamojski5 remains separate. [#460](https://github.com/ColdPhase/flux/issues/460)
 and research/contract [PR #466](https://github.com/ColdPhase/flux/pull/466) stay open.
 The [bounded research choice](research/2026-10-10-codex-mcp-protocol-compatibility.md)
 was independently accepted at `c39eea3019de2cbc28aa798d2ae5e005e33fd3eb` in
 [COMMENT 5480322828](https://github.com/ColdPhase/flux/pull/466#pullrequestreview-5480322828).
-That record accepts the architecture; it does not accept this new admission
-contract, provide eligible approval or certify production support.
+That record accepts the architecture. Independent agent `review_protocol_decision`
+accepted PC-1–PC-5 at exact contract head
+`93889087957b73fe2368d43b6ee3e8926fcbd787` in
+[COMMENT 5480429341](https://github.com/ColdPhase/flux/pull/466#pullrequestreview-5480429341).
+The agent is separate from author `visual_next`; its shared @PelikanFix16 COMMENT
+is delegated contract acceptance, not eligible GitHub/Code Owner approval,
+founder direction or runtime acceptance. All original parent criteria remain.
 
-This is a proposed amendment to [F-016](mcp-cowork.md), [CW-1](cowork-workflow.md)
+The acceptance explicitly requires HTTP 202 **empty body** for the valid single
+legacy initialized notification, actual HTTP refusal for unsupported
+notifications, no effect/receipt on batch refusal, and no malformed notification
+exception. Required cancellation/progress behavior is not waived by protocol
+optionality. The new notification/header/batch/error-list details, complete
+authority/features/held races, native/platform Connect and actual #160 activation
+remain runtime gates. The peer checked contracts, primary sources and static
+checks, not a new Docker pass.
+
+This is the bounded accepted contract amendment to [F-016](mcp-cowork.md), [CW-1](cowork-workflow.md)
 and the wire admission of [EXT-1](extension-contracts.md#ext-1--mcp-tool-contract-1).
 It retains [F-024](mcp-identity.md), every existing #460/#152/#160 criterion,
 and the normal built-in **Connect → authorize → Start/Resume** outcome. No
@@ -134,8 +148,8 @@ substitute for completing it.
 
 ## PC-5 — acceptance and publication gates
 
-The independent peer evaluates this exact amendment before implementation relies
-on it. The bounded research choice and author-run temporary prototype do not
+The exact amendment has independent delegated acceptance as recorded above.
+Implementation now requires fresh independent exact-head runtime evaluation. The bounded research choice and author-run temporary prototype do not
 close #460 or satisfy eligible PR approval. Preserve the original issue criteria;
 do not split away their built-in Connect requirement to close the parent early.
 

@@ -18,7 +18,7 @@ procedures in `docs/agents/` or turn supplied `AGENTS_COOP.md` into instructions
 
 The proposed [#460 client-state/admission amendment](mcp-protocol-compatibility.md)
 separates OAuth authorization, verified transport and supplied active-client
-instruction loading. It awaits independent contract evaluation and does not
+instruction loading. It has independent bounded contract acceptance at `93889087` and does not
 replace any CW-1 outcome or declare a supported Start/Resume path.
 
 The default journey is **connect a supported client → authorize project/role →

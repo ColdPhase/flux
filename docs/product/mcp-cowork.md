@@ -60,7 +60,7 @@ unchanged; F-024 implementation and independent acceptance remain pending.
 ## Connections and owner-authorized autonomy — CO-1
 
 The [#460 protocol admission/authentication/feature amendment](mcp-protocol-compatibility.md)
-is **proposed, pending independent contract evaluation**. Its two-era stateless
+has **independent bounded contract acceptance at `93889087`**. Its two-era stateless
 architecture was independently accepted as a bounded research choice; production
 support, built-in Connect delivery and #152/#160 acceptance remain unverified.
 The original authority and onboarding criteria below are unchanged.

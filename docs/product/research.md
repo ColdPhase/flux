@@ -2,8 +2,9 @@
 
 Bounded research choice: [pinned Codex MCP protocol compatibility, 2026-10-10](research/2026-10-10-codex-mcp-protocol-compatibility.md)
 records actual default/flagged client experiments and a bounded stateless
-compatibility choice for #460, independently accepted at `c39eea30`. Its public
-contract amendment and implementation remain pending; #160 Start/Resume gates
+compatibility choice for #460, independently accepted at `c39eea30`. Its exact public
+contract amendment was independently accepted at `93889087`; implementation
+and runtime acceptance remain pending; #160 Start/Resume gates
 remain unchanged.
 
 Current dated assessment: [owner MCP switches and SSO-only authentication, 2026-10-07](research/2026-10-07-mcp-switches-and-sso-only.md)

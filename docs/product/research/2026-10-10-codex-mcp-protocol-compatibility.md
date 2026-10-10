@@ -1,6 +1,6 @@
 # Pinned Codex MCP compatibility — accepted bounded research choice
 
-**2026-10-10; bounded research choice independently accepted; public amendment and delivery pending.** Owner:
+**2026-10-10; bounded research choice and public contract independently accepted; delivery pending.** Owner:
 @PelikanFix16, [#460](https://github.com/ColdPhase/flux/issues/460), milestone 2.
 This research checkpoint does not amend an accepted protocol contract or declare
 Codex Start/Resume delivered. [#152](https://github.com/ColdPhase/flux/issues/152),
@@ -12,7 +12,7 @@ and [F-024](../mcp-identity.md) remain binding.
 
 **[Accepted research choice] Support explicit MCP `2025-06-18` and `2026-07-28` on the existing
 authenticated `/mcp` endpoint through the pinned SDK's stateless legacy adapter,
-subject to a separately evaluated public admission contract and the runtime gates below.** Keep
+under the separately accepted public admission contract and the runtime gates below.** Keep
 the same verified bearer factory, domain dispatch, live policy and delivery
 fences. Reject other revisions and malformed modern claims; do not silently
 rewrite a protocol or relax authorization. The default pinned Codex can then use
@@ -50,8 +50,12 @@ The independent review requires exact admission/header/batch/notification
 rules, complete two-era authorization and held-race equivalence, required
 feature/payload equivalence, and truthful built-in Connect with supplied
 activation. Every original #460/#152/#160 criterion remains binding; the
-implementation gates below retain these obligations. The next contract
-amendment requires independent evaluation before implementation depends on it.
+implementation gates below retain these obligations. Independent agent `review_protocol_decision` then accepted the concrete public
+PC-1–PC-5 amendment at `93889087957b73fe2368d43b6ee3e8926fcbd787` in
+[COMMENT 5480429341](https://github.com/ColdPhase/flux/pull/466#pullrequestreview-5480429341).
+That separate same-account delegated contract acceptance also provides no
+eligible approval, founder direction or runtime acceptance. Exact acceptance
+and remaining gates are recorded in the public contract.
 No legacy production support or completed onboarding is recorded here.
 
 Current-main reconciliation on 2026-10-10: `2175d2490a023905143569a13ca68f43e93bb403`
@@ -198,13 +202,13 @@ and image tags were cleaned. No unsupported client is now declared supported.
 
 ## Proposed contract and implementation gates
 
-The bounded architecture choice is accepted as recorded above. Its public
-admission/authentication/feature amendment still requires independent evaluation
-before application implementation relies on it. Neither choice nor contract
-acceptance certifies implementation or completes #460.
+The bounded architecture choice and public admission/authentication/feature
+amendment are independently accepted as recorded above. Neither acceptance
+certifies implementation or completes #460; fresh independent runtime evaluation
+and normal protected merge gates remain required.
 
-The concrete [PC-1–PC-5 amendment](../mcp-protocol-compatibility.md) is now proposed
-for that separate contract evaluation. It specifies exact initialize/header,
+The concrete [PC-1–PC-5 amendment](../mcp-protocol-compatibility.md) has that separate
+contract acceptance. It specifies exact initialize/header,
 notification and batch admission, unchanged authority/delivery, required domain
 features and truthful client states. Its detailed admission policy is new to this
 proposal and is not retroactively certified by the research prototype.
@@ -273,7 +277,7 @@ Owned containers, volumes, networks, image tags and temporary keys are cleaned
 after each attempt. Other Compose projects and build cache are preserved.
 
 Branch: `codex/460-protocol-compatibility`. Source base stays pinned above. This
-checkpoint contains the accepted bounded research record and proposed public
-amendment, with no application, Dockerfile or runner edit. Next action: obtain
-independent evaluation of that exact contract, then implement and obtain
+checkpoint contains the accepted bounded research and public-contract records,
+with no application, Dockerfile or runner edit. Next action: implement the exact
+accepted contract in a separate owner artifact and obtain
 fresh independent runtime evaluation of its exact head. No implementation PR is open.

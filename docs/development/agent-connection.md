@@ -635,7 +635,7 @@ Findings recorded by this check (2026-10-09):
   not delivered built-in onboarding; the current application does not serve the older revision.
   The [#460 research choice](../product/research/2026-10-10-codex-mcp-protocol-compatibility.md)
   independently accepts a bounded two-era architecture. Its [public admission contract](../product/mcp-protocol-compatibility.md)
-  remains proposed, pending independent contract evaluation, implementation and complete runtime gates.
+  has independent bounded acceptance at `93889087`; implementation and complete runtime gates remain pending.
 - The pinned Codex runs MCP tool calls through its separate `codex-code-mode-host` release asset; the image pins it too.
 - Claude Code's `mcp login` needs a terminal (the check gives it a pty) and prints the authorization URL as a
   terminal hyperlink.

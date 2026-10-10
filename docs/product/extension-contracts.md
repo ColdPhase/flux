@@ -106,7 +106,7 @@ listed below.
 | **Contract test** | `extension-contracts.test.ts` connects through real OAuth and reads `tools/list`, `prompts/list`, `resources/list`, `resources/templates/list`, the protected-resource metadata, bootstrap and one refused call. It compares them with `mcp-tools.v1.json`. It also checks that every listed error code is still raised in the server or core source, and that every code the playbook names is listed. |
 
 The [#460 wire admission/authentication/feature amendment](mcp-protocol-compatibility.md)
-is proposed and awaits independent contract evaluation. Its bounded two-era
+has independent bounded contract acceptance at `93889087`. Its bounded two-era
 research choice is accepted; this does not change EXT-1's domain version,
 permission or compatibility promises, nor declare a production legacy client
 supported. Implementation must prove both wire formats against the required
