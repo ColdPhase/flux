@@ -132,7 +132,16 @@ prove new coordination.
   provider must verify that every eligible viewer of the actual canonical thread
   may read the private sources backing the response, with the current source and
   audience dependencies held by the publication/delivery fence. A model-supplied
-  source list or omitted reference is not proof of public provenance. Until a
+  source list or omitted reference is not proof of public provenance. Check the
+  complete admitted target/source/criteria closure and any trusted captured
+  private-input provenance, not only the response's selected references. A
+  publication-time check alone is insufficient: the backing source/audience
+  dependencies must remain attached to the canonical response, and every later
+  thread read/live event/notice/count/export/recovery/receipt replay must filter
+  before projection and protected delivery for that actual reader, including
+  new project members or readers who lost repository access. No private detail
+  may sit in an ordinary shared body while those read paths lack the provider.
+  Until a
   trusted source/publication provider can enforce this closure, refuse detailed
   private-backed body/resolution, keep the request visibly pending/blocked, and
   retain only permitted content-free status references. Do not use responding-
@@ -187,6 +196,8 @@ Negative/race cases: cross-owner/project/guessed IDs, self/author separation,
 missing scopes/capabilities/new entries, disabled client, role loss, policy change,
 revoked/expired/exhausted grants, held pre-effect and postcommit delivery,
 idempotent retry/lost ACK/no duplicate publication, changed target/SHA,
+a third project reader without private-repository access (body/title/URL/diff,
+notice/live/count/recovery/replay) and later source-access loss before delivery,
 simultaneous claims, offline recipient, cursor gap/retention, fairness/round
 exhaustion and no lost pending request. Record actual tool/network/model counts:
 quiet idle and ACK/renewal create zero model calls or conversation/unread noise.
