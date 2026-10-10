@@ -110,6 +110,25 @@ describe('Flux PWA in Chromium over HTTPS', () => {
     });
     assert.ok(cached.some((entry) => /^flux-shell-[0-9a-f]{16} \/offline\.html$/.test(entry)), cached.join('\n'));
     assert.ok(cached.some((entry) => / \/assets\/.+\.js$/.test(entry)), 'the app bundle is precached');
+    const precache = await page.evaluate(async () => {
+      const worker = await (await fetch('/sw.js')).text();
+      const match = /const PRECACHE = (\[[^;]+\]);/.exec(worker);
+      if (!match) throw new Error('The emitted precache inventory is missing');
+      return JSON.parse(match[1]!) as string[];
+    });
+    const cachedPaths = new Set(cached.map((entry) => entry.slice(entry.indexOf(' ') + 1)));
+    for (const asset of precache) assert.ok(cachedPaths.has(asset), `Every emitted asset stays precached: ${asset}`);
+    const settingsChunk = precache.find((asset) => /\/SettingsHome-[^/]+\.js$/.test(asset));
+    assert.ok(settingsChunk, 'the unopened secondary route has a separate emitted chunk');
+    state.offline = true;
+    try {
+      const route = await page.evaluate(async (asset) => {
+        const response = await fetch(asset);
+        return { status: response.status, text: await response.text() };
+      }, settingsChunk);
+      assert.equal(route.status, 200, 'unopened route code is available from the service worker offline');
+      assert.ok(route.text.length > 100, 'actual compiled route bytes are returned');
+    } finally { state.offline = false; }
     // Make API calls through the controlled page, then confirm none of them was cached.
     assert.equal(await page.evaluate(async () => (await fetch('/api/v1/health')).status), 200);
     assert.equal(await page.evaluate(async () => (await fetch('/api/v1/me')).status), 401);
