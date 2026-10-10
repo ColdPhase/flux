@@ -72,6 +72,24 @@ ADD --checksum=sha256:f54dc5852042445bf41da3aa31156f3cb02f52c5a1a04074de73dc5598
 FROM codex-${TARGETARCH} AS codex
 RUN mkdir /tmp/codex && tar -xzf /codex.tar.gz -C /tmp/codex && set -- /tmp/codex/* && [ "$#" -eq 1 ] && install -m 0755 "$1" /codex
 
+# TEST ONLY, opt-in (#152 AC-4, scripts/check_mcp_clients.sh): the browser-check image with the pinned REAL
+# Codex (from the `codex` stage above) so both vendors' CLIs can register and use Flux's MCP server. Claude
+# Code is never in an image: the check downloads the pinned, signature-checked release at run time with the
+# same installer the runtime uses (gpg is only here for that; musl because the release is the musl build). No vendor account or sign-in is involved.
+# Codex 0.160.1 runs MCP tool calls through a separate code-mode host binary (a release asset of the same tag).
+FROM node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS codex-host-amd64
+ADD --checksum=sha256:8a69207d97545ac753b6585974e1e67a4c51ae5deacf06517db512bb25e0e3c2 https://github.com/openai/codex/releases/download/rust-v0.160.1/codex-code-mode-host-x86_64-unknown-linux-musl.tar.gz /host.tar.gz
+FROM node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS codex-host-arm64
+ADD --checksum=sha256:e5e027e6689efda2e3570aa600179f0ebb18632803350e152ed6c9b97dcf9741 https://github.com/openai/codex/releases/download/rust-v0.160.1/codex-code-mode-host-aarch64-unknown-linux-musl.tar.gz /host.tar.gz
+FROM codex-host-${TARGETARCH} AS codex-host
+RUN mkdir /tmp/host && tar -xzf /host.tar.gz -C /tmp/host && set -- /tmp/host/* && [ "$#" -eq 1 ] && install -m 0755 "$1" /codex-code-mode-host
+
+FROM e2e AS mcp-clients
+RUN apt-get update && apt-get install -y --no-install-recommends gnupg musl && rm -rf /var/lib/apt/lists/*
+COPY --from=codex /codex /usr/local/bin/codex
+COPY --from=codex-host /codex-code-mode-host /usr/local/bin/codex-code-mode-host
+ENV PATH="/opt/flux-tools/claude/bin:$PATH"
+
 FROM agent-runtime-base AS agent-runtime
 COPY --from=codex /codex /opt/flux-runtime/codex/bin/codex
 
