@@ -581,6 +581,13 @@ class AppShellJourney(unittest.TestCase):
             self.assertGreaterEqual(min(size["width"], size["height"]), 44, f"44px target: {target}")
         self.assertGreaterEqual(box(page, page.get_by_role("button", name="Save note"))["height"], 44)
         expect(composer).to_be_editable()
+        # #437: the places bar labels are at least the phone meta size (12.5px, final design §2), and
+        # the composer's audience line wraps inside the viewport instead of clipping mid-word.
+        for size in page.locator(".ui-bottomnav__label").evaluate_all("els => els.map(e => parseFloat(getComputedStyle(e).fontSize))"):
+            self.assertGreaterEqual(size, 12.5, "places bar label at least 12.5px")
+        where = page.locator(".composer__audience").first
+        self.assertLessEqual(box(page, where)["x"] + box(page, where)["width"], PHONE["width"], "the audience line fits the phone")
+        self.assertFalse(where.evaluate("el => el.scrollWidth > el.clientWidth + 1"), "the audience line is not clipped")
 
         menu.click()
         drawer = page.get_by_role("dialog", name="Flux")

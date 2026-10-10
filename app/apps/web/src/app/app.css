@@ -477,10 +477,11 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 }
 .auth__back { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; margin-left: auto; padding: 0 8px; border-radius: var(--r); font-size: var(--fs-md); color: var(--t2); text-decoration: none; transition: var(--tr); }
 .auth__back:hover { background: var(--hov); color: var(--t1); }
-/* Home's note composer on phones (#266 PF-3): the audience reads as one line, and the standing
-   privacy reminder under the box gives way to the work (the audience line already says "Only you"). */
+/* Home's note composer on phones (#266 PF-3): the audience is one block of text, and the standing
+   privacy reminder under the box gives way to the work (the audience line already says "Only you").
+   It wraps instead of clipping, so "which only you can open" is never cut mid-word (#437). */
 @media (max-width: 640px) {
-  .composer > .composer__in > .composer__audience { display: block; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .composer > .composer__in > .composer__audience { display: block; min-width: 0; line-height: 1.45; overflow-wrap: anywhere; }
   .composer > .composer__in > .composer__audience svg { margin-right: 4px; vertical-align: -2px; }
   .composer__hint:has(> .composer__state--idle:only-child), .composer__hint:has(> .composer__keys + .composer__state--idle) { display: none; }
 }
