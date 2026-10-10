@@ -32,14 +32,56 @@ from author_columns import assert_author_column
 from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
 
 # Width × height fixtures (CSS px). Phones and tablets use a coarse (touch) pointer.
-MATRIX = [(320, 568), (390, 844), (768, 1024), (1024, 768), (1440, 900), (1920, 1080), (2560, 1440), (3840, 2160), (5120, 1440)]
+# Every starting fixture of docs/design/adaptive-workspaces.md, by context: phones, short landscape
+# phones, tablets and split views, small laptops, desktops, ultrawide, 4K-sized and tall windows.
+MATRIX = [
+    (320, 568), (360, 640), (360, 800), (390, 844), (412, 915), (430, 932),
+    (640, 360), (844, 390),
+    (600, 960), (768, 1024), (820, 1180), (1024, 768),
+    (1280, 720), (1280, 800), (1366, 768), (1440, 900),
+    (1920, 1080), (2560, 1440),
+    (2560, 1080), (3440, 1440), (5120, 1440),
+    (3840, 2160), (900, 1600),
+]
 COARSE_UP_TO = 1024
-SHOTS_AT = {320, 390, 768, 1440, 1920, 3840}
+SHOTS_AT = {320, 390, 768, 1440, 1920, 3440, 3840}
 TABS = ["Conversation", "Map", "Tasks", "Wiki", "Agents"]
+# ADAPT-2 caps that stop the wide screens from giving more room (measured by test_07). Each is open until its
+# owner's PR lands; the test fails once a cap is gone, so the entry is removed rather than passing silently.
+WIDE_CAPS = {
+    "the map plane": "the sketch page caps the plane at 1080 px (app/apps/web/src/sketch/sketch.css; PR #380 owns the map)",
+    "the Agents column": "the Agents column stays at 854 px (app/apps/web/src/agents/agents.css; PRs #376 and #417 own it)",
+}
 # The readable measure (proposed 2026-10-05, docs/design/adaptive-layout-rules.md): at most 90
 # characters, spaces included, on any rendered line of prose.
 MEASURE = 90
 TARGET = 44
+# Known gaps: criteria the current head does not meet at one fixture, each with the issue that closes it.
+# The journey still measures them, and the matrix fails when one stops showing, so a closed gap must be
+# removed here rather than silently passing. They are reported as open, not as delivered (#151).
+# A gap is excused only for the predicate it names, and only when its own control is at least 44 px and
+# one of its overlays (covered_by) covers the hit area; see explained_by_recorded_overlap. Every other
+# failure at the same fixture stays a problem.
+KNOWN_GAPS = {
+    "640×360": {
+        "a message's Reply": {
+            "covered_by": (".ui-tabs__bar", ".project-convo__composer"),
+            "reason": "the sticky tab bar and the composer leave less than 44 px of stream between them; the phone shell (PR #414) replaces the tab bar",
+        },
+    },
+    "844×390": {
+        "a message's Reply": {
+            "covered_by": (".ui-tabs__bar", ".project-convo__composer"),
+            "reason": "the sticky tab bar and the composer leave less than 44 px of stream between them; the phone shell (PR #414) replaces the tab bar",
+        },
+        "a task card": {
+            "covered_by": (".tb-overview",),
+            "reason": "the sticky status overview covers the card at this height; the Tasks layout (PR #375) owns the overview",
+        },
+    },
+}
+# The overlays a known gap may name. The measurements report which one (if any) covers each point or stops each side.
+OVERLAYS = (".ui-tabs__bar", ".project-convo__composer", ".tb-overview")
 
 FIXTURE: dict = {}
 # The longest measured line per prose surface and viewport, printed after the matrix as evidence.
@@ -91,7 +133,7 @@ NAME = r"""const name = (n) => !n ? 'nothing' : `${n.tagName.toLowerCase()}${n.i
 
 # Brings an element into view inside its own scroller and reports whether all of it is on screen
 # and actually hit at its centre and near each edge (nothing clips or covers it).
-REACH = r"""(el) => {
+REACH = r"""(el, overlays) => {
   """ + NAME + r"""
   el.scrollIntoView({block: 'nearest', inline: 'nearest'});
   const b = el.getBoundingClientRect();
@@ -99,32 +141,37 @@ REACH = r"""(el) => {
   const inset = Math.min(3, b.width / 4, b.height / 4);
   const points = {centre: [b.left + b.width / 2, b.top + b.height / 2], left: [b.left + inset, b.top + b.height / 2], right: [b.right - inset, b.top + b.height / 2],
                   top: [b.left + b.width / 2, b.top + inset], bottom: [b.left + b.width / 2, b.bottom - inset]};
-  const covered = {};
+  const covered = {}, overlay = {};
   for (const [where, [x, y]] of Object.entries(points)) {
     const hit = document.elementFromPoint(x, y);
-    if (!hit || !(hit === el || el.contains(hit))) covered[where] = name(hit);
+    if (!hit || !(hit === el || el.contains(hit))) {
+      covered[where] = name(hit);
+      overlay[where] = hit ? overlays.find((s) => hit.closest(s)) || null : null;
+    }
   }
   const why = {};
   if (Object.keys(covered).length) {
     why.inert = name(el.closest('[inert]'));
     why.interactivity = getComputedStyle(el).interactivity;
   }
-  return {inside, hit: !Object.keys(covered).length, covered, ...why, box: [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)]};
+  return {inside, hit: !Object.keys(covered).length, covered, overlay, ...why, box: [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)]};
 }"""
 
 # The element's own hit area, measured from its centre outwards in half-pixel steps along both
 # axes until another element (or nothing) is hit. Pseudo-element extensions such as a stretched
 # card link count; a neighbouring control or a covering bar ends the target.
-TARGET_JS = r"""(el) => {
+TARGET_JS = r"""(el, overlays) => {
   """ + NAME + r"""
   el.scrollIntoView({block: 'nearest', inline: 'nearest'});
   const b = el.getBoundingClientRect();
   const cx = b.left + b.width / 2, cy = b.top + b.height / 2;
   const mine = (x, y) => { const hit = document.elementFromPoint(x, y); return !!hit && (hit === el || el.contains(hit)); };
-  const reach = (dx, dy) => { let d = 0; while (d < 60 && mine(cx + dx * (d + 0.5), cy + dy * (d + 0.5))) d += 0.5; return {d, stop: name(document.elementFromPoint(cx + dx * (d + 0.5), cy + dy * (d + 0.5)))}; };
+  const overlayOf = (node) => (node && overlays.find((s) => node.closest(s))) || null;
+  const reach = (dx, dy) => { let d = 0; while (d < 60 && mine(cx + dx * (d + 0.5), cy + dy * (d + 0.5))) d += 0.5; const node = document.elementFromPoint(cx + dx * (d + 0.5), cy + dy * (d + 0.5)); return {d, stop: name(node), overlay: overlayOf(node)}; };
   const l = reach(-1, 0), r = reach(1, 0), u = reach(0, -1), dn = reach(0, 1);
   return {size: [Math.round(b.width), Math.round(b.height)], across: l.d + r.d + 0.5, down: u.d + dn.d + 0.5,
-          stops: {left: l.stop, right: r.stop, up: u.stop, down: dn.stop}};
+          stops: {left: l.stop, right: r.stop, up: u.stop, down: dn.stop},
+          overlay: {left: l.overlay, right: r.overlay, up: u.overlay, down: dn.overlay}};
 }"""
 
 SIDEWAYS = r"""() => {
@@ -154,14 +201,42 @@ FIRST_IN_VIEW = r"""() => {
 # rest, not mid-transition. Endless indicators are ignored.
 SETTLED = """() => document.getAnimations().every((a) => a.playState !== 'running' || a.effect?.getComputedTiming().endTime === Infinity)"""
 
+# The CSS boxes that define a view's layout, rounded to whole CSS pixels (absent regions are null).
+GEOMETRY = r"""() => {
+  const box = (sel) => { const e = document.querySelector(sel); if (!e) return null; const b = e.getBoundingClientRect(); return [b.left, b.top, b.width, b.height].map((v) => Math.round(v)); };
+  return {pane: box('.app__pane'), main: box('.app__main'), feed: box('.project-convo__feed'), canvas: box('.sk-canvas'), board: box('.tb-board'), details: box('#details')};
+}"""
+
 CAMERA = "() => { const c = document.querySelector('.sk-canvas'); return {left: Math.round(c.scrollLeft), top: Math.round(c.scrollTop)}; }"
 
 
+def explained_by_recorded_overlap(size: str, what: str, predicate: str, observed: dict) -> bool:
+    """True only when the failed predicate is one the known gap records and its cause is that gap's own overlay.
+
+    "covered": observed is REACH's result; every point the control fails on must be covered by one of the gap's overlays.
+    "target": observed is TARGET_JS's result; the control's own box must reach TARGET px on both axes, so an undersized
+    control is never excused, and on each axis that falls short both sides must be stopped by the gap's overlays.
+    """
+    gap = KNOWN_GAPS.get(size, {}).get(what)
+    if gap is None:
+        return False
+    covers = gap["covered_by"]
+    if predicate == "covered":
+        return bool(observed["covered"]) and all(observed["overlay"].get(point) in covers for point in observed["covered"])
+    if predicate == "target":
+        width, height = observed["size"]
+        if min(width, height) < TARGET - 0.5:
+            return False
+        short = (["left", "right"] if observed["across"] < TARGET - 0.5 else []) + (["up", "down"] if observed["down"] < TARGET - 0.5 else [])
+        return bool(short) and all(observed["overlay"].get(side) in covers for side in short)
+    return False
+
+
 class AdaptiveBase(unittest.TestCase):
-    def page(self, width: int, height: int, *, who: str = "hubert", coarse: bool | None = None, theme: str = "light") -> Page:
+    def page(self, width: int, height: int, *, who: str = "hubert", coarse: bool | None = None, theme: str = "light", dpr: float = 1) -> Page:
         coarse = width <= COARSE_UP_TO if coarse is None else coarse
         context = BROWSER.new_context(base_url=ORIGIN, storage_state=FIXTURE["states"][who], viewport={"width": width, "height": height},
-                                      color_scheme=theme, locale="en-GB", timezone_id="Europe/Warsaw", device_scale_factor=1,
+                                      color_scheme=theme, locale="en-GB", timezone_id="Europe/Warsaw", device_scale_factor=dpr,
                                       has_touch=coarse, is_mobile=coarse and width <= 640)
         self.addCleanup(context.close)
         page = context.new_page()
@@ -184,6 +259,13 @@ class AdaptiveBase(unittest.TestCase):
     def settle(self, page: Page) -> None:
         page.wait_for_function(SETTLED, timeout=5000)
 
+    def at_rest(self, page: Page) -> None:
+        """Requests have finished and no view is still moving: the header and the stream hold their final size."""
+        page.wait_for_load_state("networkidle")
+        # Geist loads with font-display: swap; a fallback face sets a different line height (a 3 px shift).
+        page.evaluate("document.fonts.ready.then(() => true)")
+        self.settle(page)
+
     def no_sideways_scroll(self, page: Page, surface: str) -> None:
         self.settle(page)
         overflow = page.evaluate(SIDEWAYS)
@@ -192,28 +274,41 @@ class AdaptiveBase(unittest.TestCase):
 
     # Layout checks collect every problem of one journey, so a run reports all of them at once.
     problems: list[str]
+    seen_gaps: set[tuple[str, str]]
 
-    def check(self, condition: bool, message: str) -> None:
-        if not condition:
-            self.problems.append(message)
+    def check(self, condition: bool, message: str, overlap: tuple[str, str, str, dict] | None = None) -> None:
+        """Records a failed check. overlap = (size, what, predicate, observed) is given only for a predicate a known
+        gap may record; the failure then counts as seen, not as a problem, when explained_by_recorded_overlap holds."""
+        if condition:
+            return
+        if overlap is not None and explained_by_recorded_overlap(*overlap):
+            self.seen_gaps.add((overlap[0], overlap[1]))
+            return
+        self.problems.append(message)
 
     def reachable(self, locator: Locator, what: str) -> dict:
         expect(locator, what).to_be_visible()
         self.settle(locator.page)
-        result = locator.evaluate(REACH)
-        self.check(result["inside"], f"{what} lies fully inside the viewport: {result}")
-        self.check(result["hit"], f"{what} is not clipped or covered: {result}")
+        result = locator.evaluate(REACH, list(OVERLAYS))
+        self.judge_reach(what, self.where(locator.page), result)
         return result
+
+    def judge_reach(self, what: str, size: str, result: dict) -> None:
+        self.check(result["inside"], f"{what} at {size} lies fully inside the viewport: {result}")
+        self.check(result["hit"], f"{what} at {size} is not clipped or covered: {result}", (size, what, "covered", result))
 
     def target(self, page: Page, locator: Locator, what: str) -> None:
         if not page.evaluate("matchMedia('(pointer: coarse)').matches"):
             return
-        result = locator.evaluate(TARGET_JS)
+        result = locator.evaluate(TARGET_JS, list(OVERLAYS))
+        self.judge_target(what, self.where(page), result)
+
+    def judge_target(self, what: str, size: str, result: dict) -> None:
         # Half-pixel sampling: a 44 px target measures at least 43.5 px.
-        self.check(min(result["across"], result["down"]) >= TARGET - 0.5, f"{what} at {self.where(page)} offers a {TARGET} px touch target: {result}")
+        self.check(min(result["across"], result["down"]) >= TARGET - 0.5, f"{what} at {size} offers a {TARGET} px touch target: {result}", (size, what, "target", result))
 
     def primary(self, page: Page, locator: Locator, what: str) -> None:
-        self.reachable(locator, f"{what} at {self.where(page)}")
+        self.reachable(locator, what)
         self.target(page, locator, what)
 
     def measure(self, page: Page, selector: str, what: str) -> int:
@@ -231,6 +326,7 @@ class AdaptiveBase(unittest.TestCase):
 
     def setUp(self) -> None:
         self.problems = []
+        self.seen_gaps: set[tuple[str, str]] = set()
 
     def tabs(self, page: Page) -> Locator:
         return page.get_by_role("navigation", name="Project views")
@@ -257,17 +353,24 @@ class AdaptiveMatrix(AdaptiveBase):
         for width, height in MATRIX:
             with self.subTest(width=width, height=height):
                 self.problems = []
+                self.seen_gaps = set()
                 try:
                     self.journey(width, height)
                 finally:
                     self.no_problems()
+                size = f"{width}×{height}"
+                expected = set(KNOWN_GAPS.get(size, {}))
+                seen = {gap for at, gap in self.seen_gaps if at == size}
+                self.assertEqual(seen, expected, f"at {size} the known gaps still show; remove the closed ones from KNOWN_GAPS")
         for what, values in MEASURED.items():
             print(f"\n  longest line, {what}: " + ", ".join(f"{size} {n}" for size, n in values.items()), end="")
 
-    def journey(self, width: int, height: int) -> None:
-        page = self.page(width, height)
+    def journey(self, width: int, height: int, theme: str = "light") -> None:
+        page = self.page(width, height, theme=theme)
         pid = self.ids["project"]
         size = f"{width}x{height}"
+        # Dark captures are named apart from the light ones (the same journey, the other theme).
+        tag = "" if theme == "light" else "-dark"
         wide = width > 1000
         page.goto(f"/projects/{pid}")
 
@@ -299,7 +402,7 @@ class AdaptiveMatrix(AdaptiveBase):
         assert_author_column(self, their_row, width, f"other author at {size}")
         mine, theirs = mine_row.bounding_box(), their_row.bounding_box()
         self.assertAlmostEqual(mine["x"], theirs["x"], delta=1, msg=f"all authors share the same left column at {size} (F-026)")
-        self.shot(page, f"adapt-{size}-conversation")
+        self.shot(page, f"adapt-{size}{tag}-conversation")
 
         # Its thread (the source of a reply), docked beside the stream or as a sheet over it.
         question = page.locator(".project-convo__message").filter(has_text="Question for the next session")
@@ -321,7 +424,7 @@ class AdaptiveMatrix(AdaptiveBase):
             self.assertIn("thread--docked", thread.get_attribute("class"), f"the thread docks beside the stream at {size}")
             self.assertLessEqual(stream["x"] + stream["width"], drawer["x"] + 1, "stream and thread do not overlap")
             self.assertGreaterEqual(stream["width"], 480, "the stream stays readable beside its thread")
-        self.shot(page, f"adapt-{size}-thread")
+        self.shot(page, f"adapt-{size}{tag}-thread")
         thread.get_by_role("button", name="Close replies").click()
         expect(thread).to_have_count(0)
 
@@ -338,7 +441,7 @@ class AdaptiveMatrix(AdaptiveBase):
             self.primary(page, button, f"the zoom control “{button.get_attribute('aria-label')}”")
         self.measure(page, ".sk-help", "The map hint")
         self.no_sideways_scroll(page, "Map")
-        self.shot(page, f"adapt-{size}-map")
+        self.shot(page, f"adapt-{size}{tag}-map")
 
         # The same thoughts as a list.
         page.get_by_role("radio", name="List", exact=True).click()
@@ -346,7 +449,7 @@ class AdaptiveMatrix(AdaptiveBase):
         expect(rows).to_have_count(len(fx.THOUGHTS))
         self.primary(page, rows.first, "a list row")
         self.no_sideways_scroll(page, "List")
-        self.shot(page, f"adapt-{size}-list")
+        self.shot(page, f"adapt-{size}{tag}-list")
         page.get_by_role("radio", name="Map", exact=True).click()
         expect(page.locator(".sk-node")).to_have_count(len(fx.THOUGHTS))
 
@@ -376,8 +479,11 @@ class AdaptiveMatrix(AdaptiveBase):
         card = self.card(page, fx.OPEN_TASK)
         self.primary(page, card, "a task card")
         self.no_sideways_scroll(page, "Tasks")
-        self.shot(page, f"adapt-{size}-tasks")
-        card.click()
+        self.shot(page, f"adapt-{size}{tag}-tasks")
+        if "a task card" in KNOWN_GAPS.get(f"{width}×{height}", {}):
+            card.evaluate("el => el.click()")
+        else:
+            card.click()
         details = page.locator("#details")
         expect(details.get_by_role("heading", name=fx.OPEN_TASK)).to_be_visible()
         self.primary(page, details.get_by_role("button", name="Close details"), "Close details")
@@ -388,7 +494,7 @@ class AdaptiveMatrix(AdaptiveBase):
             self.assertLessEqual(page.locator(".tb").bounding_box()["x"] + page.locator(".tb").bounding_box()["width"],
                                  details.bounding_box()["x"] + 1, "the board and Details do not overlap")
         self.no_sideways_scroll(page, "Tasks with Details")
-        self.shot(page, f"adapt-{size}-task-details")
+        self.shot(page, f"adapt-{size}{tag}-task-details")
         details.get_by_role("button", name="Close details").click()
         expect(details.get_by_role("heading", name=fx.OPEN_TASK)).to_have_count(0)
 
@@ -404,7 +510,7 @@ class AdaptiveMatrix(AdaptiveBase):
             doc = page.locator(".wiki-doc").bounding_box()
             self.assertLessEqual(nav["x"] + nav["width"], doc["x"] + 1, f"the page index sits beside the document at {size}")
         self.no_sideways_scroll(page, "Wiki")
-        self.shot(page, f"adapt-{size}-wiki")
+        self.shot(page, f"adapt-{size}{tag}-wiki")
 
         # Agents: Hubert's two connections and Marek's one, each its own entry.
         self.tab(page, "Agents")
@@ -418,7 +524,7 @@ class AdaptiveMatrix(AdaptiveBase):
         self.primary(page, page.get_by_label("Write to this task"), "the task message field")
         self.primary(page, page.get_by_role("button", name="Send to task"), "Send to task")
         self.no_sideways_scroll(page, "Agents")
-        self.shot(page, f"adapt-{size}-agents")
+        self.shot(page, f"adapt-{size}{tag}-agents")
 
         # And back: the Conversation tab returns to the same stream and composer.
         self.tab(page, "Conversation")
@@ -428,7 +534,7 @@ class AdaptiveMatrix(AdaptiveBase):
     def test_02_wide_screens_keep_the_work_beside_open_details(self) -> None:
         """ADAPT-2: from 1920 px, docked Details costs the map and board nothing they need."""
         pid = self.ids["project"]
-        for width, height in [(1920, 1080), (2560, 1440), (3840, 2160), (5120, 1440)]:
+        for width, height in [(1920, 1080), (2560, 1080), (2560, 1440), (3440, 1440), (3840, 2160), (5120, 1440)]:
             with self.subTest(width=width, height=height):
                 page = self.page(width, height)
                 page.goto(f"/projects/{pid}/map/{self.ids['sketch']}")
@@ -461,7 +567,7 @@ class AdaptiveMatrix(AdaptiveBase):
 
     def test_04_on_wide_screens_stream_thread_and_details_sit_side_by_side(self) -> None:
         """ADAPT-2: a reply's source, its thread and Details are readable together from 1920 px."""
-        for width, height in [(1920, 1080), (3840, 2160), (5120, 1440)]:
+        for width, height in [(1920, 1080), (2560, 1080), (3440, 1440), (3840, 2160), (5120, 1440)]:
             with self.subTest(width=width, height=height):
                 page = self.page(width, height)
                 page.goto(f"/projects/{self.ids['project']}")
@@ -484,6 +590,76 @@ class AdaptiveMatrix(AdaptiveBase):
                 self.shot(page, f"adapt-{width}x{height}-thread-and-details")
                 self.no_problems()
 
+
+    def test_05_system_scaling_changes_device_pixels_not_the_css_layout(self) -> None:
+        """AC-5 / ADAPT-1: a 4K panel at 100%, 150% and 200% system scaling gives the CSS viewports
+        3840×2160, 2560×1440 and 1920×1080 at device pixel ratio 1, 1.5 and 2. Each scaled layout is
+        compared with the same CSS viewport at ratio 1; the ratio is measured, not inferred from the width."""
+        differences = []
+        for css_width, css_height, dpr in [(3840, 2160, 1), (2560, 1440, 1.5), (1920, 1080, 2)]:
+            scaled = self.scaling_geometry(css_width, css_height, dpr)
+            reference = scaled if dpr == 1 else self.scaling_geometry(css_width, css_height, 1)
+            for view, boxes in scaled.items():
+                for key, value in boxes.items():
+                    if value != reference[view][key]:
+                        differences.append(f"{view} {key} at {css_width}×{css_height} CSS px, ratio {dpr} != ratio 1: {value} != {reference[view][key]}")
+        print(f"\n  scaling: 3840×2160 @1, 2560×1440 @1.5 and 1920×1080 @2 compared with ratio 1; differences: {len(differences)}", end="")
+        self.assertEqual(differences, [], "system scaling changes the CSS layout:\n" + "\n".join(differences))
+
+    def scaling_geometry(self, width: int, height: int, dpr: float) -> dict:
+        """CSS boxes of the main regions of each project view, plus the sideways overflow, at one ratio."""
+        page = self.page(width, height, dpr=dpr)
+        page.goto(f"/projects/{self.ids['project']}")
+        expect(page.get_by_label("Write a message", exact=True)).to_be_visible()
+        self.assertEqual(page.evaluate("devicePixelRatio"), dpr, f"the browser renders at device pixel ratio {dpr}")
+        self.at_rest(page)
+        geometry = {"Conversation": page.evaluate(GEOMETRY)}
+        self.no_sideways_scroll(page, f"Conversation at {width}x{height} @{dpr}")
+        self.tab(page, "Map")
+        expect(page.locator(".sk-node")).to_have_count(len(fx.THOUGHTS))
+        self.at_rest(page)
+        geometry["Map"] = page.evaluate(GEOMETRY)
+        self.tab(page, "Tasks")
+        expect(page.locator(".tb-board")).to_be_visible()
+        self.at_rest(page)
+        geometry["Tasks"] = page.evaluate(GEOMETRY)
+        self.tab(page, "Agents")
+        expect(page.get_by_role("heading", level=1, name="Working together")).to_be_visible()
+        self.at_rest(page)
+        geometry["Agents"] = page.evaluate(GEOMETRY)
+        self.no_sideways_scroll(page, f"the views at {width}x{height} @{dpr}")
+        return geometry
+
+    def test_06_the_same_journey_in_the_dark_theme(self) -> None:
+        """AC-4: the journey runs in the dark theme too, at a phone and an ultrawide width; the captures
+        are named with -dark beside the light ones (the light theme is the default)."""
+        for width, height in [(390, 844), (3440, 1440)]:
+            with self.subTest(width=width, height=height):
+                self.problems = []
+                try:
+                    self.journey(width, height, theme="dark")
+                finally:
+                    self.no_problems()
+
+    def test_07_wide_screens_gain_room_for_the_map_and_the_agents_column(self) -> None:
+        """ADAPT-2: a larger screen gives the map plane and the Agents column more room. Each cap in WIDE_CAPS is
+        still in the code and measured here; the test fails when a cap is gone, so the entry must be removed."""
+        measured: dict[int, dict[str, float]] = {}
+        for width, height in [(1920, 1080), (2560, 1440), (3840, 2160)]:
+            page = self.page(width, height)
+            page.goto(f"/projects/{self.ids['project']}/map/{self.ids['sketch']}")
+            expect(page.locator(".sk-node")).to_have_count(len(fx.THOUGHTS))
+            self.at_rest(page)
+            plane = page.locator(".sk-canvas").bounding_box()["width"]
+            self.tab(page, "Agents")
+            expect(page.get_by_role("heading", level=1, name="Working together")).to_be_visible()
+            self.at_rest(page)
+            column = page.locator(".agents").first.bounding_box()["width"]
+            measured[width] = {"the map plane": round(plane), "the Agents column": round(column)}
+        print("\n  wide caps, CSS px at 1920 / 2560 / 3840: " + "; ".join(f"{name} {measured[1920][name]} / {measured[2560][name]} / {measured[3840][name]}" for name in WIDE_CAPS), end="")
+        for name in WIDE_CAPS:
+            capped = measured[3840][name] - measured[1920][name] <= 1
+            self.assertTrue(capped, f"{name} now grows with the screen; remove it from WIDE_CAPS: {measured}")
 
 class AdaptiveTransitions(AdaptiveBase):
     """ADAPT-4: in-place resize, rotation and keyboard changes keep the work (T151-C/E)."""
@@ -587,8 +763,11 @@ class AdaptiveTransitions(AdaptiveBase):
         composer = page.get_by_label("Write a message", exact=True)
         expect(composer).to_be_visible()
         before = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/conversations?limit=50")
-        # Read from an earlier message, not the end.
+        # Read from an earlier message, not the end. A reader is aiming at the stream first: until a
+        # reader gives input, the stream keeps settling to its end for two seconds after it opens
+        # (openOnWholeMessages); a script's own scroll is not reader input (#155, work/readerIntent.ts).
         target = self.ids["roots"][3]["message"]
+        page.locator(".project-convo__feed").hover()
         page.locator(f"#message-{target}").evaluate("el => el.scrollIntoView({block: 'start'})")
         page.wait_for_timeout(300)
         place = page.evaluate(FIRST_IN_VIEW)
@@ -729,6 +908,71 @@ class AdaptiveTransitions(AdaptiveBase):
         restored = {t["id"]: (t["x"], t["y"]) for t in self.api(page, "GET", f"/api/v1/sketches/{self.ids['sketch']}")["thoughts"]}
         self.assertEqual(restored[top], stored[top], "undo puts the thought back")
         self.no_problems()
+
+
+def reach_result(covered: dict[str, str | None], inside: bool = True) -> dict:
+    """REACH's result shape: covered maps each point the control fails on to the overlay covering it, or None."""
+    return {"inside": inside, "hit": not covered, "covered": {point: "div.synthetic" for point in covered},
+            "overlay": dict(covered), "box": [0, 0, 49, 44]}
+
+
+def target_result(size: tuple[int, int], across: float, down: float, stops: dict[str, str | None]) -> dict:
+    """TARGET_JS's result shape: stops maps each side to the overlay that stops the hit area there, or None."""
+    return {"size": list(size), "across": across, "down": down, "stops": {side: "div.synthetic" for side in stops},
+            "overlay": dict(stops)}
+
+
+class KnownGapRules(AdaptiveBase):
+    """Negative controls for the known-gap rule (#151, review of PR #454). Browser-free: they drive the same
+    judge_reach and judge_target path as the journey, with results shaped like REACH and TARGET_JS report them.
+    The recorded overlap stays seen; every other failure at the same fixture or label stays a problem."""
+
+    OVERLAP_REACH = {"top": ".ui-tabs__bar", "bottom": ".project-convo__composer"}
+    OVERLAP_STOPS = {"left": None, "right": None, "up": ".ui-tabs__bar", "down": ".project-convo__composer"}
+    CARD_OVERLAP = {"centre": ".tb-overview", "left": ".tb-overview", "right": ".tb-overview", "top": ".tb-overview"}
+
+    def test_01_the_recorded_overlap_is_seen_not_failed(self) -> None:
+        self.judge_reach("a message's Reply", "640×360", reach_result(self.OVERLAP_REACH))
+        self.judge_target("a message's Reply", "640×360", target_result((49, 44), 49.5, 15, self.OVERLAP_STOPS))
+        self.judge_reach("a message's Reply", "844×390", reach_result(self.OVERLAP_REACH))
+        self.judge_target("a message's Reply", "844×390", target_result((46, 44), 46.5, 23, self.OVERLAP_STOPS))
+        self.judge_reach("a task card", "844×390", reach_result(self.CARD_OVERLAP))
+        self.judge_target("a task card", "844×390", target_result((232, 45), 0.5, 0.5, {side: ".tb-overview" for side in ("left", "right", "up", "down")}))
+        self.assertEqual(self.problems, [], "the recorded overlap is not a problem")
+        self.assertEqual(self.seen_gaps, {("640×360", "a message's Reply"), ("844×390", "a message's Reply"), ("844×390", "a task card")})
+
+    def test_02_an_undersized_control_is_a_problem_under_the_same_overlap(self) -> None:
+        self.judge_target("a message's Reply", "640×360", target_result((49, 24), 49.5, 12, self.OVERLAP_STOPS))
+        self.judge_target("a task card", "844×390", target_result((232, 24), 0.5, 0.5, {side: ".tb-overview" for side in ("left", "right", "up", "down")}))
+        self.assertEqual(len(self.problems), 2, f"a 24 px control is a size problem, not the overlap: {self.problems}")
+        self.assertEqual(self.seen_gaps, set())
+
+    def test_03_an_unrelated_stop_is_a_problem(self) -> None:
+        unrelated = {"left": None, "right": None, "up": None, "down": None}
+        self.judge_target("a message's Reply", "640×360", target_result((49, 44), 49.5, 15, unrelated))
+        self.judge_target("a task card", "844×390", target_result((232, 45), 0.5, 0.5, unrelated))
+        self.assertEqual(len(self.problems), 2, f"stops that no recorded overlay covers are problems: {self.problems}")
+        self.assertEqual(self.seen_gaps, set())
+
+    def test_04_an_unrelated_cover_is_a_problem(self) -> None:
+        self.judge_reach("a task card", "844×390", reach_result({"centre": None, "left": None, "right": None, "top": ".tb-overview"}))
+        self.judge_reach("a message's Reply", "640×360", reach_result({"top": ".ui-tabs__bar", "bottom": None}))
+        self.assertEqual(len(self.problems), 2, f"a cover that is not a recorded overlay is a problem: {self.problems}")
+        self.assertEqual(self.seen_gaps, set())
+
+    def test_05_a_viewport_failure_is_a_problem_under_the_overlap(self) -> None:
+        self.judge_reach("a message's Reply", "640×360", reach_result(self.OVERLAP_REACH, inside=False))
+        self.assertEqual(len(self.problems), 1, f"the viewport failure stays a problem: {self.problems}")
+        self.assertIn("lies fully inside the viewport", self.problems[0])
+        self.assertEqual(self.seen_gaps, {("640×360", "a message's Reply")}, "the covered predicate of the recorded overlap is still seen")
+
+    def test_06_the_overlap_is_not_excused_elsewhere(self) -> None:
+        self.judge_reach("a message's Reply", "1280×720", reach_result(self.OVERLAP_REACH))
+        self.judge_target("a message's Reply", "1280×720", target_result((49, 44), 49.5, 15, self.OVERLAP_STOPS))
+        self.judge_reach("a list row", "640×360", reach_result(self.OVERLAP_REACH))
+        self.judge_target("a message's Reply", "640×360", target_result((49, 44), 49.5, 15, {"left": None, "right": None, "up": ".tb-overview", "down": ".project-convo__composer"}))
+        self.assertEqual(len(self.problems), 4, f"no gap at this fixture, another label, or another overlay: {self.problems}")
+        self.assertEqual(self.seen_gaps, set())
 
 
 if __name__ == "__main__":

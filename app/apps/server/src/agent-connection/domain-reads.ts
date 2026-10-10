@@ -7,7 +7,7 @@ import { workUseCases } from '../work/adapters.js';
 import { sketchUseCases } from '../sketches/adapters.js';
 import { policySearchAccess, searchRepository } from '../search/adapters.js';
 import { SearchCursorCodec } from '../search/cursor.js';
-import { withAgentConnection, type FluxMcpClaims } from './context.js';
+import { requireMcpSourceKinds, withAgentConnection, type FluxMcpClaims } from './context.js';
 import { toolError, toolResult } from './tool-results.js';
 
 const page = { limit: z.int().min(1).max(50).default(20), offset: z.int().min(0).max(10_000).default(0) };
@@ -37,10 +37,15 @@ export function registerAgentDomainReads(server: AgentToolRegistrar, db: Databas
 
   server.registerTool('flux_list_contexts', { title: 'List selected Flux projects',
     description: 'List the selected projects still readable by this current connection.', inputSchema: z.object({}), annotations },
-  () => result(null, async ({ tx, connection, principal }) => ({ projects: await Promise.all(connection.selectedProjectIds.map(async (id) => {
-    const project = await getProject(principal, id, tx);
-    return { id: project.id, name: project.name, workspaceId: project.workspaceId };
-  })) })));
+  () => result(null, async ({ tx, connection, principal, requireProject }) => {
+    const projects = [];
+    for (const id of [...connection.selectedProjectIds].sort()) {
+      await requireProject(id);
+      const project = await getProject(principal, id, tx);
+      projects.push({ id: project.id, name: project.name, workspaceId: project.workspaceId });
+    }
+    return { projects };
+  }));
 
   server.registerTool('flux_list_materials', { title: 'List project sources',
     description: 'A bounded page of current material and wiki IDs, titles and versions. No private draft provenance.',
@@ -113,11 +118,14 @@ export function registerAgentDomainReads(server: AgentToolRegistrar, db: Databas
     description: 'Search canonical project content with bounded snippets, counts and an authenticated continuation. Private, direct-message and person results are excluded.',
     inputSchema: z.object({ projectId: z.uuid(), q: z.string().min(1).max(200), type: z.enum(['message', 'doc', 'material', 'work', 'decision', 'result', 'sketch']).optional(),
       cursor: z.string().max(500).optional(), limit: page.limit }), annotations },
-  ({ projectId, ...query }) => result(projectId, async ({ tx, principal, workspaceId }) => {
+  ({ projectId, ...query }) => {
+    requireMcpSourceKinds(claims, query.type ? [query.type] : ['message', 'doc', 'material', 'work', 'decision', 'result', 'sketch']);
+    return result(projectId, async ({ tx, principal, workspaceId }) => {
     const access = policySearchAccess(tx);
     const search = createSearchUseCases({ rows: searchRepository(tx), cursors,
       access: { audiences: async (actor) => (await access.audiences(actor)).filter((audience) =>
         (audience.type === 'project' || audience.type === 'sketch') && audience.workspaceId === workspaceId) } });
     return search.search(principal, { ...query, place: `project:${projectId}` });
-  }));
+    });
+  });
 }

@@ -1,8 +1,9 @@
 """Phone-first shell, current place and motion (#266, docs/design/phone-first.md PF-1 to PF-7).
 
-Actual authenticated browser and API data in Chromium. Viewports and touch are emulated, which
-#266 item 10 accepts as phone evidence. Gestures use CDP touch events, so the browser produces
-real touch pointer events.
+Actual authenticated browser and API data in Chromium or WebKit (FLUX_UI_BROWSER, default chromium;
+#20 MOB-7 needs both engines). Viewports and touch are emulated, which #266 item 10 accepts as phone
+evidence. Drag gestures use CDP touch events, which only Chromium exposes, so test_06 is skipped on
+WebKit and reported as unverified there rather than passed.
 """
 from __future__ import annotations
 
@@ -13,11 +14,18 @@ import uuid
 
 from playwright.sync_api import expect, sync_playwright
 
-from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
+from test_app_shell import ORIGIN, UPSTREAM, shot as save_shot, start_forwarder
+from test_settings import UI_BROWSER
 
 VIEWS = ("Conversation", "Map", "Tasks", "Wiki", "Agents")
 PLACES = ("Home", "Inbox", "Messages", "Projects")
 SE = {"width": 375, "height": 667}
+CDP_ONLY = "CDP touch gestures exist only in Chromium; the WebKit drawer/sheet drag is unverified"
+
+
+def shot(page, name):
+    # Screenshots from the other engine get their own name, so neither run overwrites the other.
+    save_shot(page, name if UI_BROWSER == "chromium" else f"{name}-{UI_BROWSER}")
 
 
 class PhoneShellJourney(unittest.TestCase):
@@ -26,7 +34,7 @@ class PhoneShellJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=8000)
         context = cls.browser.new_context(base_url=ORIGIN)
         page = context.new_page()
@@ -61,9 +69,11 @@ class PhoneShellJourney(unittest.TestCase):
 
     def page(self, viewport=SE, dark=False, touch=True, reduced=False):
         phone = viewport["width"] <= 640
+        # Layout and motion checks do not use the service worker. Blocking it keeps a worker left by an
+        # earlier context from showing the update prompt over the header in later ones (seen in WebKit).
         context = self.browser.new_context(base_url=ORIGIN, viewport=viewport, storage_state=self.state,
             color_scheme="dark" if dark else "light", is_mobile=phone and touch, has_touch=phone and touch,
-            reduced_motion="reduce" if reduced else "no-preference")
+            reduced_motion="reduce" if reduced else "no-preference", service_workers="block")
         self.addCleanup(context.close)
         page = context.new_page()
         errors = []
@@ -280,6 +290,7 @@ class PhoneShellJourney(unittest.TestCase):
             page.wait_for_timeout(pause)
         cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
 
+    @unittest.skipIf(UI_BROWSER != "chromium", CDP_ONLY)
     def test_06_the_drawer_and_the_sheet_follow_a_finger(self):
         page = self.page()
         page.goto(f"/projects/{self.project['id']}")
@@ -323,15 +334,16 @@ class PhoneShellJourney(unittest.TestCase):
         page.get_by_role("dialog", name="Flux").get_by_role("link", name=re.compile("settings and sign out")).click()
         expect(page).to_have_url(f"{ORIGIN}/settings")
         expect(page.get_by_role("heading", level=1, name="Settings")).to_be_visible()
-        for section in ("This device", "Notifications", "AI", "Account"):
-            expect(page.get_by_role("heading", name=section, exact=True)).to_be_visible()
-        expect(page.get_by_role("radiogroup", name="Appearance")).to_be_visible()
+        # Settings (#350): Appearance, This phone, Agents and AI, then the other sections as rows.
+        self.assertEqual(page.locator(".sset-in > h2.sset-sec").all_inner_texts(), ["Appearance", "This phone", "Agents and AI", "More"])
+        expect(page.get_by_role("radiogroup", name="Theme")).to_be_visible()
         page.get_by_role("radio", name="Dark").click()
         self.assertEqual(page.evaluate("document.documentElement.dataset.theme"), "dark")
-        page.get_by_role("radio", name="Match system").click()
-        for title, url, heading in (("What reaches you", "/settings/notifications", "Notification settings"),
-                                    ("Agent in Flux", "/settings/assistant", "Your assistant"),
-                                    ("Background suggestions", "/settings/background-compute", "Background suggestions")):
+        page.get_by_role("radio", name="System").click()
+        for title, url, heading in (("Notifications", "/settings/notifications", "Settings"),
+                                    ("Your assistant", "/settings/assistant", "Your assistant"),
+                                    ("Background suggestions", "/settings/background-compute", "Background suggestions"),
+                                    ("Account", "/settings/account", "Settings")):
             page.get_by_role("link", name=re.compile(f"^{title}")).click()
             expect(page).to_have_url(f"{ORIGIN}{url}")
             expect(page.get_by_role("heading", level=1, name=heading)).to_be_visible()
@@ -339,7 +351,7 @@ class PhoneShellJourney(unittest.TestCase):
             self.assertGreaterEqual(min(self.box(back)["width"], self.box(back)["height"]), 44)
             back.click()
             expect(page).to_have_url(f"{ORIGIN}/settings")
-        page.get_by_role("link", name=re.compile("^Agent connections")).click()
+        page.get_by_role("link", name=re.compile("^Local co-work on this computer")).click()
         expect(page).to_have_url(f"{ORIGIN}/connect-agent")
         page.get_by_role("link", name="Settings").click()
         expect(page).to_have_url(f"{ORIGIN}/settings")

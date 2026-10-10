@@ -1,0 +1,27 @@
+{
+  "sourceCommit": "f5603386bf35d6ba2e492af495eedff93da8ba99",
+  "applicationEquivalent": "784d46007cd21cf35bd457ecc71c0f81b47f33c3",
+  "sourceBase": "0f68aa963be920fbc7ebf30742da4aef54fe34be",
+  "command": "scripts/check_application.sh",
+  "exit": 0,
+  "phaseTests": [
+    1090,
+    3,
+    1,
+    1,
+    1,
+    1,
+    1,
+    6,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+  ],
+  "totalTests": 1111,
+  "log": "/tmp/flux326-f560-application.log",
+  "sha256": "0b4618888cc67c703b76fa9bea57c91a91afb9a8ef31c3f905a231044df57fae"
+}
