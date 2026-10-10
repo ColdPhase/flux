@@ -59,15 +59,29 @@ TARGET = 44
 # Known gaps: criteria the current head does not meet at one fixture, each with the issue that closes it.
 # The journey still measures them, and the matrix fails when one stops showing, so a closed gap must be
 # removed here rather than silently passing. They are reported as open, not as delivered (#151).
+# A gap is excused only for the predicate it names, and only when its own control is at least 44 px and
+# one of its overlays (covered_by) covers the hit area; see explained_by_recorded_overlap. Every other
+# failure at the same fixture stays a problem.
 KNOWN_GAPS = {
     "640×360": {
-        "a message's Reply": "the sticky tab bar and the composer leave less than 44 px of stream between them; the phone shell (PR #414) replaces the tab bar",
+        "a message's Reply": {
+            "covered_by": (".ui-tabs__bar", ".project-convo__composer"),
+            "reason": "the sticky tab bar and the composer leave less than 44 px of stream between them; the phone shell (PR #414) replaces the tab bar",
+        },
     },
     "844×390": {
-        "a message's Reply": "the sticky tab bar and the composer leave less than 44 px of stream between them; the phone shell (PR #414) replaces the tab bar",
-        "a task card": "the sticky status overview covers the card at this height; the Tasks layout (PR #375) owns the overview",
+        "a message's Reply": {
+            "covered_by": (".ui-tabs__bar", ".project-convo__composer"),
+            "reason": "the sticky tab bar and the composer leave less than 44 px of stream between them; the phone shell (PR #414) replaces the tab bar",
+        },
+        "a task card": {
+            "covered_by": (".tb-overview",),
+            "reason": "the sticky status overview covers the card at this height; the Tasks layout (PR #375) owns the overview",
+        },
     },
 }
+# The overlays a known gap may name. The measurements report which one (if any) covers each point or stops each side.
+OVERLAYS = (".ui-tabs__bar", ".project-convo__composer", ".tb-overview")
 
 FIXTURE: dict = {}
 # The longest measured line per prose surface and viewport, printed after the matrix as evidence.
@@ -119,7 +133,7 @@ NAME = r"""const name = (n) => !n ? 'nothing' : `${n.tagName.toLowerCase()}${n.i
 
 # Brings an element into view inside its own scroller and reports whether all of it is on screen
 # and actually hit at its centre and near each edge (nothing clips or covers it).
-REACH = r"""(el) => {
+REACH = r"""(el, overlays) => {
   """ + NAME + r"""
   el.scrollIntoView({block: 'nearest', inline: 'nearest'});
   const b = el.getBoundingClientRect();
@@ -127,32 +141,37 @@ REACH = r"""(el) => {
   const inset = Math.min(3, b.width / 4, b.height / 4);
   const points = {centre: [b.left + b.width / 2, b.top + b.height / 2], left: [b.left + inset, b.top + b.height / 2], right: [b.right - inset, b.top + b.height / 2],
                   top: [b.left + b.width / 2, b.top + inset], bottom: [b.left + b.width / 2, b.bottom - inset]};
-  const covered = {};
+  const covered = {}, overlay = {};
   for (const [where, [x, y]] of Object.entries(points)) {
     const hit = document.elementFromPoint(x, y);
-    if (!hit || !(hit === el || el.contains(hit))) covered[where] = name(hit);
+    if (!hit || !(hit === el || el.contains(hit))) {
+      covered[where] = name(hit);
+      overlay[where] = hit ? overlays.find((s) => hit.closest(s)) || null : null;
+    }
   }
   const why = {};
   if (Object.keys(covered).length) {
     why.inert = name(el.closest('[inert]'));
     why.interactivity = getComputedStyle(el).interactivity;
   }
-  return {inside, hit: !Object.keys(covered).length, covered, ...why, box: [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)]};
+  return {inside, hit: !Object.keys(covered).length, covered, overlay, ...why, box: [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)]};
 }"""
 
 # The element's own hit area, measured from its centre outwards in half-pixel steps along both
 # axes until another element (or nothing) is hit. Pseudo-element extensions such as a stretched
 # card link count; a neighbouring control or a covering bar ends the target.
-TARGET_JS = r"""(el) => {
+TARGET_JS = r"""(el, overlays) => {
   """ + NAME + r"""
   el.scrollIntoView({block: 'nearest', inline: 'nearest'});
   const b = el.getBoundingClientRect();
   const cx = b.left + b.width / 2, cy = b.top + b.height / 2;
   const mine = (x, y) => { const hit = document.elementFromPoint(x, y); return !!hit && (hit === el || el.contains(hit)); };
-  const reach = (dx, dy) => { let d = 0; while (d < 60 && mine(cx + dx * (d + 0.5), cy + dy * (d + 0.5))) d += 0.5; return {d, stop: name(document.elementFromPoint(cx + dx * (d + 0.5), cy + dy * (d + 0.5)))}; };
+  const overlayOf = (node) => (node && overlays.find((s) => node.closest(s))) || null;
+  const reach = (dx, dy) => { let d = 0; while (d < 60 && mine(cx + dx * (d + 0.5), cy + dy * (d + 0.5))) d += 0.5; const node = document.elementFromPoint(cx + dx * (d + 0.5), cy + dy * (d + 0.5)); return {d, stop: name(node), overlay: overlayOf(node)}; };
   const l = reach(-1, 0), r = reach(1, 0), u = reach(0, -1), dn = reach(0, 1);
   return {size: [Math.round(b.width), Math.round(b.height)], across: l.d + r.d + 0.5, down: u.d + dn.d + 0.5,
-          stops: {left: l.stop, right: r.stop, up: u.stop, down: dn.stop}};
+          stops: {left: l.stop, right: r.stop, up: u.stop, down: dn.stop},
+          overlay: {left: l.overlay, right: r.overlay, up: u.overlay, down: dn.overlay}};
 }"""
 
 SIDEWAYS = r"""() => {
@@ -189,6 +208,28 @@ GEOMETRY = r"""() => {
 }"""
 
 CAMERA = "() => { const c = document.querySelector('.sk-canvas'); return {left: Math.round(c.scrollLeft), top: Math.round(c.scrollTop)}; }"
+
+
+def explained_by_recorded_overlap(size: str, what: str, predicate: str, observed: dict) -> bool:
+    """True only when the failed predicate is one the known gap records and its cause is that gap's own overlay.
+
+    "covered": observed is REACH's result; every point the control fails on must be covered by one of the gap's overlays.
+    "target": observed is TARGET_JS's result; the control's own box must reach TARGET px on both axes, so an undersized
+    control is never excused, and on each axis that falls short both sides must be stopped by the gap's overlays.
+    """
+    gap = KNOWN_GAPS.get(size, {}).get(what)
+    if gap is None:
+        return False
+    covers = gap["covered_by"]
+    if predicate == "covered":
+        return bool(observed["covered"]) and all(observed["overlay"].get(point) in covers for point in observed["covered"])
+    if predicate == "target":
+        width, height = observed["size"]
+        if min(width, height) < TARGET - 0.5:
+            return False
+        short = (["left", "right"] if observed["across"] < TARGET - 0.5 else []) + (["up", "down"] if observed["down"] < TARGET - 0.5 else [])
+        return bool(short) and all(observed["overlay"].get(side) in covers for side in short)
+    return False
 
 
 class AdaptiveBase(unittest.TestCase):
@@ -233,34 +274,41 @@ class AdaptiveBase(unittest.TestCase):
 
     # Layout checks collect every problem of one journey, so a run reports all of them at once.
     problems: list[str]
+    seen_gaps: set[tuple[str, str]]
 
-    def check(self, condition: bool, message: str) -> None:
+    def check(self, condition: bool, message: str, overlap: tuple[str, str, str, dict] | None = None) -> None:
+        """Records a failed check. overlap = (size, what, predicate, observed) is given only for a predicate a known
+        gap may record; the failure then counts as seen, not as a problem, when explained_by_recorded_overlap holds."""
         if condition:
             return
-        for size, gaps in KNOWN_GAPS.items():
-            for gap in gaps:
-                if message.startswith(gap) and f" at {size} " in message:
-                    self.seen_gaps.add((size, gap))
-                    return
+        if overlap is not None and explained_by_recorded_overlap(*overlap):
+            self.seen_gaps.add((overlap[0], overlap[1]))
+            return
         self.problems.append(message)
 
     def reachable(self, locator: Locator, what: str) -> dict:
         expect(locator, what).to_be_visible()
         self.settle(locator.page)
-        result = locator.evaluate(REACH)
-        self.check(result["inside"], f"{what} lies fully inside the viewport: {result}")
-        self.check(result["hit"], f"{what} is not clipped or covered: {result}")
+        result = locator.evaluate(REACH, list(OVERLAYS))
+        self.judge_reach(what, self.where(locator.page), result)
         return result
+
+    def judge_reach(self, what: str, size: str, result: dict) -> None:
+        self.check(result["inside"], f"{what} at {size} lies fully inside the viewport: {result}")
+        self.check(result["hit"], f"{what} at {size} is not clipped or covered: {result}", (size, what, "covered", result))
 
     def target(self, page: Page, locator: Locator, what: str) -> None:
         if not page.evaluate("matchMedia('(pointer: coarse)').matches"):
             return
-        result = locator.evaluate(TARGET_JS)
+        result = locator.evaluate(TARGET_JS, list(OVERLAYS))
+        self.judge_target(what, self.where(page), result)
+
+    def judge_target(self, what: str, size: str, result: dict) -> None:
         # Half-pixel sampling: a 44 px target measures at least 43.5 px.
-        self.check(min(result["across"], result["down"]) >= TARGET - 0.5, f"{what} at {self.where(page)} offers a {TARGET} px touch target: {result}")
+        self.check(min(result["across"], result["down"]) >= TARGET - 0.5, f"{what} at {size} offers a {TARGET} px touch target: {result}", (size, what, "target", result))
 
     def primary(self, page: Page, locator: Locator, what: str) -> None:
-        self.reachable(locator, f"{what} at {self.where(page)}")
+        self.reachable(locator, what)
         self.target(page, locator, what)
 
     def measure(self, page: Page, selector: str, what: str) -> int:
@@ -860,6 +908,71 @@ class AdaptiveTransitions(AdaptiveBase):
         restored = {t["id"]: (t["x"], t["y"]) for t in self.api(page, "GET", f"/api/v1/sketches/{self.ids['sketch']}")["thoughts"]}
         self.assertEqual(restored[top], stored[top], "undo puts the thought back")
         self.no_problems()
+
+
+def reach_result(covered: dict[str, str | None], inside: bool = True) -> dict:
+    """REACH's result shape: covered maps each point the control fails on to the overlay covering it, or None."""
+    return {"inside": inside, "hit": not covered, "covered": {point: "div.synthetic" for point in covered},
+            "overlay": dict(covered), "box": [0, 0, 49, 44]}
+
+
+def target_result(size: tuple[int, int], across: float, down: float, stops: dict[str, str | None]) -> dict:
+    """TARGET_JS's result shape: stops maps each side to the overlay that stops the hit area there, or None."""
+    return {"size": list(size), "across": across, "down": down, "stops": {side: "div.synthetic" for side in stops},
+            "overlay": dict(stops)}
+
+
+class KnownGapRules(AdaptiveBase):
+    """Negative controls for the known-gap rule (#151, review of PR #454). Browser-free: they drive the same
+    judge_reach and judge_target path as the journey, with results shaped like REACH and TARGET_JS report them.
+    The recorded overlap stays seen; every other failure at the same fixture or label stays a problem."""
+
+    OVERLAP_REACH = {"top": ".ui-tabs__bar", "bottom": ".project-convo__composer"}
+    OVERLAP_STOPS = {"left": None, "right": None, "up": ".ui-tabs__bar", "down": ".project-convo__composer"}
+    CARD_OVERLAP = {"centre": ".tb-overview", "left": ".tb-overview", "right": ".tb-overview", "top": ".tb-overview"}
+
+    def test_01_the_recorded_overlap_is_seen_not_failed(self) -> None:
+        self.judge_reach("a message's Reply", "640×360", reach_result(self.OVERLAP_REACH))
+        self.judge_target("a message's Reply", "640×360", target_result((49, 44), 49.5, 15, self.OVERLAP_STOPS))
+        self.judge_reach("a message's Reply", "844×390", reach_result(self.OVERLAP_REACH))
+        self.judge_target("a message's Reply", "844×390", target_result((46, 44), 46.5, 23, self.OVERLAP_STOPS))
+        self.judge_reach("a task card", "844×390", reach_result(self.CARD_OVERLAP))
+        self.judge_target("a task card", "844×390", target_result((232, 45), 0.5, 0.5, {side: ".tb-overview" for side in ("left", "right", "up", "down")}))
+        self.assertEqual(self.problems, [], "the recorded overlap is not a problem")
+        self.assertEqual(self.seen_gaps, {("640×360", "a message's Reply"), ("844×390", "a message's Reply"), ("844×390", "a task card")})
+
+    def test_02_an_undersized_control_is_a_problem_under_the_same_overlap(self) -> None:
+        self.judge_target("a message's Reply", "640×360", target_result((49, 24), 49.5, 12, self.OVERLAP_STOPS))
+        self.judge_target("a task card", "844×390", target_result((232, 24), 0.5, 0.5, {side: ".tb-overview" for side in ("left", "right", "up", "down")}))
+        self.assertEqual(len(self.problems), 2, f"a 24 px control is a size problem, not the overlap: {self.problems}")
+        self.assertEqual(self.seen_gaps, set())
+
+    def test_03_an_unrelated_stop_is_a_problem(self) -> None:
+        unrelated = {"left": None, "right": None, "up": None, "down": None}
+        self.judge_target("a message's Reply", "640×360", target_result((49, 44), 49.5, 15, unrelated))
+        self.judge_target("a task card", "844×390", target_result((232, 45), 0.5, 0.5, unrelated))
+        self.assertEqual(len(self.problems), 2, f"stops that no recorded overlay covers are problems: {self.problems}")
+        self.assertEqual(self.seen_gaps, set())
+
+    def test_04_an_unrelated_cover_is_a_problem(self) -> None:
+        self.judge_reach("a task card", "844×390", reach_result({"centre": None, "left": None, "right": None, "top": ".tb-overview"}))
+        self.judge_reach("a message's Reply", "640×360", reach_result({"top": ".ui-tabs__bar", "bottom": None}))
+        self.assertEqual(len(self.problems), 2, f"a cover that is not a recorded overlay is a problem: {self.problems}")
+        self.assertEqual(self.seen_gaps, set())
+
+    def test_05_a_viewport_failure_is_a_problem_under_the_overlap(self) -> None:
+        self.judge_reach("a message's Reply", "640×360", reach_result(self.OVERLAP_REACH, inside=False))
+        self.assertEqual(len(self.problems), 1, f"the viewport failure stays a problem: {self.problems}")
+        self.assertIn("lies fully inside the viewport", self.problems[0])
+        self.assertEqual(self.seen_gaps, {("640×360", "a message's Reply")}, "the covered predicate of the recorded overlap is still seen")
+
+    def test_06_the_overlap_is_not_excused_elsewhere(self) -> None:
+        self.judge_reach("a message's Reply", "1280×720", reach_result(self.OVERLAP_REACH))
+        self.judge_target("a message's Reply", "1280×720", target_result((49, 44), 49.5, 15, self.OVERLAP_STOPS))
+        self.judge_reach("a list row", "640×360", reach_result(self.OVERLAP_REACH))
+        self.judge_target("a message's Reply", "640×360", target_result((49, 44), 49.5, 15, {"left": None, "right": None, "up": ".tb-overview", "down": ".project-convo__composer"}))
+        self.assertEqual(len(self.problems), 4, f"no gap at this fixture, another label, or another overlay: {self.problems}")
+        self.assertEqual(self.seen_gaps, set())
 
 
 if __name__ == "__main__":
