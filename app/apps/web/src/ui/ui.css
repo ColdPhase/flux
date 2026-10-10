@@ -126,7 +126,7 @@ svg { flex: none; }
 }
 /* Hover previews the mark in a neutral tone; the current tab's own mark is the sliding indicator. */
 .ui-tabs__tab::after {
-  content: ""; position: absolute; left: var(--tab-pad, 8px); right: var(--tab-pad, 8px); bottom: 0; height: 2px; border-radius: 2px;
+  content: ""; position: absolute; left: var(--tab-pad, 8px); right: var(--tab-pad, 8px); bottom: 0; height: 2px; border-radius: var(--r-pill);
   background: var(--line2); opacity: 0; transform: scaleX(.6); transition: opacity var(--dur-1) ease, transform var(--dur-2) var(--ease-out);
 }
 .ui-tabs__tab:hover { color: var(--t1); }
@@ -191,7 +191,7 @@ svg { flex: none; }
 .ui-sheet .ui-panel__head { position: relative; touch-action: none; }
 .ui-sheet:not(.ui-sheet--detent) .ui-panel__head::before {
   content: ""; position: absolute; left: 50%; top: calc(env(safe-area-inset-top) + 6px); width: 36px; height: 5px; margin-left: -18px;
-  border-radius: 3px; background: var(--line2);
+  border-radius: var(--r-pill); background: var(--line2);
 }
 /* The one two-height sheet (F-026 S4, DetentSheet): half leaves the work behind in view, full is dragged up; down from half closes.
    It sits at the bottom of its positioned parent: a transparent full-screen overlay frame for Details, the conversation for a thread. */
@@ -286,18 +286,9 @@ svg { flex: none; }
 .kreska svg { display: block; overflow: visible; }
 .kreska__frame { fill: var(--el); }
 /* Agent colours, only where a hue is passed (the Agents section): the lines take it, the face 12% of it. */
-.kreska--clay { color: #9b6147; } .kreska--ochre { color: #886d32; } .kreska--sage { color: #4b8057; } .kreska--teal { color: #208181; }
-.kreska--indigo { color: #5e6fa4; } .kreska--plum { color: #886191; } .kreska--rose { color: #9c5c66; }
-:root[data-theme="dark"] .kreska--clay { color: #e8af96; } :root[data-theme="dark"] .kreska--ochre { color: #d4bb86; }
-:root[data-theme="dark"] .kreska--sage { color: #9ccca4; } :root[data-theme="dark"] .kreska--teal { color: #82cdcd; }
-:root[data-theme="dark"] .kreska--indigo { color: #abbcef; } :root[data-theme="dark"] .kreska--plum { color: #d4afdc; }
-:root[data-theme="dark"] .kreska--rose { color: #e9aab3; }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .kreska--clay { color: #e8af96; } :root:not([data-theme="light"]) .kreska--ochre { color: #d4bb86; }
-  :root:not([data-theme="light"]) .kreska--sage { color: #9ccca4; } :root:not([data-theme="light"]) .kreska--teal { color: #82cdcd; }
-  :root:not([data-theme="light"]) .kreska--indigo { color: #abbcef; } :root:not([data-theme="light"]) .kreska--plum { color: #d4afdc; }
-  :root:not([data-theme="light"]) .kreska--rose { color: #e9aab3; }
-}
+.kreska--clay { color: var(--agent-clay); } .kreska--ochre { color: var(--agent-ochre); } .kreska--sage { color: var(--agent-sage); }
+.kreska--teal { color: var(--agent-teal); } .kreska--indigo { color: var(--agent-indigo); } .kreska--plum { color: var(--agent-plum); }
+.kreska--rose { color: var(--agent-rose); }
 .kreska[class*="kreska--"] .kreska__frame { fill: currentColor; fill-opacity: .12; }
 /* Motion only where it says something true: the brow waves while thinking, dots flow while loading,
    the eyes blink slowly while working. Reduced motion shows the static frame (see the end of this file). */

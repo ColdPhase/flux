@@ -24,6 +24,8 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
+from contrast import MEASURE
+
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
 LIVE = os.environ.get("FLUX_UI_LIVE") == "1"
@@ -141,8 +143,8 @@ class LiveBase(unittest.TestCase):
         cls.browser.close()
         cls.pw.stop()
 
-    def context(self, who: str | None, *, viewport: dict | None = None, phone: bool = False, reduced: bool = False) -> BrowserContext:
-        options: dict = {"base_url": ORIGIN, "color_scheme": "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw"}
+    def context(self, who: str | None, *, viewport: dict | None = None, phone: bool = False, reduced: bool = False, dark: bool = False) -> BrowserContext:
+        options: dict = {"base_url": ORIGIN, "color_scheme": "dark" if dark else "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw"}
         if phone:
             options.update(viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
         else:
@@ -242,6 +244,29 @@ class LiveUnavailable(LiveBase):
         self.assertEqual(page.evaluate("window.__live.gum + window.__live.gdm"), 0, "nothing asked for a device")
         expect(self.bar(page)).to_have_count(0)
         self.assertEqual(self.api(page, "GET", "/api/v1/live-sessions/capabilities", status=200)["status"], "unavailable")
+
+    def test_02_dark_device_controls_keep_readable_text(self) -> None:
+        # Device buttons exist only with a media server, so this renders their markup (DeviceButton.tsx)
+        # on the signed-in app: the stylesheet that colours them is the real live.css.
+        self.seed()
+        for scheme in ("light", "dark"):
+            with self.subTest(scheme=scheme):
+                page = self.page("nia", dark=scheme == "dark")
+                page.goto(self.task_url())
+                expect(page.locator("#details").get_by_role("heading", name=TASK)).to_be_visible()
+                self.assertEqual(page.evaluate("getComputedStyle(document.documentElement).colorScheme") == "dark", scheme == "dark", "the requested theme is in effect")
+                page.evaluate("""() => {
+                  const row = document.createElement('div');
+                  row.innerHTML = '<button type="button" class="lv-dev lv-dev--screen is-on" aria-pressed="true" aria-label="Stop sharing your screen"></button>'
+                    + '<button type="button" class="lv-dev lv-dev--camera is-problem" aria-label="Camera blocked by the browser · try again"><span class="lv-dev__badge" aria-hidden="true">!</span></button>';
+                  document.body.append(row);
+                }""")
+                screen = page.evaluate(MEASURE, {"selector": ".lv-dev--screen.is-on"})
+                badge = page.evaluate(MEASURE, {"selector": ".lv-dev--camera .lv-dev__badge"})
+                self.assertGreaterEqual(screen["ratio"], 4.5, (scheme, "screen toggle", screen))
+                self.assertGreaterEqual(badge["ratio"], 4.5, (scheme, "badge", badge))
+                size = page.evaluate("parseFloat(getComputedStyle(document.querySelector('.lv-dev__badge')).fontSize)")
+                self.assertGreaterEqual(size, 12, (scheme, "the badge uses the meta size token, not 10 px"))
 
 
 @unittest.skipUnless(LIVE, "set FLUX_UI_LIVE=1 with the live media profile (scripts/check_live_ui.sh)")
