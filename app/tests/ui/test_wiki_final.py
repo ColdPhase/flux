@@ -7,6 +7,7 @@ outline are reachable by keyboard. Versions, sharing and drafts are covered by t
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 import unittest
@@ -35,9 +36,9 @@ class WikiFinal(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, os.environ.get("FLUX_UI_BROWSER", "chromium")).launch()
         expect.set_options(timeout=8000)
-        ctx = cls.browser.new_context(base_url=ORIGIN)
+        ctx = cls.browser.new_context(base_url=ORIGIN, service_workers="block")
         page = ctx.new_page()
         page.goto("/sign-up")
         page.get_by_label("Name").fill(PERSON["name"])
@@ -77,7 +78,7 @@ class WikiFinal(unittest.TestCase):
         options = dict(base_url=ORIGIN, viewport=viewport, storage_state=self.state, color_scheme=theme, locale="en-GB")
         if touch:
             options.update(is_mobile=True, has_touch=True, device_scale_factor=2)
-        context = self.browser.new_context(**options)
+        context = self.browser.new_context(**options, service_workers="block")
         self.addCleanup(context.close)
         context.add_init_script(f"localStorage.setItem('flux.theme', '{theme}')")
         page = context.new_page()
@@ -165,6 +166,47 @@ class WikiFinal(unittest.TestCase):
                 self.assertNotEqual(look[0], "rgba(0, 0, 0, 0)")
                 shot(page, f"wiki-final-phone-390-{theme}")
 
+    def test_table_regions_never_reparse_literal_attribute_text(self) -> None:
+        page = self.open(DESKTOP, "light")
+        literal = '<table onmouseover="window.__tableAttributeExecuted = true"> literal </table>'
+        # Well-formed HTML may keep '<' in a quoted title while escaping its quotes.
+        # This response variant tests client composition, not a server-sanitizer bypass.
+        title = literal.replace('"', '&quot;')
+        rendered = (f'<p><a href="/inbox" title="{title}">Literal table title</a></p>'
+                    '<table><thead><tr><th>Part</th></tr></thead><tbody><tr><td>Probe</td></tr></tbody></table>')
+
+        def reader(route):
+            response = route.fetch()
+            data = response.json()
+            data['html'] = rendered
+            route.fulfill(response=response, json=data)
+
+        def preview(route):
+            response = route.fetch()
+            data = response.json()
+            data['html'] = rendered
+            route.fulfill(response=response, json=data)
+
+        def check(prose):
+            expect(prose.get_by_role('link', name='Literal table title')).to_have_attribute('title', literal)
+            expect(prose.locator('table')).to_have_count(1)
+            expect(prose.locator('.doc-table')).to_have_count(1)
+            expect(prose.locator('.doc-table')).to_have_attribute('role', 'region')
+            expect(prose.locator('.doc-table')).to_have_attribute('tabindex', '0')
+            expect(prose.locator('[onmouseover]')).to_have_count(0)
+            self.assertFalse(page.evaluate('Boolean(window.__tableAttributeExecuted)'))
+
+        page.route(re.compile(r'.*/api/v1/docs/' + re.escape(self.doc_id) + '$'), reader)
+        page.route(f'**/api/v1/projects/{self.project_id}/docs/preview', preview)
+        page.reload()
+        check(page.locator('.doc-prose'))
+        page.get_by_role('link', name='Edit', exact=True).click()
+        page.get_by_role('button', name='Preview', exact=True).click()
+        check(page.locator('.doc-edit__preview .doc-prose'))
+        page.get_by_role('button', name='Write', exact=True).click()
+        page.get_by_role('button', name='Preview', exact=True).click()
+        check(page.locator('.doc-edit__preview .doc-prose'))
+
 
 class WikiReferences(unittest.TestCase):
     """Task and decision references in a page, and a reference that is not in the project."""
@@ -174,9 +216,9 @@ class WikiReferences(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, os.environ.get("FLUX_UI_BROWSER", "chromium")).launch()
         expect.set_options(timeout=8000)
-        ctx = cls.browser.new_context(base_url=ORIGIN)
+        ctx = cls.browser.new_context(base_url=ORIGIN, service_workers="block")
         page = ctx.new_page()
         email = f"ada.wikirefs+{STAMP}@example.test"
         page.goto("/sign-up")
@@ -220,7 +262,7 @@ class WikiReferences(unittest.TestCase):
         cls.pw.stop()
 
     def other_session(self, method, path, body):
-        context = self.browser.new_context(base_url=ORIGIN, storage_state=self.state)
+        context = self.browser.new_context(base_url=ORIGIN, service_workers="block", storage_state=self.state)
         self.addCleanup(context.close)
         response = context.request.fetch(f"{ORIGIN}{path}", method=method, data=json.dumps(body),
                                          headers={"origin": ORIGIN, "content-type": "application/json"})
@@ -231,7 +273,7 @@ class WikiReferences(unittest.TestCase):
         options = dict(base_url=ORIGIN, viewport=viewport, storage_state=self.state, color_scheme=theme, locale="en-GB")
         if touch:
             options.update(is_mobile=True, has_touch=True, device_scale_factor=2)
-        context = self.browser.new_context(**options)
+        context = self.browser.new_context(**options, service_workers="block")
         self.addCleanup(context.close)
         page = context.new_page()
         page.goto(self.url)
@@ -266,7 +308,7 @@ class WikiReferences(unittest.TestCase):
         self.check(self.read(PHONE, touch=True, theme="dark"), "wiki-refs-phone-390-dark", True)
 
     def test_a_failed_read_is_retried_without_a_reload(self) -> None:
-        context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP, storage_state=self.state)
+        context = self.browser.new_context(base_url=ORIGIN, service_workers="block", viewport=DESKTOP, storage_state=self.state)
         self.addCleanup(context.close)
         page = context.new_page()
         calls = []
@@ -301,7 +343,7 @@ class WikiReferences(unittest.TestCase):
         self.assertTrue(html > 0)
 
     def test_agents_keep_their_tag_and_owner_beside_a_person_of_the_same_name(self) -> None:
-        context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP, storage_state=self.state)
+        context = self.browser.new_context(base_url=ORIGIN, service_workers="block", viewport=DESKTOP, storage_state=self.state)
         self.addCleanup(context.close)
         page = context.new_page()
         agent = {"kind": "agent", "id": self.agent_id, "name": "Alex"}

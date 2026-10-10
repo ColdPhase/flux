@@ -154,8 +154,8 @@
 
 .doc-prose { font-size: .9375rem; line-height: 1.667; color: var(--t2); overflow-wrap: anywhere; }
 .doc-prose :is(h1, h2, h3, h4, h5, h6, strong, li) { color: var(--t1); }
-/* A readable measure inside the 820px column (#151): running text keeps at most about 90
-   characters a line; tables, code and images keep the column's width. */
+/* A compact 64ch reading column inside the 820px page; tables, code and images
+   keep the full available width, with tables scrolling in their own region. */
 .doc-prose > :is(p, ul, ol, blockquote, dl) { max-width: 64ch; }
 .doc-prose > * { margin-top: 0; margin-bottom: 0; }
 .doc-prose > * + * { margin-top: 18px; }
