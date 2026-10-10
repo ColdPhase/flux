@@ -1,0 +1,110 @@
+name: Partner feedback
+description: For design partners. Tell us what you tried to do in Flux and what happened.
+title: "[Partner feedback]: "
+labels: [partner-feedback]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for trying Flux. Describe what you actually did, not only what you think;
+        a real example helps more than a rating. One report per problem or week is fine.
+        The [partner onboarding guide](https://github.com/ColdPhase/flux/blob/main/docs/product/partner-onboarding.md) has the steps.
+        This issue is public: remove tokens, passwords, personal data and private project content.
+        For vulnerabilities, use [private reporting](https://github.com/ColdPhase/flux/security/advisories/new).
+  - type: input
+    id: team
+    attributes:
+      label: Team
+      description: Optional. Your team name, or any label you want us to use.
+  - type: input
+    id: revision
+    attributes:
+      label: Flux commit
+      description: Run `git rev-parse --short HEAD` in your Flux folder.
+      placeholder: "05f89591"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Machine, Docker and browser
+      placeholder: "macOS 26 arm64, Docker Desktop 4.54, Safari; or Ubuntu 24.04 amd64, Docker Engine 29, Firefox"
+    validations:
+      required: true
+  - type: dropdown
+    id: agent-client
+    attributes:
+      label: Agent client
+      description: The MCP client you connected to Flux, if any.
+      options:
+        - Claude Code
+        - Codex
+        - Another MCP client (name it below)
+        - None yet
+    validations:
+      required: true
+  - type: dropdown
+    id: step
+    attributes:
+      label: Where were you?
+      options:
+        - Installing (./flux up)
+        - Account, project or adding people
+        - Connecting my agent
+        - "First journey: conversation, task or decision"
+        - Asking my agent about the project
+        - Coming back after a break
+        - Phone or installed app
+        - Backup or upgrade
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: What were you trying to do?
+      description: The real task, in your own words. Why did you need it?
+    validations:
+      required: true
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened?
+      description: Include the steps you took. Screenshots help if they hold nothing private.
+    validations:
+      required: true
+  - type: textarea
+    id: workaround
+    attributes:
+      label: What did you do instead?
+      description: Did you finish it in Flux, in another tool, or give up?
+  - type: dropdown
+    id: impact
+    attributes:
+      label: How much did it get in your way?
+      options:
+        - It stopped me
+        - I found a way around it
+        - A small annoyance
+        - It worked; this is about something that went well
+    validations:
+      required: true
+  - type: input
+    id: time
+    attributes:
+      label: Time
+      description: Optional. How long the step took, or the time from `git clone` to a working Flux if this is your install.
+      placeholder: "about 9 minutes from git clone to the first message"
+  - type: checkboxes
+    id: counting
+    attributes:
+      label: Counting
+      description: Optional. The weekly review counts outside installs.
+      options:
+        - label: You may count our team as an outside install in the weekly review.
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else
+      description: Optional. Logs or other context. Remove secrets first.
+      render: text

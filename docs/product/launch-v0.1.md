@@ -102,6 +102,8 @@ These are drafted in the repository and reviewed like code. Publication follows
 - **Design partners** (rules 16 and 17): a short profile of 3–5 small teams that already work
   with coding agents, have the problem Flux solves, and will commit time. The founders choose
   and contact them. The agents prepare an onboarding guide and a feedback issue template.
+  Drafts: the [partner profile](design-partners.md), the [onboarding guide](partner-onboarding.md)
+  and the [partner feedback form](../../.github/ISSUE_TEMPLATE/partner-feedback.yml).
 - **One weekly review** (rule 20). It records a few lead measures in the build log:
   - outside installs people report;
   - issues and PRs opened by people outside the team;
