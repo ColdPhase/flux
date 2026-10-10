@@ -23,7 +23,7 @@ test('0077 fresh/upgrade/reverse preserves legacy identity, grants and consent w
     await client.query("INSERT INTO auth_users(id,name,email) VALUES($1,'Legacy assistant owner',$2)", [owner, `${owner}@example.test`]);
     await client.query("INSERT INTO workspaces(id,name,created_by) VALUES($1,'Legacy workspace',$2)", [ws, owner]);
     await client.query("INSERT INTO workspace_members(workspace_id,user_id,role,created_by) VALUES($1,$2,'owner',$2)", [ws, owner]);
-    await client.query("INSERT INTO agents(id,workspace_id,name,owner_user_id) VALUES($1,$2,'Legacy agent',$3)", [agent, ws, owner]);
+    await client.query("INSERT INTO agents(id,workspace_id,name,owner_user_id,created_by) VALUES($1,$2,'Legacy agent',$3,$3)", [agent, ws, owner]);
     for (const id of [allowed, notJoined]) await client.query("INSERT INTO projects(id,workspace_id,name,visibility,created_by) VALUES($1,$2,'Legacy project','workspace',$3)", [id, ws, owner]);
     await client.query("INSERT INTO project_grants(id,workspace_id,project_id,agent_id,role,created_by) VALUES($1,$2,$3,$4,'contributor',$5)", [randomUUID(),ws,allowed,agent,owner]);
     await client.query(`INSERT INTO personal_run_enablements(owner_user_id,connection_id,consent_version,consent_provider,consent_model,
