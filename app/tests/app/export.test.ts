@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { gunzipSync } from 'node:zlib';
 import { before, describe, test } from 'node:test';
+import { createDatabase } from '@flux/db';
 import Fastify from 'fastify';
 import {
   PROJECT_EXPORT_EXCLUDED,
@@ -233,6 +234,51 @@ describe('project export', () => {
     assert.equal(broken.valid, false, 'the schema rejects another format version');
     const extra = await validate({ ...data, dms: [] });
     assert.equal(extra.valid, false, 'the schema rejects unknown top-level parts');
+  });
+
+  test('GitHub task rules export dormant; repository bindings are withheld from every manager (JSON and bundle)', async () => {
+    const connectionString = process.env.DATABASE_URL;
+    if (!connectionString) throw new Error('DATABASE_URL is required');
+    const { pool } = createDatabase(connectionString);
+    try {
+      const gh = await createProject(owner, ws.id, `GitHub export ${tag}`, 'workspace');
+      assert.equal(json<ProjectExport>(await owner.browser.request('GET', projectExportPath(gh.id)), 200).githubSources, undefined, 'no GitHub, no section');
+      const task = json<WorkItem>(await post(owner, `/api/v1/projects/${gh.id}/work`, { title: token('GH-task') }), 201, 'github task');
+      const bindingId = randomUUID(); const generation = randomUUID();
+      const SECRET = `SECRET-installation-${tag}`;
+      await pool.query(`INSERT INTO github_bindings (id, workspace_id, project_id, installation_id, repository_id, owner, name, private, url, author_user_id, author_github_user_id, app_id, authorization_generation, state)
+        VALUES ($1,$2,$3,'4242','777','lamp-team','firmware',true,'https://github.com/lamp-team/firmware',$4,'7001','9911',$5,'active')`, [bindingId, ws.id, gh.id, owner.id, generation]);
+      await pool.query(`INSERT INTO github_credentials (user_id, generation, github_user_id, app_id, encrypted_tokens, state) VALUES ($1,$2,'7001','9911',$3,'active')`, [owner.id, generation, SECRET]);
+      await pool.query(`INSERT INTO github_task_rules (task_id, workspace_id, project_id, mode, state, author_user_id, author_github_user_id, author_generation, app_id, expected_version, expected_status)
+        VALUES ($1,$2,$3,'complete','active',$4,'7001',$5,'9911',$6,'open')`, [task.id, ws.id, gh.id, owner.id, generation, task.version]);
+      await pool.query(`INSERT INTO github_rule_defaults (project_id, workspace_id, mode) VALUES ($1,$2,'ready')`, [gh.id, ws.id]);
+
+      // A second manager with no GitHub authorization at all, and the owner who connected the repository, get the same export.
+      for (const manager of [owner, admin]) {
+        const data = json<ProjectExport>(await manager.browser.request('GET', projectExportPath(gh.id)), 200, 'github export');
+        assert.deepEqual(data.githubSources, { dormant: true, defaultMode: 'ready', rules: [{ taskId: task.id, mode: 'complete', recordedState: 'active', enabled: false }] });
+        const bundle = await fetch(new URL(`${projectExportPath(gh.id)}?format=bundle`, process.env.FLUX_API_URL ?? 'http://api:8080'), {
+          headers: { cookie: manager.browser.cookieHeader(), origin: process.env.FLUX_PUBLIC_ORIGIN ?? '' },
+        });
+        assert.equal(bundle.status, 200);
+        const files = untar(gunzipSync(Buffer.from(await bundle.arrayBuffer())));
+        const everything = [data, ...files.values()].map((content) => (Buffer.isBuffer(content) ? content.toString('utf8') : JSON.stringify(content))).join('\n');
+        // Negative control: the repository's identity is private GitHub fact that no manager's export may carry.
+        for (const hidden of ['lamp-team', 'firmware', 'https://github.com/', generation, SECRET, bindingId]) assert.ok(!everything.includes(hidden), `export leaks ${hidden}`);
+        assert.ok(!('bindings' in data.githubSources!), 'no bindings key');
+        const checked = await (await validator())(data);
+        assert.ok(checked.valid, `github export does not match its JSON Schema: ${checked.errors}`);
+        const enabled = await (await validator())({ ...data, githubSources: { ...data.githubSources, rules: [{ ...data.githubSources!.rules[0], enabled: true }] } });
+        assert.equal(enabled.valid, false, 'the schema rejects an enabled rule');
+        const withBinding = await (await validator())({ ...data, githubSources: { ...data.githubSources, bindings: [] } });
+        assert.equal(withBinding.valid, false, 'the schema rejects a bindings list');
+      }
+      // Revoking or disconnecting the binding changes nothing about what is withheld.
+      await pool.query(`UPDATE github_bindings SET state='revoked' WHERE id=$1`, [bindingId]);
+      const revoked = json<ProjectExport>(await admin.browser.request('GET', projectExportPath(gh.id)), 200, 'revoked export');
+      assert.ok(!JSON.stringify(revoked).includes('firmware') && revoked.githubSources?.rules.length === 1);
+      assert.equal(json<ProjectExport>(await owner.browser.request('GET', projectExportPath(lamp.id)), 200).githubSources, undefined, 'another project has none');
+    } finally { await pool.end(); }
   });
 
   test('the bundle is a tar.gz with project.json, docs as Markdown, the schema and a checked manifest', async () => {

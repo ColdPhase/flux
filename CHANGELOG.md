@@ -108,6 +108,7 @@ repository was created on 2026-09-26.
 
 ### Changed
 
+- A project export now lists the project's "Let linked PRs move this task" rules as dormant, disabled entries; connected repositories are not exported, because their names need your own GitHub authorization ([#74](https://github.com/ColdPhase/flux/issues/74)).
 - Changing a task's status or blocker by hand now pauses its "Let linked PRs move this task" rule at once, with a history line, and the rule carries a revision that a task change or a rule command can pin so you override only the state you saw ([#74](https://github.com/ColdPhase/flux/issues/74)).
 - One neutral look from the final design: Soft volume surfaces in light, dark or Match system, Geist type served with Flux, pill buttons, and task states shown as shapes with words. The accent colours and their picker are gone ([#353](https://github.com/ColdPhase/flux/pull/353)).
 - Kreska, a face drawn in a few lines, is the Flux logo, the app icon and every agent's icon. Agents carry an "Agent" tag and, where you may know them, the person they work for; the personal assistant's face shows what its run is doing ([#356](https://github.com/ColdPhase/flux/pull/356)).
