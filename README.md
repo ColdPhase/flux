@@ -94,12 +94,17 @@ next steps. It runs on your computer with your own model account, which Flux nev
 `./flux demo` data:
 
 1. Sign in as Ada, the workspace owner (`./flux demo` prints her password), and open
-   <http://127.0.0.1:8081/connect-agent> (Settings → Agent connections (MCP)).
+   <http://127.0.0.1:8081/connect-agent> (Settings → Agent connections (MCP)). 8081 is the
+   default port; use the one `./flux up` printed.
 2. **Create your personal agent.** Keep the workspace "Riverside Makers (demo)", give the agent a
-   name and choose **Create personal agent**. The demo seeds no agent.
+   name and choose **Create personal agent**. The form is already open on a first visit. The demo
+   seeds no agent.
 3. **Grant it the project.** Under **New connection**, name the connection and pick your client.
    Next to "Community garden sensors", keep **Read and propose** and choose **Grant**; only a
-   project manager can do this, and Ada is one. Tick the project and choose **Save connection**.
+   project manager can do this, and Ada is one. Under **Allowed actions**, tick all three: Claude
+   Code asks for all three when it connects, and a connection without **Run approved project
+   actions** is refused at consent. Each action still needs its own grant from you (step 6).
+   Tick the project and choose **Save connection**.
 4. **Add Flux to your client** with the commands the page shows:
 
    ```sh
@@ -109,6 +114,9 @@ next steps. It runs on your computer with your own model account, which Flux nev
    codex mcp add flux --url http://127.0.0.1:8081/mcp               # Codex; adding may start the sign-in
    codex mcp login flux
    ```
+
+   `claude mcp login flux` needs a terminal: outside one it stops with "stdin isn't a terminal".
+   If the login times out before you choose **Allow access**, run it again.
 
 5. **Consent.** The login opens Flux in your browser. Choose the saved connection, then
    **Continue to consent**. Check that access goes to an address on your own computer and to the

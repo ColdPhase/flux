@@ -15,13 +15,14 @@ import { registerAgentCoworkActions } from './cowork-actions.js';
 import { withAgentConnection, type FluxMcpClaims } from './context.js';
 import { toolError, toolResult } from './tool-results.js';
 import { eventPorts } from '../events.js';
+import type { McpDispatch } from './mcp-dispatch.js';
 
 export type { FluxMcpClaims } from './context.js';
 
 /** A fresh server is bound to one verified bearer; each tool rechecks inside its transaction. */
-export function createFluxMcpServer(db: Database, claims: FluxMcpClaims, cursorSecret: string): McpServer {
+export function createFluxMcpServer(db: Database, claims: FluxMcpClaims & { dispatch: McpDispatch }, cursorSecret: string): McpServer {
   const server = new McpServer({ name: 'flux', version: '0.1.0' }, { instructions: coworkServerInstructions() });
-  const tools = agentToolRegistry(server);
+  const tools = agentToolRegistry(server, claims.dispatch);
   registerAgentPlaybook(server, tools, db, claims);
   registerAgentPolicyResource(server, db, claims);
   registerAgentDomainReads(tools.forScope('flux.context.read'), db, claims, cursorSecret);
@@ -60,5 +61,7 @@ export function createFluxMcpServer(db: Database, claims: FluxMcpClaims, cursorS
       return toolResult(proposal);
     } catch (error) { return toolError(error); }
   });
+  tools.verifyManifest();
+  claims.dispatch.verifyRegistrations();
   return server;
 }

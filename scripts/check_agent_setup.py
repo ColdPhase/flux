@@ -142,6 +142,55 @@ def undefined_numeric_references(content: str) -> list[tuple[int, str]]:
     return missing
 
 
+# Evidence size (#319): screenshots and recordings anywhere under docs/ are review
+# evidence (including docs/design), so the media limit applies by extension, not path.
+DOCUMENT_LIMIT = 400 * 1024
+MEDIA_LIMIT = 300 * 1024
+MEDIA_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".webm", ".mp4", ".mov"}
+SIZE_ALLOWLIST = Path("scripts/docs-size-allowlist.txt")
+
+
+def size_allowlist(root: Path) -> dict[str, int]:
+    """Existing large files: `<bytes> <path>` per line; a listed file may not grow."""
+    path = root / SIZE_ALLOWLIST
+    allowed: dict[str, int] = {}
+    if not path.is_file():
+        return allowed
+    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        line = line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        size, _, name = line.partition(" ")
+        if not size.isdigit() or not name.strip():
+            raise ValueError(f"{SIZE_ALLOWLIST}:{number}: expected '<bytes> <path>'")
+        allowed[name.strip()] = int(size)
+    return allowed
+
+
+def oversized_documents(root: Path) -> list[str]:
+    """Files under docs/ above 400 KB, or screenshots/recordings above 300 KB, not on the allowlist."""
+    docs = root / "docs"
+    if not docs.is_dir():
+        return []
+    allowed = size_allowlist(root)
+    errors: list[str] = []
+    for path in sorted(docs.rglob("*")):
+        if path.is_symlink() or not path.is_file():
+            continue
+        name = path.relative_to(root).as_posix()
+        size = path.stat().st_size
+        media = path.suffix.lower() in MEDIA_SUFFIXES
+        limit = MEDIA_LIMIT if media else DOCUMENT_LIMIT
+        if size <= limit or size <= allowed.get(name, -1):
+            continue
+        kind = "screenshot/recording" if media else "file"
+        listed = f" (allowlisted at {allowed[name]} bytes)" if name in allowed else ""
+        errors.append(f"{name}: {kind} is {size} bytes, above the {limit // 1024} KB evidence size "
+                      f"limit{listed}; compress, crop or link a CI artifact "
+                      "(docs/agents/evaluation.md#evidence-size)")
+    return errors
+
+
 def validate(root: Path) -> list[str]:
     root = root.resolve()
     errors: list[str] = []
@@ -206,6 +255,7 @@ def validate(root: Path) -> list[str]:
                     anchor_cache[destination] = heading_anchors(destination.read_text(encoding="utf-8"))
                 require(unquote(url.fragment).lower() in anchor_cache[destination],
                         f"{path.relative_to(root)}: link {link} names a missing heading anchor")
+    errors.extend(oversized_documents(root))
     return errors
 
 
@@ -221,7 +271,7 @@ def main() -> int:
         for error in errors:
             print(f"ERROR: {error}", file=sys.stderr)
         return 1
-    print("Agent foundation checks passed: shared instructions, skills, and local document links.")
+    print("Agent foundation checks passed: shared instructions, skills, local document links, and evidence size.")
     print("This does not verify live GitHub gates or application behavior.")
     return 0
 
