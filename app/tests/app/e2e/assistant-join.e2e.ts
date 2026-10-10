@@ -88,7 +88,7 @@ for (const [engine, mobile] of [['chromium', false], ['webkit', true]] as const)
       await invitation.click(); await expect(managerPage).toHaveURL(`${origin}${path}`);
       const requests = managerPage.getByRole('region', { name: 'Assistant join requests' });
       await theme(managerPage, 'light'); await capture(managerPage, `join-${engine}-manager-row-light`);
-      const review = requests.getByRole('button', { name: /Review/ });
+      const review = requests.locator('.agents-join__toggle');
       await review.focus(); await review.press('Enter');
       const allow = requests.getByRole('button', { name: 'Allow', exact: true });
       await expect(allow).toBeVisible();
