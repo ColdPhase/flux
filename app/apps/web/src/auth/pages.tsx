@@ -92,9 +92,7 @@ function useCapabilities() {
   return capabilities;
 }
 
-function useSso() {
-  return useCapabilities()?.sso ?? null;
-}
+
 
 function SsoSignIn({ sso, next, oauthQuery, divider = false }: { sso: NonNullable<IdentityCapabilities['sso']>; next: string | null; oauthQuery?: string; divider?: boolean }) {
   const [busy, setBusy] = useState(false);
