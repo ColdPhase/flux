@@ -90,8 +90,8 @@
 .wiki-bar__primary { margin-left: 6px; padding: 0 16px; font-size: var(--fs-md); }
 @media (pointer: coarse) { .wiki-bar__primary { min-width: 44px; justify-content: center; } }
 .wiki-bar__back { gap: 4px; padding: 0 8px; font-size: var(--fs-sm); color: var(--t2); }
-/* On a phone Edit floats at the bottom right of the page, as drawn. */
-.wiki-edit { position: sticky; bottom: 16px; z-index: 6; margin: auto 16px 16px auto; min-height: 48px; padding: 0 20px; gap: 8px; font-size: .9375rem; box-shadow: var(--sh-pri), 0 10px 24px -8px rgba(0, 0, 0, .35); }
+/* The phone's primary action has its own space below the scrolling page. */
+.wiki-edit { justify-self: end; margin: 0 16px max(16px, env(safe-area-inset-bottom)) auto; min-height: 48px; padding: 0 20px; gap: 8px; font-size: .9375rem; box-shadow: var(--sh-pri), 0 10px 24px -8px rgba(0, 0, 0, .35); }
 .wiki-pop__item { text-decoration: none; }
 
 /* Share and Download: a small card hanging from the bar's right end (the bar is its containing
@@ -362,6 +362,11 @@
 @container wiki (max-width: 499px) {
   .wiki { flex-direction: column; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
   .wiki .wiki-main { flex: 1 0 auto; min-height: auto; overflow: visible; display: flex; flex-direction: column; }
+  /* Reading scrolls above Edit, so no paragraph or related-link row passes behind it.
+     Editors and history retain their existing single-column scrolling behavior. */
+  .wiki:has(.wiki-main > .wiki-read) { overflow-y: hidden; }
+  .wiki .wiki-main:has(> .wiki-read) { flex: 1; min-height: 0; overflow: hidden; display: grid; grid-template-rows: minmax(0, 1fr) auto; }
+  .wiki-main > .wiki-read { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
   .wiki-index { width: auto; min-width: 0; overflow: visible; padding: 4px 16px 0; border-right: 0; flex: none; position: sticky; top: 0; z-index: 20; }
   .wiki-search { margin: 0 0 6px; }
   .wiki-index__count { margin: 2px 4px 4px; }

@@ -185,6 +185,36 @@ class WikiFinal(unittest.TestCase):
                 self.assertNotEqual(look[0], "rgba(0, 0, 0, 0)")
                 shot(page, f"wiki-final-phone-390-{theme}")
 
+    def test_phone_edit_keeps_lower_document_unobscured(self) -> None:
+        for size in ({"width": 320, "height": 640}, PHONE):
+            for theme in ("light", "dark"):
+                with self.subTest(width=size["width"], theme=theme):
+                    page = self.open(size, theme, touch=True)
+                    errors = []
+                    page.on("pageerror", lambda error: errors.append(str(error)))
+                    self.addCleanup(lambda observed=errors: self.assertEqual(observed, [], "no uncaught reading errors"))
+                    reader = page.locator(".wiki-read")
+                    edit = page.get_by_role("link", name="Edit", exact=True)
+                    expect(edit).to_be_visible()
+                    self.assertGreaterEqual(edit.bounding_box()["height"], 44)
+                    for fraction in (0, 0.5, 1):
+                        reader.evaluate("(e, fraction) => { e.scrollTop = (e.scrollHeight - e.clientHeight) * fraction; }", fraction)
+                        read_box, edit_box = reader.bounding_box(), edit.bounding_box()
+                        self.assertLessEqual(read_box["y"] + read_box["height"], edit_box["y"] + 1,
+                                             "Edit never overlaps the bounded reading viewport at any scroll position")
+                        self.assertGreaterEqual(read_box["height"], 160, "the reserved action space retains useful reading area")
+                    self.assertGreater(reader.evaluate("e => e.scrollTop"), 0, "the lower document is reached by scrolling")
+                    last = page.locator(".doc-ids")
+                    expect(last).to_be_visible()
+                    last_box, read_box = last.bounding_box(), reader.bounding_box()
+                    self.assertGreaterEqual(last_box["y"], read_box["y"] - 1)
+                    self.assertLessEqual(last_box["y"] + last_box["height"], read_box["y"] + read_box["height"] + 1,
+                                         "the final attribution is readable above Edit")
+                    self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), size["width"])
+                    shot(page, f"wiki-lower-phone-{size['width']}-{theme}")
+                    edit.click()
+                    expect(page.get_by_label("Text (Markdown)")).to_be_visible()
+
     def test_phone_context_retires_when_the_reader_is_left(self) -> None:
         page = self.open(PHONE, "light", touch=True)
         header = page.locator("header.top")
