@@ -397,7 +397,7 @@ export function useSketchDoc(sketchId: string, me: Me) {
           const existing = current.thoughts.find((item) => item.id === thought.id);
           if (!existing) { if (options?.existingOnly?.has(thought.id)) unconfirmed = true; throw failure; }
           const expected = options?.expectedText?.get(thought.id);
-          const untouchedOwnCreation = expected === undefined && existing.version === 1 && existing.createdBy.id === meRef.current.user.id;
+          const untouchedOwnCreation = expected === undefined && existing.version === 1 && existing.createdBy.id === meRef.current.id;
           if (existing.text !== thought.text && existing.text !== expected && !untouchedOwnCreation) {
             changedEarlier = true;
             patchThought(existing, true);
