@@ -21,7 +21,7 @@ PASSWORD = "soft volume everywhere"
 LIGHT = {"--side": "#ebebed", "--bg": "#f4f4f5", "--el": "#ffffff", "--sub": "#ebebec", "--hov": "#e3e3e5",
          "--t1": "#18181b", "--t2": "#4a4a4a", "--t3": "#6b6b6b", "--inv": "#18181b", "--oninv": "#ffffff"}
 DARK = {"--side": "#0b0b0b", "--bg": "#111111", "--el": "#1c1c1c", "--sub": "#242424", "--hov": "#2c2c2c",
-        "--t1": "#f0f0f0", "--t2": "#acacac", "--t3": "#8c8c8c", "--inv": "#f0f0f0", "--oninv": "#111111"}
+        "--t1": "#f0f0f0", "--t2": "#bdbdbd", "--t3": "#a1a1a1", "--inv": "#f0f0f0", "--oninv": "#111111"}
 # The served CSS is minified (#ffffff becomes #fff), so values are compared as resolved colours.
 TOKENS = """names => Object.fromEntries(names.map(n => { const i = document.createElement('i'); i.style.color = `var(${n})`;
   document.body.append(i); const c = getComputedStyle(i).color; i.remove(); return [n, c]; }))"""
