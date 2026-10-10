@@ -239,7 +239,7 @@ export function DocReader() {
           </>
         )}
       </WikiBar>
-      <div className="wiki-read">
+      <div className="wiki-read" key={doc.id}>
         <article className="wiki-doc wiki-doc--read doc" data-shift aria-labelledby="doc-title">
           {compact && keptLink ? <p className="doc-notice">{keptLink}</p> : null}
           {!current ? (
