@@ -115,6 +115,16 @@ class ProjectStateJourney(unittest.TestCase):
         page.reload()
         expect(state).to_contain_text("1 completed task")
         expect(state).not_to_contain_text("No decisions or work yet")
+        # Quiet header meta (#431): hovering adds no filled pill and no native tooltip over the
+        # tab row; the icon is centred on the label's line.
+        history = state.locator('[data-seg="history"]')
+        history.hover()
+        self.assertIsNone(history.get_attribute("title"))
+        meta = history.evaluate("""e => { const r = e.getBoundingClientRect(), i = e.querySelector('svg').getBoundingClientRect(),
+          t = e.querySelector('span:last-child').getBoundingClientRect();
+          return {bg: getComputedStyle(e).backgroundImage + getComputedStyle(e).backgroundColor, icon: Math.abs((i.top + i.height / 2) - (t.top + t.height / 2))}; }""")
+        self.assertEqual(meta["bg"], "nonergba(0, 0, 0, 0)", meta)
+        self.assertLessEqual(meta["icon"], 1, meta)
         state.locator('[data-seg="history"]').click()
         expect(page.locator("#details").get_by_role("heading", name=task["title"], exact=True)).to_be_visible()
         self.work(page, project, "Camera-only direction was not pursued", "not_pursued")

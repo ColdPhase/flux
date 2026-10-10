@@ -663,6 +663,19 @@ class AppShellJourney(unittest.TestCase):
         shot(page, "desktop-1440-account-light")
         menu.get_by_role("radio", name="Dark").click()
         self.assertEqual(page.evaluate("document.documentElement.dataset.theme"), "dark")
+        # Balanced segments (#431): no label is clipped, Light and Dark share one width, and the
+        # selected pill and the outer segments sit evenly inside the track.
+        seg = menu.locator(".appearance .seg").evaluate("""el => { const t = el.getBoundingClientRect();
+          const all = [...el.querySelectorAll('.seg__b')], b = all.map(e => e.getBoundingClientRect());
+          const on = el.querySelector('[aria-checked="true"]').getBoundingClientRect();
+          return {widths: b.map(r => r.width), clipped: all.filter(e => e.scrollWidth > e.clientWidth).map(e => e.textContent),
+            top: on.top - t.top, bottom: t.bottom - on.bottom, left: b[0].left - t.left, right: t.right - b[b.length - 1].right}; }""")
+        self.assertEqual(seg["clipped"], [], seg)
+        self.assertLessEqual(abs(seg["widths"][0] - seg["widths"][1]), 1, seg)
+        self.assertGreaterEqual(seg["widths"][2] + 1, seg["widths"][0], seg)
+        self.assertAlmostEqual(seg["top"], seg["bottom"], delta=0.5, msg=seg)
+        self.assertAlmostEqual(seg["left"], seg["right"], delta=0.5, msg=seg)
+        shot(page, "desktop-1440-account-dark")
         page.keyboard.press("Escape")
         expect(menu).to_have_count(0)
         expect(account).to_be_focused()
