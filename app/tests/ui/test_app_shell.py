@@ -230,7 +230,7 @@ class AppShellJourney(unittest.TestCase):
         cls.pw.stop()
 
     def context(self, *, phone: bool = False, dark: bool = False, signed_in: bool = True, **extra) -> BrowserContext:
-        options: dict = {"base_url": ORIGIN, "color_scheme": "dark" if dark else "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw", "service_workers": "block"}
+        options: dict = {"base_url": ORIGIN, "color_scheme": "dark" if dark else "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw"}
         if phone:
             options.update(viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
         else:
@@ -238,7 +238,7 @@ class AppShellJourney(unittest.TestCase):
         if signed_in and self.state:
             options["storage_state"] = self.state
         options.update(extra)
-        context = self.browser.new_context(**options)
+        context = self.browser.new_context(**options)  # sw-allowed: as on main; routing tests pass service_workers="block" (#271)
         self.addCleanup(context.close)
         return context
 
@@ -725,7 +725,7 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("link", name="Request a new link")).to_be_visible()
 
     def test_10_password_reset_unavailable(self) -> None:
-        page = self.page(signed_in=False)
+        page = self.page(signed_in=False, service_workers="block")
         # Simulate a server without SMTP: capabilities say so and the request answers 503.
         page.route("**/api/v1/auth/capabilities", lambda route: route.fulfill(json={"passwordReset": "unavailable"}))
         page.goto("/forgot-password")
@@ -733,7 +733,7 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("button", name="Send reset link")).to_be_disabled()
         shot(page, "reset-unavailable-desktop-light")
 
-        late = self.page(signed_in=False)
+        late = self.page(signed_in=False, service_workers="block")
         late.route("**/api/auth/request-password-reset", lambda route: route.fulfill(status=503, json={"error": "Password reset is unavailable", "code": "PASSWORD_RESET_UNAVAILABLE"}))
         late.goto("/forgot-password")
         late.get_by_label("Email").fill(EMAIL)
@@ -761,9 +761,9 @@ class AppShellJourney(unittest.TestCase):
         page.reload()
         expect(page.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
 
-    def person_with_a_task(self, name: str, *, slow: bool = True) -> tuple[Page, str, str]:
+    def person_with_a_task(self, name: str, *, slow: bool = True, service_workers: str = "allow") -> tuple[Page, str, str]:
         """A new account in its own tab with one restricted project and one task in it."""
-        page = self.page(signed_in=False)
+        page = self.page(signed_in=False, service_workers=service_workers)
         if slow:
             page.add_init_script(SLOW_ANSWERS)
         page.goto("/sign-up")
@@ -827,7 +827,7 @@ class AppShellJourney(unittest.TestCase):
         self.sign_out_while_loading(page, "Tove Berg")
 
     def test_11c_a_failed_sign_out_says_so_and_can_be_retried(self) -> None:
-        page, _, _ = self.person_with_a_task("Ida Holm", slow=False)
+        page, _, _ = self.person_with_a_task("Ida Holm", slow=False, service_workers="block")
         page.route("**/api/auth/sign-out", lambda route: route.fulfill(status=503, json={"code": "TEST_UNAVAILABLE", "message": "test: sign-out unavailable"}))
         page.get_by_role("button", name=re.compile("Ida Holm.*account and sign out")).click()
         page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
@@ -847,7 +847,7 @@ class AppShellJourney(unittest.TestCase):
         """Real UI: create project, send, cite a saved version, reply, revisit on phone, revoke."""
         # A fresh account without any space: its first project names the space (Jo's first note
         # already created Jo's personal space, #190 HOME-3).
-        owner = self.page(signed_in=False)
+        owner = self.page(signed_in=False, service_workers="block")
         owner.goto("/sign-up")
         owner.get_by_label("Name").fill("Mira Lamp")
         owner.get_by_label("Email").fill(f"mira.lamp+{int(time.time() * 1000)}@example.test")
