@@ -78,6 +78,42 @@ def assert_touch_target(case: unittest.TestCase, page: Page, control: Locator) -
     case.assertTrue(measured["hittable"], f"the measured hit area belongs to {name!r}: {measured}")
 
 
+def has_visible_colour(value: str) -> bool:
+    """True for a computed rgb()/rgba() colour whose alpha is above zero; 'transparent' is not visible."""
+    match = re.fullmatch(r"rgba?\(([^)]*)\)", value.strip())
+    if match is None:
+        return False
+    parts = [part.strip() for part in match.group(1).split(",")]
+    return (float(parts[3]) if len(parts) == 4 else 1.0) > 0
+
+
+def assert_halo_touch_target(case: unittest.TestCase, link: Locator) -> None:
+    """Measure a text link's declared ::after hit area (the coarse-pointer halo in app.css), not its text box."""
+    case.assertTrue(link.evaluate("el => el.matches('a[href]')"), "measure a link")
+    link.evaluate("el => el.scrollIntoView({block: 'center', inline: 'nearest', behavior: 'instant'})")
+    measured = link.evaluate("""el => {
+      const rect = el.getBoundingClientRect();
+      const after = getComputedStyle(el, '::after');
+      const values = [after.left, after.top, after.width, after.height].map(parseFloat);
+      const declared = after.content !== 'none' && after.display !== 'none' && after.pointerEvents !== 'none'
+        && values.every(Number.isFinite) && values[2] > 0 && values[3] > 0;
+      if (!declared) return {width: rect.width, height: rect.height, hittable: false, declared: false};
+      const left = rect.left + values[0], top = rect.top + values[1], width = values[2], height = values[3];
+      // Same 44 px core and edge midpoints as assert_touch_target: every point must hit the link itself.
+      const coreWidth = Math.min(width, 44), coreHeight = Math.min(height, 44);
+      const x = (width - coreWidth) / 2, y = (height - coreHeight) / 2;
+      const positions = [[x + .5, height / 2], [x + coreWidth - .5, height / 2], [width / 2, y + .5], [width / 2, y + coreHeight - .5], [width / 2, height / 2]];
+      return {width, height, declared: true, hittable: positions.every(([px, py]) => {
+        const hit = document.elementFromPoint(left + px, top + py);
+        return hit === el || (hit !== null && el.contains(hit));
+      })};
+    }""")
+    name = link.inner_text()
+    case.assertTrue(measured["declared"], f"the link declares a hit area (::after) for {name!r}: {measured}")
+    case.assertTrue(has_minimum_touch_size(measured["width"]) and has_minimum_touch_size(measured["height"]), f"44 × 44 px touch target {name!r}: {measured}")
+    case.assertTrue(measured["hittable"], f"the measured hit area belongs to {name!r}: {measured}")
+
+
 class SettingsJourney(unittest.TestCase):
     pw = None
     browser: Browser
@@ -293,25 +329,64 @@ class SettingsJourney(unittest.TestCase):
         shot(dark, "settings-phone-390-notifications-dark")
 
     def test_07b_phone_notifications_hairlines_and_44px_checkboxes(self) -> None:
-        """#434: the level card has hairlines between options; matrix checkboxes and email rows are 44 px on touch."""
-        page = self.page(phone=True)
-        page.goto("/settings/notifications")
-        choices = page.locator(".sset-choice")
-        expect(choices).to_have_count(3)
-        for index in (1, 2):
-            border = choices.nth(index).evaluate("el => getComputedStyle(el).borderTopWidth + ' ' + getComputedStyle(el).borderTopStyle")
-            self.assertEqual(border, "1px solid", f"hairline above notification level option {index}")
-        self.assertEqual(choices.first.evaluate("el => getComputedStyle(el).borderTopWidth"), "0px", "no hairline above the first option")
-        checks = page.locator(".nset__check input")
-        self.assertGreater(checks.count(), 0)
-        for index in range(checks.count()):
-            assert_touch_target(self, page, checks.nth(index))
-        destinations = page.locator(".nset__radio input")
-        for index in range(destinations.count()):
-            box = destinations.nth(index).locator("xpath=ancestor::label[1]").bounding_box()
-            self.assertIsNotNone(box)
-            self.assertGreaterEqual(box["height"], 44, f"email destination row {index} is a 44 px target: {box}")
-        shot(page, "settings-phone-390-notifications-light")
+        """#434: the level card has hairlines between options in light and dark; matrix checkboxes and email rows are 44 px on touch."""
+        for dark in (False, True):
+            theme = "dark" if dark else "light"
+            with self.subTest(theme=theme):
+                page = self.page(phone=True, dark=dark)
+                page.goto("/settings/notifications")
+                choices = page.locator(".sset-choice")
+                expect(choices).to_have_count(3)
+                if dark:
+                    # Without the dark palette the colour check below would prove nothing.
+                    self.assertEqual(page.evaluate("getComputedStyle(document.documentElement).colorScheme"), "dark")
+                for index in (1, 2):
+                    width, style, colour = choices.nth(index).evaluate("el => { const s = getComputedStyle(el); return [s.borderTopWidth, s.borderTopStyle, s.borderTopColor]; }")
+                    self.assertEqual(f"{width} {style}", "1px solid", f"{theme}: hairline above notification level option {index}")
+                    self.assertTrue(has_visible_colour(colour), f"{theme}: hairline above notification level option {index} is visible: {colour!r}")
+                self.assertEqual(choices.first.evaluate("el => getComputedStyle(el).borderTopWidth"), "0px", "no hairline above the first option")
+                checks = page.locator(".nset__check input")
+                self.assertGreater(checks.count(), 0)
+                for index in range(checks.count()):
+                    assert_touch_target(self, page, checks.nth(index))
+                destinations = page.locator(".nset__radio input")
+                for index in range(destinations.count()):
+                    box = destinations.nth(index).locator("xpath=ancestor::label[1]").bounding_box()
+                    self.assertIsNotNone(box)
+                    self.assertGreaterEqual(box["height"], 44, f"{theme}: email destination row {index} is a 44 px target: {box}")
+                shot(page, f"settings-phone-390-notifications-{theme}")
+
+    def test_07c_phone_sign_in_create_account_link_has_a_44px_hit_area(self) -> None:
+        """#434 item 5: on a coarse pointer the sign-in footer link has a 44 px hit area, and its text does not move."""
+        page = self.page(phone=True, signed_in=False)
+        page.goto("/sign-in")
+        link = page.get_by_role("link", name="Create an account", exact=True)
+        expect(link).to_be_visible()
+        self.assertTrue(page.evaluate("matchMedia('(pointer: coarse)').matches"), "the phone emulation has a coarse pointer")
+        # Measure only once the web font has loaded: a fallback-font box has a different size and position.
+        page.evaluate("document.fonts.ready.then(() => true)")
+        assert_halo_touch_target(self, link)
+        shot(page, "settings-phone-390-sign-in")
+        # The halo is layout-neutral: the text box is the same with and without it. Both boxes are read in one
+        # synchronous step, so neither an entrance animation nor a scroll can separate them.
+        boxes = page.evaluate("""() => {
+          const link = [...document.querySelectorAll('.auth__alt .ui-link')].find((el) => el.textContent === 'Create an account');
+          const box = () => { const r = link.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; };
+          const withHalo = box();
+          const style = document.createElement('style');
+          style.textContent = '.auth__alt .ui-link::after { content: none !important; }';
+          document.head.append(style);
+          const withoutHalo = box();
+          style.remove();
+          return {withHalo, withoutHalo};
+        }""")
+        self.assertEqual(boxes["withHalo"], boxes["withoutHalo"], "the halo does not move the link text")
+        # Without the declared halo the 18 px text box must fail.
+        style = page.add_style_tag(content=".auth__alt .ui-link::after { content: none !important; }")
+        with self.assertRaisesRegex(AssertionError, "declares a hit area"):
+            assert_halo_touch_target(self, link)
+        style.evaluate("el => el.remove()")
+        assert_halo_touch_target(self, link)
 
     def test_08_touch_guard_rejects_small_or_noninteractive_hit_areas(self) -> None:
         for size in (44, 48, 43.99997):
