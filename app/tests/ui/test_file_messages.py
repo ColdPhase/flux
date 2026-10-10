@@ -133,11 +133,13 @@ PROGRESS_WATCH = """() => {
   const scan = () => {
     document.querySelectorAll('[data-upload-progress]').forEach((el) => {
       const value = Number(el.dataset.uploadProgress);
-      if (seen.at(-1)?.value !== value) seen.push({ where: 'photo', value });
+      const last = seen.at(-1);
+      if (!last || last.where !== 'photo' || last.value !== value) seen.push({ where: 'photo', value });
     });
     document.querySelectorAll('small').forEach((el) => {
       const match = /Uploading (\\d+)%/.exec(el.textContent || '');
-      if (match && seen.at(-1)?.value !== Number(match[1])) seen.push({ where: 'file', value: Number(match[1]) });
+      const last = seen.at(-1);
+      if (match && (!last || last.where !== 'file' || last.value !== Number(match[1]))) seen.push({ where: 'file', value: Number(match[1]) });
     });
   };
   new MutationObserver(scan).observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['data-upload-progress'] });
