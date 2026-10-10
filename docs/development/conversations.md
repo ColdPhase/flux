@@ -43,7 +43,8 @@ relation; an old message never restores a cached name. Workspace ownership is
 displayed only after the same scoped audience read succeeds. Hidden owner identity
 is omitted, rather than inferred from email or an unrelated workspace roster. The same
 relation applies to agent principals of native work rows (`owner`, `createdBy`,
-`proposedBy`) in the overview and task details; see
+`proposedBy`) in the overview and task details, and to the last-change author of
+docs and the creator of sketches in the project lists; see
 [access policy](access-policy.md#agent-owner-labels-f-026-339).
 
 `POST /api/v1/projects/:projectId/materials` takes an explicit title, body or

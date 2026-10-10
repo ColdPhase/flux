@@ -553,4 +553,8 @@ workspace-owned agent is `{ kind: 'workspace' }`, a self-owned agent names its
 human owner only while that person is in the current audience, and a revoked
 agent keeps its name and Agent tag while an owner who lost access is omitted.
 The browser looks the relation up in its own fresh audience and never infers an
-owner from a roster.
+owner from a roster. The same relation is added to the last-change author of a
+project doc in `GET /api/v1/projects/:id/docs` (`updatedBy`) and to the creator of
+a project sketch in `GET /api/v1/workspaces/:id/sketches?projectId=` (`createdBy`);
+both use one bounded `projectAuthorOwners` read per page and project, and sketches
+outside a project never carry it.
