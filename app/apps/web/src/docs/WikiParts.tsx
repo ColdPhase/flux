@@ -36,15 +36,22 @@ export function WikiIcon({ name, size = 16 }: { name: WikiIconName; size?: numbe
 const isMac = typeof navigator !== 'undefined' && /Mac|iP(hone|ad|od)/.test(navigator.platform);
 
 /** The quiet row above every wiki document: what is shown on the left, actions on the right. */
-export function WikiBar({ meta, children, compactInIndex = false }: { meta: ReactNode; children?: ReactNode; compactInIndex?: boolean }) {
-  const { compact, compactBar } = useWiki();
+export function WikiBar({ meta, children, compactInHeader = false }: { meta: ReactNode; children?: ReactNode; compactInHeader?: boolean }) {
+  const { compact } = useWiki();
+  const { metadataSlot, actionSlot } = useShellActions();
+  if (compact && compactInHeader && metadataSlot && actionSlot) {
+    return <>
+      {createPortal(<span className="wiki-header-meta">{meta}</span>, metadataSlot)}
+      {createPortal(<div className="wiki-header-actions">{children}</div>, actionSlot)}
+    </>;
+  }
   const bar = (
     <div className="wiki-bar">
       <div className="wiki-bar__meta">{meta}</div>
       <div className="wiki-bar__acts">{compact ? null : <FocusToggle />}{children}</div>
     </div>
   );
-  return compact && compactInIndex && compactBar ? createPortal(bar, compactBar) : bar;
+  return bar;
 }
 
 /** On a phone the page's actions are one menu: history, then the share and download cards. */

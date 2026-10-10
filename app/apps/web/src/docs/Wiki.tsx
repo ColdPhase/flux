@@ -55,7 +55,6 @@ export function WikiLayout() {
   const [focus, setFocusState] = useState(() => readKey(FOCUS_KEY) === '1');
   const frame = useRef<HTMLDivElement>(null);
   const [compact, setCompact] = useState(false);
-  const [compactBar, setCompactBar] = useState<HTMLElement | null>(null);
   useLayoutEffect(() => {
     const node = frame.current;
     if (!node) return;
@@ -69,14 +68,14 @@ export function WikiLayout() {
   // Focus is a computer setting: on a phone the pages are always a row of chips (nothing to exit),
   // and the choice returns when the wiki is wide again.
   const value = useMemo<WikiState>(() => ({
-    project, docs, focus, compact, compactBar, writable: project.access !== 'viewer',
+    project, docs, focus, compact, writable: project.access !== 'viewer',
     setFocus(next: boolean) { writeKey(FOCUS_KEY, next ? '1' : null); setFocusState(next); },
-  }), [project, docs, focus, compact, compactBar]);
+  }), [project, docs, focus, compact]);
   return (
     <WikiContext.Provider value={value}>
       <div className="wiki-frame" ref={frame}>
         <div className={`wiki${focus && !compact ? ' wiki--focus' : ''}${editing ? ' wiki--editing' : ''}`}>
-          <WikiIndex activeId={docId ?? null} hidden={focus && !compact} onCompactBar={setCompactBar} />
+          <WikiIndex activeId={docId ?? null} hidden={focus && !compact} />
           <div className="wiki-main pane-scroll"><Outlet /></div>
         </div>
       </div>
@@ -87,9 +86,7 @@ export function WikiLayout() {
 const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
 const fold = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase();
 
-function WikiIndex({ activeId, hidden, onCompactBar }: {
-  activeId: string | null; hidden: boolean; onCompactBar(node: HTMLDivElement | null): void;
-}) {
+function WikiIndex({ activeId, hidden }: { activeId: string | null; hidden: boolean }) {
   const { project, docs, writable, compact } = useWiki();
   const navigate = useNavigate();
   const toast = useToast();
@@ -171,7 +168,6 @@ function WikiIndex({ activeId, hidden, onCompactBar }: {
 
   return (
     <nav className="wiki-index" aria-label="Wiki pages" hidden={hidden}>
-      {compact ? <div className="wiki-index__bar" ref={onCompactBar} /> : null}
       {compact ? null : (
         <div className="wiki-index__head">
           <p className="wiki-index__eyebrow">Pages</p>

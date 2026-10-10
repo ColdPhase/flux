@@ -221,8 +221,8 @@ export function DocReader() {
     ? <Link className={`ui-btn ui-btn--primary ${compact ? 'wiki-edit' : 'wiki-bar__primary'}`} to={edit} aria-keyshortcuts="e"><Icon name="edit" size={16} />Edit</Link> : null;
   return (
     <>
-      <WikiBar compactInIndex meta={compact
-        ? <><span className="wiki-bar__title"><b>Wiki</b> · {docs.length} {docs.length === 1 ? 'page' : 'pages'}</span>{keptLink}</>
+      <WikiBar compactInHeader meta={compact
+        ? <span className="wiki-bar__title"><b>Wiki</b> · {docs.length} {docs.length === 1 ? 'page' : 'pages'}</span>
         : <><span className="doc-head__k">{STATE_LABEL[shown.state]} · version {shown.version}{current ? '' : ` of ${doc.version}`}</span>{keptLink}</>}>
         {compact ? (
           <PageMenu sharePath={current ? base : `${base}/versions/${shown.version}`} shareVersion={current ? null : shown.version}
@@ -241,6 +241,7 @@ export function DocReader() {
       </WikiBar>
       <div className="wiki-read">
         <article className="wiki-doc wiki-doc--read doc" data-shift aria-labelledby="doc-title">
+          {compact && keptLink ? <p className="doc-notice">{keptLink}</p> : null}
           {!current ? (
             <p className="doc-notice"><Icon name="undo" size={14} />You are reading an earlier version. It stays as it was written.
               <Link to={base}>Open the current version</Link><Link to={`${base}/history?from=${shown.version}&to=${doc.version}`}>What changed since</Link></p>

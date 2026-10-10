@@ -12,8 +12,6 @@ export interface WikiState {
   setFocus(next: boolean): void;
   /** The wiki is narrow (a phone): pages are a chip row and the page's actions sit in one menu. */
   compact: boolean;
-  /** The compact page selector's header, where the reader's count and actions belong. */
-  compactBar: HTMLElement | null;
 }
 
 export const WikiContext = createContext<WikiState | null>(null);

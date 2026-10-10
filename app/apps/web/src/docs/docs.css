@@ -77,6 +77,9 @@
 .wiki-bar__meta { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; font-size: var(--fs-sm); line-height: 1.35; color: var(--t3); }
 .wiki-bar__meta .doc-head__k { margin: 0; font-size: inherit; font-weight: 400; color: inherit; }
 .wiki-bar__title b { font-weight: 500; color: var(--t1); }
+.wiki-header-meta { font-size: var(--fs-md); color: var(--t3); white-space: nowrap; }
+.wiki-header-actions .ui-icon-btn { width: max(34px, var(--ctl)); height: max(34px, var(--ctl)); color: var(--t2); }
+.wiki-header-actions .wiki-pop { position: fixed; top: calc(60px + env(safe-area-inset-top)); left: auto; right: 12px; width: 300px; max-width: calc(100vw - 24px); max-height: calc(100dvh - 144px); overflow-y: auto; }
 .wiki-bar__kept { display: inline-flex; align-items: center; gap: 6px; color: var(--t2); font-weight: 500; text-decoration: underline; text-underline-offset: 3px; }
 .wiki-bar__kept::before { content: ""; width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
 @media (pointer: coarse) { .wiki-bar__kept { min-height: 44px; } }
@@ -360,7 +363,6 @@
   .wiki { flex-direction: column; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
   .wiki .wiki-main { flex: 1 0 auto; min-height: auto; overflow: visible; display: flex; flex-direction: column; }
   .wiki-index { width: auto; min-width: 0; overflow: visible; padding: 4px 16px 0; border-right: 0; flex: none; position: sticky; top: 0; z-index: 20; }
-  .wiki-index .wiki-bar { position: static; padding: 0 0 0 4px; }
   .wiki-search { margin: 0 0 6px; }
   .wiki-index__count { margin: 2px 4px 4px; }
   .wiki-pages { flex-direction: row; align-items: center; gap: 6px; margin: 0 -16px; padding: 4px 16px 10px; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }

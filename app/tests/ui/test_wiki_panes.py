@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import re
 import tarfile
 import time
@@ -106,7 +107,7 @@ class WikiPanesJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, os.environ.get("FLUX_UI_BROWSER", "chromium")).launch()
         expect.set_options(timeout=8000)
 
     @classmethod
@@ -597,10 +598,10 @@ class WikiPanesJourney(unittest.TestCase):
         index = self.index(page)
         heading = page.get_by_role("heading", level=2, name=latest["title"])
         expect(heading).to_be_visible()
-        expect(index.locator(".wiki-bar__title")).to_have_text(re.compile(r"^Wiki · \d+ pages?$"))
-        self.assertLessEqual(index.locator(".wiki-bar").bounding_box()["y"] + index.locator(".wiki-bar").bounding_box()["height"],
-                             index.locator(".wiki-pages").bounding_box()["y"] + 1,
-                             "the Wiki count and page actions belong to the page selector")
+        header = page.locator("header.top")
+        expect(header.locator(".wiki-bar__title")).to_have_text(re.compile(r"^Wiki · \d+ pages?$"))
+        more = header.get_by_role("button", name="More", exact=True)
+        expect(more).to_be_visible()
         self.assertLessEqual(index.bounding_box()["y"] + index.bounding_box()["height"], heading.bounding_box()["y"],
                              "the page selector sits before the document")
         expect(page.locator(".wiki-bar__title")).to_have_text(re.compile(r"^Wiki · \d+ pages?$"))
@@ -609,7 +610,7 @@ class WikiPanesJourney(unittest.TestCase):
         for control in (index.get_by_role("link", name="New page"), index.get_by_role("button", name="Import .md"), index.get_by_role("link", name=PARTS)):
             box = control.bounding_box()
             self.assertGreaterEqual(box["height"], 44, "touch target")
-        for control in page.locator(".wiki-bar").get_by_role("button").all() + [page.get_by_role("link", name="Edit")]:
+        for control in [more, page.get_by_role("link", name="Edit")]:
             box = control.bounding_box()
             self.assertGreaterEqual(box["height"], 44, "touch target in the bar")
             self.assertLessEqual(box["x"] + box["width"], PHONE["width"])
@@ -631,7 +632,7 @@ class WikiPanesJourney(unittest.TestCase):
         page.wait_for_timeout(200)
         self.assertLessEqual(abs(index.bounding_box()["y"] - page.locator(".wiki").bounding_box()["y"]), 1,
                              "page selection and its action menu stay reachable together")
-        page.locator(".wiki-bar").get_by_role("button", name="More").tap()
+        more.tap()
         card = page.get_by_role("dialog", name="Page actions").bounding_box()
         self.assertGreaterEqual(card["x"], 0)
         self.assertLessEqual(card["x"] + card["width"], PHONE["width"])
@@ -653,7 +654,7 @@ class WikiPanesJourney(unittest.TestCase):
             box = control.bounding_box()
             self.assertGreaterEqual(box["height"], 44)
             self.assertLessEqual(box["x"] + box["width"], SMALL_PHONE["width"])
-        for control in page.locator(".wiki-bar").get_by_role("button").all():
+        for control in [more]:
             box = control.bounding_box()
             self.assertLessEqual(box["x"] + box["width"], SMALL_PHONE["width"])
         shot(page, "wiki-phone-320-light")
