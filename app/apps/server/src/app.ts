@@ -7,7 +7,7 @@ import websocket from '@fastify/websocket';
 import { PgBoss } from 'pg-boss';
 import { assertExactMigrationLedger, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
 import { registerDatabase } from './plugins/database.js';
-import { registerIdentity } from './identity/index.js';
+import { startIdentity } from './identity/index.js';
 import { accessRoutes } from './access/routes.js';
 import { sketchRoutes } from './sketches/routes.js';
 import { dmRoutes } from './direct-messages/routes.js';
@@ -75,7 +75,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   boss.on('error', (error) => app.log.error(error));
   await boss.start();
   app.addHook('onClose', async () => boss.stop());
-  const identity = registerIdentity(app, { db, config: identityConfig });
+  const identity = await startIdentity(app, { db, config: identityConfig });
   const liveMedia = createLiveMediaFromEnv(env, identityConfig.publicOrigin);
   const lifecycle = liveMedia ? liveLifecycle(db, pool, liveMedia.media) : null;
   const liveRevocation = liveMedia ? liveRevocationCoordinator(db, pool, liveMedia.media, lifecycle!) : null;
