@@ -192,11 +192,12 @@ class DetailPanelFinal(unittest.TestCase):
         expect(panel.locator(".wd-where")).to_contain_text("parked, not done")
         panel.locator(".ui-panel__body").focus()
         page.keyboard.press("4")
-        expect(page.get_by_role("status")).to_contain_text("no longer parked")
+        toasts = page.locator(".ui-toasts")
+        expect(toasts).to_contain_text("no longer parked")
         expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("Done")
         self.assertEqual(self.stored(task)["status"], "done")
         self.assertIsNone(self.stored(task)["parked"])
-        expect(page.get_by_role("status").get_by_role("button", name="Undo")).to_have_count(0)
+        expect(toasts.get_by_role("button", name="Undo")).to_have_count(0)
 
     def test_03c_a_failed_title_save_keeps_the_draft_until_it_is_saved(self):
         task = self.new_task("Name the gateway")
