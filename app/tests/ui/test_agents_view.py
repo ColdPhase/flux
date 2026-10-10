@@ -112,7 +112,11 @@ class AgentsViewJourney(unittest.TestCase):
         # The list is the view; a task's thread opens under it from `?task=` (the task's own link and detail panel).
         page = self.page(who, **kwargs)
         page.goto(f"/projects/{self.ids['project']}/agents" + (f"?task={self.ids['task']}" if thread else ""))
-        expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
+        if kwargs.get("phone") and thread:
+            # On a phone the thread is a sheet over the Agents view (#347 P1-2), which hides the heading behind it.
+            expect(page.get_by_role("region", name=f"Thread of {TASK}")).to_be_visible()
+        else:
+            expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
         return page
 
     def test_01_two_owners_connect_three_agents(self) -> None:
