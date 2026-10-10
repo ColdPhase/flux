@@ -141,3 +141,20 @@ span.photo-grid__open { cursor: default; }
 .link-preview strong { font-size: var(--fs-base); font-weight: 600; overflow-wrap: anywhere; }
 .link-preview small { color: var(--t2); font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (pointer: coarse) { .file-row, .link-preview { min-height: 56px; } .voice-note__play { width: 44px; height: 44px; } .photo-grid__retry { min-height: 44px; min-width: 44px; } }
+
+/* The phone picker for several files (#348 AC-4): numbered in tap order, every colour a token. */
+.photo-pick__head { padding: 18px 20px 4px; }
+.photo-pick__head h2 { margin: 0; color: var(--t1); font-size: 17px; font-weight: 600; }
+.photo-pick__head p { margin: 4px 0 0; color: var(--t3); font-size: var(--fs-xs); }
+.photo-pick__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0; padding: 10px 16px; list-style: none; overflow-y: auto; }
+.photo-pick__tile { position: relative; display: block; width: 100%; aspect-ratio: 1; min-height: 44px; padding: 0; border: 0; border-radius: 16px; overflow: hidden; background: var(--sub); color: var(--t3); cursor: pointer; }
+.photo-pick__face { position: absolute; inset: 0; display: grid; place-items: center; }
+.photo-pick__face img { width: 100%; height: 100%; object-fit: cover; }
+.photo-pick__tile.is-on::after { content: ''; position: absolute; inset: 0; border-radius: 16px; box-shadow: inset 0 0 0 3px var(--inv); pointer-events: none; }
+.photo-pick__num { position: absolute; top: 6px; right: 6px; display: grid; place-items: center; min-width: 26px; height: 26px; box-sizing: border-box; padding: 0 6px; border-radius: var(--r-pill); background: var(--el); box-shadow: inset 0 0 0 1.5px var(--line2); color: var(--t1); font-size: 13px; font-weight: 650; }
+.photo-pick__tile.is-on .photo-pick__num { background: var(--inv); color: var(--oninv); box-shadow: 0 0 0 2px var(--el); }
+.photo-pick__foot { display: flex; justify-content: space-between; gap: 8px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); }
+.photo-pick__foot button { min-height: 44px; min-width: 44px; padding: 0 18px; border: 0; border-radius: var(--r-pill); font: inherit; font-weight: 600; cursor: pointer; }
+.photo-pick__cancel { background: var(--sub); color: var(--t1); }
+.photo-pick__add { background: var(--inv); color: var(--oninv); }
+.photo-pick__add:disabled { opacity: .4; cursor: default; }

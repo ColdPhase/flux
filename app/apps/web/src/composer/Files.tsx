@@ -3,6 +3,7 @@ import { Icon, useMediaQuery } from '../ui';
 import { FileIcon, fileSize, useObjectUrl } from './Attachments';
 import { selectedFile, uploadLabel, type ComposerState, type DraftFile } from './draft';
 import { looksLikePhoto } from './fileKind';
+import { PhotoPicker } from './PhotoPicker';
 import './composer.css';
 
 export { MessageFiles, MessageContent, hasPhotos, fileSize } from './Attachments';
@@ -13,6 +14,18 @@ const fileStatus = (file: DraftFile, unconfirmed: boolean) => file.state === 'up
     : unconfirmed ? 'Send unconfirmed; retry checks availability'
       : Date.parse(file.staged!.expiresAt) <= Date.now() ? 'Staging expired; select this file again' : 'Ready, private';
 
+/**
+ * Files from the picker. On a phone, several at once open the numbered picker (#348 AC-4) and attach in the order tapped;
+ * one file, or any choice on a larger screen, attaches at once. The caller renders `sheet`.
+ */
+function usePickedFiles(state: ComposerState) {
+  const phone = useMediaQuery('(max-width: 640px)');
+  const [chosen, setChosen] = useState<File[] | null>(null);
+  const take = (files: File[]) => { if (phone && files.length > 1) setChosen(files); else state.addFiles(files); };
+  const sheet = chosen ? <PhotoPicker files={chosen} onClose={() => setChosen(null)} onAdd={(picked) => { setChosen(null); state.addFiles(picked); }} /> : null;
+  return { take, sheet };
+}
+
 /** Staged files remain private until the exact message is confirmed. No bytes enter a helper prompt. */
 /**
  * The attach control as one quiet paperclip, for composers that keep their tools inside the box
@@ -21,11 +34,13 @@ const fileStatus = (file: DraftFile, unconfirmed: boolean) => file.state === 'up
 export function AttachButton({ state, disabled = false, className }: { state: ComposerState; disabled?: boolean; className?: string }) {
   const input = useRef<HTMLInputElement>(null);
   const blocked = disabled || state.sending;
+  const picked = usePickedFiles(state);
   return <>
     <input ref={input} className="ui-vh" type="file" multiple tabIndex={-1} aria-hidden="true" disabled={blocked}
-      onChange={(event) => { if (!blocked) state.addFiles([...event.currentTarget.files ?? []]); event.currentTarget.value = ''; }} />
+      onChange={(event) => { if (!blocked) picked.take([...event.currentTarget.files ?? []]); event.currentTarget.value = ''; }} />
     <button type="button" className={['composer__attach', className].filter(Boolean).join(' ')} disabled={blocked} onClick={() => input.current?.click()}
       aria-label="Attach files" data-tip="Attach files · private until sent" data-tip-align="start"><Icon name="clip" size={17} /></button>
+    {picked.sheet}
   </>;
 }
 
@@ -36,11 +51,12 @@ export function ComposerFiles({ state, disabled = false, attach = 'row' }: { sta
   const recoverId = useRef<string | null>(null);
   const blocked = disabled || state.sending;
   const touch = useMediaQuery('(pointer: coarse)');
+  const picked = usePickedFiles(state);
   const empty = attach === 'none' && !state.draft.files.length && !state.draft.references.length && state.storage !== 'visit'
     && !(state.draft.unconfirmed && !state.sending && !state.error) && !state.error;
   return <div className="composer-files" hidden={empty || undefined}>
     <input ref={input} className="ui-vh" type="file" multiple tabIndex={-1} aria-hidden="true" disabled={blocked}
-      onChange={(event) => { if (!blocked) state.addFiles([...event.currentTarget.files ?? []]); event.currentTarget.value = ''; }} />
+      onChange={(event) => { if (!blocked) picked.take([...event.currentTarget.files ?? []]); event.currentTarget.value = ''; }} />
     <input ref={recovery} className="ui-vh" type="file" tabIndex={-1} aria-hidden="true" disabled={blocked}
       onChange={(event) => { const file = event.currentTarget.files?.[0]; if (!blocked && file && recoverId.current) state.retryFile(recoverId.current, file); event.currentTarget.value = ''; }} />
     {attach === 'row' ? <button type="button" className="composer-files__add" disabled={blocked} onClick={() => input.current?.click()} aria-label="Attach files"><Icon name="plus" size={14} />Attach files</button> : null}
@@ -57,6 +73,7 @@ export function ComposerFiles({ state, disabled = false, attach = 'row' }: { sta
     {state.storage === 'visit' ? <p className="composer-files__privacy">This browser refused draft storage. Your text, files and sources stay during this visit; keep this tab open to recover them.</p> : null}
     {state.draft.unconfirmed && !state.sending && !state.error ? <p className="composer-files__privacy">This send is unconfirmed. Retry sends the same command once.</p> : null}
     {state.error ? <p className="composer-files__error" role="alert">{state.error}</p> : null}
+    {picked.sheet}
   </div>;
 }
 

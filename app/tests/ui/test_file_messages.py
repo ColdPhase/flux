@@ -574,6 +574,12 @@ class FilesReferencesPhotos(unittest.TestCase):
                 chooser.value.set_files([{"name": "IMG_3001.png", "mimeType": "image/png", "buffer": FIELD},
                                          {"name": "IMG_3002.png", "mimeType": "image/png", "buffer": BOARD},
                                          {"name": "probe-offsets.xlsx", "mimeType": "application/octet-stream", "buffer": b"PK\x03\x04" + b"0" * 12000}])
+                if phone:
+                    # Several files on a phone open the picker: they attach in the order tapped (#348 AC-4).
+                    sheet = page.get_by_role("dialog", name="Choose files to send")
+                    for name in ("IMG_3001.png", "IMG_3002.png", "probe-offsets.xlsx"):
+                        sheet.get_by_role("button", name=name).click()
+                    sheet.get_by_role("button", name="Add 3").click()
                 draft = page.get_by_role("list", name="Files in your draft")
                 expect(draft.get_by_role("listitem")).to_have_count(3)
                 expect(draft.get_by_text("Ready, private", exact=False)).to_have_count(3)
@@ -675,6 +681,49 @@ class FilesReferencesPhotos(unittest.TestCase):
         self.assertTrue(any(0 < value < 100 for value in log), f"the file row never showed a percentage between 0 and 100: {log}")
         sent = page.locator(".project-convo__message").filter(has_text="Photo and log from bed four").last
         expect(sent.get_by_role("list", name="1 attached file")).to_contain_text("bed-log.pdf")
+
+    def test_phone_picker_numbers_photos_in_tap_order(self) -> None:
+        """#348 AC-4: on a phone, several photos open a picker. Each selected one shows its send number; a second tap takes it out and renumbers."""
+        for dark in (False, True):
+            with self.subTest(dark=dark):
+                page = self.page(phone=True, dark=dark)
+                with page.expect_file_chooser() as chooser:
+                    page.get_by_role("button", name="Attach files").click()
+                chooser.value.set_files([{"name": "IMG_7001.png", "mimeType": "image/png", "buffer": FIELD},
+                                         {"name": "IMG_7002.png", "mimeType": "image/png", "buffer": BOARD},
+                                         {"name": "IMG_7003.png", "mimeType": "image/png", "buffer": SHED}])
+                sheet = page.get_by_role("dialog", name="Choose files to send")
+                expect(sheet).to_be_visible()
+                tiles = sheet.locator(".photo-pick__tile")
+                expect(tiles).to_have_count(3)
+                expect(sheet.locator(".photo-pick__tile.is-on")).to_have_count(0)  # nothing is numbered before a tap
+                box = tiles.nth(0).bounding_box()
+                at_least_44(self, min(box["width"], box["height"]))
+                tiles.nth(1).click()  # IMG_7002 is sent first
+                expect(sheet.get_by_role("button", name="IMG_7002.png, send 1")).to_be_visible()
+                tiles.nth(2).click()  # then IMG_7003
+                expect(sheet.get_by_role("button", name="IMG_7003.png, send 2")).to_be_visible()
+                tiles.nth(1).click()  # a second tap takes IMG_7002 out, and IMG_7003 becomes first
+                expect(tiles.nth(1)).to_have_attribute("aria-pressed", "false")
+                expect(sheet.get_by_role("button", name="IMG_7003.png, send 1")).to_be_visible()
+                tiles.nth(0).click()  # IMG_7001 is sent second
+                expect(sheet.get_by_role("button", name="IMG_7001.png, send 2")).to_be_visible()
+                expect(tiles.nth(2).locator(".photo-pick__num")).to_have_text("1")
+                expect(tiles.nth(0).locator(".photo-pick__num")).to_have_text("2")
+                expect(tiles.nth(1).locator(".photo-pick__num")).to_have_text("")
+                # Its colours are tokens: the inverted chip is the light ink in light theme and the light surface in dark.
+                badge = tiles.nth(2).locator(".photo-pick__num")
+                expected = "rgb(240, 240, 240)" if dark else "rgb(24, 24, 27)"
+                self.assertEqual(badge.evaluate("node => getComputedStyle(node).backgroundColor"), expected)
+                sheet.get_by_role("button", name="Add 2").click()
+                expect(sheet).to_have_count(0)
+                draft = page.get_by_role("list", name="Files in your draft")
+                expect(draft.get_by_role("listitem")).to_have_count(2)
+                expect(draft.locator(".composer-files__name").nth(0)).to_contain_text("IMG_7003.png")
+                expect(draft.locator(".composer-files__name").nth(1)).to_contain_text("IMG_7001.png")
+                expect(draft.locator(".composer-thumb__order")).to_have_text(["Sends 1.", "Sends 2."])
+                expect(draft.get_by_text("Ready, private", exact=False)).to_have_count(2)
+                self.shot(page, f"picker-{'dark' if dark else 'light'}-390")
 
     def test_photo_waits_offline_on_the_photo(self) -> None:
         page = self.page()
