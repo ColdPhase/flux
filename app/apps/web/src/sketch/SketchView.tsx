@@ -280,7 +280,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     if (!canWrite) { say(VIEW_ONLY); return true; }
     if (uploadingRef.current) { say('Wait for the pasted image to finish uploading'); return true; }
     if (editingState) { say('Finish or cancel your current edit first'); return true; }
-    if (capture.draft && !(replace && emptyDraft(capture.draft))) { rootRef.current?.querySelector<HTMLElement>('.sk-draft textarea, .sk-draft input')?.focus(); say('Finish or cancel your current thought draft first'); return true; }
+    if (capture.draft && !(replace && emptyDraft(capture.draft) && !capture.draft.attempt)) { rootRef.current?.querySelector<HTMLElement>('.sk-draft textarea, .sk-draft input')?.focus(); say('Finish or cancel your current thought draft first'); return true; }
     return false;
   };
 
@@ -302,7 +302,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     // S15 applies to every entry point, including + on a focused thought and clipboard drafts.
     if (phone) parentId = null;
     const [spot] = at ? [at] : spots(parentId, 1, { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height });
-    capture.set({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), text, x: spot!.x, y: spot!.y, parentId });
+    capture.set({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), text, x: spot!.x, y: spot!.y, parentId, tracked: true });
     setConnectFrom(null);
     setEditing(null);
     say(!text ? (at ? 'Private connected thought draft · Enter saves, Escape cancels' : 'Private thought draft · Enter saves, Escape cancels')
@@ -335,7 +335,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     // Several lines, or one line too long for a thought (marked, so it can be shortened before Save).
     const lines = parsed.kind === 'one' ? [parsed.text] : parsed.lines;
     const places = spots(parentId, lines.length, { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height });
-    capture.set({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), text: '', x: places[0]!.x, y: places[0]!.y, parentId,
+    capture.set({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), text: '', x: places[0]!.x, y: places[0]!.y, parentId, tracked: true,
       lines: lines.map((line, index): DraftLine => ({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), text: line, x: places[index]!.x, y: places[index]!.y })) });
     setConnectFrom(null);
     setEditing(null);
@@ -361,7 +361,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
       const staged = await stageFile(projectId, crypto.randomUUID(), new File([file], pastedImageName(type), { type }));
       const meanwhile = capture.peek();
       if (meanwhile && !emptyDraft(meanwhile)) { say('The image stays private and unused: you started another draft meanwhile.'); return; }
-      capture.set({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), text: IMAGE_CAPTION, x: spot!.x, y: spot!.y, parentId,
+      capture.set({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), text: IMAGE_CAPTION, x: spot!.x, y: spot!.y, parentId, tracked: true,
         file: { id: staged.id, name: staged.name, size: staged.size }, width: IMAGE_THOUGHT_SIZE.width, height: IMAGE_THOUGHT_SIZE.height });
       setConnectFrom(null);
       setEditing(null);
@@ -425,24 +425,37 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   }, []);
 
   const saveDraft = async () => {
-    const draft = capture.draft;
+    let draft = capture.draft;
     if (!draft || draftSaveInFlight.current || !canWrite || !draftReady(draft)) return;
     draftSaveInFlight.current = true;
     setSavingDraft(true);
-    // A recovered or wider-screen draft also saves as a plain addition on the phone.
-    const parentId = phone ? null : draft.parentId;
-    const parent = (linkId: string) => (parentId ? { id: parentId, linkId } : null);
+    // Normalize only unsent intent. An actual earlier attempt keeps its canonical parent
+    // and payload; on a phone it may only be confirmed from existing server state.
+    if (phone && draft.parentId && draft.tracked) { draft = { ...draft, parentId: null }; capture.set(draft); }
+    const parent = (row: DraftLine | ThoughtDraft) => {
+      const parentId = row.attempt ? row.attempt.parentId : draft!.parentId;
+      return parentId ? { id: parentId, linkId: row.attempt?.linkId ?? row.linkId } : null;
+    };
     const items = draft.lines
-      ? draft.lines.map((line) => ({ thought: { id: line.id, text: line.text.trim(), x: line.x, y: line.y }, parent: parent(line.linkId), key: line.key }))
-      : [{ thought: { id: draft.id, text: draft.text.trim(), x: draft.x, y: draft.y,
-        ...(draft.file ? { file: draft.file, width: draft.width, height: draft.height } : {}) }, parent: parent(draft.linkId), key: draft.key }];
-    const saved = await doc.saveThoughts(items);
+      ? draft.lines.map((line) => ({ thought: line.attempt?.key === line.key ? line.attempt.thought : { id: line.id, text: line.text.trim(), x: line.x, y: line.y }, parent: parent(line), key: line.key }))
+      : [{ thought: draft.attempt?.key === draft.key ? draft.attempt.thought : { id: draft.id, text: draft.text.trim(), x: draft.x, y: draft.y,
+        ...(draft.file ? { file: draft.file, width: draft.width, height: draft.height } : {}) }, parent: parent(draft), key: draft.key }];
+    const existingOnly = new Set(phone ? (draft.lines ?? [draft]).filter((row) => row.attempt?.parentId || (!draft!.tracked && draft!.parentId)).map((row) => row.id) : []);
+    const expectedText = new Map((draft.lines ?? [draft]).flatMap((row) => row.attempt ? [[row.id, row.attempt.thought.text] as const] : []));
+    const saved = await doc.saveThoughts(items, { existingOnly, expectedText, onAttempt: (item) => {
+      const current = capture.peek();
+      if (!current) return;
+      const row = current.lines?.find((line) => line.id === item.thought.id) ?? current;
+      const attempt = { key: item.key, parentId: item.parent?.id ?? null, linkId: item.parent?.linkId ?? row.linkId, thought: item.thought };
+      capture.set(current.lines ? { ...current, lines: current.lines.map((line) => line.id === item.thought.id ? { ...line, attempt } : line) } : { ...current, attempt });
+    } });
     setSavingDraft(false);
     draftSaveInFlight.current = false;
-    for (const id of saved) personalOutline.group(id, parentId, false);
+    for (const id of saved) personalOutline.group(id, items.find((item) => item.thought.id === id)?.parent?.id ?? null, false);
     if (saved.length < items.length) {
       // Confirmed thoughts are shared now; only the rest stay in the draft, with their IDs and request keys.
-      if (draft.lines && saved.length) capture.set({ ...draft, lines: draft.lines.filter((line) => !saved.includes(line.id)) });
+      const retained = capture.peek() ?? draft;
+      if (retained.lines && saved.length) capture.set({ ...retained, lines: retained.lines.filter((line) => !saved.includes(line.id)) });
       say('Couldn’t confirm the save. Your thought draft is kept; try again.');
       return;
     }
@@ -628,8 +641,13 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
           {!phone || !mapMode || (!sketch.thoughts.length && !canWrite) ? viewModes : null}
         </div>
   );
-  const shownDraft = capture.draft && phone ? { ...capture.draft, parentId: null } : capture.draft;
+  const confirmPrevious = phone && !!capture.draft && ((capture.draft.lines ?? [capture.draft]).some((row) => !!row.attempt?.parentId)
+    || (!!capture.draft.parentId && (!capture.draft.tracked || savingDraft)));
+  const pendingParents = capture.draft ? new Set((capture.draft.lines ?? [capture.draft]).map((row) => row.attempt ? row.attempt.parentId : capture.draft!.parentId)) : new Set<string | null>();
+  const attemptParent = pendingParents.size === 1 ? [...pendingParents][0] : null;
+  const shownDraft = capture.draft ? { ...capture.draft, parentId: phone ? null : attemptParent ?? null } : null;
   const draftForm = shownDraft ? <DraftCapture draft={shownDraft} parent={shownDraft.parentId ? find(shownDraft.parentId)?.text ?? null : null}
+    confirmPrevious={confirmPrevious} mixedParents={pendingParents.size > 1}
     saving={savingDraft} canWrite={canWrite} onText={(text) => { if (capture.draft) capture.set({ ...capture.draft, text, key: doc.newId() }); }}
     onLines={(lines) => {
       if (!capture.draft) return;

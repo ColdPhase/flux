@@ -11,6 +11,22 @@ A draft opened on a wider screen retains its private content when narrowed, but
 shows a plain addition and saves without creating a connection on the phone.
 Existing graph links and saved thought positions remain unchanged. Wider screens
 keep confirmed connected capture and the intended-parent checks described below.
+The actual creation payload is recorded per thought immediately before dispatch.
+Changing screen width never rewrites an attempted payload or renews its key.
+An unsent draft first saved on a phone keeps that plain-addition intent on later
+retries. For an earlier connected attempt, the phone only confirms an existing
+server thought (and, if edited, uses the ordinary version-checked text update);
+it does not dispatch or recreate its connection. If that thought is not present,
+the text stays recoverable and the earlier save must be checked/retried on a
+computer. Partial pasted batches retain each dispatched row's own canonical
+payload while unsent rows may first be saved as plain additions on the phone.
+An internal format marker distinguishes tracked new drafts from older retained
+ones. Missing attempt metadata in an older connected draft never proves that its
+key was unused: on a phone it requires existing-state confirmation, keeps its
+text/IDs/coordinates/original key, and gives a bounded computer-retry message
+when the thought is missing. A refinement is submitted only by explicit Save,
+against the version just read and the known earlier text; a different peer text
+is shown without overwriting it and the person's retained text stays recoverable.
 It retains text, intended parent ID, client thought/link IDs, position and an
 idempotency key in this tab's session storage, with memory fallback. No shared
 thought, relation, event, outline grouping or API write exists before Save/Enter.

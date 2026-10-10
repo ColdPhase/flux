@@ -502,6 +502,169 @@ class MapConnectJourney(unittest.TestCase):
         if SHOTS:
             (SHOTS / 'map-composition-geometry.json').write_text(json.dumps(measurements, indent=2) + '\n')
 
+    def test_14_uncertain_saves_keep_canonical_payload_across_phone_and_computer(self):
+        for start, lines, committed in (('phone', False, True), ('phone', True, True), ('computer', False, True), ('computer', True, True), ('computer', False, False)):
+            with self.subTest(start=start, lines=lines, committed=committed):
+                page = self.page(COMPUTER)
+                sketch = self.scene(page, link=True)
+                page.locator('.sk-node', has_text=B).click()
+                if lines:
+                    page.locator('.sk-node', has_text=B).focus()
+                    page.evaluate(PASTE, ['Keep one spare probe\nCheck a second mounting spot', None])
+                else:
+                    page.get_by_role('button', name=re.compile('Add a thought connected to')).click()
+                    page.get_by_label('Thought text').fill('Keep one spare probe')
+                if start == 'phone':
+                    page.set_viewport_size(PHONE)
+                draft = page.get_by_role('form', name='Pasted thoughts draft' if lines else 'New thought draft')
+                path = f'**/api/v1/sketches/{sketch}/thoughts'
+                requests, statuses = [], []
+                def hidden_response(route):
+                    requests.append({'body': route.request.post_data_json, 'key': route.request.headers['idempotency-key']})
+                    if committed:
+                        actual = route.fetch()
+                        self.assertEqual(actual.status, 201, actual.text())
+                    route.fulfill(status=503, json={'message': 'test: original response is unavailable'})
+                page.route(path, hidden_response)
+                for _ in range(2):
+                    with page.expect_response(lambda r: r.request.method == 'POST' and r.url.endswith(f'/{sketch}/thoughts') and r.status == 503):
+                        draft.locator('button[type="submit"]').click()
+                    expect(draft.locator('button[type="submit"]')).to_be_enabled()
+                    expect(page.locator('.sk-status')).to_contain_text('draft is kept')
+                page.unroute(path, hidden_response)
+                self.assertGreaterEqual(len(requests), 2)
+                self.assertTrue(all(r == requests[0] for r in requests), 'every automatic retry preserves the exact dispatched body and key')
+                first = requests[0]
+                if start == 'phone':
+                    self.assertNotIn('linkFrom', first['body'])
+                else:
+                    self.assertEqual(first['body']['linkFrom']['thoughtId'], self.ids[B])
+                before_retry = self.stored(page, sketch)
+                page.wait_for_load_state('networkidle')
+                page.reload()
+                expect(draft).to_be_visible()
+                retained_caption = draft.inner_text()
+                page.set_viewport_size(COMPUTER if start == 'phone' else PHONE)
+                posted = []
+                page.on('request', lambda r: posted.append({'body': r.post_data_json, 'key': r.headers['idempotency-key']}) if r.method == 'POST' and r.url.endswith(f'/{sketch}/thoughts') else None)
+                page.on('response', lambda r: statuses.append(r.status) if r.request.method == 'POST' and r.url.endswith(f'/{sketch}/thoughts') else None)
+                draft.locator('button[type="submit"]').click()
+                if not committed:
+                    expect(page.locator('.sk-status')).to_contain_text('save is not confirmed yet')
+                    self.assertEqual(posted, [], 'the phone never creates an unconfirmed connected operation')
+                    self.assertEqual(self.stored(page, sketch), before_retry)
+                    page.set_viewport_size(COMPUTER)
+                    draft.locator('button[type="submit"]').click()
+                expect(draft).to_have_count(0)
+                after = self.eventually(page, sketch, lambda s: len(s['thoughts']) == 3 + (2 if lines else 1))
+                added = [t for t in after['thoughts'] if t['id'] not in self.ids.values()]
+                self.assertEqual(len(added), 2 if lines else 1, 'no duplicate thought from a width change or uncertain response')
+                self.assertIn(first['body']['id'], {t['id'] for t in added})
+                if start == 'phone' or committed:
+                    self.assertEqual(after['links'], before_retry['links'], 'confirmation on the phone never recreates or adds a link')
+                else:
+                    self.assertEqual(len(after['links']), 2)
+                if start == 'phone' or not committed:
+                    self.assertEqual(posted[0], first, 'the original canonical body/key survive reload and the changed width')
+                elif not lines:
+                    self.assertEqual(posted, [], 'an earlier connected save is confirmed by a real read, not redispatched on the phone')
+                elif lines:
+                    self.assertEqual(len(posted), 1, 'only the genuinely unsent pasted row is created on the phone')
+                    self.assertNotIn('linkFrom', posted[0]['body'])
+                self.assertNotIn(409, statuses, 'no idempotency conflict from silently changing an earlier attempted payload')
+                self.assertIn('save not confirmed', retained_caption, 'an attempted write does not claim the text is still certainly private')
+
+    def test_15_legacy_connected_drafts_keep_text_ids_and_existing_links(self):
+        for committed in (True, False):
+            with self.subTest(committed=committed):
+                page = self.page(COMPUTER)
+                sketch = self.scene(page, link=True)
+                page.locator('.sk-node', has_text=B).click()
+                page.get_by_role('button', name=re.compile('Add a thought connected to')).click()
+                page.get_by_label('Thought text').fill('Retained from the earlier draft format')
+                # Historical F149 storage fixture: the original shape had no tracking/attempt fields.
+                old = page.evaluate('''() => {
+                  const key = Object.keys(sessionStorage).find(k => k.startsWith('flux:thought-draft:'));
+                  const value = JSON.parse(sessionStorage.getItem(key));
+                  const fields = ['id','linkId','key','parentId','text','x','y','lines','file','width','height'];
+                  return {key, value:Object.fromEntries(fields.filter(k => k in value).map(k => [k,value[k]]))};
+                }''')
+                path = f'**/api/v1/sketches/{sketch}/thoughts'
+                def hide(route):
+                    if committed:
+                        actual = route.fetch(); self.assertEqual(actual.status, 201, actual.text())
+                    route.fulfill(status=503, json={'message':'test: earlier response not confirmed'})
+                page.route(path, hide)
+                page.get_by_role('form', name='New thought draft').locator('button[type="submit"]').click()
+                expect(page.locator('.sk-status')).to_contain_text('draft is kept')
+                page.unroute(path, hide)
+                before = self.stored(page, sketch)
+                page.evaluate('old => sessionStorage.setItem(old.key, JSON.stringify(old.value))', old)
+                page.wait_for_load_state('networkidle'); page.reload(); page.set_viewport_size(PHONE)
+                draft = page.get_by_role('form', name='New thought draft')
+                expect(draft).to_contain_text('saved state is unknown')
+                expect(draft.get_by_label('Thought text')).to_have_value(old['value']['text'])
+                posted = []
+                page.on('request', lambda r: posted.append(r.url) if r.method == 'POST' and r.url.endswith(f'/{sketch}/thoughts') else None)
+                draft.locator('button[type="submit"]').click()
+                if committed:
+                    expect(draft).to_have_count(0)
+                else:
+                    expect(page.locator('.sk-status')).to_contain_text('save is not confirmed yet')
+                    expect(draft.get_by_label('Thought text')).to_have_value(old['value']['text'])
+                self.assertEqual(posted, [], 'legacy metadata never authorizes a new connected write on the phone')
+                self.assertEqual(self.stored(page, sketch), before, 'legacy confirmation neither recreates/deletes a link nor changes coordinates/text')
+
+    def test_16_refinements_confirm_existing_state_and_do_not_overwrite_peer_text(self):
+        for peer_change in (False, True):
+            with self.subTest(peer_change=peer_change):
+                page = self.page(COMPUTER)
+                sketch = self.scene(page, link=True)
+                page.locator('.sk-node', has_text=B).click()
+                page.get_by_role('button', name=re.compile('Add a thought connected to')).click()
+                page.get_by_label('Thought text').fill('First retained text')
+                path = f'**/api/v1/sketches/{sketch}/thoughts'
+                def hide(route):
+                    actual = route.fetch(); self.assertEqual(actual.status, 201, actual.text())
+                    route.fulfill(status=503, json={'message':'test: committed response not delivered'})
+                page.route(path, hide)
+                page.get_by_role('form', name='New thought draft').locator('button[type="submit"]').click()
+                expect(page.locator('.sk-status')).to_contain_text('draft is kept')
+                page.unroute(path, hide)
+                before = self.stored(page, sketch)
+                created = next(t for t in before['thoughts'] if t['text']=='First retained text')
+                if peer_change:
+                    ctx = self.browser.new_context(service_workers='block', base_url=ORIGIN)
+                    self.addCleanup(ctx.close)
+                    email=f'map-peer-{uuid.uuid4()}@example.test'
+                    r=ctx.request.post('/api/auth/sign-up/email',data={'name':'Jonas Review','email':email,'password':'independent saved thought'},headers={'origin':ORIGIN})
+                    self.assertEqual(r.status,200,r.text())
+                    user=self.api(ctx,'GET','/api/v1/me')['user']['id']
+                    self.api(page.context,'POST',f'/api/v1/workspaces/{self.workspace}/members',{'email':email,'role':'member'},201)
+                    self.api(page.context,'POST',f'/api/v1/projects/{self.project}/grants',{'principal':{'kind':'human','id':user},'role':'contributor'},201)
+                    r=ctx.request.patch(f'/api/v1/sketches/{sketch}/thoughts/{created["id"]}',data={'text':'Jonas kept the newer requirement'},headers={'origin':ORIGIN,'if-match':f'"{created["version"]}"','idempotency-key':str(uuid.uuid4())})
+                    self.assertEqual(r.status,200,r.text())
+                    before=self.stored(page,sketch)
+                page.set_viewport_size(PHONE)
+                draft=page.get_by_role('form',name='New thought draft')
+                draft.get_by_label('Thought text').fill('First retained text, then refined')
+                writes=[]
+                page.on('request',lambda r:writes.append(r.method) if r.method in ('POST','PATCH') and f'/sketches/{sketch}/thoughts' in r.url else None)
+                draft.locator('button[type="submit"]').click()
+                if peer_change:
+                    expect(page.locator('.sk-status')).to_contain_text('Someone changed the earlier saved thought')
+                    expect(draft.get_by_label('Thought text')).to_have_value('First retained text, then refined')
+                    self.assertEqual(writes,[], 'confirmation does not overwrite a peer change')
+                    self.assertEqual(self.stored(page,sketch),before)
+                else:
+                    expect(draft).to_have_count(0)
+                    after=self.stored(page,sketch)
+                    updated=next(t for t in after['thoughts'] if t['id']==created['id'])
+                    self.assertEqual(updated['text'],'First retained text, then refined')
+                    self.assertEqual(updated['version'],created['version']+1)
+                    self.assertEqual(writes,['PATCH'],'refinement is an explicit ordinary text edit, never a creation/link replay')
+                    self.assertEqual(after['links'],before['links'])
+
 
 if __name__ == '__main__':
     unittest.main()

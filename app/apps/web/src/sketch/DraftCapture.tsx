@@ -11,8 +11,10 @@ export function draftReady(draft: ThoughtDraft) {
   return draft.lines ? draft.lines.length > 0 && draft.lines.every((line) => fits(line.text)) : fits(draft.text);
 }
 
-export function DraftCapture({ draft, parent, saving, canWrite, onText, onLines, onPaste, onSave, onCancel }: {
+export function DraftCapture({ draft, parent, saving, canWrite, confirmPrevious = false, mixedParents = false, onText, onLines, onPaste, onSave, onCancel }: {
   draft: ThoughtDraft; parent: string | null; saving: boolean; canWrite: boolean;
+  confirmPrevious?: boolean;
+  mixedParents?: boolean;
   onText(text: string): void; onLines(lines: DraftLine[]): void;
   /** Touch devices (#252): fill this empty draft from the clipboard. */
   onPaste?(): void;
@@ -28,12 +30,14 @@ export function DraftCapture({ draft, parent, saving, canWrite, onText, onLines,
     if (event.key === 'Escape' && !saving) { event.preventDefault(); onCancel(); }
     else if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); if (ready) onSave(); }
   };
-  const where = draft.parentId ? parent ? `Connected to “${parent}” on save` : 'Its parent is no longer available' : 'Top level';
+  const attempted = (draft.lines ?? [draft]).some((row) => !!row.attempt);
+  const where = confirmPrevious ? (draft.tracked ? 'Earlier save from a larger screen' : 'Earlier draft’s saved state is unknown') : mixedParents ? 'Earlier row destinations kept' : draft.parentId ? parent ? `${attempted ? 'Intended connection' : 'Connected'} to “${parent}”${attempted ? '' : ' on save'}` : 'Its parent is no longer available' : 'Top level';
+  const privacy = saving ? 'saving · text kept' : attempted ? 'save not confirmed · text kept' : !draft.tracked ? 'saved state unknown · text kept' : 'private until saved';
   const lines = draft.lines;
   if (lines) {
     const count = lines.length;
     return <form ref={form} className="sk-draft sk-draft--lines" aria-label="Pasted thoughts draft" onSubmit={(event) => { event.preventDefault(); if (ready) onSave(); }}>
-      <p className="sk-draft__context">{count} new {count === 1 ? 'thought' : 'thoughts'} from a paste · {where} · private until saved</p>
+      <p className="sk-draft__context">{count} new {count === 1 ? 'thought' : 'thoughts'} from a paste · {where} · {privacy}</p>
       <ol className="sk-draft__lines">
         {lines.map((line, index) => {
           const long = line.text.trim().length > SKETCH_LIMITS.text;
@@ -51,20 +55,20 @@ export function DraftCapture({ draft, parent, saving, canWrite, onText, onLines,
           </li>;
         })}
       </ol>
-      <div className="sk-draft__actions"><button type="submit" className="ui-btn ui-btn--primary" disabled={!ready}>{saving ? 'Saving…' : `Save ${count} ${count === 1 ? 'thought' : 'thoughts'}`}</button>
+      <div className="sk-draft__actions"><button type="submit" className="ui-btn ui-btn--primary" disabled={!ready}>{saving ? 'Saving…' : `${confirmPrevious ? 'Confirm and save' : 'Save'} ${count} ${count === 1 ? 'thought' : 'thoughts'}`}</button>
         <button type="button" className="ui-btn ui-btn--quiet" disabled={saving} onClick={onCancel}>Cancel</button>
         <span>Enter saves all · Escape cancels</span></div>
     </form>;
   }
   return <form ref={form} className="sk-draft" aria-label="New thought draft" onSubmit={(event) => { event.preventDefault(); if (ready) onSave(); }}>
-    <p className="sk-draft__context">{draft.file ? 'New image' : linkOf(draft.text) ? 'New link' : 'New thought'} · {where} · private until saved</p>
+    <p className="sk-draft__context">{draft.file ? 'New image' : linkOf(draft.text) ? 'New link' : 'New thought'} · {where} · {privacy}</p>
     {draft.file ? <div className="sk-draft__image"><ThoughtImage className="sk-draft__img" fileId={draft.file.id} name={draft.file.name} />
       <span>{draft.file.name} · only you can see it until you save</span></div> : null}
     <textarea className="ui-input" rows={2} aria-label={draft.file ? 'Image caption' : 'Thought text'} value={draft.text} maxLength={SKETCH_LIMITS.text} disabled={saving}
       onChange={(event) => onText(event.target.value)} onKeyDown={keys} />
-    <div className="sk-draft__actions"><button type="submit" className="ui-btn ui-btn--primary" disabled={!ready}>{saving ? 'Saving…' : draft.file ? 'Save image' : 'Save thought'}</button>
+    <div className="sk-draft__actions"><button type="submit" className="ui-btn ui-btn--primary" disabled={!ready}>{saving ? 'Saving…' : `${confirmPrevious ? 'Confirm and save' : 'Save'} ${draft.file ? 'image' : 'thought'}`}</button>
       <button type="button" className="ui-btn ui-btn--quiet" disabled={saving} onClick={onCancel}>Cancel</button>
-      {onPaste && !draft.file && !draft.text.trim() ? <button type="button" className="ui-btn ui-btn--quiet sk-draft__paste" disabled={saving} onClick={onPaste}>
+      {onPaste && !draft.file && !draft.text.trim() && !draft.attempt ? <button type="button" className="ui-btn ui-btn--quiet sk-draft__paste" disabled={saving} onClick={onPaste}>
         <Icon name="paste" size={14} />Paste lines, a link or an image</button> : null}
       <span>Enter saves · Shift+Enter adds a line · Escape cancels</span></div>
   </form>;

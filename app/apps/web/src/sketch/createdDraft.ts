@@ -10,6 +10,15 @@ export interface DraftLine {
   text: string;
   x: number;
   y: number;
+  attempt?: DraftAttempt;
+}
+
+/** The canonical creation actually dispatched, retained across an uncertain response. */
+export interface DraftAttempt {
+  key: string;
+  parentId: string | null;
+  linkId: string;
+  thought: { id: string; text: string; x: number; y: number; file?: ThoughtFile; width?: number; height?: number };
 }
 
 export interface ThoughtDraft {
@@ -26,6 +35,9 @@ export interface ThoughtDraft {
   file?: ThoughtFile;
   width?: number;
   height?: number;
+  attempt?: DraftAttempt;
+  /** This format records attempts; older retained drafts cannot prove an unused key. */
+  tracked?: true;
 }
 /** A pasted row may exceed the thought limit (it is marked and blocks Save), but not without bound. */
 const LINE_CHARS = 100_000;
@@ -35,7 +47,17 @@ const isSpot = (value: unknown) => typeof value === 'number' && Number.isFinite(
 function validLines(lines: unknown): boolean {
   return Array.isArray(lines) && lines.length >= 1 && lines.length <= SKETCH_LIMITS.pasteLines && lines.every((line: Partial<DraftLine> | null) =>
     !!line && typeof line === 'object' && [line.id, line.linkId, line.key].every(isUuid)
-    && typeof line.text === 'string' && line.text.length <= LINE_CHARS && isSpot(line.x) && isSpot(line.y));
+    && typeof line.text === 'string' && line.text.length <= LINE_CHARS && isSpot(line.x) && isSpot(line.y)
+    && (line.attempt === undefined || validAttempt(line.attempt, line.id)));
+}
+
+function validAttempt(value: unknown, id: unknown): boolean {
+  const a = value as Partial<DraftAttempt> | null;
+  const t = a?.thought;
+  return !!a && typeof a === 'object' && isUuid(a.key) && isUuid(a.linkId)
+    && (a.parentId === null || isUuid(a.parentId)) && !!t && t.id === id && isUuid(t.id)
+    && typeof t.text === 'string' && t.text.length <= SKETCH_LIMITS.text && isSpot(t.x) && isSpot(t.y)
+    && (t.file === undefined || validFile(t.file)) && (t.width === undefined || isSpot(t.width)) && (t.height === undefined || isSpot(t.height));
 }
 
 function validFile(file: unknown): boolean {
@@ -63,6 +85,8 @@ function persisted(key: string): ThoughtDraft | null {
         && isSpot(draft.x) && isSpot(draft.y)
         && (draft.lines === undefined || validLines(draft.lines))
         && (draft.file === undefined || validFile(draft.file))
+        && (draft.attempt === undefined || validAttempt(draft.attempt, draft.id))
+        && (draft.tracked === undefined || draft.tracked === true)
         && (draft.lines === undefined || draft.file === undefined)
         && (draft.width === undefined || isSpot(draft.width)) && (draft.height === undefined || isSpot(draft.height))) return draft as ThoughtDraft;
     }
