@@ -481,6 +481,12 @@ class TasksFinalJourney(unittest.TestCase):
                     row.get_by_role('button', name='Open. Set to In progress').tap()
                     expect(page.locator('.ui-toast--danger')).to_contain_text('Flux could not be reached')
                     self.feedback_geometry(page, 'offline', dark, width, factor)
+                    message = page.locator('.ui-toast__msg')
+                    if message.evaluate('el => el.scrollHeight > el.clientHeight + 1'):
+                        expect(message).to_have_attribute('tabindex', '0')
+                        message.focus()
+                        page.keyboard.press('End')
+                        page.wait_for_function("() => { const el = document.querySelector('.ui-toast__msg'); return el.scrollTop > 0 && el.scrollTop + el.clientHeight >= el.scrollHeight - 1; }")
                     if factor == 1:
                         shot(page, f"375-feedback-error-390-{'dark' if dark else 'light'}")
                     page.context.set_offline(False)

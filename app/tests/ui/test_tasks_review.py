@@ -261,13 +261,13 @@ class TasksReviewJourney(unittest.TestCase):
         current = self.task(desktop, "agent_blocked")
         self.api(desktop, "PATCH", f"/api/v1/work/{self.ids['agent_blocked']}", {"owner": {"kind": "human", "id": PEOPLE["alex"]["id"]}, "clientCommandId": str(uuid.uuid4())},
                  status=200, headers={"if-match": f'"{current["version"]}"'})
-        # Finish genuine reads before reloading; WebKit reports an abandoned
-        # in-flight response as an access-control transport error.
-        desktop.wait_for_load_state("networkidle")
-        desktop.reload(wait_until="networkidle")
-        desktop.get_by_role("radio", name="List", exact=True).click()
-        expect(self.row(desktop, "Agent stuck job").locator(".agent-tag")).to_have_count(0)
-        expect(self.row(desktop, "Agent stuck job").locator(".ws-item__s")).to_contain_text("Alex")
+        # Load the stored reassignment in a new page while existing stream reads finish.
+        # A full-document reload can abandon genuine reads and produces a WebKit transport error.
+        reassigned = self.page('ada')
+        reassigned.goto(f"/projects/{self.ids['project']}/tasks")
+        reassigned.get_by_role("radio", name="List", exact=True).click()
+        expect(self.row(reassigned, "Agent stuck job").locator(".agent-tag")).to_have_count(0)
+        expect(self.row(reassigned, "Agent stuck job").locator(".ws-item__s")).to_contain_text("Alex")
 
     def open_private_task(self, page: Page) -> dict:
         before = self.task(page, "private")

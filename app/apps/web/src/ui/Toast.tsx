@@ -36,6 +36,8 @@ export function useToastScope() {
 
 function ToastItem({ toast, onDone }: { toast: ToastEntry; onDone: (id: number) => void }) {
   const ref = useRef<HTMLDivElement>(null);
+  const message = useRef<HTMLSpanElement>(null);
+  const [scrollable, setScrollable] = useState(false);
   const timer = useRef<number | null>(null);
   const [leaving, setLeaving] = useState(false);
 
@@ -44,6 +46,16 @@ function ToastItem({ toast, onDone }: { toast: ToastEntry; onDone: (id: number) 
     if (toast.timeout !== null) timer.current = window.setTimeout(dismiss, toast.timeout);
   }, [dismiss, toast.timeout]);
   const disarm = () => { if (timer.current !== null) window.clearTimeout(timer.current); timer.current = null; };
+
+  useLayoutEffect(() => {
+    const node = message.current;
+    if (!node) return;
+    const update = () => setScrollable(node.scrollHeight > node.clientHeight + 1);
+    const observer = new ResizeObserver(update);
+    observer.observe(node, { box: 'border-box' });
+    update();
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     void play(ref.current, [{ opacity: 0, transform: 'translateY(8px) scale(.98)' }, { opacity: 1, transform: 'none' }], duration('--dur-3'), '--ease-sheet', { fill: 'backwards' });
@@ -58,9 +70,10 @@ function ToastItem({ toast, onDone }: { toast: ToastEntry; onDone: (id: number) 
   }, [leaving, toast.leaving, toast.id, onDone]);
 
   return (
-    <div ref={ref} className={`ui-toast ui-toast--${toast.tone}`} onMouseEnter={disarm} onMouseLeave={arm} onFocus={disarm} onBlur={arm}>
+    <div ref={ref} className={`ui-toast ui-toast--${toast.tone}${scrollable ? ' ui-toast--scrollable' : ''}`} onMouseEnter={disarm} onMouseLeave={arm} onFocus={disarm} onBlur={arm}>
       {toast.tone === 'success' ? <Icon name="check" /> : toast.tone === 'danger' ? <Icon name="alert" /> : null}
-      <span className="ui-toast__msg">{toast.message}</span>
+      <span ref={message} className="ui-toast__msg" tabIndex={scrollable ? 0 : undefined}
+        role={scrollable ? 'region' : undefined} aria-label={scrollable ? 'Notification message' : undefined}>{toast.message}</span>
       {toast.action ? (
         <button type="button" className="ui-toast__action" onClick={() => { toast.action!.onClick(); dismiss(); }}>
           {toast.action.label}{toast.action.label === 'Undo' ? <kbd aria-hidden="true">Z</kbd> : null}
