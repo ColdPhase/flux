@@ -35,7 +35,10 @@ class SignInWhileProviderIsDown(unittest.TestCase):
         cls.pw.stop()
 
     def test_01_the_open_page_enables_the_provider_once_it_answers(self) -> None:
-        context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP, color_scheme="light", locale="en-GB")
+        context = self.browser.new_context(
+            base_url=ORIGIN, viewport=DESKTOP, color_scheme="light", locale="en-GB",
+            service_workers="block",
+        )
         self.addCleanup(context.close)
         answers: list[int] = []
 
