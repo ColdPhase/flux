@@ -544,3 +544,13 @@ events. Failed reads clear labels and retry on the next visit, focus, online
 event or authorized stream change. A connected session and a recently
 completed action alone leave the agent idle; active-run/claim integration is
 still required by #347 and does not come from an activity time heuristic.
+
+Native work rows that the overview and task details present (`/work-view`,
+`/work-reference-rows`, `/work-objects/:kind/:id`) carry an optional
+`projectOwner` on each agent principal (`owner`, `createdBy`, `proposedBy`), with
+the same boundary as preserved message history (#339 AC-2, 2026-10-10): a
+workspace-owned agent is `{ kind: 'workspace' }`, a self-owned agent names its
+human owner only while that person is in the current audience, and a revoked
+agent keeps its name and Agent tag while an owner who lost access is omitted.
+The browser looks the relation up in its own fresh audience and never infers an
+owner from a roster.

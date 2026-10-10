@@ -188,6 +188,30 @@ class KreskaJourney(unittest.TestCase):
         expect(row.locator(".ov-row__s .agent-for")).to_have_text("for Ada Zamojska-Kreska Research Lead")
         shot(page, "339-overview-agent-owner")
 
+    def test_06_a_revoked_agent_keeps_its_scoped_owner_on_the_overview(self) -> None:
+        # A separate project, so the revocation never changes the fixtures of the other journeys.
+        self.ensure_account()
+        page = self.page()
+        project = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Retained owners", "visibility": "restricted"})
+        agent = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/agents", {"name": "Scout", "owner": "self"})
+        grant = self.api(page, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": {"kind": "agent", "id": agent["id"]}, "role": "contributor"})
+        thread = self.api(page, "POST", f"/api/v1/projects/{project['id']}/conversations", {"body": "Keep the owner after the grant ends.", "clientMessageId": str(uuid.uuid4())})
+        message = thread["messages"][0]["id"]
+        self.api(page, "POST", f"/api/v1/projects/{project['id']}/work", {"title": "Check the retained owner", "owner": {"kind": "agent", "id": agent["id"]}, "sources": [{"type": "message", "id": message}]})
+        # Revoke only the agent's grant; the owner keeps the project and stays in the audience.
+        revoked = page.request.fetch(f"{ORIGIN}/api/v1/projects/{project['id']}/grants/{grant['id']}", method="DELETE", headers={"origin": ORIGIN})
+        self.assertEqual(revoked.status, 204, revoked.text())
+        page.goto(f"/projects/{project['id']}/conversations/{thread['id']}")
+        expect(page.get_by_label("Reply", exact=True)).to_be_visible()
+        page.locator("header.top").get_by_role("button", name="Details", exact=True).click()
+        overview = page.locator(".ov")
+        expect(overview).to_have_attribute("data-overview-phase", "ready")
+        row = overview.locator(".ov-row", has_text="Check the retained owner")
+        expect(row.locator(".ov-row__s .agent-id > .kreska")).to_have_count(1)
+        expect(row.locator(".ov-row__s .agent-tag")).to_have_text("Agent")
+        expect(row.locator(".ov-row__s .agent-for")).to_have_text("for Ada Zamojska-Kreska Research Lead")
+        shot(page, "339-overview-retained-agent-owner")
+
 
 if __name__ == "__main__":
     unittest.main()

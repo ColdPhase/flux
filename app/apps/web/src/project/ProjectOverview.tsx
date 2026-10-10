@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import type { DecisionRowProjection, NativeWorkRow, WorkRowProjection, ResultRowProjection } from '@flux/contracts';
+import type { DecisionRowProjection, NamedPrincipal, NativeWorkRow, WorkRowProjection, ResultRowProjection } from '@flux/contracts';
 import { AgentIdentity, Icon, type IconName } from '../ui';
 import { useShellData } from '../app/data';
 import { useShellActions, type DetailsView, type OverviewView } from '../app/shellContext';
@@ -93,8 +93,9 @@ export function ProjectOverview({ messageId, selection, focusPeople = null, onBa
   if (!shell) return null;
   const { project, people, sketches, docs } = shell;
   // An agent is named with Kreska, the "Agent" tag and its owner; a person by name only.
-  const byline = (who: { kind: string; id: string; name: string }): ReactNode =>
-    who.kind === 'agent' ? <AgentIdentity name={who.name} owner={owners.get(who.id)} icon={14} /> : who.name;
+  // A retained agent's owner comes from the row's scoped relation, resolved against this fresh audience only.
+  const byline = (who: NamedPrincipal): ReactNode =>
+    who.kind === 'agent' ? <AgentIdentity name={who.name} owner={agentAuthorOwner(who, owners)} icon={14} /> : who.name;
   const conversation = open?.conversation ?? null;
   // Older messages loaded by the feed are absent from the route's latest-message window.
   // Keep exactly the selected native message, scoped to its reader/project/conversation,

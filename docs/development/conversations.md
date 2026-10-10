@@ -41,7 +41,10 @@ The browser resolves the name only from its fresh, scoped authorized project
 audience. Failed/obsolete reads, changed accounts and lost owner access clear the
 relation; an old message never restores a cached name. Workspace ownership is
 displayed only after the same scoped audience read succeeds. Hidden owner identity
-is omitted, rather than inferred from email or an unrelated workspace roster.
+is omitted, rather than inferred from email or an unrelated workspace roster. The same
+relation applies to agent principals of native work rows (`owner`, `createdBy`,
+`proposedBy`) in the overview and task details; see
+[access policy](access-policy.md#agent-owner-labels-f-026-339).
 
 `POST /api/v1/projects/:projectId/materials` takes an explicit title, body or
 HTTP(S) URL, and `clientMutationId`. A private draft can be a provenance source
