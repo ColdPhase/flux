@@ -1,6 +1,6 @@
 # Native coordination through EXT-1 — bounded proposal
 
-**PROPOSED, 2026-10-10; independent decision pending.** Owner @PelikanFix16;
+**Bounded research/design independently accepted, 2026-10-10; governing contract/runtime gates remain.** Owner @PelikanFix16;
 coordination owner @Zamojski5. For #460/#152/#160, using #153/#154 and #74.
 This document does not amend EXT-1, enable a public tool or accept runtime delivery.
 The original complete busy-review → fix → fresh-review/restart outcome remains required.
@@ -8,6 +8,21 @@ The independent exact `4b7e17e0b54f629e0841f3b6418c766ae7c66f0d`
 [COMMENT5480787620](https://github.com/ColdPhase/flux/pull/467#pullrequestreview-5480787620)
 requires CS-1 audience protection and CS-2 enum corrections; it did not accept
 this seam for implementation. This revision retains both gates below.
+
+
+Independent delegated agent `review_protocol_decision`, separate from author
+`visual_next`, accepted this revised bounded proposal at exact
+`9aff85ac1743b83b4ebca8e4dc4a2ad0d319f223` in
+[COMMENT5480821048](https://github.com/ColdPhase/flux/pull/467#pullrequestreview-5480821048).
+The actual shared account is @PelikanFix16; this is delegated research/design
+acceptance, not eligible GitHub/Code Owner approval, founder direction,
+current setup/UI/runtime/installer/provider/platform or parent completion.
+All #460/#152/#160 and existing authority/privacy/native/merge gates remain.
+The new managed-binding effect-fence **public amendment is NOT accepted**:
+exact enrollment/context/runtime startup/Stop/lease/unpair/re-enrollment semantics
+and held races need separate independent contract acceptance before dependent
+adapter/domain code. Accepted design enables governing-contract preparation;
+it does not substitute for that public gate or actual product delivery.
 
 ## Current evidence and gap
 

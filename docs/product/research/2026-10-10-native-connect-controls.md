@@ -1,6 +1,6 @@
 # Built-in native Connect and work controls — bounded proposal
 
-**Proposed, 2026-10-10; independent decision pending.** Owner @PelikanFix16;
+**Bounded research/design independently accepted, 2026-10-10; governing contract/runtime gates remain.** Owner @PelikanFix16;
 [#460](https://github.com/ColdPhase/flux/issues/460), [#152](https://github.com/ColdPhase/flux/issues/152)
 and [#160](https://github.com/ColdPhase/flux/issues/160). This does not amend their
 accepted criteria or the [PC-1–PC-5 contract](../mcp-protocol-compatibility.md).
@@ -10,6 +10,21 @@ The independent decision at `8a3a4d5a8f426ad0d1c4c3145680a295fd9561f0`,
 requested NC-1–NC-4 corrections. Direction was defensible, not accepted for
 implementation. This revision chooses the boundaries below; runtime/distribution
 proof and renewed independent acceptance remain required.
+
+
+Independent delegated agent `review_protocol_decision`, separate from author
+`visual_next`, accepted this revised bounded proposal at exact
+`9aff85ac1743b83b4ebca8e4dc4a2ad0d319f223` in
+[COMMENT5480821010](https://github.com/ColdPhase/flux/pull/467#pullrequestreview-5480821010).
+The actual shared account is @PelikanFix16; this is delegated research/design
+acceptance, not eligible GitHub/Code Owner approval, founder direction,
+current setup/UI/runtime/installer/provider/platform or parent completion.
+All #460/#152/#160 and existing authority/privacy/native/merge gates remain.
+The new managed-binding effect-fence **public amendment is NOT accepted**:
+exact enrollment/context/runtime startup/Stop/lease/unpair/re-enrollment semantics
+and held races need separate independent contract acceptance before dependent
+adapter/domain code. Accepted design enables governing-contract preparation;
+it does not substitute for that public gate or actual product delivery.
 
 ## Problem and evidence
 
