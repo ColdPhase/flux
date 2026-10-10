@@ -4,7 +4,7 @@ Runs with the other tests/ui journeys through scripts/check_ui.sh. A message pos
 with attachments and no text shows its files as downloads, not an empty bubble, and a task made from
 it gets a readable title instead of an empty one. File rows carry the type icon and Download, photos
 form a frameless grid read only through the access-checked route, the viewer is always dark, and the
-composer stages thumbnails (#348).
+composer stages thumbnails (#348). FLUX_UI_BROWSER selects chromium (default) or webkit, as in test_settings.
 """
 
 from __future__ import annotations
@@ -21,6 +21,10 @@ from playwright.sync_api import Browser, Page, expect, sync_playwright
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, start_forwarder
 
+UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
+if UI_BROWSER not in ("chromium", "webkit"):
+    raise ValueError(f"FLUX_UI_BROWSER must be chromium or webkit, got {UI_BROWSER!r}")
+
 PASSWORD = "files need a place"
 STAMP = int(time.time() * 1000)
 OWNER = {"name": "Ola Wren", "email": f"ola.wren+{STAMP}@example.test"}
@@ -36,7 +40,7 @@ class FileOnlyMessage(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=10000)
 
     @classmethod
@@ -136,7 +140,7 @@ class FilesReferencesPhotos(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=10000)
         contexts = {}
         for key, (name, email) in PEOPLE.items():
