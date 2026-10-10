@@ -11,6 +11,8 @@ export interface DraftLine {
   x: number;
   y: number;
   attempt?: DraftAttempt;
+  /** Restored without canonical metadata or a valid unused proof. Never inferred unused. */
+  unknown?: true;
 }
 
 /** The canonical creation actually dispatched, retained across an uncertain response. */
@@ -38,6 +40,7 @@ export interface ThoughtDraft {
   attempt?: DraftAttempt;
   /** This format records attempts; older retained drafts cannot prove an unused key. */
   tracked?: true;
+  unknown?: true;
 }
 /** A pasted row may exceed the thought limit (it is marked and blocks Save), but not without bound. */
 const LINE_CHARS = 100_000;
@@ -67,6 +70,15 @@ function validFile(file: unknown): boolean {
     && value.size >= 1 && value.size <= FILE_LIMITS.fileBytes;
 }
 const PREFIX = 'flux:thought-draft:';
+const UNUSED = 'flux:thought-unused:';
+const unusedKey = (key: string, id: string) => `${UNUSED}${key.slice(PREFIX.length)}:${id}`;
+const hasUnusedProof = (key: string, row: DraftLine | ThoughtDraft) => {
+  try { return sessionStorage.getItem(unusedKey(key, row.id)) === row.key; } catch { return false; }
+};
+const rows = (draft: ThoughtDraft) => draft.lines ?? [draft];
+const canonical = (attempt: DraftAttempt) => JSON.stringify({ key: attempt.key, parentId: attempt.parentId, linkId: attempt.linkId,
+  id: attempt.thought.id, text: attempt.thought.text, x: attempt.thought.x, y: attempt.thought.y,
+  width: attempt.thought.width, height: attempt.thought.height, fileId: attempt.thought.file?.id });
 // This visit's newest copy of each draft. Session storage can refuse a write (quota) and keep an
 // older copy, so it only supplies a draft this visit has not touched, such as after a reload.
 const memory = new Map<string, ThoughtDraft | null>();
@@ -88,7 +100,12 @@ function persisted(key: string): ThoughtDraft | null {
         && (draft.attempt === undefined || validAttempt(draft.attempt, draft.id))
         && (draft.tracked === undefined || draft.tracked === true)
         && (draft.lines === undefined || draft.file === undefined)
-        && (draft.width === undefined || isSpot(draft.width)) && (draft.height === undefined || isSpot(draft.height))) return draft as ThoughtDraft;
+        && (draft.width === undefined || isSpot(draft.width)) && (draft.height === undefined || isSpot(draft.height))) {
+        const restore = <T extends DraftLine | ThoughtDraft>(row: T): T => ({ ...row,
+          unknown: row.attempt || hasUnusedProof(key, row) ? undefined : true });
+        return draft.lines ? { ...draft, tracked: true, lines: draft.lines.map(restore) } as ThoughtDraft
+          : { ...restore(draft as ThoughtDraft), tracked: true };
+      }
     }
   } catch { /* Storage may be refused; the current visit still retains its drafts. */ }
   return null;
@@ -105,7 +122,14 @@ export function writeThoughtDraft(key: string, draft: ThoughtDraft | null, gener
   memory.set(key, draft);
   let refused = false;
   try {
-    if (draft) sessionStorage.setItem(key, JSON.stringify(draft)); else sessionStorage.removeItem(key);
+    if (draft) {
+      sessionStorage.setItem(key, JSON.stringify(draft));
+      // Never issue unused authorization for an unknown restore or an earlier attempt.
+      for (const row of rows(draft)) if (!row.attempt && !row.unknown && draft.tracked) sessionStorage.setItem(unusedKey(key, row.id), row.key);
+    } else {
+      sessionStorage.removeItem(key);
+      for (const item of Object.keys(sessionStorage)) if (item.startsWith(`${UNUSED}${key.slice(PREFIX.length)}:`)) sessionStorage.removeItem(item);
+    }
   } catch { refused = true; /* Keep the newest copy, including an empty-clear tombstone. */ }
   setReloadRetention('thought', key, key.slice(PREFIX.length).split(':')[0]!, refused, true);
 }
@@ -116,7 +140,7 @@ export function forgetThoughtDrafts() {
   memory.clear();
   forgetReloadRetention('thought');
   try {
-    for (const key of Object.keys(sessionStorage)) if (key.startsWith(PREFIX)) sessionStorage.removeItem(key);
+    for (const key of Object.keys(sessionStorage)) if (key.startsWith(PREFIX) || key.startsWith(UNUSED)) sessionStorage.removeItem(key);
   } catch { /* Refused storage never received these drafts. */ }
 }
 
@@ -146,5 +170,26 @@ export function useThoughtDraft(personId: string, sketchId: string, sketch: Sket
   };
   /** The newest copy now, even from an earlier render's callback (an upload that finished later). */
   const peek = () => generation === draftGeneration ? readThoughtDraft(key) : null;
-  return { draft: current.draft, set, peek };
+  /** Before dispatch, make any older unused authorization unusable even if the full write is refused. */
+  const prepareAttempt = (attempt: DraftAttempt): boolean => {
+    const before = peek();
+    if (!key || !before) return false;
+    const row = rows(before).find((item) => item.id === attempt.thought.id);
+    if (!row || row.unknown) return false;
+    let invalidated = false;
+    try {
+      const proof = unusedKey(key, row.id);
+      sessionStorage.removeItem(proof);
+      invalidated = sessionStorage.getItem(proof) === null;
+    } catch { /* Canonical persistence below can still make an older unused proof irrelevant. */ }
+    set(before.lines ? { ...before, lines: before.lines.map((item) => item.id === row.id ? { ...item, attempt: item.attempt ?? attempt } : item) }
+      : { ...before, attempt: before.attempt ?? attempt });
+    const stored = persisted(key);
+    const kept = stored && rows(stored).find((item) => item.id === row.id)?.attempt;
+    if (invalidated || (kept && canonical(kept) === canonical(attempt))) return true;
+    // No request has been dispatched. Keep the known unused retry, including its private text.
+    set(before);
+    return false;
+  };
+  return { draft: current.draft, set, peek, prepareAttempt };
 }

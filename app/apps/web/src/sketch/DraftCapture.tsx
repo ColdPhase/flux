@@ -31,8 +31,9 @@ export function DraftCapture({ draft, parent, saving, canWrite, confirmPrevious 
     else if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); if (ready) onSave(); }
   };
   const attempted = (draft.lines ?? [draft]).some((row) => !!row.attempt);
-  const where = confirmPrevious ? (draft.tracked ? 'Earlier save from a larger screen' : 'Earlier draft’s saved state is unknown') : mixedParents ? 'Earlier row destinations kept' : draft.parentId ? parent ? `${attempted ? 'Intended connection' : 'Connected'} to “${parent}”${attempted ? '' : ' on save'}` : 'Its parent is no longer available' : 'Top level';
-  const privacy = saving ? 'saving · text kept' : attempted ? 'save not confirmed · text kept' : !draft.tracked ? 'saved state unknown · text kept' : 'private until saved';
+  const unknown = (draft.lines ?? [draft]).some((row) => row.unknown);
+  const where = confirmPrevious ? (unknown ? 'Earlier draft’s saved state is unknown' : 'Earlier save from a larger screen') : mixedParents ? 'Earlier row destinations kept' : draft.parentId ? parent ? `${attempted ? 'Intended connection' : 'Connected'} to “${parent}”${attempted ? '' : ' on save'}` : 'Its parent is no longer available' : 'Top level';
+  const privacy = saving ? 'saving · text kept' : attempted ? 'save not confirmed · text kept' : unknown ? 'saved state unknown · text kept' : 'private until saved';
   const lines = draft.lines;
   if (lines) {
     const count = lines.length;
@@ -63,7 +64,7 @@ export function DraftCapture({ draft, parent, saving, canWrite, confirmPrevious 
   return <form ref={form} className="sk-draft" aria-label="New thought draft" onSubmit={(event) => { event.preventDefault(); if (ready) onSave(); }}>
     <p className="sk-draft__context">{draft.file ? 'New image' : linkOf(draft.text) ? 'New link' : 'New thought'} · {where} · {privacy}</p>
     {draft.file ? <div className="sk-draft__image"><ThoughtImage className="sk-draft__img" fileId={draft.file.id} name={draft.file.name} />
-      <span>{draft.file.name} · {attempted ? 'earlier save not confirmed' : !draft.tracked ? 'earlier saved state unknown' : 'only you can see it until you save'}</span></div> : null}
+      <span>{draft.file.name} · {attempted ? 'earlier save not confirmed' : unknown ? 'earlier saved state unknown' : 'only you can see it until you save'}</span></div> : null}
     <textarea className="ui-input" rows={2} aria-label={draft.file ? 'Image caption' : 'Thought text'} value={draft.text} maxLength={SKETCH_LIMITS.text} disabled={saving}
       onChange={(event) => onText(event.target.value)} onKeyDown={keys} />
     <div className="sk-draft__actions"><button type="submit" className="ui-btn ui-btn--primary" disabled={!ready}>{saving ? 'Saving…' : `${confirmPrevious ? 'Confirm and save' : 'Save'} ${draft.file ? 'image' : 'thought'}`}</button>

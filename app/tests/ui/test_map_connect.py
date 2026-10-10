@@ -13,6 +13,7 @@ from playwright.sync_api import expect, sync_playwright
 from test_app_shell import ORIGIN, PHONE, SHOTS, UPSTREAM, open_map_options, show_map_as, shot, start_forwarder
 from contrast import MEASURE
 from test_map_paste import PASTE, IMAGE
+from test_thought_drafts import EXHAUST_SESSION_STORAGE
 
 COMPUTER = {'width': 1440, 'height': 900}
 A, B, C = 'Weatherproof enclosure', 'Calibrate the probes', 'Frost warnings later'
@@ -672,6 +673,196 @@ class MapConnectJourney(unittest.TestCase):
                     self.assertEqual(writes,['PATCH'] if viewport == PHONE else ['POST','PATCH'],'refinement uses an explicit ordinary text edit; a wider retry first confirms the original creation')
                     self.assertEqual(after['links'],before['links'])
                 self.assertEqual(posted, [] if viewport == PHONE else creation, 'even a refinement replays the exact original creation body/key, then confirms current state')
+
+    def test_17_memory_only_save_and_refinement_keep_the_actual_canonical_creation(self):
+        for refusal in ('full-quota', 'refused-set'):
+            with self.subTest(refusal=refusal):
+                page=self.page(COMPUTER)
+                sketch=self.scene(page,link=True)
+                page.locator('.sk-node',has_text=B).click()
+                page.get_by_role('button',name=re.compile('Add a thought connected to')).click()
+                page.get_by_label('Thought text').fill('Keep the original phone intent')
+                if refusal=='full-quota':
+                    self.assertEqual(page.evaluate(EXHAUST_SESSION_STORAGE),'QuotaExceededError')
+                else:
+                    page.evaluate("""() => { const set=Storage.prototype.setItem; Storage.prototype.setItem=function(key,value){if(key.startsWith('flux:thought-draft:'))throw new DOMException('refused write','QuotaExceededError');return set.call(this,key,value)} }""")
+                page.set_viewport_size(PHONE)
+                path=f'**/api/v1/sketches/{sketch}/thoughts'
+                sent=[]
+                def hide(route):
+                    sent.append({'body':route.request.post_data_json,'key':route.request.headers['idempotency-key']})
+                    actual=route.fetch();self.assertEqual(actual.status,201,actual.text())
+                    route.fulfill(status=503,json={'message':'test: actual committed response hidden'})
+                page.route(path,hide)
+                draft=page.get_by_role('form',name='New thought draft')
+                draft.locator('button[type="submit"]').click()
+                expect(page.locator('.sk-status')).to_contain_text('draft is kept')
+                page.unroute(path,hide)
+                before=self.stored(page,sketch)
+                self.assertEqual(len(before['thoughts']),4,'storage refusal does not disable same-visit Save')
+                self.assertNotIn('linkFrom',sent[0]['body'])
+                persisted=page.evaluate("Object.entries(sessionStorage).filter(([key])=>key.startsWith('flux:thought-draft:')).map(([,value])=>JSON.parse(value))")
+                self.assertTrue(persisted and 'attempt' not in persisted[0],'full canonical metadata really was not stored')
+                page.set_viewport_size(COMPUTER)
+                draft.get_by_label('Thought text').fill('Keep the original phone intent, then refine it')
+                writes=[]
+                page.on('request',lambda r:writes.append({'body':r.post_data_json,'key':r.headers['idempotency-key']}) if r.method=='POST' and r.url.endswith(f'/{sketch}/thoughts') else None)
+                draft.locator('button[type="submit"]').click()
+                expect(draft).to_have_count(0)
+                after=self.stored(page,sketch)
+                self.assertEqual(writes,sent,'memory retry after width/text changes keeps the original creation')
+                updated=next(t for t in after['thoughts'] if t['id']==sent[0]['body']['id'])
+                self.assertEqual(updated['text'],'Keep the original phone intent, then refine it')
+                self.assertEqual(updated['version'],2)
+                self.assertEqual(after['links'],before['links'])
+                self.assertEqual(len(after['thoughts']),4)
+
+    def test_18_refused_attempt_metadata_restores_unknown_without_creating_or_grouping(self):
+        for committed in (False,True):
+            with self.subTest(committed=committed):
+                page=self.page(COMPUTER)
+                sketch=self.scene(page,link=True)
+                page.locator('.sk-node',has_text=B).click()
+                page.get_by_role('button',name=re.compile('Add a thought connected to')).click()
+                page.get_by_label('Thought text').fill('Keep the original phone intent')
+                page.evaluate("""() => { const set=Storage.prototype.setItem; Storage.prototype.setItem=function(key,value){if(key.startsWith('flux:thought-draft:'))throw new DOMException('refused write','QuotaExceededError');return set.call(this,key,value)} }""")
+                page.set_viewport_size(PHONE)
+                path=f'**/api/v1/sketches/{sketch}/thoughts'
+                sent=[]
+                def hide(route):
+                    sent.append({'body':route.request.post_data_json,'key':route.request.headers['idempotency-key']})
+                    if committed:
+                        actual=route.fetch();self.assertEqual(actual.status,201,actual.text())
+                    route.fulfill(status=503,json={'message':'test: no visible creation receipt'})
+                page.route(path,hide)
+                draft=page.get_by_role('form',name='New thought draft')
+                draft.locator('button[type="submit"]').click()
+                expect(page.locator('.sk-status')).to_contain_text('draft is kept')
+                page.unroute(path,hide)
+                before=self.stored(page,sketch)
+                self.assertNotIn('linkFrom',sent[0]['body'])
+                old=page.evaluate("Object.entries(sessionStorage).filter(([key])=>key.startsWith('flux:thought-draft:')).map(([key,value])=>({key,value:JSON.parse(value)}))")
+                self.assertEqual(old[0]['value']['parentId'],self.ids[B],'the older accepted copy remains intact')
+                self.assertNotIn('attempt',old[0]['value'])
+                page.wait_for_load_state('networkidle');page.reload();page.set_viewport_size(COMPUTER)
+                expect(draft).to_contain_text('saved state is unknown')
+                expect(draft.get_by_label('Thought text')).to_have_value(old[0]['value']['text'])
+                expect(page.locator('.sk-wire')).to_have_count(0)
+                outline=page.evaluate("localStorage.getItem('flux.sketch.outlines.v1')")
+                posted=[]
+                page.on('request',lambda r:posted.append(r.url) if r.method=='POST' and r.url.endswith(f'/{sketch}/thoughts') else None)
+                draft.locator('button[type="submit"]').click()
+                if committed:
+                    expect(draft).to_have_count(0)
+                else:
+                    expect(page.locator('.sk-status')).to_contain_text('save is not confirmed yet')
+                    expect(draft.get_by_label('Thought text')).to_have_value(old[0]['value']['text'])
+                    self.assertNotIn('computer',page.locator('.sk-status').inner_text(),'widening cannot recover missing canonical information')
+                self.assertEqual(posted,[],'unknown state never authorizes another creation on the computer')
+                self.assertEqual(self.stored(page,sketch),before)
+                self.assertEqual(page.evaluate("localStorage.getItem('flux.sketch.outlines.v1')"),outline,'unknown confirmation does not infer a private parent')
+
+    def test_19_unused_proof_is_scoped_and_canonical_state_wins(self):
+        for state,viewport in ((s,v) for s in ('valid','missing','foreign','malformed','canonical-stale') for v in (COMPUTER,PHONE)):
+            with self.subTest(state=state,width=viewport['width']):
+                page=self.page(COMPUTER)
+                sketch=self.scene(page,link=True)
+                page.locator('.sk-node',has_text=B).click()
+                page.get_by_role('button',name=re.compile('Add a thought connected to')).click()
+                page.get_by_label('Thought text').fill('Check the retained proof')
+                saved=page.evaluate("""() => { const key=Object.keys(sessionStorage).find(k=>k.startsWith('flux:thought-draft:'));const draft=JSON.parse(sessionStorage.getItem(key));return {key,draft,proof:key.replace('flux:thought-draft:','flux:thought-unused:')+':'+draft.id}; }""")
+                if state=='canonical-stale':
+                    path=f'**/api/v1/sketches/{sketch}/thoughts'
+                    def hide(route):
+                        actual=route.fetch();self.assertEqual(actual.status,201,actual.text());route.fulfill(status=503,json={'message':'test: creation receipt hidden'})
+                    page.route(path,hide)
+                    page.get_by_role('form',name='New thought draft').locator('button[type="submit"]').click()
+                    expect(page.locator('.sk-status')).to_contain_text('draft is kept');page.unroute(path,hide)
+                    page.evaluate('s=>sessionStorage.setItem(s.proof,s.draft.key)',saved)
+                elif state!='valid':
+                    page.evaluate('s=>sessionStorage.removeItem(s.proof)',saved)
+                    if state=='foreign':page.evaluate('s=>sessionStorage.setItem(s.proof.replace(s.draft.id,crypto.randomUUID()),s.draft.key)',saved)
+                    if state=='malformed':page.evaluate('s=>sessionStorage.setItem(s.proof,JSON.stringify({key:s.draft.key}))',saved)
+                before=self.stored(page,sketch)
+                page.wait_for_load_state('networkidle');page.reload();page.set_viewport_size(viewport)
+                draft=page.get_by_role('form',name='New thought draft')
+                posted=[]
+                page.on('request',lambda r:posted.append({'body':r.post_data_json,'key':r.headers['idempotency-key']}) if r.method=='POST' and r.url.endswith(f'/{sketch}/thoughts') else None)
+                draft.locator('button[type="submit"]').click()
+                if state in ('missing','foreign','malformed'):
+                    expect(page.locator('.sk-status')).to_contain_text('save is not confirmed yet')
+                    expect(draft).to_contain_text('saved state is unknown')
+                    self.assertEqual(posted,[])
+                    self.assertEqual(self.stored(page,sketch),before)
+                else:
+                    expect(draft).to_have_count(0)
+                    after=self.stored(page,sketch)
+                    self.assertEqual(len(after['thoughts']),4)
+                    if state=='canonical-stale':
+                        self.assertEqual(after,before,'canonical metadata is confirmed rather than converted to a fresh intent')
+                    else:
+                        self.assertEqual(posted[0]['key'],saved['draft']['key'])
+                        self.assertEqual(posted[0]['body']['id'],saved['draft']['id'])
+                        self.assertEqual(len(after['links']),1 if viewport==PHONE else 2)
+
+    def test_20_preflight_failure_sends_nothing_and_partial_proofs_preserve_other_rows(self):
+        page=self.page(COMPUTER)
+        sketch=self.scene(page,link=True)
+        page.locator('.sk-node',has_text=B).click()
+        page.get_by_role('button',name=re.compile('Add a thought connected to')).click()
+        page.get_by_label('Thought text').fill('Keep the failed preflight text')
+        page.evaluate("""() => {window.storageSet=Storage.prototype.setItem;window.storageRemove=Storage.prototype.removeItem;Storage.prototype.setItem=function(k,v){if(k.startsWith('flux:thought-draft:'))throw new DOMException('refused','QuotaExceededError');return window.storageSet.call(this,k,v)};Storage.prototype.removeItem=function(k){if(k.startsWith('flux:thought-unused:'))throw new DOMException('refused','SecurityError');return window.storageRemove.call(this,k)} }""")
+        page.set_viewport_size(PHONE)
+        draft=page.get_by_role('form',name='New thought draft')
+        before=self.stored(page,sketch)
+        posted=[]
+        page.on('request',lambda r:posted.append(r.post_data_json) if r.method=='POST' and r.url.endswith(f'/{sketch}/thoughts') else None)
+        draft.locator('button[type="submit"]').click()
+        expect(page.locator('.sk-status')).to_contain_text('No request was sent')
+        expect(draft).to_contain_text('private until saved')
+        expect(draft.get_by_label('Thought text')).to_have_value('Keep the failed preflight text')
+        self.assertEqual(posted,[])
+        self.assertEqual(self.stored(page,sketch),before)
+        page.evaluate('Storage.prototype.setItem=window.storageSet')
+        # Canonical persistence alone can permit dispatch even if removing the stale proof still fails.
+        draft.locator('button[type="submit"]').click()
+        expect(draft).to_have_count(0)
+        self.assertEqual(len(posted),1)
+        self.assertNotIn('linkFrom',posted[0])
+        self.assertEqual(self.stored(page,sketch)['links'],before['links'])
+        page.evaluate('Storage.prototype.removeItem=window.storageRemove')
+
+        page=self.page(COMPUTER)
+        sketch=self.scene(page,link=True)
+        page.locator('.sk-node',has_text=B).focus()
+        page.evaluate(PASTE,['One retained row\nOne genuinely unused row',None])
+        old=page.evaluate("""() => {const key=Object.keys(sessionStorage).find(k=>k.startsWith('flux:thought-draft:'));return {key,value:JSON.parse(sessionStorage.getItem(key))}; }""")
+        page.evaluate("""() => {const set=Storage.prototype.setItem;Storage.prototype.setItem=function(k,v){if(k.startsWith('flux:thought-draft:')&&v.includes('"attempt":'))throw new DOMException('refused','QuotaExceededError');return set.call(this,k,v)} }""")
+        path=f'**/api/v1/sketches/{sketch}/thoughts'
+        def hide(route):
+            actual=route.fetch();self.assertEqual(actual.status,201,actual.text());route.fulfill(status=503,json={'message':'test: first row committed without receipt'})
+        page.route(path,hide)
+        draft=page.get_by_role('form',name='Pasted thoughts draft')
+        draft.locator('button[type="submit"]').click()
+        expect(page.locator('.sk-status')).to_contain_text('draft is kept');page.unroute(path,hide)
+        before=self.stored(page,sketch)
+        first,second=old['value']['lines']
+        proof=page.evaluate('s=>s.value.lines.map(r=>sessionStorage.getItem(s.key.replace("flux:thought-draft:","flux:thought-unused:")+":"+r.id))',old)
+        self.assertEqual(proof,[None,second['key']],'only the actually attempted row loses unused authorization')
+        page.wait_for_load_state('networkidle');page.reload();page.set_viewport_size(PHONE)
+        posted=[]
+        page.on('request',lambda r:posted.append(r.post_data_json) if r.method=='POST' and r.url.endswith(f'/{sketch}/thoughts') else None)
+        draft.locator('button[type="submit"]').click()
+        expect(draft).to_have_count(0)
+        after=self.stored(page,sketch)
+        self.assertEqual(len(posted),1)
+        self.assertEqual(posted[0]['id'],second['id'])
+        self.assertNotIn('linkFrom',posted[0])
+        self.assertEqual(after['links'],before['links'])
+        self.assertEqual(len(after['thoughts']),5)
+        state=page.evaluate("JSON.parse(localStorage.getItem('flux.sketch.outlines.v1'))")
+        own=next(s for s in state if s['key'].endswith(sketch))
+        self.assertNotIn(first['id'],own['state']['parents'],'unknown row never infers its stale private parent')
 
 
 if __name__ == '__main__':

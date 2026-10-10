@@ -10,7 +10,7 @@ import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
 import { setReloadRetention } from '../app/reload-retention';
 import { createWork } from '../work/api';
-import { useSketchDoc, type Op } from './doc';
+import { DraftSaveNotSentError, useSketchDoc, type Op } from './doc';
 import { audience, quote, sketchHref, when } from './format';
 import { freeSpot, rectOf } from './geometry';
 import { SketchList } from './SketchList';
@@ -431,30 +431,31 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     setSavingDraft(true);
     // Normalize only unsent intent. An actual earlier attempt keeps its canonical parent
     // and payload; on a phone it may only be confirmed from existing server state.
-    if (phone && draft.parentId && draft.tracked) { draft = { ...draft, parentId: null }; capture.set(draft); }
+    if (phone && draft.parentId && !(draft.lines ?? [draft]).some((row) => row.unknown)) { draft = { ...draft, parentId: null }; capture.set(draft); }
     const parent = (row: DraftLine | ThoughtDraft) => {
-      const parentId = row.attempt ? row.attempt.parentId : draft!.parentId;
+      const parentId = row.unknown ? null : row.attempt ? row.attempt.parentId : phone ? null : draft!.parentId;
       return parentId ? { id: parentId, linkId: row.attempt?.linkId ?? row.linkId } : null;
     };
     const items = draft.lines
       ? draft.lines.map((line) => ({ thought: line.attempt?.thought ?? { id: line.id, text: line.text.trim(), x: line.x, y: line.y }, parent: parent(line), key: line.attempt?.key ?? line.key }))
       : [{ thought: draft.attempt?.thought ?? { id: draft.id, text: draft.text.trim(), x: draft.x, y: draft.y,
         ...(draft.file ? { file: draft.file, width: draft.width, height: draft.height } : {}) }, parent: parent(draft), key: draft.attempt?.key ?? draft.key }];
-    const existingOnly = new Set(phone ? (draft.lines ?? [draft]).filter((row) => row.attempt?.parentId || (!draft!.tracked && draft!.parentId)).map((row) => row.id) : []);
+    const unknown = new Set((draft.lines ?? [draft]).filter((row) => row.unknown).map((row) => row.id));
+    const existingOnly = new Set((draft.lines ?? [draft]).filter((row) => row.unknown || (phone && row.attempt?.parentId)).map((row) => row.id));
     const expectedText = new Map((draft.lines ?? [draft]).flatMap((row) => row.attempt ? [[row.id, row.attempt.thought.text] as const] : []));
     const desiredText = new Map((draft.lines ?? [draft]).map((row) => [row.id, row.text.trim()]));
     const editKeys = new Map((draft.lines ?? [draft]).map((row) => [row.id, row.key]));
     const retry = new Set((draft.lines ?? [draft]).filter((row) => !!row.attempt).map((row) => row.id));
     const saved = await doc.saveThoughts(items, { existingOnly, expectedText, desiredText, editKeys, retry, onAttempt: (item) => {
       const current = capture.peek();
-      if (!current) return;
+      if (!current) throw new DraftSaveNotSentError();
       const row = current.lines?.find((line) => line.id === item.thought.id) ?? current;
       const attempt = { key: item.key, parentId: item.parent?.id ?? null, linkId: item.parent?.linkId ?? row.linkId, thought: item.thought };
-      capture.set(current.lines ? { ...current, lines: current.lines.map((line) => line.id === item.thought.id ? { ...line, attempt: line.attempt ?? attempt } : line) } : { ...current, attempt: current.attempt ?? attempt });
+      if (!capture.prepareAttempt(attempt)) throw new DraftSaveNotSentError();
     } });
     setSavingDraft(false);
     draftSaveInFlight.current = false;
-    for (const id of saved) personalOutline.group(id, items.find((item) => item.thought.id === id)?.parent?.id ?? null, false);
+    for (const id of saved) if (!unknown.has(id)) personalOutline.group(id, items.find((item) => item.thought.id === id)?.parent?.id ?? null, false);
     if (saved.length < items.length) {
       // Confirmed thoughts are shared now; only the rest stay in the draft, with their IDs and request keys.
       const retained = capture.peek() ?? draft;
@@ -644,9 +645,8 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
           {!phone || !mapMode || (!sketch.thoughts.length && !canWrite) ? viewModes : null}
         </div>
   );
-  const confirmPrevious = phone && !!capture.draft && ((capture.draft.lines ?? [capture.draft]).some((row) => !!row.attempt?.parentId)
-    || (!!capture.draft.parentId && (!capture.draft.tracked || savingDraft)));
-  const pendingParents = capture.draft ? new Set((capture.draft.lines ?? [capture.draft]).map((row) => row.attempt ? row.attempt.parentId : capture.draft!.parentId)) : new Set<string | null>();
+  const confirmPrevious = !!capture.draft && (capture.draft.lines ?? [capture.draft]).some((row) => row.unknown || (phone && row.attempt?.parentId));
+  const pendingParents = capture.draft ? new Set((capture.draft.lines ?? [capture.draft]).map((row) => row.unknown ? null : row.attempt ? row.attempt.parentId : capture.draft!.parentId)) : new Set<string | null>();
   const attemptParent = pendingParents.size === 1 ? [...pendingParents][0] : null;
   const shownDraft = capture.draft ? { ...capture.draft, parentId: phone ? null : attemptParent ?? null } : null;
   const draftForm = shownDraft ? <DraftCapture draft={shownDraft} parent={shownDraft.parentId ? find(shownDraft.parentId)?.text ?? null : null}
@@ -740,7 +740,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
             bar={{ project: sketch.scope === 'project', canUndo: doc.canUndo, helpOpen, onShape: cycleShape, onTask: () => void makeWork(), onUndo: undo, onHelp: () => setHelpOpen(!helpOpen) }}
             onConnect={connectTo} onAddAt={(parentId, x, y) => add(parentId, '', false, { x, y })} onConnectFrom={connectFromDot} onAddThought={() => add(selection[selection.length - 1] ?? null)}
             draftEditor={draftForm} draft={shownDraft && !shownDraft.lines && !sketch.thoughts.some((thought) => thought.id === shownDraft.id)
-              ? { x: shownDraft.x, y: shownDraft.y, parentId: shownDraft.parentId, label: shownDraft.attempt ? 'Save not confirmed' : !shownDraft.tracked ? 'Saved state unknown' : 'Draft · not saved' }
+              ? { x: shownDraft.x, y: shownDraft.y, parentId: shownDraft.parentId, label: shownDraft.attempt ? 'Save not confirmed' : shownDraft.unknown ? 'Saved state unknown' : 'Draft · not saved' }
               : null} onMove={move} onResize={resize} onClear={() => { if (connectFrom) return; setSelection([]); say(''); }} />
           {!sketch.thoughts.length ? <p className="sk-first">{phone
             ? <>An empty sketch. Start with <b>Add a thought</b>.</>

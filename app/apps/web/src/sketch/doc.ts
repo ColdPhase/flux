@@ -41,6 +41,7 @@ export type Op =
 
 export type LoadState = 'loading' | 'ready' | 'not-found' | 'failed';
 export interface Me { id: string; name: string }
+export class DraftSaveNotSentError extends Error {}
 
 const uuid = () => crypto.randomUUID();
 
@@ -393,7 +394,7 @@ export function useSketchDoc(sketchId: string, me: Me) {
     let changedEarlier = false;
     const operation = queue.current.then(async () => {
       for (const { thought, parent, key } of items) {
-        let created: { thought: Thought; link: ThoughtLink | null; reconciled?: boolean };
+        let created: { thought: Thought; link: ThoughtLink | null; reconciled?: boolean; currentLinks?: ThoughtLink[] };
         const recoverExisting = async (failure: unknown) => {
           const current = await api.getSketch(sketchId);
           const existing = current.thoughts.find((item) => item.id === thought.id);
@@ -408,7 +409,8 @@ export function useSketchDoc(sketchId: string, me: Me) {
           }
           const text = existing.text === wanted ? existing
             : await withRetry(() => api.updateThought(sketchId, existing.id, { text: wanted }, existing.version, `${options?.editKeys?.get(thought.id) ?? key}-text`));
-          return { thought: text, link: parent ? current.links.find((item) => item.id === parent.linkId) ?? null : null, reconciled: true };
+          return { thought: text, link: parent ? current.links.find((item) => item.id === parent.linkId) ?? null : null, reconciled: true,
+            currentLinks: current.links.filter((item) => item.fromId === thought.id || item.toId === thought.id) };
         };
         if (options?.existingOnly?.has(thought.id)) {
           created = await recoverExisting(new Error('Earlier connected save is not confirmed'));
@@ -434,16 +436,16 @@ export function useSketchDoc(sketchId: string, me: Me) {
         const latest = current.thoughts.find((item) => item.id === created.thought.id);
         const confirmed = latest && latest.version > created.thought.version ? latest : created.thought;
         versions.current.set(confirmed.id, confirmed.version);
-        const links = created.reconciled && parent ? current.links.filter((item) => item.id !== parent.linkId) : current.links;
+        const links = created.currentLinks ? [...current.links.filter((item) => item.fromId !== confirmed.id && item.toId !== confirmed.id), ...created.currentLinks] : current.links;
         commit({ ...current,
           thoughts: [...current.thoughts.filter((item) => item.id !== created.thought.id), confirmed],
           links: created.link ? [...links.filter((item) => item.id !== created.link!.id), created.link] : links,
         });
         saved.push(created.thought.id);
       }
-    }).catch(() => {
+    }).catch((error: unknown) => {
       const rest = items.length - saved.length;
-      setProblem(changedEarlier ? 'Someone changed the earlier saved thought. Your text is kept; cancel to inspect their version before editing again.' : unconfirmed ? 'The earlier draft’s save is not confirmed yet. Your text is kept; check or retry that save on a computer.' : items.length === 1
+      setProblem(error instanceof DraftSaveNotSentError ? 'No request was sent. This browser could not safely retain the save state; your text is kept. Try again when storage is available.' : changedEarlier ? 'Someone changed the earlier saved thought. Your text is kept; cancel to inspect their version before editing again.' : unconfirmed ? 'The earlier draft’s save is not confirmed yet. Your text is kept; check the shared map before starting another thought.' : items.length === 1
         ? 'The thought could not be saved. Your draft is kept; check access and its parent, then try again.'
         : saved.length
           ? `Saved ${saved.length} of ${items.length} thoughts. The other ${rest} are kept in your draft; check access and their parent, then try again.`
