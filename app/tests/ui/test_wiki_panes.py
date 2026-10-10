@@ -299,6 +299,53 @@ class WikiPanesJourney(unittest.TestCase):
         page.get_by_role("navigation", name="Project views").get_by_role("link", name="Wiki").click()
         expect(page).to_have_url(re.compile(re.escape(self.url("parts")) + "$"))
 
+    def test_02b_long_page_labels_keep_one_line_full_names_and_targets(self) -> None:
+        # A separate owned project preserves the shared three-page fixture used by the later journeys.
+        setup = self.page("owner")
+        space = self.api(setup, "POST", "/api/v1/workspaces", {"name": "Page label checks"}, status=201)
+        project = self.api(setup, "POST", f"/api/v1/workspaces/{space['id']}/projects", {"name": "Long page labels", "visibility": "restricted"}, status=201)
+        title = "How the community garden sensors work through an entire winter of measurements and volunteer visits"
+        made = {}
+        for label in ("Overview", title):
+            made[label] = self.api(setup, "POST", f"/api/v1/projects/{project['id']}/docs", {"title": label, "body": "Readable project notes.", "state": "published"}, status=201,
+                                   headers={"idempotency-key": str(uuid.uuid4())})
+        for phone in (False, True):
+            for theme in ("light", "dark"):
+                with self.subTest(phone=phone, theme=theme):
+                    size = PHONE if phone else DESKTOP
+                    page = self.page("owner", viewport=size, touch=phone, theme=theme)
+                    page.goto(f"/projects/{project['id']}/docs/{made['Overview']['id']}")
+                    index = self.index(page)
+                    link = index.get_by_role("link", name=title, exact=True)
+                    link.scroll_into_view_if_needed()
+                    expect(link).to_be_visible()
+                    expect(link).to_have_attribute("title", title)
+                    label = link.locator(".wiki-page__t")
+                    metrics = label.evaluate("""el => ({ height: el.getBoundingClientRect().height,
+                        lineHeight: parseFloat(getComputedStyle(el).lineHeight), clipped: el.scrollWidth > el.clientWidth })""")
+                    self.assertTrue(metrics["clipped"], "the fixture really needs ellipsis, not merely a short single line")
+                    self.assertLessEqual(metrics["height"], metrics["lineHeight"] + 1, metrics)
+                    rows = index.locator(".wiki-page").evaluate_all("els => els.map(e => e.getBoundingClientRect().height)")
+                    self.assertLessEqual(max(rows) - min(rows), .5, rows)
+                    self.assertEqual(page.evaluate(DOT, '.wiki-page')["content"], "none")
+                    box = link.bounding_box(); assert box
+                    if phone:
+                        self.assertGreaterEqual(min(box["width"], box["height"]), 44)
+                        self.assertTrue(link.evaluate("e => { const r=e.getBoundingClientRect(), hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2); return hit===e || e.contains(hit); }"))
+                    self.no_horizontal_overflow(page, size["width"])
+                    if not phone and theme == "light":
+                        # The same measured fixture fails if wrapping or loss of its tooltip returns.
+                        link.evaluate("e => e.removeAttribute('title')")
+                        with self.assertRaises(AssertionError): self.assertEqual(link.get_attribute("title"), title)
+                        link.evaluate("(e, title) => e.title = title", title)
+                        broken = page.add_style_tag(content=".wiki-page { white-space: normal !important; } .wiki-page__t { overflow: visible !important; text-overflow: clip !important; overflow-wrap: anywhere !important; }")
+                        self.assertGreater(label.evaluate("e => e.getBoundingClientRect().height"), metrics["lineHeight"] + 1, "the old wrapping behavior really breaks the one-line bound")
+                        broken.evaluate("e => e.remove()")
+                    link.focus(); page.keyboard.press("Enter")
+                    expect(page.get_by_role("heading", level=2, name=title, exact=True)).to_be_visible()
+                    expect(index.get_by_role("link", name=title, exact=True)).to_have_attribute("aria-current", "page")
+                    shot(page, f"wiki-long-labels-{size['width']}-{theme}")
+
     def test_03_index_search(self) -> None:
         page = self.page("owner")
         page.goto(self.url("lamp"))
