@@ -93,6 +93,7 @@ for (const [engine, mobile] of [['chromium', false], ['webkit', true]] as const)
       await expect(invitation.locator('.inbox__body')).toContainText('Community garden sensors');
       await expect(invitation.locator('.kreska')).toHaveCount(1);
       await expect(invitation.locator('.agent-tag')).toHaveText('Agent');
+      await expect(invitation.locator('.inbox__review')).toHaveText('Review');
       await capture(managerPage, `join-${engine}-manager-needs-you`);
       await invitation.click(); await expect(managerPage).toHaveURL(`${origin}${path}`);
       const requests = managerPage.getByRole('region', { name: 'Assistant join requests' });

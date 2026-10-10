@@ -44,7 +44,7 @@ function Row({ item, onRead }: { item: InboxItem; onRead: (id: string) => void }
         <span className="inbox__text">
           <span className="inbox__title">{item.title}</span>
           {item.body ? <span className="inbox__body">{item.body}</span> : null}
-          <span className="inbox__meta">{assistantRequest ? <><span className="agent-tag">Agent</span><span aria-hidden="true"> · </span></> : null}{reason.label}<span aria-hidden="true"> · </span><time dateTime={item.createdAt}>{when(item.createdAt)}</time></span>
+          <span className="inbox__meta">{assistantRequest ? <><span className="agent-tag">Agent</span><span aria-hidden="true"> · </span></> : null}{reason.label}<span aria-hidden="true"> · </span><time dateTime={item.createdAt}>{when(item.createdAt)}</time>{assistantRequest ? <><span aria-hidden="true"> · </span><span className="inbox__review">Review <Icon name="chevron-right" size={14} /></span></> : null}</span>
         </span>
         {unread ? <span className="inbox__dot"><span className="ui-vh">, unread</span></span> : null}
       </Link>
