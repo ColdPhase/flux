@@ -383,10 +383,11 @@ The same executor runs the canonical doc (#112) and conversation (#36, #154) com
 | `flux_update_doc` | `doc.update` | the doc | The next version at the version last read (like `If-Match`): title, the complete text, state, reason |
 | `flux_start_conversation` | `conversation.create` | none | One new project conversation with its first message, optionally citing one material or doc version |
 | `flux_reply_in_conversation` | `conversation.reply` | the conversation | One reply in an existing project conversation, including a task's discussion thread |
+| `flux_ask_question` | `conversation.reply` | the conversation | A question to one person with two to four ready answers, as the agent's message plus a card (#347, below) |
 
 Grants and classes:
 
-- All four operations take the execute or plan class; review grants never write.
+- The four operations (and `flux_ask_question`, under `conversation.reply`) take the execute or plan class; review grants never write.
 - A grant for an update or a reply can name one doc or conversation, or the whole project.
 - Migration `0043` adds the four operations to the closed grant operation list.
 
@@ -580,6 +581,32 @@ anything; only this publish writes it, never message, PR, wiki or tool text.
   - It uses the existing API; nothing was added to it. Tests: `agent-policy.test.ts` (a publish
     reaches the same session's next bootstrap; refusals and invalid policies change nothing; a
     conflict carries the newer policy) and `tests/ui/test_project_policy.py` (1440, 390 and 320 px).
+
+## Stop and questions (#347, F-026 S13 and S14)
+
+The contract is [Stop and questions](../product/mcp-cowork.md#stop-and-questions--f-026-s13-and-s14). Migration `0065`
+adds `agent_stops` and `agent_questions` (reversal: `migrations/reverse/0065_agent_stops_questions.down.sql`).
+
+HTTP, all under `/api/v1`, `Idempotency-Key` accepted on the POSTs:
+
+| Call | Who | Result |
+| --- | --- | --- |
+| `POST /projects/:projectId/agent-stops` `{ taskId, agentId }` | a project writer who is a manager, the agent's owner or the task's creator | `201 AgentStop`; `403 STOP_NOT_ALLOWED`; `409 AGENT_NOT_WORKING` (not held now, parked, or finished); `404` |
+| `GET /projects/:projectId/agent-stops` | project readers | `{ projectId, stops }`, newest 20 |
+| `GET /working-agents` | the signed-in person | their own agents working on a task now, in projects they can read (the sidebar card) |
+| `GET /projects/:projectId/agent-questions` | project readers | `{ projectId, questions }`, newest 100, each with its options and answer |
+| `POST /agent-questions/:questionId/answer` `{ optionIndex }` or `{ text }` | the person asked, while they can write in the project | `200 AgentQuestion`; the same answer again returns the stored one; `409 QUESTION_ANSWERED`; `403 QUESTION_NOT_FOR_YOU`; `400 QUESTION_ANSWER_SHAPE`/`QUESTION_OPTION` |
+
+- A stop is one transaction: slots of the agent's connections (locked first, as claims lock them), then the task
+  through the canonical update (`owner: null`, `in_progress` to `open`), then the agent's unfinished units set to
+  `stopped`, then the `agent_stops` row and `project.agent_stopped.v1`.
+- The co-work tools answer a stopped unit with `COWORK_STOPPED` (claim, renew, release, complete, transfer, request
+  admission and request claim/decline, child unit creation); the playbook names it.
+- `flux_ask_question { conversationId, question, options, askUserId? }` posts the agent's message (the question, then the
+  options as a numbered list) through the canonical conversation command, stores the options, and records
+  `project.question_asked.v1`. A question notification goes to the person asked (default: the connection's owner) and to
+  nobody else; an answer records `project.question_answered.v1` and posts the person's reply with a client message ID
+  derived from the question, so it exists once.
 
 ## Verification boundary
 

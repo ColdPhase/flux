@@ -1,0 +1,43 @@
+# #326 route code on demand — historical evidence at f560 / 784
+
+The runs and artifacts below are tied to `f5603386bf35d6ba2e492af495eedff93da8ba99`
+and `784d46007cd21cf35bd457ecc71c0f81b47f33c3`, on their recorded older base.
+The later source composition `bdb13e604c912b9a189fd1084d2452457a10642e`
+includes protected main `b0fbc8b5291e3c9e2995962442144fbc48094ab3`.
+Its repository checks and bounded source-preservation review passed; its actual
+build, bundle measurements, routes, phone and PWA/offline checks remain unverified.
+The historical runs do not establish those results for the composed candidate.
+Within this retained record, “current” refers to its explicitly named original pin.
+
+Owner PelikanFix16, sole implementation worker peer_reviews. Current test-only sourcef5603386bf35d6ba2e492af495eedff93da8ba99, with application bytes identical to784d46007cd21cf35bd457ecc71c0f81b47f33c3. Base is protectedmain0f68aa963be920fbc7ebf30742da4aef54fe34be. No release or whole-application completion claim. Final configured run completed exit0; independent neutral review is included. Final commit-specific source evaluation remains required before publication.
+
+Home, auth forms and project conversation remain eager. Secondary routes load their original named components, loaders and revalidation functions; paths, nesting, IDs, actions and permissions are preserved. Closed Details/search/live stage load on opening. Pending navigation names the destination, permits cancel and keeps the current editable draft/Outlet mounted. Initial deep links announce the actual destination before an authenticated shell exists. Code failure is a real route error inside the mounted shell and offers Reload Flux; data failures keep ordinary revalidation. No vendor split or raised500kB threshold.
+
+Shared project header/state styles now load with AppLayout rather than depending on a first visit to Map. Overview styles belong to ProjectOverview; view styles remain lazy. All61 original CSS selector/media/declaration records are retained, without design/token changes. Actual previous source14c fullUI failed3phone subcases; exactmainf06 before-web control passes2/2 methods, establishing the missing eager-style regression. Fresh784 same methods pass across9adaptive/4composer widths.
+
+| Exact build | Entry minified/gzip kB | Primary CSS minified/gzip kB | MediaJS minified/gzip kB |500kB warning |
+| --- | --- | --- | --- | --- |
+| Acceptedmain0f68, source-equivalent e477 before (observed root-run) |1100.91 /322.98 |248.42 /42.38 |424.63 /110.19 |present |
+| Current784 application after (own Docker run) |427.24 /128.61 |116.78 /21.27 |424.63 /110.19 |absent |
+
+Vite8.3.1 /React Router8.4.0 /pinned Docker toolchain. Before app/docker/scripts/flux e477→main0f68 equality verified; the before log is attributed to root's actual run, not claimed as an ownrun. Historical ownmainf06 build1084.02/318.54 remains labeled historical.
+
+Actual current runtime75 final asset files exactly equalPRECACHE, no phantom/omitted file. Versionbfc7ea77f6676362 matchesSHA256 of actual final asset+HTML bytes; inventory included. Every asset is delivered by its actual built bytes in the maintained PWA test. SW-blocked cold-document controls prove no secondary/closed-surface imports without confusing background installation precache with document imports; actual HTTPS SW/offline/cache/update tests are separate.
+
+Verification at application784: freshbuild/type/lint; original phone cases+9route tests11/11 in92.302s; fullUI474tests in1336.551s EXIT0, with5intentional desktop/phone skips and3preexisting expected failures. The full UI retains Python Playwright pending-handler/no-running-loop warnings around the unmodified Motion hold helper. It returns after retainingRoute, removes it with defaultunroute beforecontinue and broadly swallowscontinue failures; installed framework then awaits an unresolved handling_future. This is a harness lifecycle concern, not a demonstrated product page error, and no baseline-runtime warning reproduction/cleanup fix is claimed. Warnings are preserved explicitly; no zeroasync claim.
+
+Test-only f560 fixes two independently found verification defects: first251-byte stylesheet was incorrectly treated as primary app CSS; choose the largest eager document stylesheet while retaining primarybr/gzip/halfsize and every stylesheet's exact delivery/Vary/threshold/benefit guards. Correct test09 rawURL regex now matches ordinary emittedProjectViews/SketchView JS and rejectsCSS. Actual9/9route18contexts15.665sPASS on unchanged784production+currenttestoverlay; actualHTTPPWA7/7 and HTTPSbrowserPWA3/3PASS, including all75cached assets and unopenedSettings route offline. f560 final full configured run completed1111/1111 (1090API+21configured), exit0 and own stack cleanup; previous784 run1090API/1089PASS1compression-testFAIL stoppedbeforebrowser stages and remains recorded.
+
+Retained earlier actual failures: Router's cached failed lazy hydration fallback (fixed via a loader that throws typed code error; no invented component/data/auth success); WebKit503/abort poisoned dynamicmodulepreload cache (public experimental Vite dynamicJS-only filter preservesCSS/HTML/nativeimports/allSW); earlySW phantomCSS facade404 (latepostbundleinventory); initialDM-helper import compilation; test-selector/focused-opener/actual-request timing corrections. Historical logs/JSON/excerpts stay labeled by source and do not become current passes.
+
+Primary references checked2026-10-07: ReactRouter route objects/pending UI, installed exact8.4source; Vitepublic experimental modulePreload.resolveDependencies; WebKit270357 NEW atcheckdate, separatelyfixed319492 does not establish270357fixed. No private runtime/vendor patch is used.
+
+Raw10PNG and2recoveryJSON copies are unmodified browser output. Pending/error compositions and firstprojectDetails at desktop/phone are bounded visuals only. Independent neutral review found no material finding within the supplied loading/recovery compositions; screenshots do not prove interaction/privacy/accessibility or full final-design integration. No real paid provider, actual IdP/vendorCLI/platform/release acceptance is inferred.
+
+## Final check scope
+
+The final full application run is pinned to f560; the474-case UI run is pinned to784 with exact application-byte equivalence. The corrected test09 regex was then exercised in both engines through9/9 current-route testoverlay (18contexts); its earlier double escape is recorded, not claimed as a valid old guard. All61 CSS records match the pre-split source; no acceptance or compression threshold was lowered. Current source/configured application proof does not accept other outstanding release outcomes.
+
+Reference links: [issue326](https://github.com/ColdPhase/flux/issues/326), [accepted claim](https://github.com/ColdPhase/flux/issues/326#issuecomment-6046063130), [finaldesign](../../../../design/final/README.md), [ReactRouter routes](https://reactrouter.com/start/data/route-object), [pendingUI](https://reactrouter.com/start/data/pending-ui), [Vite modulepreload](https://vite.dev/config/build-options#build-modulepreload), [WebKit270357](https://bugs.webkit.org/show_bug.cgi?id=270357), [WebKit319492](https://bugs.webkit.org/show_bug.cgi?id=319492).
+
+Text/log excerpts are stored as deterministicgzip (mtime0) to retain original whitespace and make raw tool logs reviewable without changing application files. `manifest.json` records stored and uncompressed hashes. An initial documentation staging check caught trailing whitespace in raw log excerpts; the compressed storage corrects the repository check while retaining every uncompressed byte.

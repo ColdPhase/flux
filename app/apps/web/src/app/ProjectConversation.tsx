@@ -26,6 +26,8 @@ import { AgentAuthor, AuthorFace, ContributionMark, OPENING_REVEAL_MS, SourceCit
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import { OneConversation, type PaneProps } from './OneConversation';
 import { ThreadMessageActions } from './ThreadDrawer';
+import { QuestionCard } from '../agents/QuestionCard';
+import { useProjectQuestions } from '../agents/questions';
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
 import './project-conversation.css';
@@ -79,6 +81,8 @@ function mergeMessages(current: Conversation['messages'], incoming: Conversation
 export function ProjectConversation() {
   const data = useLoaderData() as ProjectData;
   const { me } = useShellData();
+  // Agents' questions with ready answers (S14): one read of the project's questions for every card below.
+  useProjectQuestions(data.project.id, me.user.id);
   return <div className="project-page">
     <OneConversation key={`${me.user.id}:${data.project.id}`} data={data} Pane={ProjectConversationContent} />
   </div>;
@@ -469,6 +473,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
                 <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} name={messageAuthor(message)} mine={mine} />
                 <div className="project-convo__message-meta"><strong>{mine ? `${messageAuthor(message)} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${messageAuthor(message)} directly`}>{messageAuthor(message)}</Link>}</strong><time dateTime={message.createdAt} title={when(message.createdAt)}>{clock(message.createdAt)}</time><span>#{message.sequence}</span></div>
                 {message.body ? <p>{message.body}</p> : null}
+                <QuestionCard projectId={project.id} messageId={message.id} meId={me.user.id} writable={writable} />
                 <MessageFiles files={message.files} />
                 {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={(resultId) => openDetails({ kind: 'result', id: resultId })} /> : null}
                 {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={hideIfDenied} /> : null}

@@ -65,6 +65,11 @@ export async function notificationRoutes(app: FastifyInstance, { db, sessions, s
             type: 'object', additionalProperties: false,
             properties: { enabled: { type: 'boolean' }, start: { type: 'string', maxLength: 5 }, end: { type: 'string', maxLength: 5 }, timeZone: { type: 'string', maxLength: 64 } },
           },
+          level: { type: 'string', maxLength: 16 },
+          morningSummary: {
+            type: 'object', additionalProperties: false,
+            properties: { enabled: { type: 'boolean' }, at: { type: 'string', maxLength: 5 } },
+          },
         },
       },
     },

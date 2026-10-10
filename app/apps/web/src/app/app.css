@@ -147,6 +147,7 @@ body:has(.app) { background: var(--side); }
 .agentlive__link { display: grid; place-items: center; }
 .agentlive__error { flex-basis: 100%; min-width: 0; overflow-wrap: anywhere; font-size: var(--fs-xs); line-height: 1.3; color: var(--t1); }
 .agentlive--compact { flex-direction: column; gap: 4px; margin: 0; padding: 4px; }
+.agentlive__more { margin: -4px 0 8px; padding: 0 var(--s-2); font-size: var(--fs-xs); color: var(--t3); }
 @media (pointer: coarse) { .agentlive__stop { width: 44px; height: 44px; } }
 
 /* The 64px rail (S19): icons only. */
@@ -508,3 +509,9 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 }
 @media (max-width: 640px) and (pointer: coarse) { .views--chips .ui-tabs__tab { min-height: 44px; padding: 0 14px; } .views--chips .ui-tabs__bar { padding-block: 4px; } }
 .state-row .views__recap { flex: none; margin-left: auto; }
+
+/* On touch, the "Create an account" style link under the form gets a 44 px tall hit area without moving the text (#434). */
+@media (pointer: coarse) {
+  .auth__alt .ui-link { position: relative; }
+  .auth__alt .ui-link::after { content: ""; position: absolute; inset: -13px -4px; }
+}

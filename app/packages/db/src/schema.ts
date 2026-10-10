@@ -1,5 +1,5 @@
 import { eq, ne, sql } from 'drizzle-orm';
-import type { InspectedComparisonSource } from '@flux/contracts';
+import type { InspectedComparisonSource, NotificationSourceRef } from '@flux/contracts';
 import { pgTable, text, timestamp, date, uuid, integer, smallint, jsonb, boolean, bigserial, bigint, index, uniqueIndex, primaryKey, foreignKey, unique, check, type AnyPgColumn, type PgTableExtraConfigValue } from 'drizzle-orm/pg-core';
 import { AGENT_OPERATIONS, AGENT_PEER_REQUEST_CLASSES, type AgentJsonValue, type AgentPostcondition, type CoWorkSourceRef } from '@flux/contracts';
 import { AI_PROVIDER_KINDS, BACKGROUND_CONSENT_VERSIONS, type AiProviderKind, type PersonalRunConsentVersion } from '@flux/contracts';
@@ -416,6 +416,8 @@ export const notifications = pgTable('notifications', {
   reason: text('reason').$type<'mention' | 'question' | 'reply' | 'dm' | 'assigned' | 'review' | 'invitation'>(),
   eventId: uuid('event_id'),
   inInbox: boolean('in_inbox').notNull().default(true),
+  deliveryKind: text('delivery_kind').$type<'ordinary' | 'morning_summary'>().notNull().default('ordinary'),
+  summarySources: jsonb('summary_sources').$type<NotificationSourceRef[]>(),
 }, (table) => [
   index('notifications_user_created_idx').on(table.userId, table.createdAt.desc()),
   index('notifications_source_idx').on(table.sourceType, table.sourceId),
@@ -634,6 +636,29 @@ export const agentConnectionProjects = pgTable('agent_connection_projects', {
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
 ]);
 
+/** Restrictive overlay; original connection/OAuth consent remains immutable. */
+export const agentConnectionMcpPolicies = pgTable('agent_connection_mcp_policies', {
+  connectionId: uuid('connection_id').primaryKey().references(() => agentConnections.id, { onDelete: 'cascade' }),
+  version: integer('version').notNull().default(1),
+  enabledCapabilityIds: text('enabled_capability_ids').array().notNull(),
+  enabledEntryIds: text('enabled_entry_ids').array().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  check('agent_connection_mcp_policy_version_check', sql`${table.version} > 0`),
+  check('agent_connection_mcp_capability_array_check', sql`cardinality(${table.enabledCapabilityIds}) <= 128 AND array_position(${table.enabledCapabilityIds}, NULL) IS NULL`),
+  check('agent_connection_mcp_entry_array_check', sql`cardinality(${table.enabledEntryIds}) <= 256 AND array_position(${table.enabledEntryIds}, NULL) IS NULL`),
+]);
+export const agentConnectionMcpProjects = pgTable('agent_connection_mcp_projects', {
+  connectionId: uuid('connection_id').notNull().references(() => agentConnectionMcpPolicies.connectionId, { onDelete: 'cascade' }),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.connectionId, table.projectId] }),
+  foreignKey({ columns: [table.workspaceId, table.connectionId, table.projectId],
+    foreignColumns: [agentConnectionProjects.workspaceId, agentConnectionProjects.connectionId, agentConnectionProjects.projectId] }).onDelete('cascade'),
+]);
+
 // A single immutable OAuth choice per browser session prevents concurrent consent tabs
 // from silently changing which agent and project ceiling receives a token.
 export const agentOauthSelections = pgTable('agent_oauth_selections', {
@@ -753,6 +778,50 @@ export const agentProjectPolicies = pgTable('agent_project_policies', {
   publishedByUserId: text('published_by_user_id').notNull().references(() => authUsers.id, { onDelete: 'restrict' }),
   publishedAt: timestamp('published_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [primaryKey({ columns: [table.projectId, table.revision] })]);
+
+// A person ended an external agent's work on a task (migration 0065, #347 S13). The task, its owner and its co-work
+// units change through their own commands in the same transaction; this is the record of who did it and when.
+export const agentStops = pgTable('agent_stops', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  taskId: uuid('task_id').notNull(),
+  agentId: uuid('agent_id').notNull(),
+  stoppedBy: text('stopped_by').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  unitsStopped: integer('units_stopped').notNull(),
+  stoppedAt: timestamp('stopped_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index('agent_stops_project_idx').on(table.projectId, table.stoppedAt.desc()),
+  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.taskId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }).onDelete('cascade'),
+]);
+
+// An agent's question to a person with ready-made answers (migration 0065, #347 S14). The question is the agent's
+// ordinary message; this adds the options and, once given, the single answer (a chosen option or free text).
+export const agentQuestions = pgTable('agent_questions', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  conversationId: uuid('conversation_id').notNull(),
+  messageId: uuid('message_id').notNull().unique(),
+  taskId: uuid('task_id'),
+  agentId: uuid('agent_id').notNull(),
+  askedUserId: text('asked_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  question: text('question').notNull(),
+  options: jsonb('options').$type<string[]>().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  answeredOption: integer('answered_option'),
+  answerText: text('answer_text'),
+  answeredBy: text('answered_by').references(() => authUsers.id, { onDelete: 'set null' }),
+  answerMessageId: uuid('answer_message_id'),
+  answeredAt: timestamp('answered_at', { withTimezone: true }),
+}, (table) => [
+  index('agent_questions_project_idx').on(table.projectId, table.createdAt.desc()),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.conversationId], foreignColumns: [projectConversations.workspaceId, projectConversations.projectId, projectConversations.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.messageId], foreignColumns: [projectMessages.workspaceId, projectMessages.projectId, projectMessages.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }).onDelete('cascade'),
+]);
 
 // Sketches: thoughts on a map and the links between them (migration 0007, issue #69).
 export const sketches = pgTable('sketches', {
@@ -1354,6 +1423,10 @@ export const notificationPreferences = pgTable('notification_preferences', {
   quietStart: integer('quiet_start').notNull().default(1320),
   quietEnd: integer('quiet_end').notNull().default(420),
   timeZone: text('time_zone').notNull().default('UTC'),
+  // Migration 0072 (#350, F-026 S22): the morning summary and the local day it last went out.
+  summaryEnabled: boolean('summary_enabled').notNull().default(false),
+  summaryAt: integer('summary_at').notNull().default(540),
+  summaryLastOn: date('summary_last_on', { mode: 'string' }),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

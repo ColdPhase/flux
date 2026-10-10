@@ -5,6 +5,7 @@ import { DiscussedTask, MessageObjects } from '../work/inline';
 import type { MessageWorkPreview } from '../work/message-associations';
 import { AgentAuthor, AuthorFace, SourceCitation, clock, day, when } from './messageParts';
 import { MessageFiles } from '../composer/Files';
+import { QuestionCard } from '../agents/QuestionCard';
 
 export type ThreadMode = 'docked' | 'sheet';
 
@@ -78,6 +79,7 @@ export function ThreadRoot({ message, projectId, body, author, agentOwner = null
           </div>
         ) : null}
         {message?.body || !message ? <p>{body}</p> : null}
+        {message ? <QuestionCard projectId={projectId} messageId={message.id} meId={meId} writable={writable} /> : null}
         <MessageFiles files={message?.files} />
         {message?.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
         {message ? <MessageObjects message={message} projectId={projectId} preview={preview} thread={task} threadRow={taskRow} />

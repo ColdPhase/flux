@@ -2,6 +2,7 @@ import type { CoWorkSourceRef } from '@flux/contracts';
 import { ConflictError, InvalidInputError, NotFoundError } from '../access/errors.js';
 import type { CoWorkReviewSeparation } from './admission.js';
 import type { CoWorkContext, CoWorkLease, CoWorkRole } from './claims.js';
+import { stoppedError } from './claims.js';
 import { normalizeCoWorkSource } from './requests.js';
 
 /** The holder's live claim on its own unit at the exact version it last read. */
@@ -104,6 +105,7 @@ export function requireCoWorkUnitTransition(context: CoWorkContext, facts: CoWor
   if (!Number.isFinite(now.getTime())) throw new Error('Missing database wall time');
   if (unit.version !== input.expectedVersion)
     throw new ConflictError('The unit changed; recover current state', 'COWORK_VERSION_CONFLICT');
+  if (unit.state === 'stopped') throw stoppedError();
   if (unit.state !== 'claimed' || unit.generation !== input.generation || !unit.lease || unit.lease.id !== input.leaseId
     || unit.lease.runtimeSessionId !== context.runtimeSessionId || !(unit.lease.expiresAt.getTime() > now.getTime()))
     throw new ConflictError('The claim is no longer live; recover before continuing', 'COWORK_CLAIM_LOST');

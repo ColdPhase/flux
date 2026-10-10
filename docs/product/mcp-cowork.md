@@ -8,7 +8,9 @@ hand-off and live agent states; this contract and the issue table below govern b
 ## One workspace experience, one task
 
 Flux keeps the authoritative task, discussion, result, map, wiki and acceptance
-criteria. The Agents tab is another view of that same work. GitHub supplies
+criteria. The Agents tab is another view of that same work; since 2026-10-09 it also
+holds each task's agent thread, where agents talk about the work
+([CW-2 revision](cowork-workflow.md#a-durable-request-not-a-second-conversation--cw-2)). GitHub supplies
 repositories, branches, commits, PRs and CI facts. Do not create, import, mirror
 or synchronize GitHub Issues as a second backlog. Existing external issue links
 may remain provenance. This product rule does not replace this repository's
@@ -109,7 +111,10 @@ An atomic claim gives one active author for a work unit and a fencing generation
 Review is a separate work unit. Checkpoints contain observable progress, sources,
 tests and next action, not hidden reasoning or a copied model transcript. Targeted
 durable handoffs carry references to the original task/message; they create no
-second chat, wiki or LLM-generated handoff summary. Replies/questions remain
+second chat, wiki or LLM-generated handoff summary. (Revised 2026-10-09 by founder
+direction: agents' work talk goes to the task's agent thread in the Agents tab. That
+thread belongs to the task's record, so it is not a second chat, and people's views get
+outcome notices. See [CW-2](cowork-workflow.md#a-durable-request-not-a-second-conversation--cw-2).) Replies/questions remain
 possible when useful; heartbeats, logs and acknowledgements do not wake models or
 inflate unread counts. Bound retry loops and descendant budgets across delegation.
 
@@ -209,6 +214,68 @@ Preserve repository protections. Do not introduce a trusted Gate/App check as a
 silent replacement for required approvals. Merge/acceptance can proceed under
 explicit standing policy when all applicable gates pass; there is no universal
 human-confirm-every-step rule. Reserved actions still require their authority.
+
+## Stop and questions — F-026 S13 and S14
+
+**Contract, 2026-10-08 (#347).** Two person-facing controls over an external agent's work. Both use the existing
+records (the task, its co-work units, the project conversation, the Inbox); neither adds authority to an agent.
+
+### Stop (S13)
+
+A person ends an agent's current work on one task. Flux does what it can prove: it ends the agent's hold and claim,
+and the agent's next call is told. It cannot kill a local client (see the cancellation rules in CW-3): the Agents view
+says "Stopped by <name>", not "the agent has stopped running".
+
+- **Command.** `POST /api/v1/projects/{projectId}/agent-stops` with `{ taskId, agentId }` (`Idempotency-Key` honoured).
+  The task must be held by that agent now (owner is the agent; open, in progress or blocked), otherwise `409
+  AGENT_NOT_WORKING`. This is how a double tap and a stale view end: nothing happens twice.
+- **Who.** A signed-in person with write access to the project and one of: a project manager, the owner of the agent,
+  or the person who created the task. Anyone else gets `403 STOP_NOT_ALLOWED`; an agent never stops an agent.
+- **Effect, one transaction.**
+  1. The task goes back to nobody: owner cleared, `in_progress` becomes `open` (blocked stays blocked), through the
+     canonical task update, so the version, the history and the `project.work_updated.v1` event are the ordinary ones.
+     Flux does not guess a new owner; the person assigns it again.
+  2. Every unfinished co-work unit of that agent's connections on the task becomes `stopped` (generation and version
+     advance, the lease is cleared), exactly as when a connection is revoked.
+  3. One `agent_stops` row records the task, the agent, who stopped it, when and how many units ended; one
+     `project.agent_stopped.v1` event (ids only) refreshes open views.
+- **The agent is told.** The claim, renew, release, complete, transfer and request tools answer a stopped unit with
+  `COWORK_STOPPED` ("A person stopped this work. Do not continue it; ask in the task thread."), never with a
+  generic lost-claim error, so the next checkpoint or lease renewal sees it. The unit is never claimable again; new
+  work needs a new unit on a task handed to the agent again.
+- **Read.** `GET /api/v1/projects/{projectId}/agent-stops` (project readers) returns the newest 20 stops with names:
+  `{ projectId, stops: [{ id, taskId, taskNumber, taskTitle, agent: {id, name}, stoppedBy: {id, name}, stoppedAt, unitsStopped }] }`.
+- **Own working agents.** `GET /api/v1/working-agents` lists the signed-in person's own agents that hold an in-progress
+  task in a project they can read, for the sidebar card.
+- **UI.** Stop is on the agent's row and panel in Agents while it holds an in-progress task, on the sidebar card
+  when one of the person's own agents works (the sidebar's card steps aside on Home), on Home itself, and in the phone
+  conversation header for the agent that works in that project (S13, #347). The personal assistant's run keeps its own Stop (a different
+  operation, #340). After a stop the panel shows "Stopped by <name> · #12" in Recent.
+
+### Questions with ready answers (S14)
+
+An agent asks a person in a project conversation and offers two to four answers. The question is an ordinary message
+of the agent, so the thread reads the same without the card; the card only adds the one-tap answers.
+
+- **Tool.** `flux_ask_question` under the existing `conversation.reply` operation and grant (a grant naming one
+  conversation allows asking only there). Input: `conversationId`, `question` (1-2000 characters),
+  `options` (2-4 distinct answers, 1-80 characters each) and optionally `askUserId` (default: the agent's owner; the
+  person must read the project). The message body is the question followed by the options as a list; the same
+  message is the card's anchor. `clientCommandId` retries return the stored outcome.
+- **Storage (migration 0065).** `agent_questions` holds the message, the asker, the asked person, the options and,
+  once answered, the chosen option or free text, who answered, the reply message and the time.
+- **Notification.** The asked person gets a `question` Inbox notification (their notification settings for the
+  "Questions to you" reason apply), linking to the message. Nobody else is notified because of the card.
+- **Read.** `GET /api/v1/projects/{projectId}/agent-questions` (project readers) returns the newest 100 questions
+  with their state; the conversation draws a card for each message that has one.
+- **Answer.** `POST /api/v1/agent-questions/{questionId}/answer` with exactly one of `{ optionIndex }` or `{ text }`
+  (1-2000 characters, the free reply). Only the asked person, while they still write in the project, may answer. The
+  chosen option's text (or the free text) is posted as that person's reply in the same conversation. Answering the
+  same way again returns the stored answer without a second reply; a different answer after one was given is
+  `409 QUESTION_ANSWERED`. The agent reads the answer as the next message of the thread (its ordinary reads) and
+  through `flux_list_conversations`; no answer ever grants it anything.
+- **UI.** The card shows the question, the options as buttons, "Reply in your own words" for the free answer, and
+  after answering the chosen reply with who and when. Others see the question without buttons.
 
 ## Delivery and evidence — CO-5
 

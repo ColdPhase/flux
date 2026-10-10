@@ -36,6 +36,7 @@ export * from './events.js';
 export * from './conversation/commands.js';
 export * from './conversation/service.js';
 export * from './agent-connection/connections.js';
+export * from './agent-connection/mcp-policy.js';
 export * from './agent-connection/oauth.js';
 export * from './agent-connection/reads.js';
 export * from './sketches/index.js';
@@ -81,6 +82,8 @@ export * from './agent-connection/grants.js';
 export * from './agent-connection/orientation.js';
 export * from './agent-connection/playbook.js';
 export * from './agent-connection/project-policy.js';
+export * from './agent-connection/agent-stops.js';
+export * from './agent-connection/agent-questions.js';
 export * from './agent-connection/project-agents.js';
 
 export * from './files/ports.js';

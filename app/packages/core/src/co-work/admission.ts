@@ -1,6 +1,7 @@
 import type { CoWorkEnqueueCommand, CoWorkSourceRef } from '@flux/contracts';
 import { ConflictError, InvalidInputError, NotFoundError } from '../access/errors.js';
 import type { CoWorkContext, CoWorkLease, CoWorkRole } from './claims.js';
+import { stoppedError } from './claims.js';
 import { normalizeCoWorkRequest } from './requests.js';
 
 /** The sender's live claim fence for a `cowork.request`; it authorizes queued intent only. */
@@ -55,6 +56,7 @@ export function requireCoWorkAdmission(context: CoWorkContext, facts: CoWorkAdmi
   if (sender.assignmentConnectionId !== context.connectionId || sender.projectId !== context.projectId)
     throw new NotFoundError('Work unit', 'COWORK_UNIT_NOT_FOUND');
   if (!Number.isFinite(now.getTime())) throw new Error('Missing database wall time');
+  if (sender.state === 'stopped') throw stoppedError();
   if (sender.state !== 'claimed' || sender.generation !== input.fence.generation || !sender.lease
     || sender.lease.id !== input.fence.leaseId || sender.lease.runtimeSessionId !== context.runtimeSessionId
     || !(sender.lease.expiresAt.getTime() > now.getTime()))
