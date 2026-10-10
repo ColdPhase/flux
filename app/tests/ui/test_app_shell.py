@@ -252,6 +252,50 @@ class AppShellJourney(unittest.TestCase):
     def save_state(self, page: Page) -> None:
         type(self).state = page.context.storage_state()
 
+    def assert_focused_choice_inside_track(self, page: Page, menu, shot_name: str) -> None:
+        """Keyboard focus on Match system (#435): its focus ring stays inside the track (and on the
+        segment itself), and its label is one line that is never clipped or wider than its segment."""
+        dark = menu.get_by_role("radio", name="Dark", exact=True)
+        system = menu.get_by_role("radio", name="Match system", exact=True)
+        # Start from Dark, whatever the device's current choice, so one ArrowRight reaches Match system.
+        dark.click()
+        expect(dark).to_have_attribute("aria-checked", "true")
+        dark.focus()
+        page.keyboard.press("ArrowRight")
+        expect(system).to_be_focused()
+        expect(system).to_have_attribute("aria-checked", "true")
+        # Measure the resting ring: a transition of the offset would otherwise be read mid-frame.
+        system.evaluate("el => Promise.all(el.getAnimations().map((animation) => animation.finished))")
+        m = system.evaluate("""el => {
+          const track = el.closest('.seg').getBoundingClientRect(), box = el.getBoundingClientRect(), cs = getComputedStyle(el);
+          const width = parseFloat(cs.outlineWidth) || 0, offset = parseFloat(cs.outlineOffset) || 0, grow = width + offset;
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          const text = range.getBoundingClientRect();
+          return {focusVisible: el.matches(':focus-visible'), outlineStyle: cs.outlineStyle, outlineWidth: width, outlineOffset: offset,
+            track: [track.left, track.top, track.right, track.bottom], box: [box.left, box.top, box.right, box.bottom],
+            ring: [box.left - grow, box.top - grow, box.right + grow, box.bottom + grow], text: [text.left, text.right],
+            lines: new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size,
+            scrollWidth: el.scrollWidth, clientWidth: el.clientWidth};
+        }""")
+
+        def inside(inner: list[float], outer: list[float], slack: float) -> bool:
+            return inner[0] >= outer[0] - slack and inner[1] >= outer[1] - slack and inner[2] <= outer[2] + slack and inner[3] <= outer[3] + slack
+
+        self.assertTrue(m["focusVisible"], m)
+        self.assertNotEqual(m["outlineStyle"], "none", m)
+        self.assertGreaterEqual(m["outlineWidth"], 2, m)
+        self.assertTrue(inside(m["ring"], m["track"], 1), m)
+        self.assertTrue(inside(m["ring"], m["box"], 0.5), m)
+        self.assertTrue(inside(m["box"], m["track"], 1), m)
+        self.assertEqual(m["lines"], 1, m)
+        self.assertLessEqual(m["scrollWidth"], m["clientWidth"], m)
+        self.assertTrue(m["text"][0] >= m["box"][0] - 0.5 and m["text"][1] <= m["box"][2] + 0.5, m)
+        shot(page, shot_name)
+        dark.focus()
+        page.keyboard.press("ArrowLeft")
+        expect(dark).to_have_attribute("aria-checked", "true")
+
     # ---------------------------------------------------------------- sign-up and session
 
     def test_01_protected_route_redirects_to_sign_in(self) -> None:
@@ -675,6 +719,18 @@ class AppShellJourney(unittest.TestCase):
         self.assertGreaterEqual(seg["widths"][2] + 1, seg["widths"][0], seg)
         self.assertAlmostEqual(seg["top"], seg["bottom"], delta=0.5, msg=seg)
         self.assertAlmostEqual(seg["left"], seg["right"], delta=0.5, msg=seg)
+        # Keyboard focus on Match system (#435) in the full menu at 1440x900, then at the founder's
+        # 1568x751 window in light, and in the collapsed rail's menu in dark.
+        self.assert_focused_choice_inside_track(page, menu, "desktop-1440-account-focus-dark")
+        window = self.page(viewport={"width": 1568, "height": 751})
+        window.goto("/")
+        window.get_by_role("button", name=re.compile(NAME)).click()
+        self.assert_focused_choice_inside_track(window, window.get_by_role("dialog", name="Account"), "desktop-1568-account-focus-light")
+        rail = self.page(viewport={"width": 1568, "height": 751}, dark=True)
+        rail.goto("/")
+        rail.get_by_role("button", name="Collapse sidebar").click()
+        rail.get_by_role("button", name=re.compile(NAME)).click()
+        self.assert_focused_choice_inside_track(rail, rail.get_by_role("dialog", name="Account"), "desktop-1568-rail-account-focus-dark")
         shot(page, "desktop-1440-account-dark")
         page.keyboard.press("Escape")
         expect(menu).to_have_count(0)

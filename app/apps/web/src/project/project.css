@@ -19,12 +19,14 @@
 
 /* Header meta reads as quiet secondary text on the title row's line (#431): no filled pill on
    hover, the icon centred on the text and the same size as the audience line beside it. */
-.top--project .ws-seg { gap: 5px; min-height: 22px; min-width: 0; flex: 0 1 auto; max-width: 100%; margin: 0; padding: 0 2px; color: var(--t2); line-height: inherit; }
+.top--project .ws-seg { gap: 5px; min-height: 22px; flex: none; max-width: 100%; margin: 0; padding: 0 2px; color: var(--t2); line-height: inherit; }
 .top--project .ws-seg svg { width: 12px; height: 12px; }
 .top--project .ws-seg:hover { background: none; color: var(--t1); }
 .top--project .ws-seg:hover span:last-child { text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--line); }
 .top--project .ws-seg--need { color: var(--t1); }
-.top--project .ws-seg span:last-child { white-space: normal; overflow-wrap: anywhere; }
+/* One line (#435): the segment never shrinks, so the state line wraps as a whole onto its own row; a
+   segment wider than its container ellipsises instead of breaking "1 completed task" over two lines. */
+.top--project .ws-seg span:last-child { white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .top--project .ws-state--empty { overflow: hidden; text-overflow: ellipsis; }
 .top--project .top__right { padding-top: 2px; }
 

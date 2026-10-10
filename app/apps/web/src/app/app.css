@@ -232,9 +232,13 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
    label needs it, so "Match system" never crowds the track's end and the selected pill keeps its inset. */
 .appearance .seg { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(max-content, 1fr); }
 .appearance .seg__b { min-width: max-content; padding: 0 10px; }
-/* Keep complete appearance choices in their own targets as the compact account's text grows. */
+/* The focus ring is drawn inside each choice (#435): a constant inset offset, so focus never animates
+   the ring from the global 4 px offset past the track's edge. */
+.appearance .seg__b, .appearance .seg__b:focus-visible { outline-offset: -2px; }
+/* Keep complete appearance choices in their own targets as the compact account's text grows; a choice
+   wraps to a new row as a whole and its label never breaks or shrinks below its width (#435). */
 .me--compact .appearance .seg { display: flex; flex-wrap: wrap; }
-.me--compact .appearance .seg__b { flex: 1 1 auto; min-width: 0; white-space: normal; }
+.me--compact .appearance .seg__b { flex: 1 1 auto; min-width: max-content; white-space: nowrap; }
 
 
 

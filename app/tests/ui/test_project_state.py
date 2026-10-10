@@ -132,6 +132,19 @@ class ProjectStateJourney(unittest.TestCase):
         page.reload()
         expect(state).to_contain_text("1 completed task · 1 not pursued")
         self.assert_text_is_unclipped(state.locator('[data-seg="history"] > span'))
+        # The founder's desktop windows (#435): the header meta stays on one line, never "1 completed /
+        # task". The text element is exactly one line tall (its computed line-height).
+        for width, height in ((1440, 900), (1568, 751)):
+            with self.subTest(width=width, height=height):
+                page.set_viewport_size({"width": width, "height": height})
+                page.reload()
+                text = state.locator('[data-seg="history"] span:last-child')
+                expect(text).to_contain_text("1 completed task")
+                line = text.evaluate("""el => { const cs = getComputedStyle(el);
+                  return {height: el.getBoundingClientRect().height, lineHeight: parseFloat(cs.lineHeight), whiteSpace: cs.whiteSpace}; }""")
+                self.assertAlmostEqual(line["height"], line["lineHeight"], delta=1, msg=line)
+                self.assertEqual(line["whiteSpace"], "nowrap", line)
+        page.set_viewport_size({"width": 1280, "height": 800})
         shot(page, "136-state-retained-history-desktop")
 
     def test_03_phone_and_tablet_readers_share_current_counts_and_reachable_details_without_write_access(self):
