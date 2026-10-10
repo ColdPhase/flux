@@ -60,6 +60,9 @@ issue.
 
 ## Make a change
 
+You need Git, Docker Engine (or Docker Desktop) with Compose, and Python 3 for the
+repository checks. You do not need Node.js or PostgreSQL on your computer.
+
 1. Fork [ColdPhase/flux](https://github.com/ColdPhase/flux) to your GitHub account.
 2. Clone your fork and create a branch from the latest `main`:
 
@@ -74,6 +77,7 @@ issue.
 3. Start the application with `./flux up` (or `./flux dev` for hot reload) and, for
    sample data with two logins, `./flux demo`, as described in the
    [application foundation guide](development/application-foundation.md#one-command-start-flux-issue-72).
+   A documentation-only change does not need the application running.
 
 4. Make a focused change. Put code in the layer that owns it
    ([architecture](development/architecture.md)) and tests under `app/tests/app`.
@@ -102,6 +106,23 @@ or `FLUX_UI_PORT`/`FLUX_UI_MAILPIT_PORT` when the default ports are taken. Run o
 at a time on a small machine.
 [Architecture § Tests](development/architecture.md#tests) says which check runs which tests
 and where a new test goes.
+
+While you work, you can run only the tests you changed. Run the full suites before you
+mark the PR ready for review.
+
+```sh
+# One browser module, or Module.Class.test, from app/tests/ui
+./scripts/check_ui.sh test_docs
+
+# One core test file (app/tests/app/*-core.test.ts); these need no database
+docker build --file docker/Dockerfile --target test --tag flux-unit app
+docker run --rm --network none flux-unit node_modules/.bin/tsx --test tests/app/push-core.test.ts
+docker image rm flux-unit
+```
+
+Other API test files need the database and the API, so for now they run only in
+`./scripts/check_application.sh`
+([#424](https://github.com/ColdPhase/flux/issues/424) adds a one-file option).
 
 Repository and documentation checks:
 
@@ -138,6 +159,11 @@ Changes to `main` go through pull requests. A maintainer other than the PR autho
 must approve the change and review conversations must be resolved. New commits
 may require another review. Approved changes are merged
 with squash merging.
+
+Response goal: a maintainer gives a first answer to an issue or PR from an outside
+contributor within 2 working days. The answer can be a review, a question, or a
+decision about the direction. If you have heard nothing after that, mention a
+maintainer in a comment.
 
 Please keep each PR focused on one problem. Updating documentation alongside a
 behavior change helps other contributors understand and maintain it. If people or
