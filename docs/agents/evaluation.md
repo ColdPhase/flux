@@ -36,6 +36,24 @@ For documentation-only changes, use relevant link, configuration, and structural
 checks. Do not run a browser suite or introduce application dependencies merely
 to validate a documentation patch.
 
+## Evidence size
+
+Committed evidence is downloaded by every clone, forever ([#319]). Keep it small:
+
+- Prefer WebP, or PNG compressed losslessly, for screenshots. Crop to the region
+  the criterion concerns instead of committing full 1440p or 4K pages.
+- Keep JSON, logs and traces to the excerpt that proves the result; gzip larger
+  machine output.
+- Put bulk evidence (recordings, full screenshot matrices, raw reports) in a CI
+  workflow artifact and link the run from the report or PR.
+
+`python3 scripts/check_agent_setup.py` fails on any file under `docs/` above
+400 KB and any screenshot or recording there above 300 KB. Existing large files
+are listed with their sizes in `scripts/docs-size-allowlist.txt` and may not
+grow. A new entry needs the evaluator's explicit agreement in the PR.
+
+[#319]: https://github.com/ColdPhase/flux/issues/319
+
 ## Verdicts
 
 | Result | Meaning |
