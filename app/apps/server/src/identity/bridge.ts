@@ -43,7 +43,8 @@ export interface AuthBridgeOptions {
   oauthRequests: OauthRequests;
   signIns: SignIns;
   /** With the standing check on: the silent offline-access step of provider sign-in (S1, revised 2026-10-09). */
-  offlineStep?: OfflineStep | null;  /** Reads the cookie's session, which ends it when the provider's confirmation lapsed (F-024 S2, #312). */
+  offlineStep?: OfflineStep | null;
+  /** Reads the cookie's session, which ends it when the provider's confirmation lapsed (F-024 S2, #312). */
   sessions: Pick<SessionResolver, 'resolveSession'>;
 }
 

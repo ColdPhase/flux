@@ -47,6 +47,13 @@ async function hold(context: ReturnType<typeof setup>, query = 'state=s1&code=c1
 }
 
 describe('the silent offline-access step', () => {
+  test('a malformed percent escape in the step cookie is treated as no pending step', async () => {
+    const context = setup();
+    assert.deepEqual(await context.step.intercept(context.callback(''), '__Secure-flux.idp_offline_step=%'), { kind: 'pass' });
+    const local = setup('http://127.0.0.1:18095');
+    assert.deepEqual(await local.step.intercept(local.callback(''), 'flux.idp_offline_step=%'), { kind: 'pass' });
+  });
+
   test('a sign-in callback is held and the browser goes back to the provider for offline_access only, silently', async () => {
     const context = setup();
     const { location, cookie } = await hold(context);
