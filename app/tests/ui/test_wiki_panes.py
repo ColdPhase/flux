@@ -76,7 +76,8 @@ WIRING_BODY = """Power the strip from the 12 V supply and the board from USB. Th
 """
 IMPORTED = "# Sensor bench notes\n\nThe ToF sensor caught **96%** of gestures at 5 lux.\n\n- Camera: 38%\n- ToF: 96%\n"
 
-# The 3px dot of the open page against its own tint (a non-text mark, WCAG 1.4.11).
+# The open page is marked by its tint, weight and aria-current only (#431): no generated ::before box, so no dot.
+# The selection's text contrast and focus ring are measured separately (WCAG 1.4.3 and 1.4.11).
 DOT = r"""(selector) => {
   const el = document.querySelector(selector);
   const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
@@ -238,6 +239,22 @@ class WikiPanesJourney(unittest.TestCase):
         expect(index.get_by_text("Pages", exact=True)).to_be_visible()
         self.assertAlmostEqual(index.bounding_box()["width"], 220, delta=1)
         self.assertLessEqual(page.locator(".wiki-doc").bounding_box()["width"], 776.5)
+        # #431 retains one-line/ellipsis, full names and no dot; final Pages rows have no pictogram.
+        marker = page.evaluate(DOT, '.wiki-page[aria-current="page"]')
+        self.assertEqual(marker["content"], "none", "no pseudo-element dot beside the open page's label (#431)")
+        rows = items.evaluate_all("""els => els.map(e => {
+            const r = e.getBoundingClientRect(), t = e.querySelector('.wiki-page__t'), tr = t.getBoundingClientRect(), style = getComputedStyle(t);
+            return {h: r.height, lines: Math.round(tr.height / parseFloat(style.lineHeight)), title: e.title, text: t.textContent,
+                iconCount: e.querySelectorAll('svg').length, labelWithin: tr.left >= r.left && tr.right <= r.right,
+                rowFits: e.scrollWidth <= e.clientWidth, overflow: style.overflow, ellipsis: style.textOverflow};
+        })""")
+        for row in rows:
+            self.assertEqual(row["lines"], 1, row)
+            self.assertEqual(row["title"], row["text"], row)
+            self.assertEqual(row["iconCount"], 0, "the fixed final Pages list uses text-only rows")
+            self.assertTrue(row["labelWithin"] and row["rowFits"], row)
+            self.assertEqual((row["overflow"], row["ellipsis"]), ("hidden", "ellipsis"), row)
+        self.assertLessEqual(max(row["h"] for row in rows) - min(row["h"] for row in rows), 0.5, rows)
         title = page.get_by_role("heading", level=2, name=LAMP)
         self.assertEqual(title.evaluate("e => [getComputedStyle(e).fontSize, getComputedStyle(e).fontWeight]"), ["32px", "600"])
         prose = page.locator(".doc-prose")
@@ -736,6 +753,8 @@ class WikiPanesJourney(unittest.TestCase):
                 # Icon buttons and the underline search boundary are non-text marks (3:1).
                 self.measure(page, ".wiki-bar .ui-icon-btn", 3)
                 self.measure(page, ".wiki-search svg", 3)
+                marker = page.evaluate(DOT, '.wiki-page[aria-current="page"]')
+                self.assertEqual(marker["content"], "none", f"no pseudo-element dot beside the open page's label in {theme} (#431)")
                 search = self.index(page).get_by_label("Search the wiki")
                 search.fill("lamp")
                 self.measure(page, ".wiki-search input")
