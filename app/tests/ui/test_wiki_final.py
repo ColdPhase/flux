@@ -163,6 +163,9 @@ class WikiFinal(unittest.TestCase):
                 self.assertLessEqual(title["y"] - page.locator(".wiki").bounding_box()["y"], 80,
                                      "Wiki metadata does not add a second row inside the reading surface")
                 self.assertLessEqual(header.bounding_box()["height"], 60, "the project header stays compact")
+                project_title = header.get_by_role("heading", level=1, name="Community garden sensors", exact=True)
+                self.assertLessEqual(project_title.evaluate("e => e.scrollWidth - e.clientWidth"), 1,
+                                     "the project identity stays complete beside the single overflow")
                 more.click()
                 expect(page.get_by_role("dialog", name="Page actions")).to_be_visible()
                 page.keyboard.press("Escape")
@@ -221,6 +224,23 @@ class WikiFinal(unittest.TestCase):
         dialog.get_by_role("button", name="See who has access", exact=True).click()
         expect(dialog).to_have_count(0)
         expect(page.locator("#details").get_by_role("heading", name="Who can see this", exact=True)).to_be_visible()
+        page.get_by_role("button", name="Close details", exact=True).click()
+        expect(page.locator("header.top").get_by_role("button", name="More", exact=True)).to_be_focused()
+
+    def test_phone_overflow_keeps_project_controls_available(self) -> None:
+        page = self.open(PHONE, "light", touch=True)
+        header = page.locator("header.top")
+        more = header.get_by_role("button", name="More", exact=True)
+        more.click()
+        dialog = page.get_by_role("dialog", name="Page actions")
+        dialog.get_by_role("button", name="Together", exact=True).click()
+        expect(dialog.get_by_role("region", name="Live sessions", exact=True)).to_contain_text("Live sessions are not available here")
+        self.assertTrue(page.evaluate("document.documentElement.scrollWidth <= innerWidth"))
+        dialog.get_by_role("button", name="Details", exact=True).click()
+        expect(dialog).to_have_count(0)
+        expect(page.locator("#details").get_by_role("heading", name="Who can see this", exact=True)).to_be_visible()
+        page.get_by_role("button", name="Close details", exact=True).click()
+        expect(more).to_be_focused()
 
     def test_table_regions_never_reparse_literal_attribute_text(self) -> None:
         page = self.open(DESKTOP, "light")

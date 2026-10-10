@@ -12,6 +12,9 @@
 .top__meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 25px; min-width: 0; overflow: hidden; margin: -4px; padding: 4px; }
 .top__meta-slot:empty { display: none; }
 .top__meta:has(> .top__meta-slot:not(:empty)) > .top__audience { display: none; }
+/* A compact view offers the project controls in its single labelled overflow. */
+header.top:has(.wiki-header-actions) .top__right > .lv-entry,
+header.top:has(.wiki-header-actions) .top__right > .top__details { display: none; }
 .top__audience { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; max-width: 55%; min-width: 0; min-height: 22px; margin-left: -4px; padding: 0 4px; border-radius: var(--r-sm); font-size: 10.5px; color: var(--t2); white-space: normal; transition: var(--tr); }
 .top__audience > span:not(.ui-vh) { min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .top__audience svg { flex: none; width: 10px; height: 10px; }

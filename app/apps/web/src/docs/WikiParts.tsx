@@ -4,6 +4,7 @@ import { ApiError } from '../api/client';
 import { Button, Icon, Spinner, duration, play, trapTab, useToast } from '../ui';
 import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
+import { LiveEntry } from '../live/LiveEntry';
 import { audienceLine, useProjectShell } from '../project/data';
 import { fetchProjectExport } from './api';
 import { pageFileName, pageMarkdown, saveBlob } from './markdown-file';
@@ -63,8 +64,20 @@ export function PageMenu({ history, sharePath, shareVersion, shown }: {
       {history}
       <ShareBody path={sharePath} version={shareVersion} />
       <DownloadBody shown={shown} />
+      <ProjectActions />
     </Popover>
   );
+}
+
+function ProjectActions() {
+  const close = useContext(ClosePopover);
+  const { openDetails } = useShellActions();
+  return <>
+    <LiveEntry variant="menu" onAction={() => close()} />
+    <button type="button" className="wiki-pop__item" onClick={() => { close(); openDetails('place'); }}>
+      <Icon name="panel" /><span><b>Details</b><small>Project, goal and people</small></span>
+    </button>
+  </>;
 }
 
 function FocusToggle() {
@@ -157,7 +170,7 @@ function ShareBody({ path, version }: { path: string; version: number | null }) 
         <Button variant="secondary" icon={copied === 'yes' ? 'check' : 'link'} onClick={() => void copy()} data-autofocus>{copied === 'yes' ? 'Copied' : 'Copy link'}</Button>
       </div>
       <p className="wiki-pop__status" role="status">{copied === 'yes' ? 'Link copied.' : copied === 'no' ? `The browser did not allow copying. The link is selected: press ${isMac ? '⌘ C' : 'Ctrl C'}.` : ''}</p>
-      <Button variant="link" className="wiki-pop__more" onClick={() => { close(false); openDetails('place'); }}>See who has access</Button>
+      <Button variant="link" className="wiki-pop__more" onClick={() => { close(); openDetails('place'); }}>See who has access</Button>
     </>
   );
 }
