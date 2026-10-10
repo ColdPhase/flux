@@ -24,6 +24,7 @@ import { useNeedsYou } from '../returns/useNeedsYou';
 import { WorkReadProvider, useProjectWorkSummary } from '../work/WorkReadContext';
 import { OverviewContext } from '../project/OverviewContext';
 import { remember, remembered } from './remembered';
+import { ProjectAgentStop } from './WorkingAgent';
 
 const lastConversationPath = (userId: string, projectId: string) => remembered('conversation', userId, projectId) ?? `/projects/${projectId}`;
 /** The Tasks view last chosen in this project (#136), e.g. `?status=blocked&show=mine`. */
@@ -422,6 +423,8 @@ function AppLayoutContent() {
           <div className="top__right" data-shift>
             {/* A view can put one quiet action here (a DM's Select, #96). */}
             <span className="top__actions" ref={setActionSlot} />
+            {/* On the phone a working agent of the person's own stays one tap away in its conversation (S13). */}
+            {phone && activeProject && /^\/projects\/[^/]+\/conversations\//.test(location.pathname) ? <ProjectAgentStop projectId={activeProject.id} /> : null}
             {activeProject ? <LiveEntry /> : null}
             {/* The inbox and its settings have nothing to show in Details. */}
             {/* Labelled on every size (#264: icons alone left people unsure what to tap). */}

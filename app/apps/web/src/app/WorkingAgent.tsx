@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Link } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import type { AssistantRun, OwnWorkingAgent } from '@flux/contracts';
 import { useStreamEvents } from '../api/stream';
 import { listOwnRuns, stopRun } from '../assistant/api';
@@ -117,11 +117,10 @@ function useOwnWorkingAgents(identity: string) {
  * A working agent is always visible with Stop (S13): the person's own external agent, with the task it works on. Stop is the
  * project's own command (`POST agent-stops`); the card goes away when the read after it no longer finds the agent working.
  */
-function OwnAgentCard({ item, compact, onChanged }: { item: OwnWorkingAgent; compact: boolean; onChanged: () => void }) {
+/** Stops one own external agent on its task; the shared path for the sidebar card, Home and the phone conversation header. */
+function useStopOwnAgent(item: OwnWorkingAgent, onChanged: () => void) {
   const toast = useToast();
   const [stopping, setStopping] = useState(false);
-  const label = `${item.agent.name} is working on #${item.task.number}`;
-  const destination = `/projects/${item.task.projectId}/agents`;
   const stop = async () => {
     if (stopping) return;
     setStopping(true);
@@ -132,6 +131,13 @@ function OwnAgentCard({ item, compact, onChanged }: { item: OwnWorkingAgent; com
       toast({ message: stopFailure(cause), tone: 'danger' });
     } finally { setStopping(false); onChanged(); }
   };
+  return { stopping, stop };
+}
+
+function OwnAgentCard({ item, compact, onChanged }: { item: OwnWorkingAgent; compact: boolean; onChanged: () => void }) {
+  const { stopping, stop } = useStopOwnAgent(item, onChanged);
+  const label = `${item.agent.name} is working on #${item.task.number}`;
+  const destination = `/projects/${item.task.projectId}/agents`;
   const hue = agentHue(item.agent.id);
   return (
     <div className={`agentlive agentlive--agent${compact ? ' agentlive--compact' : ''}`} role="status" aria-label={label} data-agent={item.agent.id}>
@@ -158,6 +164,8 @@ function OwnAgentCard({ item, compact, onChanged }: { item: OwnWorkingAgent; com
 export function WorkingAgent({ compact = false }: { compact?: boolean }) {
   const { me } = useShellData();
   const agents = useOwnWorkingAgents(me.user.id);
+  // Home lists every working agent itself (HomeWorkingAgents), so the sidebar card steps aside there.
+  const onHome = useLocation().pathname === '/';
   // Several agents at once: online ones first; the card shows the first with how many more are online, so the sidebar never grows.
   const ordered = [...agents.items.filter((item) => item.online), ...agents.items.filter((item) => !item.online)];
   const first = ordered[0];
@@ -165,7 +173,7 @@ export function WorkingAgent({ compact = false }: { compact?: boolean }) {
   return (
     <>
       <WorkingAssistant compact={compact} />
-      {first ? (
+      {first && !onHome ? (
         <>
           <OwnAgentCard item={first} compact={compact} onChanged={agents.reload} />
           {onlineCount > 1 && !compact ? <p className="agentlive__more">+{onlineCount - 1} more working</p> : null}
@@ -217,5 +225,36 @@ function WorkingAssistant({ compact = false }: { compact?: boolean }) {
       </div>, document.body,
     ) : null}
     </>
+  );
+}
+
+/** Home's own list of the person's working external agents, each with Stop (S13), so Home shows them at every width. */
+export function HomeWorkingAgents() {
+  const { me } = useShellData();
+  const agents = useOwnWorkingAgents(me.user.id);
+  if (!agents.items.length) return null;
+  return (
+    <section className="home-agents" aria-label="Your agents working now">
+      {agents.items.map((item) => <OwnAgentCard key={item.task.id} item={item} compact={false} onChanged={agents.reload} />)}
+    </section>
+  );
+}
+
+/** The phone conversation header's Stop (S13): the person's own external agent that works in this project, if one does. */
+export function ProjectAgentStop({ projectId }: { projectId: string }) {
+  const { me } = useShellData();
+  const agents = useOwnWorkingAgents(me.user.id);
+  const item = agents.items.find((candidate) => candidate.task.projectId === projectId);
+  return item ? <HeaderAgentStop item={item} onChanged={agents.reload} /> : null;
+}
+
+function HeaderAgentStop({ item, onChanged }: { item: OwnWorkingAgent; onChanged: () => void }) {
+  const { stopping, stop } = useStopOwnAgent(item, onChanged);
+  const label = `Stop ${item.agent.name}`;
+  return (
+    <button type="button" className="agentlive__stop" aria-label={label} title={stopping ? 'Stopping…' : label}
+      disabled={stopping} onClick={() => void stop()}>
+      <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><rect width="10" height="10" rx="2" fill="currentColor" /></svg>
+    </button>
   );
 }

@@ -284,7 +284,7 @@ class StopAndQuestions(unittest.TestCase):
         self.assertEqual(sent, [{"text": "Per bed, but start with the north one"}])
 
 
-    def test_09_stop_offers_hand_back(self) -> None:
+    def test_11_stop_offers_hand_back(self) -> None:
         # Hand back (#347 P2-4): after Stop the toast offers to give the task back to the agent; Jonas is offered neither.
         self.new_working_task("Water the seedlings at dawn", "fourth")
         page = self.page("ada")
@@ -300,6 +300,61 @@ class StopAndQuestions(unittest.TestCase):
         jonas.goto(f"/projects/{self.ids['project']}/agents")
         expect(jonas.locator(f'.agents-row[data-agent="{self.ids["agent"]}"]')).to_be_visible()
         expect(jonas.get_by_role("button", name=re.compile("^(Stop|Hand back)"))).to_have_count(0)
+    def test_09_home_lists_the_working_agent_with_stop_at_every_width(self) -> None:
+        """AC-3: Home has its own Stop; the sidebar card steps aside there so the agent is listed once."""
+        title = "Log the soil moisture at dawn"
+        self.new_working_task(title, "fourth")
+        number = self.task("fourth")["number"]
+        for phone in (False, True):
+            page = self.page("ada", phone=phone)
+            page.goto("/")
+            expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+            home = page.get_by_role("region", name="Your agents working now")
+            expect(home.locator(".agentlive--agent")).to_contain_text(f"#{number} · {title}")
+            expect(page.locator(".agentlive--agent")).to_have_count(1)
+            stop = home.get_by_role("button", name="Stop Claude Code agent")
+            expect(stop).to_be_visible()
+            if phone:
+                overflow = page.evaluate("() => document.documentElement.scrollWidth - document.documentElement.clientWidth")
+                self.assertLessEqual(overflow, 0, "no horizontal page scroll at 390px")
+                box = stop.bounding_box()
+                assert box
+                self.assertGreaterEqual(box["height"], 44)
+                self.assertGreaterEqual(box["width"], 44)
+                shot(page, "stop-home-phone")
+                stop.tap()
+            else:
+                shot(page, "stop-home-desktop")
+                stop.click()
+            expect(page.get_by_text(f"Stopped Claude Code agent on #{number}")).to_be_visible()
+            expect(page.locator(".agentlive--agent")).to_have_count(0)
+            self.assertIsNone(self.task("fourth")["owner"])
+            # Restore the agent's hold so the next width starts from a working agent.
+            if not phone:
+                title = "Log the soil moisture at dusk"
+                self.new_working_task(title, "fourth")
+                number = self.task("fourth")["number"]
+
+    def test_10_phone_conversation_header_stops_the_working_agent(self) -> None:
+        """AC-3: on the phone the conversation header carries Stop for the agent that works in that project."""
+        self.new_working_task("Water the north bed", "fifth")
+        number = self.task("fifth")["number"]
+        pid, conversation_id = self.ids["project"], self.question["conversation"]
+        page = self.page("ada", phone=True)
+        page.goto(f"/projects/{pid}/conversations/{conversation_id}")
+        header_stop = page.locator(".top").get_by_role("button", name="Stop Claude Code agent")
+        expect(header_stop).to_be_visible()
+        overflow = page.evaluate("() => document.documentElement.scrollWidth - document.documentElement.clientWidth")
+        self.assertLessEqual(overflow, 0, "no horizontal page scroll at 390px")
+        box = header_stop.bounding_box()
+        assert box
+        self.assertGreaterEqual(box["height"], 44)
+        self.assertGreaterEqual(box["width"], 44)
+        shot(page, "stop-conversation-header-phone")
+        header_stop.tap()
+        expect(page.get_by_text(f"Stopped Claude Code agent on #{number}")).to_be_visible()
+        expect(page.locator(".top").get_by_role("button", name="Stop Claude Code agent")).to_have_count(0)
+        self.assertIsNone(self.task("fifth")["owner"])
 
 
 if __name__ == "__main__":
