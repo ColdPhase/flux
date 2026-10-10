@@ -208,7 +208,7 @@
 .doc-decision__t b { font-weight: 500; }
 .doc-decision__title { color: var(--t2); }
 .doc-decision__meta { font-size: var(--fs-xs); color: var(--t3); white-space: nowrap; }
-.doc-ref--missing { color: var(--t3); text-decoration: underline dashed var(--line2); text-underline-offset: 3px; }
+.doc-ref--missing { color: var(--t3); text-decoration: none; }
 .doc-ref--missing::after { content: " (not available)"; font-size: var(--fs-xs); }
 
 /* Where this knowledge comes from and is used: a tail under a rule. */
