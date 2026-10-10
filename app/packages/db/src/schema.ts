@@ -73,6 +73,8 @@ export const authAccounts = pgTable('auth_accounts', {
   refreshTokenExpiresAt: timestamp('refresh_token_expires_at', { withTimezone: true }),
   scope: text('scope'),
   password: text('password'),
+  /** When the identity provider last confirmed this identity (migration 0071, #312); null for a password account. */
+  confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [

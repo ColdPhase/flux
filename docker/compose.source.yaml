@@ -109,6 +109,8 @@ services:
       FLUX_OIDC_CLIENT_ID: ${FLUX_OIDC_CLIENT_ID:-}
       FLUX_OIDC_CLIENT_SECRET_FILE: /run/secrets/flux_oidc_client_secret
       FLUX_OIDC_LABEL: ${FLUX_OIDC_LABEL:-}
+      # How long the provider's last confirmation of a person keeps their access, 1h to 30d (F-024 S2); empty is 7d.
+      FLUX_OIDC_CONFIRMATION_MAX_AGE: ${FLUX_OIDC_CONFIRMATION_MAX_AGE:-}
       # Standing check of the person's account at the provider (F-024 S4, #311).
       FLUX_OIDC_STANDING: ${FLUX_OIDC_STANDING:-refresh}
       FLUX_OIDC_STANDING_INTERVAL_SECONDS: ${FLUX_OIDC_STANDING_INTERVAL_SECONDS:-900}

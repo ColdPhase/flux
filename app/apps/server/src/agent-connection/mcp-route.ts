@@ -4,13 +4,14 @@ import { createMcpHandler } from '@modelcontextprotocol/server';
 import { toNodeHandler } from '@modelcontextprotocol/node';
 import type { Database } from '@flux/core';
 import type { FluxAuth } from '../identity/auth.js';
+import type { Confirmation } from '../identity/confirmation.js';
 import { createFluxMcpServer } from './mcp-tools.js';
 import { signInAgainMessage, type IdpStanding } from '../identity/standing.js';
 import { createAgentConnectionStore } from './store.js';
 
 /** The only remote MCP entry point. A new tool server is bound to each verified bearer request. */
 export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxAuth, publicOrigin: string,
-  standing: { checker: Pick<IdpStanding, 'stands'>; label: string } | null = null) {
+  standing: { checker: Pick<IdpStanding, 'stands'>; label: string } | null = null, confirmation?: Confirmation, label = 'your identity provider') {
   const connections = createAgentConnectionStore(db);
   const handleVerified = async (request: Request, token: Record<string, unknown>) => {
     const ownerUserId = token.flux_owner_user_id;
@@ -21,10 +22,13 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
         status: 403, headers: { 'content-type': 'application/json' },
       });
     }
-    // The owner's account must still stand at the identity provider, whatever the bearer (S4, #311). This reads
-    // the stored state, so an outage at the provider adds no latency here. Nothing is revoked: the grant stays.
-    if (standing && !await standing.checker.stands(ownerUserId)) {
-      const description = signInAgainMessage(standing.label);
+    // The owner's account must still stand at the identity provider, whatever the bearer (S4, #311), and the
+    // provider's confirmation must be within FLUX_OIDC_CONFIRMATION_MAX_AGE (S2, #312). Both read stored state,
+    // so an outage at the provider adds no latency here. Nothing is revoked: the grant stays, and a client
+    // that authorizes again through the provider finds the connection it held chosen.
+    const refused = !!standing && !await standing.checker.stands(ownerUserId) || !!await confirmation?.lapsed(ownerUserId);
+    if (refused) {
+      const description = signInAgainMessage(standing?.label ?? label);
       return new Response(JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message: description }, id: null }), { status: 401, headers: {
         'content-type': 'application/json', 'cache-control': 'no-store',
         'www-authenticate': `Bearer resource_metadata="${publicOrigin}/.well-known/oauth-protected-resource/mcp", error="invalid_token", error_description="${description}"`,

@@ -10,7 +10,7 @@ import { db, insertedHuman, pool } from './support/db.js';
 // database and a scripted provider. The Keycloak-backed run is tests/app/e2e/oidc-mcp.e2e.ts (scripts/check_oidc.sh).
 const provider = () => `oidc-${randomUUID().slice(0, 12)}`;
 const config = (providerId: string, standing: 'refresh' | 'off' = 'refresh'): OidcConfig => ({
-  providerId, issuer: 'http://idp.test/realms/flux', clientId: 'flux', clientSecret: 'client-secret-xyz', label: 'Acme "login"', standing, standingIntervalMs: 900_000,
+  providerId, issuer: 'http://idp.test/realms/flux', clientId: 'flux', clientSecret: 'client-secret-xyz', label: 'Acme "login"', standing, standingIntervalMs: 900_000, confirmationMaxAgeMs: 7 * 24 * 3_600_000,
 });
 const authSecret = 'a'.repeat(40);
 
