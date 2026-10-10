@@ -239,16 +239,23 @@ test('confirmed surrogate splits retain original provenance and accept public ch
   assert.equal(digest(h.state.nodes), immutable); assert.equal(h.state.sequence, 2);
 });
 
-test('a peer insertion inside a surrogate establishes only that public split transformation', async (t) => {
-  const h = harness(t); const a = h.client('actor-a');
-  await h.accept(a, capture(a.doc, () => a.text.insert(0, '🙂')));
-  const b = h.client('actor-b');
-  await h.accept(b, capture(b.doc, () => b.text.insert(1, 'X')));
-  assert.equal(h.state.body, '\ufffdX\ufffd'); assert.equal(h.state.nodes[0].text, '🙂');
-  const before = digest(h.state.journal);
-  const checkpoint = await h.accept(b, Y.encodeStateAsUpdate(b.doc));
-  assert.equal(checkpoint.receiptOnly, true); assert.equal(digest(h.state.journal), before);
-});
+// Nodes are sorted by replica clientID, which Yjs draws at random, so the test covers both orders explicitly
+// instead of assuming which replica's node comes first.
+for (const order of ['peer clientID below the author', 'peer clientID above the author']) {
+  test(`a peer insertion inside a surrogate establishes only that public split transformation (${order})`, async (t) => {
+    const h = harness(t); const a = h.client('actor-a');
+    await h.accept(a, capture(a.doc, () => a.text.insert(0, '🙂')));
+    let b = h.client('actor-b');
+    while ((b.replica < a.replica) !== (order === 'peer clientID below the author')) b = h.client('actor-b');
+    await h.accept(b, capture(b.doc, () => b.text.insert(1, 'X')));
+    assert.equal(h.state.body, '\ufffdX\ufffd');
+    const emoji = h.state.nodes.find((node) => node.text === '🙂'), peer = h.state.nodes.find((node) => node.text === 'X');
+    assert.equal(emoji?.client, a.replica, 'The author keeps its surrogate node'); assert.equal(peer?.client, b.replica, 'The peer insertion is its own node');
+    const before = digest(h.state.journal);
+    const checkpoint = await h.accept(b, Y.encodeStateAsUpdate(b.doc));
+    assert.equal(checkpoint.receiptOnly, true); assert.equal(digest(h.state.journal), before);
+  });
+}
 
 test('inconsistent duplicate intervals, parent origins and future references are refused', async (t) => {
   const h = harness(t); const a = h.client(); const b = h.client('actor-b');
