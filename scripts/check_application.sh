@@ -77,6 +77,13 @@ fi
 # Service worker registration, offline fallback and the update prompt in Chromium over HTTPS.
 run_browser e2e
 
+# The update prompt (#20): a fresh install, a second tab and a fresh profile show none; a changed worker shows it. Chromium and WebKit.
+run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/pwa-update.e2e.ts
+run_browser -e FLUX_E2E_BROWSER=webkit e2e node_modules/.bin/tsx --test tests/app/e2e/pwa-update.e2e.ts
+
+# Browser Web Push on this device (#20): turn on stores the subscription, a muted place sends nothing, turn off removes it.
+run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/push-browser.e2e.ts
+
 # Login, sharing, denied access and stream revocation in Chromium sessions (issue #29, AC-4).
 run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/access-stream.e2e.ts
 
