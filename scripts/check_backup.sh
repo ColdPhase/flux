@@ -23,7 +23,7 @@
 #     makes ./flux upgrade fail with restore instructions, which are followed. Failures after the
 #     new version started (health probe, partial start) stop and confirm the writers and warn that
 #     work since the start is not in the backup; an unconfirmed stop is reported as such.
-#     When this tree adds #238's 0048, its guarded reversal (0057, then 0048) runs before any #238 fact exists, the
+#     When this tree adds #238's 0048, its guarded reversal (0060, then 0048) runs before any #238 fact exists, the
 #     previous image starts on the exact prior ledger with its data, and this tree upgrades again.
 set -eu
 
@@ -316,7 +316,7 @@ tar -xOf "$upgrade_archive" manifest.json | grep -q "\"schemaVersion\": $from_sc
 fixture "$U" demo
 
 if printf '%s\n' $new_migrations | grep -qx '0048_unused_ai_task_creation_undo.sql'; then
-  step "Guarded pre-use reversal of #238 (0057, then 0048) back to the previous image, which starts on its exact ledger"
+  step "Guarded pre-use reversal of #238 (0060, then 0048) back to the previous image, which starts on its exact ledger"
   # The upgraded data has no #238 fact yet (no task was created after the upgrade). The writers stop first.
   compose_in "$U" stop api worker >/dev/null
   if compose_in "$U" run --rm --no-deps -T migrate node tooling/dist/reverse-task-creation-undo.js --execute > "$work/reverse-unacknowledged.out" 2>&1; then
@@ -324,8 +324,8 @@ if printf '%s\n' $new_migrations | grep -qx '0048_unused_ai_task_creation_undo.s
   fi
   compose_in "$U" run --rm --no-deps -T -e FLUX_REVERSE_0048_QUIESCED=true migrate node tooling/dist/reverse-task-creation-undo.js --execute \
     > "$work/reverse.out" 2>&1 || { cat "$work/reverse.out"; fail "the guarded #238 reversal failed"; }
-  grep -q 'Reversed 0057 and 0048' "$work/reverse.out" || fail "the reversal did not report its two versions: $(cat "$work/reverse.out")"
-  [ "$(compose_in "$U" exec -T db psql -X -tA -U flux -d flux -c 'SELECT count(*) FROM flux_schema_version WHERE version IN (48, 57)')" = 0 ] \
+  grep -q 'Reversed 0060 and 0048' "$work/reverse.out" || fail "the reversal did not report its two versions: $(cat "$work/reverse.out")"
+  [ "$(compose_in "$U" exec -T db psql -X -tA -U flux -d flux -c 'SELECT count(*) FROM flux_schema_version WHERE version IN (48, 60)')" = 0 ] \
     || fail "the reversal left a #238 ledger row"
   cp "$(env_path "$U")" "$work/reverse.env"
   find "$U" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
@@ -344,7 +344,7 @@ if printf '%s\n' $new_migrations | grep -qx '0048_unused_ai_task_creation_undo.s
   cp "$work/reverse.env" "$U/$env_relative"
   chmod 600 "$U/$env_relative"
   flux_u upgrade -y > "$work/reupgrade-238.out" 2>&1 || { cat "$work/reupgrade-238.out"; fail "upgrading again after the reversal failed"; }
-  for migration in 0048_unused_ai_task_creation_undo.sql 0057_task_creation_undo_grant.sql; do
+  for migration in 0048_unused_ai_task_creation_undo.sql 0060_task_creation_undo_grant.sql; do
     grep -q "Applied migration $migration" "$work/reupgrade-238.out" || fail "the second upgrade did not apply $migration"
   done
   fixture "$U" demo
