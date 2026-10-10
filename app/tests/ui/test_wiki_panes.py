@@ -122,7 +122,7 @@ class WikiPanesJourney(unittest.TestCase):
             options.update(viewport=viewport or DESKTOP, device_scale_factor=1)
         if who and who in self.states:
             options["storage_state"] = self.states[who]
-        context = self.browser.new_context(**options)
+        context = self.browser.new_context(service_workers="block", **options)
         if theme:
             # The person's own remembered appearance on this device (#135/#148).
             context.add_init_script(f"localStorage.setItem('flux.theme', '{theme}')")

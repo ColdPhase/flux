@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
-import { arrivalShouldAnimate, arrivals, cssTimeToMs, loopShouldRun } from './motion-rules';
-import { prefersReducedMotion } from './motion-preference';
+import { arrivalShouldAnimate, arrivals, cssTimeToMs, loopShouldRun } from './motion-rules.js';
+import { prefersReducedMotion } from './motion-preference.js';
 
 /**
  * Motion helpers. Durations and easings come from the CSS tokens, which are 0ms under
@@ -69,7 +69,11 @@ export function useLoopPause<T extends HTMLElement>(): (node: T | null) => void 
     covers.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-modal', 'inert', 'open'] });
     document.addEventListener('visibilitychange', update);
     update();
-    return () => { seen.disconnect(); covers.disconnect(); document.removeEventListener('visibilitychange', update); if (frame) cancelAnimationFrame(frame); };
+    return () => {
+      seen.disconnect(); covers.disconnect(); document.removeEventListener('visibilitychange', update); if (frame) cancelAnimationFrame(frame);
+      // A mark that stops moving (Kreska's expression changes) must not keep a stale pause.
+      node.removeAttribute('data-motion-paused');
+    };
   }, [node]);
   return setNode;
 }
