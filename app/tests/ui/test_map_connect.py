@@ -906,6 +906,33 @@ class MapConnectJourney(unittest.TestCase):
                 self.assertEqual(len(after['thoughts']),4)
                 self.assertEqual(len(after['links']),1 if viewport==PHONE else 2)
 
+        page=self.page(COMPUTER)
+        sketch=self.scene(page,link=True)
+        page.locator('.sk-node',has_text=B).click()
+        page.get_by_role('button',name=re.compile('Add a thought connected to')).click()
+        page.get_by_label('Thought text').fill('Canonical state retained before storage was blocked')
+        # A successfully retained canonical record already supersedes an unused proof,
+        # even if later storage access fails and the physical proof could not be removed.
+        page.evaluate("""() => {const remove=Storage.prototype.removeItem;Storage.prototype.removeItem=function(k){if(k.startsWith('flux:thought-unused:'))throw new DOMException('refused','SecurityError');return remove.call(this,k)} }""")
+        path=f'**/api/v1/sketches/{sketch}/thoughts'
+        original=[]
+        def hide(route):
+            original.append({'body':route.request.post_data_json,'key':route.request.headers['idempotency-key']})
+            actual=route.fetch();self.assertEqual(actual.status,201,actual.text());route.fulfill(status=503,json={'message':'test: committed response hidden'})
+        page.route(path,hide)
+        draft=page.get_by_role('form',name='New thought draft')
+        draft.locator('button[type="submit"]').click()
+        expect(page.locator('.sk-status')).to_contain_text('draft is kept');page.unroute(path,hide)
+        self.assertTrue(page.evaluate("Object.entries(sessionStorage).some(([k,v])=>k.startsWith('flux:thought-draft:')&&!!JSON.parse(v).attempt)"))
+        before=self.stored(page,sketch)
+        page.evaluate("""() => {Object.defineProperty(window,'sessionStorage',{configurable:true,get(){throw new DOMException('denied','SecurityError')}})}""")
+        sent=[]
+        page.on('request',lambda r:sent.append({'body':r.post_data_json,'key':r.headers['idempotency-key']}) if r.method=='POST' and r.url.endswith(f'/{sketch}/thoughts') else None)
+        draft.locator('button[type="submit"]').click()
+        expect(draft).to_have_count(0)
+        self.assertEqual(sent,original)
+        self.assertEqual(self.stored(page,sketch),before,'retained canonical replay does not duplicate or recreate the link')
+
         page=self.page(COMPUTER,touch=True)
         sketch=self.scene(page,link=True)
         page.locator('.sk-node',has_text=B).click()

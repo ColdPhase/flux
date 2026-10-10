@@ -113,8 +113,10 @@ function persisted(key: string): ThoughtDraft | null {
         && (draft.tracked === undefined || draft.tracked === true)
         && (draft.lines === undefined || draft.file === undefined)
         && (draft.width === undefined || isSpot(draft.width)) && (draft.height === undefined || isSpot(draft.height))) {
-        const restore = <T extends DraftLine | ThoughtDraft>(row: T): T => ({ ...row,
-          unknown: row.attempt || hasUnusedProof(key, row) ? undefined : true });
+        const restore = <T extends DraftLine | ThoughtDraft>(row: T): T => {
+          if (row.attempt) potentiallyUnused.delete(unusedKey(key, row.id));
+          return { ...row, unknown: row.attempt || hasUnusedProof(key, row) ? undefined : true };
+        };
         return draft.lines ? { ...draft, tracked: true, lines: draft.lines.map(restore) } as ThoughtDraft
           : { ...restore(draft as ThoughtDraft), tracked: true };
       }
@@ -136,6 +138,7 @@ export function writeThoughtDraft(key: string, draft: ThoughtDraft | null, gener
   try {
     if (draft) {
       sessionStorage.setItem(key, JSON.stringify(draft));
+      for (const row of rows(draft)) if (row.attempt && validAttempt(row.attempt, row.id)) potentiallyUnused.delete(unusedKey(key, row.id));
       // Never issue unused authorization for an unknown restore or an earlier attempt.
       for (const row of rows(draft)) if (!row.attempt && !row.unknown && draft.tracked) {
         const proof = unusedKey(key, row.id);
@@ -204,7 +207,7 @@ export function useThoughtDraft(personId: string, sketchId: string, sketch: Sket
       : { ...before, attempt: before.attempt ?? attempt });
     const stored = persisted(key);
     const kept = stored && rows(stored).find((item) => item.id === row.id)?.attempt;
-    if (invalidated || (kept && canonical(kept) === canonical(attempt))) return true;
+    if (invalidated || !potentiallyUnused.has(proof) || (kept && canonical(kept) === canonical(attempt))) return true;
     // No request has been dispatched. Keep the known unused retry, including its private text.
     set(before);
     return false;
