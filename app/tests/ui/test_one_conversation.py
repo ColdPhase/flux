@@ -187,7 +187,7 @@ class OneConversationJourney(unittest.TestCase):
             pid = self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Thread targets", "visibility": "restricted"}, status=201)["id"]
             self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": self.ids["jonas"]}, "role": "contributor"})
             email = f"j.one+{STAMP}@example.test"
-            context = self.browser.new_context(base_url=ORIGIN)
+            context = self.browser.new_context(service_workers="block", base_url=ORIGIN)
             try:
                 response = context.request.post("/api/auth/sign-up/email", data={"email": email, "password": PASSWORD, "name": "J"}, headers={"origin": ORIGIN})
                 assert response.status == 200, response.text()
