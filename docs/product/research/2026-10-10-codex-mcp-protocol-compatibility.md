@@ -1,6 +1,6 @@
-# Pinned Codex MCP compatibility — proposed decision
+# Pinned Codex MCP compatibility — accepted bounded research choice
 
-**2026-10-10; proposed, awaiting independent evaluation by @Zamojski5.** Owner:
+**2026-10-10; bounded research choice independently accepted; public amendment and delivery pending.** Owner:
 @PelikanFix16, [#460](https://github.com/ColdPhase/flux/issues/460), milestone 2.
 This research checkpoint does not amend an accepted protocol contract or declare
 Codex Start/Resume delivered. [#152](https://github.com/ColdPhase/flux/issues/152),
@@ -8,11 +8,11 @@ Codex Start/Resume delivered. [#152](https://github.com/ColdPhase/flux/issues/15
 [F-016](../mcp-cowork.md), [CW-1](../cowork-workflow.md)
 and [F-024](../mcp-identity.md) remain binding.
 
-## Recommendation and bounded outcome
+## Accepted research choice and bounded outcome
 
-**[Proposal] Support explicit MCP `2025-06-18` and `2026-07-28` on the existing
+**[Accepted research choice] Support explicit MCP `2025-06-18` and `2026-07-28` on the existing
 authenticated `/mcp` endpoint through the pinned SDK's stateless legacy adapter,
-subject to independent decision acceptance and the runtime gates below.** Keep
+subject to a separately evaluated public admission contract and the runtime gates below.** Keep
 the same verified bearer factory, domain dispatch, live policy and delivery
 fences. Reject other revisions and malformed modern claims; do not silently
 rewrite a protocol or relax authorization. The default pinned Codex can then use
@@ -27,6 +27,39 @@ activation, Start/Resume and recovery across owners/connections remain #160 work
 
 No account credentials or subscription access are embedded in Flux. This is the
 external-agent mode of [F-022](../ai-modes.md), not the embedded agent runtime.
+
+## Scoped independent acceptance record
+
+[Review 5480322828](https://github.com/ColdPhase/flux/pull/466#pullrequestreview-5480322828),
+submitted 2026-10-10, accepted the architectural choice at exact research head
+`c39eea3019de2cbc28aa798d2ae5e005e33fd3eb`. Evaluator:
+`review_protocol_decision`, a separate agent independent of author `visual_next`.
+The GitHub state is COMMENTED under the shared @PelikanFix16 account. This is
+**delegated decision acceptance, not an eligible GitHub/Code Owner approval,
+founder direction or production acceptance**. Normal protected merge gates and
+@Zamojski5's eligible current-head evaluation remain separate.
+
+The accepted scope is exactly the two explicit wire revisions through the
+existing stateless SDK adapter, verified bearer factory, shared domain dispatch
+and protected delivery fences. The evaluator checked source/artifact/patch/probe
+hashes, retained logs and the author-run results, rather than rerunning Docker.
+Its setup, 102 foundation tests, diff/runner/patch checks passed. Research-head
+GitHub checks passed. Neither record certifies broader client support.
+
+The independent review requires exact admission/header/batch/notification
+rules, complete two-era authorization and held-race equivalence, required
+feature/payload equivalence, and truthful built-in Connect with supplied
+activation. Every original #460/#152/#160 criterion remains binding; the
+implementation gates below retain these obligations. The next contract
+amendment requires independent evaluation before implementation depends on it.
+No legacy production support or completed onboarding is recorded here.
+
+Current-main reconciliation on 2026-10-10: `2175d2490a023905143569a13ca68f43e93bb403`
+has no difference from the tested research base in the MCP connection/server
+sources, Connect source, lock, client harness/model fixture, native-client tests,
+Dockerfile and relevant MCP/identity/onboarding/extension contracts. This
+establishes source equivalence for this decision only; no new main runtime pass
+or unrelated behavior acceptance is claimed.
 
 ## Actual baseline experiment
 
@@ -165,10 +198,10 @@ and image tags were cleaned. No unsupported client is now declared supported.
 
 ## Proposed contract and implementation gates
 
-The independent evaluator should accept or reject this bounded compatibility
-choice before the accepted protocol documentation or application is changed.
-Acceptance of the decision permits implementation; it does not certify that
-implementation or complete #460.
+The bounded architecture choice is accepted as recorded above. Its public
+admission/authentication/feature amendment still requires independent evaluation
+before application implementation relies on it. Neither choice nor contract
+acceptance certifies implementation or completes #460.
 
 1. Admit exactly `2025-06-18` legacy initialization and subsequent versioned
    requests, and `2026-07-28` modern requests. Preserve SDK modern envelope,
@@ -235,6 +268,6 @@ after each attempt. Other Compose projects and build cache are preserved.
 
 Branch: `codex/460-protocol-compatibility`. Source base stays pinned above. This
 checkpoint contains only proposed research/evidence, with no application,
-Dockerfile, runner or accepted-contract edit. Next action: independent @Zamojski5
-decision acceptance or concrete missing evidence on #460, then an implementation
-and a new independently evaluated exact head. No implementation PR is open.
+Dockerfile, runner or accepted-contract edit. Next action: prepare the public admission/authentication/feature amendment,
+obtain independent evaluation of that exact contract, then implement and obtain
+fresh independent runtime evaluation of its exact head. No implementation PR is open.
