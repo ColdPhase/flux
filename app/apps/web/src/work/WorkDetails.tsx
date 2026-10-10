@@ -244,6 +244,11 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
     // Undo restores what this change replaced: leaving "blocked" clears its reason, so the reason goes back too.
     const before = { status: item.status, blocker: item.status === 'blocked' ? item.blocker : null };
     if (await change({ status: next })) {
+      // Finishing parked work also unparks it, and the contract cannot park it again, so Undo would leave it unparked: no Undo for that change.
+      if (item.parked && (next === 'done' || next === 'not_pursued')) {
+        toast({ message: `${taskNumber(item)} is now ${STATUS_LABEL[next].toLowerCase()} and no longer parked`, timeout: 8000 });
+        return;
+      }
       const restore = before.status === 'blocked' && before.blocker ? { status: before.status, blocker: before.blocker } : { status: before.status };
       toast({ message: `${taskNumber(item)} is now ${STATUS_LABEL[next].toLowerCase()}`, timeout: 8000, action: { label: 'Undo', onClick: () => { void change(restore, latest.current); } } });
     }

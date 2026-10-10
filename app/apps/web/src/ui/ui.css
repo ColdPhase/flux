@@ -206,7 +206,9 @@ svg { flex: none; }
 .ui-grabber span { width: 36px; height: 5px; border-radius: 3px; background: var(--line2); transition: width var(--dur-2) ease; }
 .ui-grabber, .ui-grabber *, .ui-detent-sheet .ui-panel__head, .ui-detent-sheet .ui-panel__head *, .ui-detent-sheet .thread__head, .ui-detent-sheet .thread__head * { touch-action: none; }
 .ui-grabber:hover span { width: 44px; }
-.ui-grabber:focus-visible { outline-offset: -4px; border-radius: 12px; }
+/* The keyboard button is visually hidden; its focus ring is drawn on the visible handle. */
+.ui-detent-sheet:has(> .ui-vh:focus-visible) > .ui-grabber { outline: 2px solid var(--t1); outline-offset: -4px; border-radius: 12px; }
+.ui-detent-sheet:has(> .ui-vh:focus-visible) > .ui-grabber span { background: var(--t1); }
 @media (prefers-reduced-motion: reduce) { .ui-detent-sheet { transition: none; } }
 @media (max-width: 640px) { .ui-overlay--left .ui-overlay__surface { width: 100%; } }
 

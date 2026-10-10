@@ -36,6 +36,9 @@
 .thread--docked { margin: 10px 10px 10px 0; background: var(--el); border: 0; border-radius: var(--r-panel); box-shadow: var(--sh-pop); overflow: hidden; }
 .ui-detent-sheet.thread { background: var(--el); }
 .ui-detent-sheet.thread .thread__head { border-bottom: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .ui-detent-sheet.thread { animation: thread-in var(--dur-3) var(--ease-sheet) both; }
+}
 .thread__head { display: flex; align-items: center; gap: 8px; height: 48px; flex: none; padding: 0 8px 0 20px; border-bottom: 1px solid var(--line); }
 .thread__title { margin: 0; font-size: var(--fs-sm); font-weight: 600; }
 .thread__n { color: var(--t3); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }

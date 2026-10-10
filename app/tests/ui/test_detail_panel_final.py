@@ -179,6 +179,25 @@ class DetailPanelFinal(unittest.TestCase):
         stored = self.stored(task)
         self.assertEqual((stored["status"], stored["blocker"]), ("blocked", "Waiting for the bracket from the supplier"))
 
+    def test_03e_finishing_parked_work_offers_no_undo_it_cannot_keep(self):
+        """Negative control: Undo would restore the status but not 'parked' (the PATCH contract only unparks), so no Undo is offered."""
+        task = self.new_task("Compare the replacement enclosure", owner=True)
+        previous = api(self.ctx, "POST", self.root + "/decisions", {"title": "Use the original enclosure"}, 201)
+        api(self.ctx, "POST", f"/api/v1/decisions/{previous['id']}/accept", {"expectedVersion": 1}, 200)
+        pivot = api(self.ctx, "POST", self.root + "/decisions", {"title": "Keep the measured enclosure", "supersedes": previous["id"], "affects": [task["id"]]}, 201)
+        api(self.ctx, "POST", f"/api/v1/decisions/{pivot['id']}/accept", {"expectedVersion": 1, "park": [task["id"]]}, 200)
+        self.assertIsNotNone(self.stored(task)["parked"])
+        page = self.page()
+        panel = self.open_task(page, task)
+        expect(panel.locator(".wd-where")).to_contain_text("parked, not done")
+        panel.locator(".ui-panel__body").focus()
+        page.keyboard.press("4")
+        expect(page.get_by_role("status")).to_contain_text("no longer parked")
+        expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("Done")
+        self.assertEqual(self.stored(task)["status"], "done")
+        self.assertIsNone(self.stored(task)["parked"])
+        expect(page.get_by_role("status").get_by_role("button", name="Undo")).to_have_count(0)
+
     def test_03c_a_failed_title_save_keeps_the_draft_until_it_is_saved(self):
         task = self.new_task("Name the gateway")
         page = self.page()
@@ -379,6 +398,42 @@ class DetailPanelFinal(unittest.TestCase):
         thread.locator(".ui-grabber").tap()
         expect(thread).to_have_attribute("data-height", "full")
         shot(page, "detail-panel-final-thread-phone")
+
+    def test_09_keyboard_focus_on_the_sheet_handle_is_visible_in_both_sheets(self):
+        """N1 (WCAG 2.4.7): the keyboard button is visually hidden, so its focus ring must show on the visible handle. Negative control: removing the :has() rule in ui.css fails."""
+        task = self.new_task("Show the handle focus", owner=True)
+        cases = {
+            "details": f"/projects/{self.project}/tasks?open=work:{task['id']}",
+            "thread": f"/projects/{self.project}/conversations/{self.thread['id']}",
+        }
+        for name, url in cases.items():
+            with self.subTest(sheet=name):
+                page = self.page(phone=True)
+                page.goto(url)
+                sheet = page.locator("#" + name)
+                expect(sheet).to_be_visible()
+                page.wait_for_timeout(1000)
+                sheet.focus()
+                page.keyboard.press("Tab")
+                self.assertTrue(sheet.evaluate("el => el.querySelector(':scope > button.ui-vh') === document.activeElement && el.querySelector('.ui-vh').matches(':focus-visible')"), "Tab reaches the keyboard handle button")
+                ring = sheet.locator(".ui-grabber").evaluate("el => { const s = getComputedStyle(el); return { style: s.outlineStyle, width: parseFloat(s.outlineWidth), color: s.outlineColor }; }")
+                self.assertEqual(ring["style"], "solid", "the visible handle shows a focus ring")
+                self.assertGreaterEqual(ring["width"], 2)
+                self.assertNotIn(ring["color"], ("rgba(0, 0, 0, 0)", "transparent"))
+
+    def test_10_thread_sheet_keeps_its_enter_motion_unless_reduced(self):
+        """N2: the Thread sheet slides in as before. Negative control: removing the .ui-detent-sheet.thread animation rule fails the first assertion."""
+        page = self.page(phone=True)
+        page.goto(f"/projects/{self.project}/conversations/{self.thread['id']}")
+        expect(page.locator("#thread")).to_be_visible()
+        self.assertIn("thread-in", page.locator("#thread").evaluate("el => getComputedStyle(el).animationName"))
+        ctx = self.browser.new_context(base_url=ORIGIN, storage_state=self.state, viewport={"width": 390, "height": 844},
+            is_mobile=True, has_touch=True, locale="en-GB", reduced_motion="reduce")
+        self.addCleanup(ctx.close)
+        still = ctx.new_page()
+        still.goto(f"/projects/{self.project}/conversations/{self.thread['id']}")
+        expect(still.locator("#thread")).to_be_visible()
+        self.assertEqual(still.locator("#thread").evaluate("el => getComputedStyle(el).animationName"), "none")
 
 
 if __name__ == "__main__":
