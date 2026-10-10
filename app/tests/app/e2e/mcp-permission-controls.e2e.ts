@@ -1,7 +1,7 @@
 import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
@@ -83,11 +83,72 @@ async function open(context: BrowserContext, email: string) {
 async function capture(page: Page, name: string) {
   if (!evidenceDir) return;
   mkdirSync(evidenceDir, { recursive: true });
-  await page.evaluate(async () => {
-    await Promise.all(document.getAnimations().filter((animation) => Number.isFinite(animation.effect?.getComputedTiming().endTime))
-      .map((animation) => animation.finished.catch(() => undefined)));
-  });
+  await settleRendering(page);
   await page.screenshot({ path: join(evidenceDir, name + '.png'), fullPage: true });
+}
+
+/** Wait for natural completion. Do not finish/cancel animations, override opacity or disable motion for evidence. */
+async function settleRendering(page: Page) {
+  await page.evaluate(`(async () => {
+    await document.fonts.ready;
+    const frames = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    // Media/style changes can register transitions on the next frame. Recheck after natural completion.
+    for (let pass = 0; pass < 4; pass++) {
+      await frames();
+      const active = document.getAnimations().filter(animation => Number.isFinite(animation.effect?.getComputedTiming().endTime)
+        && (animation.playState === 'running' || animation.pending));
+      if (!active.length) return;
+      await Promise.all(active.map(animation => animation.finished.catch(() => undefined)));
+    }
+  })()`);
+}
+
+type RenderStyle = { tag: string; className: string; opacity: string; color: string; background: string };
+interface RenderSnapshot {
+  heading: RenderStyle; explanation: RenderStyle; ancestors: RenderStyle[];
+  reload: RenderStyle & { disabled: boolean; ariaDisabled: string | null; ariaBusy: string | null };
+  tokens: { t1: string; t3: string };
+  finiteAnimations: { state: string; pending: boolean }[];
+}
+const renderEvidence: { frame: string; phase: string; state: unknown }[] = [];
+async function renderState(page: Page, frame: string, phase: string) {
+  const state = await page.evaluate<RenderSnapshot>(`(() => {
+    const setup = document.querySelector('.connection__setup');
+    const reload = [...document.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Reload saved permissions');
+    const describe = (element) => ({ tag: element.tagName, className: element.className,
+      opacity: getComputedStyle(element).opacity, color: getComputedStyle(element).color,
+      background: getComputedStyle(element).backgroundColor });
+    const ancestors = []; for (let node = setup; node; node = node.parentElement) ancestors.push(describe(node));
+    return { heading: describe(setup.querySelector('h2')), explanation: describe(setup.querySelector('p')),
+      reload: { ...describe(reload), disabled: reload.disabled, ariaDisabled: reload.getAttribute('aria-disabled'), ariaBusy: reload.getAttribute('aria-busy') },
+      ancestors, tokens: { t1: getComputedStyle(document.documentElement).getPropertyValue('--t1').trim(),
+        t3: getComputedStyle(document.documentElement).getPropertyValue('--t3').trim() },
+      finiteAnimations: document.getAnimations().filter(animation => Number.isFinite(animation.effect?.getComputedTiming().endTime)).map(animation => ({
+        name: 'animationName' in animation ? animation.animationName : 'transitionProperty' in animation ? animation.transitionProperty : null,
+        state: animation.playState, pending: animation.pending, currentTime: animation.currentTime,
+        progress: animation.effect?.getComputedTiming().progress, duration: animation.effect?.getComputedTiming().duration,
+        target: animation.effect && 'target' in animation.effect ? describe(animation.effect.target) : null })),
+      theme: document.documentElement.dataset.theme ?? 'system', systemDark: matchMedia('(prefers-color-scheme: dark)').matches };
+  })()`);
+  renderEvidence.push({ frame, phase, state });
+  if (evidenceDir) writeFileSync(join(evidenceDir, 'render-state.json'), JSON.stringify(renderEvidence, null, 2));
+  return state;
+}
+
+async function captureSetup(page: Page, name: string) {
+  await renderState(page, name, 'before_settling');
+  if (evidenceDir) await page.screenshot({ path: join(evidenceDir, `diagnostic-before-${name}.png`) });
+  await settleRendering(page);
+  const settled = await renderState(page, name, 'settled');
+  const rgb = (hex: string) => `rgb(${[1, 3, 5].map(offset => parseInt(hex.slice(offset, offset + 2), 16)).join(', ')})`;
+  assert.ok(settled.ancestors.every(ancestor => ancestor.opacity === '1'), 'settled setup ancestors use their normal opacity');
+  assert.equal(settled.heading.color, rgb(settled.tokens.t1), 'settled heading has the current normal text colour');
+  assert.equal(settled.explanation.color, rgb(settled.tokens.t3), 'settled explanation has the current secondary text colour');
+  assert.equal(settled.reload.color, rgb(settled.tokens.t1), 'enabled Reload has its normal current theme colour');
+  assert.equal(settled.reload.disabled, false); assert.equal(settled.reload.ariaDisabled, null);
+  assert.equal(settled.reload.ariaBusy, null);
+  assert.ok(!settled.finiteAnimations.some(animation => animation.state === 'running' || animation.pending));
+  if (evidenceDir) await page.screenshot({ path: join(evidenceDir, name + '.png') });
 }
 async function finite<T>(work: Promise<T>, label: string) {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -292,8 +353,14 @@ test('actual owner setup stays pending, refreshes lost authorization, and keeps 
           for (const theme of ['light', 'dark'] as const) {
             await page.emulateMedia({ colorScheme: theme });
             await setup.evaluate(element => element.scrollIntoView({ block: 'start' }));
-            await page.evaluate(() => document.fonts.ready);
-            if (evidenceDir) await page.screenshot({ path: join(evidenceDir, `connect-setup-${engine.name()}-${width}-${theme}.png`) });
+            await captureSetup(page, `connect-setup-${engine.name()}-${width}-${theme}`);
+            // Whole natural flow supplies the connection/agent identity and setup context omitted by the focused slices.
+            if (evidenceDir) {
+              await page.locator('.connection').evaluate(element => element.scrollIntoView({ block: 'start' }));
+              await settleRendering(page);
+              await page.screenshot({ path: join(evidenceDir, `connect-context-${engine.name()}-${width}-${theme}.png`), fullPage: true });
+              await page.screenshot({ path: join(evidenceDir, `connect-initial-${engine.name()}-${width}-${theme}.png`) });
+            }
           }
           await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
           const overflow = await page.evaluate(() => [...document.querySelectorAll('.connection *')].filter(element => {
@@ -313,7 +380,7 @@ test('actual owner setup stays pending, refreshes lost authorization, and keeps 
           await panel.getByRole('button', { name: 'Save permissions', exact: true }).click();
           await setup.getByRole('heading', { name: 'Permissions are Off', exact: true }).waitFor();
           await setup.evaluate(element => element.scrollIntoView({ block: 'start' }));
-          if (evidenceDir) await page.screenshot({ path: join(evidenceDir, `connect-setup-${engine.name()}-${width}-off.png`) });
+          await captureSetup(page, `connect-setup-${engine.name()}-${width}-off`);
           assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
           await page.getByRole('button', { name: 'Revoke connection', exact: true }).click();
           if (width === 390) await page.getByRole('button', { name: 'Revoke now', exact: true }).tap();
@@ -334,6 +401,7 @@ test('actual owner setup stays pending, refreshes lost authorization, and keeps 
           await page.reload(); await history.locator('summary').click();
           assert.equal(await history.getByText('External connection', { exact: true }).count(), 1, 'revoked history survives page reload');
           await history.evaluate(element => element.scrollIntoView({ block: 'start' }));
+          await settleRendering(page);
           if (evidenceDir) await page.screenshot({ path: join(evidenceDir, `connect-setup-${engine.name()}-${width}-revoked.png`) });
           assert.equal(await page.getByRole('radio').count(), 0, 'revoked selection cannot reauthorize or retain actionable permission controls');
         } finally { await context.close(); await f.pool.end(); }
