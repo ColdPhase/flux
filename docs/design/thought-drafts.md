@@ -23,13 +23,30 @@ it does not dispatch or recreate its connection. If that thought is not present,
 the text stays recoverable and the earlier save must be checked/retried on a
 computer. Partial pasted batches retain each dispatched row's own canonical
 payload while unsent rows may first be saved as plain additions on the phone.
-An internal format marker distinguishes tracked new drafts from older retained
-ones. Missing attempt metadata in an older connected draft never proves that its
-key was unused: on a phone it requires existing-state confirmation, keeps its
-text/IDs/coordinates/original key, and gives a bounded computer-retry message
-when the thought is missing. A refinement is submitted only by explicit Save,
-against the version just read and the known earlier text; a different peer text
-is shown without overwriting it and the person's retained text stays recoverable.
+Missing canonical metadata never proves that a key was unused, including in a
+tracked-format copy left behind by a refused storage write. A separate unused
+proof belongs to this account/place/map, thought ID and creation key. Before a
+creation dispatch the client removes that proof and verifies its absence, while
+retaining the canonical attempt in memory and trying to persist it. Refusing the
+full attempt write alone does not disable memory-only Save. If neither canonical
+persistence nor invalidation can make stale unused authorization unusable, only
+that dispatch is refused: no request is sent, text/IDs/keys stay, and the draft
+keeps its known unused retry state rather than claiming an attempt was dispatched.
+After reload, a valid canonical attempt wins over any stale unused proof; a valid
+unused proof permits first Save; neither is an unknown save on every viewport.
+Unknown and historical markerless copies only confirm an existing server thought
+and use an ordinary guarded refinement. An absent thought retains the original
+text/IDs/coordinates/key with an unresolved-save message; widening alone cannot
+recover lost canonical information. Confirmation does not create a link or infer
+personal outline grouping from the stale draft's parent. Unrelated grouping and
+drafts stay intact. A refinement is submitted only by explicit Save, against the
+version just read and the known earlier text; a different peer text is shown
+without overwriting it and the person's retained text stays recoverable.
+
+This refused-storage lifecycle was independently reviewed on 2026-10-10 for
+#380/#349 against #149 AC-2/AC-3. It preserves memory-only Save during the visit
+and the existing limit that reload can recover only accepted storage. It adds no
+public API or server reservation contract.
 It retains text, intended parent ID, client thought/link IDs, position and an
 idempotency key in this tab's session storage, with memory fallback. No shared
 thought, relation, event, outline grouping or API write exists before the first Save/Enter.
@@ -54,12 +71,13 @@ local document, records its normal undo step, groups its ID in this person's lis
 and clears the draft. A failed/uncertain response retains the text and the stable
 client IDs/key for explicit retry; no replacement ID or partial-link command is
 created. The server rechecks the intended parent and current write access.
-Editing after a failed attempt gets a fresh request key while retaining the
-thought ID, so an uncertain earlier creation cannot become a duplicate thought.
-If that earlier creation did commit, the next Save finds the thought by its ID
-(`THOUGHT_EXISTS`). It then finishes the save: the newer text is sent as an
-ordinary edit at the version just read, so another author's change in between
-is still a conflict.
+Editing after a failed attempt gives the refinement its own edit key while
+keeping the immutable creation body/key and thought ID. A creation replay or
+`THOUGHT_EXISTS` recovery reads authoritative current state rather than trusting
+an older creation receipt. Only the known earlier text may then be refined by an
+ordinary edit at the version just read; another author's newer text remains a
+conflict. A restored copy with unknown earlier text may only refine its owner's
+untouched version-1 creation, never silently replace a later version.
 A parent removed or access revoked is an error; it never silently becomes a root.
 
 Existing thought editing remains inline. F2 and visible Edit open the same text
