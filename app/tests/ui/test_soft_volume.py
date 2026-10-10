@@ -74,6 +74,11 @@ class SoftVolume(unittest.TestCase):
         # CSSOM may serialize a family containing spaces with or without quotes.
         self.assertEqual(family.split(",")[0].strip(" \"'"), "Geist Mono", family)
 
+    def assert_sans(self, node) -> None:
+        # File names are text, not numbers or labels: Geist, served by Flux (F-026 §2).
+        family = node.evaluate("e => getComputedStyle(e).fontFamily")
+        self.assertEqual(family.split(",")[0].strip(" \"'"), "Geist", family)
+
     def ensure_account(self) -> None:
         if self.state:
             return
@@ -176,10 +181,15 @@ class SoftVolume(unittest.TestCase):
                     page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
                     replies = page.get_by_role("complementary", name="Replies")
                     timestamp = replies.locator(".thread__root-meta time")
-                    filename = replies.locator(".message-files a span").first
+                    row = replies.locator(".message-files .file-row").first
+                    filename = row.locator(".file-row__name")
+                    label = row.locator(".file-icon__label")
                     expect(timestamp).to_be_visible()
                     expect(filename).to_have_text("calibration.csv")
-                    for node in (timestamp, filename):
+                    expect(label).to_have_text("CSV")
+                    # The name is text (Geist); the timestamp and the file's type label are mono.
+                    self.assert_sans(filename)
+                    for node in (timestamp, label):
                         self.assert_mono(node)
                     # Exercise the actual upload draft, not an injected font demonstration.
                     with page.expect_file_chooser() as chooser:
@@ -188,7 +198,10 @@ class SoftVolume(unittest.TestCase):
                     draft = replies.locator(".composer-files__name")
                     expect(draft).to_contain_text("delivery.csv")
                     expect(draft).to_contain_text("Ready, private")
-                    self.assert_mono(draft)
+                    self.assert_sans(draft)
+                    draft_label = replies.locator(".composer-thumb:not(.is-photo) .file-icon__label")
+                    expect(draft_label).to_have_text("CSV")
+                    self.assert_mono(draft_label)
                     page.evaluate("document.fonts.ready")
                     shot(page, f"338-{self.engine}-files-{'390' if phone else '1440'}-{scheme}")
                     page.goto(f"/projects/{self.ids['project']}/tasks")

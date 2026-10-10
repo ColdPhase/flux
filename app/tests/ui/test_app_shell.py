@@ -1039,7 +1039,7 @@ class AppShellJourney(unittest.TestCase):
         owner.get_by_role("navigation", name="Projects").get_by_role("link", name="Gesture lamp").click()
         owner.get_by_label("Write a message").fill("Try a PIR sensor before considering a camera")
         owner.get_by_role("button", name="Send message").click()
-        expect(owner.locator(".project-convo__message > p").filter(has_text="Try a PIR sensor before considering a camera")).to_be_visible()
+        expect(owner.locator(".project-convo__message > .message-bubble > p").filter(has_text="Try a PIR sensor before considering a camera")).to_be_visible()
         # Sending is instant (#264): the root shows at once and gets its conversation when it is stored.
         expect(owner.locator("[data-client-message-id]")).to_have_count(0)
         # One project conversation (UI116-1): the root joins the stream; its replies open beside it.
@@ -1066,8 +1066,9 @@ class AppShellJourney(unittest.TestCase):
         owner.get_by_label("Reply", exact=True).fill("This is the version we should prototype")
         owner.get_by_role("button", name="Send reply").click()
         expect(owner.get_by_text("This is the version we should prototype", exact=True)).to_be_visible()
-        source = owner.get_by_role("link", name="Source: Privacy options · v1")
+        source = owner.get_by_role("link", name=re.compile("Privacy options.*Wiki page · v1"))
         expect(source).to_be_visible()
+        expect(source.locator(".wiki-card__glyph svg")).to_have_count(1)
         source.click()
         expect(owner.get_by_text("PIR avoids storing images")).to_be_visible()
         owner.go_back()
@@ -1139,7 +1140,7 @@ class AppShellJourney(unittest.TestCase):
         threads = owner.context.request.get(f"{ORIGIN}/api/v1/projects/{project_id}/conversations").json()["items"]
         self.assertEqual(sum(thread["firstMessageBody"] == "Revisit after lost opening" for thread in threads), 1)
         owner.goto(f"/projects/{project_id}/conversations/{conversation_id}")
-        expect(owner.get_by_role("link", name="Source: Privacy options · v1")).to_be_visible()
+        expect(owner.get_by_role("link", name=re.compile("Privacy options.*Wiki page · v1"))).to_be_visible()
 
         read_failures = {"count": 0}
         def fail_first_citation(route) -> None:

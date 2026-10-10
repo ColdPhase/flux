@@ -1,0 +1,172 @@
+/* Files, references and photos inside the message (#348, F-026 §6). */
+
+/* The page icon: folded corner, pictogram below the fold, mono label (PDF on an inverted band). */
+.file-icon { flex: none; overflow: visible; }
+.file-icon__page { fill: var(--el); stroke: var(--t2); stroke-width: 1.2; stroke-linejoin: round; }
+.file-icon__fold { fill: none; stroke: var(--t2); stroke-width: 1.2; stroke-linejoin: round; }
+.file-icon__glyph { fill: none; stroke: var(--t1); stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
+.file-icon__glyph circle { fill: var(--t1); stroke: none; }
+.file-icon--video .file-icon__glyph path { fill: var(--t1); }
+.file-icon__band { fill: var(--t1); }
+.file-icon__label { font-family: var(--mono); font-size: 4.6px; font-weight: 600; letter-spacing: .02em; fill: var(--t1); }
+.file-icon__label.is-band { fill: var(--el); }
+
+/* A file row: icon, name, "type · size" and Download, on the quiet fill inside the bubble. */
+.message-files { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; width: min(100%, 440px); }
+.file-row { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 12px; border-radius: var(--r); background: var(--sub); color: var(--t1); text-decoration: none; transition: var(--tr); }
+a.file-row:hover { background: var(--hov); }
+a.file-row:focus-visible, .voice-note__play:focus-visible, .photo-grid__open:focus-visible, .link-preview:focus-visible, .msg-link:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
+.file-row__text { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+.file-row__name { font-size: var(--fs-base); font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-row__text small { color: var(--t3); font-size: var(--fs-xs); }
+.file-row__act { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; color: var(--t2); }
+a.file-row:hover .file-row__act { color: var(--t1); }
+
+/* One real bubble contains the caption/text, file rows, previews and native object cards. */
+.message-bubble { display: flex; flex-direction: column; gap: 6px; min-width: 0; max-width: 100%; padding: 9px 13px; border-radius: 6px var(--r-lg) var(--r-lg) var(--r-lg); background: var(--el); box-shadow: var(--sh-1); box-sizing: border-box; }
+.message-bubble:empty { display: none; }
+.message-bubble > p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--fs-base); line-height: var(--lh); }
+.message-bubble > :is(.message-files, .link-previews, .ws-attach) { min-width: 0; max-width: 100%; margin: 0; }
+.is-mine > .message-bubble, .agents-msg--own > .message-bubble { border-radius: var(--r-lg) 6px var(--r-lg) var(--r-lg); background-color: var(--inv); background-image: var(--grad-inv); color: var(--oninv); }
+@media (max-width: 760px) { .message-bubble { padding: 11px 14px; } }
+/* A task card under a photo fills the photo's width, not the caption's (F-026 §6). */
+.photo-grid + .message-bubble:has(.ws-chip, .ws-attach) { width: min(100%, 340px); }
+/* A wrapper alone does not turn legacy unframed text-only excerpts into cards. */
+.thread__root > .message-bubble:not(:has(.message-files, .ws-attach)):not(.photo-grid + .message-bubble),
+.agents-msg:not(.agents-msg--own) > .message-bubble:not(:has(.message-files)):not(.photo-grid + .message-bubble),
+.wd-pending__item > .message-bubble:not(:has(.message-files)):not(.photo-grid + .message-bubble),
+.details__sec > .message-bubble { padding: 0; border-radius: 0; background: none; box-shadow: none; color: inherit; }
+
+.project-convo__message.is-mine .file-row, .project-convo__message.is-mine .link-preview { background: rgba(255, 255, 255, .1); color: var(--oninv); }
+.project-convo__message.is-mine .file-row__text small, .project-convo__message.is-mine .file-row__act, .project-convo__message.is-mine .link-preview small, .project-convo__message.is-mine .link-preview__site { color: inherit; opacity: .78; }
+
+/* A voice note: waveform and Play. */
+.voice-note__line { display: flex; align-items: center; gap: 10px; }
+.voice-note__wave { flex: none; fill: currentColor; opacity: .75; }
+.voice-note__play { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border: 0; border-radius: 50%; background: var(--el); color: var(--t1); box-shadow: var(--sh-1); cursor: pointer; }
+.voice-note__play:disabled { opacity: .5; cursor: default; }
+
+/* Photos: no file frame, radius 16, caption below; 2–4 in a grid with "+N" on the last one. */
+.photo-grid { margin: 4px 0 2px; max-width: min(100%, 340px); }
+.photo-grid__tiles { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; border-radius: 16px; overflow: hidden; }
+.photo-grid--2 .photo-grid__tiles, .photo-grid--4 .photo-grid__tiles { grid-template-columns: 1fr 1fr; }
+.photo-grid--3 .photo-grid__tiles { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+.photo-grid--3 .photo-grid__tile:first-child { grid-row: span 2; }
+.photo-grid__tile { position: relative; min-width: 0; background: var(--sub); aspect-ratio: 1; }
+.photo-grid--1 .photo-grid__tile { aspect-ratio: 4 / 3; border-radius: 16px; }
+.photo-grid--3 .photo-grid__tile:first-child { aspect-ratio: auto; }
+.photo-grid__file { grid-column: 1 / -1; }
+.photo-grid__open { position: relative; display: block; width: 100%; height: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; color: #fff; }
+span.photo-grid__open { cursor: default; }
+.photo-grid__open:disabled { cursor: progress; }
+.photo-grid__open img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.photo-grid__more { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0, 0, 0, .42); font-size: 1.5rem; font-weight: 600; color: #fff; }
+.photo-grid:has(.photo-grid__file) + .photo-meta, .photo-grid:has(.photo-grid__file) + .message-bubble + .photo-meta, .photo-grid:has(.photo-grid__file) + .message-files + .photo-meta { display: none; }
+.project-convo__message > .photo-grid { width: min(100%, 340px); }
+.photo-meta { margin: 6px 2px 0; color: var(--t3); font-size: var(--fs-xs); overflow-wrap: anywhere; }
+.photo-grid__tile.is-unavailable { display: grid; place-items: center; padding: 12px; color: var(--t3); font-size: var(--fs-xs); text-align: center; }
+/* Sending, offline and failure show on the photo itself. */
+.photo-grid__state { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 8px; background: rgba(0, 0, 0, .28); color: #fff; font-size: var(--fs-xs); font-weight: 550; text-align: center; text-shadow: 0 1px 2px rgba(0, 0, 0, .4); }
+.photo-grid__ring { width: 26px; height: 26px; border-radius: 50%; border: 2.5px solid rgba(255, 255, 255, .35); border-top-color: #fff; animation: photo-spin 900ms linear infinite; }
+.photo-grid__meter { flex: none; }
+.photo-grid__meter-track { fill: none; stroke: rgba(255, 255, 255, .35); stroke-width: 2.5; }
+.photo-grid__meter-bar { fill: none; stroke: #fff; stroke-width: 2.5; stroke-linecap: round; }
+.photo-grid__retry { min-height: 32px; padding: 0 14px; border: 0; border-radius: var(--r-pill); background: #fff; color: #18181b; font: inherit; font-weight: 600; text-shadow: none; cursor: pointer; }
+@keyframes photo-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .photo-grid__ring { animation: none; border-color: #fff; border-right-color: rgba(255, 255, 255, .35); } }
+
+/* The full-screen viewer is always dark, whatever the theme. */
+.photo-viewer { position: fixed; inset: 0; z-index: 1000; display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto auto; background: #000; color: #f4f4f5; color-scheme: dark; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+.photo-viewer__top { display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; gap: 12px; padding: 12px 16px; }
+.photo-viewer__who { display: flex; flex-direction: column; align-items: center; text-align: center; min-width: 0; }
+.photo-viewer__who strong { font-size: var(--fs-lg); font-weight: 600; }
+.photo-viewer__who span { color: #b4b4bb; font-size: var(--fs-md); }
+.photo-viewer__round { display: grid; place-items: center; width: 44px; height: 44px; border: 0; border-radius: 50%; background: #1f1f22; color: #f4f4f5; cursor: pointer; }
+.photo-viewer__round:disabled { opacity: .35; cursor: default; }
+.photo-viewer__stage { position: relative; display: flex; align-items: center; justify-content: center; min-height: 0; }
+.photo-viewer__stage img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.photo-viewer__prev, .photo-viewer__next { position: absolute; top: 50%; transform: translateY(-50%); }
+.photo-viewer__prev { left: 16px; }
+.photo-viewer__next { right: 16px; }
+.photo-viewer__empty { color: #b4b4bb; }
+.photo-viewer__dots { display: flex; justify-content: center; gap: 8px; padding: 12px 0 4px; }
+.photo-viewer__dots span { width: 7px; height: 7px; border-radius: 50%; background: #5a5a60; }
+.photo-viewer__dots span.is-on { background: #f4f4f5; }
+.photo-viewer__caption { width: min(100%, 760px); margin: 0 auto; padding: 8px 20px 12px; box-sizing: border-box; }
+.photo-viewer__caption p { margin: 0 0 4px; font-size: var(--fs-lg); }
+.photo-viewer__caption small { color: #b4b4bb; font-size: var(--fs-md); overflow-wrap: anywhere; }
+.photo-viewer__note { display: block; min-height: 1em; color: #b4b4bb; font-size: var(--fs-xs); }
+.photo-viewer__actions { display: flex; justify-content: space-around; gap: 8px; padding: 8px 12px 12px; border-top: 1px solid #26262a; }
+.photo-viewer__actions > * { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-width: 64px; min-height: 56px; padding: 4px 10px; border: 0; border-radius: var(--r); background: none; color: #f4f4f5; font: inherit; font-size: var(--fs-md); text-decoration: none; cursor: pointer; }
+.photo-viewer__actions > *:hover { background: #1f1f22; }
+.photo-viewer__actions > *:disabled { opacity: .4; cursor: default; }
+.photo-viewer button:focus-visible, .photo-viewer a:focus-visible { outline: 2px solid #f4f4f5; outline-offset: 2px; }
+
+/* Before sending: thumbnails with × in the composer; several choices on a phone are numbered in send order. */
+.composer-files .composer-files__list { display: flex; flex-wrap: wrap; gap: 10px; max-height: 176px; padding: 8px 6px 2px 0; }
+.composer-files .composer-files__list li.composer-thumb { position: relative; display: flex; flex-wrap: nowrap; align-items: center; gap: 10px; min-width: 0; max-width: 100%; padding: 6px 14px 6px 6px; border: 0; border-radius: var(--r); background: var(--sub); }
+.composer-files .composer-files__list li.composer-thumb.is-photo { flex-direction: column; align-items: flex-start; width: 64px; padding: 0; background: none; }
+.composer-thumb__face { position: relative; flex: none; display: grid; place-items: center; width: 40px; height: 44px; }
+.composer-thumb.is-photo .composer-thumb__face { width: 64px; height: 64px; border-radius: 12px; overflow: hidden; background: var(--sub); }
+.composer-thumb.is-photo .composer-thumb__face img { width: 100%; height: 100%; object-fit: cover; }
+.composer-thumb.is-photo .composer-files__name { width: 64px; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.composer-thumb.is-photo .composer-files__name small { overflow: hidden; text-overflow: ellipsis; }
+.composer-thumb .composer-files__name { font-family: inherit; font-weight: 550; max-width: 220px; }
+.composer-files .composer-thumb__x { position: absolute; top: -12px; right: -12px; display: grid; place-items: center; width: 32px; height: 32px; min-height: 0; padding: 0; border-radius: 50%; background: none; }
+.composer-thumb__xface { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--inv); color: var(--oninv); box-shadow: 0 0 0 2px var(--el); }
+.composer-files .composer-thumb__retry { flex: none; }
+.composer-thumb.is-photo .composer-thumb__retry { padding: 0; }
+.composer-thumb__order { position: absolute; top: 4px; left: 4px; display: grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; box-sizing: border-box; border-radius: var(--r-pill); background: var(--inv); color: var(--oninv); font-size: 11px; font-weight: 650; box-shadow: 0 0 0 1.5px var(--el); }
+@media (hover: none), (max-width: 680px) {
+  .composer-files .composer-thumb__x { top: -17px; right: -17px; width: 44px; height: 44px; min-width: 44px; }
+}
+
+/* Dropping files onto the conversation. */
+.is-dropping { outline: 2px dashed var(--t2); outline-offset: -6px; border-radius: var(--r-lg); }
+
+/* Inline references in text: chips on the text baseline. */
+.ref-chip { display: inline-flex; align-items: baseline; gap: 4px; padding: 1px 7px; margin: 0 1px; border-radius: var(--r-pill); background: var(--sub); color: var(--t1); font-weight: 550; line-height: 1.35; white-space: nowrap; vertical-align: baseline; }
+.ref-chip svg { align-self: center; flex: none; }
+.ref-chip__face { align-self: center; display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--el); font-size: 7.5px; font-weight: 700; letter-spacing: .02em; }
+.ref-chip__face::before { content: attr(data-initials); }
+.is-mine > .message-bubble .ref-chip { background: rgba(255, 255, 255, .14); color: var(--oninv); }
+.is-mine > .message-bubble .ref-chip__face { background: rgba(255, 255, 255, .2); }
+.msg-link { color: inherit; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
+
+/* A link shows its preview: the site, the domain and a title. */
+.link-previews { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.link-preview { display: flex; flex-direction: column; gap: 2px; padding: 10px 14px; border-radius: var(--r); background: var(--sub); color: var(--t1); text-decoration: none; transition: var(--tr); min-width: 0; }
+.link-preview:hover { background: var(--hov); }
+.link-preview__site { display: flex; align-items: center; gap: 6px; color: var(--t3); font-size: var(--fs-xs); }
+.link-preview strong { font-size: var(--fs-base); font-weight: 600; overflow-wrap: anywhere; }
+.link-preview small { color: var(--t2); font-size: var(--fs-xs); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+@media (pointer: coarse) { .file-row, .link-preview { min-height: 56px; } .voice-note__play { width: 44px; height: 44px; } .photo-grid__retry { min-height: 44px; min-width: 44px; } }
+
+/* The phone picker for several files (#348 AC-4): numbered in tap order, every colour a token. */
+.photo-pick__head { padding: 18px 20px 4px; }
+.photo-pick__head h2 { margin: 0; color: var(--t1); font-size: 17px; font-weight: 600; }
+.photo-pick__head p { margin: 4px 0 0; color: var(--t3); font-size: var(--fs-xs); }
+.photo-pick__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0; padding: 10px 16px; list-style: none; overflow-y: auto; }
+.photo-pick__tile { position: relative; display: block; width: 100%; aspect-ratio: 1; min-height: 44px; padding: 0; border: 0; border-radius: 16px; overflow: hidden; background: var(--sub); color: var(--t3); cursor: pointer; }
+.photo-pick__face { position: absolute; inset: 0; display: grid; place-items: center; }
+.photo-pick__face img { width: 100%; height: 100%; object-fit: cover; }
+.photo-pick__tile.is-on::after { content: ''; position: absolute; inset: 0; border-radius: 16px; box-shadow: inset 0 0 0 3px var(--inv); pointer-events: none; }
+.photo-pick__num { position: absolute; top: 6px; right: 6px; display: grid; place-items: center; min-width: 26px; height: 26px; box-sizing: border-box; padding: 0 6px; border-radius: var(--r-pill); background: var(--el); box-shadow: inset 0 0 0 1.5px var(--line2); color: var(--t1); font-size: 13px; font-weight: 650; }
+.photo-pick__tile.is-on .photo-pick__num { background: var(--inv); color: var(--oninv); box-shadow: 0 0 0 2px var(--el); }
+.photo-pick__foot { display: flex; justify-content: space-between; gap: 8px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); }
+.photo-pick__foot button { min-height: 44px; min-width: 44px; padding: 0 18px; border: 0; border-radius: var(--r-pill); font: inherit; font-weight: 600; cursor: pointer; }
+.photo-pick__cancel { background: var(--sub); color: var(--t1); }
+.photo-pick__add { background: var(--inv); color: var(--oninv); }
+.photo-pick__add:disabled { opacity: .4; cursor: default; }
+
+/* A Wiki page cited by a message: a compact card with its kind glyph, title and one line of context (#348 AC-2). */
+.wiki-card { position: relative; display: flex; align-items: center; gap: 10px; min-width: 0; max-width: 100%; margin-top: 6px; padding: 8px 12px; border-radius: var(--r); background: var(--el); box-shadow: inset 0 0 0 1px var(--line); color: var(--t1); text-decoration: none; transition: var(--tr); }
+.wiki-card:hover { background: var(--hov); }
+.wiki-card__glyph { display: grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: var(--r-sm); background: var(--sub); color: var(--t2); }
+.wiki-card__text { display: flex; flex-direction: column; min-width: 0; }
+.wiki-card strong { font-size: var(--fs-base); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wiki-card small { color: var(--t3); font-size: var(--fs-xs); }
+/* The tap area is at least the 44 px control size, centred on the card, as for the source chip (#443). */
+.wiki-card::after { content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, var(--ctl)); height: var(--ctl); transform: translate(-50%, -50%); }
+@media (pointer: coarse) { .wiki-card { min-height: 44px; } }
+.wiki-card:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }

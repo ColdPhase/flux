@@ -215,7 +215,7 @@ class OneConversationJourney(unittest.TestCase):
         stream = self.stream(page)
         roots = stream.locator(".project-convo__message")
         expect(roots).to_have_count(50)
-        self.assertEqual([text.strip() for text in stream.locator(".project-convo__message > p").all_inner_texts()[-3:]], [OPENING, NUMBERS, ORDER], "chronological, newest last")
+        self.assertEqual([text.strip() for text in stream.locator(".project-convo__message > .message-bubble > p").all_inner_texts()[-3:]], [OPENING, NUMBERS, ORDER], "chronological, newest last")
         expect(self.root(page, "r1")).to_have_class(re.compile("is-mine"))
         expect(self.root(page, "r2")).not_to_have_class(re.compile("is-mine"))
         expect(self.root(page, "r2")).to_contain_text("Jonas Berg")
@@ -256,7 +256,7 @@ class OneConversationJourney(unittest.TestCase):
         after = anchor.bounding_box()
         assert before and after
         self.assertAlmostEqual(before["y"], after["y"], delta=4, msg="loading earlier roots keeps the reader's place")
-        self.assertTrue(stream.locator(".project-convo__message > p").first.inner_text().startswith("Earlier note 01"))
+        self.assertTrue(stream.locator(".project-convo__message > .message-bubble > p").first.inner_text().startswith("Earlier note 01"))
 
     def test_01b_message_times_are_a_natural_clock_in_a_12_hour_locale(self) -> None:
         # "4:55 PM", never a zero-padded "04:55 PM", under every root (#436).
@@ -666,7 +666,8 @@ class OneConversationJourney(unittest.TestCase):
         thread = self.thread(page)
         expect(thread).to_be_visible()
         self.assertTrue(page.evaluate("matchMedia('(pointer: coarse)').matches"), "the phone runs with a touch pointer")
-        chip, name = thread.locator("a.project-convo__source"), thread.locator(".project-convo__person").first
+        # #348 AC-2: a cited Wiki page is a compact card now, where the 24 px source chip stood; its tap area is still 44 px.
+        chip, name = thread.locator("a.wiki-card"), thread.locator(".project-convo__person").first
         expect(chip).to_be_visible()
         expect(name).to_be_visible()
         page.wait_for_timeout(400)
@@ -678,7 +679,7 @@ class OneConversationJourney(unittest.TestCase):
             self.assertEqual(area["reach"], [True] * 8, (label, "a tap on any point 21 px from the centre lands on it", area))
         chip_box = chip.bounding_box()
         assert chip_box
-        self.assertLessEqual(chip_box["height"], 25, "the chip keeps its 24 px look")
+        self.assertLessEqual(chip_box["height"], 56, "the Wiki card stays compact")
         self.no_sideways_scroll(page)
         shot(page, "one-conversation-phone-390-thread-targets-light")
 
@@ -736,8 +737,8 @@ class OneConversationJourney(unittest.TestCase):
                 page.goto(self.project_url(f"/conversations/{self.ids['c1']}"))
                 expect(self.thread(page).locator(f"#message-{self.ids['first']}")).to_be_visible()
                 for selector in (f"#message-{self.ids['r1']} .convo-replies__open", f"#message-{self.ids['r1']} .convo-replies__when",
-                                 ".thread__title", ".thread__n", ".thread__hint", ".thread__root-meta time", ".thread__root > p",
-                                 f"#message-{self.ids['first']} > p", f"#message-{self.ids['r3']} .convo-replies__reply"):
+                                 ".thread__title", ".thread__n", ".thread__hint", ".thread__root-meta time", ".thread__root > .message-bubble > p",
+                                 f"#message-{self.ids['first']} > .message-bubble > p", f"#message-{self.ids['r3']} .convo-replies__reply"):
                     if selector.endswith("convo-replies__reply"):
                         page.locator(selector).hover()
                     page.wait_for_function("""selector => {
@@ -760,7 +761,7 @@ class OneConversationJourney(unittest.TestCase):
                 self.assertGreaterEqual(hovered["ratio"], 4.5, (theme, "reply link on hover", hovered))
                 page.mouse.move(1, 1)
                 page.wait_for_timeout(250)
-                outline = page.locator(f"{root} > p").evaluate("e => { const s = getComputedStyle(e); return [s.outlineStyle, s.outlineWidth, s.outlineColor]; }")
+                outline = page.locator(f"{root} > .message-bubble").evaluate("e => { const s = getComputedStyle(e); return [s.outlineStyle, s.outlineWidth, s.outlineColor]; }")
                 ink = page.evaluate("""() => { const probe = document.createElement('i'); probe.style.color = 'var(--t1)';
                   document.body.append(probe); const color = getComputedStyle(probe).color; probe.remove(); return color; }""")
                 self.assertEqual(outline, ["solid", "2px", ink], (theme, "the open root has a solid ring in the primary ink"))

@@ -1,8 +1,10 @@
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Icon } from '../ui';
 import { useConnection } from './connection';
 import type { DraftFile, PendingSend } from './draft';
-import { fileSize } from './Files';
+import { FileIcon, typeLine, useObjectUrl } from './Attachments';
+import { selectedFile, uploadLabel } from './draft';
+import { looksLikePhoto } from './fileKind';
 import './composer.css';
 
 /**
@@ -44,12 +46,53 @@ function PendingStatus({ item, onRetry, onRemove }: { item: PendingSend; onRetry
   );
 }
 
-/** The files of a message not stored yet: names only, since nothing can be downloaded before it is. */
-export function PendingFiles({ files }: { files: readonly DraftFile[] }) {
-  if (!files.length) return null;
-  return <ol className="message-files is-pending" aria-label={files.length === 1 ? '1 attached file' : `${files.length} attached files`}>{files.map((file) => <li key={file.uploadId}>
-    <span className="message-files__name"><Icon name="doc" size={14} /><span>{file.name}</span><small>{fileSize(file.size)}</small></span>
-  </li>)}</ol>;
+/**
+ * The files of a message not stored yet: nothing can be downloaded before it is. Photos show from the
+ * picked bytes with the send state on the photo itself (#348): sending, "sends when you're back", Retry.
+ * The on-photo Retry repeats the message's own Retry for the pointer, so assistive technology hears one.
+ */
+export function PendingFiles({ files, send, body }: { files: readonly DraftFile[]; send?: { state: PendingSend['state']; onRetry: () => void }; body?: ReactNode }) {
+  const photos = files.filter((file) => looksLikePhoto(file.name) && selectedFile(file.uploadId));
+  const others = files.filter((file) => !photos.includes(file));
+  return <>
+    {photos.length ? <div className={`photo-grid photo-grid--${Math.min(photos.length, 4)} is-pending`}>
+      <ul className="photo-grid__tiles" aria-label={photos.length === 1 ? '1 photo' : `${photos.length} photos`}>
+        {photos.slice(0, 4).map((file, index) => <PendingPhoto key={file.uploadId} file={file} send={send} more={index === 3 ? photos.length - 4 : 0} />)}
+      </ul>
+    </div> : null}
+    <div className="message-bubble">{body}
+      {others.length ? <ol className="message-files is-pending" aria-label={others.length === 1 ? '1 attached file' : `${others.length} attached files`}>{others.map((file) => <li key={file.uploadId}>
+        <span className="file-row"><FileIcon name={file.name} /><span className="file-row__text"><span className="file-row__name">{file.name}</span><small>{typeLine(file)}{file.state === 'uploading' ? ` · ${uploadLabel(file)}` : null}</small></span></span>
+      </li>)}</ol> : null}
+    </div>
+  </>;
+}
+
+/** The share of bytes sent, as a ring that fills (its words beside it say the number). */
+function Meter({ percent }: { percent: number }) {
+  return <svg className="photo-grid__meter" width="30" height="30" viewBox="0 0 30 30" aria-hidden="true">
+    <circle className="photo-grid__meter-track" cx="15" cy="15" r="12" />
+    <circle className="photo-grid__meter-bar" cx="15" cy="15" r="12" pathLength={100} strokeDasharray={`${percent} 100`} transform="rotate(-90 15 15)" />
+  </svg>;
+}
+
+function PendingPhoto({ file, send, more }: { file: DraftFile; send?: { state: PendingSend['state']; onRetry: () => void }; more: number }) {
+  const url = useObjectUrl(selectedFile(file.uploadId));
+  const state = send?.state ?? 'sending';
+  // Its own bytes: a percentage while they go out, then "Sending" once all are out until the message is confirmed (#348).
+  const uploading = file.state === 'uploading' && state !== 'failed' && state !== 'waiting';
+  return <li className="photo-grid__tile" data-photo-state={state}>
+    <span className="photo-grid__open">
+      {url ? <img src={url} alt={file.name} draggable={false} /> : null}
+      {more ? <span className="photo-grid__more" aria-hidden="true">+{more}</span> : null}
+      <span className="photo-grid__state" aria-hidden="true">
+        {state === 'failed' ? <button type="button" tabIndex={-1} className="photo-grid__retry" onClick={send?.onRetry}>Retry</button>
+          : state === 'waiting' ? <><Icon name="clock" size={22} /><span>Sends when you're back</span></>
+            : uploading && (file.progress ?? 0) < 100 ? <><Meter percent={file.progress ?? 0} /><span data-upload-progress={file.progress ?? 0}>{uploadLabel(file)}</span></>
+              : <><span className="photo-grid__ring" /><span>Sending</span></>}
+      </span>
+    </span>
+  </li>;
 }
 
 /** The cited material of a message not stored yet. */

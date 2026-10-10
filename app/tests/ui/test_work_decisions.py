@@ -134,7 +134,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(panel).to_contain_text("Everyone with access to Gesture lamp")
         expect(panel.get_by_role("link", name=re.compile("^Message: Test the camera"))).to_be_visible()
         # The source stays in place, and the work shows up under it.
-        expect(message.locator(".project-convo__message-meta ~ p").first).to_have_text(IDEA)
+        expect(message.locator(":scope > .message-bubble > p").first).to_have_text(IDEA)
         expect(message.get_by_role("button", name=f"Work: {IDEA}")).to_be_visible()
         # The panel's controls change the stored work (If-Match under the hood).
         panel.get_by_label("Status").select_option("in_progress")
@@ -416,20 +416,20 @@ class WorkDecisionsJourney(unittest.TestCase):
         # One project conversation (UI116-1): the root is in the stream and its replies in the thread
         # beside it (over it on a phone). Every author keeps the same full face/name column.
         feed = page.locator(".thread__in").bounding_box()
-        mine = page.locator(f"#message-{self.messages['finding']} > p").bounding_box()
-        theirs = page.locator(f"#message-{self.messages['pivot']} > p").bounding_box()
+        mine = page.locator(f"#message-{self.messages['finding']} > .message-bubble").bounding_box()
+        theirs = page.locator(f"#message-{self.messages['pivot']} > .message-bubble").bounding_box()
         stream = page.locator(".project-convo__in").bounding_box()
-        root = page.locator(f"#message-{self.messages['idea']} > p").bounding_box()
+        root = page.locator(f"#message-{self.messages['idea']} > .message-bubble").bounding_box()
         assert feed and mine and theirs and stream and root
         for key in ("finding", "pivot", "idea"):
             message = page.locator(f"#message-{self.messages[key]}")
             assert_author_column(self, message, page.viewport_size["width"], f"{label}: {key}")
             meta = message.locator(".project-convo__message-meta").bounding_box()
-            bubble = message.locator(":scope > p").bounding_box()
+            bubble = message.locator(":scope > .message-bubble").bounding_box()
             self.assertAlmostEqual(bubble["x"], meta["x"], delta=1, msg=f"{label}: {key} starts at the author-name edge")
         self.assertAlmostEqual(mine["x"], theirs["x"], delta=1, msg=f"{label}: own and other messages share one left edge")
-        own_fill = page.locator(f"#message-{self.messages['finding']} > p").evaluate("el => getComputedStyle(el).backgroundColor")
-        other_fill = page.locator(f"#message-{self.messages['pivot']} > p").evaluate("el => getComputedStyle(el).backgroundColor")
+        own_fill = page.locator(f"#message-{self.messages['finding']} > .message-bubble").evaluate("el => getComputedStyle(el).backgroundColor")
+        other_fill = page.locator(f"#message-{self.messages['pivot']} > .message-bubble").evaluate("el => getComputedStyle(el).backgroundColor")
         self.assertNotEqual(own_fill, other_fill, f"{label}: the own-message treatment still distinguishes it")
         self.assertLessEqual(mine["x"] + mine["width"], feed["x"] + feed["width"] + 1, f"{label}: inside the pane")
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.viewport_size["width"], f"{label}: no sideways scroll")

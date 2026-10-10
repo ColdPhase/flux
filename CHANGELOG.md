@@ -126,6 +126,11 @@ repository was created on 2026-09-26.
 
 ### Changed
 
+- Files, references and photos sit inside their message: file rows with a type icon and Download, voice notes with Play, task and decision cards, inline `#4` and `@person` chips, link cards, a frameless photo grid with send state on the photo, composer thumbnails, drop to attach and an always-dark photo viewer ([#369](https://github.com/ColdPhase/flux/pull/369)).
+- A photo or file sent while it uploads shows its upload percentage, then "Sending" until the message is stored ([#369](https://github.com/ColdPhase/flux/pull/369)).
+- On a phone, choosing several photos opens a numbered picker: tap them in the order they should send, tap again to take one out, and the rest renumber ([#369](https://github.com/ColdPhase/flux/pull/369)).
+- A file row in a draft or a message that is still sending names its type with its size, as a stored file does ([#369](https://github.com/ColdPhase/flux/pull/369)).
+- A link's description runs to three lines before it clamps, and a Wiki page cited by a message shows as a compact card that opens it ([#369](https://github.com/ColdPhase/flux/pull/369)).
 - Settings → Appearance adds Text size (Small, Default, Large) on the computer, a Reduce motion switch that turns motion off on this device as the system setting does, and a phone text-size row that follows the phone ([#452](https://github.com/ColdPhase/flux/pull/452)).
 - The Agents view shows what each connected agent holds now (its task and whether it is working, assigned or paused) and its open requests with sender, task and why they wait, and Claude Code users start Flux work from the built-in Start work prompt ([#160](https://github.com/ColdPhase/flux/issues/160)).
 - Faster reads: the Inbox count no longer compiles query code on each visit, conversation and material lists use one statement instead of one or two per row, and conversation roots and comparison outcomes are read without locks ([#300](https://github.com/ColdPhase/flux/pull/300)).

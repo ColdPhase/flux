@@ -86,6 +86,12 @@ class SharedComposerJourney(unittest.TestCase):
         with page.expect_file_chooser() as chooser:
             target.get_by_role("button", name="Attach files", exact=True).click()
         chooser.value.set_files(files)
+        if len(files) > 1 and (page.viewport_size or {}).get("width", 1440) <= 640:
+            # On a phone several files open the numbered picker (#348 AC-4); tapping them in order attaches them in that order.
+            sheet = page.get_by_role("dialog", name="Choose files to send")
+            for item in files:
+                sheet.get_by_role("button", name=item["name"]).click()
+            sheet.get_by_role("button", name=f"Add {len(files)}").click()
 
     def file(self, name="measurements.bin", content=b"\x00\xff\x04\n\x80 exact bytes"):
         return {"name": name, "mimeType": "application/octet-stream", "buffer": content}
@@ -258,7 +264,7 @@ class SharedComposerJourney(unittest.TestCase):
         page.route("**/api/v1/projects/*/files?*", hold)
         page.get_by_label("Write to this task").fill("A's held private bytes")
         self.choose(page, [self.file("held-a.bin")])
-        expect(page.get_by_text("Uploading…", exact=False)).to_have_count(1)
+        expect(page.get_by_text(re.compile("Uploading"))).to_have_count(1)  # "Uploading 0%" once the upload starts (#348 AC-3)
         page.wait_for_function("() => window.__fluxHeldUploadReady === true", timeout=10000)
         page.get_by_label("Task", exact=True).select_option(b["id"])
         page.get_by_label("Write to this task").fill("B's distinct draft")
