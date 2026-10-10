@@ -65,7 +65,17 @@ export function projectAgentRepository(db: Database, policy: ProjectAgentPolicy)
         const joinRequests = [];
         for (const row of asked) if (await allows({ kind: 'human', id: row.request.ownerUserId }, 'project.read', projectId))
           joinRequests.push(assistantJoinView(row.request, row.agentId));
-        const joins = joinRequests.length ? { joinRequests } : {};
+        const [ownAssistant] = await tx.select({ agentId: schema.assistantSettings.agentId }).from(schema.assistantSettings)
+          .innerJoin(schema.projects, and(eq(schema.projects.id, projectId), eq(schema.projects.workspaceId, schema.assistantSettings.workspaceId)))
+          .innerJoin(schema.agentConnections, and(eq(schema.agentConnections.id, schema.assistantSettings.connectionId),
+            eq(schema.agentConnections.computeSource, 'owner_assistant'), isNull(schema.agentConnections.revokedAt)))
+          .innerJoin(schema.agents, and(eq(schema.agents.id, schema.assistantSettings.agentId),
+            eq(schema.agents.ownerUserId, reader.id), isNull(schema.agents.revokedAt)))
+          .where(eq(schema.assistantSettings.ownerUserId, reader.id));
+        const joins = { ...(joinRequests.length ? { joinRequests } : {}), ...(ownAssistant ? { assistantJoin: {
+          agentId: ownAssistant.agentId, canRequest: !joinRequests.some((row) => row.ownerUserId === reader.id)
+            && !await allows({ kind: 'agent', id: ownAssistant.agentId }, 'project.read', projectId),
+        } } : {}) };
         if (!current.length) return { projectId, connections: [], ...joins };
         const ids = current.map((row) => row.connection.id);
 
@@ -130,6 +140,7 @@ export function projectAgentRepository(db: Database, policy: ProjectAgentPolicy)
             id: connection.id, name: connection.name, clientDesignation: connection.clientDesignation,
             owner: { id: connection.ownerUserId, name: ownerName }, agent: { id: connection.agentId, name: agentName },
             own: connection.ownerUserId === reader.id,
+            ...(connection.computeSource === 'owner_assistant' ? { assistant: true as const } : {}),
             state: !usable.has(connection.id) ? 'unavailable' : session ? 'session_open' : authorized.has(connection.id) ? 'offline' : 'not_signed_in',
             session: session ? { startedAt: session.startedAt.toISOString(), expiresAt: session.expiresAt.toISOString() } : null,
             lastActivity: last ? { operation: last.operation, at: last.at.toISOString() } : null,

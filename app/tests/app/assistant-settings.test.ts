@@ -102,6 +102,8 @@ test('a join request gives no authority, is deduplicated/manager-scoped, and man
   const agent = expectStatus(await requester.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Joining assistant', owner: 'self' } }), 201) as { id: string };
   const connections = new FakeConnections(); connections.connect(requester.id, randomUUID()); const queue = new FakeQueue();
   await personalRunUseCases(db, { connections, queue: queue.factory, providerEnabled: true }).enable(principal(requester), { consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId: agent.id });
+  const beforeRequest = expectStatus(await requester.browser.request('GET', `/api/v1/projects/${destination.id}/agents`), 200) as unknown as ProjectAgents;
+  assert.deepEqual(beforeRequest.assistantJoin, { agentId: agent.id, canRequest: true });
   const endpoint = `/api/v1/projects/${destination.id}/assistant-join-requests`;
   const first = expectStatus(await requester.browser.request('POST', endpoint), 201) as { id: string; state: string };
   const repeated = expectStatus(await requester.browser.request('POST', endpoint), 201) as { id: string };
@@ -113,11 +115,14 @@ test('a join request gives no authority, is deduplicated/manager-scoped, and man
   assert.equal(managerView.joinRequests?.[0]?.id, first.id);
   const otherView = expectStatus(await bystander.browser.request('GET', `/api/v1/projects/${destination.id}/agents`), 200) as unknown as ProjectAgents;
   assert.equal(otherView.joinRequests, undefined, 'an ordinary reader sees no one else\'s join request');
+  assert.equal(otherView.assistantJoin, undefined, 'an ordinary reader sees no one else’s assistant request action');
   expectStatus(await requester.browser.request('POST', `${endpoint}/${first.id}/allow`), 403);
   const granted = expectStatus(await manager.browser.request('POST', `${endpoint}/${first.id}/allow`), 200) as { state: string };
   assert.equal(granted.state, 'accepted');
   assert.equal((await pool.query('SELECT role FROM project_grants WHERE project_id=$1 AND agent_id=$2', [destination.id, agent.id])).rows[0].role, 'contributor');
   assert.ok((await settings(requester, ws.id)).body.policy.selectedProjectIds.includes(destination.id));
+  const afterJoin = expectStatus(await requester.browser.request('GET', `/api/v1/projects/${destination.id}/agents`), 200) as unknown as ProjectAgents;
+  assert.equal(afterJoin.assistantJoin?.canRequest, false); assert.equal(afterJoin.connections[0]?.assistant, true);
   const hidden = expectStatus(await manager.browser.request('POST', `/api/v1/workspaces/${ws.id}/projects`, { body: { name: 'Hidden destination', visibility: 'restricted' } }), 201) as { id: string };
   expectStatus(await requester.browser.request('POST', `/api/v1/projects/${hidden.id}/assistant-join-requests`), 404);
 });

@@ -31,6 +31,8 @@ export interface ProjectAgentConnection {
   agent: { id: string; name: string };
   /** True when the caller owns the connection. */
   own: boolean;
+  /** One owner assistant, independent of engine; never an external client label. */
+  assistant?: true;
   state: ProjectAgentConnectionState;
   /** The open session's start and end; null unless `session_open`. */
   session: { startedAt: string; expiresAt: string } | null;
@@ -43,4 +45,6 @@ export interface ProjectAgents {
   connections: ProjectAgentConnection[];
   /** Pending joins visible only to current managers or the requesting owner. */
   joinRequests?: AssistantJoinRequest[];
+  /** Only the reader’s own active assistant in this project’s workspace; asking grants no access. */
+  assistantJoin?: { agentId: string; canRequest: boolean };
 }

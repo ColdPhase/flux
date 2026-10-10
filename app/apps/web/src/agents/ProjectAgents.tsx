@@ -18,6 +18,7 @@ import { agentDisplayName } from '../docs/format';
 import { getProjectAgents } from './api';
 import { agentAuthorOwner, useAgentOwners } from './owners';
 import { ProjectPolicy } from './ProjectPolicy';
+import { AssistantJoinRequests } from './AssistantJoinRequests';
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
 import './agents.css';
@@ -66,6 +67,7 @@ function stateLine(connection: ProjectAgentConnection, now: number) {
   if (state === 'session_open') return `Session open since ${when(connection.session!.startedAt)}`;
   if (state === 'offline') return 'Offline';
   if (connection.state === 'unavailable') return connection.own ? 'Can’t act here now: check this agent’s project access' : 'Can’t act here now';
+  if (connection.assistant) return 'No active session';
   return connection.own ? 'Not signed in from your client yet' : 'Not signed in yet';
 }
 
@@ -92,7 +94,7 @@ function Connection({ connection, now }: { connection: ProjectAgentConnection; n
       <Kreska size={32} expression={connectionExpression(connection, now)} hue={agentHue(connection.agent.id)} className="agents-conn__icon" />
       <span className="agents-conn__body">
         <span className="agents-conn__who">
-          <AgentIdentity name={CLIENT_LABEL[connection.clientDesignation]} owner={`${connection.owner.name}${connection.own ? ' (you)' : ''}`} icon={false} />
+          <AgentIdentity name={connection.assistant ? `${connection.owner.name}’s assistant` : CLIENT_LABEL[connection.clientDesignation]} owner={`${connection.owner.name}${connection.own ? ' (you)' : ''}`} icon={false} />
         </span>
         <span className="agents-conn__name">{connection.agent.name} · {connection.name}</span>
         <span className="agents-conn__state">{stateLine(connection, now)}</span>
@@ -212,7 +214,7 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
     };
     reload.current = () => { void load(); };
     void load();
-    return () => { controller.abort(); reload.current = () => { /* unmounted */ }; };
+    return () => { controller.abort(); reload.current = async () => { /* unmounted */ }; };
   }, [task.id, show]);
 
   // Another person's or agent's contribution appears without a reload (#183 B1). Events carry only
@@ -345,22 +347,23 @@ const CONNECTION_EVENTS = new Set(['project.grant_set.v1', 'project.grant_revoke
  * event, so focus, a visible tab and a 15 s poll while the tab is visible also refetch; the poll moves
  * `now` too, so a session past its end reads as offline, and keeps "Last: …" current.
  */
-function useConnections(projectId: string, meId: string, initial: ProjectAgentConnection[]) {
+function useConnections(projectId: string, meId: string, initial: ProjectAgentsData) {
   // A newer read replaces the loader's list until the loader itself reads again.
-  const [fetched, setFetched] = useState<{ base: ProjectAgentConnection[]; list: ProjectAgentConnection[] } | null>(null);
+  const [fetched, setFetched] = useState<{ base: ProjectAgentsData; view: ProjectAgentsData } | null>(null);
   const [now, setNow] = useState(() => Date.now());
-  const reload = useRef<() => void>(() => { /* not mounted */ });
+  const reload = useRef<() => Promise<void>>(async () => { /* not mounted */ });
   useEffect(() => {
     let controller: AbortController | null = null;
-    reload.current = () => {
+    reload.current = async () => {
       controller?.abort();
       const current = new AbortController();
       controller = current;
-      getProjectAgents(projectId, current.signal)
-        .then((next) => { if (!current.signal.aborted) { setFetched({ base: initial, list: next.connections }); setNow(Date.now()); } })
-        .catch(() => { /* keep the last known list; the next trigger retries */ });
+      try {
+        const next = await getProjectAgents(projectId, current.signal);
+        if (!current.signal.aborted) { setFetched({ base: initial, view: next }); setNow(Date.now()); }
+      } catch { /* keep the last known projection; the next trigger retries */ }
     };
-    return () => { controller?.abort(); reload.current = () => { /* unmounted */ }; };
+    return () => { controller?.abort(); reload.current = async () => { /* unmounted */ }; };
   }, [projectId, initial]);
   useStreamEvents(meId, (event) => {
     if (CONNECTION_EVENTS.has(event.kind) && (event.objectType === 'agent' || event.objectId === projectId)) reload.current();
@@ -374,7 +377,8 @@ function useConnections(projectId: string, meId: string, initial: ProjectAgentCo
     const interval = window.setInterval(tick, 15_000);
     return () => { window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onVisible); window.clearInterval(interval); };
   }, []);
-  return { list: fetched && fetched.base === initial ? fetched.list : initial, now };
+  const view = fetched && fetched.base === initial ? fetched.view : initial;
+  return { list: view.connections, view, now, refresh: () => reload.current() };
 }
 
 export function ProjectAgents() {
@@ -407,7 +411,7 @@ export function ProjectAgents() {
   const pendingTask = pendingId ? tasks.find((item) => item.id === pendingId) ?? (task?.id === pendingId ? task : null) : null;
   // Flush the pending navigation guard before a fast next input can reach the old keyed thread.
   const select = (id: string) => setSearch((current) => { const next = new URLSearchParams(current); next.set('task', id); return next; }, { replace: true, flushSync: true });
-  const connections = useConnections(projectId, me.user.id, data.connections);
+  const connections = useConnections(projectId, me.user.id, data);
 
   // The view scrolls in its own pane like every other view, so a long thread stays reachable
   // above the sticky composer on any screen.
@@ -425,6 +429,8 @@ export function ProjectAgents() {
       ) : (
         <p className="agents__no-connections">No agents connected. You can still discuss tasks here.</p>
       )}
+      <AssistantJoinRequests key={`${projectId}:${me.user.id}`} projectId={projectId} meId={me.user.id} meName={me.user.name}
+        view={connections.view} names={names} canManage={shell?.project.access === 'manager'} onRefresh={connections.refresh} />
       <ProjectPolicy key={projectId} projectId={projectId} meId={me.user.id} canEdit={shell?.project.access === 'manager'}
         managers={(shell?.people ?? []).filter((person) => person.kind === 'human' && person.access === 'manager').map((person) => person.name)} />
       {task ? (

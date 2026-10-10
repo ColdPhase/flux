@@ -1,4 +1,4 @@
-import { agentProjectPolicyPath, projectAgentsPath, type AgentProjectPolicy, type ProjectAgents, type PublishAgentProjectPolicyCommand } from '@flux/contracts';
+import { assistantJoinRequestPath, type AssistantJoinRequest, agentProjectPolicyPath, projectAgentsPath, type AgentProjectPolicy, type ProjectAgents, type PublishAgentProjectPolicyCommand } from '@flux/contracts';
 import { request } from '../api/client';
 
 /** The Agents view of a project (UI116-2, #136): current connections. */
@@ -14,3 +14,9 @@ export const getAgentPolicy = (projectId: string, signal?: AbortSignal) =>
  */
 export const publishAgentPolicy = (projectId: string, command: PublishAgentProjectPolicyCommand, idempotencyKey: string) =>
   request<AgentProjectPolicy>(agentProjectPolicyPath(projectId), { method: 'PUT', body: command, headers: { 'idempotency-key': idempotencyKey } });
+
+/** A request is durable but grants nothing; only a current project manager may allow it. */
+export const requestAssistantJoin = (projectId: string) =>
+  request<AssistantJoinRequest>(assistantJoinRequestPath(projectId), { method: 'POST' });
+export const allowAssistantJoin = (projectId: string, requestId: string) =>
+  request<AssistantJoinRequest>(`${assistantJoinRequestPath(projectId)}/${requestId}/allow`, { method: 'POST' });
