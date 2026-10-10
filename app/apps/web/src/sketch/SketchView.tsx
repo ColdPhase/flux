@@ -442,7 +442,8 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
         ...(draft.file ? { file: draft.file, width: draft.width, height: draft.height } : {}) }, parent: parent(draft), key: draft.key }];
     const existingOnly = new Set(phone ? (draft.lines ?? [draft]).filter((row) => row.attempt?.parentId || (!draft!.tracked && draft!.parentId)).map((row) => row.id) : []);
     const expectedText = new Map((draft.lines ?? [draft]).flatMap((row) => row.attempt ? [[row.id, row.attempt.thought.text] as const] : []));
-    const saved = await doc.saveThoughts(items, { existingOnly, expectedText, onAttempt: (item) => {
+    const retry = new Set((draft.lines ?? [draft]).filter((row) => !!row.attempt).map((row) => row.id));
+    const saved = await doc.saveThoughts(items, { existingOnly, expectedText, retry, onAttempt: (item) => {
       const current = capture.peek();
       if (!current) return;
       const row = current.lines?.find((line) => line.id === item.thought.id) ?? current;
