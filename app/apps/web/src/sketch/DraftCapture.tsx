@@ -33,7 +33,7 @@ export function DraftCapture({ draft, parent, saving, canWrite, confirmPrevious 
   const attempted = (draft.lines ?? [draft]).some((row) => !!row.attempt);
   const unknown = (draft.lines ?? [draft]).some((row) => row.unknown);
   const where = confirmPrevious ? (unknown ? 'Earlier draft’s saved state is unknown' : 'Earlier save from a larger screen') : mixedParents ? 'Earlier row destinations kept' : draft.parentId ? parent ? `${attempted ? 'Intended connection' : 'Connected'} to “${parent}”${attempted ? '' : ' on save'}` : 'Its parent is no longer available' : 'Top level';
-  const privacy = saving ? 'saving · text kept' : attempted ? 'save not confirmed · text kept' : unknown ? 'saved state unknown · text kept' : 'private until saved';
+  const privacy = saving ? 'saving · text kept' : attempted ? 'save not confirmed · text kept' : unknown ? 'text kept' : 'private until saved';
   const lines = draft.lines;
   if (lines) {
     const count = lines.length;

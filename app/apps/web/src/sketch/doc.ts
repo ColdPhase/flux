@@ -377,7 +377,7 @@ export function useSketchDoc(sketchId: string, me: Me) {
    * undo step. Returns the confirmed thought IDs; the caller keeps the rest of its draft with their IDs and keys.
    */
   const saveThoughts = useCallback(async (items: { thought: NewThought; parent: { id: string; linkId: string } | null; key: string }[], options?: {
-    /** Phone confirmation of an earlier connected attempt may read/edit an existing thought, never create its link. */
+    /** An unknown restore or a phone's earlier connected attempt may confirm/edit an existing thought, never create its link. */
     existingOnly?: ReadonlySet<string>;
     expectedText?: ReadonlyMap<string, string>;
     desiredText?: ReadonlyMap<string, string>;
