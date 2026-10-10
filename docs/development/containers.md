@@ -344,6 +344,14 @@ build. Set `FLUX_UI_SCREENSHOT_DIR` to an absolute path (for example
 `FLUX_UI_MAILPIT_PORT` to avoid clashes with a concurrent run. It is kept separate from
 `check_application.sh` so the PR check stays fast.
 
+UI modules that stub responses with `page.route` or `context.route` create every browser context
+with `service_workers="block"`. A controlling service worker can send requests that those routes do
+not see (#297 measured it in `test_agents_view` test_04d), so a stub would answer some runs and not
+others. `tests/test_ui_service_workers.py` reads the UI test sources on the host
+(`python3 -m unittest discover -s tests -p 'test_*.py'`) and names every context that does not block
+workers in a module that routes. To reproduce a load-sensitive UI failure, limit one container's CPU
+(`docker update --cpus`) and run the module alone; do not start a load generator on the host (#271).
+
 `check_ui.sh` also sets the TEST-ONLY personal-run switch (#68): `FLUX_TEST_PERSONAL_RUNS=anthropic-mock`
 with `FLUX_TEST_FAILURE_INJECTION=true` gives every person a fixture key connection, and the
 worker sends runs through the real Anthropic adapter to the `anthropic-mock` Compose service
