@@ -1,5 +1,5 @@
 import { AGENT_MCP_ENTRIES, type AgentConnection, type AgentMcpCapabilityId, type AgentMcpEntry, type AgentMcpPolicy,
-  type SaveAgentMcpPolicy } from '@flux/contracts';
+  type SaveAgentMcpPolicy, type AgentConnectionSetupFacts } from '@flux/contracts';
 import { DomainError, InvalidInputError, NotFoundError } from '../access/errors.js';
 import { isUuid } from '../access/policy.js';
 import type { Principal } from '../types.js';
@@ -8,6 +8,11 @@ export interface AgentMcpPolicyPort {
   get(ownerUserId: string, connectionId: string): Promise<{ connection: AgentConnection; policy: AgentMcpPolicy } | null>;
   save(ownerUserId: string, connectionId: string, expectedVersion: number, input: SaveAgentMcpPolicy):
     Promise<AgentMcpPolicy | 'CONNECTION_NOT_FOUND' | 'POLICY_VERSION_CONFLICT' | 'MCP_POLICY_OUTSIDE_CONSENT' | 'MCP_POLICY_AUTHORITY_UNAVAILABLE'>;
+}
+
+/** Owner-only factual projection. It grants no authority and never certifies native activation. */
+export interface AgentConnectionSetupPort {
+  get(connection: AgentConnection): Promise<AgentConnectionSetupFacts>;
 }
 
 /** A request cannot adopt a policy saved after it was admitted, even after Off then On. */

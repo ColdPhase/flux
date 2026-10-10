@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { AGENT_MCP_ENTRIES, agentMcpPolicyPath, type SaveAgentMcpPolicy } from '@flux/contracts';
-import { agentMcpPolicyUseCases, DomainError, evaluateProject, type Database } from '@flux/core';
+import { agentConnectionSetupRepository } from '@flux/db';
+import { agentMcpPolicyUseCases, DomainError, evaluateProject, type AgentConnectionSetupPort, type Database } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { useDomainErrors } from '../http/commands.js';
 import { createMcpPolicyStore } from './mcp-policy-store.js';
@@ -32,7 +33,9 @@ export async function agentMcpPolicyRoutes(app: FastifyInstance, { db, sessions 
             : entry.operation ? 'bounded_action_grant_required' : null;
         return { ...entry, configured: enabled, available: reason === null, reason };
       });
-      return { ...current, projects, entries };
+      const setupStore: AgentConnectionSetupPort = agentConnectionSetupRepository(tx);
+      const setup = await setupStore.get(current.connection);
+      return { ...current, projects, entries, setup };
     });
     return reply.header('cache-control', 'no-store').header('etag', `"mcp-policy-${result.policy.version}"`).send(result);
   });

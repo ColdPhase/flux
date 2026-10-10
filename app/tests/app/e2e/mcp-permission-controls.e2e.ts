@@ -5,7 +5,7 @@ import { mkdirSync } from 'node:fs';
 import http from 'node:http';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
-import { agentMcpPolicyPath, type AgentMcpPolicy } from '@flux/contracts';
+import { agentMcpPolicyPath, type AgentMcpPolicy, type AgentConnectionSetupFacts } from '@flux/contracts';
 import { createDatabase } from '@flux/db';
 import { chromium, webkit, type BrowserContext, type Page, type Request as BrowserRequest } from 'playwright';
 import { register, uniqueEmail } from '../support/http.js';
@@ -66,7 +66,7 @@ async function fixture() {
       { body: { title: 'Calibration notes', body: 'Private calibration observation' } }), 201);
     const connection = await agentConnection(pool, owner, String(agent.id), [projectId]);
     const path = agentMcpPolicyPath(connection.connectionId);
-    const settings = async () => expect(await owner.request('GET', path), 200) as unknown as { policy: AgentMcpPolicy; connection: unknown };
+    const settings = async () => expect(await owner.request('GET', path), 200) as unknown as { policy: AgentMcpPolicy; connection: unknown; setup: AgentConnectionSetupFacts };
     const initial = await settings();
     return { pool, email, owner, projectId, doc, connection, initial, settings };
   } catch (error) { await pool.end(); throw error; }
@@ -98,7 +98,7 @@ async function finite<T>(work: Promise<T>, label: string) {
 
 test('ordinary owner switches persist, the same old MCP bearer loses wiki access, and all Off remains manageable without new consent', { timeout: 120_000 }, async () => {
   const f = await fixture(); const browser = await chromium.launch({ args: ['--no-sandbox'] });
-  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const context = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 1440, height: 900 } });
   try {
     const { page, panel } = await open(context, f.email);
     const wiki = panel.getByRole('switch', { name: /^Wiki and materials/ });
@@ -143,7 +143,7 @@ test('ordinary owner switches persist, the same old MCP bearer loses wiki access
 
 test('a held genuine initial policy response cannot downgrade a later confirmed save', { timeout: 120_000 }, async () => {
   const f = await fixture(); const browser = await chromium.launch({ args: ['--no-sandbox'] });
-  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const context = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 1440, height: 900 } });
   const path = agentMcpPolicyPath(f.connection.connectionId);
   let release!: () => void; let captured!: (body: Buffer) => void; let failed!: (error: Error) => void; let settled!: () => void;
   const responseBytes = new Promise<Buffer>((resolve, reject) => { captured = resolve; failed = reject; });
@@ -183,7 +183,7 @@ test('a held genuine initial policy response cannot downgrade a later confirmed 
 
 test('a confirmed project-removal save with failed availability refresh shows unknown access until a genuine reload', { timeout: 120_000 }, async () => {
   const f = await fixture(); const browser = await chromium.launch({ args: ['--no-sandbox'] });
-  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const context = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 1440, height: 900 } });
   const pattern = `**${agentMcpPolicyPath(f.connection.connectionId)}`;
   try {
     const { page, panel } = await open(context, f.email);
@@ -210,7 +210,7 @@ test('a confirmed project-removal save with failed availability refresh shows un
 
 test('stale tabs and an actual offline save keep unconfirmed changes distinct from saved permissions', { timeout: 120_000 }, async () => {
   const f = await fixture(); const browser = await chromium.launch({ args: ['--no-sandbox'] });
-  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const context = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 1440, height: 900 } });
   try {
     const a = await open(context, f.email); const b = await open(context, f.email);
     await a.panel.getByRole('switch', { name: /^Wiki and materials/ }).uncheck();
@@ -245,7 +245,7 @@ test('Chromium and WebKit phone owner controls keep 44px switches, keyboard acce
       try {
         for (const width of [320, 390]) {
           const f = await fixture();
-          const context = await browser.newContext({ viewport: { width, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+          const context = await browser.newContext({ serviceWorkers: 'block', viewport: { width, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
           try {
             const { page, panel } = await open(context, f.email);
             const switches = panel.getByRole('switch');
@@ -271,5 +271,59 @@ test('Chromium and WebKit phone owner controls keep 44px switches, keyboard acce
           } finally { await context.close(); await f.pool.end(); }
         }
       } finally { await browser.close(); }
+  }
+});
+
+test('actual owner setup stays pending, refreshes lost authorization, and keeps revoked history in Chromium and WebKit', { timeout: 240_000 }, async () => {
+  if (evidenceDir) mkdirSync(evidenceDir, { recursive: true });
+  for (const engine of [chromium, webkit]) {
+    const browser = await engine.launch(engine === chromium ? { args: ['--no-sandbox'] } : {});
+    try {
+      for (const width of [390, 1440]) {
+        const f = await fixture();
+        const context = await browser.newContext({ serviceWorkers: 'block', viewport: { width, height: width === 390 ? 844 : 900 },
+          isMobile: width === 390, hasTouch: width === 390, deviceScaleFactor: width === 390 ? 3 : 1 });
+        try {
+          const { page, panel } = await open(context, f.email);
+          const setup = panel.getByRole('region', { name: 'Connection setup', exact: true });
+          await setup.getByRole('heading', { name: 'Client session open · activation pending', exact: true }).waitFor();
+          assert.equal(await setup.getByText('Built-in Start and Resume are pending. This connection is not ready to launch work from Flux.', { exact: true }).count(), 1);
+          assert.equal(await page.getByRole('button', { name: /^(Start work|Resume work)$/ }).count(), 0, 'OAuth/bootstrap records do not manufacture a working launch control');
+          for (const theme of ['light', 'dark'] as const) {
+            await page.emulateMedia({ colorScheme: theme });
+            await setup.scrollIntoViewIfNeeded();
+            await page.evaluate(() => document.fonts.ready);
+            if (evidenceDir) await page.screenshot({ path: join(evidenceDir, `connect-setup-${engine.name()}-${width}-${theme}.png`) });
+          }
+          await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
+          const overflow = await page.evaluate(() => [...document.querySelectorAll('.connection *')].filter(element => {
+            const box = element.getBoundingClientRect(); return box.width > 0 && box.right > innerWidth + 1;
+          }).map(element => ({ tag: element.tagName, class: element.className, text: element.textContent?.slice(0, 80), right: element.getBoundingClientRect().right })));
+          await capture(page, `connect-setup-${engine.name()}-${width}-enlarged`);
+          assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `enlarged text preserves the setup message and controls without horizontal overflow: ${JSON.stringify(overflow)}`);
+          await page.evaluate(() => { document.documentElement.style.fontSize = ''; });
+          // Revoke the actual OAuth records independently of the UI, then refresh through its keyboard control.
+          await f.pool.query('UPDATE oauth_access_token SET revoked=now() WHERE reference_id IN (SELECT \'flux-grant:\' || id FROM agent_oauth_bindings WHERE connection_id=$1)', [f.connection.connectionId]);
+          await f.pool.query('UPDATE oauth_refresh_token SET revoked=now() WHERE reference_id IN (SELECT \'flux-grant:\' || id FROM agent_oauth_bindings WHERE connection_id=$1)', [f.connection.connectionId]);
+          const reload = panel.getByRole('button', { name: 'Reload saved permissions', exact: true });
+          await reload.focus(); await reload.press('Enter');
+          await setup.getByRole('heading', { name: 'Authorization needed', exact: true }).waitFor();
+          assert.equal((await f.settings()).setup.authorizationRecorded, false);
+          await panel.getByRole('button', { name: 'Disable all', exact: true }).click();
+          await panel.getByRole('button', { name: 'Save permissions', exact: true }).click();
+          await setup.getByRole('heading', { name: 'Permissions are Off', exact: true }).waitFor();
+          assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+          await page.getByRole('button', { name: 'Revoke connection', exact: true }).click();
+          if (width === 390) await page.getByRole('button', { name: 'Revoke now', exact: true }).tap();
+          else await page.getByRole('button', { name: 'Revoke now', exact: true }).click();
+          const history = page.locator('.connection__history');
+          await history.locator('summary').click();
+          assert.equal(await history.getByText('External connection', { exact: true }).count(), 1);
+          await page.reload(); await history.locator('summary').click();
+          assert.equal(await history.getByText('External connection', { exact: true }).count(), 1, 'revoked history survives page reload');
+          assert.equal(await page.getByRole('radio').count(), 0, 'revoked selection cannot reauthorize or retain actionable permission controls');
+        } finally { await context.close(); await f.pool.end(); }
+      }
+    } finally { await browser.close(); }
   }
 });

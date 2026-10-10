@@ -4,6 +4,7 @@ import { AGENT_MCP_ENTRIES, AGENT_MCP_READ_CAPABILITIES, type AgentConnection, t
 import { ApiError, NetworkError } from '../api/client';
 import { Button } from '../ui';
 import { getMcpPermissions, saveMcpPermissions, type McpPermissionSettings } from './api';
+import { ConnectionSetup } from './ConnectionSetup';
 
 const LABEL: Partial<Record<AgentMcpCapabilityId, string>> = {
   'project.identity.read': 'Project context and search', 'project.knowledge.read': 'Wiki and materials',
@@ -118,6 +119,7 @@ export function McpPermissions({ connection, projectNames }: { connection: Agent
     setStatus('Changes are not saved yet');
   }
   return <section className="mcp-permissions" aria-label={`Permissions for ${connection.name}`} aria-busy={busy || undefined}>
+    {settings ? <ConnectionSetup settings={settings} known={!needsReload && availabilityVersion === settings.policy.version} /> : null}
     <header><h2>What this agent can use</h2><p>Choose what {connection.name} may read, suggest and change. Save to apply your switches.</p></header>
     <p className="mcp-permissions__status" role="status">{status}</p>
     {error ? <p role="alert" className="connection__alert">{error}</p> : null}

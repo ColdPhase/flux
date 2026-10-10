@@ -53,6 +53,15 @@
 .connection__actions, .connection__footer { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .connection__footer { padding-top: 18px; border-top: 1px solid var(--line); }
 .connection__alert { padding: 12px 14px; border-radius: var(--r); background: var(--sub); color: var(--t1); font-size: var(--fs-md); line-height: 1.5; }
+.connection__setup { width: 100%; min-width: 0; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.connection__setup h2 { font-size: var(--fs-base); font-weight: 600; }
+.connection__setup p { margin-top: 6px; color: var(--t3); font-size: var(--fs-base); line-height: 1.5; }
+.connection__history p { margin-top: 6px; color: var(--t3); font-size: var(--fs-sm); line-height: 1.5; }
+.connection__history summary { cursor: pointer; color: var(--t2); font-size: var(--fs-md); }
+.connection__history ul { list-style: none; margin: 10px 0 0; padding: 0; }
+.connection__history li { display: flex; flex-wrap: wrap; gap: 6px 12px; padding: 7px 0; font-size: var(--fs-sm); }
+.connection__history li strong { font-weight: 500; overflow-wrap: anywhere; }
+.connection__history li span { color: var(--t3); }
 /* Where an approved request goes (#287): the hosts read as plain values; a warning off this computer. */
 .connection__destination { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border: 1px solid var(--line2); border-radius: var(--r-lg); }
 .connection__destination h2 { color: var(--t2); font-size: var(--fs-sm); }
@@ -166,5 +175,6 @@
 .mcp-permissions__row > input:disabled { opacity: .5; cursor: default; }
 .mcp-permissions__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .mcp-permissions__actions > .ui-btn, .mcp-permissions > .ui-btn { min-height: 44px; }
+.mcp-permissions > .ui-btn { max-width: 100%; white-space: normal; text-align: start; }
 @media (pointer: coarse) { .mcp-permissions__row strong { font-size: 16px; } .mcp-permissions__row small { font-size: 13px; } }
 @media (max-width: 600px) { .mcp-permissions { padding: 12px 13px; } .mcp-permissions__actions { width: 100%; } }
