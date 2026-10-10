@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { createSessionRepository } from '@flux/db';
 import type { Database } from '@flux/core';
 import type { ApiError, IdentityCapabilities } from '@flux/contracts';
-import { createAuth, type FluxAuth } from './auth.js';
+import { createAuth, ensureOauthResource, type FluxAuth } from './auth.js';
 import { registerAuthBridge } from './bridge.js';
 import type { IdentityConfig } from './config.js';
 import { createSmtpMailer, type Mailer } from './mailer.js';
@@ -25,6 +25,15 @@ export interface IdentityOptions {
 export interface Identity extends SessionResolver {
   passwordReset: IdentityCapabilities['passwordReset'];
   auth: FluxAuth;
+}
+
+/**
+ * Starts identity before the server accepts requests. The OAuth resource row is ensured first so
+ * that concurrent API processes do not race on Better Auth's seed insert (#316).
+ */
+export async function startIdentity(app: FastifyInstance, options: IdentityOptions): Promise<Identity> {
+  await ensureOauthResource(options.db, options.config.publicOrigin);
+  return registerIdentity(app, options);
 }
 
 /**
