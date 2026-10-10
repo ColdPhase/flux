@@ -494,18 +494,22 @@ class PhoneShellJourney(unittest.TestCase):
         for y in (cy - 23, cy + 23):
             self.assertFalse(page.evaluate(reaches, [cx, y]), f"the point ({cx:.1f}, {y:.1f}) outside the square is another target")
 
-    def test_17_real_taps_on_the_square_edges_open_the_audience(self):
-        # A real tap, not only a hit test: a tap 21 px above and below the centre opens the audience button.
+    def tap_audience_edge(self, offset):
+        # One real tap on the square's top or bottom edge, on a freshly loaded page. A second navigation in the
+        # same page aborts the app's own requests, which WebKit reports as an uncaught browser error.
         page = self.page({"width": 390, "height": 844})
         audience = self.audience_line(page)
         box = self.box(audience)
         cx, cy = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
-        for y in (cy - 21, cy + 21):
-            audience = self.audience_line(page)
-            page.evaluate("() => { window.__audienceTaps = []; document.addEventListener('click', (e) => window.__audienceTaps.push(!!(e.target.closest && e.target.closest('.top__audience'))), true); }")
-            page.mouse.click(cx, y)
-            self.assertEqual(page.evaluate("() => window.__audienceTaps"), [True], f"a real tap at y={y:.1f} reaches the audience button")
+        page.evaluate("() => { window.__audienceTaps = []; document.addEventListener('click', (e) => window.__audienceTaps.push(!!(e.target.closest && e.target.closest('.top__audience'))), true); }")
+        page.mouse.click(cx, cy + offset)
+        self.assertEqual(page.evaluate("() => window.__audienceTaps"), [True], f"a real tap at y={cy + offset:.1f} reaches the audience button")
 
+    def test_17_real_tap_on_the_top_edge_opens_the_audience(self):
+        self.tap_audience_edge(-21)
+
+    def test_18_real_tap_on_the_bottom_edge_opens_the_audience(self):
+        self.tap_audience_edge(21)
 
 
 if __name__ == "__main__":
