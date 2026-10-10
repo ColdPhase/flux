@@ -448,10 +448,10 @@ class TasksFinalJourney(unittest.TestCase):
         for dark in (False, True):
             for width, factor, safe_padding in ((390, 1, 0), (390, 1.25, 34), (320, 2, 34)):
                 with self.subTest(dark=dark, width=width, text_size=factor):
+                    setup = self.page('ada')
+                    self.set_status(setup, 'labels', 'open')
                     page = self.tasks(phone=True, dark=dark)
                     page.set_viewport_size({'width': width, 'height': 844 if width == 390 else 568})
-                    self.set_status(page, 'labels', 'open')
-                    page.reload(wait_until='networkidle')
                     page.add_style_tag(content=f'html {{ font-size: {16 * factor}px !important; }}')
                     row = self.row(page, LABELS)
                     before = self.task(page, 'labels')
@@ -477,6 +477,7 @@ class TasksFinalJourney(unittest.TestCase):
                     self.assertEqual((stored['status'], stored['version']), ('open', before['version'] + 2))
                     page.locator('.ui-toast__close').last.tap()
                     expect(page.locator('.ui-toast')).to_have_count(0)
+                    page.wait_for_load_state('networkidle')
                     page.context.set_offline(True)
                     row.get_by_role('button', name='Open. Set to In progress').tap()
                     expect(page.locator('.ui-toast--danger')).to_contain_text('Flux could not be reached')
@@ -501,7 +502,9 @@ class TasksFinalJourney(unittest.TestCase):
         page.wait_for_function("""() => {
             const toast = document.querySelector('.ui-toast');
             const nav = document.querySelector('.ui-bottomnav');
-            return toast && nav && toast.getBoundingClientRect().bottom <= nav.getBoundingClientRect().top - 8;
+            return toast && nav && getComputedStyle(toast).transform === 'none'
+                && toast.getAnimations().every(a => a.playState !== 'running')
+                && toast.getBoundingClientRect().bottom <= nav.getBoundingClientRect().top - 8;
         }""")
         observed = page.evaluate("""() => {
             const toast = document.querySelector('.ui-toast');
