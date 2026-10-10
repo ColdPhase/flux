@@ -773,6 +773,9 @@ class AppShellJourney(unittest.TestCase):
         # On the phone the avatar opens Settings, which signs out (#266 PF-5, #341).
         page.get_by_role("link", name="Settings and account").click()
         expect(page).to_have_url(f"{ORIGIN}/settings")
+        # Settings → Account holds Sign out (#350).
+        page.get_by_role("link", name=re.compile("^Account")).click()
+        expect(page).to_have_url(f"{ORIGIN}/settings/account")
         page.get_by_role("button", name=re.compile("^Sign out")).click()
         expect(page).to_have_url(f"{ORIGIN}/sign-in")
         expect(page.get_by_role("status").filter(has_text="You’re signed out.")).to_be_visible()

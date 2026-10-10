@@ -10,6 +10,16 @@ const devApi = process.env.FLUX_DEV_API_URL;
 
 export default defineConfig({
   plugins: [fluxServiceWorker(), fluxPrecompress()],
+  build: {
+    modulePreload: {
+      // A failed dynamic JS modulepreload can poison WebKit's resource cache even across reload
+      // (WebKit270357). Native import still loads the code; keep its CSS and eager HTML preloads.
+      // This public Vite8 option is experimental and covered by actual HTTP503/reload browser tests.
+      resolveDependencies: (_url, dependencies, { hostType }) => hostType === 'js'
+        ? dependencies.filter((path) => !path.endsWith('.js'))
+        : dependencies,
+    },
+  },
   resolve: devApi
     ? { alias: { '@flux/contracts': fileURLToPath(new URL('../../packages/contracts/src/index.ts', import.meta.url)) } }
     : undefined,

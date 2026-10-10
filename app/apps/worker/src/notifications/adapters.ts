@@ -12,6 +12,7 @@ import {
   NOTIFICATION_EMAIL_JOB,
   PUSH_SEND_JOB,
   channelOn,
+  summaryWanted,
   deliverableAt,
   policySourceReader,
   preferenceRepository,
@@ -102,6 +103,11 @@ export function pushPreferenceCheck(db: Database) {
   const preferences = preferenceRepository(notificationPreferenceRows(db));
   return async (userId: string, notification: NotificationRecord) => {
     if (await preferences.isMuted(userId, notification.source)) return false;
+    if (notification.deliveryKind === 'morning_summary') {
+      if (!summaryWanted(await preferences.get(userId)) || !notification.summarySources?.length) return false;
+      for (const source of notification.summarySources) if (await preferences.isMuted(userId, source)) return false;
+      return true;
+    }
     return !notification.reason || channelOn(await preferences.get(userId), notification.reason, 'push');
   };
 }

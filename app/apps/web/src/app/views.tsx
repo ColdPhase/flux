@@ -3,7 +3,6 @@ import { Link, useLocation, type NavigateFunction } from 'react-router';
 import { EmptyState } from '../ui';
 import { useShellData } from './data';
 import { useReadingPosition } from './drafts';
-import { HomeTasks } from './HomeTasks';
 
 /** Home's views: the overview first, then the Map, Tasks and the Wiki. */
 export const VIEWS = [
@@ -35,11 +34,6 @@ export function startCapture(navigate: NavigateFunction) {
   const composer = document.getElementById('composer');
   if (composer && window.location.pathname === '/map') { composer.focus(); return; }
   navigate('/map', { state: { capture: Date.now() } });
-}
-
-/** Home's Tasks: the work you own across your projects (#190 HOME-2). */
-export function TasksView() {
-  return <Pane><HomeTasks /></Pane>;
 }
 
 export function NotFoundView() {

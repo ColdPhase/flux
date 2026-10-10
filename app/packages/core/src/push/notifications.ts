@@ -85,7 +85,17 @@ export async function getInboxItem(ports: InboxPorts, userId: string, id: string
   const row = await ports.notifications.findForRecipient(userId, id);
   if (!row) throw new NotificationNotFoundError();
   if (!readsSource(await ports.authorizer.canRead(userId, row.source), row.source)) throw new NotificationNotFoundError();
+  if (!await summarySourcesReadable(ports.authorizer, userId, row)) throw new NotificationNotFoundError();
   return row;
+}
+
+/** Aggregates expose no count unless every contributing source is still authorized. */
+export async function summarySourcesReadable(authorizer: SourceReadAuthorizer, userId: string, notification: NotificationRecord) {
+  if (notification.deliveryKind !== 'morning_summary') return true;
+  const sources = notification.summarySources;
+  if (!sources?.length || sources.length > 51) return false;
+  for (const source of sources) if (!readsSource(await authorizer.canRead(userId, source), source)) return false;
+  return true;
 }
 
 /** Marks everything in the inbox read. Nothing forces this; it only quiets the dot. */
