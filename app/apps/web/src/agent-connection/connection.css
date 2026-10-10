@@ -138,3 +138,33 @@
   .connection--consent .connection__projects li, .connection--consent .connection__scopes small { font-size: 13px; }
   .connection--consent .connection__footer .ui-btn { min-height: 44px; }
 }
+
+
+/* Ordinary owner switches share the compact saved-connection surface. */
+.mcp-permissions { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 16px; border: 1px solid var(--line); border-radius: var(--r-lg); min-width: 0; }
+.mcp-permissions > header h2 { font-size: var(--fs-base); font-weight: 600; }
+.mcp-permissions > header p, .mcp-permissions__note { margin-top: 5px; color: var(--t3); font-size: var(--fs-sm); line-height: 1.5; }
+.mcp-permissions__status { font-size: var(--fs-sm); color: var(--t2); }
+.mcp-permissions > form { display: flex; flex-direction: column; width: 100%; min-width: 0; gap: 12px; }
+.mcp-permissions fieldset { min-width: 0; border: 0; padding: 0; margin: 0; }
+.mcp-permissions legend, .mcp-permissions summary { font-size: var(--fs-sm); color: var(--t2); font-weight: 600; }
+.mcp-permissions legend { margin-bottom: 5px; }
+.mcp-permissions summary { min-height: 44px; padding: 12px 0; cursor: pointer; }
+.mcp-permissions summary:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
+.mcp-permissions details { border-top: 1px solid var(--line); }
+.mcp-permissions__legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.mcp-permissions__row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; padding: 4px 0; cursor: pointer; }
+.mcp-permissions__row > span { min-width: 0; }
+.mcp-permissions__row strong { display: block; color: var(--t1); font-size: var(--fs-sm); font-weight: 500; overflow-wrap: anywhere; }
+.mcp-permissions__row small { display: block; margin-top: 2px; color: var(--t3); font-size: var(--fs-xs); line-height: 1.4; overflow-wrap: anywhere; }
+.mcp-permissions__row > input { position: relative; flex: none; appearance: none; width: 44px; height: 44px; margin: 0; border: 0; background: transparent; cursor: pointer; }
+.mcp-permissions__row > input::before { content: ''; position: absolute; width: 40px; height: 24px; left: 2px; top: 10px; border-radius: 14px; background: var(--line2); }
+.mcp-permissions__row > input::after { content: ''; position: absolute; width: 16px; height: 16px; left: 6px; top: 14px; border-radius: 50%; background: var(--bg); box-shadow: 0 1px 3px var(--line); transition: transform var(--dur-1); }
+.mcp-permissions__row > input:checked::before { background: var(--t1); }
+.mcp-permissions__row > input:checked::after { transform: translateX(18px); }
+.mcp-permissions__row > input:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; border-radius: 8px; }
+.mcp-permissions__row > input:disabled { opacity: .5; cursor: default; }
+.mcp-permissions__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.mcp-permissions__actions > .ui-btn, .mcp-permissions > .ui-btn { min-height: 44px; }
+@media (pointer: coarse) { .mcp-permissions__row strong { font-size: 16px; } .mcp-permissions__row small { font-size: 13px; } }
+@media (max-width: 600px) { .mcp-permissions { padding: 12px 13px; } .mcp-permissions__actions { width: 100%; } }
