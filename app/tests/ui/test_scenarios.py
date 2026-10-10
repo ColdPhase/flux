@@ -728,18 +728,13 @@ class ScenarioJourney:
         s["doc"] = doc["id"]
         s["doc_v1"] = doc["body"]
 
-        # Task first, map later: Jonas adds the order in Tasks; it is linked to Variant B (test_2b).
+        # Task first, map later: Jonas adds the order in Tasks and links it to Variant B from its Details (test_2b).
         jonas.goto(f"/projects/{lamp}/tasks?view=list")
         jonas.get_by_label("New task", exact=True).fill(ORDER_TASK)
         self.tap(jonas.get_by_role("button", name="Add task", exact=True))
         expect(self.details(jonas).get_by_role("heading", name=ORDER_TASK)).to_be_visible()
         order = next(item for item in self.work_items("jonas") if item["title"] == ORDER_TASK)
         s["order_task"] = order["id"]
-        self.api("jonas", "POST", f"/api/v1/projects/{lamp}/links", {"from": {"type": "work", "id": order["id"]}, "to": {"type": "thought", "id": s["variant_b"]}}, status=201)
-        self.open_map(page)
-        variant_badge = (page.locator(f'.sk-outline-list li[data-id="{s["variant_b"]}"] .sk-work').first if self.phone
-                         else page.locator(f'.sk-node[data-id="{s["variant_b"]}"] + .sk-work-slot .sk-work'))
-        expect(variant_badge).to_contain_text("1 task")
 
         # Removing a placement from the map keeps its task.
         market = self.api("jonas", "POST", f"/api/v1/sketches/{s['map']}/thoughts", {"text": MARKET_THOUGHT, "x": 40, "y": 520}, status=201)["thought"]["id"]
@@ -787,19 +782,56 @@ class ScenarioJourney:
         self.tap(self.thought(page, thoughts[LOW_LIGHT]))
         expect(page.locator('.sk-li-t[aria-pressed="true"]')).to_have_count(2, timeout=3000)
 
-    @unittest.expectedFailure
     def test_2b_an_existing_task_links_to_a_thought_in_the_browser(self) -> None:
-        """#44 scenario 2, "repeat with task creation preceding the map link": a task made first in Tasks should be
-        linkable to a map thought in the browser. Today only POST /api/v1/projects/:id/links does it; neither the
-        task's Details nor the map offers a control. Draft issue: "Link an existing task to a map thought"."""
-        self.need("order_task", "variant_b")
-        page = self.page("jonas")
-        page.goto(f"/projects/{self.s['lamp']}/tasks?open=work:{self.s['order_task']}")
-        card = page.locator(f".wd[data-detail-kind='work'][data-detail-id='{self.s['order_task']}']")
+        """#44 scenario 2, "repeat with task creation preceding the map link" (#289): a task made first in Tasks is
+        linked to a map thought from its Details. A phone taps the controls; a computer uses the keyboard alone, and
+        Escape closes the picker without a change. The link is stored once, and the map counts the task on that
+        thought and lists it in the chooser for its other editors too."""
+        self.need("order_task", "variant_b", "map")
+        s, lamp = self.s, self.s["lamp"]
+        jonas = self.page("jonas")
+        jonas.goto(f"/projects/{lamp}/tasks?open=work:{s['order_task']}")
+        card = jonas.locator(f".wd[data-detail-kind='work'][data-detail-id='{s['order_task']}']")
         expect(card).to_be_visible()
-        control = card.get_by_role("button", name=re.compile(r"(link|connect|add|place).*(thought|map|sketch)", re.I)).or_(
-            card.get_by_role("link", name=re.compile(r"(link|connect|add|place).*(thought|map|sketch)", re.I)))
-        expect(control.first).to_be_visible(timeout=3000)
+        section = card.get_by_role("region", name="Linked thoughts")
+        expect(section.get_by_text("Not linked to a thought yet.")).to_be_visible()
+        control = section.get_by_role("button", name="Link to a thought")
+        picker = card.get_by_role("group", name=re.compile("^Thoughts to link to "))
+        if self.phone:
+            self.tap(control)
+        else:
+            control.focus()
+            jonas.keyboard.press("Enter")
+            expect(picker).to_be_visible()
+            jonas.keyboard.press("Escape")
+            expect(picker).to_have_count(0)
+            expect(control).to_be_focused()
+            jonas.keyboard.press("Enter")
+        expect(picker).to_be_visible()
+        picker.get_by_label("Map", exact=True).select_option(s["map"])
+        choice = picker.get_by_role("button", name=VARIANT_B)
+        if self.phone:
+            self.tap(choice)
+        else:
+            choice.focus()
+            jonas.keyboard.press("Enter")
+        expect(section.get_by_role("status")).to_contain_text("Linked")
+        expect(picker).to_have_count(0)
+        expect(section.get_by_role("link", name=VARIANT_B)).to_be_visible()
+        self.shot(jonas, "2b-linked-in-details")
+
+        order = self.api("jonas", "GET", f"/api/v1/work/{s['order_task']}", status=200)
+        thought_links = [(link["role"], link["to"]["id"]) for link in order["links"] if link["to"]["type"] == "thought"]
+        self.assertEqual(thought_links, [("related", s["variant_b"])], "one stored link, made from the task's Details")
+
+        ada = self.page("ada")
+        self.open_map(ada)
+        badge = (ada.locator(f'.sk-outline-list li[data-id="{s["variant_b"]}"] .sk-work').first if self.phone
+                 else ada.locator(f'.sk-node[data-id="{s["variant_b"]}"] + .sk-work-slot .sk-work'))
+        expect(badge).to_contain_text("1 task")
+        self.tap(badge)
+        expect(ada.locator(".sk-tasks__list")).to_contain_text(ORDER_TASK[:60])
+        self.shot(ada, "2b-map-count")
 
     # ---------------------------------------------------------------- scenario 3: agent proposes, a person pivots
 
