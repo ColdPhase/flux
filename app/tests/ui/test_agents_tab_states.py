@@ -376,9 +376,9 @@ class AgentsTabStates(unittest.TestCase):
         phone.get_by_role("complementary", name="Claude Code, details").get_by_role("button", name="Stop Claude Code").tap()
         action = phone.get_by_role("button", name="Hand back")
         expect(action).to_be_visible()
-        box = action.bounding_box()
-        assert box
-        self.assertGreaterEqual(box["height"], 44, f"Hand back is {box['height']:.1f} px high on a phone")
+        # The toast enters with a scale transform, so the layout height is read (offsetHeight ignores transforms).
+        height = action.evaluate("el => el.offsetHeight")
+        self.assertGreaterEqual(height, 44, f"Hand back is {height} px high on a phone")
         # Negative control: the old padding-only action was about 33 px high, so this assertion fails without the coarse-pointer rule.
 
     def test_09_the_phone_thread_is_a_sheet_over_the_list_with_a_way_back_to_the_agent(self) -> None:

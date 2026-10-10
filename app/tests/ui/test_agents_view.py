@@ -399,13 +399,15 @@ class AgentsViewJourney(unittest.TestCase):
         expect(outsider.get_by_role("heading", level=1, name="Agents")).to_have_count(0)
 
     def test_06_phone_keeps_entries_and_composer_usable(self) -> None:
-        page = self.open_agents("hubert", phone=True)
+        page = self.open_agents("hubert", phone=True, thread=False)
         expect(page.get_by_role("list", name="Agents in this project").get_by_role("listitem")).to_have_count(3)
-        expect(page.get_by_label("Write to this task")).to_be_visible()
         overflow = page.evaluate("() => document.documentElement.scrollWidth - document.documentElement.clientWidth")
         self.assertLessEqual(overflow, 0, "no horizontal page scroll at 390px")
-        # On a phone the thread is a sheet over the list (#347 P1-2): it fills the view and the list stays behind it.
+        # On a phone a task's thread is a sheet over the list (#347 P1-2): it fills the view, the list is behind it, and "Close thread" brings the list back.
+        page.goto(f"/projects/{self.ids['project']}/agents?task={self.ids['task']}")
         expect(page.get_by_role("region", name=f"Thread of {TASK}")).to_be_visible()
+        expect(page.get_by_label("Write to this task")).to_be_visible()
+        expect(page.get_by_role("list", name="Agents in this project")).to_be_hidden()
         # Every message is reachable: the view scrolls, and at its end the newest message sits above
         # the sticky composer instead of under it (independent delta review of 466daf8).
         thread = page.get_by_role("region", name=f"Thread of {TASK}")
@@ -430,6 +432,11 @@ class AgentsViewJourney(unittest.TestCase):
         self.assertLessEqual(placed["lastBottom"], placed["composerTop"] + 1, "after a send, the newest message ends above the composer")
         self.assertTrue(placed["visible"], "after a send, the newest message is not covered by the composer")
         shot(page, "agents-phone-390")
+        # Closing the sheet returns to the entries, all three still there.
+        page.get_by_role("button", name="Close thread").tap()
+        expect(page.get_by_role("list", name="Agents in this project").get_by_role("listitem")).to_have_count(3)
+        expect(page.get_by_role("list", name="Agents in this project")).to_be_visible()
+        # Negative control: with the list drawn under the sheet (the pre-sheet layout), the to_be_hidden check above fails.
 
     def test_07_the_thread_links_to_conversation_and_stays_by_the_composer(self) -> None:
         page = self.open_agents("hubert")
