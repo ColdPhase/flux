@@ -213,14 +213,17 @@ class PhoneShellJourney(unittest.TestCase):
         expect(tabs.get_by_role("link", name="Wiki")).to_have_attribute("aria-current", "page")
         self.settle(page)
         self.assertNotAlmostEqual(indicator.evaluate("el => el.getBoundingClientRect().left"), before, delta=2)
-        # The sidebar's current project is accent-tinted with a 3px bar.
+        # The sidebar's current project is a raised white pill (F-026 §4).
         row = page.locator(".side__project.is-open")
         # The accent tint is the row's own background, or the travelling highlight behind it (#155).
         tint = row.evaluate("""el => { const glide = el.closest('.side__list')?.querySelector('.side__glide');
           const own = getComputedStyle(el).backgroundColor;
           return own !== 'rgba(0, 0, 0, 0)' ? own : glide && getComputedStyle(glide).opacity === '1' ? getComputedStyle(glide).backgroundColor : own; }""")
         self.assertNotIn(tint, ("rgba(0, 0, 0, 0)", "transparent"), "the current project is tinted")
-        self.assertEqual(row.evaluate("el => getComputedStyle(el, '::before').width"), "3px")
+        lift = row.evaluate("""el => { const glide = el.closest('.side__list')?.querySelector('.side__glide');
+          const own = getComputedStyle(el).boxShadow;
+          return own !== 'none' ? own : glide && getComputedStyle(glide).opacity === '1' ? getComputedStyle(glide).boxShadow : own; }""")
+        self.assertNotEqual(lift, "none", "the current project is raised")
         expect(page.get_by_role("navigation", name="Main places")).to_have_count(0)
         shot(page, "266-desktop-tabs")
 
@@ -320,15 +323,16 @@ class PhoneShellJourney(unittest.TestCase):
         page.get_by_role("dialog", name="Flux").get_by_role("link", name=re.compile("settings and sign out")).click()
         expect(page).to_have_url(f"{ORIGIN}/settings")
         expect(page.get_by_role("heading", level=1, name="Settings")).to_be_visible()
-        for section in ("This device", "Notifications", "AI", "Account"):
-            expect(page.get_by_role("heading", name=section, exact=True)).to_be_visible()
-        expect(page.get_by_role("radiogroup", name="Appearance")).to_be_visible()
+        # Settings (#350): Appearance, This phone, Agents and AI, then the other sections as rows.
+        self.assertEqual(page.locator(".sset-in > h2.sset-sec").all_inner_texts(), ["Appearance", "This phone", "Agents and AI", "More"])
+        expect(page.get_by_role("radiogroup", name="Theme")).to_be_visible()
         page.get_by_role("radio", name="Dark").click()
         self.assertEqual(page.evaluate("document.documentElement.dataset.theme"), "dark")
-        page.get_by_role("radio", name="Match system").click()
-        for title, url, heading in (("What reaches you", "/settings/notifications", "Notification settings"),
-                                    ("Agent in Flux", "/settings/assistant", "Your assistant"),
-                                    ("Background suggestions", "/settings/background-compute", "Background suggestions")):
+        page.get_by_role("radio", name="System").click()
+        for title, url, heading in (("Notifications", "/settings/notifications", "Settings"),
+                                    ("Your assistant", "/settings/assistant", "Your assistant"),
+                                    ("Background suggestions", "/settings/background-compute", "Background suggestions"),
+                                    ("Account", "/settings/account", "Settings")):
             page.get_by_role("link", name=re.compile(f"^{title}")).click()
             expect(page).to_have_url(f"{ORIGIN}{url}")
             expect(page.get_by_role("heading", level=1, name=heading)).to_be_visible()
@@ -336,7 +340,7 @@ class PhoneShellJourney(unittest.TestCase):
             self.assertGreaterEqual(min(self.box(back)["width"], self.box(back)["height"]), 44)
             back.click()
             expect(page).to_have_url(f"{ORIGIN}/settings")
-        page.get_by_role("link", name=re.compile("^Agent connections")).click()
+        page.get_by_role("link", name=re.compile("^Local co-work on this computer")).click()
         expect(page).to_have_url(f"{ORIGIN}/connect-agent")
         page.get_by_role("link", name="Settings").click()
         expect(page).to_have_url(f"{ORIGIN}/settings")

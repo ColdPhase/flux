@@ -105,9 +105,10 @@ export interface ConversationRoot {
   lastReplyAt: string | null;
   /**
    * Present when this root opened a task's discussion (UI116-3): the first genuine contribution to that
-   * task, which every later contribution answers. The title is the task's current one.
+   * task, which every later contribution answers. The title is the task's current one. The number is
+   * immutable, so its chip names the task as "#12" before the visible reference read answers (#367).
    */
-  task?: { workId: string; title: string };
+  task?: { workId: string; title: string; number: number };
 }
 
 /** Stable, newest-first window of roots returned in ascending display order. */
