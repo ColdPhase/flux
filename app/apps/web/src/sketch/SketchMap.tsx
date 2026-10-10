@@ -101,6 +101,17 @@ interface Drag {
 export function SketchMap(props: SketchMapProps) {
   const { sketch, meId, selection, connectFrom, editing, coarse, compact, helpId, heights, canWrite, tasks, projectId } = props;
   const canvasRef = useRef<HTMLDivElement>(null);
+  const phoneToolsRef = useRef<HTMLDivElement>(null);
+  const [phoneToolsHeight, setPhoneToolsHeight] = useState(150);
+  // Larger reading text and optional Undo/status rows must never cover a thought's task count.
+  // Reserve the actual dock height; widths and graph positions remain display-only geometry.
+  useLayoutEffect(() => {
+    const el = phoneToolsRef.current;
+    if (!compact || !el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => setPhoneToolsHeight(Math.ceil(el.getBoundingClientRect().height) + 14));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [compact]);
   const nodes = useRef(new Map<string, HTMLButtonElement>());
   const drag = useRef<Drag | null>(null);
   const suppressClick = useRef(false);
@@ -558,7 +569,7 @@ export function SketchMap(props: SketchMapProps) {
   );
 
   return (
-    <div className="sk-canvas-wrap sk-canvas-wrap--controls">
+    <div className="sk-canvas-wrap sk-canvas-wrap--controls" style={compact ? { '--sk-phone-tools-height': `${phoneToolsHeight}px` } as CSSProperties : undefined}>
     <div className={`sk-canvas${panning ? ' is-panning' : ''}${connectFrom ? ' is-connecting' : ''}${wire ? ' is-wiring' : ''}`} ref={canvasRef} role="group"
       aria-label={`Sketch: ${sketch.title}`} aria-describedby={helpId} onWheel={onWheel}>
       <div className="sk-zoomed" ref={zoomedRef} style={{ width: width * zoom, height: height * zoom }}
@@ -674,7 +685,7 @@ export function SketchMap(props: SketchMapProps) {
       </div>
     </div>
       <div className="sk-dock">
-        {props.hint}
+        {!compact ? props.hint : null}
         <div className="sk-dock__row">
           {props.dock}
           {!compact ? zoomControls : null}
@@ -683,8 +694,10 @@ export function SketchMap(props: SketchMapProps) {
       {compact ? <button type="button" className="sk-edit-btn sk-map-options" aria-haspopup="dialog" aria-expanded={phoneMenuOpen && phoneMenu === 'map'} onClick={(event) => {
         event.currentTarget.focus({ preventScroll: true }); setPhoneMenu('map'); setPhoneMenuOpen(true);
       }}><Icon name="more" size={16} />Map options</button> : null}
-      {compact && canWrite ? (
-        <div className="sk-phone">
+      {compact ? (
+        <div className="sk-phone" ref={phoneToolsRef}>
+          {props.hint}
+          {canWrite ? <>
           <div className="sk-phone__secondary">
             {plus ? <button type="button" className="sk-edit-btn" aria-haspopup="dialog" aria-expanded={phoneMenuOpen && phoneMenu === 'thought'} onClick={(event) => {
               event.currentTarget.focus({ preventScroll: true }); setPhoneMenu('thought'); setPhoneMenuOpen(true);
@@ -693,6 +706,7 @@ export function SketchMap(props: SketchMapProps) {
           </div>
           <p className="sk-phone__note"><Icon name="monitor" size={16} />Connect and arrange on a computer</p>
           <button type="button" className="sk-fab sk-add" onClick={props.onAddThought}><Icon name="plus" size={18} />Add a thought</button>
+          </> : null}
         </div>
       ) : null}
       {compact ? <Sheet open={phoneMenuOpen} onClose={() => setPhoneMenuOpen(false)} label={phoneMenu === 'thought' ? 'Thought actions' : 'Map options'} className="sk-options-sheet">
@@ -706,7 +720,7 @@ export function SketchMap(props: SketchMapProps) {
             <button type="button" className="sk-options__action" onClick={() => phoneAction(() => props.onEdit(lastThought.id))}><Icon name="edit" size={18} />Edit thought</button>
             {openLink ? <a className="sk-options__action" href={openLink.href} target="_blank" rel="noopener noreferrer"><Icon name="link" size={18} />Open link {openLink.host}</a> : null}
             <button type="button" className="sk-options__action" onClick={() => phoneAction(() => props.onAdd(lastThought.id))}><Icon name="plus" size={18} />Add a connected thought</button>
-            {props.bar.project ? <button type="button" className="sk-options__action" aria-label="Create task from selected thoughts" onClick={() => phoneAction(props.bar.onTask)}><Icon name="tasks" size={18} />Create task</button> : null}
+            {props.bar.project ? <button type="button" className="sk-options__action" aria-label="Create task from selected thoughts" aria-disabled={false} onClick={() => phoneAction(props.bar.onTask)}><Icon name="tasks" size={18} />Create task</button> : null}
             <button type="button" className="sk-options__action" aria-label="Remove from sketch" onClick={() => phoneAction(() => props.onRemove(selection))}><Icon name="trash" size={18} />Remove thought</button>
           </> : <>
             <p className="sk-options__thought">{sketch.title}</p>

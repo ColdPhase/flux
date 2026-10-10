@@ -154,7 +154,7 @@ class ThoughtDraftJourney(unittest.TestCase):
 
     def open(self, page, sketch=None, mode="List"):
         page.goto(f"/projects/{self.project}/map/{sketch or self.sketch}")
-        expect(page.get_by_role("group", name=re.compile("^Sketch: ")).or_(page.locator(".sk-outline-list"))).to_be_visible()
+        expect(page.locator('.sk-page .sk')).to_be_visible()
         show_map_as(page, mode)
 
     def capture(self, page, *, child=False):

@@ -663,9 +663,12 @@ class AdaptiveTransitions(AdaptiveBase):
         """T151-E: zoomed in, the phone's two columns scroll sideways; selecting, the keyboard and a zoom step keep that place."""
         page = self.page(390, 844)
         canvas = self.open_map(page)
+        options = open_map_options(page, touch=True)
         for label in ("110%", "125%", "150%"):
-            page.get_by_role("button", name="Zoom in").click()
-            expect(page.get_by_role("button", name=f"Zoom {label}, reset to 100%")).to_be_visible()
+            options.get_by_role("button", name="Zoom in").tap()
+            expect(options.get_by_role("button", name=f"Zoom {label}, reset to 100%")).to_be_visible()
+        options.get_by_role('button', name='Close map options', exact=True).tap()
+        expect(options).to_have_count(0)
         right = canvas.evaluate("""(c) => {
           const box = c.getBoundingClientRect();
           let best = null;
@@ -690,8 +693,11 @@ class AdaptiveTransitions(AdaptiveBase):
         self.assertEqual(page.evaluate(CAMERA)["left"], camera["left"], "a keyboard keeps the sideways place")
         self.resize(page, 390, 844)
         self.assertEqual(page.evaluate(CAMERA)["left"], camera["left"], "closing the keyboard keeps the sideways place")
-        page.get_by_role("button", name="Zoom out").click()
-        expect(page.get_by_role("button", name="Zoom 125%, reset to 100%")).to_be_visible()
+        options = open_map_options(page, touch=True)
+        options.get_by_role("button", name="Zoom out").tap()
+        expect(options.get_by_role("button", name="Zoom 125%, reset to 100%")).to_be_visible()
+        options.get_by_role('button', name='Close map options', exact=True).tap()
+        expect(options).to_have_count(0)
         page.wait_for_timeout(250)
         self.assertGreater(page.evaluate(CAMERA)["left"], 0, "a zoom step keeps a sideways place")
         self.assertEqual(self.thoughts(page), len(fx.THOUGHTS), "nothing is saved")

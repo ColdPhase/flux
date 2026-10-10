@@ -124,7 +124,7 @@ class MapPasteJourney(unittest.TestCase):
 
     def open(self, page, mode="List", sketch=None):
         page.goto(f"/projects/{self.project}/map/{sketch or self.sketch}")
-        expect(page.get_by_role("group", name=re.compile("^Sketch: ")).or_(page.locator(".sk-outline-list"))).to_be_visible()
+        expect(page.locator('.sk-page .sk')).to_be_visible()
         show_map_as(page, mode)
 
     def writes(self, page):
@@ -339,7 +339,7 @@ class MapPasteJourney(unittest.TestCase):
         # Stored files belong to a project: a private map refuses an image but still takes text.
         private = self.api(page, "POST", f"/api/v1/workspaces/{self.workspace}/sketches", {"title": "Jonas's notes", "scope": "private"}, 201)["id"]
         page.goto(f"/map/{private}")
-        expect(page.get_by_role("group", name=re.compile("^Sketch: ")).or_(page.locator(".sk-outline-list"))).to_be_visible()
+        expect(page.get_by_role('button', name="Rename sketch Jonas's notes", exact=True)).to_be_visible()
         self.paste(page, None, self.image())
         expect(page.locator(".sk-status")).to_contain_text("Images can be added to a project’s maps only")
         self.assertEqual(writes, [])

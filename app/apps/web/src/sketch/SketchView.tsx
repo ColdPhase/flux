@@ -119,7 +119,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   const editSaveInFlight = useRef(false);
   const dmAudience = directMessages.find((item) => item.id === (doc.sketch?.dmId ?? dmId))?.audience ?? null;
   // "Start sketch from these messages" lands here: say what happened and who sees it.
-  const [status, setStatus] = useState<{ text: string; change: boolean }>(() => ({
+  const [status, setStatus] = useState<{ text: string; change: boolean; selection?: boolean }>(() => ({
     text: started ? `Started from ${started} ${started === 1 ? 'message' : 'messages'} · ${dmAudience ? `${dmAudience.replace(/^Only /, 'only ')} can see it` : 'it stays in this conversation'}` : '',
     change: false,
   }));
@@ -156,7 +156,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     return () => window.removeEventListener('focus', refresh);
   }, [taskProjectId]);
 
-  const say = (text: string, change = false) => setStatus({ text, change });
+  const say = (text: string, change = false, selection = false) => setStatus({ text, change, selection });
   const find = (id: string) => sketch?.thoughts.find((t) => t.id === id);
   // Focus moves after the next commit (a list row replaces its editor only then), and only if
   // focus is not already somewhere the person put it meanwhile.
@@ -205,8 +205,8 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
 
   const describe = (ids: string[]) => {
     if (!ids.length) say('');
-    else if (ids.length === 1) say(`${quote(find(ids[0]!)?.text ?? '')} selected`);
-    else say(`${ids.length} thoughts selected · Connect links them`);
+    else if (ids.length === 1) say(`${quote(find(ids[0]!)?.text ?? '')} selected`, false, true);
+    else say(`${ids.length} thoughts selected · Connect links them`, false, true);
   };
 
   const connectTo = (from: string, to: string) => {
@@ -621,7 +621,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
           {sketch.scope === 'dm' && canWrite ? (
             <Button variant="secondary" className="sk-promote" onClick={() => openDetails({ kind: 'promote-sketch', sketchId: sketch.id, title: sketch.title })}>Make it a project…</Button>
           ) : null}
-          {!phone || !mapMode ? viewModes : null}
+          {!phone || !mapMode || (!sketch.thoughts.length && !canWrite) ? viewModes : null}
         </div>
   );
   const notices = (
@@ -663,7 +663,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   );
   const sayLine = doc.problem ? <span className="sk-warn">{doc.problem}</span> : status.text;
   const statusLine = (
-    <p className={`sk-status${canWrite ? '' : ' sk-status--readonly'}`} role="status">
+    <p className={`sk-status${canWrite ? '' : ' sk-status--readonly'}${phone && status.selection && !doc.problem ? ' sk-status--selection' : ''}`} role="status">
       {sayLine}
       {!doc.problem && status.change ? <span className={doc.saving ? undefined : 'sk-ok'}> · {busy}</span> : null}
     </p>
