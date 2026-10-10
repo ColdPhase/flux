@@ -1,0 +1,25 @@
+/* The "@" and "/" menu above the composer (F-026 S5), and mention chips in messages. */
+.composer__box { position: relative; }
+.cmenu { position: absolute; z-index: var(--z-menu); left: 0; bottom: calc(100% + 8px); width: min(100%, 352px); padding: 6px; border-radius: 16px;
+  background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); max-height: min(60vh, 360px); overflow: auto; overscroll-behavior: contain; }
+.cmenu__h { padding: 4px 10px 6px; color: var(--t3); font-size: var(--fs-sm); }
+.cmenu__o { display: flex; align-items: center; gap: 12px; min-height: 38px; padding: 0 10px; border-radius: 10px; color: var(--t1); font-size: var(--fs-base); cursor: pointer; }
+.cmenu__o.is-active { background: var(--sub); }
+.cmenu__cmd { flex: none; min-width: 72px; font-family: var(--mono); font-size: var(--fs-md); font-weight: 600; }
+.cmenu__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.cmenu__hint { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--t2); }
+.cmenu__name + .cmenu__hint { flex: none; margin-left: auto; color: var(--t3); font-size: var(--fs-sm); }
+.cmenu__kbd { flex: none; display: grid; place-items: center; min-width: 20px; height: 20px; border-radius: 5px; background: var(--sub); color: var(--t2); font: 500 11px/1 var(--mono); box-shadow: inset 0 -1px 0 var(--line2); }
+.cmenu__o.is-active .cmenu__kbd { background: var(--el); }
+.cmenu__f { margin: 4px 4px 0; padding: 8px 6px 4px; border-top: 1px solid var(--line); color: var(--t3); font-size: var(--fs-sm); }
+@media (pointer: coarse) { .cmenu__o { min-height: 48px; font-size: 16px; } .cmenu { width: 100%; } }
+
+/* Quiet line in the box: the two triggers. On a phone the field's placeholder says it. */
+.composer__hint { display: inline-flex; align-items: center; gap: 4px; margin-left: 4px; color: var(--t3); font-size: var(--fs-sm); }
+.composer__hint kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 5px; background: var(--sub); color: var(--t2); font: 500 11px/1 var(--mono); box-shadow: inset 0 -1px 0 var(--line2); }
+@media (max-width: 640px) { .composer__hint { display: none; } }
+
+/* A mention in a message: a chip that sits on the text baseline instead of lifting the line. */
+.mention { display: inline; padding: 1px 6px; border-radius: 6px; background: var(--sub); box-decoration-break: clone; -webkit-box-decoration-break: clone; font-weight: 500; }
+.mention__k { display: inline-block; width: 14px; height: 14px; margin-right: 4px; vertical-align: -.2em; }
+.is-mine > p .mention { background: color-mix(in srgb, currentColor 16%, transparent); color: inherit; }

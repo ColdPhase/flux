@@ -296,17 +296,17 @@ class OneConversationJourney(unittest.TestCase):
         docked = r1.bounding_box()
         assert docked
         self.assertAlmostEqual(docked["y"], start["y"], delta=4, msg="opening the thread keeps the stream in place")
-        # A reply's actions open from one ⋯ in its corner and never cover its author or time.
+        # A reply's actions float over its corner on hover (F-026 S6) and never cover its author or time.
         first = thread.locator(f"#message-{self.ids['first']}")
         first.hover()
         expect(first.get_by_role("button", name="Create work")).to_have_count(0)
-        more = first.get_by_role("button", name="Make from this message")
+        more = first.get_by_role("button", name="More actions")
         more_box, name_box = more.bounding_box(), first.locator(".project-convo__message-meta strong").bounding_box()
         assert more_box and name_box
         self.assertTrue(more_box["x"] >= name_box["x"] + name_box["width"] or more_box["y"] >= name_box["y"] + name_box["height"], "the ⋯ is clear of the author")
         more.click()
         expect(more).to_have_attribute("aria-expanded", "true")
-        first.get_by_role("button", name="Details of this message").click()
+        page.get_by_role("menuitem", name="Details").click()
         expect(page.locator("#details").get_by_role("heading", name="Message from Jonas Berg")).to_be_visible()
         page.wait_for_timeout(300)
         expect(r1, "the opened root stays in view while Details is open").to_be_in_viewport()

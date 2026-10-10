@@ -1,0 +1,49 @@
+/* Actions on one message (F-026 S6): hover toolbar on a computer, swipe left and long press on a phone. */
+
+/* The computer: a small pill over the message's top corner, only on hover or focus, taking no room. */
+.msg-acts { position: absolute; top: -18px; right: 0; z-index: 2; display: flex; gap: 2px; padding: 4px; border-radius: 12px; background: var(--el);
+  box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); opacity: 0; pointer-events: none; transition: opacity var(--dur-1) var(--ease-out); }
+.project-convo__message:hover > .msg-acts, .project-convo__message:focus-within > .msg-acts, .msg-acts:has([aria-expanded="true"]) { opacity: 1; pointer-events: auto; }
+.msg-acts__b { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; color: var(--t2); transition: var(--tr); }
+.msg-acts__b:hover:not(:disabled) { background: var(--hov); color: var(--t1); }
+.msg-acts__b:disabled { opacity: .5; cursor: progress; }
+.msg-acts__b:focus-visible, .msg-menu__item:focus-visible, .msg-swipe__b:focus-visible { outline: 2px solid var(--t1); outline-offset: -2px; }
+/* The tooltip of a small control opens below it, which would cover the pill's neighbours: keep it above. */
+.msg-acts [data-tip]::after { top: auto; bottom: calc(100% + 6px); }
+
+/* The menu, on both devices: one list under its anchor. A long press dims and blurs the stream behind it. */
+.msg-menu__scrim { position: fixed; inset: 0; z-index: calc(var(--z-menu) - 1); }
+.msg-menu__scrim.is-press { background: var(--scrim); }
+@supports (backdrop-filter: blur(1px)) { .msg-menu__scrim.is-press { backdrop-filter: blur(5px); } }
+.msg-menu { position: fixed; z-index: var(--z-menu); display: flex; flex-direction: column; min-width: 232px; max-width: calc(100vw - 24px); padding: 6px; border-radius: 16px;
+  background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); }
+.msg-menu.is-press { min-width: 272px; }
+.msg-menu__item { display: flex; align-items: center; gap: 12px; min-height: 40px; padding: 0 12px; border-radius: 10px; color: var(--t1); font-size: var(--fs-base); text-align: left; transition: var(--tr); }
+.msg-menu__item:hover:not(:disabled), .msg-menu__item:focus-visible { background: var(--sub); }
+.msg-menu__item:disabled { color: var(--t3); cursor: progress; }
+.msg-menu__item svg { flex: none; color: var(--t2); }
+.msg-menu__sep { height: 1px; margin: 4px 8px; background: var(--line); }
+@media (pointer: coarse) { .msg-menu__item { min-height: 48px; font-size: 16px; } }
+@media (prefers-reduced-motion: no-preference) {
+  .msg-menu { animation: msg-menu-in var(--dur-2) var(--ease-out) both; transform-origin: top left; }
+  .msg-menu__scrim.is-press { animation: msg-fade-in var(--dur-2) ease both; }
+}
+@keyframes msg-menu-in { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes msg-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* The phone: the row slides left to show its actions. A vertical drag still scrolls; text is not selected by
+   a long press, because that press opens the menu (Copy text is in it). */
+.msg-touch { touch-action: pan-y; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.msg-touch.is-swiped { z-index: 1; }
+@media (prefers-reduced-motion: no-preference) { .msg-touch:not(.is-dragging) { transition: transform var(--dur-3) var(--ease-sheet); } }
+.msg-swipe { position: absolute; left: 100%; top: 0; bottom: 0; display: flex; width: 168px; align-items: stretch; }
+.msg-swipe[hidden] { display: none; }
+.msg-swipe__b { flex: 1 1 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-width: 56px; min-height: 56px; padding: 0 4px;
+  color: var(--t1); font-size: 12.5px; font-weight: 500; line-height: 1.2; text-align: center; }
+.msg-swipe__b svg { color: var(--t2); }
+.msg-swipe__b:disabled { opacity: .5; }
+/* For keyboards and screen readers: the same menu, visible when focused. */
+.msg-touch__sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.msg-touch__sr:focus-visible { top: 0; right: 0; width: auto; height: 44px; padding: 0 14px; overflow: visible; clip-path: none; border-radius: 12px; background: var(--el);
+  box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); font-size: var(--fs-md); color: var(--t1); z-index: 2; }
+@media (hover: none) { .project-convo__feed, .thread__feed { overflow-x: hidden; } }

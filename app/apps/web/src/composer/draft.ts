@@ -519,6 +519,14 @@ export function useComposerDraft(accountId: string, projectId: string, context: 
   }
   return { ...snapshot, key, canSend: !snapshot.sending && draft.files.every((file) => file.state !== 'failed') && (!!draft.body.trim() || !!draft.files.length),
     setBody: (body: string) => { if (active()) edit(key, (value) => ({ ...value, body })); },
+    // A completed command consumes its original record, even if that pane is no longer selected.
+    // A newer edit or a retired session keeps its text; commandId changes on every draft edit.
+    consumeBody: (submitted: Pick<ComposerDraft, 'body' | 'commandId'>) => {
+      if (!active()) return;
+      const current = snapshots.get(key)!;
+      if (current.draft.body === submitted.body && current.draft.commandId === submitted.commandId)
+        edit(key, (value) => ({ ...value, body: '' }));
+    },
     setReference: (reference: DraftReference | null) => { if (active()) edit(key, (value) => ({ ...value, references: reference ? [reference] : [] })); },
     removeFile: (uploadId: string) => { if (!active() || snapshots.get(key)!.sending) return; selected.get(key)?.delete(uploadId); edit(key, (value) => ({ ...value, files: value.files.filter((file) => file.uploadId !== uploadId) })); },
     addFiles, retryFile, begin, finish, submit, retry, remove,

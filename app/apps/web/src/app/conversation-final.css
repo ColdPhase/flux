@@ -1,0 +1,80 @@
+/* The conversation as drawn (F-026 S5-S8, P5): one author column, task notices with their source, several
+   notices folded into one line, "Since you left" with a jump, and the agent-thinking row. */
+
+/* Task notice: who made it and where it came from, in one line, then the task as one row. Its author column is
+   the message column (32px face, 12px gap on a computer, 10px on a phone). */
+.convo-notice { position: relative; max-width: min(600px, 100%); padding-left: 44px; margin: 24px 0; list-style: none; }
+.convo-notice > :is(.ui-avatar, .author-face) { position: absolute; left: 0; top: 0; }
+.convo-notice__body { display: flex; flex-direction: column; align-items: stretch; gap: 8px; min-width: 0; container-name: task-notice; container-type: inline-size; }
+.convo-notice__meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; min-width: 0; margin: 0; font-size: var(--fs-base); line-height: 20px; color: var(--t2); }
+.convo-notice__meta strong { min-width: 0; max-width: 100%; overflow-wrap: anywhere; font-size: var(--fs-base); font-weight: 600; color: var(--t1); }
+.convo-notice__meta .agent-id { vertical-align: baseline; }
+.convo-notice__meta .agent-id__name { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+.convo-notice__what { min-width: 0; }
+.convo-notice__src { padding: 0; border: 0; background: none; color: var(--t1); font: inherit; text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 2px; }
+button.convo-notice__src { cursor: pointer; }
+button.convo-notice__src:hover { text-decoration-color: currentColor; }
+button.convo-notice__src:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; border-radius: 3px; }
+.convo-notice time { font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
+.convo-notice__task { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 0 12px; border-radius: 14px; background: var(--el); box-shadow: var(--sh-card);
+  color: var(--t1); font: inherit; font-size: var(--fs-base); text-align: left; cursor: pointer; transition: var(--tr); }
+.convo-notice__task:hover { background: var(--sub); }
+.convo-notice__task:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
+.convo-notice__task > svg { flex: none; color: var(--t2); }
+.convo-notice__num { flex: none; color: var(--t3); }
+.convo-notice__title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.convo-notice__owner { flex: none; display: inline-flex; align-items: center; gap: 6px; color: var(--t3); font-size: var(--fs-xs); }
+@media (pointer: coarse) { .convo-notice__task { min-height: 44px; } }
+.convo-notice + .convo-notice { margin-top: 14px; }
+
+/* Several in a row: one line with who and what, opening to the notices themselves (S8). */
+.convo-fold { max-width: min(600px, 100%); margin: 24px 0; padding-left: 44px; list-style: none; }
+.convo-fold__b { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 0 14px 0 10px; border-radius: 14px; background: var(--sub); color: var(--t2);
+  font-size: var(--fs-base); text-align: left; transition: var(--tr); }
+.convo-fold__b:hover { background: var(--hov); }
+.convo-fold__b:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
+.convo-fold__faces { display: inline-flex; flex: none; }
+.convo-fold__faces > * + * { margin-left: -6px; }
+.convo-fold__faces > * { box-shadow: 0 0 0 2px var(--sub); border-radius: 999px; }
+.convo-fold__faces > .kreska, .convo-fold__faces > svg { border-radius: 6px; }
+.convo-fold__t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.convo-fold__t b { font-weight: 600; color: var(--t1); }
+.convo-fold__b > svg:last-child { flex: none; }
+.convo-fold__list { margin: 14px 0 0 -44px; padding: 0; list-style: none; }
+.convo-fold__list > .convo-notice { margin: 0 0 14px; }
+@media (pointer: coarse) { .convo-fold__b { min-height: 44px; } }
+
+/* "Since you left: …" floats over the top of the stream and takes no room in it (S7). */
+.convo-since { position: absolute; z-index: 3; top: 12px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; max-width: calc(100% - 24px); min-height: 38px;
+  padding: 0 6px 0 10px; border-radius: 999px; background: var(--el); box-shadow: var(--sh-card); font-size: var(--fs-md); color: var(--t1); white-space: nowrap; }
+.convo-since__t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.convo-since__t b { font-weight: 600; }
+.convo-since__jump { position: relative; flex: none; display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px 0 12px; border-radius: 999px; background-color: var(--inv);
+  background-image: var(--grad-inv); color: var(--oninv); font-size: var(--fs-sm); font-weight: 600; box-shadow: var(--sh-pri); }
+.convo-since__jump::after { content: ""; position: absolute; inset: -8px -2px; }
+.convo-since__jump:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
+.convo-since__x { flex: none; width: 28px; height: 28px; }
+@media (pointer: coarse) { .convo-since { min-height: 44px; } .convo-since__x { width: 44px; height: 44px; } }
+
+/* A long title wraps to two lines on a phone instead of being cut to one (#266 PF-6), and shows whole when the
+   column is narrow for the reader's text size: container em units scale with it. */
+@media (max-width: 680px) {
+  .convo-notice__task { padding-block: 6px; }
+  .convo-notice__title { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
+}
+@container task-notice (max-width: 14em) {
+  .convo-notice__title { display: block; -webkit-line-clamp: unset; }
+  .convo-notice__meta { align-self: stretch; }
+  .convo-notice__meta time { flex-basis: 100%; }
+}
+
+/* One left edge on the phone: 32px face and a 10px gap, events and bubbles alike. */
+@media (max-width: 680px) {
+  .convo-notice, .convo-fold { padding-left: 42px; margin: 18px 0; }
+  .convo-notice + .convo-notice { margin-top: 12px; }
+  .convo-fold__list { margin-left: -42px; }
+  .convo-notice__owner-name { display: none; }
+  .convo-notice__meta, .convo-notice__task, .convo-fold__b { font-size: 15px; }
+  .convo-since { top: 8px; }
+}
+@media (max-width: 680px) and (hover: none) { .project-convo__message { width: 100%; } }

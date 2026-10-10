@@ -74,6 +74,12 @@ const paths = {
   board: <><rect x="2.25" y="2.5" width="3" height="11" rx="1" /><rect x="6.5" y="2.5" width="3" height="7" rx="1" /><rect x="10.75" y="2.5" width="3" height="9" rx="1" /></>,
   list: <><path d="M6 4.5h7.5M6 8h7.5M6 11.5h7.5" /><circle cx="3" cy="4.5" r=".8" fill="currentColor" stroke="none" /><circle cx="3" cy="8" r=".8" fill="currentColor" stroke="none" /><circle cx="3" cy="11.5" r=".8" fill="currentColor" stroke="none" /></>,
   person: <><circle cx="8" cy="5.25" r="2.5" /><path d="M3.25 13.5c.55-2.5 2.4-3.9 4.75-3.9s4.2 1.4 4.75 3.9" /></>,
+  /** Message actions (F-026 S6): reply in a thread, make a task, cite, copy. */
+  reply: <path d="M6.5 3.5L2.75 7l3.75 3.5M3 7h6.25a3.75 3.75 0 013.75 3.75V12" />,
+  'plus-circle': <><circle cx="8" cy="8" r="5.75" /><path d="M8 5.25v5.5M5.25 8h5.5" /></>,
+  cite: <path d="M3 4.5h10M3 8h6.5M3 11.5h8" />,
+  copy: <><rect x="5.5" y="5.5" width="8" height="8" rx="2" /><path d="M10.5 5.5V4.5a2 2 0 00-2-2h-4a2 2 0 00-2 2v4a2 2 0 002 2h1" /></>,
+  stop: <rect x="4" y="4" width="8" height="8" rx="2" fill="currentColor" stroke="none" />,
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof paths;

@@ -59,14 +59,6 @@
 .thread .project-convo__message > p { padding: 10px 13px; }
 .thread .project-convo__message + .project-convo__message { margin-top: 18px; }
 .thread .project-convo__day { margin: 4px 0 18px; }
-/* The thread is narrower than a reply's action bar: one ⋯ in the reply's corner opens the actions under the
-   reply, where they wrap, never over its author and time (ThreadMessageActions). */
-@media (hover: hover) {
-  .thread .project-convo__message .ws-acts:not(.ws-acts--more) { position: static; margin: 4px 0 0 -6px; padding: 0; background: none; box-shadow: none; pointer-events: auto; }
-  .thread .project-convo__message .ws-acts--more { position: absolute; top: -4px; right: -6px; margin: 0; padding: 0; background: none; box-shadow: none; }
-  .thread .ws-more { width: 28px; height: 28px; }
-  .thread__acts .ws-acts, .thread .ws-acts--more:has([aria-expanded="true"]) { opacity: 1; pointer-events: auto; }
-}
 .thread .project-convo__composer { padding: 8px 14px 14px; padding-bottom: max(14px, env(safe-area-inset-bottom)); }
 .thread .project-convo__composer .composer__in { max-width: none; }
 
@@ -74,45 +66,9 @@
   .thread__in { padding: 16px 17px 12px; }
   .thread__root { padding-left: 42px; }
 }
-/* A narrow window can still have a mouse. Keep its hover controls below the content,
-   where the touch controls already live, so enlarged author names remain readable. */
-@media (max-width: 680px) and (hover: hover) {
-  .project-convo__message > .ws-acts:not(.ws-acts--more) {
-    position: static; margin: 4px 0 0 -6px; padding: 0; background: none; box-shadow: none;
-  }
-}
 @media (prefers-reduced-motion: no-preference) {
   .thread--sheet { animation: thread-in var(--dur-3) var(--ease-sheet) both; }
   .thread--docked { animation: thread-dock var(--dur-2) var(--ease-out) both; }
 }
 @keyframes thread-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes thread-dock { from { opacity: 0; } to { opacity: 1; } }
-
-/* A task event retains the actual creator's author column. */
-.convo-notice { position: relative; padding-left: 44px; margin: 24px 0; }
-.convo-notice > :is(.ui-avatar, .author-face) { position: absolute; left: 0; top: 0; }
-.convo-notice__body { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; container-name: task-notice; container-type: inline-size; }
-.convo-notice__meta { display: flex; flex-wrap: wrap; gap: 4px 9px; align-items: baseline; min-width: 0; max-width: 100%; font-size: var(--fs-xs); color: var(--t3); }
-.convo-notice__meta strong { min-width: 0; max-width: 100%; overflow-wrap: anywhere; font-size: var(--fs-sm); font-weight: 550; color: var(--t1); }
-.convo-notice__meta .agent-id__name { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
-.convo-notice__kind { color: var(--t3); }
-.convo-notice__task { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 0; border: 0; background: none; color: var(--t1); font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; }
-.convo-notice__title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.convo-notice__task svg { flex: none; color: var(--t3); }
-.convo-notice__num { flex: none; color: var(--t3); font-variant-numeric: tabular-nums; }
-.convo-notice__task:hover .convo-notice__title { text-decoration: underline; text-underline-offset: 2px; }
-.convo-notice__task:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; border-radius: 3px; }
-.convo-notice time { padding-top: 1px; font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
-@media (pointer: coarse) { .convo-notice__task { min-height: 44px; } }
-/* Task notices read as one quiet group (#266 PF-6): adjacent notices sit close, and a title wraps to
-   two lines instead of being cut to one. */
-.convo-notice + .convo-notice { margin-top: -12px; }
-.convo-notice__title { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
-/* Keep compact titles at ordinary text sizes, but expose their full purpose when the available
-   author-column width is narrow relative to the reader's font size. Container em units scale with it. */
-@container task-notice (max-width: 14em) {
-  .convo-notice__title { display: block; -webkit-line-clamp: unset; }
-  .convo-notice__meta { align-self: stretch; }
-  .convo-notice__meta time { flex-basis: 100%; }
-}
-@media (max-width: 680px) { .convo-notice { padding-left: 42px; margin: 14px 0; } .convo-notice + .convo-notice { margin-top: -6px; } }

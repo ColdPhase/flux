@@ -273,7 +273,9 @@ class ProjectStateJourney(unittest.TestCase):
         self.call(owner, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": principal, "role": "contributor"}, 201)
         reader = self.page("Jonas Reader", 390, 844)
         reader.goto(f"/projects/{project['id']}")
-        reader.get_by_role("button", name=re.compile("^Sources")).click()
+        # A contributor opens the sources with "/source" (F-026 S5); the viewer below keeps the button.
+        reader.locator("#project-composer").fill("/source")
+        reader.locator("#project-composer").press("Enter")
         reader.get_by_role("button", name="Add material", exact=True).click()
         reader.get_by_label("Title", exact=True).fill("Unpublished calibration source")
         reader.get_by_label("Text", exact=True).fill("Keep this source draft until I can contribute again.")

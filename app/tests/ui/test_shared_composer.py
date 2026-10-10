@@ -107,7 +107,10 @@ class SharedComposerJourney(unittest.TestCase):
     def cite(self, page, project, conversation):
         page.goto(f"/projects/{project['id']}/conversations/{conversation}")
         pane = page.get_by_role("complementary", name="Replies")
-        pane.get_by_role("button", name=re.compile("^Sources")).click()
+        # "/source" opens the saved sources, as the old Sources button did (F-026 S5).
+        field = pane.get_by_label("Reply", exact=True)
+        field.fill("/source")
+        field.press("Enter")
         pane.get_by_role("button", name="Discuss this version").click()
         return pane
 
@@ -367,10 +370,10 @@ class SharedComposerJourney(unittest.TestCase):
         pane.get_by_label("Reply", exact=True).fill("Public task draft stays public only on send")
         self.choose(page, [self.file("public-on-send.bin")], pane)
         expect(pane.get_by_text("Ready, private", exact=False)).to_have_count(1)
-        pane.get_by_role("button", name="Ask my assistant").click()
+        pane.get_by_label("Reply", exact=True).fill("/ai ")
         expect(pane.get_by_label("Ask your assistant", exact=True)).to_have_value("")
         pane.get_by_label("Ask your assistant", exact=True).fill("Private prompt never becomes the task root")
-        pane.get_by_role("button", name="Ask my assistant").click()
+        pane.get_by_role("button", name="Stop asking your assistant").click()
         expect(pane.get_by_label("Reply", exact=True)).to_have_value("Public task draft stays public only on send")
         self.open_agents(page, other, other_a)
         expect(page.get_by_label("Write to this task")).to_have_value("")
@@ -422,9 +425,8 @@ class SharedComposerJourney(unittest.TestCase):
                 expect(pane).to_have_count(0)
                 self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), width)
                 shot(page, f"shared-published-{width}")
-                sources = page.locator('.project-convo__sources-t')
-                expect(sources).to_be_visible()
-                expect(sources).to_have_text('Sources')
+                expect(page.locator('.composer__hint').last).to_be_visible() if width > 640 else None
+                expect(page.get_by_role('button', name=re.compile('^Sources'))).to_have_count(0)
                 pane = self.cite(page, project, discussion['conversationId'])
                 pane.get_by_label('Reply', exact=True).fill('Compare these two files with the saved measurements')
                 self.choose(page, [self.file('01-negative-measurement.bin'), self.file('02-sensor-wiring.bin')], pane)
@@ -432,7 +434,9 @@ class SharedComposerJourney(unittest.TestCase):
                 expect(pane.locator('.composer-files__ref')).to_contain_text('Source: Verified measurements · v1')
                 self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'), width)
                 shot(page, f'shared-reply-draft-{width}')
-                pane.get_by_role('button', name=re.compile('^Sources')).click()
+                field = pane.get_by_label('Reply', exact=True)
+                field.fill('/source')
+                field.press('Enter')
                 expect(page.get_by_role('heading', name=f"Sources · saved for {project['name']}", exact=True)).to_be_visible()
                 shot(page, f'shared-sources-{width}')
 

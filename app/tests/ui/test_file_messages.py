@@ -75,11 +75,8 @@ class FileOnlyMessage(unittest.TestCase):
         self.assertEqual(downloaded.body(), BYTES)
 
         message.hover()
-        more = message.get_by_role("button", name="Make from this message")
-        if more.count():
-            more.click()
         with page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith(f"/projects/{project['id']}/work")) as created:
-            message.get_by_role("button", name="Task", exact=True).click()
+            message.get_by_role("button", name="Create task").click()
         self.assertEqual(created.value.status, 201, created.value.text())
         self.assertEqual(created.value.json()["title"], "1 attached file")
         expect(page.get_by_role("alert")).to_have_count(0)
