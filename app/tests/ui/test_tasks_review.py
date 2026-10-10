@@ -54,7 +54,9 @@ class TasksReviewJourney(unittest.TestCase):
         cls.pw.stop()
 
     def context(self, who: str, *, phone: bool = False) -> BrowserContext:
-        options: dict = {"base_url": ORIGIN, "locale": "en-GB", "storage_state": self.states[who]}
+        # The network barriers must see genuine page requests in both engines.
+        # PWA/service-worker behavior is covered by its separate maintained suites.
+        options: dict = {"base_url": ORIGIN, "locale": "en-GB", "service_workers": "block", "storage_state": self.states[who]}
         if phone:
             options.update(viewport=PHONE, device_scale_factor=2, is_mobile=True, has_touch=True)
         else:
@@ -87,7 +89,7 @@ class TasksReviewJourney(unittest.TestCase):
 
     def test_01_a_project_with_many_blocked_tasks_two_alexes_and_a_private_task(self) -> None:
         for key, person in PEOPLE.items():
-            context = self.browser.new_context(base_url=ORIGIN)
+            context = self.browser.new_context(base_url=ORIGIN, service_workers="block")
             self.addCleanup(context.close)
             page = context.new_page()
             page.goto("/sign-up")
@@ -249,8 +251,8 @@ class TasksReviewJourney(unittest.TestCase):
         current = self.task(desktop, "agent_blocked")
         self.api(desktop, "PATCH", f"/api/v1/work/{self.ids['agent_blocked']}", {"owner": {"kind": "human", "id": PEOPLE["alex"]["id"]}, "clientCommandId": str(uuid.uuid4())},
                  status=200, headers={"if-match": f'"{current["version"]}"'})
-        desktop.reload()
-        desktop.get_by_role("radio", name="List", exact=True).click()
+        # Observe the actual saved-event refresh rather than canceling unrelated
+        # in-flight reads with a reload (WebKit reports those transport cancels).
         expect(self.row(desktop, "Agent stuck job").locator(".agent-tag")).to_have_count(0)
         expect(self.row(desktop, "Agent stuck job").locator(".ws-item__s")).to_contain_text("Alex")
 
@@ -316,7 +318,7 @@ class TasksReviewJourney(unittest.TestCase):
         self.assertEqual(self.task(page, "private")["status"], "in_progress")
 
     def fresh_sign_in(self, who: str) -> Page:
-        context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP, locale="en-GB")
+        context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP, locale="en-GB", service_workers="block")
         self.addCleanup(context.close)
         page = context.new_page()
         page.goto("/sign-in")
