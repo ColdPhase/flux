@@ -69,7 +69,8 @@ describe('selected native reference rows with exact sessions and current members
     await post(owner, `/api/v1/projects/${projectId}/grants`, { principal: { kind: 'agent', id: agent.id }, role: 'contributor' });
     const agentWork = await createWork('Actually agent-owned', projectId, { owner: { kind: 'agent', id: agent.id } });
     const agentRow = (await read(`work:${agentWork.id}`)).items[0]; assert.ok(agentRow?.kind === 'work');
-    assert.deepEqual(agentRow.owner, { kind: 'agent', id: agent.id, name: agent.name });
+    // The agent is in the audience and workspace-owned, so its native row carries the scoped owner relation (#339 AC-2).
+    assert.deepEqual(agentRow.owner, { kind: 'agent', id: agent.id, name: agent.name, projectOwner: { kind: 'workspace' } });
     const changed = expectStatus(await owner.browser.request('PATCH', `/api/v1/work/${work.id}`, { body: { title: 'Changed current native title' }, headers: { 'if-match': `"${work.version}"` } }), 200) as WorkItem;
     const updated = (await read(`work:${work.id}`)).items[0]; assert.ok(updated?.kind === 'work');
     assert.equal(updated.title, changed.title); assert.equal(updated.version, changed.version);
