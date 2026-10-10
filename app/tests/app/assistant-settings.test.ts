@@ -276,7 +276,11 @@ test('removal and concurrent enablement take the owner lock before the enablemen
       'enablement keeps its ordinary conflict instead of becoming a PostgreSQL deadlock victim');
     assert.equal(removeError, null, 'removal completes after enablement releases the owner lock');
     assert.equal((await pool.query('SELECT 1 FROM personal_run_enablements WHERE owner_user_id=$1', [f.owner.id])).rowCount, 0);
-    assert.equal((await pool.query('SELECT 1 FROM assistant_settings WHERE owner_user_id=$1', [f.owner.id])).rowCount, 0);
+    const retained = (await pool.query(`SELECT c.revoked_at FROM assistant_settings s
+      JOIN agent_connections c ON c.id=s.connection_id WHERE s.owner_user_id=$1`, [f.owner.id])).rows;
+    assert.equal(retained.length, 1, 'removal preserves the workspace assistant identity and settings');
+    assert.notEqual(retained[0].revoked_at, null, 'the retained connection has no active authority');
+    assert.equal((await pool.query("SELECT 1 FROM agent_connections WHERE owner_user_id=$1 AND compute_source='owner_assistant' AND revoked_at IS NULL", [f.owner.id])).rowCount, 0);
   } finally {
     resume.resolve();
     await Promise.allSettled(pending);
