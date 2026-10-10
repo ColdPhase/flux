@@ -308,7 +308,11 @@ root on the host or every owner's credentials.
 ### Sign-in as in a terminal
 
 *Revised 2026-10-09 by founder direction (F-027, answer A): presentation only; the
-mechanism below is unchanged.* The person sees a guided card, and the terminal is
+CLI authentication methods are unchanged.* *Amended 2026-10-10 for independent
+#401 C1 ([contract-text acceptance recorded](assistant.md#contract-text-acceptance-2026-10-10)):* pending login survives a browser reload under
+the bounded in-memory reconnect lifecycle in step 3; this revises the former
+kill-on-WebSocket-close rule, not the CLI's authentication mechanism. The person
+sees a guided card, and the terminal is
 folded under *Show details*. Claude: "1. Open claude.ai and approve. 2. Paste the code
 here." with [ Open claude.ai ] and a one-tap [ Paste ] that reads the clipboard and
 types it at the CLI's prompt. ChatGPT: the device code shown large with [ Copy and open
@@ -339,10 +343,47 @@ ChatGPT ], completion read from `codex login status`. Journey 6 of F-027 adds ro
    - Flux never sets Codex `forced_login_method`.
    - T4 and T6 read the pinned CLIs' login help and add any further interactive
      method they list.
-3. The console is xterm.js over a session-bound WebSocket to the supervisor's PTY.
-   The PTY runs exactly the chosen command. It is not a shell. The supervisor
-   kills it when the command exits, when the WebSocket closes, or after 15 minutes
-   (the lifetime of a Codex device code).
+3. The console is xterm.js over an authenticated, session-bound WebSocket to the
+   supervisor's PTY. The PTY runs exactly the chosen command, never a shell.
+   **Pending login lifecycle (2026-10-10, F-027 A12):**
+   - One pending flow per owner binding holds the original CLI process, start time,
+     hard deadline, client/method, originating Flux session identity and current
+     owner/binding identity in memory. A socket close detaches the view; it neither
+     kills nor restarts that CLI. The same still-valid owner session can discover
+     its pending flow after a PWA reload and reattach to that process. A flow ID or
+     possession of a WebSocket URL is no authority. The server resolves the binding
+     from the authenticated session, never from browser-supplied owner/slot fields.
+   - Admission, reattachment, input/output delivery and completion recheck current
+     owner/session standing, live binding and enabled client. A new session, even
+     of the same owner, another owner, an expired/revoked session or a stale/rebound
+     slot cannot attach or obtain its card/frames. Only one active socket controls
+     the flow; a successful same-session reattachment supersedes the old socket,
+     which cannot send later input. Stale input is not replayed automatically.
+   - The existing hard maximum remains **15 minutes from the original start**;
+     detach, reload and reconnect never extend it. The native CLI owns code validity:
+     its exit or refusal ends an earlier-expired flow. Flux invents no longer code
+     lifetime and does not parse expiry timestamps or additional console fields.
+     If validity is unknown, the card does not promise a remaining duration. The
+     CLI command exiting or the hard deadline kills/clears the pending process.
+   - Explicit Cancel/new login, Flux sign-out/session revocation, runtime/client
+     disablement, owner removal, binding release/revocation and CLI logout terminate
+     the pending flow and clear its card/frame/input memory before another login
+     or slot reuse. Completion and cleanup serialize with those changes: revoked
+     login cannot publish a late success; ordinary logout/file deletion still runs
+     if the CLI wrote credentials during that race. Cancellation is distinct from
+     a transport detach and never reports successful sign-in. Failed/unacknowledged
+     cleanup stays unknown/unavailable; it never frees or reuses the slot until
+     the existing verified cleanup/restart boundary is met.
+   - Only the recognized URL/device code and a bounded terminal replay buffer
+     (64 KiB per flow; oversized frames refused, oldest complete frames dropped)
+     are retained, in memory
+     only, for the current authorized owner's card/*Show details*. Console frames,
+     pasted input, URLs and codes are never stored in the database, browser durable
+     storage, queue, logs, telemetry or exports. Input is relayed once and discarded;
+     the PKCE verifier stays inside the CLI. Process/manager/supervisor loss cannot
+     recover secret state from storage: end as interrupted and offer a fresh login,
+     never silently resume, restart or report success. The flow holds the existing
+     serial slot lane until completion/cleanup; no run or second login overlaps it.
 4. **What passes through Flux.** The console relays what the owner types at the
    CLI's own prompt, in memory only. *Revised 2026-10-09 (F-027, answer A):* the one
    exception to "never parses" below is that the supervisor recognises the sign-in URL
@@ -405,6 +446,23 @@ matching agent connection:
   say ([AST-5, AST-6](assistant.md#ast-5--changes-do-it-and-tell-me-or-ask-me-first)),
   and changes outside the owner's rights become suggestions. (Before: "Standing grants
   (#152) apply the same way. Consequential changes become proposals.")
+  *Amended 2026-10-10 for #401 C4 ([contract-text acceptance recorded](assistant.md#contract-text-acceptance-2026-10-10)):* the unchanged
+  external unit-create self-root/live-child path cannot perform an assistant's
+  own-agent handoff without a claim. For direct model calls, a verified durable
+  assistant binding and current authorized run/token select the bounded
+  [owner-assistant unit-creation adapter](../development/cowork-coordination.md#owner-assistant-handoff-creation--f-027-amendment-2026-10-10).
+  It preserves current S6/owner/project/operation checks, ordinary external fences
+  and the external recipient's own grant/claim; no compute-source-only authority,
+  client actor assertion, assistant claim/bootstrap or foreign-agent authorization.
+  *R1/R2 clarification, 2026-10-10 ([contract-text acceptance recorded](assistant.md#contract-text-acceptance-2026-10-10)):* those direct calls
+  use a server-selected versioned run-private catalog/input view, without the
+  ordinary external tool's bootstrap runtime/grant fields. That public schema and
+  its standing-grant/root/child semantics remain unchanged. A saved waiting change
+  after normal source completion uses AST-5's freshly constructed current-owner
+  `owner_approval` context for its immutable intent, not the expired source token.
+  No old run is revived or provider invoked/charged. The Wiki-only original-
+  instruction continuation is separately bounded as AST-5.7 specifies; neither
+  post-run purpose can be requested by a model or normal external bearer.
 - Disabling the use, revoking the `runtime` connection or removing the runtime
   revokes this agent connection in the same transaction.
 
@@ -567,7 +625,9 @@ and nothing falls back to an API key.
   acknowledged are separate states. A broken stream ends `unknown`, with no
   automatic rerun.
 - **Sign out** runs `claude auth logout` / `codex logout` first. Then it deletes
-  that CLI's files from the binding directory.
+  that CLI's files from the binding directory. Pending login is first terminated
+  and its in-memory reconnect/card state cleared, as above; a detached browser
+  cannot revive it after sign-out.
 - **Remove runtime**, revoking the connection, and deleting the owner each:
   1. run sign-out for every signed-in CLI;
   2. kill in-flight runs, so the next MCP call fails with 403;
@@ -634,7 +694,10 @@ and nothing falls back to an API key.
     run token, and reaches only `runtime-egress`.
 - **Settings says, before sign-in:**
   - the instance operator can technically access runtime storage, so an owner
-    should sign in only on an instance whose operator they trust;
+    should sign in only on an instance whose operator they trust. This disclosure
+    is shown before either vendor's subscription sign-in on every instance,
+    including one-account instances and a first invitee; account count establishes
+    no operator=self boundary (clarified 2026-10-10, #401 C3);
   - the vendors recommend API keys for products and automation, and may restrict
     this use without notice, possibly on the owner's account (accepted risks 2
     and 5);

@@ -45,3 +45,14 @@
   /* A 44 px touch target without growing the 52 px header (#266 review item 13): the hit area extends past the line. */
   .top__audience::after { content: ""; position: absolute; inset: -6px -2px; }
 }
+
+/* Phone, touch (#438, HIG-14 and HIG-15): the audience keeps its 22 px line, and its 44 px hit area is a
+   square centred on the line. The title block starts at the top of the 52 px header, so the square ends at
+   the header's bottom edge and the state row below stays a separate target; the square may cover the
+   title's lower band, which holds no control. The meta row must not clip the square. The 52 px header of
+   #266 item 13 is kept, and the phone header test (a single compact header, 60 px) still holds. */
+@media (pointer: coarse) and (max-width: 640px) {
+  header.top.top--project .top__head { align-self: flex-start; gap: 0; }
+  header.top.top--project .top__meta { overflow: visible; }
+  header.top.top--project .top__audience::after { top: -11px; bottom: auto; height: 44px; }
+}

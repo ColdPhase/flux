@@ -64,8 +64,19 @@ connections, map/wiki/task assistance and scoped proposals. *Revised 2026-10-09 
 founder direction ([F-027](assistant.md), questions 1 and 16):* the helper also
 changes tasks, Wiki pages, maps and conversations directly under its owner's switches
 and approval mode, and may hand a task to its owner's own agents; a hand-off to
-another person's agent waits for the owner. Agents never start the helper. External MCP agents
-are separate connections using the owner's client and compute. Never substitute
+another person's agent waits for an owner-sent request and that person's separate
+consent/ordinary handoff, never an owner-approved foreign-agent unit creation.
+*Clarified 2026-10-10 for #401 C4 ([contract-text acceptance recorded](assistant.md#contract-text-acceptance-2026-10-10)):* own-agent unit creation
+uses the [server-owned owner-assistant run adapter](../development/cowork-coordination.md#owner-assistant-handoff-creation--f-027-amendment-2026-10-10),
+with verified durable owner binding/run purpose and current S6 checks for direct
+calls, or the separate current-owner Apply purpose on an immutable saved waiting
+intent after normal completion (R1 clarification, 2026-10-10). The R2 versioned
+run-private tool projection omits unavailable bootstrap runtime/grant input fields;
+ordinary external schemas/descriptions remain unchanged. It grants no
+assistant claim/bootstrap and no recipient grant/claim/invocation. Every ordinary
+external caller keeps the self-root/live-parent creation fence; a compute-source
+label or client-supplied actor cannot select the adapter. Agents never start the helper.
+External MCP agents are separate connections using the owner's client and compute. Never substitute
 another person's connection or payer when one is unavailable.
 
 One owner can have many connections, including several of one client type:
