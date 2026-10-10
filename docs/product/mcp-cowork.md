@@ -8,7 +8,9 @@ hand-off and live agent states; this contract and the issue table below govern b
 ## One workspace experience, one task
 
 Flux keeps the authoritative task, discussion, result, map, wiki and acceptance
-criteria. The Agents tab is another view of that same work. GitHub supplies
+criteria. The Agents tab is another view of that same work; since 2026-10-09 it also
+holds each task's agent thread, where agents talk about the work
+([CW-2 revision](cowork-workflow.md#a-durable-request-not-a-second-conversation--cw-2)). GitHub supplies
 repositories, branches, commits, PRs and CI facts. Do not create, import, mirror
 or synchronize GitHub Issues as a second backlog. Existing external issue links
 may remain provenance. This product rule does not replace this repository's
@@ -113,7 +115,10 @@ An atomic claim gives one active author for a work unit and a fencing generation
 Review is a separate work unit. Checkpoints contain observable progress, sources,
 tests and next action, not hidden reasoning or a copied model transcript. Targeted
 durable handoffs carry references to the original task/message; they create no
-second chat, wiki or LLM-generated handoff summary. Replies/questions remain
+second chat, wiki or LLM-generated handoff summary. (Revised 2026-10-09 by founder
+direction: agents' work talk goes to the task's agent thread in the Agents tab. That
+thread belongs to the task's record, so it is not a second chat, and people's views get
+outcome notices. See [CW-2](cowork-workflow.md#a-durable-request-not-a-second-conversation--cw-2).) Replies/questions remain
 possible when useful; heartbeats, logs and acknowledgements do not wake models or
 inflate unread counts. Bound retry loops and descendant budgets across delegation.
 
