@@ -1,6 +1,6 @@
 {
   "date": "2026-10-10",
-  "sourceParent": "365cd0f208a13bd96f5aa733325b81f9352417af",
+  "testedProductionSourceHead": "365cd0f208a13bd96f5aa733325b81f9352417af",
   "log": "/tmp/flux-467-connect-setup-check.log",
   "logSha256": "d79c696bb697c0be6dad03eb3b44a41950912b2f076cb640a77aedbd1c03b38e",
   "noVendorAccountCredentialsOrSpend": true,

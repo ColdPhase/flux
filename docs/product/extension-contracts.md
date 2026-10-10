@@ -207,3 +207,12 @@ merge they join contract 1 as additive tools, with an updated snapshot.
 - A contract version must break before v0.1.0 ships. Until the release, version 1
   can still be replaced by a reviewed decision.
 - Independent evidence shows that a promise here cannot be kept.
+
+## Proposed managed-native context gate
+
+The [managed-binding proposal](mcp-native-controls.md) describes optional
+activation arguments and a new owner-opted binding/context effect fence. It is
+**PROPOSED**, independently unaccepted and unimplemented. It cannot narrow current
+unmanaged EXT-1 inputs, change the accepted two-era authority contract or advertise
+built-in support. Its exact contract acceptance and existing compatibility/snapshot
+process precede any dependent adapter/domain implementation.

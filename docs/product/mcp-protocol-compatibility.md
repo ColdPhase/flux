@@ -178,3 +178,11 @@ support. If a required feature cannot retain its semantics, keep visible pending
 support and obtain a new bounded decision; do not silently downgrade or weaken
 the required outcome. Research completion, contract acceptance, implemented
 transport compatibility and completed onboarding are separate milestones.
+
+## Proposed managed-native extension
+
+The separately accepted native-controls/coordination **design** prepares the
+[managed-binding public effect-fence proposal](mcp-native-controls.md). That
+proposal is independently **unaccepted** and unimplemented; current PC-1–PC-5
+admission/authority and all original #460/#152/#160 outcomes still govern. New
+adapter/domain code must wait for its exact independent public-contract acceptance.

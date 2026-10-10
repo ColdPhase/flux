@@ -99,7 +99,12 @@ All existing unmanaged inputs/outputs/prompt behavior remain accepted unchanged.
 
 A current managed activation checks the normal verified MCP bearer and actual
 native grant reference, current selection/Read/entry/runtime/policy access and
-server context before consuming the reference. It calls the **same** runtime
+server context before consuming the reference. Require the exact existing
+`tool:flux_bootstrap` entry and its `project.identity.read`,
+`connection.runtime.read`, `project.policy.read`, `cowork.playbook.read`
+capabilities; a supplied prompt also requires its own exact enabled prompt entry.
+A related On switch is not implicit bootstrap/activation consent. These extra
+managed-path checks do not narrow the original unmanaged prompt behavior. It calls the **same** runtime
 factory with those actual native claims, tags the real issued runtime to the
 current context, and records exact current playbook/policy references atomically.
 The companion-read binding is explicitly refused here. Same context/binding/
