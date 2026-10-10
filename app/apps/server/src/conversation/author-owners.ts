@@ -3,6 +3,12 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { schema } from '@flux/db';
 import { evaluateProject, type Executor } from '@flux/core';
 
+/** The principal with its current scoped owner; humans and agents without a visible owner are returned unchanged. */
+export function scopedPrincipal<P extends { kind: 'human' | 'agent'; id: string }>(who: P, owners: ReadonlyMap<string, AgentProjectOwner>): P {
+  const projectOwner = who.kind === 'agent' ? owners.get(who.id) : undefined;
+  return projectOwner ? { ...who, projectOwner } : who;
+}
+
 /** Only the actual bounded history's authors, without treating a past author as a current reader. */
 export async function projectAuthorOwners(db: Executor, projectId: string, workspaceId: string, authorIds: readonly string[]): Promise<ReadonlyMap<string, AgentProjectOwner>> {
   const ids = [...new Set(authorIds)];

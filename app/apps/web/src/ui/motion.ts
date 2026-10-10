@@ -1,18 +1,19 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
-import { arrivalShouldAnimate, arrivals, cssTimeToMs, loopShouldRun } from './motion-rules';
+import { arrivalShouldAnimate, arrivals, cssTimeToMs, loopShouldRun } from './motion-rules.js';
+import { prefersReducedMotion } from './motion-preference.js';
 
 /**
  * Motion helpers. Durations and easings come from the CSS tokens, which are 0ms under
- * prefers-reduced-motion, so script-driven motion switches off together with CSS motion.
+ * prefers-reduced-motion (or the person's own choice, motion-preference.ts), so script-driven motion
+ * switches off together with CSS motion.
  */
-const reduceQuery = typeof window === 'undefined' ? null : window.matchMedia('(prefers-reduced-motion: reduce)');
 
 export function token(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
 export function duration(name: '--dur-1' | '--dur-2' | '--dur-3' | '--dur-4'): number {
-  if (reduceQuery?.matches) return 0;
+  if (prefersReducedMotion()) return 0;
   return cssTimeToMs(token(name));
 }
 
@@ -68,7 +69,11 @@ export function useLoopPause<T extends HTMLElement>(): (node: T | null) => void 
     covers.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-modal', 'inert', 'open'] });
     document.addEventListener('visibilitychange', update);
     update();
-    return () => { seen.disconnect(); covers.disconnect(); document.removeEventListener('visibilitychange', update); if (frame) cancelAnimationFrame(frame); };
+    return () => {
+      seen.disconnect(); covers.disconnect(); document.removeEventListener('visibilitychange', update); if (frame) cancelAnimationFrame(frame);
+      // A mark that stops moving (Kreska's expression changes) must not keep a stale pause.
+      node.removeAttribute('data-motion-paused');
+    };
   }, [node]);
   return setNode;
 }
