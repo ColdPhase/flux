@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { flushSync } from 'react-dom';
-import { Link, useLoaderData, useLocation, useNavigation, useSearchParams, type LoaderFunctionArgs } from 'react-router';
-import type { AgentOperation, ConversationMessage, ProjectAgentConnection, ProjectAgents as ProjectAgentsData, TaskDiscussion, WorkStatus } from '@flux/contracts';
+import { Link, useLoaderData, useLocation, useNavigation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
+import type { AgentOperation, ConversationMessage, ProjectAgentConnection, ProjectAgents as ProjectAgentsData, TaskDiscussion, WorkRowProjection, WorkStatus } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
@@ -10,30 +10,32 @@ import { AttachButton, ComposerFiles, MessageFiles } from '../composer/Files';
 import { ConnectionLine, OutboxStatus, PendingFiles, PendingSource } from '../composer/Outbox';
 import { getTaskDiscussion } from '../composer/api';
 import { useProjectShell } from '../project/data';
-import { AgentIdentity, AuthorFace, Button, Icon, Kreska, agentHue, type KreskaExpression } from '../ui';
+import { AgentIdentity, AuthorFace, Button, Icon, Kreska, StatusGlyph, agentHue, useMediaQuery, type KreskaExpression } from '../ui';
 import { STATUS_LABEL } from '../work/format';
 import { useNativeOwn, useWorkChoices } from '../work/useDetailReads';
 import { WorkPagination } from '../work/WorkPagination';
 import { agentDisplayName } from '../docs/format';
 import { getProjectAgents } from './api';
+import { HandOffDialog, type HandOffTask } from './HandOff';
 import { agentAuthorOwner, useAgentOwners } from './owners';
 import { ProjectPolicy } from './ProjectPolicy';
+import { agentEntries, mayDo, tasksHeldBy, type AgentEntry } from './roster';
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
 import './agents.css';
 
+/** The drag data type of a task dragged onto an agent (computer only; the button does the same by keyboard and touch). */
+const TASK_DRAG = 'application/x-flux-task';
+
 /**
- * Agents (UI116-2): a view of the project's existing work, not a second
- * backlog or chat. Each person's connections are listed separately, so Hubert's Codex and
- * Hubert's Claude Code are two entries. The thread is the task's one canonical discussion.
+ * Agents (F-026 P9): one list, each agent with its owner and what it is doing now, then Requests, Policy and
+ * "Connect your own agent", and one primary button, "Hand off a task". A view of the project's existing work,
+ * not a second backlog or chat: each person's connections are separate entries, so Hubert's Codex and Hubert's
+ * Claude Code are two rows. A task's thread (`?task=`) is its one canonical discussion.
  */
 export async function projectAgentsLoader({ params, request }: LoaderFunctionArgs): Promise<ProjectAgentsData> {
   return getProjectAgents(params.projectId!, request.signal);
 }
-
-const CLIENT_LABEL: Record<ProjectAgentConnection['clientDesignation'], string> = {
-  claude_code: 'Claude Code', codex: 'Codex', other: 'External client',
-};
 
 const OPERATION_LABEL: Record<AgentOperation, string> = {
   'work.create': 'created a task', 'work.update': 'updated a task', 'result.record': 'recorded a result',
@@ -75,31 +77,6 @@ function connectionExpression(connection: ProjectAgentConnection, now: number): 
   if (connection.state === 'unavailable') return 'worried';
   if (state !== 'session_open') return 'asleep';
   return 'idle';
-}
-
-function activityLine(connection: ProjectAgentConnection) {
-  const last = connection.lastActivity;
-  if (!last) return null;
-  const label = OPERATION_LABEL[last.operation];
-  return `Last: ${label} · ${when(last.at)}`;
-}
-
-function Connection({ connection, now }: { connection: ProjectAgentConnection; now: number }) {
-  const activity = activityLine(connection);
-  return (
-    <li className="agents-conn" data-state={shownState(connection, now)}>
-      {/* The Agents section is where an agent's own colour shows (F-026 §2). */}
-      <Kreska size={32} expression={connectionExpression(connection, now)} hue={agentHue(connection.agent.id)} className="agents-conn__icon" />
-      <span className="agents-conn__body">
-        <span className="agents-conn__who">
-          <AgentIdentity name={CLIENT_LABEL[connection.clientDesignation]} owner={`${connection.owner.name}${connection.own ? ' (you)' : ''}`} icon={false} />
-        </span>
-        <span className="agents-conn__name">{connection.agent.name} · {connection.name}</span>
-        <span className="agents-conn__state">{stateLine(connection, now)}</span>
-        {activity ? <span className="agents-conn__activity">{activity}</span> : null}
-      </span>
-    </li>
-  );
 }
 
 function authorName(message: ConversationMessage, names: Map<string, string>) {
@@ -377,17 +354,110 @@ function useConnections(projectId: string, meId: string, initial: ProjectAgentCo
   return { list: fetched && fetched.base === initial ? fetched.list : initial, now };
 }
 
+const RANK: Record<ProjectAgentConnection['state'], number> = { session_open: 0, offline: 1, not_signed_in: 2, unavailable: 3 };
+
+/** The row's second line: what the agent holds now, else what Flux can prove about its connection. */
+function nowLine(entry: AgentEntry, held: WorkRowProjection[], now: number): string {
+  const task = held[0];
+  if (task?.status === 'in_progress') return `Working on #${task.number} · ${task.title}`;
+  if (task) return `Handed #${task.number} · ${task.title}`;
+  if (!entry.connection) return entry.access === 'viewer' ? 'Can read here · nothing handed to it' : 'Nothing handed to it';
+  return stateLine(entry.connection, now);
+}
+
+function AgentRow({ entry, held, now, selected, dropping, onOpen, onDropTask, onDropping }: {
+  entry: AgentEntry; held: WorkRowProjection[]; now: number; selected: boolean; dropping: boolean;
+  onOpen: () => void; onDropTask: (taskId: string) => void; onDropping: (on: boolean) => void;
+}) {
+  const working = held[0]?.status === 'in_progress';
+  const expression: KreskaExpression = working ? 'thinking' : entry.connection ? connectionExpression(entry.connection, now) : 'idle';
+  const last = entry.connection?.lastActivity;
+  const owner = [entry.owner, entry.via].filter(Boolean).join(' · ');
+  return (
+    <li className="agents-row" data-agent={entry.agentId} data-state={entry.connection ? shownState(entry.connection, now) : undefined} data-working={working || undefined} data-drop={dropping || undefined}
+      onDragOver={(event) => { if (event.dataTransfer.types.includes(TASK_DRAG)) { event.preventDefault(); onDropping(true); } }}
+      onDragLeave={() => onDropping(false)}
+      onDrop={(event) => { const id = event.dataTransfer.getData(TASK_DRAG); onDropping(false); if (id) { event.preventDefault(); onDropTask(id); } }}>
+      <button type="button" className="agents-row__btn" aria-pressed={selected} onClick={onOpen}>
+        <Kreska size={36} expression={expression} hue={agentHue(entry.agentId)} className="agents-row__icon" />
+        <span className="agents-row__body">
+          <span className="agents-row__who"><AgentIdentity name={entry.name} owner={owner || undefined} icon={false} /></span>
+          <span className="agents-row__now">{nowLine(entry, held, now)}</span>
+        </span>
+        {last ? <time className="agents-row__time" dateTime={last.at}>{when(last.at)}</time> : null}
+        <Icon name="chevron-right" size={14} className="agents-row__go" />
+      </button>
+    </li>
+  );
+}
+
+const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
+/**
+ * One agent in the detail panel (P9, AC-5): who owns it, what it is doing now, what Flux has recorded
+ * and what its grant here lets it do. There is no Stop: Flux has no operation that stops an external
+ * agent, and a button that did nothing would be a false promise (see the report on #347).
+ */
+function AgentDetail({ entry, held, projectId, now, canHandOff, onHandOff, onClose, onThread }: {
+  entry: AgentEntry; held: WorkRowProjection[]; projectId: string; now: number; canHandOff: boolean; onHandOff: () => void; onClose: () => void; onThread: (taskId: string) => void;
+}) {
+  const task = held[0];
+  const last = entry.connection?.lastActivity;
+  const grant = mayDo(entry.access);
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => { heading.current?.focus({ preventScroll: true }); }, [entry.key]);
+  return (
+    <aside className="agents-detail" aria-label={`${entry.name}, details`}>
+      <div className="agents-detail__bar">
+        <button type="button" className="agents-detail__back" onClick={onClose}><Icon name="chevron-left" size={14} />Agents</button>
+      </div>
+      <header className="agents-detail__head">
+        <Kreska size={40} expression={task?.status === 'in_progress' ? 'thinking' : entry.connection ? connectionExpression(entry.connection, now) : 'idle'} hue={agentHue(entry.agentId)} />
+        <div>
+          <h2 className="agents-detail__name" ref={heading} tabIndex={-1}><AgentIdentity name={entry.name} icon={false} /></h2>
+          <p className="agents-detail__for">{[entry.owner ? `for ${entry.owner}` : null, entry.via, entry.connection ? 'local MCP' : null].filter(Boolean).join(' · ')}</p>
+        </div>
+      </header>
+      <section className="agents-detail__now" aria-label="Now">
+        <h3>Now</h3>
+        {task ? (
+          <>
+            <p className="agents-detail__task"><StatusGlyph status={task.status} size={14} /><span className="ui-task-number">#{task.number}</span><button type="button" className="agents-detail__thread" onClick={() => onThread(task.id)}>{task.title}</button></p>
+            <p className="agents-detail__note">{task.status === 'in_progress' ? 'In progress' : 'Handed to it, not started'}{held.length > 1 ? ` · ${held.length - 1} more` : ''} · <Link className="ui-link" to={`/projects/${projectId}/tasks?open=work:${task.id}`}>Open task</Link></p>
+          </>
+        ) : <p className="agents-detail__note">{entry.connection ? stateLine(entry.connection, now) : 'Nothing is handed to it.'}</p>}
+      </section>
+      <section aria-label="Recent">
+        <h3>Recent</h3>
+        {last || held.length > 1 ? (
+          <ul className="agents-detail__recent">
+            {last ? <li><span>{sentence(OPERATION_LABEL[last.operation])}</span><time dateTime={last.at}>{when(last.at)}</time></li> : null}
+            {held.slice(1).map((row) => <li key={row.id}><button type="button" className="agents-detail__thread" onClick={() => onThread(row.id)}>Also holds #{row.number} · {row.title}</button></li>)}
+          </ul>
+        ) : <p className="agents-detail__note">Nothing recorded yet.</p>}
+      </section>
+      <section aria-label="Can">
+        <h3>Can</h3>
+        <p className="agents-detail__note">{sentence(grant.can)}</p>
+      </section>
+      {canHandOff ? <div className="agents-detail__actions"><Button variant="secondary" onClick={onHandOff} disabled={!grant.canTake}>Hand off to {entry.name}</Button></div> : null}
+    </aside>
+  );
+}
+
 export function ProjectAgents() {
   const data = useLoaderData() as ProjectAgentsData;
   const shell = useProjectShell();
   const { me } = useShellData();
   const location = useLocation();
   const navigation = useNavigation();
+  const revalidator = useRevalidator();
   const [search, setSearch] = useSearchParams();
   const projectId = shell?.project.id ?? data.projectId;
   // Open, unparked tasks come one bounded native page at a time (#155), never the whole project.
   const choices = useWorkChoices(me.user.id, projectId, { purpose: 'choices', choice: 'pivot_work' });
-  const tasks = useMemo<ThreadTask[]>(() => (choices.page?.items ?? []).flatMap((row) => row.kind === 'work' ? [{ id: row.id, title: row.title, status: row.status }] : []), [choices.page]);
+  const rows = useMemo(() => (choices.page?.items ?? []).filter((row): row is WorkRowProjection => row.kind === 'work'), [choices.page]);
+  const tasks = useMemo<ThreadTask[]>(() => rows.map((row) => ({ id: row.id, title: row.title, status: row.status })), [rows]);
   // A `?task=` outside this page is read by itself; one that is not this project's task (or
   // cannot be read) falls back to the first open one.
   const wanted = search.get('task');
@@ -398,7 +468,7 @@ export function ProjectAgents() {
   // While that read (or the first page) is still on its way, nothing is chosen yet, so a
   // thread never opens on a fallback task and then jumps.
   const settling = (!!wanted && !onPage && (own.read.phase === 'loading' || !choices.page)) || (!wanted && !choices.page);
-  const task = settling ? null : onPage ?? ownTask ?? tasks[0] ?? null;
+  const task = wanted && !settling ? onPage ?? ownTask ?? tasks[0] ?? null : null;
   const names = useMemo(() => new Map((shell?.people ?? []).map((person) => [person.id, person.name])), [shell]);
   const changingScope = navigation.state !== 'idle' && !!navigation.location
     && (navigation.location.pathname !== location.pathname || navigation.location.search !== location.search);
@@ -409,43 +479,105 @@ export function ProjectAgents() {
   const select = (id: string) => setSearch((current) => { const next = new URLSearchParams(current); next.set('task', id); return next; }, { replace: true, flushSync: true });
   const connections = useConnections(projectId, me.user.id, data.connections);
 
+  const entries = useMemo(() => agentEntries(shell?.people ?? null, [...connections.list].sort((a, b) => RANK[shownState(a, connections.now)] - RANK[shownState(b, connections.now)])), [shell?.people, connections.list, connections.now]);
+  const beside = useMediaQuery('(min-width: 1001px)');
+  // From an agent's panel a thread opens as a step forward: on a narrow pane the panel (which hides the list and
+  // the thread) is left, and Back returns to it.
+  const openThread = (id: string) => setSearch((current) => {
+    const next = new URLSearchParams(current); next.set('task', id);
+    if (!beside) next.delete('agent');
+    return next;
+  }, { replace: beside, flushSync: true });
+  const heldBy = (agentId: string) => tasksHeldBy(agentId, rows);
+  const working = entries.filter((entry) => heldBy(entry.agentId)[0]?.status === 'in_progress').length;
+  const picked = search.get('agent');
+  // Where the panel fits beside the list it is open from the start, on the working agent as drawn; narrow panes open it by choice.
+  const selected = entries.find((entry) => entry.key === picked) ?? (beside ? entries.find((entry) => heldBy(entry.agentId)[0]?.status === 'in_progress') ?? entries[0] ?? null : null);
+  const open = (key: string | null) => setSearch((current) => { const next = new URLSearchParams(current); if (key) next.set('agent', key); else next.delete('agent'); return next; }, { replace: true });
+
+  const [handOff, setHandOff] = useState<{ agentId: string | null; task: HandOffTask | null } | null>(null);
+  const [dropping, setDropping] = useState<string | null>(null);
+  // `?policy=open` opens the policy (a link to it, and where a reload leaves a reader who had it open).
+  const [policyOpen, setPolicyOpen] = useState(search.get('policy') === 'open');
+  const canWrite = shell?.project.access !== 'viewer';
+  const dropTask = (agentId: string, taskId: string) => {
+    const row = rows.find((item) => item.id === taskId);
+    if (row) setHandOff({ agentId, task: { id: row.id, version: row.version, number: row.number, title: row.title } });
+  };
+
   // The view scrolls in its own pane like every other view, so a long thread stays reachable
   // above the sticky composer on any screen.
   return (
     <div className="pane-scroll agents-scroll">
-    <div className="agents">
-      <header className="agents__head">
-        <h1 className="agents__title">Working together</h1>
-        <Link className="ui-link agents__connect" to="/connect-agent"><Icon name="plus" size={14} />Connect my agent</Link>
-      </header>
-      {connections.list.length ? (
-        <ul className="agents__connections" aria-label="Agent connections in this project">
-          {connections.list.map((connection) => <Connection key={connection.id} connection={connection} now={connections.now} />)}
+    <div className="agents" data-detail={selected ? 'open' : undefined}>
+      <div className="agents__main">
+        <header className="agents__head">
+          <h1 className="agents__title">Agents</h1>
+          <span className="agents__count">{entries.length} in this project{working ? ` · ${working} working` : ''}</span>
+          {canWrite && shell ? <Button variant="primary" className="agents__handoff" onClick={() => setHandOff({ agentId: null, task: null })}>Hand off a task</Button> : null}
+        </header>
+        {entries.length ? (
+          <ul className="agents-list" aria-label="Agents in this project">
+            {entries.map((entry) => (
+              <AgentRow key={entry.key} entry={entry} held={heldBy(entry.agentId)} now={connections.now} selected={selected?.key === entry.key}
+                dropping={dropping === entry.key} onOpen={() => open(entry.key)}
+                onDropTask={(id) => dropTask(entry.agentId, id)} onDropping={(on) => setDropping((current) => on ? entry.key : current === entry.key ? null : current)} />
+            ))}
+          </ul>
+        ) : (
+          <p className="agents__no-connections">No agents here yet. Connect one below; people can still discuss tasks in Conversation.</p>
+        )}
+        <ul className="agents-links">
+          <li><Link className="agents-link" to="/inbox"><span className="agents-link__icon"><Icon name="inbox" size={16} /></span><span className="agents-link__text"><b>Requests</b> · agents ask in your Inbox</span><Icon name="chevron-right" size={14} /></Link></li>
+          <li><button type="button" className="agents-link" aria-expanded={policyOpen} aria-controls="agents-policy" onClick={() => setPolicyOpen((value) => !value)}>
+            <span className="agents-link__icon"><Icon name="rule" size={16} /></span><span className="agents-link__text"><b>Project policy</b> · rules agents read before they plan</span><span className="agents-link__go">{policyOpen ? 'Hide' : shell?.project.access === 'manager' ? 'Edit' : 'Read'}<Icon name="chevron-right" size={14} /></span></button></li>
         </ul>
-      ) : (
-        <p className="agents__no-connections">No agents connected. You can still discuss tasks here.</p>
-      )}
-      <ProjectPolicy key={projectId} projectId={projectId} meId={me.user.id} canEdit={shell?.project.access === 'manager'}
-        managers={(shell?.people ?? []).filter((person) => person.kind === 'human' && person.access === 'manager').map((person) => person.name)} />
-      {task ? (
-        <>
-          <div className="agents__task">
-            <label className="agents__task-label" htmlFor="agents-task">Task</label>
-            <select id="agents-task" value={pendingTask?.id ?? task.id} onChange={(event) => select(event.target.value)}>
-              {!tasks.some((item) => item.id === task.id) ? <option value={task.id}>{task.title} · {STATUS_LABEL[task.status]}</option> : null}
-              {tasks.map((item) => <option key={item.id} value={item.id}>{item.title} · {STATUS_LABEL[item.status]}</option>)}
-            </select>
-            <Link className="ui-link agents__open" to={`/projects/${projectId}/tasks?open=work:${task.id}`}>Open task<Icon name="chevron-right" size={12} /></Link>
+        {policyOpen ? (
+          <div id="agents-policy">
+            <ProjectPolicy key={projectId} projectId={projectId} meId={me.user.id} canEdit={shell?.project.access === 'manager'}
+              managers={(shell?.people ?? []).filter((person) => person.kind === 'human' && person.access === 'manager').map((person) => person.name)} />
           </div>
-          {choices.page && (choices.page.previousCursor || choices.page.nextCursor) ? <WorkPagination {...choices} label="Open task choices" noun="open tasks" /> : null}
-          <TaskThread key={`${me.user.id}:${projectId}:${task.id}`} task={task} projectId={projectId} meId={me.user.id} names={names} canWrite={shell?.project.access !== 'viewer'} changingScope={changingScope} />
-        </>
-      ) : choices.read.phase === 'unavailable' ? (
-        <p className="agents__no-tasks" role="alert">Open tasks could not be loaded. <button type="button" className="ui-link" onClick={choices.onRefresh}>Refresh tasks</button></p>
-      ) : choices.page && !settling ? (
-        <p className="agents__no-tasks">No open tasks. Create one in Tasks; agents and people then work on it here.</p>
+        ) : null}
+        {canWrite && entries.length && rows.length ? (
+          <section className="agents-drag" aria-label="Open tasks to hand off">
+            <p className="agents-drag__hint">Drag a task onto an agent to hand it off</p>
+            <ul className="agents-drag__list">
+              {rows.filter((row) => row.owner?.kind !== 'agent').slice(0, 6).map((row) => (
+                <li key={row.id} className="agents-drag__task" draggable data-task-id={row.id}
+                  onDragStart={(event) => { event.dataTransfer.setData(TASK_DRAG, row.id); event.dataTransfer.effectAllowed = 'move'; }}>
+                  <StatusGlyph status={row.status} size={14} /><span className="ui-task-number">#{row.number}</span><span className="agents-drag__title">{row.title}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+        <Link className="agents-link agents-link--connect" to="/connect-agent"><span className="agents-link__icon"><Icon name="plus" size={16} /></span><span className="agents-link__text">Connect your own agent</span><span className="agents-link__go">Local MCP<Icon name="chevron-right" size={14} /></span></Link>
+        {task ? (
+          <>
+            <div className="agents__task">
+              <label className="agents__task-label" htmlFor="agents-task">Task</label>
+              <select id="agents-task" value={pendingTask?.id ?? task.id} onChange={(event) => select(event.target.value)}>
+                {!tasks.some((item) => item.id === task.id) ? <option value={task.id}>{task.title} · {STATUS_LABEL[task.status]}</option> : null}
+                {tasks.map((item) => <option key={item.id} value={item.id}>{item.title} · {STATUS_LABEL[item.status]}</option>)}
+              </select>
+              <Link className="ui-link agents__open" to={`/projects/${projectId}/tasks?open=work:${task.id}`}>Open task<Icon name="chevron-right" size={12} /></Link>
+            </div>
+            {choices.page && (choices.page.previousCursor || choices.page.nextCursor) ? <WorkPagination {...choices} label="Open task choices" noun="open tasks" /> : null}
+            <TaskThread key={`${me.user.id}:${projectId}:${task.id}`} task={task} projectId={projectId} meId={me.user.id} names={names} canWrite={shell?.project.access !== 'viewer'} changingScope={changingScope} />
+          </>
+        ) : wanted && choices.read.phase === 'unavailable' ? (
+          <p className="agents__no-tasks" role="alert">Open tasks could not be loaded. <button type="button" className="ui-link" onClick={choices.onRefresh}>Refresh tasks</button></p>
+        ) : null}
+      </div>
+      {selected ? (
+        <AgentDetail key={selected.key} entry={selected} held={heldBy(selected.agentId)} projectId={projectId} now={connections.now}
+          canHandOff={canWrite && !!shell} onHandOff={() => setHandOff({ agentId: selected.agentId, task: null })} onClose={() => open(null)} onThread={openThread} />
       ) : null}
     </div>
+    {shell ? (
+      <HandOffDialog open={!!handOff} onClose={() => setHandOff(null)} project={shell.project} task={handOff?.task ?? null} agentId={handOff?.agentId ?? null}
+        onDone={() => { choices.onRefresh(); revalidator.revalidate(); }} />
+    ) : null}
     </div>
   );
 }

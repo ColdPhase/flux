@@ -751,6 +751,8 @@ export const agentCommandReceipts = pgTable('agent_command_receipts', {
   primaryKey({ columns: [table.connectionId, table.clientCommandId] }),
   foreignKey({ columns: [table.connectionId, table.runtimeSessionId], foreignColumns: [agentRuntimeSessions.connectionId, agentRuntimeSessions.id] }),
   foreignKey({ columns: [table.connectionId, table.grantId], foreignColumns: [agentStandingGrants.connectionId, agentStandingGrants.id] }),
+  // The Agents view's latest-activity read per connection and project (migration 0062, #347).
+  index('agent_command_receipts_activity_idx').on(table.connectionId, table.projectId, table.completedAt.desc()),
 ]);
 
 // The co-work playbook a client reports having loaded for one runtime session (migration 0041, #160).

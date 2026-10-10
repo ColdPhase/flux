@@ -406,17 +406,12 @@ class AdaptiveMatrix(AdaptiveBase):
         self.no_sideways_scroll(page, "Wiki")
         self.shot(page, f"adapt-{size}-wiki")
 
-        # Agents: Hubert's two connections and Marek's one, each its own entry.
+        # Agents: Hubert's two connections and Marek's one, each its own row of one list, and one primary button.
         self.tab(page, "Agents")
-        expect(page.get_by_role("heading", level=1, name="Working together")).to_be_visible()
-        connections = page.get_by_role("list", name="Agent connections in this project").get_by_role("listitem")
+        expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
+        connections = page.get_by_role("list", name="Agents in this project").get_by_role("listitem")
         expect(connections).to_have_count(3)
-        if wide:
-            tops = {round(box["y"]) for box in (item.bounding_box() for item in connections.all())}
-            self.assertEqual(len(tops), 1, f"all three connections share one row at {size}")
-        self.primary(page, page.get_by_label("Task", exact=True), "the task selector")
-        self.primary(page, page.get_by_label("Write to this task"), "the task message field")
-        self.primary(page, page.get_by_role("button", name="Send to task"), "Send to task")
+        self.primary(page, page.get_by_role("button", name="Hand off a task"), "Hand off a task")
         self.no_sideways_scroll(page, "Agents")
         self.shot(page, f"adapt-{size}-agents")
 

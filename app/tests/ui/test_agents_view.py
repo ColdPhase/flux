@@ -108,10 +108,11 @@ class AgentsViewJourney(unittest.TestCase):
             self.api(page, "POST", "/api/v1/agent-connections", {"agentId": agent["id"], "selectedProjectIds": [project],
                      "scopes": ["flux.context.read", "flux.proposal.write"], "name": name, "clientDesignation": client}, status=201)
 
-    def open_agents(self, who: str, **kwargs) -> Page:
+    def open_agents(self, who: str, *, thread: bool = True, **kwargs) -> Page:
+        # The list is the view; a task's thread opens under it from `?task=` (the task's own link and detail panel).
         page = self.page(who, **kwargs)
-        page.goto(f"/projects/{self.ids['project']}/agents")
-        expect(page.get_by_role("heading", level=1, name="Working together")).to_be_visible()
+        page.goto(f"/projects/{self.ids['project']}/agents" + (f"?task={self.ids['task']}" if thread else ""))
+        expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
         return page
 
     def test_01_two_owners_connect_three_agents(self) -> None:
@@ -139,10 +140,10 @@ class AgentsViewJourney(unittest.TestCase):
         type(self).ids = {"workspace": ws["id"], "project": pid, "task": task["id"]}
 
     def test_02_every_connection_is_its_own_entry_with_owner_and_state(self) -> None:
-        page = self.open_agents("hubert")
+        page = self.open_agents("hubert", thread=False)
         tabs = page.get_by_role("navigation", name="Project views")
         expect(tabs.get_by_role("link", name=re.compile("^Agents"))).to_have_attribute("aria-current", "page")
-        connections = page.get_by_role("list", name="Agent connections in this project").get_by_role("listitem")
+        connections = page.get_by_role("list", name="Agents in this project").get_by_role("listitem")
         expect(connections).to_have_count(3)
         texts = connections.all_inner_texts()
         self.assertEqual(sum("Hubert Nowak (you)" in text for text in texts), 2, "both of Hubert's agents are listed")
@@ -154,8 +155,8 @@ class AgentsViewJourney(unittest.TestCase):
         api = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/agents", status=200)
         self.assertEqual(len(api["connections"]), 3)
         shot(page, "agents-desktop-1440")
-        marek = self.open_agents("marek")
-        texts = marek.get_by_role("list", name="Agent connections in this project").get_by_role("listitem").all_inner_texts()
+        marek = self.open_agents("marek", thread=False)
+        texts = marek.get_by_role("list", name="Agents in this project").get_by_role("listitem").all_inner_texts()
         self.assertEqual(sum("(you)" in text for text in texts), 1, "Marek owns exactly one of them")
 
     def test_03_the_composer_writes_to_the_task_thread(self) -> None:
@@ -226,7 +227,7 @@ class AgentsViewJourney(unittest.TestCase):
         hubert = self.page("hubert")
         # The page's sockets are recorded; while the network is "down" every new one fails before it opens.
         hubert.add_init_script(RECORD_SOCKETS)
-        hubert.goto(f"/projects/{self.ids['project']}/agents")
+        hubert.goto(f"/projects/{self.ids['project']}/agents?task={self.ids['task']}")
         expect(self.thread(hubert).get_by_text("Then I'll flash it tonight.")).to_be_visible()
         hubert.wait_for_function(STREAM_OPEN)
         # The connection drops and stays down while Marek writes; then the network returns.
@@ -322,6 +323,8 @@ class AgentsViewJourney(unittest.TestCase):
         page.get_by_label("Write to this task").fill("Half-written note about the firmware")
         page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks")).click()
         page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Agents")).click()
+        expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
+        page.evaluate("([url]) => { history.pushState({}, '', url); window.dispatchEvent(new PopStateEvent('popstate')); }", [f"/projects/{self.ids['project']}/agents?task={self.ids['task']}"])
         expect(page.get_by_label("Write to this task")).to_have_value("Half-written note about the firmware")
 
     def test_04b_a_draft_belongs_to_its_account(self) -> None:
@@ -330,8 +333,8 @@ class AgentsViewJourney(unittest.TestCase):
         # Another account signs in within the same browser storage: Hubert's unsent text is not theirs.
         page.context.clear_cookies()
         page.context.add_cookies(self.states["marek"]["cookies"])
-        page.goto(f"/projects/{self.ids['project']}/agents")
-        expect(page.get_by_role("heading", level=1, name="Working together")).to_be_visible()
+        page.goto(f"/projects/{self.ids['project']}/agents?task={self.ids['task']}")
+        expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
         expect(page.get_by_label("Write to this task")).to_have_value("")
 
     def test_04c_a_lost_response_is_retried_without_a_duplicate(self) -> None:
@@ -386,16 +389,16 @@ class AgentsViewJourney(unittest.TestCase):
         outsider = self.page("outsider")
         self.api(outsider, "GET", f"/api/v1/projects/{self.ids['project']}/agents", status=404)
         outsider.goto(f"/projects/{self.ids['project']}/agents")
-        expect(outsider.get_by_role("heading", level=1, name="Working together")).to_have_count(0)
+        expect(outsider.get_by_role("heading", level=1, name="Agents")).to_have_count(0)
 
     def test_06_phone_keeps_entries_and_composer_usable(self) -> None:
         page = self.open_agents("hubert", phone=True)
-        expect(page.get_by_role("list", name="Agent connections in this project").get_by_role("listitem")).to_have_count(3)
+        expect(page.get_by_role("list", name="Agents in this project").get_by_role("listitem")).to_have_count(3)
         expect(page.get_by_label("Write to this task")).to_be_visible()
         overflow = page.evaluate("() => document.documentElement.scrollWidth - document.documentElement.clientWidth")
         self.assertLessEqual(overflow, 0, "no horizontal page scroll at 390px")
         # The sections stack: the thread never starts above the task picker or the connections.
-        boxes = page.evaluate("""() => ['.agents__connections', '.agents__task', '.agents-thread'].map((s) => {
+        boxes = page.evaluate("""() => ['.agents-list', '.agents__task', '.agents-thread'].map((s) => {
           const r = document.querySelector(s).getBoundingClientRect(); return { top: r.top, bottom: r.bottom }; })""")
         self.assertLessEqual(boxes[0]["bottom"], boxes[1]["top"] + 1, "connections end before the task picker")
         self.assertLessEqual(boxes[1]["bottom"], boxes[2]["top"] + 1, "the task picker ends before the thread")
@@ -447,7 +450,7 @@ class AgentsViewJourney(unittest.TestCase):
         # #183 N1: another person revokes their connection while Hubert has the view open. A
         # revocation publishes no stream event, so returning to the tab refetches the list.
         page = self.open_agents("hubert")
-        connections = page.get_by_role("list", name="Agent connections in this project").get_by_role("listitem")
+        connections = page.get_by_role("list", name="Agents in this project").get_by_role("listitem")
         expect(connections).to_have_count(3)
         page.evaluate("() => { window.__fluxSameDocument = true; }")
         marek = self.page("marek")
@@ -459,7 +462,11 @@ class AgentsViewJourney(unittest.TestCase):
         response = marek.request.fetch(f"{ORIGIN}/api/v1/agent-connections/{active[0]['id']}", method="DELETE", headers={"origin": ORIGIN})
         self.assertEqual(response.status, 204, response.text())
         page.evaluate("() => window.dispatchEvent(new Event('focus'))")
-        expect(connections).to_have_count(2, timeout=20000)
+        # The connection leaves the list; Marek's agent keeps its project access, so it stays a row with nothing of its client.
+        marek_row = connections.filter(has_text="Marek's coding agent")
+        expect(marek_row).to_have_count(1)
+        expect(marek_row).not_to_contain_text("Workshop PC", timeout=20000)
+        expect(marek_row).to_contain_text("Nothing handed to it")
         self.assertFalse(any("Workshop PC" in text for text in connections.all_inner_texts()), "Marek's revoked connection is gone")
         self.assertTrue(page.evaluate("() => window.__fluxSameDocument === true"), "the list changed without a reload")
 
@@ -494,12 +501,12 @@ class AgentsViewJourney(unittest.TestCase):
         expires = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now + 6))
         page.route(f"**/api/v1/projects/{self.ids['project']}/agents", session_ending_soon)
         page.goto(f"/projects/{self.ids['project']}/agents")
-        expect(page.get_by_role("heading", level=1, name="Working together")).to_be_visible()
+        expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
         page.evaluate("() => { window.__fluxSameDocument = true; }")
-        desk = page.get_by_role("list", name="Agent connections in this project").get_by_role("listitem").filter(has_text="Desk laptop")
+        desk = page.get_by_role("list", name="Agents in this project").get_by_role("listitem").filter(has_text="Desk laptop")
         expect(desk).to_contain_text("Session open since")
         expect(desk).to_have_attribute("data-state", "session_open")
-        expect(desk.locator(".agents-conn__icon")).to_have_attribute("data-expression", "idle")
+        expect(desk.locator(".agents-row__icon")).to_have_attribute("data-expression", "idle")
         expect(desk).to_contain_text("Offline", timeout=25000)
         expect(desk).to_have_attribute("data-state", "offline")
         expect(desk).not_to_contain_text("Session open since")

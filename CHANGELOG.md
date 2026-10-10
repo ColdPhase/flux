@@ -126,6 +126,7 @@ repository was created on 2026-09-26.
 
 ### Changed
 
+- Agents is one list with each agent's colour, owner and what it is doing now, then Requests, Policy and "Connect your own agent" and one "Hand off a task" button; handing a task to an agent takes two steps (choose the agent, then see what its access lets it do), by button, from the task's details or, on a computer, by dragging the task onto the agent ([#347](https://github.com/ColdPhase/flux/issues/347))
 - Faster reads: the Inbox count no longer compiles query code on each visit, conversation and material lists use one statement instead of one or two per row, and conversation roots and comparison outcomes are read without locks ([#300](https://github.com/ColdPhase/flux/pull/300)).
 - The app's files are sent as Brotli or gzip, and large JSON answers are compressed ([#269](https://github.com/ColdPhase/flux/pull/269)).
 - Settings is one calm place with Account, Appearance (Light, Dark or Match system, and a switch for Kreska's small moments), Notifications, Agents and AI and Keyboard shortcuts. Notifications now default to Only "Needs you" (replies no longer push), with Everything or Nothing, quiet hours and an optional morning summary push ([#370](https://github.com/ColdPhase/flux/pull/370)).
