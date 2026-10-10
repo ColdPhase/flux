@@ -289,13 +289,12 @@ export function ClaimPage() {
       <div className="auth__notice" role="status">
         <Icon name="alert" />
         <div>
-          <p><strong>Link first.</strong> If that account is yours, sign in to it instead; it keeps everything it has.</p>
+          <p><strong>Keep your existing account.</strong> If it is yours, ask the person who runs Flux to link it to your single sign-on identity. It keeps everything it has.</p>
           <p><strong>Or claim the address.</strong> Flux then gives it up: the old account is signed out everywhere and its agent connections stop, but its data stays with it and does not move to your new account.</p>
         </div>
       </div>
       {failed ? <FormError message={failed} /> : null}
       <div className="auth__form">
-        <Link className="ui-btn ui-btn--primary ui-btn--lg ui-btn--block" to="/sign-in">Sign in to that account</Link>
         <Button variant="secondary" size="lg" block busy={busy} disabled={!sso} onClick={() => void confirm()}>Claim this address</Button>
       </div>
       <p className="auth__alt"><Link className="ui-link" to={back}>Cancel</Link></p>
