@@ -142,13 +142,13 @@ function OwnAgentCard({ item, compact, onChanged }: { item: OwnWorkingAgent; com
   return (
     <div className={`agentlive agentlive--agent${compact ? ' agentlive--compact' : ''}`} role="status" aria-label={label} data-agent={item.agent.id}>
       {compact ? (
-        <Link className="agentlive__link" to={destination} title={label} aria-label={label}><Kreska size={24} expression="thinking" hue={hue} /></Link>
+        <Link className="agentlive__link" to={destination} title={label} aria-label={label}><Kreska size={24} expression={item.online ? 'thinking' : 'asleep'} hue={hue} /></Link>
       ) : (
         <>
-          <Kreska size={24} expression="thinking" hue={hue} />
+          <Kreska size={24} expression={item.online ? 'thinking' : 'asleep'} hue={hue} />
           <Link className="agentlive__text" to={destination}>
             <b>{item.agent.name}</b>
-            <span>{stopping ? 'Stopping…' : `#${item.task.number} · ${item.task.title}`}</span>
+            <span>{stopping ? 'Stopping…' : item.online ? `#${item.task.number} · ${item.task.title}` : `holds #${item.task.number} · ${item.signedIn ? 'offline' : 'not signed in yet'}`}</span>
           </Link>
         </>
       )}
@@ -166,15 +166,17 @@ export function WorkingAgent({ compact = false }: { compact?: boolean }) {
   const agents = useOwnWorkingAgents(me.user.id);
   // Home lists every working agent itself (HomeWorkingAgents), so the sidebar card steps aside there.
   const onHome = useLocation().pathname === '/';
-  // Several agents at once: the card shows the first with how many more work, so the sidebar never grows.
-  const first = agents.items[0];
+  // Several agents at once: online ones first; the card shows the first with how many more are online, so the sidebar never grows.
+  const ordered = [...agents.items.filter((item) => item.online), ...agents.items.filter((item) => !item.online)];
+  const first = ordered[0];
+  const onlineCount = agents.items.filter((item) => item.online).length;
   return (
     <>
       <WorkingAssistant compact={compact} />
       {first && !onHome ? (
         <>
           <OwnAgentCard item={first} compact={compact} onChanged={agents.reload} />
-          {agents.items.length > 1 && !compact ? <p className="agentlive__more">+{agents.items.length - 1} more working</p> : null}
+          {onlineCount > 1 && !compact ? <p className="agentlive__more">+{onlineCount - 1} more working</p> : null}
         </>
       ) : null}
     </>

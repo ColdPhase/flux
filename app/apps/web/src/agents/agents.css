@@ -213,3 +213,47 @@
 @media (pointer: coarse) { .agents-stop { min-height: 44px; min-width: 44px; } }
 .agents-row:has(.agents-row__btn:hover), .agents-row:has(.agents-row__btn[aria-pressed="true"]) { background: var(--sub); }
 .agents-row .agents-row__btn:hover, .agents-row .agents-row__btn[aria-pressed="true"] { background: transparent; }
+
+/* Agents tab fixes (#347 P1, P2): the row's meta and owner per width, the Now card with the agent's latest line, the thread
+   in the right column or as a sheet over the list, and the request count. Only the tokens the design already has. */
+.agents-row__meta { display: block; min-width: 0; font-size: var(--fs-xs); color: var(--t3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agents-row__via-name { color: var(--t2); }
+.agents-row__owner-short { display: none; }
+.agents-detail__card {
+  display: flex; flex-direction: column; gap: var(--s-1); width: 100%; min-width: 0; margin: 0; padding: 0; border: 0;
+  background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.agents-detail__card:focus-visible { outline: 2px solid var(--t1); outline-offset: 4px; border-radius: var(--r-sm); }
+.agents-detail__tasktitle { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
+.agents-detail__latest { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: var(--s-1); font-size: var(--fs-base); line-height: 1.5; color: var(--t2); overflow-wrap: anywhere; }
+.agents-detail__at { font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
+.agents-detail__stop-note { margin: 0; }
+.agents-link__count {
+  flex: none; display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; margin-right: var(--s-2);
+  border-radius: var(--r-pill); background: var(--t1); color: var(--bg); font-size: var(--fs-xs); font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.agents[data-thread-open] { position: relative; flex: 1 1 auto; min-height: 0; align-items: stretch; }
+/* The pane holds the thread: while it is open the pane does not scroll, the list and the thread each scroll in their own column. */
+.agents-scroll:has(.agents[data-thread-open]) { overflow: hidden; display: flex; flex-direction: column; }
+/* Wide: the thread is the right column, its head pinned, its messages scrolling (#347 N3). */
+.agents[data-thread-open] .agents__main { min-height: 0; overflow-y: auto; }
+.agents-thread-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; }
+.agents-thread-pane .thread--docked { flex: 1; min-height: 0; width: 100%; border-left: 0; }
+.agents-thread-scroll { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; }
+.agents-thread-scroll > .agents-thread { flex: 1 0 auto; }
+/* Phone: a sheet over the Agents pane, with its head pinned and its messages scrolling inside (#347 review N2). */
+/* A fixed sheet over the screen: its height is the screen's, so its messages scroll inside it (#347 review N2). */
+.agents-thread-sheet { position: fixed; inset: 0; z-index: var(--z-panel); display: flex; flex-direction: column; min-height: 0; padding-top: env(safe-area-inset-top); background: var(--bg); }
+.agents-thread-sheet .thread--sheet { position: static; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+@media (max-width: 1000px) {
+  .agents[data-thread-open] .agents__handoff { display: none; }
+  .agents[data-thread-open] .agents__main { display: none; }
+}
+@media (max-width: 640px) {
+  .agents-row__owner { display: none; }
+  .agents-row__owner-short { display: inline; }
+  .agents-row__via, .agents-row__time { display: none; }
+  /* A row's Take back waits in the agent's panel on a phone; Stop stays on the row (#347 N7). */
+  .agents-row__stop--take { display: none; }
+  .agents-row__now { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+}

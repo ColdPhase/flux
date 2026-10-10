@@ -7,6 +7,7 @@
 .qcard__own input:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
 .qcard__answer { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin: 0; font-size: var(--fs-base); color: var(--t1); overflow-wrap: anywhere; }
 .qcard__by { margin-left: auto; font-size: var(--fs-xs); color: var(--t3); }
+.qcard__offered { margin: 0; padding-left: 1.4em; font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); overflow-wrap: anywhere; }
 .qcard__waiting { margin: 0; font-size: var(--fs-sm); color: var(--t3); }
 .qcard__error { margin: 0; font-size: var(--fs-sm); color: var(--t1); }
 @media (pointer: coarse) { .qcard__own input { height: 44px; } }

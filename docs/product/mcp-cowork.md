@@ -255,7 +255,9 @@ says "Stopped by <name>", not "the agent has stopped running".
 ### Questions with ready answers (S14)
 
 An agent asks a person in a project conversation and offers two to four answers. The question is an ordinary message
-of the agent, so the thread reads the same without the card; the card only adds the one-tap answers.
+of the agent, so the thread reads the same without the card. The message body is not drawn twice: the card carries
+the question as its heading. The card adds the one-tap answers for the person asked; everyone else, and the asked person
+without write access, sees the answers offered as a read-only list (#347 review finding 2).
 
 - **Tool.** `flux_ask_question` under the existing `conversation.reply` operation and grant (a grant naming one
   conversation allows asking only there). Input: `conversationId`, `question` (1-2000 characters),

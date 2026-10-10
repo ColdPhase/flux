@@ -5,7 +5,7 @@ import { DiscussedTask, MessageObjects } from '../work/inline';
 import type { MessageWorkPreview } from '../work/message-associations';
 import { AgentAuthor, AuthorFace, SourceCitation, clock, day, when } from './messageParts';
 import { MessageFiles } from '../composer/Files';
-import { QuestionCard } from '../agents/QuestionCard';
+import { QuestionCard, WhenNoQuestion } from '../agents/QuestionCard';
 
 export type ThreadMode = 'docked' | 'sheet';
 
@@ -14,7 +14,13 @@ export type ThreadMode = 'docked' | 'sheet';
  * stream on a phone or a narrow tablet. It is not modal: the header, tabs, a live session's bar and,
  * when docked, the stream stay usable. Esc inside it closes it; the opener takes focus back.
  */
-export function ThreadDrawer({ mode, count, focusOnOpen, onClose, children }: { mode: ThreadMode; count: number; focusOnOpen: boolean; onClose: () => void; children: ReactNode }) {
+export function ThreadDrawer({ mode, count, focusOnOpen, onClose, title = 'Replies', closeLabel = 'Close replies', children }: {
+  mode: ThreadMode; count?: number; focusOnOpen: boolean; onClose: () => void;
+  /** The heading (default "Replies"); the Agents view names the task here. */
+  title?: string;
+  /** The close control's name (default "Close replies"). */
+  closeLabel?: string; children: ReactNode;
+}) {
   const ref = useRef<HTMLElement>(null);
   const titleId = useId();
   useEffect(() => {
@@ -31,9 +37,9 @@ export function ThreadDrawer({ mode, count, focusOnOpen, onClose, children }: { 
   return (
     <aside ref={ref} id="thread" className={`thread thread--${mode}`} aria-labelledby={titleId} tabIndex={-1} onKeyDown={onKeyDown}>
       <div className="thread__head">
-        <h2 className="thread__title" id={titleId}>Replies</h2>
-        <span className="thread__n"><span className="ui-vh">, </span>{count}</span>
-        <IconButton icon={mode === 'sheet' ? 'chevron-left' : 'x'} label="Close replies" className="thread__close" onClick={onClose} />
+        <h2 className="thread__title" id={titleId}>{title}</h2>
+        {count === undefined ? null : <span className="thread__n"><span className="ui-vh">, </span>{count}</span>}
+        <IconButton icon={mode === 'sheet' ? 'chevron-left' : 'x'} label={closeLabel} className="thread__close" onClick={onClose} />
       </div>
       {children}
     </aside>
@@ -78,7 +84,7 @@ export function ThreadRoot({ message, projectId, body, author, agentOwner = null
             <time dateTime={message.createdAt} title={when(message.createdAt)}>{day(message.createdAt)} · {clock(message.createdAt)}</time>
           </div>
         ) : null}
-        {message?.body || !message ? <p>{body}</p> : null}
+        {message?.body || !message ? <WhenNoQuestion projectId={projectId} messageId={message?.id ?? null}><p>{body}</p></WhenNoQuestion> : null}
         {message ? <QuestionCard projectId={projectId} messageId={message.id} meId={meId} writable={writable} /> : null}
         <MessageFiles files={message?.files} />
         {message?.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
