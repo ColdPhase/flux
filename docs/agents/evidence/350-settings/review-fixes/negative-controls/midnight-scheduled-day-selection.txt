@@ -1,0 +1,39 @@
+▶ morning-summary calendar schedule
+  ✖ the 15-minute tick catches 23:46 and 23:59 after midnight for the scheduled day (13.036209ms)
+✖ morning-summary calendar schedule (14.058083ms)
+ℹ tests 1
+ℹ suites 1
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 157.670958
+
+✖ failing tests:
+
+test at tests/app/notification-summary-schedule.test.ts:1:414
+✖ the 15-minute tick catches 23:46 and 23:59 after midnight for the scheduled day (13.036209ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + null
+  - '2026-10-08'
+
+      at TestContext.<anonymous> (/app/tests/app/notification-summary-schedule.test.ts:11:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.start (node:internal/test_runner/test:1262:17)
+      at node:internal/test_runner/test:1903:71
+      at node:internal/per_context/primordials:504:82
+      at new Promise (<anonymous>)
+      at new SafePromise (node:internal/per_context/primordials:478:3)
+      at node:internal/per_context/primordials:504:9
+      at Array.map (<anonymous>) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: null,
+    expected: '2026-10-08',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

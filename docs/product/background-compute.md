@@ -200,7 +200,7 @@ Production activation is off by default. **Operator switch (proposed 2026-10-03 
 pending peer acceptance on #58):** the worker runtime and rule enabling exist only when the
 instance operator sets `FLUX_BACKGROUND_COMPARISONS=on` for both the API and the worker. It is
 empty by default, the release `docker/compose.yaml` does not pass it, and an operator must not
-switch it on before the real-provider verification gates below pass.
+switch it on before the mock verification gates (fake-provider usage, cost, caps, cancellation and crash reconciliation, [development notes](../development/proactive-comparison.md)) pass; a real-provider bill is not required (founder direction 2026-10-08).
 Source selection, source-change scheduling and outcome/accounting changes are
 separate verifiable implementation portions of this amendment.
 
@@ -319,7 +319,7 @@ Cursor, due-project rows and candidate due time use one new migration numbered
 by actual merge order. Portable internal scheduling ports have focused DB and
 worker composition. Production enabling and provider registration stay off by default (the
 proposed operator switch above, pending acceptance on #58) and must not be switched on until their
-separate real-provider verification gates pass. This section records
+separate fake-provider verification gates pass. This section records
 the accepted contract, not completed scheduling or production evidence.
 
 ### Interrupted reservation recovery (accepted 2026-09-30)

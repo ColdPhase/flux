@@ -5,6 +5,7 @@ import { reply, startConversation } from '../app/conversation-api';
 import { sendDmMessage } from '../api/direct-messages';
 import { contributeToTask, stageFile } from './api';
 import { assumeReachable, connectionState, onConnectionChange, reportReachable, reportUnreachable } from './connection';
+import { forgetReloadRetention, setReloadRetention } from '../app/reload-retention';
 
 export interface DraftReference { materialId: string; version: number; title: string }
 export interface DraftFile {
@@ -93,6 +94,7 @@ function retireDrafts() {
   }
   snapshots.clear();
   selected.clear();
+  forgetReloadRetention('composer');
   running.clear();
   waiters.clear();
   // Keep subscriptions valid until the signed-in tree unmounts; any remaining view reads empty.
@@ -195,6 +197,7 @@ function load(key: string, accountId: string, projectId: string, context: string
   } catch { storage = 'visit'; }
   const snapshot: Snapshot = { draft, pending, sent: [], storage, sending: false, error: '' };
   snapshots.set(key, snapshot);
+  updateReloadRetention(key, snapshot, storage === 'visit' && (!blank(draft) || pending.length > 0));
   // Read during a render: queued messages are sent after it.
   if (pending.some((item) => item.state !== 'failed')) window.setTimeout(() => kick(key), 0);
   return snapshot;
@@ -204,7 +207,16 @@ function put(key: string, snapshot: Snapshot) {
   const { draft, pending } = snapshot;
   try { storageFor(places.get(key)?.context ?? '').setItem(key, JSON.stringify(pending.length ? { ...draft, pending } : draft)); } catch { storage = 'visit'; }
   snapshots.set(key, { ...snapshot, storage });
+  // A failed write of an empty clear can resurrect the older command/text too.
+  updateReloadRetention(key, snapshot, storage === 'visit', true);
   listeners.get(key)?.forEach((listener) => listener());
+}
+function updateReloadRetention(key: string, snapshot: Snapshot, refused: boolean, invalidate = false) {
+  const place = places.get(key);
+  if (!place) return;
+  const files = [...snapshot.draft.files, ...snapshot.pending.flatMap((item) => item.files)];
+  const needsBytes = files.some((file) => file.state !== 'ready' && !!selected.get(key)?.has(file.uploadId));
+  setReloadRetention('composer', key, place.accountId, refused || needsBytes, invalidate);
 }
 function edit(key: string, change: (draft: ComposerDraft) => ComposerDraft) {
   const snapshot = snapshots.get(key)!;

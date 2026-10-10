@@ -38,9 +38,13 @@ export interface NotificationRecord {
   readAt: Date | null;
   /** Why it exists (#116); null for notifications created directly through `createNotification`. */
   reason: NotificationReason | null;
+  /** Explicit persisted classification; absence in older port callers means ordinary. */
+  deliveryKind?: 'ordinary' | 'morning_summary';
+  /** Every counted source, including repeated sources for distinct inbox items. */
+  summarySources?: readonly NotificationSourceRef[] | null;
 }
 
-export type NewNotification = Omit<NotificationRecord, 'createdAt' | 'readAt' | 'reason'>;
+export type NewNotification = Omit<NotificationRecord, 'createdAt' | 'readAt' | 'reason' | 'deliveryKind' | 'summarySources'>;
 
 export interface NotificationRepository {
   insert(notification: NewNotification): Promise<void>;
