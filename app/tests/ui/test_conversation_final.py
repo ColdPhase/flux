@@ -56,7 +56,7 @@ class ConversationFinal(unittest.TestCase):
         expect.set_options(timeout=10000)
         contexts: dict[str, BrowserContext] = {}
         for key, (name, email) in PEOPLE.items():
-            context = cls.browser.new_context(base_url=ORIGIN)
+            context = cls.browser.new_context(service_workers="block", base_url=ORIGIN)
             response = context.request.post("/api/auth/sign-up/email", data={"email": email, "password": PASSWORD, "name": name}, headers={"origin": ORIGIN})
             assert response.status == 200, response.text()
             cls.ids[key] = context.request.get("/api/v1/me").json()["user"]["id"]
@@ -115,14 +115,14 @@ class ConversationFinal(unittest.TestCase):
         cls.browser.close()
         cls.pw.stop()
 
-    def page(self, who: str, *, phone: bool = False, dark: bool = False, block_service_workers: bool = False) -> Page:
+    def page(self, who: str, *, phone: bool = False, dark: bool = False) -> Page:
         options: dict = {"base_url": ORIGIN, "color_scheme": "dark" if dark else "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw",
-                         "storage_state": self.states[who], "service_workers": "block" if block_service_workers else "allow"}
+                         "storage_state": self.states[who]}
         if phone:
             options.update(viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
         else:
             options.update(viewport=DESKTOP, device_scale_factor=1)
-        context = self.browser.new_context(**options)
+        context = self.browser.new_context(service_workers="block", **options)
         self.addCleanup(context.close)
         page = context.new_page()
         errors: list[str] = []
@@ -465,8 +465,7 @@ class ConversationFinal(unittest.TestCase):
 
     def test_11_a_slash_command_consumes_only_the_draft_it_was_given(self) -> None:
         for command in ("task", "handoff"):
-            # page.route cannot hold requests handled by a service worker; normal contexts above keep it.
-            page = self.open("ada", block_service_workers=True)
+            page = self.open("ada")
             composer = self.composer(page)
             held = self.hold_work(page)
             title = f"Held {command} original"
@@ -554,7 +553,7 @@ class ConversationFinal(unittest.TestCase):
 
     def test_15_a_completed_command_consumes_its_original_thread_draft_after_leaving(self) -> None:
         for command in ("task", "handoff"):
-            page = self.open("ada", block_service_workers=True)
+            page = self.open("ada")
             message = self.message(page, self.ids["probes"])
 
             def open_thread() -> None:
