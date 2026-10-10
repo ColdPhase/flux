@@ -68,7 +68,11 @@ another person's agent waits for an owner-sent request and that person's separat
 consent/ordinary handoff, never an owner-approved foreign-agent unit creation.
 *Clarified 2026-10-10 for #401 C4 (peer acceptance pending):* own-agent unit creation
 uses the [server-owned owner-assistant run adapter](../development/cowork-coordination.md#owner-assistant-handoff-creation--f-027-amendment-2026-10-10),
-with verified durable owner binding/run purpose and current S6 checks. It grants no
+with verified durable owner binding/run purpose and current S6 checks for direct
+calls, or the separate current-owner Apply purpose on an immutable saved waiting
+intent after normal completion (R1 clarification, 2026-10-10). The R2 versioned
+run-private tool projection omits unavailable bootstrap runtime/grant input fields;
+ordinary external schemas/descriptions remain unchanged. It grants no
 assistant claim/bootstrap and no recipient grant/claim/invocation. Every ordinary
 external caller keeps the self-root/live-parent creation fence; a compute-source
 label or client-supplied actor cannot select the adapter. Agents never start the helper.

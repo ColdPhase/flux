@@ -406,11 +406,14 @@ without giving the assistant a parent claim. The ordinary external
 `coWorkUnitCreationInTransaction` contract above, including root assignee=caller
 and child live-parent generation/lease/runtime fences, remains unchanged.
 
-`ownerAssistantUnitCreationInTransaction` is an internal composition selected by
-the existing `flux_create_unit`/`cowork.unit.create` dispatch **only for a verified
-owner-assistant run**. It is not a new public endpoint, actor parameter or tool.
+`ownerAssistantUnitCreationInTransaction` is an internal composition reached either
+through the verified run-private `flux_create_unit` projection below or through
+AST-5's authenticated owner Apply on its saved immutable intent. **R1/R2 clarification,
+2026-10-10, peer acceptance pending:** these have distinct server-verified authority
+purposes; the ordinary external public tool/schema remains unchanged. There is no
+new public actor/authority parameter or endpoint.
 
-- **Caller authority.** The API resolves the actual live connection, its durable
+- **Direct-run caller authority.** The API resolves the actual live connection, its durable
   owner-assistant identity binding (`personal_run_agents`/A1), current owner,
   signed run token and matching current run record. The token must be intended
   for this MCP resource/run/place; the run must still be running for that exact
@@ -418,11 +421,15 @@ owner-assistant run**. It is not a new public endpoint, actor parameter or tool.
   label, a normal OAuth/local/native bearer, or client-supplied run/actor fields
   never selects or authorizes this adapter. No external caller can downgrade
   into it or bypass its own root/child rules. Both engines use this same check.
+  This purpose authorizes only calls while that run is live. A completed run/token
+  is provenance for a saved waiting intent, never continuing model authority;
+  later Apply requires the separate owner-approval transition below.
 - **Current limits.** Hold/recheck owner rights, live assistant project grant,
   original consent envelope, S6 Tasks read/operation and selected project, exact
   run place, approval mode, run limits and Stop/revocation at execution and
-  receipt replay. An expired/stopped run or Off/narrowed/revoked authority cannot
-  create or replay a handoff. Background runs additionally require their still
+  receipt replay. An expired run token cannot create/replay under direct-run
+  authority; stopped/cancelled source runs and Off/narrowed/revoked authority cannot
+  authorize pending execution under either purpose. Background runs additionally require their still
   valid owner schedule/reaction authorization and its existing bounds. This is
   run authority, not a fabricated assistant standing grant or bootstrap.
 - **Input and attribution.** Reuse the existing bounded unit-create intent:
@@ -432,7 +439,9 @@ owner-assistant run**. It is not a new public endpoint, actor parameter or tool.
   derives creator, owner, run/lineage identities and receipt attribution from the
   verified records; it never impersonates the human or recipient as creator.
   The assistant is the author, acting for the recorded owner/run/payer.
-  No new public schema or caller-supplied budget, authority, owner or actor exists.
+  The ordinary public schema is unchanged; the run-private input projection below
+  removes its unavailable bootstrap authority fields explicitly. No caller-supplied
+  budget, authority, owner or actor exists.
 - **Recipient.** Resolve a different, external MCP connection of the **same
   current human owner**, in this workspace and project, live/unrevoked, with the
   existing selected-project/execute-scope/project-access prerequisites. Neither
@@ -447,11 +456,12 @@ owner-assistant run**. It is not a new public endpoint, actor parameter or tool.
 - **Root and budgets.** Only this verified owner-run composition may create a
   pending root assigned to that eligible recipient without a creator parent.
   The server derives its task/lineage/run identity in a distinct assistant-handoff
-  namespace from the verified assistant connection/run, task and immutable intent
+  namespace from the verified assistant connection/original preparation run, task and immutable intent
   key. It cannot borrow a client-named or unrelated lineage. Preserve the closed-
   task and exact-version fences, task-wide open-role/plan-writer exclusion and
   native maximum-run-units bound. Charge creation/re-issued intent to the current
-  assistant operation/change limit; receipt replay adds no second charge. Native
+  assistant operation/change limit for direct execution or the bounded owner-approval
+  allowance below; receipt replay adds no second charge. Native
   counts are never refunded by Undo. Repeated separate roots cannot escape the
   assistant run limit or task exclusion. External creators still use/debit their
   own standing grants under the unchanged ordinary composition.
@@ -484,6 +494,120 @@ owner-assistant run**. It is not a new public endpoint, actor parameter or tool.
   changes their grants or silently reopens work. Stop of the assistant similarly
   prevents its next handoff, without stopping already independent recipient work.
 
+#### Run-private catalog and input mapping (R2)
+
+The name remains `flux_create_unit`, registered against the existing
+`cowork.unit.create` entry/classes and S6 checks. Its **server-selected private
+catalog view `assistant-unit-create/v1`** differs from the ordinary external view;
+this is an explicit bounded input/description amendment, not an assertion that
+the two wire schemas are identical.
+
+- Before advertising or validating tool input, the MCP composition verifies the
+  signed run purpose, current run, durable assistant/owner binding and exact place
+  above. Only that trusted context selects the private view. Ordinary OAuth/native/
+  local callers receive the unchanged public schema and its truthful standing-grant
+  and bootstrap descriptions, including required `runtimeSessionId` and `grantId`.
+  `compute_source`, tool arguments, client metadata and opaque caller IDs cannot
+  request a private view. Invalid/expired run authority is refused, never downgraded
+  to an ordinary caller or tried against a second schema.
+- The private input is strict and consists exactly of the existing intent fields
+  `projectId`, `clientCommandId`, `peerRequestClass` (`execute|review|plan`), `taskId`,
+  `unitKey`, `expectedTaskVersion`, `assignmentConnectionId` and literal `parent: null`.
+  Keep the ordinary UUID/version/key bounds. `projectId` must equal the verified
+  run place; class is the requested unit role, and assignment is a recipient target,
+  never actor authority. Omit `runtimeSessionId` and `grantId` entirely: supplying
+  them, a non-null parent or any purpose/run/owner/actor/budget field is an error.
+  Version/view selection is server metadata, not an extra tool-input switch.
+- The private title/description states: create pending handoff intent for your
+  owner's eligible external agent at this task version; authority comes from this
+  verified assistant run, no bootstrap or standing grant; the recipient still
+  requires its own grant/claim. Never advertise the public "take your own root"
+  or "use the runtime/grant from bootstrap" instructions to the assistant.
+  In Ask me first it returns a waiting-change reference, not a created native unit
+  or claim; only successful execution returns the canonical created/existing unit.
+  Tool results and UI distinguish proposed, approved and actually applied state.
+- Map the validated semantic fields to the immutable intent/command fingerprint
+  and role/target, and the trusted run context to creator/owner/purpose. Do not
+  fabricate, reuse or store an external runtime/grant ID to satisfy a public
+  execution command. The adapter consumes the typed run authority directly;
+  ordinary external `prepare`/`complete` and input validation stay unchanged.
+  Both engines receive this same effective catalog/schema, including descriptions.
+  Persist the server-selected view version with the canonical prepared intent.
+  Owner Apply decodes that exact supported version; upgrades cannot reinterpret
+  it using a new schema. Unknown/unsupported stored versions require Ask again,
+  never reconstruction of fake bootstrap fields or guessed actor authority.
+- Bind any descriptor/session cache to the authenticated authority purpose,
+  connection/owner/binding, run and policy version; recheck live authority on calls.
+  No cross-purpose cache or public/private fallback is allowed. Retain the existing
+  manifest/name/operation/class assertions and one registration per name; the
+  private projection must not weaken registration or dispatch guards. A future
+  implementation must prove the authenticated pre-schema selection and actual
+  schema-to-adapter path, not just call the internal adapter in a unit test.
+  Catalog publication and the strict decoder must choose the same verified purpose
+  view for server/runtime calls and ordinary native/local clients. A stale/mixed
+  public-private schema or session descriptor fails closed, never guesses by args.
+
+#### Authenticated owner Apply after preparation (R1)
+
+Waiting handoffs retain AST-5's ten-minute Inbox promotion and seven-day maximum
+from preparation. The owner may Apply while the source run is still live or after
+it **normally completed** and its run token expired. Finishing normally with
+waiting items (including the required change-limit remainder) is not Stop/cancel;
+the durable completion/preparation outcome must distinguish those cases. A failed,
+interrupted or unconfirmed preparation supplies no new approval authority.
+
+- The specified owner-only Apply route authenticates the **current** owner session
+  and standing (no new recent-auth challenge), reads the pending change under its
+  expected version/CAS, and loads its original assistant binding, run provenance,
+  exact operation/class/project/task/version/recipient/key and immutable fingerprint.
+  The browser supplies only the existing change selector/version, never replacement
+  intent or a purpose/grant/session/actor assertion. Only a valid, unexpired,
+  uninvalidated waiting item can transition; another owner/admin/agent is refused.
+- Within that transaction the server constructs a one-use, transaction-local
+  authority context with purpose `owner_approval`, bound to this owner, exact change
+  version/fingerprint and approval attempt. It enters the same native adapter/
+  executor directly. It is no bearer token, MCP tool, bootstrap runtime, standing
+  grant or new model run; do not revive the old run, refresh its token or invoke/
+  charge a provider. A later owner session may explicitly Apply after authenticating
+  as the same current owner; it does not acquire the original run's autonomous power.
+- Recheck current durable assistant binding/enabled source authorization, original consent ceiling,
+  S6 Tasks read/operation and selected place, owner standing/rights, assistant project
+  grant, recipient ownership/access/role/grant eligibility, expected task/source
+  versions, separation, task exclusion and native budgets. A changed mode never
+  auto-applies an existing waiting item; an explicit Apply still needs these gates.
+  The source run must be live without Stop requested or normally completed, not
+  stopped/cancelled/revoked. Off/narrowing, grant/binding revocation, Stop/cancel and
+  Not now invalidate affected unexecuted intent; enabling/On/new grants cannot revive
+  that old authority. Pause blocks pending Apply while paused, with no autonomous
+  resume; after an explicit resume, an unchanged non-revoked item still requires
+  a fresh owner Apply and all checks. Expiry/stale targets say Ask again, never renew
+  the seven-day deadline or rebase the prepared payload silently.
+- An exhausted automatic-run allowance cannot authorize another autonomous write.
+  Explicit Apply has a fresh bounded **write-only approval batch allowance** capped
+  by the lower of the owner's current per-request change limit and the original
+  applicable limit (20 interactive/10 background by default); surplus items remain
+  waiting.
+  It can therefore approve the required limit-overflow remainder without enlarging
+  the old model run. Count each actual effect once in approval/native accounting and
+  the original change history; no model request/day/money charge, native count refund
+  or new unlimited lane. A new approval allowance requires that new explicit owner
+  Apply; the model, a queue worker or a retry cannot split a batch into fresh
+  allowances automatically. The owner's existing serial execution lane orders
+  approval against other changes; approval accounting and the saved intent state
+  commit with the native effect/receipt. Receipt replay adds no new unit, debit or allowance.
+- The assistant remains the recorded preparer/unit creator. The **actual approving
+  actor is the current owner**, with `owner_approval`, approval time/attempt, original
+  source run/engine/payer provenance and immutable change reference in the receipt/
+  change log. UI says "Ada's assistant · approved by Ada"; provenance does not claim
+  a model/provider ran or was charged at Apply. Do not impersonate the recipient.
+- Apply/CAS, Stop/Not now/expiry, binding/S6/grant/recipient revoke and native claim/
+  Undo serialize with the shared authority, intent and native-unit/task lock order.
+  A winner commits either one authorized unit/receipt/accounting transition or the
+  invalidation/refusal; none survives a refused transaction. Same approval/intent
+  retries inspect the current canonical post-state under current authority and do
+  not execute again; changed post-state/recipient/role/payload is stale/conflicting.
+  Owner Apply never enters the public bootstrap schema or widens its root/child rule.
+
 **Delivery gates, A3/A4 (not runtime evidence).** Both fake engines must create an
 own eligible agent's pending handoff with no assistant claim/bootstrap, then prove
 the recipient cannot start without its own grant/claim. Preserve positive ordinary
@@ -497,6 +621,21 @@ run/native budgets, task/plan exclusions, attributable atomic rollback and persi
 receipts. Undo before start, after start and a held claim-vs-Undo race must preserve
 the recipient's authority/fence and produce truthful UI. These are requirements of
 AST-3.2, AST-5.2/5.3, AST-6 and Journey 5; all existing gates remain.
+Add catalog/schema fixtures for both authority purposes, positive private-input
+validation through the real MCP route and unchanged public schema/description
+compatibility. Forced private inputs from ordinary OAuth/native/local callers,
+forged view/purpose/actor fields, missing public runtime/grant IDs and cross-purpose
+catalog caches must fail before adapter execution. Clock-controlled Apply succeeds
+after normal completion, token expiry and Inbox promotion within seven days, with
+zero CLI/provider calls. Test exact-version duplicate/CAS, cap-overflow approval,
+foreign owner/admin/agent, failed/stopped/cancelled source, Off/Only read, pause,
+revoked/downgraded binding/grant/recipient, stale target, Not now and seven-day expiry.
+Hold approval versus each revoke/Stop/Not now/expiry and claim/Undo boundary; assert
+persisted unit, receipt/actual actor/provenance and exactly-once accounting. Re-enable
+or a new token/grant cannot resurrect invalidated intent. Both engines prepare the
+same private intent; owner Apply runs the same checks without either engine.
+Unknown/unsupported stored private-view versions fail truthfully with no write;
+supported exact-version restoration preserves payload, actor and command identity.
 
 ### Unit completion and transfer (2026-10-05, proposed amendment, peer review required)
 

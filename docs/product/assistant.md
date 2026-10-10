@@ -104,6 +104,13 @@ ordinary external root/child authority is unchanged. These corrections preserve
 all 71 AST criteria and required journeys; documentation review accepts no runtime
 behavior or implementation slice.
 
+**C4 follow-up, 2026-10-10 (#401 R1/R2; peer acceptance pending):** direct run calls
+use a versioned run-private catalog/input projection of `flux_create_unit`, while
+ordinary external bootstrap/grant inputs remain unchanged. A waiting change's later
+Apply uses freshly authenticated owner-approval purpose, not the source run's expired
+token. The same dated amendment records exact input mapping, current-authority/CAS/
+accounting/replay boundaries and required positive/negative integration evidence.
+
 ## Safety rules at a glance
 
 The full rules and their reasons are in AST-5 to AST-9.
@@ -423,6 +430,11 @@ account, F-020).
   by this adapter even after owner Apply: AST-5 rule 3 permits asking that person,
   whose own consent and ordinary handoff are separate. A hand-off **to** the
   assistant (S12) is the owner's action and starts an owner-triggered run on that task.
+  The R2 run-private view `assistant-unit-create/v1` has the same registered name/
+  operation but a truthful strict schema/description without bootstrap grant/runtime
+  fields; ordinary external wire inputs remain unchanged. The R1 owner Apply route
+  executes its saved immutable intent under a fresh owner-approval context, including
+  after normal source completion/token expiry, and never impersonates a live model run.
 - **Not offered to the assistant:** the other co-work tools (claim, renew, release,
   complete, transfer, request handling), `flux_bootstrap` and the playbook. Other
   agents cannot start the assistant: only its owner, the owner's jobs and the owner's
@@ -446,6 +458,12 @@ account, F-020).
   Own-agent unit creation uses the same verified run adapter and refusals in both
   engines; ordinary external/native/local callers retain the root/child fence,
   cannot select this adapter by input/label and cannot acquire run authority.
+  Catalog/schema fixtures must prove both engines receive the same run-private
+  projection and validated input actually reaches the adapter. Ordinary external
+  schemas/descriptions still require their bootstrap runtime/grant; extra purpose/
+  actor fields, fake authority IDs and cross-purpose cached descriptors cannot
+  select or fall back into the private path. Owner Apply uses the saved intent,
+  never an expired run token or the model's current tool input.
 - **AST-3.3** Another member, a workspace admin or an agent cannot read or change the
   owner's switches (403/404), and S6 AC-5's held-request race tests pass for the
   assistant's connection.
@@ -621,6 +639,53 @@ him and records "drafted by Ada's assistant".
   one line in Recent: "Expired: close 2 duplicates · Ask again".
 - An applied waiting change records "Ada's assistant · approved by Ada".
 
+**Execution purpose after preparation (2026-10-10, #401 R1; peer acceptance pending).**
+The owner's Apply is a new explicit instruction to execute **this saved change**,
+not permission for the model to keep working. A3's specified owner-only Apply route
+checks the current authenticated owner/session standing and pending change version,
+then constructs a one-use transaction-local `owner_approval` context bound to that
+immutable intent. This fresh context needs no recent-auth prompt, model/vendor call,
+standing grant, bootstrap/runtime ID or reusable bearer. A normally completed source
+run and expired source token remain provenance; they are never reactivated. Apply
+is also possible while the source is live, through this distinct owner purpose.
+Failed/unconfirmed preparation and stopped/cancelled/revoked source runs cannot
+supply pending execution authority. Completing preparation normally with valid
+waiting/limit-overflow items must remain distinguishable from Stop/cancel.
+
+Every Apply repeats current assistant binding/consent/enabled state, S6 area/operation/
+selected-project, owner rights/standing, project grant, exact target/source versions,
+role/recipient eligibility and native separation/exclusion/budget checks. The request
+selects the existing change/version only; it cannot replace payload, actor, role,
+recipient or purpose. It cannot authorize a foreign-agent handoff. Stop/cancel,
+Not now, Off/narrowing and binding/grant revoke invalidate affected unexecuted intent;
+reenabling cannot resurrect it. Pause blocks Apply; after the owner's explicit resume
+an otherwise valid unchanged item still needs a fresh Apply. Stale, invalidated and
+expired items require Ask again, without extending the seven-day lifetime.
+
+The approved effect uses a bounded write-only approval allowance under current
+limits, distinct from an exhausted automatic-run allowance; it can approve the
+required overflow remainder without another autonomous/model run. Native budgets
+and exactly-once effect/history accounting remain. Receipt replay never creates a
+second effect or charge. The receipt records the current owner as approving actor,
+the assistant as preparer/creator, the immutable change and original run/engine/payer
+provenance, and `owner_approval`; no model usage at Apply is implied. The detailed
+[handoff transition and concurrency gates](../development/cowork-coordination.md#authenticated-owner-apply-after-preparation-r1)
+also govern A3/A4's owner-Apply execution pattern for other typed waiting changes.
+
+**Live-Wiki deferral keeps AST-5.7.** An automatically deferred edit in *Do it and
+tell me* reserves one of that original run's automatic-change allowances when
+prepared. Its durable intent may continue after normal source completion only
+through a server-owned `owner_deferred_change` purpose for **that exact Wiki edit**,
+bounded by the same seven-day maximum. The current live-session-end signal merely
+triggers rechecking; it creates no authority. Current mode must still be *Do it and
+tell me*, the original owner instruction/binding/consent and every current area/
+access/version check must hold, and Stop/revoke/Off invalidation still applies.
+No expired run token, new model call or renewed automatic allowance is used. A
+changed Wiki version becomes an ordinary waiting item; *Ask me first* requires
+fresh owner Apply. No post-run handoff or unrelated operation can select this
+Wiki-only continuation purpose. The edit/receipt/change row and reserved allowance
+settle atomically; held Stop/revoke/version/live-session races prove this boundary.
+
 ### Acceptance (AST-5)
 
 - **AST-5.1** A new assistant has "Do it and tell me" selected; switching to "Ask me
@@ -634,21 +699,40 @@ him and records "drafted by Ada's assistant".
   claim/bootstrap; its recipient cannot claim without its own current grant.
   "Ask me first" stores the exact intent and rechecks all fences on Apply;
   owner approval never authorizes a foreign-agent creation.
+  Advance through normal source completion, run-token expiry and ten-minute Inbox
+  promotion, then Apply an unchanged own-agent intent within seven days: exactly one
+  unit/receipt commits through fresh `owner_approval`, with zero model/CLI/provider
+  calls and no source-run/token revival. Preserve direct-run and owner-Apply as
+  distinct verified purposes and test the actual private schema-to-adapter mapping.
 - **AST-5.3** Each always-wait case (1–5) waits in "Do it and tell me", with the
   reason shown in plain words; each never case (6–8) has no listed tool and a forced
   call is refused (app test).
 - **AST-5.4** Apply on a waiting change whose target changed applies nothing and
   shows "Changed since you asked"; Apply on one whose owner lost write access is
-  refused (app test).
+  refused (app test). Hold Apply across current S6 Off/Only read, grant/binding or
+  recipient revoke, Stop/cancel and Not now; the unauthorized winner commits no
+  unit/effect/receipt/debit. A new token/grant or re-enable cannot revive invalidated
+  intent. Replay/CAS and altered role/recipient/payload controls preserve one exact
+  effect, truthful refusal and actual owner-approval provenance under both engines.
 - **AST-5.5** A waiting change is invisible to other members (403/404 on read and
   Apply), and expires after 7 days with the Recent line (clock-controlled test).
+  Include another owner/admin/agent, paused/disabled state, failed/unconfirmed or
+  stopped/cancelled source, and expiry-versus-Apply races; no approval context leaks
+  or extends the original deadline. Same-owner current-session Apply requires all
+  present authority checks, not the old model token or a browser purpose assertion.
 - **AST-5.6** An undecided waiting change becomes one Inbox *Questions* item when the
   owner leaves the conversation or 10 minutes after the run ends, with the object's
-  verb on its button (Playwright with a fixed clock).
+  verb on its button (Playwright with a fixed clock). That item remains executable
+  by its current owner after normal run completion/token expiry within seven days,
+  under the distinct owner-approval checks; no CLI is kept alive while it waits.
 - **AST-5.7** A change to a page with another person's open live session is deferred
   with the "when Jonas finishes typing" line; it applies when the session ends if the
   version matches, and otherwise becomes a waiting change (app test with a faked
-  session signal).
+  session signal). Also end the source run/token before the session ends: the exact
+  edit uses the persisted Wiki-only original instruction/reserved allowance under
+  current checks, never a revived token/model. Held Off/Stop/revoke/version races
+  refuse the write; Ask-me-first waits for fresh owner Apply and no other operation
+  can select the deferred purpose.
 - **AST-5.8** A change outside the owner's rights reaches the other person only after
   the owner's *Send to Jonas* (app test: no Needs-you item for Jonas before the tap).
 
@@ -671,6 +755,10 @@ him and records "drafted by Ada's assistant".
   stored settings (place, switches, limits, pause, delete) are the narrow standing
   rule the owner configured (F-019, CO-1). No CO-1 standing grant is created or
   needed, and the project manager's control stays the assistant's project grant.
+  These are live model-run purposes. After preparation, AST-5's owner Apply uses
+  `owner_approval` and its saved exact intent/current checks, while the bounded
+  Wiki-only deferral uses its recorded original owner instruction and reserved
+  automatic allowance. Neither is the source run's expired token or a new model run.
 - **Attribution.** The author of each change is the assistant's agent. Every notice
   says who it acts for and why: "Ada's assistant added a task · asked by Ada", "…
   · scheduled by Ada", "… · when #8 was blocked". Task notices keep P5's source
@@ -1614,7 +1702,12 @@ read-and-edit defaults; older owners allow new effects explicitly.
   version comparison; 7-day expiry. The conversation card "Wants to: …". Include
   the bounded owner-assistant unit-creation adapter and its run/binding authority,
   own external recipient checks, exact intent, native fences/lock order and atomic
-  receipt/change-log composition; no assistant claim/bootstrap or new public schema.
+  receipt/change-log composition; no assistant claim/bootstrap or change to the
+  ordinary external public schema.
+  Include R1's distinct current-owner Apply and Wiki-only original-instruction
+  continuation, durable immutable intent/invalidation/CAS/expiry and actual actor/
+  approval accounting; R2's authenticated pre-schema private catalog/input mapping
+  explicitly changes the run-private view, never the ordinary public schema.
 - **Files.** `app/apps/server/src/agent-connection/action-execution.ts`,
   `work-actions.ts`, `doc-actions.ts`, `map-actions.ts`, `conversation-actions.ts`;
   the existing unit-create dispatch/native co-work composition;
@@ -1630,6 +1723,9 @@ read-and-edit defaults; older owners allow new effects explicitly.
   deferral with PR #389's session signal faked; waiting changes moving to Inbox with a
   fixed clock. Run every creation/parity/ordinary-external/foreign/downgrade/revoke/
   held-race/separation/dedupe/budget gate in the co-work amendment with both engines.
+  Add real-route catalog/schema-to-adapter and public compatibility controls,
+  post-completion/token-expiry Apply, overflow allowance, post-run Wiki deferral and
+  held authority/invalidation races; prove zero extra provider/CLI calls.
 - **Depends on.** A1, A2.
 
 #### A4 — "Do it and tell me", the run's message, Undo, queue
@@ -1649,6 +1745,8 @@ read-and-edit defaults; older owners allow new effects explicitly.
 - **Tests.** AST-6.1 to AST-6.4, AST-6.6, AST-6.8, AST-9.3, AST-10.13; Playwright for
   the message and Undo, including own-agent pre/post-start and claim-vs-Undo/replay
   controls from the co-work amendment and truthful Journey 5 states.
+  Post-run approval/deferral receipts must preserve source history, actual approving
+  actor, current exactly-once accounting and ordinary conditional Undo.
 - **Depends on.** A3; PR #394 for undoing a created task.
 
 #### A5 — Typed suggestions
@@ -1673,7 +1771,8 @@ read-and-edit defaults; older owners allow new effects explicitly.
 - **Migration.** None expected; reserve on #153 if run accounting needs a column.
 - **Tests.** AST-8.1 to AST-8.3 with recorded fixtures per provider wire format;
   AST-3.2 parity with A2, including Conversation-Off input/history/native projection
-  and held-delivery canaries, plus A3/A4's identical handoff authority/refusals.
+  and held-delivery canaries, plus A3/A4's identical handoff authority/refusals,
+  private schema/catalog and versioned owner-Apply saved-intent mapping.
 - **Depends on.** A2.
 
 #### A7 — The assistant screen and the journeys

@@ -448,12 +448,21 @@ matching agent connection:
   (#152) apply the same way. Consequential changes become proposals.")
   *Amended 2026-10-10 for #401 C4 (peer acceptance pending):* the unchanged
   external unit-create self-root/live-child path cannot perform an assistant's
-  own-agent handoff without a claim. Only a verified durable assistant binding and
-  current authorized run/token select the bounded
+  own-agent handoff without a claim. For direct model calls, a verified durable
+  assistant binding and current authorized run/token select the bounded
   [owner-assistant unit-creation adapter](../development/cowork-coordination.md#owner-assistant-handoff-creation--f-027-amendment-2026-10-10).
   It preserves current S6/owner/project/operation checks, ordinary external fences
   and the external recipient's own grant/claim; no compute-source-only authority,
   client actor assertion, assistant claim/bootstrap or foreign-agent authorization.
+  *R1/R2 clarification, 2026-10-10 (peer acceptance pending):* those direct calls
+  use a server-selected versioned run-private catalog/input view, without the
+  ordinary external tool's bootstrap runtime/grant fields. That public schema and
+  its standing-grant/root/child semantics remain unchanged. A saved waiting change
+  after normal source completion uses AST-5's freshly constructed current-owner
+  `owner_approval` context for its immutable intent, not the expired source token.
+  No old run is revived or provider invoked/charged. The Wiki-only original-
+  instruction continuation is separately bounded as AST-5.7 specifies; neither
+  post-run purpose can be requested by a model or normal external bearer.
 - Disabling the use, revoking the `runtime` connection or removing the runtime
   revokes this agent connection in the same transaction.
 
