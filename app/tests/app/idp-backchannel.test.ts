@@ -11,7 +11,7 @@ import { db, insertedHuman, pool } from './support/db.js';
 // OIDC back-channel logout (F-024 S3, #314): the receiver against the Compose database, with a signing key
 // the test owns. The Keycloak-backed run is tests/app/e2e/oidc-mcp.e2e.ts (scripts/check_oidc.sh).
 const issuer = 'http://idp.test/realms/flux';
-const oidc = (providerId: string): OidcConfig => ({ providerId, issuer, clientId: 'flux', clientSecret: 's', label: 'Acme', standing: 'refresh', standingIntervalMs: 900_000 });
+const oidc = (providerId: string): OidcConfig => ({ providerId, issuer, clientId: 'flux', clientSecret: 's', label: 'Acme', standing: 'refresh', standingIntervalMs: 900_000, confirmationMaxAgeMs: 7 * 24 * 3_600_000 });
 const pair = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const rogue = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const ec = generateKeyPairSync('ec', { namedCurve: 'P-256' });
