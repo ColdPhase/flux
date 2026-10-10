@@ -362,6 +362,23 @@ macOS rows; real screen publication in Firefox or WebKit; system audio. Playwrig
 Firefox does not emulate `is_mobile` or touch, so the Firefox row is viewport and
 user agent only.
 
+## Pointer reachability and camera state on phone and tablet (#63; 2026-10-10)
+
+Two stacking faults put conversation content over live controls on phone and tablet widths:
+
+- The screen stage (`.lv-stage`) was at z-index 5, under the open thread sheet (`.thread--sheet`, `--z-panel`). "Back to work" could not be clicked on a 390 px phone (a thread message on top) or an iPad (`div.thread__head` on top). In the four-person test at desktop width, a wiki frame's Download button covered it.
+- The strip (`.lv-bar`, z-index 2) formed its own stacking context, so the session popover inside it stayed below the thread sheet. On an iPad the camera control was under `div.thread__in`.
+
+The fix in [live.css](../../app/apps/web/src/live/live.css) uses the existing layer tokens: the stage is `--z-scrim` (30) and the strip `--z-overlay` (40). The popover now paints above the thread sheet and the stage, and still below portalled overlays, which share the layer but come later in the DOM. Strip tooltips (`data-tip`) are inside that stacking context, so they now paint above the stage too; this follows from the stacking rules and was not tested separately. The [final design](../design/final/README.md) does not define z-token semantics.
+
+[`test_live_reachability.py`](../../app/tests/ui/test_live_reachability.py) runs with `FLUX_LIVE_UI_PATTERN=test_live_reachability.py ./scripts/check_live_ui.sh`. Each control gets `elementFromPoint` at its centre and then a real click or tap. On unmodified main three cases fail with the covering elements above. With the fix all four pass, including the phone sheet painting above the strip. On unmodified main the same suite's `test_live_sessions` `test_02` and `test_03` fail on this interception; with the fix both pass.
+
+**WebKit camera state (iPad, gen 7 emulation).** After a tap the strip reads "Camera on", while the instance-level `getUserMedia` hook in the test instrumentation records 0 calls. A probe on `MediaDevices.prototype.getUserMedia` records 1. The host's `video.lv-cam__video` decodes kai's camera at 1280×720. So a capture request reached the browser, and "on" is backed by a published track that the host decodes; this is not a product defect. The WebKit call reaches the prototype without going through the instance's own-property hook. The mechanism is not established. The instrumented track list (`window.__live.tracks`) therefore cannot see WebKit captures. By inference only, the same reason explains the zero WebKit microphone count recorded for #462's platform rows; that was not tested here.
+
+**Known and unrelated:** `test_live_sessions` `test_01_two_people_blocker_join_show_screen_result_leave` fails at line 365, waiting for the Map sketch link "Why are night frames black". It fails the same way on unmodified main and with the fix. It was not investigated here.
+
+**Unverified here:** physical devices, real networks and NAT, Firefox rows, WebKit microphone capture, system audio, and Windows, macOS and Wayland desktop rows.
+
 ## Sources and inference
 
 Checked 2026-09-28: [LiveKit deployment](https://docs.livekit.io/transport/self-hosting/deployment/)
