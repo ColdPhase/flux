@@ -7,6 +7,7 @@ import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
 import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
 import { AttachButton, ComposerFiles, MessageContent } from '../composer/Files';
+import { LinkPreviews, MessageText } from '../app/MessageText';
 import { ConnectionLine, OutboxStatus, PendingFiles, PendingSource } from '../composer/Outbox';
 import { getTaskDiscussion } from '../composer/api';
 import { useProjectShell } from '../project/data';
@@ -298,7 +299,9 @@ function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: {
                 <time dateTime={message.createdAt}>{when(message.createdAt)}</time>
                 {message.contribution ? <span className="agents-msg__kind"> · {message.contribution.kind}</span> : null}
               </span>
-              <MessageContent body={message.body ? <p className="agents-msg__body">{message.body}</p> : null} files={message.files} context={{ author: name, at: message.createdAt, caption: message.body, onReply: blocked ? undefined : () => box.current?.focus(), onCreateTask: canWrite && !accessLost ? () => void makeWork.create(message) : undefined }} />
+              <MessageContent body={message.body ? <p className="agents-msg__body"><MessageText body={message.body} /></p> : null} files={message.files} context={{ author: name, at: message.createdAt, caption: message.body, onReply: blocked ? undefined : () => box.current?.focus(), onCreateTask: canWrite && !accessLost ? () => void makeWork.create(message) : undefined }}>
+                <LinkPreviews body={message.body} />
+              </MessageContent>
               {makeWork.failed?.messageId === message.id ? <p className="agents-thread__error" role="alert">{makeWork.failed.text}</p> : null}
             </li>
           );

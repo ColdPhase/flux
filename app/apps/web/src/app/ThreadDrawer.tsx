@@ -5,6 +5,7 @@ import { DiscussedTask, MessageObjects } from '../work/inline';
 import type { MessageWorkPreview } from '../work/message-associations';
 import { AgentAuthor, AuthorFace, SourceCitation, clock, day, when } from './messageParts';
 import { MessageContent, type PhotoActions } from '../composer/Files';
+import { LinkPreviews, MessageText } from './MessageText';
 
 export type ThreadMode = 'docked' | 'sheet';
 
@@ -79,7 +80,8 @@ export function ThreadRoot({ message, projectId, body, author, agentOwner = null
             <time dateTime={message.createdAt} title={when(message.createdAt)}>{day(message.createdAt)} · {clock(message.createdAt)}</time>
           </div>
         ) : null}
-        <MessageContent body={message?.body || !message ? <p>{body}</p> : null} files={message?.files} context={message ? { author: author ?? undefined, at: message.createdAt, caption: message.body, ...photo } : undefined}>
+        <MessageContent body={message?.body || !message ? <p><MessageText body={body} /></p> : null} files={message?.files} context={message ? { author: author ?? undefined, at: message.createdAt, caption: message.body, ...photo } : undefined}>
+          <LinkPreviews body={body} />
           {message ? <MessageObjects message={message} projectId={projectId} preview={preview} thread={task} threadRow={taskRow} />
             : task ? <div className="ws-attach"><DiscussedTask task={task} row={taskRow} /></div> : null}
         </MessageContent>

@@ -4,6 +4,7 @@ import type { ConversationMessage, Project, TaskDiscussion as Discussion, Worksp
 import { AgentIdentity, Button, Icon } from '../ui';
 import { useComposerDraft, useComposerScope } from '../composer/draft';
 import { ComposerFiles, MessageContent, hasPhotos } from '../composer/Files';
+import { LinkPreviews, MessageText } from '../app/MessageText';
 import { ConnectionLine, OutboxStatus, PendingFiles, PendingSource, SendAnnouncer } from '../composer/Outbox';
 import { clock, day, when } from '../app/messageParts';
 import { useProjectShell } from '../project/data';
@@ -79,10 +80,12 @@ export function TaskDiscussionSection({ workId, project, members, me }: {
               <MessageContent files={root.files} context={{ author: author(root), at: root.createdAt, caption: root.body, place: project.name, onReply: writable ? () => document.getElementById(fieldId)?.focus() : undefined, onCreateTask: writable ? () => void makeWork.create(root) : undefined }} body={
                 <Link className="wd-discussion" to={thread}>
                   {rootHasPhotos ? null : rootAuthor}
-                  {root.body ? <span className="wd-discussion__body">{root.body}</span> : null}
+                  {root.body ? <span className="wd-discussion__body"><MessageText body={root.body} linked={false} /></span> : null}
                   <span className="wd-discussion__more">{replies ? `${replies} ${replies === 1 ? 'reply' : 'replies'}` : 'No replies yet'} · Open in Conversation<Icon name="chevron-right" size={14} /></span>
                 </Link>
-              } />
+              }>
+                <LinkPreviews body={root.body} />
+              </MessageContent>
               {makeWork.failed?.messageId === root.id ? <p className="wd-error" role="alert">{makeWork.failed.text}</p> : null}
             </> : null}
             {composer.pending.length ? <ol className="wd-pending" aria-label="Messages you are sending">{composer.pending.map((item) => (

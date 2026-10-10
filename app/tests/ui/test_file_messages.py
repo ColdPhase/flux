@@ -15,6 +15,7 @@ import time
 import unittest
 import uuid
 import zlib
+from urllib.parse import urlparse
 
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
@@ -191,7 +192,7 @@ class FilesReferencesPhotos(unittest.TestCase):
         cls.ids["photo-only"] = root("jonas", "", [("bed-without-caption.png", FIELD)])
         task = post("ada", f"/api/v1/projects/{pid}/work", {"title": "Check the mount on sensor 3"})
         cls.ids["task"] = task["id"]
-        cls.ids["task-root"] = post("jonas", f"/api/v1/work/{task['id']}/discussion", {"body": "Mount after the rain", "attachmentIds": [upload("jonas", "IMG_2050.png", BEDS)],
+        cls.ids["task-root"] = post("jonas", f"/api/v1/work/{task['id']}/discussion", {"body": "Mount after the rain, see #8 and https://www.thethingsnetwork.org/docs/gateways/placement-guide/", "attachmentIds": [upload("jonas", "IMG_2050.png", BEDS)],
                                                                                    "clientMessageId": str(uuid.uuid4()), "kind": "text"})["id"]
         for context in contexts.values():
             context.close()
@@ -237,6 +238,23 @@ class FilesReferencesPhotos(unittest.TestCase):
         self.assertTrue(grid.evaluate("(media, caption) => !!(media.compareDocumentPosition(caption) & Node.DOCUMENT_POSITION_FOLLOWING)", caption.element_handle()), "caption follows the media in document order")
         photo_box, caption_box = grid.bounding_box(), caption.bounding_box()
         self.assertGreaterEqual(caption_box["y"], photo_box["y"] + photo_box["height"] - 0.001, "descriptive caption is below the complete photo/grid")
+
+    def assert_grid_aligned(self, scope) -> None:
+        """The photo starts on its caption's left edge, own messages included (F-026 AC-3: one group)."""
+        grid = scope.locator(":scope > .photo-grid")
+        bubble = scope.locator(":scope > .message-bubble")
+        expect(grid).to_have_count(1)
+        expect(bubble).to_be_visible()
+        self.assertLess(abs(grid.bounding_box()["x"] - bubble.bounding_box()["x"]), 1, "the photo and its caption share one left edge")
+
+    def assert_meta_below_caption(self, scope) -> None:
+        """A single photo's name and size come after its caption, not between the photo and the caption (F-026 §6)."""
+        meta = scope.locator(":scope > .photo-meta")
+        bubble = scope.locator(":scope > .message-bubble")
+        expect(meta).to_have_count(1)
+        expect(bubble).to_be_visible()
+        meta_box, bubble_box = meta.bounding_box(), bubble.bounding_box()
+        self.assertGreaterEqual(meta_box["y"], bubble_box["y"] + bubble_box["height"] - 0.001, "the name and size follow the caption")
 
     def assert_inside_bubble(self, scope, child) -> None:
         expect(scope.locator(":scope > .message-bubble")).to_be_visible()
@@ -303,6 +321,8 @@ class FilesReferencesPhotos(unittest.TestCase):
         photo_only = self.message(page, "photo-only")
         expect(photo_only.locator(".photo-grid img[src^='blob:']")).to_have_count(1)
         expect(photo_only.locator(":scope > .message-bubble")).to_be_hidden()
+        expect(photo_only.locator(":scope > .photo-meta")).to_contain_text("bed-without-caption.png · ")
+        expect(six.locator(".photo-meta")).to_have_count(0)  # several photos: no single name and size line
         self.assertEqual(photo_only.locator(":scope > .message-bubble").evaluate("e => [e.offsetWidth, e.offsetHeight]"), [0, 0], "no empty padded bubble below a captionless photo")
         fake = self.message(page, "fake")
         fake.scroll_into_view_if_needed()
@@ -419,6 +439,10 @@ class FilesReferencesPhotos(unittest.TestCase):
                 page.goto(f"/projects/{self.ids['project']}/tasks?open=work:{self.ids['task']}")
                 details = page.get_by_role("region", name="Discussion")
                 self.assert_caption_below(details, ":scope > .message-bubble .wd-discussion__body")
+                self.assert_meta_below_caption(details)
+                expect(details.locator(".wd-discussion__body .ref-chip[data-ref=task]")).to_have_text("#8")
+                expect(details.get_by_role("list", name="Link preview")).to_be_visible()
+                self.assertEqual(details.locator("a a").count(), 0, "a link in the discussion card is not nested in the card's own link")
                 opener, viewer = self.open_in(page, details, "Open photo IMG_2050.png")
                 page.keyboard.press("Escape")
                 expect(viewer).to_have_count(0)
@@ -437,7 +461,11 @@ class FilesReferencesPhotos(unittest.TestCase):
                 page = self.page("jonas", phone=phone)
                 page.goto(f"/projects/{self.ids['project']}/agents?task={self.ids['task']}")
                 thread = page.get_by_role("region", name="Thread of Check the mount on sensor 3")
-                self.assert_caption_below(thread.locator(f'[data-message-id="{self.ids["task-root"]}"]'))
+                agent_root = thread.locator(f'[data-message-id="{self.ids["task-root"]}"]')
+                self.assert_caption_below(agent_root)
+                self.assert_meta_below_caption(agent_root)
+                expect(agent_root.locator(".ref-chip[data-ref=task]")).to_have_text("#8")
+                expect(agent_root.get_by_role("list", name="Link preview")).to_be_visible()
                 opener, viewer = self.open_in(page, thread, "Open photo IMG_2050.png")
                 expect(viewer.get_by_role("button", name="Create task", exact=True)).to_be_visible()
                 viewer.get_by_role("button", name="Reply", exact=True).click()
@@ -454,6 +482,16 @@ class FilesReferencesPhotos(unittest.TestCase):
                 for name in ("Reply", "Create task"):  # a reader cannot reply or add work
                     expect(viewer.get_by_role("button", name=name, exact=True)).to_have_count(0)
                 page.keyboard.press("Escape")
+            with self.subTest(phone=phone, surface="stream-reader"):
+                page = self.page("ida", phone=phone)
+                page.goto(f"/projects/{self.ids['project']}")
+                _, viewer = self.open_in(page, self.message(page, "two"), "Open photo IMG_2041.png, 1 of 2")
+                for name in ("Reply", "Create task"):  # the stream offers no reply either: it does not navigate to one
+                    expect(viewer.get_by_role("button", name=name, exact=True)).to_have_count(0)
+                expect(viewer.get_by_role("link", name="Save")).to_be_visible()
+                page.keyboard.press("Escape")
+                expect(viewer).to_have_count(0)
+                self.assertEqual(urlparse(page.url).path, f"/projects/{self.ids['project']}", "the stream stays where it is")
 
     def test_native_references_share_root_and_reply_bubbles(self) -> None:
         for phone in (False, True):
@@ -487,9 +525,18 @@ class FilesReferencesPhotos(unittest.TestCase):
                     page.goto(f"/projects/{self.ids['project']}/conversations/{conversation}")
                     thread_root = page.locator(".thread__root")
                     self.assert_inside_bubble(thread_root, thread_root.locator(f'.ws-chip[data-work-id="{self.ids["files-task"]}"]'))
+                    # The thread's root shows the same inline chip and link preview as the stream (no raw text).
+                    expect(thread_root.locator(".ref-chip[data-ref=task]")).to_have_text("#8")
+                    expect(thread_root.get_by_role("list", name="Link preview")).to_be_visible()
                     reply = page.locator(f'#message-{self.ids["photo-reply"]}')
                     self.assert_inside_bubble(reply, reply.locator(f'.ws-chip[data-work-id="{self.ids["reply-task"]}"]'))
                     self.assert_caption_below(reply)
+                    # The task card under a photo fills the photo's width, not the caption's fit-content width.
+                    bubble = reply.locator(":scope > .message-bubble").bounding_box()
+                    grid = reply.locator(":scope > .photo-grid").bounding_box()
+                    card = reply.locator(f'.ws-chip[data-work-id="{self.ids["reply-task"]}"]').bounding_box()
+                    self.assertGreaterEqual(bubble["width"], grid["width"] - 1, "the caption bubble is as wide as the photo")
+                    self.assertGreaterEqual(card["width"], bubble["width"] - 26 - 1, "the task card fills its bubble")
 
     def test_composer_thumbnails_drop_and_photo_states(self) -> None:
         for phone in (False, True):
@@ -542,6 +589,7 @@ class FilesReferencesPhotos(unittest.TestCase):
                 expect(pending.locator(".photo-grid__tile[data-photo-state=sending]")).to_have_count(2)
                 expect(pending.locator(".photo-grid__tile img[src^='blob:']")).to_have_count(2)
                 self.assert_caption_below(pending)
+                self.assert_grid_aligned(pending)
                 self.shot(page, f"sending-{'390' if phone else '1440'}", pending)
                 for _ in range(50):
                     if held:
@@ -562,6 +610,7 @@ class FilesReferencesPhotos(unittest.TestCase):
                 expect(page.locator("[data-client-message-id]")).to_have_count(0)
                 sent = page.locator(".project-convo__message").filter(has_text="Here are the offsets for the volunteers").last
                 expect(sent.get_by_role("list", name="2 photos").locator("img[src^='blob:']")).to_have_count(2)
+                self.assert_grid_aligned(sent)
 
     def test_photo_waits_offline_on_the_photo(self) -> None:
         page = self.page()
@@ -574,6 +623,7 @@ class FilesReferencesPhotos(unittest.TestCase):
         page.get_by_label("Write a message", exact=True).press("Enter")
         pending = page.locator("[data-client-message-id]").last
         expect(pending.locator(".photo-grid__tile[data-photo-state=waiting]")).to_contain_text("Sends when you're back")
+        self.assert_grid_aligned(pending)
         self.shot(page, "offline-1440", pending)
         page.context.set_offline(False)
         expect(page.locator("[data-client-message-id]")).to_have_count(0, timeout=20000)

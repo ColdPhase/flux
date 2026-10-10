@@ -10,8 +10,11 @@ const TOKEN = /(https?:\/\/[^\s<>"']+[^\s<>"'.,;:!?)\]])|(^|[\s(])(@[\p{L}][\p{L
 
 const initials = (name: string) => name.slice(0, 2).toUpperCase();
 
-/** The body as text with inline chips and links. */
-export function MessageText({ body }: { body: string }) {
+/**
+ * The body as text with inline chips and links. `linked={false}` keeps a web address as plain text, for a
+ * surface that is itself a link (a nested anchor is invalid); its preview card still comes from LinkPreviews.
+ */
+export function MessageText({ body, linked = true }: { body: string; linked?: boolean }) {
   const parts: ReactNode[] = [];
   let last = 0;
   let key = 0;
@@ -20,7 +23,7 @@ export function MessageText({ body }: { body: string }) {
     const lead = mentionLead ?? taskLead ?? '';
     const start = match.index! + lead.length;
     if (start > last) parts.push(body.slice(last, start));
-    if (url) parts.push(<a key={key++} className="msg-link" href={url} target="_blank" rel="noopener noreferrer nofollow">{url}</a>);
+    if (url) parts.push(linked ? <a key={key++} className="msg-link" href={url} target="_blank" rel="noopener noreferrer nofollow">{url}</a> : <span key={key++}>{url}</span>);
     else if (mention) parts.push(<span key={key++} className="ref-chip ref-chip--person" data-ref="person"><span className="ref-chip__face" aria-hidden="true" data-initials={initials(mention.slice(1))} /><span className="ui-vh">@</span>{mention.slice(1)}</span>);
     else if (task) parts.push(<span key={key++} className="ref-chip ref-chip--task" data-ref="task"><Icon name="tasks" size={12} />#{task}</span>);
     else if (wiki) parts.push(<span key={key++} className="ref-chip ref-chip--wiki" data-ref="wiki"><Icon name="doc" size={12} />{wiki}</span>);

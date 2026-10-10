@@ -154,16 +154,20 @@ export function PhotoGrid({ photos, context }: { photos: MessageFile[]; context?
   const [open, setOpen] = useState<number | null>(null);
   const shown = photos.slice(0, 4);
   const more = photos.length - shown.length;
-  const single = photos.length === 1 ? photos[0]! : null;
   return (
     <div className={`photo-grid photo-grid--${Math.min(photos.length, 4)}`}>
       <ul className="photo-grid__tiles" aria-label={photos.length === 1 ? '1 photo' : `${photos.length} photos`}>
         {shown.map((file, index) => <PhotoTile key={file.id} file={file} index={index} count={photos.length} more={index === shown.length - 1 ? more : 0} onOpen={setOpen} />)}
       </ul>
-      {single ? <p className="photo-grid__caption">{single.name} · {fileSize(single.size)}</p> : null}
       {open !== null ? <PhotoViewer photos={photos} start={open} context={context} onClose={() => setOpen(null)} /> : null}
     </div>
   );
+}
+
+/** A single photo's name and size, read after its caption (F-026 §6: caption first, then the meta line). */
+export function PhotoMeta({ photos }: { photos: MessageFile[] }) {
+  const only = photos.length === 1 ? photos[0] : undefined;
+  return only ? <p className="photo-meta">{only.name} · {fileSize(only.size)}</p> : null;
 }
 
 /**
@@ -255,16 +259,18 @@ export function MessageFiles({ files, context }: { files?: MessageFile[]; contex
     {others.length ? <ol className="message-files" aria-label={others.length === 1 ? '1 attached file' : `${others.length} attached files`}>{others.map((file) => <li key={file.id}>
       {fileKind(file.name) === 'audio' ? <VoiceNote file={file} /> : <FileRow file={file} />}
     </li>)}</ol> : null}
+    <PhotoMeta photos={photos} />
   </>;
 }
 
-/** The media comes first; its caption, file rows and native references share one message bubble. */
+/** The media comes first; its caption, file rows and native references share one message bubble, then a single photo's meta. */
 export function MessageContent({ files, context, body, children }: { files?: MessageFile[]; context?: PhotoContext; body?: ReactNode; children?: ReactNode }) {
   const photos = files?.filter((file) => looksLikePhoto(file.name)) ?? [];
   const others = files?.filter((file) => !looksLikePhoto(file.name));
   return <>
     {photos.length ? <PhotoGrid photos={photos} context={context} /> : null}
     <div className="message-bubble">{body}<MessageFiles files={others} />{children}</div>
+    <PhotoMeta photos={photos} />
   </>;
 }
 
