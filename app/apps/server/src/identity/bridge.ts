@@ -94,7 +94,7 @@ export function registerAuthBridge(app: FastifyInstance, { auth, publicOrigin, p
       // A refused sign-in (no refresh token, #311; an address another account holds, #313) comes back to the page
       // with the reason. An address an unverified account holds goes to the claim page instead.
       const destination = (value: string) => {
-        if (facts.link || facts.linkRejected) return `/settings?link=${facts.refused ?? 'failed'}`;
+        if (facts.link || facts.linkRejected) return `/settings/account?link=${facts.refused ?? 'failed'}`;
         if (facts.refused === 'email_claim') {
           const back = new URL(value, publicOrigin);
           back.searchParams.delete('sso');

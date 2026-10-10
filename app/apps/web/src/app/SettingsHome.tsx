@@ -5,7 +5,7 @@ import type { AgentConnection, PersonalAssistantStatus, IdentityCapabilities } f
 import { listAgentConnections } from '../agent-connection/api';
 import { getAssistantStatus } from '../assistant/api';
 import { NotificationsButton } from '../pwa';
-import { AgentTag, Avatar, Icon, Kreska, MEDIA, Spinner, agentHue, useMediaQuery } from '../ui';
+import { AgentTag, Avatar, Button, Icon, Kreska, MEDIA, Spinner, agentHue, useMediaQuery } from '../ui';
 import { useShellData } from './data';
 import { setSmallMoments, useSmallMoments } from './smallMoments';
 import { setTheme, useTheme, type ThemeChoice } from './theme';
@@ -246,11 +246,13 @@ function SingleSignOnLink() {
   };
   return (
     <section className="sset-card sset-gap" aria-labelledby="set-sso">
-      <h2 className="sset-row__t" id="set-sso">Single sign-on</h2>
       <div className="sset-row">
-        <p>Link {capabilities.sso.label} to this account before Flux moves to single sign-on. Your Flux account, data and memberships stay the same.</p>
+        <div className="sset-row__b">
+        <h2 className="sset-row__t" id="set-sso">Single sign-on</h2>
+        <p className="sset-row__s">Link {capabilities.sso.label} to this account before Flux moves to single sign-on. Your Flux account, data and memberships stay the same.</p>
         {note ? <p role="status">{note}</p> : null}
         {failed ? <p role="alert">{failed}</p> : null}
+        </div>
         <Button variant="secondary" busy={busy} onClick={() => void start()}>{`Link ${capabilities.sso.label}`}</Button>
       </div>
     </section>
