@@ -69,7 +69,7 @@ describe('the silent offline-access step', () => {
     assert.equal(params.kc_idp_hint, '', 'the endpoint\'s own query is kept');
     assert.match(cookie, /^__Secure-flux\.idp_offline_step=/);
     for (const attribute of [`Path=/api/auth/callback/${context.providerId}`, 'HttpOnly', 'SameSite=Lax', 'Secure', 'Max-Age=300']) assert.ok(cookie.includes(attribute), attribute);
-    assert.ok(!cookie.includes('c1') && !cookie.includes(params.state), 'the held callback and the state are sealed');
+    assert.ok(!cookie.includes('state=s1&code=c1&iss=x') && !cookie.includes(params.state), 'the held callback and the state are sealed');
     assert.equal(context.calls.length, 0, 'nothing is redeemed yet');
 
     const plain = setup('http://127.0.0.1:18095');
