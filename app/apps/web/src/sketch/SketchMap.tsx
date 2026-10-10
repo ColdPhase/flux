@@ -1,6 +1,6 @@
 import { Fragment, type CSSProperties, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type WheelEvent } from 'react';
 import { DEFAULT_THOUGHT_SIZE, SKETCH_LIMITS, type SketchDetail, type Thought } from '@flux/contracts';
-import { Icon, StatusGlyph } from '../ui';
+import { Icon, IconButton, Sheet, StatusGlyph } from '../ui';
 import { STATUS_LABEL, taskNumber } from '../work/format';
 import { linkPath, PAD, project, rectOf, type Rect } from './geometry';
 import { provenance, quote } from './format';
@@ -25,6 +25,8 @@ export interface SketchMapProps {
   /** The floating toolbar at the bottom (computer) and the line above it: hint or status. */
   dock: ReactNode;
   hint: ReactNode;
+  /** Map/List remains reachable in the phone's named Map options sheet. */
+  viewModes: ReactNode;
   bar: SelectionTools;
   sketch: SketchDetail;
   meId: string;
@@ -108,6 +110,18 @@ export function SketchMap(props: SketchMapProps) {
   // The dot shows while the pointer is over its thought or itself (mouse only; touch shows it on the selection).
   const [hover, setHover] = useState<string | null>(null);
   const [more, setMore] = useState(false);
+  const [phoneMenu, setPhoneMenu] = useState<'map' | 'thought'>('map');
+  const [phoneMenuOpen, setPhoneMenuOpen] = useState(false);
+  const pendingPhoneAction = useRef<(() => void) | null>(null);
+  // Close the modal and restore its opener before opening an editor/task panel. Otherwise
+  // the sheet's focus restoration can take focus back from the newly opened surface.
+  useLayoutEffect(() => {
+    if (phoneMenuOpen || !pendingPhoneAction.current) return;
+    const run = pendingPhoneAction.current;
+    pendingPhoneAction.current = null;
+    run();
+  }, [phoneMenuOpen]);
+  if (phoneMenuOpen && (!compact || (phoneMenu === 'thought' && (!canWrite || !selection.length || editing)))) setPhoneMenuOpen(false);
   const zoomedRef = useRef<HTMLDivElement>(null);
   /** P12: a connection being drawn from a dot; `x`,`y` are in stored plane units, `over` the thought under the pointer. */
   const [wire, setWire] = useState<{ from: string; x: number; y: number; over: string | null } | null>(null);
@@ -499,7 +513,7 @@ export function SketchMap(props: SketchMapProps) {
     </a>
   ) : null;
 
-  /** The actions of the selection: above the thought on a computer, a fixed bar over the phone's Add button. */
+  /** The actions of the selection float above the thought on a computer. */
   const selectionBar = (style?: CSSProperties) => {
     if (!plus || !last || !lastThought) return null;
     const single = selection.length === 1;
@@ -529,6 +543,19 @@ export function SketchMap(props: SketchMapProps) {
         </div>
       );
   };
+
+  const phoneAction = (run: () => void) => {
+    pendingPhoneAction.current = run;
+    setPhoneMenuOpen(false);
+  };
+  const zoomControls = (
+    <div className="sk-zoom" role="group" aria-label="Zoom">
+      <button type="button" className="sk-zoom__fit" aria-label="Fit the sketch to the view" onClick={fit}>Fit</button>
+      <button type="button" aria-label="Zoom out" data-tip="Zoom out" disabled={zoom <= ZOOMS[0]!} onClick={() => setZoom(zoomOut(zoom))}><Icon name="minus" size={14} /></button>
+      <button type="button" className="sk-zoom__level" aria-label={`Zoom ${Math.round(zoom * 100)}%, reset to 100%`} onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button>
+      <button type="button" aria-label="Zoom in" data-tip="Zoom in" disabled={zoom >= ZOOMS[ZOOMS.length - 1]!} onClick={() => setZoom(zoomIn(zoom))}><Icon name="plus" size={14} /></button>
+    </div>
+  );
 
   return (
     <div className="sk-canvas-wrap sk-canvas-wrap--controls">
@@ -650,22 +677,44 @@ export function SketchMap(props: SketchMapProps) {
         {props.hint}
         <div className="sk-dock__row">
           {props.dock}
-          <div className="sk-zoom" role="group" aria-label="Zoom">
-            <button type="button" className="sk-zoom__fit" aria-label="Fit the sketch to the view" onClick={fit}>Fit</button>
-            <button type="button" aria-label="Zoom out" data-tip="Zoom out" disabled={zoom <= ZOOMS[0]!} onClick={() => setZoom(zoomOut(zoom))}><Icon name="minus" size={14} /></button>
-            <button type="button" className="sk-zoom__level" aria-label={`Zoom ${Math.round(zoom * 100)}%, reset to 100%`} onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button>
-            <button type="button" aria-label="Zoom in" data-tip="Zoom in" disabled={zoom >= ZOOMS[ZOOMS.length - 1]!} onClick={() => setZoom(zoomIn(zoom))}><Icon name="plus" size={14} /></button>
-          </div>
+          {!compact ? zoomControls : null}
         </div>
       </div>
+      {compact ? <button type="button" className="sk-edit-btn sk-map-options" aria-haspopup="dialog" aria-expanded={phoneMenuOpen && phoneMenu === 'map'} onClick={(event) => {
+        event.currentTarget.focus({ preventScroll: true }); setPhoneMenu('map'); setPhoneMenuOpen(true);
+      }}><Icon name="more" size={16} />Map options</button> : null}
       {compact && canWrite ? (
         <div className="sk-phone">
-          {selectionBar()}
-          {props.bar.canUndo ? <button type="button" className="sk-undo" aria-label="Undo" onClick={props.bar.onUndo}><Icon name="undo" size={16} />Undo</button> : null}
+          <div className="sk-phone__secondary">
+            {plus ? <button type="button" className="sk-edit-btn" aria-haspopup="dialog" aria-expanded={phoneMenuOpen && phoneMenu === 'thought'} onClick={(event) => {
+              event.currentTarget.focus({ preventScroll: true }); setPhoneMenu('thought'); setPhoneMenuOpen(true);
+            }}><Icon name="more" size={16} />Thought actions</button> : null}
+            {props.bar.canUndo ? <button type="button" className="sk-undo" aria-label="Undo" onClick={props.bar.onUndo}><Icon name="undo" size={16} />Undo</button> : null}
+          </div>
           <p className="sk-phone__note"><Icon name="monitor" size={16} />Connect and arrange on a computer</p>
-          <button type="button" className="sk-fab" onClick={props.onAddThought}><Icon name="plus" size={18} />Add a thought</button>
+          <button type="button" className="sk-fab sk-add" onClick={props.onAddThought}><Icon name="plus" size={18} />Add a thought</button>
         </div>
       ) : null}
+      {compact ? <Sheet open={phoneMenuOpen} onClose={() => setPhoneMenuOpen(false)} label={phoneMenu === 'thought' ? 'Thought actions' : 'Map options'} className="sk-options-sheet">
+        <div className="ui-panel__head">
+          <h2 className="ui-panel__title">{phoneMenu === 'thought' ? 'Thought actions' : 'Map options'}</h2>
+          <IconButton icon="x" label={phoneMenu === 'thought' ? 'Close thought actions' : 'Close map options'} className="ui-panel__close" onClick={() => setPhoneMenuOpen(false)} />
+        </div>
+        <div className="ui-panel__body">
+          {phoneMenu === 'thought' && lastThought ? <>
+            <p className="sk-options__thought">{lastThought.text}</p>
+            <button type="button" className="sk-options__action" onClick={() => phoneAction(() => props.onEdit(lastThought.id))}><Icon name="edit" size={18} />Edit thought</button>
+            {openLink ? <a className="sk-options__action" href={openLink.href} target="_blank" rel="noopener noreferrer"><Icon name="link" size={18} />Open link {openLink.host}</a> : null}
+            <button type="button" className="sk-options__action" onClick={() => phoneAction(() => props.onAdd(lastThought.id))}><Icon name="plus" size={18} />Add a connected thought</button>
+            {props.bar.project ? <button type="button" className="sk-options__action" aria-label="Create task from selected thoughts" onClick={() => phoneAction(props.bar.onTask)}><Icon name="tasks" size={18} />Create task</button> : null}
+            <button type="button" className="sk-options__action" aria-label="Remove from sketch" onClick={() => phoneAction(() => props.onRemove(selection))}><Icon name="trash" size={18} />Remove thought</button>
+          </> : <>
+            <p className="sk-options__thought">{sketch.title}</p>
+            <div onClick={(event) => { if ((event.target as HTMLElement).closest('[role="radio"]')) setPhoneMenuOpen(false); }}>{props.viewModes}</div>
+            {zoomControls}
+          </>}
+        </div>
+      </Sheet> : null}
     </div>
   );
 }

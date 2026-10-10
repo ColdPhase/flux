@@ -29,7 +29,7 @@ from playwright.sync_api import Locator, Page, expect, sync_playwright
 
 import adaptive_fixture as fx
 from author_columns import assert_author_column
-from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
+from test_app_shell import show_map_as, open_map_options, ORIGIN, UPSTREAM, shot, start_forwarder
 
 # Width × height fixtures (CSS px). Phones and tablets use a coarse (touch) pointer.
 MATRIX = [(320, 568), (390, 844), (768, 1024), (1024, 768), (1440, 900), (1920, 1080), (2560, 1440), (3840, 2160), (5120, 1440)]
@@ -331,11 +331,15 @@ class AdaptiveMatrix(AdaptiveBase):
         tools = page.get_by_role("toolbar", name="Sketch tools")
         for button in tools.get_by_role("button").all():
             self.primary(page, button, f"the map tool “{button.inner_text().strip() or button.get_attribute('aria-label')}”")
+        options = open_map_options(page) if page.get_by_role('button', name='Map options', exact=True).is_visible() else None
         for name in ("Map", "List"):
             self.primary(page, page.get_by_role("radio", name=name, exact=True), f"the {name} switch")
         zoom = page.get_by_role("group", name="Zoom")
         for button in zoom.get_by_role("button").all():
             self.primary(page, button, f"the zoom control “{button.get_attribute('aria-label')}”")
+        if options is not None:
+            options.get_by_role('button', name='Close map options', exact=True).click()
+            expect(options).to_have_count(0)
         add = page.get_by_role("button", name="Add a thought", exact=True)
         if add.count():
             self.primary(page, add, "the phone's Add a thought")
@@ -344,13 +348,13 @@ class AdaptiveMatrix(AdaptiveBase):
         self.shot(page, f"adapt-{size}-map")
 
         # The same thoughts as a list.
-        page.get_by_role("radio", name="List", exact=True).click()
+        show_map_as(page, "List")
         rows = page.locator(".sk-li-t")
         expect(rows).to_have_count(len(fx.THOUGHTS))
         self.primary(page, rows.first, "a list row")
         self.no_sideways_scroll(page, "List")
         self.shot(page, f"adapt-{size}-list")
-        page.get_by_role("radio", name="Map", exact=True).click()
+        show_map_as(page, "Map")
         expect(page.locator(".sk-node")).to_have_count(len(fx.THOUGHTS))
 
         # Tasks: a readable active/blocked route on narrow boards, every column on wide ones.

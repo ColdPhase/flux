@@ -597,6 +597,11 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   };
 
   const mapMode = mode === 'map';
+  const viewModes = <div className="seg sk-mode" role="radiogroup" aria-label="Show as">
+    {(['map', 'list'] as const).map((m) => (
+      <button key={m} type="button" role="radio" className="seg__b" aria-checked={mode === m} onClick={() => setMode(m)}>{m === 'map' ? 'Map' : 'List'}</button>
+    ))}
+  </div>;
   const head = (
         <div className="sk-head">
           <p className="sk-lead">
@@ -616,11 +621,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
           {sketch.scope === 'dm' && canWrite ? (
             <Button variant="secondary" className="sk-promote" onClick={() => openDetails({ kind: 'promote-sketch', sketchId: sketch.id, title: sketch.title })}>Make it a project…</Button>
           ) : null}
-          <div className="seg sk-mode" role="radiogroup" aria-label="Show as">
-            {(['map', 'list'] as const).map((m) => (
-              <button key={m} type="button" role="radio" className="seg__b" aria-checked={mode === m} onClick={() => setMode(m)}>{m === 'map' ? 'Map' : 'List'}</button>
-            ))}
-          </div>
+          {!phone || !mapMode ? viewModes : null}
         </div>
   );
   const notices = (
@@ -708,7 +709,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
               : 'You can look at this sketch; people who can change it keep it up to date.'}</p> : null}
             {notices}
           </div>
-          <SketchMap {...shared} coarse={coarse} compact={phone} helpId={helpId} heights={heights} dock={dock} hint={hint}
+          <SketchMap {...shared} coarse={coarse} compact={phone} helpId={helpId} heights={heights} dock={dock} hint={hint} viewModes={viewModes}
             bar={{ project: sketch.scope === 'project', canUndo: doc.canUndo, helpOpen, onShape: cycleShape, onTask: () => void makeWork(), onUndo: undo, onHelp: () => setHelpOpen(!helpOpen) }}
             onConnect={connectTo} onAddAt={(parentId, x, y) => add(parentId, '', false, { x, y })} onConnectFrom={connectFromDot} onAddThought={() => add(selection[selection.length - 1] ?? null)}
             draft={capture.draft && !capture.draft.lines ? { x: capture.draft.x, y: capture.draft.y, parentId: capture.draft.parentId } : null} onMove={move} onResize={resize} onClear={() => { if (connectFrom) return; setSelection([]); say(''); }} />

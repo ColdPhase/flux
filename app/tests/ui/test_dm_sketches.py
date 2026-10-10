@@ -276,11 +276,13 @@ class DmSketchJourney(unittest.TestCase):
             self.assertGreaterEqual(add.bounding_box()["height"], 43.5, f"{label}: Add a thought is a touch target")
             expect(page.get_by_text("Connect and arrange on a computer")).to_be_visible()
             page.locator(".sk-node").first.tap()
-            actions = page.get_by_role("toolbar", name="Selection actions")
+            page.get_by_role("button", name="Thought actions", exact=True).tap()
+            actions = page.get_by_role("dialog", name="Thought actions", exact=True)
             expect(actions.get_by_role("button", name="Remove from sketch", exact=True)).to_be_visible()
             for name in ("Connect", "Change shape", "Undo"):
                 expect(actions.get_by_role("button", name=name, exact=True)).to_have_count(0)
             self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), PHONE["width"], f"{label}: no horizontal scrolling")
+            actions.get_by_role("button", name="Close thought actions", exact=True).tap()
             shot(page, f"dm-sketch-phone-{label}")
         # The copy still says where it came from and that the conversation stays private.
         expect(page.locator(".sk-origin")).to_contain_text("Copied from a direct message by you")

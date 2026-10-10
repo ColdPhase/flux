@@ -8,7 +8,8 @@ import uuid
 
 from playwright.sync_api import expect, sync_playwright
 
-from test_app_shell import ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import ORIGIN, PHONE, UPSTREAM, open_map_options, show_map_as, shot, start_forwarder
+from contrast import MEASURE
 
 COMPUTER = {'width': 1440, 'height': 900}
 A, B, C = 'Weatherproof enclosure', 'Calibrate the probes', 'Frost warnings later'
@@ -136,6 +137,7 @@ class MapConnectJourney(unittest.TestCase):
                 expect(page.locator('.sk-ghost--draft')).to_be_visible()
                 self.assertEqual(len(self.stored(page, sketch)['thoughts']), 3, 'nothing is shared before it is saved')
                 draft.get_by_label('Thought text').fill('Solar panel on the enclosure?')
+                shot(page, f'map-connect-local-draft-1440-{scheme}')
                 draft.get_by_label('Thought text').press('Enter')
                 expect(page.locator('.sk-node')).to_have_count(4)
                 shared = self.stored(page, sketch)
@@ -231,7 +233,8 @@ class MapConnectJourney(unittest.TestCase):
                 before = self.stored(page, sketch)
                 target = A if solo else C
                 page.locator('.sk-node', has_text=target).tap()
-                page.get_by_role('toolbar', name='Selection actions').get_by_role('button', name='Remove from sketch', exact=True).tap()
+                page.get_by_role('button', name='Thought actions', exact=True).tap()
+                page.get_by_role('dialog', name='Thought actions', exact=True).get_by_role('button', name='Remove from sketch', exact=True).tap()
                 expect(page.locator('.sk-node')).to_have_count(0 if solo else 2)
                 undo = page.get_by_role('button', name='Undo', exact=True)
                 expect(undo).to_be_visible()
@@ -296,6 +299,85 @@ class MapConnectJourney(unittest.TestCase):
         page.locator('.sk-node', has_text=B).click()
         expect(page.locator('.sk-status')).to_contain_text('Linked')
         self.assertEqual(len(self.eventually(page, sketch, lambda s: len(s['links']) == 1)['links']), 1)
+
+    def test_10_phone_named_sheets_keep_secondary_actions_and_restore_focus(self):
+        page = self.page(PHONE, touch=True)
+        sketch = self.scene(page)
+        before = self.stored(page, sketch)
+        node = page.locator('.sk-node', has_text=B)
+        node.tap()
+        expect(page.get_by_role('toolbar', name='Selection actions')).to_have_count(0)
+        expect(page.locator('.sk-phone .sk-plus')).to_have_count(0)
+        expect(page.get_by_role('button', name='Add a thought', exact=True)).to_be_visible()
+        actions = page.get_by_role('button', name='Thought actions', exact=True)
+        self.assertGreaterEqual(actions.bounding_box()['height'], 44)
+        actions.focus()
+        page.keyboard.press('Enter')
+        sheet = page.get_by_role('dialog', name='Thought actions', exact=True)
+        expect(sheet).to_have_attribute('aria-modal', 'true')
+        for name in ('Edit thought', 'Add a connected thought', 'Create task from selected thoughts', 'Remove from sketch'):
+            row = sheet.get_by_role('button', name=name, exact=True)
+            expect(row).to_be_visible()
+            self.assertGreaterEqual(row.bounding_box()['height'], 44)
+        page.keyboard.press('Escape')
+        expect(sheet).to_have_count(0)
+        expect(actions).to_be_focused()
+        expect(node).to_have_attribute('aria-pressed', 'true')
+        actions.tap()
+        sheet.get_by_role('button', name='Edit thought', exact=True).tap()
+        expect(page.get_by_label('Thought text')).to_be_focused()
+        page.get_by_label('Thought text').fill('A private edit not saved')
+        page.get_by_role('button', name='Cancel edit', exact=True).tap()
+        actions.tap()
+        sheet.get_by_role('button', name='Add a connected thought', exact=True).tap()
+        draft = page.get_by_role('form', name='New thought draft')
+        expect(draft.get_by_label('Thought text')).to_be_focused()
+        draft.get_by_label('Thought text').fill('A private connected draft')
+        self.assertEqual(self.stored(page, sketch), before, 'opening/editing/cancelling the sheet does not change the map')
+        shot(page, 'map-phone-connected-draft-390-light')
+        draft.get_by_role('button', name='Cancel', exact=True).tap()
+        options = open_map_options(page, touch=True)
+        for name in ('Fit the sketch to the view', 'Zoom out', 'Zoom in'):
+            control = options.get_by_role('button', name=name, exact=True)
+            expect(control).to_be_visible()
+            self.assertGreaterEqual(control.bounding_box()['height'], 44)
+        shot(page, 'map-phone-options-390-light')
+        options.get_by_role('button', name='Zoom in', exact=True).tap()
+        options.get_by_role('button', name='Fit the sketch to the view', exact=True).tap()
+        options.get_by_role('button', name='Close map options', exact=True).tap()
+        expect(page.get_by_role('button', name='Map options', exact=True)).to_be_focused()
+        show_map_as(page, 'List', touch=True)
+        expect(page.locator('.sk-li-t')).to_have_count(3)
+        show_map_as(page, 'Map', touch=True)
+        expect(page.locator('.sk-node')).to_have_count(3)
+        self.assertEqual(self.stored(page, sketch), before, 'List and Fit preserve exact map data and positions')
+        page.locator('.sk-node', has_text=B).tap()
+        actions.tap()
+        shot(page, 'map-phone-thought-actions-390-light')
+        with page.expect_response(lambda response: response.request.method == 'POST' and f'/projects/{self.project}/work' in response.url) as saved:
+            sheet.get_by_role('button', name='Create task from selected thoughts', exact=True).tap()
+        self.assertEqual(saved.value.status, 201)
+        self.assert_task_sources(page, saved.value.json()['id'], {B}, {A, C})
+
+    def test_11_reading_tokens_keep_persisted_geometry_and_follow_text_size(self):
+        for viewport, touch, body, meta in ((COMPUTER, False, 14, 12), (PHONE, True, 15, 12.5)):
+            for scheme in ('light', 'dark'):
+                with self.subTest(viewport=viewport, scheme=scheme):
+                    page = self.page(viewport, scheme, touch=touch)
+                    sketch = self.scene(page)
+                    before = self.stored(page, sketch)
+                    node = page.locator('.sk-node', has_text=A)
+                    for selector, minimum in (('.sk-t', body), ('.sk-p', meta)):
+                        text = node.locator(selector)
+                        size = text.evaluate('el => parseFloat(getComputedStyle(el).fontSize)')
+                        self.assertGreaterEqual(size, minimum)
+                        node_selector = f'.sk-node[data-id="{self.ids[A]}"]'
+                        measured = page.evaluate(MEASURE, {'selector': f'{node_selector} {selector}', 'backgroundSelector': node_selector})
+                        self.assertGreaterEqual(measured['ratio'], 4.5, f'{scheme}: actual thought text contrast {measured}')
+                        page.add_style_tag(content='html { font-size: 32px; }')
+                        self.assertGreaterEqual(text.evaluate('el => parseFloat(getComputedStyle(el).fontSize)'), size * 1.9)
+                        page.add_style_tag(content='html { font-size: 16px; }')
+                    self.assertEqual(self.stored(page, sketch), before, 'readable text does not rewrite persisted widths or positions')
 
 
 if __name__ == '__main__':

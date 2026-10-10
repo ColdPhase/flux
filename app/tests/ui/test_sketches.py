@@ -16,7 +16,7 @@ import unittest
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, box, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, box, open_map_options, show_map_as, shot, start_forwarder
 
 PASSWORD = "sketching all afternoon"
 EMAIL = f"kai.lind+{int(time.time() * 1000)}@example.test"
@@ -363,14 +363,14 @@ class SketchJourney(unittest.TestCase):
         node = self.thought(page, "Gesture-controlled desk lamp")
         node.tap()
         expect(node).to_have_attribute("aria-pressed", "true")
-        plus = page.get_by_role("button", name="Add a thought connected to “Gesture-controlled desk lamp”")
+        plus = page.get_by_role("button", name="Add a thought", exact=True)
         expect(plus).to_be_visible()
         self.assertGreaterEqual(box(page, plus)["width"], 44, "touch target")
         expect(page.get_by_text("Tap a thought to select it")).to_be_visible()
-        page.get_by_role("radio", name="List").tap()
+        show_map_as(page, "List", touch=True)
         expect(page.get_by_role("list", name="Thoughts in Lamp ideas")).to_be_visible()
         shot(page, "sketch-phone-390-list")
-        page.get_by_role("radio", name="Map").tap()
+        show_map_as(page, "Map", touch=True)
         page.goto("/map")
         expect(page.get_by_role("link", name=re.compile("Lamp ideas"))).to_be_visible()
         shot(page, "sketch-phone-390-index")
@@ -392,7 +392,9 @@ class SketchJourney(unittest.TestCase):
         canvas = box(page, page.locator(".sk-canvas"))
         # The phone shows the whole graph in two readable columns at full size: nothing is cut off
         # at the sides and there is no sideways scrolling.
-        zoom = page.get_by_role("button", name=re.compile(r"^Zoom \d+%")).get_attribute("aria-label")
+        options = open_map_options(page, touch=True)
+        zoom = options.get_by_role("button", name=re.compile(r"^Zoom \d+%")).get_attribute("aria-label")
+        options.get_by_role("button", name="Close map options", exact=True).tap()
         self.assertIn("100%", zoom)
         nodes = page.locator(".sk-node")
         self.assertGreaterEqual(nodes.count(), 4)
@@ -410,15 +412,18 @@ class SketchJourney(unittest.TestCase):
         expect(page.get_by_role("toolbar", name="Sketch tools")).to_have_count(0)
         expect(page.get_by_role("button", name="Add a thought", exact=True)).to_be_visible()
         expect(page.get_by_text("Connect and arrange on a computer")).to_be_visible()
-        expect(page.get_by_role("radio", name="List")).to_be_visible()
-        # Selecting shows a labelled Edit action beside the +.
+        options = open_map_options(page, touch=True)
+        expect(options.get_by_role("radio", name="List")).to_be_visible()
+        options.get_by_role("button", name="Close map options", exact=True).tap()
+        # Selecting offers named secondary actions; Add a thought stays the only primary add.
         node = self.thought(page, "Gesture-controlled desk lamp")
         node.tap()
-        edit = page.get_by_role("button", name="Edit “Gesture-controlled desk lamp”")
+        page.get_by_role("button", name="Thought actions", exact=True).tap()
+        actions = page.get_by_role("dialog", name="Thought actions", exact=True)
+        edit = actions.get_by_role("button", name="Edit thought", exact=True)
         expect(edit).to_be_visible()
-        expect(edit).to_have_text("Edit")
+        expect(edit).to_have_text("Edit thought")
         self.assertGreaterEqual(box(page, edit)["height"], 44, "touch target")
-        actions = page.get_by_role("toolbar", name="Selection actions")
         expect(actions.get_by_role("button", name="Remove from sketch", exact=True)).to_be_visible()
         for label in ("Connect", "Change shape", "More actions", "Undo"):
             expect(actions.get_by_role("button", name=label, exact=True)).to_have_count(0)
@@ -427,7 +432,8 @@ class SketchJourney(unittest.TestCase):
         expect(page.get_by_label("Thought text")).to_be_focused()
         page.keyboard.press("Escape")
         # Fit brings the whole graph back after zooming in.
-        page.get_by_role("button", name="Zoom in").tap()
+        options = open_map_options(page, touch=True)
+        options.get_by_role("button", name="Zoom in").tap()
         page.get_by_role("button", name="Fit the sketch to the view").tap()
         expect(page.get_by_role("button", name=re.compile(r"^Zoom \d+%"))).to_have_attribute("aria-label", zoom)
 
@@ -545,9 +551,13 @@ class SketchJourney(unittest.TestCase):
         self.api(page, "POST", f"/api/v1/sketches/{sketch['id']}/thoughts", {"text": "Test the ToF sensor through the shade", "x": round(far_x / 2), "y": round(far_y / 2), "width": 240, "height": 100, "shape": "card", "linkFrom": {"thoughtId": first["thought"]["id"]}})
         page.reload()
         expect(page.locator(".sk-node")).to_have_count(3)
+        options = open_map_options(page, touch=touch) if viewport['width'] <= 640 else None
         page.get_by_role("button", name=re.compile(r"^Zoom \d+%")).click()  # reset before the explicit Fit
         canvas.evaluate("el => { el.scrollLeft = 100; el.scrollTop = 100; }")
         page.get_by_role("button", name="Fit the sketch to the view").click()
+        if options is not None:
+            options.get_by_role("button", name="Close map options", exact=True).tap()
+            expect(options).to_have_count(0)
         page.wait_for_function("() => { const el = document.querySelector('.sk-canvas'); return el.scrollLeft === 0 && el.scrollTop === 0; }")
         return page
 
@@ -611,9 +621,13 @@ class SketchJourney(unittest.TestCase):
             with self.subTest(width=width):
                 page = self.fit_fixture(viewport={"width": width, "height": height}, ratios=(0.6, 0.6), touch=True)
                 canvas = page.locator(".sk-canvas")
-                controls = page.get_by_role("group", name="Zoom", exact=True)
+                options = open_map_options(page, touch=True)
+                expect(options.get_by_role("group", name="Zoom", exact=True)).to_be_in_viewport(ratio=1)
+                expect(options.get_by_role("button", name=re.compile(r"^Zoom \d+%"))).to_have_attribute("aria-label", "Zoom 100%, reset to 100%")
+                options.get_by_role("button", name="Close map options", exact=True).tap()
+                expect(options).to_have_count(0)
+                controls = page.get_by_role("button", name="Map options", exact=True)
                 shot(page, f"sketch-fit-phone-{width}")
-                expect(page.get_by_role("button", name=re.compile(r"^Zoom \d+%"))).to_have_attribute("aria-label", "Zoom 100%, reset to 100%")
                 expect(controls).to_be_in_viewport(ratio=1)
                 self.assertLessEqual(canvas.evaluate("el => el.scrollWidth - el.clientWidth"), 1, "Fit retains the phone projection without sideways scrolling")
                 # The long corner thought wraps at the same full-size phone width. Its complete
@@ -631,11 +645,11 @@ class SketchJourney(unittest.TestCase):
                     self.assertGreaterEqual(bounds["y"], viewport_box["y"] - 1)
                     self.assertLessEqual(bounds["x"] + bounds["width"], viewport_box["x"] + viewport_box["width"] + 1)
                     self.assertLessEqual(bounds["y"] + bounds["height"], viewport_box["y"] + viewport_box["height"] + 1)
-                    self.assert_no_overlap(bounds, control_box, "the complete last thought and author stay clear of Fit and zoom")
+                    self.assert_no_overlap(bounds, control_box, "the complete last thought and author stay clear of the Fit and zoom entry")
                 self.assert_no_overlap(box(page, corner), box(page, page.locator(".sk-phone")), "the last thought scrolls clear of the floating Add a thought")
                 expect(corner.locator(".sk-p")).to_contain_text("From you")
-                self.assertGreaterEqual(corner.locator(".sk-t").evaluate("el => parseFloat(getComputedStyle(el).fontSize)"), 12)
-                self.assertGreaterEqual(corner.locator(".sk-p").evaluate("el => parseFloat(getComputedStyle(el).fontSize)"), 10)
+                self.assertGreaterEqual(corner.locator(".sk-t").evaluate("el => parseFloat(getComputedStyle(el).fontSize)"), 15)
+                self.assertGreaterEqual(corner.locator(".sk-p").evaluate("el => parseFloat(getComputedStyle(el).fontSize)"), 12.5)
                 expect(controls).to_be_in_viewport(ratio=1)
 
 

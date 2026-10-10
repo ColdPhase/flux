@@ -9,7 +9,7 @@ import uuid
 
 from playwright.sync_api import expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, SHOTS, UPSTREAM, shot, start_forwarder
+from test_app_shell import show_map_as, DESKTOP, ORIGIN, PHONE, SHOTS, UPSTREAM, shot, start_forwarder
 from contrast import MEASURE
 
 STAMP = int(time.time() * 1000)
@@ -154,8 +154,8 @@ class ThoughtDraftJourney(unittest.TestCase):
 
     def open(self, page, sketch=None, mode="List"):
         page.goto(f"/projects/{self.project}/map/{sketch or self.sketch}")
-        expect(page.locator(".sk-head")).to_be_visible()
-        page.get_by_role("radio", name=mode, exact=True).click()
+        expect(page.get_by_role("group", name=re.compile("^Sketch: ")).or_(page.locator(".sk-outline-list"))).to_be_visible()
+        show_map_as(page, mode)
 
     def capture(self, page, *, child=False):
         if child:
@@ -179,7 +179,7 @@ class ThoughtDraftJourney(unittest.TestCase):
         expect(page).to_have_url(re.compile(rf"/projects/{self.project}/map$"))
         page.locator(f'.sk-index a[href="/projects/{self.project}/map/{self.sketch}"]').click()
         expect(page).to_have_url(re.compile(rf"/projects/{self.project}/map/{self.sketch}$"))
-        expect(page.locator(".sk-head")).to_be_visible()
+        expect(page.get_by_role("group", name=re.compile("^Sketch: ")).or_(page.locator(".sk-outline-list"))).to_be_visible()
 
     def test_01_cancel_empty_blur_and_composition_never_write(self):
         page = self.owner
@@ -192,12 +192,12 @@ class ThoughtDraftJourney(unittest.TestCase):
         field.fill("<b>Literal text</b> · ゆっくり動かす")
         field.evaluate("e => e.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', bubbles:true, isComposing:true}))")
         expect(field).to_be_visible()
-        page.get_by_role("radio", name="Map", exact=True).click()
+        show_map_as(page, "Map")
         expect(field).to_have_value("<b>Literal text</b> · ゆっくり動かす")
         self.assertEqual(self.stored(page), self.before)
         field.press("Escape")
         expect(page.get_by_role("form", name="New thought draft")).to_have_count(0)
-        page.get_by_role("radio", name="List", exact=True).click()
+        show_map_as(page, "List")
         self.capture(page, child=True).fill("Cancel this child")
         page.get_by_role("button", name="Cancel", exact=True).click()
         self.assertEqual(self.stored(page), self.before)
@@ -209,7 +209,7 @@ class ThoughtDraftJourney(unittest.TestCase):
         field = self.capture(page, child=True)
         text = "A slow swipe switches the lamp off\n<b>Keep this markup literal</b>"
         field.fill(text)
-        page.get_by_role("radio", name="Map", exact=True).click()
+        show_map_as(page, "Map")
         expect(field).to_have_value(text)
         other = self.new_sketch("Separate reading corner")
         self.open(page, other)
@@ -409,7 +409,7 @@ class ThoughtDraftJourney(unittest.TestCase):
                     measurements.append({'theme': theme, 'viewport': name, **measured})
                     self.assertGreaterEqual(measured['ratio'], 4.5, f'{theme}/{name} {selector}: readable actual draft text {measured}')
                 shot(page, f"thought-draft-{theme}-{name}-list")
-                page.get_by_role("radio", name="Map", exact=True).click()
+                show_map_as(page, "Map")
                 expect(field).to_have_value("Test a deliberate hold in the dark\nKeep a manual switch within reach")
                 shot(page, f"thought-draft-{theme}-{name}-map")
                 if name == "phone":
@@ -420,7 +420,7 @@ class ThoughtDraftJourney(unittest.TestCase):
                     self.wait_stored(page, lambda current: len(current['thoughts']) == 2)
                 else:
                     page.get_by_role("button", name="Cancel", exact=True).click()
-                page.get_by_role('radio', name='List', exact=True).click()
+                show_map_as(page, 'List')
                 page.locator(f'.sk-li-t[data-id="{self.parent}"]').click()
                 page.get_by_role('toolbar', name='Sketch tools').get_by_role('button', name='Edit', exact=True).click()
                 page.get_by_label('Thought text').fill('Keep the manual off switch within reach')
@@ -508,7 +508,7 @@ class ThoughtDraftJourney(unittest.TestCase):
         page.wait_for_url(re.compile(rf"/projects/{self.project}/map(/{self.sketch})?$"))
         if not page.url.endswith(f"/map/{self.sketch}"):
             page.locator(f'.sk-index a[href="/projects/{self.project}/map/{self.sketch}"]').click()
-        expect(page.locator(".sk-head")).to_be_visible()
+        expect(page.get_by_role("group", name=re.compile("^Sketch: ")).or_(page.locator(".sk-outline-list"))).to_be_visible()
         self.assertTrue(page.evaluate("window.sameVisit === true"), "no reload: only sign-out can have cleared the in-memory copy")
         expect(page.get_by_role("form", name="New thought draft")).to_have_count(0)
         self.assertEqual(self.stored_drafts(page), [])
@@ -623,7 +623,7 @@ class ThoughtDraftJourney(unittest.TestCase):
         page.wait_for_url(re.compile(rf"/projects/{self.project}/map(/{self.sketch})?$"))
         if not page.url.endswith(f"/map/{self.sketch}"):
             page.locator(f'.sk-index a[href="/projects/{self.project}/map/{self.sketch}"]').click()
-        expect(page.locator(".sk-head")).to_be_visible()
+        expect(page.get_by_role("group", name=re.compile("^Sketch: ")).or_(page.locator(".sk-outline-list"))).to_be_visible()
 
     def round_trip_through_every_view(self, page, *, touch=False):
         """Map → Conversation → Agents → Tasks → Wiki → Map inside one page visit, as a person switches tabs."""
@@ -676,7 +676,7 @@ class ThoughtDraftJourney(unittest.TestCase):
         expect(field).to_have_value(text)
 
         # The same on the canvas, and opening the task beside the map.
-        page.get_by_role("radio", name="Map", exact=True).click()
+        show_map_as(page, "Map")
         node_count = page.locator(f'.sk-node[data-id="{child["id"]}"] + .sk-work-slot .sk-work')
         node_count.click()
         expect(chooser).to_be_visible()
@@ -709,7 +709,7 @@ class ThoughtDraftJourney(unittest.TestCase):
         self.round_trip_through_every_view(page)
         expect(page.get_by_role("form", name="New thought draft")).to_have_count(0)
         page.reload()
-        expect(page.locator(".sk-head")).to_be_visible()
+        expect(page.get_by_role("group", name=re.compile("^Sketch: ")).or_(page.locator(".sk-outline-list"))).to_be_visible()
         expect(page.get_by_role("form", name="New thought draft")).to_have_count(0)
         self.assertEqual((self.stored(page), self.project_work(page)), (before, work))
         self.assertEqual(writes, [], "a discarded draft never reaches the server")

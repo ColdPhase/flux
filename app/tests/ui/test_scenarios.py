@@ -53,7 +53,7 @@ from pathlib import Path
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import show_map_as, DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "a lamp that listens to hands"
 NAMES = {"ada": "Ada Kowalska", "jonas": "Jonas Berg", "mia": "Mia Novak", "lee": "Lee Moreno"}
@@ -326,7 +326,7 @@ class ScenarioJourney:
         page.goto(f"/projects/{self.s['lamp']}/map/{self.s['map']}")
         expect(page.get_by_role("group", name=re.compile("^Sketch: ")).or_(page.locator(".sk-outline-list"))).to_be_visible()
         if self.phone:
-            page.get_by_role("radio", name="List", exact=True).tap()
+            show_map_as(page, "List", touch=True)
             expect(page.locator(".sk-outline-list")).to_be_visible()
 
     def thought(self, page: Page, thought_id: str):
@@ -485,7 +485,7 @@ class ScenarioJourney:
 
         # Ada thinks further on the sketch: low light is the camera's weak spot.
         if self.phone:
-            page.get_by_role("radio", name="List", exact=True).tap()
+            show_map_as(page, "List", touch=True)
         camera = self.thought_id(sketch, CAMERA)
         self.add_connected_thought(page, dm_sketch, camera, LOW_LIGHT)
         self.shot(page, "1-dm-sketch")
