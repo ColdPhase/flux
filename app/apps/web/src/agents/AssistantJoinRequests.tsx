@@ -24,7 +24,11 @@ export function AssistantJoinRequests({ projectId, meId, meName, view, names, ca
   const [notice, setNotice] = useState<string | null>(null);
   const requests = view.joinRequests ?? [];
   const name = (ownerId: string) => ownerId === meId ? meName ?? 'You' : names.get(ownerId) ?? 'A member';
-  const summary = requests.length === 1 ? `${name(requests[0]!.ownerUserId)}’s assistant asks to join` : `${requests.length} assistants ask to join`;
+  const assistantName = (ownerId: string) => {
+    const fullName = name(ownerId);
+    return `${fullName === 'A member' ? fullName : fullName.trim().split(/\s+/)[0] || fullName}’s assistant`;
+  };
+  const summary = requests.length === 1 ? `${assistantName(requests[0]!.ownerUserId)} asks to join` : `${requests.length} assistants ask to join`;
   const send = async () => {
     setBusy('request'); setError(null); setNotice(null);
     try {
@@ -65,7 +69,7 @@ export function AssistantJoinRequests({ projectId, meId, meName, view, names, ca
               {requests.map((row) => (
                 <li key={row.id} className="agents-join__item">
                   <div className="agents-join__details">
-                    <AgentIdentity className="agents-join__identity" name={`${name(row.ownerUserId)}’s assistant`} owner={name(row.ownerUserId)} hue={agentHue(row.agentId)} expression="asking" />
+                    <AgentIdentity className="agents-join__identity" name={assistantName(row.ownerUserId)} owner={name(row.ownerUserId)} hue={agentHue(row.agentId)} expression="asking" />
                     <p>{canManage ? 'Asks to join as a contributor. Allow gives it access within its owner’s project permissions.' : 'Waiting for a project manager. Your assistant has no access here yet.'}</p>
                   </div>
                   {canManage ? <Button variant="secondary" busy={busy === row.id} disabled={busy !== null && busy !== row.id} onClick={() => void allow(row.id)}>Allow</Button> : null}

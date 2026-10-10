@@ -41,7 +41,7 @@ async function signedIn(context: BrowserContext, who: Person, path: string) {
 async function capture(page: Page, label: string) {
   if (!evidence) return;
   mkdirSync(evidence, { recursive: true });
-  await page.evaluate(async () => { await document.fonts.ready; });
+  await page.evaluate(async () => { await document.fonts.ready; (document.activeElement as HTMLElement | null)?.blur(); });
   await page.screenshot({ path: join(evidence, label + '.png'), fullPage: true });
 }
 async function theme(page: Page, choice: 'light' | 'dark') {
