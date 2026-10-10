@@ -68,7 +68,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
             options.update(viewport=viewport or DESKTOP, device_scale_factor=1)
         if who and who in self.states:
             options["storage_state"] = self.states[who]
-        context = self.browser.new_context(**options)
+        context = self.browser.new_context(service_workers="block", **options)
         self.addCleanup(context.close)
         return context
 
@@ -391,6 +391,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
           const list = el.closest('.side__list');
           const mark = list.classList.contains('has-glide') ? list.querySelector('.side__glide') : el;
           const r = el.getBoundingClientRect(), box = el.closest('.side__scroll').getBoundingClientRect();
+          // The open row takes no shadow while the traveling highlight stands in for it (.side__list.has-glide): the pill is the highlight.
           if (!mark) return { inside: false, raised: false, aligned: false };
           const m = mark.getBoundingClientRect(), css = getComputedStyle(mark);
           return { inside: m.left >= box.left - 1 && m.right <= box.right + 1,
