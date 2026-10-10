@@ -105,8 +105,8 @@ class OneConversationJourney(unittest.TestCase):
         cls.browser.close()
         cls.pw.stop()
 
-    def page(self, who: str, *, phone: bool = False, dark: bool = False, viewport: dict | None = None) -> Page:
-        options: dict = {"base_url": ORIGIN, "color_scheme": "dark" if dark else "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw",
+    def page(self, who: str, *, phone: bool = False, dark: bool = False, viewport: dict | None = None, locale: str = "en-GB") -> Page:
+        options: dict = {"base_url": ORIGIN, "color_scheme": "dark" if dark else "light", "locale": locale, "timezone_id": "Europe/Warsaw",
                          "storage_state": self.states[who]}
         if phone:
             options.update(viewport=viewport or PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
@@ -202,6 +202,16 @@ class OneConversationJourney(unittest.TestCase):
         assert before and after
         self.assertAlmostEqual(before["y"], after["y"], delta=4, msg="loading earlier roots keeps the reader's place")
         self.assertTrue(stream.locator(".project-convo__message > p").first.inner_text().startswith("Earlier note 01"))
+
+    def test_01b_message_times_are_a_natural_clock_in_a_12_hour_locale(self) -> None:
+        # "4:55 PM", never a zero-padded "04:55 PM", under every root (#436).
+        page = self.page("ada", locale="en-US")
+        page.goto(self.project_url())
+        stream = self.stream(page)
+        expect(stream.locator(".project-convo__message").first).to_be_visible()
+        times = [text.strip() for text in stream.locator(".project-convo__message-meta time").all_inner_texts()]
+        self.assertTrue(times, "each root shows its time")
+        self.assertEqual([text for text in times if not re.fullmatch(r"[1-9]\d?:\d\d\s[AP]M", text)], [], "a natural 12-hour clock")
 
     def test_02_a_thread_opens_beside_the_stream_and_takes_a_reply(self) -> None:
         page = self.page("ada")
