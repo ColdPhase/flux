@@ -302,7 +302,8 @@ function TaskForm({ request, typed, phone, projectId, onProject, onClose }: { re
             <div className="create__links">
               {sources.map((source) => (
                 <span key={`${source.ref.type}:${source.ref.id}`} className="create__chip create__chip--link">
-                  <Icon name={source.ref.type === 'message' ? 'chat' : 'map'} size={13} /><span>{source.label}</span>
+                  <Icon name={source.ref.type === 'message' ? 'chat' : 'map'} size={13} />{/* Focusable (not in the tab order): a tap on the label is not adjusted onto the nearby Remove target. */}
+                  <span tabIndex={-1}>{source.label}</span>
                   <button type="button" aria-label={`Remove link to ${source.label}`} onClick={() => setSources(sources.filter((s) => s !== source))}><Icon name="x" size={12} /></button>
                 </span>
               ))}

@@ -100,5 +100,9 @@
   .ui-overlay .create .create__other button { min-height: 44px; min-width: 44px; }
   .ui-overlay .create .create__x { width: 44px; height: 44px; }
   .ui-overlay .create .create__place, .ui-overlay .create .create__place--plain { min-height: 44px; min-width: 44px; }
-  .ui-overlay .create .create__chip--link button { flex: none; width: 44px; height: 44px; margin: -12px -4px -12px 0; }
+  /* Remove's 44 x 44 box stays inside the chip's own area and does not reach over the label: the label keeps a clear band
+     before it, so a tap on the label is not taken for Remove. The drawn × keeps its place at the chip's end. */
+  .ui-overlay .create .create__chip--link { padding-right: 0; }
+  .ui-overlay .create .create__chip--link > span { padding-right: 16px; }
+  .ui-overlay .create .create__chip--link button { flex: none; width: 44px; height: 44px; margin: 0 -6px 0 -6px; }
 }

@@ -511,6 +511,19 @@ class CreateWindow(unittest.TestCase):
                     w, h = box["width"], box["height"]
                     for x, y in ((w / 2, 1), (w / 2, h - 1), (1, h / 2), (w - 1, h / 2)):
                         target.click(position={"x": x, "y": y}, trial=True)
+                # Finger taps: on the label 1 px before Remove's box the link stays; a tap on Remove removes it.
+                chip = sheet.locator(".create__chip--link").first
+                chip_box = chip.bounding_box()
+                remove_box = targets["Remove link"].bounding_box()
+                assert chip_box and remove_box
+                edge = remove_box["x"] - 1
+                for y in (chip_box["y"] + 1, chip_box["y"] + chip_box["height"] / 2, chip_box["y"] + chip_box["height"] - 1):
+                    hit = page.evaluate("([x, y]) => { const e = document.elementFromPoint(x, y); return { inChip: !!e?.closest('.create__chip--link'), inButton: !!e?.closest('button') }; }", [edge, y])
+                    self.assertEqual(hit, {"inChip": True, "inButton": False}, f"{engine}: the tap point is on the label, not Remove")
+                    page.touchscreen.tap(edge, y)
+                    expect(sheet.locator(".create__chip--link")).to_have_count(1)
+                page.touchscreen.tap(remove_box["x"] + remove_box["width"] / 2, remove_box["y"] + remove_box["height"] / 2)
+                expect(sheet.locator(".create__chip--link")).to_have_count(0)
 
     # ---------------------------------------------------------------- keyboard-only and focus (kept from the old assertions)
 
