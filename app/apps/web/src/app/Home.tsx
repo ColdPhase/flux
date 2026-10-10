@@ -140,7 +140,7 @@ export function Home() {
         </section>
       </div>
 
-      <p className="home__more"><Link to="/tasks">All my tasks</Link><Link to="/docs">Wiki</Link>{phone ? null : <button type="button" onClick={() => openDetails()}>Details</button>}</p>
+      <p className="home__more"><Link to="/tasks">All my tasks</Link><Link to="/docs">Wiki</Link>{phone ? <Link to="/map">Sketchbook</Link> : null}<button type="button" onClick={() => openDetails()}>Details</button></p>
 
       <p className="home__keys" aria-hidden="true">
         <span><kbd>C</kbd> new</span><span><kbd>⌘K</kbd> search or run</span><span><kbd>G</kbd><kbd>I</kbd> Inbox</span><span><kbd>[</kbd> hide sidebar</span>

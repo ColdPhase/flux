@@ -62,7 +62,7 @@ class OneConversationJourney(unittest.TestCase):
         expect.set_options(timeout=10000)
         contexts: dict[str, BrowserContext] = {}
         for key, (name, email) in PEOPLE.items():
-            context = cls.browser.new_context(base_url=ORIGIN)
+            context = cls.browser.new_context(service_workers="block", base_url=ORIGIN)
             response = context.request.post("/api/auth/sign-up/email", data={"email": email, "password": PASSWORD, "name": name}, headers={"origin": ORIGIN})
             assert response.status == 200, response.text()
             cls.ids[key] = context.request.get("/api/v1/me").json()["user"]["id"]
@@ -112,7 +112,7 @@ class OneConversationJourney(unittest.TestCase):
             options.update(viewport=viewport or PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
         else:
             options.update(viewport=viewport or DESKTOP, device_scale_factor=1)
-        context = self.browser.new_context(**options)
+        context = self.browser.new_context(service_workers="block", **options)
         self.addCleanup(context.close)
         page = context.new_page()
         errors: list[str] = []
@@ -534,12 +534,12 @@ class OneConversationJourney(unittest.TestCase):
         thread = self.thread(page)
         expect(thread).to_be_visible()
         page.wait_for_timeout(400)
-        sheet, header, pane = thread.bounding_box(), page.locator("header.top").bounding_box(), page.locator(".app__pane").bounding_box()
+        sheet, header, pane = thread.bounding_box(), page.locator("header").bounding_box(), page.locator(".app__pane").bounding_box()
         assert sheet and header and pane
         self.assertEqual((round(sheet["x"]), round(sheet["width"])), (0, PHONE["width"]), "a full-width sheet")
         self.assertAlmostEqual(sheet["y"], pane["y"], delta=1, msg="the sheet covers the whole work area")
         self.assertAlmostEqual(sheet["y"] + sheet["height"], pane["y"] + pane["height"], delta=1)
-        expect(page.locator("header.top")).to_be_visible()
+        expect(page.locator("header")).to_be_visible()
         close = thread.get_by_role("button", name="Close replies")
         close_box = close.bounding_box()
         assert close_box

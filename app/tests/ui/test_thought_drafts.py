@@ -9,7 +9,7 @@ import uuid
 
 from playwright.sync_api import expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, SHOTS, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, SHOTS, UPSTREAM, shot, start_forwarder, view_tab
 from contrast import MEASURE
 
 STAMP = int(time.time() * 1000)
@@ -85,7 +85,7 @@ class ThoughtDraftJourney(unittest.TestCase):
         expect.set_options(timeout=10000)
         contexts = {}
         for who, name in (("owner", "Ada Capture"), ("writer", "Jonas Berg"), ("viewer", "Nia Reader")):
-            ctx = cls.browser.new_context(base_url=ORIGIN)
+            ctx = cls.browser.new_context(service_workers="block", base_url=ORIGIN)
             email = f"capture-{who}+{STAMP}@example.test"
             answer = ctx.request.post("/api/auth/sign-up/email", data={"email": email, "password": PASSWORD, "name": name}, headers={"origin": ORIGIN})
             assert answer.status == 200, answer.text()
@@ -108,7 +108,7 @@ class ThoughtDraftJourney(unittest.TestCase):
         cls.pw.stop()
 
     def page(self, who="owner", **options):
-        ctx = self.browser.new_context(**{"base_url": ORIGIN, "storage_state": self.states[who], "viewport": DESKTOP, "color_scheme": "light", **options})
+        ctx = self.browser.new_context(service_workers="block", **{"base_url": ORIGIN, "storage_state": self.states[who], "viewport": DESKTOP, "color_scheme": "light", **options})
         self.addCleanup(ctx.close)
         if ctx.request.get('/api/v1/me').status == 401:
             response = ctx.request.post('/api/auth/sign-in/email', data={'email': self.people[who]['email'], 'password': PASSWORD}, headers={'origin': ORIGIN})
@@ -614,8 +614,7 @@ class ThoughtDraftJourney(unittest.TestCase):
         return writes
 
     def tab(self, page, name, *, touch=False):
-        link = page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile(f"^{name}"))
-        link.tap() if touch else link.click()
+        view_tab(page, name, tap=touch)
 
     def back_to_map(self, page, *, touch=False):
         """The Map tab returns to its last place (#189): this sketch, or the project's list of maps."""

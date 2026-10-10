@@ -18,7 +18,7 @@ class DocReferenceJourney(unittest.TestCase):
         cls.pw = sync_playwright().start()
         cls.browser = cls.pw.chromium.launch()
         expect.set_options(timeout=10000)
-        cls.ctx = cls.browser.new_context(base_url=ORIGIN)
+        cls.ctx = cls.browser.new_context(service_workers="block", base_url=ORIGIN)
         api(cls.ctx, "POST", "/api/auth/sign-up/email", {"name": "Ada Reference", "email": f"references-{uuid.uuid4()}@example.test", "password": "Native references keep their exact identity"})
         ws = api(cls.ctx, "POST", "/api/v1/workspaces", {"name": "Riverside makers"}, 201)
         cls.workspace = ws["id"]
@@ -42,7 +42,7 @@ class DocReferenceJourney(unittest.TestCase):
         cls.message = api(cls.ctx, "GET", f"/api/v1/conversations/{cls.thread['id']}")["messages"][0]
         cls.user = api(cls.ctx, "GET", "/api/v1/me")["user"]["id"]
         cls.state = cls.ctx.storage_state()
-        cls.other = cls.browser.new_context(base_url=ORIGIN)
+        cls.other = cls.browser.new_context(service_workers="block", base_url=ORIGIN)
         email = f"reference-peer-{uuid.uuid4()}@example.test"
         api(cls.other, "POST", "/api/auth/sign-up/email", {"name": "Jonas Reference", "email": email, "password": "Private reference drafts belong to one person"})
         cls.other_user = api(cls.other, "GET", "/api/v1/me")["user"]["id"]
@@ -64,8 +64,8 @@ class DocReferenceJourney(unittest.TestCase):
         cls.browser.close()
         cls.pw.stop()
 
-    def scene(self, phone=False, self_doc=False, block_service_workers=False):
-        ctx = self.browser.new_context(base_url=ORIGIN, storage_state=self.state, viewport={"width": 390 if phone else 1440, "height": 844 if phone else 900}, is_mobile=phone, has_touch=phone, service_workers="block" if block_service_workers else "allow")
+    def scene(self, phone=False, self_doc=False):
+        ctx = self.browser.new_context(base_url=ORIGIN, storage_state=self.state, viewport={"width": 390 if phone else 1440, "height": 844 if phone else 900}, is_mobile=phone, has_touch=phone, service_workers="block")
         self.addCleanup(ctx.close)
         page = ctx.new_page()
         page.choice_observations = []
@@ -187,11 +187,15 @@ class DocReferenceJourney(unittest.TestCase):
                 expect(text).to_have_value("PRIVATE-DRAFT of native reference notes\n")
 
     def assert_account(self, page, name, phone):
-        if phone: page.get_by_role("button", name="Open navigation", exact=True).click()
-        # In the phone drawer the account row leads to Settings (#266 PF-5).
-        role, suffix = ("link", "settings and sign out") if phone else ("button", "account and sign out")
-        expect(page.get_by_role(role, name=re.compile(f"^{name} .*{suffix}"))).to_be_visible()
-        if phone: page.get_by_role("button", name="Close navigation", exact=True).click()
+        if phone:
+            # On the phone the avatar leads to Settings (#266 PF-5, #341).
+            # The editor's header leads back; the account is read where the avatar leads, in Settings.
+            settings = page.context.new_page()
+            settings.goto("/settings")
+            expect(settings.get_by_text(re.compile(f"{name}"))).not_to_have_count(0)
+            settings.close()
+            return
+        expect(page.get_by_role("button", name=re.compile(f"^{name} .*account and sign out"))).to_be_visible()
 
     def expect_new_editor(self, page, project_name):
         # Main's #197 wiki pane splits the old "New doc · everyone in <project> can read it" line:
@@ -413,7 +417,7 @@ class DocReferenceJourney(unittest.TestCase):
     def test_10_delayed_reference_search_describes_its_wait_and_keeps_the_draft(self):
         for phone in (False, True):
             with self.subTest(phone=phone):
-                page, text = self.scene(phone, block_service_workers=True)
+                page, text = self.scene(phone)
                 picker = self.picker(page, text)
                 target = self.native["work"][3]
                 held = []

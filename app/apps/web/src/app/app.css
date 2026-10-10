@@ -296,7 +296,6 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 @media (max-width: 760px) { .views .ui-tabs__bar { gap: 4px; } }
 @media (max-width: 640px) { .views--project { padding-right: 8px; gap: 4px; } .views__recap { padding: 0 8px; gap: 4px; } }
 @media (pointer: coarse) { .views__recap { min-height: 44px; } .views .ui-tabs__tab { min-height: 44px; min-width: 44px; padding-inline: 6px; justify-content: center; } .views .ui-tabs__bar { gap: 12px; } }
-.views--none { height: 0; border-bottom: 0; }
 
 /* ---------- Work area ---------- */
 .pane-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
@@ -462,13 +461,6 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 }
 /* ---------- Phone: single Messages-like column ---------- */
 @media (max-width: 640px) {
-  .top { height: calc(56px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 4px 0; }
-  .top__title { flex-direction: column; align-items: center; gap: 0; line-height: 1.25; text-align: center; }
-  .top__title h1 { font-size: 16px; }
-  .top__crumb { order: 2; font-size: var(--fs-xs); }
-  .top__slash { display: none; }
-  .top__details { padding: 0 12px; }
-  .views .ui-tabs__bar { padding: 0 4px; gap: 0; justify-content: space-between; }
   .pane-in { padding-left: 16px; padding-right: 16px; }
   .composer { padding: 6px 10px 10px; padding-bottom: max(10px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
   .composer__box { border-radius: 22px; }
@@ -478,30 +470,6 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 .note.is-arrived { box-shadow: inset 3px 0 0 var(--t1); padding-left: 12px; }
 .note:focus { outline: none; }
 .note:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
-/* ---------- Phone shell (#266 PF-1, PF-2) ----------
-   One 52px header (menu, place, What matters, Details), the work, and the view bar at the bottom.
-   Nothing else is fixed, so the work starts right under the header. */
-.top__recap { position: relative; }
-.top__badge {
-  position: absolute; top: 5px; right: 3px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px;
-  background: var(--inv); color: var(--oninv); box-shadow: 0 0 0 2px var(--bg);
-  font-family: var(--mono); font-size: 10px; font-weight: 700; line-height: 17px; text-align: center; font-variant-numeric: tabular-nums;
-  animation: badge-in var(--dur-3) var(--ease-glide) both;
-}
-@keyframes badge-in { from { opacity: 0; transform: scale(.4); } }
-@media (max-width: 640px) {
-  header.top, header.top.top--project {
-    min-height: calc(52px + env(safe-area-inset-top)); height: auto; align-items: center; gap: 2px;
-    padding: env(safe-area-inset-top) 2px 0; border-bottom: 1px solid var(--line);
-  }
-  .top--project .top__head { gap: 0; padding-left: 0; }
-  .top--project .top__title--project h1 { font-size: 16px; letter-spacing: -.2px; }
-  .top--project .top__audience { min-height: 22px; font-size: 11px; }
-  .top--project .top__right { padding-top: 0; }
-  .top__right { gap: 0; }
-  .top__details.ui-icon-btn, .top__recap.ui-icon-btn { width: 44px; height: 44px; }
-  .top__details[aria-expanded="true"], .top__recap[aria-expanded="true"] { background: var(--sub); color: var(--t1); }
-}
 /* Typing on a touch screen: the keyboard needs the room, so the view bar steps aside (AppLayout sets
    data-typing while a text field, or the same composer's buttons, hold focus). */
 @media (hover: none) and (max-width: 640px) {
@@ -516,33 +484,110 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
   .composer > .composer__in > .composer__audience svg { margin-right: 4px; vertical-align: -2px; }
   .composer__hint:has(> .composer__state--idle:only-child), .composer__hint:has(> .composer__keys + .composer__state--idle) { display: none; }
 }
-/* The project's state on its phone Conversation (#117, #266 PF-2): one 44px line under the header. */
-.state-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding-right: 8px; border-bottom: 1px solid var(--line); }
-.state-row .ws-state-row { flex: 1; min-width: 0; border-top: 0; }
-.state-row .ws-state-row:has(.ws-state-row__blocked) { flex-basis: 18em; min-width: min(18em, 100%); }
 
-/* ---------- Phone: a place's views as chips (#266 PF-1) ----------
-   A row of labelled chips right under the header; the current one is filled, the
-   others are outlined. On narrow phones the row scrolls and keeps the current chip in view. */
-@media (max-width: 640px) {
-  .views--chips { border-bottom: 1px solid var(--line); }
-  .views--chips.views--project { padding-right: 0; }
-  .views--chips .ui-tabs__bar { gap: 6px; padding: 7px 10px; justify-content: flex-start; }
-  .views--chips .ui-tabs__tab {
-    flex: none; min-height: 36px; padding: 0 13px; border-radius: var(--r-pill); font-size: 13px; font-weight: 500;
-    color: var(--t2); box-shadow: inset 0 0 0 1px var(--line2); transition: background-color var(--dur-2) ease, color var(--dur-1) ease, box-shadow var(--dur-1) ease;
-  }
-  .views--chips .ui-tabs__tab::after, .views--chips .ui-tabs__indicator { display: none; }
-  .views--chips .ui-tabs__tab:is([aria-current="page"], [aria-selected="true"], [data-pending]) {
-    background: var(--sub); color: var(--t1); font-weight: 650; box-shadow: inset 0 0 0 1px transparent;
-  }
-  .views--chips .ui-tabs__count { color: inherit; }
+/* ---------- Phone chrome (#341, F-026 §4 Phone, S2) ----------
+   A floating capsule Home · Projects · Inbox with a round Search, one "+" above it, and a header whose
+   title is the view menu. A conversation has none of the dock: the composer sits at the bottom. Sizes
+   are in rem, so the system text size applies. */
+.phead {
+  display: flex; align-items: center; gap: 10px; flex: none; min-height: 64px; padding: calc(8px + env(safe-area-inset-top)) 14px 8px;
 }
-@media (max-width: 640px) and (pointer: coarse) { .views--chips .ui-tabs__tab { min-height: 44px; padding: 0 14px; } .views--chips .ui-tabs__bar { padding-block: 4px; } }
-.state-row .views__recap { flex: none; margin-left: auto; }
+.phead__id { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; }
+.phead__logo { display: inline-flex; flex: none; }
+.phead__title { flex: 1; min-width: 0; }
+.phead__title h1 { margin: 0; font-size: 1.0625rem; font-weight: 600; letter-spacing: -.02em; line-height: 1.25; }
+.phead__menu {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-height: 44px; padding: 0; border-radius: var(--r-sm);
+  font: inherit; color: var(--t1); text-align: left;
+}
+.phead__menu svg { flex: none; color: var(--t2); }
+.phead__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.phead__word { font-size: 1.5rem; font-weight: 600; letter-spacing: -.04em; }
+.phead__sub { margin: 0; font-size: .8125rem; line-height: 1.35; color: var(--t2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.phead__right { display: flex; align-items: center; gap: 8px; flex: none; }
+.phead__round.ui-icon-btn, .phead__avatar {
+  width: 44px; height: 44px; border-radius: 50%; background: var(--el); color: var(--t1); box-shadow: var(--sh-card);
+  display: inline-grid; place-items: center;
+}
+.phead__avatar { text-decoration: none; }
+.phead__avatar .ui-avatar { box-shadow: none; }
+.phead--large .phead__title h1 { font-size: 1.75rem; letter-spacing: -.035em; line-height: 1.15; }
+.phead--large { min-height: 72px; align-items: flex-end; }
+.phead--large .phead__sub { margin-top: 2px; }
+
+.phone-dock {
+  position: relative; z-index: 2; display: flex; flex: none; align-items: center; gap: 10px;
+  padding: 6px 14px max(14px, env(safe-area-inset-bottom));
+}
+.phone-dock__bar.ui-bottomnav {
+  flex: 1; min-width: 0; gap: 2px; padding: 5px; border: 0; border-radius: 31px; background: var(--el);
+  box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line);
+}
+.phone-dock__bar .ui-bottomnav__item { min-height: 52px; min-width: 0; padding: 4px 0; border-radius: 26px; font-size: .8125rem; font-weight: 500; color: var(--t2); gap: 1px; }
+.phone-dock__bar .ui-bottomnav__pill { width: 36px; height: 26px; }
+.phone-dock__bar .ui-bottomnav__pill::before { display: none; }
+.phone-dock__bar .ui-bottomnav__item:is([aria-current="page"], [data-pending]) { background: var(--sub); color: var(--t1); font-weight: 600; }
+.phone-dock__bar .ui-bottomnav__dot { top: 0; right: 2px; width: 10px; height: 10px; box-shadow: 0 0 0 2px var(--el); }
+.phone-dock__search {
+  flex: none; width: 62px; height: 62px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--el); color: var(--t1); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line);
+}
+.phone-fab {
+  position: absolute; right: 18px; bottom: calc(100% + 4px); width: 56px; height: 56px; border-radius: 50%;
+  display: grid; place-items: center; background: var(--inv); color: var(--oninv); box-shadow: var(--sh-pri), 0 10px 24px -8px rgba(0, 0, 0, .35);
+}
+.phone-fab:active, .phone-dock__search:active { transform: scale(.96); }
+@media (prefers-reduced-motion: no-preference) { .phone-fab, .phone-dock__search { transition: transform var(--dur-1) ease; } }
+@media (max-width: 640px) {
+  .app__main { position: relative; }
+  /* Room under the work for the "+" that floats above the capsule. */
+  .app--fab .app__pane { padding-bottom: 64px; }
+}
+/* The view menu: a card under the header. */
+.ui-overlay--center .phone-menu { top: calc(64px + env(safe-area-inset-top)); width: calc(100% - 24px); max-height: calc(100dvh - 96px); border-radius: 26px; padding: 18px 8px 8px; overflow-y: auto; }
+.phone-menu__t { margin: 0 12px 10px; font-size: 1.0625rem; font-weight: 600; letter-spacing: -.02em; }
+.phone-menu__list { margin: 0; padding: 0; list-style: none; }
+.phone-menu__item {
+  display: flex; align-items: center; gap: 14px; width: 100%; min-height: 52px; padding: 0 14px; border-radius: 18px;
+  font-size: 1rem; color: var(--t1); text-decoration: none; text-align: left;
+}
+.phone-menu__item[aria-current="page"] { background: var(--sub); }
+.phone-menu__l { flex: 1; min-width: 0; }
+.phone-menu__n { font-size: .8125rem; color: var(--t2); }
+.phone-menu__ok { flex: none; }
+.phone-menu__details { margin-top: 6px; border-top: 1px solid var(--line); border-radius: 0; color: var(--t2); }
+.phone-menu__quiet { color: var(--t2); }
+/* "+" Create: a half sheet from the bottom. */
+.ui-overlay--bottom .phone-create { inset: auto 0 0 0; border-radius: 26px 26px 0 0; padding: 8px 16px max(24px, env(safe-area-inset-bottom)); }
+.phone-create__grab { display: block; width: 36px; height: 5px; margin: 4px auto 14px; border-radius: 3px; background: var(--line2); }
+.phone-create__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+.phone-create__head h2 { margin: 0; font-size: 1.375rem; font-weight: 600; letter-spacing: -.03em; }
+.phone-create__project {
+  position: relative; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; max-width: 60%; padding: 0 12px 0 6px;
+  border-radius: 22px; background: var(--sub); color: var(--t1); font-size: .9375rem;
+}
+.phone-create__project select { min-width: 0; max-width: 100%; appearance: none; border: 0; background: transparent; color: inherit; font: inherit; padding: 0 4px 0 0; text-overflow: ellipsis; }
+.phone-create__tile { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 10px; background: var(--el); font-size: .8125rem; font-weight: 600; flex: none; }
+.phone-create__grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 0; padding: 0; list-style: none; }
+.phone-create__item {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 96px; padding: 10px 4px;
+  border-radius: 20px; background: var(--el); box-shadow: var(--sh-card); font-size: .9375rem; font-weight: 500; color: var(--t1); text-align: center;
+}
+.phone-create__item[aria-disabled="true"] { opacity: .55; }
+.phone-create__item small { font-size: .8125rem; color: var(--t2); font-weight: 400; }
+.proj-index__dms { display: grid; gap: 10px; margin-top: 22px; justify-items: start; }
+.proj-index__dms h2 { margin: 0; font-size: .9375rem; font-weight: 500; color: var(--t2); }
+.proj-index__dms .dm-index { width: 100%; }
 
 /* Home as drawn (#342): no header row on the computer; the name stays for assistive technology. */
 .top.top--bare { height: 0; min-height: 0; padding: 0; margin: 0; border: 0; overflow: visible; }
 .top--bare .top__title { position: static; min-width: 0; }
 .top--bare .top__title h1 { position: absolute; width: 1px; height: 1px; min-width: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .top--bare .top__topic, .top--bare .top__crumb, .top--bare .top__slash, .top--bare .top__right { display: none; }
+.state-row .views__recap { flex: none; margin-left: auto; }
+
+/* On touch, the "Create an account" style link under the form gets a 44 px tall hit area without moving the text (#434). */
+@media (pointer: coarse) {
+  .auth__alt .ui-link { position: relative; }
+  .auth__alt .ui-link::after { content: ""; position: absolute; inset: -13px -4px; }
+}

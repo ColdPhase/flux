@@ -14,7 +14,7 @@ import uuid
 
 from playwright.sync_api import expect, sync_playwright
 
-from test_app_shell import ORIGIN, UPSTREAM, open_details, shot, start_forwarder
+from test_app_shell import ORIGIN, UPSTREAM, open_details, shot, start_forwarder, view_tab
 from test_project_surface import LONG_NAME
 
 
@@ -152,15 +152,13 @@ class ProjectStateJourney(unittest.TestCase):
                 expect(page.locator("#project-composer")).to_have_count(0)
                 expect(page.get_by_role("button", name="Send message", exact=True)).to_have_count(0)
                 if width <= 640:
-                    self.assert_text_is_unclipped(page.locator("header.top .top__audience > span").first)
+                    self.assert_text_is_unclipped(page.locator(".phead__sub").first)
                 else:
                     expect(self.faces(page)).to_be_visible()
                 self.assert_text_is_unclipped(page.locator(".composer__audience > span").first)
                 if width <= 640:
-                    row = page.get_by_role("button", name=re.compile("open project details"))
-                    expect(row).to_contain_text("2 open tasks")
-                    self.assertGreaterEqual(row.bounding_box()["height"], 44)
-                    row.tap()
+                    expect(page.locator(".ws-state-row")).to_have_count(0)
+                    open_details(page, tap=True)
                     panel = page.get_by_role("dialog", name="Details")
                     expect(panel.get_by_role("region", name="Now in this project")).to_contain_text("Open")
                     expect(panel.get_by_role("region", name="Sketches")).to_contain_text("to browse saved sketches")
@@ -175,7 +173,7 @@ class ProjectStateJourney(unittest.TestCase):
                     expect(page.get_by_role("link", name="New conversation", exact=True)).to_have_count(0)
                 self.assertLessEqual(page.locator("body").evaluate("el => el.scrollWidth"), width)
                 shot(page, f"136-state-reader-{width}-{'dark' if dark else 'light'}")
-                page.locator('[data-tab="tasks"]').click()
+                view_tab(page, "Tasks")
                 # A reader's board has no way to add or move a task (#136).
                 expect(page.locator(".tb-card").filter(has_text=task["title"])).to_have_count(1)
                 expect(page.get_by_role("button", name="New Task")).to_have_count(0)
@@ -219,11 +217,6 @@ class ProjectStateJourney(unittest.TestCase):
         reader.keyboard.press("Enter")
         expect(reader.locator(".material-view__body")).to_have_text(material["body"])
         reader.goto(f"/projects/{project['id']}")
-        reader.get_by_role("button", name="Open navigation", exact=True).click()
-        expect(reader.get_by_role("link", name="New conversation", exact=True)).to_have_count(0)
-        # The drawer lists projects, not their conversations; the saved conversation's own URL opens its thread.
-        expect(reader.get_by_role("link", name=re.compile("Sensor calibration plan for the library"))).to_have_count(0)
-        reader.keyboard.press("Escape")
         reader.goto(f"/projects/{project['id']}/conversations/{thread['id']}")
         thread_view = reader.get_by_role("complementary", name="Replies")
         expect(thread_view.locator(".thread__root")).to_contain_text("Sensor calibration plan for the library")
@@ -307,43 +300,11 @@ class ProjectStateJourney(unittest.TestCase):
                     if scale != 1:
                         sizes = {"xs": 12, "sm": 13, "md": 14, "base": 15, "lg": 17, "xl": 20, "2xl": 24}
                         page.add_style_tag(content=":root { " + "; ".join(f"--fs-{key}:{size * scale}px" for key, size in sizes.items()) + "; }")
-                    row = page.get_by_role("button", name=re.compile("open project details"))
-                    expect(row).to_contain_text("1 blocked")
-                    shot(page, f"136-state-blocked-{width}-text-{int(scale * 100)}-{'writer' if who == 'Ada State' else 'reader'}")
-                    # A text assertion alone passes even when the label is past an ellipsis.
-                    # Measure the actual text range against every clipping ancestor and the viewport.
-                    visible = row.evaluate("""(el, text) => {
-                        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-                        let node;
-                        while ((node = walker.nextNode())) {
-                            const at = node.textContent.indexOf(text);
-                            if (at < 0) continue;
-                            const range = document.createRange();
-                            range.setStart(node, at); range.setEnd(node, at + text.length);
-                            const box = range.getBoundingClientRect();
-                            if (box.width <= 0 || box.left < 0 || box.right > innerWidth + 1) continue;
-                            let clipped = false;
-                            for (let parent = node.parentElement; parent; parent = parent.parentElement) {
-                                const style = getComputedStyle(parent), bounds = parent.getBoundingClientRect();
-                                if (['hidden', 'clip', 'auto', 'scroll'].includes(style.overflowX)
-                                    && (box.left < bounds.left - 1 || box.right > bounds.right + 1)) clipped = true;
-                                if (parent === el) break;
-                            }
-                            if (!clipped && [0.1, 0.5, 0.9].every(fraction => {
-                                const hit = document.elementFromPoint(box.left + box.width * fraction, box.top + box.height / 2);
-                                return hit && el.contains(hit);
-                            })) return true;
-                        }
-                        return false;
-                    }""", "1 blocked")
-                    self.assertTrue(visible, "the blocked count must be visibly readable before opening the overview")
-                    self.assertGreaterEqual(row.bounding_box()["height"], 44)
+                    # #341: the phone has no state row; the state is one tap away, in Details from the title's menu.
+                    expect(page.locator(".ws-state-row")).to_have_count(0)
                     self.assertLessEqual(page.locator("body").evaluate("el => el.scrollWidth"), width)
-                    if who == "Ada State":
-                        row.focus()
-                        row.press("Enter")
-                    else:
-                        row.tap()
+                    shot(page, f"136-state-blocked-{width}-text-{int(scale * 100)}-{'writer' if who == 'Ada State' else 'reader'}")
+                    open_details(page, tap=True)
                     panel = page.get_by_role("dialog", name="Details")
                     expect(panel.get_by_role("region", name="Now in this project")).to_contain_text("Blocked")
                     panel.get_by_role("button", name=re.compile("Blocked.*Wait for the calibration sensor")).click()

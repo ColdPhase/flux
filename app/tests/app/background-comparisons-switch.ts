@@ -32,6 +32,9 @@ export interface SwitchState {
   preparedAt: string;
   /** Set by the switched-on journey: the one comparison it paid for. */
   paidResultId?: string;
+  /** Set by background-comparisons-live.ts: the hanging requests it sent after the paid one. */
+  liveRequests?: number;
+  crashCandidateId?: string;
 }
 
 const connectionString = process.env.DATABASE_URL;
@@ -123,7 +126,7 @@ try {
     const rule = (await pool.query<{ status: string; version: number }>('SELECT status, version FROM proactive_comparison_rules WHERE id=$1', [state.ruleId])).rows[0]!;
     assert.equal(rule.status, 'enabled');
     const requestsBefore = await mockRequests();
-    assert.equal(requestsBefore.length, 1, 'only the switched-on comparison reached the provider');
+    assert.equal(requestsBefore.length, 1 + (state.liveRequests ?? 0), 'only the switched-on comparison and the live-stop requests reached the provider');
 
     // A contributor's negative result still creates its candidate (the rule is enabled) ...
     const result = expectStatus(await peer.request('POST', `/api/v1/projects/${state.projectId}/results`, { body: {

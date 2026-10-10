@@ -311,11 +311,10 @@ class SearchJourney(unittest.TestCase):
         for size in (43.5, 43.75, 43.99, 43.9989, 0, -1, float("nan"), float("inf")):
             self.assertFalse(has_minimum_touch_size(size), str(size))
 
-    def test_08_phone_search_from_the_drawer_and_the_page(self) -> None:
+    def test_08_phone_search_from_the_tab_bar_and_the_page(self) -> None:
         page = self.page("nia", phone=True)
         page.goto("/")
-        page.get_by_role("button", name="Open navigation").click()
-        page.get_by_role("dialog", name="Flux").get_by_role("button", name="Search", exact=True).click()
+        page.get_by_role("button", name="Search", exact=True).click()
         dialog = page.get_by_role("dialog", name="Jump to")
         expect(dialog).to_be_visible()
         box = dialog.bounding_box()

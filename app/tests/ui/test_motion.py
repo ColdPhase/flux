@@ -47,13 +47,13 @@ class MotionJourney(unittest.TestCase):
         cls.browser = cls.pw.chromium.launch()
         expect.set_options(timeout=10000)
         for key, name in PEOPLE.items():
-            context = cls.browser.new_context(base_url=ORIGIN)
+            context = cls.browser.new_context(service_workers="block", base_url=ORIGIN)
             response = context.request.post("/api/auth/sign-up/email", data={"email": f"motion-{key}-{STAMP}@example.test", "name": name, "password": PASSWORD}, headers={"origin": ORIGIN})
             assert response.status == 200, response.text()
             cls.ids[key] = context.request.get("/api/v1/me").json()["user"]["id"]
             cls.states[key] = context.storage_state()
             context.close()
-        owner = cls.browser.new_context(base_url=ORIGIN, storage_state=cls.states["ada"])
+        owner = cls.browser.new_context(service_workers="block", base_url=ORIGIN, storage_state=cls.states["ada"])
         post = lambda path, body: cls.post(owner, path, body)
         workspace = post("/api/v1/workspaces", {"name": "Riverside studio"})["id"]
         post(f"/api/v1/workspaces/{workspace}/members", {"email": f"motion-bob-{STAMP}@example.test", "role": "member"})
@@ -89,7 +89,7 @@ class MotionJourney(unittest.TestCase):
         if video and os.environ.get("FLUX_UI_SCREENSHOTS"):
             options["record_video_dir"] = os.environ["FLUX_UI_SCREENSHOTS"]
             options["record_video_size"] = options["viewport"]
-        context = self.browser.new_context(**options)
+        context = self.browser.new_context(service_workers="block", **options)
         self.addCleanup(context.close)
         page = context.new_page()
         errors = []
@@ -98,14 +98,14 @@ class MotionJourney(unittest.TestCase):
         return page
 
     def bob_posts_root(self, body):
-        context = self.browser.new_context(base_url=ORIGIN, storage_state=self.states["bob"])
+        context = self.browser.new_context(service_workers="block", base_url=ORIGIN, storage_state=self.states["bob"])
         try:
             return self.post(context, f"/api/v1/projects/{self.projects[0]}/conversations", {"body": body, "clientMessageId": str(uuid.uuid4())})
         finally:
             context.close()
 
     def bob_replies(self, body):
-        context = self.browser.new_context(base_url=ORIGIN, storage_state=self.states["bob"])
+        context = self.browser.new_context(service_workers="block", base_url=ORIGIN, storage_state=self.states["bob"])
         try:
             return self.post(context, f"/api/v1/conversations/{self.thread['id']}/messages", {"body": body, "clientMessageId": str(uuid.uuid4())})
         finally:
@@ -282,7 +282,8 @@ class MotionJourney(unittest.TestCase):
         tab = page.get_by_role("navigation", name="Project views").get_by_role("link", name="Conversation").bounding_box()
         self.assertTrue(mark and tab and tab["x"] - 1 <= mark["x"] <= tab["x"] + tab["width"])
         shot(page, "motion-zoom-200")
-        phone = self.page(viewport={"width": 390, "height": 844}, scale=3)
+        # Up to 680px the sidebar is still a drawer (the phone itself has none since #341).
+        phone = self.page(viewport={"width": 660, "height": 844}, scale=3)
         phone.goto(f"/projects/{self.projects[2]}")
         phone.get_by_role("button", name="Open navigation").click()
         drawer = phone.locator("#nav-drawer")
@@ -296,7 +297,8 @@ class MotionJourney(unittest.TestCase):
     def test_06b_script_driven_motion_lasts_its_token_in_the_production_build(self):
         # #264: the minifier turns `--dur-3: 200ms` into `.2s`; read as a bare number that made the drawer's
         # slide 0.2 ms long, a jump in one frame. Slowed tenfold so the running animation can be read.
-        phone = self.page(viewport={"width": 390, "height": 844}, scale=3)
+        # Up to 680px the sidebar is still a drawer (the phone itself has none since #341).
+        phone = self.page(viewport={"width": 660, "height": 844}, scale=3)
         phone.goto(f"/projects/{self.projects[2]}")
         cdp = phone.context.new_cdp_session(phone)
         cdp.send("Animation.enable")

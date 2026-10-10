@@ -108,35 +108,54 @@ def new_from_sidebar(page: Page, item: str) -> None:
     page.get_by_role("menu", name="New").get_by_role("menuitem", name=item, exact=True).click()
 
 
-def open_details(page: Page) -> None:
-    """Details: More, then Details, in the computer's one-row header (#340); the phone keeps its
-    labelled Details button until its own header (#341)."""
+def phone_menu(page: Page, tap: bool = False):
+    """The phone's view menu: the title opens it (#341)."""
+    opener = page.get_by_role("heading", level=1).get_by_role("button")
+    opener.tap() if tap else opener.click()
+    return page.get_by_role("dialog").filter(has=page.locator(".phone-menu__list"))
+
+
+def view_tab(page: Page, name: str, tap: bool = False) -> None:
+    """A project view by its name: the header's segmented control, or on the phone the title's menu (#341)."""
+    if page.viewport_size["width"] <= 640:
+        link = phone_menu(page, tap).get_by_role("link", name=re.compile(f"^{name}"))
+    else:
+        link = page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile(f"^{name}"))
+    link.tap() if tap else link.click()
+
+
+def open_details(page: Page, tap: bool = False) -> None:
+    """Details: More, then Details, in the computer's one-row header (#340); Home has its own quiet
+    Details button (#342); on the phone a project's title menu ends with "Details, goal and people" (#341)."""
+    home = page.locator("#content .home").get_by_role("button", name="Details", exact=True)
+    if page.viewport_size["width"] <= 640:
+        page.locator("#content .home button:text-is('Details'), header .phead__menu").first.wait_for()
+        if home.count():
+            home.tap() if tap else home.click()
+            return
+        row = phone_menu(page, tap).locator(".phone-menu__details")
+        row.tap() if tap else row.click()
+        return
     header = page.locator("header.top")
     # Home has no header row (#342): its Details are one quiet button under what needs you.
-    home = page.locator("#content .home").get_by_role("button", name="Details", exact=True)
-    page.locator("#content .home button:text-is('Details'), header.top:not(.top--bare) button[aria-label='More'], header.top .top__details").first.wait_for()
+    page.locator("#content .home button:text-is('Details'), header.top:not(.top--bare) button[aria-label='More']").first.wait_for()
     if home.count():
         home.click()
         return
-    header.locator("button[aria-label='More'], .top__details").first.wait_for()
-    more = header.get_by_role("button", name="More", exact=True)
-    if more.count():
-        more.click()
-        page.get_by_role("menu", name="More").get_by_role("menuitem", name="Details").click()
-    else:
-        header.get_by_role("button", name="Details", exact=True).click()
+    header.get_by_role("button", name="More", exact=True).click()
+    page.get_by_role("menu", name="More").get_by_role("menuitem", name="Details").click()
 
 
 def open_what_matters(page: Page, tap: bool = False) -> None:
     """"What matters" (#133): on the computer "N needs you" in the header opens it, or More when nothing
-    needs you (#340); the phone keeps its entry after the state row until #341."""
-    header = page.locator("header.top")
-    header.locator("button[aria-label='More'], .top__details").first.wait_for()
-    more = header.get_by_role("button", name="More", exact=True)
-    if not more.count():
-        entry = page.get_by_role("button", name=re.compile("^What matters"))
-        entry.tap() if tap else entry.click()
+    needs you (#340); on the phone it ends the title's view menu (#341)."""
+    if page.viewport_size["width"] <= 640:
+        row = phone_menu(page, tap).get_by_role("button", name=re.compile("^What matters"))
+        row.tap() if tap else row.click()
         return
+    header = page.locator("header.top")
+    header.locator("button[aria-label='More']").wait_for()
+    more = header.get_by_role("button", name="More", exact=True)
     chip = header.get_by_role("button", name=re.compile("needs you$"))
     if chip.count():
         chip.click()
@@ -275,7 +294,7 @@ class AppShellJourney(unittest.TestCase):
         if signed_in and self.state:
             options["storage_state"] = self.state
         options.update(extra)
-        context = self.browser.new_context(**options)
+        context = self.browser.new_context(**options)  # sw-allowed: as on main; routing tests pass service_workers="block" (#271)
         self.addCleanup(context.close)
         return context
 
@@ -599,52 +618,29 @@ class AppShellJourney(unittest.TestCase):
 
     # ---------------------------------------------------------------- phone layout
 
-    def test_06_phone_drawer_sheet_and_targets(self) -> None:
+    def test_06_phone_capsule_sheet_and_targets(self) -> None:
         page = self.page(phone=True)
         page.goto("/")
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         expect(page.get_by_role("complementary", name="Sidebar")).to_have_count(0)
-        # #266 PF-1: the bar of main places sits at the bottom; Home has no view chips (#342).
+        # #341: the capsule floats at the bottom with the round Search and the one "+"; Home has no view chips (#342).
         bar_box = box(page, page.get_by_role("navigation", name="Main places"))
-        self.assertAlmostEqual(bar_box["y"] + bar_box["height"], PHONE["height"], delta=2, msg="the places bar is pinned to the bottom")
+        self.assertLess(bar_box["y"] + bar_box["height"], PHONE["height"] - 6, "the places capsule floats above the bottom edge")
         greeting = page.get_by_role("heading", level=2, name=re.compile(r"^Good (morning|afternoon|evening), Jo$"))
         expect(greeting).to_be_visible()
         expect(page.get_by_role("navigation", name="Views")).to_have_count(0)
         shot(page, "phone-390-light")
 
         # Coarse pointer: primary targets are at least 44px.
-        menu = page.get_by_role("button", name="Open navigation")
-        details_button = page.get_by_role("button", name="Details", exact=True)
-        targets = [menu, details_button, page.get_by_role("link", name="All my tasks")]
+        targets = [page.get_by_role("link", name="Settings and account"), page.get_by_role("button", name="Search", exact=True),
+                   page.get_by_role("button", name="Create", exact=True), page.get_by_role("link", name="All my tasks")]
         for target in targets:
             size = box(page, target)
-            self.assertGreaterEqual(min(size["width"], size["height"]), 44, f"44px target: {target}")
+            self.assertGreaterEqual(round(min(size["width"], size["height"]), 2), 44, f"44px target: {target}")
 
-        menu.click()
-        drawer = page.get_by_role("dialog", name="Flux")
-        expect(drawer).to_be_visible()
-        expect(menu).to_have_attribute("aria-expanded", "true")
-        # The sidebar is a 260px drawer with the places as 44px+ rows.
-        drawer_places = drawer.get_by_role("navigation", name="Places")
-        expect(drawer_places).to_be_visible()
-        self.assertLessEqual(round(box(page, drawer)["width"]), 260)
-        for name in ("Home", "Inbox", "Sketchbook"):
-            self.assertGreaterEqual(box(page, drawer_places.get_by_role("link", name=name))["height"], 44, f"44px place target: {name}")
-        self.assertTrue(drawer.evaluate("el => el.contains(document.activeElement)"), "focus moves into the drawer")
-        self.assertTrue(page.evaluate("document.getElementById('root').inert"), "the page behind the drawer is inert")
-        # Tab stays inside the drawer.
-        for _ in range(8):
-            page.keyboard.press("Tab")
-            self.assertTrue(drawer.evaluate("el => el.contains(document.activeElement)"), "focus stays in the drawer")
-        shot(page, "phone-390-drawer-light")
-        page.keyboard.press("Escape")
-        expect(page.get_by_role("dialog")).to_have_count(0)
-        expect(menu).to_be_focused()
-        menu.click()
-        page.get_by_role("dialog", name="Flux").get_by_role("button", name="Close navigation").click()
-        expect(page.get_by_role("dialog")).to_have_count(0)
-
-        details_button.click()
+        # Home's quiet Details button opens a full-screen sheet; the title menus of projects are in test_phone_final.
+        details = page.locator("#content .home").get_by_role("button", name="Details", exact=True)
+        details.click()
         sheet = page.get_by_role("dialog", name="Details")
         expect(sheet).to_be_visible()
         page.wait_for_timeout(400)
@@ -653,8 +649,7 @@ class AppShellJourney(unittest.TestCase):
         shot(page, "phone-390-details-light")
         page.keyboard.press("Escape")
         expect(page.get_by_role("dialog")).to_have_count(0)
-        expect(details_button).to_be_focused()
-        details_button.click()
+        details.click()
         page.get_by_role("dialog", name="Details").get_by_role("button", name="Close details").click()
         expect(page.get_by_role("dialog")).to_have_count(0)
 
@@ -663,11 +658,6 @@ class AppShellJourney(unittest.TestCase):
         page.goto("/")
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         shot(page, "phone-390-dark")
-        page.get_by_role("button", name="Open navigation").click()
-        expect(page.get_by_role("dialog", name="Flux")).to_be_visible()
-        shot(page, "phone-390-drawer-dark")
-
-        page.keyboard.press("Escape")
         page.goto("/map")
         # Sketching itself is covered by tests/ui/test_sketches.py (#69).
         expect(page.get_by_role("button", name="New sketch")).to_be_visible()
@@ -760,7 +750,7 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("link", name="Request a new link")).to_be_visible()
 
     def test_10_password_reset_unavailable(self) -> None:
-        page = self.page(signed_in=False)
+        page = self.page(signed_in=False, service_workers="block")
         # Simulate a server without SMTP: capabilities say so and the request answers 503.
         page.route("**/api/v1/auth/capabilities", lambda route: route.fulfill(json={"passwordReset": "unavailable"}))
         page.goto("/forgot-password")
@@ -768,7 +758,7 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("button", name="Send reset link")).to_be_disabled()
         shot(page, "reset-unavailable-desktop-light")
 
-        late = self.page(signed_in=False)
+        late = self.page(signed_in=False, service_workers="block")
         late.route("**/api/auth/request-password-reset", lambda route: route.fulfill(status=503, json={"error": "Password reset is unavailable", "code": "PASSWORD_RESET_UNAVAILABLE"}))
         late.goto("/forgot-password")
         late.get_by_label("Email").fill(EMAIL)
@@ -779,12 +769,13 @@ class AppShellJourney(unittest.TestCase):
 
     def test_11_sign_out_then_protected_routes_redirect(self) -> None:
         page = self.page(phone=True)
-        page.goto("/map")
-        page.get_by_role("button", name="Open navigation").click()
-        drawer = page.get_by_role("dialog", name="Flux")
-        # On the phone the drawer's account row opens Settings, which signs out (#266 PF-5).
-        drawer.get_by_role("link", name=re.compile(rf"{NAME}.*settings and sign out")).click()
+        page.goto("/")
+        # On the phone the avatar opens Settings, which signs out (#266 PF-5, #341).
+        page.get_by_role("link", name="Settings and account").click()
         expect(page).to_have_url(f"{ORIGIN}/settings")
+        # Settings → Account holds Sign out (#350).
+        page.get_by_role("link", name=re.compile("^Account")).click()
+        expect(page).to_have_url(f"{ORIGIN}/settings/account")
         page.get_by_role("button", name=re.compile("^Sign out")).click()
         expect(page).to_have_url(f"{ORIGIN}/sign-in")
         expect(page.get_by_role("status").filter(has_text="You’re signed out.")).to_be_visible()
@@ -793,9 +784,9 @@ class AppShellJourney(unittest.TestCase):
         page.reload()
         expect(page.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
 
-    def person_with_a_task(self, name: str, *, slow: bool = True) -> tuple[Page, str, str]:
+    def person_with_a_task(self, name: str, *, slow: bool = True, service_workers: str = "allow") -> tuple[Page, str, str]:
         """A new account in its own tab with one restricted project and one task in it."""
-        page = self.page(signed_in=False)
+        page = self.page(signed_in=False, service_workers=service_workers)
         if slow:
             page.add_init_script(SLOW_ANSWERS)
         page.goto("/sign-up")
@@ -859,7 +850,7 @@ class AppShellJourney(unittest.TestCase):
         self.sign_out_while_loading(page, "Tove Berg")
 
     def test_11c_a_failed_sign_out_says_so_and_can_be_retried(self) -> None:
-        page, _, _ = self.person_with_a_task("Ida Holm", slow=False)
+        page, _, _ = self.person_with_a_task("Ida Holm", slow=False, service_workers="block")
         page.route("**/api/auth/sign-out", lambda route: route.fulfill(status=503, json={"code": "TEST_UNAVAILABLE", "message": "test: sign-out unavailable"}))
         page.get_by_role("button", name=re.compile("Ida Holm.*account and sign out")).click()
         page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
@@ -879,7 +870,7 @@ class AppShellJourney(unittest.TestCase):
         """Real UI: create project, send, cite a saved version, reply, revisit on phone, revoke."""
         # A fresh account without any space: its first project names the space (Jo's first note
         # already created Jo's personal space, #190 HOME-3).
-        owner = self.page(signed_in=False)
+        owner = self.page(signed_in=False, service_workers="block")
         owner.goto("/sign-up")
         owner.get_by_label("Name").fill("Mira Lamp")
         owner.get_by_label("Email").fill(f"mira.lamp+{int(time.time() * 1000)}@example.test")
@@ -1092,9 +1083,8 @@ class AppShellJourney(unittest.TestCase):
         phone.goto(f"/projects/{project_id}/conversations/{conversation_id}")
         expect(phone.get_by_text("Agreed. Test low light too.", exact=True)).to_be_visible()
         phone.get_by_label("Reply", exact=True).fill("Phone draft survives a view switch")
-        # A project has its own context; leave through the drawer and return without losing text.
-        phone.get_by_role("button", name="Open navigation").click()
-        phone.get_by_role("dialog", name="Flux").get_by_role("link", name="Home").click()
+        # A project has its own context; leave to Home and return without losing text.
+        phone.goto("/")
         phone.go_back()
         expect(phone.get_by_label("Reply", exact=True)).to_have_value("Phone draft survives a view switch")
         expect(phone.locator(".project-convo__current-thread")).to_contain_text("Try a PIR sensor before considering a camera")

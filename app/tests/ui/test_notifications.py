@@ -5,8 +5,8 @@ application, whose worker turns committed events into notifications. Kai creates
 for Ada through the public API (a question, a reply, a DM, assigned work, a decision to review
 and a mention). Ada finds it from the rail's quiet dot, opens exact sources, marks items read,
 changes preferences, mutes a place, adds and verifies an extra address through Mailpit and uses
-the inbox on a phone. Each step is checked against the API. Screenshots (notifications-*.png)
-go to FLUX_UI_SCREENSHOTS when set.
+the inbox on a phone. Each step is checked against the API. FLUX_UI_BROWSER selects chromium
+(default) or webkit. Screenshots (notifications-*-<browser>.png) go to FLUX_UI_SCREENSHOTS when set.
 """
 
 from __future__ import annotations
@@ -21,7 +21,8 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, MAILPIT, ORIGIN, PHONE, UPSTREAM, box, shot, start_forwarder
+from test_app_shell import DESKTOP, MAILPIT, ORIGIN, PHONE, UPSTREAM, start_forwarder
+from test_settings import UI_BROWSER, assert_touch_target, shot
 
 PASSWORD = "a calm inbox for the garden"
 STAMP = int(time.time() * 1000)
@@ -63,7 +64,7 @@ class NotificationJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=15000)
         contexts: dict[str, BrowserContext] = {}
         for key, (name, email) in PEOPLE.items():
@@ -234,7 +235,26 @@ class NotificationJourney(unittest.TestCase):
         page.goto("/inbox")
         page.get_by_role("navigation", name="Places").get_by_role("link", name="Notification settings").click()
         expect(page).to_have_url(re.compile(r"/settings/notifications$"))
-        expect(page.get_by_role("heading", level=1, name="Notification settings")).to_be_visible()
+        expect(page.get_by_role("heading", level=1, name="Settings")).to_be_visible()
+        expect(page.get_by_role("heading", level=2, name="Notifications")).to_be_visible()
+        # S22: Only "Needs you" by default: push for what needs you, not for replies; Inbox keeps everything.
+        levels = page.get_by_role("radiogroup", name="Notify me about")
+        self.assertEqual([re.sub(r"\s+", " ", text).strip() for text in levels.locator(".sset-row__t").all_inner_texts()], ["Only “Needs you”", "Everything", "Nothing"])
+        expect(levels.get_by_role("radio", name="Only “Needs you”")).to_be_checked()
+        start = self.api(page, "GET", "/api/v1/notification-preferences")
+        self.assertEqual(start["level"], "needsYou")
+        self.assertFalse(start["channels"]["reply"]["push"])
+        levels.get_by_text("Nothing", exact=True).click()
+        prefs = self.settled(page, lambda stored: stored["level"] == "nothing")
+        self.assertTrue(all(choice["inApp"] and not choice["push"] and not choice["email"] for choice in prefs["channels"].values()), "Nothing keeps only the inbox")
+        expect(page.get_by_label("Mentions: Email")).not_to_be_checked()
+        levels.get_by_text("Everything", exact=True).click()
+        prefs = self.settled(page, lambda stored: stored["level"] == "everything")
+        self.assertTrue(all(choice["push"] for choice in prefs["channels"].values()))
+        self.assertTrue(prefs["channels"]["mention"]["email"], "email returns to its defaults after Nothing")
+        levels.get_by_text("Only “Needs you”", exact=True).click()
+        self.settled(page, lambda stored: stored["level"] == "needsYou")
+        expect(levels.get_by_role("radio", name="Only “Needs you”")).to_be_checked()
         replies_email = page.get_by_label("Replies: Email")
         expect(replies_email).not_to_be_checked()
         replies_email.check()
@@ -245,7 +265,11 @@ class NotificationJourney(unittest.TestCase):
         page.get_by_label("Reviews for you: Inbox").uncheck()
         expect(page.get_by_label("Reviews for you: Inbox")).not_to_be_checked()
 
-        page.get_by_label("Hold push and email during quiet hours").check()
+        quiet = page.get_by_role("switch", name="Quiet hours")
+        expect(quiet).to_have_attribute("aria-checked", "false")
+        expect(page.get_by_label("From", exact=True)).to_have_count(0)
+        quiet.click()
+        expect(quiet).to_have_attribute("aria-checked", "true")
         page.get_by_label("From", exact=True).fill("21:30")
         page.get_by_label("Until", exact=True).fill("07:15")
         expect(page.get_by_label("Time zone")).to_have_value("Europe/Warsaw")
@@ -271,6 +295,20 @@ class NotificationJourney(unittest.TestCase):
         page.get_by_label("From", exact=True).fill("21:30")
         page.get_by_label("Until", exact=True).fill("07:15")
         self.settled(page, lambda stored: stored["quietHours"]["start"] == "21:30" and stored["quietHours"]["end"] == "07:15")
+        expect(page.get_by_text("21:30 – 7:15 · Europe/Warsaw")).to_be_visible()
+        # The morning summary (S22): off by default, one push a day at a local time when on.
+        summary = page.get_by_role("switch", name="Morning summary")
+        expect(summary).to_have_attribute("aria-checked", "false")
+        summary.click()
+        page.get_by_label("At", exact=True).fill("08:30")
+        prefs = self.settled(page, lambda stored: stored["morningSummary"] == {"enabled": True, "at": "08:30"})
+        self.assertEqual(prefs["morningSummary"], {"enabled": True, "at": "08:30"})
+        expect(page.get_by_text("One digest at 8:30 instead of single pings")).to_be_visible()
+        page.reload()
+        expect(page.get_by_role("switch", name="Morning summary")).to_have_attribute("aria-checked", "true")
+        page.get_by_role("switch", name="Morning summary").click()
+        self.settled(page, lambda stored: not stored["morningSummary"]["enabled"])
+        expect(page.get_by_label("At", exact=True)).to_have_count(0)
         shot(page, "notifications-desktop-1440-settings")
 
         muted.get_by_role("button", name="Unmute").click()
@@ -316,19 +354,33 @@ class NotificationJourney(unittest.TestCase):
         expect(cards).to_have_count(3)
         self.assertLessEqual(page.evaluate("document.scrollingElement.scrollWidth"), PHONE["width"], "no sideways scroll")
         first = cards.first.get_by_role("button", name=re.compile("^Accept"))
-        self.assertGreaterEqual(box(page, first)["height"], 44)
+        assert_touch_target(self, page, first)
         shot(page, "notifications-phone-390-inbox")
-        page.get_by_role("button", name="Open navigation").tap()
-        drawer_rail = page.get_by_role("dialog").get_by_role("navigation", name="Places")
-        inbox_link = drawer_rail.get_by_role("link", name=re.compile("^Inbox"))
-        expect(inbox_link).to_have_attribute("aria-current", "page")
-        self.assertGreaterEqual(box(page, inbox_link)["height"], 44)
-        page.get_by_role("dialog").get_by_role("link", name="Notification settings").tap()
-        expect(page.get_by_role("heading", level=1, name="Notification settings")).to_be_visible()
+        # The capsule marks the Inbox; Settings are one tap on the avatar away (#341).
+        capsule = page.get_by_role("navigation", name="Main places").get_by_role("link", name=re.compile("^Inbox"))
+        expect(capsule).to_have_attribute("aria-current", "page")
+        assert_touch_target(self, page, capsule)
+        page.get_by_role("link", name="Settings and account").tap()
+        page.get_by_role("link", name=re.compile("^Notifications")).tap()
+        expect(page.get_by_role("heading", level=2, name="Notifications")).to_be_visible()
         self.assertLessEqual(page.evaluate("document.scrollingElement.scrollWidth"), PHONE["width"], "settings fit the phone")
-        check = page.get_by_label("Mentions: Email")
-        self.assertGreaterEqual(box(page, check.locator("xpath=..")).get("height", 0), 44, "44px checkbox target")
+        for control in (page.get_by_role("radiogroup", name="Notify me about").get_by_role("radio").all()
+                        + [page.get_by_role("switch", name="Quiet hours"), page.get_by_role("switch", name="Morning summary")]):
+            assert_touch_target(self, page, control)
+        assert_touch_target(self, page, page.get_by_label("Mentions: Email"))
+        page.get_by_role("heading", level=2, name="Notifications").scroll_into_view_if_needed()
         shot(page, "notifications-phone-390-settings")
+        page.locator(".nset__sec").nth(1).scroll_into_view_if_needed()
+        check = page.get_by_label("Replies: Push")
+        assert_touch_target(self, page, check)
+        # The native input's associated label is the target. Shrinking that target fails
+        # in either dimension even though the surrounding table row stays full height.
+        for dimension in ("width", "height"):
+            style = page.add_style_tag(content=f".nset__check {{ {dimension}: 43.99px !important; }}")
+            with self.assertRaisesRegex(AssertionError, "44 × 44 px touch target"):
+                assert_touch_target(self, page, check)
+            style.evaluate("el => el.remove()")
+        assert_touch_target(self, page, check)
         page.locator(".nset__sec").nth(1).scroll_into_view_if_needed()
         shot(page, "notifications-phone-390-email")
 

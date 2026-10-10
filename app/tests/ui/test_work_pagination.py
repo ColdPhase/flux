@@ -30,7 +30,7 @@ class WorkPaginationJourney(unittest.TestCase):
         expect.set_options(timeout=10000)
         cls.contexts, cls.users, emails = [], [], []
         for name in ("Ada Kowalska", "Ada Nowak"):
-            context = cls.browser.new_context(base_url=ORIGIN)
+            context = cls.browser.new_context(service_workers="block", base_url=ORIGIN)
             email = f"work-pages-{uuid.uuid4()}@example.test"
             api(context, "POST", "/api/auth/sign-up/email", {"name": name, "email": email, "password": "a careful reading corner lamp"})
             cls.contexts.append(context); emails.append(email)
@@ -78,7 +78,7 @@ class WorkPaginationJourney(unittest.TestCase):
         return json.dumps(rows, sort_keys=True)
 
     def page(self, account=0, phone=False):
-        context = self.browser.new_context(base_url=ORIGIN, storage_state=self.states[account],
+        context = self.browser.new_context(service_workers="block", base_url=ORIGIN, storage_state=self.states[account],
             viewport={"width": 412 if phone else 1500, "height": 915 if phone else 900},
             device_scale_factor=3 if phone else 1, is_mobile=phone, has_touch=phone, locale="en-GB")
         self.addCleanup(context.close)
@@ -249,17 +249,10 @@ class WorkPaginationJourney(unittest.TestCase):
         task = api(owner, "POST", f"/api/v1/projects/{project}/work", {"title": "Check the wall socket before installation"}, 201)
         for phone in (False, True):
             page = self.page(phone=phone)
-            # On the phone the state line belongs to the project's Conversation (#266 PF-2).
-            if phone: page.goto(f"/projects/{project}")
-            else: page.goto(f"/projects/{project}/tasks?view=list"); self.ready(page)
-            if phone:
-                state = page.locator(".ws-state-row")
-                expect(state).to_contain_text("1 open task")
-                expect(state).not_to_contain_text("No decisions or work yet")
-                state.tap()
-            else:
-                # The computer's project state is in Details (#340).
-                open_details(page)
+            # The project's state is in Details on the computer (#340) and on the phone (#341, no state row).
+            page.goto(f"/projects/{project}/tasks?view=list") if not phone else page.goto(f"/projects/{project}")
+            if not phone: self.ready(page)
+            open_details(page, tap=phone)
             page.locator("#details").get_by_role("button", name=re.compile(r"Open.*Check the wall socket before installation")).click()
             expect(page.locator("#details").get_by_role("heading", name=task["title"], exact=True)).to_be_visible()
 

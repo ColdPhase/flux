@@ -18,7 +18,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, shot, start_forwarder, view_tab
 
 PASSWORD = "a lamp that reads the room"
 STAMP = int(time.time() * 1000)
@@ -68,7 +68,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
             options.update(viewport=viewport or DESKTOP, device_scale_factor=1)
         if who and who in self.states:
             options["storage_state"] = self.states[who]
-        context = self.browser.new_context(**options)
+        context = self.browser.new_context(service_workers="block", **options)
         self.addCleanup(context.close)
         return context
 
@@ -269,14 +269,17 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(page.locator("header.top").get_by_role("heading", level=1, name="Gesture lamp")).to_be_visible()
         # At 320px the tab strip scrolls sideways; the current tab is brought into view.
         page.set_viewport_size({"width": 320, "height": 640})
-        tabs.get_by_role("link", name=re.compile("^Wiki")).click()
+        view_tab(page, "Wiki")
         expect(page).to_have_url(re.compile(rf"/docs/{self.ids['doc']}$"))
-        current = tabs.get_by_role("link", name=re.compile("^Wiki"))
+        # At 320px the views are in the title's menu (#341): the current one is marked there.
+        page.get_by_role("heading", level=1).get_by_role("button").click()
+        current = page.get_by_role("dialog").get_by_role("link", name=re.compile("^Wiki"))
         expect(current).to_have_attribute("aria-current", "page")
         box = current.bounding_box()
         assert box
         self.assertGreaterEqual(box["x"], 0)
-        self.assertLessEqual(box["x"] + box["width"], 320, "the current tab is visible in the strip")
+        self.assertLessEqual(box["x"] + box["width"], 320, "the current view is visible in the menu")
+        page.keyboard.press("Escape")
 
     # ---------------------------------------------------------------- Details overview
 
@@ -344,14 +347,10 @@ class ProjectSurfaceJourney(unittest.TestCase):
 
     # ---------------------------------------------------------------- phone
 
-    def test_07_phone_collapses_the_state_line_and_keeps_the_audience(self) -> None:
+    def test_07_phone_has_no_state_row_and_keeps_the_people_in_the_title(self) -> None:
         page = self.open_project("ada", phone=True)
-        row = page.get_by_role("button", name=re.compile("open project details"))
-        box = row.bounding_box()
-        assert box
-        self.assertGreaterEqual(box["height"], 44, "state row is one 44px target")
-        self.assertLessEqual(box["height"], 50, "one line")
-        expect(row).to_contain_text("Decision needs you")
+        expect(page.get_by_role("button", name=re.compile("open project details"))).to_have_count(0)
+        expect(page.locator(".ws-state-row")).to_have_count(0)
         # One quiet overflow button per message, in its corner, still a 44 px target.
         message = page.locator(f"#message-{self.ids['m4']}")
         more = message.get_by_role("button", name="Make from this message")
@@ -359,10 +358,10 @@ class ProjectSurfaceJourney(unittest.TestCase):
         assert mbox and bbox
         self.assertGreaterEqual(mbox["height"], 44)
         self.assertLess(mbox["y"] - bbox["y"], 20, "the overflow button sits beside the author, not in a row of its own")
-        expect(page.locator("header.top").get_by_label("Current state")).to_have_count(0)
+        expect(page.locator("header").get_by_label("Current state")).to_have_count(0)
         self.assertLessEqual(page.locator("body").evaluate("el => el.scrollWidth"), PHONE["width"])
         shot(page, "project-conversation-phone-390")
-        row.tap()
+        open_details(page, tap=True)
         sheet = page.get_by_role("dialog", name="Details")
         expect(sheet.get_by_role("region", name="Linked in this conversation").get_by_role("button", name=re.compile("Keep a manual off switch"))).to_be_visible()
         expect(sheet.get_by_role("region", name="Who can see this")).to_contain_text("Nia Okafor")
@@ -370,23 +369,18 @@ class ProjectSurfaceJourney(unittest.TestCase):
         sheet.get_by_role("region", name="Linked in this conversation").get_by_role("button", name=re.compile("Use a ToF sensor")).tap()
         expect(sheet.get_by_role("heading", name="Use a ToF sensor, not the camera, for gestures")).to_be_visible()
         sheet.get_by_role("button", name="Close details").tap()
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).tap()
+        view_tab(page, "Map", tap=True)
         expect(page.get_by_role("list", name="Sketches in Gesture lamp")).to_be_visible()
         shot(page, "project-map-phone-390")
 
-        # A title too long for the phone truncates; its audience stays visible and opens the people.
+        # A title too long for the phone truncates; the people stay in the line under it, and Details lists them.
         page.goto(f"/projects/{self.ids['long_project']}")
-        title = page.locator("header.top h1")
+        title = page.locator("header h1 .phead__name")
         expect(title).to_have_text(LONG_NAME)
         self.assertTrue(title.evaluate("el => el.scrollWidth > el.clientWidth"), "the long title truncates")
-        audience = page.locator("header.top .top__audience")
-        expect(audience).to_be_visible()
-        expect(audience).to_contain_text("Jonas and you · only you two")
-        abox = audience.bounding_box()
-        assert abox
-        self.assertLessEqual(abox["x"] + abox["width"], PHONE["width"])
+        expect(page.locator("header .phead__sub")).to_contain_text("2 people")
         shot(page, "project-long-title-phone-390")
-        audience.tap()
+        open_details(page, tap=True)
         expect(page.get_by_role("dialog", name="Details").get_by_role("region", name="Who can see this")).to_contain_text("Jonas Berg")
 
 
@@ -399,23 +393,13 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(row).to_have_count(1)
         pill = row.evaluate("""el => {
           const r = el.getBoundingClientRect(), box = el.closest('.side__scroll').getBoundingClientRect();
-          return { inside: r.left >= box.left - 1 && r.right <= box.right + 1, raised: getComputedStyle(el).boxShadow !== 'none' };
+          // The open row takes no shadow while the traveling highlight stands in for it (.side__list.has-glide): the pill is the highlight.
+          const pill = el.closest('.side__list').querySelector('.side__glide');
+          return { inside: r.left >= box.left - 1 && r.right <= box.right + 1, raised: getComputedStyle(pill).boxShadow !== 'none' };
         }""")
         self.assertTrue(pill["raised"], "the current project is a raised pill (F-026 §4)")
         self.assertTrue(pill["inside"], f"the pill lies inside the sidebar's scroll box: {pill}")
-        # On a phone every sidebar control is a 44px target: +, Search, places and projects.
-        phone = self.open_project("ada", phone=True)
-        phone.get_by_role("button", name="Open navigation").tap()
-        drawer = phone.get_by_role("dialog")
-        expect(drawer.locator(".side__project.is-open")).to_be_visible()
-        targets = [drawer.get_by_role("link", name="New project"), drawer.get_by_role("link", name="New message"),
-                   drawer.locator(".side__search"), drawer.get_by_role("link", name="Home"), drawer.locator(".side__project.is-open")]
-        # One project conversation (UI116-1): the sidebar lists no conversation threads under the project.
-        expect(drawer.locator(".side__thread")).to_have_count(0)
-        for target in targets:
-            box = target.bounding_box()
-            assert box
-            self.assertGreaterEqual(box["height"], 44, f"touch target: {target}")
+        # The phone has no sidebar since #341: its places and 44px targets are covered by test_phone_final.
 
     def test_07c_a_keyboard_focus_ring_on_a_view_tab_is_whole(self) -> None:
         """#184 delta review S4: the tab strip scrolls sideways and clips anything outside it."""
@@ -470,10 +454,9 @@ class ProjectSurfaceJourney(unittest.TestCase):
     # ---------------------------------------------------------------- private native work drafts (#155)
 
     def tasks(self, page: Page, project: str | None = None) -> None:
-        link = page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks"))
-        if project:
-            expect(link).to_have_attribute("href", re.compile(rf"^/projects/{project}/tasks"))
-        link.click()
+        if project and page.viewport_size["width"] > 640:
+            expect(page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks"))).to_have_attribute("href", re.compile(rf"^/projects/{project}/tasks"))
+        view_tab(page, "Tasks")
         # The List holds the private "New task" draft field; Kanban is the default view (#136).
         page.get_by_role("radio", name="List", exact=True).click()
         expect(page.get_by_label("New task", exact=True)).to_be_visible()

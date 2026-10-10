@@ -262,12 +262,16 @@ class ScenarioJourney:
             expect(page.get_by_role("dialog", name="Details")).to_have_count(0)
 
     def go_to_place(self, page: Page, name: str) -> None:
-        """A main place. Phones have them in the bottom bar (#266 PF-1: Home, Inbox, Messages, Projects); the
-        desktop sidebar has Home, Inbox and Direct messages under Places, and the projects themselves."""
+        """A main place. Phones have them in the capsule (#341: Home, Projects, Inbox; Messages are inside
+        Projects); the desktop sidebar has Home, Inbox and Direct messages under Places, and the projects themselves."""
         if self.phone:
             bar = page.get_by_role("navigation", name="Main places")
-            bar.get_by_role("link", name=re.compile(f"^{name}")).tap()
-            expect(bar.get_by_role("link", name=re.compile(f"^{name}"))).to_have_attribute("aria-current", "page")
+            tab = "Projects" if name == "Messages" else name
+            bar.get_by_role("link", name=re.compile(f"^{tab}")).tap()
+            expect(bar.get_by_role("link", name=re.compile(f"^{tab}"))).to_have_attribute("aria-current", "page")
+            if name == "Messages":
+                # The list of direct messages, with its empty state, is one page the phone reaches from Projects.
+                page.goto("/dm")
         else:
             (page.locator("#side-dms").get_by_role("link", name="Messages", exact=True) if name == "Messages" else page.get_by_role("navigation", name="Places").get_by_role("link", name=re.compile(f"^{name}"))).click()
 
@@ -418,10 +422,7 @@ class ScenarioJourney:
 
         # She adds the others to the space by email (Home → Details → People).
         page.goto("/")
-        if self.phone:
-            self.tap(page.get_by_role("button", name="Details", exact=True))
-        else:
-            open_details(page)
+        open_details(page, tap=self.phone)
         self.tap(page.get_by_role("region", name="People").get_by_role("button", name=re.compile(f"^{WORKSPACE}")))
         expect(page.get_by_role("heading", name="People", exact=True)).to_be_visible()
         for key in ("jonas", "mia", "lee"):
@@ -434,7 +435,10 @@ class ScenarioJourney:
 
         # Marketplace is for all four: Jonas and Lee write, Mia reads.
         page.goto(f"/projects/{market}")
-        self.tap(page.locator(".top__audience"))
+        if self.phone:
+            open_details(page, tap=True)
+        else:
+            self.tap(page.locator(".top__audience"))
         for key, read_only in (("jonas", False), ("mia", True), ("lee", False)):
             self.give_access(page, key, read_only)
         grants = {grant["principal"]["id"]: grant["role"] for grant in self.api("ada", "GET", f"/api/v1/projects/{market}/grants", status=200)}
@@ -854,7 +858,7 @@ class ScenarioJourney:
         title = f"Decision to review: {D2}"
         self.wait_for("Jonas's review notification", lambda: title in self.inbox_titles("jonas"))
         jonas = self.page("jonas")
-        jonas.goto(f"/projects/{lamp}")
+        jonas.goto("/" if self.phone else f"/projects/{lamp}")  # a phone conversation has no tab bar (#341)
         self.go_to_place(jonas, "Inbox")
         expect(jonas.get_by_role("heading", level=1, name="Inbox")).to_be_visible()
         # The proposal waits in the one queue; its title opens it in the detail panel or sheet (#342).
@@ -987,8 +991,7 @@ class ScenarioJourney:
         # Search: Jump to, then the full results, find the run, the result, the page and the map.
         page.goto(f"/projects/{lamp}")
         if self.phone:
-            page.get_by_role("button", name="Open navigation").tap()
-            page.get_by_role("dialog", name="Flux").get_by_role("button", name="Search", exact=True).tap()
+            page.get_by_role("button", name="Search", exact=True).tap()
         else:
             expect(page.get_by_role("button", name="Search", exact=True)).to_be_visible()
             page.keyboard.press("Control+k")
@@ -1047,7 +1050,10 @@ class ScenarioJourney:
 
         # Mia may follow the lamp project read-only.
         page.goto(f"/projects/{lamp}")
-        self.tap(page.locator(".top__audience"))
+        if self.phone:
+            open_details(page, tap=True)
+        else:
+            self.tap(page.locator(".top__audience"))
         self.give_access(page, "mia", read_only=True)
         self.assertEqual(self.api("mia", "GET", f"/api/v1/projects/{lamp}", status=200)["access"], "viewer")
         d3 = self.api("ada", "POST", f"/api/v1/projects/{lamp}/decisions", {"title": D3}, status=201)

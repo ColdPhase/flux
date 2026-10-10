@@ -49,14 +49,14 @@ class DirectMessageJourney(unittest.TestCase):
         expect.set_options(timeout=10000)
         # Accounts and the shared workspace come from the public API, as a person's browser would.
         for key, (name, email) in PEOPLE.items():
-            context = cls.browser.new_context(base_url=ORIGIN)
+            context = cls.browser.new_context(service_workers="block", base_url=ORIGIN)
             response = context.request.post("/api/auth/sign-up/email", data={"email": email, "password": PASSWORD, "name": name}, headers={"origin": ORIGIN})
             assert response.status == 200, response.text()
             me = context.request.get("/api/v1/me").json()
             cls.ids[key] = me["user"]["id"]
             cls.states[key] = context.storage_state()
             context.close()
-        ada = cls.browser.new_context(base_url=ORIGIN, storage_state=cls.states["ada"])
+        ada = cls.browser.new_context(service_workers="block", base_url=ORIGIN, storage_state=cls.states["ada"])
         post = lambda path, body: ada.request.post(path, data=body, headers={"origin": ORIGIN})  # noqa: E731
         workspace = post("/api/v1/workspaces", {"name": "Riverside Makers"})
         assert workspace.status == 201, workspace.text()
@@ -80,7 +80,7 @@ class DirectMessageJourney(unittest.TestCase):
             options.update(viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
         else:
             options.update(viewport=DESKTOP, device_scale_factor=1)
-        context = self.browser.new_context(**options)
+        context = self.browser.new_context(service_workers="block", **options)
         self.addCleanup(context.close)
         return context
 
@@ -238,16 +238,16 @@ class DirectMessageJourney(unittest.TestCase):
     def test_05_phone_reads_and_replies_with_the_audience_in_view(self) -> None:
         page = self.page("kai", phone=True)
         page.goto("/")
-        page.get_by_role("button", name="Open navigation").click()
-        page.get_by_role("dialog").locator("#side-dms").get_by_role("link", name="Messages", exact=True).click()
-        expect(page).to_have_url(f"{ORIGIN}/dm")
-        expect(page.get_by_role("list", name="Conversations").get_by_role("link", name=re.compile("Ada Kowalska"))).to_be_visible()
-        shot(page, "dm-phone-390-index")
-        page.get_by_role("button", name="Open navigation").click()
-        drawer = page.get_by_role("dialog")
-        expect(drawer.get_by_role("link", name=re.compile("Ada Kowalska"))).to_be_visible()
-        shot(page, "dm-phone-390-drawer")
-        drawer.get_by_role("link", name=re.compile("Ada Kowalska")).click()
+        # Direct messages live inside Projects on the phone (#341): no Messages tab, no drawer.
+        bar = page.get_by_role("navigation", name="Main places")
+        expect(bar.get_by_role("link", name="Messages")).to_have_count(0)
+        bar.get_by_role("link", name="Projects").click()
+        expect(page).to_have_url(f"{ORIGIN}/projects")
+        expect(page.get_by_role("heading", name="Direct messages")).to_be_visible()
+        row = page.get_by_role("list", name="Conversations").get_by_role("link", name=re.compile("Ada Kowalska"))
+        expect(row).to_be_visible()
+        shot(page, "dm-phone-390-projects")
+        row.click()
         expect(page).to_have_url(f"{ORIGIN}{self.dm_path}")
         expect(page.get_by_role("heading", level=1, name="Ada Kowalska")).to_be_visible()
         expect(page.locator(".composer__audience")).to_contain_text("Only you and Ada")

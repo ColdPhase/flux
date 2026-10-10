@@ -18,7 +18,7 @@ import uuid
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 from author_columns import assert_author_column
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, shot, start_forwarder, view_tab
 
 PASSWORD = "decisions need reasons"
 STAMP = int(time.time() * 1000)
@@ -296,7 +296,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         shot(page, "work-phone-390-details")
         sheet.get_by_role("button", name="Close details").tap()
         expect(message.get_by_role("button", name=f"Work: {FINDING}")).to_be_visible()
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name="Tasks").tap()
+        view_tab(page, "Tasks", tap=True)
         expect(page.get_by_role("region", name=re.compile("^Open"))).to_contain_text(FINDING)
         shot(page, "tasks-phone-390")
         titles = [item["title"] for item in self.work(page)["work"]]
@@ -392,15 +392,15 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(sheet.get_by_role("heading", name=mine)).to_be_visible()
         sheet.get_by_role("button", name="Close details").tap()
         expect(blocked).to_have_attribute("aria-pressed", "true")
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name="Conversation").tap()
+        view_tab(page, "Conversation", tap=True)
         # The Conversation tab opens the newest conversation, which is the task thread that the earlier result opened (#154).
         expect(page.locator(".project-convo__message-list")).to_be_visible()
         page.go_back()
         expect(page.get_by_role("navigation", name="Task views").get_by_role("button", name=re.compile("^Blocked"))).to_have_attribute("aria-pressed", "true")
         expect(page.get_by_role("navigation", name="Task views").get_by_label("Only mine")).to_be_checked()
         # The Tasks tab itself also returns to the chosen view.
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name="Conversation").tap()
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks")).tap()
+        view_tab(page, "Conversation", tap=True)
+        view_tab(page, "Tasks", tap=True)
         # The outgoing Tasks DOM can remain while the requested route loads.
         # Check the completed destination before treating its retained controls as proof.
         expect(page).to_have_url(re.compile(r"/tasks\?(?=[^#]*status=blocked)(?=[^#]*show=mine)"))
@@ -510,9 +510,9 @@ class WorkDecisionsJourney(unittest.TestCase):
         saved = pane.evaluate("(el) => el.scrollTop")
         self.assertGreater(saved, 600, "the list is long enough to scroll")
         # Through the Conversation tab and back through the Tasks tab.
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Conversation")).tap()
+        view_tab(page, "Conversation", tap=True)
         expect(page.locator(".project-convo__message-list")).to_be_visible()
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks")).tap()
+        view_tab(page, "Tasks", tap=True)
         expect(page.get_by_role("navigation", name="Task views").get_by_role("button", name=re.compile("^Blocked"))).to_have_attribute("aria-pressed", "true")
         page.wait_for_timeout(300)
         self.assertLess(abs(page.locator(".pane-scroll").first.evaluate("(el) => el.scrollTop") - saved), 8, "the Tasks tab returns to the same reading position")

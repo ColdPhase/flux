@@ -66,7 +66,7 @@ class ReturnViewJourney(unittest.TestCase):
             options.update(viewport=DESKTOP, device_scale_factor=1)
         if who and who in self.states:
             options["storage_state"] = self.states[who]
-        context = self.browser.new_context(**options)
+        context = self.browser.new_context(service_workers="block", **options)
         self.addCleanup(context.close)
         return context
 
@@ -423,7 +423,7 @@ class ReturnViewJourney(unittest.TestCase):
                          "viewport": viewport, "device_scale_factor": 3 if phone else 1, "storage_state": self.states[who]}
         if phone:
             options.update(is_mobile=True, has_touch=True)
-        context = self.browser.new_context(**options)
+        context = self.browser.new_context(service_workers="block", **options)
         self.addCleanup(context.close)
         page = context.new_page()
         errors: list[str] = []
@@ -625,10 +625,13 @@ class ReturnViewJourney(unittest.TestCase):
         assert arrow
         self.assertGreaterEqual(arrow["height"], 43.5, "touch target")
         page.goto(f"/projects/{self.project_id}/conversations/{self.conversation_id}")
-        entry = page.get_by_role("button", name=re.compile("^What matters"))
+        # #341: "What matters" is the last row of the title's view menu, a 44px row.
+        page.get_by_role("heading", level=1).get_by_role("button").tap()
+        entry = page.get_by_role("dialog").get_by_role("button", name=re.compile("^What matters"))
         box = entry.bounding_box()
         assert box is not None
         self.assertGreaterEqual(min(box["width"], box["height"]), 43.5, "touch target")
+        page.keyboard.press("Escape")
         self.no_horizontal_scroll(page)
         shot(page, "recap-project-phone-390-closed")
         panel = self.open_recap(page, tap=True)
@@ -675,7 +678,6 @@ class ReturnViewJourney(unittest.TestCase):
         page.evaluate("document.documentElement.style.fontSize = ''")
         panel.get_by_role("button", name="I have the context").tap()
         expect(sheet).to_have_count(0)
-        expect(entry).to_be_focused()
 
     def test_09b_dark_renders_of_the_panel(self) -> None:
         """What matters in the dark theme at 1440x900 and 390x844, with the digest open."""

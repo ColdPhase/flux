@@ -1,11 +1,14 @@
 import {
   EMAIL_DESTINATIONS,
   MAX_NOTIFICATION_PAUSE_HOURS,
+  NEEDS_YOU_REASONS,
   NOTIFICATION_CHANNELS,
+  NOTIFICATION_LEVELS,
   NOTIFICATION_REASONS,
   type ChannelChoice,
   type EmailDestination,
   type NotificationChannel,
+  type NotificationLevel,
   type NotificationReason,
   type UpdateNotificationPreferencesCommand,
 } from '@flux/contracts';
@@ -16,15 +19,16 @@ import type { PreferenceRepository, PreferenceStore } from './ports.js';
 // quiet hours in the person's own time zone and the email addresses a destination selects.
 
 /**
- * Defaults: every reason reaches the inbox and push (push still needs the person to turn it on
- * for a device). Email starts only for what is addressed to you personally — mentions,
- * questions and direct messages — and goes to the sign-in address until the person chooses.
+ * Defaults: Only "Needs you" (F-026 S22). Every reason reaches the inbox; push is on for the
+ * reasons that need you (push still needs the person to turn it on for a device), not for
+ * replies. Email starts only for what is addressed to you personally — mentions, questions and
+ * direct messages — and goes to the sign-in address until the person chooses.
  */
 export const DEFAULT_CHANNELS: Record<NotificationReason, ChannelChoice> = {
   mention: { inApp: true, push: true, email: true },
   question: { inApp: true, push: true, email: true },
   dm: { inApp: true, push: true, email: true },
-  reply: { inApp: true, push: true, email: false },
+  reply: { inApp: true, push: false, email: false },
   assigned: { inApp: true, push: true, email: false },
   review: { inApp: true, push: true, email: false },
   // A live invitation is quiet: inbox and push, never email by default and never a ringing call.
@@ -42,6 +46,9 @@ export interface StoredPreferences {
   timeZone: string;
   /** Focus mode: push and email wait until this instant (F-026 S19). */
   pausedUntil: Date | null;
+  /** The morning summary (S22), at `summaryAt` minutes after local midnight in `timeZone`. */
+  summaryEnabled: boolean;
+  summaryAt: number;
 }
 
 export const DEFAULT_PREFERENCES: StoredPreferences = {
@@ -52,9 +59,37 @@ export const DEFAULT_PREFERENCES: StoredPreferences = {
   quietEnd: 7 * 60,
   timeZone: 'UTC',
   pausedUntil: null,
+  summaryEnabled: false,
+  summaryAt: 9 * 60,
 };
 
-export function channelsOf(stored: StoredPreferences): Record<NotificationReason, ChannelChoice> {
+const NEEDS_YOU = new Set<NotificationReason>(NEEDS_YOU_REASONS);
+
+/**
+ * The channels a level gives every reason: the inbox always; push for the reasons that need you
+ * (or every reason, or none); email as before, except none at "Nothing". Coming back from
+ * "Nothing", email returns to its defaults.
+ */
+export function channelsForLevel(level: NotificationLevel, current: Record<NotificationReason, ChannelChoice>): Record<NotificationReason, ChannelChoice> {
+  const emailOff = NOTIFICATION_REASONS.every((reason) => !current[reason].email);
+  const result = {} as Record<NotificationReason, ChannelChoice>;
+  for (const reason of NOTIFICATION_REASONS) {
+    const push = level === 'everything' || (level === 'needsYou' && NEEDS_YOU.has(reason));
+    const email = level === 'nothing' ? false : emailOff ? DEFAULT_CHANNELS[reason].email : current[reason].email;
+    result[reason] = { inApp: true, push, email };
+  }
+  return result;
+}
+
+/** Which level the channels match: by push, with "Nothing" also meaning no email. */
+export function levelOf(channels: Record<NotificationReason, ChannelChoice>): NotificationLevel | 'custom' {
+  if (NOTIFICATION_REASONS.every((reason) => !channels[reason].push && !channels[reason].email)) return 'nothing';
+  if (NOTIFICATION_REASONS.every((reason) => channels[reason].push)) return 'everything';
+  if (NOTIFICATION_REASONS.every((reason) => channels[reason].push === NEEDS_YOU.has(reason))) return 'needsYou';
+  return 'custom';
+}
+
+export function channelsOf(stored: Pick<StoredPreferences, 'channels'>): Record<NotificationReason, ChannelChoice> {
   const result = {} as Record<NotificationReason, ChannelChoice>;
   for (const reason of NOTIFICATION_REASONS) result[reason] = { ...DEFAULT_CHANNELS[reason], ...stored.channels[reason] };
   return result;
@@ -76,9 +111,9 @@ export function isTimeZone(value: unknown): value is string {
 
 const HHMM = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
-export function parseClock(value: unknown, field: string): number {
+export function parseClock(value: unknown, field: string, code = 'INVALID_QUIET_HOURS'): number {
   const match = typeof value === 'string' ? HHMM.exec(value) : null;
-  if (!match) throw new InvalidInputError(`${field} must be a time such as "22:00"`, 'INVALID_QUIET_HOURS');
+  if (!match) throw new InvalidInputError(`${field} must be a time such as "22:00"`, code);
   return Number(match[1]) * 60 + Number(match[2]);
 }
 
@@ -90,6 +125,10 @@ export function formatClock(minutes: number) {
 export function applyPreferenceChange(current: StoredPreferences, command: UpdateNotificationPreferencesCommand, now = new Date()): StoredPreferences {
   if (!command || typeof command !== 'object') throw new InvalidInputError('A change is required');
   const next: StoredPreferences = { ...current, channels: { ...current.channels } };
+  if (command.level !== undefined) {
+    if (!(NOTIFICATION_LEVELS as readonly string[]).includes(command.level)) throw new InvalidInputError('level must be needsYou, everything or nothing', 'INVALID_LEVEL');
+    next.channels = channelsForLevel(command.level, channelsOf(current));
+  }
   if (command.channels !== undefined) {
     if (!command.channels || typeof command.channels !== 'object') throw new InvalidInputError('channels must be an object', 'INVALID_CHANNELS');
     for (const [reason, choice] of Object.entries(command.channels)) {
@@ -123,6 +162,15 @@ export function applyPreferenceChange(current: StoredPreferences, command: Updat
     if (next.quietEnabled && next.quietStart === next.quietEnd) throw new InvalidInputError('Quiet hours need different start and end times', 'INVALID_QUIET_HOURS');
   }
   if (command.pause !== undefined) next.pausedUntil = parsePause(command.pause, now);
+  const summary = command.morningSummary;
+  if (summary !== undefined) {
+    if (!summary || typeof summary !== 'object') throw new InvalidInputError('morningSummary must be an object', 'INVALID_MORNING_SUMMARY');
+    if (summary.enabled !== undefined) {
+      if (typeof summary.enabled !== 'boolean') throw new InvalidInputError('morningSummary.enabled must be true or false', 'INVALID_MORNING_SUMMARY');
+      next.summaryEnabled = summary.enabled;
+    }
+    if (summary.at !== undefined) next.summaryAt = parseClock(summary.at, 'morningSummary.at', 'INVALID_MORNING_SUMMARY');
+  }
   return next;
 }
 

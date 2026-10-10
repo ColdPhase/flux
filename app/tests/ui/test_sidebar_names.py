@@ -72,7 +72,8 @@ class SidebarNames(unittest.TestCase):
             ws = self.api(page, "POST", "/api/v1/workspaces", {"name": workspace})
             for name in (SHORT, LONG):
                 self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": name, "visibility": "restricted"})
-        for phone, dark in ((False, False), (True, False), (False, True), (True, True)):
+        # The phone has no sidebar since #341; the 44px rows of its Projects list are in test_phone_final.
+        for phone, dark in ((False, False), (False, True)):
             view = self.page(phone=phone, dark=dark)
             view.goto("/")
             if phone:
