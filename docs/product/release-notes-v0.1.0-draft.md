@@ -1,10 +1,10 @@
 # Flux v0.1.0 release notes (draft)
 
 > **Draft, not a release.** Drafted on 2026-10-10 from `main` at `05f89591` for L-3 of the
-> [launch plan](launch-v0.1.md) ([#307](https://github.com/ColdPhase/flux/issues/307)).
+> [launch plan](launch-v0.1.md) ([#307](https://github.com/ColdPhase/flux/issues/307), open until the candidate is accepted and these notes are final).
 > Finalise it against the accepted candidate and the
 > [#249](https://github.com/ColdPhase/flux/issues/249) report: every statement below must be
-> restated at the candidate, and anything the report leaves open moves to the known limits.
+> restated at the candidate; only independently recorded scope exclusions or accepted residual limitations may be listed as known limits, and an incomplete required outcome (such as #228, #231, #238, #314 or mobile acceptance) blocks candidate acceptance and publication until it is fixed and verified.
 > The [acceptance matrix](../agents/release-acceptance/v0.1.0-rc.1.md) still proposes the first
 > tag as `v0.1.0-rc.1`; a stable `v0.1.0` follows an rc that passed.
 >
@@ -198,10 +198,10 @@ Flux has exactly two AI modes ([F-022](decisions.md), [AI modes](ai-modes.md)).
 - Live media is a separate overlay (`docker/compose.live.yaml`) and is not part of the release's
   operator `compose.yaml` yet.
 
-### Open at the candidate (from the #249 report)
+### Accepted residual limitations at the candidate (from the #249 report)
 
 > **Placeholder.** Fill in from the [#249](https://github.com/ColdPhase/flux/issues/249) report
-> at the accepted candidate: each item left open, its issue and what a person sees.
+> at the accepted candidate: each independently recorded scope exclusion or accepted residual limitation, its issue and what a person sees; an open required outcome is never listed here, because it blocks candidate acceptance and publication until it is fixed and verified.
 >
 > - `<item>` ([#N](https://github.com/ColdPhase/flux/issues/N)): `<effect>`
 
