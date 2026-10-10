@@ -245,13 +245,23 @@ class MapConnectJourney(unittest.TestCase):
                     expect(page.get_by_role('button', name=re.compile('connected thought|thought connected'))).to_have_count(0)
                 undo = page.get_by_role('button', name='Undo', exact=True)
                 expect(undo).to_be_visible()
-                self.assertGreaterEqual(undo.bounding_box()['height'], 43.5)
+                if solo:
+                    page.get_by_role('button', name='Add a thought', exact=True).tap()
+                    page.get_by_label('Thought text').fill('Keep this private thought while Undo restores the map')
+                    expect(undo).to_have_text('Undo last saved change')
+                self.assertGreaterEqual(undo.evaluate('el => el.offsetHeight'), 44)
+                self.assertGreaterEqual(undo.bounding_box()['height'], 44 - 1 / 64)
                 undo.tap()
                 expect(page.locator('.sk-node')).to_have_count(1 if solo else 3)
                 after = self.eventually(page, sketch, lambda s: len(s['thoughts']) == len(before['thoughts']))
                 key = lambda t: (t['id'], t['text'])
                 self.assertEqual(sorted(map(key, after['thoughts'])), sorted(map(key, before['thoughts'])), 'the exact ID and text return')
                 self.assertEqual(sorted((l['fromId'], l['toId']) for l in after['links']), sorted((l['fromId'], l['toId']) for l in before['links']), 'incident links return')
+                if solo:
+                    draft = page.get_by_role('form', name='New thought draft')
+                    expect(draft.get_by_label('Thought text')).to_have_value('Keep this private thought while Undo restores the map')
+                    draft.get_by_role('button', name='Cancel', exact=True).tap()
+                    self.assertEqual(self.stored(page, sketch), after, 'Undo and Cancel never publish the private draft')
 
     def test_07_desktop_undo_and_a_fresh_map(self):
         page = self.page(COMPUTER)

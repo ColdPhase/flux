@@ -360,6 +360,7 @@ span.sk-li-img { width: 160px; height: 96px; }
 /* The inset also keeps fractional-height borders inside WebKit's integer scroll clip. */
 .sk-composition { position: absolute; z-index: 8; width: min(440px, calc(100% - 28px)); max-height: calc(100% - 28px); padding: 1px; overflow: auto; }
 .sk-composition .sk-draft { margin: 0; box-shadow: var(--sh-pop); }
+.sk-composition .sk-undo { margin-top: 8px; }
 .sk-over .sk-edit-controls { margin: 0; }
 .sk--map .sk-first { position: absolute; left: 50%; top: 42%; z-index: 6; margin: 0; transform: translateX(-50%); text-align: center; pointer-events: none; }
 .sk-dock { position: absolute; left: 0; right: 0; bottom: 16px; z-index: 7; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 0 12px; pointer-events: none; }

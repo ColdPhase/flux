@@ -745,6 +745,9 @@ export function SketchMap(props: SketchMapProps) {
       }}><Icon name="more" size={16} />Map options</button> : null}
       {hasComposition ? <div ref={compositionRef} className="sk-composition" style={compact ? undefined : { left: compositionPosition?.left ?? 14, top: compositionPosition?.top ?? 14, visibility: compositionPosition ? undefined : 'hidden' }}>
         {props.draftEditor}
+        {compact && canWrite && props.bar.canUndo ? <button type="button" className="sk-undo" aria-label="Undo" onClick={props.bar.onUndo}>
+          <Icon name="undo" size={16} />Undo last saved change
+        </button> : null}
         {compact ? props.hint : null}
       </div> : null}
       {compact && !hasComposition ? (
