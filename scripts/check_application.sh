@@ -76,6 +76,8 @@ fi
 
 # Service worker registration, offline fallback and the update prompt in Chromium over HTTPS.
 run_browser e2e
+# The same service worker journey in WebKit (#20 MOB-1/MOB-5 engine lane; Safari is a required target).
+run_browser -e FLUX_E2E_BROWSER=webkit e2e
 
 # The update prompt (#20): a fresh install, a second tab and a fresh profile show none; a changed worker shows it. Chromium and WebKit.
 run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/pwa-update.e2e.ts
