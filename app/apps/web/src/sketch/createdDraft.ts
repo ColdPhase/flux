@@ -75,8 +75,16 @@ function validFile(file: unknown): boolean {
 const PREFIX = 'flux:thought-draft:';
 const UNUSED = 'flux:thought-unused:';
 const unusedKey = (key: string, id: string) => `${UNUSED}${key.slice(PREFIX.length)}:${id}`;
+// Fresh IDs whose proof never existed may save in memory even with blocked storage.
+// A proof loaded or issued in this visit must instead be retired before dispatch.
+const potentiallyUnused = new Set<string>();
 const hasUnusedProof = (key: string, row: DraftLine | ThoughtDraft) => {
-  try { return sessionStorage.getItem(unusedKey(key, row.id)) === row.key; } catch { return false; }
+  try {
+    const proof = unusedKey(key, row.id);
+    const value = sessionStorage.getItem(proof);
+    if (value !== null) potentiallyUnused.add(proof);
+    return value === row.key;
+  } catch { return false; }
 };
 const rows = (draft: ThoughtDraft) => draft.lines ?? [draft];
 const canonical = (attempt: DraftAttempt) => JSON.stringify({ key: attempt.key, parentId: attempt.parentId, linkId: attempt.linkId,
@@ -129,7 +137,11 @@ export function writeThoughtDraft(key: string, draft: ThoughtDraft | null, gener
     if (draft) {
       sessionStorage.setItem(key, JSON.stringify(draft));
       // Never issue unused authorization for an unknown restore or an earlier attempt.
-      for (const row of rows(draft)) if (!row.attempt && !row.unknown && draft.tracked) sessionStorage.setItem(unusedKey(key, row.id), row.key);
+      for (const row of rows(draft)) if (!row.attempt && !row.unknown && draft.tracked) {
+        const proof = unusedKey(key, row.id);
+        sessionStorage.setItem(proof, row.key);
+        potentiallyUnused.add(proof);
+      }
     } else {
       sessionStorage.removeItem(key);
       for (const item of Object.keys(sessionStorage)) if (item.startsWith(`${UNUSED}${key.slice(PREFIX.length)}:`)) sessionStorage.removeItem(item);
@@ -142,6 +154,7 @@ export function forgetThoughtDrafts() {
   draftGeneration++;
   retiredStorage = true;
   memory.clear();
+  potentiallyUnused.clear();
   forgetReloadRetention('thought');
   try {
     for (const key of Object.keys(sessionStorage)) if (key.startsWith(PREFIX) || key.startsWith(UNUSED)) sessionStorage.removeItem(key);
@@ -180,11 +193,12 @@ export function useThoughtDraft(personId: string, sketchId: string, sketch: Sket
     if (!key || !before) return false;
     const row = rows(before).find((item) => item.id === attempt.thought.id);
     if (!row || row.unknown) return false;
-    let invalidated = false;
+    const proof = unusedKey(key, row.id);
+    let invalidated = !potentiallyUnused.has(proof);
     try {
-      const proof = unusedKey(key, row.id);
       sessionStorage.removeItem(proof);
       invalidated = sessionStorage.getItem(proof) === null;
+      if (invalidated) potentiallyUnused.delete(proof); else potentiallyUnused.add(proof);
     } catch { /* Canonical persistence below can still make an older unused proof irrelevant. */ }
     set(before.lines ? { ...before, lines: before.lines.map((item) => item.id === row.id ? { ...item, attempt: item.attempt ?? attempt } : item) }
       : { ...before, attempt: before.attempt ?? attempt });

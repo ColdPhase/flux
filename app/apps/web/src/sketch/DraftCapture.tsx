@@ -70,7 +70,7 @@ export function DraftCapture({ draft, parent, saving, canWrite, confirmPrevious 
       onChange={(event) => onText(event.target.value)} onKeyDown={keys} />
     <div className="sk-draft__actions"><button type="submit" className="ui-btn ui-btn--primary" disabled={!ready}>{saving ? 'Saving…' : `${confirmPrevious ? 'Confirm and save' : 'Save'} ${draft.file ? 'image' : 'thought'}`}</button>
       <button type="button" className="ui-btn ui-btn--quiet" disabled={saving} onClick={onCancel}>Cancel</button>
-      {onPaste && !draft.file && !draft.text.trim() && !draft.attempt ? <button type="button" className="ui-btn ui-btn--quiet sk-draft__paste" disabled={saving} onClick={onPaste}>
+      {onPaste && !draft.file && !draft.text.trim() && !draft.attempt && !draft.unknown ? <button type="button" className="ui-btn ui-btn--quiet sk-draft__paste" disabled={saving} onClick={onPaste}>
         <Icon name="paste" size={14} />Paste lines, a link or an image</button> : null}
       <span>Enter saves · Shift+Enter adds a line · Escape cancels</span></div>
   </form>;

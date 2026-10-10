@@ -280,7 +280,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     if (!canWrite) { say(VIEW_ONLY); return true; }
     if (uploadingRef.current) { say('Wait for the pasted image to finish uploading'); return true; }
     if (editingState) { say('Finish or cancel your current edit first'); return true; }
-    if (capture.draft && !(replace && emptyDraft(capture.draft) && !capture.draft.attempt)) { rootRef.current?.querySelector<HTMLElement>('.sk-draft textarea, .sk-draft input')?.focus(); say('Finish or cancel your current thought draft first'); return true; }
+    if (capture.draft && !(replace && emptyDraft(capture.draft) && !capture.draft.attempt && !capture.draft.unknown)) { rootRef.current?.querySelector<HTMLElement>('.sk-draft textarea, .sk-draft input')?.focus(); say('Finish or cancel your current thought draft first'); return true; }
     return false;
   };
 

@@ -887,6 +887,42 @@ class MapConnectJourney(unittest.TestCase):
         own=next(s for s in state if s['key'].endswith(sketch))
         self.assertNotIn(first['id'],own['state']['parents'],'unknown row never infers its stale private parent')
 
+    def test_21_blocked_storage_keeps_fresh_memory_save_and_unknown_empty_identity(self):
+        for viewport in (COMPUTER,PHONE):
+            with self.subTest(width=viewport['width']):
+                page=self.page(viewport,touch=viewport==PHONE)
+                sketch=self.scene(page,link=True)
+                page.evaluate("""() => {Object.defineProperty(window,'sessionStorage',{configurable:true,get(){throw new DOMException('storage access denied','SecurityError')}})}""")
+                page.locator('.sk-node',has_text=B).click()
+                page.get_by_role('button',name='Add a thought',exact=True).click() if viewport==PHONE else page.get_by_role('button',name=re.compile('Add a thought connected to')).click()
+                draft=page.get_by_role('form',name='New thought draft')
+                draft.get_by_label('Thought text').fill('Fresh text with no durable unused proof')
+                sent=[]
+                page.on('request',lambda r:sent.append(r.post_data_json) if r.method=='POST' and r.url.endswith(f'/{sketch}/thoughts') else None)
+                draft.locator('button[type="submit"]').click()
+                expect(draft).to_have_count(0)
+                after=self.stored(page,sketch)
+                self.assertEqual(len(sent),1,'a fresh ID whose proof never existed can save without any storage access')
+                self.assertEqual(len(after['thoughts']),4)
+                self.assertEqual(len(after['links']),1 if viewport==PHONE else 2)
+
+        page=self.page(COMPUTER,touch=True)
+        sketch=self.scene(page,link=True)
+        page.locator('.sk-node',has_text=B).click()
+        page.get_by_role('button',name=re.compile('Add a thought connected to')).click()
+        retained=page.evaluate("""() => {const key=Object.keys(sessionStorage).find(k=>k.startsWith('flux:thought-draft:'));const value=JSON.parse(sessionStorage.getItem(key));sessionStorage.removeItem(key.replace('flux:thought-draft:','flux:thought-unused:')+':'+value.id);return {key,value};} """)
+        page.set_viewport_size(PHONE);page.wait_for_load_state('networkidle');page.reload()
+        draft=page.get_by_role('form',name='New thought draft')
+        expect(draft).to_contain_text('saved state is unknown')
+        expect(draft.locator('.sk-draft__paste')).to_have_count(0)
+        before=self.stored(page,sketch)
+        page.locator('.sk-canvas').focus()
+        page.evaluate(PASTE,['Copied text must not replace the unknown identity',None])
+        expect(draft.get_by_label('Thought text')).to_have_value('')
+        current=page.evaluate('s=>JSON.parse(sessionStorage.getItem(s.key))',retained)
+        self.assertEqual((current['id'],current['key']),(retained['value']['id'],retained['value']['key']))
+        self.assertEqual(self.stored(page,sketch),before)
+
 
 if __name__ == '__main__':
     unittest.main()
