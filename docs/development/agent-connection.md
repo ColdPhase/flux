@@ -581,6 +581,65 @@ anything; only this publish writes it, never message, PR, wiki or tool text.
     reaches the same session's next bootstrap; refusals and invalid policies change nothing; a
     conflict carries the newer policy) and `tests/ui/test_project_policy.py` (1440, 390 and 320 px).
 
+## Real-client onboarding (#160 AC-2, 2026-10-09)
+
+`app/tests/app/e2e/mcp-onboarding.e2e.ts`, run by `./scripts/check_mcp_clients.sh` (Docker, no vendor account;
+the models are scripted). Each clean client connects, the owner authorizes in Chromium, then the person's Start
+work input runs.
+
+- **Claude Code 2.1.285 (supported):** `/mcp__flux__start_work <projectId>` is expanded by the client, so the
+  model request carries the bound context and the rendered playbook with its version and digest. The scripted
+  model then calls `flux_bootstrap`, `flux_acknowledge_playbook`, `flux_project_orientation` (the current plan
+  appears with its material id) and `flux_create_task` under the standing grant. The server-side acknowledgment
+  is current and the task is attributed to the connection's agent.
+- **Codex rust-v0.160.1 (pending, no integrated path):** the pinned Codex does not put an MCP server's
+  `instructions` into its model request (probed 2026-10-09 with the same CLI line: the request carries only its
+  exec tool, which lists MCP tools at run time). Flux's instructions therefore never reach the model. The check
+  holds this state: no Flux text reaches the model, nothing is acknowledged and no task is created. It fails
+  once Codex delivers them, and the row then becomes supported. Manual prompt files or skill installs are not an
+  accepted fallback.
+- **Not built:** Pause and Stop of a running agent. The Agents view shows state but has no controls for them;
+  revocation remains the only stop.
+- **Not verified:** the resume path and changed-plan reanalysis of AC-1 (later work consuming changes), and the
+  #153 inbox behaviour of AC-3 and AC-4.
+
+## Pinned real-client contract (#152 AC-4, 2026-10-09)
+
+`./scripts/check_mcp_clients.sh` is an opt-in Docker check (not in `check_application.sh` or CI: it downloads
+Claude Code at run time). It runs the real pinned clients, Codex `rust-v0.160.1` (checksummed release assets in the
+`mcp-clients` image) and Claude Code 2.1.285 (`apps/runtime/src/install/pins.ts`, GPG-signed manifest), against the
+test Flux instance with **no vendor account, key or spend**. Per client the test uses the client's own commands
+(`codex mcp add/login/get/list`, `claude mcp add/login/list`), completes Flux's OAuth in Chromium as the person
+(sign-in, the named connection choice and consent), then lets the client list and call tools:
+
+- three personal connections of one owner: Codex on laptop, Codex on desktop (same agent) and Claude Code on laptop
+  (a second agent), each with its own OAuth grant and its own selected projects;
+- each client offers the same shared domain tool set (bootstrap, reads, task, result, decision, doc, map and
+  conversation tools) and `flux_list_contexts` returns only that connection's projects;
+- the first connection creates a task under an owner standing grant after `flux_bootstrap`; the bootstrap envelope the
+  real client received carries the capability and playbook digest; the task is attributed to the connection's agent
+  and the other two connections read it through `flux_list_work`;
+- the owner revokes the Claude connection: its next tool call returns no project data while the Codex connection keeps working.
+
+What is mocked: the models (a scripted local endpoint, `tests/app/support/client-model-mock.ts`, serving OpenAI
+Responses and Anthropic Messages SSE) and the clients' vendor sign-in, which is never used. OAuth clients are
+seeded rows used through each client's pre-registered client-id option; Client ID Metadata Document discovery
+by the real clients is not exercised. A model does not choose the tools, so this does not show model obedience
+or instruction loading (#160).
+
+Findings recorded by this check (2026-10-09):
+
+- Flux's MCP endpoint speaks only protocol `2026-07-28`. The pinned Codex requests `2025-06-18` by default and
+  fails the handshake (`-32022 Unsupported protocol version`); it works with Codex's under-development
+  `mcp_2026_07_28` feature on (`codex --enable mcp_2026_07_28`). Until Codex enables it by default, Codex users must
+  turn it on; Flux does not serve the older revision.
+- The pinned Codex runs MCP tool calls through its separate `codex-code-mode-host` release asset; the image pins it too.
+- Claude Code's `mcp login` needs a terminal (the check gives it a pty) and prints the authorization URL as a
+  terminal hyperlink.
+
+Still open for #152, not delivered here: the #153 inbox composition (co-work request tools), real
+model-driven obedience of the #160 playbook (Start/Resume), and integrated acceptance.
+
 ## Verification boundary
 
 Docker integration covers two people, separate restricted projects and private
