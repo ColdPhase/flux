@@ -252,9 +252,26 @@ class AppShellJourney(unittest.TestCase):
     def save_state(self, page: Page) -> None:
         type(self).state = page.context.storage_state()
 
-    def assert_focused_choice_inside_track(self, page: Page, menu, shot_name: str) -> None:
+    def assert_choices_share_one_width(self, page: Page, menu, where: str) -> None:
+        """The three Appearance choices are equal wide (#431, within 1 px), each label whole on one line."""
+        # Measure settled geometry: the popover animates in and the fonts must be the final ones.
+        menu.evaluate("el => Promise.all(el.getAnimations({ subtree: true }).map((animation) => animation.finished.then(() => true, () => false)))")
+        page.evaluate("document.fonts.ready.then(() => true)")
+        seg = menu.locator(".appearance .seg").evaluate("""el => { const t = el.getBoundingClientRect();
+          const all = [...el.querySelectorAll('.seg__b')], b = all.map(e => e.getBoundingClientRect());
+          const on = el.querySelector('[aria-checked="true"]').getBoundingClientRect();
+          return {widths: b.map(r => r.width), clipped: all.filter(e => e.scrollWidth > e.clientWidth).map(e => e.textContent),
+            top: on.top - t.top, bottom: t.bottom - on.bottom, left: b[0].left - t.left, right: t.right - b[b.length - 1].right}; }""")
+        self.assertEqual(seg["clipped"], [], f"{where}: {seg}")
+        self.assertLessEqual(max(seg["widths"]) - min(seg["widths"]), 1, f"{where}: {seg}")
+        self.assertAlmostEqual(seg["top"], seg["bottom"], delta=0.5, msg=f"{where}: {seg}")
+        self.assertAlmostEqual(seg["left"], seg["right"], delta=0.5, msg=f"{where}: {seg}")
+
+    def assert_focused_choice_inside_track(self, page: Page, menu, shot_name: str, *, resolved: str | None = None) -> None:
         """Keyboard focus on Match system (#435): its focus ring stays inside the track (and on the
-        segment itself), and its label is one line that is never clipped or wider than its segment."""
+        segment itself), and its label is one line that is never clipped or wider than its segment.
+        With `resolved` ("light" or "dark") the page must show that theme when Match system is focused,
+        so the screenshot's name says what it shows."""
         dark = menu.get_by_role("radio", name="Dark", exact=True)
         system = menu.get_by_role("radio", name="Match system", exact=True)
         # Start from Dark, whatever the device's current choice, so one ArrowRight reaches Match system.
@@ -264,6 +281,15 @@ class AppShellJourney(unittest.TestCase):
         page.keyboard.press("ArrowRight")
         expect(system).to_be_focused()
         expect(system).to_have_attribute("aria-checked", "true")
+        if resolved is not None:
+            self.assertEqual(page.evaluate("matchMedia('(prefers-color-scheme: dark)').matches"), resolved == "dark", resolved)
+            # Body luminance (0 black .. 1 white) on the page the shot shows: dark is near black, light near white.
+            luminance = page.evaluate(r"""() => { const rgb = getComputedStyle(document.body).backgroundColor.match(/[\d.]+/g).slice(0, 3).map(Number);
+              return (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255; }""")
+            if resolved == "dark":
+                self.assertLess(luminance, 0.2, f"{shot_name}: background is not dark ({luminance})")
+            else:
+                self.assertGreater(luminance, 0.8, f"{shot_name}: background is not light ({luminance})")
         # Measure the resting ring: a transition of the offset would otherwise be read mid-frame.
         system.evaluate("el => Promise.all(el.getAnimations().map((animation) => animation.finished))")
         m = system.evaluate("""el => {
@@ -710,30 +736,27 @@ class AppShellJourney(unittest.TestCase):
         shot(page, "desktop-1440-account-light")
         menu.get_by_role("radio", name="Dark").click()
         self.assertEqual(page.evaluate("document.documentElement.dataset.theme"), "dark")
-        # Balanced segments (#431): no label is clipped, Light and Dark share one width, and the
-        # selected pill and the outer segments sit evenly inside the track.
-        seg = menu.locator(".appearance .seg").evaluate("""el => { const t = el.getBoundingClientRect();
-          const all = [...el.querySelectorAll('.seg__b')], b = all.map(e => e.getBoundingClientRect());
-          const on = el.querySelector('[aria-checked="true"]').getBoundingClientRect();
-          return {widths: b.map(r => r.width), clipped: all.filter(e => e.scrollWidth > e.clientWidth).map(e => e.textContent),
-            top: on.top - t.top, bottom: t.bottom - on.bottom, left: b[0].left - t.left, right: t.right - b[b.length - 1].right}; }""")
-        self.assertEqual(seg["clipped"], [], seg)
-        self.assertLessEqual(abs(seg["widths"][0] - seg["widths"][1]), 1, seg)
-        self.assertGreaterEqual(seg["widths"][2] + 1, seg["widths"][0], seg)
-        self.assertAlmostEqual(seg["top"], seg["bottom"], delta=0.5, msg=seg)
-        self.assertAlmostEqual(seg["left"], seg["right"], delta=0.5, msg=seg)
-        # Keyboard focus on Match system (#435) in the full menu at 1440x900, then at the founder's
-        # 1568x751 window in light, and in the collapsed rail's menu in dark.
-        self.assert_focused_choice_inside_track(page, menu, "desktop-1440-account-focus-dark")
+        # Equal choices (#431): Light, Dark and Match system share one width, and no label is clipped,
+        # in the full menu at 1440x900, in the founder's 1568x751 window and in the collapsed rail's menu.
+        self.assert_choices_share_one_width(page, menu, "1440x900 account menu")
+        # Keyboard focus on Match system (#435). The 1440 page's system scheme is dark for this check, so
+        # its shot is dark; the scheme is restored afterwards, the theme stays Dark until the next step.
+        page.emulate_media(color_scheme="dark")
+        self.assert_focused_choice_inside_track(page, menu, "desktop-1440-account-focus-dark", resolved="dark")
+        page.emulate_media(color_scheme="light")
         window = self.page(viewport={"width": 1568, "height": 751})
         window.goto("/")
         window.get_by_role("button", name=re.compile(NAME)).click()
-        self.assert_focused_choice_inside_track(window, window.get_by_role("dialog", name="Account"), "desktop-1568-account-focus-light")
+        window_menu = window.get_by_role("dialog", name="Account")
+        self.assert_choices_share_one_width(window, window_menu, "1568x751 account menu")
+        self.assert_focused_choice_inside_track(window, window_menu, "desktop-1568-account-focus-light", resolved="light")
         rail = self.page(viewport={"width": 1568, "height": 751}, dark=True)
         rail.goto("/")
         rail.get_by_role("button", name="Collapse sidebar").click()
         rail.get_by_role("button", name=re.compile(NAME)).click()
-        self.assert_focused_choice_inside_track(rail, rail.get_by_role("dialog", name="Account"), "desktop-1568-rail-account-focus-dark")
+        rail_menu = rail.get_by_role("dialog", name="Account")
+        self.assert_choices_share_one_width(rail, rail_menu, "1568x751 collapsed rail menu")
+        self.assert_focused_choice_inside_track(rail, rail_menu, "desktop-1568-rail-account-focus-dark", resolved="dark")
         shot(page, "desktop-1440-account-dark")
         page.keyboard.press("Escape")
         expect(menu).to_have_count(0)

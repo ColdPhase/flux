@@ -190,9 +190,9 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 .me--compact { flex: none; margin: 0; padding: 0; }
 .me--compact .me__row { flex-direction: column; gap: 4px; }
 .me--compact .me__btn { flex: none; justify-content: center; width: 40px; height: 40px; min-height: 40px; padding: 0; border-radius: var(--r-pill); }
-.me--compact .me__pop { left: calc(100% + 8px); bottom: 0; width: min(320px, calc(100vw - 88px)); transform-origin: 0 100%; }
+.me--compact .me__pop { left: calc(100% + 8px); bottom: 0; width: min(336px, calc(100vw - 88px)); transform-origin: 0 100%; }
 .me__pop {
-  position: absolute; left: 8px; width: max(calc(100% - 16px), 280px); bottom: calc(100% - 2px); z-index: var(--z-menu);
+  position: absolute; left: 8px; width: max(calc(100% - 16px), 336px); bottom: calc(100% - 2px); z-index: var(--z-menu);
   padding: 6px; border-radius: var(--r-lg); background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line);
   transform-origin: 50% 100%; max-height: calc(100dvh - 84px); overflow-y: auto; overscroll-behavior: contain;
 }
@@ -228,17 +228,15 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 .seg__b:hover { color: var(--t1); }
 .seg__b[aria-checked="true"] { background: var(--el); color: var(--t1); box-shadow: var(--sh-raise); }
 .seg__b:focus-visible { outline-offset: 0; }
-/* Appearance (#431): three equal segments with centred labels; a segment widens only when its whole
-   label needs it, so "Match system" never crowds the track's end and the selected pill keeps its inset. */
-.appearance .seg { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(max-content, 1fr); }
-.appearance .seg__b { min-width: max-content; padding: 0 10px; }
+/* Appearance (#431): three equal columns, each label whole on one line, in the account menu and Settings.
+   The account menu is 336 px (.me__pop), so each choice's equal share (about 102 px) holds the widest
+   label, "Match system", with its padding. When the text is larger (#435) a choice that no longer fits
+   beside the others wraps to its own row, whole, so no label breaks or clips. */
+.appearance .seg { display: flex; flex-wrap: wrap; }
+.appearance .seg__b { flex: 1 1 0; min-width: max-content; padding: 0 6px; white-space: nowrap; }
 /* The focus ring is drawn inside each choice (#435): a constant inset offset, so focus never animates
    the ring from the global 4 px offset past the track's edge. */
 .appearance .seg__b, .appearance .seg__b:focus-visible { outline-offset: -2px; }
-/* Keep complete appearance choices in their own targets as the compact account's text grows; a choice
-   wraps to a new row as a whole and its label never breaks or shrinks below its width (#435). */
-.me--compact .appearance .seg { display: flex; flex-wrap: wrap; }
-.me--compact .appearance .seg__b { flex: 1 1 auto; min-width: max-content; white-space: nowrap; }
 
 
 
