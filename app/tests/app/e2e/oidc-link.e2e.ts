@@ -25,10 +25,11 @@ const pat = { name: 'Pat Link', email: 'pat.link@example.test', password: `pw-${
 const quinn = { name: 'Quinn Link', email: 'quinn.link@example.test', password: `pw-${randomUUID()}` };
 
 const { pool } = createDatabase(process.env.DATABASE_URL!);
-// The cutover leaves the realm's frank with a Flux account (Pat's). Remove the test accounts so later suites see none.
+// Remove Pat's provider identity so later Keycloak suites can create frank. Quinn keeps the workspace
+// used by the authority cutover control; deleting its owner would violate the creator foreign key.
 after(async () => {
   // Pat's account takes the provider's address at the cutover sign-in, so match that address too.
-  if (phase === 'cutover') await pool.query('DELETE FROM auth_users WHERE email = ANY($1)', [[pat.email, quinn.email, 'frank@acme.test']]);
+  if (phase === 'cutover') await pool.query('DELETE FROM auth_users WHERE email = ANY($1)', [[pat.email, 'frank@acme.test']]);
   await pool.end();
 });
 
