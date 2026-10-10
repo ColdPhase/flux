@@ -48,7 +48,8 @@ export function DraftCapture({ draft, parent, saving, canWrite, confirmPrevious 
             {link ? <Icon name="link" size={12} /> : <span className="sk-draft__n" aria-hidden="true">{index + 1}</span>}
             <input className="ui-input" aria-label={label} value={line.text} disabled={saving} aria-invalid={long || !line.text.trim()}
               aria-describedby={long ? `${line.id}-long` : undefined}
-              onChange={(event) => onLines(lines.map((item) => item.id === line.id ? { ...item, text: event.target.value, key: crypto.randomUUID() } : item))}
+              onChange={(event) => onLines(lines.map((item) => item.id === line.id ? { ...item, text: event.target.value,
+                key: item.attempt || item.unknown ? item.key : crypto.randomUUID(), editKey: crypto.randomUUID() } : item))}
               onKeyDown={keys} />
             <button type="button" className="ui-btn ui-btn--quiet sk-draft__remove" disabled={saving} aria-label={`Remove ${label.toLowerCase()}`}
               onClick={() => onLines(lines.filter((item) => item.id !== line.id))}><Icon name="x" size={12} /></button>

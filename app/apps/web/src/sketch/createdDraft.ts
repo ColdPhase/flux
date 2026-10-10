@@ -7,6 +7,7 @@ export interface DraftLine {
   id: string;
   linkId: string;
   key: string;
+  editKey?: string;
   text: string;
   x: number;
   y: number;
@@ -27,6 +28,7 @@ export interface ThoughtDraft {
   id: string;
   linkId: string;
   key: string;
+  editKey?: string;
   parentId: string | null;
   text: string;
   x: number;
@@ -38,7 +40,7 @@ export interface ThoughtDraft {
   width?: number;
   height?: number;
   attempt?: DraftAttempt;
-  /** This format records attempts; older retained drafts cannot prove an unused key. */
+  /** Lifecycle is known in this visit; restoration checks canonical metadata/proof rather than trusting this flag. */
   tracked?: true;
   unknown?: true;
 }
@@ -51,6 +53,7 @@ function validLines(lines: unknown): boolean {
   return Array.isArray(lines) && lines.length >= 1 && lines.length <= SKETCH_LIMITS.pasteLines && lines.every((line: Partial<DraftLine> | null) =>
     !!line && typeof line === 'object' && [line.id, line.linkId, line.key].every(isUuid)
     && typeof line.text === 'string' && line.text.length <= LINE_CHARS && isSpot(line.x) && isSpot(line.y)
+    && (line.editKey === undefined || isUuid(line.editKey))
     && (line.attempt === undefined || validAttempt(line.attempt, line.id)));
 }
 
@@ -94,6 +97,7 @@ function persisted(key: string): ThoughtDraft | null {
       if ([draft.id, draft.linkId, draft.key].every(isUuid)
         && (draft.parentId === null || typeof draft.parentId === 'string')
         && typeof draft.text === 'string' && draft.text.length <= SKETCH_LIMITS.text
+        && (draft.editKey === undefined || isUuid(draft.editKey))
         && isSpot(draft.x) && isSpot(draft.y)
         && (draft.lines === undefined || validLines(draft.lines))
         && (draft.file === undefined || validFile(draft.file))

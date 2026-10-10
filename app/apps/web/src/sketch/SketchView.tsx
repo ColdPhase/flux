@@ -444,7 +444,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     const existingOnly = new Set((draft.lines ?? [draft]).filter((row) => row.unknown || (phone && row.attempt?.parentId)).map((row) => row.id));
     const expectedText = new Map((draft.lines ?? [draft]).flatMap((row) => row.attempt ? [[row.id, row.attempt.thought.text] as const] : []));
     const desiredText = new Map((draft.lines ?? [draft]).map((row) => [row.id, row.text.trim()]));
-    const editKeys = new Map((draft.lines ?? [draft]).map((row) => [row.id, row.key]));
+    const editKeys = new Map((draft.lines ?? [draft]).map((row) => [row.id, row.editKey ?? row.key]));
     const retry = new Set((draft.lines ?? [draft]).filter((row) => !!row.attempt).map((row) => row.id));
     const saved = await doc.saveThoughts(items, { existingOnly, expectedText, desiredText, editKeys, retry, onAttempt: (item) => {
       const current = capture.peek();
@@ -651,7 +651,8 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   const shownDraft = capture.draft ? { ...capture.draft, parentId: phone ? null : attemptParent ?? null } : null;
   const draftForm = shownDraft ? <DraftCapture draft={shownDraft} parent={shownDraft.parentId ? find(shownDraft.parentId)?.text ?? null : null}
     confirmPrevious={confirmPrevious} mixedParents={pendingParents.size > 1}
-    saving={savingDraft} canWrite={canWrite} onText={(text) => { if (capture.draft) capture.set({ ...capture.draft, text, key: doc.newId() }); }}
+    saving={savingDraft} canWrite={canWrite} onText={(text) => { if (capture.draft) capture.set({ ...capture.draft, text,
+      key: capture.draft.attempt || capture.draft.unknown ? capture.draft.key : doc.newId(), editKey: doc.newId() }); }}
     onLines={(lines) => {
       if (!capture.draft) return;
       if (lines.length) { capture.set({ ...capture.draft, lines }); return; }

@@ -684,6 +684,9 @@ class MapConnectJourney(unittest.TestCase):
                 page.get_by_label('Thought text').fill('Keep the original phone intent')
                 if refusal=='full-quota':
                     self.assertEqual(page.evaluate(EXHAUST_SESSION_STORAGE),'QuotaExceededError')
+                    # The later text itself is refused; removing the small proof cannot
+                    # make room for this larger canonical record. Keep the real quota.
+                    page.get_by_label('Thought text').fill('Keep the original phone intent. '+('Retain the mounting notes and spare-probe details. '*8))
                 else:
                     page.evaluate("""() => { const set=Storage.prototype.setItem; Storage.prototype.setItem=function(key,value){if(key.startsWith('flux:thought-draft:'))throw new DOMException('refused write','QuotaExceededError');return set.call(this,key,value)} }""")
                 page.set_viewport_size(PHONE)
@@ -718,8 +721,8 @@ class MapConnectJourney(unittest.TestCase):
                 self.assertEqual(len(after['thoughts']),4)
 
     def test_18_refused_attempt_metadata_restores_unknown_without_creating_or_grouping(self):
-        for committed in (False,True):
-            with self.subTest(committed=committed):
+        for committed,peer_change in ((False,False),(True,False),(True,True)):
+            with self.subTest(committed=committed,peer_change=peer_change):
                 page=self.page(COMPUTER)
                 sketch=self.scene(page,link=True)
                 page.locator('.sk-node',has_text=B).click()
@@ -740,6 +743,19 @@ class MapConnectJourney(unittest.TestCase):
                 expect(page.locator('.sk-status')).to_contain_text('draft is kept')
                 page.unroute(path,hide)
                 before=self.stored(page,sketch)
+                if peer_change:
+                    created=next(t for t in before['thoughts'] if t['id']==sent[0]['body']['id'])
+                    ctx=self.browser.new_context(service_workers='block',base_url=ORIGIN)
+                    self.addCleanup(ctx.close)
+                    email=f'map-unknown-peer-{uuid.uuid4()}@example.test'
+                    response=ctx.request.post('/api/auth/sign-up/email',data={'name':'Jonas Review','email':email,'password':'independent unknown save'},headers={'origin':ORIGIN})
+                    self.assertEqual(response.status,200,response.text())
+                    user=self.api(ctx,'GET','/api/v1/me')['user']['id']
+                    self.api(page.context,'POST',f'/api/v1/workspaces/{self.workspace}/members',{'email':email,'role':'member'},201)
+                    self.api(page.context,'POST',f'/api/v1/projects/{self.project}/grants',{'principal':{'kind':'human','id':user},'role':'contributor'},201)
+                    response=ctx.request.patch(f'/api/v1/sketches/{sketch}/thoughts/{created["id"]}',data={'text':'Jonas kept the newer requirement'},headers={'origin':ORIGIN,'if-match':f'"{created["version"]}"','idempotency-key':str(uuid.uuid4())})
+                    self.assertEqual(response.status,200,response.text())
+                    before=self.stored(page,sketch)
                 self.assertNotIn('linkFrom',sent[0]['body'])
                 old=page.evaluate("Object.entries(sessionStorage).filter(([key])=>key.startsWith('flux:thought-draft:')).map(([key,value])=>({key,value:JSON.parse(value)}))")
                 self.assertEqual(old[0]['value']['parentId'],self.ids[B],'the older accepted copy remains intact')
@@ -752,7 +768,10 @@ class MapConnectJourney(unittest.TestCase):
                 posted=[]
                 page.on('request',lambda r:posted.append(r.url) if r.method=='POST' and r.url.endswith(f'/{sketch}/thoughts') else None)
                 draft.locator('button[type="submit"]').click()
-                if committed:
+                if peer_change:
+                    expect(page.locator('.sk-status')).to_contain_text('Someone changed the earlier saved thought')
+                    expect(draft.get_by_label('Thought text')).to_have_value(old[0]['value']['text'])
+                elif committed:
                     expect(draft).to_have_count(0)
                 else:
                     expect(page.locator('.sk-status')).to_contain_text('save is not confirmed yet')
@@ -786,6 +805,10 @@ class MapConnectJourney(unittest.TestCase):
                 before=self.stored(page,sketch)
                 page.wait_for_load_state('networkidle');page.reload();page.set_viewport_size(viewport)
                 draft=page.get_by_role('form',name='New thought draft')
+                if state in ('missing','foreign','malformed'):
+                    draft.get_by_label('Thought text').fill('Check the retained proof with a private refinement')
+                    restored=page.evaluate('s=>JSON.parse(sessionStorage.getItem(s.key))',saved)
+                    self.assertEqual(restored['key'],saved['draft']['key'],'unknown creation keys stay immutable while refinements get their own key')
                 posted=[]
                 page.on('request',lambda r:posted.append({'body':r.post_data_json,'key':r.headers['idempotency-key']}) if r.method=='POST' and r.url.endswith(f'/{sketch}/thoughts') else None)
                 draft.locator('button[type="submit"]').click()
@@ -823,14 +846,14 @@ class MapConnectJourney(unittest.TestCase):
         expect(draft.get_by_label('Thought text')).to_have_value('Keep the failed preflight text')
         self.assertEqual(posted,[])
         self.assertEqual(self.stored(page,sketch),before)
-        page.evaluate('Storage.prototype.setItem=window.storageSet')
+        page.evaluate('() => {Storage.prototype.setItem=window.storageSet;}')
         # Canonical persistence alone can permit dispatch even if removing the stale proof still fails.
         draft.locator('button[type="submit"]').click()
         expect(draft).to_have_count(0)
         self.assertEqual(len(posted),1)
         self.assertNotIn('linkFrom',posted[0])
         self.assertEqual(self.stored(page,sketch)['links'],before['links'])
-        page.evaluate('Storage.prototype.removeItem=window.storageRemove')
+        page.evaluate('() => {Storage.prototype.removeItem=window.storageRemove;}')
 
         page=self.page(COMPUTER)
         sketch=self.scene(page,link=True)
