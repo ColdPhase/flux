@@ -1,14 +1,14 @@
 import { useRef, useState, type DragEvent } from 'react';
 import { Icon, useMediaQuery } from '../ui';
 import { FileIcon, fileSize, useObjectUrl } from './Attachments';
-import { selectedFile, type ComposerState, type DraftFile } from './draft';
+import { selectedFile, uploadLabel, type ComposerState, type DraftFile } from './draft';
 import { looksLikePhoto } from './fileKind';
 import './composer.css';
 
 export { MessageFiles, MessageContent, hasPhotos, fileSize } from './Attachments';
 export type { PhotoActions, PhotoContext } from './Attachments';
 
-const fileStatus = (file: DraftFile, unconfirmed: boolean) => file.state === 'uploading' ? 'Uploading…'
+const fileStatus = (file: DraftFile, unconfirmed: boolean) => file.state === 'uploading' ? uploadLabel(file)
   : file.state === 'failed' ? 'Upload not confirmed'
     : unconfirmed ? 'Send unconfirmed; retry checks availability'
       : Date.parse(file.staged!.expiresAt) <= Date.now() ? 'Staging expired; select this file again' : 'Ready, private';

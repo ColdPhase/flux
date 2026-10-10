@@ -10,6 +10,7 @@ composer stages thumbnails (#348). FLUX_UI_BROWSER selects chromium (default) or
 from __future__ import annotations
 
 import os
+import re
 import struct
 import time
 import unittest
@@ -123,6 +124,25 @@ CSV = b"bed,rssi\nfar east,-112\nnorth,-98\n" * 40
 VOICE = b"\x00\x00\x00\x18ftypM4A " + b"\x00" * 40_000
 NOT_A_PHOTO = b"this is a text file named like a photo\n"
 SHOTS = os.environ.get("FLUX_UI_SCREENSHOTS")
+# A photo and a log big enough for several progress reports; WebKit has no CDP throttle to slow them down.
+PROGRESS_PHOTO = b"\x89PNG\r\n\x1a\n" + os.urandom(3 * 1024 * 1024)
+PROGRESS_LOG = b"%PDF-1.4\n" + os.urandom(3 * 1024 * 1024)
+# Records each percentage the page renders ("Uploading N%" in a file row or draft, or a photo's data attribute).
+PROGRESS_WATCH = """() => {
+  const seen = (window.__uploadSeen = []);
+  const scan = () => {
+    document.querySelectorAll('[data-upload-progress]').forEach((el) => {
+      const value = Number(el.dataset.uploadProgress);
+      if (seen.at(-1)?.value !== value) seen.push({ where: 'photo', value });
+    });
+    document.querySelectorAll('small').forEach((el) => {
+      const match = /Uploading (\\d+)%/.exec(el.textContent || '');
+      if (match && seen.at(-1)?.value !== Number(match[1])) seen.push({ where: 'file', value: Number(match[1]) });
+    });
+  };
+  new MutationObserver(scan).observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['data-upload-progress'] });
+  scan();
+}"""
 PEOPLE = {"ada": ("Ada Kowalska", f"ada.files+{STAMP}@example.test"), "jonas": ("Jonas Berg", f"jonas.files+{STAMP}@example.test"),
           "ida": ("Ida Lund", f"ida.files+{STAMP}@example.test")}
 
@@ -615,6 +635,44 @@ class FilesReferencesPhotos(unittest.TestCase):
                 sent = page.locator(".project-convo__message").filter(has_text="Here are the offsets for the volunteers").last
                 expect(sent.get_by_role("list", name="2 photos").locator("img[src^='blob:']")).to_have_count(2)
                 self.assert_grid_aligned(sent)
+
+    def test_upload_progress_shows_a_percentage_until_sending(self) -> None:
+        """#348 AC-3: a photo and a file sent while they upload show their real percentage, then "Sending" (WebKit too)."""
+        page = self.page()
+        if UI_BROWSER == "chromium":
+            # Playwright emulates the upload speed only through CDP, so the bytes take a few seconds to go out.
+            cdp = page.context.new_cdp_session(page)
+            cdp.send("Network.enable")
+            cdp.send("Network.emulateNetworkConditions", {"offline": False, "latency": 0, "downloadThroughput": -1, "uploadThroughput": 1024 * 1024})
+        # Each file's request waits here until the test lets its bytes go, so the message is sent while they are still uploading.
+        held: list = []
+        page.route(re.compile(r"/api/v1/projects/[^/]+/files\?"), lambda route: held.append(route) if route.request.method == "POST" else route.continue_())
+        # Every percentage the page shows, as it is rendered: a fast upload may finish between two polls.
+        page.evaluate(PROGRESS_WATCH)
+        with page.expect_file_chooser() as chooser:
+            page.get_by_role("button", name="Attach files").click()
+        chooser.value.set_files([{"name": "IMG_6001.png", "mimeType": "image/png", "buffer": PROGRESS_PHOTO},
+                                 {"name": "bed-log.pdf", "mimeType": "application/pdf", "buffer": PROGRESS_LOG}])
+        field = page.get_by_label("Write a message", exact=True)
+        field.fill("Photo and log from bed four, sent while they upload")
+        field.press("Enter")
+        pending = page.locator("[data-client-message-id]").last
+        expect(pending.locator("[data-upload-progress='0']")).to_have_count(1)  # the photo tile starts at 0%
+        for index in range(2):
+            for _ in range(400):
+                if len(held) > index:
+                    break
+                page.wait_for_timeout(25)
+            self.assertGreater(len(held), index, "the file request reached the browser")
+            held[index].continue_()
+        expect(page.locator("[data-client-message-id]")).to_have_count(0, timeout=60000)
+        seen = page.evaluate("() => window.__uploadSeen")
+        photo = [entry["value"] for entry in seen if entry["where"] == "photo"]
+        log = [entry["value"] for entry in seen if entry["where"] == "file"]
+        self.assertTrue(any(0 < value < 100 for value in photo), f"the photo tile never showed a percentage between 0 and 100: {photo}")
+        self.assertTrue(any(0 < value < 100 for value in log), f"the file row never showed a percentage between 0 and 100: {log}")
+        sent = page.locator(".project-convo__message").filter(has_text="Photo and log from bed four").last
+        expect(sent.get_by_role("list", name="1 attached file")).to_contain_text("bed-log.pdf")
 
     def test_photo_waits_offline_on_the_photo(self) -> None:
         page = self.page()
