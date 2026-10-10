@@ -197,7 +197,7 @@ test('assistant S6 switches fence already-produced MCP bytes across two API proc
     assert.equal(changed.areas.wiki, 'off');
     await lock.query('SELECT pg_advisory_unlock(hashtext($1))', [gate]);
     const refused = await pending;
-    assert.equal(refused.status, 403, 'the other process's committed setting withholds captured protected bytes');
+    assert.equal(refused.status, 403, "the other process’s committed setting withholds captured protected bytes");
     assert.ok(!JSON.stringify(refused.message).includes('Assistant protected Wiki'));
     assert.ok(!JSON.stringify(refused.message).includes('ASSISTANT-WIKI-PRIVATE-68192'));
   } finally {
