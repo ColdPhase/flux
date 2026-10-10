@@ -137,6 +137,7 @@ describe('the confirmation age (F-024 S2, #312)', () => {
     assert.equal(await confirmation.lapsed(userId), true, 'an unlinked password account cannot retain MCP authority under SSO');
     assert.equal(await confirmation.lapsed(randomUUID()), true, 'an unknown owner cannot retain authority');
     assert.equal(await createConfirmation(db, null, () => at).lapsed(userId), false, 'password mode still permits the owner');
+    assert.equal(await createConfirmation(db, oidc, () => at, false).lapsed(userId), false, 'prepare mode permits linking before cutover');
     const expired = await person(1000);
     assert.equal(await createConfirmation(db, null, () => at).lapsed(expired.userId), false, 'no provider configured');
   });

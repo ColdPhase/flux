@@ -15,6 +15,8 @@ import type { Mailer } from './mailer.js';
 import type { OauthRequests } from './oauth-flow.js';
 import { createSignIns, type SignIns } from './sign-in.js';
 import { createEmailClaims, type EmailClaims } from './claim.js';
+import { createLinkIntents, type LinkIntents } from './link.js';
+import { profileFromClaims } from './claim-profile.js';
 import { createConfirmation, type Confirmation } from './confirmation.js';
 import { signInAgainMessage, type IdpStanding } from './standing.js';
 
@@ -41,6 +43,8 @@ export interface AuthDependencies {
   log?: { error(object: object, message: string): void };
   /** Defaults to one over `db` (#313): provider sign-ins whose email another account holds. */
   claims?: EmailClaims;
+  /** Explicit links of password accounts to the provider before cutover (#315). Defaults to one over `db`. */
+  links?: LinkIntents;
   /** Discovery recovery may temporarily omit the plugin, while retaining the configured authentication mode. */
   installProvider?: boolean;
 }
@@ -53,13 +57,10 @@ export interface AuthDependencies {
  */
 export function oidcUser(oidc: Pick<OidcConfig, 'issuer'>, claims: Record<string, unknown> | null) {
   if (!claims) return null;
-  const issuer = typeof claims.iss === 'string' ? claims.iss.replace(/\/$/, '') : '';
-  const subject = typeof claims.sub === 'string' ? claims.sub : '';
-  const email = typeof claims.email === 'string' ? claims.email.trim().toLowerCase() : '';
-  if (issuer !== oidc.issuer || !subject || !email || claims.email_verified !== true) return null;
-  const name = [claims.name, claims.preferred_username].find((value): value is string => typeof value === 'string' && !!value.trim());
-  // The plugin keys the Flux account by `sub` (the stable OIDC subject), never by email.
-  return { id: subject, sub: subject, email, emailVerified: true, name: (name ?? email).trim().slice(0, 200) };
+  // The plugin keys the Flux account by `sub` (the stable OIDC subject), never by email (#313, #315 AC-3).
+  const profile = profileFromClaims(oidc.issuer, claims);
+  if (!profile.ok) return null;
+  return { id: profile.subject, sub: profile.subject, email: profile.email, emailVerified: true, name: (profile.name ?? profile.email).slice(0, 200) };
 }
 
 /** Snapshot the authorizing session at code redemption, keyed to the immutable refresh lineage (#310 AC-3). */
@@ -129,7 +130,7 @@ export async function ensureOauthResource(db: Database, publicOrigin: string): P
   }).onConflictDoNothing({ target: schema.oauthResource.identifier });
 }
 
-export function createAuth({ db, config, mailer, onMailError, oauthRequests, signIns = createSignIns(), installProvider = true, standing = null, log, confirmation = createConfirmation(db, config.oidc), claims = createEmailClaims(db) }: AuthDependencies) {
+export function createAuth({ db, config, mailer, onMailError, oauthRequests, signIns = createSignIns(), installProvider = true, standing = null, log, confirmation = createConfirmation(db, config.oidc, undefined, config.ssoOnly), claims = createEmailClaims(db), links = createLinkIntents(db) }: AuthDependencies) {
   const connections = agentOauthUseCases(createAgentConnectionStore(db));
   const resource = mcpResourceIdentifier(config.publicOrigin);
   const connectionForGrant = async (userId: string, sessionId: string, scopes: readonly string[]) => {
@@ -160,7 +161,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
     } catch (error) { onMailError?.(error); }
   };
   const verifiedSignUp = config.signup === 'verified';
-  const ssoOnly = config.oidc !== null;
+  const ssoOnly = config.ssoOnly;
   return betterAuth({
     appName: 'Flux',
     baseURL: config.publicOrigin,
@@ -236,7 +237,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
         },
       }),
       cimd({ fetchClientMetadataResource, metadataProfile: 'mcp-2026-07-28' }),
-      ...(config.oidc && installProvider ? [oidcPlugin(config.oidc, signIns, claims, log)] : []),
+      ...(config.oidc && installProvider ? [oidcPlugin(config.oidc, signIns, claims, links, log)] : []),
     ],
     // Sign-up is a Flux decision (#313): closed, or the new account must verify its address before it can sign in.
     hooks: {
@@ -350,7 +351,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
 export type FluxAuth = ReturnType<typeof createAuth>;
 
 /** One operator-configured OpenID Connect provider for human sign-in (#113). */
-function oidcPlugin(oidc: OidcConfig, signIns: SignIns, emailClaims: EmailClaims, log?: { error(object: object, message: string): void }) {
+function oidcPlugin(oidc: OidcConfig, signIns: SignIns, emailClaims: EmailClaims, links: LinkIntents, log?: { error(object: object, message: string): void }) {
   return genericOAuth({
     config: [{
       providerId: oidc.providerId,
@@ -368,6 +369,13 @@ function oidcPlugin(oidc: OidcConfig, signIns: SignIns, emailClaims: EmailClaims
         const claims = idTokenClaims(tokens.idToken);
         const user = oidcUser(oidc, claims);
         const sign = signIns.getStore();
+        // A link round trip (#315) never signs anyone in: it attaches the subject to the intent's account, or refuses.
+        if (sign?.linkRejected) { sign.refused = 'link_expired'; return null; }
+        if (user && sign?.link) {
+          const outcome = await links.attach(sign.link.id, oidc.providerId, user.sub);
+          sign.refused = outcome;
+          return null;
+        }
         if (user && sign && oidc.standing === 'refresh' && !tokens.refreshToken) {
           // N1: without a refresh token the next check would suspend this person again. Refuse the sign-in and
           // tell the operator; the browser is told why by the bridge.

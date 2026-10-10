@@ -73,9 +73,30 @@ trap 'exit 143' TERM
 $compose build migrate e2e
 $compose up -d db migrate
 $compose --profile setup run --rm files-init
+# Migration phase first (#315): the API runs in prepare mode, so password accounts may link Keycloak before cutover.
+export FLUX_OIDC_TEST_SSO_MODE=prepare
 $compose up -d --wait keycloak oidc-mock mailpit api api-mock worker
 
 e2e() { $compose run --rm -e FLUX_OIDC_PROVIDER_ID="$provider_id" e2e node_modules/.bin/tsx --test --test-concurrency=1 "$@"; }
+
+# Link a password account before cutover, restart the API between the start and the finish, refuse held identities.
+link() { $compose run --rm -e FLUX_OIDC_PROVIDER_ID="$provider_id" -e FLUX_LINK_PHASE="$1" e2e node_modules/.bin/tsx --test --test-concurrency=1 --test-name-pattern "$2" tests/app/e2e/oidc-link.e2e.ts; }
+link prepare "prepare: a password account starts"
+$compose restart api
+$compose up -d --wait api
+link prepare "prepare: (after the API restart|a subject already held|a link cannot)"
+# Cutover (#315): the API restarts in SSO-only mode. The password-only accounts stay refused; the linked one signs in
+# with the provider and reaches the same account.
+export FLUX_OIDC_TEST_SSO_MODE=sso
+$compose up -d --wait api
+link cutover "cutover:"
+# The operator re-key (#315) in the running SSO-only API: refused without --allow-sso, and with it the lookup by Flux id
+# still refuses an address or an unknown id. The refusal names its code, and nothing is written.
+cli() { $compose exec -T api node apps/server/dist/identity/cli.js "$@"; }
+refused=$(cli link nobody@acme.test --subject sub-cli --reason "check" 2>&1 || true)
+echo "$refused" | grep -q 'refused (SSO_MODE)' || { echo "$refused" >&2; echo "Expected the SSO-only refusal from the operator command" >&2; exit 1; }
+missing=$(cli link nobody@acme.test --subject sub-cli --reason "check" --allow-sso 2>&1 || true)
+echo "$missing" | grep -q 'refused (NO_ACCOUNT)' || { echo "$missing" >&2; echo "Expected NO_ACCOUNT for an address, even with the flag" >&2; exit 1; }
 
 e2e tests/app/e2e/oidc.e2e.ts
 # Provider sign-in on the MCP authorization path (F-024 S1, #310): a scripted client, Keycloak, Chromium.

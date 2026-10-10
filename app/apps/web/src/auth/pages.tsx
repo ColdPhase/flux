@@ -84,26 +84,22 @@ const NOTICES: Record<string, string> = {
 /** The operator's single sign-on, when configured (#113). Hidden while unknown or unavailable. */
 const SSO_RECHECK_MS = 5000;
 
-function useSso() {
-  const [sso, setSso] = useState<IdentityCapabilities['sso']>(null);
-  const unreachable = sso !== null && !sso.reachable;
+function useCapabilities() {
+  const [capabilities, setCapabilities] = useState<IdentityCapabilities | null>(null);
+  const unreachable = capabilities?.sso !== null && capabilities?.sso?.reachable === false;
   useEffect(() => {
     const controller = new AbortController();
-    const load = () => {
-      getCapabilities(controller.signal).then((capabilities) => setSso(capabilities.sso ?? null)).catch(() => undefined);
-    };
+    const load = () => { getCapabilities(controller.signal).then(setCapabilities).catch(() => undefined); };
     load();
-    // While the provider is unreachable the page asks again, so its button comes back without a reload (#310 AC-4).
     const timer = unreachable ? window.setInterval(load, SSO_RECHECK_MS) : undefined;
-    return () => {
-      controller.abort();
-      if (timer !== undefined) window.clearInterval(timer);
-    };
+    return () => { controller.abort(); if (timer !== undefined) window.clearInterval(timer); };
   }, [unreachable]);
-  return sso;
+  return capabilities;
 }
 
-function SsoSignIn({ sso, next, oauthQuery }: { sso: NonNullable<IdentityCapabilities['sso']>; next: string | null; oauthQuery?: string }) {
+
+
+function SsoSignIn({ sso, next, oauthQuery, divider = false }: { sso: NonNullable<IdentityCapabilities['sso']>; next: string | null; oauthQuery?: string; divider?: boolean }) {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState('');
   const unreachable = `${sso.label} is not reachable right now. Try again in a moment.`;
@@ -121,6 +117,7 @@ function SsoSignIn({ sso, next, oauthQuery }: { sso: NonNullable<IdentityCapabil
     <div className="auth__sso">
       <Button variant="secondary" size="lg" block busy={busy} disabled={!sso.reachable} onClick={() => void start()}>{`Sign in with ${sso.label}`}</Button>
       {failed || !sso.reachable ? <p className="auth__sso-error" role="alert">{failed || unreachable}</p> : null}
+      {divider ? <p className="auth__or" aria-hidden="true"><span>or</span></p> : null}
     </div>
   );
 }
@@ -136,7 +133,9 @@ export function SignInPage() {
   const location = useLocation();
   const next = location.pathname === '/login' ? `${location.pathname}${location.search}` : params.get('next');
   const shownRef = useRef<string | null>(null);
-  const sso = useSso();
+  const capabilities = useCapabilities();
+  const sso = capabilities?.sso ?? null;
+  const ssoOnly = capabilities?.ssoOnly ?? false;
   const ssoFailed = params.get('sso') === 'failed';
   const reason = params.get('sso_reason');
   const ssoMessage = reason === 'no_refresh_token'
@@ -158,8 +157,8 @@ export function SignInPage() {
   }, [notice, params, navigate, toast]);
 
   const suffix = next ? `?next=${encodeURIComponent(next)}` : '';
-  // With an active sole provider, single sign-on is the only ordinary way in: no password form (F-024 S5a, #313).
-  if (sso) {
+  // With the sole provider in SSO-only mode, single sign-on is the only way in: no password form (F-024 S5a/S5b).
+  if (sso && ssoOnly) {
     return (
       <>
         <Heading title="Sign in to Flux">Pick up your work where you left it.</Heading>
@@ -171,8 +170,9 @@ export function SignInPage() {
   return (
     <>
       <Heading title="Sign in to Flux">Pick up your work where you left it.</Heading>
+      {sso ? <SsoSignIn sso={sso} next={next} oauthQuery={oauthQuery} divider /> : null}
       <Form method="post" className="auth__form" noValidate ref={formRef} aria-label="Sign in">
-        <FormError message={result?.formError} />
+        <FormError message={result?.formError ?? (ssoFailed ? ssoMessage : undefined)} />
         <Input label="Email" name="email" type="email" autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false}
           defaultValue={result?.values?.email} error={result?.fieldErrors?.email} autoFocus />
         <Input label="Password" name="password" type="password" autoComplete="current-password" error={result?.fieldErrors?.password}
@@ -261,7 +261,9 @@ export function ClaimPage() {
     getPendingClaim(controller.signal).then(setClaim).catch(() => setClaim(null));
     return () => controller.abort();
   }, []);
-  const sso = useSso();
+  const capabilities = useCapabilities();
+  const sso = capabilities?.sso;
+  const linkable = capabilities?.linkable === true;
   const confirm = async () => {
     if (!sso) return;
     setBusy(true); setFailed('');
@@ -292,12 +294,14 @@ export function ClaimPage() {
       <div className="auth__notice" role="status">
         <Icon name="alert" />
         <div>
-          <p><strong>Keep your existing account.</strong> If it is yours, ask the person who runs Flux to link it to your single sign-on identity. It keeps everything it has.</p>
+          {linkable ? <p><strong>Link first.</strong> If that account is yours, sign in to it and link single sign-on in Settings; it keeps everything it has.</p>
+            : <p><strong>Keep your existing account.</strong> If it is yours, ask the person who runs Flux to link it to your single sign-on identity. It keeps everything it has.</p>}
           <p><strong>Or claim the address.</strong> Flux then gives it up: the old account is signed out everywhere and its agent connections stop, but its data stays with it and does not move to your new account.</p>
         </div>
       </div>
       {failed ? <FormError message={failed} /> : null}
       <div className="auth__form">
+        {linkable ? <Link className="ui-btn ui-btn--primary ui-btn--lg ui-btn--block" to="/sign-in">Sign in to that account</Link> : null}
         <Button variant="secondary" size="lg" block busy={busy} disabled={!sso} onClick={() => void confirm()}>Claim this address</Button>
       </div>
       <p className="auth__alt"><Link className="ui-link" to={back}>Cancel</Link></p>

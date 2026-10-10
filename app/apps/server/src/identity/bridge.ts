@@ -6,6 +6,7 @@ import { oauthRequestContext, type OauthRequests } from './oauth-flow.js';
 import type { SignInFacts, SignIns } from './sign-in.js';
 import type { SessionResolver } from './session.js';
 import { claimCookie } from './claim-routes.js';
+import { LINK_COOKIE, linkCookie, type LinkIntents } from './link.js';
 
 // Forwarding headers are dropped before Better Auth sees a request. Client addresses come
 // from Fastify's request.ip, which honours only the configured trusted proxies.
@@ -44,10 +45,12 @@ export interface AuthBridgeOptions {
   signIns: SignIns;
   /** Reads the cookie's session, which ends it when the provider's confirmation lapsed (F-024 S2, #312). */
   sessions: Pick<SessionResolver, 'resolveSession'>;
+  /** Explicit links of password accounts to the provider (#315). */
+  links: Pick<LinkIntents, 'pending'>;
 }
 
 /** Forwards auth endpoints and the exact OAuth discovery paths to Better Auth. */
-export function registerAuthBridge(app: FastifyInstance, { auth, publicOrigin, passwordReset, oauthRequests, signIns, sessions }: AuthBridgeOptions) {
+export function registerAuthBridge(app: FastifyInstance, { auth, publicOrigin, passwordReset, oauthRequests, signIns, sessions, links }: AuthBridgeOptions) {
   // OAuth token and revocation endpoints use HTML form encoding. Preserve the
   // bounded raw payload so Better Auth validates it, rather than Fastify's 415.
   app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_request, body, done) => done(null, body));
@@ -76,12 +79,22 @@ export function registerAuthBridge(app: FastifyInstance, { auth, publicOrigin, p
       catch { return reply.code(400).send({ error: 'Invalid OAuth request', code: 'INVALID_OAUTH_QUERY' }); }
       const incoming = new Request(url, { method: request.method, headers, body });
       const facts: SignInFacts = {};
+      // A provider round trip that the owner started to link an account (#315). The cookie must match this browser's
+      // password session and its intent; anything else is refused, never treated as an ordinary sign-in.
+      const linkToken = readCookie(request.headers.cookie, LINK_COOKIE);
+      if (linkToken && url.pathname.startsWith(`${AUTH_BASE_PATH}/callback/`)) {
+        const context = await sessions.resolveSession(request.headers);
+        const intent = context ? await links.pending(linkToken, context.sessionId, context.principal.id) : null;
+        if (intent) facts.link = intent;
+        else facts.linkRejected = true;
+      }
       const handle = () => signIns.run(facts, () => auth.handler(incoming));
       const response = context ? await oauthRequests.run(Object.freeze(context), handle) : await handle();
       reply.status(response.status);
       // A refused sign-in (no refresh token, #311; an address another account holds, #313) comes back to the page
       // with the reason. An address an unverified account holds goes to the claim page instead.
       const destination = (value: string) => {
+        if (facts.link || facts.linkRejected) return `/settings/account?link=${facts.refused ?? 'failed'}`;
         if (facts.refused === 'email_claim') {
           const back = new URL(value, publicOrigin);
           back.searchParams.delete('sso');
@@ -95,6 +108,7 @@ export function registerAuthBridge(app: FastifyInstance, { auth, publicOrigin, p
       });
       const cookies = response.headers.getSetCookie();
       if (facts.claimToken) cookies.push(claimCookie(facts.claimToken, publicOrigin.startsWith('https:')));
+      if (linkToken && url.pathname.startsWith(`${AUTH_BASE_PATH}/callback/`)) cookies.push(linkCookie('', publicOrigin.startsWith('https:'), 0));
       if (cookies.length) reply.header('set-cookie', cookies);
       const text = response.body ? await response.text() : null;
       return reply.send(text && response.headers.get('content-type')?.includes('application/json') ? redactSessionTokens(text) : text);
@@ -106,4 +120,12 @@ export function registerAuthBridge(app: FastifyInstance, { auth, publicOrigin, p
     '/.well-known/oauth-authorization-server/api/auth',
     '/.well-known/openid-configuration/api/auth',
   ]) app.route({ method: ['GET', 'HEAD'], url, handler: forward });
+}
+
+function readCookie(header: string | undefined, name: string) {
+  for (const part of (header ?? '').split(';')) {
+    const [key, ...rest] = part.trim().split('=');
+    if (key === name) return rest.join('=') || null;
+  }
+  return null;
 }

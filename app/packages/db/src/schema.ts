@@ -112,6 +112,36 @@ export const authEmailClaims = pgTable('auth_email_claims', {
   releasedEmail: text('released_email'),
 });
 
+/**
+ * An explicit link of a password account to the one provider, before cutover (migration 0075, #315). Only the hash of
+ * the browser's token is kept; `used` marks the identity linked, and an intent is never reused.
+ */
+export const authLinkIntents = pgTable('auth_link_intents', {
+  id: text('id').primaryKey(),
+  tokenHash: text('token_hash').notNull().unique(),
+  userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  sessionId: text('session_id').notNull(),
+  providerId: text('provider_id').notNull(),
+  state: text('state').notNull().default('pending'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  usedAt: timestamp('used_at', { withTimezone: true }),
+}, (table) => [index('auth_link_intents_user_idx').on(table.userId)]);
+
+/** Operator re-keys and provider unlinks (migration 0076, #315). Append-only; no foreign key, so it outlives accounts. */
+export const authIdentityAudit = pgTable('auth_identity_audit', {
+  id: text('id').primaryKey(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  action: text('action').notNull(),
+  userId: text('user_id').notNull(),
+  providerId: text('provider_id').notNull(),
+  oldSubject: text('old_subject'),
+  newSubject: text('new_subject'),
+  actor: text('actor').notNull(),
+  reason: text('reason').notNull(),
+  mode: text('mode').notNull(),
+}, (table) => [index('auth_identity_audit_user_idx').on(table.userId)]);
+
 /** How a session signed in (migration 0066, #310): password or provider id, the IdP's `sid`, and when it vouched. */
 export const authSessionIdentities = pgTable('auth_session_identities', {
   sessionId: text('session_id').primaryKey().references(() => authSessions.id, { onDelete: 'cascade' }),

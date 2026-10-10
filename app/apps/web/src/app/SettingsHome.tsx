@@ -1,10 +1,11 @@
+import { getCapabilities, startLink, startSso } from '../api/auth';
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { Form, Link, Outlet, useLocation, useNavigation } from 'react-router';
-import type { AgentConnection, PersonalAssistantStatus } from '@flux/contracts';
+import { Form, Link, Outlet, useLocation, useNavigation, useSearchParams } from 'react-router';
+import type { AgentConnection, PersonalAssistantStatus, IdentityCapabilities } from '@flux/contracts';
 import { listAgentConnections } from '../agent-connection/api';
 import { getAssistantStatus } from '../assistant/api';
 import { NotificationsButton } from '../pwa';
-import { AgentTag, Avatar, Icon, Kreska, MEDIA, Spinner, agentHue, setReduceMotion, useMediaQuery, useReduceMotion } from '../ui';
+import { AgentTag, Avatar, Button, Icon, Kreska, MEDIA, Spinner, agentHue, setReduceMotion, useMediaQuery, useReduceMotion } from '../ui';
 import { useShellData } from './data';
 import { setSmallMoments, useSmallMoments } from './smallMoments';
 import { setTextSize, useTextSize, type TextSize } from './textSize';
@@ -265,6 +266,53 @@ export function SettingsAgents() {
   );
 }
 
+const LINK_NOTES: Record<string, string> = {
+  linked: 'Single sign-on is linked to this account. Its address and data stay as they are.',
+  identity_held: 'That provider account already belongs to another Flux account, so nothing was linked.',
+  already_linked: 'This account is already linked to a different provider account, so nothing was linked.',
+};
+
+/** Prepare mode (#315): the owner links the provider to this password account before cutover. */
+function SingleSignOnLink() {
+  const [params] = useSearchParams();
+  const [capabilities, setCapabilities] = useState<IdentityCapabilities | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState('');
+  useEffect(() => {
+    const controller = new AbortController();
+    getCapabilities(controller.signal).then(setCapabilities).catch(() => undefined);
+    return () => controller.abort();
+  }, []);
+  if (!capabilities?.linkable || !capabilities.sso) return null;
+  const outcome = params.get('link');
+  const note = outcome ? (LINK_NOTES[outcome] ?? 'The link did not complete. Start again.') : '';
+  const start = async () => {
+    setBusy(true); setFailed('');
+    try {
+      await startLink();
+      const { url } = await startSso(capabilities.sso!.providerId, '/settings/account');
+      window.location.assign(url);
+    } catch {
+      setBusy(false);
+      setFailed('Linking did not start. Check your connection and try again.');
+    }
+  };
+  return (
+    <section className="sset-card sset-gap" aria-labelledby="set-sso">
+      <div className="sset-row">
+        <div className="sset-row__b">
+        <h2 className="sset-row__t" id="set-sso">Single sign-on</h2>
+        <p className="sset-row__s">Link {capabilities.sso.label} to this account before Flux moves to single sign-on. Your Flux account, data and memberships stay the same.</p>
+        {note ? <p role="status">{note}</p> : null}
+        {failed ? <p role="alert">{failed}</p> : null}
+        </div>
+        <Button variant="secondary" busy={busy} onClick={() => void start()}>{`Link ${capabilities.sso.label}`}</Button>
+      </div>
+    </section>
+  );
+}
+
+
 const dateFormat = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 /** Settings → Account: who is signed in, this session and Sign out (on this device only). */
@@ -277,6 +325,7 @@ export function SettingsAccount() {
     <div className="pane-scroll">
       <div className="pane-in sset-in" data-shift>
         <PageHead title="Account" />
+        <SingleSignOnLink />
         <section className="sset-card sset-me" aria-label="Signed in as">
           <Avatar name={me.user.name} tone="me" size="lg" />
           <div className="sset-me__b">

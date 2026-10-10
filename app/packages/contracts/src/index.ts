@@ -40,6 +40,10 @@ export interface IdentityCapabilities {
   passwordReset: 'available' | 'unavailable';
   /** Who can create a password account (#313): `verified` mails a link first; `off` is closed, including `verified` without email. */
   signup: 'open' | 'verified' | 'off';
+  /** With the one provider in SSO-only mode (#315): no password sign-in, sign-up or reset; the page offers only SSO. */
+  ssoOnly: boolean;
+  /** Prepare mode (#315): the signed-in password account may link the provider now, before cutover. */
+  linkable: boolean;
   /** The operator's single sign-on provider (#113), or null when only email/password sign-in exists. */
   sso: { providerId: string; label: string; /** The provider's discovery document answers right now (#310). */ reachable: boolean } | null;
 }

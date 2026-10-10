@@ -9,10 +9,13 @@ remain unimplemented.
 Flux can let people sign in with your organisation's OpenID Connect identity provider (Keycloak,
 Google Workspace, Okta, Authentik and others), next to email and password
 ([#113](https://github.com/ColdPhase/flux/issues/113)). Flux supports **one** provider per
-instance. While it is set, single sign-on is the only ordinary way in: email/password sign-in,
-sign-up and password reset are closed (refused by the API, and hidden in the browser). To return to
-password mode, unset the `FLUX_OIDC_*` variables and restart. Moving existing password accounts to the
-provider is a separate migration ([#315](https://github.com/ColdPhase/flux/issues/315)).
+instance. Flux works with one provider. Its mode is set by `FLUX_SSO_MODE`:
+
+- `prepare` keeps email/password sign-in, sign-up and reset, and lets each existing password account
+  **link** the provider before cutover (see [Moving existing accounts](#moving-existing-accounts)).
+- `sso` (the default with a provider) is the cutover: email/password sign-in, sign-up and reset are refused
+  by the API and hidden in the browser, and a password-only session no longer continues. Only the provider
+  signs people in. To return to password mode, unset the `FLUX_OIDC_*` variables and restart.
 
 ## What it does and does not do
 
@@ -24,15 +27,16 @@ provider is a separate migration ([#315](https://github.com/ColdPhase/flux/issue
 - **No account takeover by email.** A provider identity is never linked to an existing Flux account
   just because the emails match. If the provider's verified email belongs to a verified Flux account,
   or to an account already linked to a provider identity, the sign-in is refused and nothing changes.
-  If it belongs to an unverified account with no provider link, the sign-in page offers audited
-  operator recovery to keep the existing account, or **claim the address**. Ordinary password
-  sign-in is unavailable under SSO; explicit pre-cutover linking is supplied by #315. Claiming releases
+  If it belongs to an unverified account with no provider link, `prepare` offers **link first**:
+  sign in to that account and link the provider in Settings → Account, keeping its existing data.
+  After SSO cutover the page points to audited operator recovery instead of password sign-in.
+  Both phases offer **claim the address**. Claiming releases
   the address from that account (it becomes `unverified-<id>@invalid`, its sessions and agent connections
   end, and an audit row names both accounts). The account's data stays with it and does not move to the
   new account. The claim page is open for 15 minutes after the provider sign-in.
 - **Email verification of password accounts.** Accounts made before single sign-on are unverified. Once
   email is set (`FLUX_SMTP_URL`), they receive a verification mail the next time they sign in with their
-  password in password mode, and admins can find an account by email only when its address is verified. Setting
+  password in password or `prepare` mode, and admins can find an account by email only when its address is verified. Setting
   `FLUX_SIGNUP=verified` makes new password accounts verify by mail before they can sign in; without
   email it behaves as `off`.
 - **No access from the provider.** Groups, roles and domains in the token are ignored. People join
@@ -189,3 +193,35 @@ own policies (MFA, conditional access), which stay the provider's responsibility
   `http://127.0.0.1/callback` when the server advertises the issuer response parameter, as Flux does.
   Tested in `scripts/check_oidc.sh` against Keycloak with a scripted client; runs of the real Claude Code
   and Codex clients are not part of this change.
+
+## Moving existing accounts
+
+Accounts made with a password before the provider existed have no provider identity, so they cannot sign
+in once the cutover is on. Move them first, in this order:
+
+1. Set `FLUX_OIDC_*` and `FLUX_SSO_MODE=prepare`, then restart. Password sign-in keeps working.
+2. Each person signs in with their password, opens **Settings**, and selects **Link ...**. They complete one
+   provider sign-in as the same person. Flux links that provider identity to their existing account: the
+   account ID, data, memberships and grants stay. Flux matches nothing by email. An identity that another
+   account already holds, or an account already linked to another identity, is refused with the reason shown
+   in Settings, and nothing changes. A link lasts 10 minutes and works once.
+3. When everyone who needs access has linked, set `FLUX_SSO_MODE=sso` (or remove the setting) and restart.
+   At startup the log says how many password-only accounts are still left. They cannot sign in until they
+   are moved; there is no ordinary password fallback.
+
+**Accounts that cannot link** (for example, the provider account was lost): the operator re-keys them with
+`./flux identity link <userId> --subject <provider subject> --reason "<why>"`. It names the account by its Flux id,
+never by an address, and refuses a subject another account holds. In SSO-only mode it refuses unless
+`--allow-sso` is given. A re-key writes an audit row (`auth_identity_audit`) with the actor, the reason and both
+subjects. A subject the account held before is replaced, and that account's sessions and MCP authority end; its
+data stays where it is.
+
+**Removing a sign-in.** Settings can remove the provider sign-in, unless it is the account's last way in. In SSO-only
+mode the provider is the only way, so it cannot be removed. In prepare mode a password on the account is the way back.
+Removing it ends the sessions that signed in through it and the account's MCP authority, and writes an audit row.
+
+**Provider claim rules.** Generic OpenID Connect providers use the verified `email_verified` claim. Microsoft Entra ID
+requires the token's tenant (`tid`) to match its issuer, and an address counts as verified only with the
+`xms_edov` (email domain owner verified) claim. Google requires `email_verified`. These rules are unit-tested against
+documented claim shapes. **Real Entra and Google tenants have not been tested**; their compatibility stays unverified
+until a recorded integration run exists.

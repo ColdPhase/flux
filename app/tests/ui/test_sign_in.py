@@ -51,7 +51,7 @@ class SignInPages(unittest.TestCase):
         expect(page.get_by_role("link", name="Forgot password?")).to_be_visible()
         expect(page.get_by_role("button", name="Sign in with Keycloak")).to_have_count(0)
         capabilities = json.loads(page.request.get(f"{ORIGIN}/api/v1/auth/capabilities").text())
-        self.assertEqual(capabilities, {"passwordReset": "available", "signup": "open", "sso": None})
+        self.assertEqual(capabilities, {"passwordReset": "available", "signup": "open", "ssoOnly": False, "linkable": False, "sso": None})
 
     def test_02_a_new_account_signs_up_and_a_wrong_password_is_refused(self) -> None:
         page = self.page()

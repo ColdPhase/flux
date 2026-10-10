@@ -19,7 +19,7 @@ export interface Confirmation {
   endIfLapsed(sessionId: string): Promise<boolean>;
 }
 
-export function createConfirmation(db: Database, oidc: OidcConfig | null, now: () => Date = () => new Date()): Confirmation {
+export function createConfirmation(db: Database, oidc: OidcConfig | null, now: () => Date = () => new Date(), requireProviderLink = oidc !== null): Confirmation {
   const cutoff = () => new Date(now().getTime() - oidc!.confirmationMaxAgeMs).toISOString();
   // The newest of the provider sign-in (auth_accounts.confirmed_at, kept even with the standing check off) and the
   // standing check's last success (auth_idp_standing.confirmed_at, S4). A managed account with neither is lapsed.
@@ -36,7 +36,7 @@ export function createConfirmation(db: Database, oidc: OidcConfig | null, now: (
       // Both token minting and MCP requests read this gate; absence of an IdP row is a refusal.
       const [link] = await db.select({ id: schema.authAccounts.id }).from(schema.authAccounts)
         .where(and(eq(schema.authAccounts.userId, userId), eq(schema.authAccounts.providerId, oidc.providerId))).limit(1);
-      if (!link) return true;
+      if (!link) return requireProviderLink;
       return ((await db.execute(lapsedSql(sql`a.user_id = ${userId}`))).rowCount ?? 0) > 0;
     },
     async confirm(userId, providerId) {
