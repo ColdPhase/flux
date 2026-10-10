@@ -64,8 +64,8 @@ class DocReferenceJourney(unittest.TestCase):
         cls.browser.close()
         cls.pw.stop()
 
-    def scene(self, phone=False, self_doc=False, block_service_workers=True):
-        ctx = self.browser.new_context(base_url=ORIGIN, storage_state=self.state, viewport={"width": 390 if phone else 1440, "height": 844 if phone else 900}, is_mobile=phone, has_touch=phone, service_workers="block" if block_service_workers else "allow")
+    def scene(self, phone=False, self_doc=False):
+        ctx = self.browser.new_context(base_url=ORIGIN, storage_state=self.state, viewport={"width": 390 if phone else 1440, "height": 844 if phone else 900}, is_mobile=phone, has_touch=phone, service_workers="block")
         self.addCleanup(ctx.close)
         page = ctx.new_page()
         page.choice_observations = []
@@ -413,7 +413,7 @@ class DocReferenceJourney(unittest.TestCase):
     def test_10_delayed_reference_search_describes_its_wait_and_keeps_the_draft(self):
         for phone in (False, True):
             with self.subTest(phone=phone):
-                page, text = self.scene(phone, block_service_workers=True)
+                page, text = self.scene(phone)
                 picker = self.picker(page, text)
                 target = self.native["work"][3]
                 held = []

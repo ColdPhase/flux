@@ -31,9 +31,10 @@ def _is_request_context(node: ast.Call) -> bool:
 
 
 def _blocks(value: ast.AST) -> bool:
-    # "block", or a flag that chooses between "block" and "allow" (the helpers default to "block").
+    # Only the literal "block" blocks. A conditional blocks only when both branches do: a flag that can
+    # select "allow" leaves contexts unblocked whatever its default is, so it does not count.
     if isinstance(value, ast.IfExp):
-        return _blocks(value.body)
+        return _blocks(value.body) and _blocks(value.orelse)
     return isinstance(value, ast.Constant) and value.value == "block"
 
 
@@ -110,7 +111,17 @@ class ServiceWorkersAreBlockedWhereRoutesStub(unittest.TestCase):
         self.assertEqual(unblocked_context_lines("ctx = browser.new_context(base_url=O, service_workers='block')\npage.route('**/x', h)\n"), [])
         self.assertEqual(unblocked_context_lines("ctx = browser.new_context(**{'base_url': O, 'service_workers': 'block', **kw})\npage.route('**/x', h)\n"), [])
         self.assertEqual(unblocked_context_lines("options: dict = {'base_url': O, 'service_workers': 'block'}\nctx = browser.new_context(**options)\nctx.route('**/x', h)\n"), [])
-        self.assertEqual(unblocked_context_lines("ctx = browser.new_context(base_url=O, service_workers='block' if flag else 'allow')\npage.route('**/x', h)\n"), [])
+        # A conditional counts only when both branches block: a flag that can select "allow" is reported,
+        # whatever its default (the #271 review reversal: scene(block_service_workers=False) allowed workers).
+        self.assertEqual(unblocked_context_lines("ctx = browser.new_context(base_url=O, service_workers='block' if flag else 'allow')\npage.route('**/x', h)\n"), [1])
+        self.assertEqual(unblocked_context_lines("ctx = browser.new_context(base_url=O, service_workers='block' if False else 'allow')\npage.route('**/x', h)\n"), [1], "a constant flag that selects allow")
+        self.assertEqual(unblocked_context_lines("ctx = browser.new_context(base_url=O, service_workers='allow' if flag else 'block')\npage.route('**/x', h)\n"), [1])
+        self.assertEqual(unblocked_context_lines("ctx = browser.new_context(base_url=O, service_workers='block' if flag else 'block')\npage.route('**/x', h)\n"), [])
+        self.assertEqual(unblocked_context_lines("ctx = browser.new_context(base_url=O, service_workers=mode)\npage.route('**/x', h)\n"), [1], "a value that is not the literal block")
+        self.assertEqual(unblocked_context_lines("class S(T):\n    def scene(self, block_service_workers=False):\n        ctx = self.browser.new_context(base_url=O, service_workers='block' if block_service_workers else 'allow')\n        ctx.new_page().route('**/x', h)\n"), [3], "a helper whose flag defaults to allow")
+        self.assertEqual(unblocked_context_lines("class S(T):\n    def scene(self, block_service_workers=True):\n        ctx = self.browser.new_context(base_url=O, service_workers='block' if block_service_workers else 'allow')\n        ctx.new_page().route('**/x', h)\n"), [3], "even a helper whose flag defaults to block")
+        self.assertEqual(unblocked_context_lines("class S(T):\n    def scene(self, block_service_workers):\n        ctx = self.browser.new_context(base_url=O, service_workers=block_service_workers)\n        ctx.new_page().route('**/x', h)\n"), [3], "a flag without a default")
+        self.assertEqual(unblocked_context_lines("options = {'base_url': O, 'service_workers': 'block' if flag else 'allow'}\nctx = browser.new_context(**options)\nctx.route('**/x', h)\n"), [2], "a named option dict with a conditional")
         self.assertEqual(unblocked_context_lines("ctx = browser.new_context(base_url=O)\n"), [], "a module without a route needs no block")
         self.assertEqual(unblocked_context_lines("ctx = browser.new_context(base_url=O)  # sw-allowed: reading place\npage.route('**/x', h)\n"), [], "an explicit allow-list line is exempt")
 
@@ -125,11 +136,14 @@ class ServiceWorkersAreBlockedWhereRoutesStub(unittest.TestCase):
             "        page.route('**/x', h)\n"
             "    def test_no_route(self):\n"
             "        self.page()\n"
+            "    def test_conditional_block(self):\n"
+            "        page = self.page(service_workers='block' if flag else 'allow')\n"
+            "        page.route('**/x', h)\n"
             "    def hold(self, page):\n"
             "        page.route('**/x', h)\n"
             "    # sw-allowed: reading place\n"
         )
-        self.assertEqual(routing_tests_without_block(marked), ["J.test_routes_unblocked:5"])
+        self.assertEqual(routing_tests_without_block(marked), ["J.test_routes_unblocked:5", "J.test_conditional_block:10"])
         self.assertEqual(routing_tests_without_block("class J(T):\n    def test_routes(self):\n        self.page().route('**/x', h)\n"), [], "a module without an allowed context is checked context by context")
 
     def test_every_context_of_a_module_that_stubs_routes_blocks_service_workers(self) -> None:
