@@ -516,14 +516,14 @@ class InstantSendJourney(unittest.TestCase):
                 with page.expect_file_chooser() as chooser:
                     thread.get_by_role("button", name="Attach files", exact=True).click()
                 chooser.value.set_files({"name": name, "mimeType": "application/octet-stream", "buffer": b"\x00\x04 lux at nine"})
-                expect(thread.get_by_role("list", name="Files in your draft")).to_contain_text("Uploading…")
+                expect(thread.get_by_role("list", name="Files in your draft")).to_contain_text(re.compile("Uploading"))
                 field = thread.get_by_label("Reply", exact=True)
                 body = f"Readings at {width} attached."
                 field.fill(body)
-                # Sent before its file is staged: the message shows at once with the file, marked "Uploading…".
+                # Sent before its file is staged: the message shows at once with the file, marked "Uploading" with its percentage.
                 thread.get_by_role("button", name="Send reply").click()
                 bubble = self.pending(thread, body)
-                expect(bubble).to_contain_text("Uploading…")
+                expect(bubble).to_contain_text(re.compile("Uploading"))
                 expect(bubble).to_contain_text(name)
                 expect(field).to_have_value("")
                 expect(thread.get_by_role("list", name="Files in your draft")).to_have_count(0)
@@ -585,13 +585,13 @@ class InstantSendJourney(unittest.TestCase):
                 button = thread.get_by_role("button", name="Send reply")
                 button.tap() if width < 681 else button.click()
                 bubble = self.pending(thread, body)
-                expect(bubble).to_contain_text("Uploading…")
+                expect(bubble).to_contain_text(re.compile("Uploading"))
                 page.context.set_offline(True)
                 uploads[0].abort("internetdisconnected")
-                # The upload was cut: the message says why (HIG-67), not "Uploading…".
+                # The upload was cut: the message says why (HIG-67), not "Uploading".
                 expect(bubble).to_have_attribute("data-send-state", "waiting")
                 expect(bubble).to_contain_text("Waiting to send")
-                expect(bubble).not_to_contain_text("Uploading…")
+                expect(bubble).not_to_contain_text(re.compile("Uploading"))
                 # The stream and the thread both have a composer: one line on the screen.
                 expect(page.locator(".connection-line")).to_have_count(1)
                 expect(page.locator(".connection-line")).to_be_visible()

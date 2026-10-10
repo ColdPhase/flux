@@ -264,7 +264,7 @@ class SharedComposerJourney(unittest.TestCase):
         page.route("**/api/v1/projects/*/files?*", hold)
         page.get_by_label("Write to this task").fill("A's held private bytes")
         self.choose(page, [self.file("held-a.bin")])
-        expect(page.get_by_text("Uploading…", exact=False)).to_have_count(1)
+        expect(page.get_by_text(re.compile("Uploading"))).to_have_count(1)  # "Uploading 0%" once the upload starts (#348 AC-3)
         page.wait_for_function("() => window.__fluxHeldUploadReady === true", timeout=10000)
         page.get_by_label("Task", exact=True).select_option(b["id"])
         page.get_by_label("Write to this task").fill("B's distinct draft")
