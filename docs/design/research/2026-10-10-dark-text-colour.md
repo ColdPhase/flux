@@ -46,19 +46,24 @@ should be re-opened before being quoted in a decision.
 4. **Material Design (2018 dark theme): opacity tiers over `#121212`.** High
    emphasis 87% white, medium 60%, disabled 38%; dark grey `#121212` rather
    than black, and elevation shown by lighter surfaces. Medium (60%) is the
-   lowest tier intended for reading. **[primary, not re-fetched]**
+   lowest tier intended for reading. **[primary, not re-fetched]** — the page
+   was fetched on 2026-10-10 but served only a client-rendered shell.
    <https://m2.material.io/design/color/dark-theme.html>
 5. **Radix Colors: only two text steps.** Step 11 is "low-contrast text",
    step 12 "high-contrast text"; steps 1–10 are backgrounds, borders and
-   solids. Dark gray 11 `#b4b4b4`, 12 `#eeeeee`, app background step 1
-   `#111111`. The scale is tuned with APCA. There is no third text grey.
-   **[primary, not re-fetched]** <https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale>
+   solids. Steps 11 and 12 "are guaranteed to Lc 60 and Lc 90 APCA contrast
+   ratio on top of a step `2` background". There is no third text grey.
+   **[primary]** <https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale>
+   (accessed 2026-10-10). Dark gray 11 `#b4b4b4`, 12 `#eeeeee`, step 1
+   `#111111` **[primary, not re-fetched]**.
 6. **Stripe: build the system on perceptual lightness, then pick text levels
    with guaranteed contrast.** "Designing accessible color systems" (Daryl
-   Koopersmith and Wilson Miner, 2019-10-15) describes moving to a perceptually
-   uniform colour space so that a given step reads equally across hues and
-   text pairings stay legible. **[primary, not re-fetched]**
-   <https://stripe.com/blog/accessible-color-systems>
+   Koopersmith and Wilson Miner, 2019-10-15): "Perceptually uniform color
+   spaces model colors based on factors that relate more to human vision";
+   they rebuilt the palette so that "any two colors are guaranteed to have
+   sufficient contrast for small text if they are at least five levels apart".
+   **[primary]** <https://stripe.com/blog/accessible-color-systems>
+   (accessed 2026-10-10)
 7. **Refactoring UI (Adam Wathan, Steve Schoger): fewer greys, hierarchy by
    weight and colour together; tint the greys.** Use two or three text colours
    at most (dark for primary, grey for secondary, lighter grey for tertiary);
@@ -68,15 +73,23 @@ should be re-opened before being quoted in a decision.
    <https://www.refactoringui.com/> (book, 2018) and
    <https://medium.com/refactoring-ui/7-practical-tips-for-cheating-at-design-40c736799886>
 8. **`-webkit-font-smoothing: antialiased` thins light-on-dark text on macOS.**
-   Grayscale antialiasing renders glyphs lighter than the subpixel default;
-   on dark backgrounds it is often used deliberately to stop text looking
-   bold, but with mid-grey text it removes weight that the low contrast
-   already lacks. Recurring in practitioner threads (HN, CSS-Tricks,
-   Dmitry Fadeyev's "Please stop 'fixing' font smoothing", 2012). macOS has
-   disabled subpixel AA since Mojave (2018), so on modern Macs the visible
-   effect is smaller than older threads claim. **[community]**; current-year
-   (H2 2026) practitioner threads were not searched in this session.
-   **[unverified]**
+   MDN: the property is non-standard, macOS-only; `auto` uses subpixel AA
+   where available, `antialiased` smooths at pixel level. **[primary]**
+   <https://developer.mozilla.org/en-US/docs/Web/CSS/font-smooth> (accessed
+   2026-10-10). Practitioners explain the trade-off: subpixel rendering made
+   light-on-dark text look "overly bold", so `antialiased` was used to thin
+   it, but applied site-wide it makes text "more slender" (Dmitry Fadeyev,
+   "Please Stop 'Fixing' Font Smoothing", usabilitypost, 2012-11-05;
+   Wealthfront engineering, "Webkit's -webkit-font-smoothing can make you
+   fat"). **[community]** macOS dropped subpixel AA by default in Mojave
+   (2018), so on current Macs the difference is smaller than these older posts
+   show (Michael Tsai, "macOS 10.14 Mojave Removes Subpixel Anti-aliasing").
+   **[community]** Our reading: grey text on near-black already has little
+   contrast, and thinner strokes reach full brightness on fewer pixels, so
+   the global rule can make `t2`/`t3` look fainter. **[inference, not
+   measured]** A web search on 2026-10-10 for 2026 discussion of this topic
+   returned no 2026 sources; H2 2026 HN/X/Reddit threads were not found in
+   this session.
 
 ## Comparison on our `--el #1c1c1c`
 
@@ -107,8 +120,9 @@ Observations **[inference]**:
 - Our current `t3 #8c8c8c` (Lc 39) sits below every system's *reading*
   secondary tier (Geist 49.8, Material 51.4, Radix 60.2) and is close to
   Apple's secondaryLabel only because Apple's secondary is meant for short
-  labels on a black surface, not body copy. APCA guidance puts Lc ~45 as a
-  floor for large/bold non-body text and ~60 for body text, so `t3` at 39 is
+  labels on a black surface, not body copy. APCA's published levels (Myndex, not
+  re-fetched) put Lc ~45 as a floor for large/bold non-body text and ~60 for
+  body text, and Radix guarantees Lc 60 for its low-contrast text step, so `t3` at 39 is
   in "non-reading" territory while we use it for metadata people read.
 - Our `t2 #acacac` (Lc 56) is in line with Geist/Material secondary; the
   systems that care most about reading (Radix) go lighter, to Lc ~60.
@@ -138,9 +152,9 @@ Observations **[inference]**:
 
 ## Not done in this session
 
-- Re-opening the Apple, Material, Radix, Stripe and Refactoring UI pages on
-  2026-10-10 (values above are from those primary sources but cited from
-  prior knowledge).
-- Searching H2 2026 HN/X/Reddit discussions on dark-mode grey text and font
-  smoothing.
+- Re-opening the Apple, Material (did not render), Refactoring UI pages and
+  the Geist/Radix dark hex tables on 2026-10-10 (those values are cited from
+  prior knowledge and marked "not re-fetched").
+- Finding H2 2026 HN/X/Reddit discussions on dark-mode grey text and font
+  smoothing (one search on 2026-10-10 returned only 2012–2025 sources).
 - Rendered macOS comparison of font smoothing on and off.
