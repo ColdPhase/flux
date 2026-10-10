@@ -1,15 +1,16 @@
-import { useCallback, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useRevalidator } from 'react-router';
 import type { Agent, ObjectLink, Project, WorkspaceMember, WorkStatus, WorkDetailObject, WorkDetailProjection } from '@flux/contracts';
 import { WORK_STATUSES } from '@flux/contracts';
 import { ApiError } from '../api/client';
+import { useStreamEvents } from '../api/stream';
 import { AgentIdentity, Button, Icon, Input, StatusGlyph } from '../ui';
 import { getProject, listWorkspaceMembers } from '../app/conversation-api';
 import { useShellData } from '../app/data';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import { LiveEntry } from '../live/LiveEntry';
 import { useShellActions, type ObjectView, type WorkFormView } from '../app/shellContext';
-import { acceptDecision, createResult, listAgents, proposeDecision, updateWork } from './api';
+import { acceptDecision, createResult, listAgents, proposeDecision, undoTaskCreation, updateWork } from './api';
 import { STATUS_LABEL, decisionLine, firstLine, isFinished, linked, resultLine, shortDate, taskNumber } from './format';
 import { docsLinking } from '../docs/AddToDoc';
 import { useAgentOwners } from '../agents/owners';
@@ -86,6 +87,11 @@ export function WorkDetails({ view }: { view: ObjectView | WorkFormView }) {
   const [tick, setTick] = useState(0);
   const revalidator = useRevalidator();
   const reload = useCallback(() => { setTick((value) => value + 1); revalidator.revalidate(); }, [revalidator]);
+  // A change to this project's work by anyone (for example an Undo of a task's creation, #238) re-reads the open
+  // object, so no other tab or account keeps acting on what it showed before. Private drafts are kept.
+  useStreamEvents(accountId, (event) => {
+    if (event.objectType === 'project' && event.objectId === projectId && /^project\.(work|decision|result|link)_/.test(event.kind)) setTick((value) => value + 1);
+  }, () => setTick((value) => value + 1));
   const load = useCallback((signal: AbortSignal) => loadContext(projectId, signal), [projectId]);
   const contextRead = useWorkRead(projectId ? { accountId, projectId, selector: 'detail-context' } : null, load, tick, revalidator.state === 'idle');
   const context = contextRead.phase === 'ready' || contextRead.phase === 'refreshing' ? contextRead.value : null;
@@ -214,7 +220,10 @@ function IdsLine({ children }: { children: ReactNode }) {
 function WorkPanel({ item, context, detail, relations, reload, commands }: { item: OwnWork; context: Context; detail: WorkDetailProjection; relations: DetailRelations; reload: () => void; commands: PanelCommands }) {
   const { openDetails } = useShellActions();
   const { me } = useShellData();
-  const writable = context.project.access !== 'viewer';
+  // A task whose creation was undone (#238) stays as read-only history: no change, live or new-target control.
+  const agentOwners = useAgentOwners(context.project);
+  const reverted = item.lifecycle?.state === 'creation_reverted' ? item.lifecycle : null;
+  const writable = context.project.access !== 'viewer' && !reverted;
   const { busy, error } = commands.state;
   const { setBusy, setError, setBlocker, isCurrent } = commands;
   const blocker = commands.state.blocker ?? item.blocker ?? '';
@@ -225,7 +234,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   const parkedBy = item.parked ? detail.context.find((decision) => decision.id === item.parked!.decisionId) : null;
   // An open task is the most specific place to work together, and a fragment others can open.
   const liveAnchor = { projectId: item.projectId, context: { type: 'work' as const, id: item.id }, label: item.title };
-  useRegisterLiveHere(liveAnchor, { ref: { type: 'work', id: item.id, version: item.version }, label: item.title, what: 'task' });
+  useRegisterLiveHere(reverted ? null : liveAnchor, reverted ? null : { ref: { type: 'work', id: item.id, version: item.version }, label: item.title, what: 'task' });
 
   // The same change of the same version retried after a lost response reuses its command UUID: it never
   // contributes the saved blocker to the task conversation twice. A different change gets a new one.
@@ -247,12 +256,24 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
 
   return (
     <div className="details wd" data-detail-kind="work" data-detail-id={item.id}>
-      <p className="details__eyebrow wd-eyebrow"><StatusGlyph status={item.status} size={14} /><span>Task <span className="ui-task-number">{taskNumber(item)}</span> · <span className="wd-project-name">{context.project.name}</span> · {STATUS_LABEL[item.status]}{item.parked ? ' · parked, not done' : ''}</span></p>
+      <p className="details__eyebrow wd-eyebrow"><StatusGlyph status={item.status} size={14} /><span>Task <span className="ui-task-number">{taskNumber(item)}</span> · <span className="wd-project-name">{context.project.name}</span> · <span>{reverted ? 'Creation undone · read-only history' : STATUS_LABEL[item.status]}</span>{item.parked ? ' · parked, not done' : ''}</span></p>
       <h3 className="details__title">{item.title}</h3>
       {item.outcome ? <p className="details__lead">{item.outcome}</p> : null}
       {item.status === 'blocked' && item.blocker ? <p className="wd-blocker"><Icon name="alert" size={14} />Blocked: {item.blocker}</p> : null}
       <ReadyToClose item={item} writable={writable} busy={busy} done={() => void change({ status: 'done' })} />
-      {!isFinished(item) ? <LiveEntry variant="inline" anchor={liveAnchor} /> : null}
+      {!reverted && !isFinished(item) ? <LiveEntry variant="inline" anchor={liveAnchor} /> : null}
+
+      {reverted ? <section className="details__sec wd-history" data-task-lifecycle="creation_reverted" aria-labelledby={`wd-history-${item.id}`}>
+        <p className="wd-muted">Creation undone by {reverted.revertedBy.name} on {shortDate(reverted.revertedAt)}. This task stays here as history.</p>
+        <h4 id={`wd-history-${item.id}`}>Activity</h4>
+        <ol className="wd-history__events" aria-label="Task activity">
+          <li><span className="wd-history__action">Created by</span><HistoryActor actor={item.createdBy} owners={agentOwners} />
+            <time dateTime={item.createdAt}>{historyTime(item.createdAt)}</time></li>
+          <li><span className="wd-history__action">Creation undone by</span><HistoryActor actor={reverted.revertedBy} owners={agentOwners} />
+            <time dateTime={reverted.revertedAt}>{historyTime(reverted.revertedAt)}</time></li>
+        </ol>
+      </section> : null}
+      {item.creationUndo?.eligible && writable ? <UndoCreation key={`${me.user.id}:${item.id}:${item.version}`} item={item} userId={me.user.id} reload={reload} isCurrent={isCurrent} /> : null}
 
       {writable ? (
         <fieldset className="wd-controls" disabled={busy}>
@@ -313,7 +334,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
       <TaskThoughtLinks item={item} project={context.project} links={relations.links} writable={writable} reload={reload}
         empty={emptyLinks(relations, 'Not linked to a thought yet.')} />
 
-      <TaskDiscussionSection key={`${me.user.id}:${context.project.id}:${item.id}`} workId={item.id} project={context.project} members={context.members} me={{ id: me.user.id, name: me.user.name }} />
+      <TaskDiscussionSection key={`${me.user.id}:${context.project.id}:${item.id}`} readOnly={!!reverted} revision={detail.observedAt} workId={item.id} project={context.project} members={context.members} me={{ id: me.user.id, name: me.user.name }} />
 
       <section className="details__sec" aria-labelledby="wd-decisions">
         <h4 id="wd-decisions">Decisions</h4>
@@ -332,6 +353,52 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
       <IdsLine>Added by {item.createdBy.name} · {shortDate(item.createdAt)} · version {item.version}</IdsLine>
     </div>
   );
+}
+
+function historyTime(value: string) {
+  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+}
+
+function HistoryActor({ actor, owners }: { actor: OwnWork['createdBy']; owners: ReturnType<typeof useAgentOwners> }) {
+  return actor.kind === 'agent'
+    ? <AgentIdentity name={actor.name} owner={owners.get(actor.id)} />
+    : <strong>{actor.name}</strong>;
+}
+
+/**
+ * "Undo task creation" (#238): only for a server-derived eligible task. One command identity per intended Undo
+ * survives a remount and a lost response, so a retry returns the same receipt instead of a second notice.
+ */
+function UndoCreation({ item, userId, reload, isCurrent }: { item: OwnWork; userId: string; reload: () => void; isCurrent: () => boolean }) {
+  const identityKey = `flux:creation-undo:${userId}:${item.projectId}:${item.id}:${item.version}`;
+  const attempt = useRef<string | null>(null);
+  const pending = useRef<AbortController | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  useEffect(() => () => pending.current?.abort(), []);
+  async function undo() {
+    if (busy || !isCurrent()) return;
+    if (!attempt.current) {
+      try { attempt.current = sessionStorage.getItem(identityKey); } catch { /* An in-memory retry still works. */ }
+      attempt.current ??= crypto.randomUUID();
+      try { sessionStorage.setItem(identityKey, attempt.current); } catch { /* Storage may be disabled. */ }
+    }
+    const controller = new AbortController(); pending.current = controller;
+    setBusy(true); setError('');
+    try {
+      await undoTaskCreation(item, attempt.current, controller.signal);
+      try { sessionStorage.removeItem(identityKey); } catch { /* No persisted retry to remove. */ }
+      if (!controller.signal.aborted && isCurrent()) reload();
+    } catch (cause) {
+      if (!controller.signal.aborted && isCurrent()) setError(cause instanceof ApiError && cause.status === 409
+        ? 'This task has changed or been used. Refresh its details before trying again.' : readable(cause));
+    } finally { if (!controller.signal.aborted) setBusy(false); }
+  }
+  return <section className="details__sec" aria-label="Undo task creation">
+    <Button variant="secondary" busy={busy} disabled={busy} onClick={() => void undo()}>Undo task creation</Button>
+    <p className="wd-muted">Available while this AI-created task is unchanged and unused. Its history stays visible.</p>
+    {error ? <p className="wd-error" role="alert">{error} <button type="button" className="wd-inline" onClick={reload}>Refresh details</button></p> : null}
+  </section>;
 }
 
 /** What this task waits for: each direct prerequisite with its state in words, never colour alone. */

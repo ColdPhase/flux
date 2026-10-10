@@ -787,9 +787,152 @@
           "createdBy": {
             "$ref": "#/definitions/actor"
           },
+          "creationHistory": {
+            "additionalProperties": false,
+            "properties": {
+              "baseline": {},
+              "baselineVersion": {
+                "anyOf": [
+                  {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "firstPersistedUseAt": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "notices": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "createdBy": {
+                      "$ref": "#/definitions/actor"
+                    },
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "kind": {
+                      "enum": [
+                        "task.created",
+                        "task.creation_reverted"
+                      ]
+                    },
+                    "sources": {
+                      "items": {
+                        "$ref": "#/definitions/objectRef"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "createdAt",
+                    "createdBy",
+                    "id",
+                    "kind",
+                    "sources"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "origin": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "native_agent",
+                      "ai_proposal",
+                      "human"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "proposalId": {
+                "anyOf": [
+                  {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "baseline",
+              "baselineVersion",
+              "firstPersistedUseAt",
+              "notices",
+              "origin",
+              "proposalId"
+            ],
+            "type": "object"
+          },
           "id": {
             "minLength": 1,
             "type": "string"
+          },
+          "lifecycle": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "state": {
+                    "const": "active"
+                  }
+                },
+                "required": [
+                  "state"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "noticeId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "revertedAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "revertedBy": {
+                    "$ref": "#/definitions/actor"
+                  },
+                  "state": {
+                    "const": "creation_reverted"
+                  }
+                },
+                "required": [
+                  "noticeId",
+                  "revertedAt",
+                  "revertedBy",
+                  "state"
+                ],
+                "type": "object"
+              }
+            ]
           },
           "number": {
             "minimum": 1,
@@ -858,7 +1001,9 @@
           "blocker",
           "createdAt",
           "createdBy",
+          "creationHistory",
           "id",
+          "lifecycle",
           "number",
           "outcome",
           "owner",

@@ -95,24 +95,24 @@
 .convo-notice__meta { display: flex; flex-wrap: wrap; gap: 4px 9px; align-items: baseline; min-width: 0; max-width: 100%; font-size: var(--fs-xs); color: var(--t3); }
 .convo-notice__meta strong { min-width: 0; max-width: 100%; overflow-wrap: anywhere; font-size: var(--fs-sm); font-weight: 550; color: var(--t1); }
 .convo-notice__meta .agent-id__name { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
-.convo-notice__kind { color: var(--t3); }
-.convo-notice__task { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 0; border: 0; background: none; color: var(--t1); font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; }
-.convo-notice__title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.convo-notice__kind { color: var(--t3); font-size: var(--fs-sm); }
+.convo-notice__task { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 100%; min-height: 32px; padding: 5px 12px; margin-top: 2px; border: 0; border-radius: var(--r-lg, 12px); background: var(--bg); color: var(--t1); font: inherit; font-size: var(--fs-md); text-align: left; cursor: pointer; box-shadow: 0 1px 3px var(--line); }
+.convo-notice__title { flex: 1; min-width: 0; white-space: normal; overflow-wrap: anywhere; line-height: 1.4; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.convo-notice--undone .convo-notice__title { display: block; -webkit-line-clamp: unset; overflow: visible; }
 .convo-notice__task svg { flex: none; color: var(--t3); }
 .convo-notice__num { flex: none; color: var(--t3); font-variant-numeric: tabular-nums; }
 .convo-notice__task:hover .convo-notice__title { text-decoration: underline; text-underline-offset: 2px; }
 .convo-notice__task:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; border-radius: 3px; }
 .convo-notice time { padding-top: 1px; font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
 @media (pointer: coarse) { .convo-notice__task { min-height: 44px; } }
-/* Task notices read as one quiet group (#266 PF-6): adjacent notices sit close, and a title wraps to
-   two lines instead of being cut to one. */
+/* Adjacent events remain one quiet group; each full task title belongs to its native reference. */
 .convo-notice + .convo-notice { margin-top: -12px; }
-.convo-notice__title { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
 /* Keep compact titles at ordinary text sizes, but expose their full purpose when the available
    author-column width is narrow relative to the reader's font size. Container em units scale with it. */
 @container task-notice (max-width: 14em) {
+  .convo-notice__task { align-items: flex-start; }
   .convo-notice__title { display: block; -webkit-line-clamp: unset; }
   .convo-notice__meta { align-self: stretch; }
   .convo-notice__meta time { flex-basis: 100%; }
 }
-@media (max-width: 680px) { .convo-notice { padding-left: 42px; margin: 14px 0; } .convo-notice + .convo-notice { margin-top: -6px; } }
+@media (max-width: 680px) { .convo-notice { padding-left: 42px; margin: 14px 0; } .convo-notice + .convo-notice { margin-top: -6px; } .convo-notice__task { min-height: 44px; font-size: max(var(--fs-md), 16px); } }

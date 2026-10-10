@@ -296,6 +296,7 @@ runtime from `flux_bootstrap`, a connection can make these native project change
 | --- | --- | --- | --- |
 | `flux_create_task` | `work.create` | execute, plan | One task with an optional outcome, status, blocker, done-when criteria, same-project prerequisites and plan intent |
 | `flux_update_task` | `work.update` | execute, plan | One task at the exact version last read; same fields, but the plan intent never changes |
+| `flux_undo_task_creation` | `work.creation.revert` | execute, plan | Undo the creation of a task this agent created natively, at its exact version, while it is unchanged and unused (#238); the task stays as read-only history and a retry returns the same receipt. A `work.update` grant does not authorize it |
 | `flux_record_result` | `result.record` | execute | One positive or negative finding with evidence, linked to tasks and decisions; it can finish one of those tasks at its read version |
 | `flux_propose_decision` | `decision.propose` | execute, plan | One proposed decision with rationale, affected tasks and an optional accepted decision it would replace. An agent never accepts or rejects; a person decides |
 

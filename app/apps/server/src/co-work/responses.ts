@@ -127,6 +127,8 @@ export async function coWorkRequestResponseInTransaction(tx: Transaction, claims
     }
   }
   if (!result) throw changed();
+  // #238: a request claim or response is a persisted use of the unit's tasks, under the retained task pass.
+  await locked.taskFence.mark();
   const transition: CoWorkRequestTransition = { requestId: result.id, version: result.version,
     state: result.state as CoWorkRequestState, responseRef };
   const postcondition: RequestPostcondition = { kind: 'cowork.request_state', workspaceId: context.workspaceId,

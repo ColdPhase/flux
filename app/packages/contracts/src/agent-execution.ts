@@ -1,7 +1,7 @@
 import type { AgentScope } from './agent-proposals.js';
 
 /** Exact operations; an adapter advertises only the ones it actually implements. */
-export const AGENT_OPERATIONS = ['work.create', 'work.update', 'result.record', 'decision.propose',
+export const AGENT_OPERATIONS = ['work.create', 'work.update', 'work.creation.revert', 'result.record', 'decision.propose',
   'map.create', 'map.rename', 'map.thought.create', 'map.thought.update', 'map.thought.delete',
   'map.positions.update', 'map.link.create', 'map.link.delete', 'doc.create', 'doc.update', 'conversation.create', 'conversation.reply',
   'cowork.claim', 'cowork.renew', 'cowork.release', 'cowork.request', 'cowork.request.claim', 'cowork.request.respond',
@@ -19,7 +19,7 @@ export type AgentPeerRequestClass = typeof AGENT_PEER_REQUEST_CLASSES[number];
  * `cowork.unit.complete` / `cowork.unit.transfer` are the current HOLDER's: their target and class are its own unit and
  * that unit's actual role, under the unit's live claim. A transfer gives the new assignee no authority either. */
 export const AGENT_OPERATION_CLASSES: Record<AgentOperation, readonly AgentPeerRequestClass[]> = {
-  'work.create': ['execute', 'plan'], 'work.update': ['execute', 'plan'],
+  'work.create': ['execute', 'plan'], 'work.update': ['execute', 'plan'], 'work.creation.revert': ['execute', 'plan'],
   'result.record': ['execute'], 'decision.propose': ['execute', 'plan'],
   'map.create': ['execute', 'plan'], 'map.rename': ['execute', 'plan'],
   'map.thought.create': ['execute', 'plan'], 'map.thought.update': ['execute', 'plan'],

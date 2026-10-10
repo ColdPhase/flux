@@ -171,6 +171,13 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
 
   async function commit(runId: string, result: PersonalComputeResult, sources: SuppliedSource[], price: AiPrice | null): Promise<PersonalRunOutcome> {
     return uow.run(async (ports) => {
+      const located = await ports.runs.findRun(runId);
+      if (!located || located.status !== 'dispatching') return 'skipped';
+      const initial = await recheck(ports, connections, compute, located, 'before_commit', true).catch((error: unknown) => { if (isAccessDenial(error)) return { refusal: 'denied' as const }; throw error; });
+      const preview = result.kind === 'completed' ? parseOutput(result.text, sources, result.stopReason !== 'max_tokens') : null;
+      const refs = [...sources.map((source) => source.ref), ...(preview?.proposal?.finishesWorkId ? [{ type: 'work', id: preview.proposal.finishesWorkId }] : [])];
+      const taskFence = !('refusal' in initial) && preview
+        ? await ports.runs.prepareTaskUse(located.projectId, located.conversationId, refs) : null;
       const run = await ports.runs.findRun(runId, { lock: true });
       if (!run || run.status !== 'dispatching') return 'skipped';
       // The usage is charged at the price of the connection the run was reserved on, or as the
@@ -213,6 +220,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
         await ports.events.record(agent, run.workspaceId, 'project.assistant_proposal_created.v1', run.projectId, { runId: run.id, proposalId: proposal.id });
       }
       await ports.events.record(agent, run.workspaceId, 'project.assistant_answer_committed.v1', run.projectId, { conversationId: run.conversationId, runId: run.id });
+      await taskFence?.mark();
       return updated.status;
     });
   }
@@ -288,6 +296,12 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       if (fitted?.refused) return fitted.outcome;
 
       const ready = await uow.run(async (ports) => {
+        const located = await ports.runs.findRun(run.id);
+        if (!located || located.status !== 'reading') return { done: true as const, outcome: 'skipped' as PersonalRunOutcome };
+        const preliminary = await recheck(ports, connections, compute, located, 'before_dispatch', true).catch((error: unknown) => { if (isAccessDenial(error)) return { refusal: 'denied' as const }; throw error; });
+        // Current authority is retained before graphs/tasks and the run/domain row.
+        const taskFence = !('refusal' in preliminary) && fitted && !fitted.refused
+          ? await ports.runs.prepareTaskUse(located.projectId, located.conversationId, fitted.sources.map((source) => source.ref)) : null;
         const current = await ports.runs.findRun(run.id, { lock: true });
         const end = async (status: RunRecord['status']) => ({ done: true as const, outcome: (await updateAndAnnounce(ports, run.id, ended(status, 'before_dispatch', free))).status as PersonalRunOutcome });
         if (!current || current.status !== 'reading') return { done: true as const, outcome: 'skipped' as PersonalRunOutcome };
@@ -299,7 +313,8 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
         if ('refusal' in checked) return end(checked.refusal);
         if (checked.connection.id !== connection.id) return end('unavailable');
         if (!fitted) return end('input_too_large');
-        await updateAndAnnounce(ports, run.id, { status: 'dispatching', dispatchedAt: new Date() });
+        await updateAndAnnounce(ports, run.id, { status: 'dispatching', dispatchedAt: new Date(), answerSources: fitted.sources.map((source) => source.ref) });
+        await taskFence?.mark();
         return { done: false as const, fitted };
       });
       if (ready.done) return ready.outcome;

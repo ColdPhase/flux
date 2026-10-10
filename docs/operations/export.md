@@ -108,3 +108,9 @@ file, or changing the manifest identification needs a new `formatVersion`. The J
 keys so that a change to the format cannot go unnoticed in the tests, and
 `app/tests/app/extension-contracts.test.ts` pins the schema and bundle layout to
 `app/tests/app/contracts/project-export.v1.json`. See [integrations](../integrations/README.md#ext-2-read-a-project-export).
+
+Task creation Undo (#238) keeps every task in the export. Each task carries `lifecycle` (active, or creation
+reverted with the notice, time and actor) and `creationHistory` (trusted origin, immutable baseline, first persisted
+use, proposal identity, and the original and reversion notices with their actual actors). Active application lists
+leave creation-reverted tasks out; direct reads and the export name them explicitly. Command receipts stay in full
+backups, as before.

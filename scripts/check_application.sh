@@ -98,6 +98,10 @@ run_browser -e DATABASE_URL="postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@db:5
 # A saved blocker, a published result and a public handoff reach the task conversation (#154).
 run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/task-contribution-effects.e2e.ts
 
+# Undo of an unused AI-created task (#238): two accounts across Conversation, Tasks, Map and Agents, stale and late
+# refusals, a lost response retried with its receipt, read-only history at desktop and phone width.
+run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/task-creation-undo.e2e.ts
+
 # Project GitHub settings use real Flux sessions/SQL and an injected external transport fixture.
 # This is browser integration coverage, not the required real GitHub App installation evidence.
 $compose run --rm e2e node_modules/.bin/tsx --test tests/app/e2e/github.e2e.ts

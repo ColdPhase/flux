@@ -32,6 +32,13 @@ export interface TaskDiscussion {
   messages: import('./conversation.js').ConversationMessage[];
   messagePage: import('./conversation.js').Conversation['messagePage'];
 }
+export const taskCreationUndoPath = (workId: string) => `/api/v1/work/${workId}/creation-undo`;
+export interface UndoTaskCreationCommand { clientCommandId: string; expectedVersion: number }
+export type TaskCreationUndoReason = 'eligible' | 'not_ai_origin' | 'eligibility_unknown' | 'task_used' | 'creation_changed' | 'not_authorized' | 'already_reverted';
+export interface TaskCreationUndoEligibility { eligible: boolean; reason: TaskCreationUndoReason }
+export type TaskLifecycle = { state: 'active' } | { state: 'creation_reverted'; noticeId: string; revertedAt: string; revertedBy: NamedPrincipal };
+export interface UndoTaskCreationResult { work: WorkItem; noticeId: string; clientCommandId: string }
+
 export const workItemPath = (workId: string) => `/api/v1/work/${workId}`;
 export const projectDecisionsPath = (projectId: string) => `/api/v1/projects/${projectId}/decisions`;
 export const decisionPath = (decisionId: string) => `/api/v1/decisions/${decisionId}`;
@@ -137,6 +144,8 @@ export interface TaskPrerequisite {
 }
 
 export interface WorkItem extends ProjectObject {
+  lifecycle?: TaskLifecycle;
+  creationUndo?: TaskCreationUndoEligibility;
   /** The task's number in its project, shown as "#12" (#276): given at creation, never reused or changed. */
   number: number;
   title: string;
@@ -216,7 +225,9 @@ export interface TaskCreationNotice {
   workspaceId: string;
   projectId: string;
   workId: string;
-  kind: 'task.created';
+  kind: 'task.created' | 'task.creation_reverted';
+  /** Current lifecycle; original notice identity and actor remain unchanged. */
+  lifecycle?: TaskLifecycle;
   /** Current task label; the exact historical identity/creator/sources below are retained. */
   workTitle: string;
   /** The task's number in its project, "#12" (#276), so the announcement names it from the start. */

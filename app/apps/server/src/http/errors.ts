@@ -1,6 +1,7 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
 import type { ApiError } from '@flux/contracts';
 import { DomainError } from '@flux/core';
+import { taskUseDomainError } from '../work/task-use-errors.js';
 
 // The one mapping from domain errors to HTTP answers (#85). The API registers it once on its root
 // instance (app.ts), so every route plugin that does not set its own handler answers the same way.
@@ -19,6 +20,8 @@ export function domainErrorBody(error: DomainError): ApiError {
 /** Maps DomainError to its status and ApiError body, and an unauthenticated request to 401. */
 export function useDomainErrors(app: FastifyInstance) {
   app.setErrorHandler((error: FastifyError | DomainError, _request, reply) => {
+    // A storage task-use refusal (#238) is a known outcome; translate it without parsing a message.
+    error = taskUseDomainError(error) as typeof error;
     if (error instanceof DomainError) return reply.code(error.status).send(domainErrorBody(error));
     if ((error as FastifyError).statusCode === 401) return reply.code(401).send(UNAUTHENTICATED);
     throw error;

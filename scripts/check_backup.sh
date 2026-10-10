@@ -6,8 +6,8 @@
 #  1. Fresh restore with real data: checkout A runs ./flux up and ./flux demo, then
 #     scripts/backup-fixture.mjs adds conversations, a DM, a private note, a project sketch,
 #     work/decision/result with links, a doc with two versions, a push subscription, a revoked
-#     and a live session, two OAuth agent connections with bearers (#52; one revoked before the
-#     backup, one after it) and an outsider; a file is put into the files volume. ./flux export
+#     and a live session, three OAuth agent connections with bearers (one revoked before the
+#     backup, one after it, and one for native task Undo) and an outsider; a file is put into the files volume. ./flux export
 #     is checked for content and exclusions. ./flux backup refuses when the writers cannot be
 #     confirmed stopped, keeps two backups of the same second apart, and prunes with --keep 1;
 #     restore is refused when not confirmed, for a damaged archive, a manifest that disagrees
@@ -23,6 +23,8 @@
 #     makes ./flux upgrade fail with restore instructions, which are followed. Failures after the
 #     new version started (health probe, partial start) stop and confirm the writers and warn that
 #     work since the start is not in the backup; an unconfirmed stop is reported as such.
+#     When this tree adds #238's 0048, its guarded reversal (0060, then 0048) runs before any #238 fact exists, the
+#     previous image starts on the exact prior ledger with its data, and this tree upgrades again.
 set -eu
 
 here=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd -P)
@@ -105,7 +107,7 @@ run_a=$(project_of "$A")
 # A local OAuth client, inserted as tests/app/oauth-mcp.test.ts does (no external client metadata).
 compose_in "$A" exec -T db psql -X -q -v ON_ERROR_STOP=1 -U flux -d flux -c "
   INSERT INTO oauth_client (id, client_id, name, redirect_uris, token_endpoint_auth_method, grant_types, response_types, scopes, require_pkce, created_at, updated_at)
-  VALUES (gen_random_uuid()::text, '$oauth_client', 'Backup check client', ARRAY['http://127.0.0.1:19737/callback'], 'none', ARRAY['authorization_code'], ARRAY['code'], ARRAY['flux.context.read'], true, now(), now());
+  VALUES (gen_random_uuid()::text, '$oauth_client', 'Backup check client', ARRAY['http://127.0.0.1:19737/callback'], 'none', ARRAY['authorization_code'], ARRAY['code'], ARRAY['flux.context.read','flux.action.execute'], true, now(), now());
   INSERT INTO oauth_client_resource (id, client_id, resource_id, created_at) VALUES (gen_random_uuid()::text, '$oauth_client', 'http://127.0.0.1:$port_a/mcp', now());"
 seed_out=$(fixture "$A" seed)
 state=$(printf '%s\n' "$seed_out" | sed -n 's/^FLUX_FIXTURE //p')
@@ -246,7 +248,7 @@ done
 [ ! -f "$B/docker/.env" ] || fail "B is not fresh"
 flux_b restore "$archive" -y > "$work/restore.out" 2>&1 || { cat "$work/restore.out"; fail "restore into B failed"; }
 tail -n 7 "$work/restore.out"
-grep -q 'NOTE: 1 agent connection(s) are active as of the backup' "$work/restore.out" || fail "restore did not warn about restored agent connections"
+grep -q 'NOTE: 2 agent connection(s) are active as of the backup' "$work/restore.out" || fail "restore did not warn about both restored agent connections"
 run_b=$(project_of "$B")
 [ -n "$run_b" ] && [ "$run_b" != "$run_a" ] || fail "B did not use its own project ($run_b)"
 [ "$(ls -l "$B/docker/.env" | cut -c1-10)" = "-rw-------" ] || fail "restored .env is not private"
@@ -260,7 +262,7 @@ compose_in "$B" --profile ops run --rm --no-deps -T files-archive cat /data/file
 owner_uid=$(compose_in "$B" --profile ops run --rm --no-deps -T files-archive stat -c %u /data/files/uploads/sentinel.bin | tr -d '\r')
 [ "$owner_uid" = 1000 ] || fail "restored file belongs to uid $owner_uid, not the API user"
 flux_b restore "$archive" --revoke-agent-connections -y > "$work/revoke.out" 2>&1 || { cat "$work/revoke.out"; fail "restore --revoke-agent-connections failed"; }
-grep -q 'Revoked 1 agent connection(s)' "$work/revoke.out" || fail "no revocation report: $(tail -n 5 "$work/revoke.out")"
+grep -q 'Revoked 2 agent connection(s)' "$work/revoke.out" || fail "no revocation report: $(tail -n 5 "$work/revoke.out")"
 fixture "$B" agents-revoked "$state"
 flux_b clean -y >/dev/null
 flux_a clean -y >/dev/null
@@ -312,6 +314,45 @@ upgrade_archive=$(sed -n 's/^Backup written: \(.*\.tar\) (.*/\1/p' "$work/upgrad
 [ -f "$upgrade_archive" ] || fail "upgrade wrote no backup"
 tar -xOf "$upgrade_archive" manifest.json | grep -q "\"schemaVersion\": $from_schema," || fail "the upgrade backup is not of schema $from_schema"
 fixture "$U" demo
+
+if printf '%s\n' $new_migrations | grep -qx '0048_unused_ai_task_creation_undo.sql'; then
+  # The reversal replaces U's checkout twice. Keep its pre-upgrade backup outside
+  # that directory so the later restore --migrate checks use the original pair.
+  cp "$upgrade_archive" "$work/pre-undo-upgrade.tar"
+  upgrade_archive="$work/pre-undo-upgrade.tar"
+  step "Guarded pre-use reversal of #238 (0060, then 0048) back to the previous image, which starts on its exact ledger"
+  # The upgraded data has no #238 fact yet (no task was created after the upgrade). The writers stop first.
+  compose_in "$U" stop api worker >/dev/null
+  if compose_in "$U" run --rm --no-deps -T migrate node tooling/dist/reverse-task-creation-undo.js --execute > "$work/reverse-unacknowledged.out" 2>&1; then
+    fail "the reversal ran without the stopped-writers acknowledgement"
+  fi
+  compose_in "$U" run --rm --no-deps -T -e FLUX_REVERSE_0048_QUIESCED=true migrate node tooling/dist/reverse-task-creation-undo.js --execute \
+    > "$work/reverse.out" 2>&1 || { cat "$work/reverse.out"; fail "the guarded #238 reversal failed"; }
+  grep -q 'Reversed 0060 and 0048' "$work/reverse.out" || fail "the reversal did not report its two versions: $(cat "$work/reverse.out")"
+  [ "$(compose_in "$U" exec -T db psql -X -tA -U flux -d flux -c 'SELECT count(*) FROM flux_schema_version WHERE version IN (48, 60)')" = 0 ] \
+    || fail "the reversal left a #238 ledger row"
+  cp "$(env_path "$U")" "$work/reverse.env"
+  find "$U" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+  git -C "$here" archive "$from" | tar -xf - -C "$U"
+  mkdir -p "$(dirname "$U/$env_relative")"
+  cp "$work/reverse.env" "$U/$env_relative"
+  chmod 600 "$U/$env_relative"
+  flux_u up > "$work/reverse-up.out" 2>&1 || { cat "$work/reverse-up.out"; fail "the previous image did not start on the reversed database"; }
+  curl -fsS "http://127.0.0.1:$port_u/api/v1/health" | grep -q "\"schemaVersion\":$from_schema" || fail "the previous image is not healthy on schema $from_schema"
+  flux_u demo | grep -q 'already exists; nothing new was seeded' || fail "the previous image lost data after the reversal"
+  # Forward again with this tree for the steps below.
+  cp "$(env_path "$U")" "$work/reverse.env"
+  find "$U" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+  copy_tree "$U"
+  mkdir -p "$(dirname "$U/$env_relative")"
+  cp "$work/reverse.env" "$U/$env_relative"
+  chmod 600 "$U/$env_relative"
+  flux_u upgrade -y > "$work/reupgrade-238.out" 2>&1 || { cat "$work/reupgrade-238.out"; fail "upgrading again after the reversal failed"; }
+  for migration in 0048_unused_ai_task_creation_undo.sql 0060_task_creation_undo_grant.sql; do
+    grep -q "Applied migration $migration" "$work/reupgrade-238.out" || fail "the second upgrade did not apply $migration"
+  done
+  fixture "$U" demo
+fi
 
 step "The pre-upgrade backup (a subset of this image's migrations) restores only with --migrate"
 if flux_u restore "$upgrade_archive" -y > "$work/subset.out" 2>&1; then fail "a backup lacking migrations was restored without --migrate"; fi

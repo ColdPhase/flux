@@ -104,6 +104,15 @@
 button.wd-link:active:not(:disabled) { background: var(--sub); transform: scale(var(--press)); transition-duration: var(--dur-1); }
 .wd-inline { display: inline; padding: 0; color: var(--t1); font-weight: 500; text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 3px; }
 .wd-muted { font-size: var(--fs-sm) !important; color: var(--t3) !important; }
+.wd-history.details__sec { margin-top: 14px; }
+.wd-history h4 { margin-top: 12px; }
+.wd-history__events { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.wd-history__events li { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 6px; font-size: var(--fs-md); min-width: 0; }
+.wd-history__events strong { font-weight: 550; overflow-wrap: anywhere; }
+.wd-history__action { color: var(--t2); }
+.wd-history__events .agent-id { flex-wrap: wrap; min-width: 0; }
+.wd-history__events .agent-id__name { white-space: normal; overflow-wrap: anywhere; }
+.wd-history__events time { flex-basis: 100%; font-size: var(--fs-sm); color: var(--t3); font-variant-numeric: tabular-nums; }
 /* Criteria and prerequisites of a planned task (#152): plain list, state in words, no checkbox that implies a check. */
 .wd-criteria { margin: 0 0 6px; padding-left: 18px; font-size: var(--fs-md); line-height: 1.5; }
 .wd-criteria li { padding: 2px 0; overflow-wrap: anywhere; }
