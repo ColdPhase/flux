@@ -717,7 +717,7 @@ export function SketchMap(props: SketchMapProps) {
         <div className="ui-panel__body">
           {phoneMenu === 'thought' && lastThought ? <>
             <p className="sk-options__thought">{lastThought.text}</p>
-            <button type="button" className="sk-options__action" onClick={() => phoneAction(() => props.onEdit(lastThought.id))}><Icon name="edit" size={18} />Edit thought</button>
+            {selection.length === 1 ? <button type="button" className="sk-options__action" onClick={() => phoneAction(() => props.onEdit(lastThought.id))}><Icon name="edit" size={18} />Edit thought</button> : null}
             {openLink ? <a className="sk-options__action" href={openLink.href} target="_blank" rel="noopener noreferrer"><Icon name="link" size={18} />Open link {openLink.host}</a> : null}
             <button type="button" className="sk-options__action" onClick={() => phoneAction(() => props.onAdd(lastThought.id))}><Icon name="plus" size={18} />Add a connected thought</button>
             {props.bar.project ? <button type="button" className="sk-options__action" aria-label="Create task from selected thoughts" aria-disabled={false} onClick={() => phoneAction(props.bar.onTask)}><Icon name="tasks" size={18} />Create task</button> : null}

@@ -417,6 +417,7 @@ span.sk-li-img { width: 160px; height: 96px; }
 .sk-phone .sk-line:has(.sk-status--selection) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .sk-phone__secondary { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; max-width: calc(100% - 20px); }
 .sk-phone__secondary:empty { display: none; }
+.sk-phone__secondary .sk-edit-btn { display: inline-flex; align-items: center; gap: 6px; }
 .sk-map-options { display: inline-flex; align-items: center; gap: 6px; }
 .ui-overlay--bottom .ui-overlay__surface.sk-options-sheet { top: auto; max-height: 85dvh; border-radius: var(--r-sheet) var(--r-sheet) 0 0; }
 .sk-options-sheet .ui-panel__head { height: 56px; padding-top: 0; }
