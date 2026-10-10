@@ -475,7 +475,23 @@ class PersonalAssistantJourney(unittest.TestCase):
             self.assertEqual(jo.evaluate("document.documentElement.dataset.kreska"), "off")
             # Control: an ordinary completed answer keeps its assistant face while the moments are off.
             expect(jo.locator(".assistant-answer .kreska").first).to_be_visible()
-            # Turning the moments back on brings the live thinking face back.
+            # The sidebar's working card follows the switch too: words and Stop stay, no face, nothing animates.
+            animated = "() => [...document.querySelectorAll('.agentlive *')].filter((el) => getComputedStyle(el).animationName !== 'none').length"
+            card = jo.locator(".app__side .agentlive")
+            expect(card).to_contain_text("Your assistant")
+            expect(card.get_by_role("button", name="Stop your assistant")).to_be_visible()
+            expect(card.locator(".kreska")).to_have_count(0)
+            self.assertEqual(jo.evaluate(animated), 0)
+            # The folded rail keeps a visible target (the mark) with the same label and Stop, and no face.
+            jo.keyboard.press("[")
+            rail_card = jo.locator(".side--rail .agentlive")
+            expect(rail_card.get_by_role("link")).to_be_visible()
+            expect(rail_card.get_by_role("button", name="Stop your assistant")).to_be_visible()
+            expect(rail_card.locator(".kreska")).to_have_count(0)
+            self.assertEqual(jo.evaluate(animated), 0)
+            jo.keyboard.press("[")
+            expect(jo.locator(".side--rail")).to_have_count(0)
+            # Turning the moments back on brings the live thinking face back, in the conversation and the sidebar.
             settings = jo.context.new_page()  # the same storage as the conversation
             settings.goto("/settings")
             settings.get_by_role("switch", name="Kreska in loading and empty screens").click()
@@ -483,6 +499,7 @@ class PersonalAssistantJourney(unittest.TestCase):
             settings.close()
             jo.reload()
             expect(working.locator('.kreska[data-expression="thinking"] .kreska__brow')).to_be_visible()
+            expect(jo.locator('.app__side .agentlive .kreska[data-expression="thinking"] .kreska__brow')).to_be_visible()
         finally:
             stop = working.get_by_role("button", name="Stop")
             if stop.count():
