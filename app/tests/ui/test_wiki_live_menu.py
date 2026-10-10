@@ -22,8 +22,11 @@ class WikiLiveMenu(LiveBase):
         expect(menu).to_have_count(0)
         bar = self.bar(reader)
         expect(bar.get_by_role("status").first).to_contain_text("Live")
-        for device in ("Microphone", "Camera"):
-            expect(bar.get_by_role("button", name=re.compile(f"^{device} off"))).to_have_attribute("aria-pressed", "false")
+        expect(bar.get_by_role("button", name=re.compile("^Microphone off"))).to_have_attribute("aria-pressed", "false")
+        bar.get_by_role("button", name="Session details and more", exact=True).click()
+        details = reader.get_by_role("dialog", name="Live session", exact=True)
+        expect(details.get_by_role("button", name=re.compile("^Camera off"))).to_have_attribute("aria-pressed", "false")
+        reader.keyboard.press("Escape")
         self.assertEqual(reader.evaluate("window.__live.gum + window.__live.gdm"), 0)
         sessions = self.api(reader, "GET", f"/api/v1/projects/{self.ids['project']}/live-sessions", status=200)["items"]
         self.assertEqual(len(sessions), 1)
