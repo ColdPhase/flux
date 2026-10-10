@@ -25,7 +25,7 @@ export function grantProjectWithAssistant(principal: Principal, projectId: strin
   return db.transaction(async (tx) => {
     if (command.principal?.kind === 'agent' && isUuid(command.principal.id)) {
       const [target] = await tx.select({ owner: schema.agents.ownerUserId }).from(schema.agents).where(eq(schema.agents.id, command.principal.id));
-      if (target) await lockAssistantOwner(tx, target.owner);
+      if (target?.owner) await lockAssistantOwner(tx, target.owner);
     }
     const events = transactionEventSession(tx);
     const result = await events.run(async () => {
