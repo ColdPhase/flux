@@ -299,6 +299,8 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   /** `at` is where a dragged dot was released (P12); the draft stays local until it is saved. */
   const add = (parentId: string | null, text = '', replace = false, at?: { x: number; y: number }) => {
     if (blocked(replace)) return;
+    // S15 applies to every entry point, including + on a focused thought and clipboard drafts.
+    if (phone) parentId = null;
     const [spot] = at ? [at] : spots(parentId, 1, { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height });
     capture.set({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), text, x: spot!.x, y: spot!.y, parentId });
     setConnectFrom(null);
@@ -318,7 +320,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
 
   // #252: what is pasted becomes a private draft with the same parent rule as the Thought button; pasting into the
   // open empty draft keeps that draft's parent.
-  const pasteParent = () => (capture.draft && emptyDraft(capture.draft) ? capture.draft.parentId : selection[selection.length - 1] ?? null);
+  const pasteParent = () => phone ? null : (capture.draft && emptyDraft(capture.draft) ? capture.draft.parentId : selection[selection.length - 1] ?? null);
 
   const pasteText = (text: string, replace: boolean) => {
     const parsed = pastedText(text);
@@ -427,7 +429,9 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     if (!draft || draftSaveInFlight.current || !canWrite || !draftReady(draft)) return;
     draftSaveInFlight.current = true;
     setSavingDraft(true);
-    const parent = (linkId: string) => (draft.parentId ? { id: draft.parentId, linkId } : null);
+    // A recovered or wider-screen draft also saves as a plain addition on the phone.
+    const parentId = phone ? null : draft.parentId;
+    const parent = (linkId: string) => (parentId ? { id: parentId, linkId } : null);
     const items = draft.lines
       ? draft.lines.map((line) => ({ thought: { id: line.id, text: line.text.trim(), x: line.x, y: line.y }, parent: parent(line.linkId), key: line.key }))
       : [{ thought: { id: draft.id, text: draft.text.trim(), x: draft.x, y: draft.y,
@@ -435,7 +439,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     const saved = await doc.saveThoughts(items);
     setSavingDraft(false);
     draftSaveInFlight.current = false;
-    for (const id of saved) personalOutline.group(id, draft.parentId, false);
+    for (const id of saved) personalOutline.group(id, parentId, false);
     if (saved.length < items.length) {
       // Confirmed thoughts are shared now; only the rest stay in the draft, with their IDs and request keys.
       if (draft.lines && saved.length) capture.set({ ...draft, lines: draft.lines.filter((line) => !saved.includes(line.id)) });
@@ -624,6 +628,16 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
           {!phone || !mapMode || (!sketch.thoughts.length && !canWrite) ? viewModes : null}
         </div>
   );
+  const shownDraft = capture.draft && phone ? { ...capture.draft, parentId: null } : capture.draft;
+  const draftForm = shownDraft ? <DraftCapture draft={shownDraft} parent={shownDraft.parentId ? find(shownDraft.parentId)?.text ?? null : null}
+    saving={savingDraft} canWrite={canWrite} onText={(text) => { if (capture.draft) capture.set({ ...capture.draft, text, key: doc.newId() }); }}
+    onLines={(lines) => {
+      if (!capture.draft) return;
+      if (lines.length) { capture.set({ ...capture.draft, lines }); return; }
+      capture.set(null); say('Pasted thoughts cancelled'); focusThought('.sk-add');
+    }}
+    onPaste={coarse ? () => void pasteFromClipboard() : undefined}
+    onSave={() => void saveDraft()} onCancel={() => { capture.set(null); say(capture.draft?.lines ? 'Pasted thoughts cancelled' : 'Thought draft cancelled'); focusThought('.sk-add'); }} /> : null;
   const notices = (
     <>
         {sketch.copies.length ? (
@@ -644,15 +658,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
           <Button variant="secondary" disabled={editing.saving} onClick={() => void finishEdit(null)}>Cancel edit</Button>
         </div> : null}
 
-        {capture.draft ? <DraftCapture draft={capture.draft} parent={capture.draft.parentId ? find(capture.draft.parentId)?.text ?? null : null}
-          saving={savingDraft} canWrite={canWrite} onText={(text) => { if (capture.draft) capture.set({ ...capture.draft, text, key: doc.newId() }); }}
-          onLines={(lines) => {
-            if (!capture.draft) return;
-            if (lines.length) { capture.set({ ...capture.draft, lines }); return; }
-            capture.set(null); say('Pasted thoughts cancelled'); focusThought('.sk-add');
-          }}
-          onPaste={coarse ? () => void pasteFromClipboard() : undefined}
-          onSave={() => void saveDraft()} onCancel={() => { capture.set(null); say(capture.draft?.lines ? 'Pasted thoughts cancelled' : 'Thought draft cancelled'); focusThought('.sk-add'); }} /> : null}
+        {!mapMode ? draftForm : null}
         {uploading ? <p className="sk-draft sk-draft--uploading" role="status"><Icon name="image" size={14} />Uploading the pasted image privately…</p> : null}
 
         {editingState && (!editing || !canWrite) ? <label className="sk-draft">Your unsaved edit is kept
@@ -712,7 +718,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
           <SketchMap {...shared} coarse={coarse} compact={phone} helpId={helpId} heights={heights} dock={dock} hint={hint} viewModes={viewModes}
             bar={{ project: sketch.scope === 'project', canUndo: doc.canUndo, helpOpen, onShape: cycleShape, onTask: () => void makeWork(), onUndo: undo, onHelp: () => setHelpOpen(!helpOpen) }}
             onConnect={connectTo} onAddAt={(parentId, x, y) => add(parentId, '', false, { x, y })} onConnectFrom={connectFromDot} onAddThought={() => add(selection[selection.length - 1] ?? null)}
-            draft={capture.draft && !capture.draft.lines ? { x: capture.draft.x, y: capture.draft.y, parentId: capture.draft.parentId } : null} onMove={move} onResize={resize} onClear={() => { if (connectFrom) return; setSelection([]); say(''); }} />
+            draftEditor={draftForm} draft={shownDraft && !shownDraft.lines ? { x: shownDraft.x, y: shownDraft.y, parentId: shownDraft.parentId } : null} onMove={move} onResize={resize} onClear={() => { if (connectFrom) return; setSelection([]); say(''); }} />
           {!sketch.thoughts.length ? <p className="sk-first">An empty sketch. Add the first thought with <b>Thought</b>, then keep adding with the <b>+</b> beside it.</p> : null}
           <p className={`sk-help${helpOpen ? ' is-open' : ''}`} id={helpId}>{helpText}</p>
         </div>
@@ -768,15 +774,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
           <Button variant="secondary" disabled={editing.saving} onClick={() => void finishEdit(null)}>Cancel edit</Button>
         </div> : null}
 
-        {capture.draft ? <DraftCapture draft={capture.draft} parent={capture.draft.parentId ? find(capture.draft.parentId)?.text ?? null : null}
-          saving={savingDraft} canWrite={canWrite} onText={(text) => { if (capture.draft) capture.set({ ...capture.draft, text, key: doc.newId() }); }}
-          onLines={(lines) => {
-            if (!capture.draft) return;
-            if (lines.length) { capture.set({ ...capture.draft, lines }); return; }
-            capture.set(null); say('Pasted thoughts cancelled'); focusThought('.sk-add');
-          }}
-          onPaste={coarse ? () => void pasteFromClipboard() : undefined}
-          onSave={() => void saveDraft()} onCancel={() => { capture.set(null); say(capture.draft?.lines ? 'Pasted thoughts cancelled' : 'Thought draft cancelled'); focusThought('.sk-add'); }} /> : null}
+        {draftForm}
         {uploading ? <p className="sk-draft sk-draft--uploading" role="status"><Icon name="image" size={14} />Uploading the pasted image privately…</p> : null}
 
         {editingState && (!editing || !canWrite) ? <label className="sk-draft">Your unsaved edit is kept

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import base64
 import re
 import unittest
 import uuid
@@ -10,6 +11,7 @@ from playwright.sync_api import expect, sync_playwright
 
 from test_app_shell import ORIGIN, PHONE, UPSTREAM, open_map_options, show_map_as, shot, start_forwarder
 from contrast import MEASURE
+from test_map_paste import PASTE, IMAGE
 
 COMPUTER = {'width': 1440, 'height': 900}
 A, B, C = 'Weatherproof enclosure', 'Calibrate the probes', 'Frost warnings later'
@@ -23,7 +25,7 @@ class MapConnectJourney(unittest.TestCase):
         cls.pw = sync_playwright().start()
         cls.browser = getattr(cls.pw, os.environ.get("FLUX_UI_BROWSER", "chromium")).launch()
         expect.set_options(timeout=10000)
-        context = cls.browser.new_context(base_url=ORIGIN)
+        context = cls.browser.new_context(service_workers='block', base_url=ORIGIN)
         response = context.request.post('/api/auth/sign-up/email', data={
             'name': 'Ada Connect', 'email': f'map-connect-{uuid.uuid4()}@example.test',
             'password': 'drag the dot to connect',
@@ -47,7 +49,7 @@ class MapConnectJourney(unittest.TestCase):
         return response.json() if response.text() else None
 
     def page(self, viewport, scheme='light', touch=False):
-        context = self.browser.new_context(base_url=ORIGIN, storage_state=self.state, viewport=viewport, color_scheme=scheme,
+        context = self.browser.new_context(service_workers='block', base_url=ORIGIN, storage_state=self.state, viewport=viewport, color_scheme=scheme,
             has_touch=touch, is_mobile=touch, device_scale_factor=3 if touch else 1)
         self.addCleanup(context.close)
         page = context.new_page()
@@ -317,7 +319,8 @@ class MapConnectJourney(unittest.TestCase):
         page.keyboard.press('Enter')
         sheet = page.get_by_role('dialog', name='Thought actions', exact=True)
         expect(sheet).to_have_attribute('aria-modal', 'true')
-        for name in ('Edit thought', 'Add a connected thought', 'Create task from selected thoughts', 'Remove from sketch'):
+        expect(sheet.get_by_role('button', name='Add a connected thought', exact=True)).to_have_count(0)
+        for name in ('Edit thought', 'Create task from selected thoughts', 'Remove from sketch'):
             row = sheet.get_by_role('button', name=name, exact=True)
             expect(row).to_be_visible()
             self.assertGreaterEqual(row.evaluate('el => parseFloat(getComputedStyle(el).minHeight)'), 44)
@@ -333,13 +336,14 @@ class MapConnectJourney(unittest.TestCase):
         expect(page.get_by_label('Thought text')).to_be_focused()
         page.get_by_label('Thought text').fill('A private edit not saved')
         page.get_by_role('button', name='Cancel edit', exact=True).tap()
-        actions.tap()
-        sheet.get_by_role('button', name='Add a connected thought', exact=True).tap()
+        page.get_by_role('button', name='Add a thought', exact=True).tap()
         draft = page.get_by_role('form', name='New thought draft')
         expect(draft.get_by_label('Thought text')).to_be_focused()
-        draft.get_by_label('Thought text').fill('A private connected draft')
+        expect(draft).to_contain_text('Top level')
+        expect(draft).not_to_contain_text('Connected to')
+        draft.get_by_label('Thought text').fill('A private plain draft')
         self.assertEqual(self.stored(page, sketch), before, 'opening/editing/cancelling the sheet does not change the map')
-        shot(page, 'map-phone-connected-draft-390-light')
+        shot(page, 'map-phone-plain-draft-390-light')
         draft.get_by_role('button', name='Cancel', exact=True).tap()
         options = open_map_options(page, touch=True)
         for name in ('Fit the sketch to the view', 'Zoom out', 'Zoom in'):
@@ -384,6 +388,97 @@ class MapConnectJourney(unittest.TestCase):
                         self.assertGreaterEqual(text.evaluate('el => parseFloat(getComputedStyle(el).fontSize)'), size * 1.9)
                         page.add_style_tag(content='html { font-size: 16px; }')
                     self.assertEqual(self.stored(page, sketch), before, 'readable text does not rewrite persisted widths or positions')
+
+    def test_12_phone_add_entry_points_preserve_existing_graph_links(self):
+        # Browser-delivered ClipboardEvent covers the application paste handler, not OS clipboard permission.
+        for entry in ('primary', 'keyboard', 'paste-text', 'paste-lines', 'paste-image', 'wide-draft', 'list-keyboard'):
+            with self.subTest(entry=entry):
+                page = self.page(COMPUTER if entry == 'wide-draft' else PHONE, touch=entry != 'wide-draft')
+                sketch = self.scene(page, link=True)
+                before = self.stored(page, sketch)
+                node = page.locator('.sk-node', has_text=B)
+                node.click() if entry == 'wide-draft' else node.tap()
+                if entry == 'wide-draft':
+                    page.get_by_role('button', name=re.compile('Add a thought connected to')).click()
+                    expect(page.get_by_role('form', name='New thought draft')).to_contain_text('Connected to')
+                    page.get_by_label('Thought text').fill('Keep this private text after narrowing')
+                    page.set_viewport_size(PHONE)
+                elif entry == 'primary':
+                    page.get_by_role('button', name='Add a thought', exact=True).tap()
+                elif entry == 'keyboard':
+                    node.focus()
+                    page.keyboard.press('+')
+                elif entry == 'list-keyboard':
+                    show_map_as(page, 'List', touch=True)
+                    row = page.locator(f'.sk-li-t[data-id="{self.ids[B]}"]')
+                    row.focus()
+                    page.keyboard.press('+')
+                else:
+                    node.focus()
+                    image = {'base64': base64.b64encode(IMAGE).decode(), 'name': 'garden.png', 'type': 'image/png'} if entry == 'paste-image' else None
+                    text = 'Check the enclosure after rain\nKeep a spare probe' if entry == 'paste-lines' else 'https://example.test/garden-notes' if entry == 'paste-text' else None
+                    page.evaluate(PASTE, [text, image])
+                draft = page.get_by_role('form', name='Pasted thoughts draft' if entry == 'paste-lines' else 'New thought draft')
+                expect(draft).to_contain_text('Top level')
+                expect(draft).not_to_contain_text('Connected to')
+                expect(page.locator('.sk-wire, .sk-ghost--draft, .sk-dot')).to_have_count(0)
+                if entry in ('primary', 'keyboard', 'list-keyboard'):
+                    draft.get_by_label('Thought text').fill(f'Plain addition from {entry}')
+                if entry == 'wide-draft':
+                    expect(draft.get_by_label('Thought text')).to_have_value('Keep this private text after narrowing')
+                self.assertEqual(self.stored(page, sketch), before, 'all drafts stay private until explicit Save')
+                draft.get_by_role('button', name=re.compile('^Save (thought|image|2 thoughts)$')).click()
+                added = 2 if entry == 'paste-lines' else 1
+                after = self.eventually(page, sketch, lambda s: len(s['thoughts']) == 3 + added)
+                self.assertEqual(len(after['thoughts']), 3 + added)
+                self.assertEqual(after['links'], before['links'], 'phone Save neither creates nor deletes a graph link')
+                self.assertEqual([t for t in after['thoughts'] if t['id'] in self.ids.values()], before['thoughts'],
+                    'adding on the phone preserves the exact existing thoughts and positions')
+                page.reload()
+                expect(page.get_by_role('form', name=re.compile('thought.* draft', re.I))).to_have_count(0)
+                self.assertEqual(self.stored(page, sketch)['links'], before['links'], 'the persisted link set survives reload')
+
+    def test_13_composition_keeps_visible_map_context_and_camera(self):
+        for scheme in ('light', 'dark'):
+            for viewport, touch in ((COMPUTER, False), ({'width': 1024, 'height': 900}, False), ({'width': 820, 'height': 1180}, True), (PHONE, True)):
+                with self.subTest(scheme=scheme, viewport=viewport):
+                    page = self.page(viewport, scheme, touch)
+                    sketch = self.scene(page, link=True)
+                    before = self.stored(page, sketch)
+                    source = page.locator('.sk-node', has_text=B)
+                    source.tap() if touch else source.click()
+                    canvas = page.locator('.sk-canvas')
+                    camera = canvas.evaluate('el => ({left:el.scrollLeft, top:el.scrollTop})')
+                    if viewport['width'] <= 640:
+                        page.get_by_role('button', name='Add a thought', exact=True).tap()
+                    else:
+                        page.get_by_role('button', name=re.compile('Add a thought connected to')).click()
+                    draft = page.get_by_role('form', name='New thought draft')
+                    draft.get_by_label('Thought text').fill('Check the solar panel before mounting')
+                    expect(draft).to_be_in_viewport(ratio=1)
+                    geometry = page.evaluate('''() => {
+                      const editor = document.querySelector('.sk-composition').getBoundingClientRect();
+                      const canvas = document.querySelector('.sk-canvas').getBoundingClientRect();
+                      const pane = document.querySelector('.sk-page').getBoundingClientRect();
+                      return {editor:editor.toJSON(), canvas:canvas.toJSON(), pane:pane.toJSON(), nodes:[...document.querySelectorAll('.sk-node')].map(el => ({id:el.dataset.id, ...el.getBoundingClientRect().toJSON()}))};
+                    }''')
+                    e, c, p = geometry['editor'], geometry['canvas'], geometry['pane']
+                    self.assertGreaterEqual(e['left'], p['left'])
+                    self.assertLessEqual(e['right'], p['right'])
+                    self.assertGreaterEqual(e['top'], p['top'])
+                    self.assertLessEqual(e['bottom'], p['bottom'])
+                    for node in geometry['nodes']:
+                        visible = node['right'] > c['left'] and node['left'] < c['right'] and node['bottom'] > c['top'] and node['top'] < c['bottom']
+                        if visible:
+                            overlap = max(0, min(e['right'], node['right']) - max(e['left'], node['left'])) * max(0, min(e['bottom'], node['bottom']) - max(e['top'], node['top']))
+                            self.assertEqual(overlap, 0, f'composition keeps visible thought {node["id"]} uncovered')
+                    self.assertGreaterEqual(c['height'], 120, 'the phone retains a useful map viewport')
+                    self.assertEqual(canvas.evaluate('el => ({left:el.scrollLeft, top:el.scrollTop})'), camera)
+                    self.assertEqual(self.stored(page, sketch), before, 'composition changes no graph data')
+                    shot(page, f'map-composition-{viewport["width"]}-{scheme}')
+                    draft.get_by_role('button', name='Cancel', exact=True).click()
+                    self.assertEqual(self.stored(page, sketch), before, 'Cancel leaves exact saved thoughts and links')
+                    self.assertEqual(canvas.evaluate('el => ({left:el.scrollLeft, top:el.scrollTop})'), camera)
 
 
 if __name__ == '__main__':

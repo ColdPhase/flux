@@ -5,6 +5,12 @@ Recorded before implementation, 2026-09-30, under the #149 contract. Appearance 
 source navigation and map camera remain authoritative.
 
 New root/child capture opens one private draft per account/workspace/place/map.
+F-026 S15 and #349 AC-3 limit screens at or below 640 CSS px to plain additions:
+selection, keyboard Add and clipboard text/lines/images never infer a parent there.
+A draft opened on a wider screen retains its private content when narrowed, but
+shows a plain addition and saves without creating a connection on the phone.
+Existing graph links and saved thought positions remain unchanged. Wider screens
+keep confirmed connected capture and the intended-parent checks described below.
 It retains text, intended parent ID, client thought/link IDs, position and an
 idempotency key in this tab's session storage, with memory fallback. No shared
 thought, relation, event, outline grouping or API write exists before Save/Enter.

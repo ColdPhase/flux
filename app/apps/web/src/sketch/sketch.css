@@ -357,6 +357,8 @@ span.sk-li-img { width: 160px; height: 96px; }
 .sk--map .sk-copies, .sk--map .sk-origin, .sk--map .sk-readonly { padding: 6px 12px; border-radius: var(--r-pill); background: var(--el); box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); }
 .sk--map .sk-copies { max-width: 100%; }
 .sk-over .sk-draft { width: min(440px, 100%); margin: 0; box-shadow: var(--sh-pop); }
+.sk-composition { position: absolute; z-index: 8; width: min(440px, calc(100% - 28px)); max-height: calc(100% - 28px); overflow: auto; }
+.sk-composition .sk-draft { margin: 0; box-shadow: var(--sh-pop); }
 .sk-over .sk-edit-controls { margin: 0; }
 .sk--map .sk-first { position: absolute; left: 50%; top: 42%; z-index: 6; margin: 0; transform: translateX(-50%); text-align: center; pointer-events: none; }
 .sk-dock { position: absolute; left: 0; right: 0; bottom: 16px; z-index: 7; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 0 12px; pointer-events: none; }
@@ -405,6 +407,11 @@ span.sk-li-img { width: 160px; height: 96px; }
   .sk--map .sk-head { padding: 3px; }
   .sk--map .sk-head:not(:has(.sk-title-edit, .sk-promote)) { display: none; }
   .sk-over .sk-draft { width: calc(100vw - 20px); }
+  /* Composition replaces the Add dock while open and reserves space below the phone
+     projection. Map options and the useful map context remain above it. */
+  .sk-composition { left: 10px; right: 10px; bottom: 10px; width: auto; max-height: max(96px, calc(100% - 180px)); }
+  .sk-composition .sk-draft__actions > span { display: none; }
+  .sk-composition .ui-btn { min-height: 44px; }
   .sk-dock, .sk-dock__row { display: contents; }
   .sk-map-options { position: absolute; top: 10px; right: 10px; z-index: 7; }
   .sk--map .sk-status { max-width: 100%; background: var(--el); padding: 4px 12px; border-radius: var(--r-pill); box-shadow: var(--sh-card); pointer-events: auto; }
