@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { Browser as ApiBrowser } from '../support/http.js';
+import { mcp, oauthToken } from '../support/mcp.js';
 import http from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
@@ -18,6 +20,7 @@ const idpPassword = process.env.FLUX_OIDC_TEST_PASSWORD!;
 const keycloak = 'http://keycloak:8080';
 const phase = process.env.FLUX_LINK_PHASE ?? 'prepare';
 const saved = '/state/oidc-link.json';
+const savedAuthority = '/state/oidc-password-authority.json';
 const pat = { name: 'Pat Link', email: 'pat.link@example.test', password: `pw-${randomUUID()}` };
 const quinn = { name: 'Quinn Link', email: 'quinn.link@example.test', password: `pw-${randomUUID()}` };
 
@@ -115,6 +118,31 @@ if (phase === 'prepare') {
     await withBrowser(async (browser) => {
       const context = await browser.newContext();
       const quinnId = await signUpAndIn(context, quinn);
+      // Mint a real password-authorized MCP family while conversion is open. It must fail after cutover.
+      const client = new ApiBrowser();
+      for (const cookie of await context.cookies()) client.cookies.set(cookie.name, cookie.value);
+      const create = async (path: string, body: unknown) => {
+        const response = await client.request('POST', path, { body });
+        assert.equal(response.status, 201, response.text);
+        return response.json as { id: string };
+      };
+      const workspace = await create('/api/v1/workspaces', { name: 'Cutover authority control' });
+      const project = await create(`/api/v1/workspaces/${workspace.id}/projects`, { name: 'Cutover control', visibility: 'restricted' });
+      const agent = await create(`/api/v1/workspaces/${workspace.id}/agents`, { name: 'Cutover control', owner: 'self' });
+      await create(`/api/v1/projects/${project.id}/grants`, { principal: { kind: 'agent', id: agent.id }, role: 'contributor' });
+      const connection = await create('/api/v1/agent-connections', { agentId: agent.id, selectedProjectIds: [project.id], scopes: ['flux.context.read', 'flux.proposal.write'] });
+      const clientId = `cutover-${randomUUID()}`; const redirectUri = 'http://127.0.0.1:19738/callback';
+      await pool.query(`INSERT INTO oauth_client (id, client_id, name, redirect_uris, token_endpoint_auth_method,
+        grant_types, response_types, scopes, require_pkce, created_at, updated_at)
+        VALUES ($1, $2, 'Flux HTTP test client', $3, 'none', $4, $5, $6, true, now(), now())`,
+      [randomUUID(), clientId, [redirectUri], ['authorization_code', 'refresh_token'], ['code'], ['flux.context.read', 'flux.proposal.write', 'offline_access']]);
+      await pool.query('INSERT INTO oauth_client_resource (id, client_id, resource_id, created_at) VALUES ($1, $2, $3, now())', [randomUUID(), clientId, `${origin}/mcp`]);
+      const tokens = await oauthToken(client, connection.id, clientId, redirectUri);
+      assert.equal((await mcp(tokens.access_token, 81, 'tools/list')).status, 200, 'prepare permits password-authorized bearer');
+      const renewed = await context.request.post(`${origin}/api/auth/oauth2/token`, {
+        form: { grant_type: 'refresh_token', client_id: clientId, refresh_token: tokens.refresh_token, resource: `${origin}/mcp` } });
+      assert.equal(renewed.status(), 200, 'prepare permits refresh before cutover');
+      writeFileSync(savedAuthority, JSON.stringify({ clientId, ...await renewed.json() as { access_token: string; refresh_token: string } }));
       const started = await api(context, 'POST', '/api/v1/identity/link');
       assert.equal(started.status, 200);
       const page = await context.newPage();
@@ -148,6 +176,19 @@ if (phase === 'prepare') {
 }
 
 if (phase === 'cutover') {
+  test('cutover: an unlinked password owner loses MCP bearer and refresh authority', async () => {
+    const tokens = JSON.parse(readFileSync(savedAuthority, 'utf8')) as { clientId: string; access_token: string; refresh_token: string };
+    const refused = await mcp(tokens.access_token, 82, 'tools/list');
+    assert.equal(refused.status, 401, 'the bearer is refused at the MCP boundary');
+    await withBrowser(async (browser) => {
+      const context = await browser.newContext();
+      const response = await context.request.post(`${origin}/api/auth/oauth2/token`, {
+        form: { grant_type: 'refresh_token', client_id: tokens.clientId, refresh_token: tokens.refresh_token, resource: `${origin}/mcp` } });
+      assert.equal(response.status(), 400, 'the refresh grant is refused after cutover');
+      assert.equal((await response.json() as { error: string }).error, 'invalid_grant');
+    });
+  });
+
   test('cutover: with SSO-only mode, password sign-in of a linked and an unlinked account is refused', async () => {
     await withBrowser(async (browser) => {
       const context = await browser.newContext();

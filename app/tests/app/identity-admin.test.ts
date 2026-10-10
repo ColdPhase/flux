@@ -115,7 +115,7 @@ describe('unlinking a provider identity (#315)', () => {
     assert.equal(await alive(viaProvider), false, 'the session that signed in through the identity ends');
     assert.equal(await alive(viaPassword), true, 'the password session continues');
     const [row] = await audits(user);
-    assert.deepEqual([row.action, row.oldSubject], ['unlink', null]);
+    assert.deepEqual([row.action, row.oldSubject], ['unlink', 'sub-prepare']);
   });
 
   test('in prepare mode without a password, the provider was the last way in and cannot be removed', async () => {

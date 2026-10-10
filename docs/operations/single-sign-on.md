@@ -27,14 +27,14 @@ instance. Flux works with one provider. Its mode is set by `FLUX_SSO_MODE`:
 - **No account takeover by email.** A provider identity is never linked to an existing Flux account
   just because the emails match. If the provider's verified email belongs to a verified Flux account,
   or to an account already linked to a provider identity, the sign-in is refused and nothing changes.
-  If it belongs to an unverified account with no provider link, the sign-in page offers **link first**
+  If it belongs to an unverified account with no provider link, in `prepare` the sign-in page offers **link first**; after SSO cutover it points to audited operator recovery
   (sign in to that account, which keeps everything it has), or **claim the address**. Claiming releases
   the address from that account (it becomes `unverified-<id>@invalid`, its sessions and agent connections
   end, and an audit row names both accounts). The account's data stays with it and does not move to the
   new account. The claim page is open for 15 minutes after the provider sign-in.
 - **Email verification of password accounts.** Accounts made before single sign-on are unverified. Once
   email is set (`FLUX_SMTP_URL`), they receive a verification mail the next time they sign in with their
-  password, and admins can find an account by email only when its address is verified. Setting
+  password in password or `prepare` mode, and admins can find an account by email only when its address is verified. Setting
   `FLUX_SIGNUP=verified` makes new password accounts verify by mail before they can sign in; without
   email it behaves as `off`.
 - **No access from the provider.** Groups, roles and domains in the token are ignored. People join

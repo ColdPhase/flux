@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { schema } from '@flux/db';
 import type { Database } from '@flux/core';
 
@@ -43,7 +43,10 @@ export function createLinkIntents(db: Database, now: () => Date = () => new Date
     async attach(intentId: string, providerId: string, subject: string): Promise<LinkOutcome> {
       return db.transaction(async (tx) => {
         const [intent] = await tx.select().from(schema.authLinkIntents).where(eq(schema.authLinkIntents.id, intentId)).for('update');
-        if (!intent || intent.state !== 'pending' || intent.expiresAt <= now()) return 'link_expired' as const;
+        if (!intent || intent.state !== 'pending' || intent.expiresAt <= now() || intent.providerId !== providerId) return 'link_expired' as const;
+        // Serialize competing links for this account and this provider subject before reading holders.
+        await tx.execute(sql`SELECT id FROM auth_users WHERE id = ${intent.userId} FOR UPDATE`);
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${providerId + ':' + subject}, 0))`);
         const [holder] = await tx.select({ userId: schema.authAccounts.userId }).from(schema.authAccounts)
           .where(and(eq(schema.authAccounts.providerId, providerId), eq(schema.authAccounts.accountId, subject)));
         if (holder && holder.userId !== intent.userId) return 'identity_held' as const;

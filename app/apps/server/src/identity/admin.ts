@@ -82,7 +82,7 @@ export interface UnlinkInput { userId: string; providerId: string; mode: Identit
 export async function unlinkIdentity(db: Database, input: UnlinkInput): Promise<void> {
   const at = (input.now ?? (() => new Date()))();
   await db.transaction(async (tx) => {
-    const [link] = await tx.select({ id: schema.authAccounts.id }).from(schema.authAccounts)
+    const [link] = await tx.select({ id: schema.authAccounts.id, accountId: schema.authAccounts.accountId }).from(schema.authAccounts)
       .where(and(eq(schema.authAccounts.userId, input.userId), eq(schema.authAccounts.providerId, input.providerId))).for('update');
     if (!link) throw new IdentityAdminError('NOT_LINKED', 'This account has no link to that provider');
     const [password] = await tx.select({ id: schema.authAccounts.id }).from(schema.authAccounts)
@@ -93,7 +93,7 @@ export async function unlinkIdentity(db: Database, input: UnlinkInput): Promise<
       AND id IN (SELECT session_id FROM auth_session_identities WHERE method = ${input.providerId})`);
     await revokeMcpAuthority(tx, input.userId, at);
     await tx.delete(schema.authAccounts).where(eq(schema.authAccounts.id, link.id));
-    await audit(tx, { action: 'unlink', userId: input.userId, providerId: input.providerId, oldSubject: null, newSubject: null,
+    await audit(tx, { action: 'unlink', userId: input.userId, providerId: input.providerId, oldSubject: link.accountId, newSubject: null,
       actor: input.actor, reason: input.reason, mode: input.mode, at });
   });
 }

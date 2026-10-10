@@ -51,7 +51,7 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
   const signIns = createSignIns();
   const idpStanding = config.oidc ? createIdpStanding({ db, oidc: config.oidc, authSecret: config.secret, log: app.log }) : null;
   const standing = config.oidc?.standing === 'refresh' ? idpStanding : null;
-  const confirmation = createConfirmation(db, config.oidc);
+  const confirmation = createConfirmation(db, config.oidc, undefined, config.ssoOnly);
   const claims = createEmailClaims(db);
   const links = createLinkIntents(db);
   const auth = createAuth({ db, config, mailer, oauthRequests, signIns, standing, confirmation, claims, links, log: app.log, onMailError: (error) => app.log.error({ error }, 'Password reset mail failed') });

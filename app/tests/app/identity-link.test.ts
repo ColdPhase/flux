@@ -57,6 +57,18 @@ describe('linking a password account to the provider before cutover', () => {
     assert.equal((await intentState(token)).state, 'pending', 'the intent stays pending for a retry with another identity');
   });
 
+  test('concurrent links of the same subject give one owner and an identity_held refusal', async () => {
+    const first = await account('racing-first'); const second = await account('racing-second');
+    const links = createLinkIntents(db);
+    const intents = await Promise.all([first, second].map(async (userId) => {
+      const token = await links.open(userId, userId, providerId);
+      return (await links.pending(token, userId, userId))!;
+    }));
+    const outcomes = await Promise.all(intents.map((intent) => links.attach(intent.id, providerId, 'sub-racing')));
+    assert.deepEqual(outcomes.sort(), ['identity_held', 'linked']);
+    assert.equal((await linksOf(first)).length + (await linksOf(second)).length, 1);
+  });
+
   test('an account already linked to a different subject at this provider is refused', async () => {
     const pat = await account('pat-two');
     const links = createLinkIntents(db);

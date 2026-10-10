@@ -82,7 +82,7 @@ function idTokenClaims(idToken: string | undefined): Record<string, unknown> | n
   }
 }
 
-export function createAuth({ db, config, mailer, onMailError, oauthRequests, signIns = createSignIns(), standing = null, log, confirmation = createConfirmation(db, config.oidc), claims = createEmailClaims(db), links = createLinkIntents(db) }: AuthDependencies) {
+export function createAuth({ db, config, mailer, onMailError, oauthRequests, signIns = createSignIns(), standing = null, log, confirmation = createConfirmation(db, config.oidc, undefined, config.ssoOnly), claims = createEmailClaims(db), links = createLinkIntents(db) }: AuthDependencies) {
   const connections = agentOauthUseCases(createAgentConnectionStore(db));
   const resource = `${config.publicOrigin}/mcp`;
   const connectionForGrant = async (userId: string, sessionId: string, scopes: readonly string[]) => {
