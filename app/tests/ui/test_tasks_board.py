@@ -72,7 +72,7 @@ class TasksBoardJourney(unittest.TestCase):
 
     # ---------------------------------------------------------------- helpers
 
-    def context(self, who: str | None, *, viewport: dict | None = None, phone: bool = False, dark: bool = False, touch: bool = False, block_service_workers: bool = False) -> BrowserContext:
+    def context(self, who: str | None, *, viewport: dict | None = None, phone: bool = False, dark: bool = False, touch: bool = False, block_service_workers: bool = True) -> BrowserContext:
         options: dict = {"base_url": ORIGIN, "color_scheme": "dark" if dark else "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw",
                          "service_workers": "block" if block_service_workers else "allow"}
         if phone:

@@ -230,7 +230,7 @@ class AppShellJourney(unittest.TestCase):
         cls.pw.stop()
 
     def context(self, *, phone: bool = False, dark: bool = False, signed_in: bool = True, **extra) -> BrowserContext:
-        options: dict = {"base_url": ORIGIN, "color_scheme": "dark" if dark else "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw"}
+        options: dict = {"base_url": ORIGIN, "color_scheme": "dark" if dark else "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw", "service_workers": "block"}
         if phone:
             options.update(viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
         else:
@@ -578,20 +578,23 @@ class AppShellJourney(unittest.TestCase):
         targets = [menu, details_button, *[page.get_by_role("navigation", name="Views").get_by_role("link", name=n, exact=True) for n in ("Conversation", "Map", "Tasks", "Wiki")]]
         for target in targets:
             size = box(page, target)
-            self.assertGreaterEqual(min(size["width"], size["height"]), 44, f"44px target: {target}")
-        self.assertGreaterEqual(box(page, page.get_by_role("button", name="Save note"))["height"], 44)
+            self.assertGreaterEqual(round(min(size["width"], size["height"]), 2), 44, f"44px target: {target}")
+        self.assertGreaterEqual(round(box(page, page.get_by_role("button", name="Save note"))["height"], 2), 44)
         expect(composer).to_be_editable()
 
         menu.click()
         drawer = page.get_by_role("dialog", name="Flux")
         expect(drawer).to_be_visible()
         expect(menu).to_have_attribute("aria-expanded", "true")
+        # The drawer slides in with a running transform (#271): places are measured once the slide has ended.
+        drawer.evaluate("el => Promise.all(el.getAnimations({ subtree: true }).map((animation) => animation.finished.then(() => true, () => false)))")
         # The sidebar is a 260px drawer with the places as 44px+ rows.
         drawer_places = drawer.get_by_role("navigation", name="Places")
         expect(drawer_places).to_be_visible()
         self.assertLessEqual(round(box(page, drawer)["width"]), 260)
         for name in ("Home", "Inbox", "Sketchbook"):
-            self.assertGreaterEqual(box(page, drawer_places.get_by_role("link", name=name))["height"], 44, f"44px place target: {name}")
+            # Layout reports fractional pixels: a 44 px row was measured as 43.99997 px (#271), so two decimals decide.
+            self.assertGreaterEqual(round(box(page, drawer_places.get_by_role("link", name=name))["height"], 2), 44, f"44px place target: {name}")
         self.assertTrue(drawer.evaluate("el => el.contains(document.activeElement)"), "focus moves into the drawer")
         self.assertTrue(page.evaluate("document.getElementById('root').inert"), "the page behind the drawer is inert")
         # Tab stays inside the drawer.
