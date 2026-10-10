@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
 import { betterAuth } from 'better-auth';
 import { APIError, createAuthMiddleware, createEmailVerificationToken } from 'better-auth/api';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
