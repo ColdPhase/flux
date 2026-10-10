@@ -295,6 +295,10 @@ class WikiReferences(unittest.TestCase):
             expect(first.locator(".doc-decision__meta")).to_contain_text("Ada Kowalska")
             expect(first.locator(".doc-decision__meta")).to_contain_text(re.compile(r"\d{1,2} \w{3}|\w{3} \d{1,2}"))
         expect(card.nth(1)).to_contain_text("Decision proposed")
+        # Marks arrive after the page's HTML. Capture their completed surfaces,
+        # rather than the transparent start of the link's colour transition.
+        for reference in (task, card.first, card.nth(1)):
+            expect(reference).not_to_have_css("background-color", "rgba(0, 0, 0, 0)")
         # A reference that is not in this project stays plain text, without a glyph or card.
         missing = page.locator(".doc-ref--missing")
         expect(missing).to_have_count(1)
