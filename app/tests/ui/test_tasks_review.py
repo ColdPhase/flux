@@ -251,8 +251,11 @@ class TasksReviewJourney(unittest.TestCase):
         current = self.task(desktop, "agent_blocked")
         self.api(desktop, "PATCH", f"/api/v1/work/{self.ids['agent_blocked']}", {"owner": {"kind": "human", "id": PEOPLE["alex"]["id"]}, "clientCommandId": str(uuid.uuid4())},
                  status=200, headers={"if-match": f'"{current["version"]}"'})
-        # Observe the actual saved-event refresh rather than canceling unrelated
-        # in-flight reads with a reload (WebKit reports those transport cancels).
+        # Finish genuine reads before reloading; WebKit reports an abandoned
+        # in-flight response as an access-control transport error.
+        desktop.wait_for_load_state("networkidle")
+        desktop.reload(wait_until="networkidle")
+        desktop.get_by_role("radio", name="List", exact=True).click()
         expect(self.row(desktop, "Agent stuck job").locator(".agent-tag")).to_have_count(0)
         expect(self.row(desktop, "Agent stuck job").locator(".ws-item__s")).to_contain_text("Alex")
 

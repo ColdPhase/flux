@@ -106,10 +106,24 @@ class TasksFinalJourney(unittest.TestCase):
         return page.locator(".ws-task").filter(has_text=title)
 
     def swipe_left(self, page: Page, target: Locator, distance: int = 150) -> None:
-        """A real touch drag through the browser's input pipeline (Chromium)."""
+        """Native Chromium touch; WebKit touch-start emulation with native pointer capture/motion/release."""
         box = target.bounding_box()
         assert box
         x, y = box["x"] + box["width"] - 90, box["y"] + box["height"] / 2
+        if os.environ.get("FLUX_UI_BROWSER", "chromium") == "webkit":
+            # Playwright exposes only native taps for WebKit, not a touch drag.
+            # Keep an actual active pointer for setPointerCapture, supply the
+            # touch-start modality, then use real browser motion/release. No
+            # application handler, capture method or saved state is replaced.
+            target.evaluate("el => el.addEventListener('pointerdown', e => el.dataset.testPointer = String(e.pointerId), {once:true})")
+            page.mouse.move(x, y)
+            page.mouse.down()
+            pointer = int(target.get_attribute("data-test-pointer"))
+            target.dispatch_event("pointerdown", {"pointerType": "touch", "pointerId": pointer, "clientX": x, "clientY": y, "bubbles": True})
+            page.mouse.move(x - distance, y, steps=8)
+            self.assertTrue(target.evaluate("(el, id) => el.hasPointerCapture(id)", pointer), "the browser owns the active pointer capture")
+            page.mouse.up()
+            return
         cdp = page.context.new_cdp_session(page)
         cdp.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": x, "y": y}]})
         for step in range(1, 9):
