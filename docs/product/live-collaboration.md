@@ -275,6 +275,17 @@ mobile OS-screen publication is required, explicitly track a native
 implementation with its lifecycle/permissions.
 Do not silently remove the existing mobile requirements or claim universal capture.
 
+**Status 2026-10-10 (#63 AC-3, emulation only).** Four emulated rows run in Docker:
+Android Chrome and Android Firefox, iPhone and iPad Safari. The mobile
+`getDisplayMedia` state is an explicit emulation, checked against
+[MDN browser-compat-data](https://github.com/mdn/browser-compat-data/blob/main/api/MediaDevices.json)
+(fetched 2026-10-10). Results, negative controls and findings are in
+[live-media.md](../development/live-media.md#platform-rows-and-direct-path-dtls-63-ac-3-ac-4-2026-10-10).
+On the merged head, "Back to work" and the tablet camera control are reached by
+pointer, and the WebKit camera and microphone calls are observed. One reviewer
+reported a Firefox join failure on another host; it is not reproduced here and is
+recorded as such. Desktop rows, real devices and the public host remain open.
+
 ## 9. Evidence and delivery ledger
 
 Research above was checked against official sources on **2026-09-27**. These are
@@ -289,6 +300,10 @@ only verifies local prototype behavior with its stated limits.
 | [#61 server and context](https://github.com/ColdPhase/flux/issues/61) | Hubert / Maurycy | Real two-client transport, persisted context, policy and revocation regressions |
 | [#62 live interface](https://github.com/ColdPhase/flux/issues/62) | Maurycy / Hubert | Independent visual review plus real integrated human journey |
 | [#63 quality and operation](https://github.com/ColdPhase/flux/issues/63) | Hubert / Maurycy | Receiver/network/device results and operable self-hosted deployment at the candidate |
+
+Status 2026-10-10 for #63: the direct-path DTLS assertion and the emulated mobile rows
+are recorded in [live-media.md](../development/live-media.md#platform-rows-and-direct-path-dtls-63-ac-3-ac-4-2026-10-10).
+Receiver calibration, public-host results and real devices are still open, so #63 stays open.
 
 Only the first row is documentation. The others are required full-application
 outcomes and stay open until demonstrated. Optional audio notes require a later
