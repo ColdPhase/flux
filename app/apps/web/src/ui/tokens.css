@@ -45,6 +45,9 @@
   --sh-raise: 0 1px 2px rgba(0, 0, 0, .06), 0 4px 10px -6px rgba(0, 0, 0, .16);
   --grad-btn: linear-gradient(#ffffff, #f1f1f2);
   --grad-inv: linear-gradient(#3b3b3f, #18181b);
+  /* Agent colours (Agents section only): muted OKLCH at equal lightness, README §2 */
+  --agent-clay: #9b6147; --agent-ochre: #886d32; --agent-sage: #4b8057; --agent-teal: #208181;
+  --agent-indigo: #5e6fa4; --agent-plum: #886191; --agent-rose: #9c5c66;
 
   /* Type: Geist and Geist Mono. Sizes are in rem, so the person's text size applies (1rem = 16px).
      Body 14 on the computer and 15 on the phone; meta 12, 12.5 on the phone. */
@@ -119,6 +122,8 @@
     --sh-raise: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 10px -6px rgba(0, 0, 0, .5);
     --grad-btn: linear-gradient(#2a2a2a, #1e1e1e);
     --grad-inv: linear-gradient(#ffffff, #d9d9d9);
+    --agent-clay: #e8af96; --agent-ochre: #d4bb86; --agent-sage: #9ccca4; --agent-teal: #82cdcd;
+    --agent-indigo: #abbcef; --agent-plum: #d4afdc; --agent-rose: #e9aab3;
   }
 }
 :root[data-theme="dark"] {
@@ -137,6 +142,8 @@
   --sh-raise: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 10px -6px rgba(0, 0, 0, .5);
   --grad-btn: linear-gradient(#2a2a2a, #1e1e1e);
   --grad-inv: linear-gradient(#ffffff, #d9d9d9);
+  --agent-clay: #e8af96; --agent-ochre: #d4bb86; --agent-sage: #9ccca4; --agent-teal: #82cdcd;
+  --agent-indigo: #abbcef; --agent-plum: #d4afdc; --agent-rose: #e9aab3;
 }
 
 @media (max-width: 1200px) { :root { --space-page: 26px; --panel-w: 375px; } }
