@@ -75,7 +75,8 @@ WIRING_BODY = """Power the strip from the 12 V supply and the board from USB. Th
 """
 IMPORTED = "# Sensor bench notes\n\nThe ToF sensor caught **96%** of gestures at 5 lux.\n\n- Camera: 38%\n- ToF: 96%\n"
 
-# The 3px dot of the open page against its own tint (a non-text mark, WCAG 1.4.11).
+# The open page is marked by its tint, weight and aria-current only (#431): no generated ::before box, so no dot.
+# The selection's text contrast and focus ring are measured separately (WCAG 1.4.3 and 1.4.11).
 DOT = r"""(selector) => {
   const el = document.querySelector(selector);
   const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
@@ -221,16 +222,15 @@ class WikiPanesJourney(unittest.TestCase):
         expect(items).to_have_count(3)
         expect(index.locator(".wiki-page__t")).to_have_text([WIRING, LAMP, PARTS])
         expect(index.get_by_role("link", name=WIRING)).to_contain_text("Draft")
-        # Exactly one current page, marked by tint, weight and a dot as well as aria-current.
+        # Exactly one current page, marked by tint and weight as well as aria-current; no dot beside it (#431).
         expect(index.locator('[aria-current="page"]')).to_have_count(1)
         active = index.get_by_role("link", name=LAMP)
         expect(active).to_have_attribute("aria-current", "page")
         expect(index.get_by_role("link", name=PARTS)).not_to_have_attribute("aria-current", "page")
         self.assertEqual(active.evaluate("e => getComputedStyle(e).fontWeight"), "600")
         self.assertEqual(index.get_by_role("link", name=PARTS).evaluate("e => getComputedStyle(e).fontWeight"), "450")
-        dot = page.evaluate(DOT, '.wiki-page[aria-current="page"]')
-        self.assertEqual((dot["width"], dot["height"]), ("3px", "3px"), "a small marker beside the label")
-        self.assertGreaterEqual(dot["ratio"], 3, dot)
+        marker = page.evaluate(DOT, '.wiki-page[aria-current="page"]')
+        self.assertEqual(marker["content"], "none", "no pseudo-element dot beside the open page's label (#431)")
         tint = active.evaluate("e => getComputedStyle(e).backgroundColor")
         self.assertNotIn(tint, ("rgba(0, 0, 0, 0)", "transparent"), "the open page has a quiet tint")
         self.assertNotEqual(tint, index.evaluate("e => getComputedStyle(e).backgroundColor"), "the tint differs from the index")
@@ -238,6 +238,17 @@ class WikiPanesJourney(unittest.TestCase):
         self.assertAlmostEqual(index.bounding_box()["width"], 212, delta=1)
         self.assertAlmostEqual(page.locator(".wiki-bar").bounding_box()["height"], 57, delta=1)
         self.assertLessEqual(page.locator(".wiki-doc").bounding_box()["width"], 820.5)
+        # One line per page (#431): equal row heights, the full title on the link, the icon centred.
+        rows = items.evaluate_all("""els => els.map(e => {
+          const r = e.getBoundingClientRect(), t = e.querySelector('.wiki-page__t'), i = e.querySelector('svg').getBoundingClientRect();
+          return {h: r.height, lines: Math.round(t.getBoundingClientRect().height / parseFloat(getComputedStyle(t).lineHeight)),
+            title: e.title, text: t.textContent, icon: Math.abs((i.top + i.height / 2) - (r.top + r.height / 2))};
+        })""")
+        for row in rows:
+            self.assertEqual(row["lines"], 1, row)
+            self.assertEqual(row["title"], row["text"], row)
+            self.assertLessEqual(row["icon"], 1, row)
+        self.assertLessEqual(max(row["h"] for row in rows) - min(row["h"] for row in rows), 0.5, rows)
         title = page.get_by_role("heading", level=2, name=LAMP)
         self.assertEqual(title.evaluate("e => [getComputedStyle(e).fontSize, getComputedStyle(e).fontWeight]"), ["32px", "650"])
         prose = page.locator(".doc-prose")
@@ -706,8 +717,8 @@ class WikiPanesJourney(unittest.TestCase):
                 # Icon buttons and the underline search boundary are non-text marks (3:1).
                 self.measure(page, ".wiki-bar .ui-icon-btn", 3)
                 self.measure(page, ".wiki-search svg", 3)
-                dot = page.evaluate(DOT, '.wiki-page[aria-current="page"]')
-                self.assertGreaterEqual(dot["ratio"], 3, dot)
+                marker = page.evaluate(DOT, '.wiki-page[aria-current="page"]')
+                self.assertEqual(marker["content"], "none", f"no pseudo-element dot beside the open page's label in {theme} (#431)")
                 search = self.index(page).get_by_label("Search the wiki")
                 search.fill("lamp")
                 self.measure(page, ".wiki-search input")
