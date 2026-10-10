@@ -13,12 +13,109 @@ measurement as a section, newest first, and keep the summary current.
 | 2. `./flux up`, until the printed URL answers HTTP 200 | 3 min 25 s (6 min 33 s from clone) | not measured yet |
 | 3. `./flux demo`, until the logins print | 2.3 s (6 min 35 s from clone) | not measured yet |
 | 4. Sign in and post the first message in the demo conversation | 0.8 s scripted (6 min 36 s from clone) | not measured yet |
-| 5. First agent reply through your own MCP client | not measured ([#320](https://github.com/ColdPhase/flux/issues/320)) | not measured |
+| 5. First agent reply through your own MCP client | 35 s model time, agent-driven, Claude Code only, worktree ([#320](https://github.com/ColdPhase/flux/issues/320)) | not measured |
 
 Clone and dependency download take most of the time. Both depend on the network.
 The first run below is close to a no-cache build (see [cache state](#cache-state)). It was
 measured while other Docker builds ran on the same Mac, so treat it as an upper bound for
 an idle machine.
+
+## macOS arm64, 2026-10-10: first agent reply through Claude Code (#320)
+
+This is an agent-driven run, not a person and not a clean clone, so it does not satisfy
+criterion 2 of [#320](https://github.com/ColdPhase/flux/issues/320). It checks the README steps
+against a running stack and a real Claude Code client.
+
+### Machine and revision
+
+- **Mac:** the same machine as 2026-10-06. **Client:** Claude Code 2.1.294 on the host.
+- **Revision:** a worktree of `origin/main` at `e06248c5`, with this change's README edit. Codex
+  was not run: the host has no Codex client and no OpenAI account was used.
+- **When:** 2026-10-10, about 12:44–13:50 CEST, with other agents' Docker runs holding the slots.
+
+### Method
+
+- `./flux reset`, `./flux up` and `./flux demo` with `FLUX_PORT=19050`,
+  `FLUX_MAILPIT_PORT=19051` and `FLUX_DEV_PORT=19052`. The reset made the demo data empty first.
+  `./flux up` took 18 s because its images were cached by earlier builds of the same lockfile.
+- **The browser is Playwright, not a person's browser.** Steps 1–3 and the consent in step 5 ran in
+  the pinned Playwright image (`mcr.microsoft.com/playwright/python:v1.62.0-noble`) on the
+  project's Compose network, with the UI tests' loopback forwarder. The container also installed
+  the Python client from `app/tests/ui/requirements.txt`, about 40–55 s per run, which is not
+  counted below.
+- **Step 4** ran `claude mcp add --transport http flux http://127.0.0.1:19050/mcp` and
+  `claude mcp login flux` on the host, the second under `script` (a pseudo-terminal). The `open`
+  command was a shim that recorded the authorize URL instead of opening a browser. Playwright
+  captured the redirect to `localhost:<port>/callback` and did not follow it. The host then
+  requested that callback with `curl`, and Claude Code completed the token exchange.
+- **Step 6** ran `claude -p` with the README question, `--allowedTools mcp__flux`,
+  `--max-turns 12` and `--output-format json`. The model account was the author's: 17 turns,
+  USD 0.35. The first attempt used `--max-turns 4` and stopped with "Reached max turns (4)"; that
+  limit was this run's choice, not part of the README.
+- **Cleanup:** `claude mcp logout flux`, `claude mcp remove flux -s local`, then `./flux down`.
+
+### What the walkthrough showed
+
+1. **The default connection cannot consent (fixed in the README).** The first run used the
+   README's defaults, **Read and propose** and no **Allowed actions**. The consent chooser then
+   showed "This connection or project is no longer available to you." Claude Code's authorize
+   request asks for `flux.context.read`, `flux.proposal.write`, `flux.action.execute` and
+   `offline_access`. `chooseFlow` in `app/packages/db/src/repositories/agent-connections.ts`
+   refuses a flow whose scopes the connection does not all contain, and the route returns 404.
+   Ticking **Run approved project actions** under **Allowed actions** fixes it, and a standing
+   grant is still needed before any action runs. The README step 3 now says so.
+2. **The message is misleading.** A scope mismatch reads as "no longer available". Whether a
+   connection should cover a subset of the requested scopes is a separate decision, not made here;
+   see the follow-up named under "Not measured" below.
+3. **`claude mcp login` needs a terminal.** Without one it stops with "stdin isn't a terminal".
+   In a terminal it prints the authorize URL and waits. Without a consent it stops with
+   "Authentication timeout" after a few minutes. The README now says both.
+4. **Client registration works without a fixture.** Claude Code's authorize request names the
+   client metadata document `https://claude.ai/oauth/claude-code-client-metadata`. The consent
+   page showed "Client details from claude.ai", and the authorization completed. So the server read
+   that document over HTTPS from the container. This is inferred from the result, not from a log.
+   No fixture token was used.
+5. **The reply came from Flux.** The answer to the README question used the read tools and said
+   it changed nothing.
+
+### Timing (2026-10-10 run)
+
+| Mark | Duration |
+| --- | --- |
+| `./flux reset` | 3 s |
+| `./flux up`, until the URL answered 200 | 18 s |
+| `./flux demo` | 3 s |
+| Steps 1–3 in the browser (sign in, agent, connection saved) | 1.7 s |
+| `claude mcp add` | 1 s |
+| Consent in the browser (chooser, consent, Allow) | 1.8 s |
+| Callback to "Authenticated with flux" and Connected | 1 s |
+| First model reply (`claude -p`, 17 turns) | 35 s |
+
+The times are measured by the scripts. The Playwright container starts (about 95 s in total)
+and the reading and typing a person would do are not in them.
+
+### Server side
+
+- `GET /mcp` without a token returns 401 with `WWW-Authenticate: Bearer resource_metadata=…`.
+- `/.well-known/oauth-protected-resource/mcp` and `/.well-known/oauth-authorization-server/api/auth`
+  return 200.
+
+### Decision: `./flux demo` does not seed an agent
+
+Criterion 1 of #320 asked whether the demo should seed Ada's personal agent with a grant. It
+should not. The grant and the consent are the steps a newcomer most needs to see, and the first
+of them is where this run broke. A seeded agent would hide both. Steps 2–3 cost a person about
+a minute; that is an estimate, not a measurement. Status: proposed for peer review with this
+PR. Revisit after a person's measured run.
+
+### Not measured
+
+- A person with their own Claude Code or Codex account on a clean clone, and the time from
+  `git clone` to their first reply (criterion 2 of #320).
+- Codex. `codex mcp add flux --url …` and `codex mcp login flux` match the help of
+  `codex-cli 0.162.1`, which was run in a throwaway `node:22` container. The OAuth flow was not run.
+- The scope rule in point 1 above, and the wording in point 2. Both need a decision and a
+  follow-up issue.
 
 ## macOS arm64, 2026-10-06
 
