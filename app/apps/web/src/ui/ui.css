@@ -126,7 +126,7 @@ svg { flex: none; }
 }
 /* Hover previews the mark in a neutral tone; the current tab's own mark is the sliding indicator. */
 .ui-tabs__tab::after {
-  content: ""; position: absolute; left: var(--tab-pad, 8px); right: var(--tab-pad, 8px); bottom: 0; height: 2px; border-radius: 2px;
+  content: ""; position: absolute; left: var(--tab-pad, 8px); right: var(--tab-pad, 8px); bottom: 0; height: 2px; border-radius: var(--r-pill);
   background: var(--line2); opacity: 0; transform: scaleX(.6); transition: opacity var(--dur-1) ease, transform var(--dur-2) var(--ease-out);
 }
 .ui-tabs__tab:hover { color: var(--t1); }
@@ -153,7 +153,10 @@ svg { flex: none; }
   /* Equal shares, but never narrower than the label: "Conversation" takes what Map and Wiki don't need. */
   flex: 1 1 0; min-width: max-content;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 52px; padding: 4px 0;
-  border-radius: var(--r-lg); color: var(--t3); text-decoration: none; font-size: 11px; line-height: 1.2; font-weight: 500;
+  border-radius: var(--r-lg); color: var(--t3); text-decoration: none; line-height: 1.2; font-weight: 500;
+  /* The labels follow the text size (rem tokens) only as far as the four places fit the phone's width (#437):
+     at 320 px with doubled text they stop near 16 px instead of 28 px and are never clipped (HIG-11, HIG-19). */
+  font-size: clamp(12.5px, 5vw, var(--fs-md));
   -webkit-tap-highlight-color: transparent; transition: color var(--dur-1) ease;
 }
 .ui-bottomnav__item:focus-visible { outline-offset: -3px; }
@@ -165,7 +168,7 @@ svg { flex: none; }
 .ui-bottomnav__pill { isolation: isolate; }
 .ui-bottomnav__pill svg { transition: transform var(--dur-3) var(--ease-glide); }
 .ui-bottomnav__label { white-space: nowrap; letter-spacing: -.05px; }
-@media (max-width: 340px) { .ui-bottomnav__item { font-size: 10.5px; } .ui-bottomnav__pill { width: 52px; } }
+@media (max-width: 340px) { .ui-bottomnav__pill { width: 52px; } }
 .ui-bottomnav__item:is([aria-current="page"], [data-pending]) { color: var(--t1); font-weight: 650; }
 .ui-bottomnav__item:is([aria-current="page"], [data-pending]) .ui-bottomnav__pill::before { opacity: 1; transform: none; }
 .ui-bottomnav__dot { position: absolute; top: 3px; right: 14px; width: 8px; height: 8px; border-radius: 50%; background: var(--inv); box-shadow: 0 0 0 2px var(--bg); }
@@ -191,7 +194,7 @@ svg { flex: none; }
 .ui-sheet .ui-panel__head { position: relative; touch-action: none; }
 .ui-sheet .ui-panel__head::before {
   content: ""; position: absolute; left: 50%; top: calc(env(safe-area-inset-top) + 6px); width: 36px; height: 5px; margin-left: -18px;
-  border-radius: 3px; background: var(--line2);
+  border-radius: var(--r-pill); background: var(--line2);
 }
 @media (max-width: 640px) { .ui-overlay--left .ui-overlay__surface { width: 100%; } }
 
@@ -257,18 +260,9 @@ svg { flex: none; }
 .kreska svg { display: block; overflow: visible; }
 .kreska__frame { fill: var(--el); }
 /* Agent colours, only where a hue is passed (the Agents section): the lines take it, the face 12% of it. */
-.kreska--clay { color: #9b6147; } .kreska--ochre { color: #886d32; } .kreska--sage { color: #4b8057; } .kreska--teal { color: #208181; }
-.kreska--indigo { color: #5e6fa4; } .kreska--plum { color: #886191; } .kreska--rose { color: #9c5c66; }
-:root[data-theme="dark"] .kreska--clay { color: #e8af96; } :root[data-theme="dark"] .kreska--ochre { color: #d4bb86; }
-:root[data-theme="dark"] .kreska--sage { color: #9ccca4; } :root[data-theme="dark"] .kreska--teal { color: #82cdcd; }
-:root[data-theme="dark"] .kreska--indigo { color: #abbcef; } :root[data-theme="dark"] .kreska--plum { color: #d4afdc; }
-:root[data-theme="dark"] .kreska--rose { color: #e9aab3; }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .kreska--clay { color: #e8af96; } :root:not([data-theme="light"]) .kreska--ochre { color: #d4bb86; }
-  :root:not([data-theme="light"]) .kreska--sage { color: #9ccca4; } :root:not([data-theme="light"]) .kreska--teal { color: #82cdcd; }
-  :root:not([data-theme="light"]) .kreska--indigo { color: #abbcef; } :root:not([data-theme="light"]) .kreska--plum { color: #d4afdc; }
-  :root:not([data-theme="light"]) .kreska--rose { color: #e9aab3; }
-}
+.kreska--clay { color: var(--agent-clay); } .kreska--ochre { color: var(--agent-ochre); } .kreska--sage { color: var(--agent-sage); }
+.kreska--teal { color: var(--agent-teal); } .kreska--indigo { color: var(--agent-indigo); } .kreska--plum { color: var(--agent-plum); }
+.kreska--rose { color: var(--agent-rose); }
 .kreska[class*="kreska--"] .kreska__frame { fill: currentColor; fill-opacity: .12; }
 /* Motion only where it says something true: the brow waves while thinking, dots flow while loading,
    the eyes blink slowly while working. Reduced motion shows the static frame (see the end of this file). */
