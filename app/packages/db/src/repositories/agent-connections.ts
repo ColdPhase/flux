@@ -5,6 +5,7 @@ import type { AgentConnection, AgentMcpPolicy, CreateAgentConnectionCommand } fr
 type AgentOauthFlow = { fingerprint: string; clientId: string; scopes: readonly string[]; expiresAt: Date };
 type AgentOauthGrant = { referenceId: string; clientId: string | null; connection: AgentConnection };
 import * as schema from '../schema.js';
+import { idpStandingRepository } from './idp-standing.js';
 import type { createDatabase } from '../index.js';
 import { initializeAgentMcpPolicy, lockAgentMcpPolicy } from './agent-mcp-policy.js';
 
@@ -37,6 +38,8 @@ export function agentConnectionRepository(db: Database, policy: AgentConnectionP
       eq(schema.agentConnections.id, connectionId), eq(schema.agentConnections.ownerUserId, ownerUserId),
       isNull(schema.agentConnections.revokedAt))).for('share');
     if (!row) return null;
+    // The owner's account must still stand at the identity provider (F-024 S4, #311). Nothing is revoked.
+    if (await idpStandingRepository(tx).refuses(ownerUserId)) return null;
     const selectedProjectIds = await projects(tx, row.id);
     const connection = serialize(row, selectedProjectIds);
     if (mcp) {
@@ -184,6 +187,16 @@ export function agentConnectionRepository(db: Database, policy: AgentConnectionP
         const binding = row?.binding;
         const connection = binding ? await resolveCurrent(tx, ownerUserId, binding.connectionId, mcp) : null;
         return binding && connection ? { referenceId, clientId: binding.clientId, connection } : null;
+      });
+    },
+
+    async heldConnectionId(ownerUserId: string, clientId: string): Promise<string | null> {
+      return db.transaction(async (tx) => {
+        const bindings = await tx.select({ connectionId: schema.agentOauthBindings.connectionId }).from(schema.agentOauthBindings)
+          .where(and(eq(schema.agentOauthBindings.ownerUserId, ownerUserId), eq(schema.agentOauthBindings.clientId, clientId)))
+          .orderBy(desc(schema.agentOauthBindings.createdAt), desc(schema.agentOauthBindings.id));
+        for (const binding of bindings) if (await resolveCurrent(tx, ownerUserId, binding.connectionId)) return binding.connectionId;
+        return null;
       });
     },
 

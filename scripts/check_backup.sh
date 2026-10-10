@@ -194,6 +194,11 @@ ledger=$(migrations_of_tree "$A" | sed 's/_.*//; s/^0*//' | paste -sd, -)
 grep -q "\"appliedMigrations\": \[$ledger\]," "$manifest" || fail "manifest ledger is not [$ledger]: $(cat "$manifest")"
 grep -q '"appVersion": "0.1.0"' "$manifest" && grep -q '"consistency": "api and worker stopped' "$manifest" || fail "manifest fields missing"
 grep -q '"image": "sha256:' "$manifest" && grep -q '"postgresImage": "postgres@sha256:' "$manifest" || fail "manifest image digests missing"
+# The identity provider's offline refresh tokens (F-024 S4, #311) stay out of the archive: the table's definition is
+# there, its rows are not.
+toc=$(compose_in "$A" exec -T db pg_restore --list < "$work/unpacked/database.dump")
+printf '%s\n' "$toc" | grep -Eq ' TABLE public auth_idp_standing ' || fail "the backup lacks the auth_idp_standing definition"
+if printf '%s\n' "$toc" | grep -Eq 'TABLE DATA public auth_idp_standing '; then fail "the backup holds rows of auth_idp_standing"; fi
 for part in database.dump files.tar.gz flux.env; do
   grep -q "{\"name\": \"$part\", \"bytes\": $(wc -c < "$work/unpacked/$part" | tr -d ' '), \"sha256\": \"$(sha256 "$work/unpacked/$part")\"}" "$manifest" \
     || fail "manifest checksum of $part is wrong"

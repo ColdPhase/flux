@@ -9,10 +9,12 @@ import { createSmtpMailer, type Mailer } from './mailer.js';
 import { originViolation } from './origin.js';
 import { createOauthRequests } from './oauth-flow.js';
 import { createSignIns } from './sign-in.js';
+import { createConfirmation, type Confirmation } from './confirmation.js';
 import { cachedReachability, discoveryReachable, waitForDiscovery } from './discovery.js';
 import { registerAgentOauthContext } from './oauth-context.js';
 import { registerIdentityRoutes } from './routes.js';
 import { createSessionResolver, type SessionResolver } from './session.js';
+import { createIdpStanding, type IdpStanding } from './standing.js';
 
 export { loadIdentityConfig, type IdentityConfig } from './config.js';
 export { UnauthenticatedError, type SessionContext, type SessionResolver } from './session.js';
@@ -27,6 +29,9 @@ export interface IdentityOptions {
 export interface Identity extends SessionResolver {
   passwordReset: IdentityCapabilities['passwordReset'];
   auth: FluxAuth;
+  confirmation: Confirmation;
+  /** Null without a provider or with FLUX_OIDC_STANDING=off. */
+  standing: IdpStanding | null;
 }
 
 /**
@@ -48,8 +53,11 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
   if (mailer) app.addHook('onClose', async () => mailer.close());
   const oauthRequests = createOauthRequests();
   const signIns = createSignIns();
+  const idpStanding = config.oidc ? createIdpStanding({ db, oidc: config.oidc, authSecret: config.secret, log: app.log }) : null;
+  const standing = config.oidc?.standing === 'refresh' ? idpStanding : null;
+  const confirmation = createConfirmation(db, config.oidc);
   const onMailError = (error: unknown) => app.log.error({ error }, 'Password reset mail failed');
-  const build = (oidc: OidcConfig | null) => createAuth({ db, config, installProvider: oidc !== null, mailer, oauthRequests, signIns, onMailError });
+  const build = (oidc: OidcConfig | null) => createAuth({ db, config, installProvider: oidc !== null, mailer, oauthRequests, signIns, standing, confirmation, log: app.log, onMailError });
   // The OIDC plugin reads the provider's discovery document once, when its Better Auth instance starts, and
   // drops the provider if that read fails. The instance is therefore created at startup, and again once the
   // provider answers if it was down then (#310 AC-4), so no restart is needed. Routes hold this stable reference.
@@ -105,8 +113,11 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
       app.log.warn({ issuer: config.oidc.issuer }, 'The identity provider did not answer; single sign-on is reported as not reachable until it does');
       awaitProvider(config.oidc);
     }
+    await idpStanding?.reconcile();
+    standing?.start();
   });
-  const sessions = createSessionResolver(auth);
+  app.addHook('onClose', async () => standing?.stop());
+  const sessions = createSessionResolver(auth, standing, confirmation);
   const passwordReset: IdentityCapabilities['passwordReset'] = mailer ? 'available' : 'unavailable';
 
   app.addHook('onRequest', async (request, reply) => {
@@ -117,7 +128,7 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
     }
   });
 
-  registerAuthBridge(app, { auth, publicOrigin: config.publicOrigin, passwordReset, oauthRequests, signIns });
+  registerAuthBridge(app, { auth, publicOrigin: config.publicOrigin, passwordReset, oauthRequests, signIns, sessions });
   const reachable = config.oidc ? cachedReachability(config.oidc) : null;
   // The provider is offered from configuration; it is reachable only once installed and answering.
   const sso = async (): Promise<IdentityCapabilities['sso']> =>
@@ -127,5 +138,5 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
   registerIdentityRoutes(app, { sessions, store: createSessionRepository(db), passwordReset, sso });
   registerAgentOauthContext(app, db, sessions, auth, config.publicOrigin);
 
-  return { ...sessions, passwordReset, auth };
+  return { ...sessions, passwordReset, auth, standing, confirmation };
 }

@@ -1,4 +1,4 @@
-import { personalRunRows, type DbExecutor } from '@flux/db';
+import { personalRunRows, withIdpStanding, type DbExecutor } from '@flux/db';
 import { policyPersonalRunAccess, recordEvent, type Database, type PersonalRunPorts, type PersonalRunUnitOfWork } from '@flux/core';
 import { eventPorts } from '../events.js';
 
@@ -7,7 +7,7 @@ import { eventPorts } from '../events.js';
 
 function personalRunPorts(tx: DbExecutor): PersonalRunPorts {
   return {
-    access: policyPersonalRunAccess(tx),
+    access: withIdpStanding(policyPersonalRunAccess(tx), tx),
     runs: personalRunRows(tx),
     // The processor never queues: retries are new runs the owner starts through the API.
     queue: { enqueue: async () => { throw new Error('The worker does not queue personal runs'); } },

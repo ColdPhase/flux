@@ -72,11 +72,44 @@ provider can still sign in.
 
    `z` lets the container read the file on an SELinux host (Fedora, RHEL); elsewhere it has no effect.
 
-4. **Restart:** `./flux up` (or `docker compose … up -d`). The sign-in page shows
+4. **Optional: confirmation age.** `FLUX_OIDC_CONFIRMATION_MAX_AGE` (default `7d`; whole hours or
+   days from `1h` to `30d`, such as `12h`) is how long the provider's last confirmation of a person
+   keeps their access. It starts at each sign-in through the provider. After it, that person's
+   provider browser sessions return to sign-in, their MCP requests get 401 `invalid_token`, and the
+   refresh grant gets `invalid_grant` until they sign in through the provider again; the client then
+   authorizes again and `/connect-agent` offers the connection it held. Without the standing check
+   (S4), this age is the offboarding bound: a person disabled at the provider keeps access at most
+   this long. People with only a Flux password are not affected.
+
+5. **Restart:** `./flux up` (or `docker compose … up -d`). The sign-in page shows
    "Sign in with Acme login" once the API reads the provider's discovery document.
 
 The API reads discovery when it starts. If the provider is unreachable then, single sign-on fails
 until the next restart; password sign-in is unaffected.
+
+## Standing check
+
+Flux asks the provider for `offline_access` at sign-in and keeps the refresh token it returns,
+sealed with a key derived from `FLUX_AUTH_SECRET`, in `auth_idp_standing`. Every
+`FLUX_OIDC_STANDING_INTERVAL_SECONDS` (default 900) the API uses that token for each person with a
+live session or agent connection. If the provider answers `invalid_grant` (a disabled user, a removed
+offline session), the person is in *sign-in required*: their browser sessions end, MCP requests answer
+`401 invalid_token` with "Sign in again with <label>", the refresh grant answers `invalid_grant`, and
+automation that acts for them stops. Nothing is revoked. A network error, timeout, 5xx or
+`invalid_client` changes nothing.
+
+- **Restoring access.** Checks continue for a suspended person. When the provider honours the token
+  again (a re-enabled Keycloak user), the next check clears the state; their kept agent grants work
+  again, and they sign in again in the browser.
+- **The provider must return a refresh token.** Grant the Flux client the `refresh_token` grant and
+  let the people use `offline_access` (Keycloak: the `offline_access` role; Okta: the Refresh Token
+  grant). A sign-in that returns none is refused with a message, and the API logs
+  `The identity provider returned no refresh token`. For a provider that cannot, set
+  `FLUX_OIDC_STANDING=off`: then only the confirmation age (S2) and back-channel logout end access.
+- **Backups and restores.** `./flux backup` keeps the table's rows out of the archive. After a
+  restore, every person who signed in through the provider is in sign-in required until they sign in
+  again.
+- **Only the stored state is read per request;** an unreachable provider adds no latency to MCP calls.
 
 ## Verified behavior
 
@@ -94,6 +127,10 @@ configured with it. Through the same browser flow and callback it returns ID tok
 nonce, a signature by another key, another issuer or another audience; each is refused with no
 session, no linked or changed account, no grants and no notification address, and a valid
 token from the same mock still signs in.
+
+The confirmation age runs against Keycloak with `FLUX_OIDC_CONFIRMATION_MAX_AGE=12h`: a person
+whose last confirmation is moved back past it is refused at the browser, at MCP and on the refresh
+grant; one moved back less than it is not; signing in again through Keycloak restores access.
 
 It uses its own Compose project and ports (`FLUX_OIDC_TEST_PORT`, default 18095, and the next port
 for Mailpit) and removes everything afterwards.
