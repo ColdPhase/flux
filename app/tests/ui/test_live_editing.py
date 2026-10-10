@@ -711,3 +711,33 @@ class LiveEditingJourney(LiveFixture):
         self.assertGreaterEqual(rendered, previews // 2, "The DevTools hook observes the moved thought's renders")
         self.assertLess(observed, 8, f"{observed} element observations for {previews} previews of a 40-thought map")
         self.assertLessEqual(rendered, 3 * previews, f"{rendered} thought renders for {previews} previews of a 40-thought map")
+
+    async def test_17_ctrl_end_then_shift_left_replaces_the_last_character_of_a_100k_line(self):
+        # #228 Gate 4: CodeMirror draws a line longer than 20,000 characters only around the view
+        # and the selection. Native Ctrl+End from the middle stopped at undrawn text, so Shift+
+        # ArrowLeft selected nothing and the typed character was added; at the 100,000-character
+        # limit it was refused and the input lost (the driver's first local-control sample).
+        await self.create_doc("A" * 99_999 + "B")
+        ada = self.pages["ada"]
+        field = await self.editor("ada")
+        await field.click()  # In the middle of the one long line, far from its end.
+        await ada.keyboard.press("Control+End")
+        await ada.keyboard.press("Shift+ArrowLeft")
+        await ada.keyboard.insert_text("x")
+        editor = ada.locator("[data-live-wiki-editor]")
+        await expect(editor).to_have_attribute("data-live-input-revision", "1", timeout=3000)
+        await expect(ada.get_by_role("status").filter(has_text="All changes shared")).to_be_visible()
+        self.assertEqual(await ada.get_by_role("alert").count(), 0, "No input was refused")
+        last = await ada.evaluate("""() => {
+          const walker = document.createTreeWalker(document.querySelector('.cm-content'), NodeFilter.SHOW_TEXT);
+          let last = '', node; while ((node = walker.nextNode())) if (node.data.trim() && !node.parentElement.closest('.editing-caret')) last = node.data;
+          return last.trimEnd().slice(-2);
+        }""")
+        self.assertEqual(last, "Ax", "The typed character replaced the selected last one")
+        # The extending variant selects from the start to the end of the text, undrawn parts included.
+        await ada.keyboard.press("Control+Home")
+        await ada.keyboard.press("Control+Shift+End")
+        await ada.keyboard.insert_text("y")
+        await expect(editor).to_have_attribute("data-live-input-revision", "2", timeout=3000)
+        await ada.wait_for_function("() => document.querySelector('.cm-content').textContent === 'y'", timeout=3000)
+        self.assertEqual(await ada.get_by_role("alert").count(), 0, "No input was refused")

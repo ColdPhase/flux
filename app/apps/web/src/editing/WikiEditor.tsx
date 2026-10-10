@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
 import * as Y from 'yjs';
 import { EditorSelection, EditorState, Prec, StateEffect, StateField, type Range } from '@codemirror/state';
-import { Decoration, EditorView, RectangleMarker, drawSelection, keymap, layer, type DecorationSet, type LayerMarker } from '@codemirror/view';
+import { Decoration, Direction, EditorView, RectangleMarker, drawSelection, keymap, layer, type DecorationSet, type LayerMarker } from '@codemirror/view';
 import { yCollab, yUndoManagerKeymap } from 'y-codemirror.next';
 import { DOC_LIMITS, docRef, type Doc, type DocState, type Project } from '@flux/contracts';
 import { Button, Icon, useMediaQuery } from '../ui';
@@ -76,6 +76,39 @@ const remoteCaretLayer = layer({
     return at ? [new NamedCaret(caret.name, caret.ink, at.left, at.top, at.height)] : [];
   }),
 });
+/**
+ * Moving to the start or end of the text and by one character comes from the editor state, not
+ * the browser. CodeMirror draws a line longer than 20,000 characters only around the view and
+ * the selection. After native Ctrl+End from the middle of such a line, its end was not drawn
+ * yet, so a native Shift+ArrowLeft selected nothing and the typed character was added instead of
+ * replacing the last one (a 100,000-character text then refused it as too long; #228 Gate 4).
+ * A dispatched selection is drawn and placed exactly. These follow `@codemirror/commands`.
+ */
+function toDocumentBoundary(end: boolean, extend: boolean) {
+  return (view: EditorView) => {
+    const at = end ? view.state.doc.length : 0;
+    view.dispatch({ selection: extend ? EditorSelection.range(view.state.selection.main.anchor, at) : EditorSelection.cursor(at), scrollIntoView: true, userEvent: 'select' });
+    return true;
+  };
+}
+function byCharacter(right: boolean, extend: boolean) {
+  return (view: EditorView) => {
+    const forward = right === (view.textDirectionAt(view.state.selection.main.head) === Direction.LTR);
+    const selection = EditorSelection.create(view.state.selection.ranges.map((range) => {
+      if (extend) { const head = view.moveByChar(range, forward); return EditorSelection.range(range.anchor, head.head, head.goalColumn, head.bidiLevel ?? undefined); }
+      return range.empty ? view.moveByChar(range, forward) : EditorSelection.cursor(forward ? range.to : range.from);
+    }), view.state.selection.mainIndex);
+    if (selection.eq(view.state.selection)) return false;
+    view.dispatch({ selection, scrollIntoView: true, userEvent: 'select' });
+    return true;
+  };
+}
+const stateMovement = keymap.of([
+  { key: 'Mod-Home', mac: 'Cmd-ArrowUp', run: toDocumentBoundary(false, false), shift: toDocumentBoundary(false, true) },
+  { key: 'Mod-End', mac: 'Cmd-ArrowDown', run: toDocumentBoundary(true, false), shift: toDocumentBoundary(true, true) },
+  { key: 'ArrowLeft', run: byCharacter(false, false), shift: byCharacter(false, true) },
+  { key: 'ArrowRight', run: byCharacter(true, false), shift: byCharacter(true, true) },
+]);
 const remoteMarks = StateEffect.define<DecorationSet>();
 const marked = StateField.define<DecorationSet>({
   create: () => Decoration.none,
@@ -137,7 +170,7 @@ function CollaborativeText({ client, handleRef }: { client: SharedWiki; handleRe
         yCollab(client.text, null, { undoManager: client.undo }), keymap.of(yUndoManagerKeymap.map((binding) => ({ ...binding,
           run: (view: EditorView) => history(binding.run, view),
           shift: binding.shift ? (view: EditorView) => history(binding.shift, view) : undefined,
-        }))), drawSelection(), EditorView.lineWrapping, marked, remoteCarets, remoteCaretLayer, writableField,
+        }))), stateMovement, drawSelection(), EditorView.lineWrapping, marked, remoteCarets, remoteCaretLayer, writableField,
         EditorView.contentAttributes.of({ 'aria-label': 'Shared Markdown', role: 'textbox', 'aria-multiline': 'true', spellcheck: 'true' }),
         EditorState.transactionFilter.of((transaction) => {
           if (transaction.isUserEvent('input') || transaction.isUserEvent('delete') || transaction.isUserEvent('undo') || transaction.isUserEvent('redo')) {

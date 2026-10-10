@@ -901,3 +901,17 @@ driver's own map-500-drag-1 case on the same shared host (load 5–7) went from 
 136 ms: publication to peer receipt from p50 95 / p95 145 ms to 37 / 50 ms, and the peer's
 script time over the case from 5.1 s to 2.2 s. The forwarder change made no difference to
 that case (p95 142 ms). The quiet-host gate decides.
+
+**The first local-control sample at 100k (2026-10-10).** The quiet-host run at `5b22d9ab`
+met p95 ≤ 200 ms in all nine cases, but both 100k cases kept one local-control error: the
+first sample's input never produced an input revision (also at `0744de80`; never at 10k).
+CodeMirror draws a line longer than 20,000 characters only around the view and the
+selection, and the editor left caret movement to the browser. The driver clicks into the
+middle of the one 100,000-character line and then presses Ctrl+End, Shift+ArrowLeft and a
+character in quick succession. After Ctrl+End the end of the line was not drawn yet, so
+Shift+ArrowLeft selected nothing, the character was added instead of replacing the last one,
+and the editor refused the 100,001-character text ("The shared text limit is 100,000
+characters"). Later samples start with the end already drawn. Moving to the start or end of
+the text and by one character (Ctrl/Cmd+Home/End and ArrowLeft/Right, with or without Shift)
+now dispatches the selection, which CodeMirror draws and places exactly, as
+`@codemirror/commands` does. The control and the driver are unchanged.
