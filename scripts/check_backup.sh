@@ -6,8 +6,8 @@
 #  1. Fresh restore with real data: checkout A runs ./flux up and ./flux demo, then
 #     scripts/backup-fixture.mjs adds conversations, a DM, a private note, a project sketch,
 #     work/decision/result with links, a doc with two versions, a push subscription, a revoked
-#     and a live session, two OAuth agent connections with bearers (#52; one revoked before the
-#     backup, one after it) and an outsider; a file is put into the files volume. ./flux export
+#     and a live session, three OAuth agent connections with bearers (one revoked before the
+#     backup, one after it, and one for native task Undo) and an outsider; a file is put into the files volume. ./flux export
 #     is checked for content and exclusions. ./flux backup refuses when the writers cannot be
 #     confirmed stopped, keeps two backups of the same second apart, and prunes with --keep 1;
 #     restore is refused when not confirmed, for a damaged archive, a manifest that disagrees
@@ -248,7 +248,7 @@ done
 [ ! -f "$B/docker/.env" ] || fail "B is not fresh"
 flux_b restore "$archive" -y > "$work/restore.out" 2>&1 || { cat "$work/restore.out"; fail "restore into B failed"; }
 tail -n 7 "$work/restore.out"
-grep -q 'NOTE: 1 agent connection(s) are active as of the backup' "$work/restore.out" || fail "restore did not warn about restored agent connections"
+grep -q 'NOTE: 2 agent connection(s) are active as of the backup' "$work/restore.out" || fail "restore did not warn about both restored agent connections"
 run_b=$(project_of "$B")
 [ -n "$run_b" ] && [ "$run_b" != "$run_a" ] || fail "B did not use its own project ($run_b)"
 [ "$(ls -l "$B/docker/.env" | cut -c1-10)" = "-rw-------" ] || fail "restored .env is not private"
@@ -262,7 +262,7 @@ compose_in "$B" --profile ops run --rm --no-deps -T files-archive cat /data/file
 owner_uid=$(compose_in "$B" --profile ops run --rm --no-deps -T files-archive stat -c %u /data/files/uploads/sentinel.bin | tr -d '\r')
 [ "$owner_uid" = 1000 ] || fail "restored file belongs to uid $owner_uid, not the API user"
 flux_b restore "$archive" --revoke-agent-connections -y > "$work/revoke.out" 2>&1 || { cat "$work/revoke.out"; fail "restore --revoke-agent-connections failed"; }
-grep -q 'Revoked 1 agent connection(s)' "$work/revoke.out" || fail "no revocation report: $(tail -n 5 "$work/revoke.out")"
+grep -q 'Revoked 2 agent connection(s)' "$work/revoke.out" || fail "no revocation report: $(tail -n 5 "$work/revoke.out")"
 fixture "$B" agents-revoked "$state"
 flux_b clean -y >/dev/null
 flux_a clean -y >/dev/null

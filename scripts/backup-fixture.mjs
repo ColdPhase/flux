@@ -271,6 +271,7 @@ async function seed() {
   const actor = (await ada.expect('POST', '/api/v1/agent-connections', { agentId: agent.id, selectedProjectIds: [projectId],
     scopes: ['flux.context.read', 'flux.action.execute'] })).id;
   const actorBearer = await bearerFor(actor, 'flux.context.read flux.action.execute');
+  bearers.undo = actorBearer;
   const expiresAt = new Date(Date.now() + 3_600_000).toISOString();
   const createGrant = await ada.expect('POST', `/api/v1/agent-connections/${actor}/action-grants`,
     { clientCommandId: ids(), projectId, operation: 'work.create', peerRequestClass: 'execute', maximumUses: 1, expiresAt });
@@ -327,6 +328,7 @@ async function verify() {
   // after the backup is live again (the documented caveat of restoring an older backup).
   assert.equal(await mcpStatus(state.bearers.revoked), 403, 'a connection revoked before the backup stays revoked');
   assert.equal(await mcpStatus(state.bearers.live), 200, 'a connection revoked only after the backup is live again');
+  assert.equal(await mcpStatus(state.bearers.undo), 200, 'the native Undo connection is live after the restore');
 
   // Task creation Undo (#238): the reverted task is history with both notices; the receipt is exact after the restore.
   assert.equal(actual.undone.lifecycle.state, 'creation_reverted');
@@ -373,8 +375,8 @@ async function agentsRevoked() {
   const ada = await signIn(owner);
   for (const [name, bearer] of Object.entries(state.bearers)) assert.equal(await mcpStatus(bearer), 403, `the ${name} bearer is denied`);
   const connections = await ada.expect('GET', '/api/v1/agent-connections');
-  assert.ok(connections.length === 2 && connections.every((item) => item.revokedAt), 'every agent connection is revoked');
-  console.log('verified --revoke-agent-connections: both bearers denied, every connection revoked');
+  assert.ok(connections.length === 3 && connections.every((item) => item.revokedAt), 'every agent connection is revoked');
+  console.log('verified --revoke-agent-connections: all three bearers denied, every connection revoked');
 }
 
 /** After an upgrade from an older Flux: the demo seeded by that version is intact and readable. */
