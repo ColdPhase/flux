@@ -467,10 +467,17 @@ export const projectConversations = pgTable('project_conversations', {
   projectId: uuid('project_id').notNull(),
   createdBy: text('created_by'),
   createdByAgentId: uuid('created_by_agent_id'),
+  /** #400: ordinary history remains people; a task's agent thread has its exact task audience. */
+  space: text('space', { enum: ['people', 'agents'] }).notNull().default('people'),
+  workId: uuid('work_id'),
   nextSequence: integer('next_sequence').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   unique().on(table.workspaceId, table.projectId, table.id),
+  uniqueIndex('project_conversations_agent_work_idx').on(table.workId).where(sql`${table.space} = 'agents'`),
+  check('project_conversations_agent_work_check', sql`(${table.space} = 'agents') = (${table.workId} IS NOT NULL)`),
+  foreignKey({ name: 'project_conversations_agent_work_fk', columns: [table.workspaceId, table.projectId, table.workId],
+    foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }),
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
   foreignKey({ columns: [table.workspaceId, table.createdByAgentId], foreignColumns: [agents.workspaceId, agents.id] }),
   check('project_conversation_exact_actor', sql`num_nonnulls(${table.createdBy}, ${table.createdByAgentId}) = 1`),
