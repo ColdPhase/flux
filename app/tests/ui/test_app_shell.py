@@ -260,7 +260,7 @@ class AppShellJourney(unittest.TestCase):
         if signed_in and self.state:
             options["storage_state"] = self.state
         options.update(extra)
-        context = self.browser.new_context(**options)
+        context = self.browser.new_context(**options)  # sw-allowed: as on main; routing tests pass service_workers="block" (#271)
         self.addCleanup(context.close)
         return context
 
@@ -600,20 +600,30 @@ class AppShellJourney(unittest.TestCase):
         targets = [menu, details_button, *[page.get_by_role("navigation", name="Views").get_by_role("link", name=n, exact=True) for n in ("Conversation", "Map", "Tasks", "Wiki")]]
         for target in targets:
             size = box(page, target)
-            self.assertGreaterEqual(min(size["width"], size["height"]), 44, f"44px target: {target}")
-        self.assertGreaterEqual(box(page, page.get_by_role("button", name="Save note"))["height"], 44)
+            self.assertGreaterEqual(round(min(size["width"], size["height"]), 2), 44, f"44px target: {target}")
+        self.assertGreaterEqual(round(box(page, page.get_by_role("button", name="Save note"))["height"], 2), 44)
         expect(composer).to_be_editable()
+        # #437: the places bar labels are at least the phone meta size (12.5px, final design §2), and
+        # the composer's audience line wraps inside the viewport instead of clipping mid-word.
+        for size in page.locator(".ui-bottomnav__label").evaluate_all("els => els.map(e => parseFloat(getComputedStyle(e).fontSize))"):
+            self.assertGreaterEqual(size, 12.5, "places bar label at least 12.5px")
+        where = page.locator(".composer__audience").first
+        self.assertLessEqual(box(page, where)["x"] + box(page, where)["width"], PHONE["width"], "the audience line fits the phone")
+        self.assertFalse(where.evaluate("el => el.scrollWidth > el.clientWidth + 1"), "the audience line is not clipped")
 
         menu.click()
         drawer = page.get_by_role("dialog", name="Flux")
         expect(drawer).to_be_visible()
         expect(menu).to_have_attribute("aria-expanded", "true")
+        # The drawer slides in with a running transform (#271): places are measured once the slide has ended.
+        drawer.evaluate("el => Promise.all(el.getAnimations({ subtree: true }).map((animation) => animation.finished.then(() => true, () => false)))")
         # The sidebar is a 260px drawer with the places as 44px+ rows.
         drawer_places = drawer.get_by_role("navigation", name="Places")
         expect(drawer_places).to_be_visible()
         self.assertLessEqual(round(box(page, drawer)["width"]), 260)
         for name in ("Home", "Inbox", "Sketchbook"):
-            self.assertGreaterEqual(box(page, drawer_places.get_by_role("link", name=name))["height"], 44, f"44px place target: {name}")
+            # Layout reports fractional pixels: a 44 px row was measured as 43.99997 px (#271), so two decimals decide.
+            self.assertGreaterEqual(round(box(page, drawer_places.get_by_role("link", name=name))["height"], 2), 44, f"44px place target: {name}")
         self.assertTrue(drawer.evaluate("el => el.contains(document.activeElement)"), "focus moves into the drawer")
         self.assertTrue(page.evaluate("document.getElementById('root').inert"), "the page behind the drawer is inert")
         # Tab stays inside the drawer.
@@ -666,6 +676,37 @@ class AppShellJourney(unittest.TestCase):
         signin.goto("/sign-in")
         expect(signin.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
         shot(signin, "sign-in-phone-dark")
+
+    def test_07a_phone_enlarged_text_keeps_every_place_in_view(self) -> None:
+        # #437 (HIG-11, HIG-19): with the text size doubled (html 16 -> 32 px, as the SoftVolume checks do), all four
+        # places stay on the screen, each label whole and apart from its neighbours. The page's scrollWidth can stay
+        # at the viewport width while the bar clips its last label, so each label's own bounds are measured.
+        measure = """els => els.map((item) => {
+          const label = item.querySelector('.ui-bottomnav__label');
+          const r = label.getBoundingClientRect();
+          return { name: label.textContent, left: r.left, right: r.right, size: parseFloat(getComputedStyle(label).fontSize),
+                   overflow: label.scrollWidth - label.clientWidth };
+        })"""
+        for width, dark in ((320, False), (320, True), (390, False), (390, True)):
+            with self.subTest(width=width, dark=dark):
+                page = self.page(phone=True, dark=dark, viewport={"width": width, "height": 844})
+                page.goto("/")
+                expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+                items = page.get_by_role("navigation", name="Main places").locator(".ui-bottomnav__item")
+                self.assertEqual(items.count(), 4, "the places bar holds Home, Inbox, Messages and Projects")
+                normal = min(place["size"] for place in items.evaluate_all(measure))
+                page.add_style_tag(content="html { font-size: 32px !important; }")
+                places = sorted(items.evaluate_all(measure), key=lambda place: place["left"])
+                listing = json.dumps(places)
+                for place in places:
+                    name = place["name"]
+                    self.assertGreaterEqual(place["left"], 0, f"{name} starts on screen at {width}px: {listing}")
+                    self.assertLessEqual(place["right"], width, f"{name} ends on screen at {width}px: {listing}")
+                    self.assertLessEqual(place["overflow"], 1, f"{name} is not clipped: {listing}")
+                    self.assertGreaterEqual(place["size"], 12.5, f"{name} keeps the phone meta size: {listing}")
+                    self.assertGreater(place["size"], normal, f"{name} still grows with the text size: {listing}")
+                for before, after in zip(places, places[1:]):
+                    self.assertGreaterEqual(after["left"] - before["right"], 4, f"{before['name']} and {after['name']} do not touch: {listing}")
 
     # ---------------------------------------------------------------- theme and motion
 
@@ -744,7 +785,7 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("link", name="Request a new link")).to_be_visible()
 
     def test_10_password_reset_unavailable(self) -> None:
-        page = self.page(signed_in=False)
+        page = self.page(signed_in=False, service_workers="block")
         # Simulate a server without SMTP: capabilities say so and the request answers 503.
         page.route("**/api/v1/auth/capabilities", lambda route: route.fulfill(json={"passwordReset": "unavailable"}))
         page.goto("/forgot-password")
@@ -752,7 +793,7 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("button", name="Send reset link")).to_be_disabled()
         shot(page, "reset-unavailable-desktop-light")
 
-        late = self.page(signed_in=False)
+        late = self.page(signed_in=False, service_workers="block")
         late.route("**/api/auth/request-password-reset", lambda route: route.fulfill(status=503, json={"error": "Password reset is unavailable", "code": "PASSWORD_RESET_UNAVAILABLE"}))
         late.goto("/forgot-password")
         late.get_by_label("Email").fill(EMAIL)
@@ -780,9 +821,9 @@ class AppShellJourney(unittest.TestCase):
         page.reload()
         expect(page.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
 
-    def person_with_a_task(self, name: str, *, slow: bool = True) -> tuple[Page, str, str]:
+    def person_with_a_task(self, name: str, *, slow: bool = True, service_workers: str = "allow") -> tuple[Page, str, str]:
         """A new account in its own tab with one restricted project and one task in it."""
-        page = self.page(signed_in=False)
+        page = self.page(signed_in=False, service_workers=service_workers)
         if slow:
             page.add_init_script(SLOW_ANSWERS)
         page.goto("/sign-up")
@@ -846,7 +887,7 @@ class AppShellJourney(unittest.TestCase):
         self.sign_out_while_loading(page, "Tove Berg")
 
     def test_11c_a_failed_sign_out_says_so_and_can_be_retried(self) -> None:
-        page, _, _ = self.person_with_a_task("Ida Holm", slow=False)
+        page, _, _ = self.person_with_a_task("Ida Holm", slow=False, service_workers="block")
         page.route("**/api/auth/sign-out", lambda route: route.fulfill(status=503, json={"code": "TEST_UNAVAILABLE", "message": "test: sign-out unavailable"}))
         page.get_by_role("button", name=re.compile("Ida Holm.*account and sign out")).click()
         page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
@@ -866,7 +907,7 @@ class AppShellJourney(unittest.TestCase):
         """Real UI: create project, send, cite a saved version, reply, revisit on phone, revoke."""
         # A fresh account without any space: its first project names the space (Jo's first note
         # already created Jo's personal space, #190 HOME-3).
-        owner = self.page(signed_in=False)
+        owner = self.page(signed_in=False, service_workers="block")
         owner.goto("/sign-up")
         owner.get_by_label("Name").fill("Mira Lamp")
         owner.get_by_label("Email").fill(f"mira.lamp+{int(time.time() * 1000)}@example.test")

@@ -64,7 +64,7 @@ class MapPasteJourney(unittest.TestCase):
         expect.set_options(timeout=10000)
         contexts = {}
         for who, name in (("owner", "Ada Paste"), ("writer", "Jonas Clip"), ("viewer", "Nia Reader")):
-            ctx = cls.browser.new_context(base_url=ORIGIN)
+            ctx = cls.browser.new_context(service_workers="block", base_url=ORIGIN)
             email = f"paste-{who}+{STAMP}@example.test"
             answer = ctx.request.post("/api/auth/sign-up/email", data={"email": email, "password": PASSWORD, "name": name}, headers={"origin": ORIGIN})
             assert answer.status == 200, answer.text()
@@ -87,7 +87,7 @@ class MapPasteJourney(unittest.TestCase):
         cls.pw.stop()
 
     def page(self, who="writer", clipboard=False, **options):
-        ctx = self.browser.new_context(**{"base_url": ORIGIN, "storage_state": self.states[who], "viewport": DESKTOP, "color_scheme": "light", **options})
+        ctx = self.browser.new_context(service_workers="block", **{"base_url": ORIGIN, "storage_state": self.states[who], "viewport": DESKTOP, "color_scheme": "light", **options})
         self.addCleanup(ctx.close)
         if clipboard:
             ctx.grant_permissions(["clipboard-read", "clipboard-write"], origin=ORIGIN)
