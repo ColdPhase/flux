@@ -166,5 +166,5 @@ span.photo-grid__open { cursor: default; }
 .wiki-card__text { display: flex; flex-direction: column; min-width: 0; }
 .wiki-card strong { font-size: var(--fs-base); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wiki-card small { color: var(--t3); font-size: var(--fs-xs); }
-@media (pointer: coarse) { .wiki-card { min-height: 56px; } }
+@media (pointer: coarse) { .wiki-card { min-height: 44px; } }
 .wiki-card:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }

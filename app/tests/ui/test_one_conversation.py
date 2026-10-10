@@ -666,7 +666,8 @@ class OneConversationJourney(unittest.TestCase):
         thread = self.thread(page)
         expect(thread).to_be_visible()
         self.assertTrue(page.evaluate("matchMedia('(pointer: coarse)').matches"), "the phone runs with a touch pointer")
-        chip, name = thread.locator("a.project-convo__source"), thread.locator(".project-convo__person").first
+        # #348 AC-2: a cited Wiki page is a compact card now, where the 24 px source chip stood; its tap area is still 44 px.
+        chip, name = thread.locator("a.wiki-card"), thread.locator(".project-convo__person").first
         expect(chip).to_be_visible()
         expect(name).to_be_visible()
         page.wait_for_timeout(400)
@@ -678,7 +679,7 @@ class OneConversationJourney(unittest.TestCase):
             self.assertEqual(area["reach"], [True] * 8, (label, "a tap on any point 21 px from the centre lands on it", area))
         chip_box = chip.bounding_box()
         assert chip_box
-        self.assertLessEqual(chip_box["height"], 25, "the chip keeps its 24 px look")
+        self.assertLessEqual(chip_box["height"], 56, "the Wiki card stays compact")
         self.no_sideways_scroll(page)
         shot(page, "one-conversation-phone-390-thread-targets-light")
 
