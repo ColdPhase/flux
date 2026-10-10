@@ -166,7 +166,7 @@ class RailNavigation(unittest.TestCase):
                 expect(account).to_be_focused()
                 account.press("Enter")
                 popup.get_by_role("button", name="Sign out", exact=True).click()
-                expect(page.get_by_role("heading", name="Sign in to Flux", exact=True)).to_be_visible()
+                expect(page.get_by_role("heading", name="Sign in", exact=True)).to_be_visible()
                 self.api(page, "GET", "/api/v1/me", status=401)
                 page.get_by_label("Email").fill(ids["email"])
                 page.get_by_label("Password", exact=True).fill(PASSWORD)

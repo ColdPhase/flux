@@ -49,7 +49,7 @@ export function FocusPill({ until, onEnd }: { until: Date; onEnd: () => void }) 
 export interface MoreItem { label: string; run: () => void; keys?: string; checked?: boolean }
 
 /** More (⋯): the place's quieter actions, each with its key shown (F-026 §4, S18). */
-export function MoreMenu({ items }: { items: MoreItem[] }) {
+export function MoreMenu({ items, label = 'More', icon = 'more' }: { items: MoreItem[]; label?: string; icon?: 'more' | 'plus' }) {
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -74,10 +74,10 @@ export function MoreMenu({ items }: { items: MoreItem[] }) {
   };
   return (
     <span className="top__more">
-      <IconButton ref={button} icon="more" label="More" aria-haspopup="menu" aria-expanded={open} aria-controls={open ? id : undefined}
+      <IconButton ref={button} icon={icon} label={label} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? id : undefined}
         onClick={() => setOpen((value) => !value)} />
       {open ? (
-        <div ref={menu} id={id} className="newmenu__menu top__more-menu" role="menu" aria-label="More" onKeyDown={onKeyDown}>
+        <div ref={menu} id={id} className="newmenu__menu top__more-menu" role="menu" aria-label={label} onKeyDown={onKeyDown}>
           {items.map((item) => (
             <button key={item.label} type="button" role={item.checked === undefined ? 'menuitem' : 'menuitemcheckbox'} aria-checked={item.checked}
               className="newmenu__item" aria-keyshortcuts={item.keys} onClick={() => { button.current?.focus(); setOpen(false); item.run(); }}>

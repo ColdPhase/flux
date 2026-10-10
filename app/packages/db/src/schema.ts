@@ -326,6 +326,8 @@ export const projects = pgTable('projects', {
   name: text('name').notNull(),
   visibility: text('visibility', { enum: ['workspace', 'restricted'] }).notNull().default('workspace'),
   createdBy: text('created_by').notNull(),
+  /** Optional views added on purpose (#351); existing projects were given all of them (migration 0064). */
+  views: text('views').array().notNull().default(sql`'{}'::text[]`),
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
