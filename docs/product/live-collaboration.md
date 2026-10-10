@@ -279,11 +279,12 @@ Do not silently remove the existing mobile requirements or claim universal captu
 Android Chrome and Android Firefox, iPhone and iPad Safari. The mobile
 `getDisplayMedia` state is an explicit emulation, checked against
 [MDN browser-compat-data](https://github.com/mdn/browser-compat-data/blob/main/api/MediaDevices.json)
-(fetched 2026-10-10). Results, negative control and open findings are in
+(fetched 2026-10-10). Results, negative controls and findings are in
 [live-media.md](../development/live-media.md#platform-rows-and-direct-path-dtls-63-ac-3-ac-4-2026-10-10).
-The findings are open: stage and sheet controls are not pointer-reachable on
-phone and tablet widths, and WebKit camera denial and track-level microphone
-evidence are unverified. Desktop rows, real devices and the public host remain open.
+On the merged head, "Back to work" and the tablet camera control are reached by
+pointer, and the WebKit camera and microphone calls are observed. One reviewer
+reported a Firefox join failure on another host; it is not reproduced here and is
+recorded as such. Desktop rows, real devices and the public host remain open.
 
 ## 9. Evidence and delivery ledger
 

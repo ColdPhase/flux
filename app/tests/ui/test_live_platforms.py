@@ -2,14 +2,15 @@
 
 Runs only with FLUX_UI_LIVE=1 against the pinned SFU, through
 ``FLUX_LIVE_UI_PATTERN=test_live_platforms.py scripts/check_live_ui.sh``. Four rows run in Docker,
-each in its own Playwright engine: Android Chrome (Chromium), Android Firefox (Gecko, viewport and
-touch only, because Playwright rejects ``is_mobile`` there), iPhone Safari and iPad Safari (WebKit).
-Each row joins a session that a desktop Chromium participant starts, shows the screen-capture
-state, publishes its microphone, is refused the camera, receives that participant's screen,
-survives a viewport rotation and a dispatched visibility change, then leaves. Two checks are
-recorded as unverified rather than passed for WebKit: the camera denial and the instrumented
-microphone track, because WebKit capture does not pass through the page's instrumented
-getUserMedia (see ``cameraInstrument`` and ``microphoneTrackLevel`` in the evidence file).
+each in its own Playwright engine: Android Chrome (Chromium), Android Firefox (Gecko; the Pixel 7
+viewport and user agent only, with no touch and no ``is_mobile``, because Playwright does not emulate
+those for Firefox), iPhone Safari and iPad Safari (WebKit). Each row joins a session that a desktop
+Chromium participant starts, shows the screen-capture state, publishes its microphone, is refused the
+camera, receives that participant's screen, survives a viewport rotation and a dispatched visibility
+change, then leaves. Capture counts come from the instrumentation in ``test_live_sessions.INSTRUMENT``
+plus ``PROTOTYPE_INSTRUMENT`` here, which also sees WebKit's capture calls on ``MediaDevices.prototype``.
+Each count is asserted to be observed before it is used as evidence, so an unobserved capture cannot
+pass as "no new capture".
 
 What is emulated and what is not:
 
@@ -47,6 +48,42 @@ NO_DISPLAY_CAPTURE = """(() => {
   }
   if (navigator.mediaDevices) navigator.mediaDevices.getDisplayMedia = undefined;
 })();"""
+
+# Runs after INSTRUMENT. INSTRUMENT binds the native MediaDevices methods before this replaces them,
+# so an instance-level call is counted once (by INSTRUMENT) and a call that reaches the prototype
+# directly (WebKit, per the 2026-10-10 probe) is counted once here. Same counters, same denial hook.
+PROTOTYPE_INSTRUMENT = """(() => {
+  const state = window.__live;
+  const proto = typeof MediaDevices !== 'undefined' ? MediaDevices.prototype : null;
+  if (!state || !proto) return;
+  const gum = proto.getUserMedia;
+  proto.getUserMedia = async function (constraints) {
+    state.gum += 1; state.gumConstraints.push(JSON.stringify(constraints));
+    if (window.__denyCamera && constraints && constraints.video) throw new DOMException('Permission denied', 'NotAllowedError');
+    const stream = await gum.call(this, constraints);
+    stream.getTracks().forEach((track) => state.tracks.push(track));
+    return stream;
+  };
+  if (proto.getDisplayMedia) {
+    const gdm = proto.getDisplayMedia;
+    proto.getDisplayMedia = async function (constraints) {
+      state.gdm += 1;
+      const stream = await gdm.call(this, constraints);
+      stream.getTracks().forEach((track) => state.tracks.push(track));
+      return stream;
+    };
+  }
+})();"""
+
+JOIN_PROBE = """() => {
+  const region = document.querySelector('[role="region"][aria-label="Live session"]');
+  const live = window.__live || {};
+  return { url: location.pathname, userAgent: navigator.userAgent,
+    header: document.querySelector('header.top')?.innerText.slice(0, 200) ?? null,
+    regionPresent: !!region, regionText: region ? region.innerText.slice(0, 300) : null,
+    gum: live.gum ?? null, gdm: live.gdm ?? null, sockets: live.sockets ?? null,
+    rtcReadyStates: (live.rtc || []).map((socket) => socket.readyState) };
+}"""
 
 SET_VISIBILITY = """(state) => {
   Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });
@@ -102,7 +139,7 @@ class Row:
 
 ROWS = (
     Row("android-chrome", "chromium", "Pixel 7", "Android phone, Chrome (Chromium)"),
-    Row("android-firefox", "firefox", "Pixel 7", "Android phone, Firefox (Gecko); viewport and touch only"),
+    Row("android-firefox", "firefox", "Pixel 7", "Android phone viewport and user agent, Firefox (Gecko); no touch, no is_mobile"),
     Row("iphone-safari", "webkit", "iPhone 13", "iPhone, Safari (WebKit)"),
     Row("ipad-safari", "webkit", "iPad (gen 7)", "iPad, Safari (WebKit), tablet layout"),
 )
@@ -166,6 +203,7 @@ class PlatformRows(LiveBase):
         if self.engine != "firefox":
             context.grant_permissions(["microphone", "camera"], origin=ORIGIN)
         context.add_init_script(INSTRUMENT)
+        context.add_init_script(PROTOTYPE_INSTRUMENT)
         self.addCleanup(context.close)
         return context
 
@@ -190,10 +228,10 @@ class PlatformRows(LiveBase):
         join = host.locator("header.top").get_by_role("button", name="Join", exact=True)
         # The header shows Together, or Join when a session is already open (left by an earlier failure).
         expect(together.or_(join).or_(host_bar)).to_be_visible()
-        if together.is_visible():
-            together.click()
-        elif join.is_visible() and not host_bar.is_visible():
-            join.click()
+        if not host_bar.is_visible():
+            # Playwright waits for whichever control is there; a header that changes between a visibility
+            # snapshot and the click (seen on the iPhone row) is then not a failure.
+            together.or_(join).first.click()
         expect(host_bar).to_be_visible()
 
         self.use(row.engine)
@@ -201,6 +239,10 @@ class PlatformRows(LiveBase):
         # Leave whatever a failed run left open, before the context closes (cleanups run last-in first).
         self.addCleanup(self.leave_quietly, page)
         self.addCleanup(self.leave_quietly, host)
+        console: list[str] = []
+        page.on("console", lambda message: console.append(f"{message.type}: {message.text}")
+                if message.type in ("error", "warning") else None)
+        page.on("pageerror", lambda error: console.append(f"pageerror: {error}"))
         # Read the engine's own capability first, in a separate page, before emulation applies.
         probe = page.context.new_page()
         probe.goto("/sign-up")
@@ -215,7 +257,13 @@ class PlatformRows(LiveBase):
         page.goto(conversation)
         page.locator("header.top").get_by_role("button", name="Join").click()
         bar = self.bar(page)
-        expect(bar.get_by_role("status").first).to_contain_text("Live")
+        try:
+            expect(bar.get_by_role("status").first).to_contain_text("Live")
+        except Exception:
+            # Record what the page showed when the wait gave up (region, status, sockets, console); then fail.
+            self.observed[row.name]["joinDiagnostics"] = {"probe": page.evaluate(JOIN_PROBE), "console": console[-40:]}
+            shot(page, f"live-platform-{row.name}-join-failed")
+            raise
         shot(page, f"live-platform-{row.name}-joined")
         # The emulated state must be in the page the app rendered, not only in the context.
         in_page = page.evaluate("""() => ({ installed: window.__noDisplayCapture === true,
@@ -237,27 +285,17 @@ class PlatformRows(LiveBase):
         page.evaluate("window.__denyCamera = true")
         gum_before = page.evaluate("({ gum: window.__live.gum, constraints: window.__live.gumConstraints.length })")
         camera = sheet.get_by_role("button", name=re.compile("^Camera off"))
-        # Pointer reachability is recorded as a finding (the sheet can sit under the thread on tablets);
-        # when a pointer cannot reach it, the same control is activated by a DOM click instead.
-        try:
-            camera.click(timeout=5000)
-            pointer_camera = True
-        except Exception:
-            pointer_camera = False
-            camera.dispatch_event("click")
-        self.observed[row.name]["cameraPointerReachable"] = pointer_camera
+        # A real pointer click: if the sheet were covered (as before the z-index fix in live.css), Playwright's
+        # hit-target check fails here instead of falling back to a DOM click.
+        camera.click()
         page.wait_for_timeout(1000)
         self.observed[row.name]["cameraLabelsAfterDenyRequest"] = page.evaluate(CAMERA_LABELS)
-        self.observed[row.name]["cameraInstrument"] = {"before": gum_before, "after": page.evaluate(
-            "({ gum: window.__live.gum, constraints: window.__live.gumConstraints, denyFlag: window.__denyCamera })")}
-        if row.engine == "webkit":
-            # UNVERIFIED, not passed: in WebKit the camera click made no call to the instrumented
-            # getUserMedia (cameraInstrument.after.gum stays 0) while the strip showed "Camera on".
-            # The denial hook cannot reach this path yet; the row keeps every other check.
-            self.observed[row.name]["cameraDenial"] = "unverified: no instrumented getUserMedia call in WebKit"
-        else:
-            expect(sheet.get_by_role("button", name=re.compile("Camera blocked by the browser"))).to_be_visible()
-            self.observed[row.name]["cameraDenial"] = "verified: blocked by the browser state"
+        gum_after = page.evaluate("({ gum: window.__live.gum, constraints: window.__live.gumConstraints, denyFlag: window.__denyCamera })")
+        self.observed[row.name]["cameraInstrument"] = {"before": gum_before, "after": gum_after}
+        # The camera request must be observed by the instrumentation before the denial can count as verified.
+        self.assertGreater(gum_after["gum"], gum_before["gum"], "the camera request reached the instrumented getUserMedia")
+        expect(sheet.get_by_role("button", name=re.compile("Camera blocked by the browser"))).to_be_visible()
+        self.observed[row.name]["cameraDenial"] = "verified: the instrumented getUserMedia was called and the strip says blocked by the browser"
         page.evaluate("window.__denyCamera = false")
         page.keyboard.press("Escape")
         expect(sheet).to_be_hidden()
@@ -265,14 +303,9 @@ class PlatformRows(LiveBase):
         # Microphone publishes with the engine's fake device; the track is live.
         bar.get_by_role("button", name=re.compile("^Microphone off")).click()
         expect(bar.get_by_role("button", name=re.compile("^Microphone on"))).to_be_visible(timeout=30000)
-        # The track-level check needs the instrumented capture. WebKit capture does not pass through it
-        # (no instrumented call), so there the product state above is the only evidence recorded.
         live_mic_tracks = page.evaluate("window.__live.tracks.filter((t) => t.kind === 'audio' && t.readyState === 'live').length")
         self.observed[row.name]["liveMicrophoneTracksInstrumented"] = live_mic_tracks
-        if row.engine != "webkit":
-            self.assertGreater(live_mic_tracks, 0, "published microphone track is live")
-        else:
-            self.observed[row.name]["microphoneTrackLevel"] = "unverified: WebKit capture is not instrumented; product state only"
+        self.assertGreater(live_mic_tracks, 0, "the published microphone track is observed and live")
 
         # The desktop host shares a screen; this row receives and decodes it.
         host_bar.get_by_role("button", name="Share a window, tab or screen").click()
@@ -284,22 +317,17 @@ class PlatformRows(LiveBase):
         page.wait_for_timeout(1500)
         self.observed[row.name]["stageDiagnostics"] = page.evaluate(STAGE_PROBE)
         shot(page, f"live-platform-{row.name}-screen")
-        # "Back to work" by pointer is recorded, not assumed: in every emulated row a conversation element
-        # paints above the stage (see stageDiagnostics.atBackCenter; 412, 390 and 810 px layouts). Escape
-        # from the focused stage is the keyboard route, and it must close the stage either way.
+        # "Back to work" must be reachable by pointer: a real click, with Playwright's hit-target check.
+        # (Before the stacking fix in live.css a conversation element painted above the stage on phone and tablet.)
         stage = page.get_by_role("region", name="Shared screens and cameras")
-        try:
-            stage.get_by_role("button", name="Back to work").click(timeout=5000)
-            reachable = True
-        except Exception:
-            reachable = False
-        self.observed[row.name]["backToWorkPointerReachable"] = reachable
-        if not reachable:
-            page.keyboard.press("Escape")
+        stage.get_by_role("button", name="Back to work").click()
         expect(stage).to_be_hidden()
 
         # Rotation and a dispatched visibility change keep the session and request no new capture.
         captures = page.evaluate("window.__live.gum + window.__live.gdm")
+        # Observability first: the denied camera request and the microphone capture must both be counted,
+        # so the equality below compares real counters and cannot pass as 0 == 0.
+        self.assertGreaterEqual(captures, 2, "the instrumentation counted the microphone and the camera request")
         size = page.viewport_size or DESKTOP
         page.set_viewport_size({"width": size["height"], "height": size["width"]})
         expect(bar.get_by_role("status").first).to_contain_text("Live")

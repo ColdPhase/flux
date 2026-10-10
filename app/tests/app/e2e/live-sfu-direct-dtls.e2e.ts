@@ -64,7 +64,7 @@ test('direct path: both clients complete DTLS-SRTP with the signalled certificat
     await publishTone(ownerPage);
 
     // Read the evidence only once RTP flows: owner outbound RTP bytes and member inbound RTP packets.
-    // Candidate-pair byte counts alone also include DTLS and STUN, so they cannot show media.
+    // Candidate-pair byte counts alone also include non-RTP DTLS traffic, so they cannot show media.
     for (let attempt = 0; attempt < 120; attempt++) {
       const sent = (await dtlsTransports(ownerPage)).some((transport) => transport.rtpBytes > 0);
       const received = (await receiverReports(memberPage)).some((report) =>
