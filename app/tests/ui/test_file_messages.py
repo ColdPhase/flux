@@ -49,7 +49,7 @@ class FileOnlyMessage(unittest.TestCase):
         cls.pw.stop()
 
     def test_a_file_only_message_shows_its_files_and_makes_a_titled_task(self) -> None:
-        context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP, locale="en-GB")
+        context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP, locale="en-GB", service_workers="block")
         self.addCleanup(context.close)
         request = context.request
         headers = {"origin": ORIGIN}
@@ -144,7 +144,7 @@ class FilesReferencesPhotos(unittest.TestCase):
         expect.set_options(timeout=10000)
         contexts = {}
         for key, (name, email) in PEOPLE.items():
-            context = cls.browser.new_context(base_url=ORIGIN)
+            context = cls.browser.new_context(base_url=ORIGIN, service_workers="block")
             response = context.request.post("/api/auth/sign-up/email", data={"email": email, "password": PASSWORD, "name": name}, headers={"origin": ORIGIN})
             assert response.status == 200, response.text()
             cls.ids[key] = context.request.get("/api/v1/me").json()["user"]["id"]
@@ -213,7 +213,7 @@ class FilesReferencesPhotos(unittest.TestCase):
             options.update(viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
         else:
             options.update(viewport=DESKTOP, device_scale_factor=1)
-        context = self.browser.new_context(**options)
+        context = self.browser.new_context(service_workers="block", **options)
         self.addCleanup(context.close)
         page = context.new_page()
         errors: list[str] = []
@@ -636,7 +636,7 @@ class FilesReferencesPhotos(unittest.TestCase):
         page = self.page("jonas")
         two = self.message(page, "two")
         expect(two.locator("img[src^='blob:']")).to_have_count(2)
-        owner = self.browser.new_context(base_url=ORIGIN, storage_state=self.states["ada"])
+        owner = self.browser.new_context(base_url=ORIGIN, storage_state=self.states["ada"], service_workers="block")
         self.addCleanup(owner.close)
         photo = self.ids["photo"]
         self.assertEqual(page.request.get(f"/api/v1/files/{photo}").status, 200)
