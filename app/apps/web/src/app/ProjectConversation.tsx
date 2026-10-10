@@ -23,7 +23,7 @@ import { AnswerItem, AskBar, ProposalCard, WorkingLine } from '../assistant/Conv
 import { askError as askErrorText, askState } from '../assistant/format';
 import { grantAgentProject } from '../agent-connection/api';
 import { agentAuthorLabel } from '../docs/format';
-import { AgentAuthor, AuthorFace, ContributionMark, OPENING_REVEAL_MS, SourceCitation, clock, day, openOnWholeMessages, pendingMessageRow, when } from './messageParts';
+import { AgentAuthor, AuthorFace, ContributionMark, OPENING_REVEAL_MS, SourceCitation, clock, day, pendingMessageRow, when } from './messageParts';
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import { OneConversation, type PaneProps } from './OneConversation';
 import { ThreadMessageActions } from './ThreadDrawer';
@@ -284,14 +284,14 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversation?.id, arrived]);
   useEffect(() => {
-    // A source link from "Since you left" or search opens on that whole message; otherwise on the latest.
-    // It runs again when the thread is first shown: a hidden message cannot take focus.
+    // A source link from "Since you left" or search opens on that whole message. Otherwise an open thread starts at
+    // its root, whole (#436): its feed (the only one this ref holds) is scrolled to the top, so a long thread shows
+    // its oldest replies first and the reader scrolls down. It runs again when the thread is first shown: a hidden
+    // message cannot take focus.
     const feed = scrollRef.current;
     const anchor = arrived ? document.getElementById(`message-${arrived}`) : null;
     if (anchor && feed?.contains(anchor)) { anchor.scrollIntoView({ block: 'start' }); if (revealed) anchor.focus({ preventScroll: true }); return; }
-    const column = feed?.firstElementChild as HTMLElement | null;
-    if (!feed || !column) return;
-    return openOnWholeMessages(feed, column, '.project-convo__message');
+    if (feed) feed.scrollTop = 0;
   }, [conversation?.id, arrived, arrivedLoaded, feedNode, revealed]);
   // Genuine replies and answers arriving in an open thread rise in gently when the reader sees them (#155,
   // UI116-5); the history the thread opens with and earlier pages never move. The thread's position owner
