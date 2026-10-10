@@ -10,6 +10,7 @@ Screenshots (conversation-final-*.png) go to FLUX_UI_SCREENSHOTS.
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 import unittest
@@ -51,7 +52,7 @@ class ConversationFinal(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, os.environ.get("FLUX_UI_BROWSER", "chromium")).launch()
         expect.set_options(timeout=10000)
         contexts: dict[str, BrowserContext] = {}
         for key, (name, email) in PEOPLE.items():
@@ -549,6 +550,56 @@ class ConversationFinal(unittest.TestCase):
         line.get_by_role("button", name="Jump to the first unread").click()
         expect(page.locator("#details").get_by_role("heading", name="Reorder the weather shield")).to_be_visible()
         expect(line).to_have_count(0)
+
+    def test_15_a_completed_command_consumes_its_original_thread_draft_after_leaving(self) -> None:
+        for command in ("task", "handoff"):
+            page = self.open("ada")
+            message = self.message(page, self.ids["probes"])
+
+            def open_thread() -> None:
+                message.scroll_into_view_if_needed()
+                message.hover()
+                message.get_by_role("button", name="Reply in thread").click()
+                expect(page.locator("#thread-composer")).to_be_visible()
+
+            open_thread()
+            held = []
+
+            def hold(route) -> None:
+                if route.request.method == "POST":
+                    held.append(route)
+                else:
+                    route.continue_()
+
+            page.route("**/api/v1/projects/*/work", hold)
+            title = f"Original thread {command} completed after leaving"
+            page.locator("#thread-composer").fill(f"/{command} {title}")
+            page.locator("#thread-composer").press("Enter")
+            for _ in range(60):
+                if held:
+                    break
+                page.wait_for_timeout(100)
+            self.assertEqual(len(held), 1, "the original work request is held")
+            page.get_by_role("button", name="Close replies").click()
+            newer = f"The main conversation has its own newer {command} draft"
+            self.composer(page).fill(newer)
+            held[0].continue_()
+            for _ in range(60):
+                if title in self.work_titles(page):
+                    break
+                page.wait_for_timeout(100)
+            self.assertEqual(self.work_titles(page).count(title), 1, "the original command creates one task")
+            page.wait_for_timeout(300)
+            expect(self.composer(page)).to_have_value(newer)
+            page.unroute("**/api/v1/projects/*/work", hold)
+            page.keyboard.press("Escape")
+            open_thread()
+            expect(page.locator("#thread-composer")).to_have_value("")
+            expect(self.composer(page)).to_have_value(newer)
+            page.reload()
+            expect(page.locator("#thread-composer")).to_have_value("")
+            expect(self.composer(page)).to_have_value(newer)
+            self.assertEqual(self.work_titles(page).count(title), 1, "return and reload do not leave a duplicate command")
 
 
 if __name__ == "__main__":
