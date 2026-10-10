@@ -190,8 +190,10 @@ These are vendor documentation statements plus our inferences, not device result
   subscription method "immediately from the gesture's event handler". MDN's
   [`Notification.requestPermission()`](https://developer.mozilla.org/en-US/docs/Web/API/Notification/requestPermission_static)
   (modified 11 June 2025) also says to request it in response to user interaction.
-  Flux calls `requestPermission()` as the first statement of the click handler and
-  subscribes only after it resolves to `granted`. *Observed* in #20 session 1
+  Flux's click handler calls `enablePushNotifications()` directly, and that function
+  reaches `requestPermission()` before any other `await` (`push.ts:95-97`). This is a
+  Flux implementation choice, not a vendor requirement. It subscribes only after the
+  prompt resolves to `granted`. *Observed* in #20 session 1
   (2026-10-05): an installed iPhone Home Screen app returned a `web.push.apple.com`
   subscription through this flow.
 - **VAPID limits.** Apple's page states the JWT audience must be the push service
@@ -285,7 +287,7 @@ or standards statements unless marked as a report or an inference.
 
 ### Requirement-to-evidence map (#20, MOB-7)
 
-Code and test references were checked on `main` `ecdceb95` on 2026-10-10. Vendor
+Code and test references were checked on `main` `a9157027` on 2026-10-10 (no change to the cited paths since `ecdceb95`). Vendor
 sources are the ones listed above (retrieved 2026-10-05, not fetched again). Status:
 **emulated** means exercised in Chromium or WebKit emulation in Docker; **code** means
 implemented and covered by API or unit tests but not exercised in a browser;
@@ -298,7 +300,7 @@ not implemented or not tested. Each row keeps the labels of its source.
 | Apple touch icon 180 px, `apple-mobile-web-app-capable`, manifest link (WebKit, 2023-02-16 and later, vendor) | `app/apps/web/index.html:5,14,16` | `app/tests/app/pwa.test.ts:56` | emulated (markup) |
 | Service worker at scope `/` with a fetch handler; `sw.js` served uncached (MDN Push API, 2025-05-28, vendor) | `app/apps/web/src/pwa/register.ts`; `app/apps/web/src/pwa/sw.js:32` | `app/tests/app/e2e/pwa.e2e.ts` scope test; `pwa.test.ts:67` | emulated |
 | iOS/iPadOS: web push only for Home Screen web apps, iOS 16.4 or later; Add to Home Screen is the install step (Apple, undated page; WebKit, 2023-02-16, vendor) | `app/apps/web/src/pwa/push.ts:33-34,78`; `NotificationsButton.tsx` (`needs-install` note) | none in a browser | code; Add to Home Screen is **device** only |
-| Permission requested from the user's gesture, as the first statement of the handler (Apple, vendor; MDN `Notification.requestPermission()`, 2025-06-11, vendor) | `app/apps/web/src/pwa/push.ts:97`; click handler in `NotificationsButton.tsx` | `pwa.e2e.ts` counts prompts on load (0). The gesture path is not browser-tested: headless permission starts `denied` | code; the prompt itself is **device** only |
+| Permission requested from a user gesture (Apple, vendor: "with a gesture, such as clicking or tapping a button"; MDN `Notification.requestPermission()`, 2025-06-11, vendor: request in response to user interaction) | `app/apps/web/src/pwa/NotificationsButton.tsx:49-51` calls `enablePushNotifications()` in the click handler; `push.ts:95-97` calls `requestPermission()` before any other `await` (Flux implementation choice, not a vendor requirement) | `pwa.e2e.ts` counts prompts on load (0). The gesture path is not browser-tested: headless permission starts `denied` | code; the prompt itself is **device** only |
 | Subscribe "immediately from the gesture's event handler" (Apple, vendor) | `push.ts:97-110` subscribes after the awaited prompt, not synchronously | observed on an iPhone Home Screen app, #20 session 1 (2026-10-05) | observed; the literal "immediately" wording is **not** met, so it is open for review |
 | `userVisibleOnly: true` required by Chrome (web.dev, 2016, vendor) | `push.ts:109,142` | observed: Android Chrome `fcm.googleapis.com` subscription and provider 201 (#20 session 1) | observed |
 | A push must show a notification at once or Safari revokes permission (Apple, undated, vendor) | `app/apps/web/src/pwa/sw.js:74-86` (every `push` calls `showNotification`) | none in a browser | code; display is **device** only |
