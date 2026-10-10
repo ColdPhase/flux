@@ -89,6 +89,9 @@
 .wd-link small { flex: none; font-size: var(--fs-xs); color: var(--t3); }
 .wd-link svg { flex: none; color: var(--t3); }
 .wd-link:hover { background: var(--hov); }
+/* A pressed button (thought choices, prerequisites, decisions) takes the same press as .ui-btn: scale to --press
+   and spring back through --tr. The fill also shows under reduced motion, where --press is 1 (HIG-16, Prostota). */
+button.wd-link:active:not(:disabled) { background: var(--sub); transform: scale(var(--press)); transition-duration: var(--dur-1); }
 .wd-inline { display: inline; padding: 0; color: var(--t1); font-weight: 500; text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 3px; }
 .wd-muted { font-size: var(--fs-sm) !important; color: var(--t3) !important; }
 /* Criteria and prerequisites of a planned task (#152): plain list, state in words, no checkbox that implies a check. */
@@ -101,6 +104,19 @@
 .wd-quote { margin-top: 6px; padding-left: 12px; border-left: 2px solid var(--line2); font-size: var(--fs-sm) !important; }
 .wd-audience { display: flex; align-items: center; gap: 6px; }
 .wd-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+/* "Linked thoughts" picker in task Details (#289): a map select, then the map's thoughts as buttons. */
+.wd-pick { display: grid; gap: 10px; margin-top: 10px; padding: 12px; min-width: 0; border-radius: var(--r); background: var(--el); box-shadow: inset 0 0 0 1px var(--line); }
+.wd-pick label { font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
+/* The map field takes the accepted field surface (--el, --sh-field, --r, as .ui-input) in both engines: appearance none
+   removes WebKit's square native grey box, and the chevron is the shared icon in --t3 (no colour literal). The native
+   select keeps its selection and keyboard behaviour. */
+.wd-pick__field { position: relative; min-width: 0; }
+.wd-pick select { width: 100%; min-height: var(--ctl-lg); padding: 0 34px 0 14px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-base); text-overflow: ellipsis; box-shadow: var(--sh-field); appearance: none; -webkit-appearance: none; }
+.wd-pick__field > svg { position: absolute; top: 50%; right: 12px; transform: translateY(-50%); color: var(--t3); pointer-events: none; }
+.wd-pick select:focus { outline: none; box-shadow: inset 0 0 0 1px var(--t1), 0 0 0 3px var(--sub); }
+.wd-pick .wd-pick__cancel { margin-top: 0; justify-content: flex-end; }
+.wd-pick .wd-links { max-height: 320px; overflow-y: auto; overscroll-behavior: contain; }
+.wd-pick__keys { margin: 0; }
 .wd-error { margin-top: 10px; font-size: var(--fs-sm); color: var(--t1); }
 .wd-ids { margin-top: 28px; padding-top: 12px; border-top: 1px solid var(--line); font-size: var(--fs-xs); color: var(--t3); }
 .wd-evidence { white-space: pre-wrap; }
@@ -127,7 +143,7 @@
   .ws-seg, .wd-pivot__c { min-height: 44px; }
   .wd-link { min-height: 44px; }
   .wd-seg__b { min-height: 44px; }
-  .wd-controls select, .wd-form select { min-height: 44px; font-size: 16px; }
+  .wd-controls select, .wd-form select, .wd-pick select { min-height: 44px; font-size: 16px; }
   .wd-form textarea { font-size: 16px; }
 }
 @media (max-width: 640px) {
