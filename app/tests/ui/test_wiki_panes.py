@@ -161,12 +161,14 @@ class WikiPanesJourney(unittest.TestCase):
         return page.get_by_role("navigation", name="Wiki pages")
 
     def measure(self, page: Page, selector: str, minimum: float = 4.5, **spec) -> dict:
-        page.wait_for_function("""spec => {
+        # Check opacity and measure in the same browser task: a separate evaluation can land
+        # inside the menu's fade after the readiness command observed the pre-animation style.
+        measured = page.wait_for_function("""spec => {
           const el = document.querySelector(spec.selector); if (!el) return false;
           for (let n = el; n; n = n.parentElement) if (Number(getComputedStyle(n).opacity) !== 1) return false;
-          return true;
-        }""", arg={"selector": selector}, timeout=5000)
-        value = page.evaluate(MEASURE, {"selector": selector, **spec})
+          return (""" + MEASURE + ")(spec); }", arg={"selector": selector, **spec}, timeout=5000)
+        value = measured.json_value()
+        measured.dispose()
         self.assertGreaterEqual(value["ratio"], minimum, value)
         return value
 
