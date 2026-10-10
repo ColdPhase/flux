@@ -37,27 +37,34 @@ const sharedTools = ['flux_bootstrap', 'flux_list_contexts', 'flux_list_material
 interface ToolCall { tool: string; text: string }
 interface Session { names: string[]; calls: ToolCall[]; output: string }
 
-test('real pinned Codex and Claude Code clients: three personal connections, one OAuth each, shared domain tools, revocation', async (t) => {
+test('real pinned Codex and Claude Code clients: two owners, three personal connections, one OAuth each, shared domain tools, revocation', async (t) => {
   const { pool } = createDatabase(process.env.DATABASE_URL!);
   const proxy = startFluxProxy(); await proxy.listen();
   const browser: Chromium = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
   const mock = { current: null as Awaited<ReturnType<typeof startClientModelMock>> | null };
   try {
-    // --- One person, two projects, two agents (Hubert / Codex, Hubert / Claude), three named connections.
+    // --- Two people, two projects and three independent connections (two Codex for one owner; Claude for the peer).
     const email = uniqueEmail('mcp-clients');
     const { browser: owner } = await register(email, password, 'Client owner');
+    const peerEmail = uniqueEmail('mcp-client-peer');
+    const { browser: peer } = await register(peerEmail, password, 'Peer client owner');
+    const people = { codex: owner, claude: peer };
+    const emails = { codex: email, claude: peerEmail };
+    const peerId = String((expect(await peer.request('GET', '/api/v1/me'), 200).user as { id: string }).id);
     const workspace = expect(await owner.request('POST', '/api/v1/workspaces', { body: { name: 'Client contract' } }), 201);
+    expect(await owner.request('POST', `/api/v1/workspaces/${workspace.id}/members`, { body: { email: peerEmail, role: 'member' } }), 201);
     const makeProject = async (name: string) => String(expect(await owner.request('POST', `/api/v1/workspaces/${workspace.id}/projects`, { body: { name, visibility: 'restricted' } }), 201).id);
     const projects = { study: await makeProject('Sensor study'), field: await makeProject('Field notes') };
+    for (const projectId of Object.values(projects)) expect(await owner.request('POST', `/api/v1/projects/${projectId}/grants`, { body: { principal: { kind: 'human', id: peerId }, role: 'contributor' } }), 201);
     const names = { study: 'Sensor study', field: 'Field notes' };
     const agents: Record<string, string> = {};
     for (const [key, name] of [['codex', 'Owner Codex'], ['claude', 'Owner Claude']] as const) {
-      agents[key] = String(expect(await owner.request('POST', `/api/v1/workspaces/${workspace.id}/agents`, { body: { name, owner: 'self' } }), 201).id);
+      agents[key] = String(expect(await people[key].request('POST', `/api/v1/workspaces/${workspace.id}/agents`, { body: { name, owner: 'self' } }), 201).id);
       for (const projectId of Object.values(projects)) expect(await owner.request('POST', `/api/v1/projects/${projectId}/grants`, { body: { principal: { kind: 'agent', id: agents[key] }, role: 'contributor' } }), 201);
     }
     const connections: Record<string, string> = {};
     for (const spec of specs) {
-      connections[spec.key] = String(expect(await owner.request('POST', '/api/v1/agent-connections', { body: { name: spec.label, clientDesignation: spec.designation,
+      connections[spec.key] = String(expect(await people[spec.agent].request('POST', '/api/v1/agent-connections', { body: { name: spec.label, clientDesignation: spec.designation,
         agentId: agents[spec.agent], selectedProjectIds: spec.projects.map((project) => projects[project]), scopes } }), 201).id);
     }
     const clientIds: Record<string, string> = {};
@@ -72,7 +79,7 @@ test('real pinned Codex and Claude Code clients: three personal connections, one
     for (const spec of specs) {
       homes[spec.key] = cleanClientHome(spec);
       await t.test(`${spec.label}: ${spec.client} adds Flux and completes OAuth as the person`, async () => {
-        await connectClient(browser, email, homes[spec.key]!, clientIds[spec.key]!);
+        await connectClient(browser, emails[spec.agent], homes[spec.key]!, clientIds[spec.key]!);
       });
     }
 
@@ -94,8 +101,8 @@ test('real pinned Codex and Claude Code clients: three personal connections, one
       try {
         const result = spec.client === 'codex'
           ? await sh('codex', ['exec', '--json', '--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox',
-            // Flux speaks MCP 2026-07-28 only; the pinned Codex asks for 2025-06-18 unless this under-development feature is on.
-            '--enable', 'mcp_2026_07_28', '-c', 'model_provider="mock"',
+            // Default CLI must work without a feature override; a separate lane verifies opt-in modern compatibility.
+            ...(process.env.FLUX_TEST_CODEX_MODERN === '1' ? ['--enable', 'mcp_2026_07_28'] : []), '-c', 'model_provider="mock"',
             '-c', `model_providers.mock={name="mock",base_url="http://127.0.0.1:${model.port}/v1",env_key="MOCK_MODEL_KEY",wire_api="responses",supports_websockets=false}`, 'Use the Flux tools'], env, cwd)
           : await sh(claudeBin, ['-p', 'Use the Flux tools', '--output-format', 'stream-json', '--verbose', '--allowedTools', 'mcp__flux', '--max-turns', '8'],
             { ...env, ANTHROPIC_BASE_URL: `http://127.0.0.1:${model.port}` }, cwd);
@@ -165,7 +172,7 @@ test('real pinned Codex and Claude Code clients: three personal connections, one
     });
 
     await t.test('revoking one connection stops that client and leaves the others working', async () => {
-      expect(await owner.request('DELETE', `/api/v1/agent-connections/${connections['claude-laptop']}`), 204);
+      expect(await peer.request('DELETE', `/api/v1/agent-connections/${connections['claude-laptop']}`), 204);
       const refused = await session(specs[2]!, (outputs) => outputs.length === 0 ? ['flux_list_contexts', '{}'] : []);
       assert.ok(!refused.output.includes('Sensor study'), `a revoked connection returned data:\n${refused.output}`);
       assert.ok(!refused.calls.some((call) => call.text.includes('Sensor study')), 'a revoked connection returned project data');

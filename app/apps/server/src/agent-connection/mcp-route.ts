@@ -1,6 +1,5 @@
 import type { FastifyInstance } from 'fastify';
 import { requireMcpAuth } from '@better-auth/mcp';
-import { createMcpHandler } from '@modelcontextprotocol/server';
 import { AGENT_MCP_ENTRIES } from '@flux/contracts';
 import { enforce, evaluateProject, loadActor, requireAgentMcpEntry, type Database, type Transaction } from '@flux/core';
 import { lockAgentMcpPolicy } from '@flux/db';
@@ -9,6 +8,7 @@ import { createFluxMcpServer } from './mcp-tools.js';
 import { createAgentConnectionStore } from './store.js';
 import { createMcpDispatch, type McpDispatch } from './mcp-dispatch.js';
 import { createMcpRelay, fenceResponse } from './mcp-relay.js';
+import { createFluxMcpHandler } from './mcp-protocol.js';
 
 /** The only remote MCP entry point. A new tool server is bound to each verified bearer request. */
 export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxAuth, publicOrigin: string, testDeliveryGate = false) {
@@ -44,10 +44,10 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
       });
     }
     const cursorSecret = (await auth.$context).secret;
-    const handler = createMcpHandler(() => createFluxMcpServer(db, { ownerUserId, connectionId, scopes, dispatch,
+    const handler = createFluxMcpHandler(() => createFluxMcpServer(db, { ownerUserId, connectionId, scopes, dispatch,
       clientId: typeof token.client_id === 'string' ? token.client_id : null,
       grantReferenceId: typeof token.flux_grant_reference === 'string' ? token.flux_grant_reference : null,
-    }, cursorSecret), { legacy: 'reject' });
+    }, cursorSecret));
     // Protected bytes are handed to the transport only while the live policy and access still hold.
     const referenceId = typeof token.flux_grant_reference === 'string' ? token.flux_grant_reference : connectionId;
     const fence = { async check(tx: Transaction) {

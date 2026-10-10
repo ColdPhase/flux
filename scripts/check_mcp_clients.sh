@@ -32,7 +32,9 @@ export FLUX_AUTH_RATE_LIMIT=false
 # The dev stack's VAPID keys must not leak into this run (docs/development/containers.md).
 export FLUX_VAPID_PUBLIC_KEY= FLUX_VAPID_PRIVATE_KEY= FLUX_VAPID_SUBJECT=
 . scripts/test_images.sh
-compose="docker compose -p $project -f docker/compose.source.yaml -f docker/compose.test.yaml --profile test --profile mcp-clients"
+# Optional isolation override (for example vetted IPAM) for concurrent local checks.
+export COMPOSE_FILE="docker/compose.source.yaml:docker/compose.test.yaml${FLUX_TEST_COMPOSE_OVERRIDE:+:$FLUX_TEST_COMPOSE_OVERRIDE}"
+compose="docker compose -p $project --profile test --profile mcp-clients"
 
 cleanup() {
   status=$?
@@ -50,7 +52,13 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-$compose build api mcp-clients
+$compose build migrate test mcp-clients pushmock
 $compose up -d db migrate
 $compose --profile setup run --rm files-init
+# The changed authenticated boundary is exercised through every maintained MCP domain/authority contract in both eras.
+for protocol in 2026-07-28 2025-06-18; do
+  $compose run --rm -e FLUX_TEST_MCP_PROTOCOL="$protocol" test sh -c 'exec node_modules/.bin/tsx --test --test-concurrency=1 tests/app/mcp*.test.ts tests/app/oauth-mcp.test.ts tests/app/agent-execution.test.ts tests/app/extension-contracts.test.ts'
+done
+# Both native modes use fresh homes. Delivery evidence alone is not full Start/Resume/recovery acceptance.
 $compose run --rm mcp-clients
+$compose run --rm -e FLUX_TEST_CODEX_MODERN=1 mcp-clients

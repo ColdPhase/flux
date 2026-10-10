@@ -16,12 +16,15 @@ import { withAgentConnection, type FluxMcpClaims } from './context.js';
 import { toolError, toolResult } from './tool-results.js';
 import { eventPorts } from '../events.js';
 import type { McpDispatch } from './mcp-dispatch.js';
+import { FLUX_MCP_PROTOCOL_VERSIONS } from './mcp-protocol.js';
 
 export type { FluxMcpClaims } from './context.js';
 
 /** A fresh server is bound to one verified bearer; each tool rechecks inside its transaction. */
 export function createFluxMcpServer(db: Database, claims: FluxMcpClaims & { dispatch: McpDispatch }, cursorSecret: string): McpServer {
-  const server = new McpServer({ name: 'flux', version: '0.1.0' }, { instructions: coworkServerInstructions() });
+  const server = new McpServer({ name: 'flux', version: '0.1.0' }, {
+    instructions: coworkServerInstructions(), supportedProtocolVersions: [...FLUX_MCP_PROTOCOL_VERSIONS],
+  });
   const tools = agentToolRegistry(server, claims.dispatch);
   registerAgentPlaybook(server, tools, db, claims);
   registerAgentPolicyResource(server, db, claims);

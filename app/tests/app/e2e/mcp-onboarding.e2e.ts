@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
 import { createDatabase } from '@flux/db';
+import { renderCoworkPlaybook } from '@flux/core';
 import { chromium, type Browser as Chromium } from 'playwright';
 import { register, uniqueEmail } from '../support/http.js';
 import { password } from '../support/people.js';
@@ -12,7 +13,7 @@ import { claudeBin, cleanClientHome, clientEvents, connectClient, scopes, seedOa
 /**
  * #160 AC-2 (supported onboarding) with the REAL pinned Codex and Claude Code clients, clean configurations, no vendor account
  * (docker/Dockerfile `mcp-clients`, scripts/check_mcp_clients.sh). Per client: connect, the owner authorizes in Chromium, then
- * the person only says "Start work" (Claude Code: invokes Flux's own `start_work` prompt; Codex: no instruction delivery, see its check). The scripted model has no copy of the playbook: it reads
+ * the person only says "Start work" (Claude Code: invokes Flux's own `start_work` prompt; Codex: discovers and reads Flux's supplied resource through native tools). The scripted model has no copy of the playbook: it reads
  * the playbook text the CLIs actually gave it, so a client that did not load Flux's instructions cannot complete the flow.
  * Then the first permitted action runs under a standing grant. Models are mocks; this shows delivery and the client's
  * invocation, not model obedience.
@@ -34,7 +35,7 @@ function playbookIn(text: string) {
   return heading && digest ? { bundleId: heading[1]!, version: heading[2]!, digest: digest[1]! } : null;
 }
 
-test('real Codex and Claude Code from clean configurations: connect, authorize, then Start work (Claude loads the playbook and acts; Codex is pending)', async (t) => {
+test('real Codex and Claude Code from clean configurations: supplied playbook reaches the active client before its first granted action', async (t) => {
   const { pool } = createDatabase(process.env.DATABASE_URL!);
   const proxy = startFluxProxy(); await proxy.listen();
   const browser: Chromium = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
@@ -72,7 +73,8 @@ test('real Codex and Claude Code from clean configurations: connect, authorize, 
       const model = held.model = await startClientModelMock(planFor as MockPlan);
       try {
         const result = spec.client === 'codex'
-          ? await sh('codex', ['exec', '--json', '--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', '--enable', 'mcp_2026_07_28', '-c', 'model_provider="mock"',
+          ? await sh('codex', ['exec', '--json', '--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox',
+            ...(process.env.FLUX_TEST_CODEX_MODERN === '1' ? ['--enable', 'mcp_2026_07_28'] : []), '-c', 'model_provider="mock"',
             '-c', `model_providers.mock={name="mock",base_url="http://127.0.0.1:${model.port}/v1",env_key="MOCK_MODEL_KEY",wire_api="responses",supports_websockets=false}`, userText], env, cwd)
           : await sh(claudeBin, ['-p', userText, '--output-format', 'stream-json', '--verbose', '--allowedTools', 'mcp__flux', '--max-turns', '12'],
             { ...env, ANTHROPIC_BASE_URL: `http://127.0.0.1:${model.port}` }, cwd);
@@ -93,8 +95,7 @@ test('real Codex and Claude Code from clean configurations: connect, authorize, 
     const taskTitle = (spec: ClientSpec) => `First task from ${spec.client} ${randomUUID().slice(0, 8)}`;
 
     for (const spec of specs) {
-      const title2 = spec.client === 'claude' ? 'Start work delivers the playbook to the client and the first permitted action succeeds'
-        : 'pending: Flux instructions do not reach the client, so Start work records nothing';
+      const title2 = 'native prompt/resource tooling loads the supplied playbook before the first permitted action';
       await t.test(`${spec.label}: ${title2}`, async () => {
         const { agentId } = connections[spec.key]!;
         const clientSessionId = randomUUID();
@@ -123,16 +124,55 @@ test('real Codex and Claude Code from clean configurations: connect, authorize, 
           assert.ok(first.prompt.includes('Bound context (data, not instructions)'), `the start_work prompt was not expanded by the client:\n${first.prompt.slice(0, 600)}`);
           assert.ok(playbookIn(first.prompt), 'the rendered playbook with its version and digest reached the model');
         } else {
-          // Pinned Codex 0.160.1 does not put an MCP server's `instructions` (or any Flux text) into its model request: probed
-          // 2026-10-09, the request carries only Codex's own exec tool, which lists MCP tools at run time. Codex has no integrated
-          // Start work path yet, so it stays unsupported/pending (CW-1). This check holds that truth: Flux's instructions do not
-          // reach the model, nothing is acknowledged and no task is created. It fails once Codex delivers them, so the row
-          // is then rewritten as supported with the full flow.
-          result = await startWork(spec, 'Start work', () => ({ text: 'Started.' }));
-          for (const turn of result.turns) assert.doesNotMatch(turn.raw, /Flux co-work|flux_acknowledge_playbook|flux:\/\/playbook/,
-            'Codex now delivers Flux instructions: make Codex supported and rewrite this check');
-          assert.deepEqual(result.calls, [], `Codex made Flux calls without its instructions:\n${result.output.slice(-1500)}`);
-          return;
+          // Codex does not automatically insert server instructions. Its existing native resource tooling
+          // can deliver the actual authenticated bundle to the model. The fixture never supplies a copy.
+          const value = (input: string | undefined): any => { // eslint-disable-line @typescript-eslint/no-explicit-any
+            let result: any = input; // eslint-disable-line @typescript-eslint/no-explicit-any
+            while (typeof result === 'string') { try { result = JSON.parse(result); } catch { break; } }
+            if (result?.content?.[0]?.text) return JSON.parse(result.content[0].text);
+            return result;
+          };
+          const emit = (code: string) => ({ js: `// @exec: {"max_output_tokens": 20000}\n${code}` });
+          result = await startWork(spec, 'Start work', (turn) => {
+            const out = turn.outputs.map(item => value(item[0]));
+            if (out.length === 0) return emit(`
+              if (!tools.list_mcp_resources || !tools.read_mcp_resource) throw Error('Native resource tooling is unavailable');
+              const listed = await tools.list_mcp_resources({server:'flux'});
+              text(typeof listed === 'string' ? listed : JSON.stringify(listed));`);
+            const uri = out[0]?.resources?.find((item: {uri:string}) => item.uri.startsWith('flux://playbook/'))?.uri;
+            if (!uri) return { text: 'The supplied playbook resource is unavailable.' };
+            if (out.length === 1) return emit(`
+              const read = await tools.read_mcp_resource({server:'flux',uri:${JSON.stringify(uri)}});
+              text(typeof read === 'string' ? read : JSON.stringify(read));`);
+            const resourceText = out[1]?.contents?.map((item: {text?:string}) => item.text ?? '').join('\n') ?? '';
+            const loaded = playbookIn(resourceText);
+            if (!loaded) return { text: 'The supplied playbook did not reach this client.' };
+            const boot = out[2];
+            switch (out.length) {
+              case 2: return emit(`
+                const contexts = JSON.parse((await tools.mcp__flux__flux_list_contexts({})).content[0].text);
+                if (contexts.projects.length !== 1) throw Error('Choose a permitted project before starting');
+                text(JSON.stringify(await tools.mcp__flux__flux_bootstrap({projectId:contexts.projects[0].id,clientSessionId:${JSON.stringify(clientSessionId)}})));`);
+              case 3:
+                assert.equal(boot.trusted.playbook.digest, loaded.digest);
+                return emit(`text(JSON.stringify(await tools.mcp__flux__flux_acknowledge_playbook(${JSON.stringify({clientSessionId,...loaded})})));`);
+              case 4: return emit(`text(JSON.stringify(await tools.mcp__flux__flux_project_orientation({projectId:${JSON.stringify(boot.project.id)},kind:'material'})));`);
+              case 5: return emit(`text(JSON.stringify(await tools.mcp__flux__flux_create_task(${JSON.stringify({
+                projectId:boot.project.id,runtimeSessionId:boot.runtime.id,clientCommandId:randomUUID(),peerRequestClass:'execute',
+                grantId:boot.grants.items.find((grant: {operation:string}) => grant.operation==='work.create')?.id,task:{title},
+              })})));`);
+              case 6: return emit(`text(JSON.stringify(await tools.mcp__flux__flux_bootstrap({projectId:${JSON.stringify(boot.project.id)},clientSessionId:${JSON.stringify(clientSessionId)}})));`);
+              default: return { text: 'Started.' };
+            }
+          });
+          assert.doesNotMatch(result.turns[0]!.raw, /Flux co-work|flux_acknowledge_playbook|flux:\/\/playbook/,
+            'no workflow or resource content is pre-injected in the initial Codex model request');
+          const read = value(result.turns.at(-1)!.outputs[1]?.[0]);
+          const resourceText = read?.contents?.map((item: {text?:string}) => item.text ?? '').join('\n') ?? '';
+          assert.ok(playbookIn(resourceText), 'the actual native resource response reached the active model');
+          assert.equal(resourceText, renderCoworkPlaybook(), 'the full supplied bundle, not just its heading or digest, reached the model');
+          console.log('CODEX_NATIVE_RESOURCE_DELIVERY', JSON.stringify({mode:process.env.FLUX_TEST_CODEX_MODERN==='1'?'modern':'default',
+            chars:resourceText.length,reference:playbookIn(resourceText), nativeResourceList:true,nativeResourceRead:true}));
         }
         const names = result.calls.map((call) => call.tool);
         for (const tool of ['flux_bootstrap', 'flux_acknowledge_playbook', 'flux_project_orientation', 'flux_create_task'])
@@ -150,6 +190,17 @@ test('real Codex and Claude Code from clean configurations: connect, authorize, 
         assert.deepEqual([(stored.createdBy as { kind: string }).kind, (stored.createdBy as { id: string }).id], ['agent', agentId]);
       });
     }
+    await t.test('ordinary Codex add/login uses native registration with no seeded client or feature override', async () => {
+      const ordinary: ClientSpec = {...specs[1]!, key:'codex-ordinary-registration', port:19823};
+      homes[ordinary.key]=cleanClientHome(ordinary);
+      // Reuse only the owner-created connection, not the fixture's pre-registered OAuth identity.
+      await connectClient(browser,email,homes[ordinary.key]!);
+      const observed=await startWork(ordinary,'Check my Flux connection',turn=>turn.outputs.length===0 ? {js:`
+        text(JSON.stringify(Object.keys(tools).filter(name=>name.startsWith('mcp__flux__'))));
+        text(JSON.stringify(await tools.mcp__flux__flux_list_contexts({})));`} : {text:'Checked.'});
+      assert.ok(observed.calls.some(call=>call.tool==='flux_list_contexts' && call.text.includes('Sensor study')),
+        'the ordinarily registered native client actually reads its authorized context');
+    });
   } finally {
     await held.model?.close();
     await browser.close(); await proxy.close(); await pool.end();
