@@ -652,6 +652,37 @@ class AppShellJourney(unittest.TestCase):
         expect(signin.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
         shot(signin, "sign-in-phone-dark")
 
+    def test_07a_phone_enlarged_text_keeps_every_place_in_view(self) -> None:
+        # #437 (HIG-11, HIG-19): with the text size doubled (html 16 -> 32 px, as the SoftVolume checks do), all four
+        # places stay on the screen, each label whole and apart from its neighbours. The page's scrollWidth can stay
+        # at the viewport width while the bar clips its last label, so each label's own bounds are measured.
+        measure = """els => els.map((item) => {
+          const label = item.querySelector('.ui-bottomnav__label');
+          const r = label.getBoundingClientRect();
+          return { name: label.textContent, left: r.left, right: r.right, size: parseFloat(getComputedStyle(label).fontSize),
+                   overflow: label.scrollWidth - label.clientWidth };
+        })"""
+        for width, dark in ((320, False), (320, True), (390, False), (390, True)):
+            with self.subTest(width=width, dark=dark):
+                page = self.page(phone=True, dark=dark, viewport={"width": width, "height": 844})
+                page.goto("/")
+                expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+                items = page.get_by_role("navigation", name="Main places").locator(".ui-bottomnav__item")
+                self.assertEqual(items.count(), 4, "the places bar holds Home, Inbox, Messages and Projects")
+                normal = min(place["size"] for place in items.evaluate_all(measure))
+                page.add_style_tag(content="html { font-size: 32px !important; }")
+                places = sorted(items.evaluate_all(measure), key=lambda place: place["left"])
+                listing = json.dumps(places)
+                for place in places:
+                    name = place["name"]
+                    self.assertGreaterEqual(place["left"], 0, f"{name} starts on screen at {width}px: {listing}")
+                    self.assertLessEqual(place["right"], width, f"{name} ends on screen at {width}px: {listing}")
+                    self.assertLessEqual(place["overflow"], 1, f"{name} is not clipped: {listing}")
+                    self.assertGreaterEqual(place["size"], 12.5, f"{name} keeps the phone meta size: {listing}")
+                    self.assertGreater(place["size"], normal, f"{name} still grows with the text size: {listing}")
+                for before, after in zip(places, places[1:]):
+                    self.assertGreaterEqual(after["left"] - before["right"], 4, f"{before['name']} and {after['name']} do not touch: {listing}")
+
     # ---------------------------------------------------------------- theme and motion
 
     def test_08_theme_choice_persists_and_reduced_motion(self) -> None:
