@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, ne, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 
@@ -60,6 +60,11 @@ export function idpStandingRepository(db: DbExecutor) {
         FROM auth_accounts a WHERE a.provider_id = ${providerId}
         ON CONFLICT (user_id, provider_id) DO NOTHING`);
       return result.rowCount ?? 0;
+    },
+
+    /** The installation has one active provider. A previous issuer cannot suspend the new identity. */
+    async forgetOtherProviders(providerId: string): Promise<void> {
+      await db.delete(s).where(ne(s.providerId, providerId));
     },
 
     /** With the standing check off, nothing may keep refusing people or hold this provider's token. */

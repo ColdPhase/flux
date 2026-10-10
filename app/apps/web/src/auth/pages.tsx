@@ -82,13 +82,24 @@ const NOTICES: Record<string, string> = {
 };
 
 /** The operator's single sign-on, when configured (#113). Hidden while unknown or unavailable. */
+const SSO_RECHECK_MS = 5000;
+
 function useSso() {
   const [sso, setSso] = useState<IdentityCapabilities['sso']>(null);
+  const unreachable = sso !== null && !sso.reachable;
   useEffect(() => {
     const controller = new AbortController();
-    getCapabilities(controller.signal).then((capabilities) => setSso(capabilities.sso ?? null)).catch(() => undefined);
-    return () => controller.abort();
-  }, []);
+    const load = () => {
+      getCapabilities(controller.signal).then((capabilities) => setSso(capabilities.sso ?? null)).catch(() => undefined);
+    };
+    load();
+    // While the provider is unreachable the page asks again, so its button comes back without a reload (#310 AC-4).
+    const timer = unreachable ? window.setInterval(load, SSO_RECHECK_MS) : undefined;
+    return () => {
+      controller.abort();
+      if (timer !== undefined) window.clearInterval(timer);
+    };
+  }, [unreachable]);
   return sso;
 }
 

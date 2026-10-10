@@ -1052,6 +1052,16 @@ requires the following v0.1 outcomes with one SSO provider:
 All implementation and independent evidence remain required. The prior deferred
 scope and its observations are preserved in the dated research and GitHub records.
 
+**S1 AC-3 implementation correction (2026-10-10, #384 re-review).** Authentication provenance is
+immutable per minted authorization-code family, stored in `oauth_grant_authentication` (0086),
+keyed by the provider's `authorizationCodeId`. Code redemption snapshots its validated session;
+refresh retains the same record after browser-session deletion. Starting, denying or abandoning
+another authorization never changes an older family. The shared binding's 0083 fields are legacy
+metadata, not the provenance source. Upgrade retains existing families and records their original
+session facts where available; an already deleted session yields explicit `unknown` provenance,
+without inferring facts from a newer sign-in. The pinned provider patch exposes session/family identifiers
+only to the server's claims hook and the signed access token carries the family reference.
+
 ### S1 — Provider sign-in on the MCP authorization path
 
 - **AC-1.** `/login` offers the sole active provider; without active SSO it uses password mode. The IdP round trip keeps the signed

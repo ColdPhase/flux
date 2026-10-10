@@ -147,10 +147,10 @@ class SoftVolume(unittest.TestCase):
         self.ensure_account()
         page = self.page(init="localStorage.setItem('flux.accent.light', 'copper'); localStorage.setItem('flux.accent.dark', 'sky'); localStorage.setItem('flux.accent', 'iris')")
         page.goto("/settings")
-        expect(page.get_by_role("radiogroup", name="Appearance")).to_be_visible()
+        expect(page.get_by_role("radiogroup", name="Theme")).to_be_visible()
         self.assertIsNone(page.evaluate("document.documentElement.getAttribute('data-accent')"))
         self.assertEqual(page.evaluate("['flux.accent', 'flux.accent.light', 'flux.accent.dark'].map(k => localStorage.getItem(k))"), [None, None, None])
-        group = page.get_by_role("radiogroup", name="Appearance")
+        group = page.get_by_role("radiogroup", name="Theme")
         self.assertEqual([radio.inner_text().strip() for radio in group.get_by_role("radio").all()], ["Light", "Dark", "Match system"])
         expect(page.get_by_text("Accent", exact=True)).to_have_count(0)
         # No stylesheet defines or uses an accent token.
@@ -214,9 +214,10 @@ class SoftVolume(unittest.TestCase):
         calm = self.page(reduced=True)
         calm.goto("/")
         self.assertEqual(calm.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--press').trim()"), "1")
-        # The segmented control is a pill track.
-        page.goto("/settings")
-        self.assertEqual(page.locator(".seg").evaluate("e => getComputedStyle(e).borderTopLeftRadius"), "999px")
+        # The segmented control (the account menu's theme choice) is a pill track.
+        page.goto("/")
+        page.locator(".me__btn").click()
+        self.assertEqual(page.get_by_role("dialog", name="Account").locator(".seg").evaluate("e => getComputedStyle(e).borderTopLeftRadius"), "999px")
 
     def test_05_every_task_state_has_its_glyph_and_word_in_both_themes(self) -> None:
         self.ensure_account()
