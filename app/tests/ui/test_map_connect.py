@@ -448,11 +448,12 @@ class MapConnectJourney(unittest.TestCase):
                 self.assertEqual(after['links'], before['links'], 'phone Save neither creates nor deletes a graph link')
                 self.assertEqual([t for t in after['thoughts'] if t['id'] in self.ids.values()], before['thoughts'],
                     'adding on the phone preserves the exact existing thoughts and positions')
-                # Reload a settled saved view. Tearing down an in-flight document/task read
-                # can itself produce a native WebKit access-control error, without a JS throw.
+                # Let the confirmed saved view's background reads settle before the
+                # persistence reload; keep every page-error assertion.
                 page.wait_for_load_state('networkidle')
                 page.reload()
                 expect(page.get_by_role('form', name=re.compile('thought.* draft', re.I))).to_have_count(0)
+                expect(page.locator('.sk-node, .sk-li-t')).to_have_count(3 + added)
                 self.assertEqual(self.stored(page, sketch)['links'], before['links'], 'the persisted link set survives reload')
 
     def test_13_composition_keeps_visible_map_context_and_camera(self):
