@@ -291,7 +291,7 @@ test('actual owner setup stays pending, refreshes lost authorization, and keeps 
           assert.equal(await page.getByRole('button', { name: /^(Start work|Resume work)$/ }).count(), 0, 'OAuth/bootstrap records do not manufacture a working launch control');
           for (const theme of ['light', 'dark'] as const) {
             await page.emulateMedia({ colorScheme: theme });
-            await setup.scrollIntoViewIfNeeded();
+            await setup.evaluate(element => element.scrollIntoView({ block: 'start' }));
             await page.evaluate(() => document.fonts.ready);
             if (evidenceDir) await page.screenshot({ path: join(evidenceDir, `connect-setup-${engine.name()}-${width}-${theme}.png`) });
           }
@@ -312,15 +312,29 @@ test('actual owner setup stays pending, refreshes lost authorization, and keeps 
           await panel.getByRole('button', { name: 'Disable all', exact: true }).click();
           await panel.getByRole('button', { name: 'Save permissions', exact: true }).click();
           await setup.getByRole('heading', { name: 'Permissions are Off', exact: true }).waitFor();
+          await setup.evaluate(element => element.scrollIntoView({ block: 'start' }));
+          if (evidenceDir) await page.screenshot({ path: join(evidenceDir, `connect-setup-${engine.name()}-${width}-off.png`) });
           assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
           await page.getByRole('button', { name: 'Revoke connection', exact: true }).click();
           if (width === 390) await page.getByRole('button', { name: 'Revoke now', exact: true }).tap();
           else await page.getByRole('button', { name: 'Revoke now', exact: true }).click();
           const history = page.locator('.connection__history');
-          await history.locator('summary').click();
+          const disclosure = history.locator('summary');
+          await disclosure.waitFor({ state: 'visible' });
+          await page.evaluate(async () => { await Promise.all(document.getAnimations().filter(animation => Number.isFinite(animation.effect?.getComputedTiming().endTime))
+            .map(animation => animation.finished.catch(() => undefined))); });
+          if (width === 390) {
+            const box = await disclosure.boundingBox(); assert.ok(box);
+            const actual = await disclosure.evaluate(element => ({ minHeight: getComputedStyle(element).minHeight,
+              padding: getComputedStyle(element).padding, coarse: matchMedia('(pointer: coarse)').matches }));
+            assert.ok(box.height >= 44 - .001 && box.width >= 44 - .001, `the revoked-history disclosure has an actual 44px touch target: ${JSON.stringify({ box, actual })}`);
+            await disclosure.tap();
+          } else { await disclosure.focus(); await disclosure.press('Enter'); }
           assert.equal(await history.getByText('External connection', { exact: true }).count(), 1);
           await page.reload(); await history.locator('summary').click();
           assert.equal(await history.getByText('External connection', { exact: true }).count(), 1, 'revoked history survives page reload');
+          await history.evaluate(element => element.scrollIntoView({ block: 'start' }));
+          if (evidenceDir) await page.screenshot({ path: join(evidenceDir, `connect-setup-${engine.name()}-${width}-revoked.png`) });
           assert.equal(await page.getByRole('radio').count(), 0, 'revoked selection cannot reauthorize or retain actionable permission controls');
         } finally { await context.close(); await f.pool.end(); }
       }

@@ -54,7 +54,9 @@ test('real pinned Codex and Claude Code clients: two owners, both native client 
     const emails = { codex: email, claude: peerEmail, ownerClaude: email, peerCodex: peerEmail };
     const peerId = String((expect(await peer.request('GET', '/api/v1/me'), 200).user as { id: string }).id);
     const workspace = expect(await owner.request('POST', '/api/v1/workspaces', { body: { name: 'Client contract' } }), 201);
-    expect(await owner.request('POST', `/api/v1/workspaces/${workspace.id}/members`, { body: { email: peerEmail, role: 'member' } }), 201);
+    // Both humans may explicitly grant actions to their own clients. Peer project management is a fixture choice,
+    // never a grant inferred from the client label or from another owner's standing authority.
+    expect(await owner.request('POST', `/api/v1/workspaces/${workspace.id}/members`, { body: { email: peerEmail, role: 'admin' } }), 201);
     const makeProject = async (name: string) => String(expect(await owner.request('POST', `/api/v1/workspaces/${workspace.id}/projects`, { body: { name, visibility: 'restricted' } }), 201).id);
     const projects = { study: await makeProject('Sensor study'), field: await makeProject('Field notes') };
     for (const projectId of Object.values(projects)) expect(await owner.request('POST', `/api/v1/projects/${projectId}/grants`, { body: { principal: { kind: 'human', id: peerId }, role: 'contributor' } }), 201);
@@ -171,6 +173,65 @@ test('real pinned Codex and Claude Code clients: two owners, both native client 
           : (outputs) => outputs.length === 0 ? ['flux_list_work', JSON.stringify({ projectId: projects.study })] : []);
         assert.ok(JSON.stringify(json(read.calls.find((call) => call.tool === 'flux_list_work'))).includes(title), `${spec.label} reads the task another connection created`);
       }
+    });
+
+    // Each invocation below is a fresh actual native process, using its own saved OAuth home and a scripted model.
+    // This verifies domain checkpoint/reconnect and observed task/result progress, not integrated Start/Resume,
+    // native turn interruption, durable request admission/inbox or a complete busy review/fix cycle.
+    async function native(spec: Spec, name: string, args: Record<string, unknown>) {
+      const result = await session(spec, spec.client === 'codex'
+        ? () => codexScript(`text(JSON.stringify(await tools[${JSON.stringify(`mcp__flux__${name}`)}](${JSON.stringify(args)})));`)
+        : outputs => outputs.length === 0 ? [name, JSON.stringify(args)] : []);
+      return json(result.calls.find(call => call.tool === name));
+    }
+    for (const spec of specs) await t.test(`${spec.label}: native task/unit progress, quiet renewal, persisted checkpoint replay and a fresh-process reconnect`, async () => {
+      const human = people[spec.agent]; const connectionId = connections[spec.key]!;
+      const standing = async (operation: string, objectId?: string) => String(expect(await human.request('POST',
+        `/api/v1/agent-connections/${connectionId}/action-grants`, { body: { clientCommandId: randomUUID(), projectId: projects.study,
+          operation, peerRequestClass: 'execute', maximumUses: 5, ...(objectId ? { objectId } : {}),
+          expiresAt: new Date(Date.now() + 3_600_000).toISOString() } }), 201).id);
+      const boot = await native(spec, 'flux_bootstrap', { projectId: projects.study, clientSessionId: randomUUID() });
+      assert.ok((boot.gaps as string[]).includes('coordination_unavailable'), 'unimplemented inbox/admission stays explicit');
+      const runtimeSessionId = (boot.runtime as { id: string }).id;
+      const base = (grantId: string, sessionId = runtimeSessionId) => ({ projectId: projects.study, runtimeSessionId: sessionId,
+        grantId, clientCommandId: randomUUID(), peerRequestClass: 'execute' });
+      const task = await native(spec, 'flux_create_task', { ...base(await standing('work.create')),
+        task: { title: `${spec.label}: compare the sensor observations` } });
+      const stored = expect(await human.request('GET', `/api/v1/work/${task.workId}`), 200);
+      assert.equal((stored.createdBy as { id: string }).id, agents[spec.agent]);
+      const unit = await native(spec, 'flux_create_unit', { ...base(await standing('cowork.unit.create', String(task.workId))),
+        taskId: task.workId, expectedTaskVersion: stored.version, unitKey: 'compare-observations', assignmentConnectionId: connectionId, parent: null });
+      const unitId = String(unit.unitId); const claimGrant = await standing('cowork.claim', unitId);
+      const claimed = await native(spec, 'flux_claim_unit', { ...base(claimGrant), unitId, expectedVersion: unit.version });
+      const fence = (value: Record<string, unknown>) => ({ unitId, expectedVersion: value.version, generation: value.generation,
+        leaseId: (value.lease as { id: string }).id });
+      const activity = async () => (expect(await human.request('GET', `/api/v1/projects/${projects.study}/agents`), 200).connections as { id: string; lastActivity: unknown }[])
+        .find(row => row.id === connectionId)!.lastActivity;
+      const beforeRenewal = await activity();
+      const renewed = await native(spec, 'flux_renew_unit', { ...base(await standing('cowork.renew', unitId)), ...fence(claimed) });
+      assert.deepEqual(await activity(), beforeRenewal, 'actual lease renewal does not manufacture activity');
+      const checkpoint = { summary: 'The first sensor observation was recorded.', nextAction: 'Compare the second observation.', blocker: null };
+      const releaseGrant = await standing('cowork.release', unitId);
+      const release = { ...base(releaseGrant), ...fence(renewed), checkpoint, sources: [] };
+      const parked = await native(spec, 'flux_release_unit', release);
+      assert.equal(parked.state, 'paused');
+      assert.deepEqual(await native(spec, 'flux_release_unit', release), parked, 'a lost-response retry from a fresh native process replays the same persisted checkpoint');
+      assert.equal((await pool.query('SELECT count(*)::int AS n FROM cowork_checkpoints WHERE unit_id=$1', [unitId])).rows[0].n, 1);
+      assert.equal((await pool.query('SELECT used FROM agent_standing_grants WHERE id=$1', [releaseGrant])).rows[0].used, 1);
+      const reconnected = await native(spec, 'flux_bootstrap', { projectId: projects.study, clientSessionId: randomUUID() });
+      const nextSession = (reconnected.runtime as { id: string }).id;
+      assert.notEqual(nextSession, runtimeSessionId);
+      const resumed = await native(spec, 'flux_claim_unit', { ...base(claimGrant, nextSession), unitId, expectedVersion: parked.version });
+      assert.equal(resumed.checkpointId, parked.checkpointId);
+      assert.equal((resumed.checkpoint as { summary: string }).summary, checkpoint.summary, 'the new native process receives actual checkpoint content');
+      assert.equal((resumed.lease as { runtimeSessionId: string }).runtimeSessionId, nextSession);
+      const recorded = await native(spec, 'flux_record_result', { ...base(await standing('result.record'), nextSession), sources: [],
+        result: { title: `${spec.label}: observation comparison`, finding: 'positive', evidence: 'Two bounded fixture observations compared.', workIds: [task.workId] } });
+      const completed = await native(spec, 'flux_complete_unit', { ...base(await standing('cowork.unit.complete', unitId), nextSession), ...fence(resumed),
+        outcome: { type: 'result', id: recorded.resultId } });
+      assert.equal(completed.state, 'completed');
+      const persisted = (await pool.query('SELECT state, outcome_ref FROM cowork_units WHERE id=$1', [unitId])).rows[0];
+      assert.deepEqual(persisted, { state: 'completed', outcome_ref: { type: 'result', id: recorded.resultId } });
     });
 
     await t.test('revoking one connection stops that client and leaves the others working', async () => {

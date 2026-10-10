@@ -201,6 +201,34 @@ test('real Codex and Claude Code from clean configurations: supplied playbook re
       assert.ok(observed.calls.some(call=>call.tool==='flux_list_contexts' && call.text.includes('Sensor study')),
         'the ordinarily registered native client actually reads its authorized context');
     });
+    await t.test('pinned Claude resumes the same private session with immediate appended-instruction refresh', async () => {
+      // Native flag primitive only. Private markers are not a delivered Flux bundle or integrated Resume action.
+      // No account/provider credentials: the real CLI talks exclusively to the scripted local endpoint.
+      const probe: ClientSpec = { ...specs[0]!, key: 'claude-resume-refresh-probe' };
+      const home = cleanClientHome(probe); const sessionId = randomUUID();
+      const oldMarker = `PRIVATE_NATIVE_REFRESH_OLD_${randomUUID()}`;
+      const newMarker = `PRIVATE_NATIVE_REFRESH_NEW_${randomUUID()}`;
+      async function invoke(args: string[]) {
+        const model = held.model = await startClientModelMock(() => ({ text: 'Private native refresh probe finished.' }));
+        try {
+          const result = await sh(claudeBin, ['-p', 'Observe the private test marker', '--output-format', 'stream-json', '--verbose',
+            ...args], { ...home.env, ANTHROPIC_BASE_URL: `http://127.0.0.1:${model.port}` }, home.cwd);
+          assert.ok(model.requests.length > 0, `the native invocation never reached the local model: ${result.output.slice(-1000)}`);
+          const actual = JSON.parse(model.requests[0]!.raw) as { system?: unknown };
+          return { system: JSON.stringify(actual.system), output: result.output };
+        } finally { await model.close(); held.model = null; }
+      }
+      const first = await invoke(['--session-id', sessionId, '--append-system-prompt', oldMarker, '--system-prompt-snapshot', 'on']);
+      assert.ok(first.system.includes(oldMarker));
+      assert.ok(first.system.length > oldMarker.length + 100, 'append retains the native default instructions');
+      const resumed = await invoke(['--resume', sessionId, '--append-system-prompt', newMarker, '--system-prompt-snapshot', 'off']);
+      assert.ok(resumed.system.includes(newMarker), 'current appended instructions reach the immediate resumed model request');
+      assert.ok(!resumed.system.includes(oldMarker), 'the recorded old system prompt is not silently reused');
+      const events = clientEvents(resumed.output) as { session_id?: string }[];
+      assert.ok(events.some(event => event.session_id === sessionId), 'the same native session is resumed');
+      console.log('CLAUDE_NATIVE_RESUME_REFRESH', JSON.stringify({ version: '2.1.285', sameSession: true,
+        immediateSystemRefresh: true, originalNativeInstructionsRetained: true, suppliedFluxBundle: false }));
+    });
   } finally {
     await held.model?.close();
     await browser.close(); await proxy.close(); await pool.end();
