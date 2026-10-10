@@ -318,7 +318,10 @@ class MapConnectJourney(unittest.TestCase):
         for name in ('Edit thought', 'Add a connected thought', 'Create task from selected thoughts', 'Remove from sketch'):
             row = sheet.get_by_role('button', name=name, exact=True)
             expect(row).to_be_visible()
-            self.assertGreaterEqual(row.bounding_box()['height'], 44)
+            self.assertGreaterEqual(row.evaluate('el => parseFloat(getComputedStyle(el).minHeight)'), 44)
+            # WebKit can report 43.99994 for a 44px transformed row; allow one layout subpixel,
+            # while keeping the actual CSS minimum at 44 and the visible target check above.
+            self.assertGreaterEqual(row.bounding_box()['height'], 44 - 1 / 64)
         page.keyboard.press('Escape')
         expect(sheet).to_have_count(0)
         expect(actions).to_be_focused()
