@@ -88,6 +88,8 @@ repository was created on 2026-09-26.
 - "Let linked PRs move this task": a person who can edit a task lets its required pull requests
   start, block and finish it, or mark it Ready to close. A manual status change pauses it until resumed
   ([#270](https://github.com/ColdPhase/flux/pull/270)).
+- A task made in Tasks can be linked to a map thought from its Details: a "Linked thoughts" section
+  and a "Link to a thought" picker for the project's maps ([#449](https://github.com/ColdPhase/flux/pull/449)).
 
 #### AI that stays yours
 
