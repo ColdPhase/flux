@@ -283,6 +283,46 @@ or standards statements unless marked as a report or an inference.
   covers user agent, screen, viewport, touch, `isMobile`, scale factor, permissions,
   color scheme, reduced motion and offline.
 
+### Requirement-to-evidence map (#20, MOB-7)
+
+Code and test references were checked on `main` `ecdceb95` on 2026-10-10. Vendor
+sources are the ones listed above (retrieved 2026-10-05, not fetched again). Status:
+**emulated** means exercised in Chromium or WebKit emulation in Docker; **code** means
+implemented and covered by API or unit tests but not exercised in a browser;
+**device** means it needs a real device or OS and is unverified here; **open** means
+not implemented or not tested. Each row keeps the labels of its source.
+
+| Requirement (source, type) | Flux code | Test or observation | Status |
+| --- | --- | --- | --- |
+| Installable manifest: `name` or `short_name`, 192 and 512 px icons, `start_url`, `display: standalone`, no `prefer_related_applications` (web.dev install criteria, 2024-09-19, vendor) | `app/apps/web/public/manifest.webmanifest` | `app/tests/app/pwa.test.ts:25`, `:42` | emulated (manifest only; Chrome's install prompt is not exercised) |
+| Apple touch icon 180 px, `apple-mobile-web-app-capable`, manifest link (WebKit, 2023-02-16 and later, vendor) | `app/apps/web/index.html:5,14,16` | `app/tests/app/pwa.test.ts:56` | emulated (markup) |
+| Service worker at scope `/` with a fetch handler; `sw.js` served uncached (MDN Push API, 2025-05-28, vendor) | `app/apps/web/src/pwa/register.ts`; `app/apps/web/src/pwa/sw.js:32` | `app/tests/app/e2e/pwa.e2e.ts` scope test; `pwa.test.ts:67` | emulated |
+| iOS/iPadOS: web push only for Home Screen web apps, iOS 16.4 or later; Add to Home Screen is the install step (Apple, undated page; WebKit, 2023-02-16, vendor) | `app/apps/web/src/pwa/push.ts:33-34,78`; `NotificationsButton.tsx` (`needs-install` note) | none in a browser | code; Add to Home Screen is **device** only |
+| Permission requested from the user's gesture, as the first statement of the handler (Apple, vendor; MDN `Notification.requestPermission()`, 2025-06-11, vendor) | `app/apps/web/src/pwa/push.ts:97`; click handler in `NotificationsButton.tsx` | `pwa.e2e.ts` counts prompts on load (0). The gesture path is not browser-tested: headless permission starts `denied` | code; the prompt itself is **device** only |
+| Subscribe "immediately from the gesture's event handler" (Apple, vendor) | `push.ts:97-110` subscribes after the awaited prompt, not synchronously | observed on an iPhone Home Screen app, #20 session 1 (2026-10-05) | observed; the literal "immediately" wording is **not** met, so it is open for review |
+| `userVisibleOnly: true` required by Chrome (web.dev, 2016, vendor) | `push.ts:109,142` | observed: Android Chrome `fcm.googleapis.com` subscription and provider 201 (#20 session 1) | observed |
+| A push must show a notification at once or Safari revokes permission (Apple, undated, vendor) | `app/apps/web/src/pwa/sw.js:74-86` (every `push` calls `showNotification`) | none in a browser | code; display is **device** only |
+| VAPID: `aud` is the push origin, `exp` at most one day ahead, `sub` a `mailto:` or https URI, public key matches (Apple, vendor; RFC 8292 §2.1) | `app/packages/core/src/push/config.ts:87-88,103-105` (subject validation and reachability warning); worker reuses its JWT per origin | `app/tests/app/push.test.ts:40`, `:63`; a 403 on 2026-10-05 before #263 changed the subject | code and API tests; FCM accepted (201); the iPhone 403 is not re-observed since #263 |
+| A `404` or `410` from a push service removes the subscription; `503` is retried, `400`/`403` are not (Apple, vendor; worker behaviour) | `app/packages/core/src/push/delivery.ts:96-103` | `app/tests/app/push.test.ts:189`, `:254` | code and API tests |
+| Outbound HTTPS to the push services (`*.push.apple.com`, `fcm.googleapis.com`) (Apple, vendor) | `docs/development/containers.md:256-257`; `app/apps/worker/src/push/public-lookup.ts` | `app/tests/app/push-public-lookup.test.ts:37`, `:52`, `:70` | documented and API-tested; FCM transport observed |
+| Standalone detection with `display-mode` (MDN, 2026-04-20, vendor) | `push.ts:33-34`, used only for the iOS install note | none; there is no standalone test flag | **open** for the MOB-1 standalone cold launch |
+| Install guidance where the browser offers no install button (contract, MOB-1) | only the iOS note in notification settings; Chrome `beforeinstallprompt` is not used | none | **open** (MOB-1); the surface is for the final design (#341, #352) |
+| Editable controls at least 16 px on a coarse pointer (WebKit report, not an Apple statement) | `app/apps/web/src/ui/ui.css:116` (`.ui-input`) | `app/tests/ui/test_phone_shell.py` `test_12`, six routes | emulated on six routes; other routes **open** |
+| Simulated keyboard keeps the field and Send visible; the app follows `visualViewport` (contract; MDN browser-compat `interactive-widget`, 2026-03-26: Safari unsupported) | `app/apps/web/index.html:5`; `app/apps/web/src/app/AppLayout.tsx:263` | `test_phone_shell.py` `test_11` (Chromium and WebKit lanes) | emulated; the iOS keyboard is **device** only |
+| Safe-area insets (MDN `env()`, 2026-09-12, vendor) | `index.html:5` (`viewport-fit=cover`); `app/apps/web/src/app/app.css:13,40,48` | none; emulation cannot apply insets | code; **device** only |
+| Offline: an understandable offline page; API responses never cached (contract, MOB-5) | `sw.js:32-54`, `sw.js:38` (`/api` bypass) | `pwa.e2e.ts` offline test | emulated |
+| Update: the new worker waits, the app asks, one reload on confirmation (contract, MOB-5) | `app/apps/web/src/pwa/register.ts`; `app/apps/web/src/pwa/UpdatePrompt.tsx` | `pwa.e2e.ts` update test | emulated; **open**: drafts and in-progress input across an update are not tested |
+| Lock-screen privacy: generic title unless the server sent a full preview; tap-time recheck through `GET /api/v1/inbox/:id` (contract, #41) | `sw.js:72`, `sw.js:96-107`, `sw.js:112` | `push.test.ts:222` and `:246` (recheck and expiry, API level) | code and API tests; the display is **device** only |
+| Denied or revoked permission keeps the inbox usable (contract, MOB-4) | `NotificationsButton.tsx` `MESSAGES.denied` and `unsupported` | `push.test.ts:315` covers push unavailable, not a browser permission state | **open** for the browser state |
+
+Still open for #20 after this map: the install guidance and standalone cold launch
+(MOB-1); browser subscription, mute and unsubscribe flows with the push mock (MOB-4);
+drafts across a service-worker update (MOB-5); the self-hosting walk-through (MOB-6);
+phone and tablet journeys (MOB-2 and MOB-3, owned with #151, #264, #265 and #136).
+Other UI suites still launch Chromium only; `test_settings` and `test_notifications`
+already select WebKit through `FLUX_UI_BROWSER`, and the phone shell and the
+service-worker journey now run in both engines.
+
 ### Lock-screen privacy
 
 A push notification can appear on a locked or shared screen, so its content follows

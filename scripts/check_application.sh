@@ -76,6 +76,8 @@ fi
 
 # Service worker registration, offline fallback and the update prompt in Chromium over HTTPS.
 run_browser e2e
+# The same service worker journey in WebKit (#20 MOB-1/MOB-5 engine lane; Safari is a required target).
+run_browser -e FLUX_E2E_BROWSER=webkit e2e
 
 # Login, sharing, denied access and stream revocation in Chromium sessions (issue #29, AC-4).
 run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/access-stream.e2e.ts
