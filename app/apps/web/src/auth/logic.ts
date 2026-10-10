@@ -15,6 +15,8 @@ import { forgetRecentSearches } from '../search/recent';
 import { resetStream } from '../api/stream';
 import { forgetThoughtDrafts } from '../sketch/createdDraft';
 import { forgetComposerDrafts } from '../composer/draft';
+import { forgetBrowserDrafts } from '../app/drafts';
+import { forgetDocumentDrafts } from '../docs/drafts';
 import { forgetThoughtImages } from '../sketch/ThoughtImage';
 
 export type FieldErrors = Partial<Record<'name' | 'email' | 'password' | 'confirm', string>>;
@@ -212,6 +214,8 @@ export async function signOutAction(): Promise<FormResult | Response> {
   forgetRecentSearches();
   forgetThoughtDrafts();
   forgetComposerDrafts();
+  forgetBrowserDrafts();
+  forgetDocumentDrafts();
   forgetThoughtImages();
   return redirect('/sign-in?notice=signed-out');
 }
