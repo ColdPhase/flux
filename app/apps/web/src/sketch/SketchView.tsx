@@ -8,6 +8,7 @@ import { stageFile } from '../composer/api';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
+import { setReloadRetention } from '../app/reload-retention';
 import { createWork } from '../work/api';
 import { useSketchDoc, type Op } from './doc';
 import { audience, quote, sketchHref, when } from './format';
@@ -326,6 +327,8 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     const [spot] = spots(parentId, 1, { w: IMAGE_THOUGHT_SIZE.width, h: IMAGE_THOUGHT_SIZE.height });
     uploadingRef.current = true;
     setUploading(true);
+    const retainedUpload = Symbol('private thought image upload');
+    setReloadRetention('thought', retainedUpload, me.user.id, true);
     try {
       const type = imageTypeOf(new Uint8Array(await file.slice(0, 16).arrayBuffer()));
       if (!type) { say('That file is not a PNG, JPEG, GIF or WebP image, so nothing was pasted.'); return; }
@@ -341,6 +344,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     } catch (error) {
       say(uploadProblem(error));
     } finally {
+      setReloadRetention('thought', retainedUpload, me.user.id, false);
       uploadingRef.current = false;
       setUploading(false);
     }
