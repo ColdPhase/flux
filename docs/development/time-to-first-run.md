@@ -176,21 +176,70 @@ None of these are README gaps. They are what the measurement needed on a shared 
 - The clone folder was deleted.
 - The BuildKit cache is shared by every project on the host, so it was not pruned.
 
-## Linux amd64: proposal
+## Linux amd64: how to measure
 
-This has not been measured yet. Proposed: a one-off workflow that runs only on manual
-dispatch (`workflow_dispatch`) on a GitHub-hosted `ubuntu-latest` runner. It runs on no PR,
-schedule or matrix, as [CI and releases](../agents/ci-and-releases.md) asks. Each run gets a
-fresh virtual machine.
+This has not been measured yet. The
+[Time to first run workflow](../../.github/workflows/time-to-first-run.yml) measures it on a
+GitHub-hosted `ubuntu-latest` runner. It runs only on manual dispatch (`workflow_dispatch`):
+no PR, push or schedule starts it, and it has no matrix, as
+[CI and releases](../agents/ci-and-releases.md) asks. Each run gets a fresh virtual machine,
+so it cannot touch another Compose project, port or volume. It keeps the README defaults:
+port 8081 and the project name derived from the clone's folder.
 
-The job:
+### Run it
 
-1. Prints the CPU count, memory, free disk and `docker images` before cloning. The runner
-   image comes with some Docker images preloaded, so the job must record its own cache state.
-2. Runs the same four timed steps, with Playwright for step 4.
-3. Runs `./flux clean -y`, then a second clone of the same revision, to measure the
-   warm-cache number.
+GitHub dispatches a workflow only when the file is on the default branch, so this works
+after the workflow is merged. One run takes up to an hour of Actions time. Dispatch it once
+for each measurement, not on every change.
 
-GitHub's datacenter network makes the clone and the npm download faster than on a home
-connection, so its numbers are a lower bound. A clean Linux machine on a home network would
-show what people see. Use it after the workflow, if the two differ in a way that matters.
+```sh
+gh workflow run time-to-first-run.yml --ref main
+gh run list --workflow time-to-first-run.yml --limit 1   # note the run ID
+gh run watch <run-id>
+gh run download <run-id>
+```
+
+In the browser: Actions, then *Time to first run*, then *Run workflow* on `main`. The job
+summary shows the table of times. The artifact `time-to-first-run-<run-id>-<attempt>` has the
+details.
+
+### What the job does
+
+1. **Records the machine**: CPUs, memory, free disk, the Git, Docker and Compose versions,
+   the runner image version, the listening ports, and the preloaded Docker images and build
+   cache. The runner image comes with some Docker images, so the job records its own cache
+   state before cloning.
+2. **Cold pass**: times `git clone https://github.com/ColdPhase/flux.git`, then `./flux up`
+   until it exits, then the printed URL until it answers HTTP 200, then `./flux demo` until
+   the logins print.
+3. **Warm pass**: `./flux clean -y` removes the first clone's containers, volumes and image.
+   The base images and the BuildKit cache stay. A second clone in a new folder is timed the
+   same way. If `main` moved during the run, the second clone checks out the first one's
+   revision before `./flux up`, so both passes build the same code.
+4. **Uploads the timings**, also when a step failed:
+   - `machine.txt`;
+   - `timings.tsv`, the raw marks in Unix seconds;
+   - `summary.md` and `summary.json`, the times per step;
+   - the revision, the URL and the `./flux up` and `./flux demo` output of each pass;
+   - the Docker images and disk use after each pass.
+
+   The two demo passwords are redacted in the log and the artifact. The job stops before the
+   upload if one is found anyway.
+
+### Limits
+
+- **Steps 4 and 5 are not in the workflow.** The first message needs a browser (Playwright,
+  as in the macOS run), and the first agent reply needs a person's MCP client and model
+  account ([#320](https://github.com/ColdPhase/flux/issues/320)).
+- **The clone is always the default branch**, as in the README, whatever ref the workflow
+  is dispatched from. The revision is in the artifact.
+- **The network is a datacenter's.** It makes the clone and the npm download faster than on
+  a home connection, so these numbers are a lower bound. A clean Linux machine on a home
+  network would show what people see. Use it after the workflow, if the two differ in a way
+  that matters.
+
+### Record the result
+
+Add a section *Linux amd64, YYYY-MM-DD* above the macOS one, with the run link, the machine
+from `machine.txt`, the revision, both passes' times and the cache state. Then fill the
+Linux column of the [summary](#summary).
