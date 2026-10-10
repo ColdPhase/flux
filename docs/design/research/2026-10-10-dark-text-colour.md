@@ -40,9 +40,14 @@ should be re-opened before being quoted in a decision.
 3. **Apple HIG: hierarchy by label level, dark labels are tinted, not grey.**
    Dark `label` is white; `secondaryLabel` is `#EBEBF5` at 60% and
    `tertiaryLabel` `#EBEBF5` at 30% (a faint blue-grey tint, alpha over the
-   surface). Apple reserves tertiary for placeholder/disabled-like content, not
-   for reading text. **[primary, not re-fetched]**
+   surface). **[primary, not re-fetched]** The HIG colour page (fetched
+   2026-10-10) describes secondary label as "a label of lesser importance than
+   a primary label, such as a label used to represent a subheading or
+   additional information", quaternary as "such as watermark text", and asks
+   for custom colours to "supply light and dark variants, and an increased
+   contrast option for each variant". **[primary]**
    <https://developer.apple.com/design/human-interface-guidelines/color>
+   (accessed 2026-10-10)
 4. **Material Design (2018 dark theme): opacity tiers over `#121212`.** High
    emphasis 87% white, medium 60%, disabled 38%; dark grey `#121212` rather
    than black, and elevation shown by lighter surfaces. Medium (60%) is the
@@ -152,9 +157,10 @@ Observations **[inference]**:
 
 ## Not done in this session
 
-- Re-opening the Apple, Material (did not render), Refactoring UI pages and
+- Re-opening the Apple dark hex values, Material (did not render), Refactoring UI pages and
   the Geist/Radix dark hex tables on 2026-10-10 (those values are cited from
   prior knowledge and marked "not re-fetched").
 - Finding H2 2026 HN/X/Reddit discussions on dark-mode grey text and font
-  smoothing (one search on 2026-10-10 returned only 2012–2025 sources).
+  smoothing (two searches on 2026-10-10 returned only 2012–2025 sources; older HN
+  threads note that thin font weight hurts more than the grey itself).
 - Rendered macOS comparison of font smoothing on and off.
