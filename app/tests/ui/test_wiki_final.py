@@ -182,6 +182,46 @@ class WikiFinal(unittest.TestCase):
                 self.assertNotEqual(look[0], "rgba(0, 0, 0, 0)")
                 shot(page, f"wiki-final-phone-390-{theme}")
 
+    def test_phone_context_retires_when_the_reader_is_left(self) -> None:
+        page = self.open(PHONE, "light", touch=True)
+        header = page.locator("header.top")
+        expect(header.locator(".wiki-bar__title")).to_have_text("Wiki · 5 pages")
+        page.get_by_role("link", name="Edit", exact=True).click()
+        expect(page.get_by_label("Text (Markdown)")).to_be_visible()
+        expect(header.locator(".wiki-bar__title")).to_have_count(0)
+        expect(header.get_by_role("button", name="More", exact=True)).to_have_count(0)
+        expect(header.locator(".top__audience")).to_be_visible()
+        private = BODY + "\nA private phone note, not published."
+        page.get_by_label("Text (Markdown)").fill(private)
+        page.get_by_role("navigation", name="Project views").get_by_role("link", name="Conversation", exact=True).click()
+        expect(header.locator(".wiki-bar__title")).to_have_count(0)
+        page.goto(f"/projects/{self.project_id}/docs/{self.doc_id}")
+        kept = page.get_by_role("link", name="Unsaved changes in this tab", exact=True)
+        expect(kept).to_be_visible()
+        kept.click()
+        expect(page.get_by_label("Text (Markdown)")).to_have_value(private)
+        page.get_by_role("link", name="Cancel", exact=True).click()
+        expect(header.locator(".wiki-bar__title")).to_have_text("Wiki · 5 pages")
+        page.get_by_role("navigation", name="Project views").get_by_role("link", name="Conversation", exact=True).click()
+        expect(header.locator(".wiki-bar__title")).to_have_count(0)
+        expect(header.get_by_role("button", name="More", exact=True)).to_have_count(0)
+        expect(header.locator(".top__audience")).to_be_visible()
+
+    def test_phone_share_refusal_keeps_the_exact_link_and_audience_reachable(self) -> None:
+        page = self.open(PHONE, "light", touch=True)
+        page.evaluate("Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.reject(new DOMException('Test browser refusal', 'NotAllowedError')) } })")
+        page.locator("header.top").get_by_role("button", name="More", exact=True).click()
+        dialog = page.get_by_role("dialog", name="Page actions")
+        dialog.get_by_role("button", name="Copy link", exact=True).click()
+        field = dialog.get_by_label("Link to this page")
+        expect(field).to_have_value(f"{ORIGIN}/projects/{self.project_id}/docs/{self.doc_id}")
+        expect(field).to_be_focused()
+        self.assertTrue(field.evaluate("e => e.selectionStart === 0 && e.selectionEnd === e.value.length"))
+        expect(dialog.get_by_role("status")).to_contain_text("The browser did not allow copying")
+        dialog.get_by_role("button", name="See who has access", exact=True).click()
+        expect(dialog).to_have_count(0)
+        expect(page.locator("#details").get_by_role("heading", name="Who can see this", exact=True)).to_be_visible()
+
     def test_table_regions_never_reparse_literal_attribute_text(self) -> None:
         page = self.open(DESKTOP, "light")
         literal = '<table onmouseover="window.__tableAttributeExecuted = true"> literal </table>'
