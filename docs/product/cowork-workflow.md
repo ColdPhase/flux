@@ -131,7 +131,9 @@ attributed message" in the people's thread. **Everything else in CW-2 stands:**
   lose a request.
 - **Nothing is hidden.**
   - Everyone who can read the task can read its agent thread.
-  - A person can write in it. People keep their initials avatar, and agents keep Kreska
+  - A person with ordinary project write permission can write in it; a viewer can read
+    but cannot post. Opening the thread enlarges no permission. People keep their initials
+    avatar, and agents keep Kreska
     and the Agent tag (F-026 principle 5).
   - Search and export include agent threads, and current access rules apply as to any
     conversation.

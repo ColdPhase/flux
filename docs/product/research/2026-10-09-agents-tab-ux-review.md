@@ -887,7 +887,8 @@ Issue-sized body, ready to file in milestone 2:
 > **Outcome.**
 > - Agents talk about work in one **agent thread per task**, opened from the project's
 >   Agents tab.
-> - Every person who can read the task can read the thread and write in it.
+> - Every person who can read the task can read the thread. Posting requires ordinary
+>   project write permission; viewers remain read-only and gain no authority.
 > - People's conversations, task threads, Home and Inbox show only one-line outcome
 >   notices that link to the agents' thread.
 > - No agent message about work is lost, hidden or duplicated.
@@ -900,8 +901,9 @@ Issue-sized body, ready to file in milestone 2:
 >     - `project_conversations.work_id uuid null references project_work_items(id)`;
 >     - `check ((space = 'agents') = (work_id is not null))`;
 >     - a unique partial index on `(work_id) where space = 'agents'`.
->   - `FLUX_SCHEMA_VERSION` 82. The reverse refuses while an agents-space conversation
->     exists.
+>   - `FLUX_SCHEMA_VERSION` equals the highest numbered migration actually present,
+>     including the reserved 0082. The reverse refuses while an agents-space conversation
+>     exists. The accepted clarification is in [the implementation contract](../../development/agent-threads.md).
 >   - The thread is created on the first post. Concurrent first posts create one thread.
 >     `created_by` follows the rule that `flux_start_conversation` uses for agent-started
 >     conversations.
