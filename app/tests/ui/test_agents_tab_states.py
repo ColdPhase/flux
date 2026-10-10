@@ -342,6 +342,10 @@ class AgentsTabStates(unittest.TestCase):
         text = message.inner_text()
         self.assertEqual(text.count("Merge PR 42 now?"), 1, text)
         self.assertNotIn("1. Merge now", text)
+        # #347 review finding 2: a teammate who cannot answer still sees the answers offered, listed read-only in the card.
+        expect(message.get_by_role("list", name="Answers offered")).to_contain_text("Merge now")
+        expect(message.get_by_role("list", name="Answers offered")).to_contain_text("Wait")
+        expect(message.get_by_role("button", name="Merge now")).to_have_count(0)
         # Negative control: a message without a question still shows its body.
         expect(page.locator(f'[data-message-id="{self.ids["m3"]}"]')).to_contain_text("Thanks, keep going.")
 
@@ -361,6 +365,21 @@ class AgentsTabStates(unittest.TestCase):
         action.click()
         expect(page.get_by_text("Handed #5 back to Lab helper")).to_be_visible()
         self.assertEqual(self.task("task5")["owner"]["id"], self.ids["lab"])
+
+    def test_18_the_phone_hand_back_is_a_44_px_target(self) -> None:
+        # #347 review finding 1: on a phone the toast's Hand back is a touch target of at least 44 px high.
+        phone = self.page("ada", phone=True)
+        phone.goto(f"/projects/{self.ids['project']}/agents")
+        # On a phone the row's Stop is in the agent's panel (as Take back is, test_15).
+        # Claude Code holds #3 (in progress, Ada's own); earlier tests stop Codex and Lab helper.
+        self.row(phone, "claude").locator(".agents-row__btn").tap()
+        phone.get_by_role("complementary", name="Claude Code, details").get_by_role("button", name="Stop Claude Code").tap()
+        action = phone.get_by_role("button", name="Hand back")
+        expect(action).to_be_visible()
+        box = action.bounding_box()
+        assert box
+        self.assertGreaterEqual(box["height"], 44, f"Hand back is {box['height']:.1f} px high on a phone")
+        # Negative control: the old padding-only action was about 33 px high, so this assertion fails without the coarse-pointer rule.
 
     def test_09_the_phone_thread_is_a_sheet_over_the_list_with_a_way_back_to_the_agent(self) -> None:
         # #347 review N2 and P1-2: on a phone the thread covers the Agents pane; its title and "‹" are on screen; "‹" returns to the agent.

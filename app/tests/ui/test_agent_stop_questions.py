@@ -260,6 +260,10 @@ class StopAndQuestions(unittest.TestCase):
         card = ada.locator(".qcard").first
         expect(card).to_contain_text("Waiting for the person asked to answer.")
         expect(card.get_by_role("button")).to_have_count(0)
+        # #347 review finding 2: the answers offered stay readable for a teammate, listed without buttons.
+        offered = card.get_by_role("list", name="Answers offered")
+        expect(offered).to_contain_text("Per bed")
+        expect(offered).to_contain_text("One value")
         phone = self.page("jonas", phone=True)
         sent = self.route_question(phone, asked=JONAS["id"], message_id=message_id, conversation_id=conversation_id)
         phone.goto(f"/projects/{pid}/conversations/{conversation_id}")

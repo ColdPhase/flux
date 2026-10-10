@@ -49,6 +49,7 @@ function Card({ question, meId, writable }: { question: AgentQuestion; meId: str
   const labelId = useId();
   const mine = question.askedUserId === meId;
   const answered = question.answer;
+  const interactive = mine && writable && !answered;
 
   const send = async (key: string, command: { optionIndex: number } | { text: string }) => {
     if (busy) return;
@@ -72,13 +73,17 @@ function Card({ question, meId, writable }: { question: AgentQuestion; meId: str
   return (
     <section className="qcard" aria-labelledby={labelId} data-question-id={question.id} data-state={answered ? 'answered' : 'open'}>
       <b className="qcard__q" id={labelId}>{question.question}</b>
+      {interactive ? null : (
+        // Everyone else reads the answers offered here, so the thread's body (which WhenNoQuestion hides) loses nothing (#347 review finding 2).
+        <ol className="qcard__offered" aria-label="Answers offered">{question.options.map((option) => <li key={option}>{option}</li>)}</ol>
+      )}
       {answered ? (
         <p className="qcard__answer" role="status">
           <Icon name="check" size={14} />
           <span><span className="ui-vh">Answered: </span>{answered.text}</span>
           <span className="qcard__by">{answered.by.id === meId ? 'You' : answered.by.name} · <time dateTime={answered.at}>{time.format(new Date(answered.at))}</time></span>
         </p>
-      ) : mine && writable ? (
+      ) : interactive ? (
         <>
           <div className="qcard__options" role="group" aria-label="Ready answers">
             {question.options.map((option, index) => (
