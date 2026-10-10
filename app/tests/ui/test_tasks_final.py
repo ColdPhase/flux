@@ -345,7 +345,12 @@ class TasksFinalJourney(unittest.TestCase):
                 expect(enclosure.locator(".ws-task__glyph .ui-glyph--blocked")).to_have_count(1)
                 expect(self.row(page, CALIBRATE).locator(".ws-item__s")).to_contain_text("Claude Code")
                 expect(self.row(page, CALIBRATE).locator(".ws-item__s .agent-tag")).to_have_count(1)
-                expect(self.row(page, CALIBRATE).locator(".ws-item__s")).to_contain_text("is working")
+                expect(self.row(page, CALIBRATE).locator(".ws-task__word")).to_contain_text("In progress")
+                self.assertTrue(self.row(page, CALIBRATE).locator('.ws-task__word').evaluate("""el => {
+                    const parent = el.closest('.ws-item__s').getBoundingClientRect();
+                    const range = document.createRange(); range.selectNodeContents(el);
+                    return [...range.getClientRects()].every(r => r.top >= parent.top - 1 && r.bottom <= parent.bottom + 1);
+                }"""), 'the agent state word is visibly inside its metadata, not merely in the DOM')
                 expect(self.row(page, CALIBRATE).locator(".ws-item__r .kreska")).to_have_count(1)
                 expect(self.row(page, SCHOOL).locator(".ws-av")).to_have_text("JB")
                 self.assertEqual(self.row(page, SCHOOL).locator(".ws-av").evaluate("el => el.offsetWidth"), 24)
@@ -437,6 +442,84 @@ class TasksFinalJourney(unittest.TestCase):
         expect(self.card(page.get_by_role("region", name="Done", exact=True), LABELS)).to_be_visible()
         self.wait_status(page, "labels", "done")
         self.set_status(page, "labels", "open")
+
+    def test_11_phone_feedback_clears_the_real_footer_and_keeps_actions_reachable(self) -> None:
+        """Real state changes, Undo and offline failures at both themes and larger text sizes."""
+        for dark in (False, True):
+            for width, factor, safe_padding in ((390, 1, 0), (390, 1.25, 34), (320, 2, 34)):
+                with self.subTest(dark=dark, width=width, text_size=factor):
+                    page = self.tasks(phone=True, dark=dark)
+                    page.set_viewport_size({'width': width, 'height': 844 if width == 390 else 568})
+                    self.set_status(page, 'labels', 'open')
+                    page.reload(wait_until='networkidle')
+                    page.add_style_tag(content=f'html {{ font-size: {16 * factor}px !important; }}')
+                    row = self.row(page, LABELS)
+                    before = self.task(page, 'labels')
+                    row.get_by_role('button', name='Open. Set to In progress').tap()
+                    toast = page.locator('.ui-toast')
+                    expect(toast).to_contain_text('in progress')
+                    # A changing safe-area footprint must move an already-visible toast.
+                    if safe_padding:
+                        page.add_style_tag(content=f'.ui-bottomnav {{ padding-bottom: {safe_padding}px !important; }}')
+                    self.feedback_geometry(page, 'confirmed', dark, width, factor)
+                    if factor == 1:
+                        shot(page, f"375-feedback-success-390-{'dark' if dark else 'light'}")
+                    # The same feedback follows live footer removal/reappearance on resize.
+                    if factor == 1.25:
+                        page.set_viewport_size({'width': 1024, 'height': 844})
+                        expect(page.get_by_role('navigation', name='Main places')).to_have_count(0)
+                        page.wait_for_function("() => Math.abs(innerHeight - document.querySelector('.ui-toast').getBoundingClientRect().bottom - 20) <= 1")
+                        page.set_viewport_size({'width': width, 'height': 844})
+                        self.feedback_geometry(page, 'footer returns', dark, width, factor)
+                    toast.get_by_role('button', name='Undo', exact=True).tap()
+                    expect(page.locator('.ui-toast').filter(has_text='back to open')).to_be_visible()
+                    stored = self.task(page, 'labels')
+                    self.assertEqual((stored['status'], stored['version']), ('open', before['version'] + 2))
+                    page.locator('.ui-toast__close').last.tap()
+                    expect(page.locator('.ui-toast')).to_have_count(0)
+                    page.context.set_offline(True)
+                    row.get_by_role('button', name='Open. Set to In progress').tap()
+                    expect(page.locator('.ui-toast--danger')).to_contain_text('Flux could not be reached')
+                    self.feedback_geometry(page, 'offline', dark, width, factor)
+                    if factor == 1:
+                        shot(page, f"375-feedback-error-390-{'dark' if dark else 'light'}")
+                    page.context.set_offline(False)
+                    self.assertEqual(self.task(page, 'labels')['version'], stored['version'])
+                    page.locator('.ui-toast__close').tap()
+                    expect(page.locator('.ui-toast')).to_have_count(0)
+                    page.get_by_role('navigation', name='Main places').get_by_role('link', name='Home', exact=True).tap()
+                    expect(page.get_by_role('heading', level=1, name='Home')).to_be_visible()
+
+    def feedback_geometry(self, page: Page, state: str, dark: bool, width: int, factor: float) -> None:
+        page.wait_for_function("() => document.getAnimations().every(a => a.playState !== 'running' || a.effect?.getComputedTiming().endTime === Infinity)")
+        page.wait_for_function("""() => {
+            const toast = document.querySelector('.ui-toast');
+            const nav = document.querySelector('.ui-bottomnav');
+            return toast && nav && toast.getBoundingClientRect().bottom <= nav.getBoundingClientRect().top - 8;
+        }""")
+        observed = page.evaluate("""() => {
+            const toast = document.querySelector('.ui-toast');
+            const nav = document.querySelector('.ui-bottomnav');
+            const t = toast.getBoundingClientRect(), n = nav.getBoundingClientRect();
+            const controls = [...toast.querySelectorAll('button'), ...nav.querySelectorAll('a')].map(el => {
+                const r = el.getBoundingClientRect();
+                const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+                return {name: el.getAttribute('aria-label') || el.textContent, width: r.width, height: r.height,
+                    hit: hit === el || el.contains(hit), within: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight};
+            });
+            return {gap: n.top - t.bottom, toast: {top: t.top, bottom: t.bottom, left: t.left, right: t.right},
+                nav: {top: n.top, height: n.height}, controls};
+        }""")
+        self.assertGreaterEqual(observed['gap'], 8)
+        self.assertGreaterEqual(observed['toast']['top'], 0)
+        self.assertGreaterEqual(observed['toast']['left'], 0)
+        self.assertLessEqual(observed['toast']['right'], width)
+        for control in observed['controls']:
+            self.assertGreaterEqual(control['width'], 44, control)
+            self.assertGreaterEqual(control['height'], 44, control)
+            self.assertTrue(control['hit'] and control['within'], control)
+        print('Tasks feedback geometry', json.dumps({'engine': os.environ.get('FLUX_UI_BROWSER'), 'state': state,
+              'dark': dark, 'width': width, 'text_size': factor, **observed}, ensure_ascii=False))
 
 
 if __name__ == "__main__":

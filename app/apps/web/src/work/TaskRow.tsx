@@ -19,7 +19,7 @@ function meta(item: WorkRowProjection, meId: string, owners: AgentOwners) {
   // An agent keeps its Agent tag and the person it works for in every state; a person with the same name does not get them.
   const who = !owner ? 'no owner'
     : owner.kind === 'agent'
-      ? <><AgentIdentity icon={false} name={owner.name} owner={owners.get(owner.id)} />{item.status === 'in_progress' ? ' is working' : ''}</>
+      ? <AgentIdentity icon={false} name={owner.name} owner={owners.get(owner.id)} />
       : owner.id === meId ? 'you' : owner.name;
   const rest = [
     item.status === 'blocked' && item.blocker ? `waiting for ${item.blocker}` : null,
@@ -115,7 +115,7 @@ export function TaskRow({ item, meId, owners, writable, muted, onOpen, onChange 
   const word = STATUS_LABEL[item.status];
   const label = writable ? `${word}. Set to ${STATUS_LABEL[nextStatus(item.status)]}` : word;
   return (
-    <li ref={row} className={`ws-task${dragging ? ' is-dragging' : ''}${open ? ' is-open' : ''}`} data-work-kind="work" data-work-id={item.id} data-status={item.status}>
+    <li ref={row} className={`ws-task${item.owner?.kind === 'agent' ? ' ws-task--agent' : ''}${dragging ? ' is-dragging' : ''}${open ? ' is-open' : ''}`} data-work-kind="work" data-work-id={item.id} data-status={item.status}>
       {writable && !finished ? (
         <div className="ws-task__acts">
           <button type="button" className="ws-task__done" tabIndex={open ? 0 : -1} aria-hidden={open ? undefined : true}

@@ -214,24 +214,25 @@ svg { flex: none; }
 
 /* ---------- Toast: an inverted pill ---------- */
 .ui-toasts {
-  position: fixed; left: 50%; bottom: max(20px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: var(--z-toast);
+  position: fixed; left: 50%; bottom: max(20px, calc(env(safe-area-inset-bottom) + 12px), calc(var(--ui-bottomnav-inset, 0px) + 12px)); transform: translateX(-50%); z-index: var(--z-toast);
   display: flex; flex-direction: column; align-items: center; gap: 8px; width: max-content; max-width: calc(100vw - 32px); pointer-events: none;
 }
 .ui-toast {
-  display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 4px 6px 4px 16px; border-radius: var(--r-pill);
+  display: flex; align-items: center; gap: 10px; min-height: 44px; max-width: 100%; padding: 4px 6px 4px 16px; border-radius: var(--r-pill);
   background-color: var(--inv); background-image: var(--grad-inv); color: var(--oninv); font-size: var(--fs-base); font-weight: 500; line-height: 1.4; box-shadow: var(--sh-pop); pointer-events: auto;
 }
 .ui-toast--success svg:first-child { color: var(--oninv); }
-.ui-toast__msg { padding: 6px 0; }
+.ui-toast > svg { flex: none; }
+.ui-toast__msg { min-width: 0; padding: 6px 0; overflow-wrap: anywhere; }
 .ui-toast__action {
-  display: inline-flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 12px; border-radius: var(--r-pill); color: inherit; font-weight: 600;
+  display: inline-flex; align-items: center; flex: none; gap: 8px; min-height: 32px; padding: 0 12px; border-radius: var(--r-pill); color: inherit; font-weight: 600;
   box-shadow: -1px 0 0 color-mix(in srgb, var(--oninv) 30%, transparent); transition: var(--tr);
 }
 .ui-toast__action:hover { background: color-mix(in srgb, var(--oninv) 14%, transparent); }
 .ui-toast__action:focus-visible { outline-color: var(--oninv); }
 .ui-toast__action kbd { font: 500 11px/1 var(--mono); padding: 3px 5px; border-radius: 5px; background: color-mix(in srgb, var(--oninv) 16%, transparent); }
 @media (pointer: coarse) { .ui-toast__action { min-height: 44px; } .ui-toast__action kbd { display: none; } }
-.ui-toast__close { display: grid; place-items: center; width: 32px; height: 32px; border-radius: var(--r-pill); color: inherit; opacity: .7; transition: var(--tr); }
+.ui-toast__close { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: var(--r-pill); color: inherit; opacity: .7; transition: var(--tr); }
 .ui-toast__close:hover { opacity: 1; background: color-mix(in srgb, var(--oninv) 14%, transparent); }
 .ui-toast__close:focus-visible { outline-color: var(--oninv); }
 @media (pointer: coarse) { .ui-toast__close { width: 44px; height: 44px; } }

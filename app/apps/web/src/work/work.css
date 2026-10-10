@@ -106,6 +106,9 @@ button.ws-task__glyph:active { background: var(--hov); }
   .ws-task .ws-item { padding: 8px 16px 8px 4px; border-radius: 0; }
   .ws-task .ws-item__t { font-size: 15px; font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ws-task .ws-item__s { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 12.5px; }
+  /* Identity, named owner and the state word must all remain readable when an agent wraps. */
+  .ws-task--agent .ws-item__s { display: block; -webkit-line-clamp: unset; overflow: visible; }
+  .ws-task--agent .agent-id { max-width: 100%; vertical-align: middle; }
   .ws-task__acts { width: 76px; }
 }
 @media (pointer: coarse) { .ws-mineall button { min-height: 44px; } .ws-task__glyph { width: 44px; height: 44px; margin: 0; } }

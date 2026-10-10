@@ -235,6 +235,16 @@ class TasksReviewJourney(unittest.TestCase):
             expect(meta.locator(".agent-tag"), f"{label}: {title} shows the Agent tag").to_have_count(1)
             expect(meta, f"{label}: {title} names the owner").to_contain_text("for Ada Kowalska")
             expect(meta, f"{label}: {title} names the agent").to_contain_text("Alex")
+            word = meta.locator('.ws-task__word')
+            expect(word).to_contain_text({'agent_open': 'Open', 'agent_doing': 'In progress', 'agent_blocked': 'Blocked'}[key])
+            # Presence in textContent did not catch the phone's two-line clipping.
+            for part in (word, meta.locator('.agent-for'), meta.locator('.agent-tag')):
+                self.assertTrue(part.evaluate("""el => {
+                    const box = el.closest('.ws-item__s').getBoundingClientRect();
+                    const range = document.createRange(); range.selectNodeContents(el);
+                    const lines = [...range.getClientRects()].filter(r => r.width && r.height);
+                    return lines.length > 0 && lines.every(r => r.top >= box.top - 1 && r.bottom <= box.bottom + 1);
+                }"""), f'{label}: {title} exposes the state, tag and owner without clipping')
         expect(self.row(page, "Alex the person's job").locator(".agent-tag")).to_have_count(0)
         expect(self.row(page, "Alex the person's job").locator(".ws-item__s")).to_contain_text("Alex")
         expect(self.row(page, "Agent stuck job").locator(".ui-pill--inv")).to_have_text("Blocked")
