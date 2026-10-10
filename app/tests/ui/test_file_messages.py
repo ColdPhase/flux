@@ -419,7 +419,8 @@ class FilesReferencesPhotos(unittest.TestCase):
                     at_least_44(self, control.bounding_box()["height"])
                 self.shot(page, f"viewer-390-{'dark' if dark else 'light'}")
                 viewer.get_by_role("button", name="Create task", exact=True).tap()
-                expect(viewer).to_have_count(0)
+                # The photo itself closes; a task sheet that Create task opens may be a dialog too, so the photo viewer is named.
+                expect(page.locator(".photo-viewer")).to_have_count(0)
 
     def open_in(self, page: Page, scope, name: str):
         opener = scope.get_by_role("button", name=name)
