@@ -3,7 +3,8 @@
 On the computer the Appearance card holds Text size (Small, Default, Large), Reduce motion and Kreska's
 small-moments switch. On the phone the text size follows the system and is a plain value, and Reduce
 motion is not shown. Both choices are kept on this device, applied before the first render, and only
-ever add reduction: a stored "off" never overrides the operating system's reduced-motion setting.
+ever add reduction: a stored "off" never overrides the operating system's reduced-motion setting. A choice
+made in Settings reaches the other tabs of the same browser at once, without a reload.
 
 Runs with the other tests/ui modules through scripts/check_ui.sh against the running Compose application.
 FLUX_UI_BROWSER selects chromium (default) or webkit.
@@ -61,7 +62,8 @@ class ReadingAndMotion(unittest.TestCase):
         cls.browser.close()
         cls.pw.stop()
 
-    def page(self, *, phone: bool = False, reduced_motion: str = "no-preference") -> Page:
+    def context(self, *, phone: bool = False, reduced_motion: str = "no-preference") -> BrowserContext:
+        """One browser profile: its pages share localStorage, so a choice in one tab reaches the others."""
         options: dict = {
             "base_url": ORIGIN, "color_scheme": "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw",
             "storage_state": self.state, "reduced_motion": reduced_motion,
@@ -72,11 +74,43 @@ class ReadingAndMotion(unittest.TestCase):
             options.update(viewport=DESKTOP, device_scale_factor=1)
         context: BrowserContext = self.browser.new_context(**options)
         self.addCleanup(context.close)
-        page = context.new_page()
+        return context
+
+    def watch(self, page: Page) -> Page:
+        """Fails the test when the page raises an uncaught error."""
         errors: list[str] = []
         page.on("pageerror", lambda error: errors.append(str(error)))
         self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
         return page
+
+    def page(self, *, phone: bool = False, reduced_motion: str = "no-preference") -> Page:
+        return self.watch(self.context(phone=phone, reduced_motion=reduced_motion).new_page())
+
+    def start_live_probe(self, page: Page) -> None:
+        """Leaves a probe running in the page with the app's real keyframe, as a looping mark would."""
+        page.evaluate(
+            """(css) => {
+              const probe = document.createElement('span');
+              probe.id = 'motion-probe-live';
+              probe.style.animation = css;
+              document.body.appendChild(probe);
+            }""",
+            PROBE,
+        )
+
+    def live_probe(self, page: Page) -> dict:
+        """The probe's computed duration and iteration count, and how many of its animations still run."""
+        return page.evaluate(
+            """() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => {
+              const probe = document.getElementById('motion-probe-live');
+              const style = getComputedStyle(probe);
+              resolve({
+                duration: style.animationDuration,
+                iterations: style.animationIterationCount,
+                running: probe.getAnimations().filter((animation) => animation.playState === 'running').length,
+              });
+            })))"""
+        )
 
     def root_font_size(self, page: Page) -> str:
         return page.evaluate("getComputedStyle(document.documentElement).fontSize")
@@ -197,6 +231,53 @@ class ReadingAndMotion(unittest.TestCase):
         expect(page.get_by_role("radiogroup", name="Theme")).to_be_visible()
         self.assertEqual(page.get_by_role("switch", name="Reduce motion").count(), 0)
         self.assertEqual(page.get_by_text("Reduce motion").count(), 0)
+
+    # ---------------------------------------------------------------- other tabs of the same browser
+
+    def test_06_reduce_motion_chosen_in_settings_stops_motion_in_a_tab_already_open(self) -> None:
+        context = self.context()
+        open_tab = self.watch(context.new_page())
+        open_tab.goto("/")
+        self.start_live_probe(open_tab)
+        self.assertEqual(self.live_probe(open_tab)["duration"], "1.2s", "motion runs in the open tab before the choice")
+        self.assertGreater(self.script_duration_ms(open_tab), 0, "script motion runs before the choice")
+
+        settings = self.watch(context.new_page())
+        settings.goto("/settings")
+        switch = settings.get_by_role("switch", name="Reduce motion")
+        expect(switch).to_have_attribute("aria-checked", "false")
+        switch.click()
+        expect(switch).to_have_attribute("aria-checked", "true")
+
+        # The open tab is not reloaded: it applies the stored choice when the browser reports the change.
+        open_tab.wait_for_function("document.documentElement.dataset.motion === 'reduce'", timeout=10000)
+        live = self.live_probe(open_tab)
+        self.assertEqual(live["duration"], "0s", "the running animation in the open tab stops at once")
+        self.assertEqual(live["running"], 0, "nothing keeps running in the open tab")
+        self.assertEqual(self.script_duration_ms(open_tab), 0, "script motion reads 0 ms in the open tab")
+
+        switch.press("Space")
+        expect(switch).to_have_attribute("aria-checked", "false")
+        open_tab.wait_for_function("document.documentElement.dataset.motion === undefined", timeout=10000)
+        self.assertEqual(self.live_probe(open_tab)["duration"], "1.2s", "motion returns in the open tab")
+        self.assertGreater(self.script_duration_ms(open_tab), 0)
+
+    def test_07_text_size_chosen_in_settings_reaches_a_tab_already_open(self) -> None:
+        context = self.context()
+        open_tab = self.watch(context.new_page())
+        open_tab.goto("/")
+        self.assertEqual(self.root_font_size(open_tab), "16px")
+
+        settings = self.watch(context.new_page())
+        settings.goto("/settings")
+        size = settings.get_by_role("radiogroup", name="Text size")
+        size.get_by_role("radio", name="Large").click()
+        open_tab.wait_for_function("document.documentElement.dataset.textSize === 'large'", timeout=10000)
+        self.assertEqual(self.root_font_size(open_tab), "18px", "the open tab scales without a reload")
+
+        size.get_by_role("radio", name="Default").click()
+        open_tab.wait_for_function("document.documentElement.dataset.textSize === undefined", timeout=10000)
+        self.assertEqual(self.root_font_size(open_tab), "16px", "the open tab returns to the default size")
 
 
 if __name__ == "__main__":

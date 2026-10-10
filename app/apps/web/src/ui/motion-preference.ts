@@ -25,10 +25,25 @@ function apply(on: boolean) {
   else delete root.dataset.motion;
 }
 
-/** Applies the stored choice before the first render, as applyStoredSmallMoments does. */
+let listening = false;
+
+/**
+ * Applies the stored choice before the first render, as applyStoredSmallMoments does, and follows other
+ * tabs of this browser: a choice made in Settings there stops motion already running here (#452 review).
+ */
 export function applyStoredReduceMotion() {
   stored = read();
   apply(stored);
+  if (!listening) {
+    listening = true;
+    window.addEventListener('storage', (event) => {
+      if (event.key === null || event.key === KEY) {
+        stored = read();
+        apply(stored);
+        listeners.forEach((listener) => listener());
+      }
+    });
+  }
 }
 
 export function setReduceMotion(on: boolean) {

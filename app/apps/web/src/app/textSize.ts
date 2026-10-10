@@ -26,10 +26,25 @@ function apply(size: TextSize) {
   else root.dataset.textSize = size;
 }
 
-/** Applies the stored size before the first render, as applyStoredSmallMoments does. */
+let listening = false;
+
+/**
+ * Applies the stored size before the first render, as applyStoredSmallMoments does, and follows other
+ * tabs of this browser, so a size chosen in Settings there reaches open screens without a reload.
+ */
 export function applyStoredTextSize() {
   current = read();
   apply(current);
+  if (!listening) {
+    listening = true;
+    window.addEventListener('storage', (event) => {
+      if (event.key === null || event.key === KEY) {
+        current = read();
+        apply(current);
+        listeners.forEach((listener) => listener());
+      }
+    });
+  }
 }
 
 export function setTextSize(size: TextSize) {
