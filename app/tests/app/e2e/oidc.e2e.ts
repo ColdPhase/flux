@@ -364,7 +364,7 @@ test('a new identity with a verified account\'s email cannot take that account (
   }
 });
 
-test('an unverified account holding the provider\'s address: link first, and claiming releases only the address (#313)', async () => {
+test('an unverified account holding the provider\'s address: SSO recovery guidance, and claiming releases only the address (#313)', async () => {
   const localId = randomUUID();
   await pool.query('INSERT INTO auth_users (id, name, email, email_verified) VALUES ($1, $2, $3, false)', [localId, 'Dave Unverified', 'dave@acme.test']);
   try {
@@ -372,7 +372,8 @@ test('an unverified account holding the provider\'s address: link first, and cla
     const page = await sso(attempt, 'dave');
     assert.equal(new URL(page.url()).pathname, '/claim', 'the claim page, not a session');
     await page.getByRole('heading', { name: 'This address already has a Flux account' }).waitFor();
-    assert.ok(await page.getByRole('link', { name: 'Sign in to that account' }).isVisible(), 'linking is offered first');
+    assert.equal(await page.getByRole('link', { name: 'Sign in to that account' }).count(), 0, 'no ordinary password fallback under SSO');
+    assert.match(await page.locator('.auth__notice').innerText(), /ask the person who runs Flux to link it/, 'the existing account has audited operator recovery guidance');
     assert.equal((await me(attempt)).status, 401, 'no session before a claim');
     await page.getByRole('button', { name: 'Claim this address' }).click();
     // The provider step runs again; its own session does not carry over, so the person signs in there once more.
