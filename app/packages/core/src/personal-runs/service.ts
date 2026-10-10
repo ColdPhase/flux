@@ -268,6 +268,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled }:
       const owner = ownerOf(principal);
       const input = normalizeEnable(command);
       return uow.run(async (ports) => {
+        await ports.assistants?.lockOwner(owner);
         const { workspaceId } = await ports.access.requireInvoke(principal, input.agentId, { lock: true });
         if (await ports.runs.enablement(owner, { lock: true })) throw new ConflictError('Your assistant is already enabled', 'PERSONAL_RUN_ALREADY_ENABLED');
         // The owner chooses which of their connections the assistant uses; without a choice, their newest.
@@ -288,6 +289,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled }:
         });
         if (!created) throw new ConflictError('Your assistant is already enabled', 'PERSONAL_RUN_ALREADY_ENABLED');
         await ports.runs.selectAgent(owner, workspaceId, input.agentId);
+        await ports.assistants?.ensure(owner, workspaceId, input.agentId);
         return status(ports, owner);
       });
     },
@@ -310,9 +312,11 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled }:
       const owner = ownerOf(principal);
       const agentId = id(command?.agentId, 'agentId');
       return uow.run(async (ports) => {
+        await ports.assistants?.lockOwner(owner);
         const { workspaceId } = await ports.access.requireInvoke(principal, agentId, { lock: true });
         await lockedEnablement(ports, owner);
         await ports.runs.selectAgent(owner, workspaceId, agentId);
+        await ports.assistants?.ensure(owner, workspaceId, agentId);
         await ports.runs.updateEnablement(owner, {});
         return status(ports, owner);
       });
@@ -344,6 +348,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled }:
       await uow.run(async (ports) => {
         await lockedEnablement(ports, owner);
         for (const ended of await ports.runs.endUndispatched(owner, 'revoked')) await announce(ports, ended);
+        await ports.assistants?.remove(owner);
         await ports.runs.deleteEnablement(owner);
       });
     },

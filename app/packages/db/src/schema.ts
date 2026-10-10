@@ -614,7 +614,7 @@ export const agentConnections = pgTable('agent_connections', {
   agentId: uuid('agent_id').notNull(),
   name: text('name').notNull().default('External connection'),
   clientDesignation: text('client_designation', { enum: ['claude_code', 'codex', 'other'] }).notNull().default('other'),
-  computeSource: text('compute_source', { enum: ['user_operated_claude_code', 'user_operated_external_client'] }).notNull().default('user_operated_external_client'),
+  computeSource: text('compute_source', { enum: ['user_operated_claude_code', 'user_operated_external_client', 'owner_assistant'] }).notNull().default('user_operated_external_client'),
   scopes: text('scopes', { enum: ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'] }).array().notNull(),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -624,6 +624,32 @@ export const agentConnections = pgTable('agent_connections', {
   index('agent_connections_owner_idx').on(table.ownerUserId, table.createdAt, table.id),
   foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }),
 ]);
+
+/** F-027 safety settings; area/project permission state is only in the S6 policy (0077). */
+export const assistantSettings = pgTable('assistant_settings', {
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  agentId: uuid('agent_id').notNull(), connectionId: uuid('connection_id').notNull().unique(),
+  approvalMode: text('approval_mode', { enum: ['act', 'ask'] }).notNull().default('act'),
+  changesPerRun: integer('changes_per_run').notNull().default(20),
+  backgroundRunsPerDay: integer('background_runs_per_day').notNull().default(10),
+  projectMode: text('project_mode', { enum: ['all', 'chosen'] }).notNull().default('all'),
+  version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [primaryKey({ columns: [table.workspaceId, table.ownerUserId] }),
+  foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }),
+  foreignKey({ columns: [table.workspaceId, table.connectionId], foreignColumns: [agentConnections.workspaceId, agentConnections.id] }).onDelete('cascade')]);
+
+export const assistantJoinRequests = pgTable('assistant_join_requests', {
+  id: uuid('id').primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  projectId: uuid('project_id').notNull(), ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  connectionId: uuid('connection_id').notNull().references(() => assistantSettings.connectionId, { onDelete: 'cascade' }),
+  state: text('state', { enum: ['pending', 'accepted', 'declined'] }).notNull().default('pending'),
+  version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(), updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [unique().on(table.connectionId, table.projectId),
+  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade')]);
 
 export const agentConnectionProjects = pgTable('agent_connection_projects', {
   workspaceId: uuid('workspace_id').notNull(),
@@ -1036,7 +1062,7 @@ export const agentProposals = pgTable('agent_proposals', {
   projectId: uuid('project_id').notNull(),
   agentId: uuid('agent_id').notNull(),
   ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id),
-  computeSource: text('compute_source', { enum: ['user_operated_claude_code', 'user_operated_external_client'] }).notNull(),
+  computeSource: text('compute_source', { enum: ['user_operated_claude_code', 'user_operated_external_client', 'owner_assistant'] }).notNull(),
   agentGrantId: uuid('agent_grant_id').notNull(),
   agentGrantRole: text('agent_grant_role', { enum: ['contributor'] }).notNull(),
   sourceMaterialId: uuid('source_material_id').notNull(),
