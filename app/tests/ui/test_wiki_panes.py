@@ -597,8 +597,12 @@ class WikiPanesJourney(unittest.TestCase):
         index = self.index(page)
         heading = page.get_by_role("heading", level=2, name=latest["title"])
         expect(heading).to_be_visible()
-        self.assertLessEqual(index.bounding_box()["y"] + index.bounding_box()["height"], page.locator(".wiki-bar").bounding_box()["y"] + 1,
-                             "the chips sit before the document")
+        expect(index.locator(".wiki-bar__title")).to_have_text(re.compile(r"^Wiki · \d+ pages?$"))
+        self.assertLessEqual(index.locator(".wiki-bar").bounding_box()["y"] + index.locator(".wiki-bar").bounding_box()["height"],
+                             index.locator(".wiki-pages").bounding_box()["y"] + 1,
+                             "the Wiki count and page actions belong to the page selector")
+        self.assertLessEqual(index.bounding_box()["y"] + index.bounding_box()["height"], heading.bounding_box()["y"],
+                             "the page selector sits before the document")
         expect(page.locator(".wiki-bar__title")).to_have_text(re.compile(r"^Wiki · \d+ pages?$"))
         expect(index.get_by_label("Search the wiki")).to_be_visible()  # more than five pages by now
         self.assertEqual(page.locator(".doc-prose").evaluate("e => getComputedStyle(e).fontSize"), "16px", "the phone reads at 16px")
@@ -625,7 +629,8 @@ class WikiPanesJourney(unittest.TestCase):
         self.assertGreater(page.locator(".wiki").evaluate("e => e.scrollHeight - e.clientHeight"), 200)
         page.locator(".wiki").evaluate("e => e.scrollTo(0, e.scrollHeight)")
         page.wait_for_timeout(200)
-        self.assertLessEqual(abs(page.locator(".wiki-bar").bounding_box()["y"] - page.locator(".wiki").bounding_box()["y"]), 1)
+        self.assertLessEqual(abs(index.bounding_box()["y"] - page.locator(".wiki").bounding_box()["y"]), 1,
+                             "page selection and its action menu stay reachable together")
         page.locator(".wiki-bar").get_by_role("button", name="More").tap()
         card = page.get_by_role("dialog", name="Page actions").bounding_box()
         self.assertGreaterEqual(card["x"], 0)

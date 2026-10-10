@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { ApiError } from '../api/client';
 import { Button, Icon, Spinner, duration, play, trapTab, useToast } from '../ui';
 import { useShellData } from '../app/data';
@@ -35,14 +36,15 @@ export function WikiIcon({ name, size = 16 }: { name: WikiIconName; size?: numbe
 const isMac = typeof navigator !== 'undefined' && /Mac|iP(hone|ad|od)/.test(navigator.platform);
 
 /** The quiet row above every wiki document: what is shown on the left, actions on the right. */
-export function WikiBar({ meta, children }: { meta: ReactNode; children?: ReactNode }) {
-  const { compact } = useWiki();
-  return (
+export function WikiBar({ meta, children, compactInIndex = false }: { meta: ReactNode; children?: ReactNode; compactInIndex?: boolean }) {
+  const { compact, compactBar } = useWiki();
+  const bar = (
     <div className="wiki-bar">
       <div className="wiki-bar__meta">{meta}</div>
       <div className="wiki-bar__acts">{compact ? null : <FocusToggle />}{children}</div>
     </div>
   );
+  return compact && compactInIndex && compactBar ? createPortal(bar, compactBar) : bar;
 }
 
 /** On a phone the page's actions are one menu: history, then the share and download cards. */

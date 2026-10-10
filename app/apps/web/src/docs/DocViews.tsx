@@ -221,7 +221,7 @@ export function DocReader() {
     ? <Link className={`ui-btn ui-btn--primary ${compact ? 'wiki-edit' : 'wiki-bar__primary'}`} to={edit} aria-keyshortcuts="e"><Icon name="edit" size={16} />Edit</Link> : null;
   return (
     <>
-      <WikiBar meta={compact
+      <WikiBar compactInIndex meta={compact
         ? <><span className="wiki-bar__title"><b>Wiki</b> · {docs.length} {docs.length === 1 ? 'page' : 'pages'}</span>{keptLink}</>
         : <><span className="doc-head__k">{STATE_LABEL[shown.state]} · version {shown.version}{current ? '' : ` of ${doc.version}`}</span>{keptLink}</>}>
         {compact ? (
