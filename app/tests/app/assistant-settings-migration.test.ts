@@ -13,7 +13,7 @@ test('0077 fresh/upgrade/reverse preserves legacy identity, grants and consent w
   const client = await pool.connect(); const namespace = `assistant_migration_${randomUUID().replaceAll('-', '')}`;
   try {
     await client.query('BEGIN'); await client.query(`CREATE SCHEMA ${namespace}`);
-    await client.query(`SET LOCAL search_path TO ${namespace}, pg_catalog`);
+    await client.query(`SET LOCAL search_path TO ${namespace}, public, pg_catalog`);
     const manifest = await readMigrationManifest(directory, FLUX_SCHEMA_VERSION);
     for (const file of manifest.filter((file) => file.version !== 77)) {
       await client.query(await readFile(join(directory, file.name), 'utf8'));
@@ -39,6 +39,9 @@ test('0077 fresh/upgrade/reverse preserves legacy identity, grants and consent w
       grants: (await client.query('SELECT * FROM project_grants')).rows,
     };
     const applied = manifest.filter((file) => file.version !== 77).map((file) => file.version);
+    // Older migrations need public pg_trgm extension functions. The assistant guard/apply
+    // sees only this schema so a public test-stack 0077 cannot satisfy its footprint.
+    await client.query(`SET LOCAL search_path TO ${namespace}, pg_catalog`);
     await assertAssistantMigrationCompatibility(client, applied);
     await client.query(await readFile(join(directory, '0077_assistant_settings.sql'), 'utf8'));
     await assert.rejects(assertAssistantMigrationCompatibility(client, applied), /assistant tables exist without reserved ledger version 77/);
