@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import { AGENT_MCP_ENTRIES, DEFAULT_ASSISTANT_AREAS, PERSONAL_RUN_CONSENT_VERSION, assistantSettingsPath,
+import { AGENT_MCP_ENTRIES, DEFAULT_ASSISTANT_AREAS, PERSONAL_RUN_CONSENT_VERSION, agentMcpPolicyPath, assistantSettingsPath,
   compileAssistantAreas, type AssistantSettings, type ProjectAgents } from '@flux/contracts';
 import { assistantSettingsUseCases, createPersonalRunUseCases, type Principal } from '@flux/core';
 import { personalRunUnitOfWork, personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
@@ -10,6 +10,7 @@ import { person, workspace, project, addMember, expectStatus, type Person } from
 import { beginOauth, mcp, oauthToken, toolValue } from './support/mcp.js';
 import { Browser, publicOrigin } from './support/http.js';
 import { FakeConnections, FakeQueue } from './support/personal-runs.js';
+import { waitUntilBlockedBy } from './support/locks.js';
 
 const principal = (owner: Person): Principal => ({ kind: 'human', id: owner.id });
 const settings = async (owner: Person, workspaceId: string, status = 200) => {
@@ -204,5 +205,35 @@ test('assistant S6 switches fence already-produced MCP bytes across two API proc
     await lock.query('SELECT pg_advisory_unlock(hashtext($1))', [gate]).catch(() => undefined);
     if (pending) await pending;
     lock.release();
+  }
+});
+
+
+test('settings reads cannot deadlock with a generic S6 writer between its policy and settings updates', async () => {
+  const f = await setup('read-order'); const original = (await settings(f.owner, f.ws.id)).body;
+  const holder = await pool.connect(); const pending: Promise<unknown>[] = [];
+  try {
+    await holder.query('BEGIN');
+    const holderId = (await holder.query('SELECT pg_backend_pid() AS pid')).rows[0].pid as number;
+    await holder.query('SELECT connection_id FROM assistant_settings WHERE connection_id=$1 FOR SHARE', [original.connectionId]);
+    const writing = f.owner.browser.request('PATCH', agentMcpPolicyPath(original.connectionId), {
+      body: { enabledCapabilityIds: [], enabledEntryIds: [], selectedProjectIds: [] },
+      headers: { 'if-match': `"mcp-policy-${original.policy.version}"` },
+    });
+    pending.push(writing);
+    await waitUntilBlockedBy(pool, holderId);
+    const writerId = (await pool.query('SELECT pid FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid)) LIMIT 1', [holderId])).rows[0].pid as number;
+    const reading = f.owner.browser.request('GET', assistantSettingsPath(f.ws.id, f.owner.id));
+    pending.push(reading);
+    await waitUntilBlockedBy(pool, writerId);
+    await holder.query('COMMIT');
+    const saved = expectStatus(await writing, 200) as { policy: { version: number } };
+    const observed = expectStatus(await reading, 200) as unknown as AssistantSettings;
+    assert.equal(observed.version, saved.policy.version);
+    assert.equal(observed.projectMode, 'chosen');
+    assert.ok(Object.values(observed.areas).every((value) => value === 'off'));
+  } finally {
+    await holder.query('ROLLBACK'); holder.release();
+    await Promise.allSettled(pending);
   }
 });

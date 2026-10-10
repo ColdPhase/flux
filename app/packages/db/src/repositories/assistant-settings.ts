@@ -48,6 +48,9 @@ export function assistantSettingsRows(tx: Transaction, authority: AssistantAutho
     return (await (lock ? query.for('update') : query.for('share')))[0] ?? null;
   };
   const get = async (ownerUserId: string, workspaceId: string): Promise<AssistantSettings | null> => {
+    // The generic S6 writer locks policy before updating settings. Readers use the same
+    // owner guard so their settings-share lock cannot reverse that row order.
+    await lockAssistantOwner(tx, ownerUserId);
     const row = await settings(ownerUserId, workspaceId);
     if (!row || !await connectionView(tx, row)) return null;
     const policy = await lockAgentMcpPolicy(tx, row.connectionId);

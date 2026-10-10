@@ -13,7 +13,7 @@ test('0077 fresh/upgrade/reverse preserves legacy identity, grants and consent w
   const client = await pool.connect(); const namespace = `assistant_migration_${randomUUID().replaceAll('-', '')}`;
   try {
     await client.query('BEGIN'); await client.query(`CREATE SCHEMA ${namespace}`);
-    await client.query(`SET LOCAL search_path TO ${namespace}, public, pg_catalog`);
+    await client.query(`SET LOCAL search_path TO ${namespace}, pg_catalog`);
     const manifest = await readMigrationManifest(directory, FLUX_SCHEMA_VERSION);
     for (const file of manifest.filter((file) => file.version !== 77)) {
       await client.query(await readFile(join(directory, file.name), 'utf8'));
