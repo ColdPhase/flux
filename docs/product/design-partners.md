@@ -31,8 +31,8 @@ or sensitive data in Flux before v0.1.
 
 ## Four profiles
 
-The founders pick one or two teams per profile. A spread of profiles keeps one team's habits
-from becoming the product.
+The founders pick 3–5 teams across these profiles, at most two from any one profile; not every
+profile needs a team. A spread of profiles keeps one team's habits from becoming the product.
 
 | Profile | Situation | What they test |
 | --- | --- | --- |
