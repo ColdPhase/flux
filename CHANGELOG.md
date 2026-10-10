@@ -132,6 +132,7 @@ repository was created on 2026-09-26.
 - One neutral look from the final design: Soft volume surfaces in light, dark or Match system, Geist type served with Flux, pill buttons, and task states shown as shapes with words. The accent colours and their picker are gone ([#353](https://github.com/ColdPhase/flux/pull/353)).
 - Kreska, a face drawn in a few lines, is the Flux logo, the app icon and every agent's icon. Agents carry an "Agent" tag and, where you may know them, the person they work for; the personal assistant's face shows what its run is doing ([#356](https://github.com/ColdPhase/flux/pull/356)).
 - The computer sidebar as drawn: New (C) and Search at the top, Home, Inbox with its count and Sketchbook, projects as letter tiles, Messages, a card for your working assistant with Stop, and the account with Settings. `[` folds it to a 64 px rail and `G` `I` opens the Inbox ([#357](https://github.com/ColdPhase/flux/pull/357)).
+- One Create window (a sheet on the phone) makes a task from New or C, Tasks, a message and Search, with the same fields everywhere, "Create task" as its only name, and the message kept as the task's source; ⌘K now also creates, and `@` finds people and agents and `#` finds tasks ([#345](https://github.com/ColdPhase/flux/issues/345)).
 - The Studio 11.6 interface: a sidebar with workspace and project names, a calmer
   header, Conversation · Map · Tasks · Wiki tabs and a reworked conversation
   ([#184](https://github.com/ColdPhase/flux/pull/184)).

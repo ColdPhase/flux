@@ -9,7 +9,7 @@ import { DeferredDetails, DeferredJumpTo, DeferredLiveStage } from './DeferredSu
 import { RouteProgress } from './RouteProgress';
 import { useInboxDot } from '../notifications/dot';
 import { placeOf } from './place';
-import { ShellContext, type DetailsView } from './shellContext';
+import { ShellContext, type CreateRequest, type DetailsView } from './shellContext';
 import { Sidebar } from './Sidebar';
 import { VIEWS, viewIndex } from './views';
 import { ProjectStateLine, ProjectStateRow } from '../work/inline';
@@ -19,6 +19,7 @@ import { LiveProvider } from '../live/LiveProvider';
 import { LiveEntry } from '../live/LiveEntry';
 import { LiveBar } from '../live/LiveBar';
 import '../live/live.css';
+import { CreateHost } from '../create/CreateWindow';
 import './project-header.css';
 import { useNeedsYou } from '../returns/useNeedsYou';
 import { WorkReadProvider, useProjectWorkSummary } from '../work/WorkReadContext';
@@ -101,6 +102,7 @@ function AppLayoutContent() {
   const [detailsAccount, setDetailsAccount] = useState(me.user.id);
   if (detailsAccount !== me.user.id) { setDetailsAccount(me.user.id); setDetailsView('place'); setDetailsOpen(false); }
   const [jumpOpen, setJumpOpen] = useState(false);
+  const [create, setCreate] = useState<CreateRequest | null>(null);
   const detailsButtonRef = useRef<HTMLButtonElement>(null);
   const paneRef = useRef<HTMLDivElement>(null);
   const previousView = useRef(viewOrder(location.pathname));
@@ -152,6 +154,7 @@ function AppLayoutContent() {
       setDetailsView(typeof view === 'object' && 'id' in view ? { ...view, projectId: view.projectId ?? projectId } : view);
       toggleDetails(true);
     },
+    openCreate(request: CreateRequest = {}) { setNavOpen(false); setJumpOpen(false); setCreate(request); },
     openSearch() { setNavOpen(false); setJumpOpen(true); },
     openNavigation() { setDetailsOpen(false); setNavOpen(true); },
     actionSlot,
@@ -453,6 +456,7 @@ function AppLayoutContent() {
         {phone ? <BottomNav className="app__viewbar" label="Main places" items={places} /> : null}
       </div>
 
+      <CreateHost request={create} onClose={() => setCreate(null)} />
       <DeferredJumpTo open={jumpOpen} onClose={() => setJumpOpen(false)} userId={me.user.id} />
       <SidePanel open={detailsOpen} onClose={() => toggleDetails(false)} title={recapOpen ? 'What matters' : 'Details'} id="details"
         context={phone && (detailsView === 'place' || typeof detailsView === 'object' && detailsView.kind === 'overview') ? <OverviewContext /> : undefined}>

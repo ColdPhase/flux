@@ -27,8 +27,6 @@
 .ws-act { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 0 7px; border-radius: var(--r-sm); font-size: var(--fs-xs); font-weight: 500; color: var(--t3); transition: var(--tr); }
 .ws-act:hover { background: var(--hov); color: var(--t1); }
 .ws-act:disabled { cursor: progress; }
-.ws-act-error { margin-top: 4px; font-size: var(--fs-xs); color: var(--t1); }
-.ws-act-error button { text-decoration: underline; min-height: 28px; }
 .ws-attach { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .ws-attach__more { min-height: 28px; text-align: left; font-size: var(--fs-xs); color: var(--t3); text-decoration: underline; text-underline-offset: 3px; }
 .ws-message-pages { padding: 4px 24px; border-top: 1px solid var(--line); font-size: var(--fs-sm); color: var(--t3); }
@@ -51,10 +49,6 @@
 .ws-task-controls { position: sticky; top: 0; z-index: 3; background: var(--bg); display: flow-root; }
 .ws-audience { display: flex; align-items: center; gap: 6px; margin: 0 0 14px; font-size: var(--fs-xs); font-weight: 500; color: var(--t2); }
 .ws-audience svg, .wd-audience svg { color: var(--t3); }
-.ws-add { display: flex; gap: 8px; margin-bottom: 8px; }
-.ws-add .ui-input { flex: 1; min-width: 0; min-height: var(--ctl-lg); }
-.ws-add .ui-btn { min-height: var(--ctl-lg); }
-.ws-draft-state { margin: 0 0 8px; font-size: var(--fs-xs); color: var(--t3); line-height: 1.5; }
 .ws-group { margin-top: 24px; }
 .ws-group__h { display: flex; gap: 6px; margin-bottom: 4px; font-size: var(--fs-xs); font-weight: 500; color: var(--t3); }
 .ws-group__h span { font-family: var(--mono); font-variant-numeric: tabular-nums; }
@@ -146,7 +140,6 @@
   .ws-part { flex: none; max-width: 80vw; }
   .ws-seg span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ws-acts { margin-left: -4px; }
-  .ws-add .ui-btn { padding: 0 12px; }
 }
 /* Touch: the actions of a message start as one overflow button in its top corner (#117). */
 .project-convo__message .ws-acts--more { position: absolute; top: 0; right: -10px; margin: 0; }

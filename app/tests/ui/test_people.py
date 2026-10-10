@@ -22,6 +22,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
+from create_window import create_other
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, box, shot, start_forwarder
 
 PASSWORD = "people before projects"
@@ -285,7 +286,7 @@ class PeopleJourney(unittest.TestCase):
         page = self.page("ada")
         page.goto("/")
         page.get_by_role("complementary", name="Sidebar").get_by_role("button", name="New", exact=True).click()
-        page.get_by_role("menu", name="New").get_by_role("menuitem", name="Project", exact=True).click()
+        create_other(page, "Project")
         expect(page.get_by_text("A new project is restricted: only you and the workspace’s owners and admins can see it.")).to_be_visible()
         page.get_by_label("Project name").fill(RESTRICTED)
         page.get_by_role("button", name="Create project").click()

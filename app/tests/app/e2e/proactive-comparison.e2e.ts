@@ -247,8 +247,11 @@ test('real project UI presents sourced quiet suggestions, then persists edits, u
   assert.equal(await cards.count(), 0);
   stored = await proposals();
   assert.equal(stored.find((item) => item.id === initial[1]?.id)?.status, 'dismissed');
-  await page.getByLabel('New task').fill('Repeat the sensor test with a manual switch');
-  await page.getByRole('button', { name: 'Add task' }).click();
+  // One Create window makes a task everywhere (#345).
+  await page.getByRole('button', { name: /^(New )?Task$/ }).first().click();
+  const create = page.getByRole('dialog', { name: 'Create' });
+  await create.getByLabel('Title', { exact: true }).fill('Repeat the sensor test with a manual switch');
+  await create.getByRole('button', { name: /^Create task/ }).click();
   await page.getByRole('heading', { name: 'Repeat the sensor test with a manual switch' }).waitFor();
   const manual = await api('GET', `/api/v1/projects/${fixture.projectId}/work?limit=100`);
   assert.equal(manual.status, 200);
@@ -410,8 +413,11 @@ test('owner-only background setup persists consent, clears keys and preserves an
   await page.reload();
   assert.equal((await api('GET', '/api/v1/background-compute-connections/current')).data, null);
   await page.goto(`${origin.origin}/projects/${fixture.projectId}/tasks?view=list`);
-  await page.getByLabel('New task').fill('Manual comparison without a background key');
-  await page.getByRole('button', { name: 'Add task', exact: true }).click();
+  // One Create window makes a task everywhere (#345).
+  await page.getByRole('button', { name: /^(New )?Task$/ }).first().click();
+  const create = page.getByRole('dialog', { name: 'Create' });
+  await create.getByLabel('Title', { exact: true }).fill('Manual comparison without a background key');
+  await create.getByRole('button', { name: /^Create task/ }).click();
   await page.getByRole('heading', { name: 'Manual comparison without a background key', exact: true }).waitFor();
   const manual = await api('GET', `/api/v1/projects/${fixture.projectId}/work?limit=100`);
   assert.ok((manual.data as { items: Array<{ title: string }> }).items.some((item) => item.title === 'Manual comparison without a background key'));

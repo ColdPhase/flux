@@ -32,15 +32,18 @@ COLLECTION = re.compile(r"/api/v1/projects/[^/]+/(work|decisions|results|summary
 CONTINUITY = ("resizePreservesDraft", "resizePreservesFocusSelection", "onlyMinePreservesDraft",
               "onlyMineCountsVerified", "viewPreservesDraft", "detailsPreservesDraft",
               "deepNativeTitleVerified", "sourceRoundTripPreservesDraft", "sourceRoundTripNativeRouteVerified")
+# Tasks readiness is separate from the Create window, which is a dialog portalled to the body (#377).
+TASKS_READY = "() => { const add = document.querySelector('.tb-add'); return !!document.querySelector('.ws-tasks') && !!add && !add.disabled; }"
 PROBE = r"""(() => {
+  const tasksReady = __TASKS_READY__;
   const counts = {"Needs you":1,"In progress":300,"Blocked":150,"Open":470,
     "Parked":30,"Finished":50,"Decisions":2,"Results":10};
   const probe = window.__nativeWorkProbe = {nav:null, armed:null, sample:null};
   const rows = () => document.querySelectorAll('.ws-list > li').length;
   const pane = () => document.querySelector('.ws-tasks')?.closest('.pane-scroll');
   function correctView(view, rowCount, checkAllCounts) {
-    const input = document.querySelector('#ws-add');
-    if (!input || input.disabled || !input.closest('.ws-tasks')) return false;
+    // Tasks readiness: the list pane and its "Task" button are there. The Create window is a separate, portalled dialog.
+    if (!tasksReady()) return false;
     const views = document.querySelectorAll('.ws-view');
     const selected = [...views].find(b => b.getAttribute('aria-pressed') === 'true');
     if (!selected || !selected.textContent.trim().startsWith(view)) return false;
@@ -68,7 +71,7 @@ PROBE = r"""(() => {
     probe.armed = {kind, expected, start:null, trusted:false, beforeScroll:pane()?.scrollTop};
   };
   function ready(a) {
-    if (a.kind === 'input') return document.querySelector('#ws-add')?.value === a.expected.value;
+    if (a.kind === 'input') return document.querySelector('.create__title')?.value === a.expected.value;
     if (a.kind === 'view') return correctView(a.expected.view,a.expected.rows,true);
     return !!pane() && Math.abs(pane().scrollTop-a.beforeScroll) >= 1;
   }
@@ -88,13 +91,35 @@ PROBE = r"""(() => {
     const a = probe.armed;
     if (!a || a.start !== null || !event.isTrusted) return;
     const el = event.target instanceof Element ? event.target : null;
-    if (a.kind === 'input' && !(event.type === 'keydown' && el?.id === 'ws-add')) return;
+    if (a.kind === 'input' && !(event.type === 'keydown' && el?.classList?.contains('create__title'))) return;
     if (a.kind === 'view' && !(event.type === 'click' && el?.closest('.ws-view'))) return;
     if (a.kind === 'scroll' && !(event.type === 'wheel' && el?.closest('.pane-scroll') === pane())) return;
     a.start = performance.now(); a.trusted = true; requestAnimationFrame(() => finish(a));
   }
   for (const event of ['keydown','click','wheel']) document.addEventListener(event,capture,true);
-})();"""
+})();""".replace('__TASKS_READY__', TASKS_READY)
+
+
+def open_create(page):
+    """The Create window is a dialog outside the Tasks pane: open it from the toolbar when it is not open."""
+    if not page.locator(".create__title").is_visible():
+        page.get_by_role("button",name=re.compile("^(New )?Task$")).first.click()
+        page.locator(".create__title").wait_for()
+
+
+def close_create(page):
+    if page.locator(".create__title").count():
+        page.keyboard.press("Escape")
+        page.locator(".create__title").wait_for(state="detached")
+
+
+def draft_value(page):
+    """The private draft as the Create window shows it when reopened; leaves the window closed."""
+    close_create(page)
+    open_create(page)
+    value = page.locator(".create__title").input_value()
+    close_create(page)
+    return value
 
 
 def api(context, method, path, body=None, status=200):
@@ -365,19 +390,22 @@ def run_profile(browser,data,label,viewport,cpu,report):
                         driver_navigation.append(driver_ms)
                 else:
                     if kind == "input":
-                        field = page.locator("#ws-add"); field.focus()
+                        open_create(page)
+                        field = page.locator(".create__title"); field.focus()
                         before = field.input_value(); key = "a" if index%2 == 0 else "Backspace"
                         expected = before+"a" if key == "a" else before[:-1]
                         assert expected != before, "each native key action must change the input"
                         page.evaluate("expected => window.__nativeWorkProbe.arm('input',{value:expected})",expected)
                         page.keyboard.press(key)
                     elif kind == "view":
+                        close_create(page)
                         view = "Blocked" if index%2 == 0 else "All"; rows = 150 if view == "Blocked" else 1013
                         button = page.get_by_role("navigation",name="Task views").get_by_role("button",name=re.compile(f"^{view}"))
                         assert button.get_attribute("aria-pressed") == "false", "view click must change selection"
                         page.evaluate("e => window.__nativeWorkProbe.arm('view',e)",{"view":view,"rows":rows})
                         button.click()
                     else:
+                        close_create(page)
                         box = page.locator(".ws-tasks").locator("..").bounding_box()
                         assert box, "the native list pane must be rendered"
                         page.mouse.move(box["x"]+box["width"]*.5,box["y"]+box["height"]*.65)
@@ -402,15 +430,17 @@ def run_profile(browser,data,label,viewport,cpu,report):
         # Native continuity is a separate observation, not a fabricated passing sample.
         item["currentPhase"] = "continuity"
         page.goto(url,wait_until="domcontentloaded"); usable(page)
-        field = page.locator("#ws-add"); draft = "Compare privacy and sensor range before the next library test"
+        open_create(page)
+        field = page.locator(".create__title"); draft = "Compare privacy and sensor range before the next library test"
         field.fill(draft); field.focus(); page.keyboard.press("End")
         selection_before = field.evaluate("el => ({start:el.selectionStart,end:el.selectionEnd,focused:document.activeElement===el})")
         page.set_viewport_size({"width":820,"height":1000}); following_frame(page)
         page.set_viewport_size(viewport); following_frame(page)
         item["continuity"]["resizePreservesDraft"] = field.input_value()==draft
         item["continuity"]["resizePreservesFocusSelection"] = selection_before == field.evaluate("el => ({start:el.selectionStart,end:el.selectionEnd,focused:document.activeElement===el})")
+        close_create(page)
         page.get_by_label("Only mine").check()
-        item["continuity"]["onlyMinePreservesDraft"] = field.input_value()==draft
+        item["continuity"]["onlyMinePreservesDraft"] = draft_value(page)==draft
         item["continuity"]["onlyMineRows"] = page.locator(".ws-list > li").count()
         mine_counts = page.evaluate("""() => Object.fromEntries([...document.querySelectorAll('.ws-view')].slice(1).map(b => [b.childNodes[0].textContent.trim(),Number(b.querySelector('.ws-view__n')?.textContent)]))""")
         item["continuity"]["onlyMineCounts"] = mine_counts
@@ -418,13 +448,13 @@ def run_profile(browser,data,label,viewport,cpu,report):
             "Needs you":1,"In progress":150,"Blocked":75,"Open":235,"Parked":15,"Finished":25,"Results":5}
         page.get_by_label("Only mine").uncheck()
         page.get_by_role("navigation",name="Task views").get_by_role("button",name=re.compile("^Blocked")).click()
-        item["continuity"]["viewPreservesDraft"] = field.input_value()==draft
+        item["continuity"]["viewPreservesDraft"] = draft_value(page)==draft
         deep = page.locator(".ws-item").filter(has=page.locator(".ws-item__t",has_text=data["deep"]["title"]))
         traffic.begin("deepDetails"); deep.click()
         page.locator("#details").get_by_role("heading",name=data["deep"]["title"],exact=True).wait_for()
         item["deepDetailsTraffic"] = traffic.collect("deepDetails")
         item["continuity"]["deepNativeTitleVerified"] = True
-        item["continuity"]["detailsPreservesDraft"] = field.input_value()==draft
+        item["continuity"]["detailsPreservesDraft"] = draft_value(page)==draft
         page.locator("#details").get_by_role("button",name="Close details").click()
         page.get_by_role("navigation",name="Task views").get_by_role("button",name=re.compile("^All$")).click()
         sourced = page.locator(".ws-item").filter(has=page.locator(".ws-item__t",has_text=data["sourced"]["title"]))
@@ -438,10 +468,10 @@ def run_profile(browser,data,label,viewport,cpu,report):
         if panel.get_by_role("button",name="Close details").is_visible():
             panel.get_by_role("button",name="Close details").click()
         page.get_by_role("navigation",name="Project views").get_by_role("link",name=re.compile("^Tasks")).click()
-        field.wait_for()
-        item["continuity"]["sourceRoundTripPreservesDraft"] = field.input_value()==draft
+        stored = draft_value(page)
+        item["continuity"]["sourceRoundTripPreservesDraft"] = stored==draft
         item["continuity"]["sourceRoundTripNativeRouteVerified"] = True
-        item["continuity"]["sourceRoundTripDraftLength"] = len(field.input_value())
+        item["continuity"]["sourceRoundTripDraftLength"] = len(stored)
         item["mutatingRequests"] = dict(traffic.mutations)
         item["memorySemantics"] = "80 samples across measured distributions; target JS heap and target DOM (including detached nodes), not driver/container RSS"
         heaps = [s["targetJSHeapUsedBytes"] for s in item["memorySamples"] if s["targetJSHeapUsedBytes"] is not None]

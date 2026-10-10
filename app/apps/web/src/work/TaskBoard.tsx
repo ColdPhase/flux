@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useRevalidator } from 'react-router';
 import type { ObjectLink, Project, ProjectWorkView, WorkGroup, WorkItem, WorkRelations, WorkRowProjection, WorkStatus } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
-import { AgentTag, Button, Icon, IconButton, Kreska, initials, type IconName } from '../ui';
-import { createWork, updateWork } from './api';
+import { AgentTag, Icon, IconButton, Kreska, initials, type IconName } from '../ui';
+import { updateWork } from './api';
+import { useShellActions } from '../app/shellContext';
 import { isFinished, taskNumber } from './format';
 import { getProjectWorkView, getWorkRelations, workRelationReadUrl, workViewReadUrl } from './read-api';
 import type { ReadState } from './read-state';
@@ -217,42 +218,6 @@ function Card({ item, agentOwner, from, column, meId, writable, hintId, saving, 
   );
 }
 
-/** Adds a task in one column through the same creation command as the List, then opens it. */
-function NewTask({ projectId, column, onDone, onCancel }: { projectId: string; column: Column; onDone: (item: WorkItem) => void; onCancel: () => void }) {
-  const inputId = useId();
-  const [opener] = useState(() => document.activeElement as HTMLElement | null);
-  const [title, setTitle] = useState('');
-  const [attempt, setAttempt] = useState(() => crypto.randomUUID());
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const cancel = () => { onCancel(); opener?.focus(); };
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (!title.trim() || busy) return;
-    setBusy(true); setError('');
-    try {
-      const item = await createWork(projectId, { title: title.trim(), ...(column.status === 'open' ? {} : { status: column.status }) }, attempt);
-      setTitle(''); setAttempt(crypto.randomUUID());
-      onDone(item);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not add the task.'); }
-    finally { setBusy(false); }
-  }
-  return (
-    <form className="tb-new" onSubmit={(event) => void submit(event)}
-      onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); cancel(); } }}>
-      <label className="ui-vh" htmlFor={inputId}>New task in {column.label}</label>
-      {/* Opened on purpose by "+ Task" or a column's "+", so the field takes focus. */}
-      <input id={inputId} className="ui-input tb-new__in" value={title} maxLength={200} autoFocus placeholder="What needs doing?"
-        onChange={(event) => { setTitle(event.target.value); setAttempt(crypto.randomUUID()); setError(''); }} />
-      <div className="tb-new__acts">
-        <Button type="submit" variant="primary" busy={busy} disabled={!title.trim()}>Add task</Button>
-        <Button variant="quiet" onClick={cancel}>Cancel</Button>
-      </div>
-      {error ? <p className="wd-error" role="alert">{error}</p> : null}
-    </form>
-  );
-}
-
 export interface TaskBoardProps {
   project: Project;
   /** The Tasks tab's bounded read of the open group (it also carries the shared project summary). */
@@ -264,8 +229,6 @@ export interface TaskBoardProps {
   writable: boolean;
   /** Changes when the Tasks tab asks every board read to refresh. */
   revision: number;
-  adding: ColumnId | null;
-  onAdding: (column: ColumnId | null) => void;
   openWork: (id: string) => void;
   refresh: () => void;
   /** Opens one native group in the List, which pages through all of it. */
@@ -287,9 +250,10 @@ const rowsOf = (page: ProjectWorkView | null) => page?.items.filter((item): item
 const beyond = (page: ProjectWorkView | null) => page ? Math.max(0, page.total - page.items.length) : 0;
 const SOURCE_EDGES = 100;
 
-export function TaskBoard({ project, openRead, meId, mine, query, writable, revision, adding, onAdding, openWork, refresh, showInList, clearFilters }: TaskBoardProps) {
+export function TaskBoard({ project, openRead, meId, mine, query, writable, revision, openWork, refresh, showInList, clearFilters }: TaskBoardProps) {
   const owners = useAgentOwners(project);
   const hintId = useId();
+  const { openCreate } = useShellActions();
   const boardRef = useRef<HTMLDivElement>(null);
   const ghostRef = useRef<HTMLDivElement>(null);
   // Moves in flight (shown in their target column) and the stored result of each finished move
@@ -390,7 +354,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
   const hidden: Record<ColumnId, number> = { open: beyond(openPage), in_progress: beyond(progressPage) + beyond(blockedPage), done: beyond(finishedPage) };
   const blocked = cards.in_progress.filter((item) => item.status === 'blocked' && !(item.id in pending)).length + beyond(blockedPage);
   // On a narrow board one column shows at a time: the one chosen, else active work, else what is open.
-  const current: ColumnId = adding ?? picked ?? (cards.in_progress.length ? 'in_progress' : cards.open.length ? 'open' : 'in_progress');
+  const current: ColumnId = picked ?? (cards.in_progress.length ? 'in_progress' : cards.open.length ? 'open' : 'in_progress');
   const highlight = dragging ? over : lifted && lifted.to !== lifted.from ? lifted.to : null;
   const filtered = !!query || mine;
 
@@ -570,7 +534,6 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
     if (event.key === ' ' && spaceLift.current) { event.preventDefault(); spaceLift.current = false; }
   };
 
-  const dismissAdding = () => onAdding(null);
   // Without a search a column counts every task of its groups (exact native totals); a search
   // counts the loaded cards it matches.
   const totals: Record<ColumnId, number> = {
@@ -600,7 +563,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
       {/* A narrow board shows one column at a time; this overview names every status and what is blocked. */}
       <nav className="tb-overview" aria-label="Task status">
         {COLUMNS.map((column) => (
-          <button key={column.id} type="button" className="tb-ov" aria-pressed={current === column.id} onClick={() => { setPicked(column.id); if (adding && adding !== column.id) dismissAdding(); }}>
+          <button key={column.id} type="button" className="tb-ov" aria-pressed={current === column.id} onClick={() => { setPicked(column.id); }}>
             <span className="tb-ov__l"><span className={`tb-ring tb-ring--${column.id}`} aria-hidden="true" />{column.label}</span>
             <span className="tb-ov__n">{totals[column.id]}<span className="ui-vh"> {totals[column.id] === 1 ? 'task' : 'tasks'}</span>
               {column.id === 'in_progress' && blocked ? <span className="tb-ov__b"><Icon name="alert" size={12} />{blocked} blocked</span> : null}
@@ -645,14 +608,10 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
                 <span className="tb-col__n">{totals[column.id]}<span className="ui-vh"> {totals[column.id] === 1 ? 'task' : 'tasks'}</span></span>
                 {column.id === 'in_progress' && blocked ? <span className="tb-col__b"><Icon name="alert" size={12} />{blocked} blocked</span> : null}
                 {writable && column.id !== 'done' ? (
-                  <IconButton icon="plus" size={15} label={`New task in ${column.label}`} className="tb-col__add" onClick={() => onAdding(column.id)} />
+                  <IconButton icon="plus" size={15} label={`New task in ${column.label}`} className="tb-col__add" onClick={() => openCreate({ kind: 'task', projectId: project.id, status: column.status })} />
                 ) : null}
               </div>
               <div className={`tb-col__cards${highlight === column.id ? ' is-over' : ''}`}>
-                {adding === column.id ? (
-                  <NewTask key={column.id} projectId={project.id} column={column} onCancel={dismissAdding}
-                    onDone={(item) => { onAdding(null); refresh(); openWork(item.id); }} />
-                ) : null}
                 {list.length ? (
                   <ol className="tb-col__list">
                     {list.map((item) => (
@@ -668,7 +627,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
                         onMove={(to) => void move(item, to, true)} />
                     ))}
                   </ol>
-                ) : adding === column.id ? null : <p className="tb-col__empty">{waitingFor[column.id] ? `Loading ${column.label.toLowerCase()} tasks…` : filtered ? 'Nothing here matches.' : 'Nothing here yet.'}</p>}
+                ) : <p className="tb-col__empty">{waitingFor[column.id] ? `Loading ${column.label.toLowerCase()} tasks…` : filtered ? 'Nothing here matches.' : 'Nothing here yet.'}</p>}
                 {more(column.id).filter((entry) => entry.count > 0).map((entry) => (
                   <button key={entry.group} type="button" className="ws-none__b tb-col__more" onClick={() => showInList(entry.group)}>
                     {entry.count} more {entry.label} in the List

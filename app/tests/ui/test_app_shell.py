@@ -22,6 +22,8 @@ from pathlib import Path
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
+from create_window import create_other
+
 ORIGIN = os.environ.get("FLUX_UI_ORIGIN", "http://127.0.0.1:18591").rstrip("/")
 UPSTREAM = os.environ.get("FLUX_UI_UPSTREAM")
 MAILPIT = os.environ.get("FLUX_MAILPIT_URL")
@@ -105,7 +107,7 @@ def thread_of(page: Page):
 def new_from_sidebar(page: Page, item: str) -> None:
     """New (C) in the computer sidebar, then one of its items (F-026 §4)."""
     page.get_by_role("complementary", name="Sidebar").get_by_role("button", name="New", exact=True).click()
-    page.get_by_role("menu", name="New").get_by_role("menuitem", name=item, exact=True).click()
+    create_other(page, item)
 
 
 def shot(page: Page, name: str) -> None:
@@ -811,8 +813,8 @@ class AppShellJourney(unittest.TestCase):
         dialog = page.get_by_role("dialog", name="Jump to")
         field = dialog.get_by_role("combobox", name="Jump to")
         field.fill("dimmer curve")
-        expect(dialog.get_by_role("option").first).to_contain_text("Calibrate the dimmer curve")
-        field.press("Enter")
+        expect(dialog.locator("[role=option].sr").first).to_contain_text("Calibrate the dimmer curve")
+        dialog.locator("[role=option].sr").first.click()
         expect(page).to_have_url(re.compile(rf"/projects/{project_id}/tasks"))
         expect(page.get_by_role("complementary", name="Details")).to_be_visible()
         self.sign_out_while_loading(page, "Rae Lund")

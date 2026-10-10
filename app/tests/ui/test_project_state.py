@@ -168,7 +168,7 @@ class ProjectStateJourney(unittest.TestCase):
                 expect(page.get_by_role("button", name="Move to…")).to_have_count(0)
                 page.get_by_role("radio", name="List", exact=True).click()
                 expect(page.locator(".ws-item").filter(has_text=task["title"])).to_be_visible()
-                expect(page.get_by_role("button", name="Add task", exact=True)).to_have_count(0)
+                expect(page.get_by_role("button", name=re.compile("^(New )?Task$"))).to_have_count(0)
         self.call(owner, "POST", f"/api/v1/projects/{project['id']}/grants",
             {"principal": {"kind": "human", "id": self.accounts["Jonas Reader"]["id"]}, "role": "denied"}, 201)
         denied = self.page("Jonas Reader")

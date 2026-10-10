@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { ConversationMessage } from '@flux/contracts';
+import type { ConversationMessage, ObjectRef, WorkStatus } from '@flux/contracts';
 
 /** A project object shown in the Details panel (#101). */
 export interface ObjectView { kind: 'work' | 'decision' | 'result'; id: string; projectId?: string }
@@ -46,8 +46,21 @@ export interface RecapView { kind: 'recap'; projectId: string }
 /** What the Details panel shows: the current place, a project object or form, or how to connect a personal AI (#57). */
 export type DetailsView = 'place' | 'connect-ai' | ObjectView | WorkFormView | AddToDocView | OverviewView | PromoteSketchView | RecapView | PeopleView;
 
+/** What the one Create window opens with (F-026 S3): everything is optional; the person completes the rest. */
+export interface CreateRequest {
+  /** `task` goes straight to the task form; without it the phone sheet first asks what to create. */
+  kind?: 'task';
+  projectId?: string;
+  title?: string;
+  status?: WorkStatus;
+  /** What the task comes from (a message or the thoughts of a Map selection): linked, never moved or copied. */
+  sources?: { ref: ObjectRef; label: string }[];
+}
+
 export interface ShellActions {
   openDetails(view?: DetailsView): void;
+  /** Opens the Create window on the computer, or the Create sheet on the phone (#345): the one way to create. */
+  openCreate(request?: CreateRequest): void;
   /** Opens Jump to… (⌘K), the search across everything the person may open (#114). */
   openSearch(): void;
   /** Opens the navigation drawer on a narrow screen, where the projects are listed. */
@@ -56,7 +69,7 @@ export interface ShellActions {
   actionSlot: HTMLElement | null;
 }
 
-export const ShellContext = createContext<ShellActions>({ openDetails: () => undefined, openSearch: () => undefined, openNavigation: () => undefined, actionSlot: null });
+export const ShellContext = createContext<ShellActions>({ openDetails: () => undefined, openCreate: () => undefined, openSearch: () => undefined, openNavigation: () => undefined, actionSlot: null });
 
 export function useShellActions(): ShellActions {
   return useContext(ShellContext);
