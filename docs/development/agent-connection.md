@@ -592,12 +592,18 @@ work input runs.
   model then calls `flux_bootstrap`, `flux_acknowledge_playbook`, `flux_project_orientation` (the current plan
   appears with its material id) and `flux_create_task` under the standing grant. The server-side acknowledgment
   is current and the task is attributed to the connection's agent.
-- **Codex rust-v0.160.1 (pending, no integrated path):** the pinned Codex does not put an MCP server's
-  `instructions` into its model request (probed 2026-10-09 with the same CLI line: the request carries only its
-  exec tool, which lists MCP tools at run time). Flux's instructions therefore never reach the model. The check
-  holds this state: no Flux text reaches the model, nothing is acknowledged and no task is created. It fails
-  once Codex delivers them, and the row then becomes supported. Manual prompt files or skill installs are not an
-  accepted fallback.
+- **Codex rust-v0.160.1 (native resource delivery observed; complete onboarding pending):**
+  Codex does not automatically insert server instructions into the initial model request. The #460 candidate
+  now exercises its existing `list_mcp_resources`/`read_mcp_resource` tools instead of inferring that no Flux
+  content can reach it. From plain `Start work`, the local scripted model receives the complete authenticated
+  playbook, derives its URI/reference/context from actual responses, then bootstraps, acknowledges, reads
+  orientation and creates a permitted attributed task. The expected server render is used only for a
+  post-delivery assertion; no bundle is copied into the model plan or initial request. This is actual client
+  delivery/invocation evidence, not genuine model obedience, a new host bridge or completed Start/Resume.
+  Both default and optional modern native modes pass that scenario. An additional fresh Codex setup uses
+  ordinary native registration with no seeded client/pre-registered ID or flag on add/login and performs a
+  permitted read. Built-in state/recovery and all remaining parent gates stay pending. Manual prompt files,
+  copied workflows or skill installation remain unacceptable substitutes.
 - **Not built:** Pause and Stop of a running agent. The Agents view shows state but has no controls for them;
   revocation remains the only stop.
 - **Not verified:** the resume path and changed-plan reanalysis of AC-1 (later work consuming changes), and the
@@ -627,7 +633,7 @@ seeded rows used through each client's pre-registered client-id option; Client I
 by the real clients is not exercised. A model does not choose the tools, so this does not show model obedience
 or instruction loading (#160).
 
-Findings recorded by this check (2026-10-09):
+Historical findings recorded by the pre-#460 check (2026-10-09):
 
 - Flux's MCP endpoint speaks only protocol `2026-07-28`. The pinned Codex requests `2025-06-18` by default and
   fails the handshake (`-32022 Unsupported protocol version`); it works with Codex's under-development
@@ -652,3 +658,24 @@ official Claude Code client must complete OAuth and call the tools against
 the running self-hosted HTTPS instance before this path is documented as
 supported. Provider plan usage and billing are observed only in the client's
 account; Flux does not infer them from a successful tool call.
+
+## Two-era candidate — #460
+
+The [accepted PC-1–PC-5 contract](../product/mcp-protocol-compatibility.md) governs the
+implementation candidate. The production route now admits explicit legacy
+`2025-06-18` and modern `2026-07-28` through the same verified bearer factory,
+domain dispatch and delivery fences. Exact admission and notification/batch
+refusals are covered by real OAuth/HTTP tests. [Dated author-run evidence](evidence/460/results.json)
+records 69 maintained API/authority/extension checks in each era and 13 native
+checks in each mode, with two owners/three independent connections. Docker
+build/type/lint and 102 foundation checks pass. The test isolation override uses
+only vetted networks; the normal check script retains the complete two-era run.
+
+This candidate has no UI status/recovery implementation and no native launch
+bridge. Default/native resource delivery does not prove closed-client wake,
+all platforms, resume/busy/restart/quiet-idle behavior or required cancellation
+and progress. The legacy adapter refuses unsupported notifications; that is
+not cancellation evidence. #460/#152/#160 remain open. Independent current-head
+runtime evaluation, eligible approval and the normal protected merge gates are
+required. Documentation PR #466 must first receive eligible acceptance and
+compose into main before an implementation merge; no self-approval or bypass.

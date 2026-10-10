@@ -1,11 +1,11 @@
 import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
-import { agentMcpPolicyPath, type AgentMcpPolicy } from '@flux/contracts';
+import { agentMcpPolicyPath, type AgentMcpPolicy, type AgentConnectionSetupFacts } from '@flux/contracts';
 import { createDatabase } from '@flux/db';
 import { chromium, webkit, type BrowserContext, type Page, type Request as BrowserRequest } from 'playwright';
 import { register, uniqueEmail } from '../support/http.js';
@@ -66,7 +66,7 @@ async function fixture() {
       { body: { title: 'Calibration notes', body: 'Private calibration observation' } }), 201);
     const connection = await agentConnection(pool, owner, String(agent.id), [projectId]);
     const path = agentMcpPolicyPath(connection.connectionId);
-    const settings = async () => expect(await owner.request('GET', path), 200) as unknown as { policy: AgentMcpPolicy; connection: unknown };
+    const settings = async () => expect(await owner.request('GET', path), 200) as unknown as { policy: AgentMcpPolicy; connection: unknown; setup: AgentConnectionSetupFacts };
     const initial = await settings();
     return { pool, email, owner, projectId, doc, connection, initial, settings };
   } catch (error) { await pool.end(); throw error; }
@@ -83,11 +83,72 @@ async function open(context: BrowserContext, email: string) {
 async function capture(page: Page, name: string) {
   if (!evidenceDir) return;
   mkdirSync(evidenceDir, { recursive: true });
-  await page.evaluate(async () => {
-    await Promise.all(document.getAnimations().filter((animation) => Number.isFinite(animation.effect?.getComputedTiming().endTime))
-      .map((animation) => animation.finished.catch(() => undefined)));
-  });
+  await settleRendering(page);
   await page.screenshot({ path: join(evidenceDir, name + '.png'), fullPage: true });
+}
+
+/** Wait for natural completion. Do not finish/cancel animations, override opacity or disable motion for evidence. */
+async function settleRendering(page: Page) {
+  await page.evaluate(`(async () => {
+    await document.fonts.ready;
+    const frames = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    // Media/style changes can register transitions on the next frame. Recheck after natural completion.
+    for (let pass = 0; pass < 4; pass++) {
+      await frames();
+      const active = document.getAnimations().filter(animation => Number.isFinite(animation.effect?.getComputedTiming().endTime)
+        && (animation.playState === 'running' || animation.pending));
+      if (!active.length) return;
+      await Promise.all(active.map(animation => animation.finished.catch(() => undefined)));
+    }
+  })()`);
+}
+
+type RenderStyle = { tag: string; className: string; opacity: string; color: string; background: string };
+interface RenderSnapshot {
+  heading: RenderStyle; explanation: RenderStyle; ancestors: RenderStyle[];
+  reload: RenderStyle & { disabled: boolean; ariaDisabled: string | null; ariaBusy: string | null };
+  tokens: { t1: string; t3: string };
+  finiteAnimations: { state: string; pending: boolean }[];
+}
+const renderEvidence: { frame: string; phase: string; state: unknown }[] = [];
+async function renderState(page: Page, frame: string, phase: string) {
+  const state = await page.evaluate<RenderSnapshot>(`(() => {
+    const setup = document.querySelector('.connection__setup');
+    const reload = [...document.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Reload saved permissions');
+    const describe = (element) => ({ tag: element.tagName, className: element.className,
+      opacity: getComputedStyle(element).opacity, color: getComputedStyle(element).color,
+      background: getComputedStyle(element).backgroundColor });
+    const ancestors = []; for (let node = setup; node; node = node.parentElement) ancestors.push(describe(node));
+    return { heading: describe(setup.querySelector('h2')), explanation: describe(setup.querySelector('p')),
+      reload: { ...describe(reload), disabled: reload.disabled, ariaDisabled: reload.getAttribute('aria-disabled'), ariaBusy: reload.getAttribute('aria-busy') },
+      ancestors, tokens: { t1: getComputedStyle(document.documentElement).getPropertyValue('--t1').trim(),
+        t3: getComputedStyle(document.documentElement).getPropertyValue('--t3').trim() },
+      finiteAnimations: document.getAnimations().filter(animation => Number.isFinite(animation.effect?.getComputedTiming().endTime)).map(animation => ({
+        name: 'animationName' in animation ? animation.animationName : 'transitionProperty' in animation ? animation.transitionProperty : null,
+        state: animation.playState, pending: animation.pending, currentTime: animation.currentTime,
+        progress: animation.effect?.getComputedTiming().progress, duration: animation.effect?.getComputedTiming().duration,
+        target: animation.effect && 'target' in animation.effect ? describe(animation.effect.target) : null })),
+      theme: document.documentElement.dataset.theme ?? 'system', systemDark: matchMedia('(prefers-color-scheme: dark)').matches };
+  })()`);
+  renderEvidence.push({ frame, phase, state });
+  if (evidenceDir) writeFileSync(join(evidenceDir, 'render-state.json'), JSON.stringify(renderEvidence, null, 2));
+  return state;
+}
+
+async function captureSetup(page: Page, name: string) {
+  await renderState(page, name, 'before_settling');
+  if (evidenceDir) await page.screenshot({ path: join(evidenceDir, `diagnostic-before-${name}.png`) });
+  await settleRendering(page);
+  const settled = await renderState(page, name, 'settled');
+  const rgb = (hex: string) => `rgb(${[1, 3, 5].map(offset => parseInt(hex.slice(offset, offset + 2), 16)).join(', ')})`;
+  assert.ok(settled.ancestors.every(ancestor => ancestor.opacity === '1'), 'settled setup ancestors use their normal opacity');
+  assert.equal(settled.heading.color, rgb(settled.tokens.t1), 'settled heading has the current normal text colour');
+  assert.equal(settled.explanation.color, rgb(settled.tokens.t3), 'settled explanation has the current secondary text colour');
+  assert.equal(settled.reload.color, rgb(settled.tokens.t1), 'enabled Reload has its normal current theme colour');
+  assert.equal(settled.reload.disabled, false); assert.equal(settled.reload.ariaDisabled, null);
+  assert.equal(settled.reload.ariaBusy, null);
+  assert.ok(!settled.finiteAnimations.some(animation => animation.state === 'running' || animation.pending));
+  if (evidenceDir) await page.screenshot({ path: join(evidenceDir, name + '.png') });
 }
 async function finite<T>(work: Promise<T>, label: string) {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -98,7 +159,7 @@ async function finite<T>(work: Promise<T>, label: string) {
 
 test('ordinary owner switches persist, the same old MCP bearer loses wiki access, and all Off remains manageable without new consent', { timeout: 120_000 }, async () => {
   const f = await fixture(); const browser = await chromium.launch({ args: ['--no-sandbox'] });
-  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const context = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 1440, height: 900 } });
   try {
     const { page, panel } = await open(context, f.email);
     const wiki = panel.getByRole('switch', { name: /^Wiki and materials/ });
@@ -143,7 +204,7 @@ test('ordinary owner switches persist, the same old MCP bearer loses wiki access
 
 test('a held genuine initial policy response cannot downgrade a later confirmed save', { timeout: 120_000 }, async () => {
   const f = await fixture(); const browser = await chromium.launch({ args: ['--no-sandbox'] });
-  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const context = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 1440, height: 900 } });
   const path = agentMcpPolicyPath(f.connection.connectionId);
   let release!: () => void; let captured!: (body: Buffer) => void; let failed!: (error: Error) => void; let settled!: () => void;
   const responseBytes = new Promise<Buffer>((resolve, reject) => { captured = resolve; failed = reject; });
@@ -183,7 +244,7 @@ test('a held genuine initial policy response cannot downgrade a later confirmed 
 
 test('a confirmed project-removal save with failed availability refresh shows unknown access until a genuine reload', { timeout: 120_000 }, async () => {
   const f = await fixture(); const browser = await chromium.launch({ args: ['--no-sandbox'] });
-  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const context = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 1440, height: 900 } });
   const pattern = `**${agentMcpPolicyPath(f.connection.connectionId)}`;
   try {
     const { page, panel } = await open(context, f.email);
@@ -210,7 +271,7 @@ test('a confirmed project-removal save with failed availability refresh shows un
 
 test('stale tabs and an actual offline save keep unconfirmed changes distinct from saved permissions', { timeout: 120_000 }, async () => {
   const f = await fixture(); const browser = await chromium.launch({ args: ['--no-sandbox'] });
-  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const context = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 1440, height: 900 } });
   try {
     const a = await open(context, f.email); const b = await open(context, f.email);
     await a.panel.getByRole('switch', { name: /^Wiki and materials/ }).uncheck();
@@ -245,7 +306,7 @@ test('Chromium and WebKit phone owner controls keep 44px switches, keyboard acce
       try {
         for (const width of [320, 390]) {
           const f = await fixture();
-          const context = await browser.newContext({ viewport: { width, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+          const context = await browser.newContext({ serviceWorkers: 'block', viewport: { width, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
           try {
             const { page, panel } = await open(context, f.email);
             const switches = panel.getByRole('switch');
@@ -271,5 +332,80 @@ test('Chromium and WebKit phone owner controls keep 44px switches, keyboard acce
           } finally { await context.close(); await f.pool.end(); }
         }
       } finally { await browser.close(); }
+  }
+});
+
+test('actual owner setup stays pending, refreshes lost authorization, and keeps revoked history in Chromium and WebKit', { timeout: 240_000 }, async () => {
+  if (evidenceDir) mkdirSync(evidenceDir, { recursive: true });
+  for (const engine of [chromium, webkit]) {
+    const browser = await engine.launch(engine === chromium ? { args: ['--no-sandbox'] } : {});
+    try {
+      for (const width of [390, 1440]) {
+        const f = await fixture();
+        const context = await browser.newContext({ serviceWorkers: 'block', viewport: { width, height: width === 390 ? 844 : 900 },
+          isMobile: width === 390, hasTouch: width === 390, deviceScaleFactor: width === 390 ? 3 : 1 });
+        try {
+          const { page, panel } = await open(context, f.email);
+          const setup = panel.getByRole('region', { name: 'Connection setup', exact: true });
+          await setup.getByRole('heading', { name: 'Client session open · activation pending', exact: true }).waitFor();
+          assert.equal(await setup.getByText('Built-in Start and Resume are pending. This connection is not ready to launch work from Flux.', { exact: true }).count(), 1);
+          assert.equal(await page.getByRole('button', { name: /^(Start work|Resume work)$/ }).count(), 0, 'OAuth/bootstrap records do not manufacture a working launch control');
+          for (const theme of ['light', 'dark'] as const) {
+            await page.emulateMedia({ colorScheme: theme });
+            await setup.evaluate(element => element.scrollIntoView({ block: 'start' }));
+            await captureSetup(page, `connect-setup-${engine.name()}-${width}-${theme}`);
+            // Whole natural flow supplies the connection/agent identity and setup context omitted by the focused slices.
+            if (evidenceDir) {
+              await page.locator('.connection').evaluate(element => element.scrollIntoView({ block: 'start' }));
+              await settleRendering(page);
+              await page.screenshot({ path: join(evidenceDir, `connect-context-${engine.name()}-${width}-${theme}.png`), fullPage: true });
+              await page.screenshot({ path: join(evidenceDir, `connect-initial-${engine.name()}-${width}-${theme}.png`) });
+            }
+          }
+          await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
+          const overflow = await page.evaluate(() => [...document.querySelectorAll('.connection *')].filter(element => {
+            const box = element.getBoundingClientRect(); return box.width > 0 && box.right > innerWidth + 1;
+          }).map(element => ({ tag: element.tagName, class: element.className, text: element.textContent?.slice(0, 80), right: element.getBoundingClientRect().right })));
+          await capture(page, `connect-setup-${engine.name()}-${width}-enlarged`);
+          assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `enlarged text preserves the setup message and controls without horizontal overflow: ${JSON.stringify(overflow)}`);
+          await page.evaluate(() => { document.documentElement.style.fontSize = ''; });
+          // Revoke the actual OAuth records independently of the UI, then refresh through its keyboard control.
+          await f.pool.query('UPDATE oauth_access_token SET revoked=now() WHERE reference_id IN (SELECT \'flux-grant:\' || id FROM agent_oauth_bindings WHERE connection_id=$1)', [f.connection.connectionId]);
+          await f.pool.query('UPDATE oauth_refresh_token SET revoked=now() WHERE reference_id IN (SELECT \'flux-grant:\' || id FROM agent_oauth_bindings WHERE connection_id=$1)', [f.connection.connectionId]);
+          const reload = panel.getByRole('button', { name: 'Reload saved permissions', exact: true });
+          await reload.focus(); await reload.press('Enter');
+          await setup.getByRole('heading', { name: 'Authorization needed', exact: true }).waitFor();
+          assert.equal((await f.settings()).setup.authorizationRecorded, false);
+          await panel.getByRole('button', { name: 'Disable all', exact: true }).click();
+          await panel.getByRole('button', { name: 'Save permissions', exact: true }).click();
+          await setup.getByRole('heading', { name: 'Permissions are Off', exact: true }).waitFor();
+          await setup.evaluate(element => element.scrollIntoView({ block: 'start' }));
+          await captureSetup(page, `connect-setup-${engine.name()}-${width}-off`);
+          assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+          await page.getByRole('button', { name: 'Revoke connection', exact: true }).click();
+          if (width === 390) await page.getByRole('button', { name: 'Revoke now', exact: true }).tap();
+          else await page.getByRole('button', { name: 'Revoke now', exact: true }).click();
+          const history = page.locator('.connection__history');
+          const disclosure = history.locator('summary');
+          await disclosure.waitFor({ state: 'visible' });
+          await page.evaluate(async () => { await Promise.all(document.getAnimations().filter(animation => Number.isFinite(animation.effect?.getComputedTiming().endTime))
+            .map(animation => animation.finished.catch(() => undefined))); });
+          if (width === 390) {
+            const box = await disclosure.boundingBox(); assert.ok(box);
+            const actual = await disclosure.evaluate(element => ({ minHeight: getComputedStyle(element).minHeight,
+              padding: getComputedStyle(element).padding, coarse: matchMedia('(pointer: coarse)').matches }));
+            assert.ok(box.height >= 44 - .001 && box.width >= 44 - .001, `the revoked-history disclosure has an actual 44px touch target: ${JSON.stringify({ box, actual })}`);
+            await disclosure.tap();
+          } else { await disclosure.focus(); await disclosure.press('Enter'); }
+          assert.equal(await history.getByText('External connection', { exact: true }).count(), 1);
+          await page.reload(); await history.locator('summary').click();
+          assert.equal(await history.getByText('External connection', { exact: true }).count(), 1, 'revoked history survives page reload');
+          await history.evaluate(element => element.scrollIntoView({ block: 'start' }));
+          await settleRendering(page);
+          if (evidenceDir) await page.screenshot({ path: join(evidenceDir, `connect-setup-${engine.name()}-${width}-revoked.png`) });
+          assert.equal(await page.getByRole('radio').count(), 0, 'revoked selection cannot reauthorize or retain actionable permission controls');
+        } finally { await context.close(); await f.pool.end(); }
+      }
+    } finally { await browser.close(); }
   }
 });

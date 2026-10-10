@@ -26,6 +26,7 @@ export function ClientGuide({ origin }: { origin: string }) {
   const url = `${origin}/mcp`;
   return <div className="connection__guide">
     <h2>Connect your MCP client</h2>
+    <p>Built-in setup, Start and Resume are pending. These client settings authorize access; they do not launch work from Flux.</p>
     <p>Add this Flux address to the client you already use. Each client opens this page to ask for your consent, and each gets exactly the same access you approve here.</p>
     {isLoopbackOrigin(origin)
       ? <p>This address works only on this computer. A client on another computer needs an HTTPS address for this Flux server, which its operator sets up.</p>

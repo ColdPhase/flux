@@ -139,6 +139,7 @@ function ConnectionSummary({ connection, agentName, projectNames, showScopes = t
 export function AgentConnectionPage() {
   const { connections, projects, workspaces, agents, grants, oauthQuery, actionGrants } = useLoaderData() as ConnectionData;
   const [items, setItems] = useState(connections.filter((connection) => !connection.revokedAt));
+  const [ended, setEnded] = useState(connections.filter((connection) => connection.revokedAt));
   const [selected, setSelected] = useState<string | null>(items[0]?.id ?? null);
   const [adding, setAdding] = useState(items.length === 0);
   const [personalAgents, setPersonalAgents] = useState(agents);
@@ -198,6 +199,8 @@ export function AgentConnectionPage() {
     try {
       await revokeAgentConnection(connectionId);
       const remaining = items.filter((item) => item.id !== connectionId);
+      const revoked = items.find((item) => item.id === connectionId);
+      if (revoked) setEnded((current) => [{ ...revoked, revokedAt: new Date().toISOString() }, ...current]);
       setItems(remaining); setSelected((current) => current === connectionId ? remaining[0]?.id ?? null : current);
       setRevoking(null);
     } catch (cause) { setError(describeError(cause)); }
@@ -246,6 +249,11 @@ export function AgentConnectionPage() {
     </fieldset> : null}
     {!oauthQuery && selected && items.some((item) => item.id === selected) ?
       <McpPermissions key={selected} connection={items.find((item) => item.id === selected)!} projectNames={projectNames} /> : null}
+    {!oauthQuery && ended.length ? <details className="connection__history">
+      <summary>Revoked connections ({ended.length})</summary>
+      <p>These connections cannot reconnect. Create a new selection and authorize it separately; previous tasks and checkpoints remain in their projects.</p>
+      <ul>{ended.map((connection) => <li key={connection.id}><strong>{connection.name}</strong><span>Revoked</span></li>)}</ul>
+    </details> : null}
     {creatingAgent ? <form className="connection__create" onSubmit={(event) => { void addPersonalAgent(event); }}>
       <h2>Create your personal agent</h2><p>This identity belongs only to you. A project manager must explicitly grant it project access.</p>
       {!workspaces.length ? <p className="connection__help" role="note">Your agent belongs to a workspace, and you are not in one yet. <Link to="/projects/new">Create a project</Link> to start one, or ask someone to add you to theirs.</p> : <>

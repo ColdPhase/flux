@@ -23,11 +23,13 @@ import { claudeBin, cleanClientHome, clientEvents, connectClient, scopes, seedOa
 // The CLIs leave keep-alive sockets and helper processes behind; end the file once its results are reported.
 after(() => { setTimeout(() => process.exit(process.exitCode ?? 0), 3000); });
 
-interface Spec extends ClientSpec { agent: 'codex' | 'claude'; projects: ('study' | 'field')[] }
+interface Spec extends ClientSpec { agent: 'codex' | 'claude' | 'ownerClaude' | 'peerCodex'; projects: ('study' | 'field')[] }
 const specs: Spec[] = [
   { key: 'codex-laptop', client: 'codex', label: 'Codex on laptop', designation: 'codex', agent: 'codex', projects: ['study'], port: 19811 },
   { key: 'codex-desktop', client: 'codex', label: 'Codex on desktop', designation: 'codex', agent: 'codex', projects: ['study', 'field'], port: 19812 },
-  { key: 'claude-laptop', client: 'claude', label: 'Claude Code on laptop', designation: 'claude_code', agent: 'claude', projects: ['study', 'field'], port: 19813 },
+  { key: 'claude-laptop', client: 'claude', label: 'Peer Claude Code', designation: 'claude_code', agent: 'claude', projects: ['study', 'field'], port: 19813 },
+  { key: 'claude-owner', client: 'claude', label: 'Owner Claude Code', designation: 'claude_code', agent: 'ownerClaude', projects: ['study'], port: 19814 },
+  { key: 'codex-peer', client: 'codex', label: 'Peer Codex', designation: 'codex', agent: 'peerCodex', projects: ['study', 'field'], port: 19815 },
 ];
 // Names every personal connection must offer: the shared domain tools of the same owner-visible project data.
 const sharedTools = ['flux_bootstrap', 'flux_list_contexts', 'flux_list_materials', 'flux_read_material', 'flux_create_proposal',
@@ -37,27 +39,36 @@ const sharedTools = ['flux_bootstrap', 'flux_list_contexts', 'flux_list_material
 interface ToolCall { tool: string; text: string }
 interface Session { names: string[]; calls: ToolCall[]; output: string }
 
-test('real pinned Codex and Claude Code clients: three personal connections, one OAuth each, shared domain tools, revocation', async (t) => {
+test('real pinned Codex and Claude Code clients: two owners, both native client types and five independent connections, one OAuth each, shared domain tools, revocation', async (t) => {
   const { pool } = createDatabase(process.env.DATABASE_URL!);
   const proxy = startFluxProxy(); await proxy.listen();
   const browser: Chromium = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
   const mock = { current: null as Awaited<ReturnType<typeof startClientModelMock>> | null };
   try {
-    // --- One person, two projects, two agents (Hubert / Codex, Hubert / Claude), three named connections.
+    // --- Both owners have Codex and Claude; the first owner also retains two independent homes for one Codex agent.
     const email = uniqueEmail('mcp-clients');
     const { browser: owner } = await register(email, password, 'Client owner');
+    const peerEmail = uniqueEmail('mcp-client-peer');
+    const { browser: peer } = await register(peerEmail, password, 'Peer client owner');
+    const people = { codex: owner, claude: peer, ownerClaude: owner, peerCodex: peer };
+    const emails = { codex: email, claude: peerEmail, ownerClaude: email, peerCodex: peerEmail };
+    const peerId = String((expect(await peer.request('GET', '/api/v1/me'), 200).user as { id: string }).id);
     const workspace = expect(await owner.request('POST', '/api/v1/workspaces', { body: { name: 'Client contract' } }), 201);
+    // Both humans may explicitly grant actions to their own clients. Peer project management is a fixture choice,
+    // never a grant inferred from the client label or from another owner's standing authority.
+    expect(await owner.request('POST', `/api/v1/workspaces/${workspace.id}/members`, { body: { email: peerEmail, role: 'admin' } }), 201);
     const makeProject = async (name: string) => String(expect(await owner.request('POST', `/api/v1/workspaces/${workspace.id}/projects`, { body: { name, visibility: 'restricted' } }), 201).id);
     const projects = { study: await makeProject('Sensor study'), field: await makeProject('Field notes') };
+    for (const projectId of Object.values(projects)) expect(await owner.request('POST', `/api/v1/projects/${projectId}/grants`, { body: { principal: { kind: 'human', id: peerId }, role: 'contributor' } }), 201);
     const names = { study: 'Sensor study', field: 'Field notes' };
     const agents: Record<string, string> = {};
-    for (const [key, name] of [['codex', 'Owner Codex'], ['claude', 'Owner Claude']] as const) {
-      agents[key] = String(expect(await owner.request('POST', `/api/v1/workspaces/${workspace.id}/agents`, { body: { name, owner: 'self' } }), 201).id);
+    for (const [key, name] of [['codex', 'Owner Codex'], ['claude', 'Peer Claude'], ['ownerClaude', 'Owner Claude'], ['peerCodex', 'Peer Codex']] as const) {
+      agents[key] = String(expect(await people[key].request('POST', `/api/v1/workspaces/${workspace.id}/agents`, { body: { name, owner: 'self' } }), 201).id);
       for (const projectId of Object.values(projects)) expect(await owner.request('POST', `/api/v1/projects/${projectId}/grants`, { body: { principal: { kind: 'agent', id: agents[key] }, role: 'contributor' } }), 201);
     }
     const connections: Record<string, string> = {};
     for (const spec of specs) {
-      connections[spec.key] = String(expect(await owner.request('POST', '/api/v1/agent-connections', { body: { name: spec.label, clientDesignation: spec.designation,
+      connections[spec.key] = String(expect(await people[spec.agent].request('POST', '/api/v1/agent-connections', { body: { name: spec.label, clientDesignation: spec.designation,
         agentId: agents[spec.agent], selectedProjectIds: spec.projects.map((project) => projects[project]), scopes } }), 201).id);
     }
     const clientIds: Record<string, string> = {};
@@ -72,7 +83,7 @@ test('real pinned Codex and Claude Code clients: three personal connections, one
     for (const spec of specs) {
       homes[spec.key] = cleanClientHome(spec);
       await t.test(`${spec.label}: ${spec.client} adds Flux and completes OAuth as the person`, async () => {
-        await connectClient(browser, email, homes[spec.key]!, clientIds[spec.key]!);
+        await connectClient(browser, emails[spec.agent], homes[spec.key]!, clientIds[spec.key]!);
       });
     }
 
@@ -94,8 +105,8 @@ test('real pinned Codex and Claude Code clients: three personal connections, one
       try {
         const result = spec.client === 'codex'
           ? await sh('codex', ['exec', '--json', '--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox',
-            // Flux speaks MCP 2026-07-28 only; the pinned Codex asks for 2025-06-18 unless this under-development feature is on.
-            '--enable', 'mcp_2026_07_28', '-c', 'model_provider="mock"',
+            // Default CLI must work without a feature override; a separate lane verifies opt-in modern compatibility.
+            ...(process.env.FLUX_TEST_CODEX_MODERN === '1' ? ['--enable', 'mcp_2026_07_28'] : []), '-c', 'model_provider="mock"',
             '-c', `model_providers.mock={name="mock",base_url="http://127.0.0.1:${model.port}/v1",env_key="MOCK_MODEL_KEY",wire_api="responses",supports_websockets=false}`, 'Use the Flux tools'], env, cwd)
           : await sh(claudeBin, ['-p', 'Use the Flux tools', '--output-format', 'stream-json', '--verbose', '--allowedTools', 'mcp__flux', '--max-turns', '8'],
             { ...env, ANTHROPIC_BASE_URL: `http://127.0.0.1:${model.port}` }, cwd);
@@ -156,7 +167,7 @@ test('real pinned Codex and Claude Code clients: three personal connections, one
       const stored = expect(await owner.request('GET', `/api/v1/work/${task.workId}`), 200);
       assert.equal(stored.title, title);
       assert.deepEqual([(stored.createdBy as { kind: string }).kind, (stored.createdBy as { id: string }).id], ['agent', agents.codex], 'the task is attributed to the connection\'s agent');
-      for (const spec of [specs[1]!, specs[2]!]) {
+      for (const spec of specs.slice(1)) {
         const read = await session(spec, spec.client === 'codex'
           ? () => codexScript(`text(JSON.stringify(await tools.mcp__flux__flux_list_work({ projectId: ${JSON.stringify(projects.study)} })));`)
           : (outputs) => outputs.length === 0 ? ['flux_list_work', JSON.stringify({ projectId: projects.study })] : []);
@@ -164,13 +175,76 @@ test('real pinned Codex and Claude Code clients: three personal connections, one
       }
     });
 
+    // Each invocation below is a fresh actual native process, using its own saved OAuth home and a scripted model.
+    // This verifies domain checkpoint/reconnect and observed task/result progress, not integrated Start/Resume,
+    // native turn interruption, durable request admission/inbox or a complete busy review/fix cycle.
+    async function native(spec: Spec, name: string, args: Record<string, unknown>) {
+      const result = await session(spec, spec.client === 'codex'
+        ? () => codexScript(`text(JSON.stringify(await tools[${JSON.stringify(`mcp__flux__${name}`)}](${JSON.stringify(args)})));`)
+        : outputs => outputs.length === 0 ? [name, JSON.stringify(args)] : []);
+      return json(result.calls.find(call => call.tool === name));
+    }
+    for (const spec of specs) await t.test(`${spec.label}: native task/unit progress, quiet renewal, persisted checkpoint replay and a fresh-process reconnect`, async () => {
+      const human = people[spec.agent]; const connectionId = connections[spec.key]!;
+      const standing = async (operation: string, objectId?: string) => String(expect(await human.request('POST',
+        `/api/v1/agent-connections/${connectionId}/action-grants`, { body: { clientCommandId: randomUUID(), projectId: projects.study,
+          operation, peerRequestClass: 'execute', maximumUses: 5, ...(objectId ? { objectId } : {}),
+          expiresAt: new Date(Date.now() + 3_600_000).toISOString() } }), 201).id);
+      const boot = await native(spec, 'flux_bootstrap', { projectId: projects.study, clientSessionId: randomUUID() });
+      assert.ok((boot.gaps as string[]).includes('coordination_unavailable'), 'unimplemented inbox/admission stays explicit');
+      const runtimeSessionId = (boot.runtime as { id: string }).id;
+      const base = (grantId: string, sessionId = runtimeSessionId) => ({ projectId: projects.study, runtimeSessionId: sessionId,
+        grantId, clientCommandId: randomUUID(), peerRequestClass: 'execute' });
+      const task = await native(spec, 'flux_create_task', { ...base(await standing('work.create')),
+        task: { title: `${spec.label}: compare the sensor observations` } });
+      const stored = expect(await human.request('GET', `/api/v1/work/${task.workId}`), 200);
+      assert.equal((stored.createdBy as { id: string }).id, agents[spec.agent]);
+      const unit = await native(spec, 'flux_create_unit', { ...base(await standing('cowork.unit.create', String(task.workId))),
+        taskId: task.workId, expectedTaskVersion: stored.version, unitKey: 'compare-observations', assignmentConnectionId: connectionId, parent: null });
+      const unitId = String(unit.unitId); const claimGrant = await standing('cowork.claim', unitId);
+      const claimed = await native(spec, 'flux_claim_unit', { ...base(claimGrant), unitId, expectedVersion: unit.version });
+      const fence = (value: Record<string, unknown>) => ({ unitId, expectedVersion: value.version, generation: value.generation,
+        leaseId: (value.lease as { id: string }).id });
+      const activity = async () => (expect(await human.request('GET', `/api/v1/projects/${projects.study}/agents`), 200).connections as { id: string; lastActivity: unknown }[])
+        .find(row => row.id === connectionId)!.lastActivity;
+      const beforeRenewal = await activity();
+      const renewed = await native(spec, 'flux_renew_unit', { ...base(await standing('cowork.renew', unitId)), ...fence(claimed) });
+      assert.deepEqual(await activity(), beforeRenewal, 'actual lease renewal does not manufacture activity');
+      const checkpoint = { summary: 'The first sensor observation was recorded.', nextAction: 'Compare the second observation.', blocker: null };
+      const releaseGrant = await standing('cowork.release', unitId);
+      const release = { ...base(releaseGrant), ...fence(renewed), checkpoint, sources: [] };
+      const parked = await native(spec, 'flux_release_unit', release);
+      assert.equal(parked.state, 'paused');
+      assert.deepEqual(await native(spec, 'flux_release_unit', release), parked, 'a lost-response retry from a fresh native process replays the same persisted checkpoint');
+      assert.equal((await pool.query('SELECT count(*)::int AS n FROM cowork_checkpoints WHERE unit_id=$1', [unitId])).rows[0].n, 1);
+      assert.equal((await pool.query('SELECT used FROM agent_standing_grants WHERE id=$1', [releaseGrant])).rows[0].used, 1);
+      const reconnected = await native(spec, 'flux_bootstrap', { projectId: projects.study, clientSessionId: randomUUID() });
+      const nextSession = (reconnected.runtime as { id: string }).id;
+      assert.notEqual(nextSession, runtimeSessionId);
+      const resumed = await native(spec, 'flux_claim_unit', { ...base(claimGrant, nextSession), unitId, expectedVersion: parked.version });
+      assert.equal(resumed.checkpointId, parked.checkpointId);
+      assert.equal((resumed.checkpoint as { summary: string }).summary, checkpoint.summary, 'the new native process receives actual checkpoint content');
+      assert.equal((resumed.lease as { runtimeSessionId: string }).runtimeSessionId, nextSession);
+      const recorded = await native(spec, 'flux_record_result', { ...base(await standing('result.record'), nextSession), sources: [],
+        result: { title: `${spec.label}: observation comparison`, finding: 'positive', evidence: 'Two bounded fixture observations compared.', workIds: [task.workId] } });
+      const completed = await native(spec, 'flux_complete_unit', { ...base(await standing('cowork.unit.complete', unitId), nextSession), ...fence(resumed),
+        outcome: { type: 'result', id: recorded.resultId } });
+      assert.equal(completed.state, 'completed');
+      const persisted = (await pool.query('SELECT state, outcome_ref FROM cowork_units WHERE id=$1', [unitId])).rows[0];
+      assert.deepEqual(persisted, { state: 'completed', outcome_ref: { type: 'result', id: recorded.resultId } });
+    });
+
     await t.test('revoking one connection stops that client and leaves the others working', async () => {
-      expect(await owner.request('DELETE', `/api/v1/agent-connections/${connections['claude-laptop']}`), 204);
+      expect(await peer.request('DELETE', `/api/v1/agent-connections/${connections['claude-laptop']}`), 204);
       const refused = await session(specs[2]!, (outputs) => outputs.length === 0 ? ['flux_list_contexts', '{}'] : []);
       assert.ok(!refused.output.includes('Sensor study'), `a revoked connection returned data:\n${refused.output}`);
       assert.ok(!refused.calls.some((call) => call.text.includes('Sensor study')), 'a revoked connection returned project data');
-      const still = await session(specs[1]!, () => listAll);
-      assert.deepEqual(contextNames(still.calls.find((call) => call.tool === 'flux_list_contexts')), ['Field notes', 'Sensor study']);
+      for (const spec of specs.filter(item => item.key !== 'claude-laptop')) {
+        const still = await session(spec, spec.client === 'codex' ? () => listAll
+          : outputs => outputs.length === 0 ? ['flux_list_contexts', '{}'] : []);
+        assert.deepEqual(contextNames(still.calls.find(call => call.tool === 'flux_list_contexts')), spec.projects.map(project => names[project]).sort(),
+          `${spec.label} retains only its own authorized projects`);
+      }
     });
   } finally {
     await mock.current?.close();

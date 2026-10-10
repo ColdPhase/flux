@@ -1,0 +1,101 @@
+{
+  "date": "2026-10-10",
+  "sourceBase": "2175d2490a023905143569a13ca68f43e93bb403",
+  "acceptedContractHead": "93889087957b73fe2368d43b6ee3e8926fcbd787",
+  "recordedContractHead": "880340ab0052774af4431858975ac544bf30b877",
+  "applicationSourceSha256": {
+    "app/apps/server/src/agent-connection/mcp-protocol.ts": "7530ad54aea175d8de5fda2c2dbea713f94001b32943ff16fab6417b7f026de0",
+    "app/apps/server/src/agent-connection/mcp-route.ts": "536439265e52940e4141b0f5603e814d46d6b46b2e7bde4de63a53c020f0a653",
+    "app/apps/server/src/agent-connection/mcp-tools.ts": "d40a6d815e47c14dee62264ddeacd38ce81ccc6d9003ff03cbcdc9f29b83da21",
+    "app/tests/app/support/mcp.ts": "77d9d81a6fc23acf52309c5d5322745394f503ca6335fad8f9334f168c07f370",
+    "app/tests/app/support/mcp-actions.ts": "661c5dbe84b40979aa39c91546cc3dcb08ce06db1fbb3f42927443582afe56e0",
+    "app/tests/app/support/mcp-client-harness.ts": "796dd43622930c80f9c2e5d17ade9a2fd282fd29cac55362183f7428367a716c",
+    "app/tests/app/e2e/mcp-clients.e2e.ts": "711a07447769edefc06e10b57a7abd92660cb249e034a37a41cda5103ae5bceb",
+    "app/tests/app/e2e/mcp-onboarding.e2e.ts": "ba775b1168804c3b6ced4d25e8940c153ceeb099871282afb777c3ea5d10118c",
+    "app/tests/app/mcp-protocol.test.ts": "bdee740113441c1d10b5921ac99e484d981289664b704dfce6af69a9329c32c3",
+    "scripts/check_mcp_clients.sh": "3886716c0ba09e8a9f9f9e4dfe8fb2c4d63fa49c11497f7387a2cbaf021a13a4"
+  },
+  "api": {
+    "2026-07-28": {
+      "passed": 69,
+      "failed": 0
+    },
+    "2025-06-18": {
+      "passed": 69,
+      "failed": 0
+    },
+    "log": "/tmp/flux-460-impl-attempt3.log",
+    "logSha256": "ab9c2b6da618849bd067197cc2fc22181a325cd2bc8086144c609a772f96ee7b"
+  },
+  "native": {
+    "default": {
+      "passed": 13,
+      "failed": 0
+    },
+    "optInModern": {
+      "passed": 13,
+      "failed": 0
+    },
+    "codex": "rust-v0.160.1",
+    "claudeCode": "2.1.285",
+    "platform": "linux/amd64 in Docker; labels are not evidence of physical laptops/desktops",
+    "instructionDelivery": {
+      "method": "native list_mcp_resources/read_mcp_resource, URI and reference from actual authenticated responses",
+      "chars": 14224,
+      "bundleId": "flux.cowork",
+      "version": "1.3.0",
+      "digest": "sha256:9f7137e66f2acb7b99d99342a1a2ce4f425ecb7b3731a912c259d3f91debc7ba",
+      "fullEqualityVerifiedAfterDelivery": true,
+      "preInjectedBundle": false,
+      "firstGrantedTaskPersistedWithActor": true
+    },
+    "ordinaryCodexRegistration": {
+      "seededOAuthClient": false,
+      "preRegisteredClientIdArgument": false,
+      "featureOverride": false,
+      "actualPermittedRead": true,
+      "serverAuthConfigurationRelaxed": false
+    },
+    "log": "/tmp/flux-460-native-check.log",
+    "logSha256": "1087c1e2a8dd74abc27eb819518ae291275c2d6ea55430886b96cebe28bc7fc1"
+  },
+  "boundaries": {
+    "realInstalledClients": true,
+    "realFluxOAuthAndData": true,
+    "scriptedModels": "local only; this records actual delivery/invocation, not genuine model obedience",
+    "vendorAccount": false,
+    "vendorKey": false,
+    "vendorSpend": 0,
+    "mainFullApplicationReplay": false
+  },
+  "remaining": [
+    "independent runtime evaluation and eligible approval",
+    "eligible contract PR466 acceptance/main composition before implementation merge",
+    "built-in Connect status/recovery acceptance",
+    "full160 Start/Resume/busy/restart/noise/quiet-idle integration",
+    "required cancellation/progress behavior; HTTP refusal is not cancellation proof",
+    "required client/platform coverage beyond tested Linux CLI/Chromium authorization"
+  ],
+  "retainedFailedAttempts": [
+    "/tmp/flux-460-impl-build1.log: test TypeScript headers-union error",
+    "/tmp/flux-460-impl-attempt2.log: raw DELETE fixture sent empty JSON body and received Fastify400; fixture corrected",
+    "/tmp/flux-460-impl-attempt3.log: both API69 pass; native resource listing disproved old broad negative assertion",
+    "/tmp/flux-460-native-attempt1.log: wrong Stop sentinel; replaced with exact full render equality"
+  ],
+  "ownedResources": {
+    "ports": [
+      19820,
+      19821
+    ],
+    "subnets": [
+      "10.198.100.0/24",
+      "10.198.101.0/24",
+      "10.198.102.0/24"
+    ],
+    "projects": [
+      "flux-mcpclients-1791660284-3625298",
+      "flux-mcpclients-1791661117-3744100"
+    ],
+    "cleaned": true
+  }
+}

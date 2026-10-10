@@ -163,3 +163,4 @@ export * from './repositories/agent-policies.js';
 
 export * from './repositories/files.js';
 export * from './repositories/agent-runtime.js';
+export * from './repositories/agent-connection-setup.js';
