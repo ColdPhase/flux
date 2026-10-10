@@ -309,7 +309,7 @@ root on the host or every owner's credentials.
 
 *Revised 2026-10-09 by founder direction (F-027, answer A): presentation only; the
 CLI authentication methods are unchanged.* *Amended 2026-10-10 for independent
-#401 C1 (peer acceptance pending):* pending login survives a browser reload under
+#401 C1 ([contract-text acceptance recorded](assistant.md#contract-text-acceptance-2026-10-10)):* pending login survives a browser reload under
 the bounded in-memory reconnect lifecycle in step 3; this revises the former
 kill-on-WebSocket-close rule, not the CLI's authentication mechanism. The person
 sees a guided card, and the terminal is
@@ -446,7 +446,7 @@ matching agent connection:
   say ([AST-5, AST-6](assistant.md#ast-5--changes-do-it-and-tell-me-or-ask-me-first)),
   and changes outside the owner's rights become suggestions. (Before: "Standing grants
   (#152) apply the same way. Consequential changes become proposals.")
-  *Amended 2026-10-10 for #401 C4 (peer acceptance pending):* the unchanged
+  *Amended 2026-10-10 for #401 C4 ([contract-text acceptance recorded](assistant.md#contract-text-acceptance-2026-10-10)):* the unchanged
   external unit-create self-root/live-child path cannot perform an assistant's
   own-agent handoff without a claim. For direct model calls, a verified durable
   assistant binding and current authorized run/token select the bounded
@@ -454,7 +454,7 @@ matching agent connection:
   It preserves current S6/owner/project/operation checks, ordinary external fences
   and the external recipient's own grant/claim; no compute-source-only authority,
   client actor assertion, assistant claim/bootstrap or foreign-agent authorization.
-  *R1/R2 clarification, 2026-10-10 (peer acceptance pending):* those direct calls
+  *R1/R2 clarification, 2026-10-10 ([contract-text acceptance recorded](assistant.md#contract-text-acceptance-2026-10-10)):* those direct calls
   use a server-selected versioned run-private catalog/input view, without the
   ordinary external tool's bootstrap runtime/grant fields. That public schema and
   its standing-grant/root/child semantics remain unchanged. A saved waiting change

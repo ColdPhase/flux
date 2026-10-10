@@ -66,7 +66,7 @@ changes tasks, Wiki pages, maps and conversations directly under its owner's swi
 and approval mode, and may hand a task to its owner's own agents; a hand-off to
 another person's agent waits for an owner-sent request and that person's separate
 consent/ordinary handoff, never an owner-approved foreign-agent unit creation.
-*Clarified 2026-10-10 for #401 C4 (peer acceptance pending):* own-agent unit creation
+*Clarified 2026-10-10 for #401 C4 ([contract-text acceptance recorded](assistant.md#contract-text-acceptance-2026-10-10)):* own-agent unit creation
 uses the [server-owned owner-assistant run adapter](../development/cowork-coordination.md#owner-assistant-handoff-creation--f-027-amendment-2026-10-10),
 with verified durable owner binding/run purpose and current S6 checks for direct
 calls, or the separate current-owner Apply purpose on an immutable saved waiting

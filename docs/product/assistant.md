@@ -1,11 +1,27 @@
 # F-027 — the assistant: subscriptions, switches, edits and background work
 
 **Status: F-027 — Accepted by founder direction 2026-10-09 (questions 1–18 answered
-"recommended"), awaiting independent peer review of the contract text.** Owner:
+"recommended"); contract text independently accepted 2026-10-10 at
+`299369288a751ca61c3d7cf25ce52b38ae8f1361` (record below).** Owner:
 @PelikanFix16 (`claude-hubert`). The founder decided the product questions below; the
 peer review covers whether this text states them correctly and testably, not whether
 to make them. Implementation slices start from this text; a review finding that
 changes it is recorded here with its date.
+
+<a id="contract-text-acceptance-2026-10-10"></a>
+**Independent contract-text acceptance, 2026-10-10.** The independent delegated
+Codex evaluator accepted the full AST-1–AST-10 contract, all 71 named criteria,
+required journeys/slices and dated C1–C4/R1–R2 governing amendments at exact head
+`299369288a751ca61c3d7cf25ce52b38ae8f1361` in
+[COMMENT review 5480690010](https://github.com/ColdPhase/flux/pull/401#pullrequestreview-5480690010).
+The evaluator did not author these changes; the authenticated GitHub identity was
+the shared `PelikanFix16` account. This records delegated independent contract
+evaluation, not a founder instruction or eligible GitHub approval. Protected-main
+merge still needs eligible independent review from `Zamojski5`, current required
+checks and resolved conversations. No merge, runtime/implementation, #402/#457,
+whole-application or release acceptance follows from this COMMENT; all 71 runtime
+criteria and their actual implementation evidence remain unverified. This status
+record changes no requirement, criterion, scope or native/client fence.
 
 **Evidence:** [dated sources, retrieved 2026-10-09](research/2026-10-09-assistant-subscriptions-and-edits.md).
 **Proposal and options considered:** [assistant proposal, 2026-10-09](research/2026-10-09-assistant-proposal.md)
@@ -93,8 +109,8 @@ carry a dated note "Revised 2026-10-09 by founder direction (F-027)":
 [CO-1](mcp-cowork.md#connections-and-owner-authorized-autonomy--co-1) and the
 [decision register](decisions.md).
 
-**Contract corrections, 2026-10-10 (independent #401 review C1–C4; peer acceptance
-pending).** Pending sign-in has AIM-3's bounded, authenticated in-memory reconnect
+**Contract corrections, 2026-10-10 (independent #401 review C1–C4; contract-text
+acceptance recorded above).** Pending sign-in has AIM-3's bounded, authenticated in-memory reconnect
 lifecycle; closing a browser socket alone no longer cancels it. Conversations Off
 permits the owner's explicitly submitted request data, not ambient thread history.
 The operator-storage disclosure precedes every subscription sign-in. Own-agent
@@ -104,7 +120,7 @@ ordinary external root/child authority is unchanged. These corrections preserve
 all 71 AST criteria and required journeys; documentation review accepts no runtime
 behavior or implementation slice.
 
-**C4 follow-up, 2026-10-10 (#401 R1/R2; peer acceptance pending):** direct run calls
+**C4 follow-up, 2026-10-10 (#401 R1/R2; contract-text acceptance recorded above):** direct run calls
 use a versioned run-private catalog/input projection of `flux_create_unit`, while
 ordinary external bootstrap/grant inputs remain unchanged. A waiting change's later
 Apply uses freshly authenticated owner-approval purpose, not the source run's expired
@@ -639,7 +655,7 @@ him and records "drafted by Ada's assistant".
   one line in Recent: "Expired: close 2 duplicates · Ask again".
 - An applied waiting change records "Ada's assistant · approved by Ada".
 
-**Execution purpose after preparation (2026-10-10, #401 R1; peer acceptance pending).**
+**Execution purpose after preparation (2026-10-10, #401 R1; contract-text acceptance recorded above).**
 The owner's Apply is a new explicit instruction to execute **this saved change**,
 not permission for the model to keep working. A3's specified owner-only Apply route
 checks the current authenticated owner/session standing and pending change version,

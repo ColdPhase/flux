@@ -399,8 +399,9 @@ one after it.
 
 ### Owner-assistant handoff creation — F-027 amendment (2026-10-10)
 
-**Proposed contract correction for #401 C4; independent peer acceptance required
-before implementation relying on it merges.** This bounded server-owned adapter
+**Contract correction for #401 C4 independently accepted as documentation at
+`299369288a751ca61c3d7cf25ce52b38ae8f1361`, 2026-10-10; see
+[the review/identity/remaining-gates record](../product/assistant.md#contract-text-acceptance-2026-10-10).** This bounded server-owned adapter
 delivers [F-027 AST-3/Journey 5](../product/assistant.md#ast-3--one-assistant-one-permission-surface)
 without giving the assistant a parent claim. The ordinary external
 `coWorkUnitCreationInTransaction` contract above, including root assignee=caller
@@ -409,7 +410,7 @@ and child live-parent generation/lease/runtime fences, remains unchanged.
 `ownerAssistantUnitCreationInTransaction` is an internal composition reached either
 through the verified run-private `flux_create_unit` projection below or through
 AST-5's authenticated owner Apply on its saved immutable intent. **R1/R2 clarification,
-2026-10-10, peer acceptance pending:** these have distinct server-verified authority
+2026-10-10, [contract-text acceptance recorded](../product/assistant.md#contract-text-acceptance-2026-10-10):** these have distinct server-verified authority
 purposes; the ordinary external public tool/schema remains unchanged. There is no
 new public actor/authority parameter or endpoint.
 
