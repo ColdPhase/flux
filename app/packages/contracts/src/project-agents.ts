@@ -1,6 +1,7 @@
 import type { AssistantJoinRequest } from './assistant.js';
 import type { ExternalClientDesignation } from './agent-proposals.js';
 import type { AgentOperation } from './agent-execution.js';
+import type { CoWorkRequestKind, CoWorkRequestState } from './cowork.js';
 
 /**
  * The Agents view of a project (UI116-2): every current external connection
@@ -38,6 +39,21 @@ export interface ProjectAgentConnection {
   session: { startedAt: string; expiresAt: string } | null;
   /** The connection's latest completed action in this project; lease renewals (heartbeats) are not activity. */
   lastActivity: { operation: AgentOperation; at: string } | null;
+  /** The task unit this connection holds in this project now (assigned, working or paused); null when it holds none. */
+  currentWork: { taskId: string; taskTitle: string; role: 'execute' | 'review' | 'plan'; state: 'pending' | 'claimed' | 'paused' } | null;
+  /** Requests addressed to this connection that are still open here (#160 AC-5), oldest first. Quiet acknowledgments are not listed. */
+  requests: ProjectAgentRequest[];
+}
+
+/** One open request in the Agents view: who asked, what for, its task and why it waits. Its content stays in its source. */
+export interface ProjectAgentRequest {
+  id: string;
+  kind: CoWorkRequestKind;
+  state: Extract<CoWorkRequestState, 'queued' | 'deferred' | 'claimed'>;
+  reason: string | null;
+  taskId: string;
+  taskTitle: string;
+  sender: { connectionId: string; name: string; ownerName: string };
 }
 
 export interface ProjectAgents {

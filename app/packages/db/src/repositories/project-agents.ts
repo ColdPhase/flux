@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, gt, inArray, isNull, ne, or, sql } from 'drizzle-orm';
-import type { AgentOperation, ProjectAgentConnection, ProjectAgents } from '@flux/contracts';
+import type { AgentOperation, ProjectAgentConnection, ProjectAgentRequest, ProjectAgents } from '@flux/contracts';
 import * as schema from '../schema.js';
 import { assistantJoinView } from './assistant-joins.js';
 import type { createDatabase } from '../index.js';
@@ -133,6 +133,41 @@ export function projectAgentRepository(db: Database, policy: ProjectAgentPolicy)
             ...QUIET_OPERATIONS.map((operation) => ne(schema.agentCommandReceipts.operation, operation))))
           .orderBy(schema.agentCommandReceipts.connectionId, desc(schema.agentCommandReceipts.completedAt))) activity.set(row.connectionId, row);
 
+        // Work the connection holds here: one unit per (task, role) lives on its assignee, so a connection's units are its work.
+        const units = await tx.select({ connectionId: schema.coworkUnits.assignmentConnectionId, taskId: schema.coworkUnits.taskId,
+          taskTitle: schema.projectWorkItems.title, role: schema.coworkUnits.role, state: schema.coworkUnits.state })
+          .from(schema.coworkUnits)
+          .innerJoin(schema.projectWorkItems, and(eq(schema.projectWorkItems.id, schema.coworkUnits.taskId),
+            eq(schema.projectWorkItems.projectId, schema.coworkUnits.projectId)))
+          .where(and(eq(schema.coworkUnits.projectId, projectId), inArray(schema.coworkUnits.assignmentConnectionId, ids),
+            inArray(schema.coworkUnits.state, ['pending', 'claimed', 'paused'])))
+          .orderBy(asc(schema.coworkUnits.createdAt), asc(schema.coworkUnits.id));
+        const work = new Map<string, { taskId: string; taskTitle: string; role: 'execute' | 'review' | 'plan'; state: 'pending' | 'claimed' | 'paused' }>();
+        for (const unit of units) if (!work.has(unit.connectionId)) work.set(unit.connectionId, { taskId: unit.taskId, taskTitle: unit.taskTitle,
+          role: unit.role, state: unit.state as 'pending' | 'claimed' | 'paused' });
+
+        // Open requests addressed to each connection, with the sender's connection and owner. Resolved, declined and
+        // superseded requests leave the list; the request's own state, not a heartbeat, says what it waits for.
+        const open = await tx.select({ id: schema.coworkRequests.id, recipientId: schema.coworkRequests.recipientConnectionId,
+          kind: schema.coworkRequests.kind, state: schema.coworkRequests.state, reason: schema.coworkRequests.reason,
+          taskId: schema.coworkRequests.taskId, taskTitle: schema.projectWorkItems.title, senderId: schema.coworkRequests.senderConnectionId,
+          senderName: schema.agentConnections.name, senderOwnerName: schema.authUsers.name })
+          .from(schema.coworkRequests)
+          .innerJoin(schema.projectWorkItems, and(eq(schema.projectWorkItems.id, schema.coworkRequests.taskId),
+            eq(schema.projectWorkItems.projectId, schema.coworkRequests.projectId)))
+          .innerJoin(schema.agentConnections, eq(schema.agentConnections.id, schema.coworkRequests.senderConnectionId))
+          .innerJoin(schema.authUsers, eq(schema.authUsers.id, schema.agentConnections.ownerUserId))
+          .where(and(eq(schema.coworkRequests.projectId, projectId), inArray(schema.coworkRequests.recipientConnectionId, ids),
+            inArray(schema.coworkRequests.state, ['queued', 'deferred', 'claimed'])))
+          .orderBy(asc(schema.coworkRequests.createdAt), asc(schema.coworkRequests.id));
+        const requests = new Map<string, ProjectAgentRequest[]>();
+        for (const row of open) {
+          requests.set(row.recipientId, [...requests.get(row.recipientId) ?? [], {
+            id: row.id, kind: row.kind, state: row.state as ProjectAgentRequest['state'], reason: row.reason, taskId: row.taskId, taskTitle: row.taskTitle,
+            sender: { connectionId: row.senderId, name: row.senderName, ownerName: row.senderOwnerName },
+          }]);
+        }
+
         const connections = current.map(({ connection, agentName, ownerName }): ProjectAgentConnection => {
           const session = usable.has(connection.id) ? sessions.get(connection.id) : undefined;
           const last = activity.get(connection.id);
@@ -144,6 +179,8 @@ export function projectAgentRepository(db: Database, policy: ProjectAgentPolicy)
             state: !usable.has(connection.id) ? 'unavailable' : session ? 'session_open' : authorized.has(connection.id) ? 'offline' : 'not_signed_in',
             session: session ? { startedAt: session.startedAt.toISOString(), expiresAt: session.expiresAt.toISOString() } : null,
             lastActivity: last ? { operation: last.operation, at: last.at.toISOString() } : null,
+            currentWork: work.get(connection.id) ?? null,
+            requests: requests.get(connection.id) ?? [],
           };
         });
         return { projectId, connections, ...joins };

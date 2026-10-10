@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { flushSync } from 'react-dom';
 import { Link, useLoaderData, useLocation, useNavigation, useSearchParams, type LoaderFunctionArgs } from 'react-router';
-import type { AgentOperation, ConversationMessage, ProjectAgentConnection, ProjectAgents as ProjectAgentsData, TaskDiscussion, WorkStatus } from '@flux/contracts';
+import type { AgentOperation, ConversationMessage, ProjectAgentConnection, ProjectAgentRequest, ProjectAgents as ProjectAgentsData, TaskDiscussion, WorkStatus } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
@@ -86,6 +86,23 @@ function activityLine(connection: ProjectAgentConnection) {
   return `Last: ${label} · ${when(last.at)}`;
 }
 
+const REQUEST_KIND: Record<ProjectAgentRequest['kind'], string> = { help: 'Help', review: 'Review', fix: 'Fix', handoff: 'Handoff' };
+const REQUEST_STATE: Record<ProjectAgentRequest['state'], string> = {
+  queued: 'waiting for its next step', deferred: 'deferred until its next step', claimed: 'being handled',
+};
+
+/** What the connection holds in this project now. Assigned work is not yet being done, and a paused unit says so. */
+function workLine(work: NonNullable<ProjectAgentConnection['currentWork']>) {
+  if (work.state === 'claimed') return `Working on “${work.taskTitle}”`;
+  return work.state === 'paused' ? `Paused on “${work.taskTitle}”` : `Assigned “${work.taskTitle}”, not started`;
+}
+
+/** A request addressed here: who asked, about which task, and what it waits for (the request's own reason, if any). */
+function requestLine(request: ProjectAgentRequest) {
+  const reason = request.reason ? ` — ${request.reason}` : '';
+  return `${REQUEST_KIND[request.kind]} request from ${request.sender.name} (${request.sender.ownerName}) about “${request.taskTitle}”: ${REQUEST_STATE[request.state]}${reason}`;
+}
+
 function Connection({ connection, now }: { connection: ProjectAgentConnection; now: number }) {
   const activity = activityLine(connection);
   return (
@@ -98,6 +115,8 @@ function Connection({ connection, now }: { connection: ProjectAgentConnection; n
         </span>
         <span className="agents-conn__name">{connection.agent.name} · {connection.name}</span>
         <span className="agents-conn__state">{stateLine(connection, now)}</span>
+        {connection.currentWork ? <span className="agents-conn__activity">{workLine(connection.currentWork)}</span> : null}
+        {connection.requests.map((request) => <span key={request.id} className="agents-conn__activity">{requestLine(request)}</span>)}
         {activity ? <span className="agents-conn__activity">{activity}</span> : null}
       </span>
     </li>
