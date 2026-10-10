@@ -6,7 +6,7 @@ import { Button, Icon, useMediaQuery } from '../ui';
 import { useShellData } from '../app/data';
 import { createDoc, docUrl, getDoc, previewDoc, updateDoc } from './api';
 import { diffDocs, readableRefs, type DiffRow } from './diff';
-import { draftKey, keep, readKept, type Fields, type Kept } from './drafts';
+import { documentDraftGeneration, draftKey, keep, readKept, type Fields, type Kept } from './drafts';
 import { STATE_LABEL, authorLabel, longDate } from './format';
 import { LinkPicker, type PickedRef } from './LinkPicker';
 import { WikiBar } from './WikiParts';
@@ -100,6 +100,7 @@ function ScopedDocEditor({ project, doc, accountId }: EditData & { project: Proj
   }
   const wide = useMediaQuery('(min-width: 1280px)');
   const storageKey = draftKey(accountId, doc?.id ?? null, project.id);
+  const draftLifetime = useMemo(() => documentDraftGeneration(), [storageKey]);
   const initial = useMemo<Kept>(() => readKept(storageKey) ?? {
     title: doc?.title ?? '', body: doc?.body ?? '', state: doc?.state ?? 'draft', reason: '', base: doc?.version ?? 0,
     // Only the first render reads storage; later renders keep the editor's own state.
@@ -125,7 +126,7 @@ function ScopedDocEditor({ project, doc, accountId }: EditData & { project: Proj
   const restored = !!readKept(storageKey) && (initial.body !== (doc?.body ?? '') || initial.title !== (doc?.title ?? ''));
 
   const dirty = fields.title !== (doc?.title ?? '') || fields.body !== (doc?.body ?? '') || fields.state !== (doc?.state ?? 'draft');
-  useEffect(() => { keep(storageKey, dirty || fields.reason ? { ...fields, base, attempt } : null); }, [storageKey, fields, base, dirty, attempt]);
+  useEffect(() => { keep(storageKey, dirty || fields.reason ? { ...fields, base, attempt } : null, draftLifetime); }, [storageKey, fields, base, dirty, attempt, draftLifetime]);
 
   // The preview is rendered by the server exactly as a saved version would be.
   const showPreview = mode !== 'write';
@@ -170,7 +171,7 @@ function ScopedDocEditor({ project, doc, accountId }: EditData & { project: Proj
       const command = { title: fields.title.trim(), body: fields.body, state: fields.state, ...(fields.reason.trim() ? { reason: fields.reason.trim() } : {}) };
       const saved = doc ? await updateDoc(doc.id, base, command, attempt) : await createDoc(project.id, command, attempt);
       if (!await currentAfterReconciliation()) return;
-      keep(storageKey, null);
+      keep(storageKey, null, draftLifetime);
       navigate(docUrl(project.id, saved.id), { replace: true });
     } catch (cause) {
       if (!await currentAfterReconciliation()) return;
@@ -190,7 +191,7 @@ function ScopedDocEditor({ project, doc, accountId }: EditData & { project: Proj
   }
   function takeTheirs() {
     if (!conflict) return;
-    keep(storageKey, null);
+    keep(storageKey, null, draftLifetime);
     setFields({ title: conflict.title, body: conflict.body, state: conflict.state, reason: '' });
     setBase(conflict.version); setBaseBody(conflict.body); setConflict(null);
   }
@@ -276,7 +277,7 @@ function ScopedDocEditor({ project, doc, accountId }: EditData & { project: Proj
             ))}
           </div>
           <div className="doc-edit__acts">
-            <Link className="ui-btn ui-btn--quiet" to={back} onClick={() => keep(storageKey, null)}>Cancel</Link>
+            <Link className="ui-btn ui-btn--quiet" to={back} onClick={() => keep(storageKey, null, draftLifetime)}>Cancel</Link>
             <Button type="submit" variant="primary" busy={busy} disabled={reconciling || !!conflict || (!!doc && !dirty)} aria-keyshortcuts={isMac ? 'Meta+S' : 'Control+S'}>{doc ? 'Save version' : 'Create page'}</Button>
           </div>
         </div>
