@@ -7,18 +7,167 @@ measurement as a section, newest first, and keep the summary current.
 
 ## Summary
 
-| Step | macOS arm64, 2026-10-06 | Linux amd64 |
-| --- | --- | --- |
-| 1. `git clone` | 3 min 08 s | not measured yet |
-| 2. `./flux up`, until the printed URL answers HTTP 200 | 3 min 25 s (6 min 33 s from clone) | not measured yet |
-| 3. `./flux demo`, until the logins print | 2.3 s (6 min 35 s from clone) | not measured yet |
-| 4. Sign in and post the first message in the demo conversation | 0.8 s scripted (6 min 36 s from clone) | not measured yet |
-| 5. First agent reply through your own MCP client | 35 s model time, agent-driven, Claude Code only, worktree ([#320](https://github.com/ColdPhase/flux/issues/320)) | not measured |
+| Step | macOS arm64, cold, 2026-10-11 | macOS arm64, warm, 2026-10-11 | Linux amd64, cold, 2026-10-10 | Linux amd64, warm, 2026-10-10 |
+| --- | --- | --- | --- | --- |
+| 1. `git clone` | 2 min 47.7 s | 2 min 29.6 s | 7.2 s | 6.9 s |
+| 2. `./flux up`, until the printed URL answers HTTP 200 | 2 min 21.4 s (URL 0.1 s) | 13.6 s (URL 0.1 s) | 2 min 12.2 s (URL 0.02 s) | 10.0 s (URL 0.01 s) |
+| 3. `./flux demo`, until the logins print | 1.3 s | 1.3 s | 1.2 s | 1.2 s |
+| 4. Sign in and post the first message in the demo conversation | not re-measured; 0.8 s on 2026-10-06 | not re-measured; 0.8 s on 2026-10-06 | not measured (the workflow has no browser step) | not measured |
+| 5. First agent reply through your own MCP client | not measured on a clean clone ([#320](https://github.com/ColdPhase/flux/issues/320)) | not measured on a clean clone | not measured ([#320](https://github.com/ColdPhase/flux/issues/320)) | not measured |
+| From `git clone` to the logins | 5 min 10.9 s | 2 min 44.8 s | 2 min 20.6 s | 18.7 s |
 
-Clone and dependency download take most of the time. Both depend on the network.
-The first run below is close to a no-cache build (see [cache state](#cache-state)). It was
-measured while other Docker builds ran on the same Mac, so treat it as an upper bound for
-an idle machine.
+Clone and dependency download take most of the time, and both depend on the network: about
+2 min 30 s to 2 min 48 s for the clone on this Mac, and 7 s on the Linux runner, a datacenter
+network. The cold macOS pass used `FLUX_NO_CACHE=1` and both macOS passes used `FLUX_PORT=19840`;
+both are deviations from the README, listed in the [2026-10-11 section](#macos-arm64-2026-10-11-cold-and-warm).
+The 2026-10-06 run is kept below. Its step 4 figure is the only macOS first-message number.
+
+## macOS arm64, 2026-10-11: cold and warm
+
+A fresh `git clone` of `origin/main`, then the README quick start: `./flux up`, the printed URL,
+`./flux demo`. Both passes ran in their own Compose projects, on the same Mac as the
+[2026-10-06 run](#macos-arm64-2026-10-06), with the deviations listed under
+[method](#method-2026-10-11). The warm pass is the one that matches the README's default cache.
+
+### Machine and revision
+
+- **Mac:** Apple M4 Pro, 14 cores, 24 GiB memory, macOS 26.3.1 (a), build 25D771280a.
+- **Docker:** Docker Desktop, Engine 29.1.2, Compose v2.40.3-desktop.1. The Docker VM had
+  14 CPUs and 13.6 GiB of memory.
+- **Git:** 2.50.1 (Apple Git-155).
+- **Revision:** `ceea8aa31e17a2e8f4718cd783e984bc16d525c3` (`main`, "feat(settings): text size and
+  reduce motion in Appearance (#350) (#452)"), the same for both passes.
+- **When:** 2026-10-11, 00:36 to 00:45 CEST (22:36 to 22:45 UTC).
+- **Other load:** other Docker projects ran on this host during both passes: a preview on port
+  8090, a restarting preview, a UI test project and another project. None was stopped or touched.
+
+### Method 2026-10-11
+
+- The steps were the README's, run from a clean clone in the scratchpad. A driver script wrote a
+  wall-clock mark at each step boundary. The step 2 end is the first HTTP 200 from `curl` to the
+  printed URL, not a browser.
+- **Deviation 1, `FLUX_PORT=19840` in both passes.** The README uses 8081. The measurement must
+  use its own port (criterion 4 of [#305](https://github.com/ColdPhase/flux/issues/305)). `./flux up`
+  wrote the port to `docker/.env`, and `./flux demo` read it from there.
+- **Deviation 2, `FLUX_NO_CACHE=1` in the cold pass only.** The README does not mention it. The
+  launcher passes it to `docker compose build --no-cache`, so every layer is rebuilt. Base images
+  (`node`, `postgres`) stayed, because other projects use them. The BuildKit cache was not pruned,
+  because it is shared by all projects and `./flux clean` does not prune it either. So this is a
+  no-cache build on a host that already had the base images, not an empty host.
+- Steps 4 and 5 were not re-run (see below).
+
+### Cache state
+
+- **Cold (`FLUX_NO_CACHE=1`):** `RUN pnpm fetch` ran for 57.8 s and was not cached; `pnpm install`
+  and `pnpm build && pnpm typecheck && pnpm lint` ran too. The only `CACHED` step was
+  `[build 2/9] WORKDIR /app`.
+- **Warm (default cache):** 37 steps reported `CACHED`, including `pnpm fetch` and the build step.
+- **Base images:** `node` and `postgres` were present before both passes.
+
+### Timing
+
+| Mark | Cold | Warm |
+| --- | --- | --- |
+| 1. `git clone` | 2 min 47.7 s | 2 min 29.6 s |
+| 2. `./flux up`, until it exits | 2 min 21.4 s | 13.6 s |
+| 2. then the printed URL answers HTTP 200 | 0.1 s | 0.1 s |
+| 3. `./flux demo`, until the logins print | 1.3 s | 1.3 s |
+| From clone start to the logins | 5 min 10.9 s | 2 min 44.8 s |
+
+The Docker slot wait (0.1 s in both passes) is excluded from `./flux up`. Raw marks, in Unix seconds:
+
+| Mark | Cold | Warm |
+| --- | --- | --- |
+| clone_start | 1791671790.953 | 1791672108.967 |
+| clone_done | 1791671958.670 | 1791672258.562 |
+| up_requested | 1791671958.791 | 1791672258.656 |
+| up_started | 1791671958.905 | 1791672258.745 |
+| up_exited | 1791672100.351 | 1791672272.369 |
+| url_200 | 1791672100.454 | 1791672272.458 |
+| demo_start | 1791672100.540 | 1791672272.543 |
+| demo_exited | 1791672101.888 | 1791672273.810 |
+
+### Not measured
+
+- **Step 4, the first message, in this run.** Not re-measured. The [2026-10-06 run](#macos-arm64-2026-10-06)
+  measured it at 0.8 s, which does not depend on the Docker cache.
+- **Step 5, the first agent reply through your own MCP client, on a clean clone.** Not measured.
+  It needs a person's MCP client, a model account and an interactive consent
+  ([#320](https://github.com/ColdPhase/flux/issues/320)). The [2026-10-10 run](#macos-arm64-2026-10-10-first-agent-reply-through-claude-code-320)
+  is not a clean clone.
+
+### Friction found
+
+1. **The clone is large.** Both clones took 2 min 30 s to 2 min 48 s, close to the 3 min 08 s of
+   2026-10-06. Tracked in [#319](https://github.com/ColdPhase/flux/issues/319).
+2. **The README's port fallback was a fixed `8090`.** On this Mac, the preview project
+   the preview project flux-flux-prostota-preview-39d6087c already publishes 8090, so the example would have collided.
+   The README now asks for another free port and gives `FLUX_PORT=8090` only as an example.
+3. **`docker system df` failed in this session** with `failed to calculate image disk usage: lstat
+   .../snapshots/4369/fs: no such file or directory`. It is a Docker Desktop daemon error and not
+   from the launcher. `./flux up` and `./flux demo` were not affected, but the after-run disk
+   snapshot is empty. No issue is filed, because it is not in the quick start.
+
+### Cleanup and isolation
+
+- **Project names:** flux-flux-305-cold-3d6e710d and flux-flux-305-warm-c63367cc, the folder
+  name plus a path hash. `docker compose ls` before the warm clean listed five projects: the two
+  flux-305 projects and three others. After `./flux clean -y` in the warm clone, the three
+  others were listed unchanged. The cold clone had been cleaned by `./flux clean -y` (exit 0) before
+  the warm pass started.
+- `./flux clean -y` removed each project's containers, volumes (`_files`, `_flux-checkout`,
+  `_pgdata`) and image (flux-foundation:<project>). A search of volumes and images for flux-305
+  found nothing afterwards.
+- Ports 19840 and 19841 were free before the run. The scratch clones were deleted, since their
+  `docker/.env` held generated secrets.
+
+## Linux amd64, 2026-10-10: run 38051226054
+
+The [Time to first run workflow](https://github.com/ColdPhase/flux/actions/runs/38051226054)
+ran once, dispatched by `Zamojski5` on `main` at 12:14 UTC on 2026-10-10 and finished with
+`success`. It measures steps 1 to 3 cold and warm, as [how the workflow measures](#linux-amd64-how-the-workflow-measures)
+describes. Steps 4 and 5 are not in the workflow, so they have no Linux numbers.
+
+### Machine and revision
+
+- **Runner:** GitHub-hosted `ubuntu-latest`, image `ubuntu24 20261004.327.1`, Ubuntu 24.04.5
+  LTS, kernel `6.17.0-1022-azure`, `x86_64`. Intel Xeon Platinum 8370C at 2.80 GHz, 4 vCPUs,
+  15 GiB of memory, and 86 GB free on a 145 GB disk.
+- **Tools:** Git 2.55.0, Docker Engine 28.0.4, Docker Compose v2.38.2, buildx v0.37.2.
+  Docker had 4 CPUs and 15.6 GiB of memory.
+- **Revision:** `ecdceb95e9cd23cdef95fb23ff6308fcb1a515c4`, which was `main` when the run
+  started. `main` moved to `9613e29e` during the run, so the warm pass checked out `ecdceb95`
+  to build the same code as the cold pass.
+
+### Cache state
+
+- **Cold:** the runner had 6 preloaded images, none of them `node` or `postgres`, and an empty
+  build cache. The run pulled both base images and built the image; the build cache then held
+  496 MB. This is a true cold start, not a `FLUX_NO_CACHE` approximation.
+- **Warm:** `./flux clean -y` removed the first clone's containers, volumes and image. The base
+  images and the build cache stayed. The warm build reported `CACHED` for every step.
+
+### Timing (2026-10-10 run)
+
+| Mark | Cold | Warm |
+| --- | --- | --- |
+| 1. `git clone` | 7.2 s | 6.9 s |
+| 2. `./flux up`, until it exits | 2 min 12.2 s | 10.0 s |
+| 2. then the printed URL answers HTTP 200 | 0.02 s | 0.01 s |
+| 3. `./flux demo`, until the logins print | 1.2 s | 1.2 s |
+| From clone start to the logins | 2 min 20.6 s | 18.7 s |
+
+The runner's datacenter network makes the clone and the npm download faster than a home
+connection, so treat these as a lower bound. The workflow's artifact
+`time-to-first-run-38051226054-1` has the raw marks, the `./flux up` and `./flux demo` logs,
+and the Docker state after each pass.
+
+### Not measured
+
+- **Step 4, the first message.** It needs a browser, and the workflow does not run one. The
+  macOS run of 2026-10-06 measured it at 0.8 s, which does not depend on the cache.
+- **Step 5, the first agent reply.** It needs a person's MCP client and model account
+  ([#320](https://github.com/ColdPhase/flux/issues/320)).
 
 ## macOS arm64, 2026-10-10: first agent reply through Claude Code (#320)
 
@@ -273,10 +422,9 @@ None of these are README gaps. They are what the measurement needed on a shared 
 - The clone folder was deleted.
 - The BuildKit cache is shared by every project on the host, so it was not pruned.
 
-## Linux amd64: how to measure
+## Linux amd64: how the workflow measures
 
-This has not been measured yet. The
-[Time to first run workflow](../../.github/workflows/time-to-first-run.yml) measures it on a
+The [Time to first run workflow](../../.github/workflows/time-to-first-run.yml) measures it on a
 GitHub-hosted `ubuntu-latest` runner. It runs only on manual dispatch (`workflow_dispatch`):
 no PR, push or schedule starts it, and it has no matrix, as
 [CI and releases](../agents/ci-and-releases.md) asks. Each run gets a fresh virtual machine,
