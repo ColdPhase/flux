@@ -4,6 +4,7 @@ import { assistantAreasFromPolicy, patchAssistantAreas, type AgentConnection, ty
   type AssistantSettings, type UpdateAssistantSettings } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { createDatabase } from '../index.js';
+import { lockAssistantOwner } from './assistant-lock.js';
 import { initializeAgentMcpPolicy, lockAgentMcpPolicy } from './agent-mcp-policy.js';
 
 type Database = Pick<ReturnType<typeof createDatabase>['db'], 'transaction'>;
@@ -18,9 +19,6 @@ export interface AssistantAuthority {
   initialPolicy(connection: AgentConnection): AgentMcpPolicy;
   withinConsent(connection: AgentConnection, policy: AgentMcpPolicy): boolean;
   admissionActions(previous: AgentMcpPolicy, policy: AgentMcpPolicy): { projectId: string; action: 'project.read' | 'project.write' }[];
-}
-export async function lockAssistantOwner(tx: Transaction, ownerUserId: string): Promise<void> {
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${'assistant-owner:' + ownerUserId}, 0))`);
 }
 const view = (row: SettingsRow, policy: AgentMcpPolicy): AssistantSettings => ({
   workspaceId: row.workspaceId, ownerUserId: row.ownerUserId, agentId: row.agentId, connectionId: row.connectionId,
@@ -56,6 +54,11 @@ export function assistantSettingsRows(tx: Transaction, authority: AssistantAutho
     return policy ? view(row, policy) : null;
   };
   const addProject = async (row: SettingsRow, projectId: string) => {
+    const [ceiling] = await tx.select({ id: schema.agentConnectionProjects.projectId }).from(schema.agentConnectionProjects)
+      .where(and(eq(schema.agentConnectionProjects.connectionId, row.connectionId), eq(schema.agentConnectionProjects.projectId, projectId)));
+    const [selected] = await tx.select({ id: schema.agentConnectionMcpProjects.projectId }).from(schema.agentConnectionMcpProjects)
+      .where(and(eq(schema.agentConnectionMcpProjects.connectionId, row.connectionId), eq(schema.agentConnectionMcpProjects.projectId, projectId)));
+    if (ceiling && (row.projectMode === 'chosen' || selected)) return;
     const policy = await lockAgentMcpPolicy(tx, row.connectionId, 'update');
     if (!policy) throw new Error('Assistant policy missing');
     await tx.insert(schema.agentConnectionProjects).values({ connectionId: row.connectionId, workspaceId: row.workspaceId, projectId }).onConflictDoNothing();
@@ -120,6 +123,7 @@ export function assistantSettingsRows(tx: Transaction, authority: AssistantAutho
       await addProject(row, projectId);
     },
     async save(ownerUserId: string, workspaceId: string, expected: number, input: UpdateAssistantSettings) {
+      await lockAssistantOwner(tx, ownerUserId);
       const row = await settings(ownerUserId, workspaceId, true);
       if (!row) return null;
       const connection = await connectionView(tx, row);

@@ -164,6 +164,8 @@ export * from './repositories/agent-policies.js';
 export * from './repositories/files.js';
 export * from './repositories/agent-runtime.js';
 
-export { assistantSettingsRows, lockAssistantOwner, type AssistantAuthority } from './repositories/assistant-settings.js';
+export { assistantSettingsRows, type AssistantAuthority } from './repositories/assistant-settings.js';
 
 export { assertAssistantMigrationCompatibility } from './migrations/assistant-compatibility.js';
+
+export { lockAssistantOwner } from './repositories/assistant-lock.js';

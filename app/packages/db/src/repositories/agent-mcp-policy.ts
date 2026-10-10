@@ -1,5 +1,6 @@
 import { and, eq, isNull } from 'drizzle-orm';
 import type { AgentConnection, AgentMcpCapabilityId, AgentMcpPolicy, SaveAgentMcpPolicy } from '@flux/contracts';
+import { lockAssistantOwner } from './assistant-lock.js';
 import * as schema from '../schema.js';
 import type { createDatabase } from '../index.js';
 
@@ -64,6 +65,9 @@ export function agentMcpPolicyRepository(db: Database, authority: McpPolicyAutho
       return policy ? { connection, policy } : null;
     }),
     save: (ownerUserId, id, expectedVersion, input: SaveAgentMcpPolicy) => db.transaction(async (tx) => {
+      const [owned] = await tx.select({ source: schema.agentConnections.computeSource }).from(schema.agentConnections)
+        .where(and(eq(schema.agentConnections.id, id), eq(schema.agentConnections.ownerUserId, ownerUserId)));
+      if (owned?.source === 'owner_assistant') await lockAssistantOwner(tx, ownerUserId);
       const connection = await structural(tx, ownerUserId, id);
       if (!connection) return 'CONNECTION_NOT_FOUND';
       await initializeAgentMcpPolicy(tx, connection, authority.initialPolicy);
@@ -87,6 +91,11 @@ export function agentMcpPolicyRepository(db: Database, authority: McpPolicyAutho
       await tx.delete(schema.agentConnectionMcpProjects).where(eq(schema.agentConnectionMcpProjects.connectionId, id));
       if (input.selectedProjectIds.length) await tx.insert(schema.agentConnectionMcpProjects)
         .values(input.selectedProjectIds.map((projectId) => ({ connectionId: id, workspaceId: connection.workspaceId, projectId })));
+      if (connection.computeSource === 'owner_assistant') await tx.update(schema.assistantSettings)
+        .set({ version: row.version, updatedAt: new Date(),
+          ...(input.selectedProjectIds.length === previous.selectedProjectIds.length
+            && input.selectedProjectIds.every((projectId) => previous.selectedProjectIds.includes(projectId)) ? {} : { projectMode: 'chosen' as const }) })
+        .where(eq(schema.assistantSettings.connectionId, id));
       return { connectionId: id, version: row.version, enabledCapabilityIds: [...row.enabledCapabilityIds] as AgentMcpCapabilityId[],
         enabledEntryIds: [...row.enabledEntryIds], selectedProjectIds: [...input.selectedProjectIds] };
     }),
