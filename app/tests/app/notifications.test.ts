@@ -9,6 +9,7 @@ import {
   deliverNotificationEmail,
   deliverableAt,
   localMinutes,
+  sendMorningSummaries,
   loadNotificationMailConfig,
   withoutAddress,
   type NotificationMailer,
@@ -16,6 +17,7 @@ import {
 } from '@flux/core';
 import type { InboxItem, InboxResponse, NotificationPreferences, NotificationReason } from '@flux/contracts';
 import { emailUnitOfWork, handleEmailJob, smtpNotificationMailer } from '../../apps/worker/src/notifications/index.js';
+import { summaryUnitOfWork } from '../../apps/worker/src/jobs/morning-summary.js';
 import { PgBoss } from 'pg-boss';
 import { deliverPush } from '../../apps/worker/src/push/index.js';
 import { loadPushSenderConfig } from '@flux/core';
@@ -993,5 +995,56 @@ describe('review fixes: exact unsubscribe, bounded verification, quiet hours at 
     assert.equal((await deliverPush({ db, config: loadPushSenderConfig() }, { notificationId, subscriptionId, userId: reader.id })).outcome, 'sent');
     await waitForMails(reader.email, 1, 'the released email');
     assert.equal((await recordedPushes(subscription.mockId)).length, 1);
+  });
+});
+
+describe('levels and the morning summary (#350, S22)', () => {
+  let ana: Person;
+  let teo: Person;
+  let workspaceId: string;
+
+  before(async () => {
+    ana = await person('Ana Brisk');
+    teo = await person('Teo Marr');
+    workspaceId = (await workspace(ana, 'Morning bakery')).id;
+    await addMember(ana, workspaceId, teo, 'member');
+  });
+
+  test('a new person is at Only "Needs you"; Nothing keeps the inbox and stops push and email', async () => {
+    const start = expectStatus(await teo.browser.request('GET', '/api/v1/notification-preferences'), 200) as NotificationPreferences;
+    assert.equal(start.level, 'needsYou');
+    assert.equal(start.channels.reply.push, false);
+    assert.deepEqual(start.morningSummary, { enabled: false, at: '09:00' });
+    const nothing = await prefs(teo, { level: 'nothing' });
+    assert.equal(nothing.level, 'nothing');
+    assert.ok(Object.values(nothing.channels).every((choice) => choice.inApp && !choice.push && !choice.email));
+    const bad = await teo.browser.request('PATCH', '/api/v1/notification-preferences', { body: { level: 'loud' } });
+    assert.equal(bad.status, 400);
+    assert.equal((await prefs(teo, { level: 'needsYou' })).level, 'needsYou');
+  });
+
+  test('the morning summary pushes once that local day, counting the unread inbox, and is not an inbox item', async () => {
+    const { subscription } = await subscribe(teo.browser);
+    const dmId = await dm(ana, workspaceId, teo);
+    const message = await dmMessage(ana, dmId, 'The sourdough starter is ready');
+    await waitForItem(teo, (item) => item.url?.endsWith(message.id) === true, 'Teo\'s DM');
+    await waitFor(async () => (await recordedPushes(subscription.mockId)).length === 1, 'the DM push');
+    const now = new Date();
+    const at = Math.max(0, localMinutes(now, 'UTC') - 5);
+    const clock = `${String(Math.floor(at / 60)).padStart(2, '0')}:${String(at % 60).padStart(2, '0')}`;
+    const on = await prefs(teo, { morningSummary: { enabled: true, at: clock }, quietHours: { timeZone: 'UTC' } });
+    assert.deepEqual(on.morningSummary, { enabled: true, at: clock });
+
+    const uow = summaryUnitOfWork(db, queue);
+    await sendMorningSummaries(uow, now);
+    await sendMorningSummaries(uow, new Date(now.getTime() + 60_000));
+    const summaries = (await pool.query('SELECT title, url, in_inbox, reason FROM notifications WHERE user_id = $1 AND reason IS NULL', [teo.id])).rows as { title: string; url: string; in_inbox: boolean }[];
+    assert.equal(summaries.length, 1, 'one summary that day, however often the job ticks');
+    assert.match(summaries[0]!.title, /^\d+ things? waits? in your inbox$/);
+    assert.equal(summaries[0]!.url, '/inbox');
+    assert.equal(summaries[0]!.in_inbox, false);
+    await waitFor(async () => (await recordedPushes(subscription.mockId)).length === 2, 'the summary push');
+    assert.ok((await inbox(teo)).items.every((item) => item.url !== '/inbox'), 'the inbox does not list the summary itself');
+    await prefs(teo, { morningSummary: { enabled: false } });
   });
 });

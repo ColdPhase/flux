@@ -70,6 +70,11 @@ export async function notificationRoutes(app: FastifyInstance, { db, sessions, s
             type: 'object', required: ['until'], additionalProperties: false,
             properties: { until: { type: ['string', 'null'], maxLength: 40 } },
           },
+          level: { type: 'string', maxLength: 16 },
+          morningSummary: {
+            type: 'object', additionalProperties: false,
+            properties: { enabled: { type: 'boolean' }, at: { type: 'string', maxLength: 5 } },
+          },
         },
       },
     },

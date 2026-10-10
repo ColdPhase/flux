@@ -47,9 +47,13 @@ changes to it; agents implement it and do not re-decide it.
 | `--line` | `rgba(0,0,0,.07)` | `rgba(255,255,255,.08)` | Hairlines, card outlines |
 | `--line2` | `rgba(0,0,0,.14)` | `rgba(255,255,255,.16)` | Strong outlines |
 | `--t1` | `#18181B` | `#F0F0F0` | Primary text |
-| `--t2` | `#4A4A4A` | `#ACACAC` | Secondary text |
-| `--t3` | `#6B6B6B` | `#8C8C8C` | Meta text (at least 4.5:1 on `--bg` and `--el`) |
+| `--t2` | `#4A4A4A` | `#BDBDBD` | Secondary text (APCA Lc at least 60 on `--bg`, `--el` and `--sub`) |
+| `--t3` | `#6B6B6B` | `#A1A1A1` | Meta text (at least 4.5:1 on `--bg` and `--el`; APCA Lc at least 45) |
 | `--inv` / `--oninv` | `#18181B` / `#FFFFFF` | `#F0F0F0` / `#111111` | Inverted chips, the primary button, own bubbles |
+
+Founder direction (Maurycy, 2026-10-10): dark-theme secondary text raised for readability; APCA t2 ≥ 60, t3 ≥ 45
+([#432](https://github.com/ColdPhase/flux/issues/432)). Dark `--t2` was `#ACACAC` and `--t3` was `#8C8C8C`.
+`scripts/check_contrast.py` enforces the APCA bounds (`--t1` ≥ 90) in both themes.
 
 **Shadows**
 - Card: `0 1px 2px rgba(0,0,0,.05), 0 6px 16px -6px rgba(0,0,0,.12)`.

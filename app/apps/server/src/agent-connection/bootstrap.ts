@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { AGENT_SOURCE_KINDS, type AgentBootstrap, type AgentSourceCheckpoint } from '@flux/contracts';
-import { agentOrientationUseCases, agentPolicyReference, agentSourcePage, coworkPlaybookReference, getProject, type Database } from '@flux/core';
+import { agentOrientationUseCases, agentPolicyReference, agentSourcePage, coworkPlaybookReference, DomainError, getProject, type Database } from '@flux/core';
 import { agentExecutionRows, agentOrientationRows, agentPlaybookRows, agentPolicyRows } from '@flux/db';
-import { withAgentConnection, type FluxMcpClaims } from './context.js';
+import { requireMcpSourceKinds, withAgentConnection, type FluxMcpClaims } from './context.js';
 import { agentRuntimeInTransaction } from './runtime.js';
 import type { AgentToolRegistry } from './tool-registry.js';
 import { toolError, toolResult } from './tool-results.js';
@@ -23,7 +23,8 @@ export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database, c
     inputSchema: z.strictObject({ clientSessionId: z.uuid(), projectId: z.uuid(), grantLimit: page.limit.optional(), grantOffset: page.offset.optional() }),
     annotations: { readOnlyHint: true, idempotentHint: true } }, async ({ clientSessionId, projectId, grantLimit, grantOffset }) => {
     try {
-      const value = await withAgentConnection(db, claims, 'flux.context.read', projectId, async ({ tx, principal }) => {
+      const value = await withAgentConnection(db, claims, 'flux.context.read', projectId, async ({ tx, principal, mcpPolicy }) => {
+        if (!mcpPolicy) throw new DomainError(403, 'MCP_ENTRY_UNAVAILABLE', 'This capability is unavailable');
         const project = await getProject(principal, projectId, tx);
         const { runtime } = await agentRuntimeInTransaction(tx, claims, clientSessionId);
         const rows = agentExecutionRows(tx);
@@ -39,7 +40,7 @@ export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database, c
           && acknowledged.digest === playbook.digest;
         const result: AgentBootstrap = { contractVersion: 1, observedAt: observedAt.toISOString(), runtime,
           project: { id: project.id, workspaceId: project.workspaceId, name: project.name }, grants,
-          capabilities: tools.capabilities(runtime.scopes),
+          capabilities: tools.capabilities(runtime.scopes, mcpPolicy),
           trusted: { playbook, approvedPolicy: policy ? agentPolicyReference(policy) : null, coordination: null, repositoryReferences: null },
           playbookAcknowledgment: acknowledged ? { ...acknowledged, current } : null,
           gaps: [...(policy ? [] : ['approved_policy_unavailable' as const]), 'coordination_unavailable',
@@ -55,6 +56,7 @@ export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database, c
     description: 'A bounded page of canonical IDs, labels and exact versions/checkpoints for one source kind. No bodies, private maps/DMs/draft provenance or guessed goal/plan classifications.',
     inputSchema: z.strictObject({ projectId: z.uuid(), kind: z.enum(AGENT_SOURCE_KINDS), ...page }), annotations: { readOnlyHint: true } },
   async ({ projectId, kind, ...query }) => {
+    requireMcpSourceKinds(claims, [kind]);
     try { return toolResult(await withAgentConnection(db, claims, 'flux.context.read', projectId, async ({ tx, principal, connection, workspaceId }) => {
       await getProject(principal, projectId, tx);
       return agentOrientationUseCases(agentOrientationRows(tx)).list(connection, { workspaceId, projectId }, kind, query);
@@ -64,6 +66,7 @@ export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database, c
     description: 'Compare at most 50 recorded canonical checkpoints under current authorization. Returns changed metadata, unchanged identities and content-free unavailable outcomes. This does not discover every new or removed project object; use project orientation for discovery.',
     inputSchema: z.strictObject({ projectId: z.uuid(), known: z.array(checkpoint).max(50) }), annotations: { readOnlyHint: true } },
   async ({ projectId, known }) => {
+    requireMcpSourceKinds(claims, known.map((item) => item.kind));
     try { return toolResult(await withAgentConnection(db, claims, 'flux.context.read', projectId, async ({ tx, principal, connection, workspaceId }) => {
       await getProject(principal, projectId, tx);
       return agentOrientationUseCases(agentOrientationRows(tx)).changes(connection, { workspaceId, projectId }, known as AgentSourceCheckpoint[]);

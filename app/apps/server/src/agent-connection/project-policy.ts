@@ -6,7 +6,7 @@ import { agentPolicyUseCases, enforce, evaluateProject, recordEvent, renderAgent
   type Database, type Executor } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, requires, useDomainErrors } from '../http/commands.js';
-import { withAgentConnection, type FluxMcpClaims } from './context.js';
+import { withAgentConnection, type VerifiedFluxMcpClaims } from './context.js';
 import { eventPorts } from '../events.js';
 
 /**
@@ -56,12 +56,13 @@ export async function agentPolicyRoutes(app: FastifyInstance, { db, sessions }: 
  * `flux://policy/{projectId}/{revision}` for connected agents: one stored revision, read through the
  * verified connection's current project access. Bootstrap's `approvedPolicy.retrievalReference` names it.
  */
-export function registerAgentPolicyResource(server: McpServer, db: Database, claims: FluxMcpClaims) {
+export function registerAgentPolicyResource(server: McpServer, db: Database, claims: VerifiedFluxMcpClaims) {
+  claims.dispatch.declare('resource', 'flux_project_policy');
   server.registerResource('flux_project_policy', new ResourceTemplate('flux://policy/{projectId}/{revision}', { list: undefined }), {
     title: 'Approved project policy',
     description: 'A revision of the policy a project manager published for connected agents. It narrows work inside your grants and never widens them.',
     mimeType: 'text/markdown',
-  }, async (uri, variables) => {
+  }, (uri, variables) => claims.dispatch.run('resource', 'flux_project_policy', async () => {
     const projectId = String(variables.projectId ?? '');
     // Only the canonical decimal form names a revision; anything else is simply not one.
     const raw = String(variables.revision ?? '');
@@ -69,5 +70,5 @@ export function registerAgentPolicyResource(server: McpServer, db: Database, cla
     const value = await withAgentConnection(db, claims, 'flux.context.read', projectId, async ({ tx, principal }) =>
       agentPolicyUseCases({ run: (work) => work(policyPorts(tx)) }).revision(principal, projectId, revision));
     return { contents: [{ uri: uri.href, mimeType: 'text/markdown', text: renderAgentPolicy(value) }] };
-  });
+  }));
 }

@@ -84,6 +84,9 @@ merely adding an MCP URL is not evidence of a running loop.
    context and a targeted request with expected response, exact artifact version
    and criteria. Reuse the idempotency key on retry. Do not broadcast, copy a
    second agent chat or repeat coordination comments across Flux and GitHub.
+   (Revised 2026-10-09, [CW-2](cowork-workflow.md#a-durable-request-not-a-second-conversation--cw-2):
+   once agent threads ship, this talk goes to the task's agent thread in the Agents tab,
+   and people's views get outcomes. The shipped playbook changes with that slice.)
 8. **Retain without interrupting.** A normal peer request arriving while you work
    stays queued/deferred. Record the next relevant checkpoint/dependency when
    deferring. Receipt is not a claim, completion or approval. At your checkpoint

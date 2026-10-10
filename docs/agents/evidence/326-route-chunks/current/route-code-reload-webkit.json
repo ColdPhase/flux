@@ -1,0 +1,125 @@
+{
+  "engine": "webkit",
+  "beforeReloadAssetIndex": 3,
+  "beforeTimeOrigin": 1791416821444,
+  "afterTimeOrigin": 1791416821854,
+  "assets": [
+    {
+      "event": "response",
+      "url": "http://127.0.0.1:19363/assets/settings-DQGP2wMg.css",
+      "status": 200
+    },
+    {
+      "event": "response",
+      "url": "http://127.0.0.1:19363/assets/SettingsHome-C8RAlgep.js",
+      "status": 503
+    },
+    {
+      "event": "failed",
+      "url": "http://127.0.0.1:19363/assets/SettingsHome-C8RAlgep.js",
+      "reason": "Load request cancelled"
+    },
+    {
+      "event": "response",
+      "url": "http://127.0.0.1:19363/assets/rolldown-runtime-CbXtAM7H.js",
+      "status": 200
+    },
+    {
+      "event": "response",
+      "url": "http://127.0.0.1:19363/assets/client-DWX3p32_.js",
+      "status": 200
+    },
+    {
+      "event": "response",
+      "url": "http://127.0.0.1:19363/assets/ui-pNsgSKCK.js",
+      "status": 200
+    },
+    {
+      "event": "response",
+      "url": "http://127.0.0.1:19363/assets/conversation-api-LSkiXrrb.js",
+      "status": 200
+    },
+    {
+      "event": "response",
+      "url": "http://127.0.0.1:19363/assets/push-bd7Mjfi-.js",
+      "status": 200
+    },
+    {
+      "event": "response",
+      "url": "http://127.0.0.1:19363/assets/recent-CgSlfGy8.js",
+      "status": 200
+    },
+    {
+      "event": "response",
+      "url": "http://127.0.0.1:19363/assets/logic-CcBQm-AE.js",
+      "status": 200
+    },
+    {
+      "event": "response",
+      "url": "http://127.0.0.1:19363/assets/useWorkRead-Dmprejnu.js",
+      "status": 200
+    },
+    {
+      "event": "response",
+      "url": "http://127.0.0.1:19363/assets/api-DLvZqr4x.js",
+      "status": 200
+    },
+    {
+      "event": "response",
+      "url": "http://127.0.0.1:19363/assets/sketches-Dm9N3PLa.js",
+      "status": 200
+    },
+    {
+      "event": "response",
+      "url": "http://127.0.0.1:19363/assets/api-okv2IqhU.js",
+      "status": 200
+    },
+    {
+      "event": "response",
+      "url": "http://127.0.0.1:19363/assets/api-D7k_wNOZ.js",
+      "status": 200
+    },
+    {
+      "event": "response",
+      "url": "http://127.0.0.1:19363/assets/data-BVIhmCu6.js",
+      "status": 200
+    },
+    {
+      "event": "response",
+      "url": "http://127.0.0.1:19363/assets/index-CYWs4fqc.js",
+      "status": 304
+    },
+    {
+      "event": "response",
+      "url": "http://127.0.0.1:19363/assets/index-B4U4Snl1.css",
+      "status": 304
+    },
+    {
+      "event": "response",
+      "url": "http://127.0.0.1:19363/assets/data-1ij7AUYt.css",
+      "status": 304
+    },
+    {
+      "event": "response",
+      "url": "http://127.0.0.1:19363/assets/settings-DQGP2wMg.css",
+      "status": 304
+    },
+    {
+      "event": "response",
+      "url": "http://127.0.0.1:19363/assets/Geist-Variable-Bj2R_7yk.woff2",
+      "status": 304
+    },
+    {
+      "event": "response",
+      "url": "http://127.0.0.1:19363/assets/SettingsHome-C8RAlgep.js",
+      "status": 200
+    },
+    {
+      "event": "response",
+      "url": "http://127.0.0.1:19363/assets/GeistMono-Variable-Dispecij.woff2",
+      "status": 304
+    }
+  ],
+  "errorText": [],
+  "settingsContent": 1
+}

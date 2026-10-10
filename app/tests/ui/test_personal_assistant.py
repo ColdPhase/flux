@@ -242,6 +242,11 @@ class PersonalAssistantJourney(unittest.TestCase):
         self.assertEqual((status["enablement"]["consent"]["provider"], status["enablement"]["consent"]["model"]), ("anthropic", "claude-sonnet-5"))
         type(self).ids["agent"] = status["enablement"]["agents"][0]["agentId"]
         shot(page, "assistant-1440-settings-ready")
+        # Settings → Agents and AI lists the assistant with its colour and its state (#350).
+        page.goto("/settings/agents")
+        row = page.get_by_role("link", name=re.compile("^Your assistant Agent · for you · in Flux"))
+        expect(row).to_have_attribute("href", "/settings/assistant")
+        self.assertRegex(row.locator(".sset-row__ic > .kreska").get_attribute("class") or "", r"kreska--[a-z]+")
         # Kai sees his own, not-set-up state: Jo's assistant is never offered to him.
         kai = self.page("kai")
         self.assertEqual(self.status(kai)["state"], "not_enabled")
@@ -409,14 +414,23 @@ class PersonalAssistantJourney(unittest.TestCase):
         # The mark is Kreska thinking: its brow waves while the run executes (#339).
         pulse = working.locator('.kreska[data-expression="thinking"] .kreska__brow')
         self.assertEqual(pulse.evaluate("el => [getComputedStyle(el).animationName, getComputedStyle(el).animationPlayState]"), ["kreska-wave", "running"])
-        # Under a modal (Jump to…) the mark pauses; it runs again when the modal closes.
+        # The sidebar's working mark is the same run's Kreska, so it follows the same motion rule (#155 AC-4).
+        sidebar = jo.locator(".app__side").count() > 0
+        side_pulse = jo.locator('.app__side .agentlive .kreska[data-expression="thinking"] .kreska__brow')
+        if sidebar:
+            self.assertEqual(side_pulse.evaluate("el => getComputedStyle(el).animationPlayState"), "running")
+        # Under a modal (Jump to…) the marks pause; they run again when the modal closes.
         jo.keyboard.press("Control+k")
         expect(jo.locator('[aria-modal="true"]')).to_be_visible()
         expect(working).to_have_attribute("data-motion-paused", "")
         self.assertEqual(pulse.evaluate("el => getComputedStyle(el).animationPlayState"), "paused")
+        if sidebar:
+            self.assertEqual(side_pulse.evaluate("el => getComputedStyle(el).animationPlayState"), "paused")
         jo.keyboard.press("Escape")
         expect(jo.locator('[aria-modal="true"]')).to_have_count(0)
         expect(working).not_to_have_attribute("data-motion-paused", "")
+        if sidebar:
+            self.assertEqual(side_pulse.evaluate("el => getComputedStyle(el).animationPlayState"), "running")
         # Off screen it pauses too: in a short window the reader scrolls (a real wheel; the thread keeps a
         # reader's own position) to the top of the thread, then back down to the line.
         jo.set_viewport_size({"width": 1440, "height": 640})

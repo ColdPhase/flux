@@ -14,6 +14,7 @@ import {
 } from './api';
 import { ClientGuide } from './ClientGuide';
 import { StandingGrants } from './StandingGrants';
+import { McpPermissions } from './McpPermissions';
 import './connection.css';
 
 const ALL_SCOPES: AgentScope[] = ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'];
@@ -243,6 +244,8 @@ export function AgentConnectionPage() {
           : <Button variant="link" onClick={() => setRevoking(connection.id)}>Revoke connection</Button>}
       </div>)}</div>
     </fieldset> : null}
+    {!oauthQuery && selected && items.some((item) => item.id === selected) ?
+      <McpPermissions key={selected} connection={items.find((item) => item.id === selected)!} projectNames={projectNames} /> : null}
     {creatingAgent ? <form className="connection__create" onSubmit={(event) => { void addPersonalAgent(event); }}>
       <h2>Create your personal agent</h2><p>This identity belongs only to you. A project manager must explicitly grant it project access.</p>
       {!workspaces.length ? <p className="connection__help" role="note">Your agent belongs to a workspace, and you are not in one yet. <Link to="/projects/new">Create a project</Link> to start one, or ask someone to add you to theirs.</p> : <>

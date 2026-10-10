@@ -144,3 +144,28 @@
 .nset__problem b { font-weight: 600; color: var(--t1); }
 .inbox__caught { margin: 18px 0 0; font-size: var(--fs-sm); color: var(--t3); }
 .unsub__link .ui-btn { margin-top: 0; }
+/* Notifications inside Settings (#350): the drawn level and quiet-hours cards first, then the
+   existing per-kind channels, email destination and muted places, each in its own card. */
+.sset-in .nset__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.sset-in .nset__sec { padding: 0; border: 0; }
+.sset-in .nset__sec h3.sset-sec { margin-top: 30px; }
+.nset__matrix { padding: 10px 18px 4px; }
+.nset__box { padding: 14px 18px 16px; }
+.nset__box .nset__extra, .nset__box .nset__add { margin-top: 14px; }
+.nset__group .nset__times { margin: 0; padding: 0 18px 14px; }
+.nset__zone-note { align-self: end; padding-bottom: 8px; font-size: 12.5px; color: var(--t3); }
+.sset-card.nset__device { display: grid; gap: 8px; margin-top: 16px; padding: 14px 18px; border-top: 0; }
+.sset-card.nset__device > * + * { border-top: 0; }
+@media (max-width: 640px) {
+  .sset-in .nset__head { position: static; pointer-events: auto; }
+  .nset__matrix { padding: 6px 12px 2px; }
+  .nset__box { padding: 12px 16px 14px; }
+  .nset__group .nset__times { padding: 0 16px 14px; }
+}
+
+/* On touch, the matrix checkboxes and the email destination rows are 44 px targets (#434, README §4). */
+@media (max-width: 640px), (pointer: coarse) {
+  .nset__check { width: 44px; height: 44px; }
+  .nset__radio { min-height: 44px; align-items: center; }
+  .nset__radio input { margin-top: 0; }
+}

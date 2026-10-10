@@ -10,6 +10,20 @@
 export const NOTIFICATION_REASONS = ['mention', 'question', 'reply', 'dm', 'assigned', 'review', 'invitation'] as const;
 export type NotificationReason = typeof NOTIFICATION_REASONS[number];
 
+/**
+ * The reasons that "need you" (F-026 S22): decisions and results about your work, questions and
+ * mentions, direct messages, work assigned to you and invitations. Replies in conversations you
+ * joined are the rest of "Everything".
+ */
+export const NEEDS_YOU_REASONS = ['mention', 'question', 'dm', 'assigned', 'review', 'invitation'] as const satisfies readonly NotificationReason[];
+
+/**
+ * What may interrupt you with push and email (F-026 S22). The inbox keeps every reason in each
+ * level. `custom` is reported when the per-reason channels match none of the three.
+ */
+export const NOTIFICATION_LEVELS = ['needsYou', 'everything', 'nothing'] as const;
+export type NotificationLevel = typeof NOTIFICATION_LEVELS[number];
+
 export const NOTIFICATION_CHANNELS = ['inApp', 'push', 'email'] as const;
 export type NotificationChannel = typeof NOTIFICATION_CHANNELS[number];
 export type ChannelChoice = Record<NotificationChannel, boolean>;
@@ -51,6 +65,17 @@ export interface NotificationPause {
 /** The longest a pause may last, so a forgotten focus never silences someone for days. */
 export const MAX_NOTIFICATION_PAUSE_HOURS = 12;
 
+/**
+ * One push at a local time (in the quiet-hours time zone) counting what still waits in your
+ * inbox. While it is on, pushes held back by quiet hours are not sent one by one when
+ * quiet hours end: the summary covers them and the inbox keeps them.
+ */
+export interface MorningSummary {
+  enabled: boolean;
+  /** Local time "HH:MM". */
+  at: string;
+}
+
 export type MutablePlaceType = 'project' | 'dm';
 
 /** A place the person muted. `name` is shown only while they can still read it. */
@@ -83,6 +108,9 @@ export interface NotificationPreferences {
   };
   quietHours: QuietHours;
   pause: NotificationPause;
+  morningSummary: MorningSummary;
+  /** Which of the three levels the channels match, or `custom`. */
+  level: NotificationLevel | 'custom';
   muted: MutedPlace[];
 }
 
@@ -93,6 +121,9 @@ export interface UpdateNotificationPreferencesCommand {
   quietHours?: Partial<QuietHours>;
   /** A future instant within MAX_NOTIFICATION_PAUSE_HOURS, or null to resume now. */
   pause?: NotificationPause;
+  /** Applies the level's push and email choice to every reason, before `channels`. */
+  level?: NotificationLevel;
+  morningSummary?: Partial<MorningSummary>;
 }
 
 /** `PUT /api/v1/notification-preferences/mutes`: mute or unmute a place you can read. */

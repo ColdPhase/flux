@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { agentPlaybookRows } from '@flux/db';
 import { COWORK_PLAYBOOK, coworkPlaybookReference, coworkPlaybookUri, DomainError, getProject, isUuid,
   renderCoworkPlaybook, type Database } from '@flux/core';
-import { withAgentConnection, type FluxMcpClaims } from './context.js';
+import { withAgentConnection, type VerifiedFluxMcpClaims } from './context.js';
 import { agentRuntimeInTransaction } from './runtime.js';
 import type { AgentToolRegistry } from './tool-registry.js';
 import { toolError, toolResult } from './tool-results.js';
@@ -13,18 +13,19 @@ import { toolError, toolResult } from './tool-results.js';
  * host-invoked actions; their text carries the trusted bundle plus a project bound from the verified
  * connection's current selection, never from message text or a later browser choice.
  */
-export function registerAgentPlaybook(server: McpServer, tools: AgentToolRegistry, db: Database, claims: FluxMcpClaims) {
+export function registerAgentPlaybook(server: McpServer, tools: AgentToolRegistry, db: Database, claims: VerifiedFluxMcpClaims) {
   const reference = coworkPlaybookReference();
   const uri = coworkPlaybookUri();
+  claims.dispatch.declare('resource', 'flux_cowork_playbook');
   server.registerResource('flux_cowork_playbook', uri, {
     title: `Flux co-work playbook ${COWORK_PLAYBOOK.version}`,
     description: 'The versioned instructions Flux supplies to connected agents. Bootstrap returns the same version and digest.',
     mimeType: 'text/markdown',
-  }, async () => {
+  }, () => claims.dispatch.run('resource', 'flux_cowork_playbook', async () => {
     // A revoked connection or removed scope cannot keep reading through an open bearer session.
     await withAgentConnection(db, claims, 'flux.context.read', null, async () => undefined);
     return { contents: [{ uri, mimeType: 'text/markdown', text: renderCoworkPlaybook() }] };
-  });
+  }));
 
   // The client records the exact bundle it loaded for its runtime session. Only the bundle this server serves is accepted;
   // the record is compatibility evidence for bootstrap, never authority, and the server cannot observe loading itself.
@@ -50,11 +51,11 @@ export function registerAgentPlaybook(server: McpServer, tools: AgentToolRegistr
   /** Bind one selected, currently readable project; an omitted choice is valid only when it is unambiguous. */
   async function bind(projectId: string | undefined) {
     if (projectId !== undefined && !isUuid(projectId)) throw new DomainError(400, 'INVALID_INPUT', 'projectId must be a project UUID');
-    return withAgentConnection(db, claims, 'flux.context.read', projectId ?? null, async ({ tx, connection, principal }) => {
+    return withAgentConnection(db, claims, 'flux.context.read', projectId ?? null, async ({ tx, connection, principal, requireProject }) => {
       const ids = projectId ? [projectId.toLowerCase()] : connection.selectedProjectIds;
       const readable = [];
-      for (const id of ids) {
-        try { readable.push(await getProject(principal, id, tx)); }
+      for (const id of [...ids].sort()) {
+        try { await requireProject(id); readable.push(await getProject(principal, id, tx)); }
         catch (error) { if (projectId || !(error instanceof DomainError)) throw error; }
       }
       return { connectionId: connection.connectionId, projects: readable.map(({ id, name }) => ({ id, name })) };
@@ -62,13 +63,14 @@ export function registerAgentPlaybook(server: McpServer, tools: AgentToolRegistr
   }
 
   for (const action of ['start', 'resume'] as const) {
+    claims.dispatch.declare('prompt', `${action}_work`);
     server.registerPrompt(`${action}_work`, {
       title: action === 'start' ? 'Start Flux work' : 'Resume Flux work',
       description: action === 'start'
         ? 'Load Flux co-work instructions and start authorized work in a selected project.'
         : 'Load Flux co-work instructions and resume authorized work where you recorded it.',
       argsSchema: z.object({ projectId: z.string().optional().describe('A selected project ID; optional when the connection has exactly one.') }),
-    }, async ({ projectId }) => {
+    }, ({ projectId }) => claims.dispatch.run('prompt', `${action}_work`, async () => {
       let text: string;
       try {
         const bound = await bind(projectId);
@@ -85,6 +87,6 @@ export function registerAgentPlaybook(server: McpServer, tools: AgentToolRegistr
         text = `Flux could not bind this work: ${JSON.stringify(failure)}. Tell me this exact gap; do not continue without it.`;
       }
       return { description: `Flux co-work ${COWORK_PLAYBOOK.version}`, messages: [{ role: 'user' as const, content: { type: 'text' as const, text } }] };
-    });
+    }));
   }
 }

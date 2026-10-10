@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Link, useMatches } from 'react-router';
-import type { Conversation, ConversationRootWindow, DecisionRowProjection, Material, NativeWorkRow, WorkRowProjection, ResultRowProjection } from '@flux/contracts';
+import { Link } from 'react-router';
+import type { DecisionRowProjection, NativeWorkRow, WorkRowProjection, ResultRowProjection } from '@flux/contracts';
 import { Icon, type IconName } from '../ui';
 import { useShellData } from '../app/data';
 import { useShellActions, type DetailsView, type OverviewView } from '../app/shellContext';
@@ -12,27 +12,9 @@ import { WorkPagination } from '../work/WorkPagination';
 import { audienceLine, useProjectShell } from './data';
 import { ProjectAccess } from '../people/ProjectAccess';
 import { docUrl } from '../docs/api';
+import { useOpenConversation } from './OverviewContext';
 import { agentAuthorLabel, authorLabel } from '../docs/format';
-
-/** The Conversation tab's loader data: the open thread, if any, and the stream's newest roots (UI116-1). */
-function useOpenConversation(): { conversation: Conversation | null; materials: Material[]; roots?: ConversationRootWindow } | null {
-  const match = useMatches().find((entry) => entry.loaderData && typeof entry.loaderData === 'object' && 'conversation' in entry.loaderData);
-  return (match?.loaderData as { conversation: Conversation | null; materials: Material[]; roots?: ConversationRootWindow } | undefined) ?? null;
-}
-
-/** The owning context stays visible when a phone reader scrolls down to sources. */
-export function OverviewContext() {
-  const shell = useProjectShell();
-  const open = useOpenConversation();
-  const { me } = useShellData();
-  if (!shell) return null;
-  const title = open?.conversation?.firstMessageBody.split('\n')[0];
-  return <div className="ov-panel-context" aria-label="Overview context">
-    <strong>{shell.project.name}</strong>
-    {title ? <span title={title}>{title}</span> : null}
-    <small><Icon name={shell.project.visibility === 'workspace' ? 'people' : 'lock'} size={11} />{audienceLine(shell.people, me.user.id, shell.project.visibility === 'workspace')}</small>
-  </div>;
-}
+import './overview.css';
 
 interface Row {
   key: string;
