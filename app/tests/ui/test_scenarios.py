@@ -71,6 +71,9 @@ DM = [
 CAMERA, SENSOR, PRIVACY, LEFT_OUT = DM[1][1], DM[2][1], DM[3][1], DM[4][1]
 LOW_LIGHT = "Low light: below 10 lux the camera has to guess"
 VARIANT_B = "Variant B: a VL53L1X sensor behind the shade"
+GONE_THOUGHT = "Variant A: a photodiode, dropped before the review"
+# A button's background and transform, as the press check reads them (HIG-16: Prostota presses to .97).
+PRESS_STYLE = "el => { const s = getComputedStyle(el); return { background: s.backgroundColor, transform: s.transform }; }"
 JONAS_ROOT = "Copied our lamp sketch here. Tonight I test the camera in a dark bedroom."
 ADA_REPLY = "Good, note the lux level so we can compare later."
 D1, WHY1 = "Use the camera for gesture detection", "It recognises the richest set of gestures"
@@ -255,6 +258,25 @@ class ScenarioJourney:
 
     def details(self, page: Page):
         return page.get_by_role("dialog", name="Details") if self.phone else page.locator("#details")
+
+    def press_changes(self, page: Page, button) -> tuple[dict, dict]:
+        """The button at rest and with :active forced through CDP, as the HIG checklist's check does (test_project_policy)."""
+        rest = button.evaluate(PRESS_STYLE)
+        button.evaluate("el => el.setAttribute('data-press-probe', '')")
+        cdp = page.context.new_cdp_session(page)
+        try:
+            cdp.send("DOM.enable")
+            cdp.send("CSS.enable")
+            root = cdp.send("DOM.getDocument", {"depth": 0})["root"]["nodeId"]
+            node = cdp.send("DOM.querySelector", {"nodeId": root, "selector": "[data-press-probe]"})["nodeId"]
+            cdp.send("CSS.forcePseudoState", {"nodeId": node, "forcedPseudoClasses": ["active"]})
+            page.wait_for_timeout(300)  # past the transform transition
+            pressed = button.evaluate(PRESS_STYLE)
+            cdp.send("CSS.forcePseudoState", {"nodeId": node, "forcedPseudoClasses": []})
+        finally:
+            cdp.detach()
+            button.evaluate("el => el.removeAttribute('data-press-probe')")
+        return rest, pressed
 
     def close_details(self, page: Page) -> None:
         if self.phone:
@@ -786,9 +808,11 @@ class ScenarioJourney:
         """#44 scenario 2, "repeat with task creation preceding the map link" (#289): a task made first in Tasks is
         linked to a map thought from its Details. A phone taps the controls; a computer uses the keyboard alone, and
         Escape closes the picker without a change. The link is stored once, and the map counts the task on that
-        thought and lists it in the chooser for its other editors too."""
+        thought and lists it in the chooser for its other editors too. A thought choice presses like any button (HIG-16),
+        and a thought deleted while the chooser is open is refused with a message to choose another (422)."""
         self.need("order_task", "variant_b", "map")
         s, lamp = self.s, self.s["lamp"]
+        gone_thought = self.api("jonas", "POST", f"/api/v1/sketches/{s['map']}/thoughts", {"text": GONE_THOUGHT, "x": 40, "y": 640}, status=201)["thought"]
         jonas = self.page("jonas")
         jonas.goto(f"/projects/{lamp}/tasks?open=work:{s['order_task']}")
         card = jonas.locator(f".wd[data-detail-kind='work'][data-detail-id='{s['order_task']}']")
@@ -810,6 +834,21 @@ class ScenarioJourney:
         expect(picker).to_be_visible()
         picker.get_by_label("Map", exact=True).select_option(s["map"])
         choice = picker.get_by_role("button", name=VARIANT_B)
+        dropped = picker.get_by_role("button", name=GONE_THOUGHT)
+        expect(dropped).to_be_visible()
+        self.api("jonas", "DELETE", f"/api/v1/sketches/{s['map']}/thoughts/{gone_thought['id']}", status=204,
+                 headers={"if-match": f'"{gone_thought["version"]}"'})
+        rest, pressed = self.press_changes(jonas, choice)
+        self.assertEqual(rest["transform"], "none", "a thought choice rests unscaled")
+        self.assertEqual(pressed["transform"], "matrix(0.97, 0, 0, 0.97, 0, 0)", "a pressed thought choice scales to --press (.97)")
+        self.assertNotEqual(pressed["background"], rest["background"], "and takes the pressed fill")
+        if self.phone:
+            self.tap(dropped)
+        else:
+            dropped.focus()
+            jonas.keyboard.press("Enter")
+        expect(section.get_by_role("alert")).to_contain_text("Choose another thought.")
+        expect(picker).to_be_visible()
         if self.phone:
             self.tap(choice)
         else:

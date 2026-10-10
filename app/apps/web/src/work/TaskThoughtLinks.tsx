@@ -86,6 +86,7 @@ export function TaskThoughtLinks({ item, project, links, empty, writable, reload
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 403) setError('You can read this task but not change it.');
       else if (cause instanceof ApiError && cause.status === 404) setError('That thought is no longer on a map you can read. Choose another.');
+      else if (cause instanceof ApiError && cause.status === 422) setError('That thought was deleted while you were choosing. Choose another thought.');
       else setError(LINK_FAILURE);
       if (cause instanceof ApiError && cause.status === 404) setLoaded(null);
     } finally {

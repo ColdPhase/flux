@@ -99,6 +99,9 @@
 .wd-link small { flex: none; font-size: var(--fs-xs); color: var(--t3); }
 .wd-link svg { flex: none; color: var(--t3); }
 .wd-link:hover { background: var(--hov); }
+/* A pressed button (thought choices, prerequisites, decisions) takes the same press as .ui-btn: scale to --press
+   and spring back through --tr. The fill also shows under reduced motion, where --press is 1 (HIG-16, Prostota). */
+button.wd-link:active:not(:disabled) { background: var(--sub); transform: scale(var(--press)); transition-duration: var(--dur-1); }
 .wd-inline { display: inline; padding: 0; color: var(--t1); font-weight: 500; text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 3px; }
 .wd-muted { font-size: var(--fs-sm) !important; color: var(--t3) !important; }
 /* Criteria and prerequisites of a planned task (#152): plain list, state in words, no checkbox that implies a check. */
