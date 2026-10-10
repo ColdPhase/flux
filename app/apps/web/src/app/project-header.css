@@ -18,10 +18,16 @@
 .top--project .ws-state::before { content: ""; position: absolute; left: -13px; top: 2px; bottom: 2px; border-left: 1px solid var(--line); }
 .top--project .ws-part { display: contents; }
 
-.top--project .ws-seg { min-height: 22px; min-width: 0; flex: 0 1 auto; max-width: 100%; color: var(--t2); }
-.top--project .ws-seg:hover { color: var(--t1); }
+/* Header meta reads as quiet secondary text on the title row's line (#431): no filled pill on
+   hover, the icon centred on the text and the same size as the audience line beside it. */
+.top--project .ws-seg { gap: 5px; min-height: 22px; flex: none; max-width: 100%; margin: 0; padding: 0 2px; color: var(--t2); line-height: inherit; }
+.top--project .ws-seg svg { width: 12px; height: 12px; }
+.top--project .ws-seg:hover { background: none; color: var(--t1); }
+.top--project .ws-seg:hover span:last-child { text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--line); }
 .top--project .ws-seg--need { color: var(--t1); }
-.top--project .ws-seg span:last-child { white-space: normal; overflow-wrap: anywhere; }
+/* One line (#435): the segment never shrinks, so the state line wraps as a whole onto its own row; a
+   segment wider than its container ellipsises instead of breaking "1 completed task" over two lines. */
+.top--project .ws-seg span:last-child { white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .top--project .ws-state--empty { overflow: hidden; text-overflow: ellipsis; }
 .top--project .top__right { padding-top: 2px; }
 
@@ -44,4 +50,15 @@
   .top__audience { position: relative; min-height: 32px; }
   /* A 44 px touch target without growing the 52 px header (#266 review item 13): the hit area extends past the line. */
   .top__audience::after { content: ""; position: absolute; inset: -6px -2px; }
+}
+
+/* Phone, touch (#438, HIG-14 and HIG-15): the audience keeps its 22 px line, and its 44 px hit area is a
+   square centred on the line. The title block starts at the top of the 52 px header, so the square ends at
+   the header's bottom edge and the state row below stays a separate target; the square may cover the
+   title's lower band, which holds no control. The meta row must not clip the square. The 52 px header of
+   #266 item 13 is kept, and the phone header test (a single compact header, 60 px) still holds. */
+@media (pointer: coarse) and (max-width: 640px) {
+  header.top.top--project .top__head { align-self: flex-start; gap: 0; }
+  header.top.top--project .top__meta { overflow: visible; }
+  header.top.top--project .top__audience::after { top: -11px; bottom: auto; height: 44px; }
 }
