@@ -581,7 +581,7 @@ test('native agent owners retry failed reads, fence stale permission answers and
     await page.evaluate(() => { (window as unknown as { sameDocument: boolean }).sameDocument = true; });
     await page.getByRole('button', { name: /Scoped Casey.*account and sign out/ }).click();
     await page.getByRole('dialog', { name: 'Account', exact: true }).getByRole('button', { name: 'Sign out', exact: true }).click();
-    await page.getByRole('heading', { name: 'Sign in to Flux' }).waitFor();
+    await page.getByRole('heading', { name: 'Sign in' }).waitFor();
     await page.getByLabel('Email').fill(guest.email); await page.getByLabel('Password', { exact: true }).fill(password);
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     await page.getByRole('link', { name: 'Owner scope', exact: true }).click();

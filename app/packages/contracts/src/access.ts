@@ -14,6 +14,8 @@ export const workspaceProjectsPath = (workspaceId: string) => `${workspacePath(w
 export const workspaceAgentsPath = (workspaceId: string) => `${workspacePath(workspaceId)}/agents`;
 export const workspaceDraftsPath = (workspaceId: string) => `${workspacePath(workspaceId)}/drafts`;
 export const projectPath = (projectId: string) => `${PROJECTS_PATH}/${projectId}`;
+/** POST: adds one optional view to the project (#351). */
+export const projectViewsPath = (projectId: string) => `${projectPath(projectId)}/views`;
 export const projectGrantsPath = (projectId: string) => `${projectPath(projectId)}/grants`;
 /** GET: the people and agents who can read the project now (#117), for its audience line. */
 export const projectPeoplePath = (projectId: string) => `${projectPath(projectId)}/people`;
@@ -99,12 +101,23 @@ export interface WorkspaceMember {
   createdAt: string;
 }
 
+/** The views a project shows only once it needs them (#351, F-026 S21). Conversation and Tasks are always there. */
+export const PROJECT_VIEWS = ['map', 'docs', 'agents'] as const;
+export type ProjectViewId = (typeof PROJECT_VIEWS)[number];
+/** What a new project starts from (#351, S20): the views it begins with. */
+export const PROJECT_TEMPLATES = ['build', 'research', 'event', 'blank'] as const;
+export type ProjectTemplate = (typeof PROJECT_TEMPLATES)[number];
+/** The optional views each template adds on top of Conversation and Tasks. */
+export const TEMPLATE_VIEWS: Record<ProjectTemplate, readonly ProjectViewId[]> = { build: [], research: ['docs'], event: [], blank: [] };
+
 export interface Project {
   id: string;
   workspaceId: string;
   name: string;
   visibility: ProjectVisibility;
   access: ProjectAccess;
+  /** Optional views added on purpose, by a template or from More. Use also shows a view (map with sketches, wiki with docs, agents with an agent). Existing projects have all of them. */
+  views: ProjectViewId[];
   version: number;
   createdAt: string;
 }
@@ -174,6 +187,13 @@ export interface CreateProjectCommand {
   name: string;
   /** Default `workspace`. A `restricted` project is visible only to managers and grantees. */
   visibility?: ProjectVisibility;
+  /** What the project starts from (#351). Without one it shows every view, as projects always did. */
+  template?: ProjectTemplate;
+}
+
+/** Adds an optional view to a project. Adding one it already has changes nothing. */
+export interface AddProjectViewCommand {
+  view: ProjectViewId;
 }
 
 /** Creates or replaces the single grant for this principal on the project. */

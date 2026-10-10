@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import { flushSync } from 'react-dom';
 import { Outlet, useLocation, useNavigate, useParams, useRevalidator } from 'react-router';
 import { useStreamEvents } from '../api/stream';
-import { BottomNav, Button, Drawer, Icon, IconButton, MEDIA, SidePanel, Tabs, duration, flip, play, useMediaQuery, useSidePanelMode, type BottomNavItem, type TabItem } from '../ui';
+import { BottomNav, Button, Drawer, Icon, IconButton, MEDIA, SidePanel, Tabs, duration, flip, play, useMediaQuery, useToast, useSidePanelMode, type BottomNavItem, type TabItem } from '../ui';
 import { useShellData } from './data';
 import { registerServiceWorker, syncPushSubscription } from '../pwa';
 import { Details } from './Details';
@@ -12,7 +12,9 @@ import { ShellContext, type DetailsView } from './shellContext';
 import { Sidebar } from './Sidebar';
 import { VIEWS, viewIndex } from './views';
 import { ProjectStateRow } from '../work/inline';
-import { audienceLine, useProjectShell } from '../project/data';
+import { PROJECT_VIEWS, type ProjectViewId } from '@flux/contracts';
+import { addProjectView } from './conversation-api';
+import { addableViews, audienceLine, shownViews, useProjectShell } from '../project/data';
 import { useDmSketchCount } from '../dm/DmSketches';
 import { LiveProvider } from '../live/LiveProvider';
 import { LiveEntry } from '../live/LiveEntry';
@@ -40,6 +42,8 @@ function lastMapPath(userId: string, projectId: string, sketches: { items: { id:
 }
 
 const PROJECT_VIEW_NAMES = ['Conversation', 'Map', 'Tasks', 'Wiki', 'Agents'];
+const VIEW_LABEL: Record<ProjectViewId, string> = { map: 'Map', docs: 'Wiki', agents: 'Agents' };
+const VIEW_PATH: Record<ProjectViewId, string> = { map: 'map', docs: 'docs', agents: 'agents' };
 
 /** Tab order for the slide direction: Home's views, or a project's Conversation · Map · Tasks · Wiki · Agents. */
 function viewOrder(pathname: string) {
@@ -130,6 +134,20 @@ function AppLayoutContent() {
 
   // New or changed direct messages refresh the sidebar list (#107). An open DM refetches itself.
   const revalidator = useRevalidator();
+  const toast = useToast();
+  // Map, Wiki and Agents appear when needed; More adds one on purpose (#351, S21) and opens it.
+  // The answer may come after the person has moved on: the change stays, but only someone still in that
+  // project is taken to its new view (or told it failed).
+  const addView = async (projectId: string, view: ProjectViewId) => {
+    const stillHere = () => window.location.pathname.startsWith(`/projects/${projectId}`);
+    try {
+      await addProjectView(projectId, view);
+      revalidator.revalidate();
+      if (stillHere()) navigate(`/projects/${projectId}/${VIEW_PATH[view]}`);
+    } catch {
+      if (stillHere()) toast({ message: `${VIEW_LABEL[view]} couldn’t be added. Try again in a moment.`, tone: 'danger' });
+    }
+  };
   useStreamEvents(me.user.id, (event) => {
     if (event.objectType !== 'dm') return;
     const known = directMessages.some((dm) => dm.id === event.objectId);
@@ -309,13 +327,15 @@ function AppLayoutContent() {
   const openWork = project ? workSummary.summary?.unfinishedTotal : undefined;
   // Conversation · Map · Tasks · Wiki · Agents in the final design's order (#117); quiet tabs without
   // counts. The unfinished work count stays readable to assistive technology on the Tasks tab.
+  const viewNow = /^\/projects\/[^/]+\/(map|docs|agents)(\/|$)/.exec(location.pathname)?.[1] as ProjectViewId | undefined;
+  const shownProjectViews = project ? shownViews(project, viewNow) : null;
   const projectViews = projectId ? [
     { id: 'conversation', label: 'Conversation', to: onOtherView ? lastConversationPath(me.user.id, projectId) : `${location.pathname}${location.search}` },
     { id: 'map', label: 'Map', to: onMap ? location.pathname : lastMapPath(me.user.id, projectId, project?.sketches), end: false },
     { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks${lastTasksSearch(me.user.id, projectId)}`, ...(openWork ? { countLabel: `, ${openWork} open` } : {}) },
     { id: 'docs', label: 'Wiki', to: `/projects/${projectId}/docs`, end: false },
     { id: 'agents', label: 'Agents', to: `/projects/${projectId}/agents` },
-  ] : null;
+  ].filter((view) => !(PROJECT_VIEWS as readonly string[]).includes(view.id) || !shownProjectViews || shownProjectViews.has(view.id as ProjectViewId)) : null;
   const homeViews: TabItem[] = VIEWS.map((view) => ({ id: view.id, label: view.label, to: view.path, end: view.path === '/' }));
   const places = mainPlaces(location.pathname, inboxUnread);
   const audienceOpen = project?.project.visibility === 'workspace';
@@ -382,9 +402,12 @@ function AppLayoutContent() {
       : dmViews ? { items: dmViews, label: 'Direct message views' }
         : place.views ? { items: homeViews, label: 'Views' } : null;
   const viewName = activeProject ? PROJECT_VIEW_NAMES[Math.max(0, viewOrder(location.pathname))] : null;
+  const addViewItems: MoreItem[] = project && shownProjectViews && projectId && project.project.access !== 'viewer'
+    ? addableViews(shownProjectViews).map((view) => ({ label: `Add ${VIEW_LABEL[view]}`, run: () => void addView(projectId, view) })) : [];
   const moreItems: MoreItem[] = [
     ...('noDetails' in place ? [] : [{ label: 'Details', run: () => { setDetailsView('place'); toggleDetails(true); } }]),
     ...(activeProject && projectId ? [{ label: 'What matters', run: () => { setDetailsView({ kind: 'recap', projectId }); toggleDetails(true); } }] : []),
+    ...addViewItems,
     { label: 'Focus', keys: 'F', checked: focusing, run: () => void focus.toggle() },
     { label: railed ? 'Show the sidebar' : 'Hide the sidebar', keys: '[', run: toggleRail },
   ];
@@ -469,7 +492,7 @@ function AppLayoutContent() {
           : place.views
             ? <Tabs className="views views--chips" label="Views" items={homeViews} />
             : activeProject && projectViews
-              ? <div className="views views--project views--chips"><Tabs className="views__tabs" label="Project views" items={projectViews} /></div>
+              ? <div className="views views--project views--chips"><Tabs className="views__tabs" label="Project views" items={projectViews} />{addViewItems.length ? <MoreMenu items={addViewItems} label="Add a view" icon="plus" /> : null}</div>
               : dmViews
                 ? <Tabs className="views views--chips" label="Direct message views" items={dmViews} />
                 : <div className="views views--none" aria-hidden="true" />}
