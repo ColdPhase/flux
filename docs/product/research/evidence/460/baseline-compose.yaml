@@ -1,0 +1,21 @@
+services:
+  mcp-clients:
+    volumes:
+      - /tmp/flux-460-probe.ts:/app/tests/app/e2e/flux-460-probe.ts:ro,z
+      - /tmp/flux-460-evidence:/evidence:z
+    environment:
+      FLUX_GIT_COMMIT: 975747426a778cc4471bd4c9eabb8910eb187671
+    command: ["node_modules/.bin/tsx", "tests/app/e2e/flux-460-probe.ts"]
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 10.198.100.0/24
+  runtime-control:
+    ipam:
+      config:
+        - subnet: 10.198.101.0/24
+  runtime-api:
+    ipam:
+      config:
+        - subnet: 10.198.102.0/24
