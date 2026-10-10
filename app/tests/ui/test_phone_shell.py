@@ -440,5 +440,77 @@ class PhoneShellJourney(unittest.TestCase):
                 self.assertEqual(page.evaluate(check), [], "fields below 16px make iOS zoom on focus")
 
 
+    def test_13_projects_list_rows_audience_and_search_are_full_touch_targets(self):
+        # #438: #370 dropped the list rules the Projects list used, leaving a bulleted, underlined 19 px link.
+        page = self.page({"width": 390, "height": 844})
+        page.goto("/projects")
+        row = page.get_by_role("list", name="Projects").get_by_role("link", name="Community garden sensors")
+        expect(row).to_be_visible()
+        look = row.evaluate("""(el) => ({ height: el.getBoundingClientRect().height,
+          underline: getComputedStyle(el).textDecorationLine, bullet: getComputedStyle(el.closest('ul')).listStyleType })""")
+        self.assertGreaterEqual(look["height"], 44, "a project row is a full touch target")
+        self.assertEqual(look["underline"], "none")
+        self.assertEqual(look["bullet"], "none")
+        # The search field is 44 px tall on touch.
+        page.goto("/search?q=garden")
+        field = page.locator("input.search__input")
+        expect(field).to_be_visible()
+        self.assertGreaterEqual(self.box(field)["height"], 44)
+
+    def audience_line(self, page):
+        # The project header's audience line (the 22 px line whose 44 px hit square is tested below).
+        page.goto(f"/projects/{self.project['id']}")
+        audience = page.locator("header.top .top__audience")
+        expect(audience).to_be_visible()
+        return audience
+
+    def test_14_audience_hit_square_is_44_px_on_touch(self):
+        # HIG-14 (#438): the square centred on the 22 px audience line is at least 44 px in both dimensions.
+        page = self.page({"width": 390, "height": 844})
+        audience = self.audience_line(page)
+        square = audience.evaluate("(el) => ({ height: parseFloat(getComputedStyle(el, '::after').height), width: parseFloat(getComputedStyle(el, '::after').width) })")
+        self.assertGreaterEqual(square["height"], 44, "the audience hit square is at least 44 px tall")
+        self.assertGreaterEqual(square["width"], 44, "the audience hit square is at least 44 px wide")
+
+    def test_15_audience_hit_square_points_reach_the_button(self):
+        # Every point of the square (edges, corners, centre) reaches the audience button, not the title or the state row.
+        page = self.page({"width": 390, "height": 844})
+        audience = self.audience_line(page)
+        box = self.box(audience)
+        x0, x1 = box["x"], box["x"] + box["width"]
+        cx, cy = (x0 + x1) / 2, box["y"] + box["height"] / 2
+        reaches = "([x, y]) => { const el = document.elementFromPoint(x, y); return !!(el && el.closest('.top__audience')); }"
+        for x in (x0 - 1, x0 + 1, cx, x1 - 1, x1 + 1):
+            for y in (cy - 21, cy, cy + 21):
+                self.assertTrue(page.evaluate(reaches, [x, y]), f"the audience button receives the point ({x:.1f}, {y:.1f})")
+
+    def test_16_points_just_outside_the_audience_square_are_other_targets(self):
+        # HIG-15 (#438): the square does not extend into the title above or the state row below.
+        page = self.page({"width": 390, "height": 844})
+        audience = self.audience_line(page)
+        box = self.box(audience)
+        cx, cy = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+        reaches = "([x, y]) => { const el = document.elementFromPoint(x, y); return !!(el && el.closest('.top__audience')); }"
+        for y in (cy - 23, cy + 23):
+            self.assertFalse(page.evaluate(reaches, [cx, y]), f"the point ({cx:.1f}, {y:.1f}) outside the square is another target")
+
+    def tap_audience_edge(self, offset):
+        # One real tap on the square's top or bottom edge, on a freshly loaded page. A second navigation in the
+        # same page aborts the app's own requests, which WebKit reports as an uncaught browser error.
+        page = self.page({"width": 390, "height": 844})
+        audience = self.audience_line(page)
+        box = self.box(audience)
+        cx, cy = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+        page.evaluate("() => { window.__audienceTaps = []; document.addEventListener('click', (e) => window.__audienceTaps.push(!!(e.target.closest && e.target.closest('.top__audience'))), true); }")
+        page.mouse.click(cx, cy + offset)
+        self.assertEqual(page.evaluate("() => window.__audienceTaps"), [True], f"a real tap at y={cy + offset:.1f} reaches the audience button")
+
+    def test_17_real_tap_on_the_top_edge_opens_the_audience(self):
+        self.tap_audience_edge(-21)
+
+    def test_18_real_tap_on_the_bottom_edge_opens_the_audience(self):
+        self.tap_audience_edge(21)
+
+
 if __name__ == "__main__":
     unittest.main()
