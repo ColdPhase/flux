@@ -126,8 +126,9 @@ Observations **[inference]**:
   secondary tier (Geist 49.8, Material 51.4, Radix 60.2) and is close to
   Apple's secondaryLabel only because Apple's secondary is meant for short
   labels on a black surface, not body copy. APCA's published levels (Myndex, not
-  re-fetched) put Lc ~45 as a floor for large/bold non-body text and ~60 for
-  body text, and Radix guarantees Lc 60 for its low-contrast text step, so `t3` at 39 is
+  re-fetched) are roughly Lc 75 minimum for body text, Lc 60 for other
+  content text, Lc 45 for large/bold headings and Lc 30 for placeholder or
+  disabled text, and Radix guarantees Lc 60 for its low-contrast text step, so `t3` at 39 is
   in "non-reading" territory while we use it for metadata people read.
 - Our `t2 #acacac` (Lc 56) is in line with Geist/Material secondary; the
   systems that care most about reading (Radix) go lighter, to Lc ~60.
