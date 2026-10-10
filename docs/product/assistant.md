@@ -1455,6 +1455,10 @@ under migration 0077 and uses the existing project-grant use case for a manager 
 with one Needs-you notification for current project managers. A request creates no authority;
 the caller must retain project read access, and neither projects nor managers outside those
 rights are revealed. The accepted AST-3.4 behavior and owner/manage boundaries are unchanged.
+An upgrade backfills already enabled owners from their existing `personal_run_agents`
+with a read-only S6 snapshot and their existing explicit project grants. It adds no
+project grant or effect capability. Fresh explicit Turn on retains the accepted
+read-and-edit defaults; older owners allow new effects explicitly.
 
 - **Scope.** One `owner_assistant` agent connection per person per workspace,
   created in the same transaction as the assistant's enablement, with its S6 policy

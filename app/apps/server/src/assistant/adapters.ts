@@ -1,16 +1,16 @@
 import { assistantSettingsRows, type AssistantAuthority, type DbExecutor } from '@flux/db';
-import { ConflictError, enforce, evaluateAgent, evaluateProject, evaluateWorkspace, grantProject,
+import { ConflictError, assertAuthorized, evaluateProject, policyPersonalRunAccess, grantProject,
   initialAgentMcpPolicy, mcpPolicyAdmissionActions, mcpPolicyWithinConsent, type Transaction } from '@flux/core';
 import type { TransactionEventSession } from '../work/transaction-events.js';
 
 export function assistantRows(tx: DbExecutor, events: TransactionEventSession) {
   const authority: AssistantAuthority = {
     async requireWorkspace(ownerUserId, workspaceId, connection) {
-      enforce(await evaluateWorkspace({ kind: 'human', id: ownerUserId }, 'workspace.read', workspaceId, connection, { lock: true }), 'workspace');
+      await assertAuthorized({ kind: 'human', id: ownerUserId }, 'workspace.read', { type: 'workspace', id: workspaceId }, connection, { lock: true });
     },
     async requireAgent(ownerUserId, workspaceId, agentId, connection) {
-      const allowed = enforce(await evaluateAgent({ kind: 'human', id: ownerUserId }, 'agent.invoke', agentId, connection, { lock: true }), 'agent');
-      if (allowed.agent!.workspaceId !== workspaceId) throw new ConflictError('Choose an assistant in this workspace', 'ASSISTANT_WORKSPACE_MISMATCH');
+      const allowed = await policyPersonalRunAccess(connection).requireInvoke({ kind: 'human', id: ownerUserId }, agentId, { lock: true });
+      if (allowed.workspaceId !== workspaceId) throw new ConflictError('Choose an assistant in this workspace', 'ASSISTANT_WORKSPACE_MISMATCH');
     },
     async allowsProject(principal, action, projectId, connection) {
       return (await evaluateProject(principal, action, projectId, connection, { lock: true })).allowed;

@@ -632,7 +632,7 @@ export const assistantSettings = pgTable('assistant_settings', {
   agentId: uuid('agent_id').notNull(), connectionId: uuid('connection_id').notNull().unique(),
   approvalMode: text('approval_mode', { enum: ['act', 'ask'] }).notNull().default('act'),
   changesPerRun: integer('changes_per_run').notNull().default(20),
-  backgroundRunsPerDay: integer('background_runs_per_day').notNull().default(10),
+  backgroundRunsPerDay: integer('background_runs_per_day').notNull().default(24),
   projectMode: text('project_mode', { enum: ['all', 'chosen'] }).notNull().default('all'),
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

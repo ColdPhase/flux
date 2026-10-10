@@ -16,8 +16,8 @@ export type AssistantAreas = Record<AssistantAreaId, AssistantAreaMode>;
 export const DEFAULT_ASSISTANT_AREAS: Readonly<AssistantAreas> = {
   tasks: 'edit', wiki: 'edit', maps: 'edit', conversations: 'edit', decisions: 'edit',
 };
-export const ASSISTANT_LIMITS = { changesPerRun: { min: 1, max: 100, default: 20 },
-  backgroundRunsPerDay: { min: 0, max: 100, default: 10 } } as const;
+export const ASSISTANT_LIMITS = { changesPerRun: { min: 1, max: 20, default: 20 },
+  backgroundRunsPerDay: { min: 0, max: 24, default: 24 } } as const;
 const CONTEXT_CAPABILITIES: AgentMcpCapabilityId[] = ['project.identity.read', 'project.policy.read'];
 
 /** The one public area mapping. Membership is explicit: unrelated co-work/bootstrap entries stay off. */
