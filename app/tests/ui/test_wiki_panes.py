@@ -238,6 +238,17 @@ class WikiPanesJourney(unittest.TestCase):
         self.assertAlmostEqual(index.bounding_box()["width"], 212, delta=1)
         self.assertAlmostEqual(page.locator(".wiki-bar").bounding_box()["height"], 57, delta=1)
         self.assertLessEqual(page.locator(".wiki-doc").bounding_box()["width"], 820.5)
+        # One line per page (#431): equal row heights, the full title on the link, the icon centred.
+        rows = items.evaluate_all("""els => els.map(e => {
+          const r = e.getBoundingClientRect(), t = e.querySelector('.wiki-page__t'), i = e.querySelector('svg').getBoundingClientRect();
+          return {h: r.height, lines: Math.round(t.getBoundingClientRect().height / parseFloat(getComputedStyle(t).lineHeight)),
+            title: e.title, text: t.textContent, icon: Math.abs((i.top + i.height / 2) - (r.top + r.height / 2))};
+        })""")
+        for row in rows:
+            self.assertEqual(row["lines"], 1, row)
+            self.assertEqual(row["title"], row["text"], row)
+            self.assertLessEqual(row["icon"], 1, row)
+        self.assertLessEqual(max(row["h"] for row in rows) - min(row["h"] for row in rows), 0.5, rows)
         title = page.get_by_role("heading", level=2, name=LAMP)
         self.assertEqual(title.evaluate("e => [getComputedStyle(e).fontSize, getComputedStyle(e).fontWeight]"), ["32px", "650"])
         prose = page.locator(".doc-prose")
