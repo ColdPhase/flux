@@ -212,7 +212,8 @@ class PhoneFinal(unittest.TestCase):
                 expect(heading).to_be_visible()
                 expect(page.locator("header .phead__sub")).to_contain_text("Tasks")
                 title = heading.get_by_role("button")
-                self.assertGreaterEqual(self.box(title)["height"], 28)
+                # AC-5: every phone touch target is at least 44 px, the title menu included.
+                self.assertGreaterEqual(self.box(title)["height"], 44)
                 title.click()
                 menu = page.get_by_role("dialog", name=re.compile("Community garden sensors"))
                 expect(menu).to_be_visible()

@@ -497,7 +497,7 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 .phead__title { flex: 1; min-width: 0; }
 .phead__title h1 { margin: 0; font-size: 1.0625rem; font-weight: 600; letter-spacing: -.02em; line-height: 1.25; }
 .phead__menu {
-  display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-height: 28px; padding: 0; border-radius: var(--r-sm);
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-height: 44px; padding: 0; border-radius: var(--r-sm);
   font: inherit; color: var(--t1); text-align: left;
 }
 .phead__menu svg { flex: none; color: var(--t2); }
