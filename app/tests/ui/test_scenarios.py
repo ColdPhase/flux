@@ -55,6 +55,10 @@ from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_play
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
+UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
+if UI_BROWSER not in ("chromium", "webkit"):
+    raise ValueError(f"FLUX_UI_BROWSER must be chromium or webkit, got {UI_BROWSER!r}")
+
 PASSWORD = "a lamp that listens to hands"
 NAMES = {"ada": "Ada Kowalska", "jonas": "Jonas Berg", "mia": "Mia Novak", "lee": "Lee Moreno"}
 WORKSPACE = "Riverside Makers"
@@ -184,7 +188,7 @@ class ScenarioJourney:
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=10000)
         stamp = f"{cls.label}.{int(time.time() * 1000)}"
         cls.s, cls.ids, cls.states, cls.req = {}, {}, {}, {}
@@ -807,7 +811,8 @@ class ScenarioJourney:
     def test_2b_an_existing_task_links_to_a_thought_in_the_browser(self) -> None:
         """#44 scenario 2, "repeat with task creation preceding the map link" (#289): a task made first in Tasks is
         linked to a map thought from its Details. A phone taps the controls; a computer uses the keyboard alone, and
-        Escape closes the picker without a change. The link is stored once, and the map counts the task on that
+        Escape or Cancel closes the picker without a change, and Cancel leaves Details open with no relation stored.
+        The link is stored once, and the map counts the task on that
         thought and lists it in the chooser for its other editors too. A thought choice presses like any button (HIG-16),
         and a thought deleted while the chooser is open is refused with a message to choose another (422)."""
         self.need("order_task", "variant_b", "map")
@@ -832,16 +837,44 @@ class ScenarioJourney:
             expect(control).to_be_focused()
             jonas.keyboard.press("Enter")
         expect(picker).to_be_visible()
-        picker.get_by_label("Map", exact=True).select_option(s["map"])
+        map_field = picker.get_by_label("Map", exact=True)
+        map_field.select_option(s["map"])
+        # The map field is the accepted field surface in both engines: no native chrome, the field corners, and a chevron inside it.
+        look = map_field.evaluate("el => { const s = getComputedStyle(el); return { appearance: s.appearance, webkit: s.webkitAppearance, radius: s.borderRadius }; }")
+        self.assertTrue("none" in (look["appearance"], look["webkit"]), "the map select drops the native chrome (WebKit draws a grey box otherwise)")
+        self.assertEqual(look["radius"], "14px", "and takes the field corners (--r)")
+        chevron = picker.locator(".wd-pick__field > svg")
+        expect(chevron).to_be_visible()
+        field_box, chevron_box = map_field.bounding_box(), chevron.bounding_box()
+        self.assertTrue(field_box["x"] <= chevron_box["x"] and chevron_box["x"] + chevron_box["width"] <= field_box["x"] + field_box["width"],
+                        "the chevron sits inside the map field")
         choice = picker.get_by_role("button", name=VARIANT_B)
         dropped = picker.get_by_role("button", name=GONE_THOUGHT)
         expect(dropped).to_be_visible()
+        self.shot(jonas, "2b-chooser")
+        jonas.emulate_media(color_scheme="dark")
+        self.shot(jonas, "2b-chooser-dark")
+        jonas.emulate_media(color_scheme="light")
+        # Cancel closes only this choice: Details stays open, nothing is linked, and the picker opens again.
+        cancel = picker.get_by_role("button", name="Cancel", exact=True)
+        if self.phone:
+            self.assertGreaterEqual(cancel.bounding_box()["height"], 44, "the phone's Cancel is a 44 px target")
+        self.tap(cancel)
+        expect(picker).to_have_count(0)
+        expect(control).to_be_focused()
+        expect(section.get_by_text("Not linked to a thought yet.")).to_be_visible()
+        cancelled = self.api("jonas", "GET", f"/api/v1/work/{s['order_task']}", status=200)
+        self.assertEqual([link for link in cancelled["links"] if link["to"]["type"] == "thought"], [], "Cancel stores no relation")
+        self.tap(control)
+        expect(picker).to_be_visible()
+        expect(dropped).to_be_visible()
         self.api("jonas", "DELETE", f"/api/v1/sketches/{s['map']}/thoughts/{gone_thought['id']}", status=204,
                  headers={"if-match": f'"{gone_thought["version"]}"'})
-        rest, pressed = self.press_changes(jonas, choice)
-        self.assertEqual(rest["transform"], "none", "a thought choice rests unscaled")
-        self.assertEqual(pressed["transform"], "matrix(0.97, 0, 0, 0.97, 0, 0)", "a pressed thought choice scales to --press (.97)")
-        self.assertNotEqual(pressed["background"], rest["background"], "and takes the pressed fill")
+        if UI_BROWSER == "chromium":  # the press probe forces :active through CDP, which only Chromium offers
+            rest, pressed = self.press_changes(jonas, choice)
+            self.assertEqual(rest["transform"], "none", "a thought choice rests unscaled")
+            self.assertEqual(pressed["transform"], "matrix(0.97, 0, 0, 0.97, 0, 0)", "a pressed thought choice scales to --press (.97)")
+            self.assertNotEqual(pressed["background"], rest["background"], "and takes the pressed fill")
         if self.phone:
             self.tap(dropped)
         else:

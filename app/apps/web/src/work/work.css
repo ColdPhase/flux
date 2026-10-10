@@ -117,8 +117,14 @@ button.wd-link:active:not(:disabled) { background: var(--sub); transform: scale(
 /* "Linked thoughts" picker in task Details (#289): a map select, then the map's thoughts as buttons. */
 .wd-pick { display: grid; gap: 10px; margin-top: 10px; padding: 12px; min-width: 0; border-radius: var(--r); background: var(--el); box-shadow: inset 0 0 0 1px var(--line); }
 .wd-pick label { font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
-.wd-pick select { width: 100%; min-height: var(--ctl); padding: 0 8px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-md); box-shadow: inset 0 0 0 1px var(--line2); }
+/* The map field takes the accepted field surface (--el, --sh-field, --r, as .ui-input) in both engines: appearance none
+   removes WebKit's square native grey box, and the chevron is the shared icon in --t3 (no colour literal). The native
+   select keeps its selection and keyboard behaviour. */
+.wd-pick__field { position: relative; min-width: 0; }
+.wd-pick select { width: 100%; min-height: var(--ctl-lg); padding: 0 34px 0 14px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-base); text-overflow: ellipsis; box-shadow: var(--sh-field); appearance: none; -webkit-appearance: none; }
+.wd-pick__field > svg { position: absolute; top: 50%; right: 12px; transform: translateY(-50%); color: var(--t3); pointer-events: none; }
 .wd-pick select:focus { outline: none; box-shadow: inset 0 0 0 1px var(--t1), 0 0 0 3px var(--sub); }
+.wd-pick .wd-pick__cancel { margin-top: 0; justify-content: flex-end; }
 .wd-pick .wd-links { max-height: 320px; overflow-y: auto; overscroll-behavior: contain; }
 .wd-pick__keys { margin: 0; }
 .wd-error { margin-top: 10px; font-size: var(--fs-sm); color: var(--t1); }

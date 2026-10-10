@@ -116,6 +116,9 @@ export function TaskThoughtLinks({ item, project, links, empty, writable, reload
       ) : null}
       {open ? (
         <div id={panelId} className="wd-pick" role="group" aria-label={`Thoughts to link to ${item.title}`}>
+          <div className="wd-actions wd-pick__cancel">
+            <Button variant="quiet" disabled={busy} onClick={close}>Cancel</Button>
+          </div>
           {maps === null ? <p className="wd-muted" role="status">Loading maps…</p>
             : maps === 'failed' ? <p className="wd-error" role="alert">Could not load this project’s maps.</p>
               : !maps.items.length ? <p className="wd-muted">This project has no map yet. Add a thought on a map first.</p>
@@ -123,10 +126,13 @@ export function TaskThoughtLinks({ item, project, links, empty, writable, reload
                   <>
                     <div className="wd-pick__map">
                       <label htmlFor={mapFieldId}>Map</label>
-                      <select id={mapFieldId} value={mapId} disabled={busy} onChange={(event) => setMapId(event.target.value)}>
-                        <option value="">Choose a map</option>
-                        {maps.items.map((sketch) => <option key={sketch.id} value={sketch.id}>{sketch.title}</option>)}
-                      </select>
+                      <div className="wd-pick__field">
+                        <select id={mapFieldId} value={mapId} disabled={busy} onChange={(event) => setMapId(event.target.value)}>
+                          <option value="">Choose a map</option>
+                          {maps.items.map((sketch) => <option key={sketch.id} value={sketch.id}>{sketch.title}</option>)}
+                        </select>
+                        <Icon name="chevron-down" />
+                      </div>
                     </div>
                     {!mapId ? null : !current ? <p className="wd-muted" role="status">Loading thoughts…</p>
                       : 'failed' in current ? <p className="wd-error" role="alert">Could not load this map’s thoughts.</p>
@@ -144,7 +150,7 @@ export function TaskThoughtLinks({ item, project, links, empty, writable, reload
                           )}
                   </>
                 )}
-          <p className="wd-pick__keys wd-muted">Choose a thought to link it. Escape closes this.</p>
+          <p className="wd-pick__keys wd-muted">Choose a thought to link it. Cancel, or Escape, closes this without a change.</p>
         </div>
       ) : null}
       {status ? <p className="wd-muted" role="status">{status}</p> : null}
