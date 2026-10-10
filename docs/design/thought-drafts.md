@@ -32,6 +32,10 @@ full attempt write alone does not disable memory-only Save. If neither canonical
 persistence nor invalidation can make stale unused authorization unusable, only
 that dispatch is refused: no request is sent, text/IDs/keys stay, and the draft
 keeps its known unused retry state rather than claiming an attempt was dispatched.
+A fresh thought whose bound unused proof never existed can save entirely in
+memory even when all storage access is blocked. Successfully retained canonical
+state already makes an older unused proof irrelevant; later storage refusal does
+not convert that known creation back into unused or unknown intent.
 After reload, a valid canonical attempt wins over any stale unused proof; a valid
 unused proof permits first Save; neither is an unknown save on every viewport.
 Unknown and historical markerless copies only confirm an existing server thought
