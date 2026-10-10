@@ -34,6 +34,16 @@ SECOND_REPLY = "Then the camera cannot be the only sensor. A ToF board works in 
 NUMBERS = "Camera numbers are in: 38% of gestures at 5 lux."
 NUMBERS_REPLY = "Thanks. Let's keep the negative result next to the ToF test."
 ORDER = "Order two ToF boards today?"
+TARGET_ROOT = "The lux table decides the threshold. Which reading do we trust?"
+# A touch control's tap area (#436): its size, and whether a tap 21 px above and below the centre of the
+# element still lands on it, so nothing else covers the 44 px area.
+TOUCH_AREA = """el => {
+  const area = getComputedStyle(el, '::after');
+  const box = el.getBoundingClientRect();
+  const x = box.left + box.width / 2, y = box.top + box.height / 2;
+  const lands = (py) => { const hit = document.elementFromPoint(x, py); return !!hit && el.contains(hit); };
+  return { width: parseFloat(area.width), height: parseFloat(area.height), reach: [lands(y - 21), lands(y + 21)] };
+}"""
 
 
 def contrast(a: list[float], b: list[float]) -> float:
@@ -151,6 +161,23 @@ class OneConversationJourney(unittest.TestCase):
             cursor = window["rootPage"]["nextBefore"]
             if not cursor:
                 return roots
+
+    def targets(self) -> str:
+        """A restricted project for #436 (created once): Ada's root cites a material, and seven replies alternate
+        with Jonas's, so the thread is taller than the desktop panel and the phone sheet shows a source chip and an
+        author's name. It is a project of its own, so the stream's roots and counts above stay as they are."""
+        if "targets" not in self.ids:
+            ada, jonas = self.page("ada"), self.page("jonas")
+            pid = self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Thread targets", "visibility": "restricted"}, status=201)["id"]
+            self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": self.ids["jonas"]}, "role": "contributor"})
+            material = self.api(ada, "POST", f"/api/v1/projects/{pid}/materials", {"title": "Lux table", "body": "38% of gestures at 5 lux, 97% at 200 lux.", "clientMutationId": str(uuid.uuid4())}, status=201)
+            root = self.api(ada, "POST", f"/api/v1/projects/{pid}/conversations", {"body": TARGET_ROOT, "clientMessageId": str(uuid.uuid4()),
+                                                                                  "source": {"materialId": material["materialId"], "version": material["version"]}}, status=201)
+            for index in range(1, 8):
+                writer = jonas if index % 2 else ada
+                self.api(writer, "POST", f"/api/v1/conversations/{root['id']}/messages", {"body": f"Reply {index}: the reading corner stays quiet at this light level.", "clientMessageId": str(uuid.uuid4())}, status=201)
+            self.ids.update(targets=pid, targets_conversation=root["id"])
+        return self.ids["targets"]
 
     # ---------------------------------------------------------------- the stream
 
@@ -287,6 +314,25 @@ class OneConversationJourney(unittest.TestCase):
         page.keyboard.press("Escape")
         expect(self.thread(page)).to_have_count(0)
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}$"))
+
+    def test_02b_a_thread_taller_than_its_panel_opens_at_its_root_whole(self) -> None:
+        # #436 (#14): opened without an anchor, the thread starts at its root, which is never cut off under the header.
+        page = self.page("ada")
+        page.goto(f"/projects/{self.targets()}/conversations/{self.ids['targets_conversation']}")
+        thread = self.thread(page)
+        expect(thread).to_be_visible()
+        feed = thread.locator(".thread__feed")
+        expect(feed).not_to_have_class(re.compile("is-opening"))
+        expect(thread.locator(".thread__hint")).to_have_text("7 replies")
+        page.wait_for_timeout(500)
+        overflow = feed.evaluate("el => el.scrollHeight - el.clientHeight")
+        self.assertGreater(overflow, 1, "the fixture thread overflows the desktop panel, so opening it could hide the root")
+        panel, root = feed.bounding_box(), thread.locator(".thread__root").bounding_box()
+        assert panel and root
+        self.assertGreaterEqual(root["y"], panel["y"] - 1, "the root starts inside the panel, below the Replies header")
+        self.assertLessEqual(root["y"] + root["height"], panel["y"] + panel["height"] + 1, "the root is whole")
+        self.no_sideways_scroll(page)
+        shot(page, "one-conversation-desktop-1440-thread-root-whole-light")
 
     # ---------------------------------------------------------------- links keep working
 
@@ -584,6 +630,29 @@ class OneConversationJourney(unittest.TestCase):
         expect(self.thread(narrow).locator(f"#message-{self.ids['first']}")).to_be_visible()
         self.no_sideways_scroll(narrow)
         shot(narrow, "one-conversation-phone-320-thread-light")
+
+    def test_07b_phone_thread_source_chip_and_author_name_are_44_px_on_touch(self) -> None:
+        # #436 (#9, #10): the chip and an author's name keep their size and take a tap in a 44 px area.
+        page = self.page("ada", phone=True)
+        page.goto(f"/projects/{self.targets()}/conversations/{self.ids['targets_conversation']}")
+        thread = self.thread(page)
+        expect(thread).to_be_visible()
+        self.assertTrue(page.evaluate("matchMedia('(pointer: coarse)').matches"), "the phone runs with a touch pointer")
+        chip, name = thread.locator("a.project-convo__source"), thread.locator(".project-convo__person").first
+        expect(chip).to_be_visible()
+        expect(name).to_be_visible()
+        page.wait_for_timeout(400)
+        for label, target in (("source chip", chip), ("author name", name)):
+            target.evaluate("el => el.scrollIntoView({ block: 'center' })")
+            page.wait_for_timeout(150)
+            area = target.evaluate(TOUCH_AREA)
+            self.assertGreaterEqual(min(area["width"], area["height"]), 44, (label, area))
+            self.assertEqual(area["reach"], [True, True], (label, "a tap 21 px above and below the centre lands on it", area))
+        chip_box = chip.bounding_box()
+        assert chip_box
+        self.assertLessEqual(chip_box["height"], 25, "the chip keeps its 24 px look")
+        self.no_sideways_scroll(page)
+        shot(page, "one-conversation-phone-390-thread-targets-light")
 
     def test_08_tablet_and_desktop_renders(self) -> None:
         tablet = self.page("ada", phone=True, viewport={"width": 820, "height": 1180})
