@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import os
 import json
 import time
 import unittest
@@ -81,7 +82,7 @@ class ThoughtDraftJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, os.environ.get('FLUX_UI_BROWSER', 'chromium')).launch()
         expect.set_options(timeout=10000)
         contexts = {}
         for who, name in (("owner", "Ada Capture"), ("writer", "Jonas Berg"), ("viewer", "Nia Reader")):
