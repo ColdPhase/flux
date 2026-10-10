@@ -75,6 +75,7 @@
 
 /* ---------- Task rows (F-026 S-P-Tasks, S9): glyph that changes the state, swipe left for Done ---------- */
 .ws-task { position: relative; overflow: hidden; }
+.ws-task .ws-av { width: 20px; height: 20px; }
 .ws-task__fg { position: relative; display: flex; align-items: center; background: var(--task-bg, var(--bg)); touch-action: pan-y; transition: transform var(--dur-2) var(--ease-out); }
 .ws-task.is-dragging .ws-task__fg { transition: none; }
 .ws-task__acts { position: absolute; inset: 0 0 0 auto; display: flex; width: 76px; visibility: hidden; }

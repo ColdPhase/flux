@@ -134,7 +134,7 @@ export function TaskRow({ item, meId, owners, writable, muted, onOpen, onChange 
           <span className="ws-item__b"><span className="ws-item__t">{item.title}</span><span className="ws-item__s">{meta(item, meId, owners)}</span></span>
           <span className="ws-item__r">
             {item.status === 'blocked' ? <span className="ui-pill ui-pill--inv">Blocked</span>
-              : item.owner?.kind === 'agent' ? <Kreska size={24} />
+              : item.owner?.kind === 'agent' ? <Kreska size={20} />
                 : item.owner ? <span className="ws-av" aria-hidden="true">{initials(item.owner.name)}</span> : null}
           </span>
         </button>

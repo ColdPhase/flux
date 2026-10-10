@@ -218,6 +218,10 @@ class TasksFinalJourney(unittest.TestCase):
         expect(self.row(page, ENCLOSURE).locator(".ws-item__s")).to_contain_text(f"waiting for {BLOCKER}")
         expect(self.row(page, SUPPLIER).locator(".ws-av")).to_have_text("AK")
         expect(self.row(page, CALIBRATE).locator(".ws-item__r .kreska")).to_have_count(1)
+        for owner in (self.row(page, SUPPLIER).locator('.ws-av'), self.row(page, CALIBRATE).locator('.ws-item__r .kreska')):
+            box = owner.bounding_box()
+            assert box
+            self.assertEqual((box['width'], box['height']), (20, 20), '#346 AC-1: owner marks are 20 CSS px')
         expect(self.row(page, SUPPLIER).locator(".ws-item__s")).to_contain_text("you")
         shot(page, "346-tasks-list-1440-light")
 
@@ -353,7 +357,10 @@ class TasksFinalJourney(unittest.TestCase):
                 }"""), 'the agent state word is visibly inside its metadata, not merely in the DOM')
                 expect(self.row(page, CALIBRATE).locator(".ws-item__r .kreska")).to_have_count(1)
                 expect(self.row(page, SCHOOL).locator(".ws-av")).to_have_text("JB")
-                self.assertEqual(self.row(page, SCHOOL).locator(".ws-av").evaluate("el => el.offsetWidth"), 24)
+                for owner in (self.row(page, SCHOOL).locator('.ws-av'), self.row(page, CALIBRATE).locator('.ws-item__r .kreska')):
+                    box = owner.bounding_box()
+                    assert box
+                    self.assertEqual((box['width'], box['height']), (20, 20), '#346 AC-1: owner marks are 20 CSS px')
                 for control in (*mine.get_by_role("button").all(), self.row(page, SCHOOL).locator(".ws-task__glyph"), self.row(page, SCHOOL).locator(".ws-item")):
                     box = control.bounding_box()
                     assert box
