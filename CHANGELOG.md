@@ -122,6 +122,7 @@ repository was created on 2026-09-26.
 
 ### Fixed
 
+- Background comparisons resume within a few minutes after the worker is killed mid-run, instead of waiting an hour for the dead run to expire; the interrupted request stays counted as possible spending and is never retried ([#58](https://github.com/ColdPhase/flux/issues/58)).
 - Task details hide empty relationship paging after a successful read and keep status/owner labels separated from their values with enlarged text ([#282](https://github.com/ColdPhase/flux/pull/282)).
 - People and agents keep a full 32px author avatar in the same conversation column on phones and computers, including your own replies ([#356](https://github.com/ColdPhase/flux/pull/356)).
 - Historical agent contributions can still name their currently visible owner after the agent loses project access, without restoring the agent or exposing hidden owner identities ([#356](https://github.com/ColdPhase/flux/pull/356)).

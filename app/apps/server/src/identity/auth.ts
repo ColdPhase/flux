@@ -84,9 +84,35 @@ function idTokenClaims(idToken: string | undefined): Record<string, unknown> | n
   }
 }
 
+/** The MCP resource identifier Better Auth seeds into `oauth_resource` at initialization. */
+export function mcpResourceIdentifier(publicOrigin: string): string {
+  return `${publicOrigin}/mcp`;
+}
+
+/**
+ * Inserts the MCP resource row if it is missing (#316). Better Auth's plugin seeds the same row
+ * during initialization, but its duplicate check reads only the driver's wrapper message, so two
+ * processes starting together can fail on `oauth_resource_identifier_unique`. Inserting first with
+ * ON CONFLICT DO NOTHING makes the plugin's lookup find the row and skip its own insert.
+ */
+export async function ensureOauthResource(db: Database, publicOrigin: string): Promise<void> {
+  const identifier = mcpResourceIdentifier(publicOrigin);
+  const now = new Date();
+  await db.insert(schema.oauthResource).values({
+    id: randomUUID(),
+    identifier,
+    name: identifier,
+    dpopBoundAccessTokensRequired: false,
+    disabled: false,
+    policyVersion: 1,
+    createdAt: now,
+    updatedAt: now,
+  }).onConflictDoNothing({ target: schema.oauthResource.identifier });
+}
+
 export function createAuth({ db, config, mailer, onMailError, oauthRequests, signIns = createSignIns() }: AuthDependencies) {
   const connections = agentOauthUseCases(createAgentConnectionStore(db));
-  const resource = `${config.publicOrigin}/mcp`;
+  const resource = mcpResourceIdentifier(config.publicOrigin);
   const connectionForGrant = async (userId: string, sessionId: string, scopes: readonly string[]) => {
     const request = oauthRequests.getStore();
     if (!request || request.clearedSessionId && request.clearedSessionId !== sessionId) throw new Error('OAuth flow is unavailable');
