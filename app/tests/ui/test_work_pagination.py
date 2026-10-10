@@ -30,7 +30,7 @@ class WorkPaginationJourney(unittest.TestCase):
         expect.set_options(timeout=10000)
         cls.contexts, cls.users, emails = [], [], []
         for name in ("Ada Kowalska", "Ada Nowak"):
-            context = cls.browser.new_context(base_url=ORIGIN)
+            context = cls.browser.new_context(service_workers="block", base_url=ORIGIN)
             email = f"work-pages-{uuid.uuid4()}@example.test"
             api(context, "POST", "/api/auth/sign-up/email", {"name": name, "email": email, "password": "a careful reading corner lamp"})
             cls.contexts.append(context); emails.append(email)
@@ -78,7 +78,7 @@ class WorkPaginationJourney(unittest.TestCase):
         return json.dumps(rows, sort_keys=True)
 
     def page(self, account=0, phone=False):
-        context = self.browser.new_context(base_url=ORIGIN, storage_state=self.states[account],
+        context = self.browser.new_context(service_workers="block", base_url=ORIGIN, storage_state=self.states[account],
             viewport={"width": 412 if phone else 1500, "height": 915 if phone else 900},
             device_scale_factor=3 if phone else 1, is_mobile=phone, has_touch=phone, locale="en-GB")
         self.addCleanup(context.close)

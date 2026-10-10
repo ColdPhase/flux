@@ -72,9 +72,9 @@ class TasksBoardJourney(unittest.TestCase):
 
     # ---------------------------------------------------------------- helpers
 
-    def context(self, who: str | None, *, viewport: dict | None = None, phone: bool = False, dark: bool = False, touch: bool = False, block_service_workers: bool = False) -> BrowserContext:
+    def context(self, who: str | None, *, viewport: dict | None = None, phone: bool = False, dark: bool = False, touch: bool = False) -> BrowserContext:
         options: dict = {"base_url": ORIGIN, "color_scheme": "dark" if dark else "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw",
-                         "service_workers": "block" if block_service_workers else "allow"}
+                         "service_workers": "block"}
         if phone:
             options.update(viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
         else:
@@ -652,7 +652,7 @@ class TasksBoardJourney(unittest.TestCase):
             with self.subTest(phone=phone):
                 # The request hold must reach the actual API; a controlling service worker can
                 # bypass page.route. PWA behavior is covered separately.
-                page = self.page("ada", phone=phone, block_service_workers=True)
+                page = self.page("ada", phone=phone)
                 held = []
                 def hold(route):
                     query = parse_qs(urlsplit(route.request.url).query)

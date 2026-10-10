@@ -66,7 +66,7 @@ class ReturnViewJourney(unittest.TestCase):
             options.update(viewport=DESKTOP, device_scale_factor=1)
         if who and who in self.states:
             options["storage_state"] = self.states[who]
-        context = self.browser.new_context(**options)
+        context = self.browser.new_context(service_workers="block", **options)
         self.addCleanup(context.close)
         return context
 
@@ -423,7 +423,7 @@ class ReturnViewJourney(unittest.TestCase):
                          "viewport": viewport, "device_scale_factor": 3 if phone else 1, "storage_state": self.states[who]}
         if phone:
             options.update(is_mobile=True, has_touch=True)
-        context = self.browser.new_context(**options)
+        context = self.browser.new_context(service_workers="block", **options)
         self.addCleanup(context.close)
         page = context.new_page()
         errors: list[str] = []
