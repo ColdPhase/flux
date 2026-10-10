@@ -627,8 +627,16 @@ class WikiPanesJourney(unittest.TestCase):
         # The bar stays at the top while reading a long page, and its cards stay on screen.
         index.get_by_role("link", name=LAMP).tap()
         expect(page.get_by_role("heading", level=2, name=LAMP)).to_be_visible()
-        self.assertGreater(page.locator(".wiki").evaluate("e => e.scrollHeight - e.clientHeight"), 200)
-        page.locator(".wiki").evaluate("e => e.scrollTo(0, e.scrollHeight)")
+        reader = page.locator(".wiki-read")
+        self.assertGreater(reader.evaluate("e => e.scrollHeight - e.clientHeight"), 200)
+        reader.evaluate("e => e.scrollTo(0, e.scrollHeight)")
+        self.assertGreater(reader.evaluate("e => e.scrollTop"), 200, "the lower document is actually reached")
+        tail = page.locator(".doc-ids").bounding_box()
+        read_box, edit_box = reader.bounding_box(), page.get_by_role("link", name="Edit").bounding_box()
+        self.assertLessEqual(tail["y"] + tail["height"], read_box["y"] + read_box["height"] + 1,
+                             "the final document attribution is visible")
+        self.assertLessEqual(read_box["y"] + read_box["height"], edit_box["y"] + 1,
+                             "Edit cannot cover the scrolled reading area")
         page.wait_for_timeout(200)
         self.assertLessEqual(abs(index.bounding_box()["y"] - page.locator(".wiki").bounding_box()["y"]), 1,
                              "page selection and its action menu stay reachable together")
@@ -638,8 +646,12 @@ class WikiPanesJourney(unittest.TestCase):
         self.assertLessEqual(card["x"] + card["width"], PHONE["width"])
         shot(page, "wiki-phone-390-download")
         page.keyboard.press("Escape")
-        # A search narrows the strip.
-        page.locator(".wiki").evaluate("e => e.scrollTo(0, 0)")
+        # Page selection while reading the tail starts the newly selected page at its heading.
+        index.get_by_role("link", name=PARTS).tap()
+        expect(page.get_by_role("heading", level=2, name=PARTS)).to_be_in_viewport()
+        index.get_by_role("link", name=LAMP).tap()
+        expect(page.get_by_role("heading", level=2, name=LAMP)).to_be_in_viewport()
+        reader.evaluate("e => e.scrollTo(0, 0)")
         # The smallest phones keep everything, without sideways scrolling.
         page.set_viewport_size(SMALL_PHONE)
         page.wait_for_timeout(200)
