@@ -80,7 +80,12 @@ function memoryStore() {
     },
     async recordCommercialTerms() {},
     async slotsWithBindings() { return [...slots.values()].map((slot) => ({ slot: { ...slot }, binding: live().find((b) => b.slot === slot.slot) ?? null })); },
-    async saveSlot(slot) { slots.set(slot.slot, { ...slot }); },
+    // As the database does: with `expected` the row is replaced only while it still has that state and wipe boot id.
+    async saveSlot(slot, expected) {
+      const current = slots.get(slot.slot);
+      if (expected && current && (current.state !== expected.state || current.wipeBootId !== expected.wipeBootId)) return;
+      slots.set(slot.slot, { ...slot });
+    },
     async markSignInAgain(id) { const b = bindings.find((x) => x.id === id && x.state === 'active'); if (b) b.state = 'sign_in_again'; },
     async completeRelease(id, slot) {
       const b = bindings.find((x) => x.id === id && x.state === 'releasing');
@@ -220,6 +225,38 @@ describe('release and reuse', () => {
     // Signing in again binds the same slot afresh.
     assert.equal((await runtime.bind('ada')).binding?.state, 'active');
     assert.deepEqual(state.get(adaSlot)!.dirs.length, 1);
+  });
+
+  test('a bind that commits while the worker reconciles is not overwritten with the older decision (#331 m8)', async () => {
+    const { store, slots } = memoryStore();
+    const { manager } = fakeManager(['runtime-1']);
+    const runtime = agentRuntimeUseCases(on, store, manager);
+    await reconcileAgentRuntime({ config: on, store, manager });
+    assert.equal(slots.get('runtime-1')!.state, 'ready');
+    const read = store.slotsWithBindings.bind(store);
+    store.slotsWithBindings = async () => { const rows = await read(); await runtime.bind('ada'); return rows; };
+    await reconcileAgentRuntime({ config: on, store, manager });
+    assert.equal(slots.get('runtime-1')!.state, 'held', 'the stale "ready" did not replace "held"');
+    assert.equal((await runtime.status('ada')).binding?.state, 'active');
+  });
+
+  test('a binding that activated after the sightings were taken is not sent to Sign in again (#331 m8)', async () => {
+    const { store } = memoryStore();
+    const { manager } = fakeManager(['runtime-1']);
+    const runtime = agentRuntimeUseCases(on, store, manager);
+    await reconcileAgentRuntime({ config: on, store, manager });
+    await runtime.bind('ada');
+    const real = manager.slots.bind(manager);
+    let first = true;
+    manager.slots = async () => {
+      const out = await real();
+      if (!first || !out.ok) return out;
+      first = false;
+      return { ok: true, value: out.value.map((sighting) => (sighting.reachable ? { ...sighting, bindings: [] } : sighting)) };
+    };
+    const report = await reconcileAgentRuntime({ config: on, store, manager });
+    assert.deepEqual(report.signInAgain, []);
+    assert.equal((await runtime.status('ada')).binding?.state, 'active');
   });
 
   test('stray entries put a slot out of the pool until the operator fixes it and the supervisor restarts', async () => {

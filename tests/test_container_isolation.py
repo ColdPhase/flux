@@ -6,6 +6,10 @@ pool of Compose-declared slots instead. This test reads every Compose file in th
 if any of them mounts an engine socket or points DOCKER_HOST anywhere, and fails if a deployable one
 shares the host's PID, IPC or network namespace, runs privileged or maps host devices. Standard library
 only.
+
+Mount declarations use block lists and plain/quoted scalars. Flow collections and block scalars inside
+volumes are refused rather than interpreted incompletely. scripts/agent-runtime/inspect.py is the
+authoritative check of Docker's resolved mount sources in the supported-host runtime check.
 """
 
 from __future__ import annotations
@@ -19,6 +23,19 @@ SKIP = {".git", ".worktrees", ".harness", "node_modules", "dist"}
 COMPOSE_NAME = re.compile(r"(^|[./-])(compose|docker-compose)[^/]*\.ya?ml$|runtime-slot[^/]*\.ya?ml$")
 
 SOCKET = re.compile(r"(docker|podman|containerd|crio|cri-dockerd)\.sock|/var/run/docker\b|/run/podman\b|/run/user/[^/\s]+/(docker|podman)", re.I)
+# A host path mounted into a container comes from the checkout (a relative path, or an operator secret file
+# or an operator-chosen FLUX_* variable whose default is not an absolute path). Absolute host paths are refused: /var/run, /run or / would hand over a directory
+# holding an engine socket without naming it.
+BIND = re.compile(r"""^\s*-\s*["']?(?P<src>\$\{[^}]*\}|[^\s:"'$]+):(?P<dst>/[^\s"':]*)(?::[A-Za-z,]+)?["']?\s*$""")
+ALLOWED_BIND_SOURCE = re.compile(r"^(?:\.\.?/[^\s]*|\$\{(?:FLUX_[A-Z0-9_]+|MOBILE_STATE)(?::[-?](?!\s*[/~$])[^}]*)?\})$")
+NAMED_VOLUME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+# Long-form mounts (`- type: bind`, then `source:`), and a named volume backed by a host path through `device:`.
+LONG_BIND_TYPE = re.compile(r"^\s*(?:-\s*)?type:\s*[\"']?bind\b")
+LONG_SOURCE = re.compile(r"^\s*(?:-\s*)?source:\s*(?P<src>[^\s]+)")
+DEVICE = re.compile(r"^\s*device:\s*(?P<src>[^\s]+)")
+TRAILING_COMMENT = re.compile(r"\s+#.*$")
+VOLUMES = re.compile(r"^(?P<indent>\s*)volumes:\s*(?P<value>.*)$")
+UNSUPPORTED_VOLUME_STYLE = re.compile(r"(?:^\s*(?:-\s*)?|:\s*)[\[{>|]")
 FORBIDDEN = [
     (re.compile(r"^\s*DOCKER_HOST\s*[:=]", re.M), "DOCKER_HOST"),
     (re.compile(r"^\s*CONTAINER_HOST\s*[:=]", re.M), "CONTAINER_HOST"),
@@ -27,6 +44,52 @@ FORBIDDEN = [
     (re.compile(r"^\s*network_mode:\s*[\"']?host", re.M), "host network"),
     (re.compile(r"^\s*devices:", re.M), "devices"),
 ]
+
+
+def source_problem(compose: Path, source: str) -> str | None:
+    """Why a mount source is refused, or None. Relative sources must stay inside the checkout once resolved."""
+    source = source.strip("\"'")
+    if NAMED_VOLUME.match(source):
+        return None
+    default = re.match(r"^\$\{[^}:]*:[-?](?P<default>[^}]*)\}$", source)
+    if default and default.group("default").startswith("."):
+        source = default.group("default")
+    if source.startswith("."):
+        if (compose.parent / source).resolve().is_relative_to(ROOT.resolve()):
+            return None
+        return "resolves outside the checkout"
+    if ALLOWED_BIND_SOURCE.match(source):
+        return None
+    return "is a host path outside the checkout"
+
+
+def bind_problems(compose: Path, text: str) -> list[str]:
+    """Every mount or host-backed volume in one Compose file that is not from the checkout, as `line: problem`."""
+    problems = []
+    volumes_indent = None
+    for number, raw in enumerate(text.splitlines(), 1):
+        line = TRAILING_COMMENT.sub("", raw) if not raw.lstrip().startswith("#") else ""
+        if not line.strip():
+            continue
+        indent = len(line) - len(line.lstrip())
+        declaration = VOLUMES.match(line)
+        if declaration:
+            volumes_indent = len(declaration.group("indent"))
+        elif volumes_indent is not None and indent <= volumes_indent:
+            volumes_indent = None
+        style = declaration.group("value") if declaration else line
+        if volumes_indent is not None and UNSUPPORTED_VOLUME_STYLE.search(style):
+            problems.append(f"{number}: unsupported volume spelling: {raw.strip()}")
+        if LONG_BIND_TYPE.match(line):
+            problems.append(f"{number}: long-form bind mount: {raw.strip()}")
+        for pattern in (LONG_SOURCE, DEVICE):
+            match = pattern.match(line)
+            if match and (problem := source_problem(compose, match.group("src"))):
+                problems.append(f"{number}: mount source {problem}: {raw.strip()}")
+        match = BIND.match(line)
+        if match and (problem := source_problem(compose, match.group("src"))):
+            problems.append(f"{number}: mount source {problem}: {raw.strip()}")
+    return problems
 
 
 def compose_files() -> list[Path]:
@@ -60,6 +123,52 @@ class ContainerIsolationTest(unittest.TestCase):
             text = "\n".join(line for line in path.read_text(encoding="utf-8").splitlines() if not line.lstrip().startswith("#"))
             for pattern, what in FORBIDDEN:
                 self.assertIsNone(pattern.search(text), f"{path.relative_to(ROOT)} uses {what}")
+
+    def test_bind_mounts_come_only_from_the_checkout(self) -> None:
+        for path in compose_files():
+            problems = bind_problems(path, path.read_text(encoding="utf-8"))
+            self.assertEqual(problems, [], f"{path.relative_to(ROOT)} binds a host path outside the checkout")
+
+    def test_the_bind_guard_refuses_each_host_path_spelling(self) -> None:
+        compose = ROOT / "docker" / "compose.yaml"
+        cases = {
+            "long form with type first": "services:\n  x:\n    volumes:\n      - type: bind\n        source: /var/run\n        target: /host-run\n",
+            "long form source alone": "services:\n  x:\n    volumes:\n      - source: /var/run\n        target: /host-run\n",
+            "short form with a trailing comment": "services:\n  x:\n    volumes:\n      - /run:/host-run:ro # operator mount\n",
+            "relative path escaping the checkout": "services:\n  x:\n    volumes:\n      - ../../../../var/run:/host-run\n",
+            "default that escapes the checkout": "services:\n  x:\n    volumes:\n      - ${FLUX_X:-../../../../var/run}:/host-run\n",
+            "named volume backed by a host path": "volumes:\n  host:\n    driver_opts:\n      type: none\n      o: bind\n      device: /var/run\n",
+            "flow mapping mount": "services:\n  x:\n    volumes:\n      - { type: bind, source: /var/run, target: /host-run }\n",
+            "flow sequence mounts": 'services:\n  x:\n    volumes: ["/var/run:/host-run"]\n',
+            "folded scalar mount": "services:\n  x:\n    volumes:\n      - >-\n        /var/run:/host-run\n",
+        }
+        for label, text in cases.items():
+            with self.subTest(label):
+                self.assertTrue(bind_problems(compose, text), f"accepted: {label}")
+
+    def test_the_bind_guard_keeps_the_legitimate_mounts(self) -> None:
+        compose = ROOT / "docker" / "compose.yaml"
+        text = "services:\n  x:\n    volumes:\n      - files:/data/files:z\n      - ../app/tooling/migrate.ts:/app/tooling/migrate.ts:ro,z\n" \
+               "      - ${FLUX_BACKGROUND_KEY_HOST_FILE:-./background-key-unavailable}:/run/secrets/flux_background_key:ro,z\n" \
+               "      - ${MOBILE_STATE:?}:/state:ro,z\n      - ../scripts/mobile-push:/fixture:ro,z  # fixture\n"
+        self.assertEqual(bind_problems(compose, text), [])
+
+    def test_volume_style_restrictions_do_not_apply_to_commands(self) -> None:
+        compose = ROOT / "docker" / "compose.yaml"
+        text = 'services:\n  x:\n    volumes:\n      - files:/data/files:z\n    command: ["sh", "-c"]\n' \
+               '  y:\n    command: >-\n      echo test\n'
+        self.assertEqual(bind_problems(compose, text), [])
+
+    def test_the_bind_check_notices_directory_mounts(self) -> None:
+        for line in ["      - /var/run:/host-run", "      - /run:/host-run:ro", "      - /:/host", "      - ${FLUX_X:-/var/run}:/x", "      - ~/sock:/sock"]:
+            match = BIND.match(line)
+            self.assertIsNotNone(match, line)
+            source = match.group("src")
+            self.assertFalse(NAMED_VOLUME.match(source) or ALLOWED_BIND_SOURCE.match(source), line)
+        for line in ["      - pgdata:/var/lib/postgresql", "      - ../app/tooling/migrate.ts:/app/tooling/migrate.ts:ro,z",
+                     "      - ${FLUX_BACKGROUND_KEY_HOST_FILE:-./background-key-unavailable}:/run/secrets/flux_background_key:ro,z"]:
+            source = BIND.match(line).group("src")
+            self.assertTrue(NAMED_VOLUME.match(source) or ALLOWED_BIND_SOURCE.match(source), line)
 
     def test_the_check_notices_a_socket(self) -> None:
         for line in ["      - /var/run/docker.sock:/var/run/docker.sock", "- ${XDG_RUNTIME_DIR}/podman/podman.sock:/run/podman.sock:z",

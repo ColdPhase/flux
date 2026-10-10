@@ -25,7 +25,7 @@ if (command === 'slots') {
       const outcome = await callSupervisor(slots.get(entry.slot)!, { kind: 'release', bindingId });
       if (outcome.ok && outcome.result.kind === 'release') {
         const { logout, dataEmpty } = outcome.result;
-        const signedOut = Object.values(logout).every((step) => step === 'ok');
+        const signedOut = Object.values(logout).every((step) => step === 'ok' || step === 'not_installed');
         console.log(`${entry.slot}: ${signedOut ? 'signed out' : 'sign-out NOT confirmed'} (claude_code ${logout.claude_code}, codex ${logout.codex}); cleanup attempted; /data ${dataEmpty ? 'empty' : 'NOT empty'}`);
         if (!dataEmpty || !signedOut) failed += 1;
       } else {

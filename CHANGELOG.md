@@ -126,6 +126,7 @@ repository was created on 2026-09-26.
 
 ### Changed
 
+- The agent runtime retains unconfirmed sign-out history, treats unreadable client files conservatively, refuses startup without the required kernel isolation settings, and caps both egress listeners per source and globally; remaining installation-history and supported-host observations stay open in the operator guide ([#385](https://github.com/ColdPhase/flux/pull/385)).
 - The Agents view shows what each connected agent holds now (its task and whether it is working, assigned or paused) and its open requests with sender, task and why they wait, and Claude Code users start Flux work from the built-in Start work prompt ([#160](https://github.com/ColdPhase/flux/issues/160)).
 - Faster reads: the Inbox count no longer compiles query code on each visit, conversation and material lists use one statement instead of one or two per row, and conversation roots and comparison outcomes are read without locks ([#300](https://github.com/ColdPhase/flux/pull/300)).
 - The app's files are sent as Brotli or gzip, and large JSON answers are compressed ([#269](https://github.com/ColdPhase/flux/pull/269)).

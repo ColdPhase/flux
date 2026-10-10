@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { chmod } from 'node:fs/promises';
+import { chmod, readdir, writeFile } from 'node:fs/promises';
 import { createServer as createHttpServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, describe, test } from 'node:test';
@@ -73,9 +73,11 @@ describe('runtime-manager with two slots', () => {
     assert.equal(forwarded.length, before, 'nothing invalid reached a supervisor');
   });
 
-  test('cannot report sign-out success when a CLI is missing or logout is skipped', async () => {
-    for (const scenario of ['missing_cli', 'missing_binding', 'unsafe_binding'] as const) {
-      const slot = await startTestSlot({ withClis: scenario !== 'missing_cli', enabled: [] });
+  test('cannot report sign-out success when a CLI is missing with a session left, or logout is skipped', async () => {
+    // never_installed: no CLI and nothing of it in the binding, so there is no session to sign out and the
+    // release is confirmed. The other scenarios leave a session or an unknown state and stay unconfirmed.
+    for (const scenario of ['never_installed', 'missing_cli', 'missing_binding', 'unsafe_binding'] as const) {
+      const slot = await startTestSlot({ withClis: false, enabled: [] });
       const manager = createManagerServer({ secret, slots: new Map([
         ['runtime-1', { host: '127.0.0.1', port: portOf(slot.url), secret: slot.config.secret }],
       ]), log: () => undefined });
@@ -84,10 +86,54 @@ describe('runtime-manager with two slots', () => {
         const port = runtimeManagerPort(client);
         const binding = randomUUID();
         if (scenario !== 'missing_binding') assert.ok((await port.bind('runtime-1', binding)).ok);
+        if (scenario === 'missing_cli') await writeFile(`${slot.config.dataDir}/${binding}/claude/credentials.json`, '{}');
         if (scenario === 'unsafe_binding') await chmod(`${slot.config.dataDir}/${binding}`, 0o755);
-        // Missing CLI gives not_installed; missing/unsafe bindings give skipped.
-        assert.deepEqual(await port.release('runtime-1', binding), { ok: true, value: { dataEmpty: true, logoutFailed: true } });
+        // Missing CLI without files gives not_installed (confirmed); with files failed; missing/unsafe bindings give skipped.
+        assert.deepEqual(await port.release('runtime-1', binding), { ok: true, value: { dataEmpty: true, logoutFailed: scenario !== 'never_installed' } });
       } finally { manager.close(); await slot.close(); }
+    }
+  });
+
+  test('a failed sign-out stays unconfirmed at release after its files were cleared', async () => {
+    // A missing CLI with credentials: the failed logout deletes the files anyway, so the release that follows
+    // must not find "nothing of this client" and report the sign-out as confirmed.
+    const slot = await startTestSlot({ withClis: false, enabled: [] });
+    const manager = createManagerServer({ secret, slots: new Map([
+      ['runtime-1', { host: '127.0.0.1', port: portOf(slot.url), secret: slot.config.secret }],
+    ]), log: () => undefined });
+    try {
+      const client = createRuntimeManagerClient({ url: await listen(manager), secret });
+      const port = runtimeManagerPort(client);
+      const binding = randomUUID();
+      assert.ok((await port.bind('runtime-1', binding)).ok);
+      const home = `${slot.config.dataDir}/${binding}/claude`;
+      await writeFile(`${home}/credentials.json`, '{}');
+      const logout = await client.request('runtime-1', { kind: 'logout', bindingId: binding, client: 'claude_code' });
+      assert.ok(logout.ok && logout.result.kind === 'logout');
+      assert.equal(logout.result.logout, 'failed');
+      assert.deepEqual(await readdir(home), [], 'the failed sign-out still deletes the files');
+      assert.deepEqual(await port.release('runtime-1', binding), { ok: true, value: { dataEmpty: true, logoutFailed: true } });
+    } finally { manager.close(); await slot.close(); }
+  });
+
+  test('an unreadable client directory is not taken for a client that was never installed', { skip: process.getuid?.() === 0 && 'root reads any mode' }, async () => {
+    const slot = await startTestSlot({ withClis: false, enabled: [] });
+    const manager = createManagerServer({ secret, slots: new Map([
+      ['runtime-1', { host: '127.0.0.1', port: portOf(slot.url), secret: slot.config.secret }],
+    ]), log: () => undefined });
+    const binding = randomUUID();
+    const home = `${slot.config.dataDir}/${binding}/claude`;
+    try {
+      const client = createRuntimeManagerClient({ url: await listen(manager), secret });
+      const port = runtimeManagerPort(client);
+      assert.ok((await port.bind('runtime-1', binding)).ok);
+      await chmod(home, 0o000);
+      const released = await port.release('runtime-1', binding);
+      assert.ok(released.ok);
+      assert.equal(released.value.logoutFailed, true, 'an unreadable directory counts as files left');
+    } finally {
+      await chmod(home, 0o700).catch(() => undefined);
+      manager.close(); await slot.close();
     }
   });
 
