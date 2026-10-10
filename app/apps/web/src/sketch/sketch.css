@@ -357,7 +357,8 @@ span.sk-li-img { width: 160px; height: 96px; }
 .sk--map .sk-copies, .sk--map .sk-origin, .sk--map .sk-readonly { padding: 6px 12px; border-radius: var(--r-pill); background: var(--el); box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); }
 .sk--map .sk-copies { max-width: 100%; }
 .sk-over .sk-draft { width: min(440px, 100%); margin: 0; box-shadow: var(--sh-pop); }
-.sk-composition { position: absolute; z-index: 8; width: min(440px, calc(100% - 28px)); max-height: calc(100% - 28px); overflow: auto; }
+/* The inset also keeps fractional-height borders inside WebKit's integer scroll clip. */
+.sk-composition { position: absolute; z-index: 8; width: min(440px, calc(100% - 28px)); max-height: calc(100% - 28px); padding: 1px; overflow: auto; }
 .sk-composition .sk-draft { margin: 0; box-shadow: var(--sh-pop); }
 .sk-over .sk-edit-controls { margin: 0; }
 .sk--map .sk-first { position: absolute; left: 50%; top: 42%; z-index: 6; margin: 0; transform: translateX(-50%); text-align: center; pointer-events: none; }

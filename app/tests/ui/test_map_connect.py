@@ -3,13 +3,14 @@ from __future__ import annotations
 
 import os
 import base64
+import json
 import re
 import unittest
 import uuid
 
 from playwright.sync_api import expect, sync_playwright
 
-from test_app_shell import ORIGIN, PHONE, UPSTREAM, open_map_options, show_map_as, shot, start_forwarder
+from test_app_shell import ORIGIN, PHONE, SHOTS, UPSTREAM, open_map_options, show_map_as, shot, start_forwarder
 from contrast import MEASURE
 from test_map_paste import PASTE, IMAGE
 
@@ -239,6 +240,9 @@ class MapConnectJourney(unittest.TestCase):
                 page.get_by_role('button', name='Thought actions', exact=True).tap()
                 page.get_by_role('dialog', name='Thought actions', exact=True).get_by_role('button', name='Remove from sketch', exact=True).tap()
                 expect(page.locator('.sk-node')).to_have_count(0 if solo else 2)
+                if solo:
+                    expect(page.locator('.sk-first')).to_have_text('An empty sketch. Start with Add a thought.')
+                    expect(page.get_by_role('button', name=re.compile('connected thought|thought connected'))).to_have_count(0)
                 undo = page.get_by_role('button', name='Undo', exact=True)
                 expect(undo).to_be_visible()
                 self.assertGreaterEqual(undo.bounding_box()['height'], 43.5)
@@ -439,6 +443,7 @@ class MapConnectJourney(unittest.TestCase):
                 self.assertEqual(self.stored(page, sketch)['links'], before['links'], 'the persisted link set survives reload')
 
     def test_13_composition_keeps_visible_map_context_and_camera(self):
+        measurements = []
         for scheme in ('light', 'dark'):
             for viewport, touch in ((COMPUTER, False), ({'width': 1024, 'height': 900}, False), ({'width': 820, 'height': 1180}, True), (PHONE, True)):
                 with self.subTest(scheme=scheme, viewport=viewport):
@@ -463,6 +468,7 @@ class MapConnectJourney(unittest.TestCase):
                       return {editor:editor.toJSON(), canvas:canvas.toJSON(), pane:pane.toJSON(), nodes:[...document.querySelectorAll('.sk-node')].map(el => ({id:el.dataset.id, ...el.getBoundingClientRect().toJSON()}))};
                     }''')
                     e, c, p = geometry['editor'], geometry['canvas'], geometry['pane']
+                    measurements.append({'scheme': scheme, 'viewport': viewport, 'geometry': geometry, 'camera': camera})
                     self.assertGreaterEqual(e['left'], p['left'])
                     self.assertLessEqual(e['right'], p['right'])
                     self.assertGreaterEqual(e['top'], p['top'])
@@ -479,6 +485,8 @@ class MapConnectJourney(unittest.TestCase):
                     draft.get_by_role('button', name='Cancel', exact=True).click()
                     self.assertEqual(self.stored(page, sketch), before, 'Cancel leaves exact saved thoughts and links')
                     self.assertEqual(canvas.evaluate('el => ({left:el.scrollLeft, top:el.scrollTop})'), camera)
+        if SHOTS:
+            (SHOTS / 'map-composition-geometry.json').write_text(json.dumps(measurements, indent=2) + '\n')
 
 
 if __name__ == '__main__':

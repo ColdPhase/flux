@@ -719,7 +719,9 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
             bar={{ project: sketch.scope === 'project', canUndo: doc.canUndo, helpOpen, onShape: cycleShape, onTask: () => void makeWork(), onUndo: undo, onHelp: () => setHelpOpen(!helpOpen) }}
             onConnect={connectTo} onAddAt={(parentId, x, y) => add(parentId, '', false, { x, y })} onConnectFrom={connectFromDot} onAddThought={() => add(selection[selection.length - 1] ?? null)}
             draftEditor={draftForm} draft={shownDraft && !shownDraft.lines ? { x: shownDraft.x, y: shownDraft.y, parentId: shownDraft.parentId } : null} onMove={move} onResize={resize} onClear={() => { if (connectFrom) return; setSelection([]); say(''); }} />
-          {!sketch.thoughts.length ? <p className="sk-first">An empty sketch. Add the first thought with <b>Thought</b>, then keep adding with the <b>+</b> beside it.</p> : null}
+          {!sketch.thoughts.length ? <p className="sk-first">{phone
+            ? <>An empty sketch. Start with <b>Add a thought</b>.</>
+            : <>An empty sketch. Add the first thought with <b>Thought</b>, then keep adding with the <b>+</b> beside it.</>}</p> : null}
           <p className={`sk-help${helpOpen ? ' is-open' : ''}`} id={helpId}>{helpText}</p>
         </div>
       </div>
