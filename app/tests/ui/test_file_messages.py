@@ -228,7 +228,7 @@ class FilesReferencesPhotos(unittest.TestCase):
         cls.browser.close()
         cls.pw.stop()
 
-    def page(self, who: str = "ada", phone: bool = False, dark: bool = False) -> Page:
+    def page(self, who: str = "ada", phone: bool = False, dark: bool = False, path: str | None = None) -> Page:
         options: dict = {"base_url": ORIGIN, "locale": "en-GB", "timezone_id": "Europe/Warsaw", "storage_state": self.states[who],
                          "color_scheme": "dark" if dark else "light"}
         if phone:
@@ -241,8 +241,10 @@ class FilesReferencesPhotos(unittest.TestCase):
         errors: list[str] = []
         page.on("pageerror", lambda error: errors.append(str(error)))
         self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
-        page.goto(f"/projects/{self.ids['project']}")
-        expect(page.locator(f"#message-{self.ids['two']}")).to_be_visible()
+        # A surface named by path is entered directly: a second navigation would cancel the first page's reads (WebKit reports them).
+        page.goto(path or f"/projects/{self.ids['project']}")
+        if path is None:
+            expect(page.locator(f"#message-{self.ids['two']}")).to_be_visible()
         return page
 
     def shot(self, page: Page, name: str, target=None) -> None:
@@ -444,8 +446,7 @@ class FilesReferencesPhotos(unittest.TestCase):
         """#369 review: Reply/Create task stay on an opening message; Escape closes only the photo."""
         for phone in (False, True):
             with self.subTest(phone=phone, surface="thread"):
-                page = self.page("ada", phone=phone)
-                page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation:two']}")
+                page = self.page("ada", phone=phone, path=f"/projects/{self.ids['project']}/conversations/{self.ids['conversation:two']}")
                 root = page.locator(".thread__root")
                 self.assert_caption_below(root)
                 opener, viewer = self.open_in(page, root, "Open photo IMG_2041.png, 1 of 2")
@@ -461,8 +462,8 @@ class FilesReferencesPhotos(unittest.TestCase):
                     _, viewer = self.open_in(page, root, "Open photo IMG_2041.png, 1 of 2")
                     self.create_task_from(page, viewer, self.ids["two"])
             with self.subTest(phone=phone, surface="details"):
-                page = self.page("ada", phone=phone)
-                page.goto(f"/projects/{self.ids['project']}/tasks?open=work:{self.ids['task']}")
+                details_path = f"/projects/{self.ids['project']}/tasks?open=work:{self.ids['task']}"
+                page = self.page("ada", phone=phone, path=details_path)
                 details = page.get_by_role("region", name="Discussion")
                 self.assert_caption_below(details, ":scope > .message-bubble .wd-discussion__body")
                 self.assert_meta_below_caption(details)
@@ -476,7 +477,8 @@ class FilesReferencesPhotos(unittest.TestCase):
                 expect(opener).to_be_focused()
                 page.keyboard.press("Escape")  # a second Escape still closes Details (negative control)
                 expect(details).to_have_count(0)
-                page.goto(f"/projects/{self.ids['project']}/tasks?open=work:{self.ids['task']}")
+                page = self.page("ada", phone=phone, path=details_path)  # Details entered again on a fresh page
+                details = page.get_by_role("region", name="Discussion")
                 _, viewer = self.open_in(page, details, "Open photo IMG_2050.png")
                 viewer.get_by_role("button", name="Reply", exact=True).click()
                 expect(details.get_by_label("Write to this task")).to_be_focused()
@@ -484,8 +486,7 @@ class FilesReferencesPhotos(unittest.TestCase):
                     _, viewer = self.open_in(page, details, "Open photo IMG_2050.png")
                     self.create_task_from(page, viewer, self.ids["task-root"])
             with self.subTest(phone=phone, surface="agents"):
-                page = self.page("jonas", phone=phone)
-                page.goto(f"/projects/{self.ids['project']}/agents?task={self.ids['task']}")
+                page = self.page("jonas", phone=phone, path=f"/projects/{self.ids['project']}/agents?task={self.ids['task']}")
                 thread = page.get_by_role("region", name="Thread of Check the mount on sensor 3")
                 agent_root = thread.locator(f'[data-message-id="{self.ids["task-root"]}"]')
                 self.assert_caption_below(agent_root)

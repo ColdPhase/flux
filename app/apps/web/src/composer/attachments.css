@@ -160,11 +160,13 @@ span.photo-grid__open { cursor: default; }
 .photo-pick__add:disabled { opacity: .4; cursor: default; }
 
 /* A Wiki page cited by a message: a compact card with its kind glyph, title and one line of context (#348 AC-2). */
-.wiki-card { display: flex; align-items: center; gap: 10px; min-width: 0; max-width: 100%; margin-top: 6px; padding: 8px 12px; border-radius: var(--r); background: var(--el); box-shadow: inset 0 0 0 1px var(--line); color: var(--t1); text-decoration: none; transition: var(--tr); }
+.wiki-card { position: relative; display: flex; align-items: center; gap: 10px; min-width: 0; max-width: 100%; margin-top: 6px; padding: 8px 12px; border-radius: var(--r); background: var(--el); box-shadow: inset 0 0 0 1px var(--line); color: var(--t1); text-decoration: none; transition: var(--tr); }
 .wiki-card:hover { background: var(--hov); }
 .wiki-card__glyph { display: grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: var(--r-sm); background: var(--sub); color: var(--t2); }
 .wiki-card__text { display: flex; flex-direction: column; min-width: 0; }
 .wiki-card strong { font-size: var(--fs-base); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wiki-card small { color: var(--t3); font-size: var(--fs-xs); }
+/* The tap area is at least the 44 px control size, centred on the card, as for the source chip (#443). */
+.wiki-card::after { content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, var(--ctl)); height: var(--ctl); transform: translate(-50%, -50%); }
 @media (pointer: coarse) { .wiki-card { min-height: 44px; } }
 .wiki-card:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
