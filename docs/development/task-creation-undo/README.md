@@ -40,6 +40,11 @@ The command is `POST /api/v1/work/:workId/creation-undo` with `{ clientCommandId
 tool `flux_undo_task_creation`. The same command identity returns the same notice and receipt after a lost
 response or restart, under the current authority; another payload under that identity is a conflict.
 
+The owner's MCP policy (#316) registers `flux_undo_task_creation` as its own exact effect entry, requiring
+`flux.action.execute` and `work.creation.revert`. The ordinary `work.update` switch does not authorize Undo.
+Both the current capability and exact entry membership are required at execution and receipt replay; saved
+policies captured before this tool was registered do not automatically acquire its entry.
+
 ## Never used (AC-U2): the shared task-use fence
 
 `taskUseRows(tx)` and `prepareReferencedTaskUse(tx, projectId, refs)` in `app/packages/db/src/repositories/`
