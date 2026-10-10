@@ -649,7 +649,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   const pendingParents = capture.draft ? new Set((capture.draft.lines ?? [capture.draft]).map((row) => row.unknown ? null : row.attempt ? row.attempt.parentId : capture.draft!.parentId)) : new Set<string | null>();
   const attemptParent = pendingParents.size === 1 ? [...pendingParents][0] : null;
   const shownDraft = capture.draft ? { ...capture.draft, parentId: phone ? null : attemptParent ?? null } : null;
-  const draftForm = shownDraft ? <DraftCapture draft={shownDraft} parent={shownDraft.parentId ? find(shownDraft.parentId)?.text ?? null : null}
+  const draftForm = (focusReady = true) => shownDraft ? <DraftCapture draft={shownDraft} focusReady={focusReady} parent={shownDraft.parentId ? find(shownDraft.parentId)?.text ?? null : null}
     confirmPrevious={confirmPrevious} mixedParents={pendingParents.size > 1}
     saving={savingDraft} canWrite={canWrite} onText={(text) => { if (capture.draft) capture.set({ ...capture.draft, text,
       key: capture.draft.attempt || capture.draft.unknown ? capture.draft.key : doc.newId(), editKey: doc.newId() }); }}
@@ -680,7 +680,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
           <Button variant="secondary" disabled={editing.saving} onClick={() => void finishEdit(null)}>Cancel edit</Button>
         </div> : null}
 
-        {!mapMode ? draftForm : null}
+        {!mapMode ? draftForm() : null}
         {uploading ? <p className="sk-draft sk-draft--uploading" role="status"><Icon name="image" size={14} />Uploading the pasted image privately…</p> : null}
 
         {editingState && (!editing || !canWrite) ? <label className="sk-draft">Your unsaved edit is kept
@@ -740,7 +740,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
           <SketchMap {...shared} coarse={coarse} compact={phone} helpId={helpId} heights={heights} dock={dock} hint={hint} viewModes={viewModes}
             bar={{ project: sketch.scope === 'project', canUndo: doc.canUndo, helpOpen, onShape: cycleShape, onTask: () => void makeWork(), onUndo: undo, onHelp: () => setHelpOpen(!helpOpen) }}
             onConnect={connectTo} onAddAt={(parentId, x, y) => add(parentId, '', false, { x, y })} onConnectFrom={connectFromDot} onAddThought={() => add(selection[selection.length - 1] ?? null)}
-            draftEditor={draftForm} draft={shownDraft && !shownDraft.lines && !sketch.thoughts.some((thought) => thought.id === shownDraft.id)
+            draftEditor={shownDraft ? draftForm : null} draft={shownDraft && !shownDraft.lines && !sketch.thoughts.some((thought) => thought.id === shownDraft.id)
               ? { x: shownDraft.x, y: shownDraft.y, parentId: shownDraft.parentId, label: shownDraft.attempt ? 'Save not confirmed' : shownDraft.unknown ? 'Saved state unknown' : 'Draft · not saved' }
               : null} onMove={move} onResize={resize} onClear={() => { if (connectFrom) return; setSelection([]); say(''); }} />
           {!sketch.thoughts.length ? <p className="sk-first">{phone
@@ -800,7 +800,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
           <Button variant="secondary" disabled={editing.saving} onClick={() => void finishEdit(null)}>Cancel edit</Button>
         </div> : null}
 
-        {draftForm}
+        {draftForm()}
         {uploading ? <p className="sk-draft sk-draft--uploading" role="status"><Icon name="image" size={14} />Uploading the pasted image privately…</p> : null}
 
         {editingState && (!editing || !canWrite) ? <label className="sk-draft">Your unsaved edit is kept

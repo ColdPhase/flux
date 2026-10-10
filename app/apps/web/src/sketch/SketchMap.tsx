@@ -61,7 +61,7 @@ export interface SketchMapProps {
   /** The single local draft that is not saved yet, shown on the map where it will land. */
   draft: { x: number; y: number; parentId: string | null; label: string } | null;
   /** Private composition sits beside visible map context, outside the scrolling plane. */
-  draftEditor: ReactNode;
+  draftEditor: ((focusReady: boolean) => ReactNode) | null;
   onMove(moves: { id: string; x: number; y: number }[], how: 'drag' | 'keyboard'): void;
   onResize(id: string, width: number, height: number, how: 'drag' | 'keyboard'): void;
   onRemove(ids: string[]): void;
@@ -744,7 +744,7 @@ export function SketchMap(props: SketchMapProps) {
         event.currentTarget.focus({ preventScroll: true }); setPhoneMenu('map'); setPhoneMenuOpen(true);
       }}><Icon name="more" size={16} />Map options</button> : null}
       {hasComposition ? <div ref={compositionRef} className="sk-composition" style={compact ? undefined : { left: compositionPosition?.left ?? 14, top: compositionPosition?.top ?? 14, visibility: compositionPosition ? undefined : 'hidden' }}>
-        {props.draftEditor}
+        {props.draftEditor?.(compact || compositionPosition !== null)}
         {compact && canWrite && props.bar.canUndo ? <button type="button" className="sk-undo" aria-label="Undo" onClick={props.bar.onUndo}>
           <Icon name="undo" size={16} />Undo last saved change
         </button> : null}

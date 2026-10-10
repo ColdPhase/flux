@@ -49,7 +49,6 @@ TABS = ["Conversation", "Map", "Tasks", "Wiki", "Agents"]
 # ADAPT-2 caps that stop the wide screens from giving more room (measured by test_07). Each is open until its
 # owner's PR lands; the test fails once a cap is gone, so the entry is removed rather than passing silently.
 WIDE_CAPS = {
-    "the map plane": "the sketch page caps the plane at 1080 px (app/apps/web/src/sketch/sketch.css; PR #380 owns the map)",
     "the Agents column": "the Agents column stays at 854 px (app/apps/web/src/agents/agents.css; PRs #376 and #417 own it)",
 }
 # The readable measure (proposed 2026-10-05, docs/design/adaptive-layout-rules.md): at most 90
@@ -651,8 +650,8 @@ class AdaptiveMatrix(AdaptiveBase):
                     self.no_problems()
 
     def test_07_wide_screens_gain_room_for_the_map_and_the_agents_column(self) -> None:
-        """ADAPT-2: a larger screen gives the map plane and the Agents column more room. Each cap in WIDE_CAPS is
-        still in the code and measured here; the test fails when a cap is gone, so the entry must be removed."""
+        """ADAPT-2: the map fills its pane and grows with the screen. Remaining caps in WIDE_CAPS are
+        still measured; the test fails when one is gone, so the entry must be removed."""
         measured: dict[int, dict[str, float]] = {}
         for width, height in [(1920, 1080), (2560, 1440), (3840, 2160)]:
             page = self.page(width, height)
@@ -660,12 +659,16 @@ class AdaptiveMatrix(AdaptiveBase):
             expect(page.locator(".sk-node")).to_have_count(len(fx.THOUGHTS))
             self.at_rest(page)
             plane = page.locator(".sk-canvas").bounding_box()["width"]
+            pane = page.locator(".sk-page--map").bounding_box()["width"]
+            self.assertAlmostEqual(plane, pane, delta=1, msg=f"the map fills the available pane at {width} CSS px")
             self.tab(page, "Agents")
             expect(page.get_by_role("heading", level=1, name="Working together")).to_be_visible()
             self.at_rest(page)
             column = page.locator(".agents").first.bounding_box()["width"]
             measured[width] = {"the map plane": round(plane), "the Agents column": round(column)}
-        print("\n  wide caps, CSS px at 1920 / 2560 / 3840: " + "; ".join(f"{name} {measured[1920][name]} / {measured[2560][name]} / {measured[3840][name]}" for name in WIDE_CAPS), end="")
+        print("\n  wide surfaces, CSS px at 1920 / 2560 / 3840: " + "; ".join(f"{name} {measured[1920][name]} / {measured[2560][name]} / {measured[3840][name]}" for name in measured[1920]), end="")
+        for smaller, larger in ((1920, 2560), (2560, 3840)):
+            self.assertGreater(measured[larger]["the map plane"], measured[smaller]["the map plane"], f"the map gains room at {larger} CSS px: {measured}")
         for name in WIDE_CAPS:
             capped = measured[3840][name] - measured[1920][name] <= 1
             self.assertTrue(capped, f"{name} now grows with the screen; remove it from WIDE_CAPS: {measured}")

@@ -346,7 +346,10 @@ class ScenarioJourney:
         editor.press("Enter")
         stored = self.wait_for(f"the thought {text!r}", lambda: (lambda s: s if len(s["thoughts"]) == before + 1 else None)(self.sketch("ada", sketch_id)))
         new_id = self.thought_id(stored, text)
-        self.assertTrue(any({link["fromId"], link["toId"]} == {parent_id, new_id} for link in stored["links"]), "the new thought is connected to its parent")
+        if self.phone:
+            self.assertFalse(any(new_id in (link["fromId"], link["toId"]) for link in stored["links"]), "the phone adds a plain thought even with a parent selected")
+        else:
+            self.assertTrue(any({link["fromId"], link["toId"]} == {parent_id, new_id} for link in stored["links"]), "the new thought is connected to its parent")
         return new_id
 
     def give_access(self, page: Page, key: str, read_only: bool) -> None:

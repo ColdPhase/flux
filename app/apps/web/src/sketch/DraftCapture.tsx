@@ -11,8 +11,10 @@ export function draftReady(draft: ThoughtDraft) {
   return draft.lines ? draft.lines.length > 0 && draft.lines.every((line) => fits(line.text)) : fits(draft.text);
 }
 
-export function DraftCapture({ draft, parent, saving, canWrite, confirmPrevious = false, mixedParents = false, onText, onLines, onPaste, onSave, onCancel }: {
+export function DraftCapture({ draft, parent, saving, canWrite, focusReady = true, confirmPrevious = false, mixedParents = false, onText, onLines, onPaste, onSave, onCancel }: {
   draft: ThoughtDraft; parent: string | null; saving: boolean; canWrite: boolean;
+  /** The map places its initially hidden composition before the editor can take focus. */
+  focusReady?: boolean;
   confirmPrevious?: boolean;
   mixedParents?: boolean;
   onText(text: string): void; onLines(lines: DraftLine[]): void;
@@ -21,8 +23,14 @@ export function DraftCapture({ draft, parent, saving, canWrite, confirmPrevious 
   onSave(): void; onCancel(): void;
 }) {
   const form = useRef<HTMLFormElement>(null);
+  const focusedDraft = useRef<string | null>(null);
   // A new draft takes focus once; later row edits or removals keep it where the person put it.
-  useLayoutEffect(() => { form.current?.querySelector<HTMLElement>('textarea, input')?.focus({ preventScroll: true }); }, [draft.id]);
+  useLayoutEffect(() => {
+    if (!focusReady || saving || focusedDraft.current === draft.id) return;
+    const field = form.current?.querySelector<HTMLElement>('textarea, input');
+    field?.focus({ preventScroll: true });
+    if (field && field.ownerDocument.activeElement === field) focusedDraft.current = draft.id;
+  }, [draft.id, focusReady, saving]);
   const ready = canWrite && !saving && draftReady(draft);
   const keys = (event: KeyboardEvent<HTMLElement>) => {
     // Unrelated shortcuts (Ctrl/⌘ K opens Jump to… while typing) keep reaching the app.
