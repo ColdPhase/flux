@@ -59,7 +59,7 @@ export interface SketchMapProps {
   /** S15: phones show an Add a thought button on the map itself. */
   onAddThought(): void;
   /** The single local draft that is not saved yet, shown on the map where it will land. */
-  draft: { x: number; y: number; parentId: string | null } | null;
+  draft: { x: number; y: number; parentId: string | null; label: string } | null;
   /** Private composition sits beside visible map context, outside the scrolling plane. */
   draftEditor: ReactNode;
   onMove(moves: { id: string; x: number; y: number }[], how: 'drag' | 'keyboard'): void;
@@ -723,7 +723,7 @@ export function SketchMap(props: SketchMapProps) {
             </>
           ) : null}
           {props.draft && !compact ? (
-            <div className="sk-ghost sk-ghost--draft" aria-hidden="true" style={{ transform: `translate(${props.draft.x - origin.x}px, ${props.draft.y - origin.y}px)`, width: DEFAULT_THOUGHT_SIZE.width, height: DEFAULT_THOUGHT_SIZE.height }}>Draft · not saved</div>
+            <div className="sk-ghost sk-ghost--draft" aria-hidden="true" style={{ transform: `translate(${props.draft.x - origin.x}px, ${props.draft.y - origin.y}px)`, width: DEFAULT_THOUGHT_SIZE.width, height: DEFAULT_THOUGHT_SIZE.height }}>{props.draft.label}</div>
           ) : null}
           {editing && editingRect && editingThought && canWrite ? (
             <ThoughtEditor key={`${editing.id}:${editing.attempt}`} className="sk-edit" initial={editing.initial} disabled={editing.saving} onChange={props.onEditText}

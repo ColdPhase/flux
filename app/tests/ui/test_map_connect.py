@@ -545,6 +545,9 @@ class MapConnectJourney(unittest.TestCase):
                 expect(draft).to_be_visible()
                 retained_caption = draft.inner_text()
                 page.set_viewport_size(COMPUTER if start == 'phone' else PHONE)
+                if committed and not lines:
+                    expect(page.locator(f'.sk-node[data-id="{first["body"]["id"]}"]')).to_have_count(1)
+                    expect(page.locator('.sk-ghost--draft')).to_have_count(0)
                 posted = []
                 page.on('request', lambda r: posted.append({'body': r.post_data_json, 'key': r.headers['idempotency-key']}) if r.method == 'POST' and r.url.endswith(f'/{sketch}/thoughts') else None)
                 page.on('response', lambda r: statuses.append(r.status) if r.request.method == 'POST' and r.url.endswith(f'/{sketch}/thoughts') else None)
