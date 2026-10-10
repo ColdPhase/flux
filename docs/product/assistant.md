@@ -1449,6 +1449,13 @@ typing in". #74's G-1 facts provide the "PR is ready" event for A9.
 
 #### A1 — Assistant identity, switches and settings
 
+**Persistence seam clarification (2026-10-10, #402).** The drawn Agents Request row has no
+project-join persistence backend in current main. A1 supplies its durable pending request
+under migration 0077 and uses the existing project-grant use case for a manager Allow,
+with one Needs-you notification for current project managers. A request creates no authority;
+the caller must retain project read access, and neither projects nor managers outside those
+rights are revealed. The accepted AST-3.4 behavior and owner/manage boundaries are unchanged.
+
 - **Scope.** One `owner_assistant` agent connection per person per workspace,
   created in the same transaction as the assistant's enablement, with its S6 policy
   initialised in that transaction. A settings record: approval mode (`act` default,
