@@ -741,3 +741,27 @@ class LiveEditingJourney(LiveFixture):
         await expect(editor).to_have_attribute("data-live-input-revision", "2", timeout=3000)
         await ada.wait_for_function("() => document.querySelector('.cm-content').textContent === 'y'", timeout=3000)
         self.assertEqual(await ada.get_by_role("alert").count(), 0, "No input was refused")
+
+    async def test_18_a_move_by_one_character_in_drawn_text_stays_with_the_browser(self):
+        # #228 Gate 4: moving by a character from the editor state put a keyboard selection into
+        # the shared cursor at once. The typed character that replaced it came a few milliseconds
+        # later, so the selection now and then reached the 40 ms cursor tick and the other person
+        # saw the caret one character early (one lost sample in each editor case at 55ba59cf).
+        # In drawn text the browser moves the caret, as before; test_17 covers undrawn text.
+        await self.create_doc("Field note ends here")
+        ada = self.pages["ada"]
+        field = await self.editor("ada")
+        await field.click()
+        await ada.evaluate("""() => { window.__arrows = [];
+          window.addEventListener('keydown', (event) => { if (/^(Arrow|Home|End)/.test(event.key)) window.__arrows.push([event.key, event.shiftKey, event.defaultPrevented]); }); }""")
+        await ada.keyboard.press("Control+End")
+        for key in ("Shift+ArrowLeft", "ArrowRight", "ArrowLeft", "Shift+ArrowRight"):
+            await ada.keyboard.press(key)
+        await ada.keyboard.insert_text("E")
+        await expect(ada.get_by_role("status").filter(has_text="All changes shared")).to_be_visible()
+        arrows = await ada.evaluate("window.__arrows")
+        # Control: the document end is still the editor's own move, which the probe sees.
+        self.assertEqual(arrows[0], ["End", False, True], arrows)
+        self.assertEqual([prevented for _, _, prevented in arrows[1:]], [False] * 4, arrows)
+        text = await ada.evaluate("() => document.querySelector('.cm-content').textContent")
+        self.assertEqual(text, "Field note ends herE", "The browser's selection was replaced")

@@ -912,6 +912,14 @@ character in quick succession. After Ctrl+End the end of the line was not drawn 
 Shift+ArrowLeft selected nothing, the character was added instead of replacing the last one,
 and the editor refused the 100,001-character text ("The shared text limit is 100,000
 characters"). Later samples start with the end already drawn. Moving to the start or end of
-the text and by one character (Ctrl/Cmd+Home/End and ArrowLeft/Right, with or without Shift)
-now dispatches the selection, which CodeMirror draws and places exactly, as
-`@codemirror/commands` does. The control and the driver are unchanged.
+the text (Ctrl/Cmd+Home/End, with or without Shift) now dispatches the selection, which
+CodeMirror draws and places exactly, as `@codemirror/commands` does. A move by one character
+(ArrowLeft/Right, with or without Shift) does so only next to text CodeMirror has not drawn.
+At `55ba59cf` every such move came from the state, and the gate lost one sample in each editor
+case (index 180 at 10k, 79 at 100k: "The correlated visible state did not survive both paint
+opportunities"). A state move puts the keyboard selection into the shared cursor at once; the
+typed character that replaces it follows a few milliseconds later. Once per case that selection
+reached the 40 ms cursor tick (one cursor with a selection among about 1000; none in the two
+earlier quiet runs), and the peer drew Ada's caret one character before the end between the two paint
+checks. In drawn text the browser moves the caret again, as before. The control and the driver
+are unchanged.
