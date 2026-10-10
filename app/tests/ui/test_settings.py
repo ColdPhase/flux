@@ -292,6 +292,27 @@ class SettingsJourney(unittest.TestCase):
         expect(dark.get_by_role("radio", name="Only “Needs you”")).to_be_checked()
         shot(dark, "settings-phone-390-notifications-dark")
 
+    def test_07b_phone_notifications_hairlines_and_44px_checkboxes(self) -> None:
+        """#434: the level card has hairlines between options; matrix checkboxes and email rows are 44 px on touch."""
+        page = self.page(phone=True)
+        page.goto("/settings/notifications")
+        choices = page.locator(".sset-choice")
+        expect(choices).to_have_count(3)
+        for index in (1, 2):
+            border = choices.nth(index).evaluate("el => getComputedStyle(el).borderTopWidth + ' ' + getComputedStyle(el).borderTopStyle")
+            self.assertEqual(border, "1px solid", f"hairline above notification level option {index}")
+        self.assertEqual(choices.first.evaluate("el => getComputedStyle(el).borderTopWidth"), "0px", "no hairline above the first option")
+        checks = page.locator(".nset__check input")
+        self.assertGreater(checks.count(), 0)
+        for index in range(checks.count()):
+            assert_touch_target(self, page, checks.nth(index))
+        destinations = page.locator(".nset__radio input")
+        for index in range(destinations.count()):
+            box = destinations.nth(index).locator("xpath=ancestor::label[1]").bounding_box()
+            self.assertIsNotNone(box)
+            self.assertGreaterEqual(box["height"], 44, f"email destination row {index} is a 44 px target: {box}")
+        shot(page, "settings-phone-390-notifications-light")
+
     def test_08_touch_guard_rejects_small_or_noninteractive_hit_areas(self) -> None:
         for size in (44, 48, 43.99997):
             self.assertTrue(has_minimum_touch_size(size), str(size))
