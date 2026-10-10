@@ -12,7 +12,7 @@ import { db } from './support/db.js';
 // The Keycloak-backed run is tests/app/e2e/oidc-mcp.e2e.ts (scripts/check_oidc.sh).
 const issuer = 'http://idp.test/realms/flux';
 const oidc = (providerId: string): OidcConfig => ({
-  providerId, issuer, clientId: 'flux', clientSecret: 'client-secret-xyz', label: 'Acme', standing: 'refresh', standingIntervalMs: 900_000,
+  providerId, issuer, clientId: 'flux', clientSecret: 'client-secret-xyz', label: 'Acme', standing: 'refresh', standingIntervalMs: 900_000, confirmationMaxAgeMs: 7 * 24 * 3_600_000,
 });
 const authSecret = 'a'.repeat(40);
 const jwt = (claims: Record<string, unknown>) => [{ alg: 'RS256' }, claims].map((part) => Buffer.from(JSON.stringify(part)).toString('base64url')).join('.') + '.c2ln';
