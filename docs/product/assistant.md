@@ -404,7 +404,10 @@ account, F-020).
 - **AST-3.4** *Turn on* creates a contributor project grant for the assistant in each
   project the owner manages and in none other; a non-manager's [ Ask Jonas to add me ]
   creates one join request for that project's managers, and a manager's Allow grants
-  it (app test with two people).
+  it (app test with two people). The manager's Inbox request names the target project
+  and marks the assistant with monochrome Kreska and the Agent tag. Join questions
+  use the project source and its canonical `/projects/:projectId/agents` destination;
+  the marking comes from that destination and reason, never from matching display text.
 - **AST-3.5** Jonas choosing "Ada's assistant" in a hand-off starts no run; it creates
   one Needs-you item for Ada, and only Ada's Allow starts the run (app test).
 - **AST-3.6** Assistant messages show the account's company in their header for every

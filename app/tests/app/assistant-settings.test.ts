@@ -109,8 +109,8 @@ test('a join request gives no authority, is deduplicated/manager-scoped, and man
   const repeated = expectStatus(await requester.browser.request('POST', endpoint), 201) as { id: string };
   assert.equal(first.id, repeated.id); assert.equal(first.state, 'pending');
   assert.equal((await pool.query('SELECT id FROM project_grants WHERE project_id=$1 AND agent_id=$2', [destination.id, agent.id])).rowCount, 0);
-  const notifications = (await pool.query("SELECT user_id, reason FROM notifications WHERE source_id=$1 AND title LIKE '%assistant asks to join'", [destination.id])).rows;
-  assert.deepEqual(notifications, [{ user_id: manager.id, reason: 'question' }]);
+  const notifications = (await pool.query("SELECT user_id, reason, body FROM notifications WHERE source_id=$1 AND title LIKE '%assistant asks to join'", [destination.id])).rows;
+  assert.deepEqual(notifications, [{ user_id: manager.id, reason: 'question', body: 'Join destination · Requested contributor access.' }]);
   const managerView = expectStatus(await manager.browser.request('GET', `/api/v1/projects/${destination.id}/agents`), 200) as unknown as ProjectAgents;
   assert.equal(managerView.joinRequests?.[0]?.id, first.id);
   const otherView = expectStatus(await bystander.browser.request('GET', `/api/v1/projects/${destination.id}/agents`), 200) as unknown as ProjectAgents;
