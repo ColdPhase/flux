@@ -317,6 +317,19 @@ class HandOffJourney(unittest.TestCase):
             expect(detail).to_be_visible()
             page.go_forward()
             expect(thread).to_be_visible()
+            # Recent uses the same deliberate panel-to-thread step and returns to the same agent.
+            page.go_back()
+            recent_title = "Print a label for each of the six beds"
+            recent = detail.get_by_role("region", name="Recent").get_by_role("button", name=re.compile(f"Also holds #2 · {recent_title}"))
+            (recent.tap if touch else recent.click)()
+            recent_thread = page.get_by_role("region", name=f"Thread of {recent_title}")
+            expect(recent_thread).to_be_visible()
+            expect(page.get_by_label("Write to this task")).to_be_visible()
+            expect(page.get_by_label("Task", exact=True)).to_have_value(self.ids["label"])
+            page.go_back()
+            expect(detail).to_be_visible()
+            page.go_forward()
+            expect(recent_thread).to_be_visible()
         # Where the panel sits beside the list both stay on screen.
         wide = self.open_agents()
         wide.get_by_role("complementary", name="Claude Code agent, details").get_by_role("button", name=title).click()
@@ -416,7 +429,9 @@ class HandOffJourney(unittest.TestCase):
             for phone, scheme in ((False, "dark"), (True, "light")):
                 with self.subTest(state=state, phone=phone, engine=UI_BROWSER):
                     page = self.page("ada", phone=phone, scheme=scheme)
-                    self.addCleanup(lambda page=page: page.unroute_all(behavior="ignoreErrors"))
+                    self.addCleanup(lambda page=page: None if page.is_closed() else page.unroute_all(behavior="ignoreErrors"))
+                    native_reads: list[str] = []
+                    page.on("request", lambda request: native_reads.append(request.url) if f"/projects/{project}/work-objects/work/{target['id']}" in request.url else None)
 
                     def projection(route) -> None:
                         response = route.fetch()
@@ -460,6 +475,7 @@ class HandOffJourney(unittest.TestCase):
                     expect(thread).to_be_visible()
                     expect(page.get_by_label("Write to this task")).to_be_visible()
                     expect(page.get_by_label("Task", exact=True)).to_have_value(target["id"])
+                    self.assertTrue(native_reads, "the current target used the actual project-scoped native read beyond page one")
                     if phone:
                         expect(detail).to_have_count(0)
                         page.go_back()
