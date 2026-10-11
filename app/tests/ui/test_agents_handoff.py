@@ -630,6 +630,65 @@ class HandOffJourney(unittest.TestCase):
         print("\n  Phone permission containment: " + json.dumps(measurements))
         self.assertEqual(problems, [], "\n".join(problems))
 
+    def test_18_each_connection_keeps_its_own_work_and_the_dialog_ages_the_live_claim(self) -> None:
+        page = self.page("ada")
+        workspace = self.api(page, "POST", "/api/v1/workspaces", {"name": "Two connection facts"}, status=201)["id"]
+        project = self.api(page, "POST", f"/api/v1/workspaces/{workspace}/projects", {"name": "Two connection facts", "visibility": "restricted"}, status=201)["id"]
+        agent = self.api(page, "POST", f"/api/v1/workspaces/{workspace}/agents", {"name": "Shared field agent", "owner": "self"}, status=201)["id"]
+        self.api(page, "POST", f"/api/v1/projects/{project}/grants", {"principal": {"kind": "agent", "id": agent}, "role": "contributor"}, status=201)
+        connections = []
+        for name in ("Older unsigned laptop", "Current planning laptop"):
+            connections.append(self.api(page, "POST", "/api/v1/agent-connections",
+                                        {"agentId": agent, "selectedProjectIds": [project], "scopes": ["flux.context.read", "flux.proposal.write"], "name": name, "clientDesignation": "codex"}, status=201))
+        held = self.api(page, "POST", f"/api/v1/projects/{project}/work",
+                        {"title": "Plan the next moisture reading", "status": "in_progress", "owner": {"kind": "agent", "id": agent}}, status=201)
+        self.api(page, "POST", f"/api/v1/projects/{project}/work", {"title": "The next task to hand off"}, status=201)
+        reads: list[str] = []
+        at = time.time()
+        started = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at - 60))
+        expires = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at + 8))
+
+        def projection(route) -> None:
+            response = route.fetch()
+            body = response.json()
+            for item in body["connections"]:
+                if item["id"] == connections[0]["id"]:
+                    item.update(state="not_signed_in", session=None, currentWork=None)
+                elif item["id"] == connections[1]["id"]:
+                    item.update(state="session_open", session={"startedAt": started, "expiresAt": expires},
+                                currentWork={"taskId": held["id"], "taskTitle": held["title"], "role": "plan", "state": "claimed"})
+            reads.append(route.request.url)
+            route.fulfill(response=response, json=body)
+
+        self.addCleanup(lambda: None if page.is_closed() else page.unroute_all(behavior="ignoreErrors"))
+        page.route(f"**/api/v1/projects/{project}/agents", projection)
+        page.goto(f"/projects/{project}/agents")
+        rows = page.get_by_role("list", name="Agents in this project").get_by_role("listitem")
+        expect(rows).to_have_count(2)
+        unsigned = rows.filter(has_text="Older unsigned laptop")
+        live = rows.filter(has_text="Current planning laptop")
+        expect(unsigned).to_contain_text("Handed #1")
+        expect(unsigned).not_to_have_attribute("data-working", "true")
+        expect(unsigned.locator(".agents-row__icon")).to_have_attribute("data-expression", "asleep")
+        expect(live).to_contain_text('Working on “Plan the next moisture reading”')
+        expect(live).to_have_attribute("data-working", "true")
+        expect(page.get_by_text("2 in this project · 1 working", exact=True)).to_be_visible()
+        expect(page.get_by_role("complementary").get_by_role("region", name="Now")).to_contain_text("Planning")
+        page.get_by_role("button", name="Hand off a task").click()
+        dialog = page.get_by_role("dialog", name="Hand off a task")
+        radio = dialog.locator("label.handoff__agent", has_text="Shared field agent")
+        expect(radio).to_contain_text("Current planning laptop")
+        expect(radio).to_contain_text('Working on “Plan the next moisture reading”')
+        dialog.get_by_label("Task", exact=True).select_option(label="#2 · The next task to hand off")
+        radio.click()
+        dialog.get_by_role("button", name="Next").click()
+        expect(dialog).to_contain_text('Working on “Plan the next moisture reading”')
+        expect(dialog.get_by_text(re.compile("queued behind", re.IGNORECASE))).to_have_count(0)
+        before_expiry = len(reads)
+        expect(dialog).to_contain_text('Work held on “Plan the next moisture reading”', timeout=12000)
+        expect(dialog.locator(".handoff__chosen .kreska")).to_have_attribute("data-expression", "asleep")
+        self.assertEqual(len(reads), before_expiry, "aging session evidence polls no API")
+
     def test_15_an_exhausted_empty_task_page_is_honest(self) -> None:
         page = self.page("ada")
         project = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects",
