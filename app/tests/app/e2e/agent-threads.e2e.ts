@@ -70,8 +70,13 @@ async function composerReachable(page: Page) {
   const geometry = await panel(page).evaluate(element => {
     const form = element.querySelector('.at-composer'), box = form?.querySelector('.composer__box');
     const send = form?.querySelector('[aria-label="Send"]'), field = form?.querySelector('textarea');
-    const rect = (node: Element | null | undefined) => node?.getBoundingClientRect();
-    return { form: rect(form), box: rect(box), send: rect(send), field: rect(field), bottom: window.visualViewport?.height ?? innerHeight, width: innerWidth };
+    // Plain observations, with no transpiler-generated helper closure in the browser realm.
+    const f = form?.getBoundingClientRect(), b = box?.getBoundingClientRect(), s = send?.getBoundingClientRect(), t = field?.getBoundingClientRect();
+    return { form: f ? { top: f.top, bottom: f.bottom, left: f.left, right: f.right } : null,
+      box: b ? { top: b.top, bottom: b.bottom, left: b.left, right: b.right } : null,
+      send: s ? { top: s.top, bottom: s.bottom, left: s.left, right: s.right } : null,
+      field: t ? { top: t.top, bottom: t.bottom, left: t.left, right: t.right } : null,
+      bottom: window.visualViewport?.height ?? innerHeight, width: innerWidth };
   });
   for (const key of ['box', 'send', 'field'] as const) {
     const box = geometry[key]; assert.ok(box && box.top >= 0 && box.bottom <= geometry.bottom + 1 && box.left >= 0 && box.right <= geometry.width, `${key} is reachable in the visible thread surface: ${JSON.stringify(geometry)}`);
