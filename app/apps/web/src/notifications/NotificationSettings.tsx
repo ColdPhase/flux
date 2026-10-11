@@ -52,6 +52,7 @@ function timeZones(current: string) {
 }
 
 type FeedbackArea = 'level' | 'quietHours' | 'morningSummary' | 'email' | 'mute' | NotificationReason;
+type MuteReceipt = { place: NotificationPreferences['muted'][number]; muted: boolean; index: number };
 
 const message = (error: unknown, fallback: string) => (error instanceof ApiError && error.status < 500 ? error.message : fallback);
 
@@ -75,6 +76,10 @@ function AccountNotificationSettings() {
   const [failed, setFailed] = useState(false);
   const [saved, setSaved] = useState('');
   const [feedbackArea, setFeedbackArea] = useState<FeedbackArea | null>(null);
+  const [muteReceipt, setMuteReceipt] = useState<MuteReceipt | null>(null);
+  const [emailNoticeAtHead, setEmailNoticeAtHead] = useState(false);
+  const emailReadNoticeRef = useRef<HTMLParagraphElement | null>(null);
+  const emailHeadingRef = useRef<HTMLHeadingElement | null>(null);
   const [refreshWarning, setRefreshWarning] = useState<'pause' | 'settings' | null>(null);
   const [pauseExpired, setPauseExpired] = useState(false);
   const hasPreferences = useRef(false);
@@ -97,6 +102,7 @@ function AccountNotificationSettings() {
         const result = reconcilePause(next, pauseVersion);
         hasPreferences.current = true;
         setPrefs(result); setFailed(false); setRefreshWarning(null);
+        setMuteReceipt(null); setEmailNoticeAtHead(false);
         setPauseExpired(result.pause.until !== null && Date.parse(result.pause.until) <= Date.now());
         announcePauseChange(ownerId, result.pause.until);
       }
@@ -130,11 +136,11 @@ function AccountNotificationSettings() {
 
   // Saves run one after another in the order they were made, each numbered. Only the answer to
   // the newest one replaces what is shown, so an older response never undoes a newer edit.
-  function save(run: () => Promise<NotificationPreferences>, done = 'Saved', onError?: (error: unknown) => void, area: FeedbackArea = 'email'): Promise<boolean> {
+  function save(run: () => Promise<NotificationPreferences>, done = 'Saved', onError?: (error: unknown) => void, area: FeedbackArea = 'email', mute?: MuteReceipt): Promise<boolean> {
     const session = captureNotificationSession(ownerId);
     if (!session) return Promise.resolve(false);
     const mine = ++sequence.current;
-    if (mounted.current) { setSaved(''); setFeedbackArea(area); }
+    if (mounted.current) { setSaved(''); setFeedbackArea(area); setMuteReceipt(null); setEmailNoticeAtHead(false); }
     const next = queue.current.then(async () => {
       if (!isCurrentNotificationSession(session)) return false;
       const pauseVersion = notificationPauseRevision(session);
@@ -173,6 +179,7 @@ function AccountNotificationSettings() {
       if (mounted.current && mine === sequence.current) {
         hasPreferences.current = true;
         setPrefs(result); setSaved(done); setFeedbackArea(area);
+        setMuteReceipt(mute ? { ...mute, place: result.muted.find((place) => place.type === mute.place.type && place.id === mute.place.id) ?? mute.place } : null);
         setPauseExpired(result.pause.until !== null && Date.parse(result.pause.until) <= Date.now());
         if (refreshFailed) setRefreshWarning('settings');
         else if (refreshed) setRefreshWarning(null);
@@ -188,6 +195,49 @@ function AccountNotificationSettings() {
       : command.emailDestination !== undefined ? 'email' : command.morningSummary ? 'morningSummary' : command.quietHours ? 'quietHours' : 'level';
     void save(() => updatePreferences(command), 'Saved', undefined, area);
   };
+
+  const showMuteReceipt = refreshWarning === 'settings' && feedbackArea === 'mute' && !!saved && muteReceipt !== null;
+  useEffect(() => {
+    // Measure the latest acknowledged email action in its own section, and retire its
+    // subscriptions when that action, account, view or actual layout is no longer current.
+    if (refreshWarning !== 'settings' || feedbackArea !== 'email' || !saved || !prefs?.email.available) return;
+    const notice = emailReadNoticeRef.current, heading = emailHeadingRef.current;
+    const pane = notice?.closest('.pane-scroll');
+    if (!notice || !heading || !pane) return;
+    const session = captureNotificationSession(ownerId), action = sequence.current;
+    let active = true, frame = 0;
+    let observer: ResizeObserver | null = null;
+    const retire = () => {
+      active = false;
+      cancelAnimationFrame(frame);
+      observer?.disconnect();
+      pane.removeEventListener('scroll', schedule);
+      window.removeEventListener('resize', schedule);
+    };
+    const measure = () => {
+      frame = 0;
+      if (!active) return;
+      if (!mounted.current || action !== sequence.current || !isCurrentNotificationSession(session)
+        || !notice.isConnected || !heading.isConnected || !pane.isConnected) { retire(); return; }
+      const box = notice.getBoundingClientRect(), view = pane.getBoundingClientRect();
+      const top = heading.getBoundingClientRect().bottom + (parseFloat(getComputedStyle(heading).marginBottom) || 0);
+      const fitsAtHead = top >= view.top && top + box.height <= view.bottom;
+      setEmailNoticeAtHead((atHead) => atHead ? fitsAtHead
+        : box.bottom > view.bottom && box.top < view.bottom && fitsAtHead);
+    };
+    function schedule() {
+      if (active && !frame) frame = requestAnimationFrame(measure);
+    }
+    observer = new ResizeObserver(schedule);
+    observer.observe(pane);
+    observer.observe(notice);
+    observer.observe(heading.closest('section') ?? heading);
+    observer.observe(document.documentElement);
+    pane.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule);
+    schedule();
+    return retire;
+  }, [emailNoticeAtHead, refreshWarning, feedbackArea, saved, prefs?.email.available, ownerId]);
 
   if (failed) {
     return (
@@ -213,6 +263,22 @@ function AccountNotificationSettings() {
   const setLevel = (next: NotificationLevel) => change({ level: next }, (current) => ({ ...current, level: next }));
   const workingFeedback = (area: FeedbackArea) => refreshWarning === 'settings' && feedbackArea === area
     ? <WorkingReadNotice acknowledged={saved} retry={load} /> : null;
+  const activeMuteReceipt = showMuteReceipt ? muteReceipt : null;
+  const muteRows: { place: NotificationPreferences['muted'][number]; receiptOnly: boolean }[] = prefs.muted.map((place) => ({ place, receiptOnly: false }));
+  if (activeMuteReceipt) {
+    const existing = muteRows.findIndex(({ place }) => place.type === activeMuteReceipt.place.type && place.id === activeMuteReceipt.place.id);
+    const row = existing >= 0 ? muteRows.splice(existing, 1)[0]! : { place: activeMuteReceipt.place, receiptOnly: true };
+    // Both actions retain their captured reading slot. A returned snapshot can contain
+    // new remote mutes above the old picker, so its new end is not the action's position.
+    const index = Math.max(0, Math.min(activeMuteReceipt.index, muteRows.length));
+    muteRows.splice(index, 0, row);
+  }
+  const emailReadNotice = refreshWarning && !showMuteReceipt ? <p ref={emailReadNoticeRef} className="nset__problem" role="note"><Icon name="alert" size={14} /><span>
+    {refreshWarning === 'settings' && feedbackArea === 'email' && saved ? `${saved}. ` : ''}
+    {refreshWarning === 'settings' ? 'Current notification settings could not be refreshed. The last confirmed settings are shown.'
+      : 'Current notification pause could not be checked. The last confirmed state is shown.'}{' '}
+    <Button variant="quiet" onClick={load}>Retry current settings</Button>
+  </span></p> : null;
 
   return (
     <div className="pane-scroll"><div className="pane-in sset-in nset" data-shift>
@@ -291,7 +357,8 @@ function AccountNotificationSettings() {
       </section>
 
       <section className="nset__sec" aria-labelledby={ids.email}>
-        <h3 className="sset-sec" id={ids.email}>Where email goes</h3>
+        <h3 ref={emailHeadingRef} className="sset-sec" id={ids.email}>Where email goes</h3>
+        {emailNoticeAtHead ? emailReadNotice : null}
         {!prefs.email.available ? (
           <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Email delivery unavailable.</b> This Flux server has no outgoing mail set up, so nothing is emailed. Your inbox and push still work; an administrator can configure SMTP.</span></p>
         ) : prefs.email.lastFailureAt ? (
@@ -299,7 +366,7 @@ function AccountNotificationSettings() {
         ) : null}
         <div className="sset-card nset__box">
           <EmailDestinationChoice prefs={prefs} onChange={(destination) => change({ emailDestination: destination }, (current) => ({ ...current, email: { ...current.email, destination } }))} />
-          <ExtraAddress prefs={prefs} save={save} refreshWarning={refreshWarning} retry={load} />
+          <ExtraAddress prefs={prefs} save={save} readNotice={emailNoticeAtHead ? null : emailReadNotice} />
         </div>
       </section>
 
@@ -307,18 +374,18 @@ function AccountNotificationSettings() {
         <h3 className="sset-sec" id={ids.mute}>Muted places</h3>
         <div className="sset-card nset__box">
           <p className="nset__lead">Nothing from a muted place notifies you, on any channel. You can still open it.</p>
-          {prefs.muted.length ? (
+          {muteRows.length ? (
             <ul className="nset__muted">
-              {prefs.muted.map((place) => (
-                <li key={`${place.type}:${place.id}`}>
+              {muteRows.map(({ place, receiptOnly }) => (
+                <li key={`${receiptOnly ? 'receipt:' : ''}${place.type}:${place.id}`} className={receiptOnly ? 'nset__mute-result' : undefined}>
                   <span className="nset__place">{place.type === 'dm' ? <Icon name="chat" size={14} /> : <span className="nset__hash" aria-hidden="true">#</span>}{place.name}<span className="ui-vh">{place.type === 'dm' ? ', direct message' : ', project'}</span></span>
-                  <Button variant="quiet" onClick={() => void save(() => setMute({ type: place.type, id: place.id, muted: false }), `Unmuted ${place.name}`, undefined, 'mute')}>Unmute</Button>
+                  {!receiptOnly ? <Button variant="quiet" onClick={() => void save(() => setMute({ type: place.type, id: place.id, muted: false }), `Unmuted ${place.name}`, undefined, 'mute', { place, muted: false, index: prefs.muted.findIndex((item) => item.type === place.type && item.id === place.id) })}>Unmute</Button> : null}
+                  {activeMuteReceipt && activeMuteReceipt.place.type === place.type && activeMuteReceipt.place.id === place.id ? <p className="nset__mute-read" role="note"><Icon name="alert" size={14} /><span>{activeMuteReceipt.muted ? 'Muted' : 'Unmuted'}. Current settings unverified.</span><Button variant="quiet" onClick={load}>Retry current settings</Button></p> : null}
                 </li>
               ))}
             </ul>
           ) : <p className="nset__none">No muted places.</p>}
-          {workingFeedback('mute')}
-          {mutable.length ? <MutePicker places={mutable} onMute={(place) => void save(() => setMute({ type: place.type, id: place.id, muted: true }), `Muted ${place.name}`, undefined, 'mute')} /> : null}
+          {mutable.length ? <MutePicker places={mutable} onMute={(place) => void save(() => setMute({ type: place.type, id: place.id, muted: true }), `Muted ${place.name}`, undefined, 'mute', { place, muted: true, index: prefs.muted.length })} /> : null}
         </div>
       </section>
     </div></div>
@@ -356,19 +423,13 @@ function EmailDestinationChoice({ prefs, onChange }: { prefs: NotificationPrefer
   );
 }
 
-function ExtraAddress({ prefs, save, refreshWarning, retry }: { prefs: NotificationPreferences; save: (run: () => Promise<NotificationPreferences>, done?: string, onError?: (error: unknown) => void) => Promise<boolean>; refreshWarning: 'pause' | 'settings' | null; retry: () => void }) {
+function ExtraAddress({ prefs, save, readNotice }: { prefs: NotificationPreferences; save: (run: () => Promise<NotificationPreferences>, done?: string, onError?: (error: unknown) => void) => Promise<boolean>; readNotice: ReactNode }) {
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const inputId = useId();
   const extra = prefs.email.extra;
   if (!prefs.email.available) return null;
-  // Keep read uncertainty at the address working position too; this is not a failed send.
-  const readNotice = refreshWarning ? <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span>
-    {refreshWarning === 'settings' ? 'Current notification settings could not be refreshed. The last confirmed settings are shown.'
-      : 'Current notification pause could not be checked. The last confirmed state is shown.'}{' '}
-    <Button variant="quiet" onClick={retry}>Retry current settings</Button>
-  </span></p> : null;
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();

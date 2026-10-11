@@ -176,3 +176,9 @@
 .nset__group .nset__read-feedback { margin: 0 18px 12px; }
 
 .nset__read-feedback .nset__problem { margin-bottom: 0; }
+
+/* The named mute result stays with its affected row, including an acknowledged removed row. */
+.nset__muted li { flex-wrap: wrap; }
+.nset__muted .nset__mute-read { flex: 0 0 100%; display: flex; align-items: center; gap: 6px; margin: 4px 0 0; font-size: var(--fs-xs); line-height: 1.35; color: var(--t2); }
+.nset__mute-read > span { flex: 1; min-width: 0; }
+.nset__mute-read > svg, .nset__mute-read > button { flex: none; }
