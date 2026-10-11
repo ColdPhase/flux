@@ -303,7 +303,7 @@ function AccountNotificationSettings() {
           ? <>{savedMuteVerb}<span className="ui-vh">{saved.slice(savedMuteVerb.length)}</span></> : saved}</> : null}</span>
       </div>
 
-      {refreshWarning ? <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span>
+      {refreshWarning && !showMuteReceipt ? <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span>
         {refreshWarning === 'settings' ? 'Current notification settings could not be refreshed. Showing last confirmed settings.'
           : 'Current notification pause could not be checked. The last confirmed state is shown.'}{' '}
         <Button variant="quiet" aria-label="Retry current settings" onClick={load}>Refresh</Button>
@@ -411,6 +411,7 @@ function MutedPlaceRows({ rows, receipt, onUnmute, onRetry }: {
             <p className="nset__mute-read" role="note"><span>
               <span className="nset__place">{place.type === 'dm' ? <Icon name="chat" size={14} /> : <span className="nset__hash" aria-hidden="true">#</span>}{place.name}<span className="ui-vh">{place.type === 'dm' ? ', direct message' : ', project'}</span></span>
               <span className="nset__mute-state">{receipt.muted ? 'Muted' : 'Unmuted'}. Current settings unverified.</span>
+              <span className="nset__mute-warning">Current notification settings could not be refreshed. Showing last confirmed settings.</span>
             </span><Button variant="quiet" aria-label="Retry current settings" onClick={onRetry}>Refresh</Button></p>
           ) : <span className="nset__place">{place.type === 'dm' ? <Icon name="chat" size={14} /> : <span className="nset__hash" aria-hidden="true">#</span>}{place.name}<span className="ui-vh">{place.type === 'dm' ? ', direct message' : ', project'}</span></span>}
           {!receiptOnly ? <Button variant="quiet" onClick={() => onUnmute(place)}>Unmute</Button> : null}

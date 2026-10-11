@@ -166,7 +166,7 @@ class CompositionProbe(unittest.TestCase):
             self.settings(page,B)
             expect(page.locator('.nset__saved')).to_be_empty()
             expect(page.locator('.nset__read-feedback')).to_have_count(0)
-            expect(page.locator('.nset > .nset__problem').filter(has_text='Current notification')).to_have_count(0)
+            expect(page.locator('.nset > .nset__problem, .nset__mute-read').filter(has_text='Current notification')).to_have_count(0)
             self.assertEqual(self.api(page,'GET','/api/v1/notification-preferences'),baselineB,'retired A feedback cannot affect current B settings')
         finally:
             if 'route' in held and not held.get('released'):

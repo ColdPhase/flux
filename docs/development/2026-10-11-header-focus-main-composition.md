@@ -164,3 +164,15 @@ The PR stays draft. Next is a bounded repair of the remaining actual phone
 reading-position failure, current-main composition, affected runtime checks,
 fresh neutral visual evaluation and eligible current-head review. Full parent,
 phone/PWA, native/SSO and release acceptance remain required.
+
+The next bounded proposal is independently source-accepted before code:
+`/tmp/flux372-single-mute-warning-plan.md`, SHA256
+`602dbec35b71d52156a6242b30d93a9e672e62e9d30b248f3cc59028bbe4551d`, with
+verdict `/tmp/flux372-single-mute-warning-plan-review.md`. For the latest valid
+named mute/unmute receipt only, its full visible persistent read-failure
+explanation replaces the duplicate top warning. Other settings and pause
+warnings keep their placement. This explicitly revises the earlier top-warning
+placement requirement while preserving visible information, actual name/action,
+44 px read-only recovery and every state/geometry/page-error guard. The lifecycle
+zero-warning locator also includes the real local warning. The predicted layout
+effect remains unverified until a fresh Docker run; no failure is relabelled.

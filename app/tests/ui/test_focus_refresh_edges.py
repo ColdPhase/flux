@@ -56,7 +56,7 @@ class RefreshEdges(unittest.TestCase):
             original.PauseRefreshProbe.settings(self, page)
 
     def warning(self, page):
-        return page.locator('.nset > .nset__problem').filter(has_text='Current notification')
+        return page.locator('.nset > .nset__problem, .nset__mute-read').filter(has_text='Current notification')
 
     def wait_held(self, page, held):
         for _ in range(80):

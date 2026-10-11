@@ -184,5 +184,6 @@
 .nset__mute-read > svg, .nset__mute-read > button { flex: none; }
 .nset__mute-read .nset__place { display: flex; }
 .nset__mute-state { display: block; margin-top: 2px; }
+.nset__mute-warning { display: block; margin-top: 2px; }
 .nset__mute > .nset__muted { flex: 1 1 100%; margin: 0; }
 .nset__email-target { display: block; overflow-wrap: anywhere; font-weight: 500; color: var(--t1); }
