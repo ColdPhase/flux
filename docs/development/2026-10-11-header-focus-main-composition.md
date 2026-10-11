@@ -131,3 +131,36 @@ valid action and view lifetime. Their proposed patch remains unapplied pending
 those corrections. The earlier b288 mute/email geometry failures and unfiltered
 WebKit native-fetch failure remain open. The existing PR is a draft checkpoint;
 full #340/#351/#414, native/PWA and release acceptance are not complete.
+
+## Recovered feedback repair checkpoint — 2026-10-11
+
+Source `a22c673328308327a94fbeceb0d4149109a3a96e` retains the latest valid
+mute/unmute receipt at its captured action index, including an idempotent mute
+whose response contains remote rows. It keeps one canonical affected row,
+historical unmute acknowledgement, one full live announcement, read-only
+recovery and email measurement cleanup across action/account/view changes.
+The visible header uses the short action verb; the local result retains the
+actual name. Tests preserve original geometry, 44 px targets and page-error
+guards.
+
+Actual immutable Docker run `/tmp/flux372-reading-position-a22c` (driver
+38911, terminal 1): build/type/lint passed with three existing hook warnings;
+1122 application inputs, 75 UI inputs and 206 production assets matched the
+built images; PWA asset tests 7/7 passed. SMTP-configured Chromium 11 methods
+passed in 110.285 s. WebKit ran 11 methods in 129.447 s with six phone mute
+geometry failures: named note bottom 790.203 px exceeds pane bottom 778.188 px.
+No native page-error occurred in this phase; that does not resolve #471.
+
+The same authenticated owner, database, application image and secret passed
+the actual configured-to-empty SMTP transition; email became unavailable and
+push without VAPID remained unavailable. In this same no-SMTP instance,
+Chromium 3 methods passed in 60.845 s; WebKit 3 methods in 73.900 s retained six
+phone geometry failures (note bottom 789.703 px) plus the unfiltered native
+assistant-runs access-control page-error in method 17. That failure remains
+linked to #471 and is not suppressed. All exact per-run resources and four
+image tags were removed. Earlier raw failed runs remain separate evidence.
+
+The PR stays draft. Next is a bounded repair of the remaining actual phone
+reading-position failure, current-main composition, affected runtime checks,
+fresh neutral visual evaluation and eligible current-head review. Full parent,
+phone/PWA, native/SSO and release acceptance remain required.
