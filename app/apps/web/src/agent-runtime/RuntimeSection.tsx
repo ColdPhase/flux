@@ -53,6 +53,7 @@ export function RuntimeSection({ otherWays }: { otherWays: ReactNode }) {
   const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
+  const [errorContext, setErrorContext] = useState<{ action: string; uncertain: boolean } | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const generation = useRef(0);
   const acting = useRef(false);
@@ -92,13 +93,17 @@ export function RuntimeSection({ otherWays }: { otherWays: ReactNode }) {
     const current = ++generation.current;
     acting.current = true;
     pendingRead.current?.abort();
-    setBusy(key); setError('');
+    setBusy(key); setError(''); setErrorContext(null);
     let refresh = false;
     try {
       const next = await action();
       if (current === generation.current) { setStatus(next); setConfirmRemove(false); }
     } catch (cause) {
-      if (current === generation.current) { setError(failure(cause, fallback)); refresh = true; }
+      if (current === generation.current) {
+        setError(failure(cause, fallback));
+        setErrorContext({ action: key, uncertain: !(cause instanceof ApiError) || cause.status >= 500 });
+        refresh = true;
+      }
     } finally {
       if (current === generation.current) {
         acting.current = false; setBusy('');
@@ -129,6 +134,7 @@ export function RuntimeSection({ otherWays }: { otherWays: ReactNode }) {
   const authPending = status.auth?.claude_code;
   const again = binding?.state === 'sign_in_again' || connection?.state === 'sign_in_again';
   const release = status.lastRelease;
+  const lastReported = Boolean(busy || errorContext?.uncertain);
   // Only current saved facts confirm sign-out; an action ACK or an older receipt cannot do so.
   const confirmedSignOut = binding?.state === 'active' && !binding.recovery && !busy && !error && !authPending
     && status.authCompletion?.disposition !== 'superseded' && connection?.state === 'signed_out'
@@ -137,7 +143,7 @@ export function RuntimeSection({ otherWays }: { otherWays: ReactNode }) {
 
   return (
     <section className="nset__sec rt" aria-labelledby="rt-h">
-      <h3 id="rt-h" className="aset__state"><span className={`aset__dot${signedIn ? ' is-ready' : ''}`} aria-hidden="true" />Claude Code in Flux · {removing ? 'removing' : signedIn ? 'signed in' : again ? 'sign in again' : 'not signed in'}</h3>
+      <h3 id="rt-h" className="aset__state"><span className={`aset__dot${signedIn ? ' is-ready' : ''}`} aria-hidden="true" />Claude Code in Flux · {lastReported ? 'last reported: ' : ''}{removing ? 'removing' : signedIn ? 'signed in' : again ? 'sign in again' : 'not signed in'}</h3>
       {confirmedSignOut ? <p className="nset__note" role="status"><b>Signed out of Claude Code in Flux.</b> <time dateTime={confirmedSignOut.at}>{dateTime(confirmedSignOut.at)}</time>.</p> : null}
       {connection?.signOut?.failed && !signedIn ? (
         <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Anthropic didn’t confirm the sign-out.</b> Flux deleted the login from your Claude Code space anyway. To be sure it can’t be used, end the session in your Claude account or Anthropic Console settings.</span></p>
@@ -151,7 +157,7 @@ export function RuntimeSection({ otherWays }: { otherWays: ReactNode }) {
       {removing ? <p className="nset__note" role="status"><Spinner /> {binding?.recovery ? 'Recovering your Claude Code space after an unconfirmed operation. Access is disabled; both clients may need to sign in again after cleanup.' : 'Signing out and removing your Claude Code space…'}</p> : null}
       {authPending ? <p className="nset__note" role="status"><Spinner /> {authPending === 'signing_out' ? 'Sign-out requested. Access is disabled while Claude Code signs out and its files are removed.' : authPending === 'signing_in' ? 'A sign-in is still in progress.' : 'Checking the current sign-in…'}</p> : null}
       {status.authCompletion?.disposition === 'superseded' ? <p className="nset__problem" role="status">This operation’s result was no longer current and was not accepted. The current state is shown here.</p> : null}
-      {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
+      {error ? <p id="rt-error" className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
       {!signedIn && !removing && !authPending ? (
         <ul className="sset-card rt-choices">
           <li>
@@ -190,9 +196,10 @@ export function RuntimeSection({ otherWays }: { otherWays: ReactNode }) {
       {binding && confirmRemove && !removing ? (
         <div className="details__confirm" role="group" aria-label="Remove Claude Code from Flux">
           <p>Flux signs Claude Code out first, then deletes its files from your space on this server and frees the space for someone else. You can set it up again later.</p>
+          {error && errorContext?.action === 'remove' ? <p className="nset__error" aria-hidden="true"><Icon name="alert" size={14} />{error}</p> : null}
           <div className="aset__actions">
-            <Button variant="danger" busy={busy === 'remove'} onClick={() => void act('remove', removeRuntime, 'Removal could not be confirmed. Check the current state before trying again.')}>Sign out and remove</Button>
-            <Button variant="quiet" onClick={() => setConfirmRemove(false)}>Cancel</Button>
+            <Button variant="danger" aria-describedby={error && errorContext?.action === 'remove' ? 'rt-error' : undefined} busy={busy === 'remove'} onClick={() => void act('remove', removeRuntime, 'Removal could not be confirmed. Check the current state before trying again.')}>Sign out and remove</Button>
+            <Button variant="quiet" aria-describedby={error && errorContext?.action === 'remove' ? 'rt-error' : undefined} onClick={() => setConfirmRemove(false)}>Cancel</Button>
           </div>
         </div>
       ) : null}
