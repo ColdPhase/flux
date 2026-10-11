@@ -1182,7 +1182,7 @@ cmd_ai() {
   interactive || die "ai on asks two questions and needs a terminal. Without one, set FLUX_AGENT_RUNTIME (and, for Claude Code, FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS=<YYYY-MM-DD>) in ${ENV_FILE#"$FLUX_ROOT"/} and run ./flux up; see docs/operations/agent-runtime.md."
   need_docker
   [ -f "$ENV_FILE" ] || die "No ${ENV_FILE#"$FLUX_ROOT"/}; start Flux with ./flux up first."
-  claim_project "$PROJECT"
+  check_owner "$PROJECT"
   current=$(runtime_value)
   case ",$current," in
     *,claude_code,*) say "Subscription sign-in is already on for: $current."; return 0 ;;
@@ -1195,6 +1195,7 @@ cmd_ai() {
     return 0
   fi
   write_runtime_answer "$ENV_FILE"
+  claim_project "$PROJECT"
   start_main
   say ""
   say "Flux is running:  $(public_origin)"
