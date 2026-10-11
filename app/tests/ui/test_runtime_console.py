@@ -560,5 +560,65 @@ class RuntimeConsole(unittest.TestCase):
                         page.close()
 
 
+    def test_14_uncertain_removal_is_clear_at_the_actual_action_position(self) -> None:
+        """No post-result scrolling: current action feedback and saved-value qualifier remain truthful."""
+        message = "Removal could not be confirmed. Check the current state before trying again."
+        for phone in (False, True):
+            for theme in ("light", "dark"):
+                with self.subTest(phone=phone, theme=theme):
+                    page = self.page(phone=phone)
+                    page.emulate_media(color_scheme=theme)
+                    current = self.runtime_snapshot()
+                    current["connections"]["claude_code"].update(state="signed_out", signedInAt=None,
+                        signOut={"at": "2026-10-07T10:01:00.000Z", "failed": False})
+                    page.route("**/api/v1/agent-runtime", lambda route: route.fulfill(
+                        status=200, content_type="application/json", body=json.dumps(current)))
+                    held: list[Route] = []
+                    page.route("**/api/v1/agent-runtime/binding", lambda route: held.append(route)
+                               if route.request.method == "DELETE" else route.continue_())
+                    page.goto("/settings/agents")
+                    section = page.locator("section.rt")
+                    expect(section.get_by_role("heading", name="Claude Code in Flux · not signed in")).to_be_visible()
+                    section.get_by_role("button", name="Remove Claude Code from Flux…").click()
+                    group = page.get_by_role("group", name="Remove Claude Code from Flux")
+                    submit = group.get_by_role("button", name="Sign out and remove")
+                    submit.click()
+                    deadline = time.time() + 5
+                    while not held and time.time() < deadline:
+                        page.wait_for_timeout(20)
+                    self.assertEqual(len(held), 1, "the actual removal request reached its response barrier")
+                    held[0].fulfill(status=503, content_type="application/json", body='{"error":"unavailable"}')
+                    expect(section.get_by_role("alert")).to_have_text(message)
+                    expect(submit).to_be_enabled()
+                    expect(section.get_by_text("Signed out of Claude Code in Flux.", exact=True)).to_have_count(0)
+                    # Preserve the natural post-click viewport: do not scroll to the header or alter focus.
+                    shot(page, f"runtime-removal-working-{'phone-390' if phone else 'desktop-1440'}-{theme}-{UI_BROWSER}")
+                    with self.subTest(check="last-reported-value"):
+                        self.assertIn("last reported:", section.locator("#rt-h").inner_text(),
+                                      "the strongest label qualifies the value carried through an unknown action")
+                    with self.subTest(check="result-at-controls"):
+                        nearby = group.locator("p").filter(has_text=message)
+                        self.assertEqual(nearby.count(), 1, "the actual working position contains the current uncertain result")
+                        expect(nearby).to_be_visible()
+                        expect(nearby).to_have_attribute("aria-hidden", "true")
+                        expect(submit).to_have_attribute("aria-describedby", "rt-error")
+                        expect(group.get_by_role("button", name="Cancel")).to_have_attribute("aria-describedby", "rt-error")
+                        self.assertEqual(section.get_by_role("alert").count(), 1, "one automatic result announcement")
+                        geometry = nearby.evaluate("""node => {
+                          const group=node.closest('.details__confirm'), result=node.getBoundingClientRect();
+                          const buttons=[...group.querySelectorAll('button')].map(el=>el.getBoundingClientRect());
+                          const nav=document.querySelector('nav[aria-label="Main places"]')?.getBoundingClientRect();
+                          const header=document.querySelector('.top')?.getBoundingClientRect();
+                          return {top:result.top,bottom:result.bottom,buttons:buttons.map(r=>({top:r.top,bottom:r.bottom})),
+                            safeTop:header?.height ? header.bottom : 0,safeBottom:nav?.height ? nav.top : innerHeight};
+                        }""")
+                        self.assertGreaterEqual(geometry["top"], geometry["safeTop"] - 1)
+                        self.assertLessEqual(geometry["bottom"], min(b["top"] for b in geometry["buttons"]) + 1,
+                                             "full uncertainty text sits next to the removal controls")
+                        self.assertLessEqual(max(b["bottom"] for b in geometry["buttons"]), geometry["safeBottom"] + 1,
+                                             "both retry and cancel remain visible above the actual footer")
+                    page.close()
+
+
 if __name__ == "__main__":
     unittest.main()
