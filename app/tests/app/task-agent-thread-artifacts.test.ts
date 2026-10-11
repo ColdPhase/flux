@@ -22,6 +22,15 @@ const edit=(f:ThreadNativeScene,d:Doc,body:Record<string,unknown>,key=randomUUID
   {body,headers:{'if-match':`"${d.version}"`,'idempotency-key':key}});
 const link=(f:ThreadNativeScene,from:{type:'work'|'result';id:string},to:Record<string,unknown>)=>f.owner.request('POST',`/api/v1/projects/${f.projectId}/links`,{body:{from,to}});
 const mentions=(...ids:string[])=>ids.map((id,i)=>`[Measured task${i}](flux:work/${id})`).join('\n');
+const pgConstraint=(constraint:string)=>(error:unknown):boolean=>{
+  const visited=new Set<unknown>();
+  while(error&&typeof error==='object'&&!visited.has(error)){
+    visited.add(error);
+    if('code'in error&&error.code==='23514'&&'constraint'in error&&error.constraint===constraint)return true;
+    error='cause'in error?error.cause:undefined;
+  }
+  return false;
+};
 
 test('new committed doc mentions reset only the new set; shared/current references work and title/no-op/old links do not',async()=>{
   const f=await setup(),a=await f.task('First'),b=await f.task('Second'),c=await f.task('Third');
@@ -153,7 +162,7 @@ test('SQL refuses fresh title-only/no-op packets and an unrelated same-project t
     const changed=await docUseCases(tx).updateDoc({kind:'human',id:ownerId},d.id,{title:'Only fresh title'},d.version);
     await tx.execute(sql`SAVEPOINT no_progress_packet`);
     await assert.rejects(tx.execute(sql`INSERT INTO agent_thread_artifact_boundaries(workspace_id,project_id,kind,source_id,revision,transaction_id)
-      VALUES(${f.workspaceId},${f.projectId},'doc',${d.id},${String(changed.version)},txid_current())`),/actual progress/);
+      VALUES(${f.workspaceId},${f.projectId},'doc',${d.id},${String(changed.version)},txid_current())`),pgConstraint('agent_thread_artifact_canonical'));
     await tx.execute(sql`ROLLBACK TO SAVEPOINT no_progress_packet`);throw titleOnly;
   }),titleOnly);
   const scopeError=new Error('Rollback unrelated recipient proof');
@@ -164,7 +173,7 @@ test('SQL refuses fresh title-only/no-op packets and an unrelated same-project t
     await tx.execute(sql`SAVEPOINT wrong_recipient_packet`);
     await assert.rejects(tx.execute(sql`INSERT INTO agent_thread_artifact_resets(task_id,boundary_id,workspace_id,project_id)
       SELECT ${b.id},id,workspace_id,project_id FROM agent_thread_artifact_boundaries
-      WHERE kind='doc' AND source_id=${d.id} AND revision=${String(changed.version)}`),/direct eligible/);
+      WHERE kind='doc' AND source_id=${d.id} AND revision=${String(changed.version)}`),pgConstraint('agent_thread_artifact_association'));
     await tx.execute(sql`ROLLBACK TO SAVEPOINT wrong_recipient_packet`);throw scopeError;
   }),scopeError);
   assert.equal(await threadBudget(a.id),5);assert.equal(await threadBudget(b.id),5);
@@ -184,6 +193,7 @@ test('actual retained native87 history upgrades to88 without pulses, seeds old b
     ['auth_users','id=$1',[ownerId]],['workspaces','id=$1',[f.workspaceId]],['workspace_members','workspace_id=$1',[f.workspaceId]],
     ['projects','id=$1',[f.projectId]],['agents','id=$1',[f.agentId]],['project_grants','project_id=$1',[f.projectId]],
     ['agent_connections','id=$1',[f.connectionId]],['agent_connection_projects','connection_id=$1',[f.connectionId]],
+    ['oauth_client','client_id IN (SELECT client_id FROM agent_oauth_bindings WHERE connection_id=$1)',[f.connectionId]],
     ['agent_oauth_bindings','connection_id=$1',[f.connectionId]],['agent_runtime_sessions','connection_id=$1',[f.connectionId]],
     ['agent_standing_grants','connection_id=$1',[f.connectionId]],['project_work_items','project_id=$1',[f.projectId]],
     ['project_materials','project_id=$1',[f.projectId]],['project_material_versions','project_id=$1',[f.projectId]],
@@ -203,7 +213,12 @@ test('actual retained native87 history upgrades to88 without pulses, seeds old b
       // Restore only this isolated fixture's two guarded tables, preserving the ACTUAL
       // canonical AS/native rows and provenance exactly, rather than re-authoring them.
       await client.query('ALTER TABLE project_messages DISABLE TRIGGER USER');await client.query('ALTER TABLE agent_thread_guard_events DISABLE TRIGGER USER');
-      for(const[table]of specs)for(const row of retained.get(table)!){const columns=Object.keys(row);await client.query(`INSERT INTO ${table}(${columns.map(c=>`"${c}"`).join(',')}) VALUES(${columns.map((_,i)=>`$${i+1}`).join(',')})`,columns.map(c=>row[c]));}
+      for(const[table]of specs){
+        const jsonColumns=new Set((await client.query<{column_name:string}>(`SELECT column_name FROM information_schema.columns
+          WHERE table_schema='public' AND table_name=$1 AND data_type IN ('json','jsonb')`,[table])).rows.map(r=>r.column_name));
+        for(const row of retained.get(table)!){const columns=Object.keys(row);await client.query(`INSERT INTO ${table}(${columns.map(c=>`"${c}"`).join(',')}) VALUES(${columns.map((_,i)=>`$${i+1}`).join(',')})`,
+          columns.map(c=>jsonColumns.has(c)&&row[c]!==null?JSON.stringify(row[c]):row[c]));}
+      }
       await client.query('ALTER TABLE project_messages ENABLE TRIGGER USER');await client.query('ALTER TABLE agent_thread_guard_events ENABLE TRIGGER USER');
       await client.query("SELECT setval('agent_thread_guard_sequence',GREATEST(1,(SELECT max(sequence) FROM agent_thread_guard_events)),true)");await client.query('COMMIT');
     }finally{client.release();}
