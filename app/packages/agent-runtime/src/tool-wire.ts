@@ -56,9 +56,14 @@ export function anthropicMessages(input: string, turns: readonly PersonalTurn[] 
 
 /** The `tool_use` blocks of a response's content, in order. */
 export function anthropicToolCalls(content: readonly unknown[]): PersonalToolCall[] {
+  // The id correlates a call with its result: two calls with one id are a malformed response, and
+  // it is refused here, before any call runs (as the Chat Completions reader does).
+  const seen = new Set<string>();
   return content.flatMap((block) => {
     if (!isObject(block) || block.type !== 'tool_use') return [];
     if (typeof block.id !== 'string' || !block.id || typeof block.name !== 'string' || !block.name) throw new MalformedResponseError('a tool_use block without id or name');
+    if (seen.has(block.id)) throw new MalformedResponseError('a repeated tool_use id');
+    seen.add(block.id);
     return isObject(block.input) ? [{ id: block.id, name: block.name, input: block.input }]
       : [{ id: block.id, name: block.name, input: {}, invalid: true as const }];
   });

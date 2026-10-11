@@ -55,6 +55,24 @@ export const ANTHROPIC_TOOL_USE_TRUNCATED = {
   content: [{ type: 'tool_use', id: 'toolu_01TRUNC', name: 'flux_list_work', input: {} }],
 };
 
+/** Two calls with their own ids in one answer: valid, and answered in this order. */
+export const ANTHROPIC_TWO_CALLS = {
+  ...ANTHROPIC_TOOL_USE,
+  content: [
+    { type: 'tool_use', id: 'toolu_01first', name: 'flux_list_work', input: { projectId: PROJECT_ID } },
+    { type: 'tool_use', id: 'toolu_02second', name: 'flux_update_work', input: { id: 'w1', title: 'Renamed' } },
+  ],
+};
+
+/** Malformed: two `tool_use` blocks with one id (the id correlates a call with its result). */
+export const ANTHROPIC_DUPLICATE_IDS = {
+  ...ANTHROPIC_TOOL_USE,
+  content: [
+    { type: 'tool_use', id: 'toolu_01dup', name: 'flux_update_work', input: { id: 'w1', title: 'First' } },
+    { type: 'tool_use', id: 'toolu_01dup', name: 'flux_update_work', input: { id: 'w1', title: 'Second' } },
+  ],
+};
+
 export const ANTHROPIC_FINAL = {
   id: 'msg_01Final', type: 'message', role: 'assistant', model: 'claude-sonnet-5',
   content: [{ type: 'text', text: 'Fact: one item is open: Camera in low light [S1].' }],

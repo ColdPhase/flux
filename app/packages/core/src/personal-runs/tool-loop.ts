@@ -111,7 +111,8 @@ async function runCall(session: PersonalToolSession, offered: ReadonlySet<string
  * Sends the first request and, while the model asks for tools, runs them and sends the next turn:
  * at most `maxTurns` requests; before each further request the standing gate, the money reservation
  * (the largest possible next request must still fit), the clock and the per-request input bound are
- * checked, and a limit ends the run without sending it. Calls already made stay made.
+ * checked, and a limit ends the run without sending it. The clock is read once more after the calls,
+ * the gate and the input count, at the dispatch boundary. Calls already made stay made.
  */
 export async function runToolLoop(options: LoopOptions): Promise<LoopResult> {
   const { compute, session, first, price, reservedMicros, maxTurns, deadline, now, gate, signal } = options;
@@ -165,5 +166,8 @@ export async function runToolLoop(options: LoopOptions): Promise<LoopResult> {
       }
     }
     if (tokens > PERSONAL_RUN_LIMITS.maxInputTokens) return { end: { kind: 'limit', limit: 'input' }, account, turns: turn };
+    // The tools, the gate and the count above all took time: the clock is read again at the dispatch
+    // boundary, so no request starts after the deadline. What the calls already changed stays.
+    if (now() >= deadline) return { end: { kind: 'limit', limit: 'time' }, account, turns: turn };
   }
 }

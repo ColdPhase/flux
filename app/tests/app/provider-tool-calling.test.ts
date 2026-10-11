@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 import { createServer, type IncomingMessage } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, beforeEach, describe, test } from 'node:test';
-import { PERSONAL_RUN_LIMITS } from '@flux/contracts';
-import { TOOL_SYSTEM_PROMPT, type PersonalCompute, type PersonalComputeRequest, type PersonalTurn } from '@flux/core';
+import { PERSONAL_RUN_LIMITS, tablePrice } from '@flux/contracts';
+import { runToolLoop, TOOL_SYSTEM_PROMPT, type PersonalCompute, type PersonalComputeRequest, type PersonalToolCall, type PersonalTurn } from '@flux/core';
 import { parsePrivateTargets, providerPersonalCompute } from '../../packages/agent-runtime/src/index.js';
 import {
-  ANTHROPIC_FINAL, ANTHROPIC_TOOL_USE, ANTHROPIC_TOOL_USE_TRUNCATED, ANTHROPIC_TOOL_USE_WITH_THINKING, CHAT_FINAL, CHAT_TOOL_CALLS,
+  ANTHROPIC_DUPLICATE_IDS, ANTHROPIC_FINAL, ANTHROPIC_TOOL_USE, ANTHROPIC_TWO_CALLS, ANTHROPIC_TOOL_USE_TRUNCATED, ANTHROPIC_TOOL_USE_WITH_THINKING, CHAT_FINAL, CHAT_TOOL_CALLS,
   CHAT_TOOL_CALLS_TRUNCATED, CHAT_TWO_CALLS, FLUX_TOOLS, PROJECT_ID, TOOL_WIRE_CASES, type ToolWireCase,
 } from './support/provider-tool-fixtures.js';
 
@@ -224,6 +224,33 @@ describe('tool calling on every provider wire format (AST-8.1; local mock, docum
       script = [{ body: broken }, { body: { ...ANTHROPIC_TOOL_USE, content: [{ type: 'tool_use', name: 'flux_list_work', input: {} }] } }];
       assert.deepEqual(await compute().dispatch(requestFor(openai), live), { kind: 'failed', reason: 'provider_error', billed: 'unknown' });
       assert.deepEqual(await compute().dispatch(requestFor(anthropic), live), { kind: 'failed', reason: 'provider_error', billed: 'unknown' });
+    });
+
+    test('Anthropic: several calls with their own ids come back in order and are answered in that order', async () => {
+      script = [{ body: ANTHROPIC_TWO_CALLS }, { body: ANTHROPIC_FINAL }];
+      const adapter = compute();
+      const first = await adapter.dispatch(requestFor(anthropic), live);
+      if (first.kind !== 'completed') throw new Error('expected a completed request');
+      assert.deepEqual(first.toolCalls?.map((call) => call.id), ['toolu_01first', 'toolu_02second']);
+      const results = [{ callId: 'toolu_02second', content: 'renamed', isError: false }, { callId: 'toolu_01first', content: LISTED, isError: false }];
+      await adapter.dispatch(requestFor(anthropic, { turns: [{ text: '', calls: first.toolCalls!, results, replay: first.replay }] }), live);
+      assert.deepEqual((seen[1]!.body.messages[2]!.content as { tool_use_id: string }[]).map((block) => block.tool_use_id), ['toolu_01first', 'toolu_02second']);
+    });
+
+    test('Anthropic: two tool_use blocks with one id are a malformed answer, refused before any call runs (as Chat Completions refuses them)', async () => {
+      script = [{ body: ANTHROPIC_DUPLICATE_IDS }];
+      assert.deepEqual(await compute().dispatch(requestFor(anthropic), live), { kind: 'failed', reason: 'provider_error', billed: 'unknown' });
+      // Through the loop: the run ends on the failed request and no tool is called.
+      script = [{ body: ANTHROPIC_DUPLICATE_IDS }];
+      const ran: PersonalToolCall[] = [];
+      const result = await runToolLoop({
+        compute: compute(), first: requestFor(anthropic), price: tablePrice('anthropic', 'claude-sonnet-5')!, reservedMicros: 470_000, maxTurns: PERSONAL_RUN_LIMITS.maxTurns,
+        deadline: Number.MAX_SAFE_INTEGER, now: () => 0, gate: async () => null, signal: live,
+        session: { tools: FLUX_TOOLS, call: async (call) => { ran.push(call); return { content: 'ok', isError: false }; }, close: async () => undefined },
+      });
+      assert.deepEqual(result.end, { kind: 'failed', result: { kind: 'failed', reason: 'provider_error', billed: 'unknown' } });
+      assert.deepEqual(ran, [], 'neither call ran');
+      assert.equal(result.account.unknown, true, 'the request was sent, so its charge is unknown');
     });
 
     test('Anthropic: the token count carries the tools and the earlier turns, so the preflight bound is not understated', async () => {

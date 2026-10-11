@@ -244,6 +244,34 @@ describe('the bounded loop', () => {
     assert.equal(provider.sent.length, 3);
   });
 
+  test('the clock is read again at the dispatch boundary: a deadline crossed during a tool call, the gate or the input count ends the run before the next request', async () => {
+    const DEADLINE = 10;
+    /** One run on a fake clock; `cross` moves the clock past the deadline at the chosen point. */
+    async function run(cross: 'never' | 'call' | 'gate' | 'count') {
+      let time = 0;
+      let gates = 0;
+      const provider = new FakeProvider((turn) => (turn === 1 ? toolUse('c1') : answer()));
+      const compute: PersonalCompute = {
+        enabled: true, dispatch: (next) => provider.dispatch(next),
+        countInputTokens: async () => { if (cross === 'count') time = DEADLINE + 1; return 12; },
+      };
+      const session = new FakeSession(() => { if (cross === 'call') time = DEADLINE + 1; return { content: 'ok', isError: false }; });
+      const gate: Gate = async () => { gates += 1; if (cross === 'gate' && gates === 2) time = DEADLINE + 1; return null; };
+      const result = await loop(compute, session, { deadline: DEADLINE, now: () => time, gate });
+      return { result, session, sent: provider.sent.length };
+    }
+    // Within the deadline the run goes on: the control.
+    const control = await run('never');
+    assert.equal(control.result.end.kind, 'answer');
+    assert.equal(control.sent, 2);
+    for (const point of ['call', 'gate', 'count'] as const) {
+      const crossed = await run(point);
+      assert.deepEqual(crossed.result.end, { kind: 'limit', limit: 'time' }, `crossed during the ${point}`);
+      assert.equal(crossed.sent, 1, `no request starts after the deadline (${point})`);
+      assert.deepEqual(crossed.session.calls.map((call) => call.id), ['c1'], 'the call already made stays made');
+    }
+  });
+
   test('Stop during a call ends the loop without another request', async () => {
     const controller = new AbortController();
     const provider = new FakeProvider(() => toolUse('c1'));
