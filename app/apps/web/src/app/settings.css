@@ -24,7 +24,8 @@
 }
 :root[data-theme="dark"] .sset-card { box-shadow: inset 0 0 0 1px var(--line), 0 1px 2px rgba(0,0,0,.4), 0 8px 20px -8px rgba(0,0,0,.6); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .sset-card { box-shadow: inset 0 0 0 1px var(--line), 0 1px 2px rgba(0,0,0,.4), 0 8px 20px -8px rgba(0,0,0,.6); } }
-.sset-card > * + *, .sset-card > li + li { border-top: 1px solid var(--line); }
+/* .sset-row resets border, so a row after a row needs the higher-specificity hairline (#434). */
+.sset-card > * + *, .sset-card > li + li, .sset-card > .sset-row + .sset-row { border-top: 1px solid var(--line); }
 .sset-row {
   display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 9px 18px;
   color: var(--t1); text-align: left; text-decoration: none; background: none; border: 0; font: inherit;
@@ -123,6 +124,25 @@
 /* The header's way back from a settings page to the list (#266 PF-5). */
 .top__back { flex: none; }
 /* Projects list (#266 PF-1). */
+/* #370 removed the shared settings list rules that this list still uses (#438): keep them here. */
+.set { max-width: 640px; padding-top: 24px; }
+.set-card {
+  list-style: none; margin: 0; padding: 0; border-radius: var(--r-lg); background: var(--el);
+  box-shadow: inset 0 0 0 1px var(--line); overflow: hidden;
+}
+.set-card li + li .set-row { border-top: 1px solid var(--line); }
+.set-row {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 10px 14px;
+  color: var(--t1); text-decoration: none; text-align: left; transition: var(--tr);
+}
+.set-row:hover { background: var(--hov); }
+.set-row:focus-visible { outline: 2px solid var(--t1); outline-offset: -2px; }
+.set-row__ic { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: var(--r-sm); background: var(--sub); color: var(--t1); }
+.set-row__b { display: flex; flex: 1; flex-direction: column; min-width: 0; gap: 1px; }
+.set-row__t { font-size: var(--fs-base); font-weight: 500; line-height: 1.35; overflow-wrap: anywhere; }
+.set-row__s { font-size: var(--fs-sm); line-height: 1.4; color: var(--t3); }
+.set-row__go { flex: none; color: var(--t3); }
+@media (max-width: 640px) { .set { padding-top: 14px; } }
 .proj-index__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin: 4px 2px 14px; }
 .proj-index__lead { flex: 1 1 16em; margin: 0; font-size: var(--fs-sm); color: var(--t3); line-height: 1.5; }
 .proj-index__dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--inv); }

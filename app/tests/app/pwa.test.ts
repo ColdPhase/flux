@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import { describe, test } from 'node:test';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { join, relative } from 'node:path';
 import { apiUrl } from './support/http.js';
 
 // Installability and service worker delivery checks over HTTP (issue #41). Browser behaviour
@@ -75,6 +78,32 @@ describe('service worker delivery', () => {
     assert.ok(precache.some((url) => /^\/assets\/.+\.js$/.test(url)), 'the app bundle is precached');
     assert.equal(precache.some((url) => url.startsWith('/api/')), false, 'no API URL is precached');
     assert.equal(precache.includes('/index.html'), false, 'navigations are network-first, not precached');
+    // Compare with the actual finished build, not the earlier bundler object: CSS-only facades
+    // can be removed after a normal generateBundle hook. Every cached file must exist; only the declared online-only terminal is excluded.
+    const directory = 'apps/web/dist';
+    const actual: string[] = [];
+    function walk(folder: string) {
+      for (const name of readdirSync(folder)) {
+        const path = join(folder, name);
+        if (statSync(path).isDirectory()) walk(path);
+        else if (!/\.(?:map|br|gz)$/.test(name) && !['index.html', 'sw.js'].includes(name)) actual.push(`/${relative(directory, path)}`);
+      }
+    }
+    walk(directory);
+    const onlineOnly = /^\/assets\/SignInConsole-[^/]+\.(?:js|css)$/;
+    const expected = actual.filter((url) => !onlineOnly.test(url)).sort();
+    assert.ok(actual.some((url) => /^\/assets\/SignInConsole-[^/]+\.js$/.test(url)), 'the online-only terminal is actually built');
+    assert.deepEqual(precache, expected, 'the exact final build inventory has no phantom or omitted cached asset');
+    const hash = createHash('sha256');
+    for (const url of precache) {
+      const original = readFileSync(join(directory, url.slice(1)));
+      const delivered = await get(url);
+      assert.equal(delivered.response.status, 200, `precached ${url} exists`);
+      assert.deepEqual(delivered.bytes, original, `${url} delivers its actual built bytes`);
+      hash.update(url).update('\0').update(original).update('\0');
+    }
+    hash.update(readFileSync(join(directory, 'index.html')));
+    assert.equal(code.match(/const VERSION = "([0-9a-f]{16})";/)?.[1], hash.digest('hex').slice(0, 16), 'version fingerprints actual final asset and HTML bytes');
     // F-022 T4: the sign-in console's terminal works only online; installed clients do not download it.
     assert.equal(precache.some((url) => /\/assets\/SignInConsole-/.test(url)), false, 'the sign-in console is not precached');
     for (const url of precache) assert.equal((await get(url)).response.status, 200, `precached ${url} exists`);
@@ -124,19 +153,37 @@ describe('compressed app files', () => {
     const html = (await get('/', 'text/html')).bytes.toString('utf8');
     const assets = [...html.matchAll(/(?:src|href)="(\/assets\/[^"]+\.(?:js|css))"/g)].map((match) => match[1]!);
     assert.ok(assets.length >= 2, `assets in index.html: ${assets.join(', ')}`);
+    const entry = html.match(/<script\b[^>]*\bsrc="(\/assets\/[^" ]+\.js)"/)?.[1];
+    // Vite can link a tiny shared dependency stylesheet before the primary app stylesheet.
+    // Keep the strong main-delivery guards on the largest eager stylesheet, regardless of order;
+    // every linked stylesheet below still has its exact delivery/threshold/benefit checks.
+    const styles = [...html.matchAll(/<link\b[^>]*\brel="stylesheet"[^>]*\bhref="(\/assets\/[^" ]+\.css)"/g)].map((match) => match[1]!);
+    const style = styles.sort((a, b) => readFileSync(`apps/web/dist${b}`).length - readFileSync(`apps/web/dist${a}`).length)[0];
+    assert.ok(entry && style, 'actual entry script and main stylesheet are present');
     for (const asset of assets) {
       const plain = await raw(asset, 'identity');
       assert.equal(plain.headers['content-encoding'], undefined, asset);
+      assert.deepEqual(plain.bytes, readFileSync(`apps/web/dist${asset}`), `${asset} serves its actual built bytes`);
       const br = await raw(asset, 'br');
-      assert.equal(br.headers['content-encoding'], 'br', asset);
+      const hasBr = existsSync(`apps/web/dist${asset}.br`);
+      assert.equal(br.headers['content-encoding'], hasBr ? 'br' : undefined, asset);
       assert.equal(br.headers['content-type'], plain.headers['content-type'], asset);
       assert.equal(br.headers['cache-control'], 'public, max-age=31536000, immutable', asset);
       for (const answer of [plain, br]) assert.match(String(answer.headers.vary), /accept-encoding/i, `${asset} varies by encoding`);
-      assert.deepEqual(brotliDecompressSync(br.bytes), plain.bytes, `${asset} decodes to the same bytes`);
-      assert.ok(br.bytes.length < plain.bytes.length / 2, `${asset}: ${br.bytes.length} of ${plain.bytes.length} bytes`);
+      assert.deepEqual(hasBr ? brotliDecompressSync(br.bytes) : br.bytes, plain.bytes, `${asset} decodes to the same bytes`);
       const gz = await raw(asset, 'gzip');
-      assert.equal(gz.headers['content-encoding'], 'gzip', asset);
-      assert.deepEqual(gunzipSync(gz.bytes), plain.bytes);
+      const hasGz = existsSync(`apps/web/dist${asset}.gz`);
+      assert.equal(gz.headers['content-encoding'], hasGz ? 'gzip' : undefined, asset);
+      assert.deepEqual(hasGz ? gunzipSync(gz.bytes) : gz.bytes, plain.bytes);
+      if (asset === entry || asset === style) {
+        assert.equal(hasBr, true, `${asset}: main delivery retains Brotli`);
+        assert.equal(hasGz, true, `${asset}: main delivery retains gzip`);
+        assert.ok(br.bytes.length < plain.bytes.length / 2, `${asset}: ${br.bytes.length} of ${plain.bytes.length} bytes`);
+      } else if (plain.bytes.length < 1024) {
+        assert.equal(hasBr || hasGz, false, `${asset}: the documented small-file threshold stays intact`);
+      }
+      if (hasBr) assert.ok(br.bytes.length < plain.bytes.length, `${asset}: Brotli is kept only when beneficial`);
+      if (hasGz) assert.ok(gz.bytes.length < plain.bytes.length, `${asset}: gzip is kept only when beneficial`);
     }
     // fetch decodes transparently, as browsers do.
     const decoded = await fetchEncoded(assets[0]!, 'br');

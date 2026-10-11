@@ -20,10 +20,13 @@ export function fluxServiceWorker(source = 'src/pwa/sw.js', onlineOnly: RegExp[]
   return {
     name: 'flux-service-worker',
     apply: 'build',
+    // Vite removes CSS-only JS facades while finishing the bundle. Inventory/hash the final
+    // output, after those hooks, rather than precaching files which will never be written.
+    enforce: 'post',
     configResolved(resolved) {
       config = resolved;
     },
-    generateBundle(_options, bundle) {
+    generateBundle: { order: 'post', handler(_options, bundle) {
       const entries = new Map<string, string | Uint8Array>();
       for (const file of Object.values(bundle)) {
         if (file.fileName.endsWith('.map') || file.fileName === 'index.html' || onlineOnly.some((pattern) => pattern.test(file.fileName))) continue;
@@ -51,6 +54,6 @@ export function fluxServiceWorker(source = 'src/pwa/sw.js', onlineOnly: RegExp[]
         .replace('/* __FLUX_PRECACHE__ */ []', JSON.stringify(urls));
       if (code === template) this.error('Service worker placeholders not found');
       this.emitFile({ type: 'asset', fileName: 'sw.js', source: code });
-    },
+    } },
   };
 }

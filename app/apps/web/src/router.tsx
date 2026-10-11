@@ -1,34 +1,12 @@
-import { Navigate, Outlet, createBrowserRouter } from 'react-router';
+import { Navigate, Outlet, createBrowserRouter, type RouteObject } from 'react-router';
 import { ToastProvider } from './ui';
 import { UpdatePrompt } from './pwa';
 import { AppLayout } from './app/AppLayout';
-import { KeyboardShortcuts, SettingsAccount, SettingsAgents, SettingsHome, SettingsLayout } from './app/SettingsHome';
-import { ProjectsIndex } from './app/ProjectsIndex';
 import { appLoader } from './app/data';
 import { ProjectConversation, projectConversationLoader, shouldRevalidateProjectConversation } from './app/ProjectConversation';
-import { ProjectSetup } from './app/ProjectSetup';
-import { MaterialView, materialLoader } from './app/MaterialView';
-import { ProjectTasks, projectTasksLoader } from './work/ProjectTasks';
-import { ProjectAgents, projectAgentsLoader } from './agents/ProjectAgents';
-import { DocHistory, DocReader, WikiHome, WorkspaceDocs, docHistoryLoader, docLoader } from './docs/DocViews';
-import { DocEditor, docEditLoader } from './docs/DocEditor';
-import { WikiLayout, wikiLoader, wikiShouldRevalidate } from './docs/Wiki';
-import { Booting, RouteErrorPage } from './app/errors';
-import { ConversationView, NotFoundView, TasksView } from './app/views';
-import { DmIndex, NewDm } from './dm/DmIndex';
-import { DmConversation, dmLoader } from './dm/DmConversation';
-import { DmSketches } from './dm/DmSketches';
-import { InboxOpen, InboxView } from './notifications/InboxView';
-import { NotificationSettings, UnsubscribePage, VerifyAddress } from './notifications/NotificationSettings';
-import { SketchIndex } from './sketch/SketchIndex';
-import { SketchRoute } from './sketch/SketchView';
+import { Booting, RouteCodeLoadError, RouteErrorPage } from './app/errors';
+import { ConversationView, NotFoundView } from './app/views';
 import { projectShellLoader } from './project/data';
-import { ProjectMap } from './project/ProjectViews';
-import { LiveOpen } from './live/LiveOpen';
-import { SearchPage } from './search/SearchPage';
-import { GithubSettings } from './github/GithubSettings';
-import { AssistantSettings } from './assistant/AssistantSettings';
-import { ClaudeCodeSignIn } from './agent-runtime/ClaudeCodeSignIn';
 import {
   forgotPasswordAction,
   forgotPasswordLoader,
@@ -40,8 +18,42 @@ import {
   signUpAction,
 } from './auth/logic';
 import { AuthLayout, ForgotPasswordPage, ResetPasswordPage, SignInPage, SignOutPage, SignUpPage } from './auth/pages';
-import { AgentConnectionPage, AgentConsentPage, agentConnectionLoader, agentConsentLoader } from './agent-connection/pages';
-import { BackgroundComputeSettings, backgroundComputeLoader } from './proactive-comparison/BackgroundComputeSettings';
+
+// The settings layout and its sections share one download.
+let settings: Promise<typeof import('./app/SettingsHome')> | undefined;
+const settingsPage = () => settings ??= import('./app/SettingsHome');
+
+// Paths and nesting stay eager so matching needs no download. A secondary route loads its
+// existing component/data functions together, without changing their authority or revalidation.
+// Its failure is contained inside the mounted shell instead of replacing it.
+function secondary(load: Extract<NonNullable<RouteObject['lazy']>, () => Promise<unknown>>) {
+  return {
+    ErrorBoundary: RouteErrorPage,
+    async lazy() {
+      try { return await load(); }
+      catch (cause) {
+        // Router 8 retains route.lazy after a rejected module and renders HydrateFallback before
+        // its error boundary. Finish registration, then fail the loader explicitly: no component,
+        // destination data or successful action is invented. Reload resets the failed module cache.
+        const error = new RouteCodeLoadError(cause);
+        return { loader: () => { throw error; } };
+      }
+    },
+  };
+}
+const docReader = secondary(async () => {
+  const page = await import('./docs/DocViews');
+  return { Component: page.DocReader, loader: page.docLoader };
+});
+const docEditor = secondary(async () => {
+  const page = await import('./docs/DocEditor');
+  return { Component: page.DocEditor, loader: page.docEditLoader };
+});
+const sketch = secondary(async () => ({ Component: (await import('./sketch/SketchView')).SketchRoute }));
+const material = secondary(async () => {
+  const page = await import('./app/MaterialView');
+  return { Component: page.MaterialView, loader: page.materialLoader };
+});
 
 function Root() {
   // The update prompt is shown on every page, signed in or not; reloading is the person's choice.
@@ -64,10 +76,10 @@ export const router = createBrowserRouter([
           { path: 'forgot-password', loader: forgotPasswordLoader, action: forgotPasswordAction, Component: ForgotPasswordPage },
           { path: 'reset-password', action: resetPasswordAction, Component: ResetPasswordPage },
           { path: 'sign-out', loader: signOutLoader, action: signOutAction, Component: SignOutPage },
-          { path: 'connect-agent', loader: agentConnectionLoader, Component: AgentConnectionPage },
-          { path: 'consent', loader: agentConsentLoader, Component: AgentConsentPage },
+          { path: 'connect-agent', ...secondary(async () => { const page = await import('./agent-connection/pages'); return { Component: page.AgentConnectionPage, loader: page.agentConnectionLoader }; }) },
+          { path: 'consent', ...secondary(async () => { const page = await import('./agent-connection/pages'); return { Component: page.AgentConsentPage, loader: page.agentConsentLoader }; }) },
           // Linked from notification email (#116); works without signing in.
-          { path: 'unsubscribe', Component: UnsubscribePage },
+          { path: 'unsubscribe', ...secondary(async () => ({ Component: (await import('./notifications/NotificationSettings')).UnsubscribePage })) },
         ],
       },
       {
@@ -78,8 +90,8 @@ export const router = createBrowserRouter([
         ErrorBoundary: RouteErrorPage,
         children: [
           { index: true, Component: ConversationView },
-          { path: 'projects', Component: ProjectsIndex },
-          { path: 'projects/new', Component: ProjectSetup },
+          { path: 'projects', ...secondary(async () => ({ Component: (await import('./app/ProjectsIndex')).ProjectsIndex })) },
+          { path: 'projects/new', ...secondary(async () => ({ Component: (await import('./app/ProjectSetup')).ProjectSetup })) },
           {
             // One project (#117): its header, audience, state line and view tabs share this data.
             id: 'project',
@@ -89,63 +101,61 @@ export const router = createBrowserRouter([
               // One conversation (UI116-1): the stream stays mounted while a root's thread opens beside it.
               { loader: projectConversationLoader, shouldRevalidate: shouldRevalidateProjectConversation, Component: ProjectConversation,
                 children: [{ index: true }, { path: 'conversations/:conversationId' }] },
-              { path: 'github', Component: GithubSettings },
-              { path: 'tasks', loader: projectTasksLoader, Component: ProjectTasks },
-              { path: 'map', Component: ProjectMap },
-              { path: 'map/:sketchId', Component: SketchRoute },
+              { path: 'github', ...secondary(async () => ({ Component: (await import('./github/GithubSettings')).GithubSettings })) },
+              { path: 'tasks', ...secondary(async () => { const page = await import('./work/ProjectTasks'); return { Component: page.ProjectTasks, loader: page.projectTasksLoader }; }) },
+              { path: 'map', ...secondary(async () => ({ Component: (await import('./project/ProjectViews')).ProjectMap })) },
+              { path: 'map/:sketchId', ...sketch },
               {
                 // The wiki (#112) as two panes (#136): the page index beside the open page.
                 id: 'wiki',
                 path: 'docs',
-                loader: wikiLoader,
-                shouldRevalidate: wikiShouldRevalidate,
-                Component: WikiLayout,
+                ...secondary(async () => { const page = await import('./docs/Wiki'); return { Component: page.WikiLayout, loader: page.wikiLoader, shouldRevalidate: page.wikiShouldRevalidate }; }),
                 children: [
-                  { index: true, Component: WikiHome },
-                  { path: 'new', loader: docEditLoader, Component: DocEditor },
-                  { path: ':docId', loader: docLoader, Component: DocReader },
-                  { path: ':docId/versions/:version', loader: docLoader, Component: DocReader },
-                  { path: ':docId/edit', loader: docEditLoader, Component: DocEditor },
-                  { path: ':docId/history', loader: docHistoryLoader, Component: DocHistory },
+                  { index: true, ...secondary(async () => ({ Component: (await import('./docs/DocViews')).WikiHome })) },
+                  { path: 'new', ...docEditor },
+                  { path: ':docId', ...docReader },
+                  { path: ':docId/versions/:version', ...docReader },
+                  { path: ':docId/edit', ...docEditor },
+                  { path: ':docId/history', ...secondary(async () => { const page = await import('./docs/DocViews'); return { Component: page.DocHistory, loader: page.docHistoryLoader }; }) },
                 ],
               },
               // Agents (UI116-2, #136): the project's connections and its task threads.
-              { path: 'agents', loader: projectAgentsLoader, Component: ProjectAgents },
+              { path: 'agents', ...secondary(async () => { const page = await import('./agents/ProjectAgents'); return { Component: page.ProjectAgents, loader: page.projectAgentsLoader }; }) },
               // An invitation's link (#62): opens the session's work with the invitation card.
-              { path: 'live/:sessionId', Component: LiveOpen },
+              { path: 'live/:sessionId', ...secondary(async () => ({ Component: (await import('./live/LiveOpen')).LiveOpen })) },
             ],
           },
-          { path: 'materials/:materialId', loader: materialLoader, Component: MaterialView },
-          { path: 'materials/:materialId/versions/:version', loader: materialLoader, Component: MaterialView },
-          { path: 'tasks', Component: TasksView },
-          { path: 'map', Component: SketchIndex },
-          { path: 'map/:sketchId', Component: SketchRoute },
-          { path: 'docs', Component: WorkspaceDocs },
-          { path: 'search', Component: SearchPage },
-          { path: 'dm', Component: DmIndex },
-          { path: 'dm/new', Component: NewDm },
-          { path: 'dm/:dmId', loader: dmLoader, Component: DmConversation },
-          { path: 'dm/:dmId/sketches', Component: DmSketches },
-          { path: 'dm/:dmId/sketches/:sketchId', Component: SketchRoute },
-          { path: 'inbox', Component: InboxView },
-          { path: 'inbox/:id', Component: InboxOpen },
+          { path: 'materials/:materialId', ...material },
+          { path: 'materials/:materialId/versions/:version', ...material },
+          { path: 'tasks', ...secondary(async () => ({ Component: (await import('./app/TasksView')).TasksView })) },
+          { path: 'map', ...secondary(async () => ({ Component: (await import('./sketch/SketchIndex')).SketchIndex })) },
+          { path: 'map/:sketchId', ...sketch },
+          { path: 'docs', ...secondary(async () => ({ Component: (await import('./docs/DocViews')).WorkspaceDocs })) },
+          { path: 'search', ...secondary(async () => ({ Component: (await import('./search/SearchPage')).SearchPage })) },
+          { path: 'dm', ...secondary(async () => ({ Component: (await import('./dm/DmIndex')).DmIndex })) },
+          { path: 'dm/new', ...secondary(async () => ({ Component: (await import('./dm/DmIndex')).NewDm })) },
+          { path: 'dm/:dmId', ...secondary(async () => { const page = await import('./dm/DmConversation'); return { Component: page.DmConversation, loader: page.dmLoader }; }) },
+          { path: 'dm/:dmId/sketches', ...secondary(async () => ({ Component: (await import('./dm/DmSketches')).DmSketches })) },
+          { path: 'dm/:dmId/sketches/:sketchId', ...sketch },
+          { path: 'inbox', ...secondary(async () => ({ Component: (await import('./notifications/InboxView')).InboxView })) },
+          { path: 'inbox/:id', ...secondary(async () => ({ Component: (await import('./notifications/InboxView')).InboxOpen })) },
           // Settings (#350, F-026): every earlier address still opens its section.
           {
             path: 'settings',
-            Component: SettingsLayout,
+            ...secondary(async () => ({ Component: (await settingsPage()).SettingsLayout })),
             children: [
-              { index: true, Component: SettingsHome },
-              { path: 'appearance', Component: SettingsHome },
-              { path: 'account', Component: SettingsAccount },
-              { path: 'notifications', Component: NotificationSettings },
-              { path: 'notifications/verify', Component: VerifyAddress },
-              { path: 'agents', Component: SettingsAgents },
-              // F-022 T4: the Claude Code sign-in console; its terminal loads only here.
-              { path: 'agents/claude-code', Component: ClaudeCodeSignIn },
+              { index: true, ...secondary(async () => ({ Component: (await settingsPage()).SettingsHome })) },
+              { path: 'appearance', ...secondary(async () => ({ Component: (await settingsPage()).SettingsHome })) },
+              { path: 'account', ...secondary(async () => ({ Component: (await settingsPage()).SettingsAccount })) },
+              { path: 'notifications', ...secondary(async () => ({ Component: (await import('./notifications/NotificationSettings')).NotificationSettings })) },
+              { path: 'notifications/verify', ...secondary(async () => ({ Component: (await import('./notifications/NotificationSettings')).VerifyAddress })) },
+              { path: 'agents', ...secondary(async () => ({ Component: (await settingsPage()).SettingsAgents })) },
+              // F-022 T4: the console and terminal load only when this route opens.
+              { path: 'agents/claude-code', ...secondary(async () => ({ Component: (await import('./agent-runtime/ClaudeCodeSignIn')).ClaudeCodeSignIn })) },
               { path: 'assistant/claude-code', element: <Navigate to="/settings/agents/claude-code" replace /> },
-              { path: 'shortcuts', Component: KeyboardShortcuts },
-              { path: 'assistant', Component: AssistantSettings },
-              { path: 'background-compute', loader: backgroundComputeLoader, Component: BackgroundComputeSettings },
+              { path: 'shortcuts', ...secondary(async () => ({ Component: (await settingsPage()).KeyboardShortcuts })) },
+              { path: 'assistant', ...secondary(async () => ({ Component: (await import('./assistant/AssistantSettings')).AssistantSettings })) },
+              { path: 'background-compute', ...secondary(async () => { const page = await import('./proactive-comparison/BackgroundComputeSettings'); return { Component: page.BackgroundComputeSettings, loader: page.backgroundComputeLoader }; }) },
             ],
           },
           { path: '*', Component: NotFoundView },

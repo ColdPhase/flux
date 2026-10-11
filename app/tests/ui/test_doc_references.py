@@ -18,7 +18,7 @@ class DocReferenceJourney(unittest.TestCase):
         cls.pw = sync_playwright().start()
         cls.browser = cls.pw.chromium.launch()
         expect.set_options(timeout=10000)
-        cls.ctx = cls.browser.new_context(base_url=ORIGIN)
+        cls.ctx = cls.browser.new_context(service_workers="block", base_url=ORIGIN)
         api(cls.ctx, "POST", "/api/auth/sign-up/email", {"name": "Ada Reference", "email": f"references-{uuid.uuid4()}@example.test", "password": "Native references keep their exact identity"})
         ws = api(cls.ctx, "POST", "/api/v1/workspaces", {"name": "Riverside makers"}, 201)
         cls.workspace = ws["id"]
@@ -42,7 +42,7 @@ class DocReferenceJourney(unittest.TestCase):
         cls.message = api(cls.ctx, "GET", f"/api/v1/conversations/{cls.thread['id']}")["messages"][0]
         cls.user = api(cls.ctx, "GET", "/api/v1/me")["user"]["id"]
         cls.state = cls.ctx.storage_state()
-        cls.other = cls.browser.new_context(base_url=ORIGIN)
+        cls.other = cls.browser.new_context(service_workers="block", base_url=ORIGIN)
         email = f"reference-peer-{uuid.uuid4()}@example.test"
         api(cls.other, "POST", "/api/auth/sign-up/email", {"name": "Jonas Reference", "email": email, "password": "Private reference drafts belong to one person"})
         cls.other_user = api(cls.other, "GET", "/api/v1/me")["user"]["id"]
@@ -64,8 +64,8 @@ class DocReferenceJourney(unittest.TestCase):
         cls.browser.close()
         cls.pw.stop()
 
-    def scene(self, phone=False, self_doc=False, block_service_workers=False):
-        ctx = self.browser.new_context(base_url=ORIGIN, storage_state=self.state, viewport={"width": 390 if phone else 1440, "height": 844 if phone else 900}, is_mobile=phone, has_touch=phone, service_workers="block" if block_service_workers else "allow")
+    def scene(self, phone=False, self_doc=False):
+        ctx = self.browser.new_context(base_url=ORIGIN, storage_state=self.state, viewport={"width": 390 if phone else 1440, "height": 844 if phone else 900}, is_mobile=phone, has_touch=phone, service_workers="block")
         self.addCleanup(ctx.close)
         page = ctx.new_page()
         page.choice_observations = []
@@ -413,7 +413,7 @@ class DocReferenceJourney(unittest.TestCase):
     def test_10_delayed_reference_search_describes_its_wait_and_keeps_the_draft(self):
         for phone in (False, True):
             with self.subTest(phone=phone):
-                page, text = self.scene(phone, block_service_workers=True)
+                page, text = self.scene(phone)
                 picker = self.picker(page, text)
                 target = self.native["work"][3]
                 held = []

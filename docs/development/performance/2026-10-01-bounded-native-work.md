@@ -219,7 +219,7 @@ work-summary reads settle, at most 1 s; once shown it stays shown, and the arriv
 opening settle run again then. The message pager shows nothing before its first page and keeps
 its busy controls while the reader moves between pages. Genuine reader input is wheel, touch,
 scroll keys outside editable fields, a pointer moved or pressed in the feed, or focus moved into
-it. The opening settle (open on whole messages, latest in view, at most 2 s) ends on that input,
+it. The stream's opening settle (open on whole messages, latest in view, at most 2 s) ends on that input,
 or on a scroll it did not write within 500 ms of it; layout growth and scroll anchoring never end
 it. A scroll event the reading position did not write records the reader's position; a change
 found before its event has arrived is the reader's only after such input (within 500 ms, or
@@ -229,9 +229,11 @@ moved over a message within the last 2 s, growth keeps that message at its scree
 ahead of following the end; after a scroll the pointer aims at the message now under it.
 
 One project conversation (2026-10-05, #155 merge of main's #195 stream and thread): the rules
-above now apply to the open **thread**, whose one position owner is `useMessageWork`; its one
-bounded association read covers the root (shown whole at the thread's top, with what was made
-from it) and the replies around the viewport, at most 100. The project's **stream** of roots keeps
+above now apply to the open **thread**, whose one position owner is `useMessageWork`, except its
+opening (#436): a thread opened without a `#message-` anchor starts at its root, whole, at the
+top of its feed, and does not settle on the latest replies; a long thread shows its oldest replies
+first and the reader scrolls down. Its one bounded association read covers the root (shown whole
+at the thread's top, with what was made from it) and the replies around the viewport, at most 100. The project's **stream** of roots keeps
 #195's own position owner (`ConversationStream`); its chips come from the read alone
 (`useMessageWorkRead`, never positioning the feed) for the roots around the viewport, and task
 announcement titles and discussed tasks from one reference-row read of the visible
