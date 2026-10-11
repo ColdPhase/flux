@@ -146,6 +146,24 @@ describe('the PostgreSQL store under the owner use cases', () => {
   });
 });
 
+describe('saving a slot is compare-and-set against what the worker read (#331 m8)', () => {
+  test('a stale decision does not replace a slot a bind has since held', async () => {
+    const slot = `runtime-${900 + Math.floor(Math.random() * 90)}`;
+    const store = agentRuntimeStore(db);
+    const row = { slot, state: 'ready' as const, bootId: randomUUID(), wipeBootId: null, outOfPoolReason: null };
+    try {
+      await store.saveSlot(row);
+      await pool.query(`UPDATE agent_runtime_slots SET state = 'held' WHERE slot = $1`, [slot]);
+      await store.saveSlot({ ...row, state: 'wiping', wipeBootId: randomUUID() }, { state: 'ready', wipeBootId: null });
+      assert.equal((await pool.query(`SELECT state FROM agent_runtime_slots WHERE slot = $1`, [slot])).rows[0].state, 'held');
+      await store.saveSlot({ ...row, state: 'ready' }, { state: 'held', wipeBootId: null });
+      assert.equal((await pool.query(`SELECT state FROM agent_runtime_slots WHERE slot = $1`, [slot])).rows[0].state, 'ready');
+    } finally {
+      await pool.query('DELETE FROM agent_runtime_slots WHERE slot = $1', [slot]);
+    }
+  });
+});
+
 describe('purge records confirmed and unconfirmed vendor logout', () => {
   for (const confirmed of [undefined, false, true]) {
     test(`owner history reports signOutFailed=${confirmed !== true} after ${String(confirmed)} cleanup`, async () => {
