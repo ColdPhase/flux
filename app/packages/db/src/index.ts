@@ -11,6 +11,7 @@ export * from './repositories/agent-connections.js';
 export * from './repositories/agent-mcp-policy.js';
 export * from './repositories/project-agents.js';
 export * from './repositories/agent-project-objects.js';
+export * from './repositories/idp-standing.js';
 export * from './migrations/ledger.js';
 export * from './migrations/summary-compatibility.js';
 // Highest numbered file in packages/db/migrations. The API refuses other versions.
