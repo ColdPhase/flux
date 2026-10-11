@@ -56,6 +56,8 @@ export interface SketchMapProps {
   onAddAt(parentId: string, x: number, y: number): void;
   /** The dot used without a pointer (Enter or Space): the next thought chosen is linked. */
   onConnectFrom(id: string): void;
+  onLabel(linkId: string): void;
+  onConnections(thoughtId: string): void;
   /** S15: phones show an Add a thought button on the map itself. */
   onAddThought(): void;
   /** The single local draft that is not saved yet, shown on the map where it will land. */
@@ -106,6 +108,7 @@ export function SketchMap(props: SketchMapProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const compositionRef = useRef<HTMLDivElement>(null);
+  const selectionBarRef = useRef<HTMLDivElement>(null);
   const [compositionHeight, setCompositionHeight] = useState(240);
   const [compositionPosition, setCompositionPosition] = useState<{ left: number; top: number } | null>(null);
   const phoneToolsRef = useRef<HTMLDivElement>(null);
@@ -189,12 +192,33 @@ export function SketchMap(props: SketchMapProps) {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+  // Keep the expanded, named actions in the visible canvas at any selection/zoom.
+  // This is presentation geometry only; neither the saved thoughts nor camera are moved.
+  useLayoutEffect(() => {
+    const bar = selectionBarRef.current;
+    const canvas = canvasRef.current;
+    if (!bar || !canvas || compact) return;
+    const placeBar = () => {
+      bar.style.maxWidth = `${Math.max(0, canvas.clientWidth - 16)}px`;
+      bar.style.marginLeft = '0px';
+      const view = canvas.getBoundingClientRect();
+      const bounds = bar.getBoundingClientRect();
+      const dx = Math.max(view.left + 8 - bounds.left, Math.min(0, view.right - 8 - bounds.right));
+      bar.style.marginLeft = `${dx / zoom}px`;
+    };
+    placeBar();
+    const observer = new ResizeObserver(placeBar);
+    observer.observe(bar);
+    observer.observe(canvas);
+    canvas.addEventListener('scroll', placeBar, { passive: true });
+    return () => { observer.disconnect(); canvas.removeEventListener('scroll', placeBar); };
+  });
   const projection = compact && canvasWidth && shown.length ? project(shown, heights, canvasWidth, null) : null;
   // On a phone nothing is drawn until the width is known, so thoughts never slide in from the plane layout.
   const measuring = compact && !canvasWidth;
   const rects = projection ? projection.rects : new Map<string, Rect>(shown.map((t) => [t.id, rectOf(t, heights)]));
   const scaleX = projection?.scaleX ?? 1;
-  const origin = { x: Math.min(0, ...[...rects.values()].map((r) => r.x - PAD)), y: Math.min(0, ...[...rects.values()].map((r) => r.y - PAD)) };
+  const origin = { x: Math.min(0, ...[...rects.values()].map((r) => r.x - PAD)), y: Math.min(0, ...[...rects.values()].map((r) => r.y - (compact ? PAD : 128))) };
   let width = 0;
   let height = 0;
   for (const r of rects.values()) { width = Math.max(width, r.x + r.w - origin.x); height = Math.max(height, r.y + r.h - origin.y); }
@@ -580,9 +604,10 @@ export function SketchMap(props: SketchMapProps) {
     const label = quote(lastThought.text);
     const close = (run: () => void) => () => { setMore(false); run(); };
       return (
-        <div className="sk-actions" role="toolbar" aria-label="Selection actions" style={style}>
+        <div ref={selectionBarRef} className="sk-actions" role="toolbar" aria-label="Selection actions" style={style}>
           {single ? <button type="button" className="sk-edit-btn" aria-label={`Edit ${label}`} onClick={() => props.onEdit(lastThought.id)}>Edit</button> : null}
           {single && !compact ? <button type="button" className="sk-edit-btn" aria-label="Connect" aria-pressed={connectFrom === lastThought.id} onClick={() => props.onConnectFrom(lastThought.id)}>Connect</button> : null}
+          {single && !compact ? <button type="button" className="sk-edit-btn" onClick={() => props.onConnections(lastThought.id)}>Connections</button> : null}
           {linkAnchor}
           <button type="button" className={`sk-plus${coarse ? ' sk-plus--labelled' : ''}`} aria-label={`Add a thought connected to ${label}`} onClick={() => props.onAdd(lastThought.id)}>
             <Icon name="plus" size={14} />{coarse ? <span aria-hidden="true">Add</span> : null}
@@ -634,18 +659,44 @@ export function SketchMap(props: SketchMapProps) {
               return <path key={link.id} d={d} className={on ? 'is-on' : undefined} />;
             })}
           </svg>
+          {canWrite && !compact ? <svg className="sk-edge-hits" width={width} height={height} aria-hidden="true">
+            {sketch.links.map((link) => {
+              const a = rects.get(link.fromId);
+              const b = rects.get(link.toId);
+              if (!a || !b) return null;
+              return <path key={link.id} data-link-id={link.id} d={linkPath({ ...a, ...place(a) }, { ...b, ...place(b) }).d}
+                onPointerDown={(event) => event.stopPropagation()} onClick={(event) => {
+                  event.stopPropagation();
+                  nodes.current.get(link.fromId)?.focus({ preventScroll: true });
+                  props.onLabel(link.id);
+                }} />;
+            })}
+          </svg> : null}
           <svg className="sk-wires" width={width} height={height} aria-hidden="true">
             {wireFrom && wire ? <path className="sk-wire" d={linkPath({ ...wireFrom, ...place(wireFrom) }, wire.over && rects.get(wire.over) ? { ...rects.get(wire.over)!, ...place(rects.get(wire.over)!) } : { ...ghost(wire.x, wire.y), x: wire.x - origin.x, y: wire.y - origin.y }).d} /> : null}
             {draftFrom && props.draft ? <path className="sk-wire" d={linkPath({ ...draftFrom, ...place(draftFrom) }, { ...ghost(props.draft.x, props.draft.y), x: props.draft.x - origin.x, y: props.draft.y - origin.y }).d} /> : null}
           </svg>
-          <div className="sk-labels" aria-hidden="true">
+          <div className="sk-labels">
             {sketch.links.map((link) => {
               const a = rects.get(link.fromId);
               const b = rects.get(link.toId);
-              if (!a || !b || !link.label) return null;
+              if (!a || !b) return null;
+              const editable = canWrite && !compact;
+              if (!link.label && !(editable && (selection.includes(link.fromId) || selection.includes(link.toId)))) return null;
               const { mid } = linkPath({ ...a, ...place(a) }, { ...b, ...place(b) });
               const on = highlighted(link.fromId) || highlighted(link.toId);
-              return <span key={link.id} className={`sk-el${on ? ' is-on' : ''}`} style={{ transform: `translate(${mid.x}px, ${mid.y}px) translate(-50%, -50%)` }}>{link.label}</span>;
+              const style = { transform: `translate(${mid.x}px, ${mid.y}px) translate(-50%, -50%)`, minHeight: editable ? (coarse ? 44 : 28) / zoom : undefined, minWidth: editable && coarse ? 44 / zoom : undefined };
+              return editable ? <button key={link.id} type="button" className={`sk-el sk-el--edit${on ? ' is-on' : ''}`} style={style}
+                data-link-id={link.id} title={link.label ?? 'Add label'}
+                aria-label={`${link.label ? 'Edit' : 'Add'} label between ${byId.get(link.fromId)?.text} and ${byId.get(link.toId)?.text}`}
+                onPointerDown={(event) => event.stopPropagation()} onClick={(event) => {
+                  event.stopPropagation();
+                  // The label button can disappear when cleared; restore focus to its stable thought.
+                  nodes.current.get(link.fromId)?.focus({ preventScroll: true });
+                  props.onLabel(link.id);
+                }}>
+                {link.label ?? '+ Label'}
+              </button> : <span key={link.id} className={`sk-el${on ? ' is-on' : ''}`} style={style}>{link.label}</span>;
             })}
           </div>
           {measuring ? null : shown.map((thought) => {

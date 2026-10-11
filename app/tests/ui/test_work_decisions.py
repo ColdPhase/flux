@@ -407,7 +407,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(desk.get_by_role("region", name=re.compile("^In progress"))).to_contain_text("Measure the lamp current")
         shot(desk, "tasks-desktop-1440-in-progress")
 
-    # ---------------------------------------------------------------- common author column (F-026, superseding #136 AC-1)
+    # ---------------------------------------------------------------- author sides (F-026, #481)
 
     def assert_columns(self, page: Page, label: str) -> None:
         # Opening Details slides the pane; measure once it has settled.
@@ -417,7 +417,7 @@ class WorkDecisionsJourney(unittest.TestCase):
           setTimeout(() => resolve(el.getBoundingClientRect().x === first), 250);
         })""")
         # One project conversation (UI116-1): the root is in the stream and its replies in the thread
-        # beside it (over it on a phone). Every author keeps the same full face/name column.
+        # beside it (over it on a phone). Own messages are right; all other authors are left.
         feed = page.locator(".thread__in").bounding_box()
         mine = page.locator(f"#message-{self.messages['finding']} > .message-bubble").bounding_box()
         theirs = page.locator(f"#message-{self.messages['pivot']} > .message-bubble").bounding_box()
@@ -429,8 +429,15 @@ class WorkDecisionsJourney(unittest.TestCase):
             assert_author_column(self, message, page.viewport_size["width"], f"{label}: {key}")
             meta = message.locator(".project-convo__message-meta").bounding_box()
             bubble = message.locator(":scope > .message-bubble").bounding_box()
-            self.assertAlmostEqual(bubble["x"], meta["x"], delta=1, msg=f"{label}: {key} starts at the author-name edge")
-        self.assertAlmostEqual(mine["x"], theirs["x"], delta=1, msg=f"{label}: own and other messages share one left edge")
+            if key == "finding":
+                self.assertAlmostEqual(bubble["x"] + bubble["width"], meta["x"] + meta["width"], delta=1,
+                                       msg=f"{label}: own message ends at the author's right edge")
+            else:
+                self.assertAlmostEqual(bubble["x"], meta["x"], delta=1, msg=f"{label}: {key} starts at the author-name edge")
+        edges = page.locator(".thread__list").evaluate("el => { const r = el.getBoundingClientRect(); return {left:r.left, right:r.right}; }")
+        inset = 42 if page.viewport_size["width"] <= 680 else 44
+        self.assertAlmostEqual(mine["x"] + mine["width"], edges["right"] - inset, delta=1, msg=f"{label}: own bubble is right-aligned")
+        self.assertAlmostEqual(theirs["x"], edges["left"] + inset, delta=1, msg=f"{label}: other bubble is left-aligned")
         own_fill = page.locator(f"#message-{self.messages['finding']} > .message-bubble").evaluate("el => getComputedStyle(el).backgroundColor")
         other_fill = page.locator(f"#message-{self.messages['pivot']} > .message-bubble").evaluate("el => getComputedStyle(el).backgroundColor")
         self.assertNotEqual(own_fill, other_fill, f"{label}: the own-message treatment still distinguishes it")
@@ -447,7 +454,7 @@ class WorkDecisionsJourney(unittest.TestCase):
                 self.assertLessEqual(box["x"] + box["width"], pane["x"] + pane["width"] + 1, f"{label}: linked object {index} ends inside {column}")
                 self.assertLessEqual(box["x"] + box["width"], page.viewport_size["width"], f"{label}: linked object {index} is not cut off")
 
-    def test_09_authors_share_the_full_avatar_column_on_every_viewport(self) -> None:
+    def test_09_messages_keep_the_full_avatar_on_the_authors_side_on_every_viewport(self) -> None:
         page = self.open_conversation("partner")
         expect(page.locator(f"#message-{self.messages['finding']}")).to_have_class(re.compile("is-mine"))
         expect(page.locator(f"#message-{self.messages['pivot']}")).not_to_have_class(re.compile("is-mine"))

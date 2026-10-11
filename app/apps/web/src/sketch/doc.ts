@@ -526,7 +526,34 @@ export function useSketchDoc(sketchId: string, me: Me) {
 
   useEffect(() => () => flushMoves(), [flushMoves]);
 
-  return { sketch, load, saving, problem, clearProblem: () => setProblem(null), canUndo: undoLabel !== null, perform, saveThought, saveThoughts, saveText, undo, reload, newId: uuid };
+  // Label editing shares the write queue so a newly created connection is saved first.
+  // Compare-and-set conflicts reach the editor: never silently rebase another person's label.
+  const saveLinkLabel = useCallback(async (id: string, label: string | null, expectedLabel: string | null, key: string) => {
+    flushMoves();
+    inFlight.current += 1;
+    setSaving(true);
+    const operation = queue.current.then(async () => {
+      const link = await withRetry(() => api.updateLinkLabel(sketchId, id, label, expectedLabel, key));
+      const current = ref.current;
+      if (current) commit({ ...current, links: current.links.map((item) => item.id === id ? link : item) });
+      // An idempotent replay can contain an older result than a subsequent peer edit.
+      staleRef.current = true;
+      return link;
+    }).catch((error: unknown) => {
+      staleRef.current = true;
+      throw error;
+    }).finally(() => {
+      inFlight.current -= 1;
+      finishedWrites.current += 1;
+      if (inFlight.current) return;
+      setSaving(false);
+      if (staleRef.current) { staleRef.current = false; void reload(); }
+    });
+    queue.current = operation.then(() => undefined, () => undefined);
+    return operation;
+  }, [commit, flushMoves, reload, sketchId]);
+
+  return { sketch, load, saving, problem, clearProblem: () => setProblem(null), canUndo: undoLabel !== null, perform, saveThought, saveThoughts, saveText, saveLinkLabel, undo, reload, newId: uuid };
 }
 
 export type SketchDoc = ReturnType<typeof useSketchDoc>;

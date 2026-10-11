@@ -92,7 +92,7 @@ button.project-convo__contribution { cursor: pointer; }
 /* Ask my assistant (#68) sits after Sources; only Sources pulls into the box's padding. */
 .project-convo__sources-btn + .composer__ask { margin-left: 0; }
 
-/* F-026: one author column for people and agents, with a 32px face and 12px gap. Each
+/* F-026: a 32px author face and 12px gap on the author's side. Each
    bubble is only as wide as its content (up to 560px), so its actions stay beside it. */
 .project-convo__in { max-width: calc(var(--col) + 2 * var(--space-page)); padding: 30px var(--space-page) 12px; }
 .project-convo__day { justify-content: center; gap: 12px; margin: 5px 0 27px; font-size: var(--fs-sm); font-weight: 400; color: var(--t3); }
@@ -115,6 +115,12 @@ button.project-convo__contribution { cursor: pointer; }
 .project-convo__message > :not(.ui-avatar, .author-face) { max-width: 100%; min-width: 0; }
 .project-convo__message .ws-attach { max-width: 100%; }
 .project-convo__message.is-mine > p { border-radius: var(--r-lg) 6px var(--r-lg) var(--r-lg); background-color: var(--inv); background-image: var(--grad-inv); color: var(--oninv); }
+/* Own messages belong on the right, including the queued message before it is saved (#481).
+   Move the group, not the text's reading direction; references and photos follow their author. */
+.project-convo__message.is-mine { margin-left: auto; align-items: flex-end; padding-left: 0; padding-right: 44px; }
+.project-convo__message.is-mine > :is(.ui-avatar, .author-face) { left: auto; right: 0; }
+.project-convo__message.is-mine > .project-convo__message-meta { justify-content: flex-end; }
+.project-convo__message.is-mine.is-arrived { box-shadow: inset -3px 0 0 var(--t1); }
 
 /* Composer: a two-row card in the same column, text above and its tools below, with the
    audience and keyboard hint under the card. */
@@ -132,8 +138,9 @@ button.project-convo__contribution { cursor: pointer; }
 .project-convo__composer .project-convo__error, .project-convo__composer .project-convo__hint { order: 3; }
 @media (max-width: 680px) {
   .project-convo__in { padding: 22px 17px 12px; }
-  /* The same author column on the phone: 32px face plus a 10px gap. */
+  /* On either side, the phone keeps the 32px face plus a 10px gap. */
   .project-convo__message { max-width: 100%; padding-left: 42px; }
+  .project-convo__message.is-mine { padding-left: 0; padding-right: 42px; }
   .project-convo__message > p { padding: 11px 14px; }
   .project-convo__composer { padding: 8px 14px 15px; padding-bottom: max(15px, env(safe-area-inset-bottom)); }
   .project-convo__composer .composer__box { padding: 11px 13px; border-radius: 9px; }
