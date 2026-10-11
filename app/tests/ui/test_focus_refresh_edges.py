@@ -769,8 +769,8 @@ class RefreshEdges(unittest.TestCase):
         if not overtaken:
             for n, place in enumerate(places):
                 if not muted and n == 4:
-                    self.api(page, 'PUT', '/api/v1/notification-preferences/mute', target)
-                self.api(page, 'PUT', '/api/v1/notification-preferences/mute', {'type':'project','id':place['id'],'muted':True})
+                    self.api(page, 'PUT', '/api/v1/notification-preferences/mutes', target)
+                self.api(page, 'PUT', '/api/v1/notification-preferences/mutes', {'type':'project','id':place['id'],'muted':True})
         # This full load obtains the actual shell and preference snapshot, including all eight
         # owned places. The overtaken case intentionally loads before their remote mutes.
         page.goto(f"/projects/{actor['project']}")
@@ -779,9 +779,9 @@ class RefreshEdges(unittest.TestCase):
         other = self.browser.new_context(base_url=ORIGIN, storage_state=page.context.storage_state(), service_workers='block')
         self.addCleanup(other.close)
         if overtaken:
-            self.api(other, 'PUT', '/api/v1/notification-preferences/mute', target)
+            self.api(other, 'PUT', '/api/v1/notification-preferences/mutes', target)
             for place in places:
-                self.api(other, 'PUT', '/api/v1/notification-preferences/mute', {'type':'project','id':place['id'],'muted':True})
+                self.api(other, 'PUT', '/api/v1/notification-preferences/mutes', {'type':'project','id':place['id'],'muted':True})
             remote = self.api(other, 'GET', '/api/v1/notification-preferences')['muted']
             self.assertEqual(remote[0]['id'], actor['project'], 'real server order has the target before eight later mutes')
         held, writes = {}, []
