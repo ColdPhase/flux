@@ -18,13 +18,17 @@ from datetime import datetime, timedelta, timezone
 
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot as save_shot, start_forwarder
 
 PASSWORD = "grants that end on time"
 STAMP = int(time.time() * 1000)
 HUBERT = {"name": "Hubert Grant", "email": f"hubert.grants+{STAMP}@example.test"}
 MAREK = {"name": "Marek Grant", "email": f"marek.grants+{STAMP}@example.test"}
 ACTION_SCOPES = ["flux.context.read", "flux.proposal.write", "flux.action.execute"]
+
+
+def shot(page: Page, name: str) -> None:
+    save_shot(page, name if UI_BROWSER == "chromium" else f"{name}-{UI_BROWSER}")
 
 
 def parse(iso: str) -> datetime:
@@ -44,7 +48,10 @@ class GrantControlsJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
+        if cls.browser.browser_type.name != UI_BROWSER:
+            raise AssertionError(f"Expected {UI_BROWSER}, launched {cls.browser.browser_type.name}")
+        print(f"\n  Grant controls browser: {cls.browser.browser_type.name}")
         expect.set_options(timeout=8000)
 
     @classmethod

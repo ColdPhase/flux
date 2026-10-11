@@ -17,7 +17,7 @@ import unittest
 
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot as save_shot, start_forwarder
 
 PASSWORD = "the porch light stays calm"
 STAMP = int(time.time() * 1000)
@@ -60,6 +60,10 @@ SMALLEST_TEXT = """el => {
 PRESS_STYLE = "el => { const s = getComputedStyle(el); return [s.backgroundColor, s.opacity, s.transform, s.filter].join(' | '); }"
 
 
+def shot(page: Page, name: str) -> None:
+    save_shot(page, name if UI_BROWSER == "chromium" else f"{name}-{UI_BROWSER}")
+
+
 class ProjectPolicyJourney(unittest.TestCase):
     """Tests run in name order and share four accounts and one project."""
 
@@ -73,7 +77,10 @@ class ProjectPolicyJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
+        if cls.browser.browser_type.name != UI_BROWSER:
+            raise AssertionError(f"Expected {UI_BROWSER}, launched {cls.browser.browser_type.name}")
+        print(f"\n  Project policy browser: {cls.browser.browser_type.name}")
         expect.set_options(timeout=8000)
 
     @classmethod
