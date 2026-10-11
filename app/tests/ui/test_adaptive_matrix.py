@@ -400,7 +400,10 @@ class AdaptiveMatrix(AdaptiveBase):
         assert_author_column(self, mine_row, width, f"own author at {size}")
         assert_author_column(self, their_row, width, f"other author at {size}")
         mine, theirs = mine_row.bounding_box(), their_row.bounding_box()
-        self.assertAlmostEqual(mine["x"], theirs["x"], delta=1, msg=f"all authors share the same left column at {size} (F-026)")
+        column = mine_row.locator("..").bounding_box()
+        self.assertAlmostEqual(mine["x"] + mine["width"], column["x"] + column["width"], delta=1,
+                               msg=f"own messages reach the right of the reading column at {size} (#481)")
+        self.assertAlmostEqual(theirs["x"], column["x"], delta=1, msg=f"other authors keep the left column at {size}")
         self.shot(page, f"adapt-{size}{tag}-conversation")
 
         # Its thread (the source of a reply), docked beside the stream or as a sheet over it.

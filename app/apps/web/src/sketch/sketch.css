@@ -60,6 +60,13 @@
 .sk-el { position: absolute; left: 0; top: 0; padding: 0 5px; border-radius: 4px; background: var(--sub); color: var(--t2);
   font-size: var(--fs-xs); line-height: 18px; white-space: nowrap; }
 .sk-el.is-on { color: var(--t1); }
+.sk-edge-hits { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.sk-edge-hits path { fill: none; stroke: transparent; stroke-width: 18px; vector-effect: non-scaling-stroke; pointer-events: stroke; cursor: pointer; }
+.sk-edge-hits path:hover { stroke: var(--line); }
+.sk-el--edit { pointer-events: auto; padding: 3px 9px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; box-shadow: var(--sh-card); cursor: pointer; }
+.sk-el--edit:hover { background: var(--hov); color: var(--t1); }
+.sk-el--edit:focus-visible { outline: 2px solid var(--t1); outline-offset: 3px; }
+@media (pointer: coarse) { .sk-edge-hits path { stroke-width: 32px; } }
 
 /* Thought reading follows Prostota's body/meta tokens, including larger phone text. Stored
    widths and positions stay unchanged; measured heights keep links attached after wrapping. */
@@ -388,7 +395,7 @@ span.sk-li-img { width: 160px; height: 96px; }
 .sk--map .sk-help.is-open { position: absolute; left: 50%; bottom: 110px; z-index: 9; width: min(560px, calc(100% - 28px)); max-width: none; margin: 0; padding: 12px 16px; transform: translateX(-50%);
   border-radius: var(--r-lg); background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); font-size: var(--fs-sm); color: var(--t2); }
 /* The actions of the selection float above it (below it where there is no room, and on the phone). */
-.sk-actions { gap: 2px; padding: 4px; border-radius: var(--r-pill); background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); }
+.sk-actions { gap: 2px; padding: 4px; width: max-content; flex-wrap: wrap; border-radius: var(--r-pill); background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); }
 .sk-actions .sk-edit-btn { background: transparent; box-shadow: none; }
 .sk-actions .sk-edit-btn:hover { background: var(--sub); }
 .sk-actions .sk-edit-btn[aria-pressed="true"] { background: var(--sub); }
