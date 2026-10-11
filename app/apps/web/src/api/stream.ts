@@ -35,6 +35,42 @@ let seen = new Set<string>();
 /** A cursor was dropped: events since then were not replayed, so the next open asks for a refetch. */
 let resyncOnOpen = false;
 
+// While the page is being left (beforeunload until pagehide, or a cancelled navigation's grace) or
+// is hidden, listeners must not start refetches: the browser may cancel them and report it as a
+// page error (#471). Events are held and delivered in order once the page is live again.
+const LEAVING_GRACE_MS = 1000;
+const HOLD_MAX = 200;
+let leaving = false;
+let leavingTimer = 0;
+let hiddenTab = false;
+let held: StreamEvent[] = [];
+let heldOverflow = false;
+
+function paused() {
+  return leaving || hiddenTab;
+}
+
+function deliver(event: StreamEvent) {
+  if (!paused()) {
+    for (const { listener } of [...subscriptions]) listener.onEvent(event);
+    return;
+  }
+  if (heldOverflow) return;
+  if (held.length >= HOLD_MAX) { held = []; heldOverflow = true; return; }
+  held.push(event);
+}
+
+/** Delivers what was held, in order; after an overflow listeners refetch what they show instead. */
+function release() {
+  if (paused()) return;
+  const batch = held;
+  const resync = heldOverflow;
+  held = [];
+  heldOverflow = false;
+  if (resync) for (const { listener } of [...subscriptions]) listener.onResync?.();
+  for (const event of batch) for (const { listener } of [...subscriptions]) listener.onEvent(event);
+}
+
 function clearTimer() {
   if (timer !== null) { window.clearTimeout(timer); timer = null; }
 }
@@ -49,6 +85,8 @@ export function resetStream() {
   retry = 0;
   seen = new Set();
   resyncOnOpen = false;
+  held = [];
+  heldOverflow = false;
   identity = null;
 }
 
@@ -80,7 +118,7 @@ function connect() {
     if (data.type !== 'event' || seen.has(data.id)) return;
     seen.add(data.id);
     if (seen.size > 500) seen.delete(seen.values().next().value!);
-    for (const { listener } of [...subscriptions]) listener.onEvent(data);
+    deliver(data);
   };
   ws.onclose = (event) => {
     if (socket !== ws) return;
@@ -106,6 +144,28 @@ if (typeof window !== 'undefined') {
     retry = 0;
     clearTimer();
     connect();
+  });
+  window.addEventListener('beforeunload', () => {
+    leaving = true;
+    window.clearTimeout(leavingTimer);
+    // A navigation the person cancels never reaches pagehide: the page is live again after the grace.
+    leavingTimer = window.setTimeout(() => { leavingTimer = 0; leaving = false; release(); }, LEAVING_GRACE_MS);
+  });
+  window.addEventListener('pagehide', () => {
+    window.clearTimeout(leavingTimer);
+    leavingTimer = 0;
+    leaving = true;
+  });
+  window.addEventListener('pageshow', () => {
+    window.clearTimeout(leavingTimer);
+    leavingTimer = 0;
+    leaving = false;
+    release();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') { hiddenTab = true; return; }
+    hiddenTab = false;
+    if (!leaving) release();
   });
 }
 
