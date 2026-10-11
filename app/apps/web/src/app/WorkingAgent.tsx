@@ -9,6 +9,8 @@ import { Icon, Kreska, type KreskaExpression } from '../ui';
 import { useShellData } from './data';
 
 const POLL_WHILE_WORKING_MS = 3000;
+/** A navigation cancelled after beforeunload never reaches pagehide: the page is live again after this. */
+const LEAVING_GRACE_MS = 1000;
 interface WorkingSnapshot { identity: string; run: AssistantRun | null; stopping: boolean; failed: boolean }
 interface WorkingLifetime { identity: string; live: boolean; revision: number; read: AbortController | null; stopping: boolean }
 
@@ -16,9 +18,14 @@ interface WorkingLifetime { identity: string; live: boolean; revision: number; r
 function useWorkingRun(identity: string) {
   const [snapshot, setSnapshot] = useState<WorkingSnapshot>({ identity, run: null, stopping: false, failed: false });
   const lifetime = useRef<WorkingLifetime | null>(null);
+  // Background reads (poll, focus, stream) wait while this page is hidden or being left. A request
+  // started between beforeunload and pagehide is cancelled by the navigation, and WebKit reports
+  // that as a page error (#471). User-started requests never go through refresh().
+  const gate = useRef({ leaving: false, hidden: false, timer: 0 });
   const refresh = useCallback(() => {
     const scope = lifetime.current;
     if (!scope?.live || scope.identity !== identity || scope.stopping) return;
+    if (gate.current.leaving || gate.current.hidden) return;
     scope.read?.abort();
     const controller = new AbortController();
     scope.read = controller;
@@ -44,6 +51,34 @@ function useWorkingRun(identity: string) {
       if (lifetime.current === scope) lifetime.current = null;
     };
   }, [identity, refresh]);
+  useEffect(() => {
+    const state = gate.current;
+    const beforeUnload = () => {
+      state.leaving = true;
+      window.clearTimeout(state.timer);
+      // A navigation the person cancelled never reaches pagehide: the page resumes its reads then.
+      state.timer = window.setTimeout(() => { state.leaving = false; refresh(); }, LEAVING_GRACE_MS);
+    };
+    const pageHide = () => { window.clearTimeout(state.timer); state.leaving = true; };
+    const pageShow = () => { window.clearTimeout(state.timer); state.leaving = false; refresh(); };
+    const visibility = () => {
+      if (document.visibilityState === 'hidden') { state.hidden = true; return; }
+      if (!state.hidden) return;
+      state.hidden = false;
+      if (!state.leaving) refresh();
+    };
+    window.addEventListener('beforeunload', beforeUnload);
+    window.addEventListener('pagehide', pageHide);
+    window.addEventListener('pageshow', pageShow);
+    document.addEventListener('visibilitychange', visibility);
+    return () => {
+      window.clearTimeout(state.timer);
+      window.removeEventListener('beforeunload', beforeUnload);
+      window.removeEventListener('pagehide', pageHide);
+      window.removeEventListener('pageshow', pageShow);
+      document.removeEventListener('visibilitychange', visibility);
+    };
+  }, [refresh]);
   // The previous owner's snapshot is hidden immediately, before effect cleanup runs.
   const run = snapshot.identity === identity ? snapshot.run : null;
   useEffect(() => {

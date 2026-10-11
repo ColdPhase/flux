@@ -632,6 +632,44 @@ class SketchJourney(unittest.TestCase):
                 self.assertGreaterEqual(corner.locator(".sk-p").evaluate("el => parseFloat(getComputedStyle(el).fontSize)"), 10)
                 expect(controls).to_be_in_viewport(ratio=1)
 
+    # ---------------------------------------------------------------- a leave prompt the person dismisses (#471)
+
+    def test_14_a_dismissed_leave_prompt_does_not_strand_the_map(self) -> None:
+        # A native beforeunload prompt, dismissed by the person, keeps this document alive. A view
+        # opened right after it must still load: no request the person starts is refused.
+        page = self.page()
+        page.goto("/")
+        home = page.get_by_role("heading", level=1, name="Home")
+        expect(home).to_be_visible()
+        home.click()  # a real click gives the page the activation that lets a browser show the prompt
+        page.evaluate(
+            """() => {
+                window.__leave = { beforeunload: 0, pagehide: 0 };
+                window.addEventListener('beforeunload', (event) => {
+                    window.__leave.beforeunload += 1;
+                    event.preventDefault();
+                    event.returnValue = '';
+                });
+                window.addEventListener('pagehide', () => { window.__leave.pagehide += 1; });
+            }"""
+        )
+        prompts: list[str] = []
+
+        def dismiss(dialog) -> None:
+            prompts.append(dialog.type)
+            dialog.dismiss()
+
+        page.on("dialog", dismiss)
+        with page.expect_event("dialog"):
+            page.evaluate("() => { setTimeout(() => location.reload(), 0); }")
+        self.assertEqual(prompts, ["beforeunload"], "the browser asked whether to leave")
+        self.assertEqual(page.evaluate("() => window.__leave"), {"beforeunload": 1, "pagehide": 0}, "the leave was cancelled, not carried out")
+        expect(home).to_be_visible()
+
+        page.get_by_role("navigation", name="Views").get_by_role("link", name="Map").click()
+        expect(page.get_by_role("link", name=re.compile("Lamp ideas"))).to_be_visible()
+        expect(page).to_have_url(re.compile(r"/map$"))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
