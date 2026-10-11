@@ -260,6 +260,13 @@ class DetailPanelFinal(unittest.TestCase):
 
     def test_05_phone_sheet_has_a_grabber_and_two_heights(self):
         task = self.new_task("Label every probe cable", owner=True, blocker="Waiting for the label printer")
+
+        def assert_close_at_right():
+            bounds = sheet.bounding_box()
+            dismiss = sheet.get_by_role("button", name="Close details").bounding_box()
+            self.assertEqual(dismiss["x"] + dismiss["width"], bounds["x"] + bounds["width"] - 12,
+                "Close stays at the right header inset in either sheet height")
+
         for scheme in ("light", "dark"):
             with self.subTest(scheme=scheme):
                 page = self.page(phone=True, scheme=scheme)
@@ -286,11 +293,13 @@ class DetailPanelFinal(unittest.TestCase):
                 self.assertLess(grabber.locator("span").bounding_box()["height"], 8)
                 close = sheet.get_by_role("button", name="Close details").bounding_box()
                 self.assertTrue(close["x"] >= box["x"] + box["width"] or close["y"] >= box["y"] + box["height"], "the grabber does not overlap Close")
+                assert_close_at_right()
                 shot(page, f"detail-panel-final-phone-half-{scheme}")
                 # Drag up for full; the hint goes away.
                 self.drag(page, half["y"] + 14, 120)
                 expect(sheet).to_have_attribute("data-height", "full")
                 self.assertLess(sheet.bounding_box()["y"], 40)
+                assert_close_at_right()
                 shot(page, f"detail-panel-final-phone-full-{scheme}")
                 # Drag down: back to half, then closed.
                 self.drag(page, 30, 640)  # from the grabber itself

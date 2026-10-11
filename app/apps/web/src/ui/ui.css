@@ -238,6 +238,7 @@ svg { flex: none; }
 .ui-panel__body:focus-visible { outline: none; }
 .ui-sheet .ui-panel__head { height: calc(56px + env(safe-area-inset-top)); padding-top: env(safe-area-inset-top); padding-left: 16px; padding-right: 4px; }
 .ui-detent-sheet .ui-panel__head { height: 52px; padding: 0 12px 0 20px; border-bottom: 0; }
+.ui-detent-sheet .ui-panel__close { margin-left: auto; }
 .ui-detent-sheet[data-height="full"] .ui-panel__head { padding-top: env(safe-area-inset-top); height: calc(52px + env(safe-area-inset-top)); }
 .ui-detent-sheet[data-height="full"] .ui-panel__hint { display: none; }
 .ui-sheet .ui-panel__body { padding: 18px 16px 28px; }
