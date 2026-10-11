@@ -1,0 +1,61 @@
+{
+  "scope": "API33 original5modules only",
+  "candidate": "e6cf12d562ef99f64f4991ab1543fb8819349940",
+  "baseline": "16cc97b33168b39475e6411c16f7848964652d19",
+  "session": 89772,
+  "pid": 1595739,
+  "project": "flux392-api-1791744329-1595739",
+  "terminal": 0,
+  "tests": {
+    "tests": 33,
+    "pass": 33,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "expected_pass": 33,
+    "name_pattern_used": false,
+    "unselected_sibling_not_claimed": false
+  },
+  "canonicalAPIProviderConfigured": false,
+  "originalSMTPResetOriginRefusalGuardsUnchanged": true,
+  "runtimeImage": {
+    "head": "e6cf12d562ef99f64f4991ab1543fb8819349940",
+    "image_id": "sha256:c44244b771cbb60151ab78555d68931d5fd38f48659d69107cd84bee3b464897"
+  },
+  "testSourceAudit": {
+    "testedHead": "e6cf12d562ef99f64f4991ab1543fb8819349940",
+    "trackedApplicationFiles": 1149,
+    "mismatches": []
+  },
+  "cleanup": {
+    "project": "flux392-api-1791744329-1595739",
+    "remaining": {
+      "containers": "",
+      "networks": "",
+      "volumes": "",
+      "image_tags": ""
+    },
+    "marker_removed": true,
+    "run_tags_removed": true,
+    "private_state_env_backups_removed": true,
+    "private_failure_evidence_retained": false
+  },
+  "independentExactInventory": {
+    "containers": [],
+    "networks": [],
+    "volumes": [],
+    "imageTags": [],
+    "markerExists": false
+  },
+  "leaseReturned": true,
+  "primaryOrOIDCRerun": false,
+  "originalFailedAttemptPreserved": 94016,
+  "executedHarness": {
+    "run.py": "bc5aee259ce88d7d7df99425658e9a7478e7c2addd19210900127e9779ecc30f",
+    "core.py": "63c4dc6f290c4a5e313b8c93cb8243d320ecec90c039d18c74e4d9d357dc934f",
+    "custody.mjs": "f38e6e8f7f532a48ea114a469399e88eff51400e24bd6e9e85a26377021f5a3b",
+    "source-audit.cjs": "0f1068f2215e8c0333ec4d61cde74a761b125780db4e43eb856cacdcea009abe",
+    "README.md": "2f1301bf7a9b3a9756f7f688a5476a1c08e9de0e3dea24623dcda24406fb910a"
+  },
+  "time": "2026-10-11T18:46:50.373880+00:00"
+}

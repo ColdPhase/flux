@@ -28,5 +28,9 @@ private credentials are intentionally excluded from this small bundle.
 
 Later current-head composition includes accepted A6 main `16cc97b3`. Identity,
 CLI, Docker, SQL and selected identity test bytes are unchanged; this is a source
-compatibility assessment, not a newly executed primary. Fresh API33/OIDC14+restart2,
-remaining S4/S2 child#490, independent review and complete release remain required.
+compatibility assessment, not a newly executed primary. Fresh current `e6cf12d562ef99f64f4991ab1543fb8819349940` passes all33 original
+API tests and real Keycloak14 plus restart prepare1/verify1, each with zero
+failures/cancellations/skips and exact cleanup0. The first API fixture failure
+(SSO configured where original human SMTP test expects none) stays at its
+original pin; the canonical API lane has no SSO, the OIDC lane retains Keycloak.
+Remaining S4/S2 child#490, independent review and complete release remain required.

@@ -11,5 +11,7 @@
   "post-recovery-restart.json": "3e393af8ec3873935f3cf36fcd2982b6371ef929c4297cda97f1f5cdb7395bd8",
   "original59-restored-native-old-facts.json": "cf9eefd01adc9361e881a3cc2d87379dcc4398885a7a1f88d206f2c66c8b8822",
   "original59-restored-gates-and-provider-recovery.json": "e3fbc3b676924391e8643cf3acd96ca9b0d32d2013ee788918494bc442e3ee71",
-  "cleanup-recovery.json": "7a41ba8dae6e9fecab908a4aa339d123152523d6319d34d48954df8ca0520c16"
+  "cleanup-recovery.json": "7a41ba8dae6e9fecab908a4aa339d123152523d6319d34d48954df8ca0520c16",
+  "api33-result.json": "23d4e0f1cb622f682537b8919caa717af0094db76c45cc10a89733d8bb81730f",
+  "oidc-result.json": "62a858918532c627826428694160dbbcae8f0cc5feb5ed5ba295bc86f6d36be4"
 }
