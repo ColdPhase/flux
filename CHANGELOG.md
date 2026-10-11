@@ -51,6 +51,8 @@ repository was created on 2026-09-26.
 
 #### Working together
 
+- Search finds projects by name for the people who may open them; a result opens the project, and a Projects filter narrows the results ([#465](https://github.com/ColdPhase/flux/issues/465)).
+
 - Installable PWA shell and Web Push notifications ([#49](https://github.com/ColdPhase/flux/pull/49)).
 - The calm web app shell and design system ([#55](https://github.com/ColdPhase/flux/pull/55)),
   later the project surface with view tabs and a state line ([#122](https://github.com/ColdPhase/flux/pull/122)).
