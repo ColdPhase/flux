@@ -57,7 +57,7 @@ test('installation already in progress is watched, and a late explicit apply use
   const next = new Worker(); next.state = 'installing';
   const f = await fixture(null, current);
   f.registration.installing = next; f.registration.dispatchEvent(new Event('updatefound'));
-  assert.deepEqual(f.offers, [null]);
+  assert.equal(f.offers.length, 1); assert.equal(f.offers[0], null);
   next.state = 'installed'; f.registration.waiting = next; f.registration.installing = null;
   next.dispatchEvent(new Event('statechange'));
   const offered = f.offers.at(-1)!; assert.ok(offered);
