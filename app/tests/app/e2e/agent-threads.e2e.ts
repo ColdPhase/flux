@@ -60,13 +60,23 @@ async function fixture() {
   return { owner, writer, viewer, outsider, place, task, path, say, read };
 }
 async function session(who: Person, width: number) {
-  const context = await browser.newContext({ baseURL: origin.origin, viewport: { width, height: width === 390 ? 844 : 900 }, isMobile: width === 390, hasTouch: width === 390, serviceWorkers: 'block' });
+  const context = await browser.newContext({ baseURL: origin.origin, viewport: { width, height: width === 390 ? 844 : 900 }, isMobile: width <= 680, hasTouch: width <= 680, serviceWorkers: 'block' });
   context.setDefaultTimeout(15_000);
   const response = await context.request.post('/api/auth/sign-in/email', { data: { email: who.email, password }, headers: { origin: origin.origin } });
   assert.equal(response.status(), 200, await response.text()); return context;
 }
 const panel = (page: Page) => page.locator('[data-agent-thread-task]');
+async function settledSurface(page: Page) {
+  // Observe the real panel/sheet entrance finishing; keep product motion and all geometry assertions.
+  await page.waitForFunction(() => {
+    const surface = document.querySelector('.at-panel')?.closest('.ui-panel');
+    if (!surface) return false;
+    for (const animation of surface.getAnimations()) if (animation.playState === 'running') return false;
+    return true;
+  }, undefined, { timeout: 5000 });
+}
 async function composerReachable(page: Page) {
+  await settledSurface(page);
   const geometry = await panel(page).evaluate(element => {
     const form = element.querySelector('.at-composer'), box = form?.querySelector('.composer__box');
     const send = form?.querySelector('[aria-label="Send"]'), field = form?.querySelector('textarea');
@@ -86,6 +96,7 @@ async function composerReachable(page: Page) {
 async function capture(page: Page, name: string) {
   const directory = process.env.FLUX_E2E_EVIDENCE_DIR;
   if (!directory) return;
+  await settledSurface(page);
   mkdirSync(directory, { recursive: true }); await page.screenshot({ path: join(directory, `${engine}-${name}.png`) });
 }
 
