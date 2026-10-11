@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { flushSync } from 'react-dom';
 import { Link, useLoaderData, useLocation, useNavigation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
-import type { AgentOperation, ConversationMessage, ProjectAgentConnection, ProjectAgents as ProjectAgentsData, TaskDiscussion, WorkRowProjection, WorkStatus } from '@flux/contracts';
+import type { AgentOperation, ConversationMessage, ProjectAgentConnection, ProjectAgentRequest, ProjectAgents as ProjectAgentsData, TaskDiscussion, WorkRowProjection, WorkStatus } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
@@ -77,6 +77,23 @@ function connectionExpression(connection: ProjectAgentConnection, now: number): 
   if (connection.state === 'unavailable') return 'worried';
   if (state !== 'session_open') return 'asleep';
   return 'idle';
+}
+
+const REQUEST_KIND: Record<ProjectAgentRequest['kind'], string> = { help: 'Help', review: 'Review', fix: 'Fix', handoff: 'Handoff' };
+const REQUEST_STATE: Record<ProjectAgentRequest['state'], string> = {
+  queued: 'waiting for its next step', deferred: 'deferred until its next step', claimed: 'being handled',
+};
+
+/** What the connection holds in this project now. Assigned work is not yet being done, and a paused unit says so. */
+function workLine(work: NonNullable<ProjectAgentConnection['currentWork']>) {
+  if (work.state === 'claimed') return `Working on “${work.taskTitle}”`;
+  return work.state === 'paused' ? `Paused on “${work.taskTitle}”` : `Assigned “${work.taskTitle}”, not started`;
+}
+
+/** A request addressed here: who asked, about which task, and what it waits for (the request's own reason, if any). */
+function requestLine(request: ProjectAgentRequest) {
+  const reason = request.reason ? ` — ${request.reason}` : '';
+  return `${REQUEST_KIND[request.kind]} request from ${request.sender.name} (${request.sender.ownerName}) about “${request.taskTitle}”: ${REQUEST_STATE[request.state]}${reason}`;
 }
 
 function authorName(message: ConversationMessage, names: Map<string, string>) {
@@ -358,6 +375,7 @@ const RANK: Record<ProjectAgentConnection['state'], number> = { session_open: 0,
 
 /** The row's second line: what the agent holds now, else what Flux can prove about its connection. */
 function nowLine(entry: AgentEntry, held: WorkRowProjection[], now: number): string {
+  if (entry.connection?.currentWork) return workLine(entry.connection.currentWork);
   const task = held[0];
   if (task?.status === 'in_progress') return `Working on #${task.number} · ${task.title}`;
   if (task) return `Handed #${task.number} · ${task.title}`;
@@ -365,12 +383,20 @@ function nowLine(entry: AgentEntry, held: WorkRowProjection[], now: number): str
   return stateLine(entry.connection, now);
 }
 
+/** A connection's own unit is more specific than the agent's older task-owner projection. */
+function isWorking(entry: AgentEntry, held: WorkRowProjection[]): boolean {
+  return entry.connection?.currentWork ? entry.connection.currentWork.state === 'claimed' : held[0]?.status === 'in_progress';
+}
+
+function agentExpression(entry: AgentEntry, held: WorkRowProjection[], now: number): KreskaExpression {
+  return isWorking(entry, held) ? 'thinking' : entry.connection ? connectionExpression(entry.connection, now) : 'idle';
+}
+
 function AgentRow({ entry, held, now, selected, dropping, onOpen, onDropTask, onDropping }: {
   entry: AgentEntry; held: WorkRowProjection[]; now: number; selected: boolean; dropping: boolean;
   onOpen: () => void; onDropTask: (taskId: string) => void; onDropping: (on: boolean) => void;
 }) {
-  const working = held[0]?.status === 'in_progress';
-  const expression: KreskaExpression = working ? 'thinking' : entry.connection ? connectionExpression(entry.connection, now) : 'idle';
+  const working = isWorking(entry, held);
   const last = entry.connection?.lastActivity;
   const owner = [entry.owner, entry.via].filter(Boolean).join(' · ');
   return (
@@ -379,10 +405,12 @@ function AgentRow({ entry, held, now, selected, dropping, onOpen, onDropTask, on
       onDragLeave={() => onDropping(false)}
       onDrop={(event) => { const id = event.dataTransfer.getData(TASK_DRAG); onDropping(false); if (id) { event.preventDefault(); onDropTask(id); } }}>
       <button type="button" className="agents-row__btn" aria-pressed={selected} onClick={onOpen}>
-        <Kreska size={36} expression={expression} hue={agentHue(entry.agentId)} className="agents-row__icon" />
+        <Kreska size={36} expression={agentExpression(entry, held, now)} hue={agentHue(entry.agentId)} className="agents-row__icon" />
         <span className="agents-row__body">
           <span className="agents-row__who"><AgentIdentity name={entry.name} owner={owner || undefined} icon={false} /></span>
           <span className="agents-row__now">{nowLine(entry, held, now)}</span>
+          {entry.connection && (entry.connection.currentWork || held.length) ? <span className="agents-row__activity">{stateLine(entry.connection, now)}</span> : null}
+          {entry.connection?.requests.map((request) => <span key={request.id} className="agents-row__activity">{requestLine(request)}</span>)}
         </span>
         {last ? <time className="agents-row__time" dateTime={last.at}>{when(last.at)}</time> : null}
         <Icon name="chevron-right" size={14} className="agents-row__go" />
@@ -402,6 +430,8 @@ function AgentDetail({ entry, held, projectId, now, canHandOff, onHandOff, onClo
   entry: AgentEntry; held: WorkRowProjection[]; projectId: string; now: number; canHandOff: boolean; onHandOff: () => void; onClose: () => void; onThread: (taskId: string) => void;
 }) {
   const task = held[0];
+  const currentWork = entry.connection?.currentWork;
+  const otherHeld = currentWork ? held.filter((row) => row.id !== currentWork.taskId) : held.slice(1);
   const last = entry.connection?.lastActivity;
   const grant = mayDo(entry.access);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -412,7 +442,7 @@ function AgentDetail({ entry, held, projectId, now, canHandOff, onHandOff, onClo
         <button type="button" className="agents-detail__back" onClick={onClose}><Icon name="chevron-left" size={14} />Agents</button>
       </div>
       <header className="agents-detail__head">
-        <Kreska size={40} expression={task?.status === 'in_progress' ? 'thinking' : entry.connection ? connectionExpression(entry.connection, now) : 'idle'} hue={agentHue(entry.agentId)} />
+        <Kreska size={40} expression={agentExpression(entry, held, now)} hue={agentHue(entry.agentId)} />
         <div>
           <h2 className="agents-detail__name" ref={heading} tabIndex={-1}><AgentIdentity name={entry.name} icon={false} /></h2>
           <p className="agents-detail__for">{[entry.owner ? `for ${entry.owner}` : null, entry.via, entry.connection ? 'local MCP' : null].filter(Boolean).join(' · ')}</p>
@@ -420,19 +450,26 @@ function AgentDetail({ entry, held, projectId, now, canHandOff, onHandOff, onClo
       </header>
       <section className="agents-detail__now" aria-label="Now">
         <h3>Now</h3>
-        {task ? (
+        {currentWork ? (
+          <>
+            <p className="agents-detail__task"><button type="button" className="agents-detail__thread" onClick={() => onThread(currentWork.taskId)}>{currentWork.taskTitle}</button></p>
+            <p className="agents-detail__note">{currentWork.state === 'claimed' ? 'Working' : currentWork.state === 'paused' ? 'Paused' : 'Assigned, not started'} · <Link className="ui-link" to={`/projects/${projectId}/tasks?open=work:${currentWork.taskId}`}>Open task</Link></p>
+          </>
+        ) : task ? (
           <>
             <p className="agents-detail__task"><StatusGlyph status={task.status} size={14} /><span className="ui-task-number">#{task.number}</span><button type="button" className="agents-detail__thread" onClick={() => onThread(task.id)}>{task.title}</button></p>
             <p className="agents-detail__note">{task.status === 'in_progress' ? 'In progress' : 'Handed to it, not started'}{held.length > 1 ? ` · ${held.length - 1} more` : ''} · <Link className="ui-link" to={`/projects/${projectId}/tasks?open=work:${task.id}`}>Open task</Link></p>
           </>
         ) : <p className="agents-detail__note">{entry.connection ? stateLine(entry.connection, now) : 'Nothing is handed to it.'}</p>}
+        {entry.connection && (currentWork || task) ? <p className="agents-detail__note">{stateLine(entry.connection, now)}</p> : null}
+        {entry.connection?.requests.map((request) => <p key={request.id} className="agents-detail__note">{requestLine(request)}</p>)}
       </section>
       <section aria-label="Recent">
         <h3>Recent</h3>
-        {last || held.length > 1 ? (
+        {last || otherHeld.length ? (
           <ul className="agents-detail__recent">
             {last ? <li><span>{sentence(OPERATION_LABEL[last.operation])}</span><time dateTime={last.at}>{when(last.at)}</time></li> : null}
-            {held.slice(1).map((row) => <li key={row.id}><button type="button" className="agents-detail__thread" onClick={() => onThread(row.id)}>Also holds #{row.number} · {row.title}</button></li>)}
+            {otherHeld.map((row) => <li key={row.id}><button type="button" className="agents-detail__thread" onClick={() => onThread(row.id)}>Also holds #{row.number} · {row.title}</button></li>)}
           </ul>
         ) : <p className="agents-detail__note">Nothing recorded yet.</p>}
       </section>
@@ -489,10 +526,10 @@ export function ProjectAgents() {
     return next;
   }, { replace: beside, flushSync: true });
   const heldBy = (agentId: string) => tasksHeldBy(agentId, rows);
-  const working = entries.filter((entry) => heldBy(entry.agentId)[0]?.status === 'in_progress').length;
+  const working = entries.filter((entry) => isWorking(entry, heldBy(entry.agentId))).length;
   const picked = search.get('agent');
   // Where the panel fits beside the list it is open from the start, on the working agent as drawn; narrow panes open it by choice.
-  const selected = entries.find((entry) => entry.key === picked) ?? (beside ? entries.find((entry) => heldBy(entry.agentId)[0]?.status === 'in_progress') ?? entries[0] ?? null : null);
+  const selected = entries.find((entry) => entry.key === picked) ?? (beside ? entries.find((entry) => isWorking(entry, heldBy(entry.agentId))) ?? entries[0] ?? null : null);
   const open = (key: string | null) => setSearch((current) => { const next = new URLSearchParams(current); if (key) next.set('agent', key); else next.delete('agent'); return next; }, { replace: true });
 
   const [handOff, setHandOff] = useState<{ agentId: string | null; task: HandOffTask | null } | null>(null);
@@ -530,7 +567,7 @@ export function ProjectAgents() {
         <ul className="agents-links">
           <li><Link className="agents-link" to="/inbox"><span className="agents-link__icon"><Icon name="inbox" size={16} /></span><span className="agents-link__text"><b>Requests</b> · agents ask in your Inbox</span><Icon name="chevron-right" size={14} /></Link></li>
           <li><button type="button" className="agents-link" aria-expanded={policyOpen} aria-controls="agents-policy" onClick={() => setPolicyOpen((value) => !value)}>
-            <span className="agents-link__icon"><Icon name="rule" size={16} /></span><span className="agents-link__text"><b>Project policy</b> · rules agents read before they plan</span><span className="agents-link__go">{policyOpen ? 'Hide' : shell?.project.access === 'manager' ? 'Edit' : 'Read'}<Icon name="chevron-right" size={14} /></span></button></li>
+            <span className="agents-link__icon"><Icon name="rule" size={16} /></span><span className="agents-link__text"><b>Project policy</b> · Agents read and propose; people accept. Assistants also edit for their owner, with Undo.</span><span className="agents-link__go">{policyOpen ? 'Hide' : shell?.project.access === 'manager' ? 'Edit' : 'Read'}<Icon name="chevron-right" size={14} /></span></button></li>
         </ul>
         {policyOpen ? (
           <div id="agents-policy">

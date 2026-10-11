@@ -17,7 +17,7 @@ import uuid
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 from author_columns import assert_author_column
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot as save_shot, start_forwarder
 
 PASSWORD = "two agents share one lamp"
 STAMP = int(time.time() * 1000)
@@ -48,6 +48,10 @@ NEWEST_PLACEMENT = """() => {
 }"""
 
 
+def shot(page: Page, name: str) -> None:
+    save_shot(page, name if UI_BROWSER == "chromium" else f"{name}-{UI_BROWSER}")
+
+
 class AgentsViewJourney(unittest.TestCase):
     """Tests run in name order and share three accounts and one project."""
 
@@ -61,7 +65,10 @@ class AgentsViewJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
+        if cls.browser.browser_type.name != UI_BROWSER:
+            raise AssertionError(f"Expected {UI_BROWSER}, launched {cls.browser.browser_type.name}")
+        print(f"\n  Agents view browser: {cls.browser.browser_type.name}")
         expect.set_options(timeout=8000)
 
     @classmethod

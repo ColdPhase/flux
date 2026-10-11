@@ -29,6 +29,7 @@
 .agents-row__body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
 .agents-row__who .agent-id__name { font-size: var(--fs-base); }
 .agents-row__now { font-size: var(--fs-sm); color: var(--t2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agents-row__activity { font-size: var(--fs-sm); color: var(--t2); overflow-wrap: anywhere; }
 .agents-row[data-working] .agents-row__now { color: var(--t1); }
 .agents-row__time { flex: none; font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
 .agents-row__go { flex: none; color: var(--t3); }

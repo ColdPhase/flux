@@ -93,6 +93,8 @@ repository was created on 2026-09-26.
 - "Let linked PRs move this task": a person who can edit a task lets its required pull requests
   start, block and finish it, or mark it Ready to close. A manual status change pauses it until resumed
   ([#270](https://github.com/ColdPhase/flux/pull/270)).
+- A task made in Tasks can be linked to a map thought from its Details: a "Linked thoughts" section
+  and a "Link to a thought" picker for the project's maps ([#449](https://github.com/ColdPhase/flux/pull/449)).
 - Messages send instantly: the field empties at once, the message shows "Sending…" in place, and a failed send offers Retry or Remove. Offline, a line says so and queued messages resend automatically ([#299](https://github.com/ColdPhase/flux/pull/299)).
 - A phone-first shell: on phones, Home and project views sit in a bottom bar, with a clear current place, motion and Settings ([#267](https://github.com/ColdPhase/flux/pull/267)).
 - One chronological project conversation with no mandatory topics; replies sit with their message in a reply drawer ([#195](https://github.com/ColdPhase/flux/pull/195)). Creating a task posts one compact announcement in the stream, and the task's discussion root shows in the stream and Details ([#224](https://github.com/ColdPhase/flux/pull/224)).
@@ -127,6 +129,8 @@ repository was created on 2026-09-26.
 ### Changed
 
 - Agents is one list with each agent's colour, owner and what it is doing now, then Requests, Policy and "Connect your own agent" and one "Hand off a task" button; handing a task to an agent takes two steps (choose the agent, then see what its access lets it do), by button, from the task's details or, on a computer, by dragging the task onto the agent ([#347](https://github.com/ColdPhase/flux/issues/347))
+- Settings → Appearance adds Text size (Small, Default, Large) on the computer, a Reduce motion switch that turns motion off on this device as the system setting does, and a phone text-size row that follows the phone ([#452](https://github.com/ColdPhase/flux/pull/452)).
+- The Agents view shows what each connected agent holds now (its task and whether it is working, assigned or paused) and its open requests with sender, task and why they wait, and Claude Code users start Flux work from the built-in Start work prompt ([#160](https://github.com/ColdPhase/flux/issues/160)).
 - Faster reads: the Inbox count no longer compiles query code on each visit, conversation and material lists use one statement instead of one or two per row, and conversation roots and comparison outcomes are read without locks ([#300](https://github.com/ColdPhase/flux/pull/300)).
 - The app's files are sent as Brotli or gzip, and large JSON answers are compressed ([#269](https://github.com/ColdPhase/flux/pull/269)).
 - Settings is one calm place with Account, Appearance (Light, Dark or Match system, and a switch for Kreska's small moments), Notifications, Agents and AI and Keyboard shortcuts. Notifications now default to Only "Needs you" (replies no longer push), with Everything or Nothing, quiet hours and an optional morning summary push ([#370](https://github.com/ColdPhase/flux/pull/370)).

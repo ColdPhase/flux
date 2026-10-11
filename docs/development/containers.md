@@ -280,8 +280,9 @@ active session (5 retries, exponential backoff up to 10 minutes, for
 it (`session_id`, foreign key `ON DELETE CASCADE`). Sign-out, revoking a session,
 revoke-others, password reset (which revokes all sessions) and account deletion all
 delete the session row, and with it that device's subscriptions, whichever code path
-ends the session. The web client also unsubscribes before signing out
-(`signOutDevice`). After signing in again, the client's start-up sync re-registers
+ends the session. When notification permission is granted, the web client also
+unsubscribes before signing out (`signOutDevice`; [mobile-pwa.md](../product/mobile-pwa.md#sign-out-and-this-devices-push-subscription-461)).
+After signing in again, the client's start-up sync re-registers
 the browser subscription under the new session.
 
 **Before each send** the worker rechecks from current rows that the account still
@@ -398,3 +399,9 @@ supervisor and the pinned Codex); `agent-runtime-test` replaces both CLIs with t
 project and ports (`FLUX_RUNTIME_TEST_PORT`, default 19571). Run it alone, like the other Docker checks.
 `./scripts/check_runtime_cli_contract.sh` is the opt-in check against the pinned real CLIs; it needs
 internet access and is not part of CI.
+`./scripts/check_mcp_clients.sh` (#152 AC-4) is the opt-in check that the real pinned Codex (`rust-v0.160.1`,
+checksummed in the `mcp-clients` image) and Claude Code (the `pins.ts` version, fetched at run time from the signed
+release manifest) register Flux's MCP server with their own `mcp add`, complete Flux's OAuth as the person in Chromium,
+and list and call the shared domain tools from three personal connections until the owner revokes one. It uses no
+vendor account: the clients' model traffic goes to a scripted local endpoint. It needs internet access and is not
+part of CI or `check_application.sh`.
