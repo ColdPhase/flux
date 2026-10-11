@@ -347,11 +347,12 @@ class RefreshEdges(unittest.TestCase):
                         held['fail'] = True
                         held['route'].fulfill(response=held['response']); held['released'] = True
                         expect(page.locator('.nset__saved')).to_have_text('Verification link sent')
-                        expect(page.locator('.nset__extra').get_by_text(address, exact=True)).to_be_visible()
+                        expect(page.locator('.nset__addr').get_by_text(address, exact=True)).to_be_visible()
                         # One notice stays in the email section, at the address or its visible
                         # heading when the address body would clip it. Both retain these guards.
                         local_warning = page.locator('section').filter(has=page.get_by_role('heading', name='Where email goes', exact=True)).get_by_role('note').filter(has_text='Current notification settings could not be refreshed.')
                         expect(local_warning).to_contain_text('Current notification settings could not be refreshed.')
+                        expect(local_warning.get_by_text(address, exact=True)).to_be_visible()
                         expect(page.get_by_text('Could not send the link. Try again.', exact=True)).to_have_count(0)
                         actual = self.api(page, 'GET', '/api/v1/notification-preferences')
                         self.assertEqual(actual['email']['extra']['email'], address)
