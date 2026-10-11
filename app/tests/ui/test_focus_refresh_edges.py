@@ -107,6 +107,32 @@ class RefreshEdges(unittest.TestCase):
             self.assertTrue((receipt['visible'] and acknowledged in receipt['text']) or any(acknowledged + '.' in note['text'] for note in visible),
                 'the actual acknowledged result remains visible beside current-read feedback or in the existing visible header')
 
+    def assert_mute_feedback_at_working_viewport(self, page, name, *, muted):
+        row = page.locator('.nset__muted li').filter(has_text=name)
+        expect(row).to_have_count(1)
+        local = row.get_by_role('note')
+        expect(local).to_contain_text(('Muted' if muted else 'Unmuted') + '. Current settings unverified.')
+        expect(local.get_by_role('button', name='Retry current settings', exact=True)).to_be_visible()
+        self.assertIsNone(local.get_attribute('aria-live'), 'no second live acknowledgement')
+        geometry = row.evaluate("""row => {
+          const pane=row.closest('.pane-scroll').getBoundingClientRect(), name=row.querySelector('.nset__place').getBoundingClientRect();
+          const note=row.querySelector('[role=note]').getBoundingClientRect(), button=row.querySelector('[role=note] button');
+          const retry=button.getBoundingClientRect(), hit=document.elementFromPoint(retry.x+retry.width/2,retry.y+retry.height/2);
+          return {pane:{top:pane.top,bottom:pane.bottom}, name:{top:name.top,bottom:name.bottom},
+            note:{top:note.top,bottom:note.bottom}, retry:{top:retry.top,bottom:retry.bottom,height:retry.height},
+            usable:!!hit&&(hit===button||button.contains(hit))};
+        }""")
+        print('ACTUAL_NAMED_MUTE_FEEDBACK ' + json.dumps({'name':name,'muted':muted,'geometry':geometry}), flush=True)
+        for part in ('name', 'note', 'retry'):
+            self.assertGreaterEqual(geometry[part]['top'], geometry['pane']['top'])
+            self.assertLessEqual(geometry[part]['bottom'], geometry['pane']['bottom'])
+        self.assertTrue(geometry['usable'])
+        if page.viewport_size['width'] <= 640:
+            self.assertGreaterEqual(geometry['retry']['height'], 44)
+        if not muted:
+            expect(row.get_by_role('button', name='Unmute', exact=True)).to_have_count(0)
+        return local
+
     def test_01_silent_remote_extension_is_read_at_the_old_deadline(self):
         page, actor = self.actor('Silent Extension')
         deadline = time.time() + 8
@@ -322,7 +348,9 @@ class RefreshEdges(unittest.TestCase):
                         held['route'].fulfill(response=held['response']); held['released'] = True
                         expect(page.locator('.nset__saved')).to_have_text('Verification link sent')
                         expect(page.locator('.nset__extra').get_by_text(address, exact=True)).to_be_visible()
-                        local_warning = page.locator('.nset__extra > .nset__problem')
+                        # One notice stays in the email section, at the address or its visible
+                        # heading when the address body would clip it. Both retain these guards.
+                        local_warning = page.locator('section').filter(has=page.get_by_role('heading', name='Where email goes', exact=True)).get_by_role('note').filter(has_text='Current notification settings could not be refreshed.')
                         expect(local_warning).to_contain_text('Current notification settings could not be refreshed.')
                         expect(page.get_by_text('Could not send the link. Try again.', exact=True)).to_have_count(0)
                         actual = self.api(page, 'GET', '/api/v1/notification-preferences')
@@ -649,8 +677,11 @@ class RefreshEdges(unittest.TestCase):
                             self.assertEqual(len(writes),1,'only the actual control command was admitted')
                             self.assertEqual(sum(read['failed'] for read in reads),1)
                             self.capture(page,'working-'+area+'-read-unavailable',phone=phone,theme=theme)
-                            self.assert_read_feedback_at_working_viewport(page,acknowledged=done)
-                            local=page.get_by_role('note').filter(has_text=done+'.').filter(has_text='Current notification settings could not be refreshed.')
+                            if area == 'mute':
+                                local = self.assert_mute_feedback_at_working_viewport(page, actor['projectName'], muted=True)
+                            else:
+                                self.assert_read_feedback_at_working_viewport(page,acknowledged=done)
+                                local=page.get_by_role('note').filter(has_text=done+'.').filter(has_text='Current notification settings could not be refreshed.')
                             expect(local).to_have_count(1)
                             self.assertIsNone(local.get_attribute('aria-live'),'the compact counterpart adds no second live announcement')
                             held['fail']=False
@@ -727,6 +758,89 @@ class RefreshEdges(unittest.TestCase):
                     for key in ('first','second'):
                         if key in held and not held[key].get('released'):held[key]['route'].fulfill(response=held[key]['response'])
                 page.close()
+
+
+    def mute_reading_position(self, *, phone, theme, muted, overtaken=False):
+        page, actor, until = self.focused('Mute position ' + str(phone) + theme + str(muted) + str(overtaken), phone=phone, theme=theme)
+        workspace = self.api(page, 'POST', '/api/v1/workspaces', {'name': 'Mute reading positions'}, 201)
+        places = [self.api(page, 'POST', f"/api/v1/workspaces/{workspace['id']}/projects",
+            {'name': f'Owned muted project {n}', 'visibility': 'restricted'}, 201) for n in range(8)]
+        target = {'type':'project', 'id':actor['project'], 'muted':True}
+        if not overtaken:
+            for n, place in enumerate(places):
+                if not muted and n == 4:
+                    self.api(page, 'PUT', '/api/v1/notification-preferences/mute', target)
+                self.api(page, 'PUT', '/api/v1/notification-preferences/mute', {'type':'project','id':place['id'],'muted':True})
+        # This full load obtains the actual shell and preference snapshot, including all eight
+        # owned places. The overtaken case intentionally loads before their remote mutes.
+        page.goto(f"/projects/{actor['project']}")
+        self.settings(page)
+        expect(page.get_by_role('heading', name='Muted places', exact=True)).to_be_attached()
+        other = self.browser.new_context(base_url=ORIGIN, storage_state=page.context.storage_state(), service_workers='block')
+        self.addCleanup(other.close)
+        if overtaken:
+            self.api(other, 'PUT', '/api/v1/notification-preferences/mute', target)
+            for place in places:
+                self.api(other, 'PUT', '/api/v1/notification-preferences/mute', {'type':'project','id':place['id'],'muted':True})
+            remote = self.api(other, 'GET', '/api/v1/notification-preferences')['muted']
+            self.assertEqual(remote[0]['id'], actor['project'], 'real server order has the target before eight later mutes')
+        held, writes = {}, []
+        def handler(route):
+            if route.request.method == 'GET' and held.get('fail'):
+                route.fulfill(status=500, content_type='application/json', body='{}'); return
+            if route.request.method == 'PUT':
+                writes.append(route.request.post_data_json)
+                response = route.fetch(); self.assertEqual(response.status, 200)
+                held.update(route=route,response=response); return
+            route.continue_()
+        page.route('**/api/v1/notification-preferences**', handler)
+        self.addCleanup(lambda p=page: None if p.is_closed() else p.unroute_all(behavior='ignoreErrors'))
+        try:
+            if muted:
+                page.get_by_label('Place to mute', exact=True).select_option('project:'+actor['project'])
+                control = page.get_by_role('button', name='Mute', exact=True)
+            else:
+                control = page.locator('.nset__muted li').filter(has_text=actor['projectName']).get_by_role('button', name='Unmute', exact=True)
+            control.tap() if phone else control.click()
+            print('ACTUAL_MUTE_ACTION_POSITION ' + json.dumps({'overtaken':overtaken,'muted':muted,
+                'control':control.bounding_box(),'viewport':page.viewport_size}),flush=True)
+            self.wait_held(page, held)
+            self.api(other, 'PATCH', '/api/v1/notification-preferences', {'pause':{'until':None}})
+            page.evaluate("window.dispatchEvent(new Event('focus'))")
+            expect(self.note(page)).to_have_count(0)
+            held['fail'] = True
+            held['route'].fulfill(response=held['response']); held['released'] = True
+            expect(self.warning(page)).to_contain_text('Current notification settings could not be refreshed.')
+            actual = self.api(page, 'GET', '/api/v1/notification-preferences')
+            self.assertEqual(any(place['id']==actor['project'] for place in actual['muted']), muted)
+            self.assertEqual(len(actual['muted']), 9 if muted else 8)
+            self.assertEqual(writes, [{**target, 'muted':muted}])
+            local = self.assert_mute_feedback_at_working_viewport(page, actor['projectName'], muted=muted)
+            self.capture(page,'mute-position-'+str(muted)+'-overtaken-'+str(overtaken),phone=phone,theme=theme)
+            held['fail'] = False
+            retry = local.get_by_role('button', name='Retry current settings', exact=True)
+            retry.tap() if phone else retry.click()
+            expect(self.warning(page)).to_have_count(0)
+            expect(local).to_have_count(0)
+            self.assertEqual(len(writes), 1, 'recovery is read-only')
+            self.assertEqual(self.api(page, 'GET', '/api/v1/notification-preferences'), actual)
+        finally:
+            if 'route' in held and not held.get('released'):
+                held['route'].fulfill(response=held['response'])
+        page.close()
+
+    def test_16_long_mute_and_unmute_keep_named_read_feedback_at_the_actual_action(self):
+        for phone in (False, True):
+            for theme in ('light', 'dark'):
+                for muted in (False, True):
+                    with self.subTest(phone=phone,theme=theme,muted=muted):
+                        self.mute_reading_position(phone=phone,theme=theme,muted=muted)
+
+    def test_17_remote_order_cannot_move_an_idempotent_mute_receipt_past_the_old_picker(self):
+        for phone in (False, True):
+            for theme in ('light', 'dark'):
+                with self.subTest(phone=phone,theme=theme):
+                    self.mute_reading_position(phone=phone,theme=theme,muted=True,overtaken=True)
 
 
 if __name__ == '__main__':
