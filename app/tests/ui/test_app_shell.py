@@ -152,6 +152,28 @@ def shot(page: Page, name: str) -> None:
     page.screenshot(path=str(SHOTS / f"{name}.png"))
 
 
+def open_map_options(page: Page, *, touch: bool = False):
+    """The phone's named sheet retains Map/List and Fit/zoom without stacked map controls."""
+    trigger = page.get_by_role("button", name="Map options", exact=True)
+    expect(trigger).to_be_visible()
+    trigger.tap() if touch else trigger.click()
+    sheet = page.get_by_role("dialog", name="Map options", exact=True)
+    expect(sheet).to_be_visible()
+    return sheet
+
+
+def show_map_as(page: Page, mode: str, *, touch: bool = False) -> None:
+    """Choose the same Map/List control through its visible desktop or phone entry point."""
+    expect(page.locator('.ui-overlay[data-state="closing"]')).to_have_count(0)
+    switch = page.get_by_role("radio", name=mode, exact=True)
+    trigger = page.get_by_role("button", name="Map options", exact=True)
+    expect(trigger.or_(switch)).to_be_visible()
+    if trigger.is_visible():
+        switch = open_map_options(page, touch=touch).get_by_role("radio", name=mode, exact=True)
+    switch.tap() if touch else switch.click()
+    expect(page.get_by_role("dialog", name="Map options", exact=True)).to_have_count(0)
+
+
 def mailpit_reset_link(email: str) -> str:
     assert MAILPIT, "FLUX_MAILPIT_URL is required for the password reset journey"
     query = urllib.parse.quote(f'to:"{email}"')
@@ -1079,7 +1101,7 @@ class AppShellJourney(unittest.TestCase):
         owner.get_by_role("navigation", name="Projects").get_by_role("link", name="Gesture lamp").click()
         owner.get_by_label("Write a message").fill("Try a PIR sensor before considering a camera")
         owner.get_by_role("button", name="Send message").click()
-        expect(owner.locator(".project-convo__message > p").filter(has_text="Try a PIR sensor before considering a camera")).to_be_visible()
+        expect(owner.locator(".project-convo__message > .message-bubble > p").filter(has_text="Try a PIR sensor before considering a camera")).to_be_visible()
         # Sending is instant (#264): the root shows at once and gets its conversation when it is stored.
         expect(owner.locator("[data-client-message-id]")).to_have_count(0)
         # One project conversation (UI116-1): the root joins the stream; its replies open beside it.
@@ -1106,8 +1128,9 @@ class AppShellJourney(unittest.TestCase):
         owner.get_by_label("Reply", exact=True).fill("This is the version we should prototype")
         owner.get_by_role("button", name="Send reply").click()
         expect(owner.get_by_text("This is the version we should prototype", exact=True)).to_be_visible()
-        source = owner.get_by_role("link", name="Source: Privacy options · v1")
+        source = owner.get_by_role("link", name=re.compile("Privacy options.*Wiki page · v1"))
         expect(source).to_be_visible()
+        expect(source.locator(".wiki-card__glyph svg")).to_have_count(1)
         source.click()
         expect(owner.get_by_text("PIR avoids storing images")).to_be_visible()
         owner.go_back()
@@ -1179,7 +1202,7 @@ class AppShellJourney(unittest.TestCase):
         threads = owner.context.request.get(f"{ORIGIN}/api/v1/projects/{project_id}/conversations").json()["items"]
         self.assertEqual(sum(thread["firstMessageBody"] == "Revisit after lost opening" for thread in threads), 1)
         owner.goto(f"/projects/{project_id}/conversations/{conversation_id}")
-        expect(owner.get_by_role("link", name="Source: Privacy options · v1")).to_be_visible()
+        expect(owner.get_by_role("link", name=re.compile("Privacy options.*Wiki page · v1"))).to_be_visible()
 
         read_failures = {"count": 0}
         def fail_first_citation(route) -> None:

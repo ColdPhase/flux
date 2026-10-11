@@ -259,6 +259,17 @@ from the request.
 | `GET /api/v1/assistant-runs`, `GET /api/v1/assistant-runs/:id` | the run's owner | Own runs with status and cost. Anyone else gets 404. |
 | `POST /api/v1/assistant-runs/:id/stop` | the run's owner | Before dispatch: `stopped` and free. During dispatch: best-effort abort, the charge is kept and nothing is committed. |
 | `POST /api/v1/assistant-runs/:id/retry` | the run's owner | `{ clientRunId }`: a new, separately capped run with the same request (202). |
+
+**Working-card document lifetime, 2026-10-11.** The bounded #380 repair was peer
+accepted after actual WebKit observations at `216f0018`: an irrelevant stream
+event started a private working-run read between `beforeunload` and `pagehide`,
+with no HTTP request reaching the server. The card refreshes for its owner-only
+`ASSISTANT_RUN_CHANGED_EVENT`, resync, working poll and focus, retaining current
+owner/read/Stop revision fences. Document retirement suspends and aborts reads;
+pageshow, focus or explicit interaction after a cancelled navigation restores
+the current owner's lifetime and rechecks canonical state. It sends no automatic
+Stop or other write. Genuine subsequent own-run progress and cancelled-navigation
+recovery require actual browser checks; errors and existing race guards remain.
 | `GET /api/v1/conversations/:id/assistant-answers` | project readers | Committed answers with label, request, body, provenance (provider and model) and cited sources. No cost, cap, connection or hidden source. |
 | `GET /api/v1/projects/:id/assistant-proposals`, `GET /api/v1/assistant-proposals/:id` | project readers | Proposals with "drafted by" and the decision. |
 | `POST /api/v1/assistant-proposals/:id/accept`, `…/dismiss` | a person with authority | `If-Match` or `expectedVersion`. The caller needs project write access. For a result that finishes an owned work item, they must be its owner or a project manager. Accepting a result linked to a work item also contributes it to that task's conversation, authored by the accepting person with the exact result id (#154); the assistant and its owner never author it, and a rolled-back acceptance leaves no contribution. |

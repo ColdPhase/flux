@@ -130,7 +130,7 @@ class WorkingAgentJourney(unittest.TestCase):
         page.goto("/")
         expect(page.get_by_role("heading", name="Home", exact=True)).to_be_visible()
         expect(page.locator(".agentlive")).to_have_count(0)
-        return page, {"email": email, "user": me["user"]["id"], "project": project["id"], "conversation": conversation["id"]}
+        return page, {"email": email, "user": me["user"]["id"], "workspace": ws["id"], "project": project["id"], "conversation": conversation["id"]}
 
     def start(self, page: Page, ids: dict, delay: float = 15) -> dict:
         mock("/__script", {"reset": True, "delay": delay})
@@ -382,6 +382,68 @@ class WorkingAgentJourney(unittest.TestCase):
                         self.stopped(page, run)
                         expect(notice).to_have_count(0)
 
+
+    def test_07_unrelated_stream_events_do_not_refetch_private_run_state(self) -> None:
+        for engine in self.browsers:
+            with self.subTest(engine=engine):
+                page, ids = self.person(engine)
+                frames: list[dict] = []
+                page.on("websocket", lambda socket: socket.on("framereceived", lambda frame: frames.append(json.loads(frame))))
+                page.reload()
+                expect(page.get_by_role("heading", name="Home", exact=True)).to_be_visible()
+                page.wait_for_function("window.__workingWire.history.some(r => r.kind === 'list' && r.delivery === 'delivered' && r.status === 200)")
+                before = page.evaluate("window.__workingWire.history.length")
+                sketch = self.api(page, "POST", f"/api/v1/workspaces/{ids['workspace']}/sketches", {"title": "An unrelated private sketch", "scope": "private"}, 201)
+                deadline = time.monotonic() + 8
+                while time.monotonic() < deadline and not any(frame.get("objectId") == sketch["id"] for frame in frames):
+                    page.wait_for_timeout(50)
+                self.assertTrue(any(frame.get("objectId") == sketch["id"] for frame in frames), "the genuine unrelated event reached this tab")
+                page.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
+                self.assertEqual(page.evaluate("window.__workingWire.history.length"), before, "unrelated project activity does not read private run state")
+                run = self.start(page, ids)
+                expect(page.locator(".agentlive")).to_be_visible()
+                page.locator(".agentlive").get_by_role("button", name="Stop your assistant").click()
+                self.stopped(page, run)
+
+    def test_08_cancelled_navigation_resumes_pending_stop_from_current_server_truth(self) -> None:
+        for engine in self.browsers:
+            with self.subTest(engine=engine):
+                page, ids = self.person(engine)
+                run = self.start(page, ids)
+                self.hold_list(page, "pre-retirement")
+                page.evaluate("window.__workingWire.arm('retiring-stop', 'stop')")
+                page.locator(".agentlive").get_by_role("button", name="Stop your assistant").click()
+                page.wait_for_function("window.__workingWire.gates['retiring-stop']?.held")
+                self.wait_run(page, run["id"], lambda current: current["status"] == "stopped")
+                expect(page.locator(".agentlive")).to_have_attribute("aria-label", "Stopping your assistant…")
+                # Native beforeunload dialogue: the real Stop click supplies user activation.
+                # Dismiss cancels document replacement; no synthetic lifecycle event resumes it.
+                with page.expect_event("dialog", timeout=8000) as pending:
+                    page.evaluate("""() => {
+                      window.__sameCancelledWorkingDocument = true;
+                      addEventListener('beforeunload', event => { event.preventDefault(); event.returnValue = 'Keep this page'; }, {once:true});
+                      setTimeout(() => location.reload(), 0);
+                    }""")
+                dialog = pending.value
+                self.assertEqual(dialog.type, "beforeunload")
+                dialog.dismiss()
+                self.assertTrue(page.evaluate("window.__sameCancelledWorkingDocument"))
+                page.get_by_role("heading", name="Home", exact=True).click()
+                self.stopped(page, run)
+                page.evaluate("window.__workingWire.watchIdle()")
+                self.release(page, "pre-retirement")
+                self.release(page, "retiring-stop")
+                expect(page.locator(".agentlive")).to_have_count(0)
+                self.assertEqual(page.evaluate("window.__workingWire.breaches"), [], "retired read and Stop answers cannot revive an old run")
+                self.assertEqual(page.evaluate("window.__workingWire.history.filter(r => r.kind === 'stop').length"), 1, "resuming sends no second Stop")
+                # A subsequent genuine own-run event still refreshes after cancellation.
+                later = self.start(page, ids)
+                expect(page.locator(".agentlive")).to_be_visible()
+                page.goto("about:blank")
+                page.go_back()
+                expect(page.locator(".agentlive")).to_be_visible()
+                page.locator(".agentlive").get_by_role("button", name="Stop your assistant").click()
+                self.stopped(page, later)
 
 if __name__ == "__main__":
     unittest.main()

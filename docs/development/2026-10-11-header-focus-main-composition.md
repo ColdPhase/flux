@@ -309,3 +309,30 @@ verification does not replace full application,main composition,phone/PWA,
 native/SSO or release acceptance. The implementation subagent is an author;
 fresh source-free visual review and eligible independent current-head review
 remain required. No push/GitHub write or main composition occurred in this lease.
+
+## Protected-main composition checkpoint — 2026-10-11
+
+The author normally merged protected main
+`c866c0db3fd3d7d91279d1bbfdcd14bbd2fd0fb2` into the preserved
+`a5630af288606cd5db5d61c7e606f2f092878094` branch. The four conflicts were
+resolved by retaining both changelog entries and all required helper imports;
+the map-layout module retains both `os` and `re`. Neither side's test bodies
+or strict page-error guards were removed. The accepted map, message-file,
+GitHub-rule and runtime changes remain in the composition, including the
+main WorkingAgent lifecycle behavior. No unmerged #474 or #482 code was imported.
+
+The action-slot implementation, notification settings, Focus pause and both
+0059/0064 SQL files are unchanged from the verified checkpoint above. Its
+original Docker evidence keeps the original 4e2e9c37 pin; it is not a run on
+this new composition. Author-side setup, 120 foundation tests and staged diff
+hygiene pass on the composed tree. No application Docker run occurred for this
+checkpoint while #384 held the shared heavy-test lane. Changed main integration,
+WorkingAgent/map/header behavior and genuine late-59/64 migration compatibility
+still need their affected checks, current CI and eligible independent review.
+
+The fresh source-free visual review of all32 original frames is recorded at
+`/tmp/flux372-action-slot-final/independent-visual/review.md`: no material defect
+in the supplied named-receipt states; the separate phone-shell mismatch remains
+required under #414. The unfiltered no-SMTP WebKit failure above remains #471.
+This is a draft integration checkpoint, not full #340/#351, phone/PWA or release
+acceptance.
