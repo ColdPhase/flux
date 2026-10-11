@@ -1,9 +1,9 @@
-import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useLocation } from 'react-router';
 import type { ConversationMessage, Project, TaskAgentThread, WorkspaceMember } from '@flux/contracts';
 import { AgentIdentity, AuthorFace, Button, Icon } from '../ui';
 import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
-import { ComposerFiles, MessageFiles } from '../composer/Files';
+import { AttachButton, ComposerFiles, MessageFiles } from '../composer/Files';
 import { ConnectionLine, OutboxStatus, PendingFiles, PendingSource, SendAnnouncer } from '../composer/Outbox';
 import { getTaskAgentThread } from '../composer/api';
 import { SourceCitation, clock, day, when } from '../app/messageParts';
@@ -43,6 +43,7 @@ export function AgentThreadPanel({ workId, project, members, me, readOnly, revis
   const fieldId = useId();
   const headingId = useId();
   const panel = useRef<HTMLDivElement>(null);
+  const field = useRef<HTMLTextAreaElement>(null);
   const composer = useComposerDraft(me.id, project.id, `agent-thread:${workId}`);
   const captureScope = useComposerScope(composer.key);
   const [thread, setThread] = useState<TaskAgentThread | null>(null);
@@ -56,6 +57,12 @@ export function AgentThreadPanel({ workId, project, members, me, readOnly, revis
   const target = /^#message-([0-9a-f-]{36})$/i.exec(location.hash)?.[1] ?? null;
   const writable = !!thread?.canWrite && thread.postingAvailable && project.access !== 'viewer' && !readOnly && !failed;
   const outbox = outboxView(messages, composer.pending, composer.sent, me.id);
+  useLayoutEffect(() => {
+    const element = field.current;
+    if (!element) return;
+    element.style.height = 'auto';
+    element.style.height = `${Math.min(element.scrollHeight, 112)}px`;
+  }, [composer.draft.body, writable]);
 
   useStreamEvents(me.id, (event) => {
     if (event.kind === 'project.agent_thread_message_sent.v1' && event.objectId === project.id) { setBusy(true); setAttempt((value) => value + 1); }
@@ -123,22 +130,27 @@ export function AgentThreadPanel({ workId, project, members, me, readOnly, revis
       ?? people?.find((person) => person.kind === 'human' && person.id === message.authorId)?.name ?? 'Member';
 
   return <div ref={panel} className="details wd at-panel" data-agent-thread-task={workId} aria-labelledby={headingId}>
+    <div className="at-head">
     <button type="button" className="wd-inline at-back" onClick={onBack}><Icon name="chevron-left" size={14} />Back to task</button>
     <p className="details__eyebrow">Agents’ thread · {thread ? `#${thread.task.number}` : 'Task'}</p>
     <h3 id={headingId} className="details__title" tabIndex={-1}>{thread?.task.title ?? 'Agents’ thread'}</h3>
     <p className="details__lead at-audience">Everyone with access to {project.name} can read this thread. Progress stays here.</p>
+    {thread ? <div className="at-meta"><span>{thread.messageCount} {thread.messageCount === 1 ? 'message' : 'messages'}</span><button type="button" className="wd-inline" disabled={busy} onClick={() => setAttempt((value) => value + 1)}>Refresh</button></div> : null}
+    </div>
+    <div className="at-feed" role="region" aria-label="Thread history" tabIndex={0}>
     {failed ? <p className="wd-error" role="alert">{olderFailed ? 'Older messages could not be loaded.' : 'This thread could not be loaded.'} Your draft is kept. <button type="button" className="wd-inline" onClick={() => setAttempt((value) => value + 1)}>Refresh thread</button></p>
       : !thread ? <p className="wd-muted" role="status">Loading thread…</p> : <>
-        <div className="at-meta"><span>{thread.messageCount} {thread.messageCount === 1 ? 'message' : 'messages'}</span><button type="button" className="wd-inline" disabled={busy} onClick={() => setAttempt((value) => value + 1)}>Refresh</button></div>
         {cursor !== null ? <Button variant="secondary" busy={busy} onClick={() => void older()}>Earlier messages</Button> : null}
         {messages.length ? <ol className="at-messages" aria-label="Agents’ thread messages">{messages.map((message) => <li key={outbox.keyOf(message.id)}>
           <article className="at-message" id={`message-${message.id}`} data-message-id={message.id} tabIndex={-1} aria-label={`Message from ${author(message)}`}>
-            <div className="at-message__meta"><AuthorFace kind={message.authorId === null ? 'agent' : 'human'} name={author(message)} mine={message.authorId === me.id} />
+            <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} name={author(message)} mine={message.authorId === me.id} />
+            <div className="at-message__content"><div className="at-message__meta">
               <strong>{message.authorId === null ? <AgentIdentity name={author(message)} owner={agentAuthorOwner(message.author, owners)} icon={false} /> : `${author(message)}${message.authorId === me.id ? ' · you' : ''}`}</strong>
               <time dateTime={message.createdAt} title={when(message.createdAt)}>{day(message.createdAt)} · {clock(message.createdAt)}</time></div>
             {message.body ? <p className="at-message__body">{message.body}</p> : null}
             <MessageFiles files={message.files} />
             {message.source ? <SourceCitation {...message.source} onDenied={() => { setThread(null); setMessages([]); setFailed(true); }} /> : null}
+            </div>
           </article>
         </li>)}</ol> : <p className="wd-muted at-empty">No messages yet. The first post starts this task’s agents’ thread.</p>}
         {target && !messages.some((message) => message.id === target) ? <p className="wd-muted" role="status">That message is no longer available in this thread.</p> : null}
@@ -147,12 +159,16 @@ export function AgentThreadPanel({ workId, project, members, me, readOnly, revis
       {item.body ? <span className="wd-pending__body">{item.body}</span> : null}<PendingFiles files={item.files} /><PendingSource item={item} />
       {writable ? <OutboxStatus item={item} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} /> : <p className="wd-muted" role="status">Send not confirmed. Your message is kept.</p>}
     </li>)}</ol> : null}
-    {writable ? <form className="wd-discussion-form at-composer" onSubmit={(event) => void send(event)}>
+    </div>
+    {writable ? <form className="at-composer" onSubmit={(event) => void send(event)}>
       <ConnectionLine />
-      <label className="ui-vh" htmlFor={fieldId}>Write in the agents’ thread</label>
-      <textarea id={fieldId} value={composer.draft.body} rows={3} maxLength={100000} placeholder="Write in this thread…" onChange={(event) => composer.setBody(event.target.value)} onKeyDown={onKeyDown} />
-      <ComposerFiles state={composer} /><SendAnnouncer pending={composer.pending} />
-      <div className="wd-actions"><Button type="submit" variant="secondary" icon="send" disabled={!composer.canSend}>Send</Button></div>
-    </form> : thread ? <p className="wd-muted" role="status">{readOnly ? 'Creation was undone. This thread is read-only; your draft is kept.' : 'You can read this thread. Posting requires project write access.'}</p> : null}
+      <div className="at-composer__recovery"><ComposerFiles state={composer} attach="none" /></div><SendAnnouncer pending={composer.pending} />
+      <div className="composer__box">
+        <AttachButton state={composer} />
+        <label className="ui-vh" htmlFor={fieldId}>Write in the agents’ thread</label>
+        <textarea ref={field} id={fieldId} value={composer.draft.body} rows={1} maxLength={100000} placeholder="Write in this thread…" onChange={(event) => composer.setBody(event.target.value)} onKeyDown={onKeyDown} />
+        <button type="submit" className="composer__send" aria-label="Send" aria-disabled={!composer.canSend}><Icon name="send" /></button>
+      </div>
+    </form> : thread ? <p className="wd-muted at-readonly" role="status">{readOnly ? 'Creation was undone. This thread is read-only; your draft is kept.' : 'You can read this thread. Posting requires project write access.'}</p> : null}
   </div>;
 }

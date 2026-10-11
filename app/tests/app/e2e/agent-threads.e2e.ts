@@ -66,6 +66,18 @@ async function session(who: Person, width: number) {
   assert.equal(response.status(), 200, await response.text()); return context;
 }
 const panel = (page: Page) => page.locator('[data-agent-thread-task]');
+async function composerReachable(page: Page) {
+  const geometry = await panel(page).evaluate(element => {
+    const form = element.querySelector('.at-composer'), box = form?.querySelector('.composer__box');
+    const send = form?.querySelector('[aria-label="Send"]'), field = form?.querySelector('textarea');
+    const rect = (node: Element | null | undefined) => node?.getBoundingClientRect();
+    return { form: rect(form), box: rect(box), send: rect(send), field: rect(field), bottom: window.visualViewport?.height ?? innerHeight, width: innerWidth };
+  });
+  for (const key of ['box', 'send', 'field'] as const) {
+    const box = geometry[key]; assert.ok(box && box.top >= 0 && box.bottom <= geometry.bottom + 1 && box.left >= 0 && box.right <= geometry.width, `${key} is reachable in the visible thread surface: ${JSON.stringify(geometry)}`);
+  }
+  assert.ok(geometry.form && geometry.bottom - geometry.form.bottom < 36, 'composer remains at the bottom, without blank space beneath the action');
+}
 async function capture(page: Page, name: string) {
   const directory = process.env.FLUX_E2E_EVIDENCE_DIR;
   if (!directory) return;
@@ -96,6 +108,15 @@ test('task Details opens the one thread surface; real contributor sends, viewer 
       await panel(page).getByRole('button', { name: 'Refresh', exact: true }).click();
       await page.waitForFunction(n => document.querySelectorAll('.at-message').length === n, width === 1440 ? 1 : 2);
       assert.equal(await field.inputValue(), '');
+      await composerReachable(page);
+      const aligned = await panel(page).locator('.at-message').first().evaluate(element => {
+        const avatar = element.firstElementChild!.getBoundingClientRect();
+        const name = element.querySelector('strong')!.getBoundingClientRect();
+        const body = element.querySelector('.at-message__body')!.getBoundingClientRect();
+        return { avatarWidth: avatar.width, avatarRight: avatar.right, nameLeft: name.left, bodyLeft: body.left };
+      });
+      assert.equal(aligned.avatarWidth, 32); assert.ok(Math.abs(aligned.nameLeft - aligned.bodyLeft) < 1);
+      assert.ok(Math.abs(aligned.bodyLeft - aligned.avatarRight - (width === 390 ? 10 : 12)) < 1);
       for (const theme of ['light', 'dark'] as const) {
         await page.evaluate(value => document.documentElement.setAttribute('data-theme', value), theme);
         await capture(page, `writer-${width}-${theme}`);
@@ -144,6 +165,8 @@ test('older search arrival focuses the exact message; real refused/lost-response
     const refused = page.waitForResponse(r => r.request().method() === 'POST' && new URL(r.url()).pathname === f.path);
     await panel(page).getByRole('button', { name: 'Send', exact: true }).click(); assert.equal((await refused).status(), 403);
     await page.waitForFunction(() => (document.querySelector('.at-composer textarea') as HTMLTextAreaElement | null)?.value.includes('Keep this unsent'));
+    await panel(page).locator('.composer-files__error').waitFor();
+    await composerReachable(page);
     await capture(page, 'refused-phone-light');
     await panel(page).getByRole('button', { name: 'Refresh', exact: true }).click();
     await page.waitForFunction(() => !document.querySelector('.at-composer textarea'));
@@ -152,4 +175,43 @@ test('older search arrival focuses the exact message; real refused/lost-response
     await grant(f.owner, f.place.id, f.writer, 'denied'); await page.reload();
     assert.equal(await panel(page).locator('.at-message').count(), 0);
   } finally { await context.close(); }
+});
+
+
+test('compact bottom actions survive realistic long history, long drafts, narrow/short phone and real attached-file sends', { timeout: 180_000 }, async () => {
+  const f = await fixture();
+  await f.say('The reference sensor is stable after the first warm-up.');
+  for (let i = 0; i < 18; i++) await f.say(`Reading ${i + 1}: the gesture lamp responds consistently. ` + 'We compared both prototype baselines after warming the housings and rechecked the cold-start measurements. '.repeat(i === 6 ? 15 : 2), i % 2 ? f.writer : f.owner);
+  for (const [width, height] of [[1440, 900], [390, 844], [320, 568], [390, 480]] as const) {
+    const context = await session(f.writer, width); const page = await context.newPage();
+    try {
+      await page.setViewportSize({ width, height });
+      await page.goto(`/projects/${f.place.id}/tasks?open=work:${f.task.id}&agentThread=1`);
+      const field = panel(page).getByRole('textbox', { name: 'Write in the agents’ thread' }); await field.waitFor();
+      await composerReachable(page);
+      for (const edge of ['first', 'last'] as const) {
+        const message = edge === 'first' ? panel(page).locator('.at-message').first() : panel(page).locator('.at-message').last();
+        await message.scrollIntoViewIfNeeded(); await composerReachable(page);
+        const visible = await message.evaluate(element => {
+          const m = element.getBoundingClientRect(), feed = element.closest('.at-feed')!.getBoundingClientRect();
+          return m.bottom > feed.top && m.top < feed.bottom;
+        }); assert.equal(visible, true, `${edge} message is reachable in the independently scrolling history`);
+      }
+      await field.fill('A private unsent measurement.\n'.repeat(30)); await field.press('Control+End');
+      await composerReachable(page); assert.ok(await field.evaluate(element => element.scrollHeight > element.clientHeight), 'long draft scrolls within the capped field');
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+      if (width === 320) await capture(page, 'long-draft-narrow-phone-light');
+      if (width === 390 && height === 844) {
+        await field.fill('The measured traces are attached.');
+        await panel(page).locator('.composer__box input[type="file"]').setInputFiles({ name: 'prototype-measurements.csv', mimeType: 'text/csv', buffer: Buffer.from('probe,value\nA,12\nB,14\n') });
+        await panel(page).getByText(/Ready, private/).waitFor(); await composerReachable(page);
+        const stored = page.waitForResponse(r => r.request().method() === 'POST' && new URL(r.url()).pathname === f.path);
+        await panel(page).getByRole('button', { name: 'Send', exact: true }).click(); const response = await stored; assert.equal(response.status(), 201);
+        const message = await response.json() as ConversationMessage; assert.equal(message.files?.[0]?.name, 'prototype-measurements.csv');
+        const file = await context.request.get(`/api/v1/files/${message.files![0]!.id}`); assert.equal(file.status(), 200); assert.equal((await file.body()).toString(), 'probe,value\nA,12\nB,14\n');
+        await panel(page).getByRole('button', { name: 'Refresh', exact: true }).click();
+        await panel(page).getByRole('link', { name: /prototype-measurements.csv/ }).waitFor();
+      }
+    } finally { await context.close(); }
+  }
 });
