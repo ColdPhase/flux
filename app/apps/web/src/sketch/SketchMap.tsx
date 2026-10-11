@@ -771,7 +771,7 @@ export function SketchMap(props: SketchMapProps) {
                 resizable={selected && selection.length === 1 && arrange && !coarse && !editing}
                 meId={meId} helpId={helpId} projectId={projectId}
                 linked={projectId ? tasks.get(thought.id) : undefined}
-                mover={props.movers.get(thought.id)} live={props.livePreviews.get(thought.id)} nodeRef={nodeRef} getNodeEvents={getNodeEvents} />
+                mover={props.movers.get(thought.id)} live={props.livePreviews.get(thought.id)} ref={nodeRef} getNodeEvents={getNodeEvents} />
               {arrange && !editing && !measuring ? (['right', 'left'] as const).map((side) => (
                 <button key={side} type="button" tabIndex={selected && side === 'right' ? 0 : -1} data-for={thought.id} data-side={side}
                   aria-label={`Connect from ${quote(thought.text)}: drag to another thought, or press Enter and choose one`} aria-hidden={side === 'left' ? true : undefined}
@@ -895,7 +895,7 @@ interface ThoughtNodeProps {
   linked: ThoughtTasksEntry | undefined;
   mover: string | undefined;
   live: { generation: string; gestureId: string; leaseId: string; sequence: number } | undefined;
-  nodeRef(el: HTMLButtonElement | null): (() => void) | undefined;
+  ref(el: HTMLButtonElement | null): (() => void) | undefined;
   getNodeEvents(): NodeEvents;
 }
 
@@ -904,7 +904,7 @@ interface ThoughtNodeProps {
  * re-renders only the thoughts it moves: re-rendering all 500 thoughts of a map for every preview
  * kept a peer's main thread busy and delayed the next preview's receipt (#228 Gate 4).
  */
-const ThoughtNode = memo(function ThoughtNode({ thought, x, y, w, h, selected, dragging, editing, resizable, meId, helpId, projectId, linked, mover, live, nodeRef, getNodeEvents }: ThoughtNodeProps) {
+const ThoughtNode = memo(function ThoughtNode({ thought, x, y, w, h, selected, dragging, editing, resizable, meId, helpId, projectId, linked, mover, live, ref: nodeRef, getNodeEvents }: ThoughtNodeProps) {
   const link = linkOf(thought.text);
   const meta = thought.placement
     ? (thought.placement.title ? `Draft · ${thought.placement.title}` : 'Draft you can’t open')
