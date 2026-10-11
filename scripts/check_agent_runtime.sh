@@ -74,7 +74,7 @@ host_addr() { docker run --rm --network host --cap-drop ALL --read-only --entryp
 ip_on() { docker inspect -f "{{ with index .NetworkSettings.Networks \"${project}_$2\" }}{{ .IPAddress }}{{ end }}" "$1"; }
 
 step "1. Off by default: no runtime service starts and the API reports the feature disabled"
-./flux up
+./flux up </dev/null   # no terminal: the first-run subscription question is not asked
 project=$(sed -n 's/^FLUX_PROJECT=//p' docker/.env)
 [ -n "$project" ] || fail "no project name"
 [ -z "$(runtime_containers)" ] || fail "runtime containers exist while FLUX_AGENT_RUNTIME is empty: $(runtime_containers)"

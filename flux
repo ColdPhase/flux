@@ -202,6 +202,8 @@ ensure_env() {
   for n in 1 2 3 4; do set_env_line "$draft" "FLUX_RUNTIME_SECRET_$n" "$(random_hex 32)"; done
   [ -z "${FLUX_MAILPIT_PORT:-}" ] || set_env_line "$draft" FLUX_MAILPIT_PORT "$FLUX_MAILPIT_PORT"
   [ -z "${FLUX_DEV_PORT:-}" ] || set_env_line "$draft" FLUX_DEV_PORT "$FLUX_DEV_PORT"
+  # F-027 AST-1: only `./flux up` asks, only while it creates the file, and before the build.
+  if [ "${ASK_RUNTIME:-0}" = 1 ]; then first_run_runtime_question "$draft"; fi
 
   # VAPID keys come from the pinned web-push package inside the image just built, the same
   # command operators use (docs/development/containers.md).
@@ -249,6 +251,117 @@ check_runtime_switch() {
   esac
   return 0
 }
+# --- Subscription sign-in question (F-027 AST-1, #410; docs/operations/agent-runtime.md). The first
+# interactive `./flux up` and `./flux ai on` ask whether people may sign in with their own ChatGPT and
+# Claude subscriptions. Enter means yes and enables Codex; Claude Code needs a typed `y`, because it is
+# the operator's Commercial Terms statement and a default answer must not make a legal statement. The
+# host is checked first: the questions are not shown on a host whose engine cannot run the slots.
+interactive() { [ -t 0 ] && [ -t 1 ]; }
+
+# The first Dockerfile base image (pinned by digest), used for the one throwaway check container. The
+# build pulls the same image, so the check costs nothing extra.
+runtime_probe_image() { sed -n 's/^FROM \(node@sha256:[0-9a-f]\{64\}\) AS .*/\1/p' "$FLUX_ROOT/docker/Dockerfile" 2>/dev/null | head -n 1; }
+
+# Prints one line saying why the Docker engine cannot run the agent runtime slots, or nothing when it can
+# (AIM-3: Yama ptrace_scope of 1 or higher, `internal` networks, memory, CPU and process limits). It asks
+# the engine, not this machine: the slots run in the engine's kernel, which on Docker Desktop is a VM.
+runtime_host_problem() {
+  info=$(docker info --format '{{json .}}' 2>/dev/null) || { say "the Docker engine did not report its settings"; return 0; }
+  case "$info" in *'"OSType":"linux"'*) ;; *) say "the Docker engine is not a Linux engine"; return 0 ;; esac
+  for limit in MemoryLimit CpuCfsQuota PidsLimit; do
+    case "$info" in *"\"$limit\":true"*) ;; *) say "the Docker engine cannot set the memory, CPU and process limits that every slot has ($limit is off)"; return 0 ;; esac
+  done
+  net="flux-ai-check-$$"
+  if docker network create --internal "$net" >/dev/null 2>&1; then
+    docker network rm "$net" >/dev/null 2>&1 || true
+  else
+    say "the Docker engine cannot create an internal network, which every slot needs"; return 0
+  fi
+  image=$(runtime_probe_image)
+  [ -n "$image" ] || { say "the check image was not found in docker/Dockerfile"; return 0; }
+  code=0
+  scope=$(docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --entrypoint cat "$image" /proc/sys/kernel/yama/ptrace_scope 2>/dev/null) || code=$?
+  if [ "$code" -ge 125 ]; then say "a check container could not be run on the Docker engine (is Docker Hub reachable?)"; return 0; fi
+  case "$scope" in
+    1|2|3) ;;
+    *) say "the engine's kernel has no Yama ptrace_scope of 1 or higher (Docker Desktop has none); use a Linux host with kernel.yama.ptrace_scope=1"; return 0 ;;
+  esac
+  return 0
+}
+
+# Prints a prompt and reads the answer into ANSWER. False at the end of input (Ctrl-D): nothing is decided.
+ask_line() {
+  printf '%s ' "$1"
+  if read -r ANSWER; then return 0; fi
+  printf '\n'
+  return 1
+}
+# Enter or y: yes. n or no: no. Anything else is asked again, then counts as no.
+ask_subscriptions() {
+  say "Let people on this Flux sign in with their own ChatGPT and Claude"
+  say "subscriptions? Flux runs the official Codex and Claude Code for each"
+  prompt="person in their own isolated slot.  [Y/n]"
+  tries=0
+  while [ "$tries" -lt 3 ]; do
+    ask_line "$prompt" || return 1
+    case "$ANSWER" in ''|y|Y|yes|Yes|YES) return 0 ;; n|N|no|No|NO) return 1 ;; esac
+    say "Please answer y or n."
+    prompt="[Y/n]"
+    tries=$((tries + 1))
+  done
+  return 1
+}
+# Only a typed y (or yes) says it. Enter, n and anything else do not make the statement.
+ask_commercial_terms() {
+  say "Claude Code also needs the person who runs this Flux to accept"
+  say "Anthropic's Commercial Terms (for example by creating a Console"
+  ask_line "organization). Have you accepted them?  [y/N]" || return 1
+  case "$ANSWER" in y|Y|yes|Yes|YES) return 0 ;; *) return 1 ;; esac
+}
+# $1 is the current FLUX_AGENT_RUNTIME. Sets AI_RUNTIME (the value to write) and AI_TERMS (the date of the
+# Commercial Terms statement, or empty). False when nothing is to be written; an existing client is never
+# removed, so `./flux ai on` on a configured instance can only add Claude Code.
+ask_runtime_questions() {
+  AI_RUNTIME=$1 AI_TERMS=''
+  if [ -z "$AI_RUNTIME" ]; then
+    ask_subscriptions || return 1
+    AI_RUNTIME=codex
+    say ""
+  fi
+  case ",$AI_RUNTIME," in
+    *,claude_code,*) ;;
+    *) if ask_commercial_terms; then AI_RUNTIME="$AI_RUNTIME,claude_code" AI_TERMS=$(date +%Y-%m-%d); fi ;;
+  esac
+  [ "$AI_RUNTIME" != "$1" ]
+}
+# Writes the answer (AI_RUNTIME, AI_TERMS) into the env file $1 and says what it means.
+write_runtime_answer() {
+  set_env_line "$1" FLUX_AGENT_RUNTIME "$AI_RUNTIME"
+  [ -z "$AI_TERMS" ] || set_env_line "$1" FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS "$AI_TERMS"
+  say ""
+  say "Subscription sign-in is on for: $AI_RUNTIME."
+  case ",$AI_RUNTIME," in
+    *,claude_code,*) [ -z "$AI_TERMS" ] || say "Your statement that you accepted Anthropic's Commercial Terms on $AI_TERMS is saved in ${ENV_FILE#"$FLUX_ROOT"/}; Flux records it when it starts and does not check it." ;;
+    *) say "Claude Code stays off until you accept Anthropic's Commercial Terms: ./flux ai on asks again." ;;
+  esac
+}
+# The first interactive `./flux up`, while it creates the env file $1. Silent without a terminal, and when
+# FLUX_AGENT_RUNTIME is set in the environment (even empty): the operator has already chosen.
+first_run_runtime_question() {
+  interactive || return 0
+  [ -z "${FLUX_AGENT_RUNTIME+x}" ] || return 0
+  problem=$(runtime_host_problem)
+  if [ -n "$problem" ]; then
+    say "Subscription sign-in stays off: $problem. See docs/operations/agent-runtime.md."
+    return 0
+  fi
+  if ask_runtime_questions ''; then
+    write_runtime_answer "$1"
+  else
+    say "Subscription sign-in stays off. ./flux ai on turns it on later."
+  fi
+}
+
 # The slot services in this project's Compose files, in number order (runtime-1 … and override slots).
 runtime_slots() { compose_main --profile runtime config --services 2>/dev/null | grep -E '^runtime-[1-9][0-9]*$' | sort -t- -k2 -n | tr '\n' ' '; }
 runtime_services() { printf 'runtime-manager runtime-egress runtime-install %s' "$(runtime_slots)"; }
@@ -386,6 +499,7 @@ cmd_up() {
   [ "$#" -eq 0 ] || die "up: unknown option $1 (up takes no options; use ./flux dev for hot reload)"
   need_docker
   claim_project "$PROJECT"
+  ASK_RUNTIME=1
   ensure_env
   start_main
   say ""
@@ -1056,6 +1170,36 @@ cmd_runtime() {
   esac
 }
 
+# ./flux ai on  (F-027 AST-1; docs/operations/agent-runtime.md): the same two questions as the first
+# `./flux up`, for an instance that already exists. It then applies the answer like `./flux up`.
+cmd_ai() {
+  sub=${1:-}
+  [ $# -gt 0 ] && shift
+  case "$sub" in
+    on) [ $# -eq 0 ] || die "ai on takes no options" ;;
+    *) die "usage: ./flux ai on" ;;
+  esac
+  interactive || die "ai on asks two questions and needs a terminal. Without one, set FLUX_AGENT_RUNTIME (and, for Claude Code, FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS=<YYYY-MM-DD>) in ${ENV_FILE#"$FLUX_ROOT"/} and run ./flux up; see docs/operations/agent-runtime.md."
+  need_docker
+  [ -f "$ENV_FILE" ] || die "No ${ENV_FILE#"$FLUX_ROOT"/}; start Flux with ./flux up first."
+  claim_project "$PROJECT"
+  current=$(runtime_value)
+  case ",$current," in
+    *,claude_code,*) say "Subscription sign-in is already on for: $current."; return 0 ;;
+  esac
+  [ -z "$current" ] || say "Subscription sign-in is on for: $current."
+  problem=$(runtime_host_problem)
+  [ -z "$problem" ] || die "subscription sign-in cannot be turned on here: $problem. See docs/operations/agent-runtime.md."
+  if ! ask_runtime_questions "$current"; then
+    say "Nothing changed."
+    return 0
+  fi
+  write_runtime_answer "$ENV_FILE"
+  start_main
+  say ""
+  say "Flux is running:  $(public_origin)"
+}
+
 cmd_help() {
   cat <<EOF
 Flux launcher. Everything runs in Docker; only sh and Docker Compose are needed.
@@ -1087,6 +1231,10 @@ Flux launcher. Everything runs in Docker; only sh and Docker Compose are needed.
   ./flux runtime status | release runtime-<n> | purge [-y]
                          Agent runtime (FLUX_AGENT_RUNTIME): show slots and bindings, release one slot's
                          binding (its owner is signed out and told), or sign out and delete every login.
+  ./flux ai on           Ask whether people may sign in with their own ChatGPT and Claude subscriptions
+                         (Enter = yes for Codex; Claude Code needs a typed y to Anthropic's Commercial
+                         Terms), write FLUX_AGENT_RUNTIME into docker/.env and apply it. The first
+                         interactive ./flux up asks the same once. Needs a terminal.
   ./flux help            This text.
 
 Commands that start, stop, back up, restore or delete refuse a Compose project that belongs to another
@@ -1128,6 +1276,7 @@ case "$command" in
   export) cmd_export "$@" ;;
   upgrade) cmd_upgrade "$@" ;;
   runtime) cmd_runtime "$@" ;;
+  ai) cmd_ai "$@" ;;
   _upgrade-apply) upgrade_apply "$@" ;;  # continues ./flux upgrade --pull in the pulled launcher
   help|-h|--help) cmd_help ;;
   *) warn "unknown command: $command"; cmd_help >&2; exit 2 ;;

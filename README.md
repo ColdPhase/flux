@@ -62,7 +62,7 @@ minutes, because it downloads the dependencies and builds Flux
 as Claude Code or Codex, sign in, open Settings and choose Agent connections (MCP). The page
 shows the commands for this server.
 
-`./flux up` never overwrites an existing `docker/.env`. An older root `.env` is moved once with its secrets and project name intact; if both files exist, choose the intended one before continuing. `app/.env.example` documents variables and is never loaded.
+The first `./flux up` in a terminal also asks once whether people may sign in with their own ChatGPT and Claude subscriptions (Enter means yes, for Codex; Claude Code needs a typed `y` to Anthropic's Commercial Terms; a host that cannot run it gets one line saying why instead); `./flux ai on` asks later, and without a terminal nothing is asked ([operator guide](docs/operations/agent-runtime.md)). `./flux up` never overwrites an existing `docker/.env`. An older root `.env` is moved once with its secrets and project name intact; if both files exist, choose the intended one before continuing. `app/.env.example` documents variables and is never loaded.
 Other commands: `./flux dev` (hot reload in Docker), `./flux down`, `./flux logs`,
 `./flux reset` (deletes data after confirmation), `./flux clean` (also removes the
 images this checkout built) and `./flux help`. Backups, restore, project export and
