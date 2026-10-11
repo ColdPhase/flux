@@ -81,7 +81,9 @@ export async function getPushState(): Promise<PushState> {
   if (Notification.permission === 'denied') return { state: 'denied' };
   const registration = await registerServiceWorker();
   if (!registration) return { state: 'unsupported' };
-  const subscription = await registration.pushManager.getSubscription();
+  // Only a granted permission can have a subscription in use. Asking the browser otherwise can
+  // stall the page (#461), so it is not asked.
+  const subscription = Notification.permission === 'granted' ? await registration.pushManager.getSubscription() : null;
   if (Notification.permission === 'granted' && subscription && sameKey(subscription, publicKey)) return { state: 'subscribed', publicKey };
   return { state: 'prompt', publicKey };
 }
@@ -114,9 +116,14 @@ export async function enablePushNotifications(publicKey: string, deviceLabel?: s
   }
 }
 
-/** Removes this device's subscription from the browser and from Flux. */
+/**
+ * Removes this device's subscription from the browser and from Flux. Flux subscribes only after
+ * permission is granted, so without it there is nothing to remove here: the browser is not asked
+ * (its subscription call can stall the page, #461), and the server deletes the session's rows
+ * when the session ends.
+ */
 export async function disablePushNotifications(): Promise<void> {
-  if (!pushApisPresent()) return;
+  if (!pushApisPresent() || Notification.permission !== 'granted') return;
   const registration = await navigator.serviceWorker.getRegistration('/');
   const subscription = await registration?.pushManager.getSubscription();
   if (!subscription) return;
