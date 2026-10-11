@@ -53,6 +53,7 @@ function timeZones(current: string) {
 
 type FeedbackArea = 'level' | 'quietHours' | 'morningSummary' | 'email' | 'mute' | NotificationReason;
 type MuteReceipt = { place: NotificationPreferences['muted'][number]; muted: boolean; index: number };
+type MutedPlaceRow = { place: NotificationPreferences['muted'][number]; receiptOnly: boolean };
 
 const message = (error: unknown, fallback: string) => (error instanceof ApiError && error.status < 500 ? error.message : fallback);
 
@@ -266,7 +267,7 @@ function AccountNotificationSettings() {
   const workingFeedback = (area: FeedbackArea) => refreshWarning === 'settings' && feedbackArea === area
     ? <WorkingReadNotice acknowledged={saved} retry={load} /> : null;
   const activeMuteReceipt = showMuteReceipt ? muteReceipt : null;
-  const muteRows: { place: NotificationPreferences['muted'][number]; receiptOnly: boolean }[] = prefs.muted.map((place) => ({ place, receiptOnly: false }));
+  const muteRows: MutedPlaceRow[] = prefs.muted.map((place) => ({ place, receiptOnly: false }));
   if (activeMuteReceipt) {
     const existing = muteRows.findIndex(({ place }) => place.type === activeMuteReceipt.place.type && place.id === activeMuteReceipt.place.id);
     const row = existing >= 0 ? muteRows.splice(existing, 1)[0]! : { place: activeMuteReceipt.place, receiptOnly: true };
@@ -279,21 +280,7 @@ function AccountNotificationSettings() {
   const beforePickerRows = pickerReceiptIndex < 0 ? muteRows : muteRows.slice(0, pickerReceiptIndex);
   const afterPickerRows = pickerReceiptIndex < 0 ? [] : muteRows.slice(pickerReceiptIndex + 1);
   const onMute = (place: NotificationPreferences['muted'][number]) => void save(() => setMute({ type: place.type, id: place.id, muted: true }), `Muted ${place.name}`, undefined, 'mute', { place, muted: true, index: prefs.muted.length });
-  const renderMuteRows = (rows: typeof muteRows) => (
-    <ul className="nset__muted">
-      {rows.map(({ place, receiptOnly }) => (
-        <li key={`${receiptOnly ? 'receipt:' : ''}${place.type}:${place.id}`} className={receiptOnly ? 'nset__mute-result' : undefined}>
-          {activeMuteReceipt && activeMuteReceipt.place.type === place.type && activeMuteReceipt.place.id === place.id ? (
-            <p className="nset__mute-read" role="note"><span>
-              <span className="nset__place">{place.type === 'dm' ? <Icon name="chat" size={14} /> : <span className="nset__hash" aria-hidden="true">#</span>}{place.name}<span className="ui-vh">{place.type === 'dm' ? ', direct message' : ', project'}</span></span>
-              <span className="nset__mute-state">{activeMuteReceipt.muted ? 'Muted' : 'Unmuted'}. Current settings unverified.</span>
-            </span><Button variant="quiet" aria-label="Retry current settings" onClick={load}>Refresh</Button></p>
-          ) : <span className="nset__place">{place.type === 'dm' ? <Icon name="chat" size={14} /> : <span className="nset__hash" aria-hidden="true">#</span>}{place.name}<span className="ui-vh">{place.type === 'dm' ? ', direct message' : ', project'}</span></span>}
-          {!receiptOnly ? <Button variant="quiet" onClick={() => void save(() => setMute({ type: place.type, id: place.id, muted: false }), `Unmuted ${place.name}`, undefined, 'mute', { place, muted: false, index: prefs.muted.findIndex((item) => item.type === place.type && item.id === place.id) })}>Unmute</Button> : null}
-        </li>
-      ))}
-    </ul>
-  );
+  const onUnmute = (place: NotificationPreferences['muted'][number]) => void save(() => setMute({ type: place.type, id: place.id, muted: false }), `Unmuted ${place.name}`, undefined, 'mute', { place, muted: false, index: prefs.muted.findIndex((item) => item.type === place.type && item.id === place.id) });
   const emailReadNotice = refreshWarning && !showMuteReceipt ? <p ref={emailReadNoticeRef} className="nset__problem" role="note"><Icon name="alert" size={14} /><span>
     {refreshWarning === 'settings' && feedbackArea === 'email' && saved ? `${saved}. ` : ''}
     {refreshWarning === 'settings' && feedbackArea === 'email' && saved && emailTarget ? <span className="nset__email-target">{emailTarget}</span> : null}
@@ -396,13 +383,36 @@ function AccountNotificationSettings() {
         <h3 className="sset-sec" id={ids.mute}>Muted places</h3>
         <div className="sset-card nset__box">
           <p className="nset__lead">Nothing from a muted place notifies you, on any channel. You can still open it.</p>
-          {beforePickerRows.length ? renderMuteRows(beforePickerRows) : pickerReceiptIndex < 0 ? <p className="nset__none">No muted places.</p> : null}
-          {pickerReceiptIndex >= 0 ? <MutePicker places={mutable} onMute={onMute} result={renderMuteRows([muteRows[pickerReceiptIndex]!])} /> : null}
-          {afterPickerRows.length ? renderMuteRows(afterPickerRows) : null}
+          {beforePickerRows.length ? <MutedPlaceRows rows={beforePickerRows} receipt={activeMuteReceipt} onUnmute={onUnmute} onRetry={load} /> : pickerReceiptIndex < 0 ? <p className="nset__none">No muted places.</p> : null}
+          {pickerReceiptIndex >= 0 ? <MutePicker places={mutable} onMute={onMute} result={<MutedPlaceRows rows={[muteRows[pickerReceiptIndex]!]} receipt={activeMuteReceipt} onUnmute={onUnmute} onRetry={load} />} /> : null}
+          {afterPickerRows.length ? <MutedPlaceRows rows={afterPickerRows} receipt={activeMuteReceipt} onUnmute={onUnmute} onRetry={load} /> : null}
           {mutable.length ? <MutePicker places={mutable} onMute={onMute} /> : null}
         </div>
       </section>
     </div></div>
+  );
+}
+
+function MutedPlaceRows({ rows, receipt, onUnmute, onRetry }: {
+  rows: MutedPlaceRow[];
+  receipt: MuteReceipt | null;
+  onUnmute: (place: NotificationPreferences['muted'][number]) => void;
+  onRetry: () => void;
+}) {
+  return (
+    <ul className="nset__muted">
+      {rows.map(({ place, receiptOnly }) => (
+        <li key={`${receiptOnly ? 'receipt:' : ''}${place.type}:${place.id}`} className={receiptOnly ? 'nset__mute-result' : undefined}>
+          {receipt && receipt.place.type === place.type && receipt.place.id === place.id ? (
+            <p className="nset__mute-read" role="note"><span>
+              <span className="nset__place">{place.type === 'dm' ? <Icon name="chat" size={14} /> : <span className="nset__hash" aria-hidden="true">#</span>}{place.name}<span className="ui-vh">{place.type === 'dm' ? ', direct message' : ', project'}</span></span>
+              <span className="nset__mute-state">{receipt.muted ? 'Muted' : 'Unmuted'}. Current settings unverified.</span>
+            </span><Button variant="quiet" aria-label="Retry current settings" onClick={onRetry}>Refresh</Button></p>
+          ) : <span className="nset__place">{place.type === 'dm' ? <Icon name="chat" size={14} /> : <span className="nset__hash" aria-hidden="true">#</span>}{place.name}<span className="ui-vh">{place.type === 'dm' ? ', direct message' : ', project'}</span></span>}
+          {!receiptOnly ? <Button variant="quiet" onClick={() => onUnmute(place)}>Unmute</Button> : null}
+        </li>
+      ))}
+    </ul>
   );
 }
 
