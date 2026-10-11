@@ -76,7 +76,7 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
   const [taskId, setTaskId] = useState<string | null>(given?.id ?? null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const now = Date.now();
+  const [now, setNow] = useState(() => Date.now());
   const attempt = useRef<{ key: string; id: string } | null>(null);
   const first = useRef<HTMLElement | null>(null);
 
@@ -92,19 +92,31 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
     ]).then(([people, agents, workspaceAgents, page, policy]) => {
       if (signal.aborted) return;
       setLoaded({ people, connections: agents.connections, workspaceAgents, tasks: page.rows, policy });
+      setNow(Date.now());
       setCursor(page.next);
     }, () => { if (!signal.aborted) setLoadFailed(true); });
     return () => controller.abort();
   }, [project.id, project.workspaceId]);
+
+  // Age only the displayed session evidence at its next expiry; this clock never polls or retries an API read.
+  useEffect(() => {
+    const at = Date.now();
+    const expiry = (loaded?.connections ?? []).filter((connection) => connection.state === 'session_open' && connection.session)
+      .map((connection) => Date.parse(connection.session!.expiresAt)).filter((end) => end > at)
+      .reduce((soonest, end) => Math.min(soonest, end), Infinity);
+    if (!Number.isFinite(expiry)) return undefined;
+    const timer = window.setTimeout(() => setNow(Date.now()), Math.min(expiry - at + 1, 2_147_483_647));
+    return () => window.clearTimeout(timer);
+  }, [loaded, now]);
 
   const humans = useMemo(() => new Map((loaded?.people ?? []).filter((person) => person.kind === 'human').map((person) => [person.id, person.name])), [loaded]);
   const entries = useMemo(() => {
     const all = loaded ? agentEntries(loaded.people, loaded.connections, loaded.workspaceAgents, humans) : [];
     // An agent with several connections is one choice: the task goes to the agent.
     return all.filter((entry, index) => all.findIndex((other) => other.agentId === entry.agentId) === index)
-      .map((entry) => all.find((other) => other.agentId === entry.agentId && isAgentWorking(other, Date.now()))
+      .map((entry) => all.find((other) => other.agentId === entry.agentId && isAgentWorking(other, now))
         ?? all.find((other) => other.agentId === entry.agentId && other.connection?.currentWork) ?? entry);
-  }, [loaded, humans]);
+  }, [loaded, humans, now]);
   const held = (id: string) => tasksHeldBy(id, loaded?.tasks ?? []);
   const task: HandOffTask | null = given && taskId === given.id ? given : loaded?.tasks.find((row) => row.id === taskId) ?? null;
   const entry = entries.find((item) => item.agentId === chosen) ?? null;
