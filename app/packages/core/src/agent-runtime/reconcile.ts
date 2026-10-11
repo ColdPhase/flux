@@ -43,10 +43,17 @@ export async function reconcileAgentRuntime({ config, store, manager, now = () =
     return report;
   }
   const known = new Map((await store.slotsWithBindings()).map((entry) => [entry.slot.slot, entry]));
-  const save = async (row: RuntimeSlotRow) => {
-    await store.saveSlot(row);
+  const save = async (row: RuntimeSlotRow, read?: RuntimeSlotRow) => {
+    await store.saveSlot(row, read);
     if (row.state === 'ready') report.ready.push(row.slot);
     if (row.state === 'out_of_pool') { report.outOfPool.push(row.slot); log({ event: 'slot_out_of_pool', slot: row.slot, reason: row.outOfPoolReason }); }
+  };
+  // The sightings were taken before the database was read, so a bind that activated in between is not in
+  // them. Before telling an owner to sign in again, look at the slot once more.
+  const stillMissing = async (slot: string, bindingId: string) => {
+    const again = await manager.slots();
+    const sighted = again.ok ? again.value.find((entry) => entry.slot === slot) : undefined;
+    return Boolean(sighted?.reachable && !sighted.bindings.includes(bindingId));
   };
   for (const sighting of sightings.value) {
     const entry = known.get(sighting.slot);
@@ -54,7 +61,7 @@ export async function reconcileAgentRuntime({ config, store, manager, now = () =
     const row: RuntimeSlotRow = entry?.slot ?? { slot: sighting.slot, state: 'unknown', bootId: null, wipeBootId: null, outOfPoolReason: null };
     const binding = entry?.binding ?? null;
     if (!sighting.reachable) {
-      if (!entry || row.state === 'ready') await store.saveSlot({ ...row, state: row.state === 'ready' ? 'unknown' : row.state });
+      if (!entry || row.state === 'ready') await store.saveSlot({ ...row, state: row.state === 'ready' ? 'unknown' : row.state }, entry?.slot);
       continue;
     }
     const seen: RuntimeSlotRow = { ...row, bootId: sighting.bootId };
@@ -63,7 +70,7 @@ export async function reconcileAgentRuntime({ config, store, manager, now = () =
 
     if (binding?.state === 'releasing') {
       const released = await manager.release(sighting.slot, binding.id);
-      if (!released.ok) { log({ event: 'release_pending', slot: sighting.slot, code: released.code }); await store.saveSlot(seen); continue; }
+      if (!released.ok) { log({ event: 'release_pending', slot: sighting.slot, code: released.code }); await store.saveSlot(seen, entry?.slot); continue; }
       const slot = released.value.dataEmpty ? wiping(sighting.bootId) : outOfPool('data_not_empty');
       await store.completeRelease(binding.id, slot, released.value.logoutFailed);
       report.released.push(binding.id);
@@ -82,46 +89,47 @@ export async function reconcileAgentRuntime({ config, store, manager, now = () =
         report.orphans += 1;
         dataEmpty = released.value.dataEmpty;
       }
-      if (binding && !sighting.bindings.includes(binding.id) && binding.state === 'active') {
+      if (binding && !sighting.bindings.includes(binding.id) && binding.state === 'active' && await stillMissing(sighting.slot, binding.id)) {
         await store.markSignInAgain(binding.id);
         report.signInAgain.push(binding.id);
       }
-      if (failed) { await store.saveSlot(seen); continue; }
-      if (binding) await save({ ...seen, state: 'held', wipeBootId: null, outOfPoolReason: null });
-      else await save(dataEmpty ? wiping(sighting.bootId) : outOfPool('data_not_empty'));
+      if (failed) { await store.saveSlot(seen, entry?.slot); continue; }
+      if (binding) await save({ ...seen, state: 'held', wipeBootId: null, outOfPoolReason: null }, entry?.slot);
+      else await save(dataEmpty ? wiping(sighting.bootId) : outOfPool('data_not_empty'), entry?.slot);
       continue;
     }
 
     if (binding) {
       if (!sighting.bindings.includes(binding.id)) {
         if (binding.state === 'active') {
+          if (!await stillMissing(sighting.slot, binding.id)) continue;
           await store.markSignInAgain(binding.id);
           report.signInAgain.push(binding.id);
         } else if (binding.state === 'binding' && await store.dropStaleReservation(binding.id, new Date(now().getTime() - STALE_RESERVATION_MS))) {
           continue;
         }
       }
-      await save({ ...seen, state: 'held', wipeBootId: null, outOfPoolReason: null });
+      await save({ ...seen, state: 'held', wipeBootId: null, outOfPoolReason: null }, entry?.slot);
       continue;
     }
 
-    if (sighting.other > 0) { await save(outOfPool('data_not_empty')); continue; }
+    if (sighting.other > 0) { await save(outOfPool('data_not_empty'), entry?.slot); continue; }
     if (row.state === 'wiping') {
-      await save(sighting.bootId !== row.wipeBootId ? { ...seen, state: 'ready', wipeBootId: null } : seen);
+      await save(sighting.bootId !== row.wipeBootId ? { ...seen, state: 'ready', wipeBootId: null } : seen, entry?.slot);
     } else if (row.state === 'held') {
       // Its binding is gone (the owner was deleted) and no directory is left: recycle the process
       // before anyone else binds it.
       const recycled = await manager.release(sighting.slot, randomUUID());
-      await save(recycled.ok && recycled.value.dataEmpty ? wiping(sighting.bootId) : seen);
+      await save(recycled.ok && recycled.value.dataEmpty ? wiping(sighting.bootId) : seen, entry?.slot);
     } else if (row.state === 'out_of_pool') {
       // Ready again only after the operator fixed it and the supervisor restarted.
-      await save(row.bootId !== sighting.bootId ? { ...seen, state: 'ready', outOfPoolReason: null } : seen);
+      await save(row.bootId !== sighting.bootId ? { ...seen, state: 'ready', outOfPoolReason: null } : seen, entry?.slot);
     } else {
-      await save({ ...seen, state: 'ready', wipeBootId: null, outOfPoolReason: null });
+      await save({ ...seen, state: 'ready', wipeBootId: null, outOfPoolReason: null }, entry?.slot);
     }
   }
   for (const { slot } of known.values()) {
-    if (slot.state !== 'out_of_pool') await save({ ...slot, state: 'out_of_pool', wipeBootId: null, outOfPoolReason: 'missing' });
+    if (slot.state !== 'out_of_pool') await save({ ...slot, state: 'out_of_pool', wipeBootId: null, outOfPoolReason: 'missing' }, slot);
   }
   return report;
 }

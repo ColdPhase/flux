@@ -5,6 +5,21 @@
 > the rest of this decision stays in force, except that the input bound is now the
 > provider-neutral Flux estimate ([PROV-3](model-providers.md#prov-3--cost-caps-and-token-bounds)).
 
+> **Revised 2026-10-09 by founder direction ([F-027](assistant.md), questions 1–4 and
+> 11).** The assistant may change things itself through the same MCP tools and
+> executor as external agents, under the owner's switches and approval mode ("Do it
+> and tell me" by default; removals and other people's things always wait). A #52
+> proposal is now used for changes outside the owner's rights and for the cases that
+> always wait. A `server` model with tool calling runs a bounded tool loop instead of
+> §3's single request, with the reservation over its turns (F-020 PROV-3, revised the
+> same day). One exception to the contract's item 5 (data boundary), "A run never
+> reads … other projects": the assistant-written **morning summary** (founder answers B
+> and C, later the same day) reads the owner's Inbox items and the projects selected
+> for the assistant, reports only to the owner as one line on Home, and changes
+> nothing. Every other run stays tied to one project, and DM-place runs still need
+> their own decision (answer B: no private chat with the assistant). Owner-only use,
+> consent, caps, payer and fail-closed rules are unchanged.
+
 **Status:** accepted, 2026-09-28, by independent
 [review](https://github.com/ColdPhase/flux/pull/125#pullrequestreview-5334126978)
 at `44eb0d9`; merged in PR #125 as `4563b29`. **Decision owner:**
