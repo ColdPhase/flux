@@ -28,19 +28,22 @@ test('the real migrator fills 0068 after retained 0072 without changing GitHub o
     }
     assertExactMigrationLedger(prior, await readAppliedMigrationVersions(fixture));
     assert.ok((await readAppliedMigrationVersions(fixture)).includes(72));
-    const [owner, workspace, project, task, history, notification] = Array.from({ length: 6 }, () => randomUUID());
+    const [owner, workspace, project, task, history, notification, binding] = Array.from({ length: 7 }, () => randomUUID());
+    const generation = randomUUID();
     await fixture.query("INSERT INTO auth_users(id,name,email) VALUES($1,'Retained rule owner',$2)", [owner, `${owner}@example.test`]);
     await fixture.query("INSERT INTO workspaces(id,name,created_by) VALUES($1,'Retained workspace',$2)", [workspace, owner]);
     await fixture.query("INSERT INTO projects(id,workspace_id,name,created_by) VALUES($1,$2,'Retained project',$3)", [project, workspace, owner]);
     await fixture.query("INSERT INTO project_work_items(id,workspace_id,project_id,title,outcome,status,created_by_kind,created_by_id) VALUES($1,$2,$3,'Retained task','Keep original outcome','open','human',$4)", [task, workspace, project, owner]);
-    await fixture.query("INSERT INTO github_task_rules(task_id,workspace_id,project_id,mode,state,author_user_id,author_github_user_id,author_generation,app_id,expected_version,expected_status) VALUES($1,$2,$3,'ready','active',$4,'456',$5,'123',1,'open')", [task, workspace, project, owner, randomUUID()]);
-    await fixture.query("INSERT INTO github_task_rule_changes(id,workspace_id,project_id,task_id,code,from_status,to_status,ready_to_close,author_user_id) VALUES($1,$2,$3,$4,'pull_open','open','open',false,$5)", [history, workspace, project, task, owner]);
+    await fixture.query("INSERT INTO github_bindings(id,workspace_id,project_id,installation_id,repository_id,owner,name,private,url,author_user_id,author_github_user_id,app_id,authorization_generation,state) VALUES($1,$2,$3,'555','777','fixture','repository',true,'https://github.com/fixture/repository',$4,'456','123',$5,'disconnected')", [binding, workspace, project, owner, generation]);
+    await fixture.query("INSERT INTO github_task_rules(task_id,workspace_id,project_id,mode,state,suspended_reason,author_user_id,author_github_user_id,author_generation,app_id,expected_version,expected_status) VALUES($1,$2,$3,'ready','suspended','repository_unavailable',$4,'456',$5,'123',1,'open')", [task, workspace, project, owner, generation]);
+    await fixture.query("INSERT INTO github_task_rule_changes(id,workspace_id,project_id,task_id,code,from_status,to_status,ready_to_close,author_user_id,binding_id,origin,task_version) VALUES($1,$2,$3,$4,'suspended_repository','open','open',false,$5,$6,'binding',1)", [history, workspace, project, task, owner, binding]);
     await fixture.query('INSERT INTO notification_preferences(user_id,summary_enabled,summary_at) VALUES($1,true,615)', [owner]);
     await fixture.query("INSERT INTO notifications(id,user_id,workspace_id,source_type,source_id,title,in_inbox,delivery_kind,summary_sources) VALUES($1,$2,$3,'workspace',$3,'Retained summary',false,'morning_summary',$4)",
       [notification, owner, workspace, JSON.stringify([{ type: 'workspace', id: workspace, workspaceId: workspace }])]);
     const snapshot = async () => ({
       task: (await fixture.query('SELECT * FROM project_work_items WHERE id=$1', [task])).rows,
       rule: (await fixture.query('SELECT * FROM github_task_rules WHERE task_id=$1', [task])).rows,
+      binding: (await fixture.query('SELECT * FROM github_bindings WHERE id=$1', [binding])).rows,
       history: (await fixture.query('SELECT * FROM github_task_rule_changes WHERE id=$1', [history])).rows,
       preferences: (await fixture.query('SELECT * FROM notification_preferences WHERE user_id=$1', [owner])).rows,
       notification: (await fixture.query('SELECT * FROM notifications WHERE id=$1', [notification])).rows,
