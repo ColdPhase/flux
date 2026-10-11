@@ -8,8 +8,12 @@
 # (a fifth slot). It checks: off by default; the switch on; `docker inspect` limits on every slot; two
 # owners on two slots with no cross-owner reach; the full pool; escape attempts from inside a slot;
 # the supervisor's closed set on the live slots; release (sign-out, delete, empty /data, new process,
-# empty /tmp, then a second owner); bind refused while /data has an entry; operator release; backup
+# empty /tmp, then a second owner); bind refused while /data has an entry; operator release; the
+# Claude Code sign-in console (T4 #279: each method's exact command in a PTY, the CLI's URL, a pasted code,
+# signed in only from `auth status`, sign-out, cross-member attach refused, the PTY ending on exit and on
+# disconnect, a seeded-secret scan, and the console and its notices in a browser at phone width); backup
 # without slot volumes; restore reconciliation; switching off; purge; reset removing the volumes.
+# FLUX_RUNTIME_SCREENSHOT_DIR (absolute) keeps the browser step's screenshots.
 #
 # Host load: run it alone under the shared Docker lock. Set FLUX_RUNTIME_TEST_PORT for concurrent runs.
 set -eu
@@ -23,6 +27,9 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/flux-runtime-check.XXXXXX")
 work=$(cd "$work" && pwd -P)
 copy="$work/flux"
 marker="fake-login-marker-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
+# T4: the fake credential the console's sign-ins write, and the codes typed at the CLI's prompt.
+console_secret="fake-console-login-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
+console_code="fake-code-$(od -An -N6 -tx1 /dev/urandom | tr -d ' \n')"
 project=''
 
 step() { printf '\n== %s\n' "$*"; }
@@ -211,6 +218,59 @@ c_slot=$(value "$(live slot-of C)" SLOT)
 ./flux runtime release "$c_slot"
 live expect-release C operator
 
+step "9b. The Claude Code sign-in console (T4): each method, the URL, a pasted code, status only, sign-out, no secret anywhere"
+out=$(live console-bind T); printf '%s\n' "$out"
+t_slot=$(value "$out" SLOT); t_binding=$(value "$out" BINDING)
+t_cid=$(cid "$t_slot")
+seed_login() { # the fake credential and account the next sign-in writes (the CLI's home is emptied by each sign-out)
+  docker exec -u 1000:1000 "$t_cid" sh -c "umask 077; printf '%s' '$console_secret' > /data/$t_binding/claude/fake-secret; printf 'tara@example.org' > /data/$t_binding/claude/fake-account"
+}
+logins_running() { docker exec "$t_cid" ps -o args | grep -c '[a]uth login' || true; }
+for method in claude_account console sso; do
+  case "$method" in claude_account) expected='["auth","login"]' ;; console) expected='["auth","login","--console"]' ;; sso) expected='["auth","login","--sso"]' ;; esac
+  seed_login
+  out=$(live console-sign-in T "$method" "$console_code" "$console_secret"); printf '%s\n' "$out"
+  [ "$(value "$out" ACCOUNT)" = 't***@example.org' ] || fail "$method: the masked account is not shown"
+  docker exec "$t_cid" cat "/data/$t_binding/claude/fake-calls.jsonl" | python3 -c '
+import json, sys
+calls = [json.loads(line) for line in sys.stdin if line.strip()]
+commands = [c["argv"] for c in calls if "event" not in c]
+assert commands == [json.loads(sys.argv[1]), ["auth", "status"]], commands
+login = next(c for c in calls if "event" not in c)
+assert login["tty"] is True and login["env"]["TERM"] == "xterm-256color", login
+assert not [n for n in login["envNames"] if "FLUX" in n or "SECRET" in n], login["envNames"]
+assert next(c for c in calls if c.get("event") == "code")["code"].startswith(sys.argv[2] + "#")
+print("ran exactly", commands[0], "in a terminal, then auth status")' "$expected" "$console_code"
+  [ "$(logins_running)" = 0 ] || fail "$method: the login command still runs after it exited"
+  docker exec "$t_cid" grep -q "$console_secret" "/data/$t_binding/claude/.credentials.json" || fail "control: the fake login is not in the slot"
+  out=$(live console-sign-out T); printf '%s\n' "$out"
+  [ "$(value "$out" SIGN_OUT_FAILED)" = false ] || fail "$method: the CLI's logout was not reported done"
+  if docker exec "$t_cid" test -e "/data/$t_binding/claude/.credentials.json"; then fail "$method: sign-out left the login"; fi
+done
+live console-cross T U
+out=$(live console-leave T); printf '%s\n' "$out"
+[ "$(value "$out" RECOVERY)" = fresh-boot-and-binding ] || fail "disconnect did not prove fresh runtime recovery"
+# Recovery may change the physical process and binding. All following controls target that current one.
+out=$(live console-bind T); printf '%s\n' "$out"
+t_slot=$(value "$out" SLOT); t_binding=$(value "$out" BINDING); t_cid=$(cid "$t_slot")
+[ "$(logins_running)" = 0 ] || fail "a login command still runs after its console was left"
+live console-no-fields T
+# A failed logout still deletes the login and tells the owner.
+seed_login
+live console-sign-in T claude_account "$console_code" "$console_secret" >/dev/null
+docker exec -u 1000:1000 "$t_cid" sh -c "printf logout_fails > /data/$t_binding/claude/fake-scenario"
+out=$(live console-sign-out T); printf '%s\n' "$out"
+[ "$(value "$out" SIGN_OUT_FAILED)" = true ] || fail "a failed logout was not reported"
+if docker exec "$t_cid" test -e "/data/$t_binding/claude/.credentials.json"; then fail "a failed logout left the login"; fi
+# The console and its notices in a browser, at phone width and on a desktop (tests/ui/test_runtime_console.py).
+if [ -n "${FLUX_RUNTIME_SCREENSHOT_DIR:-}" ]; then mkdir -p "$FLUX_RUNTIME_SCREENSHOT_DIR"; export FLUX_UI_SCREENSHOT_DIR="$FLUX_RUNTIME_SCREENSHOT_DIR"; fi
+compose --profile ui build ui-test
+compose --profile ui run --rm --no-deps -e FLUX_UI_RUNTIME=on -w /work/tests/ui ui-test python3 -m unittest -v test_runtime_console
+# T's runtime is removed (sign out, delete, free), so the restore below sees the same slots as before.
+boot=$(value "$(live boot "$t_slot")" BOOT)
+live remove T "$t_slot" "$boot" >/dev/null
+live no-secret-in-db "$console_secret"
+
 step "10. ./flux backup contains no slot volume"
 docker exec -u 1000:1000 "$slot_cid" sh -c "umask 077; printf '{\"login\":\"$marker\"}' > /data/$g_binding/claude/.credentials.json"
 # Control: the login marker is in the slot volume, so finding it in the archive would be a leak.
@@ -238,9 +298,13 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do [ -z "$(docker exec "$(cid "$a_slot")" ls -A /
 [ -z "$(docker exec "$(cid "$a_slot")" ls -A /data)" ] || fail "K's directory (no binding after the restore) was not deleted"
 printf 'K binding %s released by the reconciliation; G must sign in again\n' "$k_binding"
 
-step "12. Logs: no fake login marker in any service log"
-if compose --profile runtime logs --no-color 2>/dev/null | grep -q "$marker"; then fail "a runtime login appeared in a log"; fi
-printf 'no login marker in the logs\n'
+step "12. Logs: no fake login marker, console login or typed code in any service log"
+compose --profile runtime logs --no-color > "$work/logs.txt" 2>/dev/null
+[ -s "$work/logs.txt" ] || fail "control: no logs were read"
+for value in "$marker" "$console_secret" "$console_code" 'Paste code here' 'oauth/authorize'; do
+  if grep -qF "$value" "$work/logs.txt"; then fail "a log holds $value"; fi
+done
+printf 'no login marker, console login, typed code or console output in the logs\n'
 
 step "13. Switching off stops the runtime and keeps the slot volumes"
 env_set FLUX_AGENT_RUNTIME ''

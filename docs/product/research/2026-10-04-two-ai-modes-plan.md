@@ -192,8 +192,9 @@ T11 issue text updates                       after T0
 
 ### T4 — Claude Code sign-in console (new issue; minimum viable slice, part 2)
 
-- **Owner:** @PelikanFix16. **Evaluator:** @Zamojski5. **Depends on:** T3.
-- **Scope:** Settings → *Agent in Flux* → *Sign in to Claude Code*, with no vendor
+- **Owner:** @PelikanFix16. **Evaluator:** @Zamojski5. **Depends on:** T3 and #331's
+  mandatory accepted integration gate before merge.
+- **Scope:** Settings → Agents and AI (#350 / final #336) → *Agent in Flux* → *Sign in to Claude Code*, with no vendor
   logos. The owner chooses Claude account, Anthropic Console or SSO; the supervisor
   runs `claude auth login`, `claude auth login --console` or
   `claude auth login --sso` in a PTY, relayed by xterm.js over a session-bound
@@ -218,6 +219,74 @@ T11 issue text updates                       after T0
   - Seeded-secret scan: the fake credential never appears in the database, logs,
     frames or API responses.
   - Phone-width layout of the console and the notices.
+
+- **Accepted operation correction (#279, 2026-10-07):** the
+  [independently evaluated contract](https://github.com/ColdPhase/flux/issues/279#issuecomment-6045964415)
+  and [F-022 durable admission](../ai-modes.md#durable-auth-operations) supersede
+  instance-local ticket/console authority and instant replacement assumptions.
+  Claim owner/binding/client/boot plus server operation UUID/revision durably;
+  claim/renew/consume/finish use short PostgreSQL transactions, never CLI waits.
+  Preserve boot through the closed protocol and revalidate inside the slot lane.
+  Completion returns `accepted`/`superseded`; old work cannot report success from
+  a newer connection or overwrite notices/sign-out. No TTL takeover or automatic
+  retry on the same binding after uncertainty. Retain a recovery block, then use
+  confirmed full release → empty `/data` → fresh supervisor boot and binding;
+  otherwise remain unavailable. Explain that both clients may need sign-in again.
+  Only current `ok` logout plus acknowledged cleanup is confirmed; every completed
+  non-`ok` warns, and unknown effects keep runtime authority disabled. Lifecycle
+  and project-wide purge admission share the fence. Atomically consume a durable
+  nonce digest across APIs; Maps provide no authority. Lost session/disconnect/
+  timeout/replacement invalidate the same operation; fast replacement needs
+  actual canceled/drained acknowledgement, otherwise recovery.
+  Barrier-based tests must cover both reproduced core bugs, real PostgreSQL
+  two-API claims/tickets, old destructive commands after crash/expiry, stale
+  completion, release/purge/new-reserve and fresh binding/boot reuse. The original
+  command, transient-frame, seeded-secret, timeout, notice and phone criteria stay.
+  This is a contract checkpoint; runtime and final-design acceptance stay pending.
+  Preserve published `0057_agent_runtime_sign_in.sql`; reserve the distinct
+  `0058_agent_runtime_auth_operations.sql` (and paired reverse) after current-ref
+  inventory. Other #238/#340 unmerged `0057` collisions are owner handoffs, not
+  permission to edit their branches or deployed ledgers.
+
+- **Implementation notes (#279, 2026-10-06), for the evaluator:**
+  Historical source observations at `f831e9b6`; the accepted correction above
+  supersedes local ticket/replacement authority and the old Settings route.
+  - **The pinned CLI, observed.** Claude Code 2.1.285 (`runtime-install`'s verified binary, no account,
+    `--network none`, 2026-10-06): `auth login --help` lists `--claudeai` ("Use Claude subscription
+    (default)"), `--console`, `--email <email>` (pre-fills the address on the login page), `-h, --help`
+    and `--sso`. So the three console methods are every method; *Claude account* runs `claude auth
+    login` as the decision says, which is the CLI's default and the same as `--claudeai`. In a terminal,
+    each method prints "Opening browser to sign in…", the authorization URL as an OSC 8 hyperlink
+    (`claude.com/cai/oauth/authorize`, `platform.claude.com/oauth/authorize` for `--console`,
+    `login_method=sso` for `--sso`) and "Paste code here if prompted > ", then reads one line; a wrong
+    code gives "Invalid code. Please make sure the full code was copied." Signed out, `auth status`
+    prints `{"loggedIn": false, "authMethod": "none", "apiProvider": "firstParty", …}` and exits 1. The
+    fake `claude` mirrors this. The signed-in fields beyond `loggedIn` and `authMethod` (`email`,
+    `subscriptionType`, `orgId`) are **unverified** until the real-account check (T10); a field that is
+    missing or malformed is left out, never guessed.
+  - **The PTY.** Node has no pseudo-terminal, so the supervisor uses node-pty 1.1.0 (pinned; forkpty
+    and `execvp` of the fixed argv, no shell), compiled from source in the build stage. It is the only
+    dependency of `@flux/runtime` besides the protocol (architecture rule updated).
+  - **The console's path.** API → `runtime-manager` → supervisor are HTTP upgrades to `flux-console/1`
+    with the same secrets as every runtime request, then bounded binary frames (open, input, resize;
+    control, output). The first frame is the closed `login` request (with the terminal size); a plain
+    `login` request is refused. The manager re-checks the request and every frame and logs only slot,
+    outcome and duration. The browser's WebSocket attaches with a single-use, one-minute ticket signed
+    with a key derived from the API's secret and bound to the owner and the session that asked for it.
+  - **Ends.** On exit (then `auth status`), on disconnect (no status), after 15 minutes (injectable
+    timers in the tests), and when a release arrives. A newer console of the same owner replaces an
+    older one; the supervisor waits up to three seconds for the older PTY to end, then answers `busy`.
+  - **What is stored.** Migration 0057 adds the account-change notice (a keyed HMAC of the slot's account
+    digest, the previous masked label, when it changed) and the last sign-out with whether the CLI's
+    logout failed. The schema test reviews the new columns.
+  - **The page.** `/settings/assistant/claude-code`; Settings → *Agent in Flux* gains a *Claude Code in
+    Flux* section on the existing page (compatible with #275's Settings). xterm.js 6 loads only on the
+    console page and is not precached by the service worker. The browser's terminal turns the CLI's own
+    OSC 8 link into an *Open the sign-in page* button; Flux's servers never read the frames.
+  - **Phone caveat (inference).** Opening the sign-in page puts the Flux tab in the background. If the
+    phone's browser closes the WebSocket meanwhile, the PTY ends by design (F-022) and the owner starts
+    again; the page says so. Chromium and WebKit emulation cannot show this; it is **unverified** on
+    devices.
 
 ### T5 — First owner-invoked run on Claude Code (new issue; minimum viable slice, part 3)
 

@@ -5,7 +5,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import websocket from '@fastify/websocket';
 import { PgBoss } from 'pg-boss';
-import { assertExactMigrationLedger, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
+import { assertExactMigrationLedger, assertMigrationFootprint, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
 import { registerDatabase } from './plugins/database.js';
 import { startIdentity } from './identity/index.js';
 import { accessRoutes } from './access/routes.js';
@@ -71,7 +71,9 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   useFramingProtection(app);
   const { pool, db } = registerDatabase(app, connectionString);
   const migrationManifest = await readMigrationManifest(migrationsDir, FLUX_SCHEMA_VERSION);
-  assertExactMigrationLedger(migrationManifest, await readAppliedMigrationVersions(pool));
+  const applied = await readAppliedMigrationVersions(pool);
+  assertExactMigrationLedger(migrationManifest, applied);
+  await assertMigrationFootprint(pool, migrationManifest, applied);
   const boss = new PgBoss({ connectionString, migrate: false });
   boss.on('error', (error) => app.log.error(error));
   await boss.start();
@@ -179,7 +181,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await app.register(searchRoutes, { db, sessions: identity, cursorSecret: identityConfig.secret, exposeWork });
   await app.register(exportRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, storage: fileStorage });
   // The `runtime` transport (F-022 AIM-3): off unless the operator set FLUX_AGENT_RUNTIME.
-  await app.register(agentRuntimeRoutes, { db, sessions: identity, config: config.agentRuntime });
+  await app.register(agentRuntimeRoutes, { db, sessions: identity, config: config.agentRuntime, secret: identityConfig.secret, publicOrigin: identityConfig.publicOrigin });
 
   registerHealth(app, { pool, boss, manifest: migrationManifest, filesDir });
   registerFixtureRoutes(app, { config: config.fixture, db, boss, publicOrigin: identityConfig.publicOrigin });

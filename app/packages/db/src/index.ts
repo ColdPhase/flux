@@ -6,12 +6,14 @@ export { schema };
 export { sql } from 'drizzle-orm';
 export type { SQL } from 'drizzle-orm';
 export * from './repositories/sessions.js';
+export * from './repositories/runtime-auth-operations.js';
 export * from './repositories/agent-proposals.js';
 export * from './repositories/agent-connections.js';
 export * from './repositories/agent-mcp-policy.js';
 export * from './repositories/project-agents.js';
 export * from './repositories/agent-project-objects.js';
 export * from './migrations/ledger.js';
+export * from './migrations/footprints.js';
 export * from './migrations/summary-compatibility.js';
 // Highest numbered file in packages/db/migrations. The API refuses other versions.
 export const FLUX_SCHEMA_VERSION = 72;

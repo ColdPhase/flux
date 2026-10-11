@@ -387,6 +387,13 @@ The `runtime` Compose profile ([operator guide](../operations/agent-runtime.md))
 supervisor and the pinned Codex); `agent-runtime-test` replaces both CLIs with the TEST ONLY fakes from
 `app/apps/runtime/src/fakes`, and `docker/compose.runtime.test.yaml` selects it.
 
+The sign-in console (T4) needs a pseudo-terminal, which Node does not provide: `node-pty` (pinned
+1.1.0, an allowed build in `app/pnpm-workspace.yaml`) has no Linux prebuild, so the `build` stage adds
+Alpine's `python3`, `make`, `g++` and `linux-headers` and compiles it against the image's own Node
+headers (`npm_config_nodedir=/usr/local`). `production-dependencies` then keeps only node-pty's
+JavaScript, licence and built addon (not its Windows and macOS prebuilds) for the slot image; the
+compiler never reaches a deployed image.
+
 | Variable | Service | Meaning |
 | --- | --- | --- |
 | `FLUX_AGENT_RUNTIME` | API, worker, slots, egress, install | Empty (off, default), `claude_code`, `codex` or `claude_code,codex`. Codex stays unavailable until F-022 T6. |

@@ -20,6 +20,7 @@ repository was created on 2026-09-26.
 #### Run and operate Flux
 
 - Operators can offer owners their own Claude Code inside Flux (off by default, `FLUX_AGENT_RUNTIME`): a fixed pool of isolated runtime slots with no Docker socket, `./flux runtime status|release|purge`, and slot volumes kept out of backups ([#303](https://github.com/ColdPhase/flux/pull/303)).
+- Owners sign in to Claude Code from a console in Flux (a terminal on the real CLI's own sign-in, with no key or token field), and signing out or removing the runtime also deletes the keyless Console profile Claude Code keeps outside its configuration directory ([#279](https://github.com/ColdPhase/flux/issues/279)).
 - One Docker Compose application with the API, a separate worker, PostgreSQL and a
   durable job queue. Migrations are reviewed SQL with health checks ([#34](https://github.com/ColdPhase/flux/pull/34)).
 - `./flux up`, `./flux demo` and `./flux dev` start, seed and develop Flux with only
@@ -133,6 +134,7 @@ repository was created on 2026-09-26.
 - Faster reads: the Inbox count no longer compiles query code on each visit, conversation and material lists use one statement instead of one or two per row, and conversation roots and comparison outcomes are read without locks ([#300](https://github.com/ColdPhase/flux/pull/300)).
 - The app's files are sent as Brotli or gzip, and large JSON answers are compressed ([#269](https://github.com/ColdPhase/flux/pull/269)).
 - Settings is one calm place with Account, Appearance (Light, Dark or Match system, and a switch for Kreska's small moments), Notifications, Agents and AI and Keyboard shortcuts. Notifications now default to Only "Needs you" (replies no longer push), with Everything or Nothing, quiet hours and an optional morning summary push ([#370](https://github.com/ColdPhase/flux/pull/370)).
+- Settings → Agents and AI lists Sign in with Claude and Sign in with ChatGPT first, with API keys under "Other ways to connect"; when sign-in is off, one plain sentence says so ([#277](https://github.com/ColdPhase/flux/issues/277)).
 - One neutral look from the final design: Soft volume surfaces in light, dark or Match system, Geist type served with Flux, pill buttons, and task states shown as shapes with words. The accent colours and their picker are gone ([#353](https://github.com/ColdPhase/flux/pull/353)).
 - Kreska, a face drawn in a few lines, is the Flux logo, the app icon and every agent's icon. Agents carry an "Agent" tag and, where you may know them, the person they work for; the personal assistant's face shows what its run is doing ([#356](https://github.com/ColdPhase/flux/pull/356)).
 - The computer sidebar as drawn: New (C) and Search at the top, Home, Inbox with its count and Sketchbook, projects as letter tiles, Messages, a card for your working assistant with Stop, and the account with Settings. `[` folds it to a 64 px rail and `G` `I` opens the Inbox ([#357](https://github.com/ColdPhase/flux/pull/357)).

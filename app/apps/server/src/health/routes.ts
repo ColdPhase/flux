@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import type { PgBoss } from 'pg-boss';
-import { assertExactMigrationLedger, FLUX_SCHEMA_VERSION, PG_BOSS_SCHEMA_VERSION, readAppliedMigrationVersions, type MigrationFile } from '@flux/db';
+import { assertExactMigrationLedger, assertMigrationFootprint, FLUX_SCHEMA_VERSION, PG_BOSS_SCHEMA_VERSION, readAppliedMigrationVersions, type MigrationFile } from '@flux/db';
 
 /**
  * `GET /api/v1/health`: ready only when the database has exactly this release's migrations, the
@@ -14,7 +14,9 @@ export function registerHealth(app: FastifyInstance, { pool, boss, manifest, fil
 }) {
   app.get('/api/v1/health', async (_request, reply) => {
     try {
-      assertExactMigrationLedger(manifest, await readAppliedMigrationVersions(pool));
+      const applied = await readAppliedMigrationVersions(pool);
+      assertExactMigrationLedger(manifest, applied);
+      await assertMigrationFootprint(pool, manifest, applied);
       if ((await boss.schemaVersion()) !== PG_BOSS_SCHEMA_VERSION) throw new Error('Queue schema mismatch');
       const probe = join(filesDir, `.flux-health-${randomUUID()}`);
       const file = await open(probe, 'wx');

@@ -32,6 +32,9 @@ export async function reconcileAgentRuntime({ config, store, manager, now = () =
   config: AgentRuntimeConfig; store: AgentRuntimeStore; manager: RuntimeManagerPort; now?: () => Date; log?: (event: Record<string, unknown>) => void;
 }): Promise<ReconcileReport> {
   const report: ReconcileReport = { released: [], logoutFailed: [], orphans: 0, signInAgain: [], ready: [], outOfPool: [], idle: 0 };
+  // Expired/crashed auth commands retain their binding until this existing full
+  // release/new-boot path proves quiescence; never steal their lease in place.
+  await store.recoverAbandonedAuth();
   if (config.idleDays) {
     for (const binding of await store.idleBindings(new Date(now().getTime() - config.idleDays * 86_400_000))) {
       if (await store.requestRelease({ slot: binding.slot }, 'idle')) report.idle += 1;

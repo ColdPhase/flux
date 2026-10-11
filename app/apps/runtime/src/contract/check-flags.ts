@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { RUNTIME_CLIENTS } from '@flux/runtime-protocol';
-import { CLI_PATHS, TEMPLATE_FLAGS } from '../supervisor/templates.js';
+import { CLAUDE_LOGIN_HELP_OPTIONS, CLI_PATHS, helpOptions, TEMPLATE_FLAGS } from '../supervisor/templates.js';
 
 // The flag contract check (F-022 Docker test plan, "Flag contract test"). OPT-IN and never in CI: it
 // needs the pinned REAL CLIs (the release runtime image with Codex, and Claude Code installed by
@@ -58,6 +58,17 @@ try {
     }
     for (const flag of optional) console.log(`${documented(textValue, flag) ? 'present' : 'absent '} ${client} ${args.join(' ')}: ${flag} (optional)`);
   }
+  // T4: the console offers every method of `claude auth login`. Any option the help lists that is not
+  // a known method or a known non-method fails the check.
+  const loginHelp = await help(CLI_PATHS.claude_code, ['auth', 'login', '--help'], home);
+  const listed = helpOptions(loginHelp);
+  if (!listed.length) { missing += 1; console.log('MISSING claude_code auth login --help: no options listed'); }
+  for (const option of listed) {
+    const known = Object.hasOwn(CLAUDE_LOGIN_HELP_OPTIONS, option) ? CLAUDE_LOGIN_HELP_OPTIONS[option] : undefined;
+    if (!known) missing += 1;
+    console.log(`${known ? 'ok     ' : 'UNKNOWN'} claude_code auth login --help lists ${option}: ${known ? known.note : 'a sign-in option the console does not offer'}`);
+  }
+  report.claudeLoginOptions = listed;
 } finally {
   await rm(home, { recursive: true, force: true });
 }

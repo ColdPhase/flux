@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { assertExactMigrationLedger, assertKnownMigrationVersions, assertMigrationSqlLedgerChange, assertMigrationStepLedger, assertMorningSummaryMigrationCompatibility, createDatabase, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
+import { assertExactMigrationLedger, assertKnownMigrationVersions, assertMigrationFootprint, assertMigrationSqlLedgerChange, assertMigrationStepLedger, assertMorningSummaryMigrationCompatibility, createDatabase, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
 import { PgBoss } from 'pg-boss';
 import { COMPARISON_JOB_QUEUE, COMPARISON_JOB_RETRY, COMPARISON_RECOVERY_JOB, COMPARISON_TICK_JOB, NOTIFICATION_EMAIL_JOB, NOTIFICATION_EMAIL_QUEUE, PERSONAL_RUN_JOB, PERSONAL_RUN_QUEUE, PUSH_SEND_JOB, PUSH_SEND_QUEUE } from '@flux/core';
 
@@ -17,6 +17,7 @@ try {
     let applied = await readAppliedMigrationVersions(client);
     await assertMorningSummaryMigrationCompatibility(client, applied);
     assertKnownMigrationVersions(files, applied);
+    await assertMigrationFootprint(client, files, applied);
     for (const file of files) {
       if (applied.includes(file.version)) continue;
       const sql = await readFile(join(migrationsDir, file.name), 'utf8');
@@ -27,6 +28,7 @@ try {
         await client.query('INSERT INTO flux_schema_version(version) VALUES ($1) ON CONFLICT DO NOTHING', [file.version]);
         const after = await readAppliedMigrationVersions(client);
         assertMigrationStepLedger(applied, after, file);
+        if ([56, 57, 58].includes(file.version)) await assertMigrationFootprint(client, files, after);
         await client.query('COMMIT');
         applied = after;
       } catch (error) {
@@ -35,7 +37,9 @@ try {
       }
       console.log(`Applied migration ${file.name}`);
     }
-    assertExactMigrationLedger(files, await readAppliedMigrationVersions(client));
+    const complete = await readAppliedMigrationVersions(client);
+    assertExactMigrationLedger(files, complete);
+    await assertMigrationFootprint(client, files, complete);
   } finally {
     await client.query('SELECT pg_advisory_unlock(hashtext($1))', ['flux-migrate']).catch(() => undefined);
     client.release();
