@@ -68,6 +68,7 @@ names.
 | `grants` | Explicit project grants, including `denied`. |
 | `actors` | Names of every person and agent referenced anywhere in the export. |
 | `conversations` | Each conversation with all messages in sequence: author, text, cited material or doc version, time. A message made by a saved blocker, a published result or a public handoff (#154) also has `contribution` (`{ "kind": "blocker" \| "handoff" }` or `{ "kind": "result", "resultId" }`); ordinary messages omit it. |
+| `agentThreads` | Task-bound agents-space conversation history, with `workId` and the same ordered message/author/source/files fields. Additive in format1; readers ignore unknown fields. |
 | `files` (optional) | Published attachments: id, display name, size, SHA-256, message and conversation ids, order, and bundle path. Absent for projects without published files. Message `files` lists id, name and size in attachment order. |
 | `materials` | Published materials with every immutable version: title, text, URL, author, time. |
 | `docs` | Docs with every version: title, Markdown text, `draft`/`published`, reason, author, time, and `file` (the Markdown file of the current text). |
