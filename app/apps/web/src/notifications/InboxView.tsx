@@ -40,7 +40,7 @@ function Row({ item, onRead }: { item: InboxItem; onRead: (id: string) => void }
   return (
     <li className={`inbox__row${unread ? ' is-unread' : ''}`}>
       <Link to={item.url ?? `/inbox/${item.id}`} className={`inbox__item${assistantRequest ? ' inbox__item--assistant-request' : ''}`} onClick={open}>
-        <span className={`inbox__ic inbox__ic--${item.reason ?? 'other'}`} aria-hidden="true">{assistantRequest ? <Kreska size={14} /> : <Icon name={reason.icon} size={14} />}</span>
+        <span className={`inbox__ic inbox__ic--${item.reason ?? 'other'}`} aria-hidden="true">{assistantRequest ? <Kreska size={16} /> : <Icon name={reason.icon} size={14} />}</span>
         <span className="inbox__text">
           <span className="inbox__title">{item.title}</span>
           {item.body ? <span className="inbox__body">{item.body}</span> : null}
