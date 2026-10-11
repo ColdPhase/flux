@@ -55,8 +55,11 @@ export function projectExportRows(db: DbExecutor) {
 
   async function conversations(projectId: string, space: 'people' | 'agents') {
       const conversations = await db.select().from(c).where(and(eq(c.projectId, projectId), eq(c.space, space))).orderBy(asc(c.createdAt), asc(c.id));
-      const messages = groupBy(await db.select().from(msg).where(eq(msg.projectId, projectId)).orderBy(asc(msg.conversationId), asc(msg.sequence)), (row) => row.conversationId);
-      const files = await fileRows(db).projectMessageFiles(projectId);
+      if (!conversations.length) return [];
+      const messageRows = await db.select().from(msg).where(and(eq(msg.projectId, projectId), inArray(msg.conversationId, conversations.map(row => row.id))))
+        .orderBy(asc(msg.conversationId), asc(msg.sequence));
+      const messages = groupBy(messageRows, (row) => row.conversationId);
+      const files = await fileRows(db).messageFiles(messageRows.map(row => row.id));
       return conversations.map((row) => ({
         id: row.id, ...(space === 'agents' ? { workId: row.workId! } : {}), createdBy: creator(row.createdBy, row.createdByAgentId), createdAt: iso(row.createdAt),
         messages: (messages.get(row.id) ?? []).map((message) => ({

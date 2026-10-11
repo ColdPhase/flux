@@ -92,6 +92,10 @@ run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/access-stream.e2e.ts
 # All production Kreska component expressions/sizes, static/reduced-motion browser evidence (#339).
 run_browser e2e node_modules/.bin/tsx --tsconfig apps/web/tsconfig.json --test tests/app/e2e/kreska-component.e2e.ts
 
+# Task agents' threads (#400): task Details/paging, normal access, private drafts and exact retries in both engines.
+run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/agent-threads.e2e.ts
+run_browser -e FLUX_E2E_BROWSER=webkit e2e node_modules/.bin/tsx --test tests/app/e2e/agent-threads.e2e.ts
+
 # Genuine human/agent task history in Chromium; trusted core writes use this isolated DB.
 run_browser -e DATABASE_URL="postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@db:5432/$POSTGRES_DB" e2e node_modules/.bin/tsx --test tests/app/e2e/task-discussion-actors.e2e.ts
 

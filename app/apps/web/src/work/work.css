@@ -296,7 +296,7 @@ button.wd-link:active:not(:disabled) { background: var(--sub); transform: scale(
 .at-message:target, .at-message:focus-visible { outline: 1px solid var(--t2); outline-offset: 4px; border-radius: var(--r-sm); }
 .at-message__meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; color: var(--t3); font-size: var(--fs-xs); }
 .at-message__meta strong { color: var(--t1); font-weight: 550; }
-.at-message__meta time { margin-left: auto; font-size: var(--fs-xxs); }
+.at-message__meta time { margin-left: auto; font-size: var(--fs-xs); }
 .at-message__body { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--fs-md); line-height: 1.5; }
 .at-composer, .at-empty { margin-top: 18px; }
 @media (pointer: coarse) { .at-entry, .at-back { min-height: 44px; } }

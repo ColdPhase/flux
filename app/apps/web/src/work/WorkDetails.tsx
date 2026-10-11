@@ -223,7 +223,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   const agentThreadOpen = searchParams.get('agentThread') === '1';
   const previousThreadOpen = useRef(agentThreadOpen);
   useEffect(() => {
-    if (previousThreadOpen.current && !agentThreadOpen) document.querySelector<HTMLButtonElement>(`[data-agent-thread-entry="${item.id}"]`)?.focus({ preventScroll: true });
+    if (previousThreadOpen.current && !agentThreadOpen) document.querySelector<HTMLButtonElement>(`[data-agent-thread-entry="${item.id}"]`)?.focus();
     previousThreadOpen.current = agentThreadOpen;
   }, [agentThreadOpen, item.id]);
   const setAgentThread = (open: boolean) => setSearchParams((current) => {
@@ -351,7 +351,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
         empty={emptyLinks(relations, 'Not linked to a thought yet.')} />
 
       <TaskDiscussionSection key={`${me.user.id}:${context.project.id}:${item.id}`} readOnly={!!reverted} revision={detail.observedAt} workId={item.id} project={context.project} members={context.members} me={{ id: me.user.id, name: me.user.name }} />
-      <AgentThreadEntry workId={item.id} revision={detail.observedAt} focusOnReturn={previousThreadOpen.current} onOpen={() => setAgentThread(true)} />
+      <AgentThreadEntry workId={item.id} revision={detail.observedAt} onOpen={() => setAgentThread(true)} />
 
       <section className="details__sec" aria-labelledby="wd-decisions">
         <h4 id="wd-decisions">Decisions</h4>

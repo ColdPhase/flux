@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent 
 import { useLocation } from 'react-router';
 import type { ConversationMessage, Project, TaskAgentThread, WorkspaceMember } from '@flux/contracts';
 import { AgentIdentity, AuthorFace, Button, Icon } from '../ui';
-import { useComposerDraft, useComposerScope } from '../composer/draft';
+import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
 import { ComposerFiles, MessageFiles } from '../composer/Files';
 import { ConnectionLine, OutboxStatus, PendingFiles, PendingSource, SendAnnouncer } from '../composer/Outbox';
 import { getTaskAgentThread } from '../composer/api';
@@ -13,9 +13,7 @@ import { agentDisplayName } from '../docs/format';
 import { useStreamEvents } from '../api/stream';
 
 /** Opening/reading a thread is a read. The first accepted human post creates it. */
-export function AgentThreadEntry({ workId, revision, onOpen, focusOnReturn = false }: { workId: string; revision: string; onOpen: () => void; focusOnReturn?: boolean }) {
-  const button = useRef<HTMLButtonElement>(null);
-  const returnFocus = useRef(focusOnReturn);
+export function AgentThreadEntry({ workId, revision, onOpen }: { workId: string; revision: string; onOpen: () => void }) {
   const [thread, setThread] = useState<TaskAgentThread | null>(null);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -26,10 +24,9 @@ export function AgentThreadEntry({ workId, revision, onOpen, focusOnReturn = fal
     }).catch(() => { if (!controller.signal.aborted) { setThread(null); setFailed(true); } });
     return () => controller.abort();
   }, [workId, revision, attempt]);
-  useEffect(() => { if (thread && returnFocus.current) { button.current?.focus({ preventScroll: true }); returnFocus.current = false; } }, [thread]);
   return <section className="details__sec">
     {failed ? <p className="wd-error" role="alert">The agents’ thread could not be loaded. <button className="wd-inline" type="button" onClick={() => setAttempt((value) => value + 1)}>Retry</button></p>
-      : <button ref={button} type="button" className="wd-link at-entry" data-agent-thread-entry={workId} onClick={onOpen} disabled={!thread}>
+      : <button type="button" className="wd-link at-entry" data-agent-thread-entry={workId} onClick={onOpen}>
         <span>Agents’ thread · {thread ? `${thread.messageCount} ${thread.messageCount === 1 ? 'message' : 'messages'}` : 'Loading…'}</span><Icon name="chevron-right" size={14} />
       </button>}
   </section>;
@@ -53,19 +50,19 @@ export function AgentThreadPanel({ workId, project, members, me, readOnly, revis
   const [cursor, setCursor] = useState<number | null>(null);
   const [failed, setFailed] = useState(false);
   const [olderFailed, setOlderFailed] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(true);
   const [attempt, setAttempt] = useState(0);
   const focused = useRef('');
   const target = /^#message-([0-9a-f-]{36})$/i.exec(location.hash)?.[1] ?? null;
   const writable = !!thread?.canWrite && thread.postingAvailable && project.access !== 'viewer' && !readOnly && !failed;
+  const outbox = outboxView(messages, composer.pending, composer.sent, me.id);
 
   useStreamEvents(me.id, (event) => {
-    if (event.kind === 'project.agent_thread_message_sent.v1' && event.objectId === project.id) setAttempt((value) => value + 1);
-  }, () => setAttempt((value) => value + 1));
+    if (event.kind === 'project.agent_thread_message_sent.v1' && event.objectId === project.id) { setBusy(true); setAttempt((value) => value + 1); }
+  }, () => { setBusy(true); setAttempt((value) => value + 1); });
 
   useEffect(() => {
     const controller = new AbortController();
-    setBusy(true);
     void (async () => {
       const next = await getTaskAgentThread(workId, { limit: 50, signal: controller.signal });
       let found = next.conversation?.messages ?? [];
@@ -112,11 +109,11 @@ export function AgentThreadPanel({ workId, project, members, me, readOnly, revis
   async function send(event?: FormEvent) {
     event?.preventDefault();
     if (!writable) return;
-    const outcome = composer.submit();
+    const outcome = composer.submit(messages.at(-1)?.sequence ?? 0);
     if (!outcome) return;
     const active = captureScope();
     const result = await outcome;
-    if (active() && result.status === 'delivered') setAttempt((value) => value + 1);
+    if (active() && result.status === 'delivered') { setBusy(true); setAttempt((value) => value + 1); }
   }
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); }
@@ -134,7 +131,7 @@ export function AgentThreadPanel({ workId, project, members, me, readOnly, revis
       : !thread ? <p className="wd-muted" role="status">Loading thread…</p> : <>
         <div className="at-meta"><span>{thread.messageCount} {thread.messageCount === 1 ? 'message' : 'messages'}</span><button type="button" className="wd-inline" disabled={busy} onClick={() => setAttempt((value) => value + 1)}>Refresh</button></div>
         {cursor !== null ? <Button variant="secondary" busy={busy} onClick={() => void older()}>Earlier messages</Button> : null}
-        {messages.length ? <ol className="at-messages" aria-label="Agents’ thread messages">{messages.map((message) => <li key={message.id}>
+        {messages.length ? <ol className="at-messages" aria-label="Agents’ thread messages">{messages.map((message) => <li key={outbox.keyOf(message.id)}>
           <article className="at-message" id={`message-${message.id}`} data-message-id={message.id} tabIndex={-1} aria-label={`Message from ${author(message)}`}>
             <div className="at-message__meta"><AuthorFace kind={message.authorId === null ? 'agent' : 'human'} name={author(message)} mine={message.authorId === me.id} />
               <strong>{message.authorId === null ? <AgentIdentity name={author(message)} owner={agentAuthorOwner(message.author, owners)} icon={false} /> : `${author(message)}${message.authorId === me.id ? ' · you' : ''}`}</strong>
@@ -146,7 +143,7 @@ export function AgentThreadPanel({ workId, project, members, me, readOnly, revis
         </li>)}</ol> : <p className="wd-muted at-empty">No messages yet. The first post starts this task’s agents’ thread.</p>}
         {target && !messages.some((message) => message.id === target) ? <p className="wd-muted" role="status">That message is no longer available in this thread.</p> : null}
       </>}
-    {composer.pending.length ? <ol className="wd-pending" aria-label={writable ? 'Messages you are sending' : 'Pending messages kept'}>{composer.pending.map((item) => <li key={item.id} data-client-message-id={item.id} data-send-state={item.state} className={`wd-pending__item is-pending${item.state === 'failed' ? ' is-failed-send' : ''}`}>
+    {outbox.pending.length ? <ol className="wd-pending" aria-label={writable ? 'Messages you are sending' : 'Pending messages kept'}>{outbox.pending.map((item) => <li key={item.id} data-client-message-id={item.id} data-send-state={item.state} className={`wd-pending__item is-pending${item.state === 'failed' ? ' is-failed-send' : ''}`}>
       {item.body ? <span className="wd-pending__body">{item.body}</span> : null}<PendingFiles files={item.files} /><PendingSource item={item} />
       {writable ? <OutboxStatus item={item} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} /> : <p className="wd-muted" role="status">Send not confirmed. Your message is kept.</p>}
     </li>)}</ol> : null}

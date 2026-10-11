@@ -4,13 +4,16 @@ import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import type { TaskAgentThread, ConversationMessage, WorkItem, Page, ConversationSummary, UndoTaskCreationResult, ProjectExport, SearchResponse, ReturnSummary, InboxResponse } from '@flux/contracts';
 import { createDatabase } from '@flux/db';
+import { taskAgentThreadUseCases } from '@flux/core';
 import type pg from 'pg';
 import { conversationStore } from '../../apps/server/src/conversation/store.js';
+import { nativeWorkInTransaction } from '../../apps/server/src/work/adapters.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
 import { actionScene, toolFailure } from './support/mcp-actions.js';
 import { expect, toolValue } from './support/mcp.js';
-import { pool, connectionString } from './support/db.js';
+import { db, pool, connectionString } from './support/db.js';
 import { recordedPushes, subscribe, waitFor } from './support/push.js';
+import { backendPid, barrier, waitUntilBlockedBy } from './support/locks.js';
 
 async function scene() {
   const [owner, writer, viewer, outsider] = await Promise.all(['thread-owner', 'thread-writer', 'thread-viewer', 'thread-outsider'].map(person));
@@ -222,7 +225,7 @@ test('format-1 export adds agentThreads while preserving people history and mana
 
 test('three quiet progress posts change no Since-you-left, Inbox unread or push; an explicit mention reaches only an authorized reader', async () => {
   const f = await scene(); const recipient = await subscribe(f.viewer.browser);
-  expectStatus(await f.viewer.browser.request('PUT', '/api/v1/notification-preferences', { body: { channels: { reply: { inApp: true, push: true, email: false }, mention: { inApp: true, push: true, email: false } } } }), 200);
+  expectStatus(await f.viewer.browser.request('PATCH', '/api/v1/notification-preferences', { body: { channels: { reply: { inApp: true, push: true, email: false }, mention: { inApp: true, push: true, email: false } } } }), 200);
   const returned = async (place: string) => expectStatus(await f.viewer.browser.request('GET', '/api/v1/return?' + place), 200) as ReturnSummary;
   for (const [place, actual] of [['place=home', { type: 'home' }], [`place=project&id=${f.place.id}`, { type: 'project', id: f.place.id }]] as const) {
     const seen = await returned(place); expectStatus(await f.viewer.browser.request('PUT', '/api/v1/return-points', { body: { place: actual, mark: seen.mark } }), 200);
@@ -239,4 +242,68 @@ test('three quiet progress posts change no Since-you-left, Inbox unread or push;
   const item = (await inbox()).items.find(item => item.url?.endsWith(mention.id)); assert.equal(item?.reason, 'mention');
   assert.ok(item?.url?.includes(`open=work:${f.task.id}&agentThread=1`));
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM notifications WHERE user_id=$1 AND url LIKE $2', [f.outsider.id, `%${mention.id}`])).rows[0].n, 0);
+});
+
+async function bounded<T>(promise: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try { return await Promise.race([promise, new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error('Thread race barrier exceeded 10s')), 10_000); })]); }
+  finally { clearTimeout(timer); }
+}
+async function unusedAgentTask() {
+  const f = await actionScene(pool); const grant = await f.grant('work.create', 'execute');
+  const created = toolValue(await f.tool('flux_create_task', { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId,
+    grantId: grant.id, clientCommandId: randomUUID(), peerRequestClass: 'execute', sources: [], task: { title: 'Deterministic thread/Undo trial' } }));
+  const item = await f.read(String(created.workId)) as unknown as WorkItem;
+  const ownerId = (await pool.query('SELECT owner_user_id FROM agents WHERE id=$1', [f.agentId])).rows[0].owner_user_id as string;
+  return { ...f, item, ownerId, path: `/api/v1/work/${item.id}/agent-thread` };
+}
+
+test('forced thread-post winner makes actual HTTP Undo wait then refuse; a retry adds no second use/event', { timeout: 30_000 }, async () => {
+  const f = await unusedAgentTask(); const held = barrier<number>(), release = barrier();
+  const command = { body: 'First actual thread effect', clientMessageId: randomUUID() };
+  let undo: ReturnType<typeof f.owner.request> | undefined;
+  const post = db.transaction(async tx => {
+    const saved = await taskAgentThreadUseCases(conversationStore(tx)).post({ kind: 'human', id: f.ownerId }, f.item.id, command);
+    held.resolve(await backendPid(tx)); await bounded(release.promise); return saved;
+  }); void post.catch(() => undefined);
+  try {
+    const pid = await bounded(held.promise);
+    undo = f.owner.request('POST', `/api/v1/work/${f.item.id}/creation-undo`, { body: { clientCommandId: randomUUID(), expectedVersion: f.item.version } });
+    void undo.catch(() => undefined); await waitUntilBlockedBy(pool, pid); release.resolve();
+    const saved = await bounded(post); assert.equal((await bounded(undo)).status, 409);
+    assert.deepEqual(expect(await f.owner.request('POST', f.path, { body: command }), 201), saved);
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM events WHERE object_id=$1 AND kind='project.agent_thread_message_sent.v1'", [f.projectId])).rows[0].n, 1);
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM project_task_notices WHERE work_id=$1 AND kind='task.creation_reverted'", [f.item.id])).rows[0].n, 0);
+  } finally { release.resolve(); await bounded(Promise.all([post.catch(() => undefined), undo?.catch(() => undefined)])); }
+});
+
+test('forced Undo winner makes actual HTTP first post wait then refuse without thread, message or usage latch', { timeout: 30_000 }, async () => {
+  const f = await unusedAgentTask(); const held = barrier<number>(), release = barrier();
+  let post: ReturnType<typeof f.owner.request> | undefined;
+  const undo = db.transaction(async tx => {
+    const native = nativeWorkInTransaction(tx);
+    const result = await native.undoTaskCreation({ kind: 'human', id: f.ownerId }, f.item.id, { clientCommandId: randomUUID(), expectedVersion: f.item.version });
+    held.resolve(await backendPid(tx)); await bounded(release.promise); await native.flushEvents(); return result;
+  }); void undo.catch(() => undefined);
+  try {
+    const pid = await bounded(held.promise);
+    post = f.owner.request('POST', f.path, { body: { body: 'A late thread', clientMessageId: randomUUID() } }); void post.catch(() => undefined);
+    await waitUntilBlockedBy(pool, pid); release.resolve(); await bounded(undo); assert.equal((await bounded(post)).status, 409);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_conversations WHERE work_id=$1', [f.item.id])).rows[0].n, 0);
+    assert.equal((await pool.query('SELECT first_persisted_use_at FROM project_work_items WHERE id=$1', [f.item.id])).rows[0].first_persisted_use_at, null);
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM events WHERE object_id=$1 AND kind='project.agent_thread_message_sent.v1'", [f.projectId])).rows[0].n, 0);
+  } finally { release.resolve(); await bounded(Promise.all([undo.catch(() => undefined), post?.catch(() => undefined)])); }
+});
+
+test('rollback removes a persisted thread/message/event and the shared first-use latch together', async () => {
+  const f = await scene(); const sentinel = new Error('Injected outer rollback');
+  await assert.rejects(db.transaction(async tx => {
+    await taskAgentThreadUseCases(conversationStore(tx)).post({ kind: 'human', id: f.owner.id }, f.task.id,
+      { body: 'This effect must roll back', clientMessageId: randomUUID() });
+    throw sentinel;
+  }), sentinel);
+  assert.equal(await f.count(), 0);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_messages WHERE project_id=$1', [f.place.id])).rows[0].n, 0);
+  assert.equal((await pool.query('SELECT first_persisted_use_at FROM project_work_items WHERE id=$1', [f.task.id])).rows[0].first_persisted_use_at, null);
+  assert.equal((await pool.query("SELECT count(*)::int AS n FROM events WHERE object_id=$1 AND kind='project.agent_thread_message_sent.v1'", [f.place.id])).rows[0].n, 0);
 });

@@ -49,6 +49,8 @@ JSON-only export carries metadata, while the bundle carries the bytes as well.
 
 ## `project.json`
 
+Task agents’ threads (#400) appear in the additive `agentThreads` array in format 1. Each item carries `workId`, its original conversation ID, authors, ordered messages and attachment metadata. The existing `conversations` array remains people-space history. Format-1 readers that ignore unknown fields keep their old behavior; the bundled schema and versioned EXT-2 snapshot include the new array. The same project-manager authority and private-data exclusions apply. This extension does not publish new MCP tools or change existing people-space replies.
+
 Format `flux.project-export`, `formatVersion` 1. The TypeScript types (`ProjectExport`) and the
 JSON Schema (`PROJECT_EXPORT_JSON_SCHEMA`) are in
 [`app/packages/contracts/src/export.ts`](../../app/packages/contracts/src/export.ts) (Apache-2.0); the
