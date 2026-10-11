@@ -15,6 +15,7 @@ import { audience, quote, sketchHref, when } from './format';
 import { freeSpot, rectOf } from './geometry';
 import { SketchList } from './SketchList';
 import { SketchMap } from './SketchMap';
+import { ConnectionLabels, type ConnectionTarget } from './ConnectionLabels';
 import { useOutline } from './useOutline';
 import { useThoughtDraft, type DraftLine, type ThoughtDraft } from './createdDraft';
 import { DraftCapture, draftReady } from './DraftCapture';
@@ -96,6 +97,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   const coarse = useMediaQuery('(pointer: coarse)');
   const phone = useMediaQuery(MEDIA.phone);
   const [mode, setModeState] = useState<Mode>(storedMode);
+  const [connectionTarget, setConnectionTarget] = useState<ConnectionTarget | null>(null);
   const location = useLocation();
   // A fragment shown in a live session (#62) opens with the presenter's thoughts selected.
   const liveSelect = (location.state as { liveSelect?: string[] | null } | null)?.liveSelect ?? null;
@@ -724,7 +726,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     const hint = canWrite ? (
       <div className="sk-line">
         {statusLine}
-        {!hasStatus && !phone ? <p className="sk-hint">Drag a dot onto a thought to connect · release on empty space to add a new one</p> : null}
+        {!hasStatus && !phone ? <p className="sk-hint">Drag a dot to connect or add a thought · Click a line to add a label</p> : null}
       </div>
     ) : <div className="sk-line">{statusLine}</div>;
     return (
@@ -738,6 +740,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
             {notices}
           </div>
           <SketchMap {...shared} coarse={coarse} compact={phone} helpId={helpId} heights={heights} dock={dock} hint={hint} viewModes={viewModes}
+            onLabel={(linkId) => setConnectionTarget({ linkId })} onConnections={(thoughtId) => setConnectionTarget({ thoughtId })}
             bar={{ project: sketch.scope === 'project', canUndo: doc.canUndo, helpOpen, onShape: cycleShape, onTask: () => void makeWork(), onUndo: undo, onHelp: () => setHelpOpen(!helpOpen) }}
             onConnect={connectTo} onAddAt={(parentId, x, y) => add(parentId, '', false, { x, y })} onConnectFrom={connectFromDot} onAddThought={() => add(selection[selection.length - 1] ?? null)}
             draftEditor={shownDraft ? draftForm : null} draft={shownDraft && !shownDraft.lines && !sketch.thoughts.some((thought) => thought.id === shownDraft.id)
@@ -747,6 +750,8 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
             ? <>An empty sketch. Start with <b>Add a thought</b>.</>
             : <>An empty sketch. Add the first thought with <b>Thought</b>, then keep adding with the <b>+</b> beside it.</>}</p> : null}
           <p className={`sk-help${helpOpen ? ' is-open' : ''}`} id={helpId}>{helpText}</p>
+          {connectionTarget ? <ConnectionLabels sketch={sketch} target={connectionTarget} editable={canWrite && !phone}
+            onSave={doc.saveLinkLabel} onClose={() => setConnectionTarget(null)} /> : null}
         </div>
       </div>
     );
@@ -773,6 +778,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
             <div className={`sk-tools${sketch.scope === 'project' ? ' sk-tools--seven' : ''}`} role="toolbar" aria-label="Sketch tools">
             <button type="button" className="ui-btn ui-btn--quiet sk-add" onClick={() => add(selection[selection.length - 1] ?? null)}><Icon name="plus" size={14} />Thought</button>
             {phone ? null : <button type="button" className="ui-btn ui-btn--quiet" aria-pressed={!!connectFrom} onClick={connect} aria-label="Connect"><Icon name="link" size={14} /><span className="sk-bl">Connect</span></button>}
+            {!phone && selection.length === 1 ? <button type="button" className="ui-btn ui-btn--quiet" onClick={() => setConnectionTarget({ thoughtId: selection[0]! })}>Connections</button> : null}
             <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={selection.length !== 1} onClick={() => {
               if (selection.length !== 1) { say('Select one thought, then Edit'); return; }
               startEdit(selection[0]!);
@@ -811,6 +817,8 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
 
         <SketchList {...shared} personalOutline={personalOutline} onNavigate={navigateThought} />
         <p className="sk-help" id={helpId}>{helpText}</p>
+        {connectionTarget ? <ConnectionLabels sketch={sketch} target={connectionTarget} editable={canWrite && !phone}
+          onSave={doc.saveLinkLabel} onClose={() => setConnectionTarget(null)} /> : null}
       </div>
     </div>
   );
