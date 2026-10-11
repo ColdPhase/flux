@@ -176,3 +176,30 @@ placement requirement while preserving visible information, actual name/action,
 44 px read-only recovery and every state/geometry/page-error guard. The lifecycle
 zero-warning locator also includes the real local warning. The predicted layout
 effect remains unverified until a fresh Docker run; no failure is relabelled.
+
+The single-warning hypothesis was falsified at application source
+`9cf47fab0bbf10c16476221efb75941e37aa8fb5`. Immutable run
+`/tmp/flux372-reading-position-9cf4`, driver 11811 terminal 1: build/type/lint,
+1122/75/206 image/input/asset audit and 7 PWA asset tests pass. The extra
+unchanged real phone/overtaken journey with layout observations fails in
+5.366 s: before/held scrollTop 1380, picker top 687.422; after real ACK and
+failed read scrollTop 1222, named note 733.422–842.703, Retry
+766.063–810.063 (44 px) outside pane bottom 778.188. It does not reach its
+settled measurement or recovery; no successful geometry is inferred.
+
+Configured SMTP Chromium ran 11 methods in 107.625 s with four phone geometry
+failures; WebKit ran 11 in 128.358 s with seven, including long-list unmute.
+The same-owner/image/database/secret configured-to-empty SMTP transition
+passes. No-SMTP Chromium ran 3 in 58.977 s with three geometry failures;
+WebKit ran 3 in 73.683 s with seven. No native page-error occurred in this
+cohort, which does not resolve the previously reproduced #471. Exact cleanup
+audit records zero containers, networks, volumes or run image tags.
+
+Source inspection rules out remote Focus GET adopting all mutes before ACK:
+that listener publishes only the pause field. The action form is instead
+replaced by conditional sibling components at ACK; preserving a data index
+does not preserve its physical slot. Next work must keep a truthful stable
+action slot and place the entire named warning at a measured fitting position
+in the same visible section, preserving original viewport/44 px/no-write/error
+and lifecycle guards. The PR stays draft; the failed experiment remains
+available, with no parent/visual/runtime/release acceptance claimed.
