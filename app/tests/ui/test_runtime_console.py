@@ -420,10 +420,6 @@ class RuntimeConsole(unittest.TestCase):
         expect(section).not_to_contain_text("Nothing changed")
         self.phone_layout(page, "section.rt")
 
-
-if __name__ == "__main__":
-    unittest.main()
-
     def test_12_legacy_sign_in_route_is_lazy_and_off_server_refuses_the_start(self) -> None:
         """Real lazy assets/redirect and refusal; offered status is a fixture, never a native login."""
         for phone in (False, True):
@@ -457,3 +453,7 @@ if __name__ == "__main__":
                     self.assertEqual(page.locator(".rt-console").count(), 0, "a refused start cannot mount the terminal")
                     self.assertFalse(any("SignInConsole-" in url for url in assets), "a refused start cannot download the terminal")
                     page.close()
+
+
+if __name__ == "__main__":
+    unittest.main()
