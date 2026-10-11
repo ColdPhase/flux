@@ -557,7 +557,27 @@ class SketchJourney(unittest.TestCase):
         if options is not None:
             options.get_by_role("button", name="Close map options", exact=True).tap()
             expect(options).to_have_count(0)
-        page.wait_for_function("() => { const el = document.querySelector('.sk-canvas'); return el.scrollLeft === 0 && el.scrollTop === 0; }")
+        if viewport["width"] <= 640:
+            # The phone projection starts at the plane's top left.
+            page.wait_for_function("() => { const el = document.querySelector('.sk-canvas'); return el.scrollLeft === 0 && el.scrollTop === 0; }")
+        else:
+            # Fit has finished when the graph's top-left corner sits 24 px (at the fitted zoom) inside the
+            # padded viewport. That is not scroll 0/0 on the plane: the plane keeps 104 px of room above a
+            # thought at y=24 for its selection actions (#482), so a fitted view starts that far down.
+            page.wait_for_function(
+                """() => {
+                    const el = document.querySelector('.sk-canvas');
+                    const node = [...document.querySelectorAll('.sk-node')].find((item) => item.textContent.includes('Explore gesture sensing'));
+                    if (!el || !node) return false;
+                    const view = el.getBoundingClientRect();
+                    const at = node.getBoundingClientRect();
+                    const style = getComputedStyle(el);
+                    const zoom = at.width / 240;
+                    return el.scrollLeft === 0
+                        && Math.abs(at.left - view.left - (parseFloat(style.paddingLeft) || 0) - 24 * zoom) < 1.5
+                        && Math.abs(at.top - view.top - (parseFloat(style.paddingTop) || 0) - 24 * zoom) < 1.5;
+                }"""
+            )
         return page
 
     def assert_no_overlap(self, a: dict, b: dict, message: str) -> None:
