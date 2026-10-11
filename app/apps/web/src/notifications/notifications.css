@@ -179,11 +179,14 @@
 
 /* The named mute result stays with its affected row, including an acknowledged removed row. */
 .nset__muted li { flex-wrap: wrap; }
-.nset__muted .nset__mute-read { flex: 0 0 100%; display: flex; align-items: center; gap: 8px; margin: 0; font-size: var(--fs-xs); line-height: 1.35; color: var(--t2); }
-.nset__mute-read > span { flex: 1; min-width: 0; }
+.nset__muted .nset__mute-read { flex: 0 0 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; font-size: var(--fs-xs); line-height: 1.35; color: var(--t2); }
+.nset__mute-read > span { flex: 1 1 100%; min-width: 0; }
 .nset__mute-read > svg, .nset__mute-read > button { flex: none; }
 .nset__mute-read .nset__place { display: flex; }
 .nset__mute-state { display: block; margin-top: 2px; }
 .nset__mute-warning { display: block; margin-top: 2px; }
 .nset__mute > .nset__muted { flex: 1 1 100%; margin: 0; }
+.nset__places > .nset__muted { margin-bottom: 0; }
+.nset__mute[hidden] { display: none; }
+.nset__mute-pending { flex: 1 1 100%; margin: 0; font-size: var(--fs-sm); color: var(--t2); overflow-wrap: anywhere; }
 .nset__email-target { display: block; overflow-wrap: anywhere; font-weight: 500; color: var(--t1); }

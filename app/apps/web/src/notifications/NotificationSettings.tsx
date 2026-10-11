@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, Fragment, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, Fragment, type FormEvent, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import {
   NOTIFICATION_REASONS,
@@ -78,6 +78,7 @@ function AccountNotificationSettings() {
   const [saved, setSaved] = useState('');
   const [feedbackArea, setFeedbackArea] = useState<FeedbackArea | null>(null);
   const [muteReceipt, setMuteReceipt] = useState<MuteReceipt | null>(null);
+  const [pendingMute, setPendingMute] = useState<MuteReceipt | null>(null);
   const [emailTarget, setEmailTarget] = useState<string | null>(null);
   const [emailNoticeAtHead, setEmailNoticeAtHead] = useState(false);
   const emailReadNoticeRef = useRef<HTMLParagraphElement | null>(null);
@@ -142,7 +143,7 @@ function AccountNotificationSettings() {
     const session = captureNotificationSession(ownerId);
     if (!session) return Promise.resolve(false);
     const mine = ++sequence.current;
-    if (mounted.current) { setSaved(''); setFeedbackArea(area); setMuteReceipt(null); setEmailTarget(null); setEmailNoticeAtHead(false); }
+    if (mounted.current) { setSaved(''); setFeedbackArea(area); setMuteReceipt(null); setPendingMute(mute ?? null); setEmailTarget(null); setEmailNoticeAtHead(false); }
     const next = queue.current.then(async () => {
       if (!isCurrentNotificationSession(session)) return false;
       const pauseVersion = notificationPauseRevision(session);
@@ -152,7 +153,7 @@ function AccountNotificationSettings() {
         if (!isCurrentNotificationSession(session)) return false;
         if (onError && mounted.current) onError(error);
         else toast({ message: message(error, 'Could not save. Try again.'), tone: 'danger' });
-        if (mounted.current && mine === sequence.current) load();
+        if (mounted.current && mine === sequence.current) { setPendingMute(null); load(); }
         return false;
       }
       if (!isCurrentNotificationSession(session)) return false;
@@ -181,6 +182,7 @@ function AccountNotificationSettings() {
       if (mounted.current && mine === sequence.current) {
         hasPreferences.current = true;
         setPrefs(result); setSaved(done); setFeedbackArea(area);
+        setPendingMute(null);
         setMuteReceipt(mute ? { ...mute, place: result.muted.find((place) => place.type === mute.place.type && place.id === mute.place.id) ?? mute.place } : null);
         setEmailTarget(address ?? null);
         setPauseExpired(result.pause.until !== null && Date.parse(result.pause.until) <= Date.now());
@@ -270,19 +272,7 @@ function AccountNotificationSettings() {
   // announcement retains the complete acknowledged name for assistive technology.
   const savedMuteVerb = feedbackArea === 'mute' ? saved.startsWith('Muted ') ? 'Muted' : saved.startsWith('Unmuted ') ? 'Unmuted' : null : null;
   const activeMuteReceipt = showMuteReceipt ? muteReceipt : null;
-  const muteRows: MutedPlaceRow[] = prefs.muted.map((place) => ({ place, receiptOnly: false }));
-  if (activeMuteReceipt) {
-    const existing = muteRows.findIndex(({ place }) => place.type === activeMuteReceipt.place.type && place.id === activeMuteReceipt.place.id);
-    const row = existing >= 0 ? muteRows.splice(existing, 1)[0]! : { place: activeMuteReceipt.place, receiptOnly: true };
-    // Both actions retain their captured reading slot. A returned snapshot can contain
-    // new remote mutes above the old picker, so its new end is not the action's position.
-    const index = Math.max(0, Math.min(activeMuteReceipt.index, muteRows.length));
-    muteRows.splice(index, 0, row);
-  }
-  const pickerReceiptIndex = activeMuteReceipt?.muted ? muteRows.findIndex(({ place }) => place.type === activeMuteReceipt.place.type && place.id === activeMuteReceipt.place.id) : -1;
-  const beforePickerRows = pickerReceiptIndex < 0 ? muteRows : muteRows.slice(0, pickerReceiptIndex);
-  const afterPickerRows = pickerReceiptIndex < 0 ? [] : muteRows.slice(pickerReceiptIndex + 1);
-  const onMute = (place: NotificationPreferences['muted'][number]) => void save(() => setMute({ type: place.type, id: place.id, muted: true }), `Muted ${place.name}`, undefined, 'mute', { place, muted: true, index: prefs.muted.length });
+  const onMute = (place: NotificationPreferences['muted'][number]) => save(() => setMute({ type: place.type, id: place.id, muted: true }), `Muted ${place.name}`, undefined, 'mute', { place, muted: true, index: prefs.muted.length });
   const onUnmute = (place: NotificationPreferences['muted'][number]) => void save(() => setMute({ type: place.type, id: place.id, muted: false }), `Unmuted ${place.name}`, undefined, 'mute', { place, muted: false, index: prefs.muted.findIndex((item) => item.type === place.type && item.id === place.id) });
   const emailReadNotice = refreshWarning && !showMuteReceipt ? <p ref={emailReadNoticeRef} className="nset__problem" role="note"><Icon name="alert" size={14} /><span>
     {refreshWarning === 'settings' && feedbackArea === 'email' && saved ? `${saved}. ` : ''}
@@ -383,38 +373,122 @@ function AccountNotificationSettings() {
         </div>
       </section>
 
-      <section className="nset__sec" aria-labelledby={ids.mute}>
-        <h3 className="sset-sec" id={ids.mute}>Muted places</h3>
-        <div className="sset-card nset__box">
-          <p className="nset__lead">Nothing from a muted place notifies you, on any channel. You can still open it.</p>
-          {beforePickerRows.length ? <MutedPlaceRows rows={beforePickerRows} receipt={activeMuteReceipt} onUnmute={onUnmute} onRetry={load} /> : pickerReceiptIndex < 0 ? <p className="nset__none">No muted places.</p> : null}
-          {pickerReceiptIndex >= 0 ? <MutePicker places={mutable} onMute={onMute} result={<MutedPlaceRows rows={[muteRows[pickerReceiptIndex]!]} receipt={activeMuteReceipt} onUnmute={onUnmute} onRetry={load} />} /> : null}
-          {afterPickerRows.length ? <MutedPlaceRows rows={afterPickerRows} receipt={activeMuteReceipt} onUnmute={onUnmute} onRetry={load} /> : null}
-          {mutable.length ? <MutePicker places={mutable} onMute={onMute} /> : null}
-        </div>
-      </section>
+      <MutedPlaces headingId={ids.mute} ownerId={ownerId} muted={prefs.muted}
+        places={mutable} pending={pendingMute} receipt={activeMuteReceipt} onMute={onMute} onUnmute={onUnmute} onRetry={load} />
     </div></div>
   );
 }
 
-function MutedPlaceRows({ rows, receipt, onUnmute, onRetry }: {
+function MutedPlaces({ headingId, ownerId, muted, places, pending, receipt, onMute, onUnmute, onRetry }: {
+  headingId: string; ownerId: string;
+  muted: NotificationPreferences['muted']; places: NotificationPreferences['muted'];
+  pending: MuteReceipt | null; receipt: MuteReceipt | null;
+  onMute: (place: NotificationPreferences['muted'][number]) => Promise<boolean>;
+  onUnmute: (place: NotificationPreferences['muted'][number]) => void; onRetry: () => void;
+}) {
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const headingRef = useRef<HTMLHeadingElement | null>(null);
+  const [fitted, setFitted] = useState<{ receipt: MuteReceipt; position: number | 'head' } | null>(null);
+  const samePlace = (place: NotificationPreferences['muted'][number]) => receipt?.place.type === place.type && receipt.place.id === place.id;
+  const others = receipt ? muted.filter((place) => !samePlace(place)) : muted;
+  const current = receipt ? muted.find(samePlace) : undefined;
+  const resultRow: MutedPlaceRow | null = receipt ? { place: current ?? receipt.place, receiptOnly: !current } : null;
+  const captured = Math.max(0, Math.min(receipt?.index ?? pending?.index ?? others.length, others.length));
+  const position = receipt && fitted?.receipt === receipt ? fitted.position : captured;
+  const slotIndex = receipt?.muted || pending?.muted ? captured : others.length;
+  const atSlot = !!receipt?.muted && position === slotIndex;
+
+  useLayoutEffect(() => {
+    if (!receipt) return;
+    const section = sectionRef.current, heading = headingRef.current;
+    const pane = section?.closest('.pane-scroll');
+    const session = captureNotificationSession(ownerId);
+    if (!section || !heading || !pane || !session) return;
+    let active = true, frame = 0;
+    const measure = () => {
+      frame = 0;
+      if (!active || !isCurrentNotificationSession(session) || !section.isConnected || !heading.isConnected || !pane.isConnected) return;
+      const note = section.querySelector('.nset__mute-read'), row = note?.closest('li');
+      if (!row) return;
+      const view = pane.getBoundingClientRect(), box = row.getBoundingClientRect(), group = section.getBoundingClientRect();
+      if (box.top >= view.top && box.bottom <= view.bottom) return;
+      if (group.bottom <= view.top || group.top >= view.bottom) return;
+      const candidates: { position: number | 'head'; top: number }[] = [];
+      const headTop = heading.getBoundingClientRect().top;
+      if (position !== 'head' && headTop >= view.top && headTop + box.height <= view.bottom) candidates.push({ position: 'head', top: headTop });
+      for (const element of section.querySelectorAll<HTMLElement>('.nset__muted li[data-place]')) {
+        if (element === row) continue;
+        const index = others.findIndex((place) => `${place.type}:${place.id}` === element.dataset.place);
+        const top = element.getBoundingClientRect().top;
+        // A preceding physical row is unaffected when the result is removed from its old slot.
+        if (index >= 0 && top < box.top && top >= view.top && top + box.height <= view.bottom) candidates.push({ position: index, top });
+      }
+      candidates.sort((a, b) => b.top - a.top);
+      const next = candidates[0];
+      if (next) setFitted((previous) => previous?.receipt === receipt && previous.position === next.position ? previous : { receipt, position: next.position });
+    };
+    const schedule = () => { if (active && !frame) frame = requestAnimationFrame(measure); };
+    const observer = new ResizeObserver(schedule);
+    observer.observe(section); observer.observe(pane); observer.observe(document.documentElement);
+    const row = section.querySelector('.nset__mute-read')?.closest('li');
+    if (row) observer.observe(row);
+    window.addEventListener('resize', schedule);
+    // Real ref-derived measurement before paint, then only actual layout changes. No scroll/focus writes.
+    measure();
+    return () => { active = false; cancelAnimationFrame(frame); observer.disconnect(); window.removeEventListener('resize', schedule); };
+  }, [receipt, ownerId, position, others]);
+
+  const flow: ReactNode[] = [];
+  let run: MutedPlaceRow[] = [];
+  const flush = () => {
+    if (!run.length) return;
+    const first = run[0]!.place;
+    flow.push(<MutedPlaceRows key={`rows:${first.type}:${first.id}`} rows={run} receipt={receipt} pending={pending} onUnmute={onUnmute} onRetry={onRetry} />);
+    run = [];
+  };
+  for (let index = 0; index <= others.length; index += 1) {
+    if (resultRow && !atSlot && position !== 'head' && position === index) run.push(resultRow);
+    if (index === slotIndex) {
+      flush();
+      flow.push(<MutePicker key="mute-action" places={places} pending={pending?.muted ? pending : null} onMute={onMute}
+        hidden={!places.length && !pending?.muted && !atSlot}
+        result={atSlot && resultRow ? <MutedPlaceRows rows={[resultRow]} receipt={receipt} pending={pending} onUnmute={onUnmute} onRetry={onRetry} /> : undefined} />);
+    }
+    if (index < others.length) run.push({ place: others[index]!, receiptOnly: false });
+  }
+  flush();
+  return <section ref={sectionRef} className="nset__sec" aria-labelledby={headingId}>
+    {position === 'head' && resultRow ? <MutedPlaceRows rows={[resultRow]} receipt={receipt} pending={pending} onUnmute={onUnmute} onRetry={onRetry} /> : null}
+    <h3 ref={headingRef} className="sset-sec" id={headingId}>Muted places</h3>
+    <div className="sset-card nset__box nset__places">
+      <p className="nset__lead">Nothing from a muted place notifies you, on any channel. You can still open it.</p>
+      {!muted.length && !receipt ? <p className="nset__none">No muted places.</p> : null}
+      {flow}
+    </div>
+  </section>;
+}
+
+function MutedPlaceRows({ rows, receipt, pending, onUnmute, onRetry }: {
   rows: MutedPlaceRow[];
-  receipt: MuteReceipt | null;
+  receipt: MuteReceipt | null; pending: MuteReceipt | null;
   onUnmute: (place: NotificationPreferences['muted'][number]) => void;
   onRetry: () => void;
 }) {
   return (
     <ul className="nset__muted">
       {rows.map(({ place, receiptOnly }) => (
-        <li key={`${receiptOnly ? 'receipt:' : ''}${place.type}:${place.id}`} className={receiptOnly ? 'nset__mute-result' : undefined}>
+        <li key={`${place.type}:${place.id}`} data-place={`${place.type}:${place.id}`} className={receiptOnly ? 'nset__mute-result' : undefined}>
           {receipt && receipt.place.type === place.type && receipt.place.id === place.id ? (
             <p className="nset__mute-read" role="note"><span>
               <span className="nset__place">{place.type === 'dm' ? <Icon name="chat" size={14} /> : <span className="nset__hash" aria-hidden="true">#</span>}{place.name}<span className="ui-vh">{place.type === 'dm' ? ', direct message' : ', project'}</span></span>
               <span className="nset__mute-state">{receipt.muted ? 'Muted' : 'Unmuted'}. Current settings unverified.</span>
               <span className="nset__mute-warning">Current notification settings could not be refreshed. Showing last confirmed settings.</span>
-            </span><Button variant="quiet" aria-label="Retry current settings" onClick={onRetry}>Refresh</Button></p>
+            </span><Button variant="quiet" aria-label="Retry current settings" onClick={onRetry}>Refresh</Button>
+              {!receiptOnly ? <Button variant="quiet" onClick={() => onUnmute(place)}>Unmute</Button> : null}
+            </p>
           ) : <span className="nset__place">{place.type === 'dm' ? <Icon name="chat" size={14} /> : <span className="nset__hash" aria-hidden="true">#</span>}{place.name}<span className="ui-vh">{place.type === 'dm' ? ', direct message' : ', project'}</span></span>}
-          {!receiptOnly ? <Button variant="quiet" onClick={() => onUnmute(place)}>Unmute</Button> : null}
+          {!receiptOnly && !(receipt && receipt.place.type === place.type && receipt.place.id === place.id)
+            ? <Button variant="quiet" busy={!!pending && !pending.muted && pending.place.type === place.type && pending.place.id === place.id} onClick={() => onUnmute(place)}>Unmute</Button> : null}
         </li>
       ))}
     </ul>
@@ -564,20 +638,28 @@ function MorningSummaryRow({ prefs, onChange, feedback }: { prefs: NotificationP
   );
 }
 
-function MutePicker({ places, onMute, result }: { places: { type: 'project' | 'dm'; id: string; name: string }[]; onMute: (place: { type: 'project' | 'dm'; id: string; name: string }) => void; result?: ReactNode }) {
+function MutePicker({ places, onMute, result, pending, hidden }: { places: NotificationPreferences['muted']; onMute: (place: NotificationPreferences['muted'][number]) => Promise<boolean>; result?: ReactNode; pending: MuteReceipt | null; hidden: boolean }) {
   const [choice, setChoice] = useState('');
+  const choiceVersion = useRef(0);
   const selectId = useId();
+  const mounted = useRef(false);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const place = places.find((item) => `${item.type}:${item.id}` === choice);
   return (
-    <div className="nset__row nset__mute">
+    <div className="nset__row nset__mute" hidden={hidden}>
       {result ?? <>
       <label className="ui-vh" htmlFor={selectId}>Place to mute</label>
-      <select id={selectId} value={choice} onChange={(event) => setChoice(event.target.value)}>
+      <select id={selectId} value={choice} disabled={!!pending} onChange={(event) => { choiceVersion.current += 1; setChoice(event.target.value); }}>
         <option value="">Choose a project or conversation…</option>
         {places.some((item) => item.type === 'project') ? <optgroup label="Projects">{places.filter((item) => item.type === 'project').map((item) => <option key={item.id} value={`project:${item.id}`}># {item.name}</option>)}</optgroup> : null}
         {places.some((item) => item.type === 'dm') ? <optgroup label="Direct messages">{places.filter((item) => item.type === 'dm').map((item) => <option key={item.id} value={`dm:${item.id}`}>{item.name}</option>)}</optgroup> : null}
       </select>
-      <Button disabled={!place} onClick={() => { if (place) { onMute(place); setChoice(''); } }}>Mute</Button>
+      <Button disabled={!place && !pending} busy={!!pending} onClick={() => {
+        if (!place) return;
+        const selected = choice, version = ++choiceVersion.current;
+        void onMute(place).then((acknowledged) => { if (acknowledged && mounted.current && version === choiceVersion.current) setChoice((current) => current === selected ? '' : current); });
+      }}>Mute</Button>
+      {pending ? <p className="nset__mute-pending" role="note">Muting {pending.place.name}…</p> : null}
       </>}
     </div>
   );

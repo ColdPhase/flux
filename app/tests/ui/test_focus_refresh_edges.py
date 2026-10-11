@@ -806,6 +806,12 @@ class RefreshEdges(unittest.TestCase):
             print('ACTUAL_MUTE_ACTION_POSITION ' + json.dumps({'overtaken':overtaken,'muted':muted,
                 'control':control.bounding_box(),'viewport':page.viewport_size}),flush=True)
             self.wait_held(page, held)
+            expect(control).to_have_attribute('aria-busy', 'true')
+            expect(page.locator('.nset__saved')).to_be_empty()
+            expect(page.locator('.nset__mute-read')).to_have_count(0)
+            if muted:
+                expect(page.get_by_label('Place to mute', exact=True)).to_have_value('project:'+actor['project'])
+                expect(page.locator('.nset__mute-pending')).to_contain_text('Muting '+actor['projectName'])
             self.api(other, 'PATCH', '/api/v1/notification-preferences', {'pause':{'until':None}})
             page.evaluate("window.dispatchEvent(new Event('focus'))")
             expect(self.note(page)).to_have_count(0)
@@ -842,6 +848,52 @@ class RefreshEdges(unittest.TestCase):
             for theme in ('light', 'dark'):
                 with self.subTest(phone=phone,theme=theme):
                     self.mute_reading_position(phone=phone,theme=theme,muted=True,overtaken=True)
+
+    def test_18_failed_mute_retires_pending_without_success_and_keeps_the_actual_choice(self):
+        page, actor, until = self.focused('Failed mute choice', phone=True)
+        self.settings(page)
+        select = page.get_by_label('Place to mute', exact=True)
+        select.select_option('project:'+actor['project'])
+        control = page.get_by_role('button', name='Mute', exact=True)
+        held, writes = {}, []
+        def handler(route):
+            if route.request.method == 'PUT':
+                writes.append(route.request.post_data_json)
+                held['route'] = route
+            else:
+                route.continue_()
+        page.route('**/api/v1/notification-preferences/mutes', handler)
+        self.addCleanup(lambda: None if page.is_closed() else page.unroute_all(behavior='ignoreErrors'))
+        try:
+            control.tap()
+            for _ in range(80):
+                if 'route' in held: break
+                page.wait_for_timeout(50)
+            self.assertIn('route', held, 'the actual selected mute command reached the error-response barrier')
+            expect(control).to_have_attribute('aria-busy', 'true')
+            expect(select).to_have_value('project:'+actor['project'])
+            expect(page.locator('.nset__mute-pending')).to_contain_text(actor['projectName'])
+            expect(page.locator('.nset__saved')).to_be_empty()
+            expect(page.locator('.nset__mute-read')).to_have_count(0)
+            # Only the declared unsuccessful UI response is injected; the APIRequest observation
+            # proves that this attempt did not create a mute or an acknowledged side effect.
+            held['route'].fulfill(status=500, content_type='application/json', body='{}'); held['released'] = True
+            expect(page.get_by_text('Could not save. Try again.', exact=True)).to_be_visible()
+            expect(page.locator('.nset__mute-pending')).to_have_count(0)
+            expect(control).to_be_enabled()
+            expect(select).to_have_value('project:'+actor['project'])
+            expect(page.locator('.nset__saved')).to_be_empty()
+            expect(page.locator('.nset__mute-read')).to_have_count(0)
+            self.assertFalse(any(place['id']==actor['project'] for place in self.api(page, 'GET', '/api/v1/notification-preferences')['muted']))
+            self.assertEqual(writes, [{'type':'project','id':actor['project'],'muted':True}], 'failure does not resend the command')
+            page.unroute('**/api/v1/notification-preferences/mutes', handler)
+            control.tap()
+            expect(page.locator('.nset__saved')).to_have_text('Muted '+actor['projectName'])
+            self.assertTrue(any(place['id']==actor['project'] for place in self.api(page, 'GET', '/api/v1/notification-preferences')['muted']), 'only the person’s explicit second action creates the mute')
+        finally:
+            if 'route' in held and not held.get('released'):
+                held['route'].fulfill(status=500, content_type='application/json', body='{}')
+        page.close()
 
 
 if __name__ == '__main__':
