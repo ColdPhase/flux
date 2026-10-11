@@ -60,6 +60,24 @@ export const AI_PROVIDERS: Readonly<Record<AiProviderKind, AiProviderInfo>> = {
   },
 };
 
+/**
+ * Models Flux knows cannot make tool calls on the wire format Flux speaks to their provider (F-027
+ * AST-8: such a connection answers in one request and cannot change anything). OpenAI's function
+ * calling guide (developers.openai.com/api/docs/guides/function-calling, read 2026-10-11) says GPT-6
+ * Astra and GPT-6.1 Sol "require the Responses API for tool calling" and do not support Chat
+ * Completions for it; Flux's OpenAI adapter is Chat Completions. An absent model is not marked: a
+ * provider that cannot call tools refuses the request and the run fails closed. This is a dated
+ * table like `AI_PRICE_TABLE`; recheck a row before relying on it after its date.
+ */
+export const AI_MODELS_WITHOUT_TOOL_CALLING: readonly { provider: AiProviderKind; model: string; checkedOn: string; reason: string }[] = [
+  { provider: 'openai', model: 'gpt-6-astra', checkedOn: '2026-10-11', reason: 'requires the Responses API for tool calling' },
+  { provider: 'openai', model: 'gpt-6.1-sol', checkedOn: '2026-10-11', reason: 'requires the Responses API for tool calling' },
+];
+
+/** False when Flux knows the model cannot call tools on its wire format (see {@link AI_MODELS_WITHOUT_TOOL_CALLING}). */
+export const aiModelCallsTools = (provider: AiProviderKind, model: string): boolean =>
+  !AI_MODELS_WITHOUT_TOOL_CALLING.some((entry) => entry.provider === provider && entry.model === model);
+
 export const isAiProviderKind = (value: unknown): value is AiProviderKind =>
   typeof value === 'string' && (AI_PROVIDER_KINDS as readonly string[]).includes(value);
 
