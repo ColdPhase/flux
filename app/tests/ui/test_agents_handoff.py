@@ -717,8 +717,9 @@ class HandOffJourney(unittest.TestCase):
     def test_19_a_deadline_crossed_after_the_display_commit_is_not_dropped(self) -> None:
         """Controlled browser clock: retain the real DOM/effect path and move only elapsed time.
 
-        A one-shot observer sees the freshly committed live claim, then moves Date.now beyond its
-        deadline before passive effect setup. No app event, API read, reload or timer advance is sent.
+        The first clock read after the real live-claim DOM commit moves Date.now beyond its deadline,
+        before expiry scheduling. No app event, API read, reload or timer advance is sent. A DOM
+        observer alone is too late in this engine: its callback can run after passive effect setup.
         """
         page = self.page("ada")
         project = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects",
@@ -752,6 +753,12 @@ class HandOffJourney(unittest.TestCase):
           const originalTimeout = window.setTimeout.bind(window);
           const evidence = window.__expiryBoundary = { offset: 0, committed: null, timers: [], clockReads: [] };
           Date.now = () => {
+            const choice = document.querySelector('.handoff__agent');
+            if (!evidence.committed && choice?.textContent.includes('Working on “Check the deadline boundary”')) {
+              evidence.committed = { text: choice.textContent, before: originalNow(), expiry };
+              evidence.offset = expiry + 1000 - originalNow();
+              evidence.committed.after = originalNow() + evidence.offset;
+            }
             const at = originalNow() + evidence.offset;
             evidence.clockReads.push({ at, phase: evidence.committed ? 'after-commit' : 'before-commit' });
             return at;
@@ -760,17 +767,8 @@ class HandOffJourney(unittest.TestCase):
             evidence.timers.push({ delay, at: originalNow() + evidence.offset, phase: evidence.committed ? 'after-commit' : 'before-commit' });
             return originalTimeout(callback, delay, ...args);
           };
-          const observer = new MutationObserver(() => {
-            const choice = document.querySelector('.handoff__agent');
-            if (!choice || !choice.textContent.includes('Working on “Check the deadline boundary”')) return;
-            evidence.committed = { text: choice.textContent, before: Date.now(), expiry };
-            evidence.offset = expiry + 1000 - originalNow();
-            evidence.committed.after = Date.now();
-            observer.disconnect();
-          });
-          observer.observe(document.body, { childList: true, subtree: true, characterData: true });
           window.__restoreExpiryBoundary = () => {
-            observer.disconnect(); Date.now = originalNow; window.setTimeout = originalTimeout;
+            Date.now = originalNow; window.setTimeout = originalTimeout; evidence.offset = 0;
           };
         }""", (expires_at // 1000) * 1000)
         self.addCleanup(lambda: None if page.is_closed() else page.evaluate("window.__restoreExpiryBoundary?.()"))
