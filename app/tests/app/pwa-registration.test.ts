@@ -49,6 +49,9 @@ test('existing distinct waiting update applies once and clears when another tab 
   next.dispatchEvent(new Event('statechange'));
   assert.equal(f.offers.at(-1), null, 'no stale waiting action remains');
   f.container.dispatchEvent(new Event('controllerchange')); f.container.dispatchEvent(new Event('controllerchange'));
+  assert.equal(f.reloads(), 0, 'claiming the controller during activation does not reload yet');
+  next.state = 'activated'; next.dispatchEvent(new Event('statechange'));
+  next.dispatchEvent(new Event('statechange')); f.container.dispatchEvent(new Event('controllerchange'));
   assert.equal(f.reloads(), 1, 'explicit apply reloads once');
 });
 
@@ -67,4 +70,36 @@ test('installation already in progress is watched, and a late explicit apply use
   offered.apply(); offered.apply();
   assert.equal(f.reloads(), 1, 'user intent after other-tab activation still reloads exactly once');
   assert.deepEqual(next.sent, []);
+});
+
+test('an unrelated controller change cannot apply the selected waiting worker', async () => {
+  const current = new Worker(); current.state = 'activated';
+  const next = new Worker();
+  const f = await fixture(next, current);
+  f.offers.at(-1)!.apply();
+  const unrelated = new Worker(); unrelated.state = 'activated';
+  f.container.controller = unrelated; f.container.dispatchEvent(new Event('controllerchange'));
+  assert.equal(f.reloads(), 0, 'another worker becoming the controller is not the selected update');
+  f.container.controller = next; next.state = 'activating';
+  f.container.dispatchEvent(new Event('controllerchange'));
+  assert.equal(f.reloads(), 0, 'the selected controller must complete activation');
+  next.state = 'activated'; next.dispatchEvent(new Event('statechange'));
+  assert.equal(f.reloads(), 1);
+  f.container.controller = unrelated; f.container.dispatchEvent(new Event('controllerchange'));
+  next.dispatchEvent(new Event('statechange'));
+  assert.equal(f.reloads(), 1, 'later events do not trigger another reload');
+});
+
+test('late explicit apply while already controlling waits for activation without another skip request', async () => {
+  const current = new Worker(); current.state = 'activated';
+  const next = new Worker();
+  const f = await fixture(next, current);
+  const offered = f.offers.at(-1)!;
+  f.container.controller = next; next.state = 'activating'; f.registration.waiting = null;
+  next.dispatchEvent(new Event('statechange'));
+  offered.apply(); offered.apply();
+  assert.equal(f.reloads(), 0);
+  assert.deepEqual(next.sent, []);
+  next.state = 'activated'; next.dispatchEvent(new Event('statechange'));
+  assert.equal(f.reloads(), 1);
 });

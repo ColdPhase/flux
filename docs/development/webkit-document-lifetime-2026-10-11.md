@@ -118,3 +118,38 @@ This pass does not accept the separate #474 global API-client proposal, full
 application/API behavior, #349 AC-4 live Kreska presence/#228/#231, complete
 #149/#289/#461 outcomes or the integrated release. Existing visual and other
 historical reports retain their original pins. #349 stays open.
+
+## Independent update-only failure and activation correction
+
+The independent frozen8a driver29719 exited1: original selected WebKit journeys
+8/8, WorkingAgent07/08 2/2, Node PWA3/3 and Chromium update-only4/4 passed,
+while the real WebKit update-only module was3/4. Its last case reached the
+unchanged30-second wait for an activated controller after explicit Reload.
+Raw `/tmp/flux-review380-8a60/runtime.log` remains separate from the earlier
+paired update/PWA7/7 evidence at8a. Neither result is relabelled.
+
+Frozen production at docs-onlya854 (app/source-equivalent to8a) reproduced the
+same timeout with failure-only observation: one actual reload, complete new
+`/sign-in` document, controller and registration.active both still `activating`,
+and the actual controller answered its changed version. A lightweight browser
+trace then recorded controllerchange while activating, beforeunload still
+activating, activation completing in the retiring document, followed by a new
+document whose controller remained activating through its30-second timeout.
+This is an observed activation/navigation race, not a guessed stale URL.
+
+The independent peer accepted the bounded correction on2026-10-11: explicit
+apply reloads only when the selected worker is both the actual controller and
+activated. Listen to both controllerchange and that worker's statechange;
+remove both listeners on completion/abandonment; preserve one reload and late
+apply after other-tab activation. No worker disabling, timeout changes, #474
+import, geometry changes or pageerror suppression are included.
+
+Distinct diagnostic attempts are retained in `/tmp/flux380-update-diag/`:
+`runtime-observer-helper-failure.log` has an invalid observer's `__name` errors
+and an API-startup failure; `runtime-heavy-observer-pass.log` records4/4 but
+its timing differs from the failing runs; `runtime-minimal-failure-state.log`
+and `runtime-light-trace-failure.log` reproduce the real3/4 timeout with valid
+observations. Their owned stacks/images/volumes/networks were cleaned. The new
+maintained controls require no reload during activation or an unrelated
+controller change, and preserve existing waiting/late-apply behavior. Fresh
+Docker checks and independent review of the correction remain pending here.

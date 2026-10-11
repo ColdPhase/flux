@@ -21,19 +21,28 @@ function announce(worker: ServiceWorker) {
   pendingWorker = worker;
   pending = {
     apply() {
-      if (applying === worker) return;
+      if (applying === worker || worker.state === 'redundant') return;
       applying = worker;
       let reloaded = false;
-      const reload = () => {
-        if (reloaded) return;
-        reloaded = true;
+      const stopListening = () => {
         navigator.serviceWorker.removeEventListener('controllerchange', reload);
+        worker.removeEventListener('statechange', reload);
+      };
+      const reload = () => {
+        if (worker.state === 'redundant') { stopListening(); applying = null; return; }
+        if (reloaded || navigator.serviceWorker.controller !== worker || worker.state !== 'activated') return;
+        reloaded = true;
+        stopListening();
         window.location.reload();
       };
-      // Another tab may already have activated it before this click is delivered.
-      if (navigator.serviceWorker.controller === worker) { reload(); return; }
+      // clients.claim() can change the controller during activate's waitUntil. WebKit
+      // can retain an activating controller in a document reloaded during that window.
+      // Wait for this selected worker's completed activation, including a late click
+      // after another tab has already made it the controller.
       navigator.serviceWorker.addEventListener('controllerchange', reload);
-      worker.postMessage({ type: 'SKIP_WAITING' });
+      worker.addEventListener('statechange', reload);
+      reload();
+      if (navigator.serviceWorker.controller !== worker) worker.postMessage({ type: 'SKIP_WAITING' });
     },
   };
   for (const listener of listeners) listener(pending);
