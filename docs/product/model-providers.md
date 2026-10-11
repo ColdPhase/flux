@@ -14,6 +14,14 @@ support inside the Flux agent. Implementation is tracked in
 > for `runtime` connections that replace the money reservation, the single bounded
 > request and the input bound (PROV-3), and replaces PROV-4's subscription sentence.
 
+> **Revised 2026-10-09 by founder direction ([F-027](assistant.md), question 11).** The
+> assistant on a `server` connection changes things too, so both accounts behave the
+> same. PROV-2 gains a bounded tool loop whose only tools are the Flux MCP tools, and
+> PROV-3's reservation covers the turns
+> ([F-027 AST-8](assistant.md#ast-8--engines-the-server-tool-loop-and-the-runtime)).
+> Provider-hosted tools stay off; there are still no automatic retries. A model
+> without tool calling keeps the one-request shape and cannot change anything.
+
 This decision **supersedes the Anthropic-only provider scope** of
 [O-007](background-compute.md) and [O-008](personal-runs-compute.md), O-008's
 deferral of local models, and the Anthropic preflight count as the input bound
@@ -25,7 +33,9 @@ stays in force:
 - separate consent per use
 - daily caps and per-run reservations
 - one bounded request per run (for `runtime` connections, F-022's turn and MCP
-  result caps instead; [PROV-3](#prov-3--cost-caps-and-token-bounds))
+  result caps instead; [PROV-3](#prov-3--cost-caps-and-token-bounds)). *Revised
+  2026-10-09 (F-027, question 11):* for a `server` model with tool calling, a bounded
+  tool loop with a turn cap and a reservation over the turns
 - source and audience limits
 - stop, retry and continue semantics
 - fail-closed behaviour with no payer fallback
@@ -95,6 +105,12 @@ adapters.
   model. Provider-hosted tools (web search, code execution, connectors) stay off
   for every provider. Flux asks for plain text and parses it the same way for
   all.
+- **Flux tools on `server` connections.** *Revised 2026-10-09 by founder direction
+  (F-027, question 11):* each adapter maps the Flux MCP tools to its provider's
+  tool-calling format. The worker calls Flux's own `/mcp` route with the run token,
+  so the owner's switches, the approval mode, the change log and every refusal are
+  the same as for a `runtime` run. A model without tool calling answers in one
+  request and cannot change anything; Settings says so in plain words.
 - **Neutral UI.** The UI names the selected provider and model neutrally, e.g.
   "OpenRouter · model-id". "Anthropic" or "Claude" appears only where that is
   the selected connection or an external client the person labelled that way.
@@ -132,6 +148,13 @@ above the request's maximum input or output tokens, or a reconciled cost above
 the reservation, is treated like a lost response. The run fails closed: the cost
 stays `unknown`, the whole reservation stays counted against the daily cap, the
 reported numbers are not stored as the charge, and the answer is withheld.
+
+*Revised 2026-10-09 by founder direction (F-027, question 11):* for a run with a
+tool loop, the reservation is the maximum turns × (maximum input tokens × input
+price + maximum output tokens × output price), never above the owner's per-run cap.
+Each request is reconciled as above. A run whose next turn would exceed the
+reservation stops as "Limit reached" and keeps the changes it already committed;
+nothing is retried automatically.
 
 **`runtime` connections ([F-022](ai-modes.md#caps)).** The owner's plan reports
 no per-token price, so the price source and money reservation do not apply.

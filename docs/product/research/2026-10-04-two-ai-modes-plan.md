@@ -306,6 +306,10 @@ T11 issue text updates                       after T0
 
 ### T7 — Write tools and proposals in runtime runs (new issue)
 
+> **Replaced 2026-10-09 by founder direction ([F-027](../assistant.md)).** Never opened
+> as an issue. F-027 slices A2–A5 deliver write tools for both engines, with the
+> owner's switches and approval modes ([delivery](../assistant.md#delivery-slices-a1a11)).
+
 - **Owner:** @Zamojski5. **Evaluator:** @PelikanFix16. **Depends on:** T5.
 - **Acceptance:** a runtime run uses the same Flux MCP write tools as mode (b),
   under the same grant. Consequential changes become proposals, with the agent

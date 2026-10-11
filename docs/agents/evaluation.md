@@ -23,7 +23,8 @@ screenshots, a neutral brief and references, separately from functional testing.
    required checks, and unresolved prior findings.
 2. Read the implementation in an isolated checkout. Inspect integration points,
    data ownership, permission behavior, and compatibility relevant to the diff.
-3. Run configured application checks through Docker/Compose. For changed user flows, operate the running app
+3. Select checks using the verification policy below and run application checks
+   through Docker/Compose. For changed user flows, operate the running app
    with a browser and verify relevant API/storage behavior. A screenshot alone
    does not establish that an interaction or persistence works.
 4. Record `pass`, `fail`, or `unverified` for each required criterion using the
@@ -35,6 +36,50 @@ screenshots, a neutral brief and references, separately from functional testing.
 For documentation-only changes, use relevant link, configuration, and structural
 checks. Do not run a browser suite or introduce application dependencies merely
 to validate a documentation patch.
+
+## Choose verification by impact
+
+This policy applies during implementation, before marking a PR ready, and during
+independent review. Choose the smallest set that establishes the changed criteria
+and affected integration points. File count alone does not establish risk: a
+one-line authorization change may need broad coverage. In the handoff, state the
+affected behavior, selected checks and any remaining uncertainty briefly.
+
+| Change | Relevant evidence before review |
+| --- | --- |
+| Documentation or skill text | Links, referenced commands/configuration, agent setup and relevant foundation checks; no application suite. |
+| Isolated core function | Its regression tests and affected callers; current required build/type/lint/portable CI. |
+| API or persistence | Affected API tests with real disposable storage, including relevant access, failure and migration cases. |
+| Local UI behavior | Affected browser modules/journeys and API/storage paths; applicable phone/desktop and browser engines, plus separate visual assessment when required. |
+| Shared shell, routing, authorization, schema or runtime | Expand to dependent features and cross-feature journeys; run the full applicable suite when the impact cannot be bounded confidently. |
+| Release candidate | Complete configured release checks and integrated acceptance below. |
+
+Do not run the whole application and browser suites automatically for every PR,
+every review round, or a documentation-only follow-up. Required remote checks
+still run on the current head. Use maintained test selectors where available;
+see [contribution commands](../CONTRIBUTING.md#verify-your-change). If no supported
+selector can verify the affected behavior, use the existing broader command and
+record that runner limitation; do not claim coverage from a skipped check.
+
+After new code or a base update, inspect the delta and rerun affected checks.
+Earlier evidence may support unchanged areas only when the relevant source,
+dependencies, tests, configuration and runtime inputs remain compatible with
+the current head. Link its original SHA and explain this assessment; do not
+relabel an old run as a new one. The independent evaluator still reviews the
+current head and verifies open findings. New criteria need their own evidence.
+
+For a meaningful batch of integrated changes, agree one integration checkpoint
+with a named runner and candidate SHA instead of duplicating the full run in
+every contributing PR. This supplements targeted checks and does not replace
+the complete final release acceptance. Record failures against their affected
+outcomes before admitting more dependent work.
+
+Distinguish a changed-behavior regression, a reproduced baseline defect and an
+environment failure using the smallest useful reproduction. Link one shared
+blocker with an owner when several PRs hit the same fault. Avoid repeatedly
+running an unchanged full suite while that blocker remains. Keep required checks
+and required criteria unresolved until verified; do not disable tests or treat
+a baseline failure as a passing result.
 
 ## Evidence size
 

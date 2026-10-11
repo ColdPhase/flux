@@ -92,9 +92,14 @@ contribute through a fork.
 
 ## Verify your change
 
-Application changes: run the Docker suite, which builds, type checks, lints and
-runs the API, architecture and end-to-end tests against a disposable stack. Changes
-to the web app also need the browser suite:
+Choose checks for the changed behavior and its dependencies using the
+[verification policy](agents/evaluation.md#choose-verification-by-impact).
+Targeted checks are valid both during iteration and before review; full suites
+are needed for broad impact and integrated release acceptance. Required PR CI
+still builds, type checks, lints and runs portable tests.
+
+The complete Docker commands build and check the application against disposable
+stacks. Use them when the selected verification needs the full coverage:
 
 ```sh
 ./scripts/check_application.sh
@@ -102,13 +107,12 @@ to the web app also need the browser suite:
 ```
 
 Each script uses its own Compose project; set `FLUX_TEST_PORT`/`FLUX_TEST_MAILPIT_PORT`
-or `FLUX_UI_PORT`/`FLUX_UI_MAILPIT_PORT` when the default ports are taken. Run one suite
-at a time on a small machine.
+or `FLUX_UI_PORT`/`FLUX_UI_MAILPIT_PORT` when the default ports are taken. Follow
+the [shared-host limits](development/containers.md#shared-host-test-budget).
 [Architecture § Tests](development/architecture.md#tests) says which check runs which tests
 and where a new test goes.
 
-While you work, you can run only the tests you changed. Run the full suites before you
-mark the PR ready for review.
+Select relevant existing tests as well as new regression cases. For example:
 
 ```sh
 # One browser module, or Module.Class.test, from app/tests/ui

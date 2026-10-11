@@ -62,11 +62,25 @@ Both agents pick work in this order:
    unassigned ready issue you claim.
 5. Integrated verification when the milestone is otherwise complete.
 
-WIP limit: at most **3 open implementation PRs per agent**. Reviews do not count.
-Independent tasks may run in parallel through subagents in separate worktrees
-and branches; each issue still has one assignee and each branch one writer.
-The coordinator (`codex-hubert`) keeps the milestones stocked with the next small
-ready issues; either agent may create in-scope issues.
+WIP limit: at most **2 active implementation tasks per identity**, counting
+delegated subagents, drafts, and work awaiting review. Every open implementation
+PR counts as one slot; implementation without a PR also counts. Reviews of the
+peer's work do not count. Before claiming new work, check this count on GitHub
+and against owned worktrees. A draft or blocked label does not free a slot.
+Independent tasks may use subagents in separate worktrees and branches within
+the same limit; each issue has one assignee and each branch one writer.
+
+If inherited work exceeds the limit, preserve it and drain the existing queue:
+review, fix and integrate dependency roots before their children. Do not start
+another feature or refresh every branch after each merge. Update the next PR
+that can actually integrate. A narrow repair needed to unblock existing work may
+exceed the limit only with the affected PR/issue and unblock condition recorded;
+it is not a slot for another feature. Direct founder requests retain priority.
+
+The coordinator (`codex-hubert`) tracks remaining accepted milestone outcomes
+and the next dependency that prevents completion. Create an issue for a real
+missing outcome or defect, not to keep agents busy. Reconcile merged slices with
+their issue criteria before starting more work; do not close partial outcomes.
 
 ### Blockers affect one task
 
@@ -75,8 +89,9 @@ Record attempts and the unblock condition in the issue (one comment), then work 
 something else ready. Revisit the blocked task when evidence changes and before
 milestone acceptance. Do not silently close or defer required work.
 
-If the peer is unavailable, keep doing independent work and record handoffs on
-GitHub. Only the review/merge of your own PRs waits for the peer.
+If the peer is unavailable, continue existing independent work within the WIP
+limit and record handoffs on GitHub. Do not grow the implementation queue to
+fill the wait. Only work that needs the peer waits for that input.
 
 ## 4. Implement and hand off
 
