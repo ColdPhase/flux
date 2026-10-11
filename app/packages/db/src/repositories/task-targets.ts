@@ -38,7 +38,7 @@ export async function referencedTaskIds(tx: DbExecutor, refs: readonly Reference
 }
 
 /** Reference graphs also matter when their current task association set is empty. */
-async function referencedProjectIds(tx: DbExecutor, refs: readonly Reference[]): Promise<string[]> {
+export async function referencedProjectIds(tx: DbExecutor, refs: readonly Reference[]): Promise<string[]> {
   const projects = new Set<string>();
   const groups = [
     ['work', schema.projectWorkItems], ['result', schema.projectResults], ['decision', schema.projectDecisions],

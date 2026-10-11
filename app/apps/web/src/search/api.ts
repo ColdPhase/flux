@@ -16,6 +16,7 @@ export function searchFlux(params: SearchParams, signal?: AbortSignal) {
 /** Where a result opens: the exact message, version, thought or object. */
 export function targetHref(target: SearchTarget): string {
   switch (target.type) {
+    case 'agent_thread': return `/projects/${target.projectId}/tasks?open=work:${target.taskId}&agentThread=1#message-${target.messageId}`;
     case 'message': return `/projects/${target.projectId}/conversations/${target.conversationId}#message-${target.messageId}`;
     case 'dm_message': return `/dm/${target.dmId}#message-${target.messageId}`;
     case 'material': return `/materials/${target.materialId}/versions/${target.version}`;

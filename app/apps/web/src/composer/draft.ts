@@ -3,7 +3,7 @@ import { FILE_LIMITS, type Conversation, type ConversationMessage, type SendMess
 import { ApiError, NetworkError } from '../api/client';
 import { reply, startConversation } from '../app/conversation-api';
 import { sendDmMessage } from '../api/direct-messages';
-import { contributeToTask, stageFile } from './api';
+import { contributeToTask, postTaskAgentThread, stageFile } from './api';
 import { assumeReachable, connectionState, onConnectionChange, reportReachable, reportUnreachable } from './connection';
 import { forgetReloadRetention, setReloadRetention } from '../app/reload-retention';
 
@@ -173,7 +173,7 @@ function load(key: string, accountId: string, projectId: string, context: string
         const saved = JSON.parse(sessionStorage.getItem(`${oldKey}.pending`) ?? 'null') as { body?: string; clientMessageId?: string } | null;
         if (saved?.body === body.trim() && uuid(saved.clientMessageId)) { draft.commandId = saved.clientMessageId; draft.unconfirmed = true; }
       }
-    } else if (!retiredStorage) {
+    } else if (!retiredStorage && !context.startsWith('agent-thread:')) {
       // Preserve existing text/retry identities while moving the three old composers into one record.
       const oldKey = context.startsWith('task:') ? `flux:draft:${accountId}:${context}` : `flux.project-composer.${accountId}.${projectId}.${context === 'new' ? 'new' : context.replace(/^conversation:/, '')}`;
       const body = context.startsWith('task:') ? localStorage.getItem(oldKey) : sessionStorage.getItem(oldKey);
@@ -252,6 +252,7 @@ async function deliver(projectId: string, context: string, command: SendMessageC
   }
   if (context.startsWith('conversation:')) return { id: command.clientMessageId, message: await reply(context.slice('conversation:'.length), command) };
   if (context.startsWith('task:')) return { id: command.clientMessageId, message: await contributeToTask(context.slice('task:'.length), { ...command, kind: 'text' }) };
+  if (context.startsWith('agent-thread:')) return { id: command.clientMessageId, message: await postTaskAgentThread(context.slice('agent-thread:'.length), projectId, command) };
   if (context.startsWith('dm:')) return { id: command.clientMessageId, message: await sendDmMessage(context.slice('dm:'.length), { body: command.body, clientMessageId: command.clientMessageId }) };
   throw new Error('This composer does not publish messages.');
 }

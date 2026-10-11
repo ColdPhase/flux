@@ -27,6 +27,9 @@ export interface ProjectMessageFacts {
   projectId: string;
   projectName: string;
   conversationId: string;
+  /** Agent threads are quiet except explicit current-audience addressing. */
+  space?: 'people' | 'agents';
+  taskId?: string | null;
   /** The conversation's opening message, its stable label. */
   opening: string;
   conversationCreatedBy: { kind: 'human' | 'agent'; id: string };

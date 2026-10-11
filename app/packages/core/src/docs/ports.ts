@@ -48,7 +48,7 @@ export interface DocTaskUseFence { readonly ids: readonly string[]; mark(ids?: r
 /** Rows only; the repository makes no access decisions (the use cases ask {@link WorkAccess}). */
 export interface DocRepository {
   /** Graph locks, then one sorted task pass over the doc's previous mentions and these references (#238). */
-  prepareTaskUse(scope: { workspaceId: string; projectId: string }, docId: string, refs: readonly ObjectRef[]): Promise<DocTaskUseFence>;
+  prepareTaskUse(scope: { workspaceId: string; projectId: string }, docId: string, refs: readonly ObjectRef[], artifactVersion?: number): Promise<DocTaskUseFence>;
   /** Read-only check that the current previous/new task set is inside an already retained fence. */
   assertTaskUse(docId: string, refs: readonly ObjectRef[], retained: DocTaskUseFence): Promise<void>;
   /** The project of a doc, whoever may read it; callers must authorize before using it. */

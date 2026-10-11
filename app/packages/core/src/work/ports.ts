@@ -178,6 +178,9 @@ export interface WorkRepository extends TaskGraphReader {
   taskUseTargets(refs: readonly ObjectRef[]): Promise<readonly string[]>;
   prepareTaskUse(ids: readonly string[]): Promise<{ ids: readonly string[]; mark(ids?: readonly string[]): Promise<void> }>;
   lockPreparedTaskUse(ids: readonly string[]): Promise<{ ids: readonly string[]; projectIds: readonly string[]; mark(ids?: readonly string[]): Promise<void> }>;
+  /** Optional for pure domain compositions; the production canonical adapter supplies this closed-guard hook. */
+  resetArtifact?(scope:{workspaceId:string;projectId:string},boundary:{kind:'result'|'decision';id:string;revision:string},
+    retained:{readonly ids:readonly string[];mark(ids?:readonly string[]):Promise<void>}):Promise<void>;
   creatorAgentOwner(agentId: string, options?: { lock?: boolean }): Promise<string | null>;
   creationUndoReceipt(projectId: string, by: ActorRef, commandId: string): Promise<{ workId: string; fingerprint: string; noticeId: string } | null>;
   revertCreation(work: WorkRecord, by: ActorRef, commandId: string, fingerprint: string): Promise<{ work: WorkRecord; noticeId: string }>;

@@ -1,4 +1,4 @@
-import { githubRows, proactiveOutboxRows, referencedTaskIds, workRows, type DbExecutor } from '@flux/db';
+import { artifactResetRows, githubRows, proactiveOutboxRows, referencedTaskIds, workRows, type DbExecutor } from '@flux/db';
 import {
   evaluateProject,
   visibleFilter,
@@ -23,6 +23,8 @@ export function workRepository(tx: DbExecutor): WorkRepository {
   const rows = workRows(tx);
   return {
     ...rows,
+    resetArtifact: (scope,boundary,retained)=>artifactResetRows(tx).canonical(scope,
+      {kind:boundary.kind,id:boundary.id},boundary,retained),
     /** "Let linked PRs move this task" (#74 G-1a) is part of the native task read model. */
     githubRules: (taskIds) => githubRows(tx).taskRules(taskIds),
     /** The policy's own list condition (`visibleFilter`) is applied before the limit and in the total. */

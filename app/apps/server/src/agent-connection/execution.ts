@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { AgentCommandReceipt, AgentExecutionCommand, AgentOperation, AgentPostcondition, AuthenticatedAgentRuntime } from '@flux/contracts';
-import { agentExecutionRows, agentProjectObjectRows } from '@flux/db';
+import { agentExecutionRows, agentProjectObjectRows, agentThreadGuardRows } from '@flux/db';
 import { agentOutcomeFingerprint, DomainError, enforce, evaluateProject, normalizeAgentExecution, validateAgentPostconditions,
   type AgentExecutionOutcome, type AgentExecutionPort, type AgentExecutionScope,
   type NormalizedAgentExecutionCommand, type Transaction } from '@flux/core';
@@ -37,9 +37,12 @@ function denied(code = 'AGENT_EXECUTION_UNAVAILABLE') {
 }
 /** One trusted port bound to this exact caller-owned TX. It never commits, flushes events or opens a receipt TX. */
 export function agentExecutionInTransaction(tx: Transaction, claims: FluxMcpClaims,
-  domain: AgentExecutionDomainChecks = {}): AgentExecutionPort<Transaction> {
+  domain: AgentExecutionDomainChecks = {}, privateTarget?: 'task-agent-thread/v1'): AgentExecutionPort<Transaction> {
   claims = Object.freeze({ ...claims, scopes: Object.freeze([...claims.scopes]) });
   const rows = agentExecutionRows(tx);
+  const threadRows = agentThreadGuardRows(tx);
+  const grantTarget = async (command: NormalizedAgentExecutionCommand, workspaceId: string) => privateTarget
+    ? (await threadRows.thread(command.objectId!, { workspaceId, projectId: command.projectId }))?.id ?? null : command.objectId;
   const handles = new WeakMap<AgentExecutionScope<Transaction>, Prepared>();
   const recheck = async (prepared: Prepared, requireUnused: boolean) => {
     const { command, runtime, grant, context } = prepared;
@@ -60,7 +63,7 @@ export function agentExecutionInTransaction(tx: Transaction, claims: FluxMcpClai
       || liveGrant.connectionId !== context.connectionId || liveGrant.ownerUserId !== context.ownerUserId
       || liveGrant.workspaceId !== context.workspaceId || liveGrant.projectId !== command.projectId
       || liveGrant.operation !== command.operation || liveGrant.peerRequestClass !== command.peerRequestClass
-      || liveGrant.objectId !== null && liveGrant.objectId !== command.objectId
+      || liveGrant.objectId !== null && liveGrant.objectId !== await grantTarget(command, context.workspaceId)
       || requireUnused && liveGrant.used >= liveGrant.maximumUses) throw denied();
     return now;
   };
@@ -98,6 +101,9 @@ export function agentExecutionInTransaction(tx: Transaction, claims: FluxMcpClai
         ? !!domain.coordinationRequestPostcondition && await domain.coordinationRequestPostcondition(tx, prepared.context, prepared.command, condition)
         : condition.kind === 'cowork.unit_state'
         ? !!domain.coordinationUnitPostcondition && await domain.coordinationUnitPostcondition(tx, prepared.context, prepared.command, condition)
+        : privateTarget && condition.kind === 'message'
+        ? await threadRows.containsMessage(prepared.command.objectId!, condition.id,
+          { workspaceId: prepared.context.workspaceId, projectId: prepared.command.projectId })
         : await rows.nativePostcondition(prepared.context.workspaceId, prepared.command.projectId, condition,
           CONTAINED.includes(prepared.command.operation) ? prepared.command.objectId ?? undefined : undefined);
       if (!allowed) throw new DomainError(409, 'COMMAND_POSTSTATE_STALE', 'The produced object changed; recover before continuing');
@@ -108,6 +114,12 @@ export function agentExecutionInTransaction(tx: Transaction, claims: FluxMcpClai
       // The trusted adapter still recomputes identity; a caller-supplied hash cannot hide changed payloads.
       const input = Object.fromEntries(Object.entries(command).filter(([key]) => key !== 'fingerprint')) as unknown as AgentExecutionCommand;
       command = normalizeAgentExecution(input);
+      if (privateTarget) {
+        if (command.operation !== 'conversation.reply') throw denied();
+        // Server-selected only: old v1 fingerprints are unchanged. The task target never
+        // becomes a conversation UUID after creation, including on a stored receipt replay.
+        command = { ...command, fingerprint: createHash('sha256').update(JSON.stringify([privateTarget, command.fingerprint])).digest('hex') };
+      }
       const current = await agentConnectionInTransaction(tx, claims, 'flux.action.execute', command.projectId);
       if (!claims.grantReferenceId?.startsWith('flux-grant:') || !claims.clientId) throw denied('ACTION_BINDING_REQUIRED');
       const bindingId = claims.grantReferenceId.slice('flux-grant:'.length);
@@ -123,7 +135,7 @@ export function agentExecutionInTransaction(tx: Transaction, claims: FluxMcpClai
       if (!grant || grant.connectionId !== claims.connectionId || grant.ownerUserId !== claims.ownerUserId
         || grant.workspaceId !== current.workspaceId || grant.projectId !== command.projectId
         || grant.operation !== command.operation || grant.peerRequestClass !== command.peerRequestClass
-        || grant.objectId !== null && grant.objectId !== command.objectId) throw denied();
+        || grant.objectId !== null && grant.objectId !== await grantTarget(command, current.workspaceId)) throw denied();
       const initialNow = await rows.now();
       if (runtime.revokedAt || runtime.expiresAt <= initialNow || grant.revokedAt || grant.expiresAt <= initialNow) throw denied();
       const context: AuthenticatedAgentRuntime = Object.freeze({ id: runtime.id, workspaceId: runtime.workspaceId,
@@ -145,7 +157,7 @@ export function agentExecutionInTransaction(tx: Transaction, claims: FluxMcpClai
         value: stored.value, postconditions: stored.postconditions, completedAt: stored.completedAt.toISOString() } : null;
       // The exact target must be a native object of this project: a guessed, private, direct-message or other
       // project's ID is reported like a missing one, before any effect.
-      const target = agentOperationTarget(command.operation);
+      const target = privateTarget ? 'work' : agentOperationTarget(command.operation);
       if (command.objectId && target
         && !await agentProjectObjectRows(tx).scopeOf(target, command.objectId, { workspaceId: context.workspaceId, projectId: command.projectId }, false))
         throw new DomainError(404, 'OBJECT_NOT_FOUND', 'Project object not found');

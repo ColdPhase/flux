@@ -39,7 +39,7 @@ function readme(data: ProjectExport) {
     '- `files/<id>`: exact published attachment bytes; names, hashes and message relationships are in `project.json`.',
     '- `manifest.json`: size and SHA-256 of every other file.',
     '',
-    `Contents: ${data.conversations.length} conversations, ${data.materials.length} materials, ${data.docs.length} docs, ${data.sketches.length} sketches, `
+    `Contents: ${data.conversations.length} people conversations, ${data.agentThreads.length} task agent threads, ${data.materials.length} materials, ${data.docs.length} docs, ${data.sketches.length} sketches, `
       + `${data.work.length} work items, ${data.decisions.length} decisions, ${data.results.length} results, ${data.links.length} links, ${data.people.length} people.`,
     '',
     'Not included:',
@@ -79,6 +79,9 @@ export function createProjectExportUseCases(uow: ProjectExportUnitOfWork, contex
         rows.links(projectId),
       ]);
 
+      const agentThreads = await rows.agentThreads?.(projectId) ?? [];
+      const everyConversation = [...conversations, ...agentThreads];
+
       const attachments = await rows.files?.(project.id) ?? [];
 
 
@@ -90,7 +93,7 @@ export function createProjectExportUseCases(uow: ProjectExportUnitOfWork, contex
 
       const ids = new Map<string, Set<string>>();
       const add = (type: string, id: string) => { if (!ids.has(type)) ids.set(type, new Set()); ids.get(type)!.add(id); };
-      for (const conversation of conversations) for (const message of conversation.messages) add('message', message.id);
+      for (const conversation of everyConversation) for (const message of conversation.messages) add('message', message.id);
       for (const material of materials) for (const version of material.versions) add('material', `${material.id}@${version.version}`);
       for (const doc of docs) {
         add('doc', doc.id);
@@ -104,7 +107,7 @@ export function createProjectExportUseCases(uow: ProjectExportUnitOfWork, contex
       const contains = (type: string, id: string, version?: number) => ids.get(type)?.has(version === undefined ? id : `${id}@${version}`) ?? false;
 
       const exportedLinks = containedLinks(links, contains);
-      for (const conversation of conversations) {
+      for (const conversation of everyConversation) {
         for (const message of conversation.messages) {
           if (message.source && !contains('material', message.source.materialId, message.source.version)) message.source = null;
         }
@@ -113,7 +116,7 @@ export function createProjectExportUseCases(uow: ProjectExportUnitOfWork, contex
       const referenced: ExportActor[] = [
         { kind: principal.kind === 'agent' ? 'agent' : 'human', id: principal.id },
         ...audience, ...grants.map((grant) => grant.principal),
-        ...conversations.flatMap((conversation) => [conversation.createdBy, ...conversation.messages.map((message) => message.author)]),
+        ...everyConversation.flatMap((conversation) => [conversation.createdBy, ...conversation.messages.map((message) => message.author)]),
         ...materials.flatMap((material) => [material.createdBy, ...material.versions.map((version) => version.author)]),
         ...docs.flatMap((doc) => [doc.createdBy, ...doc.versions.map((version) => version.author)]),
         ...sketches.flatMap((sketch) => [sketch.createdBy, ...sketch.thoughts.map((thought) => thought.createdBy)]),
@@ -141,6 +144,7 @@ export function createProjectExportUseCases(uow: ProjectExportUnitOfWork, contex
         grants,
         actors,
         conversations,
+        agentThreads,
         materials,
         docs: docs.map((doc) => ({ ...doc, file: `docs/${doc.id}.md` })),
         sketches,

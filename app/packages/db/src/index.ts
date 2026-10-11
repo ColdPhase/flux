@@ -16,7 +16,7 @@ export * from './migrations/reverse-task-creation-undo.js';
 export * from './migrations/summary-compatibility.js';
 export * from './migrations/task-creation-undo-compatibility.js';
 // Highest numbered file in packages/db/migrations. The API refuses other versions.
-export const FLUX_SCHEMA_VERSION = 72;
+export const FLUX_SCHEMA_VERSION = 88;
 // pg-boss 12.35.0 declares schema 43. Update this with the pinned package.
 export const PG_BOSS_SCHEMA_VERSION = 43;
 
@@ -165,6 +165,9 @@ export * from './repositories/agent-policies.js';
 
 export * from './repositories/files.js';
 export * from './repositories/task-use.js';
+export * from './repositories/agent-thread-guard.js';
+export * from './repositories/artifact-task-associations.js';
+export * from './repositories/artifact-resets.js';
 export * from './repositories/task-targets.js';
 export * from './repositories/notification-lifecycle.js';
 export * from './repositories/agent-runtime.js';

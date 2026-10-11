@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { Link, useRevalidator } from 'react-router';
+import { Link, useRevalidator, useSearchParams } from 'react-router';
 import type { Agent, ObjectLink, Project, WorkspaceMember, WorkStatus, WorkDetailObject, WorkDetailProjection } from '@flux/contracts';
 import { WORK_STATUSES } from '@flux/contracts';
 import { ApiError } from '../api/client';
@@ -19,6 +19,7 @@ import { useWorkRead } from './useWorkRead';
 import { useNativeOwn, useWorkChoices, useDetailRelations, type DetailRelations, type DetailChoices } from './useDetailReads';
 import { WorkPagination } from './WorkPagination';
 import { TaskDiscussionSection } from './TaskDiscussion';
+import { AgentThreadEntry, AgentThreadPanel } from './AgentThread';
 import { TaskThoughtLinks } from './TaskThoughtLinks';
 import { ReadyToClose, TaskPullRequests } from '../github/TaskPullRequests';
 
@@ -218,6 +219,18 @@ function IdsLine({ children }: { children: ReactNode }) {
 }
 
 function WorkPanel({ item, context, detail, relations, reload, commands }: { item: OwnWork; context: Context; detail: WorkDetailProjection; relations: DetailRelations; reload: () => void; commands: PanelCommands }) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const agentThreadOpen = searchParams.get('agentThread') === '1';
+  const previousThreadOpen = useRef(agentThreadOpen);
+  useEffect(() => {
+    if (previousThreadOpen.current && !agentThreadOpen) document.querySelector<HTMLButtonElement>(`[data-agent-thread-entry="${item.id}"]`)?.focus();
+    previousThreadOpen.current = agentThreadOpen;
+  }, [agentThreadOpen, item.id]);
+  const setAgentThread = (open: boolean) => setSearchParams((current) => {
+    const next = new URLSearchParams(current);
+    if (open) next.set('agentThread', '1'); else next.delete('agentThread');
+    return next;
+  });
   const { openDetails } = useShellActions();
   const { me } = useShellData();
   // A task whose creation was undone (#238) stays as read-only history: no change, live or new-target control.
@@ -253,6 +266,9 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   if (item.owner && !people.some((person) => person.value === ownerValue) && item.owner.kind === 'human') people.push({ value: ownerValue, label: item.owner.name });
   const agents = context.agents.map((agent) => ({ value: `agent:${agent.id}`, label: `${agent.name} (agent)` }));
   if (item.owner?.kind === 'agent' && !agents.some((agent) => agent.value === ownerValue)) agents.push({ value: ownerValue, label: `${item.owner.name} (agent)` });
+
+  if (agentThreadOpen) return <AgentThreadPanel workId={item.id} project={context.project} members={context.members}
+    me={{ id: me.user.id, name: me.user.name }} readOnly={!!reverted} revision={detail.observedAt} onBack={() => setAgentThread(false)} />;
 
   return (
     <div className="details wd" data-detail-kind="work" data-detail-id={item.id}>
@@ -335,6 +351,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
         empty={emptyLinks(relations, 'Not linked to a thought yet.')} />
 
       <TaskDiscussionSection key={`${me.user.id}:${context.project.id}:${item.id}`} readOnly={!!reverted} revision={detail.observedAt} workId={item.id} project={context.project} members={context.members} me={{ id: me.user.id, name: me.user.name }} />
+      <AgentThreadEntry workId={item.id} revision={detail.observedAt} onOpen={() => setAgentThread(true)} />
 
       <section className="details__sec" aria-labelledby="wd-decisions">
         <h4 id="wd-decisions">Decisions</h4>

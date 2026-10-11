@@ -55,6 +55,40 @@
         ],
         "type": "object"
       },
+      "agentThread": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdBy": {
+            "$ref": "#/definitions/actor"
+          },
+          "id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/definitions/message"
+            },
+            "type": "array"
+          },
+          "workId": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "createdAt",
+          "createdBy",
+          "id",
+          "messages",
+          "workId"
+        ],
+        "type": "object"
+      },
       "conversation": {
         "additionalProperties": false,
         "properties": {
@@ -1026,6 +1060,12 @@
         },
         "type": "array"
       },
+      "agentThreads": {
+        "items": {
+          "$ref": "#/definitions/agentThread"
+        },
+        "type": "array"
+      },
       "conversations": {
         "items": {
           "$ref": "#/definitions/conversation"
@@ -1303,6 +1343,7 @@
     "required": [
       "$schema",
       "actors",
+      "agentThreads",
       "conversations",
       "decisions",
       "docs",

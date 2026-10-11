@@ -1,17 +1,17 @@
 import { messagePreview } from '@flux/contracts';
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, lt, sql, type SQL } from 'drizzle-orm';
-import { fileRows, schema, taskDiscussionRows, workRows } from '@flux/db';
+import { agentThreadGuardRows, artifactResetRows, fileRows, prepareCanonicalArtifactTaskUse, schema, taskDiscussionRows, taskUseRows, workRows } from '@flux/db';
 import type {
   Conversation, ConversationMessage, ConversationRootWindow, ConversationSummary, Material, MaterialOrDoc,
-  AgentProjectOwner, MaterialVersion, Page, PageQuery,
+  AgentProjectOwner, AuthenticatedAgentRuntime, MaterialVersion, Page, PageQuery, TaskAgentThread,
 } from '@flux/contracts';
 import {
   ConflictError, conversationUseCases, enforce, evaluateDraft, evaluateProject, InvalidInputError, NotFoundError,
   lockAttachments, messageContribution, positiveVersion, uuid, type FileStorage,
-  parsePage, recordEvent, type Database, type Principal, type Transaction,
+  parsePage, recordEvent, ServiceUnavailableError, type Database, type Principal, type Transaction,
 } from '@flux/core';
-import type { ConversationPort } from '@flux/core';
+import type { AgentThreadWindow, AgentThreadPost, ConversationPort } from '@flux/core';
 import { eventPorts } from '../events.js';
 import { projectAuthorOwners } from './author-owners.js';
 import type { TransactionEventSession } from '../work/transaction-events.js';
@@ -23,7 +23,7 @@ type MessageRow = typeof schema.projectMessages.$inferSelect;
 type MaterialRow = typeof schema.projectMaterials.$inferSelect;
 type VersionRow = typeof schema.projectMaterialVersions.$inferSelect;
 type Actor = { kind: 'human' | 'agent'; id: string };
-type MessageEventKind = 'project.conversation_created.v1' | 'project.message_sent.v1';
+type MessageEventKind = 'project.conversation_created.v1' | 'project.message_sent.v1' | 'project.agent_thread_message_sent.v1';
 /** Where a committed start or reply records its one event. */
 export interface ConversationEventLog {
   record(principal: Principal, workspaceId: string, kind: MessageEventKind, projectId: string,
@@ -106,7 +106,23 @@ async function locateConversation(principal: Principal, conversationId: string, 
   const [row] = await db.select().from(schema.projectConversations).where(eq(schema.projectConversations.id, conversationId));
   if (!row) throw new NotFoundError('Conversation', 'CONVERSATION_NOT_FOUND');
   await requireProject(principal, row.projectId, db, write, lock);
+  if (write && row.space === 'agents' && principal.kind === 'agent') {
+    // Existing people-space v1 replies stay unchanged. No new-space writer is enabled before AC-7.
+    throw new ServiceUnavailableError('Agent-thread posting is not available to agents yet', 'AGENT_EXECUTION_UNAVAILABLE');
+  }
   return row;
+}
+
+async function locateThreadTask(principal: Principal, taskId: string, db: Executor, write = false, lock = false) {
+  const [task] = await db.select().from(schema.projectWorkItems).where(eq(schema.projectWorkItems.id, taskId));
+  if (!task) throw new NotFoundError('Task', 'WORK_NOT_FOUND');
+  try { await requireProject(principal, task.projectId, db, write, lock); }
+  catch (error) {
+    // Task-only routes must not distinguish an invisible task from an absent one.
+    if (error instanceof NotFoundError) throw new NotFoundError('Task', 'WORK_NOT_FOUND');
+    throw error;
+  }
+  return task;
 }
 
 async function locateMaterial(principal: Principal, materialId: string, db: Executor, write = false, lock = false): Promise<MaterialRow> {
@@ -207,12 +223,65 @@ export function conversationStore(db: Database, options: ConversationStoreOption
     await recordEvent(eventPorts(tx), principal, workspaceId, kind, projectId, data);
   } };
   return {
+    async getAgentThread(principal: Principal, taskId: string, window: AgentThreadWindow): Promise<TaskAgentThread> {
+      // Access, task, count, page and all author/file reads are one coherent observation.
+      // The existing v1 conversation entry keeps its behavior; only this new GET supplies a snapshot.
+      return db.transaction(async (tx) => {
+        const task = await locateThreadTask(principal, taskId, tx);
+        const write = await evaluateProject(principal, 'project.write', task.projectId, tx);
+        const [thread] = await tx.select({ id: schema.projectConversations.id }).from(schema.projectConversations)
+          .where(and(eq(schema.projectConversations.workId, task.id), eq(schema.projectConversations.space, 'agents')));
+        const [count] = thread ? await tx.select({ total: sql<number>`count(*)::int` }).from(schema.projectMessages)
+          .where(eq(schema.projectMessages.conversationId, thread.id)) : [];
+        const canWrite = principal.kind === 'human' && write.allowed && task.creationRevertedAt === null;
+        return { task: { id: task.id, projectId: task.projectId, number: task.number, title: task.title },
+          conversation: thread ? await conversationStore(tx, options).getConversation(principal, thread.id, window) : null,
+          messageCount: count?.total ?? 0, canWrite, postingAvailable: canWrite };
+      }, { isolationLevel: 'repeatable read', accessMode: 'read only' });
+    },
+    async postAgentThread(principal: Principal, taskId: string, input: AgentThreadPost): Promise<ConversationMessage> {
+      return db.transaction(async (tx) => {
+        const task = await locateThreadTask(principal, taskId, tx, true, true);
+        if (input.projectId !== null && input.projectId !== task.projectId)
+          throw new InvalidInputError('The task does not belong to this project');
+        if (principal.kind !== 'human')
+          throw new ServiceUnavailableError('Agent-thread posting is not available to agents yet', 'AGENT_EXECUTION_UNAVAILABLE');
+        const author = authorOf(principal, false);
+        await lockIdempotency(tx, task.projectId, author, input.clientMessageId);
+        const existing = await existingMessage(task.projectId, author, input.clientMessageId, tx);
+        // File/material locks and source discovery precede the graph/task fence, as in #394.
+        const files = existing ? undefined : await attachments(tx, task.projectId, author, input.attachmentIds);
+        await sourceExists(task.projectId, input.source, tx);
+        const sourceRefs = input.source ? [{ type: 'material', id: input.source.materialId }] : [];
+        const sourceTasks = await workRows(tx).taskUseTargets(sourceRefs);
+        const targets = [...new Set([task.id, ...sourceTasks])].sort();
+        // The actual shared #394 fence owns graph/task order and refuses undone targets.
+        const fence = await taskUseRows(tx).prepare(targets);
+        const retainedTargets = [...new Set([task.id, ...await workRows(tx).taskUseTargets(sourceRefs)])].sort();
+        if (JSON.stringify(retainedTargets) !== JSON.stringify(targets))
+          throw new ConflictError('Task references changed; retry from current details', 'TASK_TARGET_SET_CHANGED');
+        let [thread] = await tx.select().from(schema.projectConversations)
+          .where(and(eq(schema.projectConversations.workId, task.id), eq(schema.projectConversations.space, 'agents')));
+        if (!thread) {
+          [thread] = await tx.insert(schema.projectConversations).values({ id: randomUUID(),
+            workspaceId: task.workspaceId, projectId: task.projectId, space: 'agents', workId: task.id,
+            createdBy: author.id, createdByAgentId: null }).returning();
+        }
+        const sent = await sendInTransaction(tx, thread!, author, input, files);
+        if (sent.inserted) {
+          await fence.mark();
+          await eventLog(tx).record(principal, task.workspaceId, 'project.agent_thread_message_sent.v1', task.projectId,
+            { conversationId: thread!.id, messageId: sent.message.id });
+        }
+        return sent.message;
+      });
+    },
     async listConversations(principal: Principal, projectId: string, query: PageQuery = {}): Promise<Page<ConversationSummary>> {
       const page = parsePage(query);
       await requireProject(principal, projectId, db);
       const [count] = await db.select({ total: sql<number>`count(*)::int` }).from(schema.projectConversations)
-        .where(eq(schema.projectConversations.projectId, projectId));
-      const rows = await db.select().from(schema.projectConversations).where(eq(schema.projectConversations.projectId, projectId))
+        .where(and(eq(schema.projectConversations.projectId, projectId), eq(schema.projectConversations.space, 'people')));
+      const rows = await db.select().from(schema.projectConversations).where(and(eq(schema.projectConversations.projectId, projectId), eq(schema.projectConversations.space, 'people')))
         .orderBy(desc(schema.projectConversations.createdAt), desc(schema.projectConversations.id))
         .limit(page.limit).offset(page.offset);
       const names = await workRows(db).names(rows.filter((row) => row.createdByAgentId !== null)
@@ -243,7 +312,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
         let before: SQL | undefined;
         if (window.before !== null) {
           const [cursor] = await tx.select({ id: conversations.id }).from(conversations)
-            .where(and(eq(conversations.id, window.before), eq(conversations.projectId, projectId)));
+            .where(and(eq(conversations.id, window.before), eq(conversations.projectId, projectId), eq(conversations.space, 'people')));
           if (!cursor) throw new InvalidInputError('before must be a conversation of this project');
           // Compared in SQL so the cursor keeps PostgreSQL's microsecond precision.
           before = sql`(${conversations.createdAt}, ${conversations.id}) < (SELECT c.created_at, c.id FROM project_conversations c WHERE c.id = ${window.before})`;
@@ -261,7 +330,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
           // A task's discussion is a conversation of the same project, so it shares the audience checked above.
           .leftJoin(discussions, eq(discussions.conversationId, conversations.id))
           .leftJoin(schema.projectWorkItems, and(eq(schema.projectWorkItems.id, discussions.workId), eq(schema.projectWorkItems.projectId, projectId)))
-          .where(and(eq(conversations.projectId, projectId), before))
+          .where(and(eq(conversations.projectId, projectId), eq(conversations.space, 'people'), before))
           .orderBy(desc(conversations.createdAt), desc(conversations.id))
           .limit(window.limit + 1);
         const hasMoreBefore = rows.length > window.limit;
@@ -352,7 +421,9 @@ export function conversationStore(db: Database, options: ConversationStoreOption
         const sent = await sendInTransaction(tx, row, author, input, files);
         if (sent.message.sequence === 1)
           throw new ConflictError('This clientMessageId was used to start the conversation', 'IDEMPOTENCY_CONFLICT');
-        if (sent.inserted) await eventLog(tx).record(principal, row.workspaceId, 'project.message_sent.v1', row.projectId, { conversationId: row.id, messageId: sent.message.id });
+        if (sent.inserted) await eventLog(tx).record(principal, row.workspaceId,
+          row.space === 'agents' ? 'project.agent_thread_message_sent.v1' : 'project.message_sent.v1', row.projectId,
+          { conversationId: row.id, messageId: sent.message.id });
         return sent.message;
       });
     },
@@ -472,6 +543,9 @@ export function conversationStore(db: Database, options: ConversationStoreOption
         const previous = await currentVersion(locked, tx);
         const next = { title: input.title ?? previous.title, body: input.body ?? previous.body, url: input.url === undefined ? previous.url : input.url };
         if (!next.body.trim() && !next.url) throw new InvalidInputError('Material needs text or a link');
+        const progress=next.body!==previous.body||next.url!==previous.url;
+        const scope={workspaceId:row.workspaceId,projectId:row.projectId};
+        const fence=await prepareCanonicalArtifactTaskUse(tx,scope,progress?{kind:'material',id:row.id,version:locked.currentVersion+1}:null,[]);
         const [updated] = await tx.update(schema.projectMaterials).set({ currentVersion: locked.currentVersion + 1, updatedAt: new Date() })
           .where(eq(schema.projectMaterials.id, row.id)).returning();
         const [snapshot] = await tx.insert(schema.projectMaterialVersions).values({
@@ -479,11 +553,50 @@ export function conversationStore(db: Database, options: ConversationStoreOption
           version: updated!.currentVersion, ...next, authorId,
           clientMutationId: input.clientMutationId, requestFingerprint: input.fingerprint,
         }).returning();
+        if(progress)await artifactResetRows(tx).canonical(scope,{kind:'material',id:row.id,version:snapshot!.version},
+          {kind:'material',id:row.id,revision:String(snapshot!.version)},fence);
         await recordEvent(eventPorts(tx), principal, row.workspaceId, 'project.material_updated.v1', row.projectId, { materialId: row.id, version: updated!.currentVersion });
         return material(updated!, snapshot!, principal);
       });
     },
   };
+}
+
+/** CLOSED private composition only; the verified native executor owns runtime/grant/receipt and final events.
+ * No route calls this adapter. All upstream authorization/command/source locks precede the shared task fence.
+ */
+export async function guardedAgentThreadInEventSession(tx: Transaction, session: TransactionEventSession,
+  runtime: AuthenticatedAgentRuntime, command: { clientCommandId: string; grantId: string }, taskId: string, input: AgentThreadPost) {
+  return session.run(async () => {
+    const principal: Principal = { kind: 'agent', id: runtime.agentId };
+    const task = await locateThreadTask(principal, taskId, tx, true, true);
+    if (task.workspaceId !== runtime.workspaceId || input.projectId !== task.projectId)
+      throw new InvalidInputError('The task does not belong to this project');
+    const author: Actor = { kind: 'agent', id: runtime.agentId };
+    await lockIdempotency(tx, task.projectId, author, input.clientMessageId);
+    if (await existingMessage(task.projectId, author, input.clientMessageId, tx))
+      throw new ConflictError('A native message requires its original command receipt', 'IDEMPOTENCY_CONFLICT');
+    await sourceExists(task.projectId, input.source, tx);
+    const sourceRefs = input.source ? [{ type: 'material', id: input.source.materialId }] : [];
+    const targets = [...new Set([task.id, ...await workRows(tx).taskUseTargets(sourceRefs)])].sort();
+    const fence = await taskUseRows(tx).prepare(targets);
+    const retainedTargets = [...new Set([task.id, ...await workRows(tx).taskUseTargets(sourceRefs)])].sort();
+    if (JSON.stringify(retainedTargets) !== JSON.stringify(targets))
+      throw new ConflictError('Task references changed; retry from current details', 'TASK_TARGET_SET_CHANGED');
+    let thread = await agentThreadGuardRows(tx).thread(task.id, task);
+    if (!thread) {
+      const [created] = await tx.insert(schema.projectConversations).values({ id: randomUUID(), workspaceId: task.workspaceId,
+        projectId: task.projectId, space: 'agents', workId: task.id, createdBy: null, createdByAgentId: runtime.agentId }).returning();
+      thread = created!;
+    }
+    const messageId = randomUUID();
+    await agentThreadGuardRows(tx).debit(fence, task, thread.id, messageId, runtime, command);
+    const stored = await taskDiscussionRows(tx).append(thread, author, input, messageId);
+    await fence.mark();
+    await session.record(principal, task.workspaceId, 'project.agent_thread_message_sent.v1', task.projectId,
+      { conversationId: thread.id, messageId: stored.id });
+    return message(stored, await workRows(tx).names([author]));
+  });
 }
 
 /**
