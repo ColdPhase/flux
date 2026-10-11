@@ -36,3 +36,36 @@ Current daemon read-only observation: Fedora Linux42, kernel6.19.14-108.fc42.x86
 Before any Docker run inventory actual projects/ports/subnets and select an isolated project with separate account data. Proposed unused range19930/31 and IPAM10.199.210–212 is conditional on that inventory; no project exists yet. Cleanup only the owned project/volumes/networks/tagged images; no global prune. Report actual handles once started.
 
 Exclusive writer handoff was granted for the existing worktree/PR after the independent acceptance. Next: implement the normal main composition and run the bounded portable controls. No human approval queue is proposed.
+
+
+## Actual pinned verification and remaining acceptance
+
+Normal composition `a4932af8577f1b00a8f274aa293a8841f857051c` has parents remote T4/Connect `96218f691b6b400dd119b4f07774dfba956efb1e` and protected main `6e81027988527aa4b34e4cd7ae0f363b422d6a2b`. All five conflict resolutions preserve both features. Auto-merged runtime/API/launcher inputs were inspected; no historical SQL or ledger was rewritten, no #280 migration0076 or unmerged #380/#474 was imported, and external active branches were untouched.
+
+Actual Docker results:
+
+| Source | Executed check | Result |
+| --- | --- | --- |
+| `81a6bc0729a5025ab8bb61d7a4c4c04c510ce22f` | Build/type/lint; 16 selected runtime/core/console/auth-process/API/SQL/architecture/PWA/migration-footprint/ledger files | Build PASS; **188/188, 122.911s, zero skipped** |
+| Same `81a6bc07` | Maintained real HTTPS PWA module, ordinary workers enabled | Chromium **3/3, 3.483s**; WebKit **3/3, 2.894s** |
+| Same `81a6bc07` | Four selected lazy-route methods, actual Chromium and WebKit subcases | **4/4 methods, 8.648s** |
+| `f44ea496d34f6880c77584cdae1fea66aa153427` | Same maintained PWA and route checks after test placement correction | Both PWA lanes **3/3**; route **4/4 methods, 10.115s** |
+| `618eac143c5e7c4abfd7ad89a82db6844cc578e2` | Fixed-template flag/method contract against signed Claude Code2.1.285 and checksummed Codex0.160.1; real authentication assertion table | **Missing0; 21/21 PASS**, network-none with synthetic credentials and loopback mock issuer; no vendor account |
+| Same `618eac14` | Real Chromium / WebKit mounted Connect9, runtime off/held-result/legacy-route6 and Appearance7 | **22/22, 25.485s** / **22/22, 36.238s**, no skips |
+
+Application, API tests, PWA, Docker, scripts, repository tests and workflow inputs at618e are byte-identical to81a except the named runtime-console UI test. API188 is actual81a evidence with explicit source equivalence, not a newly run618e count. Baked proofs match all **1141** tracked app files and **69** UI files at81a/f44; final UI69 also matches618e. New route control checks actual lazy downloads/legacy redirect, the visible method chooser at both widths/themes, real409/`AGENT_RUNTIME_OFF` and exact truthful alert, and no terminal mount/download on refused admission. Original assertions/error guards stay intact. Routed fixture modules use main's required worker blocking; real PWA checks retain ordinary service workers. Native UI03–08 were not selected because this host cannot start the supported profile.
+
+Failures are preserved without relabelling:
+
+- Initial a493 launcher run: one symlink positive expected the old unfenced `runtime-forget confirmed` spelling. The corrected expectation requires its exact durable fence UUID and retains all ten outcome cases plus symlink/foreign-owner controls. This was a harness expectation failure, not evidence of a failed native purge.
+- Initial81a browser driver86122 ended1: each22-method invocation had one loader error because new UI12 was outside its class; all original21 bodies passed. UI12 did not execute. API188, PWA and routes passed.
+- Corrected-placement f44 browser driver35872 ended1: original21 bodies passed per engine; four new subcases per engine failed because the test expected unknown-operation copy instead of actual409/off copy, and a phone inner h2 deliberately hidden by shared CSS. Original native UI04 already uses the visible method group. Only the new control was corrected; no production behavior/old assertion changed.
+- Final618e browser driver29646 ended0. CLI driver82153 ended0. No new product failure was observed within this bounded cohort.
+
+Machine-local raw logs and proof: `/tmp/flux398-composition/`, `/tmp/flux398-browser/`, `/tmp/flux398-cli/`, `/tmp/flux398-final/verification-proof.json`. The proof records raw log hashes, tested pins and cleanup. The neutral brief `/tmp/flux398-final/neutral-brief.md` and manifest `/tmp/flux398-final/neutral-manifest.json` contain **36 unedited native PNGs**. No author appearance verdict or independent runtime acceptance is claimed; fresh independent visual/code evaluation is required.
+
+All three owned Compose projects, their containers/networks/volumes/tagged images, and the real-CLI contract volume/image are gone. The CLI and final browser run used the common session coordination lock `/tmp/flux-heavy-docker.lock`; actual process ownership, not the file's existence, governed exclusion. It was released at terminal cleanup. No daemon/kernel setting or global cleanup occurred.
+
+Setup/link checks, all105 repository tests and whitespace checks pass. The final evidence commit is documentation only over618e; its application/test/tooling equivalence is recorded in the PR handoff.
+
+Full #279 remains open: supported-host native isolation/profile startup, pool/release/reuse and actual native UI03–08 are unavailable at observed ptrace_scope0; portable in-process server/PTY fixtures do not replace them. #331's required before-merge outcomes, full supported-host/evaluation/upgrade/backup/integrated candidate gates remain. Existing historical partial-legacy fixtures retain their exact source; these sparse/catalog controls do not certify every future #394/focus/canonical composition or conversion. A12 guided cards stay #411; T5 resumes the preserved #280 artifact only after its authority/contract prerequisites. #401 must still be accepted on protected main before #457 acceptance. No real vendor account is required or used under the authenticated mocks-only amendment, and no whole T4, real-client Start/Resume, full PWA, publication or release acceptance follows from these bounded passes.
