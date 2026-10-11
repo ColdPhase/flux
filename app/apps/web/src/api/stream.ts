@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { STREAM_CLOSE_UNAUTHENTICATED, STREAM_PATH, type StreamEvent, type StreamMessage } from '@flux/contracts';
+import { onPageLive, pageLeaving } from './pageLeaving.js';
 
 /**
  * The authorized event stream (#29) as a small shared subscription. One WebSocket per tab,
@@ -35,19 +36,29 @@ let seen = new Set<string>();
 /** A cursor was dropped: events since then were not replayed, so the next open asks for a refetch. */
 let resyncOnOpen = false;
 
-// While the page is being left (beforeunload until pagehide, or a cancelled navigation's grace) or
-// is hidden, listeners must not start refetches: the browser may cancel them and report it as a
-// page error (#471). Events are held and delivered in order once the page is live again.
-const LEAVING_GRACE_MS = 1000;
+// While the page is being left (see pageLeaving) or is hidden, listeners must not start refetches:
+// the browser may cancel them and report it as a page error (#471). Events are held and delivered in
+// order once the page is live again. A refetch that listeners are asked for (a reconnect from the
+// head, or more events than can be held) is held the same way as one coalesced request, and runs
+// once for the same document when it is live. Nothing here outlives the identity or its listeners.
 const HOLD_MAX = 200;
-let leaving = false;
-let leavingTimer = 0;
 let hiddenTab = false;
 let held: StreamEvent[] = [];
-let heldOverflow = false;
+let resyncWanted = false;
 
 function paused() {
-  return leaving || hiddenTab;
+  return pageLeaving() || hiddenTab;
+}
+
+function forgetHeld() {
+  held = [];
+  resyncWanted = false;
+}
+
+/** Tells listeners to refetch what they show, now or, while paused, once when live again. */
+function requestResync() {
+  if (paused()) { resyncWanted = true; return; }
+  for (const { listener } of [...subscriptions]) listener.onResync?.();
 }
 
 function deliver(event: StreamEvent) {
@@ -55,19 +66,18 @@ function deliver(event: StreamEvent) {
     for (const { listener } of [...subscriptions]) listener.onEvent(event);
     return;
   }
-  if (heldOverflow) return;
-  if (held.length >= HOLD_MAX) { held = []; heldOverflow = true; return; }
+  if (resyncWanted) return;
+  if (held.length >= HOLD_MAX) { held = []; resyncWanted = true; return; }
   held.push(event);
 }
 
-/** Delivers what was held, in order; after an overflow listeners refetch what they show instead. */
+/** Delivers what was held, in order; a wanted refetch comes first and is asked for once. */
 function release() {
   if (paused()) return;
   const batch = held;
-  const resync = heldOverflow;
-  held = [];
-  heldOverflow = false;
-  if (resync) for (const { listener } of [...subscriptions]) listener.onResync?.();
+  const resync = resyncWanted;
+  forgetHeld();
+  if (resync) requestResync();
   for (const event of batch) for (const { listener } of [...subscriptions]) listener.onEvent(event);
 }
 
@@ -85,8 +95,7 @@ export function resetStream() {
   retry = 0;
   seen = new Set();
   resyncOnOpen = false;
-  held = [];
-  heldOverflow = false;
+  forgetHeld();
   identity = null;
 }
 
@@ -108,7 +117,7 @@ function connect() {
     opened = true;
     if (!resyncOnOpen) return;
     resyncOnOpen = false;
-    for (const { listener } of [...subscriptions]) listener.onResync?.();
+    requestResync();
   };
   ws.onmessage = (message) => {
     let data: StreamMessage;
@@ -145,31 +154,16 @@ if (typeof window !== 'undefined') {
     clearTimer();
     connect();
   });
-  window.addEventListener('beforeunload', () => {
-    leaving = true;
-    window.clearTimeout(leavingTimer);
-    // A navigation the person cancels never reaches pagehide: the page is live again after the grace.
-    leavingTimer = window.setTimeout(() => { leavingTimer = 0; leaving = false; release(); }, LEAVING_GRACE_MS);
-  });
-  window.addEventListener('pagehide', () => {
-    window.clearTimeout(leavingTimer);
-    leavingTimer = 0;
-    leaving = true;
-  });
-  window.addEventListener('pageshow', () => {
-    window.clearTimeout(leavingTimer);
-    leavingTimer = 0;
-    leaving = false;
-    release();
-  });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') { hiddenTab = true; return; }
     hiddenTab = false;
-    if (!leaving) release();
+    release();
   });
 }
+onPageLive(release);
 
-function subscribe(owner: string, listener: StreamListener) {
+/** One listener for the signed-in person `owner`; `useStreamEvents` is the way components use it. */
+export function subscribe(owner: string, listener: StreamListener) {
   if (identity !== owner) {
     // Another account in this tab: nothing of the previous one may be reused.
     resetStream();
@@ -181,6 +175,7 @@ function subscribe(owner: string, listener: StreamListener) {
   return () => {
     subscriptions.delete(subscription);
     if (subscriptions.size) return;
+    forgetHeld();
     clearTimer();
     socket?.close(1000);
     socket = null;

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router';
 import { ASSISTANT_RUN_CHANGED_EVENT, type AssistantRun } from '@flux/contracts';
+import { onPageLive, pageLeaving } from '../api/pageLeaving';
 import { useStreamEvents } from '../api/stream';
 import { listOwnRuns, stopRun } from '../assistant/api';
 import { isWorking } from '../assistant/format';
@@ -9,8 +10,6 @@ import { Icon, Kreska, type KreskaExpression } from '../ui';
 import { useShellData } from './data';
 
 const POLL_WHILE_WORKING_MS = 3000;
-/** A navigation cancelled after beforeunload never reaches pagehide: the page is live again after this. */
-const LEAVING_GRACE_MS = 1000;
 interface WorkingSnapshot { identity: string; run: AssistantRun | null; stopping: boolean; failed: boolean }
 interface WorkingLifetime { identity: string; live: boolean; revision: number; read: AbortController | null; stopping: boolean }
 
@@ -18,14 +17,13 @@ interface WorkingLifetime { identity: string; live: boolean; revision: number; r
 function useWorkingRun(identity: string) {
   const [snapshot, setSnapshot] = useState<WorkingSnapshot>({ identity, run: null, stopping: false, failed: false });
   const lifetime = useRef<WorkingLifetime | null>(null);
-  // Background reads (poll, focus, stream) wait while this page is hidden or being left. A request
-  // started between beforeunload and pagehide is cancelled by the navigation, and WebKit reports
-  // that as a page error (#471). User-started requests never go through refresh().
-  const gate = useRef({ leaving: false, hidden: false, timer: 0 });
+  // Background reads (poll, focus, stream) wait while this page is hidden or being left (see
+  // pageLeaving, #471). User-started requests never go through refresh().
+  const hidden = useRef(false);
   const refresh = useCallback(() => {
     const scope = lifetime.current;
     if (!scope?.live || scope.identity !== identity || scope.stopping) return;
-    if (gate.current.leaving || gate.current.hidden) return;
+    if (pageLeaving() || hidden.current) return;
     scope.read?.abort();
     const controller = new AbortController();
     scope.read = controller;
@@ -77,30 +75,17 @@ function useWorkingRun(identity: string) {
     };
   }, [identity, refresh]);
   useEffect(() => {
-    const state = gate.current;
-    const beforeUnload = () => {
-      state.leaving = true;
-      window.clearTimeout(state.timer);
-      // A navigation the person cancelled never reaches pagehide: the page resumes its reads then.
-      state.timer = window.setTimeout(() => { state.leaving = false; refresh(); }, LEAVING_GRACE_MS);
-    };
-    const pageHide = () => { window.clearTimeout(state.timer); state.leaving = true; };
-    const pageShow = () => { window.clearTimeout(state.timer); state.leaving = false; refresh(); };
     const visibility = () => {
-      if (document.visibilityState === 'hidden') { state.hidden = true; return; }
-      if (!state.hidden) return;
-      state.hidden = false;
-      if (!state.leaving) refresh();
+      if (document.visibilityState === 'hidden') { hidden.current = true; return; }
+      if (!hidden.current) return;
+      hidden.current = false;
+      refresh();
     };
-    window.addEventListener('beforeunload', beforeUnload);
-    window.addEventListener('pagehide', pageHide);
-    window.addEventListener('pageshow', pageShow);
     document.addEventListener('visibilitychange', visibility);
+    // A read skipped while the page was being left runs again once it is live.
+    const stopWaiting = onPageLive(refresh);
     return () => {
-      window.clearTimeout(state.timer);
-      window.removeEventListener('beforeunload', beforeUnload);
-      window.removeEventListener('pagehide', pageHide);
-      window.removeEventListener('pageshow', pageShow);
+      stopWaiting();
       document.removeEventListener('visibilitychange', visibility);
     };
   }, [refresh]);
