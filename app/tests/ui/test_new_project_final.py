@@ -7,6 +7,8 @@ Projects that existed before keep every view. Runs through scripts/check_ui.sh a
 
 from __future__ import annotations
 
+import os
+
 import json
 import re
 import time
@@ -22,6 +24,11 @@ EMAIL = f"ada.newproject+{int(time.time() * 1000)}@example.test"
 HERB = "Balcony herb garden"
 
 
+UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
+if UI_BROWSER not in ("chromium", "webkit"):
+    raise ValueError(f"FLUX_UI_BROWSER must be chromium or webkit, got {UI_BROWSER!r}")
+
+
 class NewProject(unittest.TestCase):
     browser: Browser
     state: dict = {}
@@ -32,7 +39,9 @@ class NewProject(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
+        assert cls.browser.browser_type.name == UI_BROWSER
+        print(f"ACTUAL_UI_ENGINE={cls.browser.browser_type.name}")
         expect.set_options(timeout=8000)
 
     @classmethod
