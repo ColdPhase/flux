@@ -8,7 +8,7 @@ import WebSocket, { type RawData } from 'ws';
 import { createDatabase,EDITING_CHANNEL } from '@flux/db';
 import * as Y from 'yjs';
 import { EDITING_LIMITS, type Doc, type LiveDocBootstrap, type LiveMapBootstrap, type LiveMapDelta, type LiveMapLease,
-  type LiveReceipt, type Thought, type WikiTextEnvelope } from '@flux/contracts';
+  type LiveReceipt, type Thought, type ThoughtLink, type WikiTextEnvelope } from '@flux/contracts';
 import { Browser, type ClientResponse } from '../support/http.js';
 
 /** Explicitly selected against TWO running container processes. Not part of the ordinary one-API suite.
@@ -17,7 +17,7 @@ import { Browser, type ClientResponse } from '../support/http.js';
  * This functional case is not the full-path browser p95 gate, nor API restart/offline acceptance. */
 interface Inventory { schema: 1; sourceSha: string; apis: { apiInstance: string; apiUrl: string; containerId: string; imageId: string }[] }
 interface Actor { id: string; name: string; email: string; browser: Browser }
-interface Packet { header: Record<string, unknown>; bytes?: Buffer; at: number }
+interface Packet { header: Record<string, unknown>; bytes?: Buffer; at: number; frameIndex?: number }
 const finite = 5000;
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const bodyLimit = EDITING_LIMITS.assemblyBytes;
@@ -57,19 +57,25 @@ async function actor(base: string, origin: string, name: string): Promise<Actor>
 }
 class SocketClient {
   readonly packets: Packet[] = [];
+  /** Raw protected-frame headers include partial binary deliveries, not just complete assembled deltas. */
+  readonly protectedFrames: { header: Record<string, unknown>; at: number; frameIndex: number }[] = [];
+  private framesReceived = 0;
+  private closed: { code: number; at: number } | null = null;
   private readonly pending = new Map<string, { header: Record<string, unknown>; parts: Buffer[]; bytes: number }>();
   private error: Error | null = null;
   private waiters = new Set<() => void>();
   private constructor(readonly socket: WebSocket) {
     socket.on('error', (error: Error) => { this.error = error; this.wake(); });
-    socket.on('close', () => this.wake());
+    socket.on('close', (code) => { this.closed = { code, at: performance.now() }; this.wake(); });
     socket.on('message', (data: RawData, binary) => {
       try {
         assert.ok(Buffer.isBuffer(data)); assert.ok(data.byteLength <= EDITING_LIMITS.frameBytes);
-        if (!binary) { this.keep({ header: JSON.parse(data.toString('utf8')) as Record<string, unknown>, at: performance.now() }); return; }
+        const frameIndex = ++this.framesReceived;
+        if (!binary) { const header = JSON.parse(data.toString('utf8')) as Record<string, unknown>; this.recordProtected(header, frameIndex); this.keep({ header, at: performance.now(), frameIndex }); return; }
         const headerLength = data.readUInt32BE(0); assert.ok(headerLength > 0 && headerLength + 4 <= data.length);
         const header = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(data.subarray(4, headerLength + 4))) as Record<string, unknown>;
         assert.ok(typeof header.deliveryId === 'string' && uuid.test(header.deliveryId));
+        this.recordProtected(header, frameIndex);
         assert.ok(Number.isInteger(header.index) && Number.isInteger(header.count));
         const index = Number(header.index), count = Number(header.count);
         assert.ok(count > 0 && count <= EDITING_LIMITS.chunks && index >= 0 && index < count);
@@ -104,6 +110,20 @@ class SocketClient {
       const frame = Buffer.alloc(4 + header.length + chunk.length); frame.writeUInt32BE(header.length); header.copy(frame, 4); frame.set(chunk, 4 + header.length);
       assert.ok(frame.length <= EDITING_LIMITS.frameBytes); this.socket.send(frame);
     }
+  }
+  private recordProtected(header: Record<string, unknown>, frameIndex: number) {
+    if (!['map-delta', 'map-move', 'map-presence'].includes(String(header.type))) return;
+    assert.ok(this.protectedFrames.length < 2048, 'Finite protected-frame observation');
+    this.protectedFrames.push({ header, at: performance.now(), frameIndex });
+  }
+  async waitClosed() {
+    const deadline = performance.now() + finite;
+    while (!this.closed) {
+      if (this.error) throw this.error;
+      assert.ok(performance.now() < deadline, 'Revoked real socket closes within the existing finite deadline');
+      await new Promise<void>((resolve) => setTimeout(resolve, 10));
+    }
+    return this.closed;
   }
   private keep(packet: Packet) { assert.ok(this.packets.length < 2048, 'Finite fixture ledger'); this.packets.push(packet); this.wake(); }
   private wake() { for (const wake of this.waiters) wake(); }
@@ -220,9 +240,71 @@ test('two actual API processes deliver commit NOTIFY, pre-drop preview, characte
     assert.deepEqual(status(await originalActorOnSecondApi.request('POST', `/api/v1/docs/${created.id}/live/save`, { body: save }), 200), receipt, 'Original authenticated actor retries the immutable Save on the second actual process');
     assert.equal((status(await kai.browser.request('GET', `/api/v1/docs/${created.id}/versions/1`), 200) as Doc).body, created.body);
     assert.ok(notices.includes(created.id), 'Wiki COMMIT publishes real PostgreSQL identifier NOTIFY');
+    // Prepare valid real map controls before revocation; no authority/session/port is replaced.
+    const linkCommand = randomUUID();
+    const link = status(await ada.browser.request('POST', `/api/v1/sketches/${sketch.id}/links`, {
+      body: { id: randomUUID(), fromId: thoughts[0]!.id, toId: thoughts[1]!.id, label: null },
+      headers: { 'idempotency-key': linkCommand },
+    }), 201) as ThoughtLink;
+    await Promise.all([mapWriter.wait(byCommand('map-delta', linkCommand)), catchup.wait(byCommand('map-delta', linkCommand))]);
+    const currentMap = status(await originalActorOnSecondApi.request('GET', `/api/v1/sketches/${sketch.id}/live`), 200) as LiveMapBootstrap;
+    const currentThought = currentMap.sketch.thoughts.find((thought) => thought.id === thoughts[0]!.id)!;
+    assert.ok(currentThought);
+    const ownerObserver = await SocketClient.open(env.second, env.origin, ada, 'map', sketch.id); sockets.push(ownerObserver);
+    ownerObserver.send({ type: 'subscribe', generation: currentMap.generation, afterSequence: currentMap.sequence });
+    await ownerObserver.wait(packet => packet.header.type === 'head');
+    const afterGesture = randomUUID();
+    const ownerLease = status(await ada.browser.request('POST', `/api/v1/sketches/${sketch.id}/live/gestures`, {
+      body: { gestureId: afterGesture, thoughts: [{ id: currentThought.id, expectedVersion: currentThought.version }] },
+    }), 200) as LiveMapLease;
+    assert.equal(catchup.socket.readyState, WebSocket.OPEN, 'The original API2 catchup socket is still open when the real grant is removed');
     status(await ada.browser.request('DELETE', `/api/v1/projects/${project.id}/grants/${grant.id}`), 204);
+    const revocationReturnedAt = performance.now();
+    assert.equal((await database.pool.query('SELECT id FROM project_grants WHERE id=$1', [grant.id])).rowCount, 0, 'DELETE204 committed the real grant removal in the shared database');
+    // These identified probes are sent only after DELETE completed. Earlier authorized packets may
+    // arrive late; client timestamps cannot retrospectively identify the server handoff boundary.
+    const afterCursor = { x: 733, y: 488 };
+    mapWriter.send({ type: 'map-move', generation: currentMap.generation, gestureId: afterGesture, leaseId: ownerLease.leaseId,
+      sequence: 1, positions: [{ id: currentThought.id, x: 733, y: 488 }] });
+    await ownerObserver.wait(packet => packet.header.type === 'map-move' && packet.header.gestureId === afterGesture);
+    mapWriter.send({ type: 'map-presence', generation: currentMap.generation, selected: [currentThought.id], cursor: afterCursor });
+    await ownerObserver.wait(packet => packet.header.type === 'map-presence'
+      && JSON.stringify(packet.header.cursor) === JSON.stringify(afterCursor));
+    const revokedMap = await catchup.wait(packet => packet.header.type === 'revoked');
+    assert.equal((await catchup.waitClosed()).code, 1008, 'Real map backend revocation ends its already-open API2 socket');
+    // Preserve the original wiki refusal while the same real project grant is absent.
     await wikiPeer.wait(packet => packet.header.type === 'revoked');
     status(await kai.browser.request('GET', `/api/v1/docs/${created.id}/live`), 404);
-    t.diagnostic(`cross-process functional receipts map=2 wiki=2; real NOTIFY rooms=2; missed-delivery ordered catchup=2; savedVersion=2; old-client dirty409; named presence/current revocation. Browser DOM latency and API restart remain separate required gates.`);
+    status(await kai.browser.request('GET', `/api/v1/sketches/${sketch.id}/live`), 404);
+    status(await kai.browser.request('GET', `/api/v1/sketches/${sketch.id}`), 404);
+    status(await kai.browser.request('POST', `/api/v1/sketches/${sketch.id}/live/gestures`, {
+      body: { gestureId: randomUUID(), thoughts: [{ id: currentThought.id, expectedVersion: currentThought.version }] },
+    }), 404);
+    status(await kai.browser.request('PATCH', `/api/v1/sketches/${sketch.id}/thoughts/${currentThought.id}`, {
+      body: { text: 'Refused after the real grant removal', expectedVersion: currentThought.version }, headers: { 'idempotency-key': randomUUID() },
+    }), 404);
+    status(await kai.browser.request('PATCH', `/api/v1/sketches/${sketch.id}/links/${link.id}`, {
+      body: { label: 'Refused label', expectedLabel: null }, headers: { 'idempotency-key': randomUUID() },
+    }), 404);
+    const ownerLabelCommand = randomUUID();
+    status(await originalActorOnSecondApi.request('PATCH', `/api/v1/sketches/${sketch.id}/links/${link.id}`, {
+      body: { label: 'Owner keeps the current connection', expectedLabel: null }, headers: { 'idempotency-key': ownerLabelCommand },
+    }), 200);
+    const ownerLabel = decodedDelta(await mapWriter.wait(byCommand('map-delta', ownerLabelCommand)));
+    assert.equal(ownerLabel.links.find((item) => item.id === link.id)?.label, 'Owner keeps the current connection');
+    await ownerObserver.wait(byCommand('map-delta', ownerLabelCommand));
+    const ownerNativeCommand = randomUUID();
+    status(await ada.browser.request('PATCH', `/api/v1/sketches/${sketch.id}/thoughts/${currentThought.id}`, {
+      body: { text: 'The independent owner keeps working', expectedVersion: currentThought.version }, headers: { 'idempotency-key': ownerNativeCommand },
+    }), 200);
+    assert.equal(decodedDelta(await ownerObserver.wait(byCommand('map-delta', ownerNativeCommand))).thoughts.find((thought) => thought.id === currentThought.id)?.text, 'The independent owner keeps working');
+    await mapWriter.wait(byCommand('map-delta', ownerNativeCommand));
+    assert.equal(mapWriter.socket.readyState, WebSocket.OPEN); assert.equal(ownerObserver.socket.readyState, WebSocket.OPEN);
+    const later = catchup.protectedFrames.filter((frame) => frame.at >= revocationReturnedAt);
+    assert.ok(later.every(({ header }) => header.commandId !== ownerLabelCommand && header.commandId !== ownerNativeCommand
+      && header.gestureId !== afterGesture && JSON.stringify(header.cursor) !== JSON.stringify(afterCursor)), 'No post-commit native delta, move or presence probe reaches the revoked catchup socket, including partial binary frames');
+    assert.ok(revokedMap.frameIndex !== undefined);
+    assert.ok(catchup.protectedFrames.every((frame) => frame.frameIndex < revokedMap.frameIndex!), 'No protected map frame follows revoked in actual received transport order');
+    t.diagnostic(`cross-process functional receipts map=2 wiki=2; real NOTIFY rooms=2; missed-delivery ordered catchup=2; savedVersion=2; old-client dirty409; named presence/current revocation; real catchup map revoked/close1008; post-commit delta/move/presence withheld; opaque native/bootstrap/gesture/label refusals; independent owner continuation on both APIs. Browser DOM latency and API restart remain separate required gates.`);
   } finally { for (const socket of sockets) socket.close(); for (const document of docs) document.destroy();notify.release();await database.pool.end(); }
 });
