@@ -86,6 +86,20 @@ class RefreshEdges(unittest.TestCase):
     def capture(self, page, state, *, phone=False, theme='light'):
         shot(page, f"focus-{state}-{'phone-390' if phone else 'desktop-1440'}-{theme}-{original.helper.base.ENGINE}")
 
+    def assert_read_feedback_at_working_viewport(self, page, *, acknowledged):
+        observed = page.get_by_role('note').filter(has_text='Current notification settings could not be refreshed.').evaluate_all("""notes => notes.map(note => {
+          const box=note.getBoundingClientRect(), pane=note.closest('.pane-scroll')?.getBoundingClientRect();
+          const button=Array.from(note.querySelectorAll('button')).find(button=>button.textContent.includes('Retry current settings'));
+          const retry=button?.getBoundingClientRect(), hit=retry&&document.elementFromPoint(retry.x+retry.width/2,retry.y+retry.height/2);
+          return {text:note.textContent, box:{top:box.top,bottom:box.bottom}, pane:pane&&{top:pane.top,bottom:pane.bottom},
+            retry:retry&&{top:retry.top,bottom:retry.bottom,height:retry.height}, usable:!!hit&&(hit===button||button.contains(hit))};
+        })""")
+        print('ACTUAL_WORKING_FEEDBACK ' + json.dumps({'engine':original.helper.base.ENGINE,'viewport':page.viewport_size,'notes':observed}),flush=True)
+        self.assertTrue(any(acknowledged + '.' in note['text'] and note['pane'] and note['retry']
+            and note['box']['top'] >= note['pane']['top'] and note['box']['bottom'] <= note['pane']['bottom']
+            and note['retry']['top'] >= note['pane']['top'] and note['retry']['bottom'] <= note['pane']['bottom']
+            and note['usable'] for note in observed), 'acknowledged result, unavailable current settings and usable read-only Retry remain visible at the original action viewport')
+
     def test_01_silent_remote_extension_is_read_at_the_old_deadline(self):
         page, actor = self.actor('Silent Extension')
         deadline = time.time() + 8
@@ -191,6 +205,10 @@ class RefreshEdges(unittest.TestCase):
                         self.assertEqual(actual['level'], 'everything'); self.assertEqual(actual['pause'], {'until': None})
                         self.assertGreater(len(reads), 0)
                         self.capture(page, 'save-current-read-unavailable', phone=phone, theme=theme)
+                        self.assert_read_feedback_at_working_viewport(page, acknowledged='Saved')
+                        expect(page.locator('.ui-toast')).to_have_count(0, timeout=7000)
+                        self.capture(page, 'save-current-read-unavailable-feedback-retired', phone=phone, theme=theme)
+                        self.assert_read_feedback_at_working_viewport(page, acknowledged='Saved')
                         before = len(patches)
                         self.api(page, 'PATCH', '/api/v1/notification-preferences', {'level': 'nothing'})
                         held['fail'] = False
@@ -526,6 +544,49 @@ class RefreshEdges(unittest.TestCase):
                     self.assertEqual(patches, [], 'F/header recovery must not guess or send a PATCH')
                     expect(page.get_by_text('Current notification pause could not be checked. Try again.', exact=True)).to_have_count(0)
                     self.capture(page, 'future-pause-read-recovered', phone=phone, theme=theme)
+                    page.close()
+
+
+    def test_13_expired_link_recovery_keeps_readable_primary_label(self):
+        for phone in (False, True):
+            for theme in ('light', 'dark'):
+                with self.subTest(phone=phone, theme=theme):
+                    context = self.browser.new_context(base_url=ORIGIN, viewport={'width':390,'height':844} if phone else {'width':1440,'height':900},
+                        device_scale_factor=3 if phone else 1, is_mobile=phone, has_touch=phone, color_scheme=theme, service_workers='block')
+                    self.addCleanup(context.close)
+                    page=context.new_page(); errors=[]
+                    page.on('pageerror',lambda error:errors.append(str(error)))
+                    def guard(observed=errors):
+                        print('PEER_PAGEERRORS '+json.dumps({'engine':original.helper.base.ENGINE,'actor':'Expired recovery','errors':observed}),flush=True)
+                        self.assertEqual(observed,[],'no uncaught browser errors')
+                    self.addCleanup(guard)
+                    page.goto('/unsubscribe?token=not-a-real-token')
+                    with page.expect_response(lambda response: urlsplit(response.url).path=='/api/v1/notifications/unsubscribe') as request:
+                        page.get_by_role('button',name='Stop these emails',exact=True).click()
+                    self.assertEqual(request.value.status,404,'the actual invalid-token guard refuses before changing email destination')
+                    expect(page.get_by_role('heading',name='This link has expired',exact=True)).to_be_visible()
+                    link=page.get_by_role('link',name='Notification settings',exact=True)
+                    expect(link).to_be_visible()
+                    self.capture(page,'expired-link-recovery',phone=phone,theme=theme)
+                    colors=link.evaluate("""element=>{
+                      const style=getComputedStyle(element), box=element.getBoundingClientRect();
+                      const probe=document.createElement('span');probe.style.color='var(--oninv)';element.append(probe);
+                      const inverted=getComputedStyle(probe).color;probe.remove();
+                      return {color:style.color,inverted,background:style.backgroundColor,gradient:style.backgroundImage,
+                        width:box.width,height:box.height,top:box.top,bottom:box.bottom,viewport:innerHeight};
+                    }""")
+                    print('ACTUAL_EXPIRED_RECOVERY '+json.dumps({'engine':original.helper.base.ENGINE,'phone':phone,'theme':theme,'colors':colors}),flush=True)
+                    self.assertGreaterEqual(colors['height'],44)
+                    self.assertGreaterEqual(colors['top'],0); self.assertLessEqual(colors['bottom'],colors['viewport'])
+                    self.assertEqual(colors['color'],colors['inverted'],'the actual primary recovery action uses the fixed readable on-inverted foreground')
+                    def luminance(color):
+                        rgb=[float(x)/255 for x in re.findall(r'[\d.]+',color)[:3]]
+                        linear=[x/12.92 if x<=0.04045 else ((x+0.055)/1.055)**2.4 for x in rgb]
+                        return sum(v*w for v,w in zip(linear,[0.2126,0.7152,0.0722]))
+                    backgrounds=re.findall(r'rgba?\([^)]+\)',colors['gradient']) or [colors['background']]
+                    foreground=luminance(colors['color'])
+                    self.assertGreaterEqual(min((max(foreground,luminance(bg))+0.05)/(min(foreground,luminance(bg))+0.05) for bg in backgrounds),4.5)
+                    self.assertEqual(errors,[],'no uncaught browser errors')
                     page.close()
 
 
