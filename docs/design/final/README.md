@@ -266,11 +266,28 @@ The canvas labels S1–S22 and P1–P12 refer to these rules.
 | P12 | On the map you drag from a thought's dot to connect it. Releasing on empty space adds a connected thought, as a local draft until it is saved. |
 
 **Alignment rules for conversations**
-- Every author, person or agent, has a 32 px avatar and their full name at the same position,
-  whether they wrote a message or triggered an event.
-- Cards, bubbles and event text start on one left edge: avatar column plus a gap of 12 on the
-  computer, 10 on the phone.
+- **Founder clarification, Hubert, 2026-10-11 ([#481](https://github.com/ColdPhase/flux/issues/481)):**
+  the signed-in person's messages are on the right; every other person's and every agent's
+  messages are on the left, in projects and direct messages, including replies and pending
+  sends. The side follows the actual author, never the agent's owner. This supersedes the
+  former all-authors-left wording and matches the own-message placement in the renders.
+- Keep each author's name and 32 px avatar with their message on its corresponding side.
+  Bubbles, attachments and actions stay together, with a 12 px author gap on the computer,
+  10 on the phone. Neutral event rows retain their readable author column on the left.
 - Small 20 px avatars appear only as owners inside task rows.
+
+**Connection labels on the map (#481, 2026-10-11)**
+
+- On the computer and tablet, click a connection line or its existing label to name it.
+  The line has a forgiving hit area. A selected thought also exposes **Connections**, a
+  named keyboard/touch path listing the connected thoughts and **Add label** / **Edit label**.
+  Unnamed lines adjacent to the selection show **+ Label**. Keep the rest of the map calm.
+- Use the existing Prostota dialog, field, buttons and monochrome tokens. Show the two
+  connected thoughts, one optional Label field, Save and Cancel. Clearing the field removes
+  only the label. Preserve map position/selection and return focus on close.
+- Saving is atomic and checks the label the person opened. A conflict shows the current
+  saved label, keeps the draft, and requires explicit review before retry. Network errors
+  retain the draft. Viewers cannot edit; phone layouts retain S15's view/add boundary.
 
 ### Kept map and board behaviour
 
