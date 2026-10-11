@@ -60,7 +60,7 @@ export function ConnectionLabels({ sketch, target, editable, onSave, onDraftChan
   return <Overlay open placement="center" label={editing ? 'Connection label' : 'Connections'} onClose={close}
     initialFocus={editing ? input : undefined} className="connection-labels">
     <header className="ui-panel__head">
-      <h2>{editing ? 'Connection label' : 'Connections'}</h2>
+      <h2 className="ui-panel__title">{editing ? 'Connection label' : 'Connections'}</h2>
       <IconButton icon="x" label="Close connections" disabled={saving} onClick={close} />
     </header>
     {editing ? <form className="connection-labels__body" onSubmit={(event) => { event.preventDefault(); void save(); }}>

@@ -395,7 +395,7 @@ span.sk-li-img { width: 160px; height: 96px; }
 .sk--map .sk-help.is-open { position: absolute; left: 50%; bottom: 110px; z-index: 9; width: min(560px, calc(100% - 28px)); max-width: none; margin: 0; padding: 12px 16px; transform: translateX(-50%);
   border-radius: var(--r-lg); background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); font-size: var(--fs-sm); color: var(--t2); }
 /* The actions of the selection float above it (below it where there is no room, and on the phone). */
-.sk-actions { gap: 2px; padding: 4px; border-radius: var(--r-pill); background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); }
+.sk-actions { gap: 2px; padding: 4px; width: max-content; flex-wrap: wrap; border-radius: var(--r-pill); background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); }
 .sk-actions .sk-edit-btn { background: transparent; box-shadow: none; }
 .sk-actions .sk-edit-btn:hover { background: var(--sub); }
 .sk-actions .sk-edit-btn[aria-pressed="true"] { background: var(--sub); }

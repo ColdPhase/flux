@@ -108,6 +108,7 @@ export function SketchMap(props: SketchMapProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const compositionRef = useRef<HTMLDivElement>(null);
+  const selectionBarRef = useRef<HTMLDivElement>(null);
   const [compositionHeight, setCompositionHeight] = useState(240);
   const [compositionPosition, setCompositionPosition] = useState<{ left: number; top: number } | null>(null);
   const phoneToolsRef = useRef<HTMLDivElement>(null);
@@ -191,12 +192,33 @@ export function SketchMap(props: SketchMapProps) {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+  // Keep the expanded, named actions in the visible canvas at any selection/zoom.
+  // This is presentation geometry only; neither the saved thoughts nor camera are moved.
+  useLayoutEffect(() => {
+    const bar = selectionBarRef.current;
+    const canvas = canvasRef.current;
+    if (!bar || !canvas || compact) return;
+    const placeBar = () => {
+      bar.style.maxWidth = `${Math.max(0, canvas.clientWidth - 16)}px`;
+      bar.style.marginLeft = '0px';
+      const view = canvas.getBoundingClientRect();
+      const bounds = bar.getBoundingClientRect();
+      const dx = Math.max(view.left + 8 - bounds.left, Math.min(0, view.right - 8 - bounds.right));
+      bar.style.marginLeft = `${dx / zoom}px`;
+    };
+    placeBar();
+    const observer = new ResizeObserver(placeBar);
+    observer.observe(bar);
+    observer.observe(canvas);
+    canvas.addEventListener('scroll', placeBar, { passive: true });
+    return () => { observer.disconnect(); canvas.removeEventListener('scroll', placeBar); };
+  });
   const projection = compact && canvasWidth && shown.length ? project(shown, heights, canvasWidth, null) : null;
   // On a phone nothing is drawn until the width is known, so thoughts never slide in from the plane layout.
   const measuring = compact && !canvasWidth;
   const rects = projection ? projection.rects : new Map<string, Rect>(shown.map((t) => [t.id, rectOf(t, heights)]));
   const scaleX = projection?.scaleX ?? 1;
-  const origin = { x: Math.min(0, ...[...rects.values()].map((r) => r.x - PAD)), y: Math.min(0, ...[...rects.values()].map((r) => r.y - PAD)) };
+  const origin = { x: Math.min(0, ...[...rects.values()].map((r) => r.x - PAD)), y: Math.min(0, ...[...rects.values()].map((r) => r.y - (compact ? PAD : 128))) };
   let width = 0;
   let height = 0;
   for (const r of rects.values()) { width = Math.max(width, r.x + r.w - origin.x); height = Math.max(height, r.y + r.h - origin.y); }
@@ -582,7 +604,7 @@ export function SketchMap(props: SketchMapProps) {
     const label = quote(lastThought.text);
     const close = (run: () => void) => () => { setMore(false); run(); };
       return (
-        <div className="sk-actions" role="toolbar" aria-label="Selection actions" style={style}>
+        <div ref={selectionBarRef} className="sk-actions" role="toolbar" aria-label="Selection actions" style={style}>
           {single ? <button type="button" className="sk-edit-btn" aria-label={`Edit ${label}`} onClick={() => props.onEdit(lastThought.id)}>Edit</button> : null}
           {single && !compact ? <button type="button" className="sk-edit-btn" aria-label="Connect" aria-pressed={connectFrom === lastThought.id} onClick={() => props.onConnectFrom(lastThought.id)}>Connect</button> : null}
           {single && !compact ? <button type="button" className="sk-edit-btn" onClick={() => props.onConnections(lastThought.id)}>Connections</button> : null}

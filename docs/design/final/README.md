@@ -281,6 +281,8 @@ The canvas labels S1–S22 and P1–P12 refer to these rules.
 - On the computer and tablet, click a connection line or its existing label to name it.
   The line has a forgiving hit area. A selected thought also exposes **Connections**, a
   named keyboard/touch path listing the connected thoughts and **Add label** / **Edit label**.
+  Keep the complete action bar inside the visible canvas, with space above the topmost
+  thought so its actions do not cover the connection label.
   Unnamed lines adjacent to the selection show **+ Label**. Keep the rest of the map calm.
 - Use the existing Prostota dialog, field, buttons and monochrome tokens. Show the two
   connected thoughts, one optional Label field, Save and Cancel. Clearing the field removes
