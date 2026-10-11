@@ -73,6 +73,7 @@ function AccountNotificationSettings() {
   const [failed, setFailed] = useState(false);
   const [saved, setSaved] = useState('');
   const [refreshWarning, setRefreshWarning] = useState<'pause' | 'settings' | null>(null);
+  const [pauseExpired, setPauseExpired] = useState(false);
   const hasPreferences = useRef(false);
   const toast = useToast();
   const ids = { email: useId(), level: useId(), what: useId(), mute: useId() };
@@ -93,6 +94,7 @@ function AccountNotificationSettings() {
         const result = reconcilePause(next, pauseVersion);
         hasPreferences.current = true;
         setPrefs(result); setFailed(false); setRefreshWarning(null);
+        setPauseExpired(result.pause.until !== null && Date.parse(result.pause.until) <= Date.now());
         announcePauseChange(ownerId, result.pause.until);
       }
     }, () => {
@@ -109,6 +111,7 @@ function AccountNotificationSettings() {
       const update = (event as CustomEvent<PauseChange>).detail;
       if (update.ownerId === ownerId && isCurrentNotificationSession(captureNotificationSession(ownerId))) {
         setPrefs((current) => current ? { ...current, pause: { until: update.until } } : current);
+        setPauseExpired(update.until !== null && Date.parse(update.until) <= Date.now());
         setRefreshWarning((current) => current === 'settings' ? current : update.uncertain ? 'pause' : null);
       }
     };
@@ -164,6 +167,7 @@ function AccountNotificationSettings() {
       if (mounted.current && mine === sequence.current) {
         hasPreferences.current = true;
         setPrefs(result); setSaved(done);
+        setPauseExpired(result.pause.until !== null && Date.parse(result.pause.until) <= Date.now());
         if (refreshFailed) setRefreshWarning('settings');
         else if (refreshed) setRefreshWarning(null);
       }
@@ -231,7 +235,7 @@ function AccountNotificationSettings() {
       </div>
       {level === 'custom' ? <p className="sset-note" role="note">You chose channels for each kind below, so none of the three matches. Pick one to reset them.</p> : null}
 
-      {prefs.pause.until && Date.parse(prefs.pause.until) > Date.now() ? (
+      {prefs.pause.until && !pauseExpired ? (
         <p className="nset__focus" role="status">
           <Icon name="focus" size={14} /><span>{refreshWarning ? 'Last confirmed pause: push and email were paused until ' : 'Focus: push and email are paused until '}<time dateTime={prefs.pause.until}>{clock(new Date(prefs.pause.until))}</time>.</span>
           <Button variant="secondary" onClick={() => change({ pause: { until: null } }, (current) => ({ ...current, pause: { until: null } }))}>Resume now</Button>

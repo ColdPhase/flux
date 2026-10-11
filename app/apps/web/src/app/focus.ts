@@ -22,9 +22,9 @@ export const clock = (at: Date) => at.toLocaleTimeString([], { hour: '2-digit', 
 export function useFocus(identity: string) {
   const toast = useToast();
   // The pause belongs to the identity that read it; another identity never sees it.
-  const [state, setState] = useState<{ owner: string; until: Date | null; uncertain: boolean }>({ owner: identity, until: null, uncertain: false });
+  const [state, setState] = useState<{ owner: string; until: Date | null; expired: boolean; uncertain: boolean }>({ owner: identity, until: null, expired: false, uncertain: false });
   const knownUntil = state.owner === identity ? state.until : null;
-  const until = knownUntil && knownUntil.getTime() > Date.now() ? knownUntil : null;
+  const until = knownUntil && !state.expired ? knownUntil : null;
   const uncertain = state.owner === identity && state.uncertain;
   const busy = useRef<NotificationSession | null>(null);
   const who = useRef(identity);
@@ -35,7 +35,8 @@ export function useFocus(identity: string) {
   const version = useRef(0);
   const apply = useCallback((pause: string | null, unverified = false) => {
     version.current += 1;
-    setState({ owner: who.current, until: pause ? new Date(pause) : null, uncertain: unverified });
+    const at = pause ? new Date(pause) : null;
+    setState({ owner: who.current, until: at, expired: at !== null && at.getTime() <= Date.now(), uncertain: unverified });
   }, []);
   const refresh = useCallback(() => {
     const mine = version.current;
