@@ -447,7 +447,9 @@ class HandOffJourney(unittest.TestCase):
                         body = response.json()
                         item = next(row for row in body["connections"] if row["id"] == connection["id"])
                         item["state"] = "session_open" if connection_state == "expired_session" else connection_state
-                        item["session"] = {"startedAt": "2026-10-11T10:00:00Z", "expiresAt": "2000-10-11T10:00:00Z" if connection_state == "expired_session" else "2099-10-11T10:00:00Z"} if item["state"] == "session_open" else None
+                        at = time.time()
+                        item["session"] = {"startedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at - 3600)),
+                                           "expiresAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at - 60 if connection_state == "expired_session" else at + 3600))} if item["state"] == "session_open" else None
                         item["currentWork"] = {"taskId": target["id"], "taskTitle": target["title"], "role": "review", "state": state}
                         item["requests"] = [{"id": "fixture-request", "kind": "review", "state": request_state,
                                              "reason": "after the calibration result", "taskId": target["id"], "taskTitle": target["title"],
