@@ -12,6 +12,7 @@ step is checked against the API. Screenshots (dm-sketch-*.png) go to FLUX_UI_SCR
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 import unittest
@@ -55,7 +56,7 @@ class DmSketchJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, os.environ.get("FLUX_UI_BROWSER", "chromium")).launch()
         expect.set_options(timeout=10000)
         contexts: dict[str, BrowserContext] = {}
         for key, (name, email, _) in PEOPLE.items():
@@ -189,6 +190,8 @@ class DmSketchJourney(unittest.TestCase):
     def test_03_phone_selection_bar(self) -> None:
         page = self.page("kai", phone=True)
         page.goto(f"/dm/{self.dm_id}")
+        page.wait_for_function("navigator.serviceWorker.controller?.state === 'activated'")
+        expect(page.get_by_test_id("flux-update-prompt")).to_have_count(0)
         select = page.get_by_role("button", name="Select", exact=True)
         select.tap()
         self.message(page, 1).locator(".dm-msg__body").tap()
@@ -268,16 +271,20 @@ class DmSketchJourney(unittest.TestCase):
             shot(page, f"dm-sketch-phone-{label}")
             self.assertLessEqual(top, 440, f"{label}: the map starts near the upper half of the screen (at {top:.0f}px)")
             self.assertLessEqual(chrome, 300, f"{label}: the sketch's own header, context and tools stay compact ({chrome:.0f}px)")
-            tools = page.get_by_role("toolbar", name="Sketch tools")
-            buttons = tools.get_by_role("button")
-            for index in range(buttons.count()):
-                b = buttons.nth(index).bounding_box()
-                assert b
-                self.assertGreaterEqual(b["height"], 43.5, f"{label}: tool {index} is a touch target")
-            self.assertLessEqual(tools.bounding_box()["height"], 100, f"{label}: the labelled tools take two compact rows")
-            for text in ("Thought", "Connect", "Edit", "Shape", "Remove", "Undo"):
-                expect(tools.get_by_text(text, exact=True)).to_be_visible()
+            # S15: no toolbar row on the phone; the map views and adds, and says where to connect.
+            expect(page.get_by_role("toolbar", name="Sketch tools")).to_have_count(0)
+            add = page.get_by_role("button", name="Add a thought", exact=True)
+            expect(add).to_be_visible()
+            self.assertGreaterEqual(add.bounding_box()["height"], 43.5, f"{label}: Add a thought is a touch target")
+            expect(page.get_by_text("Connect and arrange on a computer")).to_be_visible()
+            page.locator(".sk-node").first.tap()
+            page.get_by_role("button", name="Thought actions", exact=True).tap()
+            actions = page.get_by_role("dialog", name="Thought actions", exact=True)
+            expect(actions.get_by_role("button", name="Remove from sketch", exact=True)).to_be_visible()
+            for name in ("Connect", "Change shape", "Undo"):
+                expect(actions.get_by_role("button", name=name, exact=True)).to_have_count(0)
             self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), PHONE["width"], f"{label}: no horizontal scrolling")
+            actions.get_by_role("button", name="Close thought actions", exact=True).tap()
             shot(page, f"dm-sketch-phone-{label}")
         # The copy still says where it came from and that the conversation stays private.
         expect(page.locator(".sk-origin")).to_contain_text("Copied from a direct message by you")

@@ -12,21 +12,47 @@ export interface ServiceWorkerUpdate {
 
 const listeners = new Set<Listener>();
 let pending: ServiceWorkerUpdate | null = null;
+let pendingWorker: ServiceWorker | null = null;
+let applying: ServiceWorker | null = null;
 let registrationPromise: Promise<ServiceWorkerRegistration | null> | null = null;
 
 function announce(worker: ServiceWorker) {
+  if (pendingWorker === worker) return;
+  pendingWorker = worker;
   pending = {
     apply() {
+      if (applying === worker || worker.state === 'redundant') return;
+      applying = worker;
       let reloaded = false;
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (reloaded) return;
+      const stopListening = () => {
+        navigator.serviceWorker.removeEventListener('controllerchange', reload);
+        worker.removeEventListener('statechange', reload);
+      };
+      const reload = () => {
+        if (worker.state === 'redundant') { stopListening(); if (applying === worker) applying = null; return; }
+        if (reloaded || navigator.serviceWorker.controller !== worker || worker.state !== 'activated') return;
         reloaded = true;
+        stopListening();
         window.location.reload();
-      });
-      worker.postMessage({ type: 'SKIP_WAITING' });
+      };
+      // clients.claim() can change the controller during activate's waitUntil. WebKit
+      // can retain an activating controller in a document reloaded during that window.
+      // Wait for this selected worker's completed activation, including a late click
+      // after another tab has already made it the controller.
+      navigator.serviceWorker.addEventListener('controllerchange', reload);
+      worker.addEventListener('statechange', reload);
+      reload();
+      if (navigator.serviceWorker.controller !== worker) worker.postMessage({ type: 'SKIP_WAITING' });
     },
   };
   for (const listener of listeners) listener(pending);
+}
+
+function clearAnnouncement(worker: ServiceWorker) {
+  if (pendingWorker !== worker) return;
+  pendingWorker = null;
+  pending = null;
+  for (const listener of listeners) listener(null);
 }
 
 /** Subscribe to update availability; the listener is called immediately with the current state. */
@@ -53,13 +79,17 @@ export function registerServiceWorker(): Promise<ServiceWorkerRegistration | nul
       const watch = (worker: ServiceWorker | null) => {
         if (!worker) return;
         const check = () => {
-          // With no controller this is the first install, not an update.
-          if (worker.state === 'installed' && navigator.serviceWorker.controller) announce(worker);
+          const controller = navigator.serviceWorker.controller;
+          // WebKit can briefly expose its first installed worker as both waiting and
+          // controller. Only a distinct actual waiting worker is a new deployment.
+          if (worker.state === 'installed' && registration.waiting === worker && controller && controller !== worker) announce(worker);
+          else clearAnnouncement(worker);
         };
         worker.addEventListener('statechange', check);
         check();
       };
       watch(registration.waiting);
+      watch(registration.installing);
       registration.addEventListener('updatefound', () => watch(registration.installing));
       const update = () => { registration.update().catch(() => undefined); };
       document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') update(); });

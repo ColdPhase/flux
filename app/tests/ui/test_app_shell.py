@@ -121,6 +121,28 @@ def shot(page: Page, name: str) -> None:
     page.screenshot(path=str(SHOTS / f"{name}.png"))
 
 
+def open_map_options(page: Page, *, touch: bool = False):
+    """The phone's named sheet retains Map/List and Fit/zoom without stacked map controls."""
+    trigger = page.get_by_role("button", name="Map options", exact=True)
+    expect(trigger).to_be_visible()
+    trigger.tap() if touch else trigger.click()
+    sheet = page.get_by_role("dialog", name="Map options", exact=True)
+    expect(sheet).to_be_visible()
+    return sheet
+
+
+def show_map_as(page: Page, mode: str, *, touch: bool = False) -> None:
+    """Choose the same Map/List control through its visible desktop or phone entry point."""
+    expect(page.locator('.ui-overlay[data-state="closing"]')).to_have_count(0)
+    switch = page.get_by_role("radio", name=mode, exact=True)
+    trigger = page.get_by_role("button", name="Map options", exact=True)
+    expect(trigger.or_(switch)).to_be_visible()
+    if trigger.is_visible():
+        switch = open_map_options(page, touch=touch).get_by_role("radio", name=mode, exact=True)
+    switch.tap() if touch else switch.click()
+    expect(page.get_by_role("dialog", name="Map options", exact=True)).to_have_count(0)
+
+
 def mailpit_reset_link(email: str) -> str:
     assert MAILPIT, "FLUX_MAILPIT_URL is required for the password reset journey"
     query = urllib.parse.quote(f'to:"{email}"')

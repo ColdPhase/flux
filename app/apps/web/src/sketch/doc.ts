@@ -41,6 +41,7 @@ export type Op =
 
 export type LoadState = 'loading' | 'ready' | 'not-found' | 'failed';
 export interface Me { id: string; name: string }
+export class DraftSaveNotSentError extends Error {}
 
 const uuid = () => crypto.randomUUID();
 
@@ -375,45 +376,76 @@ export function useSketchDoc(sketchId: string, me: Me) {
    * list, #252) are sent in order and stop at the first failure; only the confirmed ones join the document, as one
    * undo step. Returns the confirmed thought IDs; the caller keeps the rest of its draft with their IDs and keys.
    */
-  const saveThoughts = useCallback(async (items: { thought: NewThought; parent: { id: string; linkId: string } | null; key: string }[]): Promise<string[]> => {
+  const saveThoughts = useCallback(async (items: { thought: NewThought; parent: { id: string; linkId: string } | null; key: string }[], options?: {
+    /** An unknown restore or a phone's earlier connected attempt may confirm/edit an existing thought, never create its link. */
+    existingOnly?: ReadonlySet<string>;
+    expectedText?: ReadonlyMap<string, string>;
+    desiredText?: ReadonlyMap<string, string>;
+    editKeys?: ReadonlyMap<string, string>;
+    retry?: ReadonlySet<string>;
+    onAttempt?(item: { thought: NewThought; parent: { id: string; linkId: string } | null; key: string }): void;
+  }): Promise<string[]> => {
     flushMoves();
     inFlight.current += 1;
     setSaving(true);
     setProblem(null);
     const saved: string[] = [];
+    let unconfirmed = false;
+    let changedEarlier = false;
     const operation = queue.current.then(async () => {
       for (const { thought, parent, key } of items) {
-        let created: { thought: Thought; link: ThoughtLink | null };
-        try {
-          created = await withRetry(() => api.addThought(sketchId, {
-            id: thought.id, text: thought.text, x: thought.x, y: thought.y, width: thought.width, height: thought.height,
-            ...(thought.file ? { fileId: thought.file.id } : {}),
-            ...(parent ? { linkFrom: { thoughtId: parent.id, linkId: parent.linkId } } : {}),
-          }, key));
-        } catch (error) {
-          // The draft's stable ID already exists: an earlier save of this draft committed although every response was
-          // lost, and its text may predate edits made since. Finish that save instead of failing forever: the newer
-          // text becomes an ordinary edit at the version just read, so another author's change still conflicts.
-          if (!(error instanceof ApiError && error.status === 409 && error.code === 'THOUGHT_EXISTS')) throw error;
+        let created: { thought: Thought; link: ThoughtLink | null; reconciled?: boolean; currentLinks?: ThoughtLink[] };
+        const recoverExisting = async (failure: unknown) => {
           const current = await api.getSketch(sketchId);
           const existing = current.thoughts.find((item) => item.id === thought.id);
-          if (!existing) throw error;
-          const text = existing.text === thought.text ? existing
-            : await withRetry(() => api.updateThought(sketchId, existing.id, { text: thought.text }, existing.version, `${key}-text`));
-          created = { thought: text, link: parent ? current.links.find((item) => item.id === parent.linkId) ?? null : null };
+          if (!existing) { if (options?.existingOnly?.has(thought.id)) unconfirmed = true; throw failure; }
+          const expected = options?.expectedText?.get(thought.id);
+          const wanted = options?.desiredText?.get(thought.id) ?? thought.text;
+          const untouchedOwnCreation = expected === undefined && existing.version === 1 && existing.createdBy.id === meRef.current.id;
+          if (existing.text !== wanted && existing.text !== expected && !untouchedOwnCreation) {
+            changedEarlier = true;
+            patchThought(existing, true);
+            throw new Error('Earlier saved thought was changed');
+          }
+          const text = existing.text === wanted ? existing
+            : await withRetry(() => api.updateThought(sketchId, existing.id, { text: wanted }, existing.version, `${options?.editKeys?.get(thought.id) ?? key}-text`));
+          return { thought: text, link: parent ? current.links.find((item) => item.id === parent.linkId) ?? null : null, reconciled: true,
+            currentLinks: current.links.filter((item) => item.fromId === thought.id || item.toId === thought.id) };
+        };
+        if (options?.existingOnly?.has(thought.id)) {
+          created = await recoverExisting(new Error('Earlier connected save is not confirmed'));
+        } else {
+          options?.onAttempt?.({ thought, parent, key });
+          try {
+            created = await withRetry(() => api.addThought(sketchId, {
+              id: thought.id, text: thought.text, x: thought.x, y: thought.y, width: thought.width, height: thought.height,
+              ...(thought.file ? { fileId: thought.file.id } : {}),
+              ...(parent ? { linkFrom: { thoughtId: parent.id, linkId: parent.linkId } } : {}),
+            }, key));
+            // A cached creation receipt describes the earlier write, not a peer's later state.
+            if (options?.retry?.has(thought.id)) created = await recoverExisting(new Error('Earlier saved thought is no longer present'));
+          } catch (error) {
+            // A stable ID may already exist after a lost response. Confirm its current state
+            // and only refine the known earlier text with the ordinary version check.
+            if (!(error instanceof ApiError && error.status === 409 && error.code === 'THOUGHT_EXISTS')) throw error;
+            created = await recoverExisting(error);
+          }
         }
         const current = ref.current;
         if (!current) break;
-        versions.current.set(created.thought.id, created.thought.version);
+        const latest = current.thoughts.find((item) => item.id === created.thought.id);
+        const confirmed = latest && latest.version > created.thought.version ? latest : created.thought;
+        versions.current.set(confirmed.id, confirmed.version);
+        const links = created.currentLinks ? [...current.links.filter((item) => item.fromId !== confirmed.id && item.toId !== confirmed.id), ...created.currentLinks] : current.links;
         commit({ ...current,
-          thoughts: [...current.thoughts.filter((item) => item.id !== created.thought.id), created.thought],
-          links: created.link ? [...current.links.filter((item) => item.id !== created.link!.id), created.link] : current.links,
+          thoughts: [...current.thoughts.filter((item) => item.id !== created.thought.id), confirmed],
+          links: created.link ? [...links.filter((item) => item.id !== created.link!.id), created.link] : links,
         });
         saved.push(created.thought.id);
       }
-    }).catch(() => {
+    }).catch((error: unknown) => {
       const rest = items.length - saved.length;
-      setProblem(items.length === 1
+      setProblem(error instanceof DraftSaveNotSentError ? 'No request was sent. This browser could not safely retain the save state; your text is kept. Try again when storage is available.' : changedEarlier ? 'Someone changed the earlier saved thought. Your text is kept; cancel to inspect their version before editing again.' : unconfirmed ? 'The earlier draft’s save is not confirmed yet. Your text is kept; check the shared map before starting another thought.' : items.length === 1
         ? 'The thought could not be saved. Your draft is kept; check access and its parent, then try again.'
         : saved.length
           ? `Saved ${saved.length} of ${items.length} thoughts. The other ${rest} are kept in your draft; check access and their parent, then try again.`
@@ -435,7 +467,7 @@ export function useSketchDoc(sketchId: string, me: Me) {
     queue.current = operation;
     await operation;
     return saved;
-  }, [commit, flushMoves, reload, sketchId]);
+  }, [commit, flushMoves, patchThought, reload, sketchId]);
 
   const saveThought = useCallback(async (thought: NewThought, parent: { id: string; linkId: string } | null, key: string): Promise<boolean> =>
     (await saveThoughts([{ thought, parent, key }])).length === 1, [saveThoughts]);

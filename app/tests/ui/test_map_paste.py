@@ -16,7 +16,7 @@ import zlib
 
 from playwright.sync_api import expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import show_map_as, DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
 STAMP = int(time.time() * 1000)
 PASSWORD = "paste what you have in mind"
@@ -124,8 +124,8 @@ class MapPasteJourney(unittest.TestCase):
 
     def open(self, page, mode="List", sketch=None):
         page.goto(f"/projects/{self.project}/map/{sketch or self.sketch}")
-        expect(page.locator(".sk-head")).to_be_visible()
-        page.get_by_role("radio", name=mode, exact=True).click()
+        expect(page.locator('.sk-page .sk')).to_be_visible()
+        show_map_as(page, mode)
 
     def writes(self, page):
         found = []
@@ -241,7 +241,7 @@ class MapPasteJourney(unittest.TestCase):
         expect(anchor).to_have_attribute("target", "_blank")
         expect(anchor).to_have_attribute("rel", "noopener noreferrer")
         expect(anchor).to_contain_text("Open link · example.test")
-        page.get_by_role("radio", name="Map", exact=True).click()
+        show_map_as(page, "Map")
         node = page.locator(f'.sk-node[data-id="{link["id"]}"]')
         expect(node).to_contain_text("Link · example.test")
         node.click()
@@ -256,7 +256,7 @@ class MapPasteJourney(unittest.TestCase):
         draft.get_by_role("button", name="Save thought", exact=True).click()
         self.wait_stored(page, lambda current: len(current["thoughts"]) == 3)
         expect(page.locator('a[href^="javascript:"]')).to_have_count(0)
-        page.get_by_role("radio", name="List", exact=True).click()
+        show_map_as(page, "List")
         expect(page.locator(".sk-li-link")).to_have_count(1)
         expect(page.locator('a[href^="javascript:"]')).to_have_count(0)
         self.assertEqual(outside, [], "nothing fetched the pasted page")
@@ -302,7 +302,7 @@ class MapPasteJourney(unittest.TestCase):
         shot(page, "map-paste-image-map-desktop")
         # Remove and Undo restore the same thought with the same image.
         node.click()
-        page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Remove from sketch").click()
+        page.get_by_role("toolbar", name="Selection actions").get_by_role("button", name="Remove from sketch").click()
         self.wait_stored(self.owner, lambda current: len(current["thoughts"]) == 1)
         page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Undo", exact=True).click()
         restored = self.wait_stored(self.owner, lambda current: len(current["thoughts"]) == 2)
@@ -339,7 +339,7 @@ class MapPasteJourney(unittest.TestCase):
         # Stored files belong to a project: a private map refuses an image but still takes text.
         private = self.api(page, "POST", f"/api/v1/workspaces/{self.workspace}/sketches", {"title": "Jonas's notes", "scope": "private"}, 201)["id"]
         page.goto(f"/map/{private}")
-        expect(page.locator(".sk-head")).to_be_visible()
+        expect(page.get_by_role('button', name="Rename sketch Jonas's notes", exact=True)).to_be_visible()
         self.paste(page, None, self.image())
         expect(page.locator(".sk-status")).to_contain_text("Images can be added to a project’s maps only")
         self.assertEqual(writes, [])
