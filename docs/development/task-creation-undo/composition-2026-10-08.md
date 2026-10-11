@@ -49,7 +49,8 @@ paired database/files backup restore against the matching image. Fresh-database 
 
 ### Present namespace and conservative legacy refusal (2026-10-11)
 
-Independently accepted for the bounded guard by the coordinator before implementation.
+The [bounded guard plan was independently accepted](https://github.com/ColdPhase/flux/issues/238#issuecomment-6103941867)
+by the coordinator before implementation.
 At source `e1173082fc0707d57b13b2b882f3870023b1e1ae`, the actual manifest has lifecycle
 0048 and grant 0060, with no 0057/0058/0059 files. The coordination paragraph above
 records its dated allocation, not proof of present composition. Identity PR #384

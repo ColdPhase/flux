@@ -55,8 +55,8 @@ export async function retainedUndoHistory(db: ReturnType<typeof createDatabase>[
   [randomUUID(), workspace, project, connection, user, randomUUID(), 'a'.repeat(64)]);
   await db.query(`INSERT INTO project_work_items(id,workspace_id,project_id,title,created_by_kind,created_by_id,creation_origin,creation_baseline,creation_baseline_version)
     VALUES($1,$2,$3,'Legacy reverted agent task','agent',$4,'native_agent','{}'::jsonb,1)`, [reverted, workspace, project, agent]);
-  await db.query(`INSERT INTO project_task_notices(id,workspace_id,project_id,work_id,kind,created_by_kind,created_by_id,sources)
-    VALUES($1,$2,$3,$4,'task.created','agent',$5,'[]'),($6,$2,$3,$4,'task.creation_reverted','human',$7,'[]')`,
+  await db.query(`INSERT INTO project_task_notices(id,workspace_id,project_id,work_id,kind,created_by_kind,created_by_id,sources,created_at)
+    VALUES($1,$2,$3,$4,'task.created','agent',$5,'[]',clock_timestamp()),($6,$2,$3,$4,'task.creation_reverted','human',$7,'[]',clock_timestamp())`,
   [createdNotice, workspace, project, reverted, agent, revertedNotice, user]);
   await db.query(`UPDATE project_work_items SET creation_reverted_at=clock_timestamp(),creation_reverted_by_kind='human',creation_reverted_by_id=$2,
     creation_reversion_notice_id=$3,version=2 WHERE id=$1`, [reverted, user, revertedNotice]);
