@@ -6,6 +6,7 @@ export { ErrorState } from './ErrorState';
 export { Icon, type IconName } from './Icon';
 export { Input } from './Input';
 export { MEDIA, choosesInPlace, duration, flip, isObscured, play, sendsOnEnter, useArrivals, useLoopPause, useMediaQuery, useTravelingHighlight } from './motion';
+export { applyStoredReduceMotion, prefersReducedMotion, setReduceMotion, useReduceMotion } from './motion-preference';
 export { Drawer, Overlay, Sheet, focusableIn, trapTab } from './Overlay';
 export { AgentIdentity, AgentTag } from './AgentIdentity';
 export { AGENT_HUES, FluxLockup, FluxLogo, Kreska, agentHue, type AgentHue, type KreskaExpression } from './Kreska';
