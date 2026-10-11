@@ -101,7 +101,7 @@ function AccountNotificationSettings() {
       if (mounted.current && mine === reads.current && edit === sequence.current && (!session || isCurrentNotificationSession(session))) {
         if (hasPreferences.current) setRefreshWarning('settings');
         else setFailed(true);
-        if (session) announcePauseUncertainty(session);
+        if (session && notificationPauseRevision(session) === pauseVersion) announcePauseUncertainty(session);
       }
     });
   }, [ownerId, reconcilePause]);
@@ -145,7 +145,7 @@ function AccountNotificationSettings() {
         return false;
       }
       if (!isCurrentNotificationSession(session)) return false;
-      let refreshFailed = false, refreshed = false;
+      let refreshFailed = false, refreshed = false, pauseReadUnavailable = false;
       if (notificationPauseRevision(session) !== pauseVersion || notificationPauseUncertain(session)) {
         const readVersion = notificationPauseRevision(session);
         try {
@@ -159,10 +159,13 @@ function AccountNotificationSettings() {
           // and report read unavailability without suggesting the side effect needs repeating.
           result = reconcilePause(result, pauseVersion);
           refreshFailed = true;
+          pauseReadUnavailable = notificationPauseRevision(session) === readVersion;
         }
       }
-      if (refreshFailed) announcePauseUncertainty(session, !mounted.current
-        ? `${done}. Current notification settings could not be refreshed; the last confirmed settings are shown.` : undefined);
+      if (refreshFailed) {
+        if (pauseReadUnavailable) announcePauseUncertainty(session, !mounted.current
+          ? `${done}. Current notification settings could not be refreshed; the last confirmed settings are shown.` : undefined);
+      }
       else announcePauseChange(ownerId, result.pause.until);
       if (mounted.current && mine === sequence.current) {
         hasPreferences.current = true;
