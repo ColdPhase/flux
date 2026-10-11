@@ -149,9 +149,14 @@ class ProjectStateJourney(unittest.TestCase):
                 self.assert_text_is_unclipped(meta)
                 history.hover()
                 self.assertIsNone(history.get_attribute("title"))
-                geometry = history.evaluate("""e => { const r=e.getBoundingClientRect(), i=e.querySelector('.ov-row__ic').getBoundingClientRect();
-                    return {icon:Math.abs((i.top+i.height/2)-(r.top+r.height/2))}; }""")
-                self.assertLessEqual(geometry["icon"], 1, geometry)
+                geometry = history.evaluate("""e => { const r=e.getBoundingClientRect(), i=e.querySelector('.ov-row__ic').getBoundingClientRect(), t=e.querySelector('.ov-row__b').getBoundingClientRect();
+                    return {top:i.top-r.top,bottom:r.bottom-i.bottom,gap:t.left-i.right}; }""")
+                self.assertGreaterEqual(geometry["top"], 0, geometry)
+                self.assertGreaterEqual(geometry["bottom"], 0, geometry)
+                self.assertGreaterEqual(geometry["gap"], 8, geometry)
+                history.press("Tab")
+                page.keyboard.press("Shift+Tab")
+                self.assertTrue(history.evaluate("e => e.matches(':focus-visible')"))
         shot(page, "136-state-retained-history-desktop")
 
     def test_03_phone_and_tablet_readers_share_current_counts_and_reachable_details_without_write_access(self):

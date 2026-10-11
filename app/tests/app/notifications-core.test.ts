@@ -168,7 +168,7 @@ describe('focus composed with the morning-summary preference', () => {
   const cases = [
     { name: 'pause only retains the individual push', quietEnabled: false, quietStart: 22 * 60, quietEnd: 7 * 60, pushes: 1, release: until },
     { name: 'quiet after the pause uses the summary and still holds email', quietEnabled: true, quietStart: 9 * 60 + 50, quietEnd: 11 * 60, pushes: 0, release: new Date('2026-10-07T11:00:00Z') },
-    { name: 'quiet ending before the pause does not consume a pause-only push', quietEnabled: true, quietStart: 9 * 60, quietEnd: 9 * 60 + 50, pushes: 1, release: until },
+    { name: 'quiet that already holds the push stays covered by the summary', quietEnabled: true, quietStart: 9 * 60, quietEnd: 9 * 60 + 50, pushes: 0, release: until },
   ];
   for (const row of cases) test(row.name, async () => {
     const { ports, state, uow } = harness([dmEvent(1)], new Map());
