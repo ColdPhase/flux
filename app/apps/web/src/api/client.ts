@@ -23,7 +23,29 @@ export interface ApiRequestInit {
   headers?: Record<string, string>;
 }
 
+/** A navigation cancelled after `beforeunload` never reaches `pagehide`; requests resume after this. */
+const LEAVING_GRACE_MS = 1000;
+/**
+ * True while the page is being left. A request started then is cancelled by the navigation, and
+ * WebKit reports that cancellation as a page error ("access control checks", #471), so it is not
+ * sent: nothing can use its answer. `pageshow` clears the flag, which also covers a page restored
+ * from the back-forward cache.
+ */
+let leaving = false;
+let hidden = false;
+let graceTimer = 0;
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', () => {
+    leaving = true;
+    window.clearTimeout(graceTimer);
+    graceTimer = window.setTimeout(() => { if (!hidden) leaving = false; }, LEAVING_GRACE_MS);
+  });
+  window.addEventListener('pagehide', () => { hidden = true; leaving = true; });
+  window.addEventListener('pageshow', () => { hidden = false; leaving = false; window.clearTimeout(graceTimer); });
+}
+
 export async function request<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
+  if (leaving) throw new DOMException('The page is being left.', 'AbortError');
   let response: Response;
   try {
     response = await fetch(path, {
