@@ -34,3 +34,46 @@ scenario failures remain blocked as recorded in
 [tasks-main-composition-2026-10-11.md](tasks-main-composition-2026-10-11.md).
 No passing targeted feedback check replaces that integration gate, full #346,
 independent current-head review, #414 or release acceptance.
+
+## Actual fixed verification
+
+Final tested application/test source:
+**c5e28aec440a649201ab58ee09814fbe603f1500**. Trusted Docker source/UI driver
+`/tmp/flux375-feedback/verify.sh`, handle40273, finished **exit0** with the
+checkout clean and production/tests immutable during the run:
+
+| Current scoped phase | Actual result |
+| --- | --- |
+| Docker build/type check/lint | Pass; three existing warnings, no errors |
+| Chromium original23 + two new methods | 25/25,113.050s |
+| WebKit original23 + two new methods | 25/25,130.350s |
+| Desktop title observations per engine | Twelve visible/uncovered/hit-readable states: eight end-list Undo/aftermath normal/short themes, four middle/resize states |
+| Original phone geometry per engine | Fourteen states,12px footer gap and ≥44px hit targets unchanged |
+| Agent setup/repository/diff checks | Pass;102 repository tests |
+
+The shared provider measures its existing toast stack. The desktop list reserves
+the occupied area in its own scrollport and keeps a focused or previously visible
+final title exposed. Middle reading uses the visual anchor through a real stored
+task reorder, not a raw scroll-offset comparison. Actual delayed response, focus,
+600/900px resize, Board/phone breakpoint retirement and natural feedback expiry
+pass. The original API/version/Undo/blocker/session/offline/pageerror controls
+remain. No toast duration, row spacing, phone placement, navigation or other-screen
+layout was changed; helper/PWA/API client remain exact main6e. The old broader
+WebKit53+six scenario failures were not rerun or relabelled as this pass.
+
+All five owned baseline/verification projects, containers, volumes, networks and
+run-tagged images are gone. Final raw driver SHA-256:
+`b298df75e79e66c2215cbd7f5f476071c7ef5ad3a3470bf1de4efb02fc3d77b4`.
+`/tmp/flux375-feedback/verification-proof.json` records distinct results,
+cleanup and hashes; `geometry.json` retains observed rectangles. All committed
+application/test/config input hashes were recorded while this pin ran. Images
+were removed before an additional baked-source probe; no new baked-hash claim
+is made.
+
+Fresh42 unedited native PNGs are in `neutral-manifest.json` / `neutral-brief.md`:
+the original26 Tasks/phone/feedback states plus16 first-change Undo/aftermath
+frames at1440×900 and1440×600, both themes and engines. Hashes/dimensions match
+configured viewport, scale and normal text/zoom. Fresh independent appearance
+and eligible code evaluation remain required. The desktop list baseline remains
+light-only; missing states and the separately owned phone shell are not certified.
+Full #346 and the blocked integration/adaptive/PWA/release gates stay open.
